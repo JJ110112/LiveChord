@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  livechord:
+    build: .
+    ports:
+      - "8800:8800"
+    volumes:
+      - "Z:/:/music:ro"          # NAS 音樂庫（唯讀）
+      - "./data:/app/data"       # 持久化資料
+    environment:
+      - LIVECHORD_MUSIC_ROOT=/music
+    restart: unless-stopped

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiveChord</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<!-- header -->
+<header class="header">
+  <h1>LiveChord</h1>
+  <div class="search-box">
+    <input id="searchInput" type="text" placeholder="搜尋歌曲、演出者、專輯…" autocomplete="off">
+    <div id="searchResults" class="search-results"></div>
+  </div>
+  <nav></nav>
+</header>
+
+<!-- tabs -->
+<div class="tabs">
+  <button class="active" data-tab="browse">瀏覽</button>
+  <button data-tab="favorites">最愛</button>
+  <button data-tab="recent">最近播放</button>
+</div>
+
+<!-- content -->
+<main class="content">
+  <!-- browse tab -->
+  <div id="tabBrowse" class="tab-panel">
+    <div id="breadcrumb" class="breadcrumb"></div>
+    <div id="browseGrid" class="grid"></div>
+    <ul id="trackList" class="track-list" style="display:none"></ul>
+  </div>
+
+  <!-- favorites tab -->
+  <div id="tabFavorites" class="tab-panel" style="display:none">
+    <div id="favList"></div>
+  </div>
+
+  <!-- recent tab -->
+  <div id="tabRecent" class="tab-panel" style="display:none">
+    <div id="recentList"></div>
+  </div>
+
+  <!-- loading -->
+  <div id="loading" class="loading" style="display:none">
+    <div class="spinner"></div>
+    <p style="margin-top:12px">載入中…</p>
+  </div>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

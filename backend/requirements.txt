@@ -1,0 +1,5 @@
+fastapi>=0.115
+uvicorn[standard]>=0.32
+mutagen>=1.47
+librosa>=0.11
+soundfile>=0.13

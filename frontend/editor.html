@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiveChord — 和弦編輯</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .editor-page { max-width: 1100px; margin: 0 auto; padding: 20px 24px; }
+
+    /* 時間軸 */
+    .timeline-container {
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 16px;
+      overflow-x: auto;
+    }
+    .timeline {
+      position: relative;
+      height: 120px;
+      min-width: 100%;
+      background: #111;
+      border-radius: 4px;
+      cursor: crosshair;
+    }
+    .timeline .ruler {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 20px;
+      border-bottom: 1px solid #333;
+    }
+    .timeline .ruler .tick {
+      position: absolute;
+      top: 0;
+      font-size: 9px;
+      color: #666;
+      border-left: 1px solid #444;
+      height: 20px;
+      padding-left: 3px;
+    }
+    .timeline .playhead {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 2px;
+      background: var(--accent);
+      z-index: 10;
+      pointer-events: none;
+    }
+    .timeline .chord-block {
+      position: absolute;
+      top: 24px;
+      height: 60px;
+      background: rgba(233, 69, 96, 0.3);
+      border: 1px solid var(--accent);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+      min-width: 30px;
+      overflow: hidden;
+    }
+    .chord-block:hover { background: rgba(233, 69, 96, 0.5); }
+    .chord-block.selected {
+      background: rgba(233, 69, 96, 0.6);
+      border-width: 2px;
+      z-index: 5;
+    }
+    .chord-block .resize-handle {
+      position: absolute;
+      right: 0; top: 0; bottom: 0;
+      width: 6px;
+      cursor: ew-resize;
+      background: transparent;
+    }
+    .chord-block .resize-handle:hover { background: rgba(255,255,255,.2); }
+
+    /* 和弦面板 */
+    .chord-palette {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 12px;
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+    }
+    .chord-palette .palette-btn {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 13px;
+      transition: all .15s;
+    }
+    .chord-palette .palette-btn:hover { background: var(--bg-hover); }
+    .chord-palette .palette-btn.selected {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    /* 編輯工具列 */
+    .edit-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .edit-toolbar label { font-size: 12px; color: var(--text-dim); }
+    .edit-toolbar input, .edit-toolbar select {
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+    }
+    .edit-toolbar .sep {
+      width: 1px; height: 24px; background: var(--border); margin: 0 4px;
+    }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <a href="/" style="text-decoration:none"><h1>LiveChord</h1></a>
+  <span id="editorTitle" style="color:var(--text-dim);font-size:14px;margin-left:12px"></span>
+  <div style="margin-left:auto;display:flex;gap:8px">
+    <button id="btnSave" class="toolbar-btn" style="width:auto;padding:4px 14px;font-size:13px">儲存</button>
+    <a id="btnBack" href="/player" class="toolbar-btn" style="width:auto;padding:4px 14px;font-size:13px;text-decoration:none;display:flex;align-items:center">返回播放</a>
+  </div>
+</header>
+
+<div class="editor-page">
+
+  <!-- 播放控制 -->
+  <div class="audio-controls" style="margin-bottom:16px">
+    <div class="progress-bar" id="progressBar">
+      <div class="progress" id="progress" style="width:0%"></div>
+    </div>
+    <div class="time-row">
+      <span id="timeCurrent">0:00</span>
+      <span id="timeDuration">0:00</span>
+    </div>
+    <div class="controls-row">
+      <button id="btnPlay" class="btn-play" title="播放/暫停">&#x25B6;</button>
+      <div class="volume-control">
+        <span>&#x1F509;</span>
+        <input id="volumeSlider" type="range" min="0" max="1" step="0.05" value="1">
+      </div>
+    </div>
+  </div>
+
+  <!-- 工具列 -->
+  <div class="edit-toolbar">
+    <label>Key:</label>
+    <input id="keyInput" type="text" value="" style="width:50px" placeholder="C">
+    <div class="sep"></div>
+    <label>選中和弦:</label>
+    <input id="chordNameInput" type="text" style="width:80px" placeholder="Am">
+    <button id="btnUpdate" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px">更新</button>
+    <button id="btnDelete" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#f66">刪除</button>
+    <div class="sep"></div>
+    <label>縮放:</label>
+    <input id="zoomSlider" type="range" min="5" max="40" value="15" style="width:100px">
+    <div class="sep"></div>
+    <button id="btnImport" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px">匯入 ChordPro</button>
+  </div>
+
+  <!-- 時間軸 -->
+  <div class="timeline-container">
+    <div id="timeline" class="timeline">
+      <div id="ruler" class="ruler"></div>
+      <div id="playhead" class="playhead" style="left:0"></div>
+    </div>
+  </div>
+
+  <!-- 和弦面板 -->
+  <div>
+    <div style="font-size:13px;color:var(--text-dim);margin-bottom:6px">點擊時間軸空白處新增和弦，或從面板選取後點擊：</div>
+    <div id="chordPalette" class="chord-palette"></div>
+  </div>
+
+</div>
+
+<div id="toast" class="toast"></div>
+<audio id="audio" preload="auto"></audio>
+
+<script src="/js/api.js"></script>
+<script src="/js/editor.js"></script>
+</body>
+</html>

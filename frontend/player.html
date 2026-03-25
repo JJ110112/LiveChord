@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiveChord — 播放</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<!-- header -->
+<header class="header">
+  <a href="/" style="text-decoration:none"><h1>LiveChord</h1></a>
+</header>
+
+<div class="player-page">
+
+  <!-- song info -->
+  <div class="player-header">
+    <img id="cover" class="player-cover" src="" alt="" onerror="this.style.display='none'">
+    <div class="player-info">
+      <div id="songTitle" class="song-title">—</div>
+      <div id="songArtist" class="song-artist"></div>
+      <div id="songAlbum" class="song-album"></div>
+      <div id="songMeta" class="song-meta"></div>
+    </div>
+  </div>
+
+  <!-- audio controls -->
+  <div class="audio-controls">
+    <div class="progress-bar" id="progressBar">
+      <div class="progress" id="progress" style="width:0%"></div>
+    </div>
+    <div class="time-row">
+      <span id="timeCurrent">0:00</span>
+      <span id="timeDuration">0:00</span>
+    </div>
+    <div class="controls-row">
+      <button id="btnPrev" title="上一首">&#x23EE;</button>
+      <button id="btnPlay" class="btn-play" title="播放">&#x25B6;</button>
+      <button id="btnNext" title="下一首">&#x23ED;</button>
+      <button id="btnFav" class="btn-fav" title="收藏">&#x2661;</button>
+      <div class="volume-control">
+        <span>&#x1F509;</span>
+        <input id="volumeSlider" type="range" min="0" max="1" step="0.05" value="1">
+      </div>
+    </div>
+  </div>
+
+  <!-- 偵測中覆蓋層 -->
+  <div id="detectOverlay" class="detect-overlay" style="display:none">
+    <div class="detect-box">
+      <div class="spinner" style="margin-bottom:12px"></div>
+      <div id="detectMsg" style="font-size:15px;margin-bottom:8px">正在偵測和弦…</div>
+      <div id="detectDetail" style="font-size:12px;color:var(--text-dim)">首次播放需要分析音訊，請稍候</div>
+    </div>
+  </div>
+
+  <!-- chord display -->
+  <div class="chord-section">
+    <!-- 當前和弦大字顯示 -->
+    <div id="currentChordBig" class="current-chord-big" style="display:none">
+      <div id="bigChordName" class="big-chord-name">—</div>
+      <div id="bigChordJianpu" class="big-chord-jianpu"></div>
+      <div id="bigChordDiagram"></div>
+    </div>
+
+    <!-- 工具列：模式切換 + 移調 + Capo -->
+    <div class="chord-toolbar">
+      <div style="display:flex;align-items:center;gap:8px">
+        <h3 id="chordTitle" style="margin:0">和弦</h3>
+        <span id="chordKey" style="font-size:12px;color:var(--text-dim)"></span>
+        <button id="btnDetect" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;margin-left:8px" title="自動偵測和弦">偵測</button>
+        <a id="btnEdit" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;text-decoration:none;display:inline-flex;align-items:center" title="編輯和弦譜">編輯</a>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <!-- 移調 -->
+        <div class="toolbar-group">
+          <span style="font-size:12px;color:var(--text-dim)">移調</span>
+          <button id="btnTransposeDown" class="toolbar-btn">-</button>
+          <span id="transposeValue" style="font-size:13px;min-width:28px;text-align:center">0</span>
+          <button id="btnTransposeUp" class="toolbar-btn">+</button>
+        </div>
+
+        <!-- Capo -->
+        <div class="toolbar-group">
+          <span style="font-size:12px;color:var(--text-dim)">Capo</span>
+          <select id="capoSelect" class="toolbar-select">
+            <option value="0">無</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="7">7</option>
+          </select>
+        </div>
+
+        <!-- 模式切換 -->
+        <div id="modeSwitch" style="display:flex;gap:4px">
+          <button class="mode-btn active" data-mode="jianpu">簡譜</button>
+          <button class="mode-btn" data-mode="guitar">吉他</button>
+          <button class="mode-btn" data-mode="ukulele">烏克麗麗</button>
+        </div>
+      </div>
+    </div>
+    <div id="chordDisplay" class="chord-timeline"></div>
+  </div>
+
+</div>
+
+<div id="toast" class="toast"></div>
+<audio id="audio" preload="auto"></audio>
+
+<script src="/js/api.js"></script>
+<script src="/js/chord-render.js"></script>
+<script src="/js/player.js"></script>
+</body>
+</html>
