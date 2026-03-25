@@ -1,4 +1,12 @@
 @echo off
+
+REM 確保防火牆允許 port 8800
+netsh advfirewall firewall show rule name="LiveChord Server" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo Adding firewall rule for port 8800...
+    netsh advfirewall firewall add rule name="LiveChord Server" dir=in action=allow protocol=TCP localport=8800 >nul 2>&1
+)
+
 echo ==========================================
 echo   LiveChord - Restarting...
 echo ==========================================
