@@ -25,9 +25,9 @@ MUSIC_ROOT = os.path.normpath(os.environ.get("LIVECHORD_MUSIC_ROOT", "Z:/"))
 # ---------------------------------------------------------------------------
 
 DEFAULT_SETTINGS = {
-    "auto_scan_enabled": True,
+    "auto_scan_enabled": False,
     "auto_scan_interval_minutes": 30,
-    "auto_chord_enabled": True,
+    "auto_chord_enabled": False,
     "auto_chord_max_per_cycle": 20,     # 每輪最多偵測幾首
     "auto_chord_skip_genres": [],        # 跳過的 genre（如 Classics）
 }
