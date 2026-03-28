@@ -369,44 +369,95 @@ class ChordifyCapture(tk.Tk):
             self._log(f"✓ {names[key]} 設定: {region}", "state")
 
     def _do_select(self, title):
+        """
+        用 pyautogui 記錄滑鼠拖曳座標（不遮擋螢幕）。
+        顯示一個小提示視窗，使用者直接在螢幕任意位置拖曳框選。
+        """
+        import pyautogui
+
         result = [None]
-        overlay = tk.Toplevel()
-        overlay.attributes('-fullscreen', True)
-        overlay.attributes('-alpha', 0.3)
-        overlay.attributes('-topmost', True)
-        overlay.configure(bg='black')
 
-        canvas = tk.Canvas(overlay, cursor="cross", bg="black", highlightthickness=0)
-        canvas.pack(fill=tk.BOTH, expand=True)
+        # 小提示視窗（不擋住螢幕）
+        hint = tk.Toplevel(self)
+        hint.title("框選")
+        hint.geometry("400x80+50+50")
+        hint.attributes('-topmost', True)
+        hint.configure(bg="#e94560")
+        tk.Label(hint, text=f"{title}", font=("Segoe UI", 13, "bold"),
+                 fg="white", bg="#e94560").pack(pady=5)
+        tk.Label(hint, text="在螢幕上按住左鍵拖曳框選，放開完成。ESC 取消。",
+                 font=("Segoe UI", 10), fg="white", bg="#e94560").pack()
 
-        lbl = tk.Label(overlay, text=f"  {title}：按住左鍵框選  ",
-                       font=("Segoe UI", 16), fg="white", bg="#e94560")
-        lbl.place(relx=0.5, rely=0.02, anchor="n")
+        # 用 pynput 監聽全域滑鼠
+        try:
+            from pynput import mouse as pynput_mouse
 
-        sx = sy = 0
-        rect = [None]
+            sx, sy = [0], [0]
+            dragging = [False]
 
-        def press(e):
-            nonlocal sx, sy
-            sx, sy = e.x, e.y
-            if rect[0]: canvas.delete(rect[0])
-            rect[0] = canvas.create_rectangle(sx, sy, sx, sy, outline="red", width=3)
+            def on_click(x, y, button, pressed):
+                if button != pynput_mouse.Button.left:
+                    return
+                if pressed:
+                    sx[0], sy[0] = x, y
+                    dragging[0] = True
+                else:
+                    if dragging[0]:
+                        x1, y1 = min(sx[0], x), min(sy[0], y)
+                        x2, y2 = max(sx[0], x), max(sy[0], y)
+                        if x2 - x1 > 5 and y2 - y1 > 5:
+                            result[0] = (x1, y1, x2 - x1, y2 - y1)
+                        dragging[0] = False
+                        listener.stop()
 
-        def drag(e):
-            if rect[0]: canvas.coords(rect[0], sx, sy, e.x, e.y)
+            listener = pynput_mouse.Listener(on_click=on_click)
+            listener.start()
 
-        def release(e):
-            x1, y1 = min(sx, e.x), min(sy, e.y)
-            x2, y2 = max(sx, e.x), max(sy, e.y)
-            if x2 - x1 > 5 and y2 - y1 > 5:
-                result[0] = (x1, y1, x2 - x1, y2 - y1)
-            overlay.destroy()
+            # 等待完成或 ESC
+            def check_done():
+                if not listener.is_alive():
+                    hint.destroy()
+                else:
+                    hint.after(100, check_done)
 
-        canvas.bind("<ButtonPress-1>", press)
-        canvas.bind("<B1-Motion>", drag)
-        canvas.bind("<ButtonRelease-1>", release)
-        overlay.bind("<Escape>", lambda e: overlay.destroy())
-        overlay.wait_window()
+            hint.bind("<Escape>", lambda e: (listener.stop(), hint.destroy()))
+            hint.after(100, check_done)
+            hint.wait_window()
+
+        except ImportError:
+            # pynput 不可用，fallback 到手動輸入座標
+            hint.destroy()
+            self._log("⚠ 需要 pynput: pip install pynput", "warn")
+            result[0] = self._manual_region_input(title)
+
+        return result[0]
+
+    def _manual_region_input(self, title):
+        """手動輸入座標的 dialog"""
+        dialog = tk.Toplevel(self)
+        dialog.title(f"手動輸入 — {title}")
+        dialog.geometry("300x200")
+        dialog.configure(bg="#1a1a2e")
+        dialog.attributes('-topmost', True)
+
+        result = [None]
+        entries = {}
+        for i, label in enumerate(["x", "y", "寬度 w", "高度 h"]):
+            tk.Label(dialog, text=f"{label}:", bg="#1a1a2e", fg="#e0e0e0").grid(row=i, column=0, padx=10, pady=5)
+            e = tk.Entry(dialog, width=10, bg="#0d0d1a", fg="#e0e0e0")
+            e.grid(row=i, column=1, padx=10, pady=5)
+            entries[label[0] if label[0] in 'xywh' else label[-1]] = e
+
+        def ok():
+            try:
+                result[0] = (int(entries['x'].get()), int(entries['y'].get()),
+                             int(entries['w'].get()), int(entries['h'].get()))
+            except ValueError:
+                pass
+            dialog.destroy()
+
+        tk.Button(dialog, text="確定", command=ok, bg="#e94560", fg="#fff").grid(row=4, column=0, columnspan=2, pady=10)
+        dialog.wait_window()
         return result[0]
 
     def _test_region(self, key):
