@@ -1,0 +1,676 @@
+"""
+Chordify Ground Truth 擷取工具 — GUI 版
+========================================
+全自動 GUI：
+1. 設定/顯示 play按鈕、時間、和弦區域座標
+2. 選擇歌曲檔案 → 自動對應 test_songs 等級
+3. Chordify 播放時分段擷取截圖 → 拼接為完整 .png
+4. 同時 OCR 辨識和弦序列 → 存為 .txt 對照檔
+5. 偵測 play/pause 圖示切換判斷播放狀態
+6. 下方即時 log 顯示進度
+
+用法: python chordify_gui.py
+"""
+
+import os
+import sys
+import json
+import time
+import threading
+from pathlib import Path
+from collections import Counter
+
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+
+import mss
+import cv2
+import numpy as np
+from PIL import Image, ImageTk
+import easyocr
+
+# ---------------------------------------------------------------------------
+# 路徑
+# ---------------------------------------------------------------------------
+TOOLS_DIR = Path(__file__).parent
+PROJECT_DIR = TOOLS_DIR.parent
+TEST_SONGS_DIR = PROJECT_DIR / "data" / "test_songs"
+CONFIG_FILE = TOOLS_DIR / "capture_config.json"
+PLAY_ICON = TOOLS_DIR / "play.png"
+PAUSE_ICON = TOOLS_DIR / "pause.png"
+LEVELS = ["Lv1", "Lv2", "Lv3", "Lv4", "Lv5"]
+
+# ---------------------------------------------------------------------------
+# Template matching 用的 play/pause 圖示
+# ---------------------------------------------------------------------------
+_play_tmpl = None
+_pause_tmpl = None
+
+
+def _load_templates():
+    global _play_tmpl, _pause_tmpl
+    if PLAY_ICON.exists():
+        img = cv2.imread(str(PLAY_ICON), cv2.IMREAD_COLOR)
+        if img is not None:
+            _play_tmpl = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    if PAUSE_ICON.exists():
+        img = cv2.imread(str(PAUSE_ICON), cv2.IMREAD_COLOR)
+        if img is not None:
+            _pause_tmpl = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+
+# ---------------------------------------------------------------------------
+# OCR
+# ---------------------------------------------------------------------------
+_reader = None
+
+
+def get_reader():
+    global _reader
+    if _reader is None:
+        _reader = easyocr.Reader(['en'], gpu=False, verbose=False)
+    return _reader
+
+
+# ---------------------------------------------------------------------------
+# 螢幕擷取
+# ---------------------------------------------------------------------------
+
+def capture_region(region):
+    x, y, w, h = region
+    with mss.mss() as sct:
+        monitor = {"left": x, "top": y, "width": w, "height": h}
+        img = sct.grab(monitor)
+        return Image.frombytes("RGB", (img.width, img.height), img.rgb)
+
+
+def pil_to_cv(img):
+    return cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+
+
+def detect_button_state(img, region) -> str:
+    """用 template matching 偵測 play(▶) 或 pause(||)"""
+    if _play_tmpl is None or _pause_tmpl is None:
+        return "unknown"
+
+    gray = cv2.cvtColor(pil_to_cv(img), cv2.COLOR_BGR2GRAY)
+
+    # 縮放模板到與區域相近的大小
+    rh = region[3]
+    scores = {}
+    for name, tmpl in [("play", _play_tmpl), ("pause", _pause_tmpl)]:
+        # 多尺度匹配
+        best = -1
+        for scale in [0.6, 0.8, 1.0, 1.2, 1.5]:
+            tw = int(tmpl.shape[1] * scale * rh / tmpl.shape[0])
+            th = int(rh * scale)
+            if tw < 10 or th < 10 or tw > gray.shape[1] or th > gray.shape[0]:
+                continue
+            resized = cv2.resize(tmpl, (tw, th))
+            result = cv2.matchTemplate(gray, resized, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, _ = cv2.minMaxLoc(result)
+            best = max(best, max_val)
+        scores[name] = best
+
+    if scores.get("pause", 0) > scores.get("play", 0) and scores["pause"] > 0.3:
+        return "playing"   # 顯示 || → 正在播放
+    elif scores.get("play", 0) > 0.3:
+        return "stopped"   # 顯示 ▶ → 已停止
+    return "unknown"
+
+
+def ocr_time(img):
+    reader = get_reader()
+    img3x = img.resize((img.width * 3, img.height * 3), Image.LANCZOS)
+    arr = np.array(img3x)
+    results = reader.readtext(arr, allowlist='0123456789:', paragraph=False)
+    for _, text, conf in results:
+        text = text.strip()
+        if ':' in text and conf > 0.3:
+            parts = text.split(':')
+            try:
+                if len(parts) == 2:
+                    return int(parts[0]) * 60 + int(parts[1])
+            except ValueError:
+                continue
+    return None
+
+
+def find_highlighted_chord(img):
+    """回傳 (chord_name, (cx, cy)) 或 (None, None)"""
+    reader = get_reader()
+    arr = np.array(img)
+    h, w, _ = arr.shape
+    if h == 0 or w == 0:
+        return None, None
+
+    gray = np.mean(arr, axis=2)
+    scale = 8
+    small_w, small_h = max(1, w // scale), max(1, h // scale)
+    img_small = img.resize((small_w, small_h), Image.BILINEAR)
+    gray_small = np.mean(np.array(img_small), axis=2)
+
+    min_val = np.min(gray_small)
+    if min_val > 120:
+        return None, None
+
+    min_y_s, min_x_s = np.unravel_index(np.argmin(gray_small), gray_small.shape)
+    cx = int(min_x_s * scale + scale / 2)
+    cy = int(min_y_s * scale + scale / 2)
+    cx = max(0, min(w - 1, cx))
+    cy = max(0, min(h - 1, cy))
+
+    # 擴張找邊界
+    top = cy
+    while top > 0 and np.min(gray[top, max(0, cx - 20):min(w, cx + 20)]) < 100:
+        top -= 1
+    bottom = cy
+    while bottom < h - 1 and np.min(gray[bottom, max(0, cx - 20):min(w, cx + 20)]) < 100:
+        bottom += 1
+    left = cx
+    while left > 0 and np.min(gray[max(0, cy - 10):min(h, cy + 10), left]) < 100:
+        left -= 1
+    right = cx
+    while right < w - 1 and np.min(gray[max(0, cy - 10):min(h, cy + 10), right]) < 100:
+        right += 1
+
+    margin = 5
+    crop = img.crop((max(0, left - margin), max(0, top - margin),
+                     min(w, right + margin), min(h, bottom + margin)))
+    crop = crop.resize((crop.width * 3, crop.height * 3), Image.LANCZOS)
+
+    results = reader.readtext(np.array(crop),
+                              allowlist='ABCDEFGabcdefgm#b0123456789/dimaugsusmaj',
+                              paragraph=False)
+    for _, text, conf in results:
+        text = text.strip()
+        if text and conf > 0.3 and any(c in text for c in 'ABCDEFG'):
+            norm = text.replace("min", "m").replace("MIN", "m").replace("Maj", "maj")
+            if norm and norm[0].islower():
+                norm = norm[0].upper() + norm[1:]
+            return norm, (cx, cy)
+    return None, (cx, cy)
+
+
+# ---------------------------------------------------------------------------
+# 設定檔
+# ---------------------------------------------------------------------------
+
+def load_config() -> dict:
+    if CONFIG_FILE.is_file():
+        return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    return {}
+
+
+def save_config(cfg: dict):
+    CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# GUI
+# ---------------------------------------------------------------------------
+
+class ChordifyCapture(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Chordify Ground Truth 擷取工具")
+        self.geometry("700x750")
+        self.configure(bg="#1a1a2e")
+        self.resizable(True, True)
+
+        # DPI awareness
+        if os.name == 'nt':
+            import ctypes
+            try:
+                ctypes.windll.shcore.SetProcessDpiAwareness(2)
+            except Exception:
+                pass
+
+        _load_templates()
+
+        self.cfg = load_config()
+        self.regions = {
+            "play_btn": self.cfg.get("play_btn_region"),
+            "time": self.cfg.get("time_region"),
+            "chord": self.cfg.get("chord_region"),
+        }
+        self.song_name = tk.StringVar()
+        self.level = tk.StringVar(value="Lv1")
+        self.capturing = False
+        self.records = []           # [(time_sec, chord)]
+        self.screenshots = []       # [PIL.Image] 分段截圖
+        self.ref_chords = []        # OCR 出的和弦序列
+        self._thread = None
+
+        self._build_ui()
+        self._update_region_display()
+
+    # ---- UI ----
+
+    def _build_ui(self):
+        style = {"bg": "#1a1a2e", "fg": "#e0e0e0", "font": ("Segoe UI", 10)}
+        btn_style = {"bg": "#16213e", "fg": "#e94560", "activebackground": "#e94560",
+                     "activeforeground": "#fff", "font": ("Segoe UI", 10, "bold"),
+                     "relief": "flat", "cursor": "hand2", "padx": 10, "pady": 4}
+
+        # ---- 頂部：歌曲選擇 ----
+        top = tk.Frame(self, bg="#1a1a2e")
+        top.pack(fill=tk.X, padx=10, pady=(10, 5))
+
+        tk.Label(top, text="歌曲:", **style).pack(side=tk.LEFT)
+        tk.Entry(top, textvariable=self.song_name, width=30,
+                 bg="#0d0d1a", fg="#e0e0e0", insertbackground="#e0e0e0",
+                 font=("Segoe UI", 11)).pack(side=tk.LEFT, padx=5)
+
+        tk.Button(top, text="瀏覽...", command=self._browse_song, **btn_style).pack(side=tk.LEFT, padx=2)
+
+        tk.Label(top, text="等級:", **style).pack(side=tk.LEFT, padx=(15, 0))
+        combo = ttk.Combobox(top, textvariable=self.level, values=LEVELS, width=5, state="readonly")
+        combo.pack(side=tk.LEFT, padx=5)
+
+        # ---- 區域設定 ----
+        region_frame = tk.LabelFrame(self, text=" 擷取區域 ", bg="#1a1a2e", fg="#888",
+                                     font=("Segoe UI", 10), padx=10, pady=5)
+        region_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        self.region_labels = {}
+        for i, (key, label) in enumerate([("play_btn", "播放按鈕 ▶/||"),
+                                           ("time", "時間顯示 00:00"),
+                                           ("chord", "和弦網格區域")]):
+            row = tk.Frame(region_frame, bg="#1a1a2e")
+            row.pack(fill=tk.X, pady=2)
+            tk.Label(row, text=f"{label}:", width=16, anchor="w", **style).pack(side=tk.LEFT)
+            lbl = tk.Label(row, text="未設定", bg="#0d0d1a", fg="#888", width=30, anchor="w",
+                           font=("Consolas", 9), padx=5)
+            lbl.pack(side=tk.LEFT, padx=5)
+            self.region_labels[key] = lbl
+            tk.Button(row, text="框選", command=lambda k=key: self._select_region(k), **btn_style).pack(side=tk.LEFT, padx=2)
+            tk.Button(row, text="測試", command=lambda k=key: self._test_region(k), **btn_style).pack(side=tk.LEFT, padx=2)
+
+        # ---- 控制按鈕 ----
+        ctrl = tk.Frame(self, bg="#1a1a2e")
+        ctrl.pack(fill=tk.X, padx=10, pady=5)
+
+        self.btn_start = tk.Button(ctrl, text="▶ 開始擷取", command=self._start_capture,
+                                   bg="#e94560", fg="#fff", font=("Segoe UI", 12, "bold"),
+                                   relief="flat", padx=20, pady=6, cursor="hand2")
+        self.btn_start.pack(side=tk.LEFT, padx=5)
+
+        self.btn_stop = tk.Button(ctrl, text="⏹ 停止", command=self._stop_capture,
+                                  state=tk.DISABLED, **btn_style)
+        self.btn_stop.pack(side=tk.LEFT, padx=5)
+
+        self.btn_screenshot = tk.Button(ctrl, text="📷 擷取當前畫面", command=self._take_screenshot, **btn_style)
+        self.btn_screenshot.pack(side=tk.LEFT, padx=5)
+
+        # ---- 狀態 ----
+        status_frame = tk.Frame(self, bg="#1a1a2e")
+        status_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        self.status_var = tk.StringVar(value="就緒")
+        tk.Label(status_frame, textvariable=self.status_var,
+                 bg="#16213e", fg="#e94560", font=("Segoe UI", 11, "bold"),
+                 padx=10, pady=4).pack(fill=tk.X)
+
+        # ---- 進度條 ----
+        self.progress_var = tk.StringVar(value="和弦: 0 | 截圖: 0 | 時間: --:--")
+        tk.Label(self, textvariable=self.progress_var,
+                 bg="#1a1a2e", fg="#888", font=("Consolas", 10)).pack(fill=tk.X, padx=10)
+
+        # ---- Log ----
+        log_frame = tk.LabelFrame(self, text=" 擷取紀錄 ", bg="#1a1a2e", fg="#888",
+                                  font=("Segoe UI", 10), padx=5, pady=5)
+        log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        self.log_text = tk.Text(log_frame, bg="#0d0d1a", fg="#e0e0e0", height=15,
+                                font=("Consolas", 9), wrap=tk.WORD, state=tk.DISABLED,
+                                insertbackground="#e0e0e0")
+        scrollbar = tk.Scrollbar(log_frame, command=self.log_text.yview)
+        self.log_text.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.log_text.pack(fill=tk.BOTH, expand=True)
+
+        # tag colors
+        self.log_text.tag_configure("info", foreground="#e0e0e0")
+        self.log_text.tag_configure("chord", foreground="#e94560")
+        self.log_text.tag_configure("state", foreground="#2d6a4f")
+        self.log_text.tag_configure("warn", foreground="#e9c46a")
+        self.log_text.tag_configure("error", foreground="#e76f51")
+
+    def _log(self, msg, tag="info"):
+        self.log_text.configure(state=tk.NORMAL)
+        self.log_text.insert(tk.END, msg + "\n", tag)
+        self.log_text.see(tk.END)
+        self.log_text.configure(state=tk.DISABLED)
+
+    # ---- 區域設定 ----
+
+    def _update_region_display(self):
+        for key, lbl in self.region_labels.items():
+            r = self.regions.get(key)
+            if r:
+                lbl.configure(text=f"x={r[0]}, y={r[1]}, w={r[2]}, h={r[3]}", fg="#2d6a4f")
+            else:
+                lbl.configure(text="未設定", fg="#888")
+
+    def _select_region(self, key):
+        names = {"play_btn": "播放按鈕", "time": "時間顯示", "chord": "和弦網格"}
+        self.withdraw()
+        time.sleep(0.3)
+        region = self._do_select(f"框選「{names[key]}」區域")
+        self.deiconify()
+        if region:
+            self.regions[key] = region
+            self.cfg[f"{key}_region"] = list(region)
+            save_config(self.cfg)
+            self._update_region_display()
+            self._log(f"✓ {names[key]} 設定: {region}", "state")
+
+    def _do_select(self, title):
+        result = [None]
+        overlay = tk.Toplevel()
+        overlay.attributes('-fullscreen', True)
+        overlay.attributes('-alpha', 0.3)
+        overlay.attributes('-topmost', True)
+        overlay.configure(bg='black')
+
+        canvas = tk.Canvas(overlay, cursor="cross", bg="black", highlightthickness=0)
+        canvas.pack(fill=tk.BOTH, expand=True)
+
+        lbl = tk.Label(overlay, text=f"  {title}：按住左鍵框選  ",
+                       font=("Segoe UI", 16), fg="white", bg="#e94560")
+        lbl.place(relx=0.5, rely=0.02, anchor="n")
+
+        sx = sy = 0
+        rect = [None]
+
+        def press(e):
+            nonlocal sx, sy
+            sx, sy = e.x, e.y
+            if rect[0]: canvas.delete(rect[0])
+            rect[0] = canvas.create_rectangle(sx, sy, sx, sy, outline="red", width=3)
+
+        def drag(e):
+            if rect[0]: canvas.coords(rect[0], sx, sy, e.x, e.y)
+
+        def release(e):
+            x1, y1 = min(sx, e.x), min(sy, e.y)
+            x2, y2 = max(sx, e.x), max(sy, e.y)
+            if x2 - x1 > 5 and y2 - y1 > 5:
+                result[0] = (x1, y1, x2 - x1, y2 - y1)
+            overlay.destroy()
+
+        canvas.bind("<ButtonPress-1>", press)
+        canvas.bind("<B1-Motion>", drag)
+        canvas.bind("<ButtonRelease-1>", release)
+        overlay.bind("<Escape>", lambda e: overlay.destroy())
+        overlay.wait_window()
+        return result[0]
+
+    def _test_region(self, key):
+        r = self.regions.get(key)
+        if not r:
+            self._log(f"⚠ {key} 未設定", "warn")
+            return
+        img = capture_region(tuple(r))
+        if key == "play_btn":
+            state = detect_button_state(img, tuple(r))
+            icon = "||" if state == "playing" else "▶" if state == "stopped" else "?"
+            self._log(f"播放按鈕: {icon} ({state})", "state")
+        elif key == "time":
+            t = ocr_time(img)
+            if t is not None:
+                m, s = divmod(t, 60)
+                self._log(f"時間: {m}:{s:02d}", "state")
+            else:
+                self._log("時間: 無法辨識", "warn")
+        elif key == "chord":
+            chord, center = find_highlighted_chord(img)
+            self._log(f"和弦: {chord or '無'}, 位置: {center}", "state")
+
+    # ---- 歌曲瀏覽 ----
+
+    def _browse_song(self):
+        path = filedialog.askopenfilename(
+            title="選擇測試曲目",
+            initialdir=str(TEST_SONGS_DIR),
+            filetypes=[("FLAC", "*.flac"), ("All", "*.*")]
+        )
+        if path:
+            p = Path(path)
+            self.song_name.set(p.stem)
+            # 自動偵測等級
+            for lv in LEVELS:
+                if lv in str(p):
+                    self.level.set(lv)
+                    break
+            self._log(f"選擇: {p.name} ({self.level.get()})", "info")
+
+    # ---- 手動截圖 (分段拼接用) ----
+
+    def _take_screenshot(self):
+        r = self.regions.get("chord")
+        if not r:
+            self._log("⚠ 請先設定和弦區域", "warn")
+            return
+        img = capture_region(tuple(r))
+        self.screenshots.append(img)
+        self._log(f"📷 擷取截圖 #{len(self.screenshots)} ({img.size[0]}×{img.size[1]})", "info")
+        self.progress_var.set(f"和弦: {len(self.records)} | 截圖: {len(self.screenshots)} | 時間: --:--")
+
+    # ---- 開始擷取 ----
+
+    def _start_capture(self):
+        # 驗證
+        if not self.song_name.get().strip():
+            messagebox.showwarning("提示", "請輸入歌曲名稱")
+            return
+        for key in ["play_btn", "time", "chord"]:
+            if not self.regions.get(key):
+                messagebox.showwarning("提示", f"請先框選「{key}」區域")
+                return
+
+        # 檢查已有
+        lv = self.level.get()
+        name = self.song_name.get().strip()
+        lab_path = TEST_SONGS_DIR / lv / f"{name}.lab"
+        if lab_path.is_file():
+            if not messagebox.askyesno("已存在", f"已有 {name}.lab，要覆蓋嗎？"):
+                return
+
+        # 重置
+        self.records = []
+        self.screenshots = []
+        self.ref_chords = []
+        self.capturing = True
+        self.btn_start.configure(state=tk.DISABLED)
+        self.btn_stop.configure(state=tk.NORMAL)
+        self.status_var.set("⏳ 等待播放...")
+        self._log(f"\n{'='*50}", "info")
+        self._log(f"開始擷取: {name} ({lv})", "state")
+
+        self._thread = threading.Thread(target=self._capture_worker, daemon=True)
+        self._thread.start()
+
+    def _stop_capture(self):
+        self.capturing = False
+
+    # ---- 擷取主迴圈 ----
+
+    def _capture_worker(self):
+        play_r = tuple(self.regions["play_btn"])
+        time_r = tuple(self.regions["time"])
+        chord_r = tuple(self.regions["chord"])
+        name = self.song_name.get().strip()
+        lv = self.level.get()
+
+        # Phase 1: 等待偵測到 pause(||) 表示開始播放
+        self._safe_log("等待偵測到播放 (||)...", "info")
+        self._safe_status("⏳ 等待播放 — 請在 Chordify 按 Play")
+
+        while self.capturing:
+            img = capture_region(play_r)
+            state = detect_button_state(img, play_r)
+            if state == "playing":
+                break
+            time.sleep(0.2)
+
+        if not self.capturing:
+            self._finish(name, lv)
+            return
+
+        self._safe_log("▶ 偵測到 || (播放中)，開始擷取", "state")
+        self._safe_status("🎵 擷取中...")
+
+        start_perf = time.perf_counter()
+        start_ocr = None
+        last_chord = None
+        last_center = None
+        last_time_sec = None
+        btn_counter = 0
+        screenshot_interval = 0  # 每 N 次擷取一次截圖
+        was_playing = True
+
+        # Phase 2: 持續擷取
+        while self.capturing:
+            try:
+                elapsed = time.perf_counter() - start_perf
+
+                # OCR 時間
+                time_img = capture_region(time_r)
+                current_sec = ocr_time(time_img)
+                if current_sec is not None:
+                    if start_ocr is None:
+                        start_ocr = current_sec - elapsed
+                    last_time_sec = current_sec
+
+                # 播放按鈕（每 15 次 ≈ 1.5 秒）
+                btn_counter += 1
+                if btn_counter >= 15:
+                    btn_counter = 0
+                    btn_img = capture_region(play_r)
+                    btn_state = detect_button_state(btn_img, play_r)
+
+                    if btn_state == "stopped" and was_playing:
+                        # || → ▶ 轉換：歌曲結束
+                        self._safe_log("⏹ 偵測到 ▶ (播放結束)", "state")
+                        break
+                    was_playing = (btn_state == "playing")
+
+                # 和弦偵測
+                chord_img = capture_region(chord_r)
+                chord, center = find_highlighted_chord(chord_img)
+
+                # 定期截圖（每 50 次 ≈ 5 秒）
+                screenshot_interval += 1
+                if screenshot_interval >= 50:
+                    screenshot_interval = 0
+                    self.screenshots.append(chord_img.copy())
+
+                # 方塊移動偵測
+                box_moved = False
+                if center:
+                    if last_center is None:
+                        box_moved = True
+                    else:
+                        dx = abs(center[0] - last_center[0])
+                        dy = abs(center[1] - last_center[1])
+                        if dx > 15 or dy > 15:
+                            box_moved = True
+                    if box_moved:
+                        last_center = center
+
+                if box_moved and chord and chord != last_chord:
+                    precise_time = (start_ocr or 0) + elapsed
+                    self.records.append((round(precise_time, 2), chord))
+                    last_chord = chord
+                    self.ref_chords.append(chord)
+
+                    m, s = divmod(int(precise_time), 60)
+                    ms = int((precise_time % 1) * 100)
+                    count = len(self.records)
+                    self._safe_log(f"  {m}:{s:02d}.{ms:02d}  {chord}", "chord")
+                    self._safe_progress(f"和弦: {count} | 截圖: {len(self.screenshots)} | "
+                                        f"時間: {m}:{s:02d}")
+
+            except Exception as e:
+                self._safe_log(f"⚠ {e}", "warn")
+
+            time.sleep(0.1)
+
+        # Phase 3: 儲存
+        self._finish(name, lv)
+
+    def _finish(self, name, lv):
+        self._safe_status("儲存中...")
+
+        save_dir = TEST_SONGS_DIR / lv
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        # 儲存 .lab
+        if self.records:
+            entries = []
+            sorted_recs = sorted(set(self.records))
+            for i, (sec, chord) in enumerate(sorted_recs):
+                end = sorted_recs[i + 1][0] if i + 1 < len(sorted_recs) else sec + 4.0
+                entries.append({"time": sec, "end": end, "chord": chord})
+
+            roots = [c[0] if len(c) < 2 or c[1] not in '#b' else c[:2]
+                     for _, c in sorted_recs if c and c[0] in 'ABCDEFG']
+            key = Counter(roots).most_common(1)[0][0] if roots else ""
+
+            lab = {"song": name, "level": lv, "key": key,
+                   "source": "Chordify (GUI capture)", "entries": entries}
+            lab_path = save_dir / f"{name}.lab"
+            lab_path.write_text(json.dumps(lab, ensure_ascii=False, indent=2), encoding="utf-8")
+            self._safe_log(f"✓ 已儲存 {lab_path.name} ({len(entries)} 和弦, Key: {key})", "state")
+
+        # 儲存 .txt（和弦序列對照檔）
+        if self.ref_chords:
+            txt_path = save_dir / f"{name}.chords.txt"
+            txt_path.write_text("\n".join(
+                f"{t:.2f}\t{c}" for t, c in sorted(set(self.records))
+            ), encoding="utf-8")
+            self._safe_log(f"✓ 已儲存 {txt_path.name}", "state")
+
+        # 拼接截圖為完整 .png
+        if self.screenshots:
+            total_h = sum(s.height for s in self.screenshots)
+            max_w = max(s.width for s in self.screenshots)
+            combined = Image.new("RGB", (max_w, total_h), (255, 255, 255))
+            y = 0
+            for s in self.screenshots:
+                combined.paste(s, (0, y))
+                y += s.height
+            png_path = save_dir / f"{name}.png"
+            combined.save(str(png_path))
+            self._safe_log(f"✓ 已儲存 {png_path.name} ({max_w}×{total_h}, {len(self.screenshots)} 段)", "state")
+
+        count = len(self.records)
+        self._safe_log(f"\n完成！共 {count} 個和弦", "state")
+        self._safe_status(f"✓ 完成 ({count} 和弦)")
+
+        # 恢復按鈕
+        self.after(0, lambda: self.btn_start.configure(state=tk.NORMAL))
+        self.after(0, lambda: self.btn_stop.configure(state=tk.DISABLED))
+        self.capturing = False
+
+    # ---- thread-safe UI 更新 ----
+
+    def _safe_log(self, msg, tag="info"):
+        self.after(0, lambda: self._log(msg, tag))
+
+    def _safe_status(self, msg):
+        self.after(0, lambda: self.status_var.set(msg))
+
+    def _safe_progress(self, msg):
+        self.after(0, lambda: self.progress_var.set(msg))
+
+
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    app = ChordifyCapture()
+    app.mainloop()
