@@ -6,9 +6,9 @@ Chordify Ground Truth 擷取工具
 使用方式:
 1. 在瀏覽器開啟 Chordify 歌曲頁面
 2. 執行此腳本: python chordify_capture.py
-3. 首次使用會要求框選「時間區域」和「和弦區域」（座標會記住）
+3. 首次使用會要求框選 3 個區域（座標會記住）
 4. 在 Chordify 按播放
-5. 按 F6 開始擷取（偵測到 Well done 會自動停止）
+5. 按 F6 開始擷取（偵測到播放結束會自動停止）
 6. 按 ESC 手動結束
 """
 
@@ -39,11 +39,14 @@ CONFIG_FILE = TOOLS_DIR / "capture_config.json"
 STATE = {
     "capturing": False,
     "running": True,
+    "finished": False,
     "records": [],
     "last_chord": None,
     "last_time": None,
-    "time_region": None,
-    "chord_region": None,
+    "time_region": None,      # 時間顯示區域
+    "chord_region": None,     # 和弦網格區域
+    "play_btn_region": None,  # 播放按鈕區域
+    "play_btn_ref": None,     # 播放中(||)的參考影像
     "interval": 0.3,
 }
 
@@ -71,7 +74,7 @@ def save_config(cfg: dict):
 
 
 # ---------------------------------------------------------------------------
-# 螢幕擷取 + OCR
+# 螢幕擷取
 # ---------------------------------------------------------------------------
 
 def capture_region(region):
@@ -81,6 +84,81 @@ def capture_region(region):
         img = sct.grab(monitor)
         return Image.frombytes("RGB", (img.width, img.height), img.rgb)
 
+
+# ---------------------------------------------------------------------------
+# 播放按鈕狀態偵測（|| vs ▶）
+# ---------------------------------------------------------------------------
+
+def detect_play_button_state(img) -> str:
+    """
+    偵測播放按鈕目前是 || (playing) 還是 ▶ (stopped)。
+
+    方法：分析按鈕中央區域的白色像素分佈。
+    - || (暫停圖示)：中央有一條暗縫（兩條白色豎條之間的間隙）
+    - ▶ (播放圖示)：中央是三角形的一部分（白色連續）
+
+    回傳 "playing" 或 "stopped"
+    """
+    arr = np.array(img)
+    h, w, _ = arr.shape
+
+    # 轉灰階，只看白色部分（按鈕上的圖示是白色）
+    gray = np.mean(arr, axis=2)
+
+    # 取中央水平帶（按鈕中間 40% 的高度）
+    y_start = int(h * 0.3)
+    y_end = int(h * 0.7)
+    center_band = gray[y_start:y_end, :]
+
+    # 計算每一列的平均亮度
+    col_brightness = np.mean(center_band, axis=0)
+
+    # 找中央 1/3 區域
+    cx_start = int(w * 0.33)
+    cx_end = int(w * 0.66)
+    center_cols = col_brightness[cx_start:cx_end]
+
+    if len(center_cols) == 0:
+        return "unknown"
+
+    # || 的特徵：中央區域有明顯的亮度下降（兩條白色條之間的間隙）
+    # ▶ 的特徵：中央區域亮度較均勻或遞減
+    center_min = np.min(center_cols)
+    center_max = np.max(center_cols)
+    center_mean = np.mean(center_cols)
+
+    # 計算中央的「凹陷度」— || 在正中間有暗縫
+    mid = len(center_cols) // 2
+    mid_zone = center_cols[max(0, mid-2):mid+3]
+    side_left = center_cols[:max(1, mid-3)]
+    side_right = center_cols[min(len(center_cols)-1, mid+3):]
+
+    mid_val = np.mean(mid_zone) if len(mid_zone) > 0 else center_mean
+    side_val = (np.mean(side_left) + np.mean(side_right)) / 2 if len(side_left) > 0 and len(side_right) > 0 else center_mean
+
+    # || : 兩邊亮(白條)，中間暗(間隙) → side_val > mid_val
+    # ▶ : 左邊亮，右邊暗 → 無明顯中間凹陷
+    dip = side_val - mid_val
+
+    if dip > 15:
+        return "playing"   # || 圖示（有中間凹陷）
+    else:
+        return "stopped"   # ▶ 圖示（無凹陷）
+
+
+def is_still_playing() -> bool:
+    """檢查播放按鈕是否仍在播放狀態"""
+    if not STATE["play_btn_region"]:
+        return True  # 無法偵測，假設仍在播放
+
+    img = capture_region(STATE["play_btn_region"])
+    state = detect_play_button_state(img)
+    return state == "playing"
+
+
+# ---------------------------------------------------------------------------
+# 時間 OCR
+# ---------------------------------------------------------------------------
 
 def ocr_time(img):
     """OCR 辨識時間文字（如 01:23）"""
@@ -101,17 +179,9 @@ def ocr_time(img):
     return None
 
 
-def detect_well_done(img) -> bool:
-    """偵測畫面是否出現 'Well done' 對話框（歌曲播完）"""
-    reader = get_reader()
-    arr = np.array(img)
-    results = reader.readtext(arr, paragraph=False)
-    for _, text, conf in results:
-        lower = text.strip().lower()
-        if 'well done' in lower or 'play again' in lower:
-            return True
-    return False
-
+# ---------------------------------------------------------------------------
+# 和弦偵測
+# ---------------------------------------------------------------------------
 
 def find_highlighted_chord(img):
     """偵測 Chordify 高亮和弦（深色背景的格子）"""
@@ -211,7 +281,7 @@ def select_region(title="框選區域"):
     def on_release(e):
         x1, y1 = min(start_x, e.x), min(start_y, e.y)
         x2, y2 = max(start_x, e.x), max(start_y, e.y)
-        if x2 - x1 > 10 and y2 - y1 > 10:
+        if x2 - x1 > 5 and y2 - y1 > 5:
             result[0] = (x1, y1, x2 - x1, y2 - y1)
         root.destroy()
 
@@ -238,7 +308,7 @@ def manual_region_input(title):
 # ---------------------------------------------------------------------------
 
 def capture_loop():
-    well_done_checks = 0
+    btn_check_counter = 0
 
     while STATE["running"]:
         if not STATE["capturing"]:
@@ -250,21 +320,20 @@ def capture_loop():
             time_img = capture_region(STATE["time_region"])
             current_sec = ocr_time(time_img)
 
-            # 每 10 次檢查一次是否播完（避免頻繁 OCR 整個和弦區域找 well done）
-            well_done_checks += 1
-            if well_done_checks >= 10:
-                well_done_checks = 0
-                chord_img = capture_region(STATE["chord_region"])
-                if detect_well_done(chord_img):
-                    print("\n  🎵 偵測到 Well done！歌曲播完，自動停止擷取")
+            # 每 8 次檢查一次播放按鈕（約每 2.4 秒）
+            btn_check_counter += 1
+            if btn_check_counter >= 8:
+                btn_check_counter = 0
+                if not is_still_playing():
+                    print("\n\n  ⏹ 偵測到播放結束（▶ 圖示），自動停止擷取")
                     STATE["capturing"] = False
                     STATE["finished"] = True
                     continue
 
-            # 偵測時間倒退（播完後時間會重置）
+            # 偵測時間倒退（播完後時間可能重置）
             if current_sec is not None and STATE["last_time"] is not None:
                 if current_sec < STATE["last_time"] - 5:
-                    print("\n  🎵 偵測到時間重置，歌曲可能已播完")
+                    print("\n\n  ⏹ 偵測到時間重置，自動停止擷取")
                     STATE["capturing"] = False
                     STATE["finished"] = True
                     continue
@@ -280,7 +349,9 @@ def capture_loop():
                 STATE["records"].append((current_sec, chord))
                 STATE["last_chord"] = chord
                 m, s = divmod(current_sec, 60)
-                print(f"    {m}:{s:02d} → {chord}  ({len(STATE['records'])})", end="\r")
+                count = len(STATE['records'])
+                sys.stdout.write(f"\r    {m}:{s:02d} → {chord:10s}  ({count} chords)    ")
+                sys.stdout.flush()
 
         except Exception:
             pass
@@ -343,20 +414,84 @@ def save_results(song_name: str, level: str = ""):
 # 主程式
 # ---------------------------------------------------------------------------
 
+def setup_regions():
+    """設定或載入擷取區域"""
+    cfg = load_config()
+    saved = {
+        "time": cfg.get("time_region"),
+        "chord": cfg.get("chord_region"),
+        "play_btn": cfg.get("play_btn_region"),
+    }
+
+    all_saved = all(saved.values())
+    if all_saved:
+        print(f"\n  已記住的擷取區域：")
+        print(f"    播放按鈕: {tuple(saved['play_btn'])}")
+        print(f"    時間顯示: {tuple(saved['time'])}")
+        print(f"    和弦網格: {tuple(saved['chord'])}")
+        reuse = input("  沿用？(y/n, 預設 y): ").strip().lower()
+        if reuse != 'n':
+            STATE["play_btn_region"] = tuple(saved["play_btn"])
+            STATE["time_region"] = tuple(saved["time"])
+            STATE["chord_region"] = tuple(saved["chord"])
+            return
+
+    # 步驟 1: 框選播放按鈕
+    print("\n  步驟 1/3: 框選「播放按鈕」（圓形的 ▶/|| 按鈕）")
+    input("  按 Enter 開始框選...")
+    STATE["play_btn_region"] = select_region("框選播放按鈕 (▶/||)")
+    if not STATE["play_btn_region"]:
+        print("  取消"); sys.exit(1)
+    print(f"  ✓ 播放按鈕: {STATE['play_btn_region']}")
+
+    # 測試按鈕偵測
+    btn_img = capture_region(STATE["play_btn_region"])
+    btn_state = detect_play_button_state(btn_img)
+    print(f"  目前按鈕狀態: {'|| 播放中' if btn_state == 'playing' else '▶ 已停止'}")
+
+    # 步驟 2: 框選時間
+    print("\n  步驟 2/3: 框選「時間顯示」（播放按鈕右邊的 00:00 數字）")
+    input("  按 Enter 開始框選...")
+    STATE["time_region"] = select_region("框選時間 (00:00)")
+    if not STATE["time_region"]:
+        print("  取消"); sys.exit(1)
+
+    # 測試 OCR
+    print("  測試 OCR...")
+    test_time = ocr_time(capture_region(STATE["time_region"]))
+    if test_time is not None:
+        m, s = divmod(test_time, 60)
+        print(f"  ✓ 時間: {m}:{s:02d}")
+    else:
+        print("  ⚠ 無法辨識，播放後再試")
+
+    # 步驟 3: 框選和弦
+    print("\n  步驟 3/3: 框選「和弦網格」（高亮和弦移動的那一行）")
+    input("  按 Enter 開始框選...")
+    STATE["chord_region"] = select_region("框選和弦區域")
+    if not STATE["chord_region"]:
+        print("  取消"); sys.exit(1)
+
+    # 儲存
+    cfg["play_btn_region"] = list(STATE["play_btn_region"])
+    cfg["time_region"] = list(STATE["time_region"])
+    cfg["chord_region"] = list(STATE["chord_region"])
+    save_config(cfg)
+    print("\n  ✓ 區域座標已記住")
+
+
 def main():
     print("=" * 60)
     print("  Chordify Ground Truth 擷取工具")
     print("=" * 60)
 
-    # 輸入歌曲資訊
     song_name = input("\n  歌曲名稱: ").strip()
     if not song_name:
-        print("  取消")
-        return
+        print("  取消"); return
 
     level = input("  等級 (Lv1~Lv5, 可留空): ").strip()
 
-    # 檢查是否已有 ground truth
+    # 檢查已有 ground truth
     if level:
         existing = TEST_SONGS_DIR / level / f"{song_name}.lab"
     else:
@@ -366,72 +501,20 @@ def main():
         data = json.loads(existing.read_text(encoding="utf-8"))
         n = len(data.get("entries", []))
         print(f"\n  ⚠ 已存在 ground truth ({n} 個和弦, 來源: {data.get('source', '?')})")
-        redo = input("  要重新擷取嗎？(y/n): ").strip().lower()
-        if redo != 'y':
-            print("  保留現有檔案，結束")
-            return
+        if input("  重新擷取？(y/n): ").strip().lower() != 'y':
+            print("  保留現有，結束"); return
 
-    # 載入設定（記住上次的區域座標）
-    cfg = load_config()
-    saved_time_region = cfg.get("time_region")
-    saved_chord_region = cfg.get("chord_region")
+    # 設定區域
+    setup_regions()
 
-    if saved_time_region and saved_chord_region:
-        print(f"\n  已記住上次的擷取區域：")
-        print(f"    時間: {tuple(saved_time_region)}")
-        print(f"    和弦: {tuple(saved_chord_region)}")
-        reuse = input("  沿用上次的區域？(y/n, 預設 y): ").strip().lower()
-        if reuse != 'n':
-            STATE["time_region"] = tuple(saved_time_region)
-            STATE["chord_region"] = tuple(saved_chord_region)
-        else:
-            saved_time_region = None
-            saved_chord_region = None
-
-    # 框選時間區域
-    if not STATE["time_region"]:
-        print("\n  步驟 1: 請框選 Chordify 的「時間顯示」區域")
-        print("         （播放按鈕旁邊的 00:00 ~ 03:53 數字）")
-        input("  按 Enter 開始框選...")
-        STATE["time_region"] = select_region("框選時間區域 (00:00)")
-        if not STATE["time_region"]:
-            print("  未選擇，取消")
-            return
-
-    # 測試 OCR
-    print("  測試時間 OCR...")
-    test_img = capture_region(STATE["time_region"])
-    test_time = ocr_time(test_img)
-    if test_time is not None:
-        m, s = divmod(test_time, 60)
-        print(f"  ✓ 當前時間: {m}:{s:02d}")
-    else:
-        print("  ⚠ 無法辨識時間，播放後再試")
-
-    # 框選和弦區域
-    if not STATE["chord_region"]:
-        print("\n  步驟 2: 請框選 Chordify 的「和弦格子」區域")
-        print("         （只要框住目前高亮和弦會移動的那一行即可）")
-        input("  按 Enter 開始框選...")
-        STATE["chord_region"] = select_region("框選和弦區域")
-        if not STATE["chord_region"]:
-            print("  未選擇，取消")
-            return
-
-    # 儲存區域座標
-    cfg["time_region"] = list(STATE["time_region"])
-    cfg["chord_region"] = list(STATE["chord_region"])
-    save_config(cfg)
-    print("  ✓ 區域座標已記住（下次可直接使用）")
-
-    # 開始擷取
-    STATE["finished"] = False
+    # 準備擷取
     print("\n" + "=" * 60)
     print("  準備就緒！")
-    print("    F6  = 開始/暫停擷取")
-    print("    ESC = 手動結束並儲存")
-    print("    歌曲播完（Well done）會自動停止")
-    print()
+    print("  ┌─────────────────────────────────────────────┐")
+    print("  │  F6  = 開始/暫停擷取                        │")
+    print("  │  ESC = 手動結束並儲存                       │")
+    print("  │  播放按鈕 || → ▶ 時自動停止                 │")
+    print("  └─────────────────────────────────────────────┘")
     print("  請在 Chordify 按播放，然後按 F6 開始")
     print("=" * 60)
 
@@ -443,8 +526,10 @@ def main():
             print("\n  已完成，按 ESC 儲存")
             return
         STATE["capturing"] = not STATE["capturing"]
-        status = "擷取中..." if STATE["capturing"] else "暫停"
-        print(f"\n  [{status}] 已擷取 {len(STATE['records'])} 個和弦")
+        if STATE["capturing"]:
+            print(f"\n  ▶ 擷取中...")
+        else:
+            print(f"\n  ⏸ 暫停 ({len(STATE['records'])} chords)")
 
     keyboard.add_hotkey("F6", on_f6)
     keyboard.wait("esc")
@@ -452,7 +537,7 @@ def main():
     STATE["running"] = False
     STATE["capturing"] = False
 
-    print(f"\n  擷取結束，共 {len(STATE['records'])} 個和弦")
+    print(f"\n\n  擷取結束，共 {len(STATE['records'])} 個和弦")
 
     if STATE["records"]:
         save_results(song_name, level)
