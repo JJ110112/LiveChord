@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiveChord — 基準測試</title>
+  <link rel="icon" href="/favicon.svg">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Segoe UI',sans-serif; background:#0d0d1a; color:#e0e0e0; padding:20px; }
+    h1 { color:#e94560; margin-bottom:4px; }
+    .subtitle { color:#888; font-size:13px; margin-bottom:20px; }
+    a { color:#e94560; text-decoration:none; }
+
+    /* tabs */
+    .tabs { display:flex; gap:2px; margin-bottom:16px; }
+    .tab { padding:8px 20px; background:#1a1a2e; border:1px solid #2a2a4a; border-bottom:none;
+           border-radius:8px 8px 0 0; cursor:pointer; color:#888; font-size:14px; }
+    .tab.active { background:#16213e; color:#e94560; border-color:#e94560; }
+
+    /* level panel */
+    .level-panel { display:none; }
+    .level-panel.active { display:block; }
+
+    /* song card */
+    .song-card { background:#16213e; border:1px solid #2a2a4a; border-radius:8px;
+                 padding:16px; margin-bottom:12px; }
+    .song-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+    .song-name { font-size:16px; font-weight:bold; }
+    .song-badges span { display:inline-block; padding:2px 8px; border-radius:10px;
+                        font-size:11px; margin-left:4px; }
+    .badge-gt { background:#2d6a4f; color:#b7e4c7; }
+    .badge-det { background:#3a506b; color:#a8dadc; }
+    .badge-none { background:#4a4a4a; color:#999; }
+
+    /* buttons */
+    .btn { padding:6px 14px; border:1px solid #e94560; background:transparent; color:#e94560;
+           border-radius:6px; cursor:pointer; font-size:13px; transition:all .2s; }
+    .btn:hover { background:#e94560; color:#fff; }
+    .btn:disabled { opacity:.4; cursor:not-allowed; }
+    .btn-sm { padding:4px 10px; font-size:12px; }
+    .btn-primary { background:#e94560; color:#fff; }
+
+    /* ground truth input */
+    .gt-section { margin-top:12px; border-top:1px solid #2a2a4a; padding-top:12px; }
+    .gt-section h4 { margin-bottom:8px; color:#ccc; font-size:14px; }
+    .gt-help { font-size:12px; color:#888; margin-bottom:8px; line-height:1.5; }
+    .gt-help code { background:#1a1a2e; padding:1px 4px; border-radius:3px; color:#e94560; }
+    textarea { width:100%; height:100px; background:#0d0d1a; border:1px solid #2a2a4a; color:#e0e0e0;
+               border-radius:6px; padding:10px; font-family:'Consolas',monospace; font-size:13px;
+               resize:vertical; }
+    .gt-row { display:flex; gap:8px; margin-top:8px; align-items:center; }
+    .gt-row input { background:#0d0d1a; border:1px solid #2a2a4a; color:#e0e0e0;
+                    padding:4px 8px; border-radius:4px; font-size:13px; }
+    .gt-row label { font-size:13px; color:#888; min-width:50px; }
+
+    /* score display */
+    .score-panel { margin-top:12px; background:#0d0d1a; border-radius:6px; padding:12px; }
+    .score-header { display:flex; gap:20px; margin-bottom:8px; font-size:14px; }
+    .score-val { font-weight:bold; }
+    .score-good { color:#2d6a4f; }
+    .score-ok { color:#e9c46a; }
+    .score-bad { color:#e76f51; }
+    .score-details { max-height:200px; overflow-y:auto; font-size:12px; }
+    .score-details table { width:100%; border-collapse:collapse; }
+    .score-details th, .score-details td { padding:3px 8px; text-align:left; border-bottom:1px solid #1a1a2e; }
+    .score-details .match { color:#2d6a4f; }
+    .score-details .mismatch { color:#e76f51; }
+
+    /* chord timeline preview */
+    .chord-preview { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
+    .chord-chip { padding:3px 8px; border-radius:4px; font-size:12px; }
+    .chip-gt { background:#2d6a4f33; border:1px solid #2d6a4f; }
+    .chip-det { background:#3a506b33; border:1px solid #3a506b; }
+
+    /* summary */
+    .summary { background:#16213e; border:1px solid #2a2a4a; border-radius:8px; padding:16px; margin-bottom:16px; }
+    .summary h3 { margin-bottom:8px; }
+    .summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+    .summary-card { background:#0d0d1a; border-radius:6px; padding:12px; text-align:center; }
+    .summary-card .val { font-size:28px; font-weight:bold; }
+    .summary-card .label { font-size:12px; color:#888; margin-top:4px; }
+
+    .toast { position:fixed; bottom:20px; right:20px; background:#2d6a4f; color:#fff;
+             padding:10px 20px; border-radius:8px; display:none; z-index:999; }
+    .toast.show { display:block; }
+  </style>
+</head>
+<body>
+  <h1>基準測試 Benchmark</h1>
+  <p class="subtitle">管理 Ground Truth 參考和弦 → 偵測 → 評分比對 &nbsp; | &nbsp; <a href="/">← 回首頁</a></p>
+
+  <div id="summary" class="summary" style="display:none">
+    <h3>總覽</h3>
+    <div id="summaryGrid" class="summary-grid"></div>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+  <div id="panels"></div>
+  <div id="toast" class="toast"></div>
+
+<script>
+const LEVELS = ["Lv1","Lv2","Lv3","Lv4","Lv5"];
+const LEVEL_NAMES = {Lv1:"三和弦流行",Lv2:"七和弦 R&B",Lv3:"爵士標準曲",Lv4:"複雜 Fusion",Lv5:"極難挑戰"};
+let currentLevel = "Lv1";
+let songsData = {};
+
+function showToast(msg, ms=2000) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), ms);
+}
+
+// ---- init ----
+async function init() {
+  songsData = await (await fetch("/api/benchmark/songs")).json();
+  buildTabs();
+  switchLevel("Lv1");
+  loadScoreAll();
+}
+
+function buildTabs() {
+  const tabs = document.getElementById("tabs");
+  LEVELS.forEach(lv => {
+    const t = document.createElement("div");
+    t.className = "tab" + (lv === currentLevel ? " active" : "");
+    t.textContent = `${lv} ${LEVEL_NAMES[lv]}`;
+    t.onclick = () => switchLevel(lv);
+    tabs.appendChild(t);
+  });
+}
+
+function switchLevel(lv) {
+  currentLevel = lv;
+  document.querySelectorAll(".tab").forEach((t,i) => t.classList.toggle("active", LEVELS[i]===lv));
+  renderLevel(lv);
+}
+
+function renderLevel(lv) {
+  const panels = document.getElementById("panels");
+  panels.innerHTML = "";
+  const songs = songsData[lv] || [];
+  if (!songs.length) {
+    panels.innerHTML = `<div style="color:#888;padding:20px">此等級無測試曲目</div>`;
+    return;
+  }
+  songs.forEach(song => panels.appendChild(createSongCard(song, lv)));
+}
+
+// ---- song card ----
+function createSongCard(song, lv) {
+  const card = document.createElement("div");
+  card.className = "song-card";
+  card.id = `card-${lv}-${song.name}`;
+
+  card.innerHTML = `
+    <div class="song-header">
+      <span class="song-name">${song.name}</span>
+      <span class="song-badges">
+        ${song.has_ground_truth ? '<span class="badge-gt">GT ✓</span>' : '<span class="badge-none">無 GT</span>'}
+        ${song.has_detection ? '<span class="badge-det">偵測 ✓</span>' : '<span class="badge-none">未偵測</span>'}
+      </span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="toggleGT('${lv}','${song.name}')">編輯 Ground Truth</button>
+      <button class="btn btn-sm" onclick="runDetect('${lv}','${song.name}',this)">執行偵測</button>
+      ${song.has_ground_truth && song.has_detection ?
+        `<button class="btn btn-sm btn-primary" onclick="runScore('${lv}','${song.name}')">評分</button>` : ''}
+      <button class="btn btn-sm" onclick="previewChords('${lv}','${song.name}')">預覽和弦</button>
+    </div>
+    <div id="gt-${lv}-${song.name}" class="gt-section" style="display:none"></div>
+    <div id="preview-${lv}-${song.name}"></div>
+    <div id="score-${lv}-${song.name}"></div>
+  `;
+  return card;
+}
+
+// ---- Ground Truth 編輯 ----
+async function toggleGT(lv, song) {
+  const el = document.getElementById(`gt-${lv}-${song}`);
+  if (el.style.display !== "none") { el.style.display = "none"; return; }
+  el.style.display = "";
+
+  // 載入現有 GT
+  const resp = await fetch(`/api/benchmark/ground-truth/${lv}/${encodeURIComponent(song)}`);
+  const gt = await resp.json();
+
+  let textVal = "";
+  if (gt.exists && gt.entries) {
+    textVal = gt.entries.map(e => `${fmtTime(e.time)}: ${e.chord}`).join("\n");
+  }
+
+  el.innerHTML = `
+    <h4>Ground Truth — 參考和弦</h4>
+    <div class="gt-help">
+      格式：每行一個和弦，<code>時間: 和弦</code>（時間為秒數或 mm:ss）<br>
+      也可用逗號分隔多個：<code>0:00: Cm, 0:12: Dm7, 0:24: G7</code><br>
+      支援格式範例：<code>12.5: Am7</code>、<code>1:30: Bb</code>、<code>0: C, 4: G, 8: Am, 12: F</code>
+    </div>
+    <textarea id="gtText-${lv}-${song}" placeholder="貼上參考和弦...">${textVal}</textarea>
+    <div class="gt-row">
+      <label>Key:</label>
+      <input id="gtKey-${lv}-${song}" value="${gt.key || ''}" placeholder="如 Cm, D" style="width:80px">
+      <label>來源:</label>
+      <input id="gtSrc-${lv}-${song}" value="${gt.source || ''}" placeholder="Chordify / Real Book" style="width:150px">
+      <button class="btn btn-sm btn-primary" onclick="saveGT('${lv}','${song}')">儲存</button>
+    </div>
+  `;
+}
+
+function parseTimeStr(s) {
+  s = s.trim();
+  if (s.includes(":")) {
+    const parts = s.split(":");
+    if (parts.length === 2) return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
+    if (parts.length === 3) return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+  }
+  return parseFloat(s);
+}
+
+function parseGTText(text) {
+  const entries = [];
+  // 支援多種格式
+  // 1. 逐行: "0:12: Cm7" 或 "12.5: Am"
+  // 2. 逗號分隔: "0:00: Cm, 0:12: Dm7, 0:24: G7"
+  // 先用逗號 + 換行拆分
+  const parts = text.split(/[,\n]+/).map(s => s.trim()).filter(s => s);
+
+  for (const part of parts) {
+    // 匹配 "時間: 和弦" 或 "時間 和弦"
+    const m = part.match(/^([\d.:]+)\s*[:：]\s*(.+)$/);
+    if (m) {
+      const time = parseTimeStr(m[1]);
+      const chord = m[2].trim();
+      if (!isNaN(time) && chord) {
+        entries.push({ time: Math.round(time * 100) / 100, chord });
+      }
+    }
+  }
+
+  // 計算 end（下一個和弦的 time）
+  for (let i = 0; i < entries.length - 1; i++) {
+    entries[i].end = entries[i + 1].time;
+  }
+  if (entries.length > 0) {
+    entries[entries.length - 1].end = entries[entries.length - 1].time + 4.0; // 最後一個假設 4 秒
+  }
+
+  return entries;
+}
+
+async function saveGT(lv, song) {
+  const text = document.getElementById(`gtText-${lv}-${song}`).value;
+  const key = document.getElementById(`gtKey-${lv}-${song}`).value;
+  const source = document.getElementById(`gtSrc-${lv}-${song}`).value;
+
+  const entries = parseGTText(text);
+  if (!entries.length) { showToast("解析失敗：請檢查格式"); return; }
+
+  const resp = await fetch("/api/benchmark/ground-truth", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ level: lv, song, entries, key, source }),
+  });
+  const r = await resp.json();
+  if (r.ok) {
+    showToast(`已儲存 ${entries.length} 個和弦`);
+    // 更新 badge
+    const badges = document.querySelector(`#card-${lv}-${song} .song-badges`);
+    if (badges && !badges.innerHTML.includes("badge-gt")) {
+      songsData[lv].find(s => s.name === song).has_ground_truth = true;
+      renderLevel(lv);
+    }
+  }
+}
+
+// ---- 偵測 ----
+async function runDetect(lv, song, btn) {
+  btn.disabled = true; btn.textContent = "偵測中…";
+  try {
+    const resp = await fetch(`/api/benchmark/detect/${lv}/${encodeURIComponent(song)}`, {method:"POST"});
+    const r = await resp.json();
+    showToast(`偵測完成: ${r.chord_count} 個和弦, Key: ${r.key}`);
+    songsData[lv].find(s => s.name === song).has_detection = true;
+    renderLevel(lv);
+  } catch(e) {
+    showToast("偵測失敗: " + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "執行偵測";
+  }
+}
+
+// ---- 預覽和弦 ----
+async function previewChords(lv, song) {
+  const el = document.getElementById(`preview-${lv}-${song}`);
+  if (el.innerHTML) { el.innerHTML = ""; return; }
+
+  const [gt, det] = await Promise.all([
+    fetch(`/api/benchmark/ground-truth/${lv}/${encodeURIComponent(song)}`).then(r=>r.json()),
+    fetch(`/api/benchmark/detection/${lv}/${encodeURIComponent(song)}`).then(r=>r.json()),
+  ]);
+
+  let html = '<div style="margin-top:10px">';
+  if (gt.exists && gt.entries) {
+    html += `<div style="margin-bottom:6px;font-size:12px;color:#2d6a4f">GT (${gt.key || '?'}):</div>
+      <div class="chord-preview">${gt.entries.map(e =>
+        `<span class="chord-chip chip-gt" title="${fmtTime(e.time)}">${fmtTime(e.time)} ${e.chord}</span>`
+      ).join("")}</div>`;
+  }
+  if (det.exists && det.entries) {
+    html += `<div style="margin-top:8px;margin-bottom:6px;font-size:12px;color:#3a506b">偵測 (${det.key || '?'}):</div>
+      <div class="chord-preview">${det.entries.slice(0, 60).map(e =>
+        `<span class="chord-chip chip-det" title="${fmtTime(e.time)}">${fmtTime(e.time)} ${e.chord}</span>`
+      ).join("")}${det.entries.length > 60 ? `<span style="color:#888;font-size:11px">...+${det.entries.length-60}</span>` : ''}</div>`;
+  }
+  if (!gt.exists && !det.exists) html += '<div style="color:#888;font-size:13px">無資料</div>';
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+// ---- 評分 ----
+async function runScore(lv, song) {
+  const el = document.getElementById(`score-${lv}-${song}`);
+  const resp = await fetch(`/api/benchmark/score/${lv}/${encodeURIComponent(song)}`);
+  const s = await resp.json();
+
+  const rootClass = s.root_accuracy >= 70 ? "score-good" : s.root_accuracy >= 50 ? "score-ok" : "score-bad";
+  const fullClass = s.full_accuracy >= 60 ? "score-good" : s.full_accuracy >= 40 ? "score-ok" : "score-bad";
+
+  el.innerHTML = `
+    <div class="score-panel">
+      <div class="score-header">
+        <span>Key: ${s.key_gt} vs ${s.key_det} ${s.key_match ? '✓' : '✗'}</span>
+        <span>根音正確率: <span class="score-val ${rootClass}">${s.root_accuracy}%</span></span>
+        <span>完全正確率: <span class="score-val ${fullClass}">${s.full_accuracy}%</span></span>
+        <span>片段數: ${s.total_segments}</span>
+      </div>
+      <div class="score-details">
+        <table>
+          <tr><th>時間</th><th>GT</th><th>偵測</th><th>根音</th><th>品質</th></tr>
+          ${s.details.map(d => `
+            <tr>
+              <td>${fmtTime(d.time)}-${fmtTime(d.end)}</td>
+              <td>${d.gt_chord}</td>
+              <td>${d.det_chord}</td>
+              <td class="${d.root_match?'match':'mismatch'}">${d.root_match?'✓':'✗'}</td>
+              <td class="${d.full_match?'match':'mismatch'}">${d.full_match?'✓':'✗'}</td>
+            </tr>`).join("")}
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// ---- 總覽 ----
+async function loadScoreAll() {
+  try {
+    const resp = await fetch("/api/benchmark/score-all");
+    const data = await resp.json();
+    if (!Object.keys(data).length) return;
+
+    const el = document.getElementById("summary");
+    el.style.display = "";
+    const grid = document.getElementById("summaryGrid");
+    grid.innerHTML = "";
+
+    for (const lv of LEVELS) {
+      if (!data[lv]) continue;
+      const d = data[lv];
+      const rootClass = d.avg_root_accuracy >= 70 ? "score-good" : d.avg_root_accuracy >= 50 ? "score-ok" : "score-bad";
+      grid.innerHTML += `
+        <div class="summary-card">
+          <div style="font-size:14px;color:#888;margin-bottom:4px">${lv}</div>
+          <div class="val ${rootClass}">${d.avg_root_accuracy}%</div>
+          <div class="label">根音正確率 (${d.songs.length} 首)</div>
+          <div style="font-size:12px;color:#888;margin-top:4px">Key: ${d.key_accuracy}% | Full: ${d.avg_full_accuracy}%</div>
+        </div>`;
+    }
+  } catch {}
+}
+
+function fmtTime(s) {
+  if (s == null) return "?";
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+}
+
+init();
+</script>
+</body>
+</html>

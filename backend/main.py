@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from music_api import router as music_router
 from chord_api import router as chord_router
 from user_api import router as user_router
+from benchmark_api import router as benchmark_router
 import auto_worker
 
 
@@ -32,6 +33,7 @@ app = FastAPI(title="LiveChord", version="1.0.0", lifespan=lifespan)
 app.include_router(music_router)
 app.include_router(chord_router)
 app.include_router(user_router)
+app.include_router(benchmark_router)
 
 # 前端靜態檔案
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
@@ -111,6 +113,11 @@ async def editor():
 @app.get("/admin")
 async def admin():
     return FileResponse(FRONTEND_DIR / "admin.html")
+
+
+@app.get("/benchmark")
+async def benchmark():
+    return FileResponse(FRONTEND_DIR / "benchmark.html")
 
 
 if __name__ == "__main__":
