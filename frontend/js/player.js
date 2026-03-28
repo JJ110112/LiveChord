@@ -122,7 +122,7 @@
     } catch {}
 
     hasChords = false;
-    chordDisplay.innerHTML = `<div class="empty" style="padding:20px"><div class="msg" style="color:var(--text-dim)">尚無和弦譜 — 按播放將自動偵測</div></div>`;
+    chordDisplay.innerHTML = `<div class="empty" style="padding:20px"><div class="msg" style="color:var(--text-dim)">尚無和弦譜 — 請按「偵測」按鈕手動偵測</div></div>`;
     bigChordBox.style.display = "none";
   }
 
@@ -337,18 +337,9 @@
   // 播放控制（攔截播放按鈕，無和弦時先偵測）
   // ===========================================================================
 
-  btnPlay.addEventListener("click", async () => {
-    if (!audio.paused) {
-      audio.pause();
-      return;
-    }
-    // 有和弦 → 直接播放
-    if (hasChords) {
-      audio.play();
-      return;
-    }
-    // 無和弦 → 自動偵測後播放
-    await autoDetectAndPlay();
+  btnPlay.addEventListener("click", () => {
+    if (audio.paused) audio.play();
+    else audio.pause();
   });
 
   audio.addEventListener("play", () => { btnPlay.innerHTML = "&#x23F8;"; });
