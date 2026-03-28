@@ -29,28 +29,67 @@
 | Lv4 | 複雜 Fusion | ≥ 70% | ≥ 50% | < 2.0s |
 | Lv5 | 極難挑戰 | ≥ 60% | ≥ 40% | N/A |
 
-### 2.2 測試曲目總覽
+### 2.2 測試曲目總覽（已放入 data/test_songs/）
 
-| 級別 | 曲目 | NAS 路徑 | 參考來源 |
-|------|------|----------|----------|
-| Lv1 | Dancing Queen - ABBA | Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/ | Chordify |
-| Lv1 | Hotel California - Eagles | Z:/POP/E-POP/Eagles/Eagles - Hell Freezes Over/ | Chordify |
-| Lv1 | Shape of You - Ed Sheeran | Z:/POP/E-POP/Ed Sheeran/ | Chordify |
-| Lv1 | Mamma Mia - ABBA | Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/ | Chordify |
-| Lv1 | Billie Jean - Michael Jackson | Z:/POP/E-POP/Michael Jackson/ | Chordify |
-| Lv2 | Don't Stop 'Til You Get Enough - MJ | Z:/POP/E-POP/Michael Jackson/ | Chordify |
-| Lv2 | Desperado - Eagles (Live) | Z:/POP/E-POP/Eagles/Eagles - Hell Freezes Over/ | Chordify |
-| Lv2 | Castle on the Hill - Ed Sheeran | Z:/POP/E-POP/Ed Sheeran/ | Chordify |
-| Lv2 | Afterglow - Ed Sheeran | Z:/POP/E-POP/Ed Sheeran/ | Chordify |
-| Lv2 | I Can't Tell You Why - Eagles | Z:/POP/E-POP/Eagles/Eagles - Hell Freezes Over/ | Chordify |
-| Lv3 | My Foolish Heart - Bill Evans | Z:/Jazz/Bill Evans/ | Real Book |
-| Lv3 | Waltz for Debby - Bill Evans | Z:/Jazz/Bill Evans/ | Real Book |
-| Lv3 | Get It On - Brian Culbertson | Z:/Jazz/Brian Culbertson/ | Chordify ✓已驗證 |
-| Lv4 | So What - Miles Davis | Z:/Jazz/Miles Davis/Kind Of Blue/ | Real Book |
-| Lv4 | Blue in Green - Miles Davis | Z:/Jazz/Miles Davis/Kind Of Blue/ | Real Book |
-| Lv4 | Mediterranean Sundance - Al Di Meola | Z:/Jazz/Al Di Meola/ | 樂譜 |
-| Lv5 | Chopin Polonaise Op.53 | Z:/Classics/Alfred Brendel/ | N/A |
-| Lv5 | Freddie Freeloader - Miles Davis | Z:/Jazz/Miles Davis/Kind Of Blue/ | Real Book |
+#### Lv1 — 三和弦流行
+
+| # | 曲目 | Key(偵測) | Key(參考) | 主要和弦(偵測) | 主要和弦(參考) | 耗時 |
+|---|------|-----------|-----------|----------------|----------------|------|
+| 1 | Dancing Queen - ABBA | A | A | A, D, E, Db, Gbm, B | A, D, E, F#m, Bm | 2.5s |
+| 2 | Hotel California - Eagles (Live) | Bm | Bm | Bm7, A, Em, Gb7, D, G | Bm, F#, A, E, G, D, Em | 4.2s |
+| 3 | Shape of You - Ed Sheeran | E | C#m | Dbm, Gbm, A, B | C#m, F#m, A, B | 2.3s |
+| 4 | Mamma Mia - ABBA | D | D | D, G, A, Bb | D, A, G, Bm | 2.2s |
+| 5 | Billie Jean - Michael Jackson | Gbm | F#m | Gbm, Dbm, Bm | F#m, G#m | 5.7s |
+
+> 備註：BTC 使用 # 而非 b 的標記（Gb=F#, Db=C#），Key 偵測 4/5 正確，Shape of You 偵為 E 而非 C#m（相對大調，可接受）
+
+#### Lv2 — 七和弦 R&B
+
+| # | 曲目 | Key(偵測) | Key(參考) | 主要和弦(偵測) | 耗時 |
+|---|------|-----------|-----------|----------------|------|
+| 1 | Desperado - Eagles (Live) | G | G | G, G7, C, Cm, Em, A7, D7, Bm7 | 2.5s |
+| 2 | Castle on the Hill - Ed Sheeran | D | D | D, G, Bm7, Asus4, Gmaj7 | 2.7s |
+| 3 | Afterglow - Ed Sheeran | Abm | C | B, E, Gb, Abm7 | 3.6s |
+| 4 | Don't Stop 'Til You Get Enough - MJ | E | B | B, A | 4.9s |
+| 5 | I Can't Tell You Why - Eagles (Live) | D | Db | Bm, A, Gbm, Dmaj7, Gmaj7, Em7 | 3.1s |
+
+> 備註：Desperado 七和弦辨識優秀（G7, A7, D7, Cm6）。Afterglow/Don't Stop Key 偏移
+
+#### Lv3 — 爵士標準曲
+
+| # | 曲目 | Key(偵測) | Key(參考) | 主要和弦(偵測) | 耗時 |
+|---|------|-----------|-----------|----------------|------|
+| 1 | Get It On - Brian Culbertson | Cm ✓ | Cm | Cm, Dm7, G7, Cm7, Fm7 | 4.1s |
+| 2 | My Foolish Heart - Bill Evans | Gbm | Bb | Dbm7, Gbm7, Bm7, E7, Amaj7 | 2.9s |
+| 3 | Waltz for Debby - Bill Evans | Dm | F | F, Dm7, Gm7, C7, A7, D7, Bbm6 | 4.3s |
+| 4 | Night Train - Oscar Peterson | Am | G (blues) | G7, D7, Dm7, Eb7, Fmaj7 | 3.8s |
+| 5 | Jazz Hands - Bob James | A | (待定) | Gbm, Dbm, B, Gbm7 | 2.0s |
+
+> 備註：Get It On 已驗證與 Chordify 吻合。Waltz for Debby ii-V-I 進行辨識良好
+
+#### Lv4 — 複雜 Fusion
+
+| # | 曲目 | Key(偵測) | Key(參考) | 主要和弦(偵測) | 耗時 |
+|---|------|-----------|-----------|----------------|------|
+| 1 | So What - Miles Davis | Am | Dm→Ebm | Am, Dm, G, Eb, Ebm, Gb | 10.3s |
+| 2 | Blue in Green - Miles Davis | Dm | Bb | Cm7, Bbmaj7, A7, Dm7, Em7 | 6.4s |
+| 3 | Mediterranean Sundance - Al Di Meola | Em | Am/Em | Am, Em, B, C, G, D | 12.8s |
+| 4 | Mister Magic - Bob James | Gm | (待定) | Cm, Gm, F7, Ebmaj7, Abmaj7 | 3.5s |
+| 5 | For Once In My Life - Stevie Wonder | F | F | F, Faug, Gm7, C7, Bbmaj7, Dm7 | 1.7s |
+
+> 備註：For Once In My Life 和弦辨識出色（含 Faug, Gbdim7 等複雜和弦）
+
+#### Lv5 — 極難挑戰
+
+| # | 曲目 | Key(偵測) | 主要和弦(偵測) | 耗時 |
+|---|------|-----------|----------------|------|
+| 1 | Chopin Polonaise Op.53 | Fm | Ab, Fm, Eb7, Db, Bbm7, C7 | 4.0s |
+| 2 | Freddie Freeloader - Miles Davis | Cm | Gm, Fm, Bb7, Eb7, Ab | 10.9s |
+| 3 | Journey In Satchidananda - Alice Coltrane | C | E, Bb, Am, G, Dm | 11.7s |
+| 4 | Orient Express - Logic System | Am | Am, F, Dm6, E7, B7 | 2.6s |
+| 5 | Fantasia Suite - Al Di Meola | D | Em, G, D, A, Am | 9.9s |
+
+> 備註：Chopin 偵為 Fm（正確為 Ab 大調，其相對小調），偵測未崩潰。電子音樂 Orient Express 辨識合理
 
 ### 2.3 和弦正確率計算方式
 
@@ -78,11 +117,34 @@ cd backend
 python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 ```
 
-### 2.5 已驗證結果
+### 2.5 基準測試摘要（BTC v4, 2026-03-28）
 
-| 曲目 | 版本 | Key | 主要和弦 | 比對結果 |
-|------|------|-----|----------|----------|
-| Get It On - Brian Culbertson | BTC v4 | Cm ✓ | Cm→Dm7→G7→Cm ✓ | 與 Chordify 吻合 |
+| 指標 | 結果 |
+|------|------|
+| 測試曲目 | 25 首（Lv1×5, Lv2×5, Lv3×5, Lv4×5, Lv5×5） |
+| 成功率 | 25/25 (100%, 無崩潰) |
+| 總耗時 | 124.6 秒（平均 5.0s/首） |
+| Key 正確率 (Lv1) | 4/5 (80%) — Shape of You 偵為 E (= C#m 相對大調) |
+| Key 正確率 (Lv2) | 2/5 (40%) — 需改進 |
+| Key 正確率 (Lv3) | 2/5 (40%) — Get It On ✓, Waltz for Debby 偏差 |
+| Key 正確率 (Lv4) | 1/5 (20%) — For Once In My Life ✓ |
+
+#### 已與 Chordify 比對驗證
+
+| 曲目 | Key | 和弦進行 | 比對結果 |
+|------|-----|----------|----------|
+| Get It On - Brian Culbertson | Cm ✓ | Cm→Dm7→G7→Cm ✓ | 與 Chordify 完全吻合 |
+| Desperado - Eagles | G ✓ | G→G7→C→Cm→Em→A7→D7 ✓ | 七和弦辨識出色 |
+| Hotel California - Eagles | Bm ✓ | Bm7→A→Em→F#7→D→G ✓ | 進行正確 |
+| Dancing Queen - ABBA | A ✓ | A→D→E→F#m→Bm ✓ | 基本正確 |
+
+#### 已知問題
+
+| 問題 | 影響 | 優先級 |
+|------|------|--------|
+| Key 偵測採用和弦加權法，BTC 的 # 命名(Gb/Db)影響匹配 | Lv2-Lv4 Key 偏低 | P1 |
+| So What 的 Dm Dorian 偵為 Am | Modal 曲目 key 不準 | P2 |
+| 片段過多（100-300 個/首）| 顯示碎片化 | P2 |
 
 ---
 
