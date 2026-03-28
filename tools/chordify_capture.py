@@ -43,11 +43,16 @@ STATE = {
     "records": [],
     "last_chord": None,
     "last_time": None,
+    "start_perf_time": None,  # 內部高精度計時器起點
+    "start_ocr_sec": None,    # OCR 讀到的起始時間(秒)
     "time_region": None,      # 時間顯示區域
     "chord_region": None,     # 和弦網格區域
     "play_btn_region": None,  # 播放按鈕區域
     "play_btn_ref": None,     # 播放中(||)的參考影像
-    "interval": 0.3,
+    "interval": 0.1,          # 擷取間隔（縮短以提高精確度）
+    "ref_chords": [],         # 預取參考和弦序列
+    "ref_idx": 0,             # 參考序列的指標
+    "last_box_center": None,  # (cx, cy) 高亮方塊的位置
 }
 
 _reader = None
@@ -195,27 +200,51 @@ def find_highlighted_chord(img):
     reader = get_reader()
     arr = np.array(img)
     h, w, _ = arr.shape
-    gray = np.mean(arr, axis=2)
-
-    col_width = max(w // 20, 30)
-    darkest_x = 0
-    darkest_val = 255
-
-    for x in range(0, w - col_width, col_width // 2):
-        region = gray[:, x:x+col_width]
-        mean_val = np.mean(region)
-        if mean_val < darkest_val:
-            darkest_val = mean_val
-            darkest_x = x
-
-    overall_mean = np.mean(gray)
-    if darkest_val > overall_mean - 15:
+    if h == 0 or w == 0:
         return None
 
-    margin = col_width // 2
-    crop_x = max(0, darkest_x - margin)
-    crop_w = min(w, darkest_x + col_width + margin)
-    crop = img.crop((crop_x, 0, crop_w, h))
+    gray = np.mean(arr, axis=2)
+
+    # 1. 縮小圖片以進行大面積模糊，濾掉細小的白色文字
+    scale = 8
+    small_w, small_h = max(1, w // scale), max(1, h // scale)
+    img_small = img.resize((small_w, small_h), Image.BILINEAR)
+    gray_small = np.mean(np.array(img_small), axis=2)
+
+    # 找尋最暗的中心點
+    min_val = np.min(gray_small)
+    if min_val > 120:  # 如果圖中沒有明顯的大塊深色，則視為無高亮
+        return None, None
+
+    min_y_s, min_x_s = np.unravel_index(np.argmin(gray_small), gray_small.shape)
+    cx = int(min_x_s * scale + scale / 2)
+    cy = int(min_y_s * scale + scale / 2)
+    
+    # 防呆邊界
+    cx = max(0, min(w - 1, cx))
+    cy = max(0, min(h - 1, cy))
+
+    # 2. 從中心點往外擴張，精準找到該高亮方塊的上下左右邊界
+    top = cy
+    while top > 0 and np.min(gray[top, max(0, cx-20):min(w, cx+20)]) < 100:
+        top -= 1
+
+    bottom = cy
+    while bottom < h - 1 and np.min(gray[bottom, max(0, cx-20):min(w, cx+20)]) < 100:
+        bottom += 1
+
+    left = cx
+    while left > 0 and np.min(gray[max(0, cy-10):min(h, cy+10), left]) < 100:
+        left -= 1
+
+    right = cx
+    while right < w - 1 and np.min(gray[max(0, cy-10):min(h, cy+10), right]) < 100:
+        right += 1
+
+    margin = 5
+    crop = img.crop((max(0, left - margin), max(0, top - margin), 
+                     min(w, right + margin), min(h, bottom + margin)))
+
     crop = crop.resize((crop.width * 3, crop.height * 3), Image.LANCZOS)
 
     results = reader.readtext(np.array(crop),
@@ -225,8 +254,8 @@ def find_highlighted_chord(img):
     for _, text, conf in results:
         text = text.strip()
         if text and conf > 0.3 and any(c in text for c in 'ABCDEFG'):
-            return _normalize_chord(text)
-    return None
+            return _normalize_chord(text), (cx, cy)
+    return None, (cx, cy)
 
 
 def _normalize_chord(raw: str) -> str:
@@ -347,18 +376,54 @@ def capture_loop():
 
             # 擷取和弦
             chord_img = capture_region(STATE["chord_region"])
-            chord = find_highlighted_chord(chord_img)
+            chord, box_center = find_highlighted_chord(chord_img)
 
             if current_sec is not None:
                 STATE["last_time"] = current_sec
+                # 記錄第一次辨識到的 OCR 時間作為基準點
+                if STATE["start_ocr_sec"] is None:
+                    STATE["start_ocr_sec"] = current_sec
 
-            if current_sec is not None and chord and chord != STATE["last_chord"]:
-                STATE["records"].append((current_sec, chord))
-                STATE["last_chord"] = chord
-                m, s = divmod(current_sec, 60)
-                count = len(STATE['records'])
-                sys.stdout.write(f"\r    {m}:{s:02d} → {chord:10s}  ({count} chords)    ")
-                sys.stdout.flush()
+            box_moved = False
+            if box_center:
+                if STATE["last_box_center"] is None:
+                    box_moved = True
+                else:
+                    last_cx, last_cy = STATE["last_box_center"]
+                    bcx, bcy = box_center
+                    # 方格大幅移動代表進入下一個和弦區塊
+                    if abs(bcx - last_cx) > 15 or abs(bcy - last_cy) > 15:
+                        box_moved = True
+
+            if box_moved:
+                STATE["last_box_center"] = box_center
+
+                # 如果有提供截圖當作字典庫，則完全採用字典庫的序列確保完美準確率
+                if STATE["ref_chords"] and STATE["ref_idx"] < len(STATE["ref_chords"]):
+                    chord = STATE["ref_chords"][STATE["ref_idx"]]
+                    STATE["ref_idx"] += 1
+                    is_new_record = True
+                else:
+                    is_new_record = (chord and chord != STATE["last_chord"])
+
+                if chord and is_new_record:
+                    # 使用精確時間戳：取得自從按下播放至今經過的秒數 (含小數點)
+                    elapsed = time.perf_counter() - STATE["start_perf_time"]
+                    
+                    # 若尚未讀到 OCR 時間，暫時當作從 0 起算
+                    base_time = STATE["start_ocr_sec"] if STATE["start_ocr_sec"] is not None else (current_sec or 0)
+                    precise_time = base_time + elapsed
+                    
+                    STATE["records"].append((round(precise_time, 3), chord))
+                    STATE["last_chord"] = chord
+                    
+                    m, s = divmod(precise_time, 60)
+                    s_int = int(s)
+                    ms = int((s - s_int) * 1000)
+                    count = len(STATE['records'])
+                    source_tag = "(PNG ref)" if STATE["ref_chords"] else ""
+                    sys.stdout.write(f"\r    {int(m)}:{s_int:02d}.{ms:03d} → {chord:10s}  ({count} chords) {source_tag}   ")
+                    sys.stdout.flush()
 
         except Exception:
             pass
@@ -416,6 +481,27 @@ def save_results(song_name: str, level: str = ""):
     print(f"    和弦數: {len(entries)}, Key: {key}")
     return str(save_path)
 
+
+def load_reference_png(song_name: str, level: str):
+    STATE["ref_chords"] = []
+    STATE["ref_idx"] = 0
+    png_path = TEST_SONGS_DIR / level / f"{song_name}.png" if level else TEST_SONGS_DIR / f"{song_name}.png"
+    
+    if png_path.exists():
+        print(f"\n  🔍 發現參考圖檔: {png_path.name}")
+        print("  正在預先解析全曲和弦以提高擷取成功率...")
+        try:
+            # 調用 screenshot 工具中的解析邏輯
+            import chordify_screenshot
+            analysis = chordify_screenshot.analyze_chordify_screenshot(str(png_path))
+            ref_grid = chordify_screenshot.extract_chord_grid(analysis)
+            if ref_grid:
+                STATE["ref_chords"] = ref_grid
+                print(f"  ✓ 成功提取 {len(ref_grid)} 個和弦！之後擷取將完全採用此 PNG 的序列進行時間綁定。")
+            else:
+                print("  ⚠ 參考圖檔未辨識出有效和弦")
+        except Exception as e:
+            print(f"  ⚠ 載入失敗: {e}")
 
 # ---------------------------------------------------------------------------
 # 主程式
@@ -511,6 +597,9 @@ def main():
         if input("  重新擷取？(y/n): ").strip().lower() != 'y':
             print("  保留現有，結束"); return
 
+    # 檢查是否提供參考圖檔
+    load_reference_png(song_name, level)
+
     # 設定區域
     setup_regions()
 
@@ -547,6 +636,8 @@ def main():
 
     # 開始擷取
     STATE["capturing"] = True
+    STATE["start_perf_time"] = time.perf_counter()
+    STATE["start_ocr_sec"] = None
     print("  🎵 開始擷取和弦...\n")
 
     # 等待完成（播放結束或 ESC）
@@ -566,7 +657,9 @@ def main():
         if next_song:
             # 重置狀態
             STATE.update({"capturing": False, "running": True, "finished": False,
-                          "records": [], "last_chord": None, "last_time": None})
+                          "records": [], "last_chord": None, "last_time": None,
+                          "start_perf_time": None, "start_ocr_sec": None,
+                          "ref_chords": [], "ref_idx": 0, "last_box_center": None})
             # 遞迴呼叫（保留區域設定）
             main_continue(next_song, level)
     else:
@@ -592,6 +685,8 @@ def main_continue(song_name: str, level: str):
     print("  請在 Chordify 切換到該歌曲頁面，準備好後按 Enter")
     input("  按 Enter 開始...")
 
+    load_reference_png(song_name, level)
+
     capture_thread = threading.Thread(target=capture_loop, daemon=True)
     capture_thread.start()
 
@@ -600,6 +695,8 @@ def main_continue(song_name: str, level: str):
     time.sleep(1)
 
     STATE["capturing"] = True
+    STATE["start_perf_time"] = time.perf_counter()
+    STATE["start_ocr_sec"] = None
     print("  🎵 擷取中...\n")
 
     while STATE["running"] and not STATE.get("finished"):
@@ -615,7 +712,9 @@ def main_continue(song_name: str, level: str):
         next_song = input("\n  繼續下一首？輸入名稱（Enter 跳過）: ").strip()
         if next_song:
             STATE.update({"capturing": False, "running": True, "finished": False,
-                          "records": [], "last_chord": None, "last_time": None})
+                          "records": [], "last_chord": None, "last_time": None,
+                          "start_perf_time": None, "start_ocr_sec": None,
+                          "ref_chords": [], "ref_idx": 0, "last_box_center": None})
             main_continue(next_song, level)
 
 
