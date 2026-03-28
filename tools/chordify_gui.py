@@ -504,16 +504,34 @@ class ChordifyCapture(tk.Tk):
         name = self.song_name.get().strip()
         lv = self.level.get()
 
-        # Phase 1: 等待偵測到 pause(||) 表示開始播放
-        self._safe_log("等待偵測到播放 (||)...", "info")
-        self._safe_status("⏳ 等待播放 — 請在 Chordify 按 Play")
+        # Phase 1: 自動點擊播放按鈕
+        import pyautogui
+        img = capture_region(play_r)
+        state = detect_button_state(img, play_r)
 
-        while self.capturing:
+        if state == "playing":
+            self._safe_log("偵測到 || (已在播放中)", "state")
+        else:
+            self._safe_log("偵測到 ▶，自動點擊播放...", "info")
+            self._safe_status("▶ 點擊播放按鈕...")
+            cx = play_r[0] + play_r[2] // 2
+            cy = play_r[1] + play_r[3] // 2
+            pyautogui.click(cx, cy)
+            time.sleep(1.0)
+
+            # 確認已開始播放
             img = capture_region(play_r)
             state = detect_button_state(img, play_r)
             if state == "playing":
-                break
-            time.sleep(0.2)
+                self._safe_log("✓ 播放已開始", "state")
+            else:
+                self._safe_log("⚠ 未偵測到播放，再試一次...", "warn")
+                pyautogui.click(cx, cy)
+                time.sleep(1.0)
+                img = capture_region(play_r)
+                state = detect_button_state(img, play_r)
+                if state != "playing":
+                    self._safe_log("⚠ 仍無法確認播放狀態，繼續擷取", "warn")
 
         if not self.capturing:
             self._finish(name, lv)
