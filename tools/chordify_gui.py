@@ -370,17 +370,15 @@ class ChordifyCapture(tk.Tk):
 
     def _do_select(self, title):
         """
-        用 pyautogui 記錄滑鼠拖曳座標（不遮擋螢幕）。
-        顯示一個小提示視窗，使用者直接在螢幕任意位置拖曳框選。
+        用 pynput 全域滑鼠監聽 + 即時紅色框線。
+        不遮擋螢幕，使用者直接在目標位置拖曳。
         """
-        import pyautogui
-
         result = [None]
 
-        # 小提示視窗（不擋住螢幕）
+        # 小提示視窗
         hint = tk.Toplevel(self)
         hint.title("框選")
-        hint.geometry("400x80+50+50")
+        hint.geometry("420x80+50+50")
         hint.attributes('-topmost', True)
         hint.configure(bg="#e94560")
         tk.Label(hint, text=f"{title}", font=("Segoe UI", 13, "bold"),
@@ -388,12 +386,38 @@ class ChordifyCapture(tk.Tk):
         tk.Label(hint, text="在螢幕上按住左鍵拖曳框選，放開完成。ESC 取消。",
                  font=("Segoe UI", 10), fg="white", bg="#e94560").pack()
 
-        # 用 pynput 監聽全域滑鼠
+        # 透明框線視窗（跟隨拖曳即時顯示紅色邊框）
+        border_win = tk.Toplevel(self)
+        border_win.overrideredirect(True)
+        border_win.attributes('-topmost', True)
+        border_win.attributes('-alpha', 0.5)
+        border_win.configure(bg="red")
+        border_win.withdraw()  # 先隱藏
+
+        # 內部透明區（讓邊框可見、中間透空）
+        inner = tk.Frame(border_win, bg="black")
+
         try:
             from pynput import mouse as pynput_mouse
 
             sx, sy = [0], [0]
             dragging = [False]
+            BORDER = 3
+
+            def update_border(x1, y1, x2, y2):
+                """更新紅色框線位置"""
+                left, top = min(x1, x2), min(y1, y2)
+                w, h = abs(x2 - x1), abs(y2 - y1)
+                if w < 5 or h < 5:
+                    return
+                try:
+                    border_win.geometry(f"{w}x{h}+{left}+{top}")
+                    inner.place(x=BORDER, y=BORDER,
+                                width=max(1, w - BORDER * 2),
+                                height=max(1, h - BORDER * 2))
+                    border_win.deiconify()
+                except tk.TclError:
+                    pass
 
             def on_click(x, y, button, pressed):
                 if button != pynput_mouse.Button.left:
@@ -410,23 +434,45 @@ class ChordifyCapture(tk.Tk):
                         dragging[0] = False
                         listener.stop()
 
-            listener = pynput_mouse.Listener(on_click=on_click)
+            def on_move(x, y):
+                if dragging[0]:
+                    # 在主線程更新 UI
+                    try:
+                        hint.after_idle(update_border, sx[0], sy[0], x, y)
+                    except tk.TclError:
+                        pass
+
+            listener = pynput_mouse.Listener(on_click=on_click, on_move=on_move)
             listener.start()
 
-            # 等待完成或 ESC
             def check_done():
                 if not listener.is_alive():
+                    try:
+                        border_win.destroy()
+                    except tk.TclError:
+                        pass
                     hint.destroy()
                 else:
-                    hint.after(100, check_done)
+                    hint.after(50, check_done)
 
-            hint.bind("<Escape>", lambda e: (listener.stop(), hint.destroy()))
-            hint.after(100, check_done)
+            def cancel(e=None):
+                listener.stop()
+                try:
+                    border_win.destroy()
+                except tk.TclError:
+                    pass
+                hint.destroy()
+
+            hint.bind("<Escape>", cancel)
+            hint.after(50, check_done)
             hint.wait_window()
 
         except ImportError:
-            # pynput 不可用，fallback 到手動輸入座標
             hint.destroy()
+            try:
+                border_win.destroy()
+            except tk.TclError:
+                pass
             self._log("⚠ 需要 pynput: pip install pynput", "warn")
             result[0] = self._manual_region_input(title)
 
@@ -599,25 +645,29 @@ class ChordifyCapture(tk.Tk):
         self._safe_log("🎵 開始擷取和弦...", "state")
         self._safe_status("🎵 擷取中...")
 
-        start_perf = time.perf_counter()
-        start_ocr = None
+        # 時間策略：直接用 Chordify OCR 時間（整數秒）作為基準，
+        # 同一秒內用 perf_counter 內插毫秒精度。
+        # 這樣時間永遠和 Chordify 同步，不受點擊延遲影響。
+        last_ocr_sec = None       # 上次 OCR 讀到的整數秒
+        last_ocr_perf = None      # 讀到那個整數秒時的 perf_counter
         last_chord = None
         last_center = None
         last_time_sec = None
-        time_stall_count = 0     # 時間停滯計數
+        time_stall_count = 0
         screenshot_interval = 0
 
-        # Phase 2: 持續擷取（用時間判斷結束）
+        # Phase 2: 持續擷取（用 Chordify 時間判斷結束）
         while self.capturing:
             try:
-                elapsed = time.perf_counter() - start_perf
-
-                # OCR 目前時間
+                # OCR 目前時間（Chordify 顯示的秒數）
                 time_img = capture_region(time_r)
                 current_sec = ocr_time(time_img)
+
                 if current_sec is not None:
-                    if start_ocr is None:
-                        start_ocr = current_sec - elapsed
+                    # 更新 OCR 時間基準（每次讀到新秒數就校正）
+                    if last_ocr_sec is None or current_sec != last_ocr_sec:
+                        last_ocr_sec = current_sec
+                        last_ocr_perf = time.perf_counter()
 
                     # 結束判斷 1: 目前時間 ≥ 總長度 - 2 秒
                     if current_sec >= total_duration - 2:
@@ -625,12 +675,12 @@ class ChordifyCapture(tk.Tk):
                         self._safe_log(f"⏹ 到達歌曲結尾 ({m}:{s:02d})", "state")
                         break
 
-                    # 結束判斷 2: 時間停滯超過 5 秒（播放已停止）
+                    # 結束判斷 2: 時間停滯超過 5 秒
                     if last_time_sec is not None:
                         if current_sec <= last_time_sec:
                             time_stall_count += 1
-                            if time_stall_count >= 50:  # 50 * 0.1s = 5 秒
-                                self._safe_log(f"⏹ 時間停滯 5 秒，判定播放結束", "state")
+                            if time_stall_count >= 50:
+                                self._safe_log("⏹ 時間停滯 5 秒，判定播放結束", "state")
                                 break
                         else:
                             time_stall_count = 0
@@ -661,7 +711,15 @@ class ChordifyCapture(tk.Tk):
                         last_center = center
 
                 if box_moved and chord and chord != last_chord:
-                    precise_time = (start_ocr or 0) + elapsed
+                    # 精確時間 = OCR 整數秒 + perf_counter 內插毫秒
+                    if last_ocr_sec is not None and last_ocr_perf is not None:
+                        sub_sec = time.perf_counter() - last_ocr_perf
+                        precise_time = last_ocr_sec + sub_sec
+                    elif current_sec is not None:
+                        precise_time = float(current_sec)
+                    else:
+                        precise_time = 0.0
+
                     self.records.append((round(precise_time, 3), chord))
                     last_chord = chord
                     self.ref_chords.append(chord)
