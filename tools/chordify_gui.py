@@ -232,6 +232,7 @@ class ChordifyCapture(tk.Tk):
         self.regions = {
             "play_btn": self.cfg.get("play_btn_region"),
             "time": self.cfg.get("time_region"),
+            "duration": self.cfg.get("duration_region"),
             "chord": self.cfg.get("chord_region"),
         }
         self.song_name = tk.StringVar(value=self.cfg.get("last_song", ""))
@@ -275,7 +276,8 @@ class ChordifyCapture(tk.Tk):
 
         self.region_labels = {}
         for i, (key, label) in enumerate([("play_btn", "播放按鈕 ▶/||"),
-                                           ("time", "時間顯示 00:00"),
+                                           ("time", "目前時間 00:00"),
+                                           ("duration", "總長度 03:53"),
                                            ("chord", "和弦網格區域")]):
             row = tk.Frame(region_frame, bg="#1a1a2e")
             row.pack(fill=tk.X, pady=2)
@@ -354,7 +356,7 @@ class ChordifyCapture(tk.Tk):
                 lbl.configure(text="未設定", fg="#888")
 
     def _select_region(self, key):
-        names = {"play_btn": "播放按鈕", "time": "時間顯示", "chord": "和弦網格"}
+        names = {"play_btn": "播放按鈕", "time": "目前時間", "duration": "總長度", "chord": "和弦網格"}
         self.withdraw()
         time.sleep(0.3)
         region = self._do_select(f"框選「{names[key]}」區域")
@@ -417,13 +419,14 @@ class ChordifyCapture(tk.Tk):
             state = detect_button_state(img, tuple(r))
             icon = "||" if state == "playing" else "▶" if state == "stopped" else "?"
             self._log(f"播放按鈕: {icon} ({state})", "state")
-        elif key == "time":
+        elif key in ("time", "duration"):
             t = ocr_time(img)
             if t is not None:
                 m, s = divmod(t, 60)
-                self._log(f"時間: {m}:{s:02d}", "state")
+                label = "目前時間" if key == "time" else "總長度"
+                self._log(f"{label}: {m}:{s:02d} ({t}s)", "state")
             else:
-                self._log("時間: 無法辨識", "warn")
+                self._log(f"{key}: 無法辨識", "warn")
         elif key == "chord":
             chord, center = find_highlighted_chord(img)
             self._log(f"和弦: {chord or '無'}, 位置: {center}", "state")
@@ -465,9 +468,10 @@ class ChordifyCapture(tk.Tk):
         if not self.song_name.get().strip():
             messagebox.showwarning("提示", "請輸入歌曲名稱")
             return
-        for key in ["play_btn", "time", "chord"]:
+        for key in ["play_btn", "time", "duration", "chord"]:
             if not self.regions.get(key):
-                messagebox.showwarning("提示", f"請先框選「{key}」區域")
+                names = {"play_btn": "播放按鈕", "time": "目前時間", "duration": "總長度", "chord": "和弦網格"}
+                messagebox.showwarning("提示", f"請先框選「{names[key]}」區域")
                 return
 
         # 檢查已有
@@ -503,46 +507,45 @@ class ChordifyCapture(tk.Tk):
     # ---- 擷取主迴圈 ----
 
     def _capture_worker(self):
+        import pyautogui
+
         play_r = tuple(self.regions["play_btn"])
         time_r = tuple(self.regions["time"])
+        dur_r = tuple(self.regions["duration"])
         chord_r = tuple(self.regions["chord"])
         name = self.song_name.get().strip()
         lv = self.level.get()
 
-        # Phase 1: 自動點擊播放按鈕
-        import pyautogui
-        img = capture_region(play_r)
-        state = detect_button_state(img, play_r)
+        # Phase 0: 讀取歌曲總長度
+        self._safe_log("讀取歌曲總長度...", "info")
+        total_duration = None
+        for attempt in range(5):
+            dur_img = capture_region(dur_r)
+            total_duration = ocr_time(dur_img)
+            if total_duration and total_duration > 10:
+                break
+            time.sleep(0.3)
 
-        if state == "playing":
-            self._safe_log("偵測到 || (已在播放中)", "state")
+        if total_duration:
+            m, s = divmod(total_duration, 60)
+            self._safe_log(f"歌曲總長: {m}:{s:02d} ({total_duration}s)", "state")
         else:
-            self._safe_log("偵測到 ▶，自動點擊播放...", "info")
-            self._safe_status("▶ 點擊播放按鈕...")
-            cx = play_r[0] + play_r[2] // 2
-            cy = play_r[1] + play_r[3] // 2
-            pyautogui.click(cx, cy)
-            time.sleep(1.0)
+            self._safe_log("⚠ 無法讀取總長度，將持續擷取直到手動停止", "warn")
+            total_duration = 9999  # 不自動停止
 
-            # 確認已開始播放
-            img = capture_region(play_r)
-            state = detect_button_state(img, play_r)
-            if state == "playing":
-                self._safe_log("✓ 播放已開始", "state")
-            else:
-                self._safe_log("⚠ 未偵測到播放，再試一次...", "warn")
-                pyautogui.click(cx, cy)
-                time.sleep(1.0)
-                img = capture_region(play_r)
-                state = detect_button_state(img, play_r)
-                if state != "playing":
-                    self._safe_log("⚠ 仍無法確認播放狀態，繼續擷取", "warn")
+        # Phase 1: 自動點擊播放按鈕
+        self._safe_log("自動點擊播放...", "info")
+        self._safe_status("▶ 點擊播放按鈕...")
+        cx = play_r[0] + play_r[2] // 2
+        cy = play_r[1] + play_r[3] // 2
+        pyautogui.click(cx, cy)
+        time.sleep(1.5)
 
         if not self.capturing:
             self._finish(name, lv)
             return
 
-        self._safe_log("▶ 偵測到 || (播放中)，開始擷取", "state")
+        self._safe_log("🎵 開始擷取和弦...", "state")
         self._safe_status("🎵 擷取中...")
 
         start_perf = time.perf_counter()
@@ -550,35 +553,38 @@ class ChordifyCapture(tk.Tk):
         last_chord = None
         last_center = None
         last_time_sec = None
-        btn_counter = 0
-        screenshot_interval = 0  # 每 N 次擷取一次截圖
-        was_playing = True
+        time_stall_count = 0     # 時間停滯計數
+        screenshot_interval = 0
 
-        # Phase 2: 持續擷取
+        # Phase 2: 持續擷取（用時間判斷結束）
         while self.capturing:
             try:
                 elapsed = time.perf_counter() - start_perf
 
-                # OCR 時間
+                # OCR 目前時間
                 time_img = capture_region(time_r)
                 current_sec = ocr_time(time_img)
                 if current_sec is not None:
                     if start_ocr is None:
                         start_ocr = current_sec - elapsed
-                    last_time_sec = current_sec
 
-                # 播放按鈕（每 15 次 ≈ 1.5 秒）
-                btn_counter += 1
-                if btn_counter >= 15:
-                    btn_counter = 0
-                    btn_img = capture_region(play_r)
-                    btn_state = detect_button_state(btn_img, play_r)
-
-                    if btn_state == "stopped" and was_playing:
-                        # || → ▶ 轉換：歌曲結束
-                        self._safe_log("⏹ 偵測到 ▶ (播放結束)", "state")
+                    # 結束判斷 1: 目前時間 ≥ 總長度 - 2 秒
+                    if current_sec >= total_duration - 2:
+                        m, s = divmod(current_sec, 60)
+                        self._safe_log(f"⏹ 到達歌曲結尾 ({m}:{s:02d})", "state")
                         break
-                    was_playing = (btn_state == "playing")
+
+                    # 結束判斷 2: 時間停滯超過 5 秒（播放已停止）
+                    if last_time_sec is not None:
+                        if current_sec <= last_time_sec:
+                            time_stall_count += 1
+                            if time_stall_count >= 50:  # 50 * 0.1s = 5 秒
+                                self._safe_log(f"⏹ 時間停滯 5 秒，判定播放結束", "state")
+                                break
+                        else:
+                            time_stall_count = 0
+
+                    last_time_sec = current_sec
 
                 # 和弦偵測
                 chord_img = capture_region(chord_r)
