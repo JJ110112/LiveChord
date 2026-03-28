@@ -234,8 +234,8 @@ class ChordifyCapture(tk.Tk):
             "time": self.cfg.get("time_region"),
             "chord": self.cfg.get("chord_region"),
         }
-        self.song_name = tk.StringVar()
-        self.level = tk.StringVar(value="Lv1")
+        self.song_name = tk.StringVar(value=self.cfg.get("last_song", ""))
+        self.level = tk.StringVar(value=self.cfg.get("last_level", "Lv1"))
         self.capturing = False
         self.records = []           # [(time_sec, chord)]
         self.screenshots = []       # [PIL.Image] 分段截圖
@@ -478,6 +478,11 @@ class ChordifyCapture(tk.Tk):
             if not messagebox.askyesno("已存在", f"已有 {name}.lab，要覆蓋嗎？"):
                 return
 
+        # 記住歌曲選擇
+        self.cfg["last_song"] = name
+        self.cfg["last_level"] = lv
+        save_config(self.cfg)
+
         # 重置
         self.records = []
         self.screenshots = []
@@ -600,16 +605,17 @@ class ChordifyCapture(tk.Tk):
 
                 if box_moved and chord and chord != last_chord:
                     precise_time = (start_ocr or 0) + elapsed
-                    self.records.append((round(precise_time, 2), chord))
+                    self.records.append((round(precise_time, 3), chord))
                     last_chord = chord
                     self.ref_chords.append(chord)
 
-                    m, s = divmod(int(precise_time), 60)
-                    ms = int((precise_time % 1) * 100)
+                    m = int(precise_time // 60)
+                    s = int(precise_time % 60)
+                    ms = int((precise_time % 1) * 1000)
                     count = len(self.records)
-                    self._safe_log(f"  {m}:{s:02d}.{ms:02d}  {chord}", "chord")
+                    self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}", "chord")
                     self._safe_progress(f"和弦: {count} | 截圖: {len(self.screenshots)} | "
-                                        f"時間: {m}:{s:02d}")
+                                        f"時間: {m}:{s:02d}.{ms:03d}")
 
             except Exception as e:
                 self._safe_log(f"⚠ {e}", "warn")
@@ -647,7 +653,7 @@ class ChordifyCapture(tk.Tk):
         if self.ref_chords:
             txt_path = save_dir / f"{name}.chords.txt"
             txt_path.write_text("\n".join(
-                f"{t:.2f}\t{c}" for t, c in sorted(set(self.records))
+                f"{t:.3f}\t{c}" for t, c in sorted(set(self.records))
             ), encoding="utf-8")
             self._safe_log(f"✓ 已儲存 {txt_path.name}", "state")
 
