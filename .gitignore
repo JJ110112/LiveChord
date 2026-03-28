@@ -22,3 +22,7 @@ start-hidden.vbs
 
 # Doc 參考用原始專案（太大不進版控）
 doc/SheetMusicChord/
+
+# 測試音檔（太大不進版控，只保留 criteria 和腳本）
+data/test_songs/**/*.flac
+data/test_songs/**/results.json

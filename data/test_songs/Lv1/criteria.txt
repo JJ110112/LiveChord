@@ -1,0 +1,55 @@
+================================================================================
+Lv1 — 三和弦流行曲（入門級）
+================================================================================
+
+目標：穩定辨識大調/小調三和弦（Major, Minor），key 100% 正確
+特徵：簡單和弦（3-5 種）、4/4 拍、清晰的鋼琴/吉他伴奏、慢~中速
+
+通過標準：Key 正確率 100%，和弦正確率 ≥ 80%
+
+--------------------------------------------------------------------------------
+測試曲目（請將 FLAC 放入此資料夾）
+--------------------------------------------------------------------------------
+
+1. Let It Be - The Beatles (or ABBA - Dancing Queen)
+   NAS: Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac
+   Key: A (Dancing Queen)
+   BPM: ~100
+   Expected chords: A, D, E, F#m, Bm (少數幾個三和弦循環)
+   特徵：清晰鋼琴/合成器，和弦變化規律
+
+2. Hotel California - Eagles (Live)
+   NAS: Z:/POP/E-POP/Eagles/Eagles - Hell Freezes Over (Remaster 2018)/Hotel California (Live On MTV, 1994).flac
+   Key: Bm
+   BPM: ~74
+   Expected chords: Bm, F#, A, E, G, D, Em
+   特徵：經典吉他伴奏，和弦進行清晰，是檢驗基本辨識的標竿
+
+3. Shape of You - Ed Sheeran
+   NAS: Z:/POP/E-POP/Ed Sheeran/Shape of You.flac
+   Key: C#m
+   BPM: ~96
+   Expected chords: C#m, F#m, A, B (4 chord loop)
+   特徵：循環和弦，電子節拍明確
+
+4. Mamma Mia - ABBA
+   NAS: Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Mamma Mia.flac
+   Key: D
+   BPM: ~136
+   Expected chords: D, A, G, Bm
+   特徵：明亮流行，鋼琴為主，和弦清晰
+
+5. Billie Jean - Michael Jackson
+   NAS: Z:/POP/E-POP/Michael Jackson/Michael Jackson - The Essential Michael Jackson/Billie Jean.flac
+   Key: F#m
+   BPM: ~117
+   Expected chords: F#m, G#m (主要兩個和弦循環)
+   特徵：bass line 非常清晰，和弦極簡
+
+================================================================================
+驗證方式
+================================================================================
+cd backend
+python chord_detect.py "../data/test_songs/Lv1/Dancing Queen.flac"
+
+將輸出的 Key 和 chords 與上述 Expected 比對，計算正確率。

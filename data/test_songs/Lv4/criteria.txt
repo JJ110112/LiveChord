@@ -1,0 +1,57 @@
+================================================================================
+Lv4 — 複雜爵士/Fusion（高級）
+================================================================================
+
+目標：辨識 altered chords、快速和弦變換、轉調
+特徵：Fusion 編曲、吉他/鍵盤即興、密集和聲、key change
+
+通過標準：Key 正確率 ≥ 70%，和弦正確率 ≥ 50%
+
+--------------------------------------------------------------------------------
+測試曲目（請將 FLAC 放入此資料夾）
+--------------------------------------------------------------------------------
+
+1. So What - Miles Davis
+   NAS: Z:/Jazz/Miles Davis/Miles Davis - Kind Of Blue/
+   Key: D Dorian → Eb Dorian
+   BPM: ~136
+   Expected chords: Dm7 (16 bars) → Ebm7 (8 bars) → Dm7 (8 bars)
+   特徵：Modal Jazz 經典，和弦極簡但調式轉換需準確辨識
+   （轉調偵測的嚴格考驗）
+
+2. Blue in Green - Miles Davis
+   NAS: Z:/Jazz/Miles Davis/Miles Davis - Kind Of Blue/
+   Key: Bb → modulations
+   BPM: ~58 (very slow)
+   Expected chords: Bbmaj7, A7alt, Dm7, Db7, Cmaj7, Cm7, F7...
+   特徵：慢速 ballad 但和弦非常密集，每小節甚至每半小節換一次
+
+3. Mediterranean Sundance - Al Di Meola, Paco de Lucía, John McLaughlin (Live)
+   NAS: Z:/Jazz/Al Di Meola/Al Di Meola - Friday Night in San Francisco/Mediterranean Sundance ／ Rio Ancho (Live).flac
+   Key: varies (Flamenco modes)
+   BPM: ~200+ (極快)
+   Expected chords: Am, G, F, E, Dm (flamenco progression)
+   特徵：三把吉他極速演奏，Flamenco 風格，speed picking
+
+4. Espresso - Bob James
+   NAS: Z:/Jazz/Bob James/Bob James - Espresso/
+   Key: (待測定)
+   Expected chords: 複雜 Fusion 和聲
+   特徵：Jazz-Funk Fusion，合成器+電鋼琴，節奏複雜
+
+5. Stevie Wonder - For Once In My Life (任選一首)
+   NAS: Z:/POP/E-POP/Stevie Wonder/Stevie Wonder - For Once In My Life/
+   Key: varies
+   Expected chords: 豐富的 Stevie Wonder 和聲（#9, b13, sus 等）
+   特徵：Motown + Jazz-influenced，複雜和弦配置但節奏感清晰
+
+================================================================================
+驗證方式
+================================================================================
+cd backend
+python chord_detect.py "../data/test_songs/Lv4/So What.flac"
+
+重點驗證：
+- Modal 轉調是否被偵測（Dm → Ebm → Dm）
+- 快速和弦變化是否跟得上（Blue in Green）
+- 極快速度的 beat tracking 是否崩潰（Mediterranean Sundance）

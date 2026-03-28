@@ -1,0 +1,55 @@
+================================================================================
+Lv5 — 極難：古典/前衛/自由爵士（挑戰級）
+================================================================================
+
+目標：探索偵測極限，辨識非傳統和聲
+特徵：古典鋼琴（無流行和弦概念）、自由即興、無調性段落
+
+通過標準：Key 正確率 ≥ 60%，和弦正確率 ≥ 40%
+（此級別為探索性質，主要用於發現演算法瓶頸）
+
+--------------------------------------------------------------------------------
+測試曲目（請將 FLAC 放入此資料夾）
+--------------------------------------------------------------------------------
+
+1. Chopin - Polonaise in A Flat Major, Op.53 "Heroic"
+   NAS: Z:/Classics/Alfred Brendel - Chopin Complete Polonaises and Waltzes/Polonaise in A Flat Major, Op. 53.flac
+   Key: Ab
+   Expected: 古典和聲不適用流行和弦模板，但根音和調性應大致正確
+   特徵：古典鋼琴獨奏，極快段落+強烈動態變化
+
+2. Alice Coltrane - 任選一首
+   NAS: Z:/Jazz/Alice Coltrane/
+   Key: Free / Modal
+   Expected: 自由爵士，和弦概念模糊
+   特徵：豎琴/鋼琴即興，前衛爵士，可能無法以傳統和弦描述
+
+3. Logic System - 任選一首
+   NAS: Z:/Electronic Dance Music/Logic System/
+   Key: varies
+   Expected: 電子合成器，和弦結構非傳統
+   特徵：早期電子音樂，合成器音色可能干擾 chroma 分析
+
+4. Kind Of Blue 完整專輯測試 - Freddie Freeloader
+   NAS: Z:/Jazz/Miles Davis/Miles Davis - Kind Of Blue/
+   Key: Bb (12-bar blues)
+   Expected chords: Bb7, Eb7, F7, Ab7 (jazz blues changes)
+   特徵：比 So What 更傳統的 blues form，但有爵士替代和弦
+
+5. Al Di Meola - Fantasia Suite (Live)
+   NAS: Z:/Jazz/Al Di Meola/Al Di Meola - Friday Night in San Francisco/Fantasia Suite (Live).flac
+   Key: varies (through-composed)
+   Expected: 多段式結構，每段不同調性和風格
+   特徵：古典吉他+爵士即興混合，段落間無明確和弦進行
+
+================================================================================
+驗證方式
+================================================================================
+cd backend
+python chord_detect.py "../data/test_songs/Lv5/Polonaise in A Flat Major, Op. 53.flac"
+
+重點觀察（非嚴格通過/失敗）：
+- 古典音樂的調性偵測是否合理
+- 自由爵士是否產生過多虛假和弦
+- 電子音樂的合成器是否干擾 HPSS
+- 演算法在極端情況下是否崩潰（crash / hang）
