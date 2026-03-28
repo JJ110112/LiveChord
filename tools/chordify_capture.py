@@ -1,15 +1,14 @@
 """
 Chordify Ground Truth 擷取工具
 ===============================
-在 Chordify 播放歌曲時，自動擷取螢幕上的時間戳和高亮和弦。
+全自動：框選區域 → 自動點擊播放 → 自動擷取 → 播完自動停止儲存
 
 使用方式:
-1. 在瀏覽器開啟 Chordify 歌曲頁面
+1. 在瀏覽器開啟 Chordify 歌曲頁面（Chord overview 模式）
 2. 執行此腳本: python chordify_capture.py
-3. 首次使用會要求框選 3 個區域（座標會記住）
-4. 在 Chordify 按播放
-5. 按 F6 開始擷取（偵測到播放結束會自動停止）
-6. 按 ESC 手動結束
+3. 首次使用會要求框選 3 個區域（之後自動記住）
+4. 程式自動點擊播放、擷取、播完停止並儲存
+5. ESC 可隨時手動中止
 """
 
 import sys
@@ -24,6 +23,7 @@ import numpy as np
 from PIL import Image
 import easyocr
 import keyboard
+import pyautogui
 
 # ---------------------------------------------------------------------------
 # 路徑
@@ -149,11 +149,18 @@ def detect_play_button_state(img) -> str:
 def is_still_playing() -> bool:
     """檢查播放按鈕是否仍在播放狀態"""
     if not STATE["play_btn_region"]:
-        return True  # 無法偵測，假設仍在播放
-
+        return True
     img = capture_region(STATE["play_btn_region"])
-    state = detect_play_button_state(img)
-    return state == "playing"
+    return detect_play_button_state(img) == "playing"
+
+
+def click_play_button():
+    """點擊播放按鈕"""
+    x, y, w, h = STATE["play_btn_region"]
+    cx = x + w // 2
+    cy = y + h // 2
+    pyautogui.click(cx, cy)
+    time.sleep(0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -482,7 +489,7 @@ def setup_regions():
 
 def main():
     print("=" * 60)
-    print("  Chordify Ground Truth 擷取工具")
+    print("  Chordify Ground Truth 擷取工具（全自動）")
     print("=" * 60)
 
     song_name = input("\n  歌曲名稱: ").strip()
@@ -507,32 +514,44 @@ def main():
     # 設定區域
     setup_regions()
 
-    # 準備擷取
+    # 全自動流程
     print("\n" + "=" * 60)
-    print("  準備就緒！")
-    print("  ┌─────────────────────────────────────────────┐")
-    print("  │  F6  = 開始/暫停擷取                        │")
-    print("  │  ESC = 手動結束並儲存                       │")
-    print("  │  播放按鈕 || → ▶ 時自動停止                 │")
-    print("  └─────────────────────────────────────────────┘")
-    print("  請在 Chordify 按播放，然後按 F6 開始")
+    print("  全自動模式：點擊播放 → 擷取 → 播完自動儲存")
+    print("  ESC 可隨時手動中止")
     print("=" * 60)
 
+    # 啟動背景擷取線程
     capture_thread = threading.Thread(target=capture_loop, daemon=True)
     capture_thread.start()
 
-    def on_f6():
-        if STATE.get("finished"):
-            print("\n  已完成，按 ESC 儲存")
-            return
-        STATE["capturing"] = not STATE["capturing"]
-        if STATE["capturing"]:
-            print(f"\n  ▶ 擷取中...")
-        else:
-            print(f"\n  ⏸ 暫停 ({len(STATE['records'])} chords)")
+    # ESC 監聽（背景）
+    def on_esc():
+        STATE["running"] = False
+        STATE["capturing"] = False
+    keyboard.add_hotkey("esc", on_esc)
 
-    keyboard.add_hotkey("F6", on_f6)
-    keyboard.wait("esc")
+    # 自動點擊播放
+    print("\n  ▶ 點擊播放按鈕...")
+    click_play_button()
+    time.sleep(1)
+
+    # 確認已開始播放
+    if is_still_playing():
+        print("  ✓ 偵測到 || 圖示，播放中")
+    else:
+        print("  ⚠ 未偵測到播放狀態，嘗試再次點擊...")
+        click_play_button()
+        time.sleep(1)
+        if not is_still_playing():
+            print("  ⚠ 仍無法確認播放，繼續擷取（可按 ESC 中止）")
+
+    # 開始擷取
+    STATE["capturing"] = True
+    print("  🎵 開始擷取和弦...\n")
+
+    # 等待完成（播放結束或 ESC）
+    while STATE["running"] and not STATE.get("finished"):
+        time.sleep(0.5)
 
     STATE["running"] = False
     STATE["capturing"] = False
@@ -541,8 +560,63 @@ def main():
 
     if STATE["records"]:
         save_results(song_name, level)
+
+        # 詢問是否繼續下一首
+        next_song = input("\n  繼續下一首？輸入歌曲名稱（Enter 跳過）: ").strip()
+        if next_song:
+            # 重置狀態
+            STATE.update({"capturing": False, "running": True, "finished": False,
+                          "records": [], "last_chord": None, "last_time": None})
+            # 遞迴呼叫（保留區域設定）
+            main_continue(next_song, level)
     else:
         print("  無資料，未儲存")
+
+
+def main_continue(song_name: str, level: str):
+    """連續擷取下一首（區域設定不變）"""
+    # 檢查已有
+    if level:
+        existing = TEST_SONGS_DIR / level / f"{song_name}.lab"
+    else:
+        existing = TEST_SONGS_DIR / f"{song_name}.lab"
+
+    if existing.is_file():
+        data = json.loads(existing.read_text(encoding="utf-8"))
+        n = len(data.get("entries", []))
+        print(f"\n  ⚠ 已存在 ({n} 個和弦)")
+        if input("  重新擷取？(y/n): ").strip().lower() != 'y':
+            return
+
+    print(f"\n  準備擷取: {song_name}")
+    print("  請在 Chordify 切換到該歌曲頁面，準備好後按 Enter")
+    input("  按 Enter 開始...")
+
+    capture_thread = threading.Thread(target=capture_loop, daemon=True)
+    capture_thread.start()
+
+    print("  ▶ 點擊播放...")
+    click_play_button()
+    time.sleep(1)
+
+    STATE["capturing"] = True
+    print("  🎵 擷取中...\n")
+
+    while STATE["running"] and not STATE.get("finished"):
+        time.sleep(0.5)
+
+    STATE["running"] = False
+    STATE["capturing"] = False
+
+    print(f"\n  擷取結束，共 {len(STATE['records'])} 個和弦")
+    if STATE["records"]:
+        save_results(song_name, level)
+
+        next_song = input("\n  繼續下一首？輸入名稱（Enter 跳過）: ").strip()
+        if next_song:
+            STATE.update({"capturing": False, "running": True, "finished": False,
+                          "records": [], "last_chord": None, "last_time": None})
+            main_continue(next_song, level)
 
 
 if __name__ == "__main__":
