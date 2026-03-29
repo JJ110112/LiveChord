@@ -352,8 +352,21 @@ class ChordifyCapture(tk.Tk):
                                   state=tk.DISABLED, **btn_style)
         self.btn_stop.pack(side=tk.LEFT, padx=5)
 
-        self.btn_screenshot = tk.Button(ctrl, text="📷 擷取當前畫面", command=self._take_screenshot, **btn_style)
-        self.btn_screenshot.pack(side=tk.LEFT, padx=5)
+        # ---- 截圖面板 ----
+        shot_frame = tk.LabelFrame(self, text=" 樂譜截圖（多頁拼接）", bg="#1a1a2e", fg="#888",
+                                   font=("Segoe UI", 10), padx=10, pady=5)
+        shot_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        shot_btns = tk.Frame(shot_frame, bg="#1a1a2e")
+        shot_btns.pack(fill=tk.X)
+
+        tk.Button(shot_btns, text="📷 框選擷取", command=self._take_screenshot_select, **btn_style).pack(side=tk.LEFT, padx=2)
+        tk.Button(shot_btns, text="🗑 移除最後一張", command=self._remove_last_screenshot, **btn_style).pack(side=tk.LEFT, padx=2)
+        tk.Button(shot_btns, text="✅ 拼接儲存 + OCR", command=self._stitch_and_ocr, **btn_style).pack(side=tk.LEFT, padx=2)
+
+        self.screenshot_list_var = tk.StringVar(value="截圖: 0 張")
+        tk.Label(shot_btns, textvariable=self.screenshot_list_var,
+                 bg="#1a1a2e", fg="#888", font=("Consolas", 9), padx=10).pack(side=tk.LEFT)
 
         # ---- 狀態 ----
         status_frame = tk.Frame(self, bg="#1a1a2e")
@@ -598,15 +611,89 @@ class ChordifyCapture(tk.Tk):
 
     # ---- 手動截圖 (分段拼接用) ----
 
-    def _take_screenshot(self):
-        r = self.regions.get("chord")
-        if not r:
-            self._log("⚠ 請先設定和弦區域", "warn")
+    def _take_screenshot_select(self):
+        """框選螢幕區域擷取截圖，加入清單"""
+        self._log("📷 請在螢幕上框選要擷取的樂譜區域...", "info")
+        self.withdraw()
+        time.sleep(0.3)
+        region = self._do_select("框選樂譜區域")
+        self.deiconify()
+
+        if not region:
+            self._log("  取消擷取", "info")
             return
-        img = capture_region(tuple(r))
+
+        img = capture_region(region)
         self.screenshots.append(img)
-        self._log(f"📷 擷取截圖 #{len(self.screenshots)} ({img.size[0]}×{img.size[1]})", "info")
-        self.progress_var.set(f"和弦: {len(self.records)} | 截圖: {len(self.screenshots)} | 時間: --:--")
+        n = len(self.screenshots)
+        self._log(f"  ✓ 截圖 #{n} ({img.size[0]}×{img.size[1]})", "state")
+        self.screenshot_list_var.set(f"截圖: {n} 張")
+
+    def _remove_last_screenshot(self):
+        """移除最後一張截圖"""
+        if not self.screenshots:
+            self._log("  無截圖可移除", "warn")
+            return
+        self.screenshots.pop()
+        n = len(self.screenshots)
+        self._log(f"  🗑 已移除，剩餘 {n} 張", "info")
+        self.screenshot_list_var.set(f"截圖: {n} 張")
+
+    def _stitch_and_ocr(self):
+        """拼接所有截圖 → 存 .png → OCR 辨識和弦 → 存 .chords.txt"""
+        if not self.screenshots:
+            self._log("⚠ 無截圖，請先擷取", "warn")
+            return
+
+        name = self.song_name.get().strip()
+        lv = self.level.get()
+        if not name:
+            messagebox.showwarning("提示", "請輸入歌曲名稱")
+            return
+
+        save_dir = TEST_SONGS_DIR / lv
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1. 上下拼接
+        total_h = sum(s.height for s in self.screenshots)
+        max_w = max(s.width for s in self.screenshots)
+        combined = Image.new("RGB", (max_w, total_h), (255, 255, 255))
+        y = 0
+        for s in self.screenshots:
+            combined.paste(s, (0, y))
+            y += s.height
+
+        png_path = save_dir / f"{name}.png"
+        combined.save(str(png_path))
+        self._log(f"✓ 已儲存 {png_path.name} ({max_w}×{total_h}, {len(self.screenshots)} 頁)", "state")
+
+        # 2. OCR 辨識和弦序列
+        self._log("🔍 OCR 辨識和弦中...", "info")
+        self.status_var.set("🔍 OCR 辨識中...")
+
+        def do_ocr():
+            try:
+                sys.path.insert(0, str(TOOLS_DIR))
+                from chordify_ocr import extract_chords_from_screenshot, sequence_to_compact, save_results
+                seq = extract_chords_from_screenshot(str(png_path), verbose=False)
+                compact = sequence_to_compact(seq)
+
+                # 存 .chords.txt
+                save_results(seq, name, str(save_dir))
+
+                unique = sorted(set(c for c in seq if c))
+                chord_count = sum(1 for c in seq if c)
+                total_beats = len(seq)
+
+                self._safe_log(f"✓ OCR 完成: {total_beats} 拍, {chord_count} 個和弦變化", "state")
+                self._safe_log(f"  和弦: {', '.join(unique)}", "info")
+                self._safe_log(f"  序列: {compact[:100]}{'...' if len(compact) > 100 else ''}", "info")
+                self._safe_status(f"✓ {name}.png + .chords.txt 已儲存")
+            except Exception as e:
+                self._safe_log(f"⚠ OCR 失敗: {e}", "error")
+                self._safe_status("OCR 失敗")
+
+        threading.Thread(target=do_ocr, daemon=True).start()
 
     # ---- 開始擷取 ----
 
