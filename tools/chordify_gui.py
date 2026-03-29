@@ -1468,11 +1468,23 @@ class ChordifyCapture(tk.Tk):
         # 在格線之間跳動（不是連續滑動）。
         # 每次 cx 跳動 = 新的一拍。
         #
+        # Phase 2: 追蹤方塊
+        #
+        # Chord diagrams 捲動模式的方塊行為：
+        # 1. 方塊平時穩定在固定 x 位置（「靜止位置」~480px）
+        # 2. 新的一拍來時，方塊先向右跳 ~100px（離開靜止區）
+        # 3. 頁面捲動完成後，方塊回到靜止位置
+        # 4. 每次「跳出去」= 一拍
+        #
+        # 策略：偵測 cx 從靜止區向右跳出（cx > 靜止位置 + 閾值）
+        # 跳出後等方塊回到靜止區，才能偵測下一次跳出
+        #
         self._safe_status("🔍 Phase 2: 追蹤方塊...")
-        last_cx = -1
-        beat_count = 0   # 方塊移動次數 = 拍數
+        beat_count = 0
         records = []
-        MIN_MOVE = 15    # 最小移動距離（px）才算跳了一拍
+        resting_cx = None      # 方塊的靜止位置（動態學習）
+        JUMP_THRESHOLD = 80    # cx 超過靜止位置 80px = 跳出
+        waiting_return = False # 正在等方塊回到靜止區
 
         while cap.isOpened():
             ret, frame = cap.read()
@@ -1480,7 +1492,7 @@ class ChordifyCapture(tk.Tk):
                 break
             frame_num += 1
 
-            # 每 30 幀 OCR 時間（持續校正）
+            # 每 30 幀 OCR 時間
             if frame_num % 30 == 0:
                 time_sub = get_time_subframe(frame)
                 time_rgb = cv2.cvtColor(time_sub, cv2.COLOR_BGR2RGB)
@@ -1494,7 +1506,6 @@ class ChordifyCapture(tk.Tk):
                 pct = int(frame_num / total_frames * 100)
                 self._safe_progress(f"🔍 分析: {frame_num}/{total_frames} ({pct}%)")
 
-            # 從錄影幀裁切和弦區域
             chord_sub = get_chord_subframe(frame)
             rgb = cv2.cvtColor(chord_sub, cv2.COLOR_BGR2RGB)
             pil_img = Image.fromarray(rgb)
@@ -1505,18 +1516,26 @@ class ChordifyCapture(tk.Tk):
 
             cx, cy = center
 
-            # 偵測方塊跳動（cx 變化 > MIN_MOVE）
+            # 學習靜止位置（用最常出現的 cx 附近值）
+            if resting_cx is None:
+                resting_cx = cx
+                continue
+
             new_beat = False
-            if last_cx < 0:
-                new_beat = True
-            else:
-                dx = abs(cx - last_cx)
-                if dx > MIN_MOVE:
+
+            if not waiting_return:
+                # 等待跳出：cx 向右離開靜止位置
+                if cx > resting_cx + JUMP_THRESHOLD:
                     new_beat = True
+                    waiting_return = True
+            else:
+                # 等待回到靜止區：cx 回到靜止位置附近
+                if abs(cx - resting_cx) < 30:
+                    waiting_return = False
+                    # 更新靜止位置（可能微調）
+                    resting_cx = resting_cx * 0.9 + cx * 0.1
 
             if new_beat:
-                last_cx = cx
-                # 用移動計數對應 ref_beats（第 N 次移動 = 第 N 拍）
                 chord = ref_beats[beat_count] if beat_count < len(ref_beats) else ""
                 beat_count += 1
 
