@@ -1271,28 +1271,34 @@ class ChordifyCapture(tk.Tk):
         t_ocr.start()
         t_time.start()
 
-        # ---- Producer: 快速截圖 + 格子邊界判斷（主迴圈）----
-        #
-        # 關鍵改進：不用「移動 15px」觸發，改用「跨過格子邊界」觸發。
-        # Chordify 的高亮方塊是平滑移動的，同一格內會滑動多次。
-        # 只有方塊中心 x 跨到下一個格子邊界時，才算「新的一拍」。
-        #
+        # ---- Producer: 精確格子邊界判斷（用 GIMP 標註的 beat_boundaries）----
         screenshot_interval = 0
-        current_grid_idx = -1  # 目前在第幾格（x 方向）
-        current_row_idx = -1   # 目前在第幾行（y 方向）
+        current_grid_idx = -1
+        current_row_idx = -1
 
-        # 和弦區域的左邊界
-        chord_x_offset = chord_r[0]
-        chord_y_offset = chord_r[2]  # 這是寬度，不是 y 偏移
+        # 載入精確格子邊界（從 GIMP 標註的彩色格線分析得出）
+        beat_bounds = self.cfg.get("beat_boundaries")
+        row_h = self.cfg.get("row_height", 112)
+
+        def _cx_to_grid(cx):
+            """用精確邊界表查詢 cx 在第幾格"""
+            if beat_bounds:
+                for i, (x1, x2) in enumerate(beat_bounds):
+                    if x1 <= cx < x2:
+                        return i
+                # 超出最後一格
+                if cx >= beat_bounds[-1][1]:
+                    return len(beat_bounds) - 1
+                return 0
+            else:
+                # fallback: 均分
+                return int(cx / grid_width) if grid_width > 0 else 0
 
         while self.capturing and not shared["stop"]:
             try:
                 now = time.perf_counter()
 
-                # 截圖（~10ms）
                 chord_img = capture_region(chord_r)
-
-                # 方塊位置偵測（~3ms）
                 center = _find_dark_block_center(chord_img)
 
                 new_beat = False
@@ -1300,20 +1306,15 @@ class ChordifyCapture(tk.Tk):
 
                 if center:
                     cx, cy = center
-
-                    # 計算方塊在第幾格、第幾行
-                    row_h = self.cfg.get("row_height", 112)
-                    new_grid = int(cx / grid_width) if grid_width > 0 else 0
+                    new_grid = _cx_to_grid(cx)
                     new_row = int(cy / row_h) if row_h > 0 else 0
 
                     if current_grid_idx < 0:
-                        # 第一次偵測
                         new_beat = True
                         current_grid_idx = new_grid
                         current_row_idx = new_row
                     elif new_row != current_row_idx:
-                        # 換行：視為下一拍，不做漏拍補償
-                        # （行末空白和行首空白不是漏拍）
+                        # 換行
                         new_beat = True
                         jump_beats = 0
                         current_grid_idx = new_grid
@@ -1321,12 +1322,10 @@ class ChordifyCapture(tk.Tk):
                     elif new_grid > current_grid_idx:
                         # 同行向右跨格
                         new_beat = True
-                        jump_beats = new_grid - current_grid_idx - 1
-                        jump_beats = max(0, jump_beats)
+                        jump_beats = max(0, new_grid - current_grid_idx - 1)
                         current_grid_idx = new_grid
                     elif new_grid < current_grid_idx:
-                        # 同行向左（不正常，忽略）
-                        pass
+                        pass  # 同行向左，忽略
                     # else: 同一格內滑動 → 忽略
 
                 if not new_beat:

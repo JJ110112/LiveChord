@@ -238,15 +238,23 @@ def extract_chords_grid(image_path: str, cell_w: int = None, cell_h: int = None,
     if verbose:
         print(f"  行: {n_rows} 行 (列高={row_h}px)")
 
-    # 偵測列：先嘗試自動格線偵測，若結果不合理則用均分
-    cols = detect_grid_columns(gray, row_h, sample_y=rows[1][0] if len(rows) > 1 else rows[0][0],
-                               verbose=verbose)
-
-    # 從 config 讀取每列拍數
-    beats_per_row = 8
+    # 偵測列：優先用 GIMP 標註的 beat_boundaries，其次自動偵測，最後均分
+    beats_per_row = 16
+    beat_bounds = None
     if CONFIG_FILE.is_file():
         cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        beats_per_row = cfg.get("beats_per_row", 8)
+        beats_per_row = cfg.get("beats_per_row", 16)
+        beat_bounds = cfg.get("beat_boundaries")
+
+    if beat_bounds and len(beat_bounds) > 0:
+        # 使用精確的格子邊界（從 GIMP 彩色格線標註）
+        pad = 5
+        cols = [(x1 + pad, x2 - pad) for x1, x2 in beat_bounds]
+        if verbose:
+            print(f"  使用精確格子邊界: {len(cols)} 拍 (from beat_boundaries)")
+    else:
+        cols = detect_grid_columns(gray, row_h, sample_y=rows[1][0] if len(rows) > 1 else rows[0][0],
+                                   verbose=verbose)
 
     # 驗證列數是否合理
     expected_min = beats_per_row - 1
