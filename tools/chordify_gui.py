@@ -1581,21 +1581,21 @@ class ChordifyCapture(tk.Tk):
 
             frame_num += 1
 
-        # 過濾：只用播放開始後且 OCR 時間 > 0 的校正點
-        time_calibration = [(f, t) for f, t in time_calibration if f >= play_start_frame and t > 0]
-        self._safe_log(f"  時間校正點（播放後）: {len(time_calibration)} 個", "info")
-        if time_calibration:
-            f0, t0 = time_calibration[0]
-            self._safe_log(f"  第一個校正點: frame {f0} = {t0}s", "info")
+        # 注意：Phase 1 結束時校正表可能是空的（因為 break 在 OCR 之前）
+        # Phase 2 會繼續收集。所以 frame_to_time 要動態查詢 time_calibration。
+        self._safe_log(f"  Phase 1 校正點: {len(time_calibration)} 個", "info")
 
         def frame_to_time(fn):
-            """用最近的 OCR 校正點 + 幀差算精確時間"""
-            if not time_calibration:
+            """用最近的 OCR 校正點 + 幀差算精確時間。
+            校正表在 Phase 2 持續成長，動態查詢。"""
+            # 只用播放開始後且 t > 0 的校正點
+            valid = [(f, t) for f, t in time_calibration if f >= play_start_frame and t > 0]
+            if not valid:
                 return (fn - play_start_frame) / fps
 
             # 找 fn 之前最近的校正點
-            best_frame, best_time = time_calibration[0]
-            for cf, ct in time_calibration:
+            best_frame, best_time = valid[0]
+            for cf, ct in valid:
                 if cf <= fn:
                     best_frame, best_time = cf, ct
                 else:
@@ -1666,20 +1666,20 @@ class ChordifyCapture(tk.Tk):
                     new_beat = True
                     current_grid = new_grid
 
-            if new_beat and ref_idx < len(ref_beats):
-                chord = ref_beats[ref_idx]
-                ref_idx += 1
+            if new_beat:
+                # 用方塊的絕對位置（行×列）直接索引 ref_beats
+                abs_idx = current_row * bpr + current_grid
+                chord = ref_beats[abs_idx] if abs_idx < len(ref_beats) else ""
 
-                # 精確時間：用 OCR 校正表內插（比純 fps 更準）
                 time_sec = frame_to_time(frame_num)
 
-                if chord:  # 非空拍才記錄
+                if chord:
                     records.append((round(time_sec, 3), chord))
 
                     m = int(time_sec // 60)
                     s = int(time_sec % 60)
                     ms = int((time_sec % 1) * 1000)
-                    self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}  (f{frame_num})", "chord")
+                    self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}  (f{frame_num} grid={current_grid} row={current_row} idx={abs_idx})", "chord")
 
         cap.release()
 
