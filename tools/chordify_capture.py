@@ -516,52 +516,70 @@ def capture_loop():
     t_time.start()
     t_ocr.start()
 
-    # ---- Producer: 快速截圖 + 方塊追蹤 ----
+    # ---- Producer: 格子邊界判斷 ----
+    # 用 grid_width 判斷方塊是否跨到下一格，不用 15px 移動閾值
+    cfg = load_config()
+    row_h = cfg.get("row_height", 112)
+    bpr = cfg.get("beats_per_row", 16)
+    current_grid_idx = -1
+    current_row_idx = -1
+
     while STATE["running"] and not shared["stop"]:
         if not STATE["capturing"]:
             time.sleep(0.1)
             continue
-            
+
         try:
             now = time.perf_counter()
             chord_img = capture_region(STATE["chord_region"])
             center = _find_dark_block_center(chord_img)
 
-            box_moved = False
-            jump_distance = 0
+            new_beat = False
+            jump_beats = 0
 
             if center:
-                if STATE["last_box_center"] is None:
-                    box_moved = True
-                else:
-                    dx = abs(center[0] - STATE["last_box_center"][0])
-                    dy = abs(center[1] - STATE["last_box_center"][1])
-                    if dx > 15 or dy > 15:
-                        box_moved = True
-                        # 處理換行 (Wrap-around)：若往下跳且往左拉回，視為單純的下一格
-                        is_wrap = dy > 20 and center[0] < STATE["last_box_center"][0]
-                        jump_distance = grid_width if is_wrap else dx
-                if box_moved:
-                    STATE["last_box_center"] = center
+                cx, cy = center
+                new_grid = int(cx / grid_width) if grid_width > 0 else 0
+                new_row = int(cy / row_h) if row_h > 0 else 0
 
-            if box_moved:
-                # 計算精確時間
-                if shared["last_ocr_sec"] is not None and shared["last_ocr_perf"] is not None:
-                    precise_time = shared["last_ocr_sec"] + (now - shared["last_ocr_perf"])
-                elif STATE["start_ocr_sec"] is not None and STATE["start_perf_time"] is not None:
-                    precise_time = STATE["start_ocr_sec"] + (now - STATE["start_perf_time"])
-                else:
-                    precise_time = 0.0
+                if current_grid_idx < 0:
+                    new_beat = True
+                    current_grid_idx = new_grid
+                    current_row_idx = new_row
+                elif new_row != current_row_idx:
+                    # 換行
+                    new_beat = True
+                    remaining = bpr - current_grid_idx - 1
+                    jump_beats = max(0, remaining + new_grid)
+                    current_grid_idx = new_grid
+                    current_row_idx = new_row
+                elif new_grid != current_grid_idx:
+                    # 同行跨格
+                    new_beat = True
+                    jump_beats = max(0, new_grid - current_grid_idx - 1)
+                    current_grid_idx = new_grid
 
-                try:
-                    ocr_queue.put_nowait((chord_img.copy(), precise_time, jump_distance))
-                except queue.Full:
-                    pass  # buffer 滿 = OCR 太慢，丟棄
+            if not new_beat:
+                time.sleep(0.03)
+                continue
+
+            # 計算精確時間
+            if shared["last_ocr_sec"] is not None and shared["last_ocr_perf"] is not None:
+                precise_time = shared["last_ocr_sec"] + (now - shared["last_ocr_perf"])
+            elif STATE["start_ocr_sec"] is not None and STATE["start_perf_time"] is not None:
+                precise_time = STATE["start_ocr_sec"] + (now - STATE["start_perf_time"])
+            else:
+                precise_time = 0.0
+
+            try:
+                ocr_queue.put_nowait((chord_img.copy(), precise_time, jump_beats * grid_width))
+            except queue.Full:
+                pass
 
         except Exception:
             pass
 
-        time.sleep(0.03)  # 30ms producer
+        time.sleep(0.03)
 
     # 停止信號，並等待 Consumer 處理完剩下的和弦 (最多等 3 秒防死鎖)
     shared["stop"] = True

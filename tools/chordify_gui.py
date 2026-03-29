@@ -1177,8 +1177,19 @@ class ChordifyCapture(tk.Tk):
         t_ocr.start()
         t_time.start()
 
-        # ---- Producer: 快速截圖 + 方塊追蹤（主迴圈）----
+        # ---- Producer: 快速截圖 + 格子邊界判斷（主迴圈）----
+        #
+        # 關鍵改進：不用「移動 15px」觸發，改用「跨過格子邊界」觸發。
+        # Chordify 的高亮方塊是平滑移動的，同一格內會滑動多次。
+        # 只有方塊中心 x 跨到下一個格子邊界時，才算「新的一拍」。
+        #
         screenshot_interval = 0
+        current_grid_idx = -1  # 目前在第幾格（x 方向）
+        current_row_idx = -1   # 目前在第幾行（y 方向）
+
+        # 和弦區域的左邊界
+        chord_x_offset = chord_r[0]
+        chord_y_offset = chord_r[2]  # 這是寬度，不是 y 偏移
 
         while self.capturing and not shared["stop"]:
             try:
@@ -1190,40 +1201,60 @@ class ChordifyCapture(tk.Tk):
                 # 方塊位置偵測（~3ms）
                 center = _find_dark_block_center(chord_img)
 
-                box_moved = False
-                jump_distance = 0
+                new_beat = False
+                jump_beats = 0
+
                 if center:
-                    if shared["last_center"] is None:
-                        box_moved = True
-                    else:
-                        dx = abs(center[0] - shared["last_center"][0])
-                        dy = abs(center[1] - shared["last_center"][1])
-                        if dx > 15 or dy > 15:
-                            box_moved = True
-                            # 換行判定：往下跳且往左拉回 → 視為一格
-                            is_wrap = dy > 20 and center[0] < shared["last_center"][0]
-                            jump_distance = grid_width if is_wrap else dx
-                    if box_moved:
-                        shared["last_center"] = center
+                    cx, cy = center
 
-                if box_moved:
-                    # 計算精確時間
-                    if shared["last_ocr_sec"] is not None and shared["last_ocr_perf"] is not None:
-                        precise_time = shared["last_ocr_sec"] + (now - shared["last_ocr_perf"])
-                    elif shared["last_time_sec"] is not None:
-                        precise_time = float(shared["last_time_sec"])
-                    else:
-                        precise_time = 0.0
+                    # 計算方塊在第幾格、第幾行
+                    row_h = self.cfg.get("row_height", 112)
+                    new_grid = int(cx / grid_width) if grid_width > 0 else 0
+                    new_row = int(cy / row_h) if row_h > 0 else 0
 
-                    # 放入 buffer（不等 OCR）
-                    try:
-                        ocr_queue.put_nowait((chord_img.copy(), precise_time, jump_distance))
-                    except queue.Full:
-                        pass  # buffer 滿了就丟棄（OCR 太慢跟不上）
+                    if current_grid_idx < 0:
+                        # 第一次偵測
+                        new_beat = True
+                        current_grid_idx = new_grid
+                        current_row_idx = new_row
+                    elif new_row != current_row_idx:
+                        # 換行：一定是新的一拍
+                        new_beat = True
+                        # 計算跳了幾拍（上一行剩餘 + 新行已過）
+                        bpr = self.cfg.get("beats_per_row", 16)
+                        remaining_old = bpr - current_grid_idx - 1
+                        jump_beats = remaining_old + new_grid
+                        current_grid_idx = new_grid
+                        current_row_idx = new_row
+                    elif new_grid != current_grid_idx:
+                        # 同行但跨格
+                        new_beat = True
+                        jump_beats = new_grid - current_grid_idx - 1  # 中間跳過幾格
+                        jump_beats = max(0, jump_beats)
+                        current_grid_idx = new_grid
+                    # else: 同一格內滑動 → 忽略
+
+                if not new_beat:
+                    time.sleep(0.03)
+                    continue
+
+                # ---- 跨格了！計算精確時間 ----
+                if shared["last_ocr_sec"] is not None and shared["last_ocr_perf"] is not None:
+                    precise_time = shared["last_ocr_sec"] + (now - shared["last_ocr_perf"])
+                elif shared["last_time_sec"] is not None:
+                    precise_time = float(shared["last_time_sec"])
+                else:
+                    precise_time = 0.0
+
+                # 放入 buffer（jump_beats 用於漏拍補償）
+                try:
+                    ocr_queue.put_nowait((chord_img.copy(), precise_time, jump_beats * grid_width))
+                except queue.Full:
+                    pass
 
                 # 定期截圖
                 screenshot_interval += 1
-                if screenshot_interval >= 150:  # ~4.5 秒
+                if screenshot_interval >= 30:  # 每 30 拍截一次
                     screenshot_interval = 0
                     self.screenshots.append(chord_img.copy())
 
