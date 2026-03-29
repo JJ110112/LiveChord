@@ -1519,14 +1519,26 @@ class ChordifyCapture(tk.Tk):
         current_row_idx = -1
         is_first_row = True
 
-        # 載入精確格子邊界
-        beat_bounds = self.cfg.get("beat_boundaries")
+        # 載入格子邊界（轉換為相對於截圖寬度的比例）
+        beat_bounds_raw = self.cfg.get("beat_boundaries")
         row_h = self.cfg.get("row_height", 112)
-        start_offset = self.cfg.get("start_beat_offset", 0)  # 第一列前幾拍是休止符（方塊會經過但不記錄）
+        start_offset = self.cfg.get("start_beat_offset", 0)
 
-        # 滯後 = 格寬的 40%，確保方塊到達下一格中央才觸發
-        avg_beat_w = (beat_bounds[-1][1] - beat_bounds[0][0]) / len(beat_bounds) if beat_bounds else grid_width
-        HYSTERESIS = int(avg_beat_w * 0.4)  # ~45px for 113px grid
+        # 實際截圖寬度
+        chord_w = chord_r[2]  # 和弦區域的寬度
+
+        # 把 GIMP 參照圖的座標轉為實際截圖的座標（按比例縮放）
+        beat_bounds = None
+        if beat_bounds_raw and len(beat_bounds_raw) > 0:
+            ref_w = beat_bounds_raw[-1][1]  # 參照圖的總寬度
+            scale = chord_w / ref_w if ref_w > 0 else 1.0
+            beat_bounds = [(int(x1 * scale), int(x2 * scale)) for x1, x2 in beat_bounds_raw]
+            self._safe_log(f"  格子邊界: {len(beat_bounds)} 拍, 縮放 {scale:.3f} (ref={ref_w} → actual={chord_w})", "info")
+
+        # 滯後 = 格寬的 40%
+        avg_beat_w = chord_w / self.cfg.get("beats_per_row", 16) if not beat_bounds else \
+                     (beat_bounds[-1][1] - beat_bounds[0][0]) / len(beat_bounds)
+        HYSTERESIS = int(avg_beat_w * 0.4)
 
         def _cx_to_grid(cx):
             """用精確邊界表查詢 cx 在第幾格（含滯後防抖）"""
