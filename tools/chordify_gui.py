@@ -1550,7 +1550,14 @@ class ChordifyCapture(tk.Tk):
 
         cap.release()
 
-        # Phase 3: 存檔
+        # Phase 3: 校正偏移 + 存檔
+        # 脈衝偵測的時間 = 格線經過方塊的時刻（比和弦開始晚幾拍）
+        # 校正：第一個和弦應在 Chordify 00:01 = 音樂 1 秒
+        if records:
+            first_chord_offset = records[0][0] - 1.0
+            records = [(round(t - first_chord_offset, 3), c) for t, c in records]
+            self._safe_log(f"  時間校正: -{first_chord_offset:.1f}s (第一個和弦對齊 00:01)", "info")
+
         self._safe_log(f"\n  分析完成: {len(records)} 個和弦", "state")
 
         if records:
@@ -1558,7 +1565,7 @@ class ChordifyCapture(tk.Tk):
             entries = []
             for i, (t, c) in enumerate(records):
                 end = records[i + 1][0] if i + 1 < len(records) else t + 2.0
-                entries.append({"time": t, "end": end, "chord": c})
+                entries.append({"time": max(0, t), "end": end, "chord": c})
 
             roots = [c[0] if len(c) < 2 or c[1] not in '#b' else c[:2]
                      for _, c in records if c and c[0] in 'ABCDEFG']
