@@ -927,139 +927,180 @@ class ChordifyCapture(tk.Tk):
         self._safe_log("🎵 開始擷取和弦...", "state")
         self._safe_status("🎵 擷取中...")
 
-        # 時間策略：直接用 Chordify OCR 時間（整數秒）作為基準，
-        # 同一秒內用 perf_counter 內插毫秒精度。
-        # 這樣時間永遠和 Chordify 同步，不受點擊延遲影響。
-        last_ocr_sec = None       # 上次 OCR 讀到的整數秒
-        last_ocr_perf = None      # 讀到那個整數秒時的 perf_counter
-        last_chord = None
-        last_center = None
-        last_time_sec = None
-        time_stall_count = 0
-        screenshot_interval = 0
-
-        # Phase 2: 高效能擷取迴圈
+        # =================================================================
+        # Phase 2: Producer-Consumer Buffer 架構
         #
-        # 效能策略（避免 OCR 瓶頸）：
-        # - 快速迴圈（50ms）：只做像素級方塊位置偵測（< 5ms）
-        # - 方塊移動時：才做一次和弦 OCR（~200ms，但只在和弦變化時觸發）
-        # - 時間 OCR：每 2 秒做一次校正，中間用 perf_counter 內插
+        # Producer (快速線程, 30ms):
+        #   截圖 → 偵測方塊位置 → 移動了？→ 放入 buffer (含圖片+時間+位置)
         #
-        last_time_ocr_perf = 0  # 上次做時間 OCR 的 perf_counter
-        TIME_OCR_INTERVAL = 2.0  # 每 2 秒做一次時間 OCR
+        # Consumer (OCR 線程):
+        #   從 buffer 取出 → OCR 辨識和弦 → 記錄
+        #
+        # Time OCR (校時線程, 每 2 秒):
+        #   截圖時間區域 → OCR → 更新基準時間
+        #
+        # 三個線程完全獨立，互不阻塞。
+        # =================================================================
 
-        while self.capturing:
-            try:
-                now = time.perf_counter()
+        import queue
 
-                # ---- 時間 OCR（低頻，每 2 秒一次）----
-                if now - last_time_ocr_perf >= TIME_OCR_INTERVAL:
-                    last_time_ocr_perf = now
+        ocr_queue = queue.Queue(maxsize=30)  # buffer: 最多存 30 張待辨識
+        shared = {
+            "last_ocr_sec": None,
+            "last_ocr_perf": None,
+            "last_time_sec": None,
+            "time_stall_count": 0,
+            "last_center": None,
+            "last_chord": None,
+            "screenshot_count": 0,
+            "stop": False,
+        }
+
+        cfg_row_w = self.cfg.get("row_width")
+        cfg_beats = self.cfg.get("beats_per_row", 8)
+        grid_width = (cfg_row_w / cfg_beats) if cfg_row_w else 120
+
+        # ---- Time OCR 線程 ----
+        def time_ocr_thread():
+            while self.capturing and not shared["stop"]:
+                try:
                     time_img = capture_region(time_r)
                     current_sec = ocr_time(time_img)
+                    now = time.perf_counter()
 
                     if current_sec is not None:
-                        if last_ocr_sec is None or current_sec != last_ocr_sec:
-                            last_ocr_sec = current_sec
-                            last_ocr_perf = now
+                        if shared["last_ocr_sec"] is None or current_sec != shared["last_ocr_sec"]:
+                            shared["last_ocr_sec"] = current_sec
+                            shared["last_ocr_perf"] = now
 
-                        # 結束判斷 1: 到達歌曲結尾
+                        # 結束判斷 1: 歌曲結尾
                         if current_sec >= total_duration - 2:
                             m, s = divmod(current_sec, 60)
                             self._safe_log(f"⏹ 到達歌曲結尾 ({m}:{s:02d})", "state")
+                            shared["stop"] = True
                             break
 
                         # 結束判斷 2: 時間停滯
-                        if last_time_sec is not None:
-                            if current_sec <= last_time_sec:
-                                time_stall_count += 1
-                                if time_stall_count >= 3:  # 3 次 × 2 秒 = 6 秒
+                        if shared["last_time_sec"] is not None:
+                            if current_sec <= shared["last_time_sec"]:
+                                shared["time_stall_count"] += 1
+                                if shared["time_stall_count"] >= 3:
                                     self._safe_log("⏹ 時間停滯 6 秒，判定播放結束", "state")
+                                    shared["stop"] = True
                                     break
                             else:
-                                time_stall_count = 0
+                                shared["time_stall_count"] = 0
 
-                        last_time_sec = current_sec
+                        shared["last_time_sec"] = current_sec
 
-                # ---- 和弦區域截圖（高頻，每次迴圈）----
+                except Exception:
+                    pass
+                time.sleep(2.0)  # 每 2 秒校時
+
+        # ---- Consumer: OCR 線程 ----
+        def ocr_consumer_thread():
+            while self.capturing and not shared["stop"]:
+                try:
+                    item = ocr_queue.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+
+                chord_img, precise_time, jump_distance = item
+
+                try:
+                    # 漏拍補償
+                    skipped = int(jump_distance / grid_width) - 1 if grid_width > 0 else 0
+                    skipped = max(0, min(skipped, 5))
+
+                    if skipped > 0:
+                        prev_time = self.records[-1][0] if self.records else precise_time
+                        beat_dur = (precise_time - prev_time) / (skipped + 1)
+                        for si in range(skipped):
+                            st = prev_time + beat_dur * (si + 1)
+                            self.records.append((round(st, 3), f"({skipped}skip)"))
+                            self._safe_log(f"  {int(st//60)}:{int(st%60):02d}.{int((st%1)*1000):03d}  ({skipped}skip)", "warn")
+
+                    # OCR 和弦（慢，但不阻塞 producer）
+                    chord, _ = find_highlighted_chord(chord_img)
+                    if chord and chord != shared["last_chord"]:
+                        self.records.append((round(precise_time, 3), chord))
+                        shared["last_chord"] = chord
+                        self.ref_chords.append(chord)
+
+                        m = int(precise_time // 60)
+                        s = int(precise_time % 60)
+                        ms = int((precise_time % 1) * 1000)
+                        count = len(self.records)
+                        self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}", "chord")
+                        self._safe_progress(f"和弦: {count} | 截圖: {len(self.screenshots)} | "
+                                            f"時間: {m}:{s:02d}.{ms:03d}")
+                except Exception:
+                    pass
+
+                ocr_queue.task_done()
+
+        # ---- 啟動 consumer + time OCR 線程 ----
+        t_ocr = threading.Thread(target=ocr_consumer_thread, daemon=True)
+        t_time = threading.Thread(target=time_ocr_thread, daemon=True)
+        t_ocr.start()
+        t_time.start()
+
+        # ---- Producer: 快速截圖 + 方塊追蹤（主迴圈）----
+        screenshot_interval = 0
+
+        while self.capturing and not shared["stop"]:
+            try:
+                now = time.perf_counter()
+
+                # 截圖（~10ms）
                 chord_img = capture_region(chord_r)
 
-                # ---- 方塊位置偵測（純像素，極快 < 5ms）----
+                # 方塊位置偵測（~3ms）
                 center = _find_dark_block_center(chord_img)
 
                 box_moved = False
                 jump_distance = 0
                 if center:
-                    if last_center is None:
+                    if shared["last_center"] is None:
                         box_moved = True
                     else:
-                        dx = abs(center[0] - last_center[0])
-                        dy = abs(center[1] - last_center[1])
+                        dx = abs(center[0] - shared["last_center"][0])
+                        dy = abs(center[1] - shared["last_center"][1])
                         if dx > 15 or dy > 15:
                             box_moved = True
                             jump_distance = max(dx, dy)
                     if box_moved:
-                        last_center = center
+                        shared["last_center"] = center
 
-                if not box_moved:
-                    time.sleep(0.05)
-                    continue
+                if box_moved:
+                    # 計算精確時間
+                    if shared["last_ocr_sec"] is not None and shared["last_ocr_perf"] is not None:
+                        precise_time = shared["last_ocr_sec"] + (now - shared["last_ocr_perf"])
+                    elif shared["last_time_sec"] is not None:
+                        precise_time = float(shared["last_time_sec"])
+                    else:
+                        precise_time = 0.0
 
-                # ---- 方塊移動了！計算精確時間 ----
-                if last_ocr_sec is not None and last_ocr_perf is not None:
-                    sub_sec = now - last_ocr_perf
-                    precise_time = last_ocr_sec + sub_sec
-                elif last_time_sec is not None:
-                    precise_time = float(last_time_sec)
-                else:
-                    precise_time = 0.0
+                    # 放入 buffer（不等 OCR）
+                    try:
+                        ocr_queue.put_nowait((chord_img.copy(), precise_time, jump_distance))
+                    except queue.Full:
+                        pass  # buffer 滿了就丟棄（OCR 太慢跟不上）
 
-                # ---- 漏拍補償：方塊跳了 2 格以上 ----
-                # 估算格寬
-                cfg_row_w = self.cfg.get("row_width")
-                cfg_beats = self.cfg.get("beats_per_row", 8)
-                grid_width = (cfg_row_w / cfg_beats) if cfg_row_w else 120
-
-                skipped_beats = int(jump_distance / grid_width) - 1 if grid_width > 0 else 0
-                skipped_beats = max(0, min(skipped_beats, 5))
-
-                if skipped_beats > 0 and self.ref_chords and len(self.ref_chords) > len(self.records):
-                    prev_time = self.records[-1][0] if self.records else precise_time
-                    beat_dur = (precise_time - prev_time) / (skipped_beats + 1)
-                    ref_offset = len(self.records)  # 目前已記錄幾個
-                    for skip_i in range(skipped_beats):
-                        # 從已建立的 ref 序列推算漏掉的和弦
-                        # (ref_chords 是依序 append 的，用 offset 索引)
-                        skip_time = prev_time + beat_dur * (skip_i + 1)
-                        skip_chord = f"({skipped_beats}skip)"  # 標記為漏拍
-                        self.records.append((round(skip_time, 3), skip_chord))
-                        self._safe_log(f"  {int(skip_time//60)}:{int(skip_time%60):02d}.{int((skip_time%1)*1000):03d}  {skip_chord}", "warn")
-
-                # ---- 和弦 OCR（只在方塊移動時）----
-                chord, _ = find_highlighted_chord(chord_img)
-                if chord and chord != last_chord:
-                    self.records.append((round(precise_time, 3), chord))
-                    last_chord = chord
-                    self.ref_chords.append(chord)
-
-                    m = int(precise_time // 60)
-                    s = int(precise_time % 60)
-                    ms = int((precise_time % 1) * 1000)
-                    count = len(self.records)
-                    self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}", "chord")
-                    self._safe_progress(f"和弦: {count} | 截圖: {len(self.screenshots)} | "
-                                        f"時間: {m}:{s:02d}.{ms:03d}")
-
-                # ---- 定期截圖（每 100 次 ≈ 5 秒）----
+                # 定期截圖
                 screenshot_interval += 1
-                if screenshot_interval >= 100:
+                if screenshot_interval >= 150:  # ~4.5 秒
                     screenshot_interval = 0
                     self.screenshots.append(chord_img.copy())
 
-            except Exception as e:
-                self._safe_log(f"⚠ {e}", "warn")
+            except Exception:
+                pass
 
-            time.sleep(0.05)  # 50ms 迴圈（主要是截圖 + 像素比對）
+            time.sleep(0.03)  # 30ms — producer 不受 OCR 拖累
+
+        # ---- 等 consumer 處理完 buffer 剩餘 ----
+        shared["stop"] = True
+        ocr_queue.join()  # 等所有 buffer 項目處理完
 
         # Phase 3: 儲存
         self._finish(name, lv)
