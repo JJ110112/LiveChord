@@ -1581,13 +1581,44 @@ class ChordifyCapture(tk.Tk):
 
             frame_num += 1
 
-        # 時間計算：影格時間 - 預錄時間
-        # 預錄 2 秒是固定的，fps 是固定的，不需要 OCR 校正
-        PRE_ROLL = 2.0
-        self._safe_log(f"  時間公式: frame/fps - {PRE_ROLL}s", "info")
+        # 時間計算：用 OCR 校正點做線性回歸
+        # 實際 fps 不等於標稱 fps（30fps 實際可能只有 24fps）
+        # 公式: time = (frame - f0) / actual_fps
+        # f0 和 actual_fps 從 OCR 校正點的線性回歸得出
 
         def frame_to_time(fn):
-            return fn / fps - PRE_ROLL
+            """用 OCR 校正表的線性回歸算精確時間"""
+            # 只用 t > 0 的校正點（排除預錄的 00:00）
+            valid = [(f, t) for f, t in time_calibration if t > 0]
+            if len(valid) >= 2:
+                # 線性回歸: frame = actual_fps * time + f0
+                # → time = (frame - f0) / actual_fps
+                import numpy as np
+                frames = np.array([f for f, t in valid])
+                times = np.array([t for f, t in valid])
+                A = np.vstack([times, np.ones(len(times))]).T
+                result = np.linalg.lstsq(A, frames, rcond=None)
+                actual_fps, f0 = result[0]
+                if actual_fps > 0:
+                    return (fn - f0) / actual_fps
+            # fallback: 用第一個校正點
+            if valid:
+                cf, ct = valid[0]
+                return ct + (fn - cf) / fps
+            return fn / fps - 2.0  # 最後手段
+
+        # 記錄校正結果
+        valid_cal = [(f, t) for f, t in time_calibration if t > 0]
+        if len(valid_cal) >= 2:
+            import numpy as np
+            frames = np.array([f for f, t in valid_cal])
+            times = np.array([t for f, t in valid_cal])
+            A = np.vstack([times, np.ones(len(times))]).T
+            result = np.linalg.lstsq(A, frames, rcond=None)
+            afps, f0 = result[0]
+            self._safe_log(f"  OCR 校正: actual_fps={afps:.2f} (nominal {fps:.0f}), f0={f0:.1f}", "info")
+        else:
+            self._safe_log(f"  ⚠ 校正點不足 ({len(valid_cal)} 個)，用 fps={fps} fallback", "warn")
 
         # Phase 2: 逐幀分析方塊位置
         self._safe_status("🔍 Phase 2: 追蹤方塊...")
