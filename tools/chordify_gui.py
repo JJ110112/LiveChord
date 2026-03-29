@@ -1415,41 +1415,21 @@ class ChordifyCapture(tk.Tk):
                     last_t = t
             return valid
 
-        _regression_cache = [None]  # [actual_fps, f0] 或 None
-
         def frame_to_time(fn):
-            """用 OCR 校正表的線性回歸算精確時間"""
+            """用最近的 OCR 校正點 + 幀差內插"""
             valid = _get_valid_calibration()
+            if not valid:
+                return fn / fps - 2.0
 
-            # 延遲回歸：需要足夠多的校正點（至少 10 個且跨度 > 20 秒）
-            if _regression_cache[0] is None and len(valid) >= 10:
-                time_span = valid[-1][1] - valid[0][1]
-                if time_span >= 20:
-                    import numpy as np
-                    frames = np.array([f for f, t in valid])
-                    times = np.array([t for f, t in valid])
-                    A = np.vstack([times, np.ones(len(times))]).T
-                    result = np.linalg.lstsq(A, frames, rcond=None)
-                    afps, f0 = result[0]
-                    if afps > 10:
-                        _regression_cache[0] = (afps, f0)
-                        self._safe_log(f"  OCR 校正: fps={afps:.2f}, f0={f0:.1f}, 校正點={len(valid)}, 跨度={time_span}s", "info")
+            # 找 fn 前後最近的校正點
+            best_f, best_t = valid[0]
+            for cf, ct in valid:
+                if cf <= fn:
+                    best_f, best_t = cf, ct
+                else:
+                    break
+            return best_t + (fn - best_f) / fps
 
-            if _regression_cache[0]:
-                afps, f0 = _regression_cache[0]
-                return (fn - f0) / afps
-
-            # fallback: 用最近的校正點
-            if valid:
-                best_f, best_t = valid[0]
-                for cf, ct in valid:
-                    if cf <= fn:
-                        best_f, best_t = cf, ct
-                return best_t + (fn - best_f) / fps
-
-            return fn / fps - 2.0
-
-        # 初始 log（Phase 1 結束時可能還沒有有效校正點）
         init_valid = _get_valid_calibration()
         self._safe_log(f"  初始校正點: {len(init_valid)} 個 (play_start=f{play_start_frame})", "info")
 
