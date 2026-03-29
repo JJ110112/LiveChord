@@ -453,7 +453,9 @@ class ChordifyCapture(tk.Tk):
             self.cell_size_var.set("未設定（請框選一列）")
 
     def _select_row_ref(self):
-        """框選 Chordify 上的一整列和弦，程式自動分析格線"""
+        """框選 Chordify 上的一整列和弦，再詢問拍數"""
+        from tkinter import simpledialog
+
         self._log("⬜ 請在 Chordify 上框選「一整列」和弦（包含左右邊界）...", "info")
         self.withdraw()
         time.sleep(0.3)
@@ -466,35 +468,21 @@ class ChordifyCapture(tk.Tk):
 
         row_w, row_h = region[2], region[3]
 
-        # 詢問一列幾拍
-        beats_dialog = tk.Toplevel(self)
-        beats_dialog.title("一列幾拍？")
-        beats_dialog.geometry("280x120")
-        beats_dialog.configure(bg="#1a1a2e")
-        beats_dialog.attributes('-topmost', True)
+        # 詢問一列幾拍（用 simpledialog，保證顯示在最上層）
+        default_beats = self.cfg.get("beats_per_row", 8)
+        beats = simpledialog.askinteger(
+            "一列幾拍？",
+            f"框選的列: {row_w}×{row_h} px\n\n"
+            f"這一列有幾拍？\n"
+            f"  4/4 拍 → 8\n"
+            f"  3/4 拍 → 6\n",
+            initialvalue=default_beats,
+            minvalue=2, maxvalue=24,
+            parent=self
+        )
 
-        tk.Label(beats_dialog, text="這一列有幾拍？", bg="#1a1a2e", fg="#e0e0e0",
-                 font=("Segoe UI", 12)).pack(pady=(15, 5))
-
-        beats_frame = tk.Frame(beats_dialog, bg="#1a1a2e")
-        beats_frame.pack(pady=5)
-
-        beats_var = tk.IntVar(value=self.cfg.get("beats_per_row", 8))
-        for val, label in [(6, "6 (3/4拍)"), (8, "8 (4/4拍)"), (12, "12 (其他)")]:
-            tk.Radiobutton(beats_frame, text=label, variable=beats_var, value=val,
-                           bg="#1a1a2e", fg="#e0e0e0", selectcolor="#16213e",
-                           activebackground="#1a1a2e", activeforeground="#e94560",
-                           font=("Segoe UI", 10)).pack(side=tk.LEFT, padx=5)
-
-        def confirm():
-            beats_dialog.destroy()
-
-        tk.Button(beats_dialog, text="確定", command=confirm,
-                  bg="#e94560", fg="#fff", font=("Segoe UI", 10, "bold"),
-                  relief="flat", padx=15).pack(pady=5)
-
-        beats_dialog.wait_window()
-        beats = beats_var.get()
+        if not beats:
+            beats = default_beats
 
         # 儲存
         beat_w = row_w / beats
@@ -505,8 +493,7 @@ class ChordifyCapture(tk.Tk):
         self.cell_size = (row_w, row_h)
         save_config(self.cfg)
         self._update_cell_display()
-        self._log(f"  ✓ 列高: {row_h}px, 列寬: {row_w}px", "state")
-        self._log(f"  ✓ 每列 {beats} 拍, 每拍寬: {beat_w:.0f}px", "state")
+        self._log(f"  ✓ 列: {row_w}×{row_h}px, {beats} 拍/列, 每拍 {beat_w:.0f}px", "state")
 
     # ---- 區域設定 ----
 
