@@ -1326,8 +1326,21 @@ class ChordifyCapture(tk.Tk):
         dur_r = tuple(self.regions["duration"])
         time_r = tuple(self.regions["time"])
 
-        # 錄影區域 = 和弦網格區域（包含方塊移動）
-        rec_x, rec_y, rec_w, rec_h = chord_r
+        # 錄影區域 = 合併時間區域 + 和弦網格（確保時間被錄進去）
+        # 取所有區域的最小外接矩形
+        all_regions = [time_r, dur_r, chord_r]
+        min_x = min(r[0] for r in all_regions)
+        min_y = min(r[1] for r in all_regions)
+        max_x = max(r[0] + r[2] for r in all_regions)
+        max_y = max(r[1] + r[3] for r in all_regions)
+        rec_x, rec_y = min_x, min_y
+        rec_w, rec_h = max_x - min_x, max_y - min_y
+
+        # 記錄時間區域在錄影內的相對座標（分析時用）
+        self._rec_offset = (rec_x, rec_y)
+        self._time_r_rel = (time_r[0] - rec_x, time_r[1] - rec_y, time_r[2], time_r[3])
+        self._chord_r_rel = (chord_r[0] - rec_x, chord_r[1] - rec_y, chord_r[2], chord_r[3])
+
         FPS = 30
 
         # 讀取歌曲總長度
@@ -1470,30 +1483,40 @@ class ChordifyCapture(tk.Tk):
                          args=(video_path, ref_beats, name, lv), daemon=True).start()
 
     def _analyze_worker(self, video_path, ref_beats, name, lv):
-        """逐幀分析工作線程"""
+        """逐幀分析工作線程：用錄影中的時間 OCR 校正，方塊追蹤對齊和弦"""
         cap = cv2.VideoCapture(str(video_path))
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         self._safe_log(f"  影片: {total_frames} frames, {fps:.1f}fps, {total_frames/fps:.1f}s", "info")
 
+        # 錄影內的子區域座標
+        # 時間區域和和弦區域在錄影幀內的相對位置
+        if hasattr(self, '_chord_r_rel') and self._chord_r_rel:
+            cr_x, cr_y, cr_w, cr_h = self._chord_r_rel
+            tr_x, tr_y, tr_w, tr_h = self._time_r_rel
+        else:
+            # fallback: 從 config 推算
+            chord_r = tuple(self.regions["chord"])
+            time_r = tuple(self.regions["time"])
+            all_regions = [time_r, tuple(self.regions.get("duration", time_r)), chord_r]
+            min_x = min(r[0] for r in all_regions)
+            min_y = min(r[1] for r in all_regions)
+            cr_x, cr_y, cr_w, cr_h = chord_r[0]-min_x, chord_r[1]-min_y, chord_r[2], chord_r[3]
+            tr_x, tr_y, tr_w, tr_h = time_r[0]-min_x, time_r[1]-min_y, time_r[2], time_r[3]
+
         # 載入格子邊界
         beat_bounds_raw = self.cfg.get("beat_boundaries")
         row_h = self.cfg.get("row_height", 112)
-        start_offset = self.cfg.get("start_beat_offset", 0)
         bpr = self.cfg.get("beats_per_row", 16)
-
-        # 取得錄影區域寬度以縮放邊界
-        chord_r = tuple(self.regions["chord"])
-        chord_w = chord_r[2]
 
         beat_bounds = None
         if beat_bounds_raw:
             ref_w = beat_bounds_raw[-1][1]
-            scale = chord_w / ref_w if ref_w > 0 else 1.0
+            scale = cr_w / ref_w if ref_w > 0 else 1.0
             beat_bounds = [(int(x1 * scale), int(x2 * scale)) for x1, x2 in beat_bounds_raw]
 
-        avg_beat_w = chord_w / bpr
+        avg_beat_w = cr_w / bpr
         HYSTERESIS = int(avg_beat_w * 0.4)
 
         def cx_to_grid(cx):
@@ -1506,20 +1529,41 @@ class ChordifyCapture(tk.Tk):
                 return 0
             return int(cx / avg_beat_w)
 
-        # Phase 1: 找到播放開始的幀（預錄 2 秒後第一次方塊移動）
-        self._safe_status("🔍 分析中: 尋找播放起點...")
+        def get_chord_subframe(frame):
+            """從錄影幀中裁切和弦區域"""
+            return frame[cr_y:cr_y+cr_h, cr_x:cr_x+cr_w]
+
+        def get_time_subframe(frame):
+            """從錄影幀中裁切時間區域"""
+            return frame[tr_y:tr_y+tr_h, tr_x:tr_x+tr_w]
+
+        # Phase 1: 找播放起點 + 每秒 OCR 時間建立 frame→time 校正表
+        self._safe_status("🔍 Phase 1: 尋找播放起點 + 建立時間校正表...")
         baseline_center = None
         play_start_frame = 0
+        time_calibration = []  # [(frame_num, ocr_seconds)]
 
         frame_num = 0
+        reader = get_reader()  # OCR reader
+
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
 
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            chord_sub = get_chord_subframe(frame)
+            rgb = cv2.cvtColor(chord_sub, cv2.COLOR_BGR2RGB)
             pil_img = Image.fromarray(rgb)
             center = _find_dark_block_center(pil_img)
+
+            # 每 30 幀（~1 秒）OCR 一次時間
+            if frame_num % 30 == 0:
+                time_sub = get_time_subframe(frame)
+                time_rgb = cv2.cvtColor(time_sub, cv2.COLOR_BGR2RGB)
+                time_pil = Image.fromarray(time_rgb)
+                t = ocr_time(time_pil)
+                if t is not None:
+                    time_calibration.append((frame_num, t))
 
             if center:
                 if baseline_center is None:
@@ -1534,13 +1578,45 @@ class ChordifyCapture(tk.Tk):
 
             frame_num += 1
 
+        # 建立時間校正函數（用 OCR 時間校正 frame→seconds）
+        self._safe_log(f"  時間校正點: {len(time_calibration)} 個", "info")
+
+        def frame_to_time(fn):
+            """用 OCR 校正表將 frame_number 轉為精確秒數"""
+            if not time_calibration:
+                return (fn - play_start_frame) / fps  # fallback: 純 fps 計算
+
+            # 找最近的兩個校正點做線性內插
+            before = None
+            after = None
+            for cf, ct in time_calibration:
+                if cf <= fn:
+                    before = (cf, ct)
+                if cf >= fn and after is None:
+                    after = (cf, ct)
+
+            if before and after and before != after:
+                # 線性內插
+                f1, t1 = before
+                f2, t2 = after
+                ratio = (fn - f1) / (f2 - f1) if f2 != f1 else 0
+                return t1 + ratio * (t2 - t1)
+            elif before:
+                # 超出校正範圍：用最後一個校正點 + fps 推算
+                f1, t1 = before
+                return t1 + (fn - f1) / fps
+            elif after:
+                f1, t1 = after
+                return t1 - (f1 - fn) / fps
+            else:
+                return (fn - play_start_frame) / fps
+
         # Phase 2: 逐幀分析方塊位置
-        self._safe_status("🔍 分析中: 追蹤方塊...")
+        self._safe_status("🔍 Phase 2: 追蹤方塊...")
         current_grid = -1
         current_row = -1
         ref_idx = 0
         records = []
-        is_first_row = True
 
         while cap.isOpened():
             ret, frame = cap.read()
@@ -1548,12 +1624,23 @@ class ChordifyCapture(tk.Tk):
                 break
             frame_num += 1
 
+            # 每 30 幀 OCR 時間（持續校正）
+            if frame_num % 30 == 0:
+                time_sub = get_time_subframe(frame)
+                time_rgb = cv2.cvtColor(time_sub, cv2.COLOR_BGR2RGB)
+                time_pil = Image.fromarray(time_rgb)
+                t = ocr_time(time_pil)
+                if t is not None:
+                    time_calibration.append((frame_num, t))
+
             # 進度
             if frame_num % 100 == 0:
                 pct = int(frame_num / total_frames * 100)
                 self._safe_progress(f"🔍 分析: {frame_num}/{total_frames} ({pct}%)")
 
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # 從錄影幀裁切和弦區域
+            chord_sub = get_chord_subframe(frame)
+            rgb = cv2.cvtColor(chord_sub, cv2.COLOR_BGR2RGB)
             pil_img = Image.fromarray(rgb)
             center = _find_dark_block_center(pil_img)
 
@@ -1590,8 +1677,8 @@ class ChordifyCapture(tk.Tk):
                 chord = ref_beats[ref_idx]
                 ref_idx += 1
 
-                # 精確時間 = (frame_num - play_start_frame) / fps
-                time_sec = (frame_num - play_start_frame) / fps
+                # 精確時間：用 OCR 校正表內插（比純 fps 更準）
+                time_sec = frame_to_time(frame_num)
 
                 if chord:  # 非空拍才記錄
                     records.append((round(time_sec, 3), chord))
