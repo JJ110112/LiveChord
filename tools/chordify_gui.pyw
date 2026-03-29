@@ -471,8 +471,13 @@ class ChordifyCapture(tk.Tk):
         beat_row = tk.Frame(beat_card, bg=C["card"])
         beat_row.pack(fill=tk.X, pady=(4, 0))
 
-        tk.Button(beat_row, text="⬜ Row Ref", command=self._select_row_ref,
-                  **btn_style).pack(side=tk.LEFT, padx=(0, 6))
+        tk.Label(beat_row, text="Row Ref", bg=C["card"], fg=C["text2"],
+                 font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(0, 4))
+        tk.Button(beat_row, text="Select", command=self._select_row_ref,
+                  **btn_style).pack(side=tk.LEFT, padx=1)
+        tk.Button(beat_row, text="Test", command=lambda: self._test_region("chord"),
+                  bg=C["card3"], fg=C["text"], font=("Segoe UI", 8),
+                  relief="flat", cursor="hand2", padx=6, pady=2).pack(side=tk.LEFT, padx=(1, 6))
 
         tk.Label(beat_row, text="Beat:", bg=C["card"], fg=C["dim"],
                  font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(4, 2))
@@ -1298,19 +1303,39 @@ class ChordifyCapture(tk.Tk):
         row_h = self.cfg.get("row_height", 112)
         start_offset = self.cfg.get("start_beat_offset", 0)  # 第一列前幾拍是休止符
 
+        HYSTERESIS = 20  # 方塊中心必須深入下一格 20px 才算跨格
+
         def _cx_to_grid(cx):
-            """用精確邊界表查詢 cx 在第幾格"""
+            """用精確邊界表查詢 cx 在第幾格（含滯後防抖）"""
             if beat_bounds:
                 for i, (x1, x2) in enumerate(beat_bounds):
+                    # 加入滯後：如果目前在格 i，只有 cx 超過 x2 + HYSTERESIS 才算離開
+                    # 但如果尚未進入任何格子（首次），用正常邊界
                     if x1 <= cx < x2:
                         return i
-                # 超出最後一格
                 if cx >= beat_bounds[-1][1]:
                     return len(beat_bounds) - 1
                 return 0
             else:
-                # fallback: 均分
                 return int(cx / grid_width) if grid_width > 0 else 0
+
+        def _should_advance(cx, current_idx):
+            """判斷是否該前進到下一格（含滯後）"""
+            if current_idx < 0:
+                return True, _cx_to_grid(cx)
+            if not beat_bounds:
+                new = int(cx / grid_width) if grid_width > 0 else 0
+                return new != current_idx, new
+
+            # 目前格子的右邊界
+            _, cur_right = beat_bounds[current_idx] if current_idx < len(beat_bounds) else (0, 0)
+
+            # 只有 cx 超過目前格子右邊界 + 滯後才算跨格
+            if cx > cur_right + HYSTERESIS:
+                new_grid = _cx_to_grid(cx)
+                return new_grid != current_idx, new_grid
+
+            return False, current_idx
 
         while self.capturing and not shared["stop"]:
             try:
@@ -1324,14 +1349,13 @@ class ChordifyCapture(tk.Tk):
 
                 if center:
                     cx, cy = center
-                    new_grid = _cx_to_grid(cx)
                     new_row = int(cy / row_h) if row_h > 0 else 0
 
                     if current_grid_idx < 0:
                         # 第一次偵測
+                        new_grid = _cx_to_grid(cx)
                         if is_first_row and start_offset > 0 and new_grid < start_offset:
-                            # 還在休止符區域，不記錄
-                            pass
+                            pass  # 還在休止符區域
                         else:
                             new_beat = True
                             current_grid_idx = new_grid
@@ -1342,16 +1366,16 @@ class ChordifyCapture(tk.Tk):
                         # 換行
                         new_beat = True
                         jump_beats = 0
-                        current_grid_idx = new_grid
+                        current_grid_idx = _cx_to_grid(cx)
                         current_row_idx = new_row
                         is_first_row = False
-                    elif new_grid > current_grid_idx:
-                        # 同行向右跨格
-                        new_beat = True
-                        jump_beats = max(0, new_grid - current_grid_idx - 1)
-                        current_grid_idx = new_grid
-                    elif new_grid < current_grid_idx:
-                        pass  # 同行向左，忽略
+                    else:
+                        # 同行：用滯後判斷是否跨格
+                        advanced, new_grid = _should_advance(cx, current_grid_idx)
+                        if advanced and new_grid > current_grid_idx:
+                            new_beat = True
+                            jump_beats = max(0, new_grid - current_grid_idx - 1)
+                            current_grid_idx = new_grid
                     # else: 同一格內滑動 → 忽略
 
                 if not new_beat:
