@@ -468,11 +468,13 @@ class ChordifyCapture(tk.Tk):
 
     def _update_cell_display(self):
         row_h = self.cfg.get("row_height")
-        beats = self.cfg.get("beats_per_row", 8)
         row_w = self.cfg.get("row_width")
+        bpb = self.cfg.get("beats_per_bar", 4)
+        bpr = self.cfg.get("bars_per_row", 4)
+        beats = self.cfg.get("beats_per_row", bpb * bpr)
         if row_h and row_w:
             beat_w = row_w / beats
-            self.cell_size_var.set(f"列高:{row_h}px  {beats}拍/列  每拍:{beat_w:.0f}px")
+            self.cell_size_var.set(f"列高:{row_h}px  {bpr}小節×{bpb}拍={beats}拍  每拍:{beat_w:.0f}px")
         else:
             self.cell_size_var.set("未設定（請框選一列）")
 
@@ -492,32 +494,82 @@ class ChordifyCapture(tk.Tk):
 
         row_w, row_h = region[2], region[3]
 
-        # 詢問一列幾拍（= 小節數 × 每小節拍數）
-        default_beats = self.cfg.get("beats_per_row", 8)
-        beats = simpledialog.askinteger(
-            "一列有幾拍？",
-            f"框選的列: {row_w}×{row_h} px\n\n"
-            f"一列總拍數 = 小節數 × 每小節拍數\n\n"
-            f"常見：\n"
-            f"  4/4 拍 × 2 小節 = 8\n"
-            f"  3/4 拍 × 2 小節 = 6\n"
-            f"  4/4 拍 × 4 小節 = 16\n",
-            initialvalue=default_beats,
-            minvalue=2, maxvalue=32,
-            parent=self
-        )
+        # 用 dialog 詢問小節數和拍號
+        beat_dialog = tk.Toplevel(self)
+        beat_dialog.title("設定拍數")
+        beat_dialog.geometry("320x220")
+        beat_dialog.configure(bg="#1a1a2e")
+        beat_dialog.attributes('-topmost', True)
+        beat_dialog.grab_set()
 
-        if not beats:
-            beats = default_beats
+        tk.Label(beat_dialog, text=f"框選的列: {row_w}×{row_h} px",
+                 bg="#1a1a2e", fg="#888", font=("Consolas", 10)).pack(pady=(10, 5))
+
+        # 每小節幾拍
+        f1 = tk.Frame(beat_dialog, bg="#1a1a2e")
+        f1.pack(pady=5)
+        tk.Label(f1, text="每小節拍數:", bg="#1a1a2e", fg="#e0e0e0",
+                 font=("Segoe UI", 11)).pack(side=tk.LEFT, padx=5)
+        beats_per_bar_var = tk.IntVar(value=self.cfg.get("beats_per_bar", 4))
+        bpb_combo = ttk.Combobox(f1, textvariable=beats_per_bar_var, values=[3, 4, 6], width=5, state="readonly")
+        bpb_combo.pack(side=tk.LEFT, padx=5)
+
+        # 每列幾小節
+        f2 = tk.Frame(beat_dialog, bg="#1a1a2e")
+        f2.pack(pady=5)
+        tk.Label(f2, text="每列小節數:", bg="#1a1a2e", fg="#e0e0e0",
+                 font=("Segoe UI", 11)).pack(side=tk.LEFT, padx=5)
+        bars_per_row_var = tk.IntVar(value=self.cfg.get("bars_per_row", 4))
+        bpr_combo = ttk.Combobox(f2, textvariable=bars_per_row_var, values=[2, 3, 4, 8], width=5, state="readonly")
+        bpr_combo.pack(side=tk.LEFT, padx=5)
+
+        # 即時預覽
+        preview_var = tk.StringVar()
+        preview_label = tk.Label(beat_dialog, textvariable=preview_var,
+                                 bg="#0d0d1a", fg="#e94560", font=("Segoe UI", 11, "bold"), padx=10, pady=5)
+        preview_label.pack(fill=tk.X, padx=20, pady=5)
+
+        def update_preview(*_):
+            bpb = beats_per_bar_var.get()
+            bpr = bars_per_row_var.get()
+            total = bpb * bpr
+            bw = row_w / total
+            preview_var.set(f"一列 {total} 拍 ({bpr}小節×{bpb}拍)  每拍 {bw:.0f}px")
+
+        bpb_combo.bind("<<ComboboxSelected>>", update_preview)
+        bpr_combo.bind("<<ComboboxSelected>>", update_preview)
+        update_preview()
+
+        result = [None]
+
+        def confirm():
+            result[0] = (beats_per_bar_var.get(), bars_per_row_var.get())
+            beat_dialog.destroy()
+
+        tk.Button(beat_dialog, text="確定", command=confirm,
+                  bg="#e94560", fg="#fff", font=("Segoe UI", 11, "bold"),
+                  relief="flat", padx=20).pack(pady=10)
+
+        beat_dialog.wait_window()
+
+        if not result[0]:
+            self._log("  取消", "info")
+            return
+
+        beats_per_bar, bars_per_row = result[0]
+        beats = beats_per_bar * bars_per_row
+        beat_w = row_w / beats
 
         # 儲存
-        beat_w = row_w / beats
         self.cfg["row_height"] = row_h
         self.cfg["row_width"] = row_w
+        self.cfg["beats_per_bar"] = beats_per_bar
+        self.cfg["bars_per_row"] = bars_per_row
         self.cfg["beats_per_row"] = beats
         save_config(self.cfg)
         self._update_cell_display()
-        self._log(f"  ✓ 列: {row_w}×{row_h}px, {beats} 拍/列, 每拍 {beat_w:.0f}px", "state")
+        self._log(f"  ✓ 列: {row_w}×{row_h}px", "state")
+        self._log(f"  ✓ {bars_per_row}小節×{beats_per_bar}拍 = {beats}拍/列, 每拍 {beat_w:.0f}px", "state")
 
     # ---- 區域設定 ----
 
