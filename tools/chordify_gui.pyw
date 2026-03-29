@@ -1303,7 +1303,9 @@ class ChordifyCapture(tk.Tk):
         row_h = self.cfg.get("row_height", 112)
         start_offset = self.cfg.get("start_beat_offset", 0)  # 第一列前幾拍是休止符
 
-        HYSTERESIS = 20  # 方塊中心必須深入下一格 20px 才算跨格
+        # 滯後 = 格寬的 40%，確保方塊到達下一格中央才觸發
+        avg_beat_w = (beat_bounds[-1][1] - beat_bounds[0][0]) / len(beat_bounds) if beat_bounds else grid_width
+        HYSTERESIS = int(avg_beat_w * 0.4)  # ~45px for 113px grid
 
         def _cx_to_grid(cx):
             """用精確邊界表查詢 cx 在第幾格（含滯後防抖）"""
