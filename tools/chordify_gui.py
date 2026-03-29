@@ -1403,39 +1403,53 @@ class ChordifyCapture(tk.Tk):
         # 公式: time = (frame - f0) / actual_fps
         # f0 和 actual_fps 從 OCR 校正點的線性回歸得出
 
+        def _get_valid_calibration():
+            """篩選有效校正點：play_start 之後、時間遞增"""
+            # 排除預錄殘留（Chordify 可能顯示上次停止的時間）
+            # 只取 play_start_frame 之後且時間嚴格遞增的點
+            valid = []
+            last_t = -1
+            for f, t in time_calibration:
+                if f >= play_start_frame and t is not None and t > last_t:
+                    valid.append((f, t))
+                    last_t = t
+            return valid
+
+        _regression_cache = [None]  # [actual_fps, f0] 或 None
+
         def frame_to_time(fn):
             """用 OCR 校正表的線性回歸算精確時間"""
-            # 只用 t > 0 的校正點（排除預錄的 00:00）
-            valid = [(f, t) for f, t in time_calibration if t > 0]
-            if len(valid) >= 2:
-                # 線性回歸: frame = actual_fps * time + f0
-                # → time = (frame - f0) / actual_fps
+            valid = _get_valid_calibration()
+
+            if len(valid) >= 3 and _regression_cache[0] is None:
+                # 首次有足夠校正點：做一次回歸
                 import numpy as np
                 frames = np.array([f for f, t in valid])
                 times = np.array([t for f, t in valid])
                 A = np.vstack([times, np.ones(len(times))]).T
                 result = np.linalg.lstsq(A, frames, rcond=None)
-                actual_fps, f0 = result[0]
-                if actual_fps > 0:
-                    return (fn - f0) / actual_fps
-            # fallback: 用第一個校正點
-            if valid:
-                cf, ct = valid[0]
-                return ct + (fn - cf) / fps
-            return fn / fps - 2.0  # 最後手段
+                afps, f0 = result[0]
+                if afps > 10:  # 合理的 fps (> 10)
+                    _regression_cache[0] = (afps, f0)
+                    self._safe_log(f"  OCR 校正: actual_fps={afps:.2f}, f0={f0:.1f}", "info")
 
-        # 記錄校正結果
-        valid_cal = [(f, t) for f, t in time_calibration if t > 0]
-        if len(valid_cal) >= 2:
-            import numpy as np
-            frames = np.array([f for f, t in valid_cal])
-            times = np.array([t for f, t in valid_cal])
-            A = np.vstack([times, np.ones(len(times))]).T
-            result = np.linalg.lstsq(A, frames, rcond=None)
-            afps, f0 = result[0]
-            self._safe_log(f"  OCR 校正: actual_fps={afps:.2f} (nominal {fps:.0f}), f0={f0:.1f}", "info")
-        else:
-            self._safe_log(f"  ⚠ 校正點不足 ({len(valid_cal)} 個)，用 fps={fps} fallback", "warn")
+            if _regression_cache[0]:
+                afps, f0 = _regression_cache[0]
+                return (fn - f0) / afps
+
+            # fallback: 用最近的校正點
+            if valid:
+                best_f, best_t = valid[0]
+                for cf, ct in valid:
+                    if cf <= fn:
+                        best_f, best_t = cf, ct
+                return best_t + (fn - best_f) / fps
+
+            return fn / fps - 2.0
+
+        # 初始 log（Phase 1 結束時可能還沒有有效校正點）
+        init_valid = _get_valid_calibration()
+        self._safe_log(f"  初始校正點: {len(init_valid)} 個 (play_start=f{play_start_frame})", "info")
 
         # Phase 2: 逐幀分析方塊位置
         #
