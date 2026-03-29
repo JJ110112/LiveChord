@@ -61,10 +61,33 @@ class metrics():
 
     def score(self, metric, gt_path, est_path):
         if metric == 'root':
-            score = self.root_score(gt_path,est_path)
+            score = self.root_score(gt_path, est_path)
         elif metric == 'thirds':
-            score = self.thirds_score(gt_path,est_path)
+            score = self.thirds_score(gt_path, est_path)
         elif metric == 'triads':
+            score = self.triads_score(gt_path, est_path)
+        elif metric == 'sevenths':
+            score = self.sevenths_score(gt_path, est_path)
+        elif metric == 'tetrads':
+            score = self.tetrads_score(gt_path, est_path)
+        elif metric == 'majmin':
+            score = self.majmin_score(gt_path, est_path)
+        elif metric == 'mirex':
+            score = self.mirex_score(gt_path, est_path)
+        else:
+            raise ValueError(f"Unknown metric: {metric}")
+        
+        self.score_list_dict[metric].append(score)
+        return score
+    
+    def calculate_average_scores(self):
+        """計算所有指標的平均分數"""
+        for metric in self.score_metrics:
+            if self.score_list_dict[metric]:
+                self.average_score[metric] = sum(self.score_list_dict[metric]) / len(self.score_list_dict[metric])
+            else:
+                self.average_score[metric] = 0.0
+        return self.average_score
             score = self.triads_score(gt_path,est_path)
         elif metric == 'sevenths':
             score = self.sevenths_score(gt_path,est_path)

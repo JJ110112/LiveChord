@@ -38,26 +38,52 @@ class Preprocess():
         self.is_cut_last_chord = False
 
     def find_mp3_path(self, dirpath, word):
-        for filename in os.listdir(dirpath):
-            last_dir = dirpath.split("/")[-2]
-            if ".mp3" in filename:
-                tmp = filename.replace(".mp3", "")
-                tmp = tmp.replace(last_dir, "")
-                filename_lower = tmp.lower()
-                filename_lower = " ".join(re.findall("[a-zA-Z]+", filename_lower))
-                if word.lower().replace(" ", "") in filename_lower.replace(" ", ""):
-                    return filename
+        if not os.path.exists(dirpath):
+            return None
+        if not os.path.isdir(dirpath):
+            return None
+        try:
+            for filename in os.listdir(dirpath):
+                last_dir = dirpath.split("/")[-2]
+                if ".mp3" in filename:
+                    tmp = filename.replace(".mp3", "")
+                    tmp = tmp.replace(last_dir, "")
+                    filename_lower = tmp.lower()
+                    filename_lower = " ".join(re.findall("[a-zA-Z]+", filename_lower))
+                    if word.lower().replace(" ", "") in filename_lower.replace(" ", ""):
+                        return filename
+        except (OSError, FileNotFoundError, PermissionError) as e:
+            print(f"Error accessing directory {dirpath}: {e}")
+            return None
+        return None
 
     def find_mp3_path_robbiewilliams(self, dirpath, word):
-        for filename in os.listdir(dirpath):
-            if ".mp3" in filename:
-                tmp = filename.replace(".mp3", "")
-                filename_lower = tmp.lower()
-                filename_lower = filename_lower.replace("robbie williams", "")
-                filename_lower = " ".join(re.findall("[a-zA-Z]+", filename_lower))
-                filename_lower = self.song_pre(filename_lower)
-                if self.song_pre(word.lower()).replace(" ", "") in filename_lower.replace(" ", ""):
-                    return filename
+        if not os.path.exists(dirpath) or not os.path.isdir(dirpath):
+            return None
+        try:
+            for filename in os.listdir(dirpath):
+                if ".mp3" in filename:
+                    tmp = filename.replace(".mp3", "")
+                    filename_lower = tmp.lower()
+                    filename_lower = filename_lower.replace("robbie williams", "")
+                    filename_lower = " ".join(re.findall("[a-zA-Z]+", filename_lower))
+                    filename_lower = self.song_preprocess(filename_lower)
+                    if self.song_preprocess(word.lower()).replace(" ", "") in filename_lower.replace(" ", ""):
+                        return filename
+        except OSError:
+            return None
+        return None
+    
+    def song_preprocess(self, song_name):
+        """預處理歌曲名稱，移除常見的修飾詞"""
+        # 移除常見的修飾詞和特殊字符
+        clean_name = song_name.lower().strip()
+        remove_words = ['feat', 'ft', 'featuring', 'remix', 'radio edit', 'album version']
+        for word in remove_words:
+            clean_name = clean_name.replace(word, '')
+        # 移除多餘空格
+        clean_name = ' '.join(clean_name.split())
+        return clean_name
 
     def get_all_files(self):
         res_list = []
