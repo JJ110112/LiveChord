@@ -362,7 +362,7 @@ class ChordifyCapture(tk.Tk):
         cell_row = tk.Frame(shot_frame, bg="#1a1a2e")
         cell_row.pack(fill=tk.X, pady=(0, 4))
 
-        tk.Button(cell_row, text="⬜ 框選一格", command=self._select_cell_size, **btn_style).pack(side=tk.LEFT, padx=2)
+        tk.Button(cell_row, text="⬜ 框選一列", command=self._select_row_ref, **btn_style).pack(side=tk.LEFT, padx=2)
         self.cell_size_var = tk.StringVar()
         self._update_cell_display()
         tk.Label(cell_row, textvariable=self.cell_size_var,
@@ -441,29 +441,44 @@ class ChordifyCapture(tk.Tk):
     # ---- 格子尺寸 ----
 
     def _update_cell_display(self):
-        if self.cell_size:
+        row_h = self.cfg.get("row_height")
+        if row_h:
+            self.cell_size_var.set(f"列高: {row_h}px (格線自動偵測)")
+        elif self.cell_size:
             self.cell_size_var.set(f"格子: {self.cell_size[0]}×{self.cell_size[1]} px")
         else:
-            self.cell_size_var.set("格子: 未設定（請框選一格）")
+            self.cell_size_var.set("未設定（請框選一列）")
 
-    def _select_cell_size(self):
-        """框選 Chordify 上的一個和弦格子，記住尺寸"""
-        self._log("⬜ 請在 Chordify 上框選「一個和弦格子」...", "info")
+    def _select_row_ref(self):
+        """框選 Chordify 上的一整列和弦，程式自動分析格線"""
+        self._log("⬜ 請在 Chordify 上框選「一整列」和弦（包含左右邊界）...", "info")
         self.withdraw()
         time.sleep(0.3)
-        region = self._do_select("框選一個和弦格子")
+        region = self._do_select("框選一整列和弦")
         self.deiconify()
 
         if not region:
             self._log("  取消", "info")
             return
 
-        cell_w, cell_h = region[2], region[3]
-        self.cell_size = (cell_w, cell_h)
-        self.cfg["cell_size"] = [cell_w, cell_h]
+        row_w, row_h = region[2], region[3]
+        self.cfg["row_height"] = row_h
+        self.cfg["cell_size"] = [row_w, row_h]  # 保留相容性
+        self.cell_size = (row_w, row_h)
         save_config(self.cfg)
         self._update_cell_display()
-        self._log(f"  ✓ 格子大小: {cell_w}×{cell_h} px", "state")
+        self._log(f"  ✓ 列高: {row_h}px, 列寬: {row_w}px", "state")
+
+        # 即時分析格線
+        img = capture_region(region)
+        gray = np.array(img.convert("L"))
+        from chordify_ocr import detect_grid_columns
+        cols = detect_grid_columns(gray, row_h, sample_y=0, verbose=False)
+        if cols:
+            widths = [x2 - x1 for x1, x2 in cols]
+            self._log(f"  偵測到 {len(cols)} 拍, 格寬: {min(widths)}~{max(widths)}px", "state")
+        else:
+            self._log("  ⚠ 無法偵測格線，OCR 將用列寬均分", "warn")
 
     # ---- 區域設定 ----
 
