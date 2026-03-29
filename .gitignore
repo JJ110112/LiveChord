@@ -31,3 +31,4 @@ data/test_songs/**/*.det.lab
 backend/btc/*.pt
 backend/btc/__pycache__/
 backend/btc/utils/__pycache__/
+tools/desktop.ini

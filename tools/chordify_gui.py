@@ -488,20 +488,36 @@ class ChordifyCapture(tk.Tk):
                                values=[2, 3, 4, 8], width=2, state="readonly")
         bpr_cb.pack(side=tk.LEFT)
 
+        # 起始休止符拍數
+        beat_row2 = tk.Frame(beat_card, bg=C["card"])
+        beat_row2.pack(fill=tk.X, pady=(2, 0))
+
+        tk.Label(beat_row2, text="Start rest:", bg=C["card"], fg=C["dim"],
+                 font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(0, 2))
+        self.offset_var = tk.IntVar(value=self.cfg.get("start_beat_offset", 0))
+        offset_cb = ttk.Combobox(beat_row2, textvariable=self.offset_var,
+                                  values=[0, 1, 2, 3, 4, 8], width=2, state="readonly")
+        offset_cb.pack(side=tk.LEFT)
+        tk.Label(beat_row2, text="beats", bg=C["card"], fg=C["dim"],
+                 font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(2, 0))
+
         self.cell_size_var = tk.StringVar()
         self._update_cell_display()
-        tk.Label(beat_card, textvariable=self.cell_size_var,
-                 bg=C["card"], fg=C["primary"], font=("Consolas", 9, "bold")).pack(anchor="w", pady=(4, 0))
+        tk.Label(beat_row2, textvariable=self.cell_size_var,
+                 bg=C["card"], fg=C["primary"], font=("Consolas", 8, "bold"),
+                 padx=6).pack(side=tk.LEFT, padx=4)
 
         def _on_beat_change(*_):
             self.cfg["beats_per_bar"] = self.bpb_var.get()
             self.cfg["bars_per_row"] = self.bpr_var.get()
             self.cfg["beats_per_row"] = self.bpb_var.get() * self.bpr_var.get()
+            self.cfg["start_beat_offset"] = self.offset_var.get()
             save_config(self.cfg)
             self._update_cell_display()
 
         bpb_cb.bind("<<ComboboxSelected>>", _on_beat_change)
         bpr_cb.bind("<<ComboboxSelected>>", _on_beat_change)
+        offset_cb.bind("<<ComboboxSelected>>", _on_beat_change)
 
         # 狀態卡片
         status_card = tk.Frame(snippet_frame, bg="#e8f5e9", highlightbackground="#c8e6c9",
@@ -1271,14 +1287,16 @@ class ChordifyCapture(tk.Tk):
         t_ocr.start()
         t_time.start()
 
-        # ---- Producer: 精確格子邊界判斷（用 GIMP 標註的 beat_boundaries）----
+        # ---- Producer: 精確格子邊界判斷 ----
         screenshot_interval = 0
         current_grid_idx = -1
         current_row_idx = -1
+        is_first_row = True  # 第一列特殊處理（可能有休止符）
 
-        # 載入精確格子邊界（從 GIMP 標註的彩色格線分析得出）
+        # 載入精確格子邊界
         beat_bounds = self.cfg.get("beat_boundaries")
         row_h = self.cfg.get("row_height", 112)
+        start_offset = self.cfg.get("start_beat_offset", 0)  # 第一列前幾拍是休止符
 
         def _cx_to_grid(cx):
             """用精確邊界表查詢 cx 在第幾格"""
@@ -1310,15 +1328,23 @@ class ChordifyCapture(tk.Tk):
                     new_row = int(cy / row_h) if row_h > 0 else 0
 
                     if current_grid_idx < 0:
-                        new_beat = True
-                        current_grid_idx = new_grid
-                        current_row_idx = new_row
+                        # 第一次偵測
+                        if is_first_row and start_offset > 0 and new_grid < start_offset:
+                            # 還在休止符區域，不記錄
+                            pass
+                        else:
+                            new_beat = True
+                            current_grid_idx = new_grid
+                            current_row_idx = new_row
+                            if is_first_row and start_offset > 0:
+                                self._safe_log(f"  (跳過前 {start_offset} 拍休止符)", "info")
                     elif new_row != current_row_idx:
                         # 換行
                         new_beat = True
                         jump_beats = 0
                         current_grid_idx = new_grid
                         current_row_idx = new_row
+                        is_first_row = False
                     elif new_grid > current_grid_idx:
                         # 同行向右跨格
                         new_beat = True

@@ -480,11 +480,11 @@ def capture_loop():
                     break
                 continue
 
-            chord_img, precise_time, jump_distance = item
+            chord_img, precise_time, jump_beats = item
 
             try:
                 # 漏拍補償
-                skipped = int(jump_distance / grid_width) - 1 if grid_width > 0 else 0
+                skipped = jump_beats
                 skipped = max(0, min(skipped, 5))
 
                 if skipped > 0 and STATE["ref_chords"] and STATE["ref_idx"] < len(STATE["ref_chords"]):
@@ -573,7 +573,7 @@ def capture_loop():
                 precise_time = 0.0
 
             try:
-                ocr_queue.put_nowait((chord_img.copy(), precise_time, jump_beats * grid_width))
+                ocr_queue.put_nowait((chord_img.copy(), precise_time, jump_beats))
             except queue.Full:
                 pass
 

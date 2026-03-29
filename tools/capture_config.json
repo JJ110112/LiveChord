@@ -99,5 +99,14 @@
       1719,
       1831
     ]
-  ]
+  ],
+  "time_signature": "4/4",
+  "grid_ref_images": {
+    "4/4": {
+      "start": "4-4-start.png",
+      "middle": "4-4-middle.png",
+      "end": "4-4-end.png"
+    }
+  },
+  "start_beat_offset": 4
 }
