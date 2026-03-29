@@ -315,7 +315,7 @@ class ChordGridEditor(tk.Toplevel):
                  save_path, log_fn=None):
         super().__init__(parent)
         self.title("Chord Grid Editor")
-        self.geometry("780x600")
+        self.geometry("1200x800")
         self.configure(bg=self.BG)
         self.attributes('-topmost', True)
 
@@ -334,33 +334,31 @@ class ChordGridEditor(tk.Toplevel):
         header = tk.Frame(self, bg=self.BG)
         header.pack(fill=tk.X, padx=12, pady=8)
 
-        tk.Label(header, text="Chord Grid Editor", font=("Segoe UI", 14, "bold"),
+        tk.Label(header, text="Chord Grid Editor", font=("Segoe UI", 20, "bold"),
                  bg=self.BG, fg="#2151da").pack(side=tk.LEFT)
 
         tk.Button(header, text="💾 Save", command=self._save,
-                  bg="#2151da", fg="white", font=("Segoe UI", 10, "bold"),
-                  relief="flat", padx=12, pady=3, cursor="hand2").pack(side=tk.RIGHT, padx=4)
+                  bg="#2151da", fg="white", font=("Segoe UI", 14, "bold"),
+                  relief="flat", padx=16, pady=6, cursor="hand2").pack(side=tk.RIGHT, padx=6)
         tk.Button(header, text="Close", command=self.destroy,
-                  bg="#d3e4fe", fg="#435368", font=("Segoe UI", 9, "bold"),
-                  relief="flat", padx=10, pady=3, cursor="hand2").pack(side=tk.RIGHT, padx=4)
+                  bg="#d3e4fe", fg="#435368", font=("Segoe UI", 12, "bold"),
+                  relief="flat", padx=14, pady=6, cursor="hand2").pack(side=tk.RIGHT, padx=6)
 
         # Info
         n_rows = (len(self.beats) + self.bpr - 1) // self.bpr
         chord_count = sum(1 for b in self.beats if b)
         tk.Label(header, text=f"{len(self.beats)} beats | {n_rows} rows | {chord_count} chords | {self.bpb}/4",
-                 bg=self.BG, fg=self.TEXT_DIM, font=("Consolas", 9)).pack(side=tk.RIGHT, padx=10)
+                 bg=self.BG, fg=self.TEXT_DIM, font=("Consolas", 12)).pack(side=tk.RIGHT, padx=10)
 
         # Row number header
         colhead = tk.Frame(self, bg=self.BG)
         colhead.pack(fill=tk.X, padx=12)
-        tk.Label(colhead, text="", width=4, bg=self.BG).pack(side=tk.LEFT)
+        tk.Label(colhead, text="", width=4, bg=self.BG, font=("Consolas", 16)).pack(side=tk.LEFT)
         for c in range(self.bpr):
-            bar_num = c // self.bpb + 1
             beat_num = c % self.bpb + 1
-            lbl_text = f"{beat_num}" if beat_num == 1 else f"{beat_num}"
             fg = "#2151da" if beat_num == 1 else self.TEXT_DIM
-            tk.Label(colhead, text=lbl_text, width=6, bg=self.BG, fg=fg,
-                     font=("Consolas", 8)).pack(side=tk.LEFT, padx=1)
+            tk.Label(colhead, text=str(beat_num), width=6, bg=self.BG, fg=fg,
+                     font=("Consolas", 12)).pack(side=tk.LEFT, padx=1)
 
         # Scrollable grid
         container = tk.Frame(self, bg=self.BG)
@@ -392,7 +390,7 @@ class ChordGridEditor(tk.Toplevel):
 
             # Row number
             tk.Label(row_frame, text=f"{row+1:3d}", width=4, bg=self.BG, fg=self.TEXT_DIM,
-                     font=("Consolas", 9), anchor="e").pack(side=tk.LEFT)
+                     font=("Consolas", 14), anchor="e").pack(side=tk.LEFT)
 
             for col in range(self.bpr):
                 idx = row * self.bpr + col
@@ -405,16 +403,16 @@ class ChordGridEditor(tk.Toplevel):
 
                 # Bar line (blue left border for beat 1 of each bar)
                 if is_bar_start:
-                    tk.Frame(cell_frame, bg=self.BAR_LINE, width=2).pack(side=tk.LEFT, fill=tk.Y)
+                    tk.Frame(cell_frame, bg=self.BAR_LINE, width=3).pack(side=tk.LEFT, fill=tk.Y)
 
                 # Cell label
                 bg = self.CELL_CHORD if chord else self.CELL_EMPTY
                 lbl = tk.Label(cell_frame, text=chord or "·", width=6, height=1,
                                bg=bg, fg=self.TEXT if chord else "#c0c0c0",
-                               font=("Segoe UI", 10, "bold" if chord else "normal"),
+                               font=("Segoe UI", 16, "bold" if chord else "normal"),
                                relief="flat", cursor="hand2",
                                highlightbackground=self.BORDER, highlightthickness=1)
-                lbl.pack(side=tk.LEFT, padx=0, pady=0)
+                lbl.pack(side=tk.LEFT, padx=0, pady=1)
 
                 # Bind events
                 lbl.bind("<Button-1>", lambda e, r=row, c=col: self._on_click(r, c))
@@ -1600,9 +1598,62 @@ class ChordifyCapture(tk.Tk):
             ), encoding="utf-8")
             self._safe_log(f"  ✓ 已儲存 {capture_txt.name}", "state")
 
+            # 匯入到 LiveChord 播放系統（data/chords/{hash}.json）
+            self._import_to_livechord(name, key, entries)
+
         self._safe_status(f"✓ 分析完成 ({len(records)} 和弦)")
         self.after(0, lambda: self.btn_record.configure(state=tk.NORMAL))
         self.after(0, lambda: self.btn_analyze.configure(state=tk.NORMAL))
+
+    def _import_to_livechord(self, name, key, entries):
+        """匯入到 LiveChord 播放系統 (data/chords/{hash}.json)"""
+        import hashlib
+
+        CHORDS_DIR = PROJECT_DIR / "data" / "chords"
+        CACHE_FILE = PROJECT_DIR / "data" / "library_cache.json"
+
+        # 從 library_cache.json 查找 NAS 路徑
+        nas_path = None
+        if CACHE_FILE.is_file():
+            try:
+                cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+                name_lower = name.lower()
+                for track in cache.get("tracks", []):
+                    title = track.get("title", "").lower()
+                    # 用歌名比對
+                    if name_lower in title or title in name_lower:
+                        nas_path = track["path"]
+                        break
+                    # 也試檔名比對
+                    fname = track["path"].split("/")[-1].replace(".flac", "").lower()
+                    if name_lower in fname or fname in name_lower:
+                        nas_path = track["path"]
+                        break
+            except Exception:
+                pass
+
+        if not nas_path:
+            self._safe_log(f"  ⚠ 在音樂庫找不到 '{name}'，無法匯入 LiveChord", "warn")
+            self._safe_log(f"    請確認已掃描音樂庫，且歌名與 NAS 檔名一致", "info")
+            return
+
+        # 生成 hash
+        song_hash = hashlib.md5(nas_path.encode("utf-8")).hexdigest()[:12]
+        CHORDS_DIR.mkdir(parents=True, exist_ok=True)
+
+        # 寫入 chords/{hash}.json（與 BTC 偵測相同格式）
+        chord_data = {
+            "path": nas_path,
+            "key": key,
+            "capo": 0,
+            "source": "chordify",  # 標記來源
+            "chords": entries,
+        }
+        chord_file = CHORDS_DIR / f"{song_hash}.json"
+        chord_file.write_text(json.dumps(chord_data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        self._safe_log(f"  ✓ 已匯入 LiveChord: {nas_path}", "state")
+        self._safe_log(f"    → data/chords/{song_hash}.json (source=chordify)", "info")
 
     # ===========================================================================
     # V1: 即時擷取（保留相容）
