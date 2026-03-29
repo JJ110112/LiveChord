@@ -78,27 +78,7 @@ class bi_directional_self_attention(nn.Module):
 
         self.backward_attn_block = self_attention_block(*params)
 
-        self.linear = nn.Linear(hidden_size, hidden_size)n_size * 2, hidden_size)
-
-    def forward(self, inputs):
-        x = inputs
-        
-        # Forward attention
-        forward_output, forward_weights = self.attn_block(x)
-        
-        # Backward attention  
-        backward_output, backward_weights = self.backward_attn_block(x)
-        
-        # Concatenate bidirectional outputs
-        combined = torch.cat([forward_output, backward_output], dim=-1)
-        
-        # Linear projection
-        output = self.linear(combined)
-        
-        # Store attention weights
-        self.weights_list = [forward_weights, backward_weights]
-        
-        return outputn_size * 2, hidden_size)n_size*2, hidden_size)
+        self.linear = nn.Linear(hidden_size*2, hidden_size)
 
     def forward(self, inputs):
         x, list = inputs
