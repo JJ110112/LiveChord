@@ -471,7 +471,7 @@ class ChordifyCapture(tk.Tk):
         row_w = self.cfg.get("row_width")
         bpb = self.cfg.get("beats_per_bar", 4)
         bpr = self.cfg.get("bars_per_row", 4)
-        beats = self.cfg.get("beats_per_row", bpb * bpr)
+        beats = bpb * bpr  # 永遠用實際計算值，不讀舊的 beats_per_row
         if row_h and row_w:
             beat_w = row_w / beats
             self.cell_size_var.set(f"列高:{row_h}px  {bpr}小節×{bpb}拍={beats}拍  每拍:{beat_w:.0f}px")
