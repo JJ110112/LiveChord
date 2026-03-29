@@ -290,6 +290,185 @@ def save_config(cfg: dict):
 # GUI
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# 和弦網格編輯器
+# ---------------------------------------------------------------------------
+
+class ChordGridEditor(tk.Toplevel):
+    """
+    Chordify 風格的和弦網格編輯器。
+    每格代表一拍，點擊可編輯和弦名稱。
+    """
+
+    # 顏色
+    BG = "#f7f9fb"
+    CELL_EMPTY = "#f0f4f7"
+    CELL_CHORD = "#ffffff"
+    CELL_HOVER = "#dce1ff"
+    CELL_EDIT = "#cad2ff"
+    BORDER = "#d9e4ea"
+    BAR_LINE = "#2151da"
+    TEXT = "#2a3439"
+    TEXT_DIM = "#717c82"
+
+    def __init__(self, parent, beats: list, beats_per_row: int, beats_per_bar: int,
+                 save_path, log_fn=None):
+        super().__init__(parent)
+        self.title("Chord Grid Editor")
+        self.geometry("780x600")
+        self.configure(bg=self.BG)
+        self.attributes('-topmost', True)
+
+        self.beats = list(beats)
+        self.bpr = beats_per_row
+        self.bpb = beats_per_bar
+        self.save_path = save_path
+        self.log_fn = log_fn
+        self.selected = None  # (row, col) of selected cell
+        self.cell_widgets = {}  # (row, col) → Label
+
+        self._build()
+
+    def _build(self):
+        # Header
+        header = tk.Frame(self, bg=self.BG)
+        header.pack(fill=tk.X, padx=12, pady=8)
+
+        tk.Label(header, text="Chord Grid Editor", font=("Segoe UI", 14, "bold"),
+                 bg=self.BG, fg="#2151da").pack(side=tk.LEFT)
+
+        tk.Button(header, text="💾 Save", command=self._save,
+                  bg="#2151da", fg="white", font=("Segoe UI", 10, "bold"),
+                  relief="flat", padx=12, pady=3, cursor="hand2").pack(side=tk.RIGHT, padx=4)
+        tk.Button(header, text="Close", command=self.destroy,
+                  bg="#d3e4fe", fg="#435368", font=("Segoe UI", 9, "bold"),
+                  relief="flat", padx=10, pady=3, cursor="hand2").pack(side=tk.RIGHT, padx=4)
+
+        # Info
+        n_rows = (len(self.beats) + self.bpr - 1) // self.bpr
+        chord_count = sum(1 for b in self.beats if b)
+        tk.Label(header, text=f"{len(self.beats)} beats | {n_rows} rows | {chord_count} chords | {self.bpb}/4",
+                 bg=self.BG, fg=self.TEXT_DIM, font=("Consolas", 9)).pack(side=tk.RIGHT, padx=10)
+
+        # Row number header
+        colhead = tk.Frame(self, bg=self.BG)
+        colhead.pack(fill=tk.X, padx=12)
+        tk.Label(colhead, text="", width=4, bg=self.BG).pack(side=tk.LEFT)
+        for c in range(self.bpr):
+            bar_num = c // self.bpb + 1
+            beat_num = c % self.bpb + 1
+            lbl_text = f"{beat_num}" if beat_num == 1 else f"{beat_num}"
+            fg = "#2151da" if beat_num == 1 else self.TEXT_DIM
+            tk.Label(colhead, text=lbl_text, width=6, bg=self.BG, fg=fg,
+                     font=("Consolas", 8)).pack(side=tk.LEFT, padx=1)
+
+        # Scrollable grid
+        container = tk.Frame(self, bg=self.BG)
+        container.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 8))
+
+        canvas = tk.Canvas(container, bg=self.BG, highlightthickness=0)
+        scrollbar = tk.Scrollbar(container, orient=tk.VERTICAL, command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        grid_frame = tk.Frame(canvas, bg=self.BG)
+        canvas.create_window((0, 0), window=grid_frame, anchor="nw")
+        grid_frame.bind("<Configure>",
+                        lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        # Mouse wheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        self.bind("<Destroy>", lambda e: canvas.unbind_all("<MouseWheel>"))
+
+        # Build grid
+        n_rows = (len(self.beats) + self.bpr - 1) // self.bpr
+
+        for row in range(n_rows):
+            row_frame = tk.Frame(grid_frame, bg=self.BG)
+            row_frame.pack(fill=tk.X, pady=1)
+
+            # Row number
+            tk.Label(row_frame, text=f"{row+1:3d}", width=4, bg=self.BG, fg=self.TEXT_DIM,
+                     font=("Consolas", 9), anchor="e").pack(side=tk.LEFT)
+
+            for col in range(self.bpr):
+                idx = row * self.bpr + col
+                chord = self.beats[idx] if idx < len(self.beats) else ""
+                is_bar_start = (col % self.bpb == 0)
+
+                # Cell frame with bar line
+                cell_frame = tk.Frame(row_frame, bg=self.BG)
+                cell_frame.pack(side=tk.LEFT, padx=0)
+
+                # Bar line (blue left border for beat 1 of each bar)
+                if is_bar_start:
+                    tk.Frame(cell_frame, bg=self.BAR_LINE, width=2).pack(side=tk.LEFT, fill=tk.Y)
+
+                # Cell label
+                bg = self.CELL_CHORD if chord else self.CELL_EMPTY
+                lbl = tk.Label(cell_frame, text=chord or "·", width=6, height=1,
+                               bg=bg, fg=self.TEXT if chord else "#c0c0c0",
+                               font=("Segoe UI", 10, "bold" if chord else "normal"),
+                               relief="flat", cursor="hand2",
+                               highlightbackground=self.BORDER, highlightthickness=1)
+                lbl.pack(side=tk.LEFT, padx=0, pady=0)
+
+                # Bind events
+                lbl.bind("<Button-1>", lambda e, r=row, c=col: self._on_click(r, c))
+                lbl.bind("<Enter>", lambda e, l=lbl: l.configure(bg=self.CELL_HOVER))
+                lbl.bind("<Leave>", lambda e, l=lbl, ch=chord:
+                         l.configure(bg=self.CELL_CHORD if ch else self.CELL_EMPTY))
+
+                self.cell_widgets[(row, col)] = lbl
+
+    def _on_click(self, row, col):
+        """點擊格子 → 彈出輸入框編輯和弦"""
+        idx = row * self.bpr + col
+        if idx >= len(self.beats):
+            return
+
+        old = self.beats[idx]
+        lbl = self.cell_widgets[(row, col)]
+        lbl.configure(bg=self.CELL_EDIT)
+
+        # 用 simpledialog
+        from tkinter import simpledialog
+        new = simpledialog.askstring(
+            "Edit Chord",
+            f"Row {row+1}, Beat {col+1} (bar {col//self.bpb+1} beat {col%self.bpb+1})\n\n"
+            f"Current: {old or '(empty)'}\n"
+            f"Enter new chord (empty = clear):",
+            initialvalue=old,
+            parent=self
+        )
+
+        if new is not None:
+            self.beats[idx] = new.strip()
+            chord = self.beats[idx]
+            lbl.configure(
+                text=chord or "·",
+                fg=self.TEXT if chord else "#c0c0c0",
+                font=("Segoe UI", 10, "bold" if chord else "normal"),
+                bg=self.CELL_CHORD if chord else self.CELL_EMPTY
+            )
+        else:
+            lbl.configure(bg=self.CELL_CHORD if old else self.CELL_EMPTY)
+
+    def _save(self):
+        """存檔為 .chords.txt（逗號分隔格式）"""
+        compact = ",".join(self.beats)
+        self.save_path.write_text(compact, encoding="utf-8")
+
+        chord_count = sum(1 for b in self.beats if b)
+        if self.log_fn:
+            self.log_fn(f"💾 已儲存 {self.save_path.name} ({chord_count} chords)", "state")
+
+        messagebox.showinfo("Saved", f"已儲存 {chord_count} 個和弦", parent=self)
+
+
 class ChordifyCapture(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -990,7 +1169,7 @@ class ChordifyCapture(tk.Tk):
                      font=("Consolas", 8)).pack()
 
     def _edit_chords_txt(self):
-        """用系統預設編輯器打開 .chords.txt 供手動校正"""
+        """打開和弦網格編輯器"""
         name = self.song_name.get().strip()
         lv = self.level.get()
         if not name:
@@ -1002,12 +1181,20 @@ class ChordifyCapture(tk.Tk):
             self._log(f"⚠ {txt_path.name} 不存在，請先 Stitch + OCR", "warn")
             return
 
-        import subprocess
-        if os.name == 'nt':
-            os.startfile(str(txt_path))
+        # 載入序列
+        raw = txt_path.read_text(encoding="utf-8").strip()
+        if '\t' in raw:
+            beats = []
+            for line in raw.split('\n'):
+                parts = line.strip().split('\t')
+                beats.append(parts[1] if len(parts) >= 2 else "")
         else:
-            subprocess.Popen(["xdg-open", str(txt_path)])
-        self._log(f"📝 已打開 {txt_path.name}（修正後存檔即可）", "state")
+            beats = [c.strip() for c in raw.split(',')]
+
+        bpr = self.cfg.get("beats_per_row", 16)
+        bpb = self.cfg.get("beats_per_bar", 4)
+
+        ChordGridEditor(self, beats, bpr, bpb, txt_path, self._log)
 
     def _stitch_and_ocr(self):
         """拼接截圖 → 存 .png → OCR。若已有 .png 且無新截圖，直接 OCR"""
