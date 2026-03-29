@@ -185,11 +185,61 @@ def find_highlighted_chord(img):
     for _, text, conf in results:
         text = text.strip()
         if text and conf > 0.3 and any(c in text for c in 'ABCDEFG'):
-            norm = text.replace("min", "m").replace("MIN", "m").replace("Maj", "maj")
-            if norm and norm[0].islower():
-                norm = norm[0].upper() + norm[1:]
-            return norm, (cx, cy)
+            return _fix_chord_ocr(text), (cx, cy)
     return None, (cx, cy)
+
+
+# Chordify OCR 修正表（EasyOCR 常見誤讀）
+_OCR_FIX = {
+    # D/A 的各種誤讀
+    "DA": "D/A", "DIA": "D/A", "DJA": "D/A", "D1A": "D/A", "DlA": "D/A",
+    # D/F# 的各種誤讀
+    "DFA": "D/F#", "DIF:": "D/F#", "DIF#": "D/F#", "DF:": "D/F#", "DIF;": "D/F#",
+    # E/A, E/G#, A/E
+    "EJA": "E/A", "EIA": "E/A", "E1A": "E/A",
+    "AE": "A/E", "AIE": "A/E", "AJE": "A/E",
+    "E/G:": "E/G#", "E/G;": "E/G#", "E/Ga": "E/G#", "EIG:": "E/G#",
+    # F#m / F#m7
+    "Fim": "F#m", "Frm": "F#m", "Fzm": "F#m", "Fsm": "F#m",
+    "Fim7": "F#m7", "Frm7": "F#m7", "Fzm7": "F#m7", "Frm?": "F#m7",
+    'Frm"': "F#m7", "Fim?": "F#m7", "Fzm?": "F#m7",
+    # B7/D#
+    "B7/D:": "B7/D#", "B7/D;": "B7/D#", "B7 /D:": "B7/D#",
+    "B7/Di": "B7/D#", "B?/D:": "B7/D#", "B? /D:": "B7/D#",
+    # Bm7/E
+    "Bmi/E": "Bm7/E", "Bme/E": "Bm7/E", 'Bm"/E': "Bm7/E",
+    "Bm?/E": "Bm7/E", "Bm'/E": "Bm7/E", 'Bm" /E': "Bm7/E",
+    "Bm7 /E": "Bm7/E",
+    # C#7
+    "C;7": "C#7", "Cz7": "C#7", "C:7": "C#7", "C47": "C#7",
+    # Bm7, Bm
+    "Bm?": "Bm7", 'Bm"': "Bm7", "Bmz": "Bm7",
+    # E7
+    "E?": "E7",
+    # F → F#m (Chordify 的 F#m 常被截成 F)
+    "F": "F#m",
+}
+
+
+def _fix_chord_ocr(raw: str) -> str:
+    """修正 OCR 誤讀"""
+    raw = raw.strip().rstrip(':;.,?')
+
+    # 精確匹配修正表
+    if raw in _OCR_FIX:
+        return _OCR_FIX[raw]
+
+    # 通用替換
+    raw = raw.replace("min", "m").replace("MIN", "m")
+    raw = raw.replace("Maj", "maj").replace("MAJ", "maj")
+    if raw and raw[0].islower():
+        raw = raw[0].upper() + raw[1:]
+
+    # 再查一次
+    if raw in _OCR_FIX:
+        return _OCR_FIX[raw]
+
+    return raw
 
 
 # ---------------------------------------------------------------------------
