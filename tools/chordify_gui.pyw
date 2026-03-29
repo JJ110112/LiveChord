@@ -293,9 +293,9 @@ def save_config(cfg: dict):
 class ChordifyCapture(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Chordify Ground Truth 擷取工具")
-        self.geometry("700x750")
-        self.configure(bg="#1a1a2e")
+        self.title("ChordCurator Studio")
+        self.geometry("680x820")
+        self.configure(bg="#f7f9fb")
         self.resizable(True, True)
 
         # DPI awareness
@@ -344,93 +344,154 @@ class ChordifyCapture(tk.Tk):
     # ---- UI ----
 
     def _build_ui(self):
-        style = {"bg": "#1a1a2e", "fg": "#e0e0e0", "font": ("Segoe UI", 10)}
-        btn_style = {"bg": "#16213e", "fg": "#e94560", "activebackground": "#e94560",
-                     "activeforeground": "#fff", "font": ("Segoe UI", 10, "bold"),
-                     "relief": "flat", "cursor": "hand2", "padx": 10, "pady": 4}
+        # Material Design 配色（參照 ChordCurator Studio）
+        C = {
+            "bg": "#f7f9fb",           # surface
+            "card": "#ffffff",         # surface-container-lowest
+            "card2": "#f0f4f7",        # surface-container-low
+            "card3": "#e8eff3",        # surface-container
+            "border": "#d9e4ea",       # surface-variant
+            "text": "#2a3439",         # on-surface
+            "text2": "#566166",        # on-surface-variant
+            "dim": "#717c82",          # outline
+            "primary": "#2151da",      # primary
+            "primary_fg": "#f8f7ff",   # on-primary
+            "secondary": "#506076",    # secondary
+            "sec_container": "#d3e4fe", # secondary-container
+            "sec_text": "#435368",     # on-secondary-container
+            "tertiary": "#006592",     # tertiary
+            "error": "#9f403d",        # error
+            "success": "#2d6a4f",
+        }
+        self.C = C
 
-        # ---- 頂部：歌曲選擇 ----
-        top = tk.Frame(self, bg="#1a1a2e")
-        top.pack(fill=tk.X, padx=10, pady=(10, 5))
+        style = {"bg": C["bg"], "fg": C["text"], "font": ("Segoe UI", 10)}
+        btn_style = {"bg": C["sec_container"], "fg": C["sec_text"],
+                     "activebackground": C["primary"], "activeforeground": C["primary_fg"],
+                     "font": ("Segoe UI", 9, "bold"), "relief": "flat", "cursor": "hand2",
+                     "padx": 10, "pady": 3, "bd": 0}
 
-        tk.Label(top, text="歌曲:", **style).pack(side=tk.LEFT)
-        tk.Entry(top, textvariable=self.song_name, width=30,
-                 bg="#0d0d1a", fg="#e0e0e0", insertbackground="#e0e0e0",
-                 font=("Segoe UI", 11)).pack(side=tk.LEFT, padx=5)
+        self.configure(bg=C["bg"])
 
-        tk.Button(top, text="瀏覽...", command=self._browse_song, **btn_style).pack(side=tk.LEFT, padx=2)
+        # ---- Header ----
+        header = tk.Frame(self, bg=C["bg"])
+        header.pack(fill=tk.X, padx=16, pady=(12, 4))
 
-        tk.Label(top, text="等級:", **style).pack(side=tk.LEFT, padx=(15, 0))
-        combo = ttk.Combobox(top, textvariable=self.level, values=LEVELS, width=5, state="readonly")
-        combo.pack(side=tk.LEFT, padx=5)
+        tk.Label(header, text="♫", font=("Segoe UI", 18), bg=C["bg"],
+                 fg=C["primary"]).pack(side=tk.LEFT)
+        tk.Label(header, text="ChordCurator Studio", font=("Segoe UI", 16, "bold"),
+                 bg=C["bg"], fg=C["primary"]).pack(side=tk.LEFT, padx=(6, 0))
 
-        # ---- 區域設定 ----
-        region_frame = tk.LabelFrame(self, text=" 擷取區域 ", bg="#1a1a2e", fg="#888",
-                                     font=("Segoe UI", 10), padx=10, pady=5)
-        region_frame.pack(fill=tk.X, padx=10, pady=5)
+        # ---- Song Info Card ----
+        song_card = tk.Frame(self, bg=C["card"], highlightbackground=C["border"],
+                             highlightthickness=1, padx=16, pady=12)
+        song_card.pack(fill=tk.X, padx=16, pady=6)
+
+        tk.Label(song_card, text="ACTIVE COMPOSITION", font=("Segoe UI", 8, "bold"),
+                 bg=C["card"], fg=C["dim"]).pack(anchor="w")
+
+        song_row = tk.Frame(song_card, bg=C["card"])
+        song_row.pack(fill=tk.X, pady=(4, 0))
+
+        tk.Entry(song_row, textvariable=self.song_name, width=28,
+                 bg=C["card2"], fg=C["text"], insertbackground=C["text"],
+                 font=("Segoe UI", 13, "bold"), relief="flat", bd=2).pack(side=tk.LEFT)
+
+        tk.Button(song_row, text="瀏覽", command=self._browse_song, **btn_style).pack(side=tk.LEFT, padx=8)
+
+        level_frame = tk.Frame(song_row, bg=C["sec_container"], padx=8, pady=2)
+        level_frame.pack(side=tk.RIGHT)
+        tk.Label(level_frame, text="Level", font=("Segoe UI", 8, "bold"),
+                 bg=C["sec_container"], fg=C["sec_text"]).pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Combobox(level_frame, textvariable=self.level, values=LEVELS,
+                     width=4, state="readonly").pack(side=tk.LEFT)
+
+        # ---- Extraction Config Card ----
+        config_card = tk.Frame(self, bg=C["card2"], padx=12, pady=8)
+        config_card.pack(fill=tk.X, padx=16, pady=4)
+
+        tk.Label(config_card, text="EXTRACTION CONFIGURATION", font=("Segoe UI", 8, "bold"),
+                 bg=C["card2"], fg=C["dim"]).pack(anchor="w", pady=(0, 6))
 
         self.region_labels = {}
-        for i, (key, label) in enumerate([("play_btn", "播放按鈕 ▶/||"),
-                                           ("time", "目前時間 00:00"),
-                                           ("duration", "總長度 03:53"),
-                                           ("chord", "和弦網格區域")]):
-            row = tk.Frame(region_frame, bg="#1a1a2e")
-            row.pack(fill=tk.X, pady=2)
-            tk.Label(row, text=f"{label}:", width=16, anchor="w", **style).pack(side=tk.LEFT)
-            lbl = tk.Label(row, text="未設定", bg="#0d0d1a", fg="#888", width=30, anchor="w",
-                           font=("Consolas", 9), padx=5)
-            lbl.pack(side=tk.LEFT, padx=5)
+        for key, label, icon in [("play_btn", "Play/Pause", "▶||"),
+                                  ("time", "Current Time", "00:00"),
+                                  ("duration", "Total Length", "03:53"),
+                                  ("chord", "Chord Grid", "⬜")]:
+            row = tk.Frame(config_card, bg=C["card2"])
+            row.pack(fill=tk.X, pady=1)
+
+            tk.Label(row, text=f"{icon} {label}", width=16, anchor="w",
+                     bg=C["card2"], fg=C["text2"], font=("Segoe UI", 9)).pack(side=tk.LEFT)
+
+            lbl = tk.Label(row, text="Not set", bg=C["card"], fg=C["dim"], width=28, anchor="w",
+                           font=("Consolas", 8), padx=4, relief="flat", bd=1)
+            lbl.pack(side=tk.LEFT, padx=4)
             self.region_labels[key] = lbl
-            tk.Button(row, text="框選", command=lambda k=key: self._select_region(k), **btn_style).pack(side=tk.LEFT, padx=2)
-            tk.Button(row, text="測試", command=lambda k=key: self._test_region(k), **btn_style).pack(side=tk.LEFT, padx=2)
 
-        # ---- 控制按鈕 ----
-        ctrl = tk.Frame(self, bg="#1a1a2e")
-        ctrl.pack(fill=tk.X, padx=10, pady=5)
+            tk.Button(row, text="Select", command=lambda k=key: self._select_region(k),
+                      **btn_style).pack(side=tk.LEFT, padx=1)
+            tk.Button(row, text="Test", command=lambda k=key: self._test_region(k),
+                      bg=C["card3"], fg=C["text"], font=("Segoe UI", 8),
+                      relief="flat", cursor="hand2", padx=6, pady=2).pack(side=tk.LEFT, padx=1)
 
-        self.btn_start = tk.Button(ctrl, text="▶ 開始擷取", command=self._start_capture,
-                                   bg="#e94560", fg="#fff", font=("Segoe UI", 12, "bold"),
-                                   relief="flat", padx=20, pady=6, cursor="hand2")
-        self.btn_start.pack(side=tk.LEFT, padx=5)
+        # ---- Main Action ----
+        action_frame = tk.Frame(self, bg=C["bg"])
+        action_frame.pack(fill=tk.X, padx=16, pady=8)
 
-        self.btn_stop = tk.Button(ctrl, text="⏹ 停止", command=self._stop_capture,
-                                  state=tk.DISABLED, **btn_style)
-        self.btn_stop.pack(side=tk.LEFT, padx=5)
+        self.btn_start = tk.Button(action_frame, text="▶  Start Extraction",
+                                   command=self._start_capture,
+                                   bg=C["primary"], fg=C["primary_fg"],
+                                   font=("Segoe UI", 13, "bold"), relief="flat",
+                                   padx=24, pady=8, cursor="hand2")
+        self.btn_start.pack(side=tk.LEFT, padx=(0, 8))
+
+        self.btn_stop = tk.Button(action_frame, text="⏹ Stop",
+                                  command=self._stop_capture, state=tk.DISABLED,
+                                  **btn_style)
+        self.btn_stop.pack(side=tk.LEFT, padx=4)
 
         self.auto_overwrite = tk.BooleanVar(value=True)
-        tk.Checkbutton(ctrl, text="自動覆蓋", variable=self.auto_overwrite,
-                       bg="#1a1a2e", fg="#888", selectcolor="#16213e",
-                       activebackground="#1a1a2e", activeforeground="#e94560",
-                       font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(15, 0))
+        tk.Checkbutton(action_frame, text="Auto overwrite", variable=self.auto_overwrite,
+                       bg=C["bg"], fg=C["dim"], selectcolor=C["card"],
+                       activebackground=C["bg"], font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(12, 0))
 
-        # ---- 截圖面板 ----
-        shot_frame = tk.LabelFrame(self, text=" 樂譜截圖（多頁拼接）", bg="#1a1a2e", fg="#888",
-                                   font=("Segoe UI", 10), padx=10, pady=5)
-        shot_frame.pack(fill=tk.X, padx=10, pady=5)
+        # ---- Score Snippets (拍號 + 狀態) ----
+        snippet_frame = tk.Frame(self, bg=C["bg"])
+        snippet_frame.pack(fill=tk.X, padx=16, pady=4)
 
-        # 格子尺寸設定行
-        cell_row = tk.Frame(shot_frame, bg="#1a1a2e")
-        cell_row.pack(fill=tk.X, pady=(0, 4))
+        # 拍號卡片
+        beat_card = tk.Frame(snippet_frame, bg=C["card"], highlightbackground=C["border"],
+                             highlightthickness=1, padx=12, pady=8)
+        beat_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
 
-        tk.Button(cell_row, text="⬜ 框選一列", command=self._select_row_ref, **btn_style).pack(side=tk.LEFT, padx=2)
+        tk.Label(beat_card, text="TEMPO & GRID", font=("Segoe UI", 8, "bold"),
+                 bg=C["card"], fg=C["dim"]).pack(anchor="w")
 
-        # 拍號下拉選單（不需重新框選就能改）
-        tk.Label(cell_row, text="拍:", bg="#1a1a2e", fg="#888",
-                 font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(10, 2))
+        beat_row = tk.Frame(beat_card, bg=C["card"])
+        beat_row.pack(fill=tk.X, pady=(4, 0))
+
+        tk.Button(beat_row, text="⬜ Row Ref", command=self._select_row_ref,
+                  **btn_style).pack(side=tk.LEFT, padx=(0, 6))
+
+        tk.Label(beat_row, text="Beat:", bg=C["card"], fg=C["dim"],
+                 font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(4, 2))
         self.bpb_var = tk.IntVar(value=self.cfg.get("beats_per_bar", 4))
-        bpb_cb = ttk.Combobox(cell_row, textvariable=self.bpb_var, values=[3, 4, 6], width=3, state="readonly")
+        bpb_cb = ttk.Combobox(beat_row, textvariable=self.bpb_var,
+                               values=[3, 4, 6], width=2, state="readonly")
         bpb_cb.pack(side=tk.LEFT)
 
-        tk.Label(cell_row, text="小節:", bg="#1a1a2e", fg="#888",
-                 font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(8, 2))
+        tk.Label(beat_row, text="Bar:", bg=C["card"], fg=C["dim"],
+                 font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(6, 2))
         self.bpr_var = tk.IntVar(value=self.cfg.get("bars_per_row", 4))
-        bpr_cb = ttk.Combobox(cell_row, textvariable=self.bpr_var, values=[2, 3, 4, 8], width=3, state="readonly")
+        bpr_cb = ttk.Combobox(beat_row, textvariable=self.bpr_var,
+                               values=[2, 3, 4, 8], width=2, state="readonly")
         bpr_cb.pack(side=tk.LEFT)
 
         self.cell_size_var = tk.StringVar()
         self._update_cell_display()
-        tk.Label(cell_row, textvariable=self.cell_size_var,
-                 bg="#0d0d1a", fg="#2d6a4f", font=("Consolas", 9), padx=8).pack(side=tk.LEFT, padx=5)
+        tk.Label(beat_card, textvariable=self.cell_size_var,
+                 bg=C["card"], fg=C["primary"], font=("Consolas", 9, "bold")).pack(anchor="w", pady=(4, 0))
 
         def _on_beat_change(*_):
             self.cfg["beats_per_bar"] = self.bpb_var.get()
@@ -442,69 +503,88 @@ class ChordifyCapture(tk.Tk):
         bpb_cb.bind("<<ComboboxSelected>>", _on_beat_change)
         bpr_cb.bind("<<ComboboxSelected>>", _on_beat_change)
 
-        # 截圖按鈕行
-        shot_btns = tk.Frame(shot_frame, bg="#1a1a2e")
+        # 狀態卡片
+        status_card = tk.Frame(snippet_frame, bg="#e8f5e9", highlightbackground="#c8e6c9",
+                               highlightthickness=1, padx=12, pady=8)
+        status_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(4, 0))
+
+        tk.Label(status_card, text="STATUS", font=("Segoe UI", 8, "bold"),
+                 bg="#e8f5e9", fg=C["dim"]).pack(anchor="w")
+
+        self.status_var = tk.StringVar(value="Ready")
+        tk.Label(status_card, textvariable=self.status_var,
+                 bg="#e8f5e9", fg=C["success"], font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(2, 0))
+
+        self.progress_var = tk.StringVar(value="Chords: 0 | Time: --:--")
+        tk.Label(status_card, textvariable=self.progress_var,
+                 bg="#e8f5e9", fg=C["text2"], font=("Consolas", 8)).pack(anchor="w")
+
+        # ---- 截圖面板 ----
+        shot_card = tk.Frame(self, bg=C["card2"], padx=12, pady=8)
+        shot_card.pack(fill=tk.X, padx=16, pady=4)
+
+        tk.Label(shot_card, text="SCORE SCREENSHOTS", font=("Segoe UI", 8, "bold"),
+                 bg=C["card2"], fg=C["dim"]).pack(anchor="w", pady=(0, 4))
+
+        shot_btns = tk.Frame(shot_card, bg=C["card2"])
         shot_btns.pack(fill=tk.X)
 
-        tk.Button(shot_btns, text="📷 框選擷取", command=self._take_screenshot_select, **btn_style).pack(side=tk.LEFT, padx=2)
-        tk.Button(shot_btns, text="🗑 移除最後一張", command=self._remove_last_screenshot, **btn_style).pack(side=tk.LEFT, padx=2)
-        tk.Button(shot_btns, text="✅ 拼接儲存 + OCR", command=self._stitch_and_ocr, **btn_style).pack(side=tk.LEFT, padx=2)
+        tk.Button(shot_btns, text="📷 Capture", command=self._take_screenshot_select, **btn_style).pack(side=tk.LEFT, padx=2)
+        tk.Button(shot_btns, text="🗑 Remove", command=self._remove_last_screenshot, **btn_style).pack(side=tk.LEFT, padx=2)
+        tk.Button(shot_btns, text="✅ Stitch + OCR", command=self._stitch_and_ocr,
+                  bg=C["primary"], fg=C["primary_fg"], font=("Segoe UI", 9, "bold"),
+                  relief="flat", cursor="hand2", padx=10, pady=3).pack(side=tk.LEFT, padx=2)
 
-        self.screenshot_list_var = tk.StringVar(value="截圖: 0 張")
+        self.screenshot_list_var = tk.StringVar(value="Shots: 0")
         tk.Label(shot_btns, textvariable=self.screenshot_list_var,
-                 bg="#1a1a2e", fg="#888", font=("Consolas", 9), padx=10).pack(side=tk.LEFT)
+                 bg=C["card2"], fg=C["dim"], font=("Consolas", 9), padx=8).pack(side=tk.LEFT)
 
-        # 縮圖顯示區（水平捲動）
-        thumb_outer = tk.Frame(shot_frame, bg="#0d0d1a", height=80)
-        thumb_outer.pack(fill=tk.X, pady=(5, 0))
+        # 縮圖
+        thumb_outer = tk.Frame(shot_card, bg=C["card"], height=75)
+        thumb_outer.pack(fill=tk.X, pady=(4, 0))
         thumb_outer.pack_propagate(False)
 
-        thumb_canvas = tk.Canvas(thumb_outer, bg="#0d0d1a", height=75, highlightthickness=0)
+        thumb_canvas = tk.Canvas(thumb_outer, bg=C["card"], height=70, highlightthickness=0)
         thumb_scroll = tk.Scrollbar(thumb_outer, orient=tk.HORIZONTAL, command=thumb_canvas.xview)
         thumb_canvas.configure(xscrollcommand=thumb_scroll.set)
         thumb_scroll.pack(side=tk.BOTTOM, fill=tk.X)
         thumb_canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        self.thumb_inner = tk.Frame(thumb_canvas, bg="#0d0d1a")
+        self.thumb_inner = tk.Frame(thumb_canvas, bg=C["card"])
         thumb_canvas.create_window((0, 0), window=self.thumb_inner, anchor="nw")
         self.thumb_inner.bind("<Configure>",
                               lambda e: thumb_canvas.configure(scrollregion=thumb_canvas.bbox("all")))
         self.thumb_canvas = thumb_canvas
-        self._thumb_refs = []  # 保持 PhotoImage 參照避免 GC
-
-        # ---- 狀態 ----
-        status_frame = tk.Frame(self, bg="#1a1a2e")
-        status_frame.pack(fill=tk.X, padx=10, pady=5)
-
-        self.status_var = tk.StringVar(value="就緒")
-        tk.Label(status_frame, textvariable=self.status_var,
-                 bg="#16213e", fg="#e94560", font=("Segoe UI", 11, "bold"),
-                 padx=10, pady=4).pack(fill=tk.X)
-
-        # ---- 進度條 ----
-        self.progress_var = tk.StringVar(value="和弦: 0 | 截圖: 0 | 時間: --:--")
-        tk.Label(self, textvariable=self.progress_var,
-                 bg="#1a1a2e", fg="#888", font=("Consolas", 10)).pack(fill=tk.X, padx=10)
+        self._thumb_refs = []
 
         # ---- Log ----
-        log_frame = tk.LabelFrame(self, text=" 擷取紀錄 ", bg="#1a1a2e", fg="#888",
-                                  font=("Segoe UI", 10), padx=5, pady=5)
-        log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        log_frame = tk.Frame(self, bg=C["bg"], padx=0, pady=0)
+        log_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=(4, 8))
 
-        self.log_text = tk.Text(log_frame, bg="#0d0d1a", fg="#e0e0e0", height=15,
+        log_header = tk.Frame(log_frame, bg=C["bg"])
+        log_header.pack(fill=tk.X, pady=(0, 4))
+        tk.Label(log_header, text="EXTRACTION LOG", font=("Segoe UI", 8, "bold"),
+                 bg=C["bg"], fg=C["dim"]).pack(side=tk.LEFT)
+        tk.Label(log_header, text="Real-time Analysis", font=("Segoe UI", 7),
+                 bg=C["bg"], fg=C["dim"]).pack(side=tk.RIGHT)
+
+        log_container = tk.Frame(log_frame, bg=C["border"])
+        log_container.pack(fill=tk.BOTH, expand=True)
+
+        self.log_text = tk.Text(log_container, bg=C["card3"], fg=C["text"], height=10,
                                 font=("Consolas", 9), wrap=tk.WORD, state=tk.DISABLED,
-                                insertbackground="#e0e0e0")
-        scrollbar = tk.Scrollbar(log_frame, command=self.log_text.yview)
+                                insertbackground=C["text"], relief="flat", padx=8, pady=4)
+        scrollbar = tk.Scrollbar(log_container, command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.log_text.pack(fill=tk.BOTH, expand=True)
 
         # tag colors
-        self.log_text.tag_configure("info", foreground="#e0e0e0")
-        self.log_text.tag_configure("chord", foreground="#e94560")
-        self.log_text.tag_configure("state", foreground="#2d6a4f")
-        self.log_text.tag_configure("warn", foreground="#e9c46a")
-        self.log_text.tag_configure("error", foreground="#e76f51")
+        self.log_text.tag_configure("info", foreground=C["text2"])
+        self.log_text.tag_configure("chord", foreground=C["primary"])
+        self.log_text.tag_configure("state", foreground=C["success"])
+        self.log_text.tag_configure("warn", foreground="#b8860b")
+        self.log_text.tag_configure("error", foreground=C["error"])
 
     def _log(self, msg, tag="info"):
         self.log_text.configure(state=tk.NORMAL)
@@ -627,7 +707,7 @@ class ChordifyCapture(tk.Tk):
             if r:
                 lbl.configure(text=f"x={r[0]}, y={r[1]}, w={r[2]}, h={r[3]}", fg="#2d6a4f")
             else:
-                lbl.configure(text="未設定", fg="#888")
+                lbl.configure(text="Not set", fg="#717c82")
 
     def _select_region(self, key):
         names = {"play_btn": "播放按鈕", "time": "目前時間", "duration": "總長度", "chord": "和弦網格"}
@@ -869,12 +949,12 @@ class ChordifyCapture(tk.Tk):
             photo = ImageTk.PhotoImage(thumb)
             self._thumb_refs.append(photo)
 
-            frame = tk.Frame(self.thumb_inner, bg="#2a2a4a", padx=2, pady=2)
+            frame = tk.Frame(self.thumb_inner, bg="#d9e4ea", padx=2, pady=2)
             frame.pack(side=tk.LEFT, padx=3)
 
-            lbl = tk.Label(frame, image=photo, bg="#0d0d1a")
+            lbl = tk.Label(frame, image=photo, bg="#ffffff")
             lbl.pack()
-            tk.Label(frame, text=f"#{i+1}", bg="#2a2a4a", fg="#888",
+            tk.Label(frame, text=f"#{i+1}", bg="#d9e4ea", fg="#566166",
                      font=("Consolas", 8)).pack()
 
     def _stitch_and_ocr(self):
