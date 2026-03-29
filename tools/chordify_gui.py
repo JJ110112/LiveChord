@@ -503,19 +503,7 @@ class ChordifyCapture(tk.Tk):
         self.ref_chords = []        # OCR 出的和弦序列
         self._thread = None
 
-        # 確保 config 有拍數設定（防止舊 config 缺值）
-        dirty = False
-        if not self.cfg.get("beats_per_bar"):
-            self.cfg["beats_per_bar"] = 4
-            dirty = True
-        if not self.cfg.get("bars_per_row"):
-            self.cfg["bars_per_row"] = 4
-            dirty = True
-        if not self.cfg.get("beats_per_row") or self.cfg["beats_per_row"] != self.cfg["beats_per_bar"] * self.cfg["bars_per_row"]:
-            self.cfg["beats_per_row"] = self.cfg["beats_per_bar"] * self.cfg["bars_per_row"]
-            dirty = True
-        if dirty:
-            save_config(self.cfg)
+        # (Chord diagrams 捲動模式不需要 beats_per_bar/bars_per_row 設定)
 
         self._build_ui()
         self._update_region_display()
@@ -596,7 +584,7 @@ class ChordifyCapture(tk.Tk):
         for key, label, icon in [("play_btn", "Play/Pause", "▶||"),
                                   ("time", "Current Time", "00:00"),
                                   ("duration", "Total Length", "03:53"),
-                                  ("chord", "Chord Grid", "⬜")]:
+                                  ("chord", "Chord Scroll", "♫")]:
             row = tk.Frame(config_card, bg=C["card2"])
             row.pack(fill=tk.X, pady=1)
 
@@ -658,78 +646,10 @@ class ChordifyCapture(tk.Tk):
                        bg=C["card"], fg=C["dim"], selectcolor=C["card"],
                        activebackground=C["card"], font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(4, 0))
 
-        # ---- Score Snippets (拍號 + 狀態) ----
-        snippet_frame = tk.Frame(self, bg=C["bg"])
-        snippet_frame.pack(fill=tk.X, padx=16, pady=4)
-
-        # 拍號卡片
-        beat_card = tk.Frame(snippet_frame, bg=C["card"], highlightbackground=C["border"],
-                             highlightthickness=1, padx=12, pady=8)
-        beat_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
-
-        tk.Label(beat_card, text="TEMPO & GRID", font=("Segoe UI", 8, "bold"),
-                 bg=C["card"], fg=C["dim"]).pack(anchor="w")
-
-        beat_row = tk.Frame(beat_card, bg=C["card"])
-        beat_row.pack(fill=tk.X, pady=(4, 0))
-
-        tk.Label(beat_row, text="Row Ref", bg=C["card"], fg=C["text2"],
-                 font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(0, 4))
-        tk.Button(beat_row, text="Select", command=self._select_row_ref,
-                  **btn_style).pack(side=tk.LEFT, padx=1)
-        tk.Button(beat_row, text="Test", command=lambda: self._test_region("chord"),
-                  bg=C["card3"], fg=C["text"], font=("Segoe UI", 8),
-                  relief="flat", cursor="hand2", padx=6, pady=2).pack(side=tk.LEFT, padx=(1, 6))
-
-        tk.Label(beat_row, text="Beat:", bg=C["card"], fg=C["dim"],
-                 font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(4, 2))
-        self.bpb_var = tk.IntVar(value=self.cfg.get("beats_per_bar", 4))
-        bpb_cb = ttk.Combobox(beat_row, textvariable=self.bpb_var,
-                               values=[3, 4, 6], width=2, state="readonly")
-        bpb_cb.pack(side=tk.LEFT)
-
-        tk.Label(beat_row, text="Bar:", bg=C["card"], fg=C["dim"],
-                 font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(6, 2))
-        self.bpr_var = tk.IntVar(value=self.cfg.get("bars_per_row", 4))
-        bpr_cb = ttk.Combobox(beat_row, textvariable=self.bpr_var,
-                               values=[2, 3, 4, 8], width=2, state="readonly")
-        bpr_cb.pack(side=tk.LEFT)
-
-        # 起始休止符拍數
-        beat_row2 = tk.Frame(beat_card, bg=C["card"])
-        beat_row2.pack(fill=tk.X, pady=(2, 0))
-
-        tk.Label(beat_row2, text="Start rest:", bg=C["card"], fg=C["dim"],
-                 font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(0, 2))
-        self.offset_var = tk.IntVar(value=self.cfg.get("start_beat_offset", 0))
-        offset_cb = ttk.Combobox(beat_row2, textvariable=self.offset_var,
-                                  values=[0, 1, 2, 3, 4, 8], width=2, state="readonly")
-        offset_cb.pack(side=tk.LEFT)
-        tk.Label(beat_row2, text="beats", bg=C["card"], fg=C["dim"],
-                 font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(2, 0))
-
-        self.cell_size_var = tk.StringVar()
-        self._update_cell_display()
-        tk.Label(beat_row2, textvariable=self.cell_size_var,
-                 bg=C["card"], fg=C["primary"], font=("Consolas", 8, "bold"),
-                 padx=6).pack(side=tk.LEFT, padx=4)
-
-        def _on_beat_change(*_):
-            self.cfg["beats_per_bar"] = self.bpb_var.get()
-            self.cfg["bars_per_row"] = self.bpr_var.get()
-            self.cfg["beats_per_row"] = self.bpb_var.get() * self.bpr_var.get()
-            self.cfg["start_beat_offset"] = self.offset_var.get()
-            save_config(self.cfg)
-            self._update_cell_display()
-
-        bpb_cb.bind("<<ComboboxSelected>>", _on_beat_change)
-        bpr_cb.bind("<<ComboboxSelected>>", _on_beat_change)
-        offset_cb.bind("<<ComboboxSelected>>", _on_beat_change)
-
-        # 狀態卡片
-        status_card = tk.Frame(snippet_frame, bg="#e8f5e9", highlightbackground="#c8e6c9",
+        # ---- 狀態卡片 ----
+        status_card = tk.Frame(self, bg="#e8f5e9", highlightbackground="#c8e6c9",
                                highlightthickness=1, padx=12, pady=8)
-        status_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(4, 0))
+        status_card.pack(fill=tk.X, padx=16, pady=4)
 
         tk.Label(status_card, text="STATUS", font=("Segoe UI", 8, "bold"),
                  bg="#e8f5e9", fg=C["dim"]).pack(anchor="w")
@@ -742,11 +662,11 @@ class ChordifyCapture(tk.Tk):
         tk.Label(status_card, textvariable=self.progress_var,
                  bg="#e8f5e9", fg=C["text2"], font=("Consolas", 8)).pack(anchor="w")
 
-        # ---- 截圖面板 ----
+        # ---- Chord Overview 截圖面板 ----
         shot_card = tk.Frame(self, bg=C["card2"], padx=12, pady=8)
         shot_card.pack(fill=tk.X, padx=16, pady=4)
 
-        tk.Label(shot_card, text="SCORE SCREENSHOTS", font=("Segoe UI", 8, "bold"),
+        tk.Label(shot_card, text="CHORD OVERVIEW SCREENSHOTS", font=("Segoe UI", 8, "bold"),
                  bg=C["card2"], fg=C["dim"]).pack(anchor="w", pady=(0, 4))
 
         shot_btns = tk.Frame(shot_card, bg=C["card2"])
@@ -819,110 +739,7 @@ class ChordifyCapture(tk.Tk):
 
     # ---- 格子尺寸 ----
 
-    def _update_cell_display(self):
-        row_h = self.cfg.get("row_height")
-        row_w = self.cfg.get("row_width")
-        bpb = self.cfg.get("beats_per_bar", 4)
-        bpr = self.cfg.get("bars_per_row", 4)
-        beats = bpb * bpr  # 永遠用實際計算值，不讀舊的 beats_per_row
-        if row_h and row_w:
-            beat_w = row_w / beats
-            self.cell_size_var.set(f"列高:{row_h}px  {bpr}小節×{bpb}拍={beats}拍  每拍:{beat_w:.0f}px")
-        else:
-            self.cell_size_var.set("未設定（請框選一列）")
-
-    def _select_row_ref(self):
-        """框選 Chordify 上的一整列和弦，再詢問拍數"""
-        from tkinter import simpledialog
-
-        self._log("⬜ 請在 Chordify 上框選「一整列」和弦（包含左右邊界）...", "info")
-        self.withdraw()
-        time.sleep(0.3)
-        region = self._do_select("框選一整列和弦")
-        self.deiconify()
-
-        if not region:
-            self._log("  取消", "info")
-            return
-
-        row_w, row_h = region[2], region[3]
-
-        # 用 dialog 詢問小節數和拍號
-        beat_dialog = tk.Toplevel(self)
-        beat_dialog.title("設定拍數")
-        beat_dialog.geometry("320x220")
-        beat_dialog.configure(bg="#1a1a2e")
-        beat_dialog.attributes('-topmost', True)
-        beat_dialog.grab_set()
-
-        tk.Label(beat_dialog, text=f"框選的列: {row_w}×{row_h} px",
-                 bg="#1a1a2e", fg="#888", font=("Consolas", 10)).pack(pady=(10, 5))
-
-        # 每小節幾拍
-        f1 = tk.Frame(beat_dialog, bg="#1a1a2e")
-        f1.pack(pady=5)
-        tk.Label(f1, text="每小節拍數:", bg="#1a1a2e", fg="#e0e0e0",
-                 font=("Segoe UI", 11)).pack(side=tk.LEFT, padx=5)
-        beats_per_bar_var = tk.IntVar(value=self.cfg.get("beats_per_bar", 4))
-        bpb_combo = ttk.Combobox(f1, textvariable=beats_per_bar_var, values=[3, 4, 6], width=5, state="readonly")
-        bpb_combo.pack(side=tk.LEFT, padx=5)
-
-        # 每列幾小節
-        f2 = tk.Frame(beat_dialog, bg="#1a1a2e")
-        f2.pack(pady=5)
-        tk.Label(f2, text="每列小節數:", bg="#1a1a2e", fg="#e0e0e0",
-                 font=("Segoe UI", 11)).pack(side=tk.LEFT, padx=5)
-        bars_per_row_var = tk.IntVar(value=self.cfg.get("bars_per_row", 4))
-        bpr_combo = ttk.Combobox(f2, textvariable=bars_per_row_var, values=[2, 3, 4, 8], width=5, state="readonly")
-        bpr_combo.pack(side=tk.LEFT, padx=5)
-
-        # 即時預覽
-        preview_var = tk.StringVar()
-        preview_label = tk.Label(beat_dialog, textvariable=preview_var,
-                                 bg="#0d0d1a", fg="#e94560", font=("Segoe UI", 11, "bold"), padx=10, pady=5)
-        preview_label.pack(fill=tk.X, padx=20, pady=5)
-
-        def update_preview(*_):
-            bpb = beats_per_bar_var.get()
-            bpr = bars_per_row_var.get()
-            total = bpb * bpr
-            bw = row_w / total
-            preview_var.set(f"一列 {total} 拍 ({bpr}小節×{bpb}拍)  每拍 {bw:.0f}px")
-
-        bpb_combo.bind("<<ComboboxSelected>>", update_preview)
-        bpr_combo.bind("<<ComboboxSelected>>", update_preview)
-        update_preview()
-
-        result = [None]
-
-        def confirm():
-            result[0] = (beats_per_bar_var.get(), bars_per_row_var.get())
-            beat_dialog.destroy()
-
-        tk.Button(beat_dialog, text="確定", command=confirm,
-                  bg="#e94560", fg="#fff", font=("Segoe UI", 11, "bold"),
-                  relief="flat", padx=20).pack(pady=10)
-
-        beat_dialog.wait_window()
-
-        if not result[0]:
-            self._log("  取消", "info")
-            return
-
-        beats_per_bar, bars_per_row = result[0]
-        beats = beats_per_bar * bars_per_row
-        beat_w = row_w / beats
-
-        # 儲存
-        self.cfg["row_height"] = row_h
-        self.cfg["row_width"] = row_w
-        self.cfg["beats_per_bar"] = beats_per_bar
-        self.cfg["bars_per_row"] = bars_per_row
-        self.cfg["beats_per_row"] = beats
-        save_config(self.cfg)
-        self._update_cell_display()
-        self._log(f"  ✓ 列: {row_w}×{row_h}px", "state")
-        self._log(f"  ✓ {bars_per_row}小節×{beats_per_bar}拍 = {beats}拍/列, 每拍 {beat_w:.0f}px", "state")
+    # (_update_cell_display 和 _select_row_ref 已移除 — Chord diagrams 捲動模式不需要)
 
     # ---- 區域設定 ----
 
