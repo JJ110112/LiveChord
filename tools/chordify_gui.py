@@ -1621,11 +1621,19 @@ class ChordifyCapture(tk.Tk):
             self._safe_log(f"  ⚠ 校正點不足 ({len(valid_cal)} 個)，用 fps={fps} fallback", "warn")
 
         # Phase 2: 逐幀分析方塊位置
+        #
+        # 核心策略：
+        # - Row 不用 cy/row_h（Chordify 方塊 y 座標跳動太大）
+        # - Row 用「cx 回到左側」偵測換行（cx 從大變小 = 新的一行）
+        # - Grid 用 cx_to_grid 但 HYSTERESIS 降到 10px
+        # - abs_idx = row_counter * bpr + grid
+        #
         self._safe_status("🔍 Phase 2: 追蹤方塊...")
         current_grid = -1
-        current_row = -1
-        ref_idx = 0
+        row_counter = 0       # 累計行數（不用 cy 計算）
+        last_cx = -1
         records = []
+        GRID_HYSTERESIS = 10  # 降低避免跳格
 
         while cap.isOpened():
             ret, frame = cap.read()
@@ -1658,33 +1666,36 @@ class ChordifyCapture(tk.Tk):
 
             cx, cy = center
             new_grid = cx_to_grid(cx)
-            new_row = int(cy / row_h) if row_h > 0 else 0
 
-            # 判斷是否跨格
             new_beat = False
+
             if current_grid < 0:
+                # 第一次偵測
                 current_grid = new_grid
-                current_row = new_row
+                last_cx = cx
                 new_beat = True
-            elif new_row != current_row:
-                current_grid = cx_to_grid(cx)
-                current_row = new_row
+            elif cx < last_cx - chord_w * 0.5:
+                # cx 大幅向左 = 換行（方塊從行尾跳到下一行開頭）
+                row_counter += 1
+                current_grid = new_grid
+                last_cx = cx
                 new_beat = True
-                is_first_row = False
+                self._safe_log(f"  (換行 → row {row_counter}, f{frame_num})", "info")
             else:
-                # 滯後判斷
-                if beat_bounds and current_grid < len(beat_bounds):
-                    cur_right = beat_bounds[current_grid][1]
-                    if cx > cur_right + HYSTERESIS and new_grid > current_grid:
+                # 同行：cx 向右移動超過 HYSTERESIS 且進入新格子
+                if new_grid > current_grid:
+                    if beat_bounds and current_grid < len(beat_bounds):
+                        cur_right = beat_bounds[current_grid][1]
+                        if cx > cur_right + GRID_HYSTERESIS:
+                            new_beat = True
+                            current_grid = new_grid
+                    else:
                         new_beat = True
                         current_grid = new_grid
-                elif new_grid > current_grid:
-                    new_beat = True
-                    current_grid = new_grid
+                last_cx = cx
 
             if new_beat:
-                # 用方塊的絕對位置（行×列）直接索引 ref_beats
-                abs_idx = current_row * bpr + current_grid
+                abs_idx = row_counter * bpr + current_grid
                 chord = ref_beats[abs_idx] if abs_idx < len(ref_beats) else ""
 
                 time_sec = frame_to_time(frame_num)
@@ -1695,7 +1706,7 @@ class ChordifyCapture(tk.Tk):
                     m = int(time_sec // 60)
                     s = int(time_sec % 60)
                     ms = int((time_sec % 1) * 1000)
-                    self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}  (f{frame_num} grid={current_grid} row={current_row} idx={abs_idx})", "chord")
+                    self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}  (f{frame_num} g={current_grid} r={row_counter} i={abs_idx})", "chord")
 
         cap.release()
 
