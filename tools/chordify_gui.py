@@ -1415,20 +1415,16 @@ class ChordifyCapture(tk.Tk):
                     last_t = t
             return valid
 
-        def frame_to_time(fn):
-            """用最近的 OCR 校正點 + 幀差內插"""
-            valid = _get_valid_calibration()
-            if not valid:
-                return fn / fps - 2.0
+        # 時間校正：用 OCR 找到 00:01 的幀作為基準
+        # PotPlayer 驗證：frame 84 = 2.8s 絕對 = Chordify 00:01
+        # 公式：music_time = frame / actual_fps - offset
+        # offset = ocr_01_frame / actual_fps - 1.0
+        time_offset = ocr_01_frame / fps - 1.0
+        self._safe_log(f"  時間基準: f{ocr_01_frame}=00:01, offset={time_offset:.3f}s", "info")
 
-            # 找 fn 前後最近的校正點
-            best_f, best_t = valid[0]
-            for cf, ct in valid:
-                if cf <= fn:
-                    best_f, best_t = cf, ct
-                else:
-                    break
-            return best_t + (fn - best_f) / fps
+        def frame_to_time(fn):
+            """frame → 音樂時間（秒）"""
+            return fn / fps - time_offset
 
         init_valid = _get_valid_calibration()
         self._safe_log(f"  初始校正點: {len(init_valid)} 個 (play_start=f{play_start_frame})", "info")
