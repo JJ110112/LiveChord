@@ -442,8 +442,11 @@ class ChordifyCapture(tk.Tk):
 
     def _update_cell_display(self):
         row_h = self.cfg.get("row_height")
-        if row_h:
-            self.cell_size_var.set(f"列高: {row_h}px (格線自動偵測)")
+        beats = self.cfg.get("beats_per_row", 8)
+        row_w = self.cfg.get("row_width")
+        if row_h and row_w:
+            beat_w = row_w / beats
+            self.cell_size_var.set(f"列高:{row_h}px  {beats}拍/列  每拍:{beat_w:.0f}px")
         elif self.cell_size:
             self.cell_size_var.set(f"格子: {self.cell_size[0]}×{self.cell_size[1]} px")
         else:
@@ -462,23 +465,48 @@ class ChordifyCapture(tk.Tk):
             return
 
         row_w, row_h = region[2], region[3]
+
+        # 詢問一列幾拍
+        beats_dialog = tk.Toplevel(self)
+        beats_dialog.title("一列幾拍？")
+        beats_dialog.geometry("280x120")
+        beats_dialog.configure(bg="#1a1a2e")
+        beats_dialog.attributes('-topmost', True)
+
+        tk.Label(beats_dialog, text="這一列有幾拍？", bg="#1a1a2e", fg="#e0e0e0",
+                 font=("Segoe UI", 12)).pack(pady=(15, 5))
+
+        beats_frame = tk.Frame(beats_dialog, bg="#1a1a2e")
+        beats_frame.pack(pady=5)
+
+        beats_var = tk.IntVar(value=self.cfg.get("beats_per_row", 8))
+        for val, label in [(6, "6 (3/4拍)"), (8, "8 (4/4拍)"), (12, "12 (其他)")]:
+            tk.Radiobutton(beats_frame, text=label, variable=beats_var, value=val,
+                           bg="#1a1a2e", fg="#e0e0e0", selectcolor="#16213e",
+                           activebackground="#1a1a2e", activeforeground="#e94560",
+                           font=("Segoe UI", 10)).pack(side=tk.LEFT, padx=5)
+
+        def confirm():
+            beats_dialog.destroy()
+
+        tk.Button(beats_dialog, text="確定", command=confirm,
+                  bg="#e94560", fg="#fff", font=("Segoe UI", 10, "bold"),
+                  relief="flat", padx=15).pack(pady=5)
+
+        beats_dialog.wait_window()
+        beats = beats_var.get()
+
+        # 儲存
+        beat_w = row_w / beats
         self.cfg["row_height"] = row_h
-        self.cfg["cell_size"] = [row_w, row_h]  # 保留相容性
+        self.cfg["row_width"] = row_w
+        self.cfg["beats_per_row"] = beats
+        self.cfg["cell_size"] = [row_w, row_h]
         self.cell_size = (row_w, row_h)
         save_config(self.cfg)
         self._update_cell_display()
         self._log(f"  ✓ 列高: {row_h}px, 列寬: {row_w}px", "state")
-
-        # 即時分析格線
-        img = capture_region(region)
-        gray = np.array(img.convert("L"))
-        from chordify_ocr import detect_grid_columns
-        cols = detect_grid_columns(gray, row_h, sample_y=0, verbose=False)
-        if cols:
-            widths = [x2 - x1 for x1, x2 in cols]
-            self._log(f"  偵測到 {len(cols)} 拍, 格寬: {min(widths)}~{max(widths)}px", "state")
-        else:
-            self._log("  ⚠ 無法偵測格線，OCR 將用列寬均分", "warn")
+        self._log(f"  ✓ 每列 {beats} 拍, 每拍寬: {beat_w:.0f}px", "state")
 
     # ---- 區域設定 ----
 

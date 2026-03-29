@@ -239,15 +239,23 @@ def extract_chords_grid(image_path: str, cell_w: int = None, cell_h: int = None,
     cols = detect_grid_columns(gray, row_h, sample_y=rows[1][0] if len(rows) > 1 else rows[0][0],
                                verbose=verbose)
 
-    # 驗證列數是否合理（Chordify 每行 8 拍）
-    if len(cols) < 7 or len(cols) > 10:
-        # 格線偵測不可靠，改用框選列寬均分 8 拍
+    # 從 config 讀取每列拍數
+    beats_per_row = 8
+    if CONFIG_FILE.is_file():
+        cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        beats_per_row = cfg.get("beats_per_row", 8)
+
+    # 驗證列數是否合理
+    expected_min = beats_per_row - 1
+    expected_max = beats_per_row + 2
+    if len(cols) < expected_min or len(cols) > expected_max:
         row_w = cell_w or w
-        beat_w = row_w / 8
+        beat_w = row_w / beats_per_row
         pad_x = max(3, int(beat_w / 15))
-        cols = [(int(c * beat_w + pad_x), int((c + 1) * beat_w - pad_x)) for c in range(8)]
+        cols = [(int(c * beat_w + pad_x), int((c + 1) * beat_w - pad_x))
+                for c in range(beats_per_row)]
         if verbose:
-            print(f"  格線偵測結果不合理，改用均分 8 拍 (beat_w={beat_w:.0f}px)")
+            print(f"  格線偵測不合理({len(cols)}列)，改用均分 {beats_per_row} 拍 (beat_w={beat_w:.0f}px)")
 
     if verbose:
         print(f"  網格: {len(rows)} 行 × {len(cols)} 列 = {len(rows) * len(cols)} 格")
