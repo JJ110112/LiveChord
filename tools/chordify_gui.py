@@ -1450,23 +1450,40 @@ class ChordifyCapture(tk.Tk):
         # 在格線之間跳動（不是連續滑動）。
         # 每次 cx 跳動 = 新的一拍。
         #
-        # Phase 2: 追蹤方塊
+        # Phase 2: 偵測格線經過方塊（像素內容變化）
         #
-        # Chord diagrams 捲動模式的方塊行為：
-        # 1. 方塊平時穩定在固定 x 位置（「靜止位置」~480px）
-        # 2. 新的一拍來時，方塊先向右跳 ~100px（離開靜止區）
-        # 3. 頁面捲動完成後，方塊回到靜止位置
-        # 4. 每次「跳出去」= 一拍
+        # Chord diagrams 捲動模式：
+        # - 方塊固定在畫面左側（~格5位置），格子向左捲動
+        # - 格線經過方塊時，方塊覆蓋區域的像素會改變
+        # - 每次像素脈衝（diff > threshold）= 新的一拍
+        # - 脈衝結束後有冷卻時間，防止重複觸發
         #
-        # 策略：偵測 cx 從靜止區向右跳出（cx > 靜止位置 + 閾值）
-        # 跳出後等方塊回到靜止區，才能偵測下一次跳出
-        #
-        self._safe_status("🔍 Phase 2: 追蹤方塊...")
+        self._safe_status("🔍 Phase 2: 偵測格線經過...")
+
+        # 找方塊穩定位置
+        stable_cx = 25  # 預設，後面會學習
+        sample_w = 60
+        chord_sub_0 = get_chord_subframe(cap.read()[1] if cap.isOpened() else None)
+        if chord_sub_0 is not None:
+            sub_h = chord_sub_0.shape[0]
+            sub_w = chord_sub_0.shape[1]
+        else:
+            sub_h, sub_w = 100, 1800
+        cap.set(cv2.CAP_PROP_POS_FRAMES, play_start_frame)
+
+        x1 = max(0, stable_cx - sample_w // 2)
+        x2 = min(sub_w, stable_cx + sample_w // 2)
+
+        PIXEL_THRESHOLD = 2    # 像素差異閾值（低=敏感）
+        PIXEL_SETTLE = 1.5     # 差異回到此值以下 = 脈衝結束
+        COOLDOWN_FRAMES = 12   # 脈衝後冷卻幀數（~0.4s@30fps）
+
+        prev_pixels = None
         beat_count = 0
         records = []
-        resting_cx = None      # 方塊的靜止位置（動態學習）
-        JUMP_THRESHOLD = 80    # cx 超過靜止位置 80px = 跳出
-        waiting_return = False # 正在等方塊回到靜止區
+        cooldown = 0
+        in_pulse = False
+        frame_num = play_start_frame
 
         while cap.isOpened():
             ret, frame = cap.read()
@@ -1474,7 +1491,7 @@ class ChordifyCapture(tk.Tk):
                 break
             frame_num += 1
 
-            # 每 30 幀 OCR 時間
+            # OCR 時間
             if frame_num % 30 == 0:
                 time_sub = get_time_subframe(frame)
                 time_rgb = cv2.cvtColor(time_sub, cv2.COLOR_BGR2RGB)
@@ -1484,52 +1501,43 @@ class ChordifyCapture(tk.Tk):
                     time_calibration.append((frame_num, t))
 
             # 進度
-            if frame_num % 100 == 0:
+            if frame_num % 200 == 0:
                 pct = int(frame_num / total_frames * 100)
-                self._safe_progress(f"🔍 分析: {frame_num}/{total_frames} ({pct}%)")
+                self._safe_progress(f"🔍 分析: {frame_num}/{total_frames} ({pct}%) beats={beat_count}")
 
+            # 取方塊固定位置的像素帶
             chord_sub = get_chord_subframe(frame)
-            rgb = cv2.cvtColor(chord_sub, cv2.COLOR_BGR2RGB)
-            pil_img = Image.fromarray(rgb)
-            center = _find_dark_block_center(pil_img)
+            region = chord_sub[10:sub_h - 20, x1:x2]
+            pixels = region.astype(float).flatten()
 
-            if not center:
-                continue
+            if prev_pixels is not None and len(pixels) == len(prev_pixels):
+                diff = np.mean(np.abs(pixels - prev_pixels))
 
-            cx, cy = center
-
-            # 學習靜止位置（用最常出現的 cx 附近值）
-            if resting_cx is None:
-                resting_cx = cx
-                continue
-
-            new_beat = False
-
-            if not waiting_return:
-                # 等待跳出：cx 向右離開靜止位置
-                if cx > resting_cx + JUMP_THRESHOLD:
+                new_beat = False
+                if cooldown > 0:
+                    cooldown -= 1
+                elif not in_pulse and diff > PIXEL_THRESHOLD:
+                    # 脈衝開始 = 格線經過 = 新的一拍
+                    in_pulse = True
                     new_beat = True
-                    waiting_return = True
-            else:
-                # 等待回到靜止區：cx 回到靜止位置附近
-                if abs(cx - resting_cx) < 30:
-                    waiting_return = False
-                    # 更新靜止位置（可能微調）
-                    resting_cx = resting_cx * 0.9 + cx * 0.1
+                elif in_pulse and diff < PIXEL_SETTLE:
+                    # 脈衝結束
+                    in_pulse = False
+                    cooldown = COOLDOWN_FRAMES
 
-            if new_beat:
-                chord = ref_beats[beat_count] if beat_count < len(ref_beats) else ""
-                beat_count += 1
+                if new_beat and beat_count < len(ref_beats):
+                    chord = ref_beats[beat_count]
+                    beat_count += 1
+                    time_sec = frame_to_time(frame_num)
 
-                time_sec = frame_to_time(frame_num)
+                    if chord:
+                        records.append((round(time_sec, 3), chord))
+                        m = int(time_sec // 60)
+                        s = int(time_sec % 60)
+                        ms = int((time_sec % 1) * 1000)
+                        self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}  (f{frame_num} beat={beat_count})", "chord")
 
-                if chord:
-                    records.append((round(time_sec, 3), chord))
-
-                    m = int(time_sec // 60)
-                    s = int(time_sec % 60)
-                    ms = int((time_sec % 1) * 1000)
-                    self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}  (f{frame_num} beat={beat_count})", "chord")
+            prev_pixels = pixels.copy()
 
         cap.release()
 
