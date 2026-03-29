@@ -1483,9 +1483,19 @@ class ChordifyCapture(tk.Tk):
         records = []
         cooldown = 0
         in_pulse = False
-        beat_started = False   # 第一個正常脈衝是否已偵測到
-        # 從 play_start 後跳過一段（等 Play 按鈕的巨大畫面變化消退）
-        skip_until = play_start_frame + 30  # 跳過 Play 後的 1 秒
+
+        # 找 OCR 第一次讀到 1 的幀 = Chordify 00:01 = beat 1 的起點
+        # 從這個幀開始計數脈衝，之前的全部忽略
+        ocr_01_frame = None
+        for cf, ct in time_calibration:
+            if ct == 1:
+                ocr_01_frame = cf
+                break
+        if ocr_01_frame is None:
+            # fallback: play_start + 一些延遲
+            ocr_01_frame = play_start_frame + 15
+        self._safe_log(f"  OCR 00:01 at frame {ocr_01_frame}", "info")
+
         frame_num = play_start_frame
 
         while cap.isOpened():
@@ -1503,8 +1513,8 @@ class ChordifyCapture(tk.Tk):
                 if t is not None:
                     time_calibration.append((frame_num, t))
 
-            # 跳過 Play 按鈕造成的畫面變化
-            if frame_num < skip_until:
+            # 跳過 OCR 00:01 之前的幀（預錄 + Play 按鈕動畫）
+            if frame_num < ocr_01_frame:
                 continue
 
             # 進度
@@ -1519,12 +1529,6 @@ class ChordifyCapture(tk.Tk):
 
             if prev_pixels is not None and len(pixels) == len(prev_pixels):
                 diff = np.mean(np.abs(pixels - prev_pixels))
-
-                # 跳過巨大脈衝（Play 按鈕殘留、頁面捲動初始化）
-                if diff > 50:
-                    prev_pixels = pixels.copy()
-                    cooldown = COOLDOWN_FRAMES
-                    continue
 
                 new_beat = False
                 if cooldown > 0:
