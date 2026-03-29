@@ -1000,27 +1000,42 @@ class ChordifyCapture(tk.Tk):
                      font=("Consolas", 8)).pack()
 
     def _edit_chords_txt(self):
-        """打開和弦網格編輯器"""
+        """打開和弦網格編輯器（已有檔案則載入，沒有則新建）"""
         name = self.song_name.get().strip()
         lv = self.level.get()
         if not name:
             self._log("⚠ 請輸入歌曲名稱", "warn")
             return
 
-        txt_path = TEST_SONGS_DIR / lv / f"{name}.chords.txt"
-        if not txt_path.is_file():
-            self._log(f"⚠ {txt_path.name} 不存在，請先 Stitch + OCR", "warn")
-            return
+        # 新的 per-song 資料夾結構
+        song_dir = TEST_SONGS_DIR / lv / name
+        song_dir.mkdir(parents=True, exist_ok=True)
+        txt_path = song_dir / f"{name}.chords.txt"
 
-        # 載入序列
-        raw = txt_path.read_text(encoding="utf-8").strip()
-        if '\t' in raw:
-            beats = []
-            for line in raw.split('\n'):
-                parts = line.strip().split('\t')
-                beats.append(parts[1] if len(parts) >= 2 else "")
+        if txt_path.is_file():
+            # 載入已有序列
+            raw = txt_path.read_text(encoding="utf-8").strip()
+            if '\t' in raw:
+                beats = []
+                for line in raw.split('\n'):
+                    parts = line.strip().split('\t')
+                    beats.append(parts[1] if len(parts) >= 2 else "")
+            else:
+                beats = [c.strip() for c in raw.split(',')]
+            self._log(f"📝 載入 {txt_path.name} ({sum(1 for b in beats if b)} chords)", "info")
         else:
-            beats = [c.strip() for c in raw.split(',')]
+            # 新建空白序列（預設 384 拍 = 24 行 × 16 拍）
+            from tkinter import simpledialog
+            total = simpledialog.askinteger(
+                "新建和弦序列",
+                f"歌曲: {name}\n\n總拍數（4/4 拍每小節 4 拍）:\n"
+                f"  3 分鐘 ≈ 300 拍\n  4 分鐘 ≈ 400 拍\n  5 分鐘 ≈ 500 拍",
+                initialvalue=384, minvalue=16, maxvalue=2000, parent=self
+            )
+            if not total:
+                return
+            beats = [""] * total
+            self._log(f"📝 新建 {total} 拍的空白序列", "state")
 
         bpr = self.cfg.get("beats_per_row", 16)
         bpb = self.cfg.get("beats_per_bar", 4)
@@ -1035,7 +1050,7 @@ class ChordifyCapture(tk.Tk):
             messagebox.showwarning("提示", "請輸入歌曲名稱")
             return
 
-        save_dir = TEST_SONGS_DIR / lv
+        save_dir = TEST_SONGS_DIR / lv / name
         save_dir.mkdir(parents=True, exist_ok=True)
         png_path = save_dir / f"{name}.png"
 
@@ -1113,7 +1128,7 @@ class ChordifyCapture(tk.Tk):
                 messagebox.showwarning("提示", f"請先框選「{key}」區域")
                 return
 
-        save_dir = TEST_SONGS_DIR / lv
+        save_dir = TEST_SONGS_DIR / lv / name
         save_dir.mkdir(parents=True, exist_ok=True)
         video_path = save_dir / f"{name}.recording.avi"
 
@@ -1268,7 +1283,7 @@ class ChordifyCapture(tk.Tk):
             messagebox.showwarning("提示", "請輸入歌曲名稱")
             return
 
-        save_dir = TEST_SONGS_DIR / lv
+        save_dir = TEST_SONGS_DIR / lv / name
         video_path = save_dir / f"{name}.recording.avi"
         chords_path = save_dir / f"{name}.chords.txt"
 
@@ -1561,7 +1576,7 @@ class ChordifyCapture(tk.Tk):
         self._safe_log(f"\n  分析完成: {len(records)} 個和弦", "state")
 
         if records:
-            save_dir = TEST_SONGS_DIR / lv
+            save_dir = TEST_SONGS_DIR / lv / name
             entries = []
             for i, (t, c) in enumerate(records):
                 end = records[i + 1][0] if i + 1 < len(records) else t + 2.0
@@ -1607,7 +1622,7 @@ class ChordifyCapture(tk.Tk):
         # 檢查已有
         lv = self.level.get()
         name = self.song_name.get().strip()
-        lab_path = TEST_SONGS_DIR / lv / f"{name}.lab"
+        lab_path = TEST_SONGS_DIR / lv / name / f"{name}.lab"
         if lab_path.is_file():
             if not self.auto_overwrite.get() and not messagebox.askyesno("已存在", f"已有 {name}.lab，要覆蓋嗎？"):
                 return
@@ -1625,7 +1640,7 @@ class ChordifyCapture(tk.Tk):
         self._ref_idx = 0
 
         # 自動載入 .chords.txt 作為和弦參照（截圖 OCR 的結果）
-        chords_txt = TEST_SONGS_DIR / lv / f"{name}.chords.txt"
+        chords_txt = TEST_SONGS_DIR / lv / name / f"{name}.chords.txt"
         if chords_txt.is_file():
             raw = chords_txt.read_text(encoding="utf-8").strip()
             # 格式應為 "chord,chord,..." 逗號分隔（代表每一拍）
@@ -1996,7 +2011,7 @@ class ChordifyCapture(tk.Tk):
     def _finish(self, name, lv):
         self._safe_status("儲存中...")
 
-        save_dir = TEST_SONGS_DIR / lv
+        save_dir = TEST_SONGS_DIR / lv / name
         save_dir.mkdir(parents=True, exist_ok=True)
 
         # 儲存 .lab
