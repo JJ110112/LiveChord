@@ -383,6 +383,12 @@ class ChordifyCapture(tk.Tk):
                                   state=tk.DISABLED, **btn_style)
         self.btn_stop.pack(side=tk.LEFT, padx=5)
 
+        self.auto_overwrite = tk.BooleanVar(value=True)
+        tk.Checkbutton(ctrl, text="自動覆蓋", variable=self.auto_overwrite,
+                       bg="#1a1a2e", fg="#888", selectcolor="#16213e",
+                       activebackground="#1a1a2e", activeforeground="#e94560",
+                       font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(15, 0))
+
         # ---- 截圖面板 ----
         shot_frame = tk.LabelFrame(self, text=" 樂譜截圖（多頁拼接）", bg="#1a1a2e", fg="#888",
                                    font=("Segoe UI", 10), padx=10, pady=5)
@@ -940,7 +946,7 @@ class ChordifyCapture(tk.Tk):
         name = self.song_name.get().strip()
         lab_path = TEST_SONGS_DIR / lv / f"{name}.lab"
         if lab_path.is_file():
-            if not messagebox.askyesno("已存在", f"已有 {name}.lab，要覆蓋嗎？"):
+            if not self.auto_overwrite.get() and not messagebox.askyesno("已存在", f"已有 {name}.lab，要覆蓋嗎？"):
                 return
 
         # 記住歌曲選擇
