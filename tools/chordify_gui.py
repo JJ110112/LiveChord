@@ -1218,20 +1218,21 @@ class ChordifyCapture(tk.Tk):
                         current_grid_idx = new_grid
                         current_row_idx = new_row
                     elif new_row != current_row_idx:
-                        # 換行：一定是新的一拍
+                        # 換行：視為下一拍，不做漏拍補償
+                        # （行末空白和行首空白不是漏拍）
                         new_beat = True
-                        # 計算跳了幾拍（上一行剩餘 + 新行已過）
-                        bpr = self.cfg.get("beats_per_row", 16)
-                        remaining_old = bpr - current_grid_idx - 1
-                        jump_beats = remaining_old + new_grid
+                        jump_beats = 0
                         current_grid_idx = new_grid
                         current_row_idx = new_row
-                    elif new_grid != current_grid_idx:
-                        # 同行但跨格
+                    elif new_grid > current_grid_idx:
+                        # 同行向右跨格
                         new_beat = True
-                        jump_beats = new_grid - current_grid_idx - 1  # 中間跳過幾格
+                        jump_beats = new_grid - current_grid_idx - 1
                         jump_beats = max(0, jump_beats)
                         current_grid_idx = new_grid
+                    elif new_grid < current_grid_idx:
+                        # 同行向左（不正常，忽略）
+                        pass
                     # else: 同一格內滑動 → 忽略
 
                 if not new_beat:

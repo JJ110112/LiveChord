@@ -547,17 +547,18 @@ def capture_loop():
                     current_grid_idx = new_grid
                     current_row_idx = new_row
                 elif new_row != current_row_idx:
-                    # 換行
+                    # 換行：視為下一拍，不做漏拍補償
                     new_beat = True
-                    remaining = bpr - current_grid_idx - 1
-                    jump_beats = max(0, remaining + new_grid)
+                    jump_beats = 0
                     current_grid_idx = new_grid
                     current_row_idx = new_row
-                elif new_grid != current_grid_idx:
-                    # 同行跨格
+                elif new_grid > current_grid_idx:
+                    # 同行向右跨格
                     new_beat = True
                     jump_beats = max(0, new_grid - current_grid_idx - 1)
                     current_grid_idx = new_grid
+                elif new_grid < current_grid_idx:
+                    pass  # 同行向左（不正常，忽略）
 
             if not new_beat:
                 time.sleep(0.03)
