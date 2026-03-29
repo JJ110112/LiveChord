@@ -324,6 +324,20 @@ class ChordifyCapture(tk.Tk):
         self.ref_chords = []        # OCR 出的和弦序列
         self._thread = None
 
+        # 確保 config 有拍數設定（防止舊 config 缺值）
+        dirty = False
+        if not self.cfg.get("beats_per_bar"):
+            self.cfg["beats_per_bar"] = 4
+            dirty = True
+        if not self.cfg.get("bars_per_row"):
+            self.cfg["bars_per_row"] = 4
+            dirty = True
+        if not self.cfg.get("beats_per_row") or self.cfg["beats_per_row"] != self.cfg["beats_per_bar"] * self.cfg["bars_per_row"]:
+            self.cfg["beats_per_row"] = self.cfg["beats_per_bar"] * self.cfg["bars_per_row"]
+            dirty = True
+        if dirty:
+            save_config(self.cfg)
+
         self._build_ui()
         self._update_region_display()
 
@@ -1120,11 +1134,11 @@ class ChordifyCapture(tk.Tk):
                         break
                     continue
 
-                chord_img, precise_time, jump_distance = item
+                chord_img, precise_time, jump_beats = item
 
                 try:
                     # 漏拍補償
-                    skipped = int(jump_distance / grid_width) - 1 if grid_width > 0 else 0
+                    skipped = jump_beats
                     skipped = max(0, min(skipped, 5))
 
                     if skipped > 0:
@@ -1249,7 +1263,7 @@ class ChordifyCapture(tk.Tk):
 
                 # 放入 buffer（jump_beats 用於漏拍補償）
                 try:
-                    ocr_queue.put_nowait((chord_img.copy(), precise_time, jump_beats * grid_width))
+                    ocr_queue.put_nowait((chord_img.copy(), precise_time, jump_beats))
                 except queue.Full:
                     pass
 
