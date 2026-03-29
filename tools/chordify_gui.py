@@ -1568,18 +1568,21 @@ class ChordifyCapture(tk.Tk):
             if center:
                 if baseline_center is None:
                     baseline_center = center
+                    last_center = center
                 else:
-                    dx = abs(center[0] - baseline_center[0])
-                    dy = abs(center[1] - baseline_center[1])
-                    if dx > 30 or dy > 30:
+                    dx = abs(center[0] - last_center[0])
+                    # 只看水平移動（忽略 Play 按下後的頁面垂直捲動）
+                    # 且移動距離要接近一格寬（~100-120px），不是小幅晃動
+                    if dx > 80:
                         play_start_frame = frame_num
-                        self._safe_log(f"  ▶ 播放開始: frame {frame_num} ({frame_num/fps:.2f}s)", "state")
+                        self._safe_log(f"  ▶ 播放開始: frame {frame_num} ({frame_num/fps:.2f}s), dx={dx}", "state")
                         break
+                    last_center = center
 
             frame_num += 1
 
-        # 過濾：只用播放開始後的校正點（預錄期間的 00:00 不算）
-        time_calibration = [(f, t) for f, t in time_calibration if f >= play_start_frame]
+        # 過濾：只用播放開始後且 OCR 時間 > 0 的校正點
+        time_calibration = [(f, t) for f, t in time_calibration if f >= play_start_frame and t > 0]
         self._safe_log(f"  時間校正點（播放後）: {len(time_calibration)} 個", "info")
         if time_calibration:
             f0, t0 = time_calibration[0]
