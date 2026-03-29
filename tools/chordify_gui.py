@@ -958,6 +958,31 @@ class ChordifyCapture(tk.Tk):
         self.records = []
         self.screenshots = []
         self.ref_chords = []
+        self._ref_sequence = []  # 從 .chords.txt 載入的參照序列
+        self._ref_idx = 0
+
+        # 自動載入 .chords.txt 作為和弦參照（截圖 OCR 的結果）
+        chords_txt = TEST_SONGS_DIR / lv / f"{name}.chords.txt"
+        if chords_txt.is_file():
+            raw = chords_txt.read_text(encoding="utf-8").strip()
+            # 格式可能是 "time\tchord" 逐行，或 "chord,chord,..." 逗號分隔
+            if '\t' in raw:
+                # time\tchord 格式
+                for line in raw.split('\n'):
+                    parts = line.strip().split('\t')
+                    if len(parts) >= 2 and parts[1]:
+                        self._ref_sequence.append(parts[1])
+            else:
+                # 逗號分隔格式（逐拍，空 = 延續）
+                for c in raw.split(','):
+                    c = c.strip()
+                    if c:
+                        self._ref_sequence.append(c)
+
+            if self._ref_sequence:
+                self._log(f"📋 載入參照序列: {len(self._ref_sequence)} 個和弦 (從 .chords.txt)", "state")
+                self._log(f"   → 擷取時只綁定時間，不做 OCR（更快更準）", "info")
+
         self.capturing = True
         self.btn_start.configure(state=tk.DISABLED)
         self.btn_stop.configure(state=tk.NORMAL)
@@ -1107,12 +1132,28 @@ class ChordifyCapture(tk.Tk):
                         beat_dur = (precise_time - prev_time) / (skipped + 1)
                         for si in range(skipped):
                             st = prev_time + beat_dur * (si + 1)
-                            self.records.append((round(st, 3), f"({skipped}skip)"))
-                            self._safe_log(f"  {int(st//60)}:{int(st%60):02d}.{int((st%1)*1000):03d}  ({skipped}skip)", "warn")
+                            # 有參照序列就用它補，否則標記為 skip
+                            if self._ref_sequence and self._ref_idx < len(self._ref_sequence):
+                                skip_chord = self._ref_sequence[self._ref_idx]
+                                self._ref_idx += 1
+                                self.records.append((round(st, 3), skip_chord))
+                                self._safe_log(f"  {int(st//60)}:{int(st%60):02d}.{int((st%1)*1000):03d}  {skip_chord}  📋補", "warn")
+                            else:
+                                self.records.append((round(st, 3), f"({skipped}skip)"))
+                                self._safe_log(f"  {int(st//60)}:{int(st%60):02d}.{int((st%1)*1000):03d}  ({skipped}skip)", "warn")
 
-                    # OCR 和弦（慢，但不阻塞 producer）
-                    chord, _ = find_highlighted_chord(chord_img)
-                    if chord:  # 信任 Producer 的 box_moved，不過濾重複和弦
+                    # 和弦來源：優先用參照序列（截圖 OCR），否則即時 OCR
+                    if self._ref_sequence and self._ref_idx < len(self._ref_sequence):
+                        # 從預載的 .chords.txt 取和弦（100% 準確，0ms）
+                        chord = self._ref_sequence[self._ref_idx]
+                        self._ref_idx += 1
+                        source = "📋"
+                    else:
+                        # 即時 OCR（慢，但不阻塞 producer）
+                        chord, _ = find_highlighted_chord(chord_img)
+                        source = "🔍"
+
+                    if chord:
                         self.records.append((round(precise_time, 3), chord))
                         shared["last_chord"] = chord
                         self.ref_chords.append(chord)
@@ -1121,8 +1162,9 @@ class ChordifyCapture(tk.Tk):
                         s = int(precise_time % 60)
                         ms = int((precise_time % 1) * 1000)
                         count = len(self.records)
-                        self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}", "chord")
-                        self._safe_progress(f"和弦: {count} | 截圖: {len(self.screenshots)} | "
+                        total_ref = len(self._ref_sequence) if self._ref_sequence else "?"
+                        self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}  {source}", "chord")
+                        self._safe_progress(f"和弦: {count}/{total_ref} | "
                                             f"時間: {m}:{s:02d}.{ms:03d}")
                 except Exception:
                     pass
