@@ -1301,23 +1301,20 @@ class ChordifyCapture(tk.Tk):
         chords_txt = TEST_SONGS_DIR / lv / f"{name}.chords.txt"
         if chords_txt.is_file():
             raw = chords_txt.read_text(encoding="utf-8").strip()
-            # 格式可能是 "time\tchord" 逐行，或 "chord,chord,..." 逗號分隔
+            # 格式應為 "chord,chord,..." 逗號分隔（代表每一拍）
             if '\t' in raw:
-                # time\tchord 格式
-                for line in raw.split('\n'):
-                    parts = line.strip().split('\t')
-                    if len(parts) >= 2 and parts[1]:
-                        self._ref_sequence.append(parts[1])
+                # 若誤讀到 time \t chord 格式，這是無效的（缺少空拍資訊）
+                self._log("⚠ .chords.txt 格式錯誤（不應包含 tab），請重新產生參照。", "warn")
+                self._ref_sequence = []
+                self._ref_chord_count = 0
             else:
                 # 逗號分隔格式（逐拍，空 = 延續）
-                for c in raw.split(','):
-                    c = c.strip()
-                    if c:
-                        self._ref_sequence.append(c)
+                self._ref_sequence = [c.strip() for c in raw.split(',')]
+                self._ref_chord_count = sum(1 for c in self._ref_sequence if c)
 
             if self._ref_sequence:
-                self._log(f"📋 載入參照序列: {len(self._ref_sequence)} 個和弦 (從 .chords.txt)", "state")
-                self._log(f"   → 擷取時只綁定時間，不做 OCR（更快更準）", "info")
+                self._log(f"📋 載入參照序列: {len(self._ref_sequence)} 拍, {self._ref_chord_count} 個和弦 (從 .chords.txt)", "state")
+                self._log(f"   → 擷取時將逐拍對應，不做 OCR（更快更準）", "info")
 
         self.capturing = True
         self.btn_start.configure(state=tk.DISABLED)
@@ -1472,8 +1469,9 @@ class ChordifyCapture(tk.Tk):
                             if self._ref_sequence and self._ref_idx < len(self._ref_sequence):
                                 skip_chord = self._ref_sequence[self._ref_idx]
                                 self._ref_idx += 1
-                                self.records.append((round(st, 3), skip_chord))
-                                self._safe_log(f"  {int(st//60)}:{int(st%60):02d}.{int((st%1)*1000):03d}  {skip_chord}  📋補", "warn")
+                                if skip_chord:
+                                    self.records.append((round(st, 3), skip_chord))
+                                    self._safe_log(f"  {int(st//60)}:{int(st%60):02d}.{int((st%1)*1000):03d}  {skip_chord}  📋補", "warn")
                             else:
                                 self.records.append((round(st, 3), f"({skipped}skip)"))
                                 self._safe_log(f"  {int(st//60)}:{int(st%60):02d}.{int((st%1)*1000):03d}  ({skipped}skip)", "warn")
@@ -1498,7 +1496,7 @@ class ChordifyCapture(tk.Tk):
                         s = int(precise_time % 60)
                         ms = int((precise_time % 1) * 1000)
                         count = len(self.records)
-                        total_ref = len(self._ref_sequence) if self._ref_sequence else "?"
+                        total_ref = self._ref_chord_count if getattr(self, '_ref_chord_count', None) is not None else "?"
                         self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}  {source}", "chord")
                         self._safe_progress(f"和弦: {count}/{total_ref} | "
                                             f"時間: {m}:{s:02d}.{ms:03d}")
