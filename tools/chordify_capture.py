@@ -766,6 +766,10 @@ def main():
     STATE["running"] = False
     STATE["capturing"] = False
 
+    # 等待擷取線程與佇列確實排空，確保最後一個和弦被紀錄
+    if capture_thread.is_alive():
+        capture_thread.join(timeout=5.0)
+
     print(f"\n\n  擷取結束，共 {len(STATE['records'])} 個和弦")
 
     if STATE["records"]:
@@ -823,6 +827,10 @@ def main_continue(song_name: str, level: str):
 
     STATE["running"] = False
     STATE["capturing"] = False
+
+    # 等待擷取線程與佇列確實排空，確保最後一個和弦被紀錄
+    if capture_thread.is_alive():
+        capture_thread.join(timeout=5.0)
 
     print(f"\n  擷取結束，共 {len(STATE['records'])} 個和弦")
     if STATE["records"]:

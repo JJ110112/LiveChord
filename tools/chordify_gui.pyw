@@ -1104,11 +1104,13 @@ class ChordifyCapture(tk.Tk):
 
             time.sleep(0.03)  # 30ms — producer 不受 OCR 拖累
 
-        # ---- 等 consumer 處理完 buffer 剩餘（最多 3 秒防死鎖）----
+        # ---- 等 consumer 處理完 buffer 剩餘（最多 5 秒防死鎖）----
         shared["stop"] = True
-        end_wait = time.time() + 3.0
+        end_wait = time.time() + 5.0
         while not ocr_queue.empty() and time.time() < end_wait:
             time.sleep(0.1)
+        # 額外等 0.5 秒讓 consumer 完成最後一項 OCR
+        time.sleep(0.5)
 
         # Phase 3: 儲存
         self._finish(name, lv)
