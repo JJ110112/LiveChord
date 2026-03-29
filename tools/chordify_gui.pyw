@@ -136,6 +136,32 @@ def ocr_time(img):
     return None
 
 
+def _find_dark_block_center(img) -> tuple:
+    """
+    快速找到高亮方塊的中心座標（純像素運算，不做 OCR）。
+    用於高頻迴圈中追蹤方塊移動。約 2-5ms。
+    """
+    arr = np.array(img)
+    h, w, _ = arr.shape
+    if h == 0 or w == 0:
+        return None
+
+    # 縮小 8 倍做快速掃描
+    scale = 8
+    small_w, small_h = max(1, w // scale), max(1, h // scale)
+    small = img.resize((small_w, small_h), Image.BILINEAR)
+    gray_small = np.mean(np.array(small), axis=2)
+
+    min_val = np.min(gray_small)
+    if min_val > 120:
+        return None
+
+    min_y, min_x = np.unravel_index(np.argmin(gray_small), gray_small.shape)
+    cx = int(min_x * scale + scale / 2)
+    cy = int(min_y * scale + scale / 2)
+    return (max(0, min(w - 1, cx)), max(0, min(h - 1, cy)))
+
+
 def find_highlighted_chord(img):
     """回傳 (chord_name, (cx, cy)) 或 (None, None)"""
     reader = get_reader()
@@ -912,48 +938,55 @@ class ChordifyCapture(tk.Tk):
         time_stall_count = 0
         screenshot_interval = 0
 
-        # Phase 2: 持續擷取（用 Chordify 時間判斷結束）
+        # Phase 2: 高效能擷取迴圈
+        #
+        # 效能策略（避免 OCR 瓶頸）：
+        # - 快速迴圈（50ms）：只做像素級方塊位置偵測（< 5ms）
+        # - 方塊移動時：才做一次和弦 OCR（~200ms，但只在和弦變化時觸發）
+        # - 時間 OCR：每 2 秒做一次校正，中間用 perf_counter 內插
+        #
+        last_time_ocr_perf = 0  # 上次做時間 OCR 的 perf_counter
+        TIME_OCR_INTERVAL = 2.0  # 每 2 秒做一次時間 OCR
+
         while self.capturing:
             try:
-                # OCR 目前時間（Chordify 顯示的秒數）
-                time_img = capture_region(time_r)
-                current_sec = ocr_time(time_img)
+                now = time.perf_counter()
 
-                if current_sec is not None:
-                    # 更新 OCR 時間基準（每次讀到新秒數就校正）
-                    if last_ocr_sec is None or current_sec != last_ocr_sec:
-                        last_ocr_sec = current_sec
-                        last_ocr_perf = time.perf_counter()
+                # ---- 時間 OCR（低頻，每 2 秒一次）----
+                if now - last_time_ocr_perf >= TIME_OCR_INTERVAL:
+                    last_time_ocr_perf = now
+                    time_img = capture_region(time_r)
+                    current_sec = ocr_time(time_img)
 
-                    # 結束判斷 1: 目前時間 ≥ 總長度 - 2 秒
-                    if current_sec >= total_duration - 2:
-                        m, s = divmod(current_sec, 60)
-                        self._safe_log(f"⏹ 到達歌曲結尾 ({m}:{s:02d})", "state")
-                        break
+                    if current_sec is not None:
+                        if last_ocr_sec is None or current_sec != last_ocr_sec:
+                            last_ocr_sec = current_sec
+                            last_ocr_perf = now
 
-                    # 結束判斷 2: 時間停滯超過 5 秒
-                    if last_time_sec is not None:
-                        if current_sec <= last_time_sec:
-                            time_stall_count += 1
-                            if time_stall_count >= 50:
-                                self._safe_log("⏹ 時間停滯 5 秒，判定播放結束", "state")
-                                break
-                        else:
-                            time_stall_count = 0
+                        # 結束判斷 1: 到達歌曲結尾
+                        if current_sec >= total_duration - 2:
+                            m, s = divmod(current_sec, 60)
+                            self._safe_log(f"⏹ 到達歌曲結尾 ({m}:{s:02d})", "state")
+                            break
 
-                    last_time_sec = current_sec
+                        # 結束判斷 2: 時間停滯
+                        if last_time_sec is not None:
+                            if current_sec <= last_time_sec:
+                                time_stall_count += 1
+                                if time_stall_count >= 3:  # 3 次 × 2 秒 = 6 秒
+                                    self._safe_log("⏹ 時間停滯 6 秒，判定播放結束", "state")
+                                    break
+                            else:
+                                time_stall_count = 0
 
-                # 和弦偵測
+                        last_time_sec = current_sec
+
+                # ---- 和弦區域截圖（高頻，每次迴圈）----
                 chord_img = capture_region(chord_r)
-                chord, center = find_highlighted_chord(chord_img)
 
-                # 定期截圖（每 50 次 ≈ 5 秒）
-                screenshot_interval += 1
-                if screenshot_interval >= 50:
-                    screenshot_interval = 0
-                    self.screenshots.append(chord_img.copy())
+                # ---- 方塊位置偵測（純像素，極快 < 5ms）----
+                center = _find_dark_block_center(chord_img)
 
-                # 方塊移動偵測
                 box_moved = False
                 if center:
                     if last_center is None:
@@ -966,32 +999,42 @@ class ChordifyCapture(tk.Tk):
                     if box_moved:
                         last_center = center
 
-                if box_moved and chord and chord != last_chord:
-                    # 精確時間 = OCR 整數秒 + perf_counter 內插毫秒
-                    if last_ocr_sec is not None and last_ocr_perf is not None:
-                        sub_sec = time.perf_counter() - last_ocr_perf
-                        precise_time = last_ocr_sec + sub_sec
-                    elif current_sec is not None:
-                        precise_time = float(current_sec)
-                    else:
-                        precise_time = 0.0
+                # ---- 和弦 OCR（只在方塊移動時觸發）----
+                if box_moved:
+                    chord, _ = find_highlighted_chord(chord_img)
 
-                    self.records.append((round(precise_time, 3), chord))
-                    last_chord = chord
-                    self.ref_chords.append(chord)
+                    if chord and chord != last_chord:
+                        # 精確時間 = OCR 整數秒 + perf_counter 內插
+                        if last_ocr_sec is not None and last_ocr_perf is not None:
+                            sub_sec = now - last_ocr_perf
+                            precise_time = last_ocr_sec + sub_sec
+                        elif last_time_sec is not None:
+                            precise_time = float(last_time_sec)
+                        else:
+                            precise_time = 0.0
 
-                    m = int(precise_time // 60)
-                    s = int(precise_time % 60)
-                    ms = int((precise_time % 1) * 1000)
-                    count = len(self.records)
-                    self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}", "chord")
-                    self._safe_progress(f"和弦: {count} | 截圖: {len(self.screenshots)} | "
-                                        f"時間: {m}:{s:02d}.{ms:03d}")
+                        self.records.append((round(precise_time, 3), chord))
+                        last_chord = chord
+                        self.ref_chords.append(chord)
+
+                        m = int(precise_time // 60)
+                        s = int(precise_time % 60)
+                        ms = int((precise_time % 1) * 1000)
+                        count = len(self.records)
+                        self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}", "chord")
+                        self._safe_progress(f"和弦: {count} | 截圖: {len(self.screenshots)} | "
+                                            f"時間: {m}:{s:02d}.{ms:03d}")
+
+                # ---- 定期截圖（每 100 次 ≈ 5 秒）----
+                screenshot_interval += 1
+                if screenshot_interval >= 100:
+                    screenshot_interval = 0
+                    self.screenshots.append(chord_img.copy())
 
             except Exception as e:
                 self._safe_log(f"⚠ {e}", "warn")
 
-            time.sleep(0.1)
+            time.sleep(0.05)  # 50ms 迴圈（主要是截圖 + 像素比對）
 
         # Phase 3: 儲存
         self._finish(name, lv)
