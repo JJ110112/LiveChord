@@ -614,35 +614,49 @@ class ChordifyCapture(tk.Tk):
                       bg=C["card3"], fg=C["text"], font=("Segoe UI", 8),
                       relief="flat", cursor="hand2", padx=6, pady=2).pack(side=tk.LEFT, padx=1)
 
-        # ---- Main Action ----
-        action_frame = tk.Frame(self, bg=C["bg"])
-        action_frame.pack(fill=tk.X, padx=16, pady=8)
+        # ---- Recording + Analysis (V2) ----
+        rec_card = tk.Frame(self, bg=C["card"], highlightbackground=C["border"],
+                            highlightthickness=1, padx=12, pady=8)
+        rec_card.pack(fill=tk.X, padx=16, pady=4)
 
-        self.btn_start = tk.Button(action_frame, text="▶  Start Extraction",
-                                   command=self._start_capture,
-                                   bg=C["primary"], fg=C["primary_fg"],
-                                   font=("Segoe UI", 13, "bold"), relief="flat",
-                                   padx=24, pady=8, cursor="hand2")
-        self.btn_start.pack(side=tk.LEFT, padx=(0, 8))
+        tk.Label(rec_card, text="RECORDING & ANALYSIS", font=("Segoe UI", 8, "bold"),
+                 bg=C["card"], fg=C["dim"]).pack(anchor="w", pady=(0, 4))
 
-        self.btn_stop = tk.Button(action_frame, text="⏹ Stop",
+        rec_btns = tk.Frame(rec_card, bg=C["card"])
+        rec_btns.pack(fill=tk.X)
+
+        self.btn_record = tk.Button(rec_btns, text="🔴 Record",
+                                    command=self._start_recording,
+                                    bg="#d32f2f", fg="white",
+                                    font=("Segoe UI", 11, "bold"), relief="flat",
+                                    padx=16, pady=6, cursor="hand2")
+        self.btn_record.pack(side=tk.LEFT, padx=(0, 6))
+
+        self.btn_analyze = tk.Button(rec_btns, text="▶ Analyze",
+                                     command=self._analyze_recording,
+                                     bg=C["primary"], fg=C["primary_fg"],
+                                     font=("Segoe UI", 11, "bold"), relief="flat",
+                                     padx=16, pady=6, cursor="hand2")
+        self.btn_analyze.pack(side=tk.LEFT, padx=4)
+
+        self.btn_stop = tk.Button(rec_btns, text="⏹ Stop",
                                   command=self._stop_capture, state=tk.DISABLED,
                                   **btn_style)
         self.btn_stop.pack(side=tk.LEFT, padx=4)
 
         self.auto_overwrite = tk.BooleanVar(value=True)
-        tk.Checkbutton(action_frame, text="Auto overwrite", variable=self.auto_overwrite,
-                       bg=C["bg"], fg=C["dim"], selectcolor=C["card"],
-                       activebackground=C["bg"], font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(12, 0))
+        tk.Checkbutton(rec_btns, text="Auto overwrite", variable=self.auto_overwrite,
+                       bg=C["card"], fg=C["dim"], selectcolor=C["card"],
+                       activebackground=C["card"], font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(8, 0))
 
         self.topmost_var = tk.BooleanVar(value=True)
         def toggle_topmost():
             self.attributes("-topmost", self.topmost_var.get())
         toggle_topmost()
-        tk.Checkbutton(action_frame, text="Stay on Top", variable=self.topmost_var,
+        tk.Checkbutton(rec_btns, text="Stay on Top", variable=self.topmost_var,
                        command=toggle_topmost,
-                       bg=C["bg"], fg=C["dim"], selectcolor=C["card"],
-                       activebackground=C["bg"], font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(4, 0))
+                       bg=C["card"], fg=C["dim"], selectcolor=C["card"],
+                       activebackground=C["card"], font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(4, 0))
 
         # ---- Score Snippets (拍號 + 狀態) ----
         snippet_frame = tk.Frame(self, bg=C["bg"])
@@ -1266,6 +1280,365 @@ class ChordifyCapture(tk.Tk):
 
     # ---- 開始擷取 ----
 
+    # ===========================================================================
+    # V2: 錄影 + 離線分析
+    # ===========================================================================
+
+    def _start_recording(self):
+        """錄影 Chordify 播放畫面"""
+        name = self.song_name.get().strip()
+        lv = self.level.get()
+        if not name:
+            messagebox.showwarning("提示", "請輸入歌曲名稱")
+            return
+        for key in ["play_btn", "time", "duration", "chord"]:
+            if not self.regions.get(key):
+                messagebox.showwarning("提示", f"請先框選「{key}」區域")
+                return
+
+        save_dir = TEST_SONGS_DIR / lv
+        save_dir.mkdir(parents=True, exist_ok=True)
+        video_path = save_dir / f"{name}.recording.avi"
+
+        if video_path.is_file() and not self.auto_overwrite.get():
+            if not messagebox.askyesno("已存在", f"已有 {video_path.name}，要覆蓋嗎？"):
+                return
+
+        self.cfg["last_song"] = name
+        self.cfg["last_level"] = lv
+        save_config(self.cfg)
+
+        self.capturing = True
+        self.btn_record.configure(state=tk.DISABLED)
+        self.btn_analyze.configure(state=tk.DISABLED)
+        self.btn_stop.configure(state=tk.NORMAL)
+        self._log(f"\n{'='*50}", "info")
+        self._log(f"🔴 開始錄影: {name} ({lv})", "state")
+
+        threading.Thread(target=self._record_worker, args=(video_path,), daemon=True).start()
+
+    def _record_worker(self, video_path):
+        """錄影工作線程"""
+        import pyautogui
+
+        play_r = tuple(self.regions["play_btn"])
+        chord_r = tuple(self.regions["chord"])
+        dur_r = tuple(self.regions["duration"])
+        time_r = tuple(self.regions["time"])
+
+        # 錄影區域 = 和弦網格區域（包含方塊移動）
+        rec_x, rec_y, rec_w, rec_h = chord_r
+        FPS = 30
+
+        # 讀取歌曲總長度
+        total_duration = 9999
+        for _ in range(5):
+            dur_img = capture_region(dur_r)
+            td = ocr_time(dur_img)
+            if td and td > 10:
+                total_duration = td
+                break
+            time.sleep(0.3)
+
+        if total_duration < 9999:
+            m, s = divmod(total_duration, 60)
+            self._safe_log(f"  歌曲總長: {m}:{s:02d}", "state")
+
+        # 初始化 VideoWriter
+        fourcc = cv2.VideoWriter_fourcc(*'XVID')
+        out = cv2.VideoWriter(str(video_path), fourcc, FPS, (rec_w, rec_h))
+
+        self._safe_log(f"  錄影: {rec_w}×{rec_h} @{FPS}fps", "info")
+        self._safe_status("⏳ 預錄 2 秒...")
+
+        # Phase 1: 預錄 2 秒（靜止畫面）
+        pre_frames = int(FPS * 2)
+        with mss.mss() as sct:
+            monitor = {"left": rec_x, "top": rec_y, "width": rec_w, "height": rec_h}
+            for i in range(pre_frames):
+                if not self.capturing:
+                    break
+                frame = sct.grab(monitor)
+                img = np.array(frame)[:, :, :3]  # BGRA → BGR
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                out.write(img)
+                time.sleep(1.0 / FPS)
+
+        if not self.capturing:
+            out.release()
+            self._safe_log("⏹ 錄影取消", "warn")
+            self._recording_done()
+            return
+
+        # Phase 2: 點擊播放
+        self._safe_log("  ▶ 點擊播放...", "info")
+        cx = play_r[0] + play_r[2] // 2
+        cy = play_r[1] + play_r[3] // 2
+        pyautogui.click(cx, cy)
+
+        self._safe_status("🔴 錄影中...")
+        self._safe_log("  🔴 錄影中（等待播放結束）...", "state")
+
+        # Phase 3: 錄影直到結束
+        frame_count = pre_frames
+        last_time_check = 0
+        start_time = time.time()
+
+        with mss.mss() as sct:
+            monitor = {"left": rec_x, "top": rec_y, "width": rec_w, "height": rec_h}
+            while self.capturing:
+                t0 = time.perf_counter()
+
+                frame = sct.grab(monitor)
+                img = np.array(frame)[:, :, :3]
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                out.write(img)
+                frame_count += 1
+
+                # 每 3 秒檢查時間
+                elapsed = time.time() - start_time
+                if elapsed - last_time_check > 3:
+                    last_time_check = elapsed
+                    time_img = capture_region(time_r)
+                    cur = ocr_time(time_img)
+                    if cur is not None:
+                        m, s = divmod(cur, 60)
+                        pct = int(cur / total_duration * 100) if total_duration < 9999 else 0
+                        self._safe_progress(f"🔴 {m}:{s:02d} / {total_duration//60}:{total_duration%60:02d}  {pct}%  ({frame_count} frames)")
+
+                        if cur >= total_duration - 2:
+                            self._safe_log(f"  ⏹ 到達歌曲結尾 ({m}:{s:02d})", "state")
+                            break
+
+                # 控制幀率
+                dt = time.perf_counter() - t0
+                sleep_time = max(0, 1.0 / FPS - dt)
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+
+        out.release()
+        duration_sec = frame_count / FPS
+        size_mb = video_path.stat().st_size / 1024 / 1024
+        self._safe_log(f"  ✓ 錄影完成: {video_path.name}", "state")
+        self._safe_log(f"    {frame_count} frames, {duration_sec:.1f}s, {size_mb:.1f}MB", "info")
+        self._recording_done()
+
+    def _recording_done(self):
+        self.capturing = False
+        self.after(0, lambda: self.btn_record.configure(state=tk.NORMAL))
+        self.after(0, lambda: self.btn_analyze.configure(state=tk.NORMAL))
+        self.after(0, lambda: self.btn_stop.configure(state=tk.DISABLED))
+        self._safe_status("✓ 錄影完成")
+
+    def _analyze_recording(self):
+        """離線分析錄影，逐幀偵測方塊位置，對齊 .chords.txt 產出 .lab"""
+        name = self.song_name.get().strip()
+        lv = self.level.get()
+        if not name:
+            messagebox.showwarning("提示", "請輸入歌曲名稱")
+            return
+
+        save_dir = TEST_SONGS_DIR / lv
+        video_path = save_dir / f"{name}.recording.avi"
+        chords_path = save_dir / f"{name}.chords.txt"
+
+        if not video_path.is_file():
+            self._log(f"⚠ {video_path.name} 不存在，請先錄影", "warn")
+            return
+        if not chords_path.is_file():
+            self._log(f"⚠ {chords_path.name} 不存在，請先 Stitch+OCR", "warn")
+            return
+
+        # 載入和弦參照序列（含空拍）
+        raw = chords_path.read_text(encoding="utf-8").strip()
+        if '\t' in raw:
+            ref_beats = []
+            for line in raw.split('\n'):
+                parts = line.strip().split('\t')
+                ref_beats.append(parts[1] if len(parts) >= 2 else "")
+        else:
+            ref_beats = [c.strip() for c in raw.split(',')]
+
+        self._log(f"\n{'='*50}", "info")
+        self._log(f"▶ 分析錄影: {video_path.name}", "state")
+        self._log(f"  參照: {len(ref_beats)} 拍, {sum(1 for b in ref_beats if b)} 個和弦", "info")
+
+        self.btn_analyze.configure(state=tk.DISABLED)
+        self.btn_record.configure(state=tk.DISABLED)
+
+        threading.Thread(target=self._analyze_worker,
+                         args=(video_path, ref_beats, name, lv), daemon=True).start()
+
+    def _analyze_worker(self, video_path, ref_beats, name, lv):
+        """逐幀分析工作線程"""
+        cap = cv2.VideoCapture(str(video_path))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        self._safe_log(f"  影片: {total_frames} frames, {fps:.1f}fps, {total_frames/fps:.1f}s", "info")
+
+        # 載入格子邊界
+        beat_bounds_raw = self.cfg.get("beat_boundaries")
+        row_h = self.cfg.get("row_height", 112)
+        start_offset = self.cfg.get("start_beat_offset", 0)
+        bpr = self.cfg.get("beats_per_row", 16)
+
+        # 取得錄影區域寬度以縮放邊界
+        chord_r = tuple(self.regions["chord"])
+        chord_w = chord_r[2]
+
+        beat_bounds = None
+        if beat_bounds_raw:
+            ref_w = beat_bounds_raw[-1][1]
+            scale = chord_w / ref_w if ref_w > 0 else 1.0
+            beat_bounds = [(int(x1 * scale), int(x2 * scale)) for x1, x2 in beat_bounds_raw]
+
+        avg_beat_w = chord_w / bpr
+        HYSTERESIS = int(avg_beat_w * 0.4)
+
+        def cx_to_grid(cx):
+            if beat_bounds:
+                for i, (x1, x2) in enumerate(beat_bounds):
+                    if x1 <= cx < x2:
+                        return i
+                if cx >= beat_bounds[-1][1]:
+                    return len(beat_bounds) - 1
+                return 0
+            return int(cx / avg_beat_w)
+
+        # Phase 1: 找到播放開始的幀（預錄 2 秒後第一次方塊移動）
+        self._safe_status("🔍 分析中: 尋找播放起點...")
+        baseline_center = None
+        play_start_frame = 0
+
+        frame_num = 0
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_img = Image.fromarray(rgb)
+            center = _find_dark_block_center(pil_img)
+
+            if center:
+                if baseline_center is None:
+                    baseline_center = center
+                else:
+                    dx = abs(center[0] - baseline_center[0])
+                    dy = abs(center[1] - baseline_center[1])
+                    if dx > 30 or dy > 30:
+                        play_start_frame = frame_num
+                        self._safe_log(f"  ▶ 播放開始: frame {frame_num} ({frame_num/fps:.2f}s)", "state")
+                        break
+
+            frame_num += 1
+
+        # Phase 2: 逐幀分析方塊位置
+        self._safe_status("🔍 分析中: 追蹤方塊...")
+        current_grid = -1
+        current_row = -1
+        ref_idx = 0
+        records = []
+        is_first_row = True
+
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frame_num += 1
+
+            # 進度
+            if frame_num % 100 == 0:
+                pct = int(frame_num / total_frames * 100)
+                self._safe_progress(f"🔍 分析: {frame_num}/{total_frames} ({pct}%)")
+
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_img = Image.fromarray(rgb)
+            center = _find_dark_block_center(pil_img)
+
+            if not center:
+                continue
+
+            cx, cy = center
+            new_grid = cx_to_grid(cx)
+            new_row = int(cy / row_h) if row_h > 0 else 0
+
+            # 判斷是否跨格
+            new_beat = False
+            if current_grid < 0:
+                current_grid = new_grid
+                current_row = new_row
+                new_beat = True
+            elif new_row != current_row:
+                current_grid = cx_to_grid(cx)
+                current_row = new_row
+                new_beat = True
+                is_first_row = False
+            else:
+                # 滯後判斷
+                if beat_bounds and current_grid < len(beat_bounds):
+                    cur_right = beat_bounds[current_grid][1]
+                    if cx > cur_right + HYSTERESIS and new_grid > current_grid:
+                        new_beat = True
+                        current_grid = new_grid
+                elif new_grid > current_grid:
+                    new_beat = True
+                    current_grid = new_grid
+
+            if new_beat and ref_idx < len(ref_beats):
+                chord = ref_beats[ref_idx]
+                ref_idx += 1
+
+                # 精確時間 = (frame_num - play_start_frame) / fps
+                time_sec = (frame_num - play_start_frame) / fps
+
+                if chord:  # 非空拍才記錄
+                    records.append((round(time_sec, 3), chord))
+
+                    m = int(time_sec // 60)
+                    s = int(time_sec % 60)
+                    ms = int((time_sec % 1) * 1000)
+                    self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}  (f{frame_num})", "chord")
+
+        cap.release()
+
+        # Phase 3: 存檔
+        self._safe_log(f"\n  分析完成: {len(records)} 個和弦", "state")
+
+        if records:
+            save_dir = TEST_SONGS_DIR / lv
+            entries = []
+            for i, (t, c) in enumerate(records):
+                end = records[i + 1][0] if i + 1 < len(records) else t + 2.0
+                entries.append({"time": t, "end": end, "chord": c})
+
+            roots = [c[0] if len(c) < 2 or c[1] not in '#b' else c[:2]
+                     for _, c in records if c and c[0] in 'ABCDEFG']
+            key = Counter(roots).most_common(1)[0][0] if roots else ""
+
+            lab = {"song": name, "level": lv, "key": key,
+                   "source": "Chordify (V2 recording analysis)",
+                   "entries": entries}
+            lab_path = save_dir / f"{name}.lab"
+            lab_path.write_text(json.dumps(lab, ensure_ascii=False, indent=2), encoding="utf-8")
+            self._safe_log(f"  ✓ 已儲存 {lab_path.name} ({len(entries)} 和弦, Key: {key})", "state")
+
+            # 也存 capture.txt
+            capture_txt = save_dir / f"{name}.capture.txt"
+            capture_txt.write_text("\n".join(
+                f"{t:.3f}\t{c}" for t, c in records
+            ), encoding="utf-8")
+            self._safe_log(f"  ✓ 已儲存 {capture_txt.name}", "state")
+
+        self._safe_status(f"✓ 分析完成 ({len(records)} 和弦)")
+        self.after(0, lambda: self.btn_record.configure(state=tk.NORMAL))
+        self.after(0, lambda: self.btn_analyze.configure(state=tk.NORMAL))
+
+    # ===========================================================================
+    # V1: 即時擷取（保留相容）
+    # ===========================================================================
+
     def _start_capture(self):
         # 驗證
         if not self.song_name.get().strip():
@@ -1453,7 +1826,7 @@ class ChordifyCapture(tk.Tk):
                         break
                     continue
 
-                chord_img, precise_time, jump_beats = item
+                chord_img, precise_time, jump_beats, abs_idx = item
 
                 try:
                     # 漏拍補償
@@ -1466,21 +1839,21 @@ class ChordifyCapture(tk.Tk):
                         for si in range(skipped):
                             st = prev_time + beat_dur * (si + 1)
                             # 有參照序列就用它補，否則標記為 skip
-                            if self._ref_sequence and self._ref_idx < len(self._ref_sequence):
-                                skip_chord = self._ref_sequence[self._ref_idx]
-                                self._ref_idx += 1
-                                if skip_chord:
-                                    self.records.append((round(st, 3), skip_chord))
-                                    self._safe_log(f"  {int(st//60)}:{int(st%60):02d}.{int((st%1)*1000):03d}  {skip_chord}  📋補", "warn")
+                            if self._ref_sequence:
+                                skip_idx = abs_idx - skipped + si
+                                if 0 <= skip_idx < len(self._ref_sequence):
+                                    skip_chord = self._ref_sequence[skip_idx]
+                                    if skip_chord:
+                                        self.records.append((round(st, 3), skip_chord))
+                                        self._safe_log(f"  {int(st//60)}:{int(st%60):02d}.{int((st%1)*1000):03d}  {skip_chord}  📋補", "warn")
                             else:
-                                self.records.append((round(st, 3), f"({skipped}skip)"))
-                                self._safe_log(f"  {int(st//60)}:{int(st%60):02d}.{int((st%1)*1000):03d}  ({skipped}skip)", "warn")
+                                self.records.append((round(st, 3), f"(skip)"))
+                                self._safe_log(f"  {int(st//60)}:{int(st%60):02d}.{int((st%1)*1000):03d}  (skip)", "warn")
 
                     # 和弦來源：優先用參照序列（截圖 OCR），否則即時 OCR
-                    if self._ref_sequence and self._ref_idx < len(self._ref_sequence):
+                    if self._ref_sequence and abs_idx < len(self._ref_sequence):
                         # 從預載的 .chords.txt 取和弦（100% 準確，0ms）
-                        chord = self._ref_sequence[self._ref_idx]
-                        self._ref_idx += 1
+                        chord = self._ref_sequence[abs_idx]
                         source = "📋"
                     else:
                         # 即時 OCR（慢，但不阻塞 producer）
@@ -1515,6 +1888,7 @@ class ChordifyCapture(tk.Tk):
         screenshot_interval = 0
         current_grid_idx = -1
         current_row_idx = -1
+        global_row_idx = 0  # 絕對的列數（解決網頁捲動 cy 歸零的重新計算問題）
         is_first_row = True
 
         # 載入格子邊界（轉換為相對於截圖寬度的比例）
@@ -1600,6 +1974,7 @@ class ChordifyCapture(tk.Tk):
                         jump_beats = 0
                         current_grid_idx = _cx_to_grid(cx)
                         current_row_idx = new_row
+                        global_row_idx += 1  # 無論 cy 變成多少，只要偵測到換行表示進入下一真實拍列
                         is_first_row = False
                     else:
                         # 同行：用滯後判斷是否跨格
@@ -1634,8 +2009,11 @@ class ChordifyCapture(tk.Tk):
                     precise_time = 0.0
 
                 # 放入 buffer（jump_beats 用於漏拍補償）
+                bpr = self.cfg.get("beats_per_row", 16)
+                abs_idx = global_row_idx * bpr + current_grid_idx
+
                 try:
-                    ocr_queue.put_nowait((chord_img.copy(), precise_time, jump_beats))
+                    ocr_queue.put_nowait((chord_img.copy(), precise_time, jump_beats, abs_idx))
                 except queue.Full:
                     pass
 
