@@ -23,10 +23,13 @@ start-hidden.vbs
 # Doc 參考用原始專案（太大不進版控）
 doc/SheetMusicChord/
 
-# 測試音檔（太大不進版控，只保留 criteria 和腳本）
+# 測試音檔和錄影（太大不進版控）
 data/test_songs/**/*.flac
+data/test_songs/**/*.avi
+data/test_songs/**/*.recording.avi
 data/test_songs/**/results.json
 data/test_songs/**/*.det.lab
+data/test_songs/**/*.capture-screenshots.png
 # BTC 模型權重（太大不進版控，需手動下載）
 backend/btc/*.pt
 backend/btc/__pycache__/
