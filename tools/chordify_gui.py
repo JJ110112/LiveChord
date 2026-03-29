@@ -1305,10 +1305,12 @@ class ChordifyCapture(tk.Tk):
         screenshot_interval = 0
         current_grid_idx = -1
         current_row_idx = -1
+        is_first_row = True
 
         # 載入精確格子邊界
         beat_bounds = self.cfg.get("beat_boundaries")
         row_h = self.cfg.get("row_height", 112)
+        start_offset = self.cfg.get("start_beat_offset", 0)  # 第一列前幾拍是休止符（方塊會經過但不記錄）
 
         # 滯後 = 格寬的 40%，確保方塊到達下一格中央才觸發
         avg_beat_w = (beat_bounds[-1][1] - beat_bounds[0][0]) / len(beat_bounds) if beat_bounds else grid_width
@@ -1361,11 +1363,15 @@ class ChordifyCapture(tk.Tk):
                     new_row = int(cy / row_h) if row_h > 0 else 0
 
                     if current_grid_idx < 0:
-                        # 第一次偵測（Chordify 播放時方塊直接從有和弦的格子開始）
+                        # 第一次偵測
                         new_grid = _cx_to_grid(cx)
-                        new_beat = True
                         current_grid_idx = new_grid
                         current_row_idx = new_row
+                        # 第一列的休止符拍：方塊經過但不記錄
+                        if is_first_row and start_offset > 0 and new_grid < start_offset:
+                            self._safe_log(f"  (休止符 beat {new_grid+1}，等待 beat {start_offset+1})", "info")
+                        else:
+                            new_beat = True
                     elif new_row != current_row_idx:
                         # 換行
                         new_beat = True
@@ -1377,9 +1383,20 @@ class ChordifyCapture(tk.Tk):
                         # 同行：用滯後判斷是否跨格
                         advanced, new_grid = _should_advance(cx, current_grid_idx)
                         if advanced and new_grid > current_grid_idx:
-                            new_beat = True
-                            jump_beats = max(0, new_grid - current_grid_idx - 1)
-                            current_grid_idx = new_grid
+                            # 第一列休止符 → 有和弦的過渡
+                            if is_first_row and start_offset > 0 and current_grid_idx < start_offset:
+                                if new_grid >= start_offset:
+                                    # 從休止符區進入有和弦區 → 第一個真正的和弦
+                                    new_beat = True
+                                    current_grid_idx = new_grid
+                                    self._safe_log(f"  (音樂開始 beat {new_grid+1})", "state")
+                                else:
+                                    # 還在休止符區內移動
+                                    current_grid_idx = new_grid
+                            else:
+                                new_beat = True
+                                jump_beats = max(0, new_grid - current_grid_idx - 1)
+                                current_grid_idx = new_grid
                     # else: 同一格內滑動 → 忽略
 
                 if not new_beat:
