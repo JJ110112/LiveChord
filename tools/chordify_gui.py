@@ -1578,38 +1578,25 @@ class ChordifyCapture(tk.Tk):
 
             frame_num += 1
 
-        # 建立時間校正函數（用 OCR 時間校正 frame→seconds）
+        # 時間校正：直接用最近的 OCR 時間 + 幀差/fps 內插
+        # 比複雜內插更可靠，因為 OCR 時間就是 Chordify 顯示的真實時間
         self._safe_log(f"  時間校正點: {len(time_calibration)} 個", "info")
 
         def frame_to_time(fn):
-            """用 OCR 校正表將 frame_number 轉為精確秒數"""
+            """用最近的 OCR 校正點 + 幀差算精確時間"""
             if not time_calibration:
-                return (fn - play_start_frame) / fps  # fallback: 純 fps 計算
+                return (fn - play_start_frame) / fps
 
-            # 找最近的兩個校正點做線性內插
-            before = None
-            after = None
+            # 找 fn 之前最近的校正點
+            best_frame, best_time = time_calibration[0]
             for cf, ct in time_calibration:
                 if cf <= fn:
-                    before = (cf, ct)
-                if cf >= fn and after is None:
-                    after = (cf, ct)
+                    best_frame, best_time = cf, ct
+                else:
+                    break
 
-            if before and after and before != after:
-                # 線性內插
-                f1, t1 = before
-                f2, t2 = after
-                ratio = (fn - f1) / (f2 - f1) if f2 != f1 else 0
-                return t1 + ratio * (t2 - t1)
-            elif before:
-                # 超出校正範圍：用最後一個校正點 + fps 推算
-                f1, t1 = before
-                return t1 + (fn - f1) / fps
-            elif after:
-                f1, t1 = after
-                return t1 - (f1 - fn) / fps
-            else:
-                return (fn - play_start_frame) / fps
+            # 精確時間 = OCR 秒數 + 幀差 / fps
+            return best_time + (fn - best_frame) / fps
 
         # Phase 2: 逐幀分析方塊位置
         self._safe_status("🔍 Phase 2: 追蹤方塊...")
