@@ -1578,9 +1578,12 @@ class ChordifyCapture(tk.Tk):
 
             frame_num += 1
 
-        # 時間校正：直接用最近的 OCR 時間 + 幀差/fps 內插
-        # 比複雜內插更可靠，因為 OCR 時間就是 Chordify 顯示的真實時間
-        self._safe_log(f"  時間校正點: {len(time_calibration)} 個", "info")
+        # 過濾：只用播放開始後的校正點（預錄期間的 00:00 不算）
+        time_calibration = [(f, t) for f, t in time_calibration if f >= play_start_frame]
+        self._safe_log(f"  時間校正點（播放後）: {len(time_calibration)} 個", "info")
+        if time_calibration:
+            f0, t0 = time_calibration[0]
+            self._safe_log(f"  第一個校正點: frame {f0} = {t0}s", "info")
 
         def frame_to_time(fn):
             """用最近的 OCR 校正點 + 幀差算精確時間"""
