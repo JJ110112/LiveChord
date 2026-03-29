@@ -1421,17 +1421,19 @@ class ChordifyCapture(tk.Tk):
             """用 OCR 校正表的線性回歸算精確時間"""
             valid = _get_valid_calibration()
 
-            if len(valid) >= 3 and _regression_cache[0] is None:
-                # 首次有足夠校正點：做一次回歸
-                import numpy as np
-                frames = np.array([f for f, t in valid])
-                times = np.array([t for f, t in valid])
-                A = np.vstack([times, np.ones(len(times))]).T
-                result = np.linalg.lstsq(A, frames, rcond=None)
-                afps, f0 = result[0]
-                if afps > 10:  # 合理的 fps (> 10)
-                    _regression_cache[0] = (afps, f0)
-                    self._safe_log(f"  OCR 校正: actual_fps={afps:.2f}, f0={f0:.1f}", "info")
+            # 延遲回歸：需要足夠多的校正點（至少 10 個且跨度 > 20 秒）
+            if _regression_cache[0] is None and len(valid) >= 10:
+                time_span = valid[-1][1] - valid[0][1]
+                if time_span >= 20:
+                    import numpy as np
+                    frames = np.array([f for f, t in valid])
+                    times = np.array([t for f, t in valid])
+                    A = np.vstack([times, np.ones(len(times))]).T
+                    result = np.linalg.lstsq(A, frames, rcond=None)
+                    afps, f0 = result[0]
+                    if afps > 10:
+                        _regression_cache[0] = (afps, f0)
+                        self._safe_log(f"  OCR 校正: fps={afps:.2f}, f0={f0:.1f}, 校正點={len(valid)}, 跨度={time_span}s", "info")
 
             if _regression_cache[0]:
                 afps, f0 = _regression_cache[0]
