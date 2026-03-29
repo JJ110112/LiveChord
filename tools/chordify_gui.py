@@ -1010,11 +1010,7 @@ class ChordifyCapture(tk.Tk):
         self._log(f"📝 已打開 {txt_path.name}（修正後存檔即可）", "state")
 
     def _stitch_and_ocr(self):
-        """拼接所有截圖 → 存 .png → OCR 辨識和弦 → 存 .chords.txt"""
-        if not self.screenshots:
-            self._log("⚠ 無截圖，請先擷取", "warn")
-            return
-
+        """拼接截圖 → 存 .png → OCR。若已有 .png 且無新截圖，直接 OCR"""
         name = self.song_name.get().strip()
         lv = self.level.get()
         if not name:
@@ -1023,19 +1019,26 @@ class ChordifyCapture(tk.Tk):
 
         save_dir = TEST_SONGS_DIR / lv
         save_dir.mkdir(parents=True, exist_ok=True)
-
-        # 1. 上下拼接
-        total_h = sum(s.height for s in self.screenshots)
-        max_w = max(s.width for s in self.screenshots)
-        combined = Image.new("RGB", (max_w, total_h), (255, 255, 255))
-        y = 0
-        for s in self.screenshots:
-            combined.paste(s, (0, y))
-            y += s.height
-
         png_path = save_dir / f"{name}.png"
-        combined.save(str(png_path))
-        self._log(f"✓ 已儲存 {png_path.name} ({max_w}×{total_h}, {len(self.screenshots)} 頁)", "state")
+
+        if self.screenshots:
+            # 有新截圖 → 拼接並存檔
+            total_h = sum(s.height for s in self.screenshots)
+            max_w = max(s.width for s in self.screenshots)
+            combined = Image.new("RGB", (max_w, total_h), (255, 255, 255))
+            y = 0
+            for s in self.screenshots:
+                combined.paste(s, (0, y))
+                y += s.height
+            png_path.write_bytes(b"")  # 先清空
+            combined.save(str(png_path))
+            self._log(f"✓ 已儲存 {png_path.name} ({max_w}×{total_h}, {len(self.screenshots)} 頁)", "state")
+        elif png_path.is_file():
+            # 無新截圖但已有 .png → 直接用現有的 OCR
+            self._log(f"📂 使用現有 {png_path.name}，直接 OCR", "info")
+        else:
+            self._log("⚠ 無截圖且無現有 .png，請先擷取", "warn")
+            return
 
         # 2. 逐格 OCR 辨識和弦序列
         row_w = self.cfg.get("row_width")
@@ -1502,9 +1505,10 @@ class ChordifyCapture(tk.Tk):
             for s in self.screenshots:
                 combined.paste(s, (0, y))
                 y += s.height
-            png_path = save_dir / f"{name}.png"
-            combined.save(str(png_path))
-            self._safe_log(f"✓ 已儲存 {png_path.name} ({max_w}×{total_h}, {len(self.screenshots)} 段)", "state")
+            # 存為 .capture-screenshots.png（不覆蓋 OCR 基準 .png）
+            cap_png = save_dir / f"{name}.capture-screenshots.png"
+            combined.save(str(cap_png))
+            self._safe_log(f"✓ 已儲存 {cap_png.name} ({max_w}×{total_h}, {len(self.screenshots)} 段)", "state")
 
         count = len(self.records)
         self._safe_log(f"\n完成！共 {count} 個和弦", "state")
