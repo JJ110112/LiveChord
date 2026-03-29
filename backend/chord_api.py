@@ -111,6 +111,19 @@ async def detect_chords_api(path: str = Query(...)):
     if not os.path.isfile(full):
         raise HTTPException(status_code=404, detail="檔案不存在")
 
+    # 如果已有 chordify 來源的和弦，不要用 BTC 覆蓋
+    chords_file = CHORDS_DIR / f"{_song_hash(path)}.json"
+    if chords_file.is_file():
+        existing = json.loads(chords_file.read_text(encoding="utf-8"))
+        if existing.get("source") == "chordify":
+            return {
+                "ok": True, "path": path,
+                "key": existing.get("key", ""),
+                "chord_count": len(existing.get("chords", [])),
+                "chords": existing.get("chords", []),
+                "source": "chordify (已有高品質和弦，跳過 BTC 偵測)",
+            }
+
     try:
         from chord_detect import detect_chords, detect_key
     except ImportError as e:

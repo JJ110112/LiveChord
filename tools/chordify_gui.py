@@ -1633,9 +1633,19 @@ class ChordifyCapture(tk.Tk):
                 pass
 
         if not nas_path:
-            self._safe_log(f"  ⚠ 在音樂庫找不到 '{name}'，無法匯入 LiveChord", "warn")
-            self._safe_log(f"    請確認已掃描音樂庫，且歌名與 NAS 檔名一致", "info")
-            return
+            # 找不到 → 讓使用者手動輸入 NAS 相對路徑
+            from tkinter import simpledialog
+            nas_path = simpledialog.askstring(
+                "輸入 NAS 路徑",
+                f"在音樂庫中找不到 '{name}'\n\n"
+                f"請輸入此歌在 NAS 中的相對路徑：\n"
+                f"例如: POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac",
+                parent=self
+            )
+            if not nas_path:
+                self._safe_log(f"  ⚠ 未輸入 NAS 路徑，跳過匯入", "warn")
+                return
+            nas_path = nas_path.strip()
 
         # 生成 hash
         song_hash = hashlib.md5(nas_path.encode("utf-8")).hexdigest()[:12]
