@@ -565,6 +565,8 @@ class ChordifyCapture(tk.Tk):
                   bg=C["primary"], fg=C["primary_fg"], font=("Segoe UI", 9, "bold"),
                   relief="flat", cursor="hand2", padx=10, pady=3).pack(side=tk.LEFT, padx=2)
 
+        tk.Button(shot_btns, text="📝 Edit Ref", command=self._edit_chords_txt, **btn_style).pack(side=tk.LEFT, padx=2)
+
         self.screenshot_list_var = tk.StringVar(value="Shots: 0")
         tk.Label(shot_btns, textvariable=self.screenshot_list_var,
                  bg=C["card2"], fg=C["dim"], font=("Consolas", 9), padx=8).pack(side=tk.LEFT)
@@ -986,6 +988,26 @@ class ChordifyCapture(tk.Tk):
             lbl.pack()
             tk.Label(frame, text=f"#{i+1}", bg="#d9e4ea", fg="#566166",
                      font=("Consolas", 8)).pack()
+
+    def _edit_chords_txt(self):
+        """用系統預設編輯器打開 .chords.txt 供手動校正"""
+        name = self.song_name.get().strip()
+        lv = self.level.get()
+        if not name:
+            self._log("⚠ 請輸入歌曲名稱", "warn")
+            return
+
+        txt_path = TEST_SONGS_DIR / lv / f"{name}.chords.txt"
+        if not txt_path.is_file():
+            self._log(f"⚠ {txt_path.name} 不存在，請先 Stitch + OCR", "warn")
+            return
+
+        import subprocess
+        if os.name == 'nt':
+            os.startfile(str(txt_path))
+        else:
+            subprocess.Popen(["xdg-open", str(txt_path)])
+        self._log(f"📝 已打開 {txt_path.name}（修正後存檔即可）", "state")
 
     def _stitch_and_ocr(self):
         """拼接所有截圖 → 存 .png → OCR 辨識和弦 → 存 .chords.txt"""
