@@ -287,6 +287,7 @@ class ChordifyCapture(tk.Tk):
         }
         self.song_name = tk.StringVar(value=self.cfg.get("last_song", ""))
         self.level = tk.StringVar(value=self.cfg.get("last_level", "Lv1"))
+        self.cell_size = self.cfg.get("cell_size")  # (w, h) 單格尺寸
         self.capturing = False
         self.records = []           # [(time_sec, chord)]
         self.screenshots = []       # [PIL.Image] 分段截圖
@@ -357,6 +358,17 @@ class ChordifyCapture(tk.Tk):
                                    font=("Segoe UI", 10), padx=10, pady=5)
         shot_frame.pack(fill=tk.X, padx=10, pady=5)
 
+        # 格子尺寸設定行
+        cell_row = tk.Frame(shot_frame, bg="#1a1a2e")
+        cell_row.pack(fill=tk.X, pady=(0, 4))
+
+        tk.Button(cell_row, text="⬜ 框選一格", command=self._select_cell_size, **btn_style).pack(side=tk.LEFT, padx=2)
+        self.cell_size_var = tk.StringVar()
+        self._update_cell_display()
+        tk.Label(cell_row, textvariable=self.cell_size_var,
+                 bg="#0d0d1a", fg="#2d6a4f", font=("Consolas", 9), padx=8).pack(side=tk.LEFT, padx=5)
+
+        # 截圖按鈕行
         shot_btns = tk.Frame(shot_frame, bg="#1a1a2e")
         shot_btns.pack(fill=tk.X)
 
@@ -425,6 +437,33 @@ class ChordifyCapture(tk.Tk):
         self.log_text.insert(tk.END, msg + "\n", tag)
         self.log_text.see(tk.END)
         self.log_text.configure(state=tk.DISABLED)
+
+    # ---- 格子尺寸 ----
+
+    def _update_cell_display(self):
+        if self.cell_size:
+            self.cell_size_var.set(f"格子: {self.cell_size[0]}×{self.cell_size[1]} px")
+        else:
+            self.cell_size_var.set("格子: 未設定（請框選一格）")
+
+    def _select_cell_size(self):
+        """框選 Chordify 上的一個和弦格子，記住尺寸"""
+        self._log("⬜ 請在 Chordify 上框選「一個和弦格子」...", "info")
+        self.withdraw()
+        time.sleep(0.3)
+        region = self._do_select("框選一個和弦格子")
+        self.deiconify()
+
+        if not region:
+            self._log("  取消", "info")
+            return
+
+        cell_w, cell_h = region[2], region[3]
+        self.cell_size = (cell_w, cell_h)
+        self.cfg["cell_size"] = [cell_w, cell_h]
+        save_config(self.cfg)
+        self._update_cell_display()
+        self._log(f"  ✓ 格子大小: {cell_w}×{cell_h} px", "state")
 
     # ---- 區域設定 ----
 
@@ -712,27 +751,32 @@ class ChordifyCapture(tk.Tk):
         combined.save(str(png_path))
         self._log(f"✓ 已儲存 {png_path.name} ({max_w}×{total_h}, {len(self.screenshots)} 頁)", "state")
 
-        # 2. OCR 辨識和弦序列
-        self._log("🔍 OCR 辨識和弦中...", "info")
-        self.status_var.set("🔍 OCR 辨識中...")
+        # 2. 逐格 OCR 辨識和弦序列
+        if not self.cell_size:
+            self._log("⚠ 請先「框選一格」設定格子大小", "warn")
+            return
+
+        self._log(f"🔍 逐格 OCR 辨識中（格子 {self.cell_size[0]}×{self.cell_size[1]}）...", "info")
+        self.status_var.set("🔍 逐格 OCR 辨識中...")
+
+        cell_w, cell_h = self.cell_size
 
         def do_ocr():
             try:
                 sys.path.insert(0, str(TOOLS_DIR))
-                from chordify_ocr import extract_chords_from_screenshot, sequence_to_compact, save_results
-                seq = extract_chords_from_screenshot(str(png_path), verbose=False)
+                from chordify_ocr import extract_chords_grid, sequence_to_compact, save_results
+                seq = extract_chords_grid(str(png_path), cell_w, cell_h, verbose=False)
                 compact = sequence_to_compact(seq)
 
-                # 存 .chords.txt
                 save_results(seq, name, str(save_dir))
 
                 unique = sorted(set(c for c in seq if c))
                 chord_count = sum(1 for c in seq if c)
                 total_beats = len(seq)
 
-                self._safe_log(f"✓ OCR 完成: {total_beats} 拍, {chord_count} 個和弦變化", "state")
+                self._safe_log(f"✓ OCR 完成: {total_beats} 拍, {chord_count} 個和弦", "state")
                 self._safe_log(f"  和弦: {', '.join(unique)}", "info")
-                self._safe_log(f"  序列: {compact[:100]}{'...' if len(compact) > 100 else ''}", "info")
+                self._safe_log(f"  序列: {compact[:120]}{'...' if len(compact) > 120 else ''}", "info")
                 self._safe_status(f"✓ {name}.png + .chords.txt 已儲存")
             except Exception as e:
                 self._safe_log(f"⚠ OCR 失敗: {e}", "error")
