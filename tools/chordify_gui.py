@@ -1622,18 +1622,26 @@ class ChordifyCapture(tk.Tk):
 
         # Phase 2: 逐幀分析方塊位置
         #
-        # 核心策略：
-        # - Row 不用 cy/row_h（Chordify 方塊 y 座標跳動太大）
-        # - Row 用「cx 回到左側」偵測換行（cx 從大變小 = 新的一行）
-        # - Grid 用 cx_to_grid 但 HYSTERESIS 降到 10px
-        # - abs_idx = row_counter * bpr + grid
+        # Chord diagrams 模式（水平捲動一列）：
+        # - 方塊固定在畫面左側，和弦格子向左捲動
+        # - 方塊位置（cx）不會大幅移動，是背景在動
+        # - 偵測策略：追蹤方塊右側的格線移動
+        #   或更簡單：偵測方塊覆蓋區域的內容變化
+        #
+        # 但實際上 _find_dark_block_center 找的是整個截圖中最暗的區塊
+        # 在捲動模式下，高亮方塊（深色）位置相對固定（螢幕左側），
+        # 但它覆蓋的和弦會改變。
+        #
+        # 最可靠的方法：偵測高亮方塊的 cx 移動。
+        # 即使是捲動模式，Chordify 的高亮方塊也會隨著拍子
+        # 在格線之間跳動（不是連續滑動）。
+        # 每次 cx 跳動 = 新的一拍。
         #
         self._safe_status("🔍 Phase 2: 追蹤方塊...")
-        current_grid = -1
-        row_counter = 0       # 累計行數（不用 cy 計算）
         last_cx = -1
+        beat_count = 0   # 方塊移動次數 = 拍數
         records = []
-        GRID_HYSTERESIS = 10  # 降低避免跳格
+        MIN_MOVE = 15    # 最小移動距離（px）才算跳了一拍
 
         while cap.isOpened():
             ret, frame = cap.read()
@@ -1665,38 +1673,21 @@ class ChordifyCapture(tk.Tk):
                 continue
 
             cx, cy = center
-            new_grid = cx_to_grid(cx)
 
+            # 偵測方塊跳動（cx 變化 > MIN_MOVE）
             new_beat = False
-
-            if current_grid < 0:
-                # 第一次偵測
-                current_grid = new_grid
-                last_cx = cx
+            if last_cx < 0:
                 new_beat = True
-            elif cx < last_cx - chord_w * 0.5:
-                # cx 大幅向左 = 換行（方塊從行尾跳到下一行開頭）
-                row_counter += 1
-                current_grid = new_grid
-                last_cx = cx
-                new_beat = True
-                self._safe_log(f"  (換行 → row {row_counter}, f{frame_num})", "info")
             else:
-                # 同行：cx 向右移動超過 HYSTERESIS 且進入新格子
-                if new_grid > current_grid:
-                    if beat_bounds and current_grid < len(beat_bounds):
-                        cur_right = beat_bounds[current_grid][1]
-                        if cx > cur_right + GRID_HYSTERESIS:
-                            new_beat = True
-                            current_grid = new_grid
-                    else:
-                        new_beat = True
-                        current_grid = new_grid
-                last_cx = cx
+                dx = abs(cx - last_cx)
+                if dx > MIN_MOVE:
+                    new_beat = True
 
             if new_beat:
-                abs_idx = row_counter * bpr + current_grid
-                chord = ref_beats[abs_idx] if abs_idx < len(ref_beats) else ""
+                last_cx = cx
+                # 用移動計數對應 ref_beats（第 N 次移動 = 第 N 拍）
+                chord = ref_beats[beat_count] if beat_count < len(ref_beats) else ""
+                beat_count += 1
 
                 time_sec = frame_to_time(frame_num)
 
@@ -1706,7 +1697,7 @@ class ChordifyCapture(tk.Tk):
                     m = int(time_sec // 60)
                     s = int(time_sec % 60)
                     ms = int((time_sec % 1) * 1000)
-                    self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}  (f{frame_num} g={current_grid} r={row_counter} i={abs_idx})", "chord")
+                    self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}  (f{frame_num} beat={beat_count})", "chord")
 
         cap.release()
 
