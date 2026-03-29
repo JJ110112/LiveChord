@@ -368,6 +368,24 @@ class ChordifyCapture(tk.Tk):
         tk.Label(shot_btns, textvariable=self.screenshot_list_var,
                  bg="#1a1a2e", fg="#888", font=("Consolas", 9), padx=10).pack(side=tk.LEFT)
 
+        # 縮圖顯示區（水平捲動）
+        thumb_outer = tk.Frame(shot_frame, bg="#0d0d1a", height=80)
+        thumb_outer.pack(fill=tk.X, pady=(5, 0))
+        thumb_outer.pack_propagate(False)
+
+        thumb_canvas = tk.Canvas(thumb_outer, bg="#0d0d1a", height=75, highlightthickness=0)
+        thumb_scroll = tk.Scrollbar(thumb_outer, orient=tk.HORIZONTAL, command=thumb_canvas.xview)
+        thumb_canvas.configure(xscrollcommand=thumb_scroll.set)
+        thumb_scroll.pack(side=tk.BOTTOM, fill=tk.X)
+        thumb_canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        self.thumb_inner = tk.Frame(thumb_canvas, bg="#0d0d1a")
+        thumb_canvas.create_window((0, 0), window=self.thumb_inner, anchor="nw")
+        self.thumb_inner.bind("<Configure>",
+                              lambda e: thumb_canvas.configure(scrollregion=thumb_canvas.bbox("all")))
+        self.thumb_canvas = thumb_canvas
+        self._thumb_refs = []  # 保持 PhotoImage 參照避免 GC
+
         # ---- 狀態 ----
         status_frame = tk.Frame(self, bg="#1a1a2e")
         status_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -628,6 +646,7 @@ class ChordifyCapture(tk.Tk):
         n = len(self.screenshots)
         self._log(f"  ✓ 截圖 #{n} ({img.size[0]}×{img.size[1]})", "state")
         self.screenshot_list_var.set(f"截圖: {n} 張")
+        self._refresh_thumbnails()
 
     def _remove_last_screenshot(self):
         """移除最後一張截圖"""
@@ -638,6 +657,32 @@ class ChordifyCapture(tk.Tk):
         n = len(self.screenshots)
         self._log(f"  🗑 已移除，剩餘 {n} 張", "info")
         self.screenshot_list_var.set(f"截圖: {n} 張")
+        self._refresh_thumbnails()
+
+    def _refresh_thumbnails(self):
+        """更新縮圖顯示"""
+        # 清除舊的
+        for w in self.thumb_inner.winfo_children():
+            w.destroy()
+        self._thumb_refs.clear()
+
+        THUMB_H = 65
+
+        for i, img in enumerate(self.screenshots):
+            # 等比縮放
+            ratio = THUMB_H / img.height
+            thumb_w = max(1, int(img.width * ratio))
+            thumb = img.resize((thumb_w, THUMB_H), Image.LANCZOS)
+            photo = ImageTk.PhotoImage(thumb)
+            self._thumb_refs.append(photo)
+
+            frame = tk.Frame(self.thumb_inner, bg="#2a2a4a", padx=2, pady=2)
+            frame.pack(side=tk.LEFT, padx=3)
+
+            lbl = tk.Label(frame, image=photo, bg="#0d0d1a")
+            lbl.pack()
+            tk.Label(frame, text=f"#{i+1}", bg="#2a2a4a", fg="#888",
+                     font=("Consolas", 8)).pack()
 
     def _stitch_and_ocr(self):
         """拼接所有截圖 → 存 .png → OCR 辨識和弦 → 存 .chords.txt"""
