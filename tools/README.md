@@ -1,25 +1,26 @@
 # LiveChord 工具集
 
-> Ground Truth 擷取與和弦辨識工具
+> Chordify 和弦擷取 → LiveChord 播放系統
 
 ---
 
-## 快速開始
-
-### 最佳流程（推薦）
+## 快速開始（推薦流程）
 
 ```
-步驟 1: 截圖 OCR（取得準確和弦名稱）
+步驟 1: 輸入和弦序列
   雙擊 chordify_gui.pyw
-  → 框選一列 → 設定拍數（如 4小節×4拍=16拍）
-  → 📷 框選擷取（多頁截圖）
-  → ✅ 拼接儲存+OCR
-  → 產出 .chords.txt（準確和弦序列）+ .png（拼接截圖）
+  → 輸入歌名 + 等級
+  → 📝 Edit Ref → 新建（輸入總拍數）
+  → 看著 Chordify 畫面，在 Grid Editor 打字輸入和弦
+  → 💾 Save → .chords.txt
 
-步驟 2: 即時擷取（取得精確時間軸）
-  → ▶ 開始擷取（自動載入 .chords.txt 為參照）
-  → 程式自動播放 + 追蹤方塊移動 + 綁定時間
-  → 產出 .lab（準確和弦 + 精確時間）
+步驟 2: 錄影 + 分析（取得精確時間軸）
+  → Chordify 切換到 Chord diagrams 模式
+  → 🔴 Record（預錄 2 秒 + 自動播放 + 錄影至結束）
+  → ▶ Analyze（逐幀偵測格線 + OCR 時間校正）
+  → 自動產出 .lab + 匯入 LiveChord 播放系統
+
+完成！LiveChord 播放此歌時即時顯示和弦。
 ```
 
 ---
@@ -28,107 +29,155 @@
 
 | 工具 | 用途 | 啟動方式 |
 |------|------|----------|
-| **chordify_gui.pyw** | GUI 擷取終端（主力工具） | 雙擊（無 terminal） |
+| **chordify_gui.pyw** | GUI 主工具（錄影+分析+編輯） | 雙擊（無 terminal） |
 | chordify_gui.py | 同上（有 terminal 輸出） | `python chordify_gui.py` |
-| chordify_capture.py | 命令列擷取 | `python chordify_capture.py` |
-| chordify_ocr.py | 截圖逐格 OCR | `python chordify_ocr.py <png>` |
-| chordify_screenshot.py | 單張截圖分析 | `python chordify_screenshot.py <png>` |
+| chordify_ocr.py | 截圖逐格 OCR（備用） | `python chordify_ocr.py <png>` |
 | capture_debug.py | 擷取診斷工具 | `python capture_debug.py` |
 
 ---
 
-## GUI 擷取工具 (chordify_gui)
-
-### 面板說明
+## GUI 面板說明
 
 ```
-┌─ Chordify Ground Truth 擷取工具 ─────────────────────────────┐
-│                                                               │
-│ 歌曲: [Dancing Queen    ] [瀏覽...] 等級: [Lv1 ▼]            │
-│                                                               │
-│ ┌─ 擷取區域 ──────────────────────────────────────────────┐   │
-│ │ 播放按鈕 ▶/||:  x=825,y=539...  [框選] [測試]          │   │
-│ │ 目前時間 00:00:  x=941,y=593...  [框選] [測試]          │   │
-│ │ 總長度 03:53:    x=2453,y=592... [框選] [測試]          │   │
-│ │ 和弦網格區域:    x=734,y=913...  [框選] [測試]          │   │
-│ └─────────────────────────────────────────────────────────┘   │
-│                                                               │
-│ [▶ 開始擷取] [⏹ 停止] ☑ 自動覆蓋                             │
-│                                                               │
-│ ┌─ 樂譜截圖（多頁拼接）──────────────────────────────────┐   │
-│ │ [⬜ 框選一列] 拍:[4▼] 小節:[4▼] 4小節×4拍=16拍 115px   │   │
-│ │ [📷 框選擷取] [🗑 移除最後一張] [✅ 拼接儲存+OCR]       │   │
-│ │ ┌────┐ ┌────┐ ┌────┐                                   │   │
-│ │ │ #1 │ │ #2 │ │ #3 │  ← 縮圖預覽                       │   │
-│ │ └────┘ └────┘ └────┘                                   │   │
-│ └─────────────────────────────────────────────────────────┘   │
-│                                                               │
-│ ✓ 完成 (123 和弦)                                             │
-│ 和弦: 123/123 | 時間: 3:45.435                                │
-│                                                               │
-│ ┌─ 擷取紀錄 ──────────────────────────────────────────────┐   │
-│ │ 0:00.000  A       📋                                    │   │
-│ │ 3:42.989  D/A     📋                                    │   │
-│ │ 5:46.123  A       📋                                    │   │
-│ └─────────────────────────────────────────────────────────┘   │
-└───────────────────────────────────────────────────────────────┘
+┌─ ChordCurator Studio ─────────────────────────────────────┐
+│ ♫ ChordCurator Studio                                      │
+├────────────────────────────────────────────────────────────┤
+│ ACTIVE COMPOSITION                                         │
+│ [Dancing Queen          ] [瀏覽] Level [Lv1]               │
+├────────────────────────────────────────────────────────────┤
+│ EXTRACTION CONFIGURATION                                   │
+│ ▶|| Play/Pause     [Select] [Test]                         │
+│ 00:00 Current Time  [Select] [Test]                        │
+│ 03:53 Total Length   [Select] [Test]                       │
+│ ♫ Chord Scroll       [Select] [Test]                       │
+├────────────────────────────────────────────────────────────┤
+│ RECORDING & ANALYSIS                                       │
+│ [🔴 Record] [▶ Analyze] [⏹ Stop] ☑Auto ☑Top              │
+├────────────────────────────────────────────────────────────┤
+│ STATUS: ✓ 完成 (121 和弦)                                  │
+├────────────────────────────────────────────────────────────┤
+│ CHORD OVERVIEW SCREENSHOTS                                 │
+│ [📷 Capture] [🗑 Remove] [✅ Stitch+OCR] [📝 Edit Ref]    │
+├────────────────────────────────────────────────────────────┤
+│ EXTRACTION LOG                                             │
+│ 0:01.000  A  📋                                            │
+│ 0:03.367  D/A  📋                                          │
+└────────────────────────────────────────────────────────────┘
 ```
-
-### 首次設定
-
-1. 開啟 Chordify 歌曲頁面（Chord overview 模式）
-2. 雙擊 `chordify_gui.pyw`
-3. 框選 4 個區域（座標會記住，之後不需要重選）：
-   - 播放按鈕（▶/|| 圓形按鈕）
-   - 目前時間（00:00 數字）
-   - 總長度（右上角 03:53）
-   - 和弦網格（高亮方塊移動的區域）
-4. 框選一列 → 設定拍號（每小節幾拍 × 每列幾小節）
-
-### 擷取模式
-
-#### 📋 參照模式（推薦，100% 準確）
-
-先截圖 OCR 產生 `.chords.txt`，再播放時只綁定時間：
-
-| 步驟 | 操作 | 產出 |
-|------|------|------|
-| 截圖 | 📷 框選擷取（多頁） | 截圖清單 |
-| OCR | ✅ 拼接儲存+OCR | .chords.txt + .png |
-| 擷取 | ▶ 開始擷取 | .lab（自動載入參照） |
-
-Log 顯示 `📋` 表示和弦來自參照序列（0ms，100% 準確）。
-
-#### 🔍 即時 OCR 模式（無截圖時的 fallback）
-
-直接按 ▶ 開始擷取，即時 OCR 辨識和弦：
-
-Log 顯示 `🔍` 表示和弦來自即時 OCR（~200ms，~85% 準確）。
 
 ---
 
-## 架構：Producer-Consumer Buffer
+## V2 錄影 + 離線分析
+
+### 原理
+
+Chordify Chord diagrams 模式：格子水平捲動，方塊固定。
+錄影整個播放過程，離線逐幀偵測格線經過方塊的像素變化。
 
 ```
-Producer (30ms loop):                     截圖不被 OCR 阻塞
-  screenshot → pixel tracking (~3ms)
-  box moved? → queue.put(img, time, jump)
-                    ↓
-              Buffer (Queue 30)
-                    ↓
-Consumer (OCR thread):                    按需處理
-  queue.get() → 📋 ref or 🔍 OCR → record
+錄影中：
+  [休止][A  ][   ][   ][D/A][   ][   ][A  ] → 捲動
+        ↑ 方塊固定在這裡
 
-Time OCR (every 2s):                      獨立校時
-  screenshot time → OCR → update base
+分析時：
+  像素變化脈衝 = 格線經過 = 新的一拍
+  脈衝次數對應 .chords.txt 的拍數序列
+  OCR 讀取錄影中的時間顯示做校正
 ```
 
-| 線程 | 頻率 | 工作 | 延遲 |
-|------|------|------|------|
-| Producer | ~30Hz | 截圖 + 像素追蹤 | ~13ms |
-| Consumer (📋) | ~30Hz | 查表綁定 | ~0ms |
-| Consumer (🔍) | ~5Hz | OCR 辨識 | ~200ms |
-| Time OCR | 0.5Hz | 校時 | ~200ms |
+### 時間精度
+
+| 方法 | 精度 |
+|------|------|
+| V1 即時擷取 | ±1-3 秒 |
+| **V2 錄影分析** | **±0.5 秒** |
+
+### 流程
+
+```
+🔴 Record
+  → 預錄 2 秒
+  → 自動點擊 Play
+  → 30fps 錄影（含時間 + 和弦區域）
+  → OCR 偵測歌曲結束 → 自動停止
+  → 存為 .recording.avi
+
+▶ Analyze
+  → Phase 1: 找播放起點（方塊首次移動）
+  → Phase 2: 逐幀偵測像素變化脈衝
+     - 脈衝 = 格線經過 = 新的一拍
+     - OCR 每 30 幀讀時間做校正
+     - 脈衝次數對應 .chords.txt
+  → Phase 3: 時間校正 + 匯入 LiveChord
+     - 第一個和弦對齊 Chordify 00:01
+     - 寫入 data/chords/{hash}.json
+```
+
+---
+
+## 和弦來源優先順序
+
+```
+播放頁載入和弦時：
+  1. data/chords/{hash}.json 有 source="chordify" → 使用（100% 正確）
+  2. data/chords/{hash}.json 有 source="btc" → 使用（~41% 正確）
+  3. 無和弦 → 顯示「偵測」按鈕（BTC 自動偵測）
+  4. BTC 偵測時如果已有 chordify 來源 → 跳過不覆蓋
+```
+
+---
+
+## 檔案結構
+
+### 每首歌的資料夾
+
+```
+data/test_songs/Lv1/Dancing Queen/
+├── Dancing Queen.flac              ← 測試音檔（from NAS）
+├── Dancing Queen.chords.txt        ← 和弦序列（手動輸入/OCR）
+├── Dancing Queen.recording.avi     ← 螢幕錄影
+├── Dancing Queen.lab               ← Ground Truth（時間+和弦）
+├── Dancing Queen.capture.txt       ← 擷取時間紀錄
+└── Dancing Queen.png               ← Chord overview 截圖（備用）
+```
+
+### LiveChord 播放系統
+
+```
+data/chords/{hash}.json
+{
+  "path": "POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac",
+  "source": "chordify",     ← "chordify" 或 "btc"
+  "key": "A",
+  "capo": 0,
+  "chords": [
+    {"time": 1.0, "end": 3.367, "chord": "A"},
+    {"time": 3.367, "end": 5.7, "chord": "D/A"},
+    ...
+  ]
+}
+```
+
+---
+
+## Chord Grid Editor
+
+```
+┌─ Chord Grid Editor ──────────────────────────────────┐
+│                                    [💾 Save] [Close]  │
+│     1    2    3    4    1    2    3    4    ...        │
+│  1 ║ ·  │ ·  │ ·  │ ·  ║ A  │ ·  │ ·  │ ·  ║ ...   │
+│  2 ║D/A │ ·  │ ·  │ ·  ║ A  │ ·  │ ·  │ ·  ║ ...   │
+│  3 ║D/F#│ ·  │A/E │ ·  ║ E  │ ·  │ ·  │ ·  ║ ...   │
+│  ...                     ↕ 捲動                       │
+└───────────────────────────────────────────────────────┘
+
+- 點擊格子 → 輸入/修改和弦名稱
+- 空格 · = 延續上一拍
+- 藍色粗線 ║ = 小節分隔
+- 新建：指定總拍數，打開空白網格
+- 字體大小 16px，視窗 1200×800
+```
 
 ---
 
@@ -141,101 +190,24 @@ Time OCR (every 2s):                      獨立校時
   "play_btn_region": [825, 539, 108, 117],
   "time_region": [941, 593, 101, 53],
   "duration_region": [2453, 592, 92, 53],
-  "chord_region": [734, 913, 1829, 1110],
-  "row_height": 112,
-  "row_width": 1835,
-  "beats_per_bar": 4,
-  "bars_per_row": 4,
-  "beats_per_row": 16,
+  "chord_region": [725, 788, 1842, 141],
   "last_song": "Dancing Queen",
   "last_level": "Lv1"
 }
 ```
 
-瀏覽器視窗位置固定時，換歌只需改歌名。
+首次設定 4 個擷取區域後，所有歌曲共用（瀏覽器位置固定時）。
 
 ---
 
-## OCR 修正表
+## 驗證結果（Dancing Queen）
 
-EasyOCR 常見誤讀和修正（`_OCR_FIX`）：
-
-| 誤讀 | 正確 | 原因 |
-|------|------|------|
-| DA, DIA, DJA | D/A | `/` 讀成 `I/J` |
-| DFA, D/F | D/F# | `#` 消失 |
-| Fim, Frm, Fum | F#m | `#` 讀成 `i/r/u` |
-| C37, Ci7, Cz7 | C#7 | `#` 讀成 `3/i/z` |
-| B7/D3, B7/Di | B7/D# | `#` 讀成 `3/i` |
-| E/Gi, E/Gu | E/G# | `#` 讀成 `i/u` |
-| Bmi/E, Bme/E | Bm7/E | `7` 讀成 `i/e` |
-
----
-
-## 產出檔案
-
-每首歌最多產生 4 個檔案：
-
-| 檔案 | 格式 | 來源 | 用途 |
-|------|------|------|------|
-| `歌名.lab` | JSON | 即時擷取 | Ground truth（和弦+時間） |
-| `歌名.chords.txt` | TSV | 擷取 or OCR | 和弦序列 + 時間（對照用） |
-| `歌名.png` | PNG | 截圖拼接 | Chordify 樂譜截圖 |
-| `歌名.flac` | FLAC | NAS 複製 | 測試音檔 |
-
-### .lab 格式
-
-```json
-{
-  "song": "Dancing Queen",
-  "level": "Lv1",
-  "key": "A",
-  "source": "Chordify (GUI capture)",
-  "entries": [
-    {"time": 0.0, "end": 3.469, "chord": "A"},
-    {"time": 3.469, "end": 5.465, "chord": "D/A"},
-    ...
-  ]
-}
-```
-
-### .chords.txt 格式
-
-```
-0.000	A
-3.427	D/A
-5.499	A
-...
-```
-
----
-
-## 診斷工具 (capture_debug.py)
-
-用於排查擷取問題：
-
-```
-python capture_debug.py
-選擇 (1-5/a):
-  1. 區域擷取截圖      ← 確認框選正確
-  2. 播放按鈕偵測 (10s) ← 確認 ▶/|| 辨識
-  3. 時間 OCR (7.5s)    ← 確認時間讀取成功率
-  4. 和弦偵測 (6s)      ← 確認高亮方塊追蹤
-  5. 完整擷取模擬 (30s) ← 模擬完整擷取流程
-```
-
-截圖存在 `tools/debug_output/`。
-
----
-
-## 已知限制
-
-| 限制 | 說明 | 因應 |
-|------|------|------|
-| OCR `#` 辨識差 | EasyOCR 常把 `#` 讀成 `i/3/z` | _OCR_FIX 修正表 |
-| 極快裝飾和弦 | <0.2s 的和弦可能被 Producer 跳過 | 漏拍補償 + ref 序列 |
-| 螢幕解析度變化 | 區域座標失效 | 重新框選 |
-| Chordify 改版 | UI 佈局變化 | 重新框選 |
+| 指標 | 結果 |
+|------|------|
+| 和弦數 | 121/123 (98.4%) |
+| 和弦名稱 | 100% 正確 |
+| 時間精度 | ±0.5 秒 |
+| 第一個和弦 | A = 1.0s（精確） |
 
 ---
 
@@ -243,8 +215,10 @@ python capture_debug.py
 
 | 日期 | 變更 |
 |------|------|
-| 2026-03-28 | 初版：螢幕擷取 + OCR |
-| 2026-03-29 | Producer-Consumer buffer 架構 |
-| 2026-03-29 | 逐格 OCR + 格線偵測 |
-| 2026-03-29 | 📋 參照模式（.chords.txt → .lab）|
-| 2026-03-29 | 修正連鎖漏拍 + Race Condition + Deadlock |
+| 2026-03-28 | V1: 即時螢幕擷取 + OCR |
+| 2026-03-29 | V2: 錄影 + 離線逐幀分析 |
+| 2026-03-29 | Chord diagrams 捲動模式 |
+| 2026-03-29 | 像素脈衝偵測 + OCR 時間校正 |
+| 2026-03-30 | Grid Editor + 手動輸入和弦 |
+| 2026-03-30 | 匯入 LiveChord 播放系統 |
+| 2026-03-30 | BTC 偵測保護（不覆蓋 chordify） |
