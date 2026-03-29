@@ -32,6 +32,9 @@ _OCR_FIX = {
     "AE": "A/E", "AIE": "A/E", "AJE": "A/E",
     "E/G:": "E/G#", "E/G;": "E/G#", "E/Ga": "E/G#", "EIG:": "E/G#",
     "E/Gi": "E/G#", "E/Gs": "E/G#", "E/Gu": "E/G#",
+    # # 被讀成數字
+    "C37": "C#7", "C3": "C#", "B7/D3": "B7/D#",
+    "F3m": "F#m", "F3m7": "F#m7", "G3": "G#", "A3": "A#",
     "Fim": "F#m", "Frm": "F#m", "Fzm": "F#m", "Fsm": "F#m",
     "Fum": "F#m", "Fxm": "F#m", "Fam": "F#m", "Fm": "F#m",
     "Fim7": "F#m7", "Frm7": "F#m7", "Fzm7": "F#m7", "Frm?": "F#m7",

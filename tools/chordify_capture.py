@@ -270,19 +270,39 @@ def find_highlighted_chord(img):
 
     for _, text, conf in results:
         text = text.strip()
-        if text and conf > 0.3 and any(c in text for c in 'ABCDEFG'):
+        if text and conf > 0.15 and any(c in text for c in 'ABCDEFG'):
             return _normalize_chord(text), (cx, cy)
     return None, (cx, cy)
 
 
+_OCR_FIX = {
+    "DA": "D/A", "DIA": "D/A", "DJA": "D/A", "D1A": "D/A",
+    "DFA": "D/F#", "DIF:": "D/F#", "D/F": "D/F#", "D/Fi": "D/F#",
+    "EFA": "E/A", "EA": "E/A", "EJA": "E/A", "EIA": "E/A",
+    "AE": "A/E", "AIE": "A/E", "AJE": "A/E",
+    "E/G:": "E/G#", "E/G;": "E/G#", "E/Ga": "E/G#", "E/Gi": "E/G#", "E/Gu": "E/G#",
+    "Fim": "F#m", "Frm": "F#m", "Fzm": "F#m", "Fum": "F#m", "Fxm": "F#m", "Fam": "F#m", "Fm": "F#m",
+    "Fim7": "F#m7", "Frm7": "F#m7", "Fzm7": "F#m7", "Fum?": "F#m7", "Fam7": "F#m7", "Fm7": "F#m7",
+    "B7/D:": "B7/D#", "B7/D;": "B7/D#", "B7/Di": "B7/D#", "B7/D": "B7/D#",
+    "Bmi/E": "Bm7/E", "Bme/E": "Bm7/E", 'Bm"/E': "Bm7/E", "Bm?/E": "Bm7/E",
+    "Bm?": "Bm7", 'Bm"': "Bm7", "Bmz": "Bm7",
+    "C;7": "C#7", "Cz7": "C#7", "C:7": "C#7", "Ci7": "C#7", "Ca7": "C#7",
+    "E?": "E7", "F": "F#m",
+    "C37": "C#7", "C3": "C#", "B7/D3": "B7/D#",
+    "F3m": "F#m", "F3m7": "F#m7", "G3": "G#", "A3": "A#",
+}
+
+
 def _normalize_chord(raw: str) -> str:
-    raw = raw.strip()
-    replacements = {"min": "m", "MIN": "m", "Maj": "maj", "MAJ": "maj",
-                    "DIM": "dim", "AUG": "aug", "SUS": "sus"}
-    for old, new in replacements.items():
-        raw = raw.replace(old, new)
+    raw = raw.strip().rstrip(':;.,?')
+    if raw in _OCR_FIX:
+        return _OCR_FIX[raw]
+    raw = raw.replace("min", "m").replace("MIN", "m")
+    raw = raw.replace("Maj", "maj").replace("MAJ", "maj")
     if raw and raw[0].islower():
         raw = raw[0].upper() + raw[1:]
+    if raw in _OCR_FIX:
+        return _OCR_FIX[raw]
     return raw
 
 
@@ -483,7 +503,7 @@ def capture_loop():
                     _record_chord(chord, precise_time, "(PNG)")
                 else:
                     chord, _ = find_highlighted_chord(chord_img)
-                    if chord and chord != STATE["last_chord"]:
+                    if chord:  # 信任 Producer 的 box_moved，不過濾重複和弦
                         _record_chord(chord, precise_time)
             except Exception:
                 pass

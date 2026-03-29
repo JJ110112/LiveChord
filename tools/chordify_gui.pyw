@@ -210,7 +210,7 @@ def find_highlighted_chord(img):
                               paragraph=False)
     for _, text, conf in results:
         text = text.strip()
-        if text and conf > 0.3 and any(c in text for c in 'ABCDEFG'):
+        if text and conf > 0.15 and any(c in text for c in 'ABCDEFG'):
             return _fix_chord_ocr(text), (cx, cy)
     return None, (cx, cy)
 
@@ -244,6 +244,10 @@ _OCR_FIX = {
     "E?": "E7",
     # F → F#m (Chordify 的 F#m 常被截成 F)
     "F": "F#m",
+    # # 被讀成 3 或 7 等數字
+    "C37": "C#7", "C3": "C#", "B7/D3": "B7/D#",
+    "F3m": "F#m", "F3m7": "F#m7",
+    "G3": "G#", "A3": "A#",
 }
 
 
@@ -1102,7 +1106,7 @@ class ChordifyCapture(tk.Tk):
 
                     # OCR 和弦（慢，但不阻塞 producer）
                     chord, _ = find_highlighted_chord(chord_img)
-                    if chord and chord != shared["last_chord"]:
+                    if chord:  # 信任 Producer 的 box_moved，不過濾重複和弦
                         self.records.append((round(precise_time, 3), chord))
                         shared["last_chord"] = chord
                         self.ref_chords.append(chord)
