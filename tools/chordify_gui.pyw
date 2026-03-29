@@ -313,7 +313,7 @@ class ChordifyCapture(tk.Tk):
         }
         self.song_name = tk.StringVar(value=self.cfg.get("last_song", ""))
         self.level = tk.StringVar(value=self.cfg.get("last_level", "Lv1"))
-        self.cell_size = self.cfg.get("cell_size")  # (w, h) 單格尺寸
+        # cell_size 由「框選一列 ÷ 拍數」自動計算，不需要單獨框選
         self.capturing = False
         self.records = []           # [(time_sec, chord)]
         self.screenshots = []       # [PIL.Image] 分段截圖
@@ -473,8 +473,6 @@ class ChordifyCapture(tk.Tk):
         if row_h and row_w:
             beat_w = row_w / beats
             self.cell_size_var.set(f"列高:{row_h}px  {beats}拍/列  每拍:{beat_w:.0f}px")
-        elif self.cell_size:
-            self.cell_size_var.set(f"格子: {self.cell_size[0]}×{self.cell_size[1]} px")
         else:
             self.cell_size_var.set("未設定（請框選一列）")
 
@@ -494,16 +492,18 @@ class ChordifyCapture(tk.Tk):
 
         row_w, row_h = region[2], region[3]
 
-        # 詢問一列幾拍（用 simpledialog，保證顯示在最上層）
+        # 詢問一列幾拍（= 小節數 × 每小節拍數）
         default_beats = self.cfg.get("beats_per_row", 8)
         beats = simpledialog.askinteger(
-            "一列幾拍？",
+            "一列有幾拍？",
             f"框選的列: {row_w}×{row_h} px\n\n"
-            f"這一列有幾拍？\n"
-            f"  4/4 拍 → 8\n"
-            f"  3/4 拍 → 6\n",
+            f"一列總拍數 = 小節數 × 每小節拍數\n\n"
+            f"常見：\n"
+            f"  4/4 拍 × 2 小節 = 8\n"
+            f"  3/4 拍 × 2 小節 = 6\n"
+            f"  4/4 拍 × 4 小節 = 16\n",
             initialvalue=default_beats,
-            minvalue=2, maxvalue=24,
+            minvalue=2, maxvalue=32,
             parent=self
         )
 
@@ -515,8 +515,6 @@ class ChordifyCapture(tk.Tk):
         self.cfg["row_height"] = row_h
         self.cfg["row_width"] = row_w
         self.cfg["beats_per_row"] = beats
-        self.cfg["cell_size"] = [row_w, row_h]
-        self.cell_size = (row_w, row_h)
         save_config(self.cfg)
         self._update_cell_display()
         self._log(f"  ✓ 列: {row_w}×{row_h}px, {beats} 拍/列, 每拍 {beat_w:.0f}px", "state")
@@ -808,14 +806,18 @@ class ChordifyCapture(tk.Tk):
         self._log(f"✓ 已儲存 {png_path.name} ({max_w}×{total_h}, {len(self.screenshots)} 頁)", "state")
 
         # 2. 逐格 OCR 辨識和弦序列
-        if not self.cell_size:
-            self._log("⚠ 請先「框選一格」設定格子大小", "warn")
+        row_w = self.cfg.get("row_width")
+        row_h = self.cfg.get("row_height")
+        beats = self.cfg.get("beats_per_row", 8)
+        if not row_w or not row_h:
+            self._log("⚠ 請先「框選一列」設定列參照", "warn")
             return
 
-        self._log(f"🔍 逐格 OCR 辨識中（格子 {self.cell_size[0]}×{self.cell_size[1]}）...", "info")
-        self.status_var.set("🔍 逐格 OCR 辨識中...")
+        cell_w = row_w  # 傳入整列寬度，OCR 內部會除以 beats
+        cell_h = row_h
 
-        cell_w, cell_h = self.cell_size
+        self._safe_log(f"🔍 逐格 OCR（{beats}拍/列, 每拍 {row_w/beats:.0f}px）...", "info")
+        self.status_var.set("🔍 逐格 OCR 辨識中...")
 
         def do_ocr():
             try:
