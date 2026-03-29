@@ -1581,28 +1581,13 @@ class ChordifyCapture(tk.Tk):
 
             frame_num += 1
 
-        # 注意：Phase 1 結束時校正表可能是空的（因為 break 在 OCR 之前）
-        # Phase 2 會繼續收集。所以 frame_to_time 要動態查詢 time_calibration。
-        self._safe_log(f"  Phase 1 校正點: {len(time_calibration)} 個", "info")
+        # 時間計算：影格時間 - 預錄時間
+        # 預錄 2 秒是固定的，fps 是固定的，不需要 OCR 校正
+        PRE_ROLL = 2.0
+        self._safe_log(f"  時間公式: frame/fps - {PRE_ROLL}s", "info")
 
         def frame_to_time(fn):
-            """用最近的 OCR 校正點 + 幀差算精確時間。
-            校正表在 Phase 2 持續成長，動態查詢。"""
-            # 只用播放開始後且 t > 0 的校正點
-            valid = [(f, t) for f, t in time_calibration if f >= play_start_frame and t > 0]
-            if not valid:
-                return (fn - play_start_frame) / fps
-
-            # 找 fn 之前最近的校正點
-            best_frame, best_time = valid[0]
-            for cf, ct in valid:
-                if cf <= fn:
-                    best_frame, best_time = cf, ct
-                else:
-                    break
-
-            # 精確時間 = OCR 秒數 + 幀差 / fps
-            return best_time + (fn - best_frame) / fps
+            return fn / fps - PRE_ROLL
 
         # Phase 2: 逐幀分析方塊位置
         self._safe_status("🔍 Phase 2: 追蹤方塊...")
