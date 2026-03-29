@@ -411,7 +411,10 @@ def capture_loop():
     # ---- Time OCR + 播放按鈕檢查線程 ----
     def time_thread():
         btn_counter = 0
-        while STATE["running"] and STATE["capturing"] and not shared["stop"]:
+        while STATE["running"] and not shared["stop"]:
+            if not STATE["capturing"]:
+                time.sleep(0.5)
+                continue
             try:
                 time_img = capture_region(STATE["time_region"])
                 current_sec = ocr_time(time_img)
@@ -449,11 +452,11 @@ def capture_loop():
 
     # ---- Consumer: OCR 線程 ----
     def ocr_thread():
-        while STATE["running"] and not shared["stop"]:
+        while True:
             try:
-                item = ocr_queue.get(timeout=0.5)
+                item = ocr_queue.get(timeout=0.1)
             except queue.Empty:
-                if not STATE["capturing"]:
+                if shared["stop"] or not STATE["running"]:
                     break
                 continue
 
@@ -494,7 +497,11 @@ def capture_loop():
     t_ocr.start()
 
     # ---- Producer: 快速截圖 + 方塊追蹤 ----
-    while STATE["running"] and STATE["capturing"] and not shared["stop"]:
+    while STATE["running"] and not shared["stop"]:
+        if not STATE["capturing"]:
+            time.sleep(0.1)
+            continue
+            
         try:
             now = time.perf_counter()
             chord_img = capture_region(STATE["chord_region"])
@@ -511,7 +518,9 @@ def capture_loop():
                     dy = abs(center[1] - STATE["last_box_center"][1])
                     if dx > 15 or dy > 15:
                         box_moved = True
-                        jump_distance = max(dx, dy)
+                        # 處理換行 (Wrap-around)：若往下跳且往左拉回，視為單純的下一格
+                        is_wrap = dy > 20 and center[0] < STATE["last_box_center"][0]
+                        jump_distance = grid_width if is_wrap else dx
                 if box_moved:
                     STATE["last_box_center"] = center
 
@@ -534,12 +543,11 @@ def capture_loop():
 
         time.sleep(0.03)  # 30ms producer
 
-    # 等 consumer 處理完
+    # 停止信號，並等待 Consumer 處理完剩下的和弦 (最多等 3 秒防死鎖)
     shared["stop"] = True
-    try:
-        ocr_queue.join()
-    except Exception:
-        pass
+    end_wait = time.time() + 3.0
+    while not ocr_queue.empty() and time.time() < end_wait:
+        time.sleep(0.1)
 
 
 # ---------------------------------------------------------------------------

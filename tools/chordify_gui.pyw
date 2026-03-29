@@ -1001,10 +1001,12 @@ class ChordifyCapture(tk.Tk):
 
         # ---- Consumer: OCR 線程 ----
         def ocr_consumer_thread():
-            while self.capturing and not shared["stop"]:
+            while True:
                 try:
-                    item = ocr_queue.get(timeout=0.5)
+                    item = ocr_queue.get(timeout=0.1)
                 except queue.Empty:
+                    if shared["stop"] or not self.capturing:
+                        break
                     continue
 
                 chord_img, precise_time, jump_distance = item
@@ -1070,7 +1072,9 @@ class ChordifyCapture(tk.Tk):
                         dy = abs(center[1] - shared["last_center"][1])
                         if dx > 15 or dy > 15:
                             box_moved = True
-                            jump_distance = max(dx, dy)
+                            # 換行判定：往下跳且往左拉回 → 視為一格
+                            is_wrap = dy > 20 and center[0] < shared["last_center"][0]
+                            jump_distance = grid_width if is_wrap else dx
                     if box_moved:
                         shared["last_center"] = center
 
@@ -1100,9 +1104,11 @@ class ChordifyCapture(tk.Tk):
 
             time.sleep(0.03)  # 30ms — producer 不受 OCR 拖累
 
-        # ---- 等 consumer 處理完 buffer 剩餘 ----
+        # ---- 等 consumer 處理完 buffer 剩餘（最多 3 秒防死鎖）----
         shared["stop"] = True
-        ocr_queue.join()  # 等所有 buffer 項目處理完
+        end_wait = time.time() + 3.0
+        while not ocr_queue.empty() and time.time() < end_wait:
+            time.sleep(0.1)
 
         # Phase 3: 儲存
         self._finish(name, lv)
