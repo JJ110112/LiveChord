@@ -389,10 +389,34 @@ class ChordifyCapture(tk.Tk):
         cell_row.pack(fill=tk.X, pady=(0, 4))
 
         tk.Button(cell_row, text="⬜ 框選一列", command=self._select_row_ref, **btn_style).pack(side=tk.LEFT, padx=2)
+
+        # 拍號下拉選單（不需重新框選就能改）
+        tk.Label(cell_row, text="拍:", bg="#1a1a2e", fg="#888",
+                 font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(10, 2))
+        self.bpb_var = tk.IntVar(value=self.cfg.get("beats_per_bar", 4))
+        bpb_cb = ttk.Combobox(cell_row, textvariable=self.bpb_var, values=[3, 4, 6], width=3, state="readonly")
+        bpb_cb.pack(side=tk.LEFT)
+
+        tk.Label(cell_row, text="小節:", bg="#1a1a2e", fg="#888",
+                 font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(8, 2))
+        self.bpr_var = tk.IntVar(value=self.cfg.get("bars_per_row", 4))
+        bpr_cb = ttk.Combobox(cell_row, textvariable=self.bpr_var, values=[2, 3, 4, 8], width=3, state="readonly")
+        bpr_cb.pack(side=tk.LEFT)
+
         self.cell_size_var = tk.StringVar()
         self._update_cell_display()
         tk.Label(cell_row, textvariable=self.cell_size_var,
                  bg="#0d0d1a", fg="#2d6a4f", font=("Consolas", 9), padx=8).pack(side=tk.LEFT, padx=5)
+
+        def _on_beat_change(*_):
+            self.cfg["beats_per_bar"] = self.bpb_var.get()
+            self.cfg["bars_per_row"] = self.bpr_var.get()
+            self.cfg["beats_per_row"] = self.bpb_var.get() * self.bpr_var.get()
+            save_config(self.cfg)
+            self._update_cell_display()
+
+        bpb_cb.bind("<<ComboboxSelected>>", _on_beat_change)
+        bpr_cb.bind("<<ComboboxSelected>>", _on_beat_change)
 
         # 截圖按鈕行
         shot_btns = tk.Frame(shot_frame, bg="#1a1a2e")
