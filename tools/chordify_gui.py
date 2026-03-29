@@ -988,6 +988,7 @@ class ChordifyCapture(tk.Tk):
                 center = _find_dark_block_center(chord_img)
 
                 box_moved = False
+                jump_distance = 0
                 if center:
                     if last_center is None:
                         box_moved = True
@@ -996,34 +997,58 @@ class ChordifyCapture(tk.Tk):
                         dy = abs(center[1] - last_center[1])
                         if dx > 15 or dy > 15:
                             box_moved = True
+                            jump_distance = max(dx, dy)
                     if box_moved:
                         last_center = center
 
-                # ---- 和弦 OCR（只在方塊移動時觸發）----
-                if box_moved:
-                    chord, _ = find_highlighted_chord(chord_img)
+                if not box_moved:
+                    time.sleep(0.05)
+                    continue
 
-                    if chord and chord != last_chord:
-                        # 精確時間 = OCR 整數秒 + perf_counter 內插
-                        if last_ocr_sec is not None and last_ocr_perf is not None:
-                            sub_sec = now - last_ocr_perf
-                            precise_time = last_ocr_sec + sub_sec
-                        elif last_time_sec is not None:
-                            precise_time = float(last_time_sec)
-                        else:
-                            precise_time = 0.0
+                # ---- 方塊移動了！計算精確時間 ----
+                if last_ocr_sec is not None and last_ocr_perf is not None:
+                    sub_sec = now - last_ocr_perf
+                    precise_time = last_ocr_sec + sub_sec
+                elif last_time_sec is not None:
+                    precise_time = float(last_time_sec)
+                else:
+                    precise_time = 0.0
 
-                        self.records.append((round(precise_time, 3), chord))
-                        last_chord = chord
-                        self.ref_chords.append(chord)
+                # ---- 漏拍補償：方塊跳了 2 格以上 ----
+                # 估算格寬
+                cfg_row_w = self.cfg.get("row_width")
+                cfg_beats = self.cfg.get("beats_per_row", 8)
+                grid_width = (cfg_row_w / cfg_beats) if cfg_row_w else 120
 
-                        m = int(precise_time // 60)
-                        s = int(precise_time % 60)
-                        ms = int((precise_time % 1) * 1000)
-                        count = len(self.records)
-                        self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}", "chord")
-                        self._safe_progress(f"和弦: {count} | 截圖: {len(self.screenshots)} | "
-                                            f"時間: {m}:{s:02d}.{ms:03d}")
+                skipped_beats = int(jump_distance / grid_width) - 1 if grid_width > 0 else 0
+                skipped_beats = max(0, min(skipped_beats, 5))
+
+                if skipped_beats > 0 and self.ref_chords and len(self.ref_chords) > len(self.records):
+                    prev_time = self.records[-1][0] if self.records else precise_time
+                    beat_dur = (precise_time - prev_time) / (skipped_beats + 1)
+                    ref_offset = len(self.records)  # 目前已記錄幾個
+                    for skip_i in range(skipped_beats):
+                        # 從已建立的 ref 序列推算漏掉的和弦
+                        # (ref_chords 是依序 append 的，用 offset 索引)
+                        skip_time = prev_time + beat_dur * (skip_i + 1)
+                        skip_chord = f"({skipped_beats}skip)"  # 標記為漏拍
+                        self.records.append((round(skip_time, 3), skip_chord))
+                        self._safe_log(f"  {int(skip_time//60)}:{int(skip_time%60):02d}.{int((skip_time%1)*1000):03d}  {skip_chord}", "warn")
+
+                # ---- 和弦 OCR（只在方塊移動時）----
+                chord, _ = find_highlighted_chord(chord_img)
+                if chord and chord != last_chord:
+                    self.records.append((round(precise_time, 3), chord))
+                    last_chord = chord
+                    self.ref_chords.append(chord)
+
+                    m = int(precise_time // 60)
+                    s = int(precise_time % 60)
+                    ms = int((precise_time % 1) * 1000)
+                    count = len(self.records)
+                    self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {chord}", "chord")
+                    self._safe_progress(f"和弦: {count} | 截圖: {len(self.screenshots)} | "
+                                        f"時間: {m}:{s:02d}.{ms:03d}")
 
                 # ---- 定期截圖（每 100 次 ≈ 5 秒）----
                 screenshot_interval += 1
