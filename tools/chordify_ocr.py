@@ -50,6 +50,8 @@ _OCR_FIX = {
     "B7/D": "B7/D#", "B7D": "B7/D#",
     "Ca7": "C#7", "Cs7": "C#7",
     "Fm": "F#m", "Fm7": "F#m7",
+    "Fam7": "F#m7", "Fam": "F#m",
+    "E/Gi": "E/G#", "E/Gs": "E/G#",
 }
 
 
@@ -118,8 +120,14 @@ def extract_chords_grid(image_path: str, cell_w: int = None, cell_h: int = None,
     # 計算行列數
     n_cols = w // cell_w
     n_rows = h // cell_h
+
+    # 格線內縮：跳過格子邊緣的格線（通常 1-3px）
+    pad_x = max(3, cell_w // 15)  # 水平內縮
+    pad_y = max(3, cell_h // 15)  # 垂直內縮
+
     if verbose:
         print(f"  網格: {n_rows} 行 × {n_cols} 列 = {n_rows * n_cols} 格")
+        print(f"  格線內縮: {pad_x}px (左右), {pad_y}px (上下)")
 
     reader = easyocr.Reader(['en'], gpu=False, verbose=False)
 
@@ -129,19 +137,29 @@ def extract_chords_grid(image_path: str, cell_w: int = None, cell_h: int = None,
     for row in range(n_rows):
         row_chords = []
         for col in range(n_cols):
+            # 格子外框
             x1 = col * cell_w
             y1 = row * cell_h
             x2 = min(x1 + cell_w, w)
             y2 = min(y1 + cell_h, h)
 
-            # 切出小格
-            cell_img = img.crop((x1, y1, x2, y2))
+            # 內縮：跳過格線
+            cx1 = x1 + pad_x
+            cy1 = y1 + pad_y
+            cx2 = x2 - pad_x
+            cy2 = y2 - pad_y
+
+            if cx2 <= cx1 or cy2 <= cy1:
+                row_chords.append("")
+                continue
+
+            cell_img = img.crop((cx1, cy1, cx2, cy2))
 
             # 先檢查是否有內容（灰階差異度）
             cell_arr = np.array(cell_img.convert("L"))
             contrast = np.std(cell_arr)
 
-            if contrast < 8:
+            if contrast < 5:
                 # 幾乎純色（空格或格線）
                 row_chords.append("")
                 continue
