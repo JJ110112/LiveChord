@@ -456,6 +456,15 @@ class ChordifyCapture(tk.Tk):
                        bg=C["bg"], fg=C["dim"], selectcolor=C["card"],
                        activebackground=C["bg"], font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(12, 0))
 
+        self.topmost_var = tk.BooleanVar(value=True)
+        def toggle_topmost():
+            self.attributes("-topmost", self.topmost_var.get())
+        toggle_topmost()
+        tk.Checkbutton(action_frame, text="Stay on Top", variable=self.topmost_var,
+                       command=toggle_topmost,
+                       bg=C["bg"], fg=C["dim"], selectcolor=C["card"],
+                       activebackground=C["bg"], font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(4, 0))
+
         # ---- Score Snippets (拍號 + 狀態) ----
         snippet_frame = tk.Frame(self, bg=C["bg"])
         snippet_frame.pack(fill=tk.X, padx=16, pady=4)
@@ -1296,12 +1305,10 @@ class ChordifyCapture(tk.Tk):
         screenshot_interval = 0
         current_grid_idx = -1
         current_row_idx = -1
-        is_first_row = True  # 第一列特殊處理（可能有休止符）
 
         # 載入精確格子邊界
         beat_bounds = self.cfg.get("beat_boundaries")
         row_h = self.cfg.get("row_height", 112)
-        start_offset = self.cfg.get("start_beat_offset", 0)  # 第一列前幾拍是休止符
 
         # 滯後 = 格寬的 40%，確保方塊到達下一格中央才觸發
         avg_beat_w = (beat_bounds[-1][1] - beat_bounds[0][0]) / len(beat_bounds) if beat_bounds else grid_width
@@ -1354,16 +1361,11 @@ class ChordifyCapture(tk.Tk):
                     new_row = int(cy / row_h) if row_h > 0 else 0
 
                     if current_grid_idx < 0:
-                        # 第一次偵測
+                        # 第一次偵測（Chordify 播放時方塊直接從有和弦的格子開始）
                         new_grid = _cx_to_grid(cx)
-                        if is_first_row and start_offset > 0 and new_grid < start_offset:
-                            pass  # 還在休止符區域
-                        else:
-                            new_beat = True
-                            current_grid_idx = new_grid
-                            current_row_idx = new_row
-                            if is_first_row and start_offset > 0:
-                                self._safe_log(f"  (跳過前 {start_offset} 拍休止符)", "info")
+                        new_beat = True
+                        current_grid_idx = new_grid
+                        current_row_idx = new_row
                     elif new_row != current_row_idx:
                         # 換行
                         new_beat = True
