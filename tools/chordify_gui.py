@@ -1483,6 +1483,9 @@ class ChordifyCapture(tk.Tk):
         records = []
         cooldown = 0
         in_pulse = False
+        beat_started = False   # 第一個正常脈衝是否已偵測到
+        # 從 play_start 後跳過一段（等 Play 按鈕的巨大畫面變化消退）
+        skip_until = play_start_frame + 30  # 跳過 Play 後的 1 秒
         frame_num = play_start_frame
 
         while cap.isOpened():
@@ -1500,6 +1503,10 @@ class ChordifyCapture(tk.Tk):
                 if t is not None:
                     time_calibration.append((frame_num, t))
 
+            # 跳過 Play 按鈕造成的畫面變化
+            if frame_num < skip_until:
+                continue
+
             # 進度
             if frame_num % 200 == 0:
                 pct = int(frame_num / total_frames * 100)
@@ -1513,15 +1520,19 @@ class ChordifyCapture(tk.Tk):
             if prev_pixels is not None and len(pixels) == len(prev_pixels):
                 diff = np.mean(np.abs(pixels - prev_pixels))
 
+                # 跳過巨大脈衝（Play 按鈕殘留、頁面捲動初始化）
+                if diff > 50:
+                    prev_pixels = pixels.copy()
+                    cooldown = COOLDOWN_FRAMES
+                    continue
+
                 new_beat = False
                 if cooldown > 0:
                     cooldown -= 1
                 elif not in_pulse and diff > PIXEL_THRESHOLD:
-                    # 脈衝開始 = 格線經過 = 新的一拍
                     in_pulse = True
                     new_beat = True
                 elif in_pulse and diff < PIXEL_SETTLE:
-                    # 脈衝結束
                     in_pulse = False
                     cooldown = COOLDOWN_FRAMES
 
