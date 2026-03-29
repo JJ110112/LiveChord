@@ -1446,13 +1446,13 @@ class ChordifyCapture(tk.Tk):
             lab_path.write_text(json.dumps(lab, ensure_ascii=False, indent=2), encoding="utf-8")
             self._safe_log(f"✓ 已儲存 {lab_path.name} ({len(entries)} 和弦, Key: {key})", "state")
 
-        # 儲存 .txt（和弦序列對照檔）
-        if self.ref_chords:
-            txt_path = save_dir / f"{name}.chords.txt"
-            txt_path.write_text("\n".join(
+        # 儲存擷取紀錄（不覆蓋 .chords.txt — 那是 OCR 基準資料）
+        if self.records:
+            capture_txt = save_dir / f"{name}.capture.txt"
+            capture_txt.write_text("\n".join(
                 f"{t:.3f}\t{c}" for t, c in sorted(set(self.records))
             ), encoding="utf-8")
-            self._safe_log(f"✓ 已儲存 {txt_path.name}", "state")
+            self._safe_log(f"✓ 已儲存 {capture_txt.name}", "state")
 
         # 拼接截圖為完整 .png
         if self.screenshots:
