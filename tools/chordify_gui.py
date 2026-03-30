@@ -677,6 +677,9 @@ class ChordifyCapture(tk.Tk):
                   relief="flat", cursor="hand2", padx=10, pady=3).pack(side=tk.LEFT, padx=2)
 
         tk.Button(shot_btns, text="📝 Edit Ref", command=self._edit_chords_txt, **btn_style).pack(side=tk.LEFT, padx=2)
+        tk.Button(shot_btns, text="🎹 MIDI Import", command=self._import_midi,
+                  bg=C["tertiary"], fg="white", font=("Segoe UI", 9, "bold"),
+                  relief="flat", cursor="hand2", padx=10, pady=3).pack(side=tk.LEFT, padx=2)
 
         self.screenshot_list_var = tk.StringVar(value="Shots: 0")
         tk.Label(shot_btns, textvariable=self.screenshot_list_var,
@@ -996,6 +999,90 @@ class ChordifyCapture(tk.Tk):
             lbl.pack()
             tk.Label(frame, text=f"#{i+1}", bg="#d9e4ea", fg="#566166",
                      font=("Consolas", 8)).pack()
+
+    def _import_midi(self):
+        """從 MIDI 檔案匯入和弦 → .lab + .chords.txt + LiveChord"""
+        name = self.song_name.get().strip()
+        lv = self.level.get()
+        if not name:
+            messagebox.showwarning("提示", "請輸入歌曲名稱")
+            return
+
+        # 選擇 MIDI 檔案
+        midi_path = filedialog.askopenfilename(
+            title="選擇 MIDI 檔案",
+            initialdir=str(TEST_SONGS_DIR / lv / name) if (TEST_SONGS_DIR / lv / name).is_dir() else str(TEST_SONGS_DIR),
+            filetypes=[("MIDI", "*.mid *.midi"), ("All", "*.*")]
+        )
+        if not midi_path:
+            return
+
+        self._log(f"\n{'='*50}", "info")
+        self._log(f"🎹 MIDI Import: {Path(midi_path).name}", "state")
+
+        def do_import():
+            try:
+                sys.path.insert(0, str(TOOLS_DIR))
+                from midi_to_lab import midi_to_lab, save_lab
+
+                # 解析 MIDI
+                entries = midi_to_lab(midi_path, verbose=False)
+                if not entries:
+                    self._safe_log("⚠ MIDI 無法解析", "warn")
+                    return
+
+                self._safe_log(f"  ✓ {len(entries)} 個和弦", "state")
+
+                # 儲存 .lab
+                song_dir = TEST_SONGS_DIR / lv / name
+                song_dir.mkdir(parents=True, exist_ok=True)
+
+                from collections import Counter
+                roots = [e["chord"][0] if len(e["chord"]) < 2 or e["chord"][1] not in '#b'
+                         else e["chord"][:2] for e in entries if e["chord"][0] in 'ABCDEFG']
+                key = Counter(roots).most_common(1)[0][0] if roots else ""
+
+                lab = {"song": name, "level": lv, "key": key,
+                       "source": f"MIDI ({Path(midi_path).name})",
+                       "entries": entries}
+                lab_path = song_dir / f"{name}.lab"
+                lab_path.write_text(json.dumps(lab, ensure_ascii=False, indent=2), encoding="utf-8")
+                self._safe_log(f"  ✓ {lab_path.name} ({len(entries)} chords, Key: {key})", "state")
+
+                # 產生 .chords.txt（逐拍序列，用於 Grid Editor）
+                # 從 entries 反推每拍的和弦（用時間間隔估算 BPM）
+                if len(entries) >= 2:
+                    avg_dur = sum(e["end"] - e["time"] for e in entries) / len(entries)
+                    # 每個 entry 佔幾拍
+                    beats = []
+                    for e in entries:
+                        dur = e["end"] - e["time"]
+                        n_beats = max(1, round(dur / (avg_dur / 2)))  # 粗估
+                        beats.append(e["chord"])
+                        beats.extend([""] * (n_beats - 1))
+
+                    chords_path = song_dir / f"{name}.chords.txt"
+                    chords_path.write_text(",".join(beats), encoding="utf-8")
+                    self._safe_log(f"  ✓ {chords_path.name} ({len(beats)} beats)", "state")
+
+                # 匯入 LiveChord
+                self._import_to_livechord(name, key, entries)
+
+                # 顯示前 10 個和弦
+                for i, e in enumerate(entries[:10]):
+                    m = int(e["time"] // 60)
+                    s = int(e["time"] % 60)
+                    ms = int((e["time"] % 1) * 1000)
+                    self._safe_log(f"  {m}:{s:02d}.{ms:03d}  {e['chord']}", "chord")
+                if len(entries) > 10:
+                    self._safe_log(f"  ... ({len(entries) - 10} more)", "info")
+
+                self._safe_status(f"✓ MIDI 匯入完成 ({len(entries)} 和弦)")
+
+            except Exception as e:
+                self._safe_log(f"⚠ MIDI 匯入失敗: {e}", "error")
+
+        threading.Thread(target=do_import, daemon=True).start()
 
     def _edit_chords_txt(self):
         """打開和弦網格編輯器（已有檔案則載入，沒有則新建）"""
