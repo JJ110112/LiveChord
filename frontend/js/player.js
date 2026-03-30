@@ -33,7 +33,11 @@
   const timeCurrent = $("#timeCurrent");
   const timeDuration = $("#timeDuration");
   const volumeSlider = $("#volumeSlider");
-  const chordDisplay = $("#chordDisplay");
+  const chordDisplayOverview = $("#chordDisplayOverview");
+  const chordDisplayDiagrams = $("#chordDisplayDiagrams");
+  const ribbonTrack = $("#ribbonTrack");
+  const tabOverview = $("#tabOverview");
+  const tabDiagrams = $("#tabDiagrams");
   const toast = $("#toast");
   const detectOverlay = $("#detectOverlay");
   const detectMsg = $("#detectMsg");
@@ -41,6 +45,35 @@
   const bigChordBox = $("#currentChordBig");
   const bigChordName = $("#bigChordName");
   const bigChordJianpu = $("#bigChordJianpu");
+
+  let activeTab = "overview";
+  let ribbonElements = [];
+  const pxPerSec = 100;
+
+  if (tabOverview && tabDiagrams) {
+    tabOverview.addEventListener("click", () => {
+      activeTab = "overview";
+      tabOverview.classList.add("active");
+      tabDiagrams.classList.remove("active");
+      chordDisplayOverview.style.display = "";
+      chordDisplayDiagrams.style.display = "none";
+      if (activeChordIdx >= 0 && activeChordIdx < chordElements.length) {
+        chordElements[activeChordIdx].scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      }
+    });
+
+    tabDiagrams.addEventListener("click", () => {
+      activeTab = "diagrams";
+      tabDiagrams.classList.add("active");
+      tabOverview.classList.remove("active");
+      chordDisplayOverview.style.display = "none";
+      chordDisplayDiagrams.style.display = "block";
+      const t = audio.currentTime || 0;
+      if (ribbonTrack) {
+        ribbonTrack.style.transform = `translateX(${-t * pxPerSec}px)`;
+      }
+    });
+  }
   const bigChordDiagram = $("#bigChordDiagram");
 
   function showToast(msg, ms = 2000) {
@@ -122,7 +155,8 @@
     } catch {}
 
     hasChords = false;
-    chordDisplay.innerHTML = `<div class="empty" style="padding:20px"><div class="msg" style="color:var(--text-dim)">尚無和弦譜 — 請按「偵測」按鈕手動偵測</div></div>`;
+    chordDisplayOverview.innerHTML = `<div class="empty" style="padding:20px"><div class="msg" style="color:var(--text-dim)">尚無和弦譜 — 請按「偵測」按鈕手動偵測</div></div>`;
+    if (ribbonTrack) ribbonTrack.innerHTML = "";
     bigChordBox.style.display = "none";
   }
 
@@ -176,8 +210,10 @@
   }
 
   function buildChordDOM() {
-    chordDisplay.innerHTML = "";
+    chordDisplayOverview.innerHTML = "";
+    if (ribbonTrack) ribbonTrack.innerHTML = "";
     chordElements = [];
+    ribbonElements = [];
     activeChordIdx = -1;
 
     const chords = _displayChords();
@@ -196,13 +232,21 @@
   }
 
   function _buildDOMFromChords(chords) {
-    chordDisplay.innerHTML = "";
+    chordDisplayOverview.innerHTML = "";
+    if (ribbonTrack) ribbonTrack.innerHTML = "";
     chordElements = [];
+    ribbonElements = [];
     activeChordIdx = -1;
     for (let i = 0; i < chords.length; i++) {
       const el = _createChordEl(chords[i], i);
-      chordDisplay.appendChild(el);
+      chordDisplayOverview.appendChild(el);
       chordElements.push(el);
+
+      if (ribbonTrack) {
+        const rEl = _createRibbonEl(chords[i], i, chords);
+        ribbonTrack.appendChild(rEl);
+        ribbonElements.push(rEl);
+      }
     }
   }
 
@@ -232,6 +276,52 @@
     });
 
     _fillChordEl(div, chord, cache);
+    return div;
+  }
+
+  function _createRibbonEl(chord, idx, allChords) {
+    const cache = chordCache[chord.chord] || {};
+    const div = document.createElement("div");
+    div.className = "ribbon-item";
+    div.dataset.idx = idx;
+    
+    // Position based on time
+    const leftPx = chord.time * pxPerSec;
+    const endT = chord.end != null ? chord.end : (idx + 1 < allChords.length ? allChords[idx+1].time : chord.time + 4);
+    const widthPx = (endT - chord.time) * pxPerSec;
+    
+    div.style.left = `${leftPx}px`;
+    div.style.width = `${Math.max(widthPx, 40)}px`; // Minimum width for visibility
+
+    div.addEventListener("click", () => {
+      audio.currentTime = chord.time;
+      updateActiveChord(chord.time);
+    });
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "chord-name";
+    nameEl.textContent = chord.chord;
+    div.appendChild(nameEl);
+
+    if (displayMode === "jianpu") {
+      const jp = document.createElement("div");
+      jp.className = "chord-jianpu";
+      jp.innerHTML = ChordRender.jianpuToHtml(cache.jianpu || "");
+      div.appendChild(jp);
+    } else {
+      const key = displayMode === "guitar" ? "diagram_guitar" : "diagram_ukulele";
+      const diag = cache[key];
+      if (diag) {
+        const canvas = document.createElement("canvas");
+        ChordRender.drawDiagram(canvas, diag, 1);
+        div.appendChild(canvas);
+      } else {
+        const span = document.createElement("div");
+        span.style.cssText = "font-size:12px;color:#666;margin-top:8px";
+        span.textContent = "無圖";
+        div.appendChild(span);
+      }
+    }
     return div;
   }
 
@@ -274,6 +364,10 @@
   function updateActiveChord(currentTime) {
     if (!chordData || !chordData.chords || chordElements.length === 0) return;
 
+    if (activeTab === "diagrams" && ribbonTrack) {
+      ribbonTrack.style.transform = `translateX(${-currentTime * pxPerSec}px)`;
+    }
+
     const displayedChords = _displayChords();
 
     // 找出當前和弦：持續顯示直到下一個和弦出現
@@ -292,6 +386,9 @@
     // 移除舊高亮
     if (activeChordIdx >= 0 && activeChordIdx < chordElements.length) {
       chordElements[activeChordIdx].classList.remove("active");
+      if (ribbonElements[activeChordIdx]) {
+        ribbonElements[activeChordIdx].classList.remove("active");
+      }
     }
 
     activeChordIdx = newIdx;
@@ -299,7 +396,13 @@
     if (activeChordIdx >= 0 && activeChordIdx < chordElements.length) {
       const el = chordElements[activeChordIdx];
       el.classList.add("active");
-      el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      if (activeTab === "overview") {
+        el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      }
+
+      if (ribbonElements[activeChordIdx]) {
+        ribbonElements[activeChordIdx].classList.add("active");
+      }
 
       // 更新大字顯示
       const chord = displayedChords[activeChordIdx];
@@ -386,8 +489,10 @@
     btnPlay.innerHTML = "&#x25B6;";
     progress.style.width = "0%";
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-    if (activeChordIdx >= 0 && activeChordIdx < chordElements.length)
+    if (activeChordIdx >= 0 && activeChordIdx < chordElements.length) {
       chordElements[activeChordIdx].classList.remove("active");
+      if (ribbonElements[activeChordIdx]) ribbonElements[activeChordIdx].classList.remove("active");
+    }
     activeChordIdx = -1;
     bigChordName.textContent = "—";
     bigChordJianpu.innerHTML = "";
@@ -464,9 +569,10 @@
   }
 
   // ---- mode switch ----
-  document.querySelectorAll(".mode-btn").forEach((btn) => {
+  // 簡譜/吉他/烏克麗麗模式切換（只限 #modeSwitch 內的按鈕）
+  document.querySelectorAll("#modeSwitch .mode-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll(".mode-btn").forEach((b) => {
+      document.querySelectorAll("#modeSwitch .mode-btn").forEach((b) => {
         b.style.background = "transparent";
         b.style.color = "var(--text-dim)";
         b.classList.remove("active");

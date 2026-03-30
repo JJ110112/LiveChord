@@ -71,6 +71,12 @@
       <div style="display:flex;align-items:center;gap:8px">
         <h3 id="chordTitle" style="margin:0">和弦</h3>
         <span id="chordKey" style="font-size:12px;color:var(--text-dim)"></span>
+
+        <div class="chord-view-tabs" style="display:flex; gap:2px; margin-left:8px; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:2px;">
+          <button id="tabOverview" class="view-tab active" style="border:none;">Overview</button>
+          <button id="tabDiagrams" class="view-tab" style="border:none;">Diagrams</button>
+        </div>
+
         <button id="btnDetect" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;margin-left:8px" title="自動偵測和弦">偵測</button>
         <a id="btnEdit" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;text-decoration:none;display:inline-flex;align-items:center" title="編輯和弦譜">編輯</a>
       </div>
@@ -107,7 +113,11 @@
         </div>
       </div>
     </div>
-    <div id="chordDisplay" class="chord-timeline"></div>
+    <div id="chordDisplayOverview" class="chord-timeline"></div>
+    <div id="chordDisplayDiagrams" class="chord-ribbon" style="display:none">
+      <div class="ribbon-center-line"></div>
+      <div class="ribbon-track" id="ribbonTrack"></div>
+    </div>
   </div>
 
 </div>
