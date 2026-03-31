@@ -89,6 +89,22 @@
   }
   const bigChordDiagram = $("#bigChordDiagram");
 
+  // ---- 全螢幕切換 ----
+  const chordDisplay = $("#chordDisplay");
+  const btnFullscreen = $("#btnFullscreen");
+  if (btnFullscreen && chordDisplay) {
+    btnFullscreen.addEventListener("click", () => {
+      chordDisplay.classList.toggle("fullscreen");
+      btnFullscreen.innerHTML = chordDisplay.classList.contains("fullscreen") ? "&#x2716;" : "&#x26F6;";
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && chordDisplay.classList.contains("fullscreen")) {
+        chordDisplay.classList.remove("fullscreen");
+        btnFullscreen.innerHTML = "&#x26F6;";
+      }
+    });
+  }
+
   function showToast(msg, ms = 2000) {
     toast.textContent = msg;
     toast.classList.add("show");

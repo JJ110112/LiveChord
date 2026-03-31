@@ -57,7 +57,7 @@
   </div>
 
   <!-- chord display -->
-  <div class="chord-section">
+  <div class="chord-section" id="chordSection">
     <!-- 當前和弦大字顯示 -->
     <div id="currentChordBig" class="current-chord-big" style="display:none">
       <div id="bigChordName" class="big-chord-name">—</div>
@@ -113,10 +113,13 @@
         </div>
       </div>
     </div>
-    <div id="chordDisplayOverview" class="chord-timeline"></div>
-    <div id="chordDisplayDiagrams" class="chord-ribbon" style="display:none">
-      <div class="ribbon-center-line"></div>
-      <div class="ribbon-track" id="ribbonTrack"></div>
+    <div id="chordDisplay" class="chord-display-area">
+      <button id="btnFullscreen" class="fullscreen-btn" title="全螢幕">&#x26F6;</button>
+      <div id="chordDisplayOverview" class="chord-timeline"></div>
+      <div id="chordDisplayDiagrams" class="chord-ribbon" style="display:none">
+        <div class="ribbon-center-line"></div>
+        <div class="ribbon-track" id="ribbonTrack"></div>
+      </div>
     </div>
   </div>
 
@@ -125,8 +128,8 @@
 <div id="toast" class="toast"></div>
 <audio id="audio" preload="auto"></audio>
 
-<script src="/js/api.js?v=14"></script>
-<script src="/js/chord-render.js?v=14"></script>
-<script src="/js/player.js?v=14"></script>
+<script src="/js/api.js?v=16"></script>
+<script src="/js/chord-render.js?v=16"></script>
+<script src="/js/player.js?v=16"></script>
 </body>
 </html>
