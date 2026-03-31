@@ -10,6 +10,7 @@ from pathlib import Path
 from datetime import datetime
 
 log = logging.getLogger("livechord.auto")
+from config import get_music_root
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 SETTINGS_FILE = DATA_DIR / "settings.json"
@@ -17,8 +18,6 @@ QUEUE_FILE = DATA_DIR / "chord_queue.json"
 CACHE_FILE = DATA_DIR / "library_cache.json"
 CHORDS_DIR = DATA_DIR / "chords"
 LOG_FILE = DATA_DIR / "activity.log"
-
-MUSIC_ROOT = os.path.normpath(os.environ.get("LIVECHORD_MUSIC_ROOT", "Z:/"))
 
 # ---------------------------------------------------------------------------
 # 設定
@@ -97,58 +96,28 @@ def _get_unanalyzed_tracks(settings: dict) -> list:
         if genre in skip_genres:
             continue
             
-        # 檢查是否為測試歌曲
-        track_name = t.get("name", "").lower()
-        track_artist = t.get("artist", "").lower()
-        is_test_song = any(test_keyword in track_name or test_keyword in track_artist 
-                          for test_keyword in test_songs)
-        
+        track_path = t.get("path", "")
+        if not track_path:
+            continue
+            
         # 檢查和弦檔案是否已存在
-        track_hash = _song_hash(t.get("path", ""))
+        track_hash = _song_hash(track_path)
         chord_file = CHORDS_DIR / f"{track_hash}.json"
         
         if not chord_file.is_file():
-            track_entry = {
-                "path": t.get("path", ""),
-                "name": t.get("name", ""),
-                "artist": t.get("artist", ""),
-                "hash": track_hash,
-                "is_test_song": is_test_song
-            }
+            # 檢查是否為測試歌曲
+            track_name = (t.get("name") or t.get("title", "")).lower()
+            track_artist = t.get("artist", "").lower()
+            search_str = f"{track_name} {track_artist}"
+            
+            is_test_song = any(keyword in search_str for keyword in test_songs)
             
             if is_test_song:
-                # 測試歌曲優先處理，加入專門的品質保證標記
-                track_entry["quality_check"] = True
-                track_entry["priority"] = "high"
-                test_tracks.append(track_entry)
-                add_log("INFO", f"發現測試歌曲，優先處理: {track_name} - {track_artist}")
+                test_tracks.append(track_path)
             else:
-                result.append(track_entry)
-    
-    # 測試歌曲優先返回
-    return test_tracks + result[:settings.get("auto_chord_max_per_cycle", 20) - len(test_tracks)]e for test_keyword in test_songs)
-        
-        # 檢查是否已有和弦譜
-        chords_file = CHORDS_DIR / f"{_song_hash(t['path'])}.json"
-        if not chords_file.is_file():
-            if is_test_song:
-                # 測試歌曲優先處理且需要特殊標記
-                t["priority"] = "high"
-                t["test_song"] = True
-                test_tracks.append(t)
-            else:
-                result.append(t)
+                result.append(track_path)
     
     # 測試歌曲排在最前面
-    return test_tracks + result[:settings.get("auto_chord_max_per_cycle", 20) - len(test_tracks)]
-            # 檢查是否為測試歌曲
-            track_name = t.get("title", "").lower() + " " + t.get("artist", "").lower()
-            if any(test_song in track_name for test_song in test_songs):
-                test_tracks.append(t["path"])
-            else:
-                result.append(t["path"])
-
-    # 將測試歌曲放在前面，優先處理
     return test_tracks + result
 
 
@@ -247,14 +216,26 @@ def _do_auto_scan(settings: dict):
         add_log("INFO", "掃描完成: 無變動")
 
 
-def _do_auto_chord_detect(settings: dict):
-    """偵測佇列中的曲目和弦"""
-    try:
-        from chord_detect import detect_chords, detect_key
-    except ImportError:
-        add_log("ERROR", "chord_detect 模組載入失敗")
-        return
+def _find_midi_for_track(track_name: str) -> str:
+    """在 MIDI 目錄 (X:\) 中搜尋與歌名匹配的 .mid 檔案"""
+    from config import get_midi_root
+    midi_root = get_midi_root()
+    if not os.path.isdir(midi_root):
+        return None
 
+    track_lower = track_name.lower()
+    for dirpath, _, filenames in os.walk(midi_root):
+        for fname in filenames:
+            if not fname.lower().endswith(('.mid', '.midi')):
+                continue
+            fname_lower = fname.lower().replace('.mid', '').replace('.midi', '')
+            if track_lower in fname_lower or fname_lower in track_lower:
+                return os.path.join(dirpath, fname)
+    return None
+
+
+def _do_auto_chord_detect(settings: dict):
+    """偵測佇列中的曲目和弦（優先用 MIDI，fallback BTC）"""
     unanalyzed = _get_unanalyzed_tracks(settings)
     max_per_cycle = settings.get("auto_chord_max_per_cycle", 20)
     batch = unanalyzed[:max_per_cycle]
@@ -277,18 +258,44 @@ def _do_auto_chord_detect(settings: dict):
         name = track_path.split("/")[-1].replace(".flac", "")
         _worker_state["current_task"] = f"偵測和弦 ({i+1}/{len(batch)}): {name}"
 
-        full = os.path.normpath(os.path.join(MUSIC_ROOT, track_path))
+        # 優先用 MIDI
+        midi_path = _find_midi_for_track(name)
+        if midi_path:
+            try:
+                import sys
+                sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'tools'))
+                from midi_to_lab import midi_to_lab
+                entries = midi_to_lab(midi_path, verbose=False)
+                if entries:
+                    from collections import Counter
+                    roots = [e["chord"][0] if len(e["chord"]) < 2 or e["chord"][1] not in '#b'
+                             else e["chord"][:2] for e in entries if e["chord"][0] in 'ABCDEFG']
+                    key = Counter(roots).most_common(1)[0][0] if roots else ""
+                    sheet = {"path": track_path, "key": key, "capo": 0,
+                             "source": "midi", "chords": entries}
+                    chords_file = CHORDS_DIR / f"{_song_hash(track_path)}.json"
+                    chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
+                    _worker_state["detect_count"] += 1
+                    add_log("OK", f"MIDI 匯入: {name} (Key: {key}, {len(entries)} chords)")
+                    continue
+            except Exception as e:
+                add_log("WARN", f"MIDI 匯入失敗: {name} — {e}，改用 BTC")
+
+        # fallback: BTC 自動偵測
+        full = os.path.normpath(os.path.join(get_music_root(), track_path))
         if not os.path.isfile(full):
             continue
 
         try:
+            from chord_detect import detect_chords, detect_key
             key = detect_key(full)
             chords = detect_chords(full)
-            sheet = {"path": track_path, "key": key, "capo": 0, "chords": chords}
+            sheet = {"path": track_path, "key": key, "capo": 0,
+                     "source": "btc", "chords": chords}
             chords_file = CHORDS_DIR / f"{_song_hash(track_path)}.json"
             chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
             _worker_state["detect_count"] += 1
-            add_log("OK", f"和弦偵測完成: {name} (Key: {key}, {len(chords)} chords)")
+            add_log("OK", f"BTC 偵測: {name} (Key: {key}, {len(chords)} chords)")
         except Exception as e:
             add_log("ERROR", f"偵測失敗: {name} — {e}")
 
