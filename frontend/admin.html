@@ -19,72 +19,59 @@
     .dot-yellow { background: #ff9800; box-shadow: 0 0 6px #ff9800; }
     .dot-red { background: #f44; }
     .dot-gray { background: #555; }
-
-    /* stats row */
-    .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px; }
-    .stat-box { background: var(--bg); border-radius: 8px; padding: 12px; text-align: center; }
-    .stat-box .num { font-size: 24px; font-weight: 800; color: var(--accent); }
-    .stat-box .label { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
-
-    /* progress */
-    .progress-track { height: 6px; background: #222; border-radius: 3px; overflow: hidden; margin: 8px 0; }
-    .progress-track .bar { height: 100%; background: var(--accent); border-radius: 3px; transition: width .5s; }
+    .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; margin-bottom: 12px; }
+    .stat-box { background: var(--bg); border-radius: 8px; padding: 10px; text-align: center; }
+    .stat-box .num { font-size: 22px; font-weight: 800; color: var(--accent); }
+    .stat-box .label { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+    .progress-track { height: 4px; background: #222; border-radius: 2px; overflow: hidden; margin: 6px 0; }
+    .progress-track .bar { height: 100%; background: var(--accent); border-radius: 2px; transition: width .5s; }
     .progress-track .bar.green { background: #4caf50; }
-
-    /* settings form */
-    .setting-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #222; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .actions button { padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text); cursor: pointer; font-size: 12px; transition: all .15s; }
+    .actions button:hover { background: var(--bg-hover); }
+    .actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .actions button.primary:hover { background: var(--accent-dim); }
+    .actions button:disabled { opacity: .4; cursor: not-allowed; }
+    .setting-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid #1a1a1a; }
     .setting-row:last-child { border-bottom: none; }
     .setting-row > div:first-child { flex: 1; }
-    .setting-row label { font-size: 13px; }
-    .setting-row .desc { font-size: 11px; color: var(--text-dim); }
+    .setting-row label { font-size: 12px; }
+    .setting-row .desc { font-size: 10px; color: var(--text-dim); }
     .toggle { position: relative; width: 42px; min-width: 42px; height: 22px; cursor: pointer; flex: 0 0 auto; }
     .toggle input { display: none; }
     .toggle .slider { position: absolute; inset: 0; background: #444; border-radius: 11px; transition: .3s; }
     .toggle .slider::before { content: ""; position: absolute; width: 18px; height: 18px; left: 2px; top: 2px; background: #fff; border-radius: 50%; transition: .3s; }
     .toggle input:checked + .slider { background: var(--accent); }
     .toggle input:checked + .slider::before { transform: translateX(20px); }
-    .num-input { width: 60px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); font-size: 13px; text-align: center; }
-
-    /* action buttons */
-    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-    .actions button {
-      padding: 7px 18px; border: 1px solid var(--border); border-radius: 6px;
-      background: transparent; color: var(--text); cursor: pointer; font-size: 13px; transition: all .15s;
-    }
-    .actions button:hover { background: var(--bg-hover); }
-    .actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-    .actions button.primary:hover { background: var(--accent-dim); }
-    .actions button:disabled { opacity: .4; cursor: not-allowed; }
-
-    /* activity log */
-    .log-box { background: #0a0a0a; border-radius: 6px; padding: 10px 14px; max-height: 260px; overflow-y: auto; font-size: 12px; font-family: "Consolas", monospace; line-height: 1.6; }
+    .num-input { width: 60px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); font-size: 12px; text-align: center; }
+    .log-box { background: #0a0a0a; border-radius: 6px; padding: 10px 14px; max-height: 200px; overflow-y: auto; font-size: 11px; font-family: "Consolas", monospace; line-height: 1.6; }
     .log-box .ts { color: #555; }
     .log-box .ok { color: #4caf50; }
     .log-box .info { color: #888; }
     .log-box .error { color: #f66; }
-
-    /* status badge */
     .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
     .badge-running { background: rgba(76,175,80,.15); color: #4caf50; }
     .badge-waiting { background: rgba(255,152,0,.15); color: #ff9800; }
     .badge-stopped { background: rgba(255,255,255,.08); color: #888; }
     .badge-detecting { background: rgba(233,69,96,.15); color: var(--accent); }
     .badge-scanning { background: rgba(33,150,243,.15); color: #2196f3; }
-
-    .current-task { font-size: 13px; color: var(--text-dim); margin-top: 6px; min-height: 18px; }
-
-    /* track list */
-    .trk { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-bottom: 1px solid #1a1a1a; }
+    .current-task { font-size: 12px; color: var(--text-dim); margin-top: 4px; min-height: 16px; }
+    .trk { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-bottom: 1px solid #1a1a1a; }
     .trk:hover { background: var(--bg-hover); }
-    .trk .trk-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .trk .trk-artist { width: 120px; color: var(--text-dim); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .trk .trk-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+    .trk .trk-artist { width: 100px; color: var(--text-dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .trk .trk-badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; white-space: nowrap; }
     .trk .b-midi { background: rgba(76,175,80,.15); color: #4caf50; }
     .trk .b-chordify { background: rgba(33,150,243,.15); color: #2196f3; }
     .trk .b-btc { background: rgba(255,152,0,.15); color: #ff9800; }
     .trk .b-none { background: rgba(255,255,255,.05); color: #666; }
-    .trk button { padding: 2px 8px; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--text-dim); cursor: pointer; font-size: 11px; white-space: nowrap; }
+    .trk button { padding: 2px 8px; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--text-dim); cursor: pointer; font-size: 10px; white-space: nowrap; }
     .trk button:hover { background: var(--bg-hover); color: var(--text); }
+    .collapse-content { display: none; }
+    .collapse-content.show { display: block; }
+    .collapse-toggle { cursor: pointer; user-select: none; }
+    .collapse-toggle::after { content: " ▸"; font-size: 12px; }
+    .collapse-toggle.open::after { content: " ▾"; }
   </style>
 </head>
 <body>
@@ -96,7 +83,7 @@
 
 <div class="admin-page">
 
-  <!-- ======== Core 狀態 ======== -->
+  <!-- ======== 狀態 + 操作 ======== -->
   <div class="card">
     <h2><span class="dot dot-gray" id="coreDot"></span> LiveChord Core <span class="badge badge-stopped" id="coreBadge">stopped</span></h2>
     <div class="stat-row">
@@ -104,118 +91,75 @@
       <div class="stat-box"><div class="num" id="sWithChords">—</div><div class="label">和弦譜</div></div>
       <div class="stat-box"><div class="num" id="sCoverage">—</div><div class="label">覆蓋率</div></div>
       <div class="stat-box"><div class="num" id="sQueueSize">—</div><div class="label">待偵測</div></div>
-      <div class="stat-box"><div class="num" id="sScanCount">—</div><div class="label">掃描輪數</div></div>
-      <div class="stat-box"><div class="num" id="sDetectCount">—</div><div class="label">已偵測</div></div>
     </div>
-    <div class="current-task" id="currentTask"></div>
     <div class="progress-track"><div class="bar green" id="coreBar" style="width:0%"></div></div>
-    <div style="font-size:11px;color:#555" id="nextScan"></div>
-  </div>
-
-  <!-- ======== 音樂庫設定 ======== -->
-  <div class="card">
-    <h2>音樂庫設定</h2>
-    <div class="setting-row" style="flex-wrap: wrap; gap: 8px;">
-      <div style="flex:1; min-width: 250px;">
-        <label>音樂庫路徑 (Music Root)</label>
-        <div class="desc">設定 FLAC 音樂所在的根目錄。例如 Z:/ 或 D:/Music</div>
-      </div>
-      <input type="text" id="optMusicRoot" style="padding: 6px 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); font-size: 13px; width: 250px;" placeholder="Z:/">
-    </div>
-    <div class="actions">
-      <button class="primary" id="btnSaveMusicRoot">儲存路徑並掃描全部</button>
-    </div>
-  </div>
-
-  <!-- ======== 自動化設定 ======== -->
-  <div class="card">
-    <h2>自動化設定</h2>
-
-    <div class="setting-row">
-      <div>
-        <label>自動掃描音樂庫</label>
-        <div class="desc">定期偵測 NAS 中新增或修改的檔案</div>
-      </div>
-      <label class="toggle"><input type="checkbox" id="optAutoScan"><span class="slider"></span></label>
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <label>掃描間隔</label>
-        <div class="desc">每隔幾分鐘檢查一次</div>
-      </div>
-      <input type="number" class="num-input" id="optScanInterval" value="30" min="1" max="1440">
-      <span style="font-size:12px;color:var(--text-dim)">分鐘</span>
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <label>自動偵測和弦</label>
-        <div class="desc">背景自動分析尚未偵測的曲目</div>
-      </div>
-      <label class="toggle"><input type="checkbox" id="optAutoChord"><span class="slider"></span></label>
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <label>每輪偵測數量</label>
-        <div class="desc">每次自動偵測最多處理幾首</div>
-      </div>
-      <input type="number" class="num-input" id="optMaxPerCycle" value="20" min="1" max="200">
-      <span style="font-size:12px;color:var(--text-dim)">首</span>
-    </div>
-
-    <div class="setting-row">
-      <div>
-        <label>跳過的類別</label>
-        <div class="desc">不自動偵測和弦的 Genre（逗號分隔）</div>
-      </div>
-      <input type="text" class="num-input" id="optSkipGenres" style="width:200px" placeholder="Classics, Sleep">
-    </div>
-
-    <div class="actions">
-      <button class="primary" id="btnSaveSettings">儲存設定</button>
-    </div>
-  </div>
-
-  <!-- ======== 手動操作 ======== -->
-  <div class="card">
-    <h2>手動操作</h2>
-    <div class="actions">
-      <button id="btnStartCore" class="primary">啟動 Core</button>
-      <button id="btnStopCore">停止 Core</button>
+    <div class="current-task" id="currentTask"></div>
+    <div class="actions" style="margin-top:10px">
+      <button class="primary" id="btnScanNow">掃描音樂庫</button>
+      <button class="primary" id="btnBatchMidi">批次 MIDI 匯入</button>
+      <button id="btnStartCore">啟動 Core</button>
+      <button id="btnStopCore">停止</button>
       <button id="btnTrigger">立即執行</button>
-      <button id="btnScanNow">掃描音樂庫</button>
-      <button id="btnBatchDetect">批次偵測和弦</button>
     </div>
     <div class="progress-track"><div class="bar" id="manualBar" style="width:0%"></div></div>
     <div class="current-task" id="manualStatus"></div>
+    <span id="midiStatus" style="font-size:11px;color:var(--text-dim)"></span>
   </div>
 
   <!-- ======== 和弦管理 ======== -->
   <div class="card">
-    <h2>和弦管理</h2>
-    <div class="actions" style="margin-bottom:12px">
-      <button class="primary" id="btnBatchMidi">批次 MIDI 匯入</button>
-      <button id="btnRefreshTracks">重新整理</button>
-      <span id="midiStatus" style="font-size:12px;color:var(--text-dim);margin-left:8px"></span>
-    </div>
-    <div id="trackList" style="max-height:60vh;overflow-y:auto;font-size:13px;">
-      <span style="color:var(--text-dim)">載入中…</span>
+    <h2 class="collapse-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">和弦管理</h2>
+    <div class="collapse-content show">
+      <div class="actions" style="margin-bottom:8px">
+        <button id="btnRefreshTracks">重新整理</button>
+      </div>
+      <div id="trackList" style="max-height:50vh;overflow-y:auto;">
+        <span style="color:var(--text-dim);font-size:12px">載入中…</span>
+      </div>
     </div>
   </div>
 
-  <!-- ======== Activity Log ======== -->
+  <!-- ======== 設定（可收合）======== -->
   <div class="card">
-    <h2>活動記錄</h2>
-    <div class="log-box" id="logBox"><span class="info">等待載入…</span></div>
+    <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">設定</h2>
+    <div class="collapse-content">
+      <div class="setting-row" style="flex-wrap:wrap;gap:8px">
+        <div style="flex:1;min-width:200px"><label>音樂庫路徑</label></div>
+        <input type="text" id="optMusicRoot" style="padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px;width:200px" placeholder="Y:/">
+        <button class="primary" id="btnSaveMusicRoot" style="padding:4px 12px;font-size:11px">儲存並掃描</button>
+      </div>
+      <div class="setting-row">
+        <div><label>自動掃描</label></div>
+        <label class="toggle"><input type="checkbox" id="optAutoScan"><span class="slider"></span></label>
+        <input type="number" class="num-input" id="optScanInterval" value="30" min="1" max="1440" style="width:50px">
+        <span style="font-size:11px;color:var(--text-dim)">分鐘</span>
+      </div>
+      <div class="setting-row">
+        <div><label>自動偵測和弦</label></div>
+        <label class="toggle"><input type="checkbox" id="optAutoChord"><span class="slider"></span></label>
+        <input type="number" class="num-input" id="optMaxPerCycle" value="20" min="1" max="200" style="width:50px">
+        <span style="font-size:11px;color:var(--text-dim)">首/輪</span>
+      </div>
+      <div class="setting-row">
+        <div><label>跳過類別</label></div>
+        <input type="text" class="num-input" id="optSkipGenres" style="width:200px" placeholder="Classics, Sleep">
+      </div>
+    </div>
+  </div>
+
+  <!-- ======== 活動記錄（可收合）======== -->
+  <div class="card">
+    <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">活動記錄</h2>
+    <div class="collapse-content">
+      <div class="log-box" id="logBox"><span class="info">等待載入…</span></div>
+    </div>
   </div>
 
 </div>
 
 <div id="toast" class="toast"></div>
 
-<script src="/js/api.js"></script>
+<script src="/js/api.js?v=2"></script>
 <script>
 (function() {
   const $ = s => document.querySelector(s);
@@ -239,7 +183,6 @@
   }
   loadSettings();
 
-  // ---- 載入與儲存音樂庫設定 ----
   async function loadMusicRootSettings() {
     try {
       const s = await API.get("/api/settings");
@@ -250,22 +193,15 @@
 
   $("#btnSaveMusicRoot").addEventListener("click", async () => {
     const root = $("#optMusicRoot").value.trim();
-    if(!root) {
-      showToast("路徑不能為空");
-      return;
-    }
+    if(!root) { showToast("路徑不能為空"); return; }
     try {
       await API.post("/api/settings", { music_root: root });
-      showToast("已更新路徑！正在啟動全自動掃描...");
-      
-      // trigger full scan automatically
+      showToast("已更新！掃描中...");
       await API.post("/api/library/scan?mode=full");
-    } catch (e) {
-      showToast("儲存失敗：" + e.message);
-    }
+    } catch (e) { showToast("失敗：" + e.message); }
   });
 
-  // ---- 儲存設定 ----
+  // ---- 設定自動儲存 ----
   async function saveAutoSettings() {
     const genres = $("#optSkipGenres").value.split(",").map(s => s.trim()).filter(Boolean);
     try {
@@ -279,13 +215,13 @@
       showToast("設定已儲存");
     } catch (e) { showToast("儲存失敗: " + e.message); }
   }
-  $("#btnSaveSettings").addEventListener("click", saveAutoSettings);
-
-  // toggle 自動儲存
   $("#optAutoScan").addEventListener("change", saveAutoSettings);
   $("#optAutoChord").addEventListener("change", saveAutoSettings);
+  $("#optScanInterval").addEventListener("change", saveAutoSettings);
+  $("#optMaxPerCycle").addEventListener("change", saveAutoSettings);
+  $("#optSkipGenres").addEventListener("change", saveAutoSettings);
 
-  // ---- 手動操作按鈕 ----
+  // ---- 操作按鈕 ----
   $("#btnStartCore").addEventListener("click", async () => {
     try { const r = await API.post("/api/auto/start"); showToast(r.message); } catch (e) { showToast(e.message); }
   });
@@ -301,31 +237,23 @@
       showToast(r.message || "掃描已啟動");
     } catch (e) { showToast(e.message); }
   });
-  $("#btnBatchDetect").addEventListener("click", async () => {
-    const skip = true;
-    const genre = "";
-    try {
-      const r = await API.post(`/api/chords/batch-detect?skip_existing=${skip}&genre=${genre}`);
-      showToast(r.message || "批次偵測已啟動");
-    } catch (e) { showToast(e.message); }
-  });
 
   // ---- 和弦管理 ----
   const trackList = $("#trackList");
   const midiStatus = $("#midiStatus");
 
   async function loadTrackList() {
-    trackList.innerHTML = '<span style="color:var(--text-dim)">載入中…</span>';
+    trackList.innerHTML = '<span style="color:var(--text-dim);font-size:12px">載入中…</span>';
     try {
       const data = await API.chordTracks();
       const tracks = data.tracks || [];
-      if (!tracks.length) { trackList.innerHTML = '<span style="color:var(--text-dim)">無曲目，請先掃描</span>'; return; }
+      if (!tracks.length) { trackList.innerHTML = '<span style="color:var(--text-dim);font-size:12px">無曲目</span>'; return; }
       trackList.innerHTML = tracks.map((t, i) => {
         const src = t.source || "";
         const badgeCls = src === "midi" ? "b-midi" : src === "chordify" ? "b-chordify" : src === "btc" ? "b-btc" : "b-none";
-        const badgeText = t.has_chords ? `${src || "btc"} ${t.chord_count || ""}` : "無和弦";
+        const badgeText = t.has_chords ? `${src || "btc"} ${t.chord_count || ""}` : "—";
         const name = t.title || t.path.replace(/\.flac$/i, "");
-        return `<div class="trk" data-idx="${i}" data-path="${esc(t.path)}">
+        return `<div class="trk" data-path="${esc(t.path)}">
           <span class="trk-name" title="${esc(t.path)}">${esc(name)}</span>
           <span class="trk-artist">${esc(t.artist || "")}</span>
           <span class="trk-badge ${badgeCls}">${badgeText}</span>
@@ -333,33 +261,41 @@
         </div>`;
       }).join("");
 
-      // Bind MIDI search buttons
       trackList.querySelectorAll(".btn-midi-search").forEach(btn => {
         btn.addEventListener("click", async (e) => {
           e.stopPropagation();
           const path = btn.dataset.path;
-          btn.textContent = "搜尋中…";
+          btn.textContent = "...";
           btn.disabled = true;
           try {
             const sr = await API.midiSearch(path);
             if (sr.results && sr.results.length > 0) {
-              btn.textContent = "匯入中…";
+              btn.textContent = "匯入中";
               const r = await API.midiImport(path, sr.results[0].path);
-              showToast(`${path.split("/").pop()}: MIDI 匯入 ${r.chord_count} 和弦`);
+              showToast(`MIDI ${r.chord_count} 和弦`);
               loadTrackList();
             } else {
-              btn.textContent = "無 MIDI";
+              btn.textContent = "無";
               setTimeout(() => { btn.textContent = "MIDI"; btn.disabled = false; }, 2000);
             }
           } catch (err) {
-            showToast("MIDI 匯入失敗: " + err.message);
+            showToast("失敗: " + err.message);
             btn.textContent = "MIDI";
             btn.disabled = false;
           }
         });
       });
+
+      // 點擊曲目跳到 player
+      trackList.querySelectorAll(".trk").forEach(row => {
+        row.style.cursor = "pointer";
+        row.addEventListener("click", (e) => {
+          if (e.target.closest("button")) return;
+          window.open(`/player?path=${encodeURIComponent(row.dataset.path)}`, "_blank");
+        });
+      });
     } catch (err) {
-      trackList.innerHTML = `<span style="color:#f66">載入失敗: ${esc(err.message)}</span>`;
+      trackList.innerHTML = `<span style="color:#f66;font-size:12px">載入失敗</span>`;
     }
   }
   loadTrackList();
@@ -367,14 +303,12 @@
   $("#btnRefreshTracks").addEventListener("click", loadTrackList);
 
   $("#btnBatchMidi").addEventListener("click", async () => {
-    midiStatus.textContent = "批次匯入中…";
+    midiStatus.textContent = "匯入中…";
     try {
       const r = await API.batchMidiImport();
-      midiStatus.textContent = `完成！匯入 ${r.imported} 首，跳過 ${r.skipped} 首`;
+      midiStatus.textContent = `匯入 ${r.imported}，跳過 ${r.skipped}`;
       if (r.imported > 0) loadTrackList();
-    } catch (e) {
-      midiStatus.textContent = "失敗: " + e.message;
-    }
+    } catch (e) { midiStatus.textContent = "失敗: " + e.message; }
   });
 
   // ---- 狀態輪詢 ----
@@ -388,53 +322,35 @@
 
   async function pollStatus() {
     try {
-      const [core, chords, lib, scanSt, batchSt] = await Promise.all([
+      const [core, chords, scanSt, batchSt] = await Promise.all([
         API.get("/api/auto/status"),
         API.get("/api/chords/stats"),
-        API.libraryStats(),
         API.libraryScanStatus(),
         API.get("/api/chords/batch-detect/status"),
       ]);
 
-      // stats
-      $("#sTotalTracks").textContent = chords.total_tracks || lib.total_tracks || 0;
+      $("#sTotalTracks").textContent = chords.total_tracks || 0;
       $("#sWithChords").textContent = chords.tracks_with_chords || 0;
       $("#sCoverage").textContent = chords.coverage + "%";
       $("#sQueueSize").textContent = core.detect_queue_size || 0;
-      $("#sScanCount").textContent = core.scan_count || 0;
-      $("#sDetectCount").textContent = core.detect_count || 0;
 
-      // core status
       const st = statusMap[core.status] || statusMap.stopped;
-      const dot = $("#coreDot");
-      dot.className = "dot " + st.dot;
+      $("#coreDot").className = "dot " + st.dot;
       const badge = $("#coreBadge");
       badge.className = "badge " + st.badge;
       badge.textContent = st.text;
 
-      // current task
       $("#currentTask").textContent = core.current_task || "";
 
-      // next scan
-      if (core.status === "waiting" && core.next_scan_at) {
-        $("#nextScan").textContent = `下次掃描: ${core.next_scan_at}`;
-      } else {
-        $("#nextScan").textContent = "";
-      }
-
-      // progress bar (based on queue coverage)
       if (chords.total_tracks > 0) {
-        const pct = Math.round(chords.tracks_with_chords / chords.total_tracks * 100);
-        $("#coreBar").style.width = pct + "%";
+        $("#coreBar").style.width = Math.round(chords.tracks_with_chords / chords.total_tracks * 100) + "%";
       }
 
-      // manual scan status
       if (scanSt.running) {
         $("#manualStatus").textContent = `掃描中… ${scanSt.progress} 首`;
-        $("#manualBar").style.width = Math.min(scanSt.progress / 80000 * 100, 95) + "%";
       } else if (batchSt.running) {
         const pct = batchSt.total ? Math.round(batchSt.done / batchSt.total * 100) : 0;
-        $("#manualStatus").textContent = `批次偵測 ${batchSt.done}/${batchSt.total} | ${batchSt.current_track.split("/").pop().replace(".flac","")}`;
+        $("#manualStatus").textContent = `偵測 ${batchSt.done}/${batchSt.total}`;
         $("#manualBar").style.width = pct + "%";
       } else {
         if (!$("#manualStatus").textContent.startsWith("完成")) {
@@ -443,16 +359,13 @@
         }
       }
 
-      // buttons
       $("#btnStartCore").disabled = core.running;
       $("#btnStopCore").disabled = !core.running;
       $("#btnTrigger").disabled = core.status !== "waiting";
-
     } catch {}
 
-    // log
     try {
-      const logData = await API.get("/api/auto/log?limit=50");
+      const logData = await API.get("/api/auto/log?limit=30");
       const box = $("#logBox");
       const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
       box.innerHTML = logData.log.map(e => {
