@@ -91,7 +91,7 @@
   const bigChordDiagram = $("#bigChordDiagram");
 
   // ---- 和弦區縮放 ----
-  const ZOOM_STEPS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
+  const ZOOM_STEPS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300];
   let zoomIdx = ZOOM_STEPS.indexOf(parseInt(localStorage.getItem("livechord_chord_zoom")) || 100);
   if (zoomIdx < 0) zoomIdx = ZOOM_STEPS.indexOf(100);
   const btnZoomIn = $("#btnZoomIn");
