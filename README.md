@@ -4,23 +4,38 @@
 
 ## 功能
 
-- **音樂庫瀏覽** — 樹狀結構瀏覽 NAS 中的 Genre / Artist / Album / Track
-- **搜尋** — 即時搜尋歌名、演出者、專輯
-- **FLAC 串流播放** — 支援 HTTP Range，瀏覽器原生播放
-- **即時和弦顯示** — 播放時高亮當前和弦，支援 Overview 與 Diagrams 兩種視圖
-- **鋼琴 / 吉他 / 烏克麗麗** — 三種顯示模式：鋼琴鍵盤指法、吉他和弦圖、烏克麗麗和弦圖
+### 播放與顯示
+- **FLAC 串流播放** — 支援 HTTP Range，PC 與平板瀏覽器皆可播放
+- **即時和弦顯示** — 兩種視圖：Overview（全覽）與 Diagrams（滾動時間軸）
+- **鋼琴 / 吉他 / 烏克麗麗** — 三種指法顯示模式
+- **鋼琴鍵盤** — 2 個八度、根音優先排列、圓點標示按鍵
 - **簡譜** — 和弦以簡譜符號標示（1=C）
 - **移調 + Capo** — 即時移調，Capo 設定（吉他/烏克麗麗模式）
-- **和弦來源** — Chordify 擷取（最佳）> MIDI 匯入（優良）> BTC AI 偵測（堪用）
-- **MIDI 匯入** — 從 MIDI 檔案自動擷取和弦與時間軸，單首或批次匯入
-- **和弦時間軸編輯器** — 拖曳、縮放、新增、刪除和弦
-- **LiveChord Core** — 背景自動掃描音樂庫 + 自動和弦偵測
+- **播放速度** — 0.5x ~ 2x 可調，練習慢速播放
+- **循環模式** — 單曲循環 / 最愛播放清單循環
+- **和弦區全螢幕** — 專注練習模式，含迷你播放控制
+- **頁面全螢幕** — 隱藏瀏覽器網址列（平板練習用）
+- **和弦區縮放** — +/- 按鈕調整和弦顯示大小
+
+### 和弦管理
+- **MIDI 匯入** — Player 直接選檔上傳，或從 X:\ 自動匹配
+- **AI 偵測** — BTC Transformer 自動偵測（fallback）
+- **批次匯入** — Admin 頁面一鍵批次 MIDI 匯入
+- **和弦編輯器** — 拖曳、縮放、新增、刪除和弦
+- **來源保護** — Chordify > MIDI > BTC，高品質不被覆蓋
+
+### 音樂庫
+- **瀏覽** — 樹狀結構瀏覽 NAS 音樂庫
+- **搜尋** — 即時搜尋歌名、演出者、專輯
 - **最愛 / 最近播放** — 收藏歌曲，記錄播放歷史
-- **設定持久化** — 音量、顯示模式、視圖自動記憶
+- **LiveChord Core** — 背景自動掃描 + 自動和弦偵測
+
+### 持久化
+- 音量、播放速度、顯示模式、視圖（Overview/Diagrams）、縮放比例、循環模式自動記憶
 
 ## 系統需求
 
-- **Python 3.9+**
+- **Python 3.9+**（已測試 3.11, 3.14）
 - **瀏覽器**: Chrome / Edge / Firefox（Safari 不支援 FLAC）
 - **NAS**: 掛載為 Windows 磁碟代號（預設 Y:\ = 音樂, X:\ = MIDI）
 
@@ -31,31 +46,31 @@ cd LiveChord/backend
 pip install -r requirements.txt
 ```
 
-## 使用
+## 部署
 
+### 開發機（本機）
 ```bash
-# 啟動伺服器（NAS 模式，預設 Y:\）
-start.bat
-
-# 啟動伺服器（本機資料夾模式）
-start_local.bat
-
-# 開啟瀏覽器
-# http://localhost:8800
-
-# 管理頁面（自動掃描、批次和弦偵測、MIDI 匯入）
-# http://localhost:8800/admin
+start.bat                    # NAS 模式（Y:\）
+start_local.bat              # 本機資料夾模式
 ```
+
+### NAS 部署（W:\）
+將 backend/、frontend/、tools/、data/、start.bat 複製到 W:\，雙擊 start.bat 啟動。
+
+### 平板使用
+1. 連上同一區網
+2. 瀏覽器開啟 `http://NUC_IP:8800`
+3. 點頁面右上角 ⛶ 進入全螢幕
 
 ### 批次檔
 
 | 檔案 | 用途 |
 |------|------|
-| `start.bat` | 啟動伺服器（NAS 模式） |
+| `start.bat` | 啟動伺服器（透過 run.py） |
 | `start_local.bat` | 啟動伺服器（本機資料夾模式） |
-| `restart.bat` | 重啟伺服器（自動關閉舊程序） |
+| `restart.bat` | 重啟伺服器 |
 | `scan.bat` | 命令列掃描音樂庫 |
-| `install-service.bat` | 安裝為 Windows 開機自動啟動 |
+| `install-service.bat` | Windows 開機自動啟動 |
 | `uninstall-service.bat` | 移除開機自動啟動 |
 
 ## 頁面
@@ -63,33 +78,35 @@ start_local.bat
 | 路徑 | 說明 |
 |------|------|
 | `/` | 首頁 — 瀏覽、搜尋、最愛、最近播放 |
-| `/player?path=...` | 播放頁 — 音訊播放 + 即時和弦顯示 |
+| `/player?path=...` | 播放頁 — 即時和弦 + 播放控制 |
 | `/editor?path=...` | 編輯頁 — 和弦時間軸編輯器 |
-| `/admin` | 管理頁 — Core 狀態、自動化設定、MIDI 管理、批次操作 |
+| `/admin` | 管理頁 — Core 狀態、和弦管理、MIDI 匯入 |
 
 ## 技術架構
 
 ```
-Browser ──HTTP──▶ FastAPI (Python, port 8800)
-                    ├── music_api.py      音樂庫 API（瀏覽/搜尋/串流）
-                    ├── chord_api.py      和弦 API（CRUD/偵測/MIDI 匯入）
-                    ├── user_api.py       最愛 / 最近播放
-                    ├── auto_worker.py    背景自動掃描 + 偵測
-                    ├── config.py         路徑設定（Y:\ / X:\）
-                    ├── chord_detect.py   BTC Transformer 和弦偵測
-                    ├── chord_table.py    和弦→簡譜轉換
-                    └── chord_diagrams.py 吉他/烏克麗麗指法圖
-
-Frontend (vanilla JS)
-  ├── player.js       播放頁邏輯 + 即時同步
-  ├── chord-render.js 鋼琴鍵盤/和弦圖渲染
-  ├── api.js          API 呼叫封裝
-  └── app.js          首頁邏輯
-
-tools/
-  ├── chordify_gui.py   Chordify 擷取工具（V2 錄影+離線分析）
-  ├── midi_to_lab.py    MIDI → 和弦時間軸轉換
-  └── chordify_ocr.py   Chordify 截圖 OCR
+PC / 平板 ──HTTP──▶ FastAPI (port 8800)
+                      │
+Backend               │  Frontend (vanilla JS)
+├── run.py            │  ├── player.html/js    播放 + 即時和弦
+├── main.py           │  ├── chord-render.js   鋼琴/吉他/烏克麗麗渲染
+├── music_api.py      │  ├── api.js            API 呼叫封裝
+├── chord_api.py      │  ├── app.js            首頁邏輯
+├── user_api.py       │  ├── admin.html        管理頁
+├── auto_worker.py    │  ├── editor.html/js    和弦編輯器
+├── config.py         │  └── manifest.json     PWA 設定
+├── chord_detect.py   │
+├── chord_table.py    │  data/
+├── chord_diagrams.py │  ├── chords/*.json     和弦資料（per song）
+└── btc/              │  ├── library_cache.json 音樂庫索引
+                      │  ├── settings.json     系統設定
+tools/                │  ├── favorites.json    最愛
+├── chordify_gui.py   │  └── recent.json       最近播放
+├── midi_to_lab.py    │
+└── chordify_ocr.py   │  路徑設定
+                      │  Y:\ = 音樂根目錄
+                      │  X:\ = MIDI 根目錄
+                      │  W:\ = 部署目錄
 ```
 
 ## 和弦資料來源
@@ -97,7 +114,7 @@ tools/
 | 來源 | 準確度 | 方式 |
 |------|--------|------|
 | Chordify | ~100% | tools/chordify_gui.py 擷取 |
-| MIDI | ~92% | X:\ MIDI 檔案自動匯入 |
+| MIDI | ~92% | Player 上傳 / X:\ 自動匹配 / Admin 批次匯入 |
 | BTC | ~41% | AI 音訊分析（fallback） |
 
 ## 授權

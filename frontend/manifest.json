@@ -1,0 +1,12 @@
+{
+  "name": "LiveChord",
+  "short_name": "LiveChord",
+  "description": "即時音樂和弦顯示",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0f0f",
+  "theme_color": "#e94560",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

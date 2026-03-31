@@ -90,6 +90,61 @@
   }
   const bigChordDiagram = $("#bigChordDiagram");
 
+  // ---- 和弦區縮放 ----
+  const ZOOM_STEPS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
+  let zoomIdx = ZOOM_STEPS.indexOf(parseInt(localStorage.getItem("livechord_chord_zoom")) || 100);
+  if (zoomIdx < 0) zoomIdx = ZOOM_STEPS.indexOf(100);
+  const btnZoomIn = $("#btnZoomIn");
+  const btnZoomOut = $("#btnZoomOut");
+  const btnZoomReset = $("#btnZoomReset");
+  const chordDisplayEl = $("#chordDisplay");
+
+  function _applyZoom() {
+    const pct = ZOOM_STEPS[zoomIdx];
+    if (chordDisplayEl) {
+      chordDisplayEl.style.transformOrigin = "top left";
+      chordDisplayEl.style.transform = `scale(${pct / 100})`;
+      // 補償 scale 造成的尺寸縮減
+      chordDisplayEl.style.width = (10000 / pct) + "%";
+      chordDisplayEl.style.height = (10000 / pct) + "%";
+    }
+    if (btnZoomReset) btnZoomReset.textContent = pct + "%";
+    localStorage.setItem("livechord_chord_zoom", pct);
+  }
+  _applyZoom();
+
+  if (btnZoomIn) btnZoomIn.addEventListener("click", () => {
+    if (zoomIdx < ZOOM_STEPS.length - 1) { zoomIdx++; _applyZoom(); }
+  });
+  if (btnZoomOut) btnZoomOut.addEventListener("click", () => {
+    if (zoomIdx > 0) { zoomIdx--; _applyZoom(); }
+  });
+  if (btnZoomReset) btnZoomReset.addEventListener("click", () => {
+    zoomIdx = ZOOM_STEPS.indexOf(100);
+    _applyZoom();
+  });
+
+  // ---- mini 播放控制（全螢幕用）----
+  const btnMiniPlay = $("#btnMiniPlay");
+  const btnMiniPrev = $("#btnMiniPrev");
+  const btnMiniNext = $("#btnMiniNext");
+
+  if (btnMiniPlay) {
+    btnMiniPlay.addEventListener("click", () => {
+      if (audio.paused) audio.play(); else audio.pause();
+    });
+    audio.addEventListener("play", () => { btnMiniPlay.innerHTML = "&#x23F8;"; });
+    audio.addEventListener("pause", () => { btnMiniPlay.innerHTML = "&#x25B6;"; });
+  }
+  if (btnMiniPrev) btnMiniPrev.addEventListener("click", () => {
+    if (siblingTracks.length > 0 && currentIndex > 0)
+      window.location.href = `/player?path=${encodeURIComponent(siblingTracks[currentIndex - 1].path)}`;
+  });
+  if (btnMiniNext) btnMiniNext.addEventListener("click", () => {
+    if (siblingTracks.length > 0 && currentIndex < siblingTracks.length - 1)
+      window.location.href = `/player?path=${encodeURIComponent(siblingTracks[currentIndex + 1].path)}`;
+  });
+
   // ---- 全螢幕切換 ----
   const chordDisplay = $("#chordDisplay");
   const btnFullscreen = $("#btnFullscreen");

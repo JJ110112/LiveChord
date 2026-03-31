@@ -76,10 +76,25 @@ a:hover { text-decoration: underline; }
   font-size: 14px;
 }
 
+.header-fs-btn {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.3);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 4px 8px;
+  z-index: 10;
+  transition: color .2s;
+}
+.header-fs-btn:hover { color: rgba(255,255,255,0.7); }
+
 .header nav {
   display: flex;
   gap: 4px;
-  margin-left: auto;
 }
 
 .header nav button {
@@ -742,25 +757,26 @@ a:hover { text-decoration: underline; }
   flex-direction: column;
 }
 
-.fullscreen-btn {
+.chord-display-tools {
   position: absolute;
   top: 4px;
-  right: 4px;
   z-index: 20;
+  display: flex;
+  gap: 2px;
+}
+.cd-tools-left { left: 4px; }
+.cd-tools-right { right: 4px; }
+.cd-tool-btn {
   background: rgba(255,255,255,0.08);
   border: none;
-  border-radius: 6px;
-  color: rgba(255,255,255,0.4);
+  border-radius: 4px;
+  color: rgba(255,255,255,0.35);
   cursor: pointer;
-  font-size: 16px;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all .2s;
+  font-size: 12px;
+  padding: 3px 7px;
+  transition: all .15s;
 }
-.fullscreen-btn:hover {
+.cd-tool-btn:hover {
   background: rgba(255,255,255,0.15);
   color: rgba(255,255,255,0.8);
 }

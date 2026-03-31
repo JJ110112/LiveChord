@@ -95,6 +95,11 @@ async def favicon():
     return FileResponse(FRONTEND_DIR / "favicon.svg", media_type="image/svg+xml")
 
 
+@app.get("/manifest.json")
+async def manifest():
+    return FileResponse(FRONTEND_DIR / "manifest.json", media_type="application/manifest+json")
+
+
 @app.get("/")
 async def index():
     return FileResponse(FRONTEND_DIR / "index.html")
@@ -121,5 +126,9 @@ async def benchmark():
 
 
 if __name__ == "__main__":
+    import sys, asyncio
+    # Python 3.14+ Windows: ProactorEventLoop 避免 SelectorEventLoop 的 assert 'Data should not be empty' bug
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8800, reload=True)

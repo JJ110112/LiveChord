@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LiveChord</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#e94560">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -17,6 +21,10 @@
     <div id="searchResults" class="search-results"></div>
   </div>
   <nav></nav>
+  <button class="header-fs-btn" title="全螢幕" onclick="
+    if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{})}
+    else{document.exitFullscreen()}
+  ">&#x26F6;</button>
 </header>
 
 <!-- tabs -->
