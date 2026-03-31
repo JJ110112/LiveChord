@@ -3,9 +3,45 @@
 import json
 import hashlib
 import os
+import re
 import time
 import threading
 from pathlib import Path
+
+
+def _normalize_name(name: str) -> str:
+    """正規化名稱：轉小寫、移除標點、連字號/底線→空格、壓縮空白"""
+    name = name.lower()
+    name = re.sub(r"[_\-]", " ", name)            # 底線/連字號→空格
+    name = re.sub(r"[^a-z0-9\s]", "", name)       # 移除標點
+    name = re.sub(r"\s+", " ", name).strip()       # 壓縮空白
+    return name
+
+
+def _extract_keywords(name: str) -> set:
+    """提取名稱中有意義的關鍵字（去掉短詞和常見噪音詞）"""
+    stop = {"the", "a", "an", "of", "in", "at", "on", "and", "or", "for",
+            "live", "official", "video", "music", "lyric", "remaster", "remastered",
+            "version", "studio", "mtv", "time", "aligned", "bpm", "chordify"}
+    words = set(_normalize_name(name).split())
+    return {w for w in words if len(w) > 1 and w not in stop and not w.isdigit()}
+
+
+def _midi_matches(song_name: str, midi_fname: str) -> bool:
+    """比對歌曲名與 MIDI 檔名是否匹配"""
+    sn = _normalize_name(song_name)
+    mn = _normalize_name(midi_fname.replace(".mid", "").replace(".midi", ""))
+    # 雙向子字串包含
+    if sn in mn or mn in sn:
+        return True
+    # 關鍵字交集 >= 60% 的較短方
+    sk = _extract_keywords(song_name)
+    mk = _extract_keywords(midi_fname)
+    if not sk or not mk:
+        return False
+    overlap = len(sk & mk)
+    min_len = min(len(sk), len(mk))
+    return overlap >= max(2, min_len * 0.6)
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File
 from pydantic import BaseModel
@@ -170,8 +206,7 @@ async def midi_search(path: str = Query(...)):
     from config import get_midi_root
     midi_root = get_midi_root()
 
-    # 從音樂路徑提取歌名
-    song_name = os.path.splitext(os.path.basename(path))[0].lower()
+    song_name = os.path.splitext(os.path.basename(path))[0]
 
     results = []
     if os.path.isdir(midi_root):
@@ -179,7 +214,7 @@ async def midi_search(path: str = Query(...)):
             for fname in filenames:
                 if not fname.lower().endswith(('.mid', '.midi')):
                     continue
-                if song_name in fname.lower() or fname.lower().replace('.mid', '').replace('.midi', '') in song_name:
+                if _midi_matches(song_name, fname):
                     rel = os.path.relpath(os.path.join(dirpath, fname), midi_root).replace("\\", "/")
                     results.append({"name": fname, "path": rel})
 
@@ -451,14 +486,20 @@ async def batch_midi_import():
         p = t.get("path", "")
         chord_file = CHORDS_DIR / f"{_song_hash(p)}.json"
         if chord_file.is_file():
-            skipped += 1
-            continue
+            # 保護 chordify 和 midi 來源，只覆蓋 btc
+            try:
+                existing = json.loads(chord_file.read_text(encoding="utf-8"))
+                src = existing.get("source", "") or ""
+                if src in ("chordify", "midi"):
+                    skipped += 1
+                    continue
+            except Exception:
+                pass
 
-        song_name = os.path.splitext(os.path.basename(p))[0].lower()
+        song_name = os.path.splitext(os.path.basename(p))[0]
         matched = None
         for mname, mfull in midi_files:
-            mlow = mname.lower().replace('.mid', '').replace('.midi', '')
-            if song_name in mlow or mlow in song_name:
+            if _midi_matches(song_name, mname):
                 matched = mfull
                 break
 

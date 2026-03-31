@@ -100,18 +100,27 @@ def _get_unanalyzed_tracks(settings: dict) -> list:
         if not track_path:
             continue
             
-        # 檢查和弦檔案是否已存在
+        # 檢查和弦檔案：沒有 → 需偵測，有但來源是 btc → 可被 MIDI 升級
         track_hash = _song_hash(track_path)
         chord_file = CHORDS_DIR / f"{track_hash}.json"
-        
+
+        needs_detect = False
         if not chord_file.is_file():
-            # 檢查是否為測試歌曲
+            needs_detect = True
+        else:
+            try:
+                existing = json.loads(chord_file.read_text(encoding="utf-8"))
+                src = existing.get("source", "") or ""
+                if src not in ("chordify", "midi"):
+                    needs_detect = True  # btc 或無來源 → 可升級
+            except Exception:
+                needs_detect = True
+
+        if needs_detect:
             track_name = (t.get("name") or t.get("title", "")).lower()
             track_artist = t.get("artist", "").lower()
             search_str = f"{track_name} {track_artist}"
-            
             is_test_song = any(keyword in search_str for keyword in test_songs)
-            
             if is_test_song:
                 test_tracks.append(track_path)
             else:
@@ -219,17 +228,16 @@ def _do_auto_scan(settings: dict):
 def _find_midi_for_track(track_name: str) -> str:
     """在 MIDI 目錄中搜尋與歌名匹配的 .mid 檔案"""
     from config import get_midi_root
+    from chord_api import _midi_matches
     midi_root = get_midi_root()
     if not os.path.isdir(midi_root):
         return None
 
-    track_lower = track_name.lower()
     for dirpath, _, filenames in os.walk(midi_root):
         for fname in filenames:
             if not fname.lower().endswith(('.mid', '.midi')):
                 continue
-            fname_lower = fname.lower().replace('.mid', '').replace('.midi', '')
-            if track_lower in fname_lower or fname_lower in track_lower:
+            if _midi_matches(track_name, fname):
                 return os.path.join(dirpath, fname)
     return None
 

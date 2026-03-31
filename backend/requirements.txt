@@ -4,3 +4,5 @@ python-multipart>=0.0.9
 mutagen>=1.47
 librosa>=0.11
 soundfile>=0.13
+pretty_midi>=0.2
+mir_eval>=0.7
