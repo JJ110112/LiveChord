@@ -159,34 +159,56 @@ const ChordRender = {
     if (!canvas) return;
     notes = notes || [];
 
-    // 音名→半音對照
-    const NOTE_MAP = { C:0, "C#":1, Db:1, D:2, "D#":3, Eb:3, E:4, Fb:4, F:5, "F#":6, Gb:6, G:7, "G#":8, Ab:8, A:9, "A#":10, Bb:10, B:11, Cb:11 };
-    const pressed = new Set();
-    for (const n of notes) {
-      const clean = n.replace(/bb|##/g, (m) => m === "bb" ? "♭♭" : "♯♯");
-      if (n in NOTE_MAP) pressed.add(NOTE_MAP[n]);
-      else {
-        // handle double accidentals
-        const base = n[0];
-        let s = NOTE_MAP[base] || 0;
-        for (let i = 1; i < n.length; i++) {
-          if (n[i] === "#") s++;
-          else if (n[i] === "b") s--;
-        }
-        pressed.add(((s % 12) + 12) % 12);
+    // 音名→半音
+    const NOTE_MAP = { C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,Fb:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11,Cb:11 };
+    const SEMI_TO_NAME = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+    function noteToSemi(n) {
+      if (n in NOTE_MAP) return NOTE_MAP[n];
+      let s = NOTE_MAP[n[0]] || 0;
+      for (let i = 1; i < n.length; i++) { if (n[i]==="#") s++; else if (n[i]==="b") s--; }
+      return ((s % 12) + 12) % 12;
+    }
+
+    // 計算絕對 MIDI 音高：從根音開始堆疊，每個音 >= 前一個音
+    const semis = notes.map(n => noteToSemi(n));
+    const absNotes = []; // absolute MIDI note numbers
+    if (semis.length > 0) {
+      const rootOctave = 4; // start from octave 4 (middle C area)
+      let prev = semis[0] + rootOctave * 12;
+      absNotes.push(prev);
+      for (let i = 1; i < semis.length; i++) {
+        let n = semis[i] + rootOctave * 12;
+        while (n < prev) n += 12;
+        absNotes.push(n);
+        prev = n;
       }
     }
 
-    // 繪製一個八度的鍵盤 (C ~ B)
-    const ww = 14; // white key width
-    const wh = 40; // white key height
-    const bw = 9;  // black key width
-    const bh = 24; // black key height
-    const whites = [0, 2, 4, 5, 7, 9, 11]; // C D E F G A B
-    const blacks = [1, 3, -1, 6, 8, 10];    // C# D# _ F# G# A#  (-1 = skip between E-F)
+    // 計算鍵盤範圍：顯示根音前 2 個白鍵到最高音後 2 個白鍵
+    const whiteNotes = [0,2,4,5,7,9,11]; // semitones that are white keys
+    const isWhite = (midi) => whiteNotes.includes(midi % 12);
 
-    const totalW = ww * 7 + 2;
-    const totalH = wh + 12; // extra space for note labels
+    let loMidi = absNotes.length ? absNotes[0] : 48;
+    let hiMidi = absNotes.length ? absNotes[absNotes.length - 1] : 59;
+    // expand to white key boundaries + padding
+    while (!isWhite(loMidi)) loMidi--;
+    for (let p = 0; p < 2; p++) { loMidi--; while (!isWhite(loMidi)) loMidi--; }
+    while (!isWhite(hiMidi)) hiMidi++;
+    for (let p = 0; p < 2; p++) { hiMidi++; while (!isWhite(hiMidi)) hiMidi++; }
+
+    // Build white key list
+    const whiteKeys = [];
+    for (let m = loMidi; m <= hiMidi; m++) { if (isWhite(m)) whiteKeys.push(m); }
+    const numWhites = whiteKeys.length;
+
+    // Pressed set (absolute MIDI)
+    const pressedSet = new Set(absNotes);
+
+    // Drawing params
+    const ww = 12, wh = 44, bw = 8, bh = 26, dotR = 3;
+    const totalW = numWhites * ww + 2;
+    const totalH = wh + 2;
     const dpr = window.devicePixelRatio || 1;
 
     canvas.width = Math.round(totalW * scale * dpr);
@@ -200,46 +222,44 @@ const ChordRender = {
 
     const x0 = 1;
 
-    // 白鍵
-    for (let i = 0; i < 7; i++) {
+    // Draw white keys
+    for (let i = 0; i < numWhites; i++) {
+      const midi = whiteKeys[i];
       const x = x0 + i * ww;
-      const semi = whites[i];
-      const isPressed = pressed.has(semi);
-      ctx.fillStyle = isPressed ? "#e94560" : "#f8f8f8";
+      const hit = pressedSet.has(midi);
+      ctx.fillStyle = hit ? "#fff" : "#f0f0f0";
       ctx.fillRect(x, 0, ww - 1, wh);
-      ctx.strokeStyle = "#555";
+      ctx.strokeStyle = "#999";
       ctx.lineWidth = 0.5;
       ctx.strokeRect(x, 0, ww - 1, wh);
-
-      // 按下時標記音名
-      if (isPressed) {
-        ctx.fillStyle = "#fff";
-        ctx.font = `bold ${Math.max(8, 8)}px sans-serif`;
-        ctx.textAlign = "center";
-        ctx.fillText(["C","D","E","F","G","A","B"][i], x + (ww - 1) / 2, wh - 3);
+      if (hit) {
+        // dot
+        ctx.fillStyle = "#222";
+        ctx.beginPath();
+        ctx.arc(x + (ww - 1) / 2, wh - dotR - 4, dotR, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
 
-    // 黑鍵
-    const blackPositions = [0, 1, 3, 4, 5]; // 在第 0,1,3,4,5 個白鍵右邊
-    const blackSemitones = [1, 3, 6, 8, 10];
-    for (let i = 0; i < 5; i++) {
-      const wp = blackPositions[i];
-      const x = x0 + (wp + 1) * ww - bw / 2 - 0.5;
-      const semi = blackSemitones[i];
-      const isPressed = pressed.has(semi);
-      ctx.fillStyle = isPressed ? "#e94560" : "#222";
+    // Draw black keys
+    const blackAfter = new Set([0, 1, 3, 4, 5]); // white key scale degrees that have a black key to their right: C,D,F,G,A
+    for (let i = 0; i < numWhites - 1; i++) {
+      const midi = whiteKeys[i];
+      const deg = midi % 12;
+      if (!blackAfter.has(whiteNotes.indexOf(deg))) continue;
+      const blackMidi = midi + 1;
+      const x = x0 + (i + 1) * ww - bw / 2 - 0.5;
+      const hit = pressedSet.has(blackMidi);
+      ctx.fillStyle = hit ? "#333" : "#222";
       ctx.fillRect(x, 0, bw, bh);
       ctx.strokeStyle = "#000";
       ctx.lineWidth = 0.5;
       ctx.strokeRect(x, 0, bw, bh);
-
-      if (isPressed) {
+      if (hit) {
         ctx.fillStyle = "#fff";
-        ctx.font = "bold 6px sans-serif";
-        ctx.textAlign = "center";
-        const labels = ["C#","D#","F#","G#","A#"];
-        ctx.fillText(labels[i], x + bw / 2, bh - 2);
+        ctx.beginPath();
+        ctx.arc(x + bw / 2, bh - dotR - 3, dotR, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
   },

@@ -217,7 +217,7 @@ def _do_auto_scan(settings: dict):
 
 
 def _find_midi_for_track(track_name: str) -> str:
-    """在 MIDI 目錄 (X:\) 中搜尋與歌名匹配的 .mid 檔案"""
+    """在 MIDI 目錄中搜尋與歌名匹配的 .mid 檔案"""
     from config import get_midi_root
     midi_root = get_midi_root()
     if not os.path.isdir(midi_root):

@@ -5,6 +5,7 @@
 
   const params = new URLSearchParams(window.location.search);
   const trackPath = params.get("path");
+  const autoplay = params.get("autoplay") === "1";
   if (!trackPath) { window.location.href = "/"; return; }
 
   // ---- state ----
@@ -560,7 +561,43 @@
     updateActiveChord(t);
   });
 
+  // ---- 循環模式：off → single → favorites ----
+  const btnLoop = $("#btnLoop");
+  const LOOP_MODES = ["off", "single", "favorites"];
+  const LOOP_LABELS = { off: "循環 OFF", single: "單曲循環", favorites: "最愛循環" };
+  const LOOP_ICONS = { off: "\u{1F501}", single: "\u{1F502}", favorites: "\u2764\u{1F501}" };
+  let loopMode = localStorage.getItem("livechord_loop_mode") || "off";
+  let favTracks = [];
+
+  function _updateLoopUI() {
+    audio.loop = (loopMode === "single");
+    btnLoop.textContent = LOOP_ICONS[loopMode];
+    btnLoop.classList.toggle("modified", loopMode !== "off");
+  }
+  _updateLoopUI();
+
+  // 預載最愛列表
+  API.getFavorites().then(d => { favTracks = (d.favorites || []).map(f => f.path); }).catch(() => {});
+
+  btnLoop.addEventListener("click", () => {
+    const idx = (LOOP_MODES.indexOf(loopMode) + 1) % LOOP_MODES.length;
+    loopMode = LOOP_MODES[idx];
+    localStorage.setItem("livechord_loop_mode", loopMode);
+    _updateLoopUI();
+    showToast(LOOP_LABELS[loopMode], 1500);
+  });
+
   audio.addEventListener("ended", () => {
+    if (loopMode === "single") return; // audio.loop handles it
+
+    if (loopMode === "favorites" && favTracks.length > 0) {
+      const curIdx = favTracks.indexOf(trackPath);
+      const nextIdx = (curIdx + 1) % favTracks.length;
+      window.location.href = `/player?path=${encodeURIComponent(favTracks[nextIdx])}&autoplay=1`;
+      return;
+    }
+
+    // off — stop
     btnPlay.innerHTML = "&#x25B6;";
     progress.style.width = "0%";
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
@@ -785,7 +822,9 @@
   });
 
   // ---- init ----
-  loadTrack(trackPath);
+  loadTrack(trackPath).then(() => {
+    if (autoplay) audio.play().catch(() => {});
+  });
 })();
 
 // ---- 移調工具函式 (全域) ----

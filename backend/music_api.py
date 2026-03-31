@@ -190,7 +190,7 @@ async def track_info(path: str = Query(...)):
 
 @router.get("/track/stream")
 async def track_stream(request: Request, path: str = Query(...)):
-    """串流 FLAC 音訊（支援 HTTP Range）"""
+    """串流 FLAC 音訊（支援 HTTP Range — 相容平板瀏覽器）"""
     full = _safe_path(os.path.join(get_music_root(), path))
     if not os.path.isfile(full):
         raise HTTPException(status_code=404, detail="檔案不存在")
@@ -201,12 +201,16 @@ async def track_stream(request: Request, path: str = Query(...)):
     range_header = request.headers.get("range")
 
     if range_header:
-        # 解析 Range header
-        range_spec = range_header.replace("bytes=", "")
-        parts = range_spec.split("-")
-        start = int(parts[0]) if parts[0] else 0
-        end = int(parts[1]) if parts[1] else file_size - 1
+        # 解析 Range: bytes=start-end
+        import re
+        m = re.match(r"bytes=(\d*)-(\d*)", range_header)
+        if not m:
+            raise HTTPException(status_code=416, detail="Invalid Range")
+        start = int(m.group(1)) if m.group(1) else 0
+        end = int(m.group(2)) if m.group(2) else file_size - 1
         end = min(end, file_size - 1)
+        if start > end or start >= file_size:
+            raise HTTPException(status_code=416, detail="Range Not Satisfiable")
         content_length = end - start + 1
 
         def iter_range():
@@ -214,8 +218,8 @@ async def track_stream(request: Request, path: str = Query(...)):
                 f.seek(start)
                 remaining = content_length
                 while remaining > 0:
-                    chunk_size = min(65536, remaining)
-                    data = f.read(chunk_size)
+                    chunk = min(262144, remaining)  # 256KB chunks
+                    data = f.read(chunk)
                     if not data:
                         break
                     remaining -= len(data)
@@ -229,24 +233,27 @@ async def track_stream(request: Request, path: str = Query(...)):
                 "Content-Range": f"bytes {start}-{end}/{file_size}",
                 "Content-Length": str(content_length),
                 "Accept-Ranges": "bytes",
+                "Cache-Control": "no-cache",
             },
         )
 
-    # 無 Range: 串流整個檔案
+    # 無 Range — 回傳完整檔案（加上 Accept-Ranges 讓平板知道可以用 Range）
     def iter_file():
         with open(full, "rb") as f:
             while True:
-                data = f.read(65536)
+                data = f.read(262144)  # 256KB chunks
                 if not data:
                     break
                 yield data
 
     return StreamingResponse(
         iter_file(),
+        status_code=200,
         media_type="audio/flac",
         headers={
             "Content-Length": str(file_size),
             "Accept-Ranges": "bytes",
+            "Cache-Control": "no-cache",
         },
     )
 
