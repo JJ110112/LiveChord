@@ -6,6 +6,7 @@
   const params = new URLSearchParams(window.location.search);
   const trackPath = params.get("path");
   const autoplay = params.get("autoplay") === "1";
+  const restoreFs = params.get("fs") === "1";
   if (!trackPath) { window.location.href = "/"; return; }
 
   // ---- state ----
@@ -136,13 +137,17 @@
     audio.addEventListener("play", () => { btnMiniPlay.innerHTML = "&#x23F8;"; });
     audio.addEventListener("pause", () => { btnMiniPlay.innerHTML = "&#x25B6;"; });
   }
+  function _navUrl(path) {
+    const fs = chordDisplay.classList.contains("fullscreen") || document.fullscreenElement ? "&fs=1" : "";
+    return `/player?path=${encodeURIComponent(path)}&autoplay=1${fs}`;
+  }
   if (btnMiniPrev) btnMiniPrev.addEventListener("click", () => {
     if (siblingTracks.length > 0 && currentIndex > 0)
-      window.location.href = `/player?path=${encodeURIComponent(siblingTracks[currentIndex - 1].path)}`;
+      window.location.href = _navUrl(siblingTracks[currentIndex - 1].path);
   });
   if (btnMiniNext) btnMiniNext.addEventListener("click", () => {
     if (siblingTracks.length > 0 && currentIndex < siblingTracks.length - 1)
-      window.location.href = `/player?path=${encodeURIComponent(siblingTracks[currentIndex + 1].path)}`;
+      window.location.href = _navUrl(siblingTracks[currentIndex + 1].path);
   });
 
   // ---- 全螢幕切換 ----
@@ -648,7 +653,8 @@
     if (loopMode === "favorites" && favTracks.length > 0) {
       const curIdx = favTracks.indexOf(trackPath);
       const nextIdx = (curIdx + 1) % favTracks.length;
-      window.location.href = `/player?path=${encodeURIComponent(favTracks[nextIdx])}&autoplay=1`;
+      const fs = chordDisplay && chordDisplay.classList.contains("fullscreen") ? "&fs=1" : "";
+      window.location.href = `/player?path=${encodeURIComponent(favTracks[nextIdx])}&autoplay=1${fs}`;
       return;
     }
 
@@ -720,11 +726,11 @@
   // prev / next
   $("#btnPrev").addEventListener("click", () => {
     if (siblingTracks.length === 0 || currentIndex <= 0) return;
-    window.location.href = `/player?path=${encodeURIComponent(siblingTracks[currentIndex - 1].path)}`;
+    window.location.href = _navUrl(siblingTracks[currentIndex - 1].path);
   });
   $("#btnNext").addEventListener("click", () => {
     if (siblingTracks.length === 0 || currentIndex >= siblingTracks.length - 1) return;
-    window.location.href = `/player?path=${encodeURIComponent(siblingTracks[currentIndex + 1].path)}`;
+    window.location.href = _navUrl(siblingTracks[currentIndex + 1].path);
   });
 
   // ---- edit link ----
@@ -888,6 +894,11 @@
   // ---- init ----
   loadTrack(trackPath).then(() => {
     if (autoplay) audio.play().catch(() => {});
+    if (restoreFs && chordDisplay) {
+      chordDisplay.classList.add("fullscreen");
+      if (btnFullscreen) btnFullscreen.innerHTML = "&#x2716;";
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
   });
 })();
 
