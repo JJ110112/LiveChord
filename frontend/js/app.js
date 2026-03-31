@@ -3,7 +3,7 @@
 (function () {
   // ---- state ----
   let currentPath = "";
-  let currentTab = "recent";
+  let currentTab = localStorage.getItem("livechord_home_tab") || "recent";
   let searchTimer = null;
 
   // ---- DOM refs ----
@@ -54,6 +54,7 @@
       $$(".tabs button").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       currentTab = btn.dataset.tab;
+      localStorage.setItem("livechord_home_tab", currentTab);
       showTab(currentTab);
     });
   });
@@ -138,9 +139,11 @@
     }
 
     for (const f of files) {
+      const coverUrl = API.trackCoverUrl(f.path);
       html += `
         <div class="grid-item" data-path="${escapeHtml(f.path)}">
-          <div class="cover-placeholder">&#x1F3B5;</div>
+          <img class="cover" src="${coverUrl}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
+          <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
           <div class="info">
             <div class="title">${escapeHtml(f.name.replace(/\.flac$/i, ""))}</div>
           </div>
@@ -164,9 +167,10 @@
     let html = "";
     files.forEach((f, i) => {
       const name = f.name.replace(/\.flac$/i, "");
+      const coverUrl = API.trackCoverUrl(f.path);
       html += `
         <li data-path="${escapeHtml(f.path)}">
-          <span class="track-num">${i + 1}</span>
+          <img src="${coverUrl}" style="width:36px;height:36px;border-radius:4px;object-fit:cover;background:#222;flex-shrink:0" loading="lazy" onerror="this.style.display='none'" alt="">
           <span class="track-title">${escapeHtml(name)}</span>
         </li>`;
     });
@@ -247,9 +251,10 @@
       let html = '<ul class="track-list">';
       data.favorites.forEach((f, i) => {
         const name = f.path.split("/").pop().replace(/\.flac$/i, "");
+        const coverUrl = API.trackCoverUrl(f.path);
         html += `
           <li data-path="${escapeHtml(f.path)}">
-            <span class="track-num">${i + 1}</span>
+            <img src="${coverUrl}" style="width:36px;height:36px;border-radius:4px;object-fit:cover;background:#222" loading="lazy" onerror="this.style.display='none'" alt="">
             <span class="track-title">${escapeHtml(name)}</span>
           </li>`;
       });
@@ -276,9 +281,10 @@
       let html = '<ul class="track-list">';
       data.recent.forEach((r, i) => {
         const name = r.path.split("/").pop().replace(/\.flac$/i, "");
+        const coverUrl = API.trackCoverUrl(r.path);
         html += `
           <li data-path="${escapeHtml(r.path)}">
-            <span class="track-num">${i + 1}</span>
+            <img src="${coverUrl}" style="width:36px;height:36px;border-radius:4px;object-fit:cover;background:#222" loading="lazy" onerror="this.style.display='none'" alt="">
             <span class="track-title">${escapeHtml(name)}</span>
           </li>`;
       });
@@ -293,5 +299,9 @@
   }
 
   // ---- init ----
+  // 設定正確的 tab active 狀態
+  $$(".tabs button").forEach(b => {
+    b.classList.toggle("active", b.dataset.tab === currentTab);
+  });
   showTab(currentTab);
 })();

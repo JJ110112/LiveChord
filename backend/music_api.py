@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 
 from mutagen.flac import FLAC
 
@@ -83,6 +83,19 @@ def _find_cover(filepath: str) -> Optional[str]:
     return None
 
 
+def _has_cover(filepath: str) -> bool:
+    """檢查是否有封面（檔案或內嵌）"""
+    if _find_cover(filepath):
+        return True
+    if filepath.lower().endswith(".flac"):
+        try:
+            audio = FLAC(filepath)
+            return bool(audio.pictures)
+        except Exception:
+            pass
+    return False
+
+
 def _song_hash(path: str) -> str:
     """產生穩定的 song hash（用於和弦譜檔名）"""
     return hashlib.md5(path.encode("utf-8")).hexdigest()[:12]
@@ -127,7 +140,7 @@ async def browse(path: str = Query(default="")):
         elif name.lower().endswith(".flac"):
             entries.append({
                 "name": name, "path": rel, "is_dir": False,
-                "has_cover": _find_cover(full) is not None,
+                "has_cover": True,
             })
     return {"current": os.path.relpath(target, root).replace("\\", "/"),
             "entries": entries}
@@ -260,10 +273,10 @@ async def track_stream(request: Request, path: str = Query(...)):
 
 @router.get("/track/cover")
 async def track_cover(path: str = Query(...)):
-    """取得專輯封面"""
+    """取得專輯封面（優先同目錄 cover.jpg，fallback FLAC 內嵌圖片）"""
     full = _safe_path(os.path.join(get_music_root(), path))
 
-    # path 可能是檔案或目錄
+    # 1. 找同目錄的 cover.jpg
     if os.path.isfile(full):
         cover = _find_cover(full)
     elif os.path.isdir(full):
@@ -277,10 +290,24 @@ async def track_cover(path: str = Query(...)):
     else:
         raise HTTPException(status_code=404, detail="路徑不存在")
 
-    if not cover:
-        raise HTTPException(status_code=404, detail="無封面圖片")
+    if cover:
+        return FileResponse(cover, media_type="image/jpeg")
 
-    return FileResponse(cover, media_type="image/jpeg")
+    # 2. 從 FLAC 內嵌圖片提取
+    if os.path.isfile(full) and full.lower().endswith(".flac"):
+        try:
+            audio = FLAC(full)
+            if audio.pictures:
+                pic = audio.pictures[0]
+                return Response(
+                    content=pic.data,
+                    media_type=pic.mime or "image/jpeg",
+                    headers={"Cache-Control": "public, max-age=86400"},
+                )
+        except Exception:
+            pass
+
+    raise HTTPException(status_code=404, detail="無封面圖片")
 
 
 # ---------------------------------------------------------------------------
