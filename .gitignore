@@ -47,3 +47,4 @@ tools/diff_out*.txt
 tools/*.png
 tools/__pycache__/
 tools/capture_config.json
+tools/dist/

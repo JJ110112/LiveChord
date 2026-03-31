@@ -439,7 +439,8 @@ async def chords_tracks():
         p = t.get("path", "")
         h = _song_hash(p)
         chord_file = CHORDS_DIR / f"{h}.json"
-        info = {"path": p, "title": t.get("title", ""), "artist": t.get("artist", ""), "has_chords": chord_file.is_file(), "source": ""}
+        info = {"path": p, "title": t.get("title", ""), "artist": t.get("artist", ""),
+                "has_chords": chord_file.is_file(), "source": "", "mtime": t.get("mtime", 0)}
         if chord_file.is_file():
             try:
                 cd = json.loads(chord_file.read_text(encoding="utf-8"))
@@ -449,6 +450,8 @@ async def chords_tracks():
             except Exception:
                 pass
         result.append(info)
+    # 依檔案修改時間排序（新→舊）
+    result.sort(key=lambda x: x.get("mtime", 0), reverse=True)
     return {"tracks": result}
 
 
