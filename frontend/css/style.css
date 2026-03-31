@@ -419,6 +419,52 @@ a:hover { text-decoration: underline; }
   display: none;
 }
 
+.player-search-input {
+  width: 160px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+.player-search-input:focus { border-color: var(--accent); width: 220px; transition: width .2s; }
+.player-search-results {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: 300px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  z-index: 200;
+  display: none;
+}
+.player-search-results.show { display: block; }
+.player-search-results .ps-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.player-search-results .ps-item:hover { background: var(--bg-hover); }
+.player-search-results .ps-title {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.player-search-results .ps-artist {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
 /* audio controls */
 
 .audio-controls {

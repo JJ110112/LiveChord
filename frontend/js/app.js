@@ -3,7 +3,7 @@
 (function () {
   // ---- state ----
   let currentPath = "";
-  let currentTab = "browse";
+  let currentTab = "recent";
   let searchTimer = null;
 
   // ---- DOM refs ----
@@ -63,6 +63,7 @@
     $("#tabFavorites").style.display = tab === "favorites" ? "" : "none";
     $("#tabRecent").style.display = tab === "recent" ? "" : "none";
 
+    if (tab === "browse") browse(currentPath);
     if (tab === "favorites") loadFavorites();
     if (tab === "recent") loadRecent();
   }
@@ -292,5 +293,5 @@
   }
 
   // ---- init ----
-  browse("");
+  showTab(currentTab);
 })();

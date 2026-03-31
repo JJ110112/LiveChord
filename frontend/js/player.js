@@ -21,6 +21,7 @@
   let _ribbonPositions = [];
   let transpose = 0;
   let capo = 0;
+  let favTracks = [];
 
   // ---- DOM ----
   const audio = $("#audio");
@@ -141,14 +142,26 @@
     const fs = chordDisplay.classList.contains("fullscreen") || document.fullscreenElement ? "&fs=1" : "";
     return `/player?path=${encodeURIComponent(path)}&autoplay=1${fs}`;
   }
-  if (btnMiniPrev) btnMiniPrev.addEventListener("click", () => {
-    if (siblingTracks.length > 0 && currentIndex > 0)
+  function _navPrev() {
+    if (loopMode === "favorites" && favTracks.length > 0) {
+      const i = favTracks.indexOf(trackPath);
+      const prev = (i <= 0) ? favTracks.length - 1 : i - 1;
+      window.location.href = _navUrl(favTracks[prev]);
+    } else if (siblingTracks.length > 0 && currentIndex > 0) {
       window.location.href = _navUrl(siblingTracks[currentIndex - 1].path);
-  });
-  if (btnMiniNext) btnMiniNext.addEventListener("click", () => {
-    if (siblingTracks.length > 0 && currentIndex < siblingTracks.length - 1)
+    }
+  }
+  function _navNext() {
+    if (loopMode === "favorites" && favTracks.length > 0) {
+      const i = favTracks.indexOf(trackPath);
+      const next = (i < 0 || i >= favTracks.length - 1) ? 0 : i + 1;
+      window.location.href = _navUrl(favTracks[next]);
+    } else if (siblingTracks.length > 0 && currentIndex < siblingTracks.length - 1) {
       window.location.href = _navUrl(siblingTracks[currentIndex + 1].path);
-  });
+    }
+  }
+  if (btnMiniPrev) btnMiniPrev.addEventListener("click", _navPrev);
+  if (btnMiniNext) btnMiniNext.addEventListener("click", _navNext);
 
   // ---- 全螢幕切換（一鍵：CSS fullscreen + 瀏覽器全螢幕）----
   const chordDisplay = $("#chordDisplay");
@@ -235,7 +248,8 @@
 
     try {
       const favData = await API.getFavorites();
-      isFavorite = favData.favorites.some((f) => f.path === path);
+      favTracks = (favData.favorites || []).map(f => f.path);
+      isFavorite = favTracks.includes(path);
       updateFavButton();
     } catch {}
 
@@ -660,19 +674,21 @@
   const btnLoop = $("#btnLoop");
   const LOOP_MODES = ["off", "single", "favorites"];
   const LOOP_LABELS = { off: "循環 OFF", single: "單曲循環", favorites: "最愛循環" };
-  const LOOP_ICONS = { off: "\u{1F501}", single: "\u{1F502}", favorites: "\u2764\u{1F501}" };
+  const LOOP_ICONS = { off: "\u{1F501}", single: "\u{1F502}", favorites: "fav" };
   let loopMode = localStorage.getItem("livechord_loop_mode") || "off";
-  let favTracks = [];
 
   function _updateLoopUI() {
     audio.loop = (loopMode === "single");
-    btnLoop.textContent = LOOP_ICONS[loopMode];
+    if (loopMode === "favorites") {
+      btnLoop.innerHTML = '<span style="position:relative">\u{1F501}<span style="position:absolute;top:-5px;right:-6px;font-size:8px">\u2764\uFE0F</span></span>';
+    } else {
+      btnLoop.textContent = LOOP_ICONS[loopMode];
+    }
     btnLoop.classList.toggle("modified", loopMode !== "off");
   }
   _updateLoopUI();
 
-  // 預載最愛列表
-  API.getFavorites().then(d => { favTracks = (d.favorites || []).map(f => f.path); }).catch(() => {});
+  // favTracks 在 loadTrack() 中載入，與 isFavorite 同步
 
   btnLoop.addEventListener("click", () => {
     const idx = (LOOP_MODES.indexOf(loopMode) + 1) % LOOP_MODES.length;
@@ -686,10 +702,7 @@
     if (loopMode === "single") return; // audio.loop handles it
 
     if (loopMode === "favorites" && favTracks.length > 0) {
-      const curIdx = favTracks.indexOf(trackPath);
-      const nextIdx = (curIdx + 1) % favTracks.length;
-      const fs = chordDisplay && chordDisplay.classList.contains("fullscreen") ? "&fs=1" : "";
-      window.location.href = `/player?path=${encodeURIComponent(favTracks[nextIdx])}&autoplay=1${fs}`;
+      _navNext();
       return;
     }
 
@@ -705,6 +718,16 @@
     bigChordName.textContent = "—";
     bigChordJianpu.innerHTML = "";
     bigChordDiagram.innerHTML = "";
+  });
+
+  // 平板 FLAC 串流可能不觸發 ended，用 timeupdate 偵測播放結束
+  audio.addEventListener("timeupdate", () => {
+    if (loopMode === "favorites" && favTracks.length > 0 && audio.duration > 0) {
+      if (audio.currentTime >= audio.duration - 0.5 && !audio.paused) {
+        audio.pause();
+        _navNext();
+      }
+    }
   });
 
   // progress bar seek (三、時間軸點擊連動)
@@ -759,14 +782,8 @@
   if (btnMiniSpeed) btnMiniSpeed.addEventListener("click", _cycleSpeed);
 
   // prev / next
-  $("#btnPrev").addEventListener("click", () => {
-    if (siblingTracks.length === 0 || currentIndex <= 0) return;
-    window.location.href = _navUrl(siblingTracks[currentIndex - 1].path);
-  });
-  $("#btnNext").addEventListener("click", () => {
-    if (siblingTracks.length === 0 || currentIndex >= siblingTracks.length - 1) return;
-    window.location.href = _navUrl(siblingTracks[currentIndex + 1].path);
-  });
+  $("#btnPrev").addEventListener("click", _navPrev);
+  $("#btnNext").addEventListener("click", _navNext);
 
   // ---- edit link ----
   const btnEdit = $("#btnEdit");
@@ -861,10 +878,12 @@
       if (isFavorite) {
         await API.removeFavorite(trackPath);
         isFavorite = false;
+        favTracks = favTracks.filter(p => p !== trackPath);
         showToast("已取消收藏");
       } else {
         await API.addFavorite(trackPath);
         isFavorite = true;
+        if (!favTracks.includes(trackPath)) favTracks.unshift(trackPath);
         showToast("已加入最愛");
       }
       updateFavButton();
@@ -925,6 +944,53 @@
     capo = parseInt(capoSelect.value) || 0;
     buildChordDOM(); updateActiveChord(audio.currentTime || -1);
   });
+
+  // ---- player 搜尋 ----
+  const playerSearch = $("#playerSearch");
+  const playerSearchResults = $("#playerSearchResults");
+  let _searchTimer = null;
+
+  if (playerSearch && playerSearchResults) {
+    playerSearch.addEventListener("input", () => {
+      clearTimeout(_searchTimer);
+      const q = playerSearch.value.trim();
+      if (q.length < 1) { playerSearchResults.classList.remove("show"); return; }
+      _searchTimer = setTimeout(async () => {
+        try {
+          const data = await API.search(q);
+          const results = data.results || [];
+          if (results.length === 0) {
+            playerSearchResults.innerHTML = '<div style="padding:12px;color:var(--text-dim);font-size:12px">無結果</div>';
+          } else {
+            playerSearchResults.innerHTML = results.slice(0, 15).map(r => {
+              const title = r.title || r.path.replace(/\.flac$/i, "");
+              const artist = r.artist || "";
+              return `<div class="ps-item" data-path="${r.path.replace(/"/g, '&quot;')}">
+                <div><div class="ps-title">${title}</div><div class="ps-artist">${artist}</div></div>
+              </div>`;
+            }).join("");
+          }
+          playerSearchResults.classList.add("show");
+        } catch {}
+      }, 300);
+    });
+
+    playerSearchResults.addEventListener("click", (e) => {
+      const item = e.target.closest(".ps-item");
+      if (item) window.location.href = _navUrl(item.dataset.path);
+    });
+
+    // 點擊外面關閉
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".player-search-box")) playerSearchResults.classList.remove("show");
+    });
+
+    playerSearch.addEventListener("focus", () => {
+      if (playerSearch.value.trim().length > 0 && playerSearchResults.innerHTML) {
+        playerSearchResults.classList.add("show");
+      }
+    });
+  }
 
   // ---- init ----
   loadTrack(trackPath).then(() => {

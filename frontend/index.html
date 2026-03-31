@@ -29,15 +29,15 @@
 
 <!-- tabs -->
 <div class="tabs">
-  <button class="active" data-tab="browse">瀏覽</button>
+  <button data-tab="browse">瀏覽</button>
   <button data-tab="favorites">最愛</button>
-  <button data-tab="recent">最近播放</button>
+  <button class="active" data-tab="recent">最近播放</button>
 </div>
 
 <!-- content -->
 <main class="content">
   <!-- browse tab -->
-  <div id="tabBrowse" class="tab-panel">
+  <div id="tabBrowse" class="tab-panel" style="display:none">
     <div id="breadcrumb" class="breadcrumb"></div>
     <div id="browseGrid" class="grid"></div>
     <ul id="trackList" class="track-list" style="display:none"></ul>
@@ -49,7 +49,7 @@
   </div>
 
   <!-- recent tab -->
-  <div id="tabRecent" class="tab-panel" style="display:none">
+  <div id="tabRecent" class="tab-panel">
     <div id="recentList"></div>
   </div>
 
