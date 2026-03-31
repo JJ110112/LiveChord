@@ -759,12 +759,15 @@ a:hover { text-decoration: underline; }
 
 .chord-display-tools {
   position: absolute;
-  top: 4px;
+  top: 6px;
   z-index: 20;
   display: flex;
   gap: 2px;
+  align-items: center;
+  height: 26px;
 }
 .cd-tools-left { left: 4px; }
+.cd-tools-center { left: 50%; transform: translateX(-50%); z-index: 25; background: rgba(15,15,15,0.3); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-radius: 10px; padding: 2px 12px; max-width: 42%; }
 .cd-tools-right { right: 4px; }
 .cd-tool-btn {
   background: rgba(255,255,255,0.08);
@@ -782,6 +785,27 @@ a:hover { text-decoration: underline; }
 }
 .cd-tool-btn.modified {
   color: var(--accent);
+}
+
+.mini-title-wrap {
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+.mini-title {
+  display: inline-block;
+  white-space: nowrap;
+  font-size: 12px;
+  color: rgba(255,255,255,0.5);
+  line-height: 1;
+}
+.mini-title.marquee {
+  animation: marquee 8s linear infinite;
+}
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
 }
 
 .chord-display-area.fullscreen {

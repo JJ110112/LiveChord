@@ -16,14 +16,8 @@
 <!-- header -->
 <header class="header" style="position:relative">
   <a href="/" style="text-decoration:none"><h1>LiveChord</h1></a>
-  <button id="btnPageFs" class="header-fs-btn" title="全螢幕" onclick="
-    if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{})}
-    else{document.exitFullscreen()}
-  ">&#x26F6;</button>
+  <button id="btnPageFs" class="header-fs-btn" title="全螢幕">&#x26F6;</button>
 </header>
-<script>document.addEventListener('fullscreenchange',()=>{
-  document.getElementById('btnPageFs').innerHTML=document.fullscreenElement?'\u2716':'\u26F6';
-})</script>
 
 <div class="player-page">
 
@@ -132,6 +126,9 @@
         <button class="cd-tool-btn" id="btnMiniNext" title="下一首">&#x23ED;</button>
         <button class="cd-tool-btn" id="btnMiniSpeed" title="播放速度">1x</button>
       </div>
+      <div class="chord-display-tools cd-tools-center">
+        <span class="mini-title-wrap"><span class="mini-title" id="miniTitle"></span></span>
+      </div>
       <div class="chord-display-tools cd-tools-right">
         <button class="cd-tool-btn" id="btnZoomOut" title="縮小">−</button>
         <button class="cd-tool-btn" id="btnZoomReset" title="重設">100%</button>
@@ -151,8 +148,8 @@
 <div id="toast" class="toast"></div>
 <audio id="audio" preload="auto"></audio>
 
-<script src="/js/api.js?v=25"></script>
-<script src="/js/chord-render.js?v=25"></script>
-<script src="/js/player.js?v=25"></script>
+<script src="/js/api.js?v=29"></script>
+<script src="/js/chord-render.js?v=29"></script>
+<script src="/js/player.js?v=29"></script>
 </body>
 </html>

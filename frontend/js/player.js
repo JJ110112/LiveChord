@@ -150,21 +150,45 @@
       window.location.href = _navUrl(siblingTracks[currentIndex + 1].path);
   });
 
-  // ---- 全螢幕切換 ----
+  // ---- 全螢幕切換（一鍵：CSS fullscreen + 瀏覽器全螢幕）----
   const chordDisplay = $("#chordDisplay");
   const btnFullscreen = $("#btnFullscreen");
+  const btnPageFs = $("#btnPageFs");
+
+  function _enterFullscreen() {
+    chordDisplay.classList.add("fullscreen");
+    btnFullscreen.innerHTML = "&#x2716;";
+    if (btnPageFs) btnPageFs.innerHTML = "&#x2716;";
+    document.documentElement.requestFullscreen().catch(() => {});
+  }
+  function _exitFullscreen() {
+    chordDisplay.classList.remove("fullscreen");
+    btnFullscreen.innerHTML = "&#x26F6;";
+    if (btnPageFs) btnPageFs.innerHTML = "&#x26F6;";
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  }
+
   if (btnFullscreen && chordDisplay) {
     btnFullscreen.addEventListener("click", () => {
-      chordDisplay.classList.toggle("fullscreen");
-      btnFullscreen.innerHTML = chordDisplay.classList.contains("fullscreen") ? "&#x2716;" : "&#x26F6;";
-    });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && chordDisplay.classList.contains("fullscreen")) {
-        chordDisplay.classList.remove("fullscreen");
-        btnFullscreen.innerHTML = "&#x26F6;";
-      }
+      if (chordDisplay.classList.contains("fullscreen")) _exitFullscreen();
+      else _enterFullscreen();
     });
   }
+  // header 的全螢幕按鈕也同步
+  if (btnPageFs) {
+    btnPageFs.onclick = () => {
+      if (chordDisplay.classList.contains("fullscreen")) _exitFullscreen();
+      else _enterFullscreen();
+    };
+  }
+  // Esc 或瀏覽器退出全螢幕時同步狀態
+  document.addEventListener("fullscreenchange", () => {
+    if (!document.fullscreenElement && chordDisplay.classList.contains("fullscreen")) {
+      chordDisplay.classList.remove("fullscreen");
+      if (btnFullscreen) btnFullscreen.innerHTML = "&#x26F6;";
+      if (btnPageFs) btnPageFs.innerHTML = "&#x26F6;";
+    }
+  });
 
   function showToast(msg, ms = 2000) {
     toast.textContent = msg;
@@ -181,9 +205,11 @@
     cover.src = API.trackCoverUrl(path);
     cover.style.display = "";
 
+    const miniTitle = $("#miniTitle");
     try {
       const info = await API.trackInfo(path);
-      songTitle.textContent = info.title || path.split("/").pop().replace(/\.flac$/i, "");
+      const title = info.title || path.split("/").pop().replace(/\.flac$/i, "");
+      songTitle.textContent = title;
       songArtist.textContent = info.artist || "";
       songAlbum.textContent = info.album || "";
       const meta = [];
@@ -191,9 +217,18 @@
       if (info.bits_per_sample) meta.push(`${info.bits_per_sample}bit`);
       if (info.channels) meta.push(info.channels === 2 ? "Stereo" : `${info.channels}ch`);
       songMeta.textContent = meta.join(" / ");
-      document.title = `${info.title || "LiveChord"} — LiveChord`;
+      document.title = `${title} — LiveChord`;
+      if (miniTitle) {
+        miniTitle.textContent = title;
+        requestAnimationFrame(() => {
+          const wrap = miniTitle.parentElement;
+          miniTitle.classList.toggle("marquee", miniTitle.scrollWidth > wrap.clientWidth);
+        });
+      }
     } catch {
-      songTitle.textContent = path.split("/").pop().replace(/\.flac$/i, "");
+      const title = path.split("/").pop().replace(/\.flac$/i, "");
+      songTitle.textContent = title;
+      if (miniTitle) miniTitle.textContent = title;
     }
 
     API.addRecent(path).catch(() => {});
