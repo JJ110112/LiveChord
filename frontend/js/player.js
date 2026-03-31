@@ -258,14 +258,16 @@
     _ribbonPositions = [];
     activeChordIdx = -1;
 
-    // Pre-calculate ribbon positions: no overlap, min width 120px
+    // Pre-calculate ribbon positions: no overlap
+    // Min width depends on mode — piano keyboard is wider than guitar diagram
+    const minRibbonW = displayMode === "piano" ? 180 : 120;
     let curLeft = 0;
     for (let i = 0; i < chords.length; i++) {
       const timeLeft = chords[i].time * pxPerSec;
       const left = Math.max(timeLeft, curLeft);
       const nextStart = i + 1 < chords.length ? chords[i+1].time : chords[i].time + 4;
       const naturalW = (nextStart - chords[i].time) * pxPerSec;
-      const w = Math.max(naturalW, 120);
+      const w = Math.max(naturalW, minRibbonW);
       _ribbonPositions.push({ left, width: w, time: chords[i].time });
       curLeft = left + w;
     }
@@ -576,6 +578,28 @@
     localStorage.setItem("livechord_volume", volumeSlider.value);
   });
 
+  // ---- 播放速度 ----
+  const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+  const btnSpeed = $("#btnSpeed");
+  let speedIdx = SPEEDS.indexOf(1); // default 1x
+
+  const savedSpeed = localStorage.getItem("livechord_speed");
+  if (savedSpeed !== null) {
+    const s = parseFloat(savedSpeed);
+    const i = SPEEDS.indexOf(s);
+    if (i >= 0) { speedIdx = i; audio.playbackRate = s; btnSpeed.textContent = s + "x"; }
+    if (s !== 1) btnSpeed.classList.add("modified");
+  }
+
+  btnSpeed.addEventListener("click", () => {
+    speedIdx = (speedIdx + 1) % SPEEDS.length;
+    const s = SPEEDS[speedIdx];
+    audio.playbackRate = s;
+    btnSpeed.textContent = s + "x";
+    btnSpeed.classList.toggle("modified", s !== 1);
+    localStorage.setItem("livechord_speed", s);
+  });
+
   // prev / next
   $("#btnPrev").addEventListener("click", () => {
     if (siblingTracks.length === 0 || currentIndex <= 0) return;
@@ -589,6 +613,37 @@
   // ---- edit link ----
   const btnEdit = $("#btnEdit");
   if (btnEdit) btnEdit.href = `/editor?path=${encodeURIComponent(trackPath)}`;
+
+  // ---- MIDI upload + import button ----
+  const btnMidi = $("#btnMidi");
+  const midiFileInput = $("#midiFileInput");
+  if (btnMidi && midiFileInput) {
+    btnMidi.addEventListener("click", () => {
+      midiFileInput.value = "";
+      midiFileInput.click();
+    });
+
+    midiFileInput.addEventListener("change", async () => {
+      const file = midiFileInput.files[0];
+      if (!file) return;
+
+      detectOverlay.style.display = "";
+      detectMsg.textContent = "MIDI 匯入中…";
+      detectDetail.textContent = file.name;
+
+      try {
+        const r = await API.midiUpload(trackPath, file);
+        showToast(`MIDI 匯入完成！${r.chord_count} 和弦，Key: ${r.key}`, 3000);
+        chordCache = {};
+        await loadChords(trackPath);
+        updateActiveChord(audio.currentTime || -1);
+      } catch (err) {
+        showToast("MIDI 匯入失敗: " + err.message, 4000);
+      } finally {
+        detectOverlay.style.display = "none";
+      }
+    });
+  }
 
   // ---- manual detect button ----
   const btnDetect = $("#btnDetect");

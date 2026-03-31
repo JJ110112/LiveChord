@@ -7,7 +7,7 @@ import time
 import threading
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File
 from pydantic import BaseModel
 
 from chord_table import get_chord_info, get_chord_jianpu
@@ -237,6 +237,56 @@ async def midi_import(path: str = Query(...), midi_path: str = Query(...)):
         "chord_count": len(entries),
         "source": "midi",
         "midi_file": midi_path,
+    }
+
+
+@router.post("/chords/midi-upload")
+async def midi_upload(path: str = Query(...), file: UploadFile = File(...)):
+    """使用者上傳 MIDI 檔案 → 儲存到 X:\\ → 匯入和弦"""
+    from config import get_midi_root
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'tools'))
+    from midi_to_lab import midi_to_lab
+    from collections import Counter
+
+    midi_root = get_midi_root()
+    os.makedirs(midi_root, exist_ok=True)
+
+    # 儲存上傳的 MIDI 到 X:\
+    fname = file.filename or "uploaded.mid"
+    dest = os.path.join(midi_root, fname)
+    content = await file.read()
+    with open(dest, "wb") as f:
+        f.write(content)
+
+    # 解析和弦
+    try:
+        entries = midi_to_lab(dest, verbose=False)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"MIDI 解析失敗: {e}")
+
+    if not entries:
+        raise HTTPException(status_code=400, detail="MIDI 無法解析出和弦")
+
+    roots = []
+    for e in entries:
+        c = e["chord"]
+        if c and c[0] in "ABCDEFG":
+            root = c[0]
+            if len(c) > 1 and c[1] in '#b':
+                root += c[1]
+            roots.append(root)
+    key = Counter(roots).most_common(1)[0][0] if roots else ""
+
+    sheet = {"path": path, "key": key, "capo": 0, "source": "midi", "chords": entries}
+    CHORDS_DIR.mkdir(parents=True, exist_ok=True)
+    chords_file = CHORDS_DIR / f"{_song_hash(path)}.json"
+    chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    return {
+        "ok": True, "path": path, "key": key,
+        "chord_count": len(entries), "source": "midi",
+        "midi_file": fname,
     }
 
 

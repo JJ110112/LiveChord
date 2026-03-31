@@ -480,6 +480,20 @@ a:hover { text-decoration: underline; }
 
 .btn-fav.active { color: var(--accent); }
 
+.speed-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 8px;
+  min-width: 36px;
+  transition: all .15s;
+}
+.speed-btn:hover { color: var(--text); border-color: var(--text-dim); }
+.speed-btn.modified { color: var(--accent); border-color: var(--accent); }
+
 .volume-control {
   display: flex;
   align-items: center;
@@ -644,9 +658,9 @@ a:hover { text-decoration: underline; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  transition: opacity 0.2s, background 0.2s;
+  transition: opacity 0.4s ease, background 0.4s ease, padding 0.4s ease;
   background: rgba(0,0,0,0.2);
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: pointer;
 }
 
@@ -658,11 +672,42 @@ a:hover { text-decoration: underline; }
   opacity: 1;
   background: rgba(233,69,96,0.15);
   border-left-color: rgba(233,69,96,0.5);
+  z-index: 5;
+  padding-left: 24px;
+  padding-right: 24px;
+  overflow: visible;
 }
 
 .ribbon-item .chord-name {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: bold;
+  transition: font-size 0.4s ease, color 0.4s ease, text-shadow 0.4s ease;
+}
+
+.ribbon-item canvas {
+  transition: transform 0.4s ease, filter 0.4s ease;
+  transform: scale(1);
+  transform-origin: top center;
+}
+
+.ribbon-item .chord-jianpu {
+  transition: font-size 0.4s ease, color 0.4s ease;
+}
+
+.ribbon-item.active .chord-name {
+  font-size: 36px;
+  color: #fff;
+  text-shadow: 0 0 12px rgba(233,69,96,0.6);
+}
+
+.ribbon-item.active canvas {
+  transform: scale(1.5);
+  filter: drop-shadow(0 2px 8px rgba(233,69,96,0.4));
+}
+
+.ribbon-item.active .chord-jianpu {
+  font-size: 16px;
+  color: #eee;
 }
 
 .ribbon-item .chord-jianpu {
