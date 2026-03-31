@@ -606,7 +606,7 @@ a:hover { text-decoration: underline; }
 .chord-ribbon {
   position: relative;
   width: 100%;
-  height: 180px; 
+  height: 200px;
   background: var(--bg-hover);
   border-radius: var(--radius);
   overflow: hidden;
@@ -770,10 +770,24 @@ a:hover { text-decoration: underline; }
 
 /* ---------- responsive ---------- */
 
+/* tablet (768-1024px) */
+@media (max-width: 1024px) {
+  .chord-toolbar { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .chord-timeline { max-height: 40vh; }
+  .chord-ribbon { height: 160px; }
+  .chord-item { min-width: 50px; padding: 4px 8px; }
+  .chord-item .chord-name { font-size: 14px; }
+}
+
+/* phone (< 640px) */
 @media (max-width: 640px) {
   .header { flex-wrap: wrap; padding: 10px 12px; }
   .header .search-box { max-width: none; order: 3; flex-basis: 100%; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
   .player-header { flex-direction: column; align-items: center; text-align: center; }
   .player-cover { width: 160px; height: 160px; }
+  .chord-toolbar { padding: 8px; }
+  .chord-timeline { max-height: 35vh; }
+  .chord-ribbon { height: 140px; }
+  #modeSwitch { flex-wrap: wrap; }
 }
