@@ -689,24 +689,33 @@
   // ---- 播放速度 ----
   const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
   const btnSpeed = $("#btnSpeed");
+  const btnMiniSpeed = $("#btnMiniSpeed");
   let speedIdx = SPEEDS.indexOf(1); // default 1x
+
+  function _syncSpeedUI() {
+    const s = SPEEDS[speedIdx];
+    const label = s + "x";
+    if (btnSpeed) { btnSpeed.textContent = label; btnSpeed.classList.toggle("modified", s !== 1); }
+    if (btnMiniSpeed) { btnMiniSpeed.textContent = label; btnMiniSpeed.classList.toggle("modified", s !== 1); }
+  }
 
   const savedSpeed = localStorage.getItem("livechord_speed");
   if (savedSpeed !== null) {
     const s = parseFloat(savedSpeed);
     const i = SPEEDS.indexOf(s);
-    if (i >= 0) { speedIdx = i; audio.playbackRate = s; btnSpeed.textContent = s + "x"; }
-    if (s !== 1) btnSpeed.classList.add("modified");
+    if (i >= 0) { speedIdx = i; audio.playbackRate = s; }
   }
+  _syncSpeedUI();
 
-  btnSpeed.addEventListener("click", () => {
+  function _cycleSpeed() {
     speedIdx = (speedIdx + 1) % SPEEDS.length;
     const s = SPEEDS[speedIdx];
     audio.playbackRate = s;
-    btnSpeed.textContent = s + "x";
-    btnSpeed.classList.toggle("modified", s !== 1);
+    _syncSpeedUI();
     localStorage.setItem("livechord_speed", s);
-  });
+  }
+  if (btnSpeed) btnSpeed.addEventListener("click", _cycleSpeed);
+  if (btnMiniSpeed) btnMiniSpeed.addEventListener("click", _cycleSpeed);
 
   // prev / next
   $("#btnPrev").addEventListener("click", () => {

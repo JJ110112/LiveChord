@@ -780,6 +780,9 @@ a:hover { text-decoration: underline; }
   background: rgba(255,255,255,0.15);
   color: rgba(255,255,255,0.8);
 }
+.cd-tool-btn.modified {
+  color: var(--accent);
+}
 
 .chord-display-area.fullscreen {
   position: fixed;
