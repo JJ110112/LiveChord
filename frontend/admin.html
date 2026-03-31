@@ -30,7 +30,8 @@
     /* settings form */
     .setting-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #222; }
     .setting-row:last-child { border-bottom: none; }
-    .setting-row label { flex: 1; font-size: 13px; }
+    .setting-row > div:first-child { flex: 1; }
+    .setting-row label { font-size: 13px; }
     .setting-row .desc { font-size: 11px; color: var(--text-dim); }
     .toggle { position: relative; width: 42px; min-width: 42px; height: 22px; cursor: pointer; flex: 0 0 auto; }
     .toggle input { display: none; }
@@ -92,6 +93,21 @@
     <div class="current-task" id="currentTask"></div>
     <div class="progress-track"><div class="bar green" id="coreBar" style="width:0%"></div></div>
     <div style="font-size:11px;color:#555" id="nextScan"></div>
+  </div>
+
+  <!-- ======== 音樂庫設定 ======== -->
+  <div class="card">
+    <h2>音樂庫設定</h2>
+    <div class="setting-row" style="flex-wrap: wrap; gap: 8px;">
+      <div style="flex:1; min-width: 250px;">
+        <label>音樂庫路徑 (Music Root)</label>
+        <div class="desc">設定 FLAC 音樂所在的根目錄。例如 Z:/ 或 D:/Music</div>
+      </div>
+      <input type="text" id="optMusicRoot" style="padding: 6px 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); font-size: 13px; width: 250px;" placeholder="Z:/">
+    </div>
+    <div class="actions">
+      <button class="primary" id="btnSaveMusicRoot">儲存路徑並掃描全部</button>
+    </div>
   </div>
 
   <!-- ======== 自動化設定 ======== -->
@@ -192,6 +208,32 @@
     } catch {}
   }
   loadSettings();
+
+  // ---- 載入與儲存音樂庫設定 ----
+  async function loadMusicRootSettings() {
+    try {
+      const s = await API.get("/api/settings");
+      $("#optMusicRoot").value = s.music_root || "";
+    } catch {}
+  }
+  loadMusicRootSettings();
+
+  $("#btnSaveMusicRoot").addEventListener("click", async () => {
+    const root = $("#optMusicRoot").value.trim();
+    if(!root) {
+      showToast("路徑不能為空");
+      return;
+    }
+    try {
+      await API.post("/api/settings", { music_root: root });
+      showToast("已更新路徑！正在啟動全自動掃描...");
+      
+      // trigger full scan automatically
+      await API.post("/api/library/scan?mode=full");
+    } catch (e) {
+      showToast("儲存失敗：" + e.message);
+    }
+  });
 
   // ---- 儲存設定 ----
   $("#btnSaveSettings").addEventListener("click", async () => {

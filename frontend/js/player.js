@@ -528,10 +528,41 @@
   const btnDetect = $("#btnDetect");
   if (btnDetect) {
     btnDetect.addEventListener("click", async () => {
+      // 先搜尋 MIDI 檔案
       detectOverlay.style.display = "";
-      detectMsg.textContent = "正在重新偵測和弦…";
-      detectDetail.textContent = "分析音訊中，請稍候";
+      detectMsg.textContent = "搜尋 MIDI 檔案…";
+      detectDetail.textContent = "";
+
       try {
+        const midiResult = await API.midiSearch(trackPath);
+
+        if (midiResult.results && midiResult.results.length > 0) {
+          // 有 MIDI → 讓使用者選擇
+          const midiList = midiResult.results.map(m => m.name).join("\n");
+          detectOverlay.style.display = "none";
+
+          const useMidi = confirm(
+            `找到 ${midiResult.results.length} 個 MIDI 檔案：\n\n${midiList}\n\n使用 MIDI 匯入？（取消則用 AI 偵測）`
+          );
+
+          if (useMidi) {
+            detectOverlay.style.display = "";
+            detectMsg.textContent = "MIDI 匯入中…";
+            detectDetail.textContent = midiResult.results[0].name;
+            const result = await API.midiImport(trackPath, midiResult.results[0].path);
+            showToast(`MIDI 匯入完成！${result.chord_count} 個和弦，Key: ${result.key}`, 3000);
+            chordCache = {};
+            await loadChords(trackPath);
+            updateActiveChord(audio.currentTime || -1);
+            detectOverlay.style.display = "none";
+            return;
+          }
+        }
+
+        // 無 MIDI 或使用者選擇 AI 偵測
+        detectOverlay.style.display = "";
+        detectMsg.textContent = "AI 偵測和弦中…";
+        detectDetail.textContent = "分析音訊中，請稍候";
         const result = await API.detectChords(trackPath);
         showToast(`偵測完成！${result.chord_count} 個和弦，調性: ${result.key}`, 3000);
         chordCache = {};

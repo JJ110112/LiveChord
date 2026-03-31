@@ -13,12 +13,13 @@ from pydantic import BaseModel
 from chord_table import get_chord_info, get_chord_jianpu
 from chord_diagrams import get_chord_diagram
 
+from config import get_music_root
+
 router = APIRouter(prefix="/api", tags=["chord"])
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 CHORDS_DIR = DATA_DIR / "chords"
 CACHE_FILE = DATA_DIR / "library_cache.json"
-MUSIC_ROOT = os.path.normpath(os.environ.get("LIVECHORD_MUSIC_ROOT", "Z:/"))
 
 # 批次偵測狀態
 _batch_state = {
@@ -105,8 +106,9 @@ async def save_chords(sheet: ChordSheet):
 @router.post("/chords/detect")
 async def detect_chords_api(path: str = Query(...)):
     """自動偵測音訊中的和弦，偵測完成後自動儲存"""
-    full = os.path.normpath(os.path.join(MUSIC_ROOT, path))
-    if not full.lower().startswith(MUSIC_ROOT.lower()):
+    root = get_music_root()
+    full = os.path.normpath(os.path.join(root, path))
+    if not full.lower().startswith(root.lower()):
         raise HTTPException(status_code=403, detail="路徑不允許")
     if not os.path.isfile(full):
         raise HTTPException(status_code=404, detail="檔案不存在")
@@ -159,6 +161,86 @@ async def detect_chords_api(path: str = Query(...)):
 
 
 # ---------------------------------------------------------------------------
+# MIDI 匯入
+# ---------------------------------------------------------------------------
+
+@router.get("/chords/midi-search")
+async def midi_search(path: str = Query(...)):
+    """搜尋 X:\\ 中與此曲目名稱相符的 MIDI 檔案"""
+    from config import get_midi_root
+    midi_root = get_midi_root()
+
+    # 從音樂路徑提取歌名
+    song_name = os.path.splitext(os.path.basename(path))[0].lower()
+
+    results = []
+    if os.path.isdir(midi_root):
+        for dirpath, _, filenames in os.walk(midi_root):
+            for fname in filenames:
+                if not fname.lower().endswith(('.mid', '.midi')):
+                    continue
+                if song_name in fname.lower() or fname.lower().replace('.mid', '').replace('.midi', '') in song_name:
+                    rel = os.path.relpath(os.path.join(dirpath, fname), midi_root).replace("\\", "/")
+                    results.append({"name": fname, "path": rel})
+
+    return {"song": song_name, "midi_root": midi_root, "results": results}
+
+
+@router.post("/chords/midi-import")
+async def midi_import(path: str = Query(...), midi_path: str = Query(...)):
+    """從 MIDI 檔案匯入和弦，儲存到 chords/{hash}.json"""
+    from config import get_midi_root
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'tools'))
+    from midi_to_lab import midi_to_lab
+
+    midi_root = get_midi_root()
+    full_midi = os.path.normpath(os.path.join(midi_root, midi_path))
+
+    if not os.path.isfile(full_midi):
+        raise HTTPException(status_code=404, detail=f"MIDI 檔案不存在: {midi_path}")
+
+    try:
+        entries = midi_to_lab(full_midi, verbose=False)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"MIDI 解析失敗: {e}")
+
+    if not entries:
+        raise HTTPException(status_code=400, detail="MIDI 無法解析出和弦")
+
+    # 推導 key
+    from collections import Counter
+    roots = []
+    for e in entries:
+        c = e["chord"]
+        if c and c[0] in "ABCDEFG":
+            root = c[0]
+            if len(c) > 1 and c[1] in '#b':
+                root += c[1]
+            roots.append(root)
+    key = Counter(roots).most_common(1)[0][0] if roots else ""
+
+    # 儲存
+    sheet = {
+        "path": path,
+        "key": key,
+        "capo": 0,
+        "source": "midi",
+        "chords": entries,
+    }
+    CHORDS_DIR.mkdir(parents=True, exist_ok=True)
+    chords_file = CHORDS_DIR / f"{_song_hash(path)}.json"
+    chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    return {
+        "ok": True, "path": path, "key": key,
+        "chord_count": len(entries),
+        "source": "midi",
+        "midi_file": midi_path,
+    }
+
+
+# ---------------------------------------------------------------------------
 # 批次和弦偵測（背景執行緒）
 # ---------------------------------------------------------------------------
 
@@ -187,7 +269,7 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
             _batch_state["skipped"] += 1
             continue
 
-        full = os.path.normpath(os.path.join(MUSIC_ROOT, track_path))
+        full = os.path.normpath(os.path.join(get_music_root(), track_path))
         if not os.path.isfile(full):
             _batch_state["skipped"] += 1
             continue
