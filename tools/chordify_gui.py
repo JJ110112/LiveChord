@@ -1708,12 +1708,12 @@ class ChordifyCapture(tk.Tk):
                 for track in cache.get("tracks", []):
                     title = track.get("title", "").lower()
                     # 用歌名比對
-                    if name_lower in title or title in name_lower:
+                    if title and (name_lower in title or title in name_lower):
                         nas_path = track["path"]
                         break
                     # 也試檔名比對
                     fname = track["path"].split("/")[-1].replace(".flac", "").lower()
-                    if name_lower in fname or fname in name_lower:
+                    if fname and (name_lower in fname or fname in name_lower):
                         nas_path = track["path"]
                         break
             except Exception:

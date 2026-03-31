@@ -26,13 +26,14 @@ const ChordRender = {
 
     const sw = numStrings === 6 ? 60 : 44;
     const sh = 74;
-    canvas.width = sw * scale;
-    canvas.height = sh * scale;
-    canvas.style.width = sw + "px";
-    canvas.style.height = sh + "px";
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(sw * scale * dpr);
+    canvas.height = Math.round(sh * scale * dpr);
+    canvas.style.width = Math.round(sw * scale) + "px";
+    canvas.style.height = Math.round(sh * scale) + "px";
 
     const ctx = canvas.getContext("2d");
-    ctx.scale(scale, scale);
+    ctx.scale(scale * dpr, scale * dpr);
     ctx.clearRect(0, 0, sw, sh);
 
     // 佈局
@@ -146,6 +147,101 @@ const ChordRender = {
     ctx.font = "bold 10px sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(data.name || "", sw / 2, sh - 2);
+  },
+
+  /**
+   * 在 Canvas 上繪製鋼琴鍵盤（標示按鍵位置）
+   * @param {HTMLCanvasElement} canvas
+   * @param {string[]} notes - 組成音名列表 e.g. ["C", "E", "G"]
+   * @param {number} scale
+   */
+  drawPiano(canvas, notes, scale = 1) {
+    if (!canvas) return;
+    notes = notes || [];
+
+    // 音名→半音對照
+    const NOTE_MAP = { C:0, "C#":1, Db:1, D:2, "D#":3, Eb:3, E:4, Fb:4, F:5, "F#":6, Gb:6, G:7, "G#":8, Ab:8, A:9, "A#":10, Bb:10, B:11, Cb:11 };
+    const pressed = new Set();
+    for (const n of notes) {
+      const clean = n.replace(/bb|##/g, (m) => m === "bb" ? "♭♭" : "♯♯");
+      if (n in NOTE_MAP) pressed.add(NOTE_MAP[n]);
+      else {
+        // handle double accidentals
+        const base = n[0];
+        let s = NOTE_MAP[base] || 0;
+        for (let i = 1; i < n.length; i++) {
+          if (n[i] === "#") s++;
+          else if (n[i] === "b") s--;
+        }
+        pressed.add(((s % 12) + 12) % 12);
+      }
+    }
+
+    // 繪製一個八度的鍵盤 (C ~ B)
+    const ww = 14; // white key width
+    const wh = 40; // white key height
+    const bw = 9;  // black key width
+    const bh = 24; // black key height
+    const whites = [0, 2, 4, 5, 7, 9, 11]; // C D E F G A B
+    const blacks = [1, 3, -1, 6, 8, 10];    // C# D# _ F# G# A#  (-1 = skip between E-F)
+
+    const totalW = ww * 7 + 2;
+    const totalH = wh + 12; // extra space for note labels
+    const dpr = window.devicePixelRatio || 1;
+
+    canvas.width = Math.round(totalW * scale * dpr);
+    canvas.height = Math.round(totalH * scale * dpr);
+    canvas.style.width = Math.round(totalW * scale) + "px";
+    canvas.style.height = Math.round(totalH * scale) + "px";
+
+    const ctx = canvas.getContext("2d");
+    ctx.scale(scale * dpr, scale * dpr);
+    ctx.clearRect(0, 0, totalW, totalH);
+
+    const x0 = 1;
+
+    // 白鍵
+    for (let i = 0; i < 7; i++) {
+      const x = x0 + i * ww;
+      const semi = whites[i];
+      const isPressed = pressed.has(semi);
+      ctx.fillStyle = isPressed ? "#e94560" : "#f8f8f8";
+      ctx.fillRect(x, 0, ww - 1, wh);
+      ctx.strokeStyle = "#555";
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(x, 0, ww - 1, wh);
+
+      // 按下時標記音名
+      if (isPressed) {
+        ctx.fillStyle = "#fff";
+        ctx.font = `bold ${Math.max(8, 8)}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.fillText(["C","D","E","F","G","A","B"][i], x + (ww - 1) / 2, wh - 3);
+      }
+    }
+
+    // 黑鍵
+    const blackPositions = [0, 1, 3, 4, 5]; // 在第 0,1,3,4,5 個白鍵右邊
+    const blackSemitones = [1, 3, 6, 8, 10];
+    for (let i = 0; i < 5; i++) {
+      const wp = blackPositions[i];
+      const x = x0 + (wp + 1) * ww - bw / 2 - 0.5;
+      const semi = blackSemitones[i];
+      const isPressed = pressed.has(semi);
+      ctx.fillStyle = isPressed ? "#e94560" : "#222";
+      ctx.fillRect(x, 0, bw, bh);
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(x, 0, bw, bh);
+
+      if (isPressed) {
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 6px sans-serif";
+        ctx.textAlign = "center";
+        const labels = ["C#","D#","F#","G#","A#"];
+        ctx.fillText(labels[i], x + bw / 2, bh - 2);
+      }
+    }
   },
 
   /**

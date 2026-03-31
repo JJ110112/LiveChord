@@ -10,12 +10,13 @@
   // ---- state ----
   let isFavorite = false;
   let chordData = null;
-  let displayMode = "jianpu";
+  let displayMode = "piano";
   let chordCache = {};
   let siblingTracks = [];
   let currentIndex = -1;
   let activeChordIdx = -1;
   let chordElements = [];
+  let _ribbonPositions = [];
   let transpose = 0;
   let capo = 0;
 
@@ -46,33 +47,45 @@
   const bigChordName = $("#bigChordName");
   const bigChordJianpu = $("#bigChordJianpu");
 
-  let activeTab = "overview";
+  let activeTab = localStorage.getItem("livechord_tab") || "overview";
   let ribbonElements = [];
   const pxPerSec = 100;
 
   if (tabOverview && tabDiagrams) {
     tabOverview.addEventListener("click", () => {
       activeTab = "overview";
+      localStorage.setItem("livechord_tab", "overview");
       tabOverview.classList.add("active");
       tabDiagrams.classList.remove("active");
       chordDisplayOverview.style.display = "";
       chordDisplayDiagrams.style.display = "none";
+      // Overview 顯示大和弦
+      if (hasChords) bigChordBox.style.display = "";
       if (activeChordIdx >= 0 && activeChordIdx < chordElements.length) {
         chordElements[activeChordIdx].scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
       }
+      // 重新觸發高亮更新
+      activeChordIdx = -1;
+      updateActiveChord(audio.currentTime || -1);
     });
 
     tabDiagrams.addEventListener("click", () => {
       activeTab = "diagrams";
+      localStorage.setItem("livechord_tab", "diagrams");
       tabDiagrams.classList.add("active");
       tabOverview.classList.remove("active");
       chordDisplayOverview.style.display = "none";
       chordDisplayDiagrams.style.display = "block";
+      // Diagrams 隱藏大和弦（避免重複）
+      bigChordBox.style.display = "none";
       const t = audio.currentTime || 0;
       if (ribbonTrack) {
         ribbonTrack.style.transform = `translateX(${-t * pxPerSec}px)`;
       }
     });
+
+    // 還原上次 tab
+    if (activeTab === "diagrams") tabDiagrams.click();
   }
   const bigChordDiagram = $("#bigChordDiagram");
 
@@ -152,7 +165,9 @@
         bigChordBox.style.display = "";
         return;
       }
-    } catch {}
+    } catch (err) {
+      console.error("loadChords error:", err);
+    }
 
     hasChords = false;
     chordDisplayOverview.innerHTML = `<div class="empty" style="padding:20px"><div class="msg" style="color:var(--text-dim)">尚無和弦譜 — 請按「偵測」按鈕手動偵測</div></div>`;
@@ -191,8 +206,12 @@
     const names = [...new Set(chords.map((c) => c.chord))];
     await Promise.all(names.map(async (name) => {
       if (chordCache[name]) return;
-      chordCache[name] = { jianpu: "", diagram_guitar: null, diagram_ukulele: null };
-      try { const info = await API.chordInfo(name); chordCache[name].jianpu = info.jianpu || ""; } catch {}
+      chordCache[name] = { jianpu: "", notes: [], diagram_guitar: null, diagram_ukulele: null };
+      try {
+        const info = await API.chordInfo(name);
+        chordCache[name].jianpu = info.jianpu || "";
+        chordCache[name].notes = info.notes || [];
+      } catch {}
       try { chordCache[name].diagram_guitar = await API.chordDiagram("guitar", name); } catch {}
       try { chordCache[name].diagram_ukulele = await API.chordDiagram("ukulele", name); } catch {}
     }));
@@ -236,7 +255,21 @@
     if (ribbonTrack) ribbonTrack.innerHTML = "";
     chordElements = [];
     ribbonElements = [];
+    _ribbonPositions = [];
     activeChordIdx = -1;
+
+    // Pre-calculate ribbon positions: no overlap, min width 120px
+    let curLeft = 0;
+    for (let i = 0; i < chords.length; i++) {
+      const timeLeft = chords[i].time * pxPerSec;
+      const left = Math.max(timeLeft, curLeft);
+      const nextStart = i + 1 < chords.length ? chords[i+1].time : chords[i].time + 4;
+      const naturalW = (nextStart - chords[i].time) * pxPerSec;
+      const w = Math.max(naturalW, 120);
+      _ribbonPositions.push({ left, width: w, time: chords[i].time });
+      curLeft = left + w;
+    }
+
     for (let i = 0; i < chords.length; i++) {
       const el = _createChordEl(chords[i], i);
       chordDisplayOverview.appendChild(el);
@@ -254,8 +287,12 @@
     const unique = [...new Set(names)];
     await Promise.all(unique.map(async (name) => {
       if (chordCache[name]) return;
-      chordCache[name] = { jianpu: "", diagram_guitar: null, diagram_ukulele: null };
-      try { const info = await API.chordInfo(name); chordCache[name].jianpu = info.jianpu || ""; } catch {}
+      chordCache[name] = { jianpu: "", notes: [], diagram_guitar: null, diagram_ukulele: null };
+      try {
+        const info = await API.chordInfo(name);
+        chordCache[name].jianpu = info.jianpu || "";
+        chordCache[name].notes = info.notes || [];
+      } catch {}
       try { chordCache[name].diagram_guitar = await API.chordDiagram("guitar", name); } catch {}
       try { chordCache[name].diagram_ukulele = await API.chordDiagram("ukulele", name); } catch {}
     }));
@@ -285,13 +322,10 @@
     div.className = "ribbon-item";
     div.dataset.idx = idx;
     
-    // Position based on time
-    const leftPx = chord.time * pxPerSec;
-    const endT = chord.end != null ? chord.end : (idx + 1 < allChords.length ? allChords[idx+1].time : chord.time + 4);
-    const widthPx = (endT - chord.time) * pxPerSec;
-    
-    div.style.left = `${leftPx}px`;
-    div.style.width = `${Math.max(widthPx, 40)}px`; // Minimum width for visibility
+    // Use pre-calculated positions (no overlap)
+    const pos = _ribbonPositions[idx] || { left: chord.time * pxPerSec, width: 120 };
+    div.style.left = `${pos.left}px`;
+    div.style.width = `${pos.width}px`;
 
     div.addEventListener("click", () => {
       audio.currentTime = chord.time;
@@ -303,11 +337,14 @@
     nameEl.textContent = chord.chord;
     div.appendChild(nameEl);
 
-    if (displayMode === "jianpu") {
+    if (displayMode === "piano") {
       const jp = document.createElement("div");
       jp.className = "chord-jianpu";
       jp.innerHTML = ChordRender.jianpuToHtml(cache.jianpu || "");
       div.appendChild(jp);
+      const pianoCanvas = document.createElement("canvas");
+      ChordRender.drawPiano(pianoCanvas, cache.notes || [], 1);
+      div.appendChild(pianoCanvas);
     } else {
       const key = displayMode === "guitar" ? "diagram_guitar" : "diagram_ukulele";
       const diag = cache[key];
@@ -333,11 +370,15 @@
     nameEl.textContent = chord.chord;
     div.appendChild(nameEl);
 
-    if (displayMode === "jianpu") {
+    if (displayMode === "piano") {
       const jp = document.createElement("div");
       jp.className = "chord-jianpu";
       jp.innerHTML = ChordRender.jianpuToHtml(cache.jianpu || "");
       div.appendChild(jp);
+      const pianoCanvas = document.createElement("canvas");
+      pianoCanvas.style.marginTop = "4px";
+      ChordRender.drawPiano(pianoCanvas, cache.notes || [], 1);
+      div.appendChild(pianoCanvas);
     } else {
       const key = displayMode === "guitar" ? "diagram_guitar" : "diagram_ukulele";
       const diagramData = cache[key];
@@ -364,8 +405,18 @@
   function updateActiveChord(currentTime) {
     if (!chordData || !chordData.chords || chordElements.length === 0) return;
 
-    if (activeTab === "diagrams" && ribbonTrack) {
-      ribbonTrack.style.transform = `translateX(${-currentTime * pxPerSec}px)`;
+    if (activeTab === "diagrams" && ribbonTrack && _ribbonPositions.length > 0) {
+      // Interpolate scroll from adjusted positions
+      let scrollX = currentTime * pxPerSec;
+      for (let i = _ribbonPositions.length - 1; i >= 0; i--) {
+        const p = _ribbonPositions[i];
+        if (currentTime >= p.time) {
+          const frac = p.width > 0 ? (currentTime - p.time) * pxPerSec / ((i + 1 < _ribbonPositions.length ? _ribbonPositions[i+1].time - p.time : 4) * pxPerSec) : 0;
+          scrollX = p.left + Math.min(frac, 1) * p.width;
+          break;
+        }
+      }
+      ribbonTrack.style.transform = `translateX(${-scrollX}px)`;
     }
 
     const displayedChords = _displayChords();
@@ -404,29 +455,35 @@
         ribbonElements[activeChordIdx].classList.add("active");
       }
 
-      // 更新大字顯示
+      // 更新大字顯示 — Diagrams 模式隱藏（避免重複）
       const chord = displayedChords[activeChordIdx];
       const cache = chordCache[chord.chord] || {};
-      bigChordName.textContent = chord.chord;
-      bigChordBox.style.display = "";
 
-      // 根據 displayMode 決定大字區顯示內容
-      bigChordJianpu.innerHTML = "";
-      bigChordDiagram.innerHTML = "";
-
-      if (displayMode === "jianpu") {
-        bigChordJianpu.innerHTML = ChordRender.jianpuToHtml(cache.jianpu || "");
+      if (activeTab === "diagrams") {
+        bigChordBox.style.display = "none";
       } else {
-        // 簡譜仍顯示在副標
-        bigChordJianpu.innerHTML = ChordRender.jianpuToHtml(cache.jianpu || "");
-        // 放大和弦圖
-        const key = displayMode === "guitar" ? "diagram_guitar" : "diagram_ukulele";
-        const diag = cache[key];
-        if (diag) {
-          const canvas = document.createElement("canvas");
-          canvas.style.marginTop = "8px";
-          ChordRender.drawDiagram(canvas, diag, 2);
-          bigChordDiagram.appendChild(canvas);
+        bigChordName.textContent = chord.chord;
+        bigChordBox.style.display = "";
+
+        bigChordJianpu.innerHTML = "";
+        bigChordDiagram.innerHTML = "";
+
+        if (displayMode === "piano") {
+          bigChordJianpu.innerHTML = ChordRender.jianpuToHtml(cache.jianpu || "");
+          const pianoCanvas = document.createElement("canvas");
+          pianoCanvas.style.marginTop = "8px";
+          ChordRender.drawPiano(pianoCanvas, cache.notes || [], 1.8);
+          bigChordDiagram.appendChild(pianoCanvas);
+        } else {
+          bigChordJianpu.innerHTML = ChordRender.jianpuToHtml(cache.jianpu || "");
+          const key = displayMode === "guitar" ? "diagram_guitar" : "diagram_ukulele";
+          const diag = cache[key];
+          if (diag) {
+            const canvas = document.createElement("canvas");
+            canvas.style.marginTop = "8px";
+            ChordRender.drawDiagram(canvas, diag, 2);
+            bigChordDiagram.appendChild(canvas);
+          }
         }
       }
     } else {
@@ -506,8 +563,17 @@
     audio.currentTime = pct * (audio.duration || 0);
   });
 
+  // 還原上次音量
+  const savedVol = localStorage.getItem("livechord_volume");
+  if (savedVol !== null) {
+    const v = parseFloat(savedVol);
+    audio.volume = v;
+    volumeSlider.value = v;
+  }
+
   volumeSlider.addEventListener("input", () => {
     audio.volume = parseFloat(volumeSlider.value);
+    localStorage.setItem("livechord_volume", volumeSlider.value);
   });
 
   // prev / next
@@ -601,6 +667,14 @@
 
   // ---- mode switch ----
   // 簡譜/吉他/烏克麗麗模式切換（只限 #modeSwitch 內的按鈕）
+  const capoGroup = $("#capoGroup");
+
+  function _updateCapoVisibility() {
+    if (capoGroup) {
+      capoGroup.style.display = (displayMode === "guitar" || displayMode === "ukulele") ? "" : "none";
+    }
+  }
+
   document.querySelectorAll("#modeSwitch .mode-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll("#modeSwitch .mode-btn").forEach((b) => {
@@ -612,6 +686,7 @@
       btn.style.color = "#fff";
       btn.classList.add("active");
       displayMode = btn.dataset.mode;
+      _updateCapoVisibility();
       buildChordDOM();
       updateActiveChord(audio.currentTime || -1);
     });

@@ -12,13 +12,15 @@ data/chords/
 data/settings.json
 data/activity.log
 data/chord_queue.json
+data/.local_music_root
 
 # Windows 自動啟動腳本（由 install-service.bat 產生）
 start-hidden.vbs
 
-# IDE
+# IDE / Claude
 .vscode/
 .idea/
+.claude/
 
 # Doc 參考用原始專案（太大不進版控）
 doc/SheetMusicChord/
@@ -30,8 +32,17 @@ data/test_songs/**/*.recording.avi
 data/test_songs/**/results.json
 data/test_songs/**/*.det.lab
 data/test_songs/**/*.capture-screenshots.png
+
 # BTC 模型權重（太大不進版控，需手動下載）
 backend/btc/*.pt
 backend/btc/__pycache__/
 backend/btc/utils/__pycache__/
+
+# 工具除錯暫存
 tools/desktop.ini
+tools/debug_output/
+tools/debug_*.png
+tools/diff_out*.txt
+tools/*.png
+tools/__pycache__/
+tools/capture_config.json

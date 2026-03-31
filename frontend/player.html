@@ -27,19 +27,17 @@
     </div>
   </div>
 
-  <!-- audio controls -->
+  <!-- audio controls (compact) -->
   <div class="audio-controls">
-    <div class="progress-bar" id="progressBar">
-      <div class="progress" id="progress" style="width:0%"></div>
-    </div>
-    <div class="time-row">
-      <span id="timeCurrent">0:00</span>
-      <span id="timeDuration">0:00</span>
-    </div>
     <div class="controls-row">
       <button id="btnPrev" title="上一首">&#x23EE;</button>
       <button id="btnPlay" class="btn-play" title="播放">&#x25B6;</button>
       <button id="btnNext" title="下一首">&#x23ED;</button>
+      <span id="timeCurrent" class="time-label">0:00</span>
+      <div class="progress-bar" id="progressBar" style="flex:1">
+        <div class="progress" id="progress" style="width:0%"></div>
+      </div>
+      <span id="timeDuration" class="time-label">0:00</span>
       <button id="btnFav" class="btn-fav" title="收藏">&#x2661;</button>
       <div class="volume-control">
         <span>&#x1F509;</span>
@@ -90,8 +88,8 @@
           <button id="btnTransposeUp" class="toolbar-btn">+</button>
         </div>
 
-        <!-- Capo -->
-        <div class="toolbar-group">
+        <!-- Capo (吉他/烏克麗麗才顯示) -->
+        <div id="capoGroup" class="toolbar-group" style="display:none">
           <span style="font-size:12px;color:var(--text-dim)">Capo</span>
           <select id="capoSelect" class="toolbar-select">
             <option value="0">無</option>
@@ -107,7 +105,7 @@
 
         <!-- 模式切換 -->
         <div id="modeSwitch" style="display:flex;gap:4px">
-          <button class="mode-btn active" data-mode="jianpu">簡譜</button>
+          <button class="mode-btn active" data-mode="piano">鋼琴</button>
           <button class="mode-btn" data-mode="guitar">吉他</button>
           <button class="mode-btn" data-mode="ukulele">烏克麗麗</button>
         </div>
@@ -125,8 +123,8 @@
 <div id="toast" class="toast"></div>
 <audio id="audio" preload="auto"></audio>
 
-<script src="/js/api.js"></script>
-<script src="/js/chord-render.js"></script>
-<script src="/js/player.js"></script>
+<script src="/js/api.js?v=7"></script>
+<script src="/js/chord-render.js?v=7"></script>
+<script src="/js/player.js?v=7"></script>
 </body>
 </html>

@@ -13,11 +13,9 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from mutagen.flac import FLAC
 
-router = APIRouter(prefix="/api", tags=["music"])
+from config import get_music_root, set_music_root
 
-MUSIC_ROOT = os.environ.get("LIVECHORD_MUSIC_ROOT", "Z:/")
-# 正規化 MUSIC_ROOT（Windows 映射磁碟可能解析為 UNC 路徑）
-MUSIC_ROOT = os.path.normpath(MUSIC_ROOT)
+router = APIRouter(prefix="/api", tags=["music"])
 DATA_DIR = Path(__file__).parent.parent / "data"
 CACHE_FILE = DATA_DIR / "library_cache.json"
 
@@ -42,9 +40,10 @@ _scan_state = {
 
 def _safe_path(path: str) -> str:
     """驗證路徑在 MUSIC_ROOT 內，防止路徑穿越"""
+    root = get_music_root()
     # 用 normpath 而非 realpath 避免 UNC 解析問題
     resolved = os.path.normpath(path)
-    if not resolved.lower().startswith(MUSIC_ROOT.lower()):
+    if not resolved.lower().startswith(root.lower()):
         raise HTTPException(status_code=403, detail="路徑不允許")
     if ".." in resolved:
         raise HTTPException(status_code=403, detail="路徑不允許")
@@ -96,7 +95,8 @@ def _song_hash(path: str) -> str:
 @router.get("/browse")
 async def browse(path: str = Query(default="")):
     """瀏覽目錄"""
-    target = os.path.join(MUSIC_ROOT, path) if path else MUSIC_ROOT
+    root = get_music_root()
+    target = os.path.join(root, path) if path else root
     target = _safe_path(target)
 
     if not os.path.isdir(target):
@@ -110,9 +110,10 @@ async def browse(path: str = Query(default="")):
 
     for name in items:
         full = os.path.join(target, name)
-        if name.startswith(".") or name.startswith("_"):
+        if name.startswith(".") or name.startswith("_") or name in (
+                "#recycle", "@eaDir", "@tmp", "#snapshot"):
             continue
-        rel = os.path.relpath(full, MUSIC_ROOT).replace("\\", "/")
+        rel = os.path.relpath(full, root).replace("\\", "/")
         if os.path.isdir(full):
             # 檢查是否有 cover.jpg
             cover = any(
@@ -128,7 +129,7 @@ async def browse(path: str = Query(default="")):
                 "name": name, "path": rel, "is_dir": False,
                 "has_cover": _find_cover(full) is not None,
             })
-    return {"current": os.path.relpath(target, MUSIC_ROOT).replace("\\", "/"),
+    return {"current": os.path.relpath(target, root).replace("\\", "/"),
             "entries": entries}
 
 
@@ -170,7 +171,7 @@ async def search(q: str = Query(default="")):
 @router.get("/track/info")
 async def track_info(path: str = Query(...)):
     """取得單曲 metadata"""
-    full = _safe_path(os.path.join(MUSIC_ROOT, path))
+    full = _safe_path(os.path.join(get_music_root(), path))
     if not os.path.isfile(full):
         raise HTTPException(status_code=404, detail="檔案不存在")
     if not full.lower().endswith(".flac"):
@@ -190,7 +191,7 @@ async def track_info(path: str = Query(...)):
 @router.get("/track/stream")
 async def track_stream(request: Request, path: str = Query(...)):
     """串流 FLAC 音訊（支援 HTTP Range）"""
-    full = _safe_path(os.path.join(MUSIC_ROOT, path))
+    full = _safe_path(os.path.join(get_music_root(), path))
     if not os.path.isfile(full):
         raise HTTPException(status_code=404, detail="檔案不存在")
     if not full.lower().endswith(".flac"):
@@ -253,7 +254,7 @@ async def track_stream(request: Request, path: str = Query(...)):
 @router.get("/track/cover")
 async def track_cover(path: str = Query(...)):
     """取得專輯封面"""
-    full = _safe_path(os.path.join(MUSIC_ROOT, path))
+    full = _safe_path(os.path.join(get_music_root(), path))
 
     # path 可能是檔案或目錄
     if os.path.isfile(full):
@@ -304,7 +305,7 @@ def _scan_worker(mode: str = "incremental"):
     })
 
     try:
-        root = MUSIC_ROOT
+        root = get_music_root()
         DATA_DIR.mkdir(parents=True, exist_ok=True)
 
         # 載入現有快取（增量模式用）
@@ -320,7 +321,9 @@ def _scan_worker(mode: str = "incremental"):
         seen_paths = set()
 
         for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+            dirnames[:] = [d for d in dirnames
+                           if not d.startswith(".") and d not in
+                           ("#recycle", "@eaDir", "@tmp", "#snapshot")]
             _scan_state["total_dirs"] += 1
 
             for fname in filenames:
@@ -443,6 +446,22 @@ async def library_scan_status():
         "finished_at": _scan_state["finished_at"],
         "error": _scan_state["error"],
     }
+
+
+@router.get("/settings")
+def get_settings():
+    return {"music_root": get_music_root()}
+
+@router.post("/settings")
+async def update_settings(request: Request):
+    payload = await request.json()
+    new_root = payload.get("music_root")
+    if new_root:
+        try:
+            set_music_root(new_root)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "music_root": get_music_root()}
 
 
 @router.get("/library/stats")

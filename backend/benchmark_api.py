@@ -101,31 +101,17 @@ async def save_ground_truth(data: GroundTruthData):
         # 驗證和弦格式
         if not entry.chord or not entry.chord.strip():
             raise HTTPException(400, f"和弦不能為空 (entry {i})")
-        # 基本和弦格式檢查（支援常見格式如 C, Cm, C7, Dm7 等）
+            
         chord_pattern = r'^[A-G][#b]?(m|maj|min|dim|aug|sus[24]?|add[0-9]|[0-9]+|M)?[0-9]*(\/[A-G][#b]?)?$|^N$'
         if not re.match(chord_pattern, entry.chord.strip()):
-            raise HTTPException(400, f"無效的和弦格式: {entry.chord} (entry {i})") > 0 and entry.time < data.entries[i-1].end:
-            raise HTTPException(400, f"時間軸重疊 (entry {i})")
-    
-    # 驗證和弦名稱格式
-    valid_chords = set(['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B', 'N', 'X'])
-    for i, entry in enumerate(data.entries):
-        if ':' in entry.chord:
-            root, quality = entry.chord.split(':', 1)
-            if root not in valid_chords or quality not in ['maj', 'min', '7', 'maj7', 'min7', 'dim', 'aug', 'sus2', 'sus4']:
-                raise HTTPException(400, f"無效和弦格式: {entry.chord} (entry {i})")
-        elif entry.chord not in valid_chords:
-            raise HTTPException(400, f"無效和弦名稱: {entry.chord} (entry {i})")
-
-    gt_file = lv_dir / f"{data.song}.lab"
-    try:
-        gt_file.write_text(json.dumps(data.dict(), ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"success": True, "message": f"Ground truth 已儲存: {data.level}/{data.song}"}
-    except IOError as e:
-        raise HTTPException(500, f"儲存檔案失敗: {str(e)}") > 0 and entry.time < data.entries[i-1].end:
-            raise HTTPException(400, f"時間區間重疊 (entry {i})")
-        if not entry.chord.strip():
-            raise HTTPException(400, f"和弦標記不能為空 (entry {i})")
+            valid_chords = set(['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B', 'N', 'X'])
+            if ':' in entry.chord:
+                root, quality = entry.chord.split(':', 1)
+                if root not in valid_chords or quality not in ['maj', 'min', '7', 'maj7', 'min7', 'dim', 'aug', 'sus2', 'sus4']:
+                    raise HTTPException(400, f"無效和弦格式: {entry.chord} (entry {i})")
+            else:
+                if entry.chord not in valid_chords:
+                    raise HTTPException(400, f"無效的和弦格式: {entry.chord} (entry {i})")
 
     gt_file = lv_dir / f"{data.song}.lab"
     gt_data = {

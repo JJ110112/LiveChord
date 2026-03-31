@@ -41,6 +41,8 @@ const API = {
   detectChords: (path) => API.post(`/api/chords/detect?path=${encodeURIComponent(path)}`),
   midiSearch: (path) => API.get(`/api/chords/midi-search?path=${encodeURIComponent(path)}`),
   midiImport: (path, midiPath) => API.post(`/api/chords/midi-import?path=${encodeURIComponent(path)}&midi_path=${encodeURIComponent(midiPath)}`),
+  chordTracks: () => API.get("/api/chords/tracks"),
+  batchMidiImport: () => API.post("/api/chords/batch-midi-import"),
 
   // 使用者
   getFavorites: () => API.get("/api/favorites"),

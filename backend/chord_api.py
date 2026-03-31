@@ -342,6 +342,101 @@ async def batch_detect_status():
     }
 
 
+@router.get("/chords/tracks")
+async def chords_tracks():
+    """列出所有曲目及其和弦狀態（供 admin 管理用）"""
+    if not CACHE_FILE.is_file():
+        return {"tracks": []}
+    cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+    CHORDS_DIR.mkdir(parents=True, exist_ok=True)
+    result = []
+    for t in cache.get("tracks", []):
+        p = t.get("path", "")
+        h = _song_hash(p)
+        chord_file = CHORDS_DIR / f"{h}.json"
+        info = {"path": p, "title": t.get("title", ""), "artist": t.get("artist", ""), "has_chords": chord_file.is_file(), "source": ""}
+        if chord_file.is_file():
+            try:
+                cd = json.loads(chord_file.read_text(encoding="utf-8"))
+                info["source"] = cd.get("source", "btc") or "btc"
+                info["chord_count"] = len(cd.get("chords", []))
+                info["key"] = cd.get("key", "")
+            except Exception:
+                pass
+        result.append(info)
+    return {"tracks": result}
+
+
+@router.post("/chords/batch-midi-import")
+async def batch_midi_import():
+    """批次 MIDI 匯入：對所有尚無和弦的曲目搜尋 MIDI 並匯入"""
+    from config import get_midi_root
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'tools'))
+    from midi_to_lab import midi_to_lab
+    from collections import Counter
+
+    midi_root = get_midi_root()
+    if not os.path.isdir(midi_root):
+        return {"ok": False, "message": f"MIDI 目錄不存在: {midi_root}", "imported": 0}
+
+    if not CACHE_FILE.is_file():
+        return {"ok": False, "message": "請先掃描音樂庫", "imported": 0}
+
+    cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+    CHORDS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Build MIDI index
+    midi_files = []
+    for dirpath, _, filenames in os.walk(midi_root):
+        for fname in filenames:
+            if fname.lower().endswith(('.mid', '.midi')):
+                midi_files.append((fname, os.path.join(dirpath, fname)))
+
+    imported = 0
+    skipped = 0
+    errors = []
+
+    for t in cache.get("tracks", []):
+        p = t.get("path", "")
+        chord_file = CHORDS_DIR / f"{_song_hash(p)}.json"
+        if chord_file.is_file():
+            skipped += 1
+            continue
+
+        song_name = os.path.splitext(os.path.basename(p))[0].lower()
+        matched = None
+        for mname, mfull in midi_files:
+            mlow = mname.lower().replace('.mid', '').replace('.midi', '')
+            if song_name in mlow or mlow in song_name:
+                matched = mfull
+                break
+
+        if not matched:
+            continue
+
+        try:
+            entries = midi_to_lab(matched, verbose=False)
+            if not entries:
+                continue
+            roots = []
+            for e in entries:
+                c = e["chord"]
+                if c and c[0] in "ABCDEFG":
+                    root = c[0]
+                    if len(c) > 1 and c[1] in '#b':
+                        root += c[1]
+                    roots.append(root)
+            key = Counter(roots).most_common(1)[0][0] if roots else ""
+            sheet = {"path": p, "key": key, "capo": 0, "source": "midi", "chords": entries}
+            chord_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
+            imported += 1
+        except Exception as e:
+            errors.append({"path": p, "error": str(e)})
+
+    return {"ok": True, "imported": imported, "skipped": skipped, "errors": errors[:10]}
+
+
 @router.get("/chords/stats")
 async def chords_stats():
     """和弦譜統計"""

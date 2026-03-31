@@ -68,6 +68,19 @@
     .badge-scanning { background: rgba(33,150,243,.15); color: #2196f3; }
 
     .current-task { font-size: 13px; color: var(--text-dim); margin-top: 6px; min-height: 18px; }
+
+    /* track list */
+    .trk { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-bottom: 1px solid #1a1a1a; }
+    .trk:hover { background: var(--bg-hover); }
+    .trk .trk-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .trk .trk-artist { width: 120px; color: var(--text-dim); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .trk .trk-badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; white-space: nowrap; }
+    .trk .b-midi { background: rgba(76,175,80,.15); color: #4caf50; }
+    .trk .b-chordify { background: rgba(33,150,243,.15); color: #2196f3; }
+    .trk .b-btc { background: rgba(255,152,0,.15); color: #ff9800; }
+    .trk .b-none { background: rgba(255,255,255,.05); color: #666; }
+    .trk button { padding: 2px 8px; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--text-dim); cursor: pointer; font-size: 11px; white-space: nowrap; }
+    .trk button:hover { background: var(--bg-hover); color: var(--text); }
   </style>
 </head>
 <body>
@@ -175,6 +188,19 @@
     <div class="current-task" id="manualStatus"></div>
   </div>
 
+  <!-- ======== 和弦管理 ======== -->
+  <div class="card">
+    <h2>和弦管理</h2>
+    <div class="actions" style="margin-bottom:12px">
+      <button class="primary" id="btnBatchMidi">批次 MIDI 匯入</button>
+      <button id="btnRefreshTracks">重新整理</button>
+      <span id="midiStatus" style="font-size:12px;color:var(--text-dim);margin-left:8px"></span>
+    </div>
+    <div id="trackList" style="max-height:360px;overflow-y:auto;font-size:13px;">
+      <span style="color:var(--text-dim)">載入中…</span>
+    </div>
+  </div>
+
   <!-- ======== Activity Log ======== -->
   <div class="card">
     <h2>活動記錄</h2>
@@ -236,7 +262,7 @@
   });
 
   // ---- 儲存設定 ----
-  $("#btnSaveSettings").addEventListener("click", async () => {
+  async function saveAutoSettings() {
     const genres = $("#optSkipGenres").value.split(",").map(s => s.trim()).filter(Boolean);
     try {
       await API.post("/api/auto/settings", {
@@ -248,7 +274,12 @@
       });
       showToast("設定已儲存");
     } catch (e) { showToast("儲存失敗: " + e.message); }
-  });
+  }
+  $("#btnSaveSettings").addEventListener("click", saveAutoSettings);
+
+  // toggle 自動儲存
+  $("#optAutoScan").addEventListener("change", saveAutoSettings);
+  $("#optAutoChord").addEventListener("change", saveAutoSettings);
 
   // ---- 手動操作按鈕 ----
   $("#btnStartCore").addEventListener("click", async () => {
@@ -273,6 +304,73 @@
       const r = await API.post(`/api/chords/batch-detect?skip_existing=${skip}&genre=${genre}`);
       showToast(r.message || "批次偵測已啟動");
     } catch (e) { showToast(e.message); }
+  });
+
+  // ---- 和弦管理 ----
+  const trackList = $("#trackList");
+  const midiStatus = $("#midiStatus");
+
+  async function loadTrackList() {
+    trackList.innerHTML = '<span style="color:var(--text-dim)">載入中…</span>';
+    try {
+      const data = await API.chordTracks();
+      const tracks = data.tracks || [];
+      if (!tracks.length) { trackList.innerHTML = '<span style="color:var(--text-dim)">無曲目，請先掃描</span>'; return; }
+      trackList.innerHTML = tracks.map((t, i) => {
+        const src = t.source || "";
+        const badgeCls = src === "midi" ? "b-midi" : src === "chordify" ? "b-chordify" : src === "btc" ? "b-btc" : "b-none";
+        const badgeText = t.has_chords ? `${src || "btc"} ${t.chord_count || ""}` : "無和弦";
+        const name = t.title || t.path.replace(/\.flac$/i, "");
+        return `<div class="trk" data-idx="${i}" data-path="${esc(t.path)}">
+          <span class="trk-name" title="${esc(t.path)}">${esc(name)}</span>
+          <span class="trk-artist">${esc(t.artist || "")}</span>
+          <span class="trk-badge ${badgeCls}">${badgeText}</span>
+          ${t.has_chords ? "" : `<button class="btn-midi-search" data-path="${esc(t.path)}">MIDI</button>`}
+        </div>`;
+      }).join("");
+
+      // Bind MIDI search buttons
+      trackList.querySelectorAll(".btn-midi-search").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const path = btn.dataset.path;
+          btn.textContent = "搜尋中…";
+          btn.disabled = true;
+          try {
+            const sr = await API.midiSearch(path);
+            if (sr.results && sr.results.length > 0) {
+              btn.textContent = "匯入中…";
+              const r = await API.midiImport(path, sr.results[0].path);
+              showToast(`${path.split("/").pop()}: MIDI 匯入 ${r.chord_count} 和弦`);
+              loadTrackList();
+            } else {
+              btn.textContent = "無 MIDI";
+              setTimeout(() => { btn.textContent = "MIDI"; btn.disabled = false; }, 2000);
+            }
+          } catch (err) {
+            showToast("MIDI 匯入失敗: " + err.message);
+            btn.textContent = "MIDI";
+            btn.disabled = false;
+          }
+        });
+      });
+    } catch (err) {
+      trackList.innerHTML = `<span style="color:#f66">載入失敗: ${esc(err.message)}</span>`;
+    }
+  }
+  loadTrackList();
+
+  $("#btnRefreshTracks").addEventListener("click", loadTrackList);
+
+  $("#btnBatchMidi").addEventListener("click", async () => {
+    midiStatus.textContent = "批次匯入中…";
+    try {
+      const r = await API.batchMidiImport();
+      midiStatus.textContent = `完成！匯入 ${r.imported} 首，跳過 ${r.skipped} 首`;
+      if (r.imported > 0) loadTrackList();
+    } catch (e) {
+      midiStatus.textContent = "失敗: " + e.message;
+    }
   });
 
   // ---- 狀態輪詢 ----
