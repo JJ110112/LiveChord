@@ -384,9 +384,17 @@
     el.addEventListener("mousedown", (e) => {
       if (e.button !== 0) return;
       _startDrag(e.clientX);
+      e.preventDefault(); // 防止選取文字
     });
-    window.addEventListener("mousemove", (e) => _moveDrag(e.clientX));
+    window.addEventListener("mousemove", (e) => {
+      if (!isDragging) return;
+      // 如果滑鼠按鈕已放開（buttons === 0），強制結束
+      if (e.buttons === 0) { _endDrag(); return; }
+      _moveDrag(e.clientX);
+    });
     window.addEventListener("mouseup", _endDrag);
+    // 滑鼠離開視窗時也結束
+    document.addEventListener("mouseleave", _endDrag);
 
     // 觸控事件（平板）
     el.addEventListener("touchstart", (e) => {
