@@ -186,7 +186,7 @@ def _run_btc(audio_path: str) -> list:
     lines = []
     start = 0.0
     
-    # 使用線程鎖 (Lock)，確保 RTX 5080 一次只專心處理一首歌的張量，防止 CUDA Context 污染與 VRAM 爆掉
+    # 這裡的鎖 (可能是 user 自行定義的 Semaphore 或 Lock)
     with _inference_lock:
         with torch.no_grad():
             ft = torch.tensor(feature, dtype=torch.float32).unsqueeze(0).to(_device)
@@ -194,18 +194,19 @@ def _run_btc(audio_path: str) -> list:
                 out, _ = _model.self_attn_layers(ft[:, n_ts * t:n_ts * (t + 1), :])
                 pred, _ = _model.output_layer(out)
                 pred = pred.squeeze()
-            for i in range(n_ts):
-                if t == 0 and i == 0:
-                    prev = pred[i].item()
-                    continue
-                if pred[i].item() != prev:
-                    lines.append((start, fps * (n_ts * t + i), _idx_to_chord[prev]))
-                    start = fps * (n_ts * t + i)
-                    prev = pred[i].item()
-                if t == n_inst - 1 and i + num_pad == n_ts:
-                    if start != fps * (n_ts * t + i):
+                
+                for i in range(n_ts):
+                    if t == 0 and i == 0:
+                        prev = pred[i].item()
+                        continue
+                    if pred[i].item() != prev:
                         lines.append((start, fps * (n_ts * t + i), _idx_to_chord[prev]))
-                    break
+                        start = fps * (n_ts * t + i)
+                        prev = pred[i].item()
+                    if t == n_inst - 1 and i + num_pad == n_ts:
+                        if start != fps * (n_ts * t + i):
+                            lines.append((start, fps * (n_ts * t + i), _idx_to_chord[prev]))
+                        break
 
     return lines
 

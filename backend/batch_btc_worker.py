@@ -37,7 +37,8 @@ SKIP_GENRES = {
 SUPPORTED_EXT = {".flac", ".mp3", ".wav"}
 
 # 跳過超過此大小的檔案（MB），避免 OOM
-MAX_FILE_SIZE_MB = 150
+# 192kHz/24bit FLAC 5分鐘 ≈ 200MB，設 100MB 上限
+MAX_FILE_SIZE_MB = 100
 
 # 資料庫位置
 CHORDS_DIR = Path(__file__).parent.parent / "data" / "chords"
@@ -68,26 +69,34 @@ def _is_skipped_genre(rel_path: str) -> bool:
 # 使用 threading.Lock 確保寫入 JSON 和 Print 時不會打架
 print_lock = threading.Lock()
 
+_gpu_semaphore = threading.Semaphore(2)  # 最多 2 個同時用 GPU，避免 VRAM 爆
+
 def process_track(root_dir: str, rel_path: str):
     full_path = os.path.join(root_dir, rel_path)
-    # 產出 JSON 的目標位置
     h = _song_hash(rel_path)
     out_file = CHORDS_DIR / f"{h}.json"
 
-    # 如果已經有和弦譜，檢查來源是否為 BTC 或 MIDI
     if out_file.is_file():
         try:
             with open(out_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            # 只有當沒有來源或是 chordify 時才考慮覆寫（這裡為求速度只要檔案存在就跳過）
             if data.get("chords"):
                 return "SKIP"
         except Exception:
-            pass  # JSON 壞掉就重做
+            pass
+
+    # 預檢檔案大小（RAM 保護）
+    try:
+        fsize_mb = os.path.getsize(full_path) / (1024 * 1024)
+        if fsize_mb > MAX_FILE_SIZE_MB:
+            return f"SKIP_BIG ({fsize_mb:.0f}MB)"
+    except OSError:
+        return "ERROR (file access)"
 
     try:
-        # librosa.load (CPU) + model inference (GPU)
-        chords = detect_chords(full_path)
+        # GPU 排隊：限制同時推論數量，避免 VRAM OOM
+        with _gpu_semaphore:
+            chords = detect_chords(full_path)
         
         if not chords:
             return "NO_CHORDS"
@@ -117,7 +126,7 @@ def process_track(root_dir: str, rel_path: str):
 def main():
     parser = argparse.ArgumentParser(description="LiveChord 巨量 BTC 批次工作站")
     parser.add_argument("--root", type=str, required=True, help="音樂庫根目錄 (例如 Z:\ 或 Z:\Jam)")
-    parser.add_argument("--workers", type=int, default=8, help="並發執行緒數量 (預設 8，配合 i9 處理器)")
+    parser.add_argument("--workers", type=int, default=4, help="並發執行緒數量 (預設 4，librosa 解碼 + GPU 推論)")
     args = parser.parse_args()
 
     # 初始化
@@ -193,7 +202,7 @@ def main():
             task_count += 1
             try:
                 result = future.result()
-                if result == "SKIP":
+                if result == "SKIP" or result.startswith("SKIP_BIG"):
                     skip_count += 1
                 elif result.startswith("ERROR"):
                     err_count += 1
