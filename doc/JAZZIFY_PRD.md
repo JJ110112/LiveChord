@@ -21,11 +21,19 @@
 | | HMM / LLM 推理 | ❌ 未做 | 需等待 GPU 大批次處理完 78k 資料再進行訓練 |
 | | 多智能體 Prompts | ✅ 完成 | PM/Data RD/Backend RD/QA 已定義完成並記錄於文件內 |
 | | Jam Tracks 字典 | ⚠️ 部分完成 | 架構就緒 (`groove_dict.py`)，等待 GPU 批次運算 3,000 首獨立風格集以解鎖 Funk/Neo-Soul 引擎 |
+| | Voice Leading | ✅ 完成 | 自動轉位演算法（Smooth Voice Leading），最小化手位移動距離 |
+| | Funk/Neo-Soul 引擎 | ❌ 未做 | 需加入 **Chord Voicing Spread** 參數（音程張開程度）。Neo-Soul 精髓在於 Cluster Voicing（緊密排列）+ 非功能性調性和絃 + 悶音/切分節奏。建議在 `groove_dict.py` 訓練 45K 風格集時，同步提取每個和弦的 voicing spread 統計值 |
 
 ### 3. 系統架構 (System Architecture)
 *   **核心服務**：FastAPI (Python)。
 *   **資料萃取**：Librosa, Pretty_MIDI, BTC Transformer 模型。
 *   **智能體編排**：LangSmith / LangGraph，將任務派發給 PM、Data RD、Backend RD 與 QA agents。
+
+### 4. 混合式智慧重配架構 (Hybrid AI Reharmonizer)
+為解決單純 Markov Chain 的「馬可夫失憶症（缺乏音樂意圖與段落認知）」，系統匯入以下混合架構：
+*   **相對調矩陣 (Relative Scale Matrix)**：強制將絕對和弦轉換為相對級數（Roman Numerals），讓模型具備「調性重力 (Tonal Gravity)」感知。
+*   **段落標籤與 Chord2Vec**：利用和弦切換的密度與延伸音張力，定義主歌與副歌的情緒標籤，結合向量語義尋找合理代理和弦。
+*   **模式匹配引擎 (Pattern Matching Engine)**：特徵萃取器主動辨識 `ii-V-I`、`Modal Interchange` 等樂理結構，必要時介入防呆（Rule-based constraints），確保生成的和聲具備穩定的終止式落地感。
 
 ---
 

@@ -156,7 +156,13 @@ const ChordRender = {
    * @param {string[]} notes - 組成音名列表 e.g. ["C", "E", "G"]
    * @param {number} scale
    */
-  drawPiano(canvas, notes, scale = 1) {
+  /**
+   * @param {HTMLCanvasElement} canvas
+   * @param {string[]} notes - 組成音名 e.g. ["C","E","G","B"]
+   * @param {number} scale
+   * @param {number[]} prevMidi - 前一個和弦的 MIDI 音高（用於 voice leading）
+   */
+  drawPiano(canvas, notes, scale = 1, prevMidi = null) {
     if (!canvas) return;
     notes = notes || [];
 
@@ -184,6 +190,41 @@ const ChordRender = {
         absNotes.push(n);
         prev = n;
       }
+    }
+
+    // Voice Leading：如果有前一個和弦，找最近的轉位
+    if (prevMidi && prevMidi.length > 0 && absNotes.length > 0) {
+      const prevCenter = prevMidi.reduce((a, b) => a + b, 0) / prevMidi.length;
+      // 嘗試所有轉位：每個音可以 ±12
+      let bestVoicing = [...absNotes];
+      let bestDist = Infinity;
+      // 嘗試整體移高/低八度 + 個別音微調
+      for (let shift = -12; shift <= 12; shift += 12) {
+        const candidate = absNotes.map(n => n + shift);
+        // 個別音找最近 prevMidi 的位置
+        const voiced = candidate.map(n => {
+          let best = n;
+          let minD = Math.abs(n - prevCenter);
+          for (const oct of [-12, 0, 12]) {
+            const d = Math.abs((n + oct) - prevCenter);
+            if (d < minD) { minD = d; best = n + oct; }
+          }
+          return best;
+        });
+        // 確保排序且在合理範圍
+        voiced.sort((a, b) => a - b);
+        const totalDist = voiced.reduce((sum, n, i) => {
+          const closest = prevMidi.reduce((min, p) => Math.min(min, Math.abs(n - p)), 99);
+          return sum + closest;
+        }, 0);
+        if (totalDist < bestDist) {
+          bestDist = totalDist;
+          bestVoicing = voiced;
+        }
+      }
+      // 替換 absNotes
+      absNotes.length = 0;
+      bestVoicing.forEach(n => absNotes.push(n));
     }
 
     // 區分核心音 (前4個: root,3rd,5th,7th) vs 延伸音 (9th,11th,13th)
@@ -275,6 +316,9 @@ const ChordRender = {
         ctx.fill();
       }
     }
+
+    // 回傳 MIDI 位置供下一個和弦做 voice leading
+    canvas._lastMidi = [...absNotes];
   },
 
   /**

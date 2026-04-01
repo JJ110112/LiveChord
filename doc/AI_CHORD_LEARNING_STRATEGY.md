@@ -73,7 +73,10 @@
 | **階段一：Markov Chain** | ✅ 完成 | 實作 Bigram/Trigram 機制，支援動態回退 (Backoff) 與創造力亂數加權預測 |
 | **巨量音訊批次工具** | ✅ 完成 | **[特殊工具]** `batch_btc_worker.py` (支援 RTX 5080 + i9-13900KF 的多執行緒非同步打 GPU 腳本，已設定過濾 Classics/EDM/Sleep 等破壞學習之曲風) |
 | **漸進式自動學習** | ✅ 完成 | `auto_worker.py` 在掃描出新和弦後，背景自動重新訓練 Markov + Chord2Vec 矩陣 |
+| **Voice Leading** | ✅ 完成 | 鋼琴鍵盤自動轉位，最小化手位移動（Smooth Voice Leading），核心音紅/延伸音藍色區分 |
+| **Key-Relative 簡譜** | ✅ 完成 | 簡譜數字隨移調/Capo 動態更新，以當前 Key 為基準（非固定 C） |
 | **旋律相容性檢測** | ❌ 未做 | (需要開發 `librosa.pyin` / F0 melody detection 模組化以避免 Jazzify 和弦撞音) |
+| **Funk/Neo-Soul 引擎** | ❌ 未做 | 需加入 Chord Voicing Spread 參數，訓練 45K 風格集時提取 cluster voicing 統計 |
 | **階段三：Transformer** | ❌ 未做 | (需要等待 78K 資料完整跑出 CUDA Token 後再行調試) |
 
 ### 2. Roadmap 目標

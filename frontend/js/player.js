@@ -426,15 +426,21 @@
       curLeft = left + w;
     }
 
+    let _prevMidi = null;
     for (let i = 0; i < chords.length; i++) {
-      const el = _createChordEl(chords[i], i);
+      const el = _createChordEl(chords[i], i, _prevMidi);
       chordDisplayOverview.appendChild(el);
       chordElements.push(el);
+      // 擷取 voice leading 的 MIDI 位置給下一個和弦
+      const pianoCanvas = el.querySelector("canvas");
+      if (pianoCanvas && pianoCanvas._lastMidi) _prevMidi = pianoCanvas._lastMidi;
 
       if (ribbonTrack) {
-        const rEl = _createRibbonEl(chords[i], i, chords);
+        const rEl = _createRibbonEl(chords[i], i, chords, _prevMidi);
         ribbonTrack.appendChild(rEl);
         ribbonElements.push(rEl);
+        const rCanvas = rEl.querySelector("canvas");
+        if (rCanvas && rCanvas._lastMidi) _prevMidi = rCanvas._lastMidi;
       }
     }
   }
@@ -454,7 +460,7 @@
     }));
   }
 
-  function _createChordEl(chord, idx) {
+  function _createChordEl(chord, idx, prevMidi) {
     const cache = chordCache[chord.chord] || {};
     const div = document.createElement("div");
     div.className = "chord-item";
@@ -468,11 +474,11 @@
       updateActiveChord(chord.time);
     });
 
-    _fillChordEl(div, chord, cache);
+    _fillChordEl(div, chord, cache, prevMidi);
     return div;
   }
 
-  function _createRibbonEl(chord, idx, allChords) {
+  function _createRibbonEl(chord, idx, allChords, prevMidi) {
     const cache = chordCache[chord.chord] || {};
     const div = document.createElement("div");
     div.className = "ribbon-item";
@@ -499,7 +505,7 @@
       jp.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
       div.appendChild(jp);
       const pianoCanvas = document.createElement("canvas");
-      ChordRender.drawPiano(pianoCanvas, cache.notes || [], 1);
+      ChordRender.drawPiano(pianoCanvas, cache.notes || [], 1, prevMidi);
       div.appendChild(pianoCanvas);
     } else {
       const key = displayMode === "guitar" ? "diagram_guitar" : "diagram_ukulele";
@@ -523,7 +529,7 @@
     return m ? { root: m[1], quality: m[2] } : { root: name, quality: "" };
   }
 
-  function _fillChordEl(div, chord, cache) {
+  function _fillChordEl(div, chord, cache, prevMidi) {
     div.innerHTML = "";
 
     const nameEl = document.createElement("div");
@@ -539,7 +545,7 @@
       div.appendChild(jp);
       const pianoCanvas = document.createElement("canvas");
       pianoCanvas.style.marginTop = "4px";
-      ChordRender.drawPiano(pianoCanvas, cache.notes || [], 1);
+      ChordRender.drawPiano(pianoCanvas, cache.notes || [], 1, prevMidi);
       div.appendChild(pianoCanvas);
     } else {
       const key = displayMode === "guitar" ? "diagram_guitar" : "diagram_ukulele";

@@ -1,0 +1,174 @@
+diff --git a/frontend/js/chord-render.js b/frontend/js/chord-render.js
+index 7c500df..7d12119 100644
+--- a/frontend/js/chord-render.js
++++ b/frontend/js/chord-render.js
+@@ -156,7 +156,13 @@ const ChordRender = {
+    * @param {string[]} notes - 組成音名列表 e.g. ["C", "E", "G"]
+    * @param {number} scale
+    */
+-  drawPiano(canvas, notes, scale = 1) {
++  /**
++   * @param {HTMLCanvasElement} canvas
++   * @param {string[]} notes - 組成音名 e.g. ["C","E","G","B"]
++   * @param {number} scale
++   * @param {number[]} prevMidi - 前一個和弦的 MIDI 音高（用於 voice leading）
++   */
++  drawPiano(canvas, notes, scale = 1, prevMidi = null) {
+     if (!canvas) return;
+     notes = notes || [];
+ 
+@@ -186,6 +192,41 @@ const ChordRender = {
+       }
+     }
+ 
++    // Voice Leading：如果有前一個和弦，找最近的轉位
++    if (prevMidi && prevMidi.length > 0 && absNotes.length > 0) {
++      const prevCenter = prevMidi.reduce((a, b) => a + b, 0) / prevMidi.length;
++      // 嘗試所有轉位：每個音可以 ±12
++      let bestVoicing = [...absNotes];
++      let bestDist = Infinity;
++      // 嘗試整體移高/低八度 + 個別音微調
++      for (let shift = -12; shift <= 12; shift += 12) {
++        const candidate = absNotes.map(n => n + shift);
++        // 個別音找最近 prevMidi 的位置
++        const voiced = candidate.map(n => {
++          let best = n;
++          let minD = Math.abs(n - prevCenter);
++          for (const oct of [-12, 0, 12]) {
++            const d = Math.abs((n + oct) - prevCenter);
++            if (d < minD) { minD = d; best = n + oct; }
++          }
++          return best;
++        });
++        // 確保排序且在合理範圍
++        voiced.sort((a, b) => a - b);
++        const totalDist = voiced.reduce((sum, n, i) => {
++          const closest = prevMidi.reduce((min, p) => Math.min(min, Math.abs(n - p)), 99);
++          return sum + closest;
++        }, 0);
++        if (totalDist < bestDist) {
++          bestDist = totalDist;
++          bestVoicing = voiced;
++        }
++      }
++      // 替換 absNotes
++      absNotes.length = 0;
++      bestVoicing.forEach(n => absNotes.push(n));
++    }
++
+     // 區分核心音 (前4個: root,3rd,5th,7th) vs 延伸音 (9th,11th,13th)
+     const coreSet = new Set(absNotes.slice(0, 4));
+     const extSet = new Set(absNotes.slice(4));
+@@ -275,6 +316,9 @@ const ChordRender = {
+         ctx.fill();
+       }
+     }
++
++    // 回傳 MIDI 位置供下一個和弦做 voice leading
++    canvas._lastMidi = [...absNotes];
+   },
+ 
+   /**
+diff --git a/frontend/js/player.js b/frontend/js/player.js
+index f822c21..ef61094 100644
+--- a/frontend/js/player.js
++++ b/frontend/js/player.js
+@@ -426,15 +426,21 @@
+       curLeft = left + w;
+     }
+ 
++    let _prevMidi = null;
+     for (let i = 0; i < chords.length; i++) {
+-      const el = _createChordEl(chords[i], i);
++      const el = _createChordEl(chords[i], i, _prevMidi);
+       chordDisplayOverview.appendChild(el);
+       chordElements.push(el);
++      // 擷取 voice leading 的 MIDI 位置給下一個和弦
++      const pianoCanvas = el.querySelector("canvas");
++      if (pianoCanvas && pianoCanvas._lastMidi) _prevMidi = pianoCanvas._lastMidi;
+ 
+       if (ribbonTrack) {
+-        const rEl = _createRibbonEl(chords[i], i, chords);
++        const rEl = _createRibbonEl(chords[i], i, chords, _prevMidi);
+         ribbonTrack.appendChild(rEl);
+         ribbonElements.push(rEl);
++        const rCanvas = rEl.querySelector("canvas");
++        if (rCanvas && rCanvas._lastMidi) _prevMidi = rCanvas._lastMidi;
+       }
+     }
+   }
+@@ -454,7 +460,7 @@
+     }));
+   }
+ 
+-  function _createChordEl(chord, idx) {
++  function _createChordEl(chord, idx, prevMidi) {
+     const cache = chordCache[chord.chord] || {};
+     const div = document.createElement("div");
+     div.className = "chord-item";
+@@ -468,11 +474,11 @@
+       updateActiveChord(chord.time);
+     });
+ 
+-    _fillChordEl(div, chord, cache);
++    _fillChordEl(div, chord, cache, prevMidi);
+     return div;
+   }
+ 
+-  function _createRibbonEl(chord, idx, allChords) {
++  function _createRibbonEl(chord, idx, allChords, prevMidi) {
+     const cache = chordCache[chord.chord] || {};
+     const div = document.createElement("div");
+     div.className = "ribbon-item";
+@@ -499,7 +505,7 @@
+       jp.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
+       div.appendChild(jp);
+       const pianoCanvas = document.createElement("canvas");
+-      ChordRender.drawPiano(pianoCanvas, cache.notes || [], 1);
++      ChordRender.drawPiano(pianoCanvas, cache.notes || [], 1, prevMidi);
+       div.appendChild(pianoCanvas);
+     } else {
+       const key = displayMode === "guitar" ? "diagram_guitar" : "diagram_ukulele";
+@@ -523,7 +529,7 @@
+     return m ? { root: m[1], quality: m[2] } : { root: name, quality: "" };
+   }
+ 
+-  function _fillChordEl(div, chord, cache) {
++  function _fillChordEl(div, chord, cache, prevMidi) {
+     div.innerHTML = "";
+ 
+     const nameEl = document.createElement("div");
+@@ -539,7 +545,7 @@
+       div.appendChild(jp);
+       const pianoCanvas = document.createElement("canvas");
+       pianoCanvas.style.marginTop = "4px";
+-      ChordRender.drawPiano(pianoCanvas, cache.notes || [], 1);
++      ChordRender.drawPiano(pianoCanvas, cache.notes || [], 1, prevMidi);
+       div.appendChild(pianoCanvas);
+     } else {
+       const key = displayMode === "guitar" ? "diagram_guitar" : "diagram_ukulele";
+diff --git a/frontend/player.html b/frontend/player.html
+index 277bff4..33a5f71 100644
+--- a/frontend/player.html
++++ b/frontend/player.html
+@@ -9,7 +9,7 @@
+   <meta name="theme-color" content="#e94560">
+   <meta name="apple-mobile-web-app-capable" content="yes">
+   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+-  <link rel="stylesheet" href="/css/style.css?v=37">
++  <link rel="stylesheet" href="/css/style.css?v=38">
+ </head>
+ <body>
+ 
+@@ -155,8 +155,8 @@
+ <div id="toast" class="toast"></div>
+ <audio id="audio" preload="auto"></audio>
+ 
+-<script src="/js/api.js?v=37"></script>
+-<script src="/js/chord-render.js?v=37"></script>
+-<script src="/js/player.js?v=37"></script>
++<script src="/js/api.js?v=38"></script>
++<script src="/js/chord-render.js?v=38"></script>
++<script src="/js/player.js?v=38"></script>
+ </body>
+ </html>
