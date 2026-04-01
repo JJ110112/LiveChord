@@ -1,8 +1,0 @@
-Original Chords: ['Cmaj7', 'Am7', 'Dm7', 'G7', 'Cmaj7', 'Fmaj7', 'Fm7', 'Cmaj7']
-Key: C
-Romans: ['Imaj7', 'vim7', 'iim7', 'V7', 'Imaj7', 'IVmaj7', 'ivm7', 'Imaj7']
-
---- Extracted Patterns ---
-[turnaround] idx 0~3: ['Cmaj7', 'Am7', 'Dm7', 'G7'] (Imaj7 vim7 iim7 V7)
-[251_major] idx 2~4: ['Dm7', 'G7', 'Cmaj7'] (iim7 V7 Imaj7)
-[modal_interchange] idx 5~7: ['Fmaj7', 'Fm7', 'Cmaj7'] (IVmaj7 ivm7 Imaj7)

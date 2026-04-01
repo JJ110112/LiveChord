@@ -51,3 +51,9 @@ tools/dist/
 preprocess_result.txt
 diff.txt
 patch_utf8.txt
+out.txt
+out2.txt
+out2_utf8.txt
+out8.txt
+patch2_utf8.txt
+*.txt
