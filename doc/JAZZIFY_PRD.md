@@ -24,11 +24,17 @@ LiveChord 的野心已超越單純的「和絃預測器」，而是成為**顛�
 | **階段二：Data ETL Pipeline** | 標準化語料庫 | ✅ 完成 | `preprocess.py` 移調→C大調，詞彙過濾 Top 100 |
 | | 78,929 首 GPU 批次處理工具 | ✅ 完成 | **[特殊工具]** `batch_btc_worker.py` (針對 RTX 5080 + i9 優化之多執行緒 CUDA 高速處理腳本，排除 Classics/EDM 等雜訊分類) |
 | **階段三：AI 預測模型** | Markov Model | ✅ 完成 | 實裝 Bigram/Trigram，支援 Backoff 退回 |
-| | HMM / Viterbi 推理 | ❌ 未做 | 需等待 GPU 大批次處理完 78k 資料，建立狀態轉移/發射矩陣後進行 Viterbi 解碼避開撞音 |
+| | HMM / Viterbi 推理 | ⚠️ 原型完成 | 發射矩陣 153 狀態 + Viterbi 解碼器（log-space + Top-K 剪枝）骨架就緒，需 78K 音檔配對完善 |
 | | 多智能體 Prompts | ✅ 完成 | PM/Data RD/Backend RD/QA 已定義完成並記錄於文件內 |
-| | Jam Tracks 字典 | ⚠️ 部分完成 | 架構就緒 (`groove_dict.py`)，等待 GPU 批次運算 3,000 首獨立風格集以解鎖 Funk/Neo-Soul 引擎 |
+| | Jam Tracks 字典 | ⚠️ 部分完成 | 架構就緒 (`groove_dict.py`)，2,512 首已訓練，等待 GPU 完成剩餘風格集 |
 | | Voice Leading | ✅ 完成 | 自動轉位演算法（Smooth Voice Leading），最小化手位移動距離 |
-| | Funk/Neo-Soul 引擎 | ❌ 未做 | 需加入 **Chord Voicing Spread** 參數（音程張開程度）。Neo-Soul 精髓在於 Cluster Voicing（緊密排列）+ 非功能性調性和絃 + 悶音/切分節奏。建議在 `groove_dict.py` 訓練 45K 風格集時，同步提取每個和弦的 voicing spread 統計值 |
+| | Pattern Matching | ✅ 完成 | Jazzify Pass 5 自動辨識 ii-V-I、turnaround、modal interchange、tritone sub、line cliché |
+| | 段落偵測 | ✅ 完成 | `section_detect.py`：Intro/Verse/Chorus/Bridge/Outro（密度+複雜度+重複模式分析） |
+| | 旋律萃取 + Lead Sheet | ✅ 完成 | pYIN F0 追蹤 + HPSS 去鼓 + 鋼琴綠色菱形即時旋律提示 |
+| | Voicing Spread | ✅ 完成 | groove_dict 追蹤 mean/min/max spread + cluster_ratio（Neo-Soul 預備） |
+| | MIDI Key 驗證 | ✅ 完成 | MIDI 匯入自動比對音檔 key，不一致 fallback BTC |
+| | Icon 化 UI | ✅ 完成 | 工具列全面 emoji icon + tooltip |
+| | Funk/Neo-Soul 引擎 | ❌ 未做 | 需 45K 風格集 Voicing Spread 統計 + Cluster Voicing 規則 |
 
 ### 3. 系統架構 (System Architecture)
 *   **核心服務**：FastAPI (Python)。

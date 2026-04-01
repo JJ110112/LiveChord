@@ -86,8 +86,17 @@
 | **漸進式自動學習** | ✅ 完成 | `auto_worker.py` 在掃描出新和弦後，背景自動重新訓練 Markov + Chord2Vec 矩陣 |
 | **Voice Leading** | ✅ 完成 | 鋼琴鍵盤自動轉位，最小化手位移動（Smooth Voice Leading），核心音紅/延伸音藍色區分 |
 | **Key-Relative 簡譜** | ✅ 完成 | 簡譜數字隨移調/Capo 動態更新，以當前 Key 為基準（非固定 C） |
-| **旋律相容性檢測** | ❌ 未做 | (需要開發 `librosa.pyin` / F0 melody detection 模組化以避免 Jazzify 和弦撞音) |
-| **Funk/Neo-Soul 引擎** | ❌ 未做 | 需加入 Chord Voicing Spread 參數，訓練 45K 風格集時提取 cluster voicing 統計 |
+| **旋律萃取 (pYIN)** | ✅ 完成 | `melody_extractor.py`：HPSS 分離去鼓 + pre-emphasis 去貝斯 + pYIN F0 追蹤，精準追蹤 C4-C6 人聲旋律 |
+| **Dynamic Lead Sheet** | ✅ 完成 | 鋼琴鍵盤上綠色菱形即時標示旋律音，API 快取於 `data/melodies/` |
+| **HMM 發射矩陣** | ✅ 完成 | 153 和弦狀態 × 12 音高，600 萬觀測值（理論推導版） |
+| **Viterbi 解碼器** | ✅ 完成 | Log-space + Top-K 剪枝，給定旋律序列找最優和弦路徑 |
+| **Pattern Matching** | ✅ 完成 | 整合至 Jazzify Pass 5，自動辨識 ii-V-I、turnaround、modal interchange、tritone sub |
+| **段落偵測** | ✅ 完成 | `section_detect.py`：Intro/Verse/Pre-Chorus/Chorus/Bridge/Outro，基於和弦密度+複雜度+重複模式 |
+| **Voicing Spread** | ✅ 完成 | `groove_dict.py` 追蹤每級數的 mean/min/max spread + cluster_ratio（Neo-Soul 預備） |
+| **MIDI Key 驗證** | ✅ 完成 | MIDI 匯入時自動比對音檔 key，不一致則 fallback BTC 偵測 |
+| **Icon 化 UI** | ✅ 完成 | 工具列全面 icon 化（▦▶🔍✏💡🎷↕🎹🎸🪕），tooltip 顯示功能說明 |
+| **旋律相容性檢測** | ⚠️ 原型完成 | HMM 發射矩陣 + Viterbi 骨架已就緒，需 78K 音檔配對產生完整發射統計 |
+| **Funk/Neo-Soul 引擎** | ❌ 未做 | 需 45K 風格集 Voicing Spread 統計 + Cluster Voicing 規則 |
 | **階段三：Transformer** | ❌ 未做 | (需要等待 78K 資料完整跑出 CUDA Token 後再行調試) |
 
 ### 2. Roadmap 目標
