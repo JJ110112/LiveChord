@@ -287,6 +287,48 @@
     } catch {}
   }
 
+  // ---- section detection ----
+  let sectionData = null;
+
+  async function _loadSections(path) {
+    try {
+      const res = await fetch(`/api/ai/sections?path=${encodeURIComponent(path)}`);
+      sectionData = await res.json();
+      if (sectionData.sections && sectionData.sections.length > 0) {
+        _renderSectionMarkers();
+      }
+    } catch {}
+  }
+
+  function _renderSectionMarkers() {
+    if (!sectionData || !sectionData.sections) return;
+    // 移除舊的
+    document.querySelectorAll(".section-marker").forEach(el => el.remove());
+
+    // 在 overview 的 chord-item 上標記段落
+    if (chordElements.length === 0) return;
+    const displayed = _displayChords();
+
+    for (const sec of sectionData.sections) {
+      // 找到該段落起始時間對應的 chord-item
+      for (let i = 0; i < displayed.length; i++) {
+        if (displayed[i].time >= sec.start && displayed[i].time < sec.end) {
+          const el = chordElements[i];
+          if (!el) continue;
+          // 只在段落第一個和弦上加標記
+          if (i === 0 || displayed[i - 1].time < sec.start) {
+            const marker = document.createElement("div");
+            marker.className = "section-marker";
+            marker.textContent = `${sec.emoji} ${sec.type}`;
+            marker.style.color = sec.color;
+            el.prepend(marker);
+          }
+          break;
+        }
+      }
+    }
+  }
+
   // ---- chord loading (自動偵測整合) ----
 
   let hasChords = false;
@@ -317,6 +359,8 @@
         await preloadChordInfo(chordData.chords);
         buildChordDOM();
         bigChordBox.style.display = "";
+        // 載入段落資訊
+        _loadSections(path);
         return;
       }
     } catch (err) {

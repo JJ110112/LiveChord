@@ -118,6 +118,24 @@ async def emission_stats(
     return emission.get_stats()
 
 
+@router.get("/sections")
+async def detect_sections_api(
+    path: str = Query(..., description="歌曲路徑"),
+):
+    """偵測段落結構（Intro/Verse/Chorus/Bridge/Outro）"""
+    import json as _json
+    from ai.section_detect import detect_sections
+
+    chords_file = CHORDS_DIR / f"{__import__('hashlib').md5(path.encode()).hexdigest()[:12]}.json"
+    if not chords_file.is_file():
+        return {"error": "no chord data"}
+
+    data = _json.loads(chords_file.read_text(encoding="utf-8"))
+    result = detect_sections(data.get("chords", []), data.get("key", "C"))
+    result["path"] = path
+    return result
+
+
 @router.get("/patterns")
 async def detect_patterns(
     chords: str = Query(..., description="和弦序列，逗號分隔"),

@@ -977,6 +977,15 @@ a:hover { text-decoration: underline; }
   margin-top: 2px;
 }
 
+.section-marker {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+  opacity: 0.8;
+}
+
 /* ---------- toast ---------- */
 
 .toast {
