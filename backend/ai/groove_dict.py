@@ -28,6 +28,24 @@ def _quantize_duration(seconds):
         return "long"    # 更長
 
 
+def _chord_voicing_spread(chord_str):
+    """計算和弦的 voicing spread（最高音-最低音的半音數）
+    用於 Neo-Soul Cluster Voicing 偵測
+    """
+    from .jazz_rules import parse_root_quality
+    root_semi, quality = parse_root_quality(chord_str)
+    if root_semi is None:
+        return 0
+    INTERVALS = {
+        "": [0, 4, 7], "m": [0, 3, 7], "7": [0, 4, 7, 10],
+        "m7": [0, 3, 7, 10], "maj7": [0, 4, 7, 11],
+        "9": [0, 4, 7, 10, 14], "m9": [0, 3, 7, 10, 14],
+        "maj9": [0, 4, 7, 11, 14], "13": [0, 4, 7, 10, 14, 21],
+    }
+    ivs = INTERVALS.get(quality, INTERVALS.get("", [0, 4, 7]))
+    return max(ivs) - min(ivs) if ivs else 0
+
+
 class GrooveDictionary:
     """風格和弦循環字典"""
 
@@ -40,6 +58,8 @@ class GrooveDictionary:
         self.duration_dist = defaultdict(Counter)
         # event tokens: (degree, duration_class) 序列
         self.event_sequences = []
+        # voicing spread 統計：degree → [spread_values]
+        self.voicing_spread = defaultdict(list)
         # 統計
         self.total_songs = 0
 
@@ -75,6 +95,11 @@ class GrooveDictionary:
 
                     # 時值分佈統計
                     self.duration_dist[deg][dur_class] += 1
+
+                    # Voicing Spread 統計
+                    spread = _chord_voicing_spread(c["chord"])
+                    if spread > 0:
+                        self.voicing_spread[deg].append(spread)
 
                     events.append((deg, dur_class))
                     degrees.append(deg)
@@ -119,6 +144,22 @@ class GrooveDictionary:
             for dur, cnt in self.duration_dist[degree].most_common(top_k)
         ]
 
+    def voicing_spread_stats(self, degree):
+        """回傳某級數的 voicing spread 統計（為 Neo-Soul Cluster Voicing 偵測用）"""
+        spreads = self.voicing_spread.get(degree, [])
+        if not spreads:
+            return {"degree": degree, "count": 0}
+        import numpy as np
+        arr = np.array(spreads)
+        return {
+            "degree": degree,
+            "count": len(spreads),
+            "mean_spread": round(float(arr.mean()), 1),
+            "min_spread": int(arr.min()),
+            "max_spread": int(arr.max()),
+            "cluster_ratio": round(float((arr <= 10).sum() / len(arr)), 2),  # spread<=10 = cluster voicing
+        }
+
     def suggest_pattern(self, context, top_k=5):
         """根據前幾個和弦，從字典中找匹配的循環模式"""
         if len(context) < 2:
@@ -151,6 +192,7 @@ class GrooveDictionary:
             "unique_8_patterns": len(self.patterns_8),
             "duration_degrees": len(self.duration_dist),
             "event_sequences": len(self.event_sequences),
+            "voicing_spread_degrees": len(self.voicing_spread),
         }
 
 

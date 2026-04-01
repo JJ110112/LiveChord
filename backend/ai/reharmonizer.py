@@ -77,6 +77,9 @@ class Reharmonizer:
             result, new_changes = self._insert_secondary_dom(result, key_semi)
             changes.extend(new_changes)
 
+        # Pass 5: Pattern validation — 偵測並標記已識別的樂理結構
+        patterns = self._detect_patterns(result, key)
+
         return {
             "key": key,
             "level": self.level,
@@ -84,7 +87,15 @@ class Reharmonizer:
             "jazzified_count": len(result),
             "chords": result,
             "changes": changes,
+            "patterns": patterns,
         }
+
+    def _detect_patterns(self, chords, key):
+        """Pass 5: 偵測 Jazzify 後的和弦中已識別的樂理結構"""
+        from .pattern_extractor import PatternExtractor
+        extractor = PatternExtractor()
+        chord_names = [c["chord"] for c in chords]
+        return extractor.extract_patterns(chord_names, key)
 
     def _parse_key(self, key):
         """解析調性字串 → 半音數"""

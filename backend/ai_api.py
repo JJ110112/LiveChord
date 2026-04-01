@@ -105,6 +105,33 @@ async def evaluate():
     return full_evaluation(str(CHORDS_DIR))
 
 
+@router.get("/emission")
+async def emission_stats(
+    chord: str = Query(default="", description="和弦級數，如 I 或 V7"),
+):
+    """HMM 發射矩陣統計"""
+    from ai.hmm import build_emission_from_songs
+
+    emission = build_emission_from_songs(str(CHORDS_DIR))
+    if chord:
+        return {"chord": chord, "top_notes": emission.top_notes_for_chord(chord, 8)}
+    return emission.get_stats()
+
+
+@router.get("/patterns")
+async def detect_patterns(
+    chords: str = Query(..., description="和弦序列，逗號分隔"),
+    key: str = Query(default="C"),
+):
+    """偵測和弦序列中的樂理 Pattern"""
+    from ai.pattern_extractor import PatternExtractor
+
+    extractor = PatternExtractor()
+    chord_list = [c.strip() for c in chords.split(",")]
+    results = extractor.extract_patterns(chord_list, key)
+    return {"key": key, "chords": chord_list, "patterns": results}
+
+
 @router.post("/retrain")
 async def retrain():
     """重新訓練所有模型"""
