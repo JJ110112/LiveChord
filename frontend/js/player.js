@@ -1182,48 +1182,75 @@
   });
 
   // ---- player 搜尋 ----
-  const playerSearch = $("#playerSearch");
-  const playerSearchResults = $("#playerSearchResults");
+  const searchInput = $("#searchInput");
+  const searchResults = $("#searchResults");
   let _searchTimer = null;
 
-  if (playerSearch && playerSearchResults) {
-    playerSearch.addEventListener("input", () => {
+  if (searchInput && searchResults) {
+    searchInput.addEventListener("input", () => {
       clearTimeout(_searchTimer);
-      const q = playerSearch.value.trim();
-      if (q.length < 1) { playerSearchResults.classList.remove("show"); return; }
+      const q = searchInput.value.trim();
+      if (q.length < 1) { searchResults.classList.remove("show"); return; }
+      
       _searchTimer = setTimeout(async () => {
         try {
           const data = await API.search(q);
+          if (data.error) {
+            searchResults.innerHTML = `<div style="padding:12px;color:var(--text-dim)">${escapeHtml(data.error)}</div>`;
+            searchResults.classList.add("show");
+            return;
+          }
+          
           const results = data.results || [];
           if (results.length === 0) {
-            playerSearchResults.innerHTML = '<div style="padding:12px;color:var(--text-dim);font-size:12px">無結果</div>';
+            searchResults.innerHTML = '<div style="padding:12px;color:var(--text-dim);font-size:12px">找不到結果</div>';
           } else {
-            playerSearchResults.innerHTML = results.slice(0, 15).map(r => {
-              const title = r.title || r.path.replace(/\.flac$/i, "");
-              const artist = r.artist || "";
-              return `<div class="ps-item" data-path="${r.path.replace(/"/g, '&quot;')}">
-                <div><div class="ps-title">${title}</div><div class="ps-artist">${artist}</div></div>
-              </div>`;
-            }).join("");
+            let html = "";
+            for (const r of results.slice(0, 50)) {
+              const coverUrl = API.trackCoverUrl(r.path);
+              
+              let diffHtml = "";
+              const uc = r.unique_chords || 0;
+              if (uc > 0) {
+                let stars = 1;
+                if (uc >= 15) stars = 4;
+                else if (uc >= 9) stars = 3;
+                else if (uc >= 5) stars = 2;
+                const key = r.chord_key || "";
+                diffHtml = ` <span class="difficulty" style="font-size:0.8em;opacity:0.6;margin-left:6px">${"⭐".repeat(stars)}${key ? " " + key : ""}</span>`;
+              }
+              
+              html += `
+                <div class="result-item" data-path="${escapeHtml(r.path)}">
+                  <img class="r-cover" src="${coverUrl}" onerror="this.style.display='none'" loading="lazy" alt="">
+                  <div class="r-info">
+                    <div class="r-title">${escapeHtml(r.title || r.path.split("/").pop())}${diffHtml}</div>
+                    <div class="r-artist">${escapeHtml(r.artist || "")} ${r.album ? "— " + escapeHtml(r.album) : ""}</div>
+                  </div>
+                </div>`;
+            }
+            searchResults.innerHTML = html;
           }
-          playerSearchResults.classList.add("show");
+          searchResults.classList.add("show");
+          
+          searchResults.querySelectorAll(".result-item").forEach((el) => {
+            el.addEventListener("click", () => {
+              searchResults.classList.remove("show");
+              window.location.href = `/player?path=${encodeURIComponent(el.dataset.path)}`;
+            });
+          });
         } catch {}
       }, 300);
     });
 
-    playerSearchResults.addEventListener("click", (e) => {
-      const item = e.target.closest(".ps-item");
-      if (item) window.location.href = _navUrl(item.dataset.path);
-    });
-
     // 點擊外面關閉
     document.addEventListener("click", (e) => {
-      if (!e.target.closest(".player-search-box")) playerSearchResults.classList.remove("show");
+      if (!e.target.closest(".search-box")) searchResults.classList.remove("show");
     });
 
-    playerSearch.addEventListener("focus", () => {
-      if (playerSearch.value.trim().length > 0 && playerSearchResults.innerHTML) {
-        playerSearchResults.classList.add("show");
+    searchInput.addEventListener("focus", () => {
+      if (searchInput.value.trim().length > 0 && searchResults.innerHTML) {
+        searchResults.classList.add("show");
       }
     });
   }

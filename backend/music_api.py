@@ -100,21 +100,7 @@ def _song_hash(path: str) -> str:
     """產生穩定的 song hash（用於和弦譜檔名）"""
     return hashlib.md5(path.encode("utf-8")).hexdigest()[:12]
 
-def _get_chord_summary(path: str) -> dict:
-    """取得和弦摘要：unique count, key, chord list"""
-    chords_file = DATA_DIR / "chords" / f"{_song_hash(path)}.json"
-    if chords_file.is_file():
-        try:
-            cdata = json.loads(chords_file.read_text(encoding="utf-8"))
-            unique = sorted(set(c["chord"] for c in cdata.get("chords", []) if c.get("chord") and c["chord"] != "N"))
-            return {
-                "unique_chords": len(unique),
-                "chord_key": cdata.get("key", ""),
-                "chord_list": unique,
-            }
-        except Exception:
-            pass
-    return {"unique_chords": 0, "chord_key": "", "chord_list": []}
+from chord_cache import get_chord_summary as _get_chord_summary
 
 # ---------------------------------------------------------------------------
 # browse

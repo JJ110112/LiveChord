@@ -16,6 +16,11 @@
 <!-- header -->
 <header class="header" style="position:relative">
   <a href="/" style="text-decoration:none"><h1>LiveChord</h1></a>
+  <div class="search-box">
+    <input id="searchInput" type="text" placeholder="搜尋歌曲、演出者、專輯…" autocomplete="off">
+    <div id="searchResults" class="search-results"></div>
+  </div>
+  <nav></nav>
   <button id="btnPageFs" class="header-fs-btn" title="全螢幕">&#x26F6;</button>
 </header>
 
@@ -29,10 +34,6 @@
       <div id="songArtist" class="song-artist"></div>
       <div id="songAlbum" class="song-album"></div>
       <div id="songMeta" class="song-meta"></div>
-    </div>
-    <div class="player-search-box" style="position:relative;margin-left:auto">
-      <input id="playerSearch" type="text" placeholder="&#x1F50D; 搜尋…" autocomplete="off" class="player-search-input">
-      <div id="playerSearchResults" class="player-search-results"></div>
     </div>
   </div>
 

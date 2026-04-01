@@ -58,26 +58,20 @@
     return ` <span class="difficulty" style="font-size:0.8em;opacity:0.6;margin-left:6px">${"⭐".repeat(stars)}${key ? " " + key : ""}</span>`;
   }
 
-  // ---- tabs ----
+  // ---- dashboard init ----
 
-  $$(".tabs button").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      $$(".tabs button").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      currentTab = btn.dataset.tab;
-      localStorage.setItem("livechord_home_tab", currentTab);
-      showTab(currentTab);
-    });
-  });
-
-  function showTab(tab) {
-    $("#tabBrowse").style.display = tab === "browse" ? "" : "none";
-    $("#tabFavorites").style.display = tab === "favorites" ? "" : "none";
-    $("#tabRecent").style.display = tab === "recent" ? "" : "none";
-
-    if (tab === "browse") browse(currentPath);
-    if (tab === "favorites") loadFavorites();
-    if (tab === "recent") loadRecent();
+  async function initDashboard() {
+    // Parallel loading avoids blocking the UI
+    try {
+      showLoading(true);
+      await Promise.allSettled([
+        loadRecent(),
+        loadFavorites(),
+        browse(currentPath)
+      ]);
+    } finally {
+      showLoading(false);
+    }
   }
 
   // ---- browse ----
@@ -107,8 +101,6 @@
       }
     } catch (err) {
       browseGrid.innerHTML = `<div class="empty"><div class="icon">&#x26A0;</div><div class="msg">${escapeHtml(err.message)}</div></div>`;
-    } finally {
-      showLoading(false);
     }
   }
 
@@ -250,69 +242,78 @@
   }
 
   // ---- favorites ----
-
   async function loadFavorites() {
+    const section = $("#secFavorites");
     const container = $("#favList");
     try {
       const data = await API.getFavorites();
       if (!data.favorites || data.favorites.length === 0) {
-        container.innerHTML = `<div class="empty"><div class="icon">&#x2764;</div><div class="msg">尚無最愛歌曲</div></div>`;
+        section.style.display = "none";
         return;
       }
-      let html = '<ul class="track-list">';
+      section.style.display = "";
+      
+      let html = '';
       data.favorites.forEach((f, i) => {
         const name = f.path.split("/").pop().replace(/\.flac$/i, "");
         const coverUrl = API.trackCoverUrl(f.path);
         html += `
-          <li data-path="${escapeHtml(f.path)}">
-            <img src="${coverUrl}" style="width:36px;height:36px;border-radius:4px;object-fit:cover;background:#222" loading="lazy" onerror="this.style.display='none'" alt="">
-            <span class="track-title">${escapeHtml(name)}${getDifficultyHtml(f)}</span>
-          </li>`;
+          <div class="grid-item" data-path="${escapeHtml(f.path)}">
+            <img class="cover" src="${coverUrl}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
+            <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
+            <div class="info">
+              <div class="title">${escapeHtml(name)}</div>
+              ${getDifficultyHtml(f)}
+            </div>
+          </div>`;
       });
-      html += "</ul>";
       container.innerHTML = html;
-      container.querySelectorAll("li").forEach((li) => {
-        li.addEventListener("click", () => goPlayer(li.dataset.path));
+      container.querySelectorAll(".grid-item").forEach((el) => {
+        el.addEventListener("click", () => goPlayer(el.dataset.path));
       });
     } catch (err) {
-      container.innerHTML = `<div class="empty"><div class="msg">${escapeHtml(err.message)}</div></div>`;
+      section.style.display = "none";
     }
   }
 
   // ---- recent ----
 
   async function loadRecent() {
+    const section = $("#secRecent");
     const container = $("#recentList");
     try {
       const data = await API.getRecent();
       if (!data.recent || data.recent.length === 0) {
-        container.innerHTML = `<div class="empty"><div class="icon">&#x1F552;</div><div class="msg">尚無播放紀錄</div></div>`;
+        section.style.display = "none";
         return;
       }
-      let html = '<ul class="track-list">';
+      section.style.display = "";
+      
+      let html = '';
       data.recent.forEach((r, i) => {
         const name = r.path.split("/").pop().replace(/\.flac$/i, "");
         const coverUrl = API.trackCoverUrl(r.path);
         html += `
-          <li data-path="${escapeHtml(r.path)}">
-            <img src="${coverUrl}" style="width:36px;height:36px;border-radius:4px;object-fit:cover;background:#222" loading="lazy" onerror="this.style.display='none'" alt="">
-            <span class="track-title">${escapeHtml(name)}${getDifficultyHtml(r)}</span>
-          </li>`;
+          <div class="grid-item" data-path="${escapeHtml(r.path)}">
+            <img class="cover" src="${coverUrl}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
+            <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
+            <div class="info">
+              <div class="title">${escapeHtml(name)}</div>
+              ${getDifficultyHtml(r)}
+            </div>
+          </div>`;
       });
-      html += "</ul>";
       container.innerHTML = html;
-      container.querySelectorAll("li").forEach((li) => {
-        li.addEventListener("click", () => goPlayer(li.dataset.path));
+      container.querySelectorAll(".grid-item").forEach((el) => {
+        el.addEventListener("click", () => goPlayer(el.dataset.path));
       });
     } catch (err) {
-      container.innerHTML = `<div class="empty"><div class="msg">${escapeHtml(err.message)}</div></div>`;
+      section.style.display = "none";
     }
   }
 
   // ---- init ----
-  // 設定正確的 tab active 狀態
-  $$(".tabs button").forEach(b => {
-    b.classList.toggle("active", b.dataset.tab === currentTab);
-  });
-  showTab(currentTab);
+  
+  // 啟動 Dashboard (Lazy + Parallel)
+  initDashboard();
 })();

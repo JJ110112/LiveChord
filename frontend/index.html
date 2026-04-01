@@ -27,31 +27,30 @@
   ">&#x26F6;</button>
 </header>
 
-<!-- tabs -->
-<div class="tabs">
-  <button data-tab="browse">瀏覽</button>
-  <button data-tab="favorites">最愛</button>
-  <button data-tab="recent">最近播放</button>
-</div>
+<!-- dashboard layout -->
+<main class="content dashboard-layout">
+  
+  <!-- recent section -->
+  <section id="secRecent" class="dash-section" style="display:none">
+    <h2 class="dash-title">最近播放</h2>
+    <div id="recentList" class="horizontal-scroll"></div>
+  </section>
 
-<!-- content -->
-<main class="content">
-  <!-- browse tab -->
-  <div id="tabBrowse" class="tab-panel">
-    <div id="breadcrumb" class="breadcrumb"></div>
+  <!-- favorites section -->
+  <section id="secFavorites" class="dash-section" style="display:none">
+    <h2 class="dash-title">我的最愛</h2>
+    <div id="favList" class="horizontal-scroll"></div>
+  </section>
+
+  <!-- browse section -->
+  <section id="secBrowse" class="dash-section">
+    <h2 class="dash-title" style="display:flex; align-items:center;">
+      音樂庫 
+      <span id="breadcrumb" class="breadcrumb" style="font-size:0.65em; opacity:0.7; font-weight:normal; margin-left:12px; margin-bottom:0;"></span>
+    </h2>
     <div id="browseGrid" class="grid"></div>
     <ul id="trackList" class="track-list" style="display:none"></ul>
-  </div>
-
-  <!-- favorites tab -->
-  <div id="tabFavorites" class="tab-panel" style="display:none">
-    <div id="favList"></div>
-  </div>
-
-  <!-- recent tab -->
-  <div id="tabRecent" class="tab-panel">
-    <div id="recentList"></div>
-  </div>
+  </section>
 
   <!-- loading -->
   <div id="loading" class="loading" style="display:none">

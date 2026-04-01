@@ -1085,3 +1085,60 @@ a:hover { text-decoration: underline; }
   .chord-ribbon { min-height: 100px; }
   #modeSwitch { flex-wrap: wrap; }
 }
+
+/* ---------- dashboard ---------- */
+
+.dashboard-layout {
+  padding-bottom: 80px;
+}
+
+.dash-section {
+  margin-bottom: 32px;
+}
+
+.dash-section:last-child {
+  margin-bottom: 0px;
+}
+
+.dash-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 14px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+}
+
+.horizontal-scroll {
+  display: flex;
+  overflow-x: auto;
+  gap: 16px;
+  padding-bottom: 12px;
+  scrollbar-width: thin;
+  scroll-behavior: smooth;
+}
+
+.horizontal-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.horizontal-scroll::-webkit-scrollbar-thumb {
+  background: var(--bg-hover);
+  border-radius: 4px;
+}
+
+/* horizontal cards */
+.horizontal-scroll .grid-item {
+  flex: 0 0 150px;
+  width: 150px;
+}
+
+.horizontal-scroll .grid-item .info {
+  padding: 10px;
+}
+
+.horizontal-scroll .grid-item .info .difficulty {
+  display: block;
+  margin-left: 0 !important;
+  margin-top: 4px;
+}
