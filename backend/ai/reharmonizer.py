@@ -77,8 +77,16 @@ class Reharmonizer:
             result, new_changes = self._insert_secondary_dom(result, key_semi)
             changes.extend(new_changes)
 
+        # Pass 4.5: Phrase tension arc — 確保樂句有起承轉合
+        if self.level >= 2:
+            result = self._balance_phrase_tension(result, key_semi)
+
         # Pass 5: Pattern validation — 偵測並標記已識別的樂理結構
         patterns = self._detect_patterns(result, key)
+
+        # Pass 6: 大亂鬥 (Multi-Agent QA Battle)
+        # 讓樂手與混音師針對 AI 的配器打分數並提出警告
+        qa_reports = self._run_qa_battle(chords, result)
 
         return {
             "key": key,
@@ -88,7 +96,87 @@ class Reharmonizer:
             "chords": result,
             "changes": changes,
             "patterns": patterns,
+            "qa": qa_reports,
         }
+
+    def _run_qa_battle(self, original_chords, jazzified_chords):
+        try:
+            from .musician_qa import run_musician_qa
+            from .producer_qa import run_producer_qa
+            
+            musician_report = run_musician_qa(jazzified_chords, level=self.level)
+            producer_report = run_producer_qa(original_chords, jazzified_chords)
+            
+            # Combine the battle logs
+            battle_logs = []
+            if musician_report.get("warnings"):
+                battle_logs.extend(["🎸 樂手抗議: " + w for w in musician_report["warnings"]])
+            if producer_report.get("warnings"):
+                battle_logs.extend(["🎧 製作人抓狂: " + w for w in producer_report["warnings"]])
+                
+            return {
+                "musician_score": musician_report.get("playability_score", 100),
+                "producer_score": producer_report.get("mix_score", 100),
+                "battle_logs": battle_logs
+            }
+        except ImportError:
+            # Fallback if modules aren't there
+            return {"musician_score": 100, "producer_score": 100, "battle_logs": []}
+
+    def _balance_phrase_tension(self, chords, key_semi):
+        """Pass 4.5: 確保 8 小節樂句有「低→高→解決」的張力弧度
+
+        原理：把和弦序列分成 ~8 個一組的樂句
+        樂句前半應該張力漸增（不能直接放最複雜的和弦）
+        樂句末尾應該有解決感（回到 tonic 或 dominant→tonic）
+        如果張力分佈不合理，降級部分和弦的延伸音
+        """
+        if len(chords) < 8:
+            return chords
+
+        PHRASE_LEN = 8  # 大約 8 個和弦為一個樂句
+
+        def _tension_score(chord_str):
+            """和弦張力分數 0-5"""
+            s = 0
+            if any(m in chord_str for m in ["13", "b9", "#9", "alt"]): s += 4
+            elif any(m in chord_str for m in ["9", "11", "dim"]): s += 3
+            elif any(m in chord_str for m in ["7"]): s += 2
+            elif any(m in chord_str for m in ["m"]): s += 1
+            return s
+
+        def _simplify(chord_str):
+            """降級和弦：去掉最外層延伸"""
+            import re
+            for ext in ["13", "11", "9"]:
+                if ext in chord_str and "maj" not in chord_str[:4]:
+                    return re.sub(ext + r"[b#]?\d*", "7", chord_str, count=1)
+            return chord_str
+
+        for start in range(0, len(chords) - PHRASE_LEN + 1, PHRASE_LEN):
+            phrase = chords[start:start + PHRASE_LEN]
+            tensions = [_tension_score(c["chord"]) for c in phrase]
+
+            # 檢查：前 1/4 不應比後 3/4 更緊張
+            front_avg = sum(tensions[:2]) / 2 if tensions[:2] else 0
+            back_avg = sum(tensions[2:6]) / max(len(tensions[2:6]), 1)
+
+            if front_avg > back_avg + 1.5:
+                # 前面太緊張，降級前兩個和弦
+                for i in range(min(2, len(phrase))):
+                    old = phrase[i]["chord"]
+                    simplified = _simplify(old)
+                    if simplified != old:
+                        phrase[i]["chord"] = simplified
+
+            # 最後一個和弦如果張力太高（>3），降級以提供解決感
+            if tensions and tensions[-1] >= 4:
+                old = phrase[-1]["chord"]
+                simplified = _simplify(old)
+                if simplified != old:
+                    phrase[-1]["chord"] = simplified
+
+        return chords
 
     def _detect_patterns(self, chords, key):
         """Pass 5: 偵測 Jazzify 後的和弦中已識別的樂理結構"""

@@ -18,11 +18,11 @@ print("  Multi-Model Consensus QA — 開始執行")
 print("=" * 60)
 
 initial_state: QAState = {
-    "project_path": os.environ.get("PROJECT_ROOT", r"C:\Users\hitea\Claude\Software Design Pratice V1.01"),
+    "project_path": os.environ.get("PROJECT_ROOT", r"C:\Users\hitea\Claude\LiveChord"),
     "target_files": [],
     "test_result": "", "test_passed": 0, "test_failed": 0, "test_details": "",
-    "security_report": "", "security_issues": [], "security_score": 0,
-    "security_opinions": [], "security_consensus": "",
+    "music_report": "", "music_issues": [], "music_score": 0,
+    "music_opinions": [], "music_consensus": "",
     "qa_verdict": "", "qa_report": "", "fix_instructions": "",
     "qa_opinions": [], "qa_consensus": "",
     "fix_patch": "", "fix_files": [], "fix_summary": "",
@@ -46,16 +46,16 @@ for event in graph.stream(initial_state, config, stream_mode="updates"):
             if updates.get('test_details'):
                 print(f"  詳情: {updates['test_details'][:300]}")
 
-        elif node_name == "security_consensus":
-            print(f"  最終安全分數: {updates.get('security_score', 0)}/100")
-            opinions = updates.get("security_opinions", [])
+        elif node_name == "music_consensus":
+            print(f"  🎵 最終音樂分數: {updates.get('music_score', 0)}/100")
+            opinions = updates.get("music_opinions", [])
             for op in opinions:
                 print(f"  ┌ {op['model']}: {op.get('score', '?')}/100")
                 print(f"  │ {op.get('reasoning', '')[:80]}")
-            print(f"  └ 共識: {updates.get('security_consensus', '')[:150]}")
-            issues = updates.get("security_issues", [])
+            print(f"  └ 結論: {updates.get('music_consensus', '')[:150]}")
+            issues = updates.get("music_issues", [])
             if issues:
-                print(f"  確認的問題:")
+                print(f"  🔥 發現的樂理/樂手/混音問題:")
                 for issue in issues[:5]:
                     print(f"    • {issue}")
 
