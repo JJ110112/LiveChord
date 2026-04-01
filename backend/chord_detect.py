@@ -8,6 +8,7 @@ import sys
 import numpy as np
 import torch
 import librosa
+import threading
 
 # BTC 模型路徑
 BTC_DIR = os.path.join(os.path.dirname(__file__), "btc")
@@ -77,7 +78,8 @@ _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def _load_model():
     """延遲載入 BTC 模型（只載入一次）"""
-    global _model, _config, _mean, _std, _idx_to_chord
+    global _model, _config, _mean, _std, _idx_to_chord, _device
+    _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     if _model is not None:
         return
@@ -161,6 +163,8 @@ def _audio_to_features(audio_path: str):
 # 推論
 # ---------------------------------------------------------------------------
 
+_inference_lock = threading.Lock()
+
 def _run_btc(audio_path: str) -> list:
     """
     執行 BTC 推論，回傳原始片段列表。
@@ -181,12 +185,15 @@ def _run_btc(audio_path: str) -> list:
 
     lines = []
     start = 0.0
-    with torch.no_grad():
-        ft = torch.tensor(feature, dtype=torch.float32).unsqueeze(0).to(_device)
-        for t in range(n_inst):
-            out, _ = _model.self_attn_layers(ft[:, n_ts * t:n_ts * (t + 1), :])
-            pred, _ = _model.output_layer(out)
-            pred = pred.squeeze()
+    
+    # 使用線程鎖 (Lock)，確保 RTX 5080 一次只專心處理一首歌的張量，防止 CUDA Context 污染與 VRAM 爆掉
+    with _inference_lock:
+        with torch.no_grad():
+            ft = torch.tensor(feature, dtype=torch.float32).unsqueeze(0).to(_device)
+            for t in range(n_inst):
+                out, _ = _model.self_attn_layers(ft[:, n_ts * t:n_ts * (t + 1), :])
+                pred, _ = _model.output_layer(out)
+                pred = pred.squeeze()
             for i in range(n_ts):
                 if t == 0 and i == 0:
                     prev = pred[i].item()

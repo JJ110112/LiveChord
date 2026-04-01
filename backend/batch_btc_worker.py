@@ -36,6 +36,9 @@ SKIP_GENRES = {
 # 支援的音檔格式
 SUPPORTED_EXT = {".flac", ".mp3", ".wav"}
 
+# 跳過超過此大小的檔案（MB），避免 OOM
+MAX_FILE_SIZE_MB = 150
+
 # 資料庫位置
 CHORDS_DIR = Path(__file__).parent.parent / "data" / "chords"
 
@@ -131,10 +134,14 @@ def main():
     # 先進行一次假推論，強制載入 BTC 模型進 GPU VRAM，防止多執行緒同時競爭 Load Weights
     print("⏳ 正在暖機 GPU 模型...")
     _load_model()
-    if torch.cuda.is_available():
+    from chord_detect import _device
+    is_gpu = _device.type == "cuda"
+    if is_gpu:
         print(f"✅ GPU 啟動成功: {torch.cuda.get_device_name(0)}")
     else:
-        print(f"⚠️ 警告：未偵測到 GPU，將使用純 CPU 算力！這可能需要數個月。")
+        # CPU 模式：降低並發避免 OOM
+        args.workers = min(args.workers, 2)
+        print(f"⚠️ CPU 模式，並發降為 {args.workers}（避免記憶體不足）")
 
     # 掃描檔案清單
     print("⏳ 正在建立播放清單，請稍候...")
@@ -151,7 +158,15 @@ def main():
                 # 檢查排除清單
                 if _is_skipped_genre(rel_path):
                     continue
-                    
+
+                # 跳過超大檔案
+                try:
+                    fsize = os.path.getsize(full_path) / (1024 * 1024)
+                    if fsize > MAX_FILE_SIZE_MB:
+                        continue
+                except OSError:
+                    continue
+
                 tasks.append(rel_path)
 
     total_tasks = len(tasks)
