@@ -325,28 +325,50 @@
 
   function _renderSectionMarkers() {
     if (!sectionData || !sectionData.sections) return;
-    // 移除舊的
-    document.querySelectorAll(".section-marker").forEach(el => el.remove());
+    // 移除舊的標記
+    document.querySelectorAll(".section-marker, .section-marker-ribbon").forEach(el => el.remove());
+    document.querySelectorAll(".has-section").forEach(el => {
+      el.classList.remove("has-section");
+      el.style.removeProperty("--sec-color");
+    });
 
-    // 在 overview 的 chord-item 上標記段落
     if (chordElements.length === 0) return;
     const displayed = _displayChords();
 
     for (const sec of sectionData.sections) {
-      // 找到該段落起始時間對應的 chord-item
       for (let i = 0; i < displayed.length; i++) {
         if (displayed[i].time >= sec.start && displayed[i].time < sec.end) {
           const el = chordElements[i];
-          if (!el) continue;
-          // 只在段落第一個和弦上加標記
-          if (i === 0 || displayed[i - 1].time < sec.start) {
-            const marker = document.createElement("div");
-            marker.className = "section-marker";
-            marker.textContent = `${sec.emoji} ${sec.type}`;
-            marker.style.color = sec.color;
-            el.prepend(marker);
+          const rel = ribbonElements[i];
+
+          // 1. Overview 的和弦方塊 - 加上頂部顏色 Bar
+          if (el) {
+            el.style.setProperty("--sec-color", sec.color);
+            el.classList.add("has-section");
+
+            // 只有在段落的最開始一個和弦加上文字標籤
+            if (i === 0 || displayed[i - 1].time < sec.start) {
+              const marker = document.createElement("div");
+              marker.className = "section-marker";
+              marker.textContent = `${sec.emoji} ${sec.type}`;
+              marker.style.color = sec.color;
+              el.appendChild(marker);
+            }
           }
-          break;
+
+          // 2. Diagrams 的 Ribbon 片段 - 加上頂部顏色 Bar
+          if (rel) {
+            rel.style.setProperty("--sec-color", sec.color);
+            rel.classList.add("has-section");
+
+            if (i === 0 || displayed[i - 1].time < sec.start) {
+              const rmarker = document.createElement("div");
+              rmarker.className = "section-marker-ribbon";
+              rmarker.textContent = `${sec.emoji} ${sec.type}`;
+              rmarker.style.color = sec.color;
+              rel.appendChild(rmarker);
+            }
+          }
         }
       }
     }
@@ -965,8 +987,8 @@
           originalChords = null;
         }
         jazzifyActive = false;
-        btnJazzify.textContent = "Jazzify";
-        btnJazzify.style.background = "rgba(255,152,0,.15)";
+        btnJazzify.textContent = "\u{1F3B7}";
+        btnJazzify.style.background = "";
         chordCache = {};
         await preloadChordInfo(chordData.chords);
         buildChordDOM();
@@ -980,14 +1002,14 @@
         originalChords = [...chordData.chords];
       }
 
-      btnJazzify.textContent = `Jazz L${jazzifyLevel}...`;
+      btnJazzify.textContent = `${jazzifyLevel}...`;
 
       try {
         const res = await API.jazzify(originalChords, chordData.key || "C", jazzifyLevel);
         chordData.chords = res.chords;
         jazzifyActive = true;
-        btnJazzify.textContent = `Jazz L${jazzifyLevel}`;
-        btnJazzify.style.background = "rgba(255,152,0,.4)";
+        btnJazzify.textContent = `${jazzifyLevel}`;
+        btnJazzify.style.background = "rgba(255,152,0,.3)";
         chordCache = {};
         await preloadChordInfo(chordData.chords);
         buildChordDOM();
@@ -996,8 +1018,8 @@
       } catch (err) {
         showToast("Jazzify 失敗: " + err.message, 3000);
         jazzifyLevel = 0;
-        btnJazzify.textContent = "Jazzify";
-        btnJazzify.style.background = "rgba(255,152,0,.15)";
+        btnJazzify.textContent = "\u{1F3B7}";
+        btnJazzify.style.background = "";
       }
     });
   }

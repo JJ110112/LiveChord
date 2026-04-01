@@ -608,6 +608,12 @@ a:hover { text-decoration: underline; }
   background: var(--bg-hover);
 }
 
+.tb-icon {
+  font-size: 14px;
+  width: 28px;
+  padding: 2px;
+}
+
 .toolbar-select {
   padding: 3px 8px;
   border: 1px solid var(--border);
@@ -788,6 +794,32 @@ a:hover { text-decoration: underline; }
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
 }
 
+.ribbon-item.has-section::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background-color: var(--sec-color);
+  opacity: 0.85;
+  z-index: 10;
+}
+
+.section-marker-ribbon {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  opacity: 0.95;
+  text-shadow: 0 1px 4px rgba(0,0,0,1);
+  z-index: 10;
+}
+
 /* chord display */
 
 .chord-section {
@@ -913,7 +945,8 @@ a:hover { text-decoration: underline; }
 .chord-timeline {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  row-gap: 20px;
+  column-gap: 6px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -977,13 +1010,35 @@ a:hover { text-decoration: underline; }
   margin-top: 2px;
 }
 
+.chord-item {
+  position: relative;
+}
+
+.chord-item.has-section::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  height: 4px;
+  background-color: var(--sec-color);
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+  opacity: 0.85;
+  z-index: 1;
+}
+
 .section-marker {
+  position: absolute;
+  top: -18px;
+  left: 0;
   font-size: 9px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 2px;
-  opacity: 0.8;
+  white-space: nowrap;
+  opacity: 0.95;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
 }
 
 /* ---------- toast ---------- */
