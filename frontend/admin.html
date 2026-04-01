@@ -232,10 +232,28 @@
     try { const r = await API.post("/api/auto/trigger"); showToast(r.message); } catch (e) { showToast(e.message); }
   });
   $("#btnScanNow").addEventListener("click", async () => {
+    const btn = $("#btnScanNow");
+    btn.textContent = "掃描中...";
+    btn.disabled = true;
     try {
-      const r = await API.libraryScan("incremental");
-      showToast(r.message || "掃描已啟動");
+      // 直接呼叫 scan API（不經過 Core）
+      await API.libraryScan("full");
+      // 輪詢等待完成
+      for (let i = 0; i < 60; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        const st = await API.libraryScanStatus();
+        if (!st.running) {
+          showToast(`掃描完成！新增 ${st.new_tracks || 0} 首`);
+          // 自動更新列表和統計
+          loadTrackList();
+          pollStatus();
+          break;
+        }
+        btn.textContent = `掃描中... ${st.progress}`;
+      }
     } catch (e) { showToast(e.message); }
+    btn.textContent = "掃描音樂庫";
+    btn.disabled = false;
   });
 
   // ---- 和弦管理 ----

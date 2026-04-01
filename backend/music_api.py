@@ -168,7 +168,8 @@ async def search(q: str = Query(default="")):
 
     results = []
     for t in tracks:
-        searchable = f"{t.get('title','')} {t.get('artist','')} {t.get('album','')}".lower()
+        fname = os.path.splitext(os.path.basename(t.get('path','')))[0]
+        searchable = f"{t.get('title','')} {t.get('artist','')} {t.get('album','')} {fname}".lower()
         if q_lower in searchable:
             results.append(t)
             if len(results) >= 50:

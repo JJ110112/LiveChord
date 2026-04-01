@@ -533,19 +533,23 @@ async def batch_midi_import():
 
 @router.get("/chords/stats")
 async def chords_stats():
-    """和弦譜統計"""
-    total_chords = 0
-    if CHORDS_DIR.is_dir():
-        total_chords = len(list(CHORDS_DIR.glob("*.json")))
-
+    """和弦譜統計（只計算 library 中的曲目）"""
     total_tracks = 0
+    tracks_with_chords = 0
+
     if CACHE_FILE.is_file():
         cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
-        total_tracks = cache.get("total_tracks", 0)
+        tracks = cache.get("tracks", [])
+        total_tracks = len(tracks)
+        CHORDS_DIR.mkdir(parents=True, exist_ok=True)
+        for t in tracks:
+            h = _song_hash(t.get("path", ""))
+            if (CHORDS_DIR / f"{h}.json").is_file():
+                tracks_with_chords += 1
 
     return {
         "total_tracks": total_tracks,
-        "tracks_with_chords": total_chords,
-        "coverage": round(total_chords / total_tracks * 100, 1) if total_tracks else 0,
+        "tracks_with_chords": tracks_with_chords,
+        "coverage": round(tracks_with_chords / total_tracks * 100, 1) if total_tracks else 0,
         "batch_running": _batch_state["running"],
     }
