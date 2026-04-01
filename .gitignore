@@ -13,6 +13,7 @@ data/settings.json
 data/activity.log
 data/server.log
 data/chord_queue.json
+data/melodies/
 data/.local_music_root
 
 # Windows 自動啟動腳本（由 install-service.bat 產生）

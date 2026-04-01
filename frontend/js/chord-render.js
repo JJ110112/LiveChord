@@ -161,8 +161,9 @@ const ChordRender = {
    * @param {string[]} notes - 組成音名 e.g. ["C","E","G","B"]
    * @param {number} scale
    * @param {number[]} prevMidi - 前一個和弦的 MIDI 音高（用於 voice leading）
+   * @param {number} melodyMidi - 當前旋律 MIDI 音高（高亮顯示, -1=無）
    */
-  drawPiano(canvas, notes, scale = 1, prevMidi = null) {
+  drawPiano(canvas, notes, scale = 1, prevMidi = null, melodyMidi = -1) {
     if (!canvas) return;
     notes = notes || [];
 
@@ -314,6 +315,46 @@ const ChordRender = {
         ctx.beginPath();
         ctx.arc(x + bw / 2, bh - dotR - 3, dotR, 0, Math.PI * 2);
         ctx.fill();
+      }
+    }
+
+    // 旋律音高亮：綠色菱形標記
+    if (melodyMidi >= 0) {
+      const MELODY_COLOR = "#00e676";  // 亮綠
+      const mpc = melodyMidi % 12;
+      // 找到鍵盤上的位置
+      for (let i = 0; i < numWhites; i++) {
+        if (whiteKeys[i] % 12 === mpc) {
+          const x = x0 + i * ww + (ww - 1) / 2;
+          const y = 6;
+          ctx.fillStyle = MELODY_COLOR;
+          // 菱形
+          ctx.beginPath();
+          ctx.moveTo(x, y - 4);
+          ctx.lineTo(x + 4, y);
+          ctx.lineTo(x, y + 4);
+          ctx.lineTo(x - 4, y);
+          ctx.closePath();
+          ctx.fill();
+          break;
+        }
+      }
+      // 黑鍵
+      for (let i = 0; i < numWhites - 1; i++) {
+        const deg = whiteKeys[i] % 12;
+        if (!blackAfter.has(whiteNotes.indexOf(deg))) continue;
+        if ((whiteKeys[i] + 1) % 12 === mpc) {
+          const x = x0 + (i + 1) * ww - 0.5;
+          ctx.fillStyle = MELODY_COLOR;
+          ctx.beginPath();
+          ctx.moveTo(x, 3);
+          ctx.lineTo(x + 3, 6);
+          ctx.lineTo(x, 9);
+          ctx.lineTo(x - 3, 6);
+          ctx.closePath();
+          ctx.fill();
+          break;
+        }
       }
     }
 

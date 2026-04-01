@@ -287,6 +287,29 @@
     } catch {}
   }
 
+  // ---- melody data (for Dynamic Lead Sheet) ----
+  let melodyData = null;
+
+  async function _loadMelody(path) {
+    try {
+      const res = await fetch(`/api/ai/melody?path=${encodeURIComponent(path)}`);
+      const data = await res.json();
+      if (data.melody && data.melody.length > 0) {
+        melodyData = data.melody;
+      }
+    } catch {}
+  }
+
+  function _getMelodyMidi(currentTime) {
+    if (!melodyData) return -1;
+    for (let i = melodyData.length - 1; i >= 0; i--) {
+      if (currentTime >= melodyData[i].start && currentTime <= melodyData[i].end) {
+        return melodyData[i].midi;
+      }
+    }
+    return -1;
+  }
+
   // ---- section detection ----
   let sectionData = null;
 
@@ -359,8 +382,9 @@
         await preloadChordInfo(chordData.chords);
         buildChordDOM();
         bigChordBox.style.display = "";
-        // 載入段落資訊
+        // 載入段落 + 旋律資訊
         _loadSections(path);
+        _loadMelody(path);
         return;
       }
     } catch (err) {
@@ -684,7 +708,7 @@
           bigChordJianpu.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
           const pianoCanvas = document.createElement("canvas");
           pianoCanvas.style.marginTop = "8px";
-          ChordRender.drawPiano(pianoCanvas, cache.notes || [], 1.8);
+          ChordRender.drawPiano(pianoCanvas, cache.notes || [], 1.8, null, _getMelodyMidi(currentTime));
           bigChordDiagram.appendChild(pianoCanvas);
         } else {
           bigChordJianpu.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));

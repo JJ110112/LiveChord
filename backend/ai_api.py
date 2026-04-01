@@ -105,6 +105,42 @@ async def evaluate():
     return full_evaluation(str(CHORDS_DIR))
 
 
+@router.get("/melody")
+async def get_melody(
+    path: str = Query(..., description="歌曲路徑"),
+):
+    """取得旋律資料（快取或即時提取）"""
+    import json as _json
+    import hashlib, os
+
+    MELODY_DIR = DATA_DIR / "melodies"
+    MELODY_DIR.mkdir(parents=True, exist_ok=True)
+
+    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    cache_file = MELODY_DIR / f"{h}.json"
+
+    # 有快取直接回傳
+    if cache_file.is_file():
+        return _json.loads(cache_file.read_text(encoding="utf-8"))
+
+    # 即時提取
+    from config import get_music_root
+    full_path = os.path.join(get_music_root(), path)
+    if not os.path.isfile(full_path):
+        return {"error": "file not found", "melody": []}
+
+    try:
+        from ai.melody_extractor import MelodyExtractor
+        ext = MelodyExtractor()
+        melody = ext.extract_melody(full_path)
+
+        result = {"path": path, "melody": melody}
+        cache_file.write_text(_json.dumps(result, ensure_ascii=False), encoding="utf-8")
+        return result
+    except Exception as e:
+        return {"error": str(e), "melody": []}
+
+
 @router.get("/emission")
 async def emission_stats(
     chord: str = Query(default="", description="和弦級數，如 I 或 V7"),
