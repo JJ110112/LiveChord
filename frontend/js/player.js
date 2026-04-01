@@ -252,10 +252,14 @@
       const uc = info.unique_chords || 0;
       if (uc > 0) {
         let stars = 1;
+        const labels = ["", "入門", "中階", "進階", "大師"];
         if (uc >= 15) stars = 4;
         else if (uc >= 9) stars = 3;
         else if (uc >= 5) stars = 2;
-        diffHtml = ` <span title="分析: ${uc} 種和弦" style="font-size:0.85em; opacity:0.8; margin-left:8px; vertical-align:middle;">${"⭐".repeat(stars)}</span>`;
+        const ck = info.chord_key || "";
+        const cl = (info.chord_list || []).join(" ");
+        const tip = `${labels[stars]} (${uc}種和弦)${ck ? " Key:" + ck : ""}${cl ? "\n" + cl : ""}`;
+        diffHtml = ` <span title="${tip.replace(/"/g, '&quot;')}" style="font-size:0.85em; opacity:0.8; margin-left:8px; vertical-align:middle;">${"⭐".repeat(stars)}</span>`;
       }
       
       const escTitle = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
