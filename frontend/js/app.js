@@ -312,8 +312,31 @@
     }
   }
 
+  // ---- 滾輪→橫向捲動 ----
+  document.querySelectorAll(".horizontal-scroll").forEach(el => {
+    el.addEventListener("wheel", (e) => {
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        e.preventDefault();
+        el.scrollLeft += e.deltaY;
+      }
+    }, { passive: false });
+  });
+
+  // MutationObserver: 動態載入的 horizontal-scroll 也要綁定
+  new MutationObserver(() => {
+    document.querySelectorAll(".horizontal-scroll:not([data-wheel])").forEach(el => {
+      el.dataset.wheel = "1";
+      el.addEventListener("wheel", (e) => {
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+          e.preventDefault();
+          el.scrollLeft += e.deltaY;
+        }
+      }, { passive: false });
+    });
+  }).observe(document.body, { childList: true, subtree: true });
+
   // ---- init ----
-  
+
   // 啟動 Dashboard (Lazy + Parallel)
   initDashboard();
 })();
