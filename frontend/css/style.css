@@ -945,14 +945,17 @@ a:hover { text-decoration: underline; }
 .chord-timeline {
   display: flex;
   flex-wrap: wrap;
-  row-gap: 20px;
+  align-content: flex-start;
+  padding-top: 28px;
+  padding-bottom: 40px;
+  row-gap: 24px;
   column-gap: 6px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   scroll-behavior: smooth;
-  scrollbar-width: none;           /* Firefox */
-  -ms-overflow-style: none;        /* IE/Edge */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 .chord-timeline::-webkit-scrollbar {
   display: none;                   /* Chrome/Safari */
