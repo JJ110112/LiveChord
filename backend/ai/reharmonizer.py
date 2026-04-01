@@ -22,11 +22,12 @@ class Reharmonizer:
         """
         self.level = min(max(level, 1), 3)
 
-    def jazzify(self, chords, key="C"):
+    def jazzify(self, chords, key="C", melody_data=None):
         """主入口：重配和聲
 
         Args:
             chords: [{time, end, chord}, ...]
+            melody_data: [{start, end, midi}, ...] 可選旋律資料
             key: 調性字串如 "C", "Gm"
 
         Returns:
@@ -81,11 +82,18 @@ class Reharmonizer:
         if self.level >= 2:
             result = self._balance_phrase_tension(result, key_semi)
 
+        # Pass 4.6: Pitch-Class Overlap 回退 — 跟原和弦差太多就降級
+        result, overlap_fixes = self._overlap_downgrade(chords, result)
+        changes.extend(overlap_fixes)
+
+        # Pass 4.7: 旋律避撞 — 如果有旋律資料，避開小二度衝突
+        result, melody_fixes = self._melody_avoid(result, key_semi, melody_data)
+        changes.extend(melody_fixes)
+
         # Pass 5: Pattern validation — 偵測並標記已識別的樂理結構
         patterns = self._detect_patterns(result, key)
 
         # Pass 6: 大亂鬥 (Multi-Agent QA Battle)
-        # 讓樂手與混音師針對 AI 的配器打分數並提出警告
         qa_reports = self._run_qa_battle(chords, result)
 
         return {
@@ -122,6 +130,118 @@ class Reharmonizer:
         except ImportError:
             # Fallback if modules aren't there
             return {"musician_score": 100, "producer_score": 100, "battle_logs": []}
+
+    def _overlap_downgrade(self, original, jazzified):
+        """Pass 4.6: 如果 jazz 和弦跟原和弦 pitch-class overlap < 0.3，降級回原和弦+7th
+
+        避免 Jazzify 把和弦改得面目全非
+        """
+        from .evaluate import pitch_class_overlap
+        changes = []
+        j = 0
+        for i in range(len(original)):
+            if j >= len(jazzified):
+                break
+            # 跳過插入的和弦
+            while j < len(jazzified) and jazzified[j].get("inserted"):
+                j += 1
+            if j >= len(jazzified):
+                break
+
+            orig_name = original[i].get("chord", "")
+            jazz_name = jazzified[j].get("chord", "")
+            ov = pitch_class_overlap(orig_name, jazz_name)
+
+            if ov < 0.3 and orig_name != jazz_name:
+                # 降級：用原和弦 + 基本 7th
+                root_semi, quality = jazz_rules.parse_root_quality(orig_name)
+                if root_semi is not None:
+                    degree = chord_to_degree(orig_name, 0)  # 用 C 做基準即可
+                    safe = jazz_rules.add_extension(degree or "I", quality, level=1)
+                    safe_chord = jazz_rules.root_name(root_semi) + safe
+                    old = jazzified[j]["chord"]
+                    jazzified[j]["chord"] = safe_chord
+                    changes.append({
+                        "position": j, "original": old,
+                        "jazzified": safe_chord,
+                        "rule": f"overlap downgrade ({ov:.0%}→safe)",
+                    })
+            j += 1
+
+        return jazzified, changes
+
+    def _melody_avoid(self, chords, key_semi, melody_data):
+        """Pass 4.7: 避免 jazz 和弦的組成音跟旋律音形成小二度衝突 (avoid notes)
+
+        小二度 = 1 半音差，是最刺耳的不協和音程
+        如果和弦某個延伸音跟當前旋律音只差 1 半音 → 降級該和弦
+        """
+        if not melody_data:
+            return chords, []
+
+        changes = []
+
+        # 建立和弦組成音查詢
+        INTERVALS = {
+            "": [0, 4, 7], "m": [0, 3, 7], "7": [0, 4, 7, 10],
+            "m7": [0, 3, 7, 10], "maj7": [0, 4, 7, 11],
+            "9": [0, 4, 7, 10, 14], "m9": [0, 3, 7, 10, 14],
+            "maj9": [0, 4, 7, 11, 14], "13": [0, 4, 7, 10, 14, 21],
+            "m7b5": [0, 3, 6, 10], "dim7": [0, 3, 6, 9],
+        }
+
+        def _get_pcs(chord_str):
+            root, quality = jazz_rules.parse_root_quality(chord_str)
+            if root is None:
+                return set()
+            ivs = INTERVALS.get(quality, INTERVALS.get("", [0, 4, 7]))
+            return {(root + iv) % 12 for iv in ivs}
+
+        def _simplify(chord_str):
+            """去掉最外層延伸音"""
+            import re
+            for ext in ["13", "11", "9"]:
+                if ext in chord_str:
+                    return re.sub(ext + r"[b#]?\d*", "7", chord_str, count=1)
+            return chord_str
+
+        for i, c in enumerate(chords):
+            t = c["time"]
+            # 找當前時間的旋律音
+            melody_midi = -1
+            for m in melody_data:
+                if m["start"] <= t <= m["end"]:
+                    melody_midi = m["midi"]
+                    break
+            if melody_midi < 0:
+                continue
+
+            melody_pc = melody_midi % 12
+            chord_pcs = _get_pcs(c["chord"])
+
+            # 檢查小二度衝突
+            has_clash = False
+            for pc in chord_pcs:
+                if abs(pc - melody_pc) == 1 or abs(pc - melody_pc) == 11:
+                    has_clash = True
+                    break
+
+            if has_clash:
+                old = c["chord"]
+                simplified = _simplify(old)
+                # 再檢查簡化後是否還衝突
+                if simplified != old:
+                    new_pcs = _get_pcs(simplified)
+                    still_clash = any(abs(pc - melody_pc) in (1, 11) for pc in new_pcs)
+                    if not still_clash:
+                        c["chord"] = simplified
+                        changes.append({
+                            "position": i, "original": old,
+                            "jazzified": simplified,
+                            "rule": f"melody avoid (note={melody_pc}→clash)",
+                        })
+
+        return chords, changes
 
     def _balance_phrase_tension(self, chords, key_semi):
         """Pass 4.5: 確保 8 小節樂句有「低→高→解決」的張力弧度
