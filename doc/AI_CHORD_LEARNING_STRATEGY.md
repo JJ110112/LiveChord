@@ -51,6 +51,17 @@
 *   **應用一：Next-Chord Prediction**：給定前 4 節的進行，AI 自動續寫接下來 8 小節。
 *   **應用二：Style Transfer (Reharmonization)**：Encoder 讀入 `[C, Am, F, G]` (Pop Style)；Decoder 輸出 `[Cmaj9, A7b13, Fmaj7, G7#9]` (Jazz Style)。此層級將由多智能體的 PM 及 Data RD 協同調試。
 
+### 階段三延伸：全球最優序列解碼 (HMM & Viterbi Decoding)
+*   **角色定位**：在 Reharmonization 系統中擔任「導航員」，從機率預測跨越到最優序列解碼，避免傳統 Markov 的 Greedy Search 陷入局部最優。
+*   **三大機率要素**：
+    1. **發射機率 (Emission Probability $P(O|S)$)**：在某隱藏和絃 (S) 下出現某旋律音 (O) 的機率，保證和絃與主旋律貼合且不撞音。
+    2. **轉移機率 (Transition Probability $P(S_t|S_{t-1})$)**：和絃間合理的進行邏輯（您的 GPU 批次處理所提煉的矩陣）。
+    3. **初始機率 (Initial Probability $\pi$)**：樂句開頭的和絃機率分布。
+*   **工程實作建議 (RTX 5080 優化)**：
+    *   **對數空間 (Log-space)**：將機率轉為 $\log(P)$，化乘為加，避免長序列造成數值下溢 (Underflow)。
+    *   **剪枝 (Pruning)**：在每個時間步設定 Threshold，僅保留 Top-K 狀態進入下一計算，大幅降低 GPU VRAM 消耗。
+    *   **LLM 互補**：Viterbi 計算出「絕對正確不撞音」的和聲骨架後，再由 LLM 負責插入細碎的 Neo-Soul 延伸音與 Groove 變化。
+
 ---
 
 ## 肆、驗證與評測機制 (Evaluation Metrics)

@@ -18,7 +18,7 @@
 | **階段二：Data ETL Pipeline** | 標準化語料庫 | ✅ 完成 | `preprocess.py` 移調→C大調，詞彙過濾 Top 100 |
 | | 78,929 首 GPU 批次處理工具 | ✅ 完成 | **[特殊工具]** `batch_btc_worker.py` (針對 RTX 5080 + i9 優化之多執行緒 CUDA 高速處理腳本，排除 Classics/EDM 等雜訊分類) |
 | **階段三：AI 預測模型** | Markov Model | ✅ 完成 | 實裝 Bigram/Trigram，支援 Backoff 退回 |
-| | HMM / LLM 推理 | ❌ 未做 | 需等待 GPU 大批次處理完 78k 資料再進行訓練 |
+| | HMM / Viterbi 推理 | ❌ 未做 | 需等待 GPU 大批次處理完 78k 資料，建立狀態轉移/發射矩陣後進行 Viterbi 解碼避開撞音 |
 | | 多智能體 Prompts | ✅ 完成 | PM/Data RD/Backend RD/QA 已定義完成並記錄於文件內 |
 | | Jam Tracks 字典 | ⚠️ 部分完成 | 架構就緒 (`groove_dict.py`)，等待 GPU 批次運算 3,000 首獨立風格集以解鎖 Funk/Neo-Soul 引擎 |
 | | Voice Leading | ✅ 完成 | 自動轉位演算法（Smooth Voice Leading），最小化手位移動距離 |
@@ -34,6 +34,7 @@
 *   **相對調矩陣 (Relative Scale Matrix)**：強制將絕對和弦轉換為相對級數（Roman Numerals），讓模型具備「調性重力 (Tonal Gravity)」感知。
 *   **段落標籤與 Chord2Vec**：利用和弦切換的密度與延伸音張力，定義主歌與副歌的情緒標籤，結合向量語義尋找合理代理和弦。
 *   **模式匹配引擎 (Pattern Matching Engine)**：特徵萃取器主動辨識 `ii-V-I`、`Modal Interchange` 等樂理結構，必要時介入防呆（Rule-based constraints），確保生成的和聲具備穩定的終止式落地感。
+*   **隱馬可夫與 Viterbi 解碼 (HMM & Viterbi Decoding)**：導入 `librosa.pyin` 提取的主旋律 (F0) 作為「觀測序列 (Observation)」。結合和弦本身的狀態轉移矩陣，與和弦對應旋律的「發射矩陣 (Emission)」，透過 Viterbi 演算法算出全曲最高分的完美和聲路徑，徹底根除爵士重配時容易「打架撞音」的問題。
 
 ---
 
