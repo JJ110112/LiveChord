@@ -256,15 +256,13 @@
         if (uc >= 15) stars = 4;
         else if (uc >= 9) stars = 3;
         else if (uc >= 5) stars = 2;
-        const ck = info.chord_key || "";
-        const cl = (info.chord_list || []).join(" ");
-        const tip = `${labels[stars]} (${uc}種和弦)${ck ? " Key:" + ck : ""}${cl ? "\n" + cl : ""}`;
-        diffHtml = ` <span title="${tip.replace(/"/g, '&quot;')}" style="font-size:0.85em; opacity:0.8; margin-left:8px; vertical-align:middle;">${"⭐".repeat(stars)}</span>`;
+        const cl = (info.chord_list || []).join("  ");
+        diffHtml = `<div style="font-size:11px;color:var(--text-dim);margin-top:2px">${"⭐".repeat(stars)} ${labels[stars]}（${uc}種）${cl ? " — " + cl : ""}</div>`;
       }
       
       const escTitle = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      songTitle.innerHTML = escTitle + diffHtml;
-      songArtist.textContent = info.artist || "";
+      songTitle.innerHTML = escTitle;
+      songArtist.innerHTML = (info.artist || "") + diffHtml;
       songAlbum.textContent = info.album || "";
       const meta = [];
       if (info.sample_rate) meta.push(`${info.sample_rate / 1000}kHz`);

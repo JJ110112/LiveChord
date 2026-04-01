@@ -48,17 +48,14 @@
   }
 
   function getDifficultyHtml(item) {
-    const uc = item.unique_chords || item.uc || 0;
+    const uc = item.unique_chords || 0;
     if (!uc || uc <= 0) return "";
     let stars = 1;
-    const labels = ["", "入門", "中階", "進階", "大師"];
     if (uc >= 15) stars = 4;
     else if (uc >= 9) stars = 3;
     else if (uc >= 5) stars = 2;
     const key = item.chord_key || "";
-    const chords = (item.chord_list || []).join(" ");
-    const tip = `${labels[stars]} (${uc}種和弦)${key ? " Key:" + key : ""}${chords ? "\n" + chords : ""}`;
-    return ` <span class="difficulty" title="${tip.replace(/"/g, '&quot;')}" style="font-size:0.85em; opacity:0.8; margin-left:6px;">${"⭐".repeat(stars)}</span>`;
+    return ` <span class="difficulty" style="font-size:0.8em;opacity:0.6;margin-left:6px">${"⭐".repeat(stars)}${key ? " " + key : ""}</span>`;
   }
 
   // ---- tabs ----
