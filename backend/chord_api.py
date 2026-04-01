@@ -273,27 +273,41 @@ async def midi_import(path: str = Query(...), midi_path: str = Query(...)):
     except Exception:
         pass
 
-    # 儲存
+    # key 不一致 → fallback BTC
+    if key_mismatch:
+        try:
+            from chord_detect import detect_chords
+            root = get_music_root()
+            full_audio = os.path.normpath(os.path.join(root, path))
+            btc_chords = detect_chords(full_audio)
+            if btc_chords:
+                sheet = {"path": path, "key": audio_key, "capo": 0,
+                         "source": "btc", "chords": btc_chords}
+                CHORDS_DIR.mkdir(parents=True, exist_ok=True)
+                chords_file = CHORDS_DIR / f"{_song_hash(path)}.json"
+                chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
+                return {
+                    "ok": True, "path": path, "key": audio_key,
+                    "chord_count": len(btc_chords), "source": "btc",
+                    "warning": f"MIDI 調性不符（MIDI={key}, 音檔={audio_key}），已改用 BTC 偵測",
+                }
+        except Exception:
+            pass
+
+    # 儲存 MIDI 結果
     sheet = {
-        "path": path,
-        "key": key,
-        "capo": 0,
-        "source": "midi",
-        "chords": entries,
+        "path": path, "key": key, "capo": 0,
+        "source": "midi", "chords": entries,
     }
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
     chords_file = CHORDS_DIR / f"{_song_hash(path)}.json"
     chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    result = {
+    return {
         "ok": True, "path": path, "key": key,
-        "chord_count": len(entries),
-        "source": "midi",
+        "chord_count": len(entries), "source": "midi",
         "midi_file": midi_path,
     }
-    if key_mismatch:
-        result["warning"] = f"調性不一致！MIDI={key}, 音檔={audio_key}。MIDI 可能來自不同版本。"
-    return result
 
 
 @router.post("/chords/midi-upload")
