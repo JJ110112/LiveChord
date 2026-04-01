@@ -13,13 +13,13 @@ from .preprocess import chord_to_degree, NOTE_TO_SEMI, parse_chord_name
 
 # 段落類型定義
 SECTION_TYPES = {
-    "intro": {"emoji": "🎬", "color": "#888"},
-    "verse": {"emoji": "🎤", "color": "#4caf50"},
-    "pre_chorus": {"emoji": "⬆️", "color": "#ff9800"},
-    "chorus": {"emoji": "🎵", "color": "#e94560"},
-    "bridge": {"emoji": "🌉", "color": "#9c27b0"},
-    "outro": {"emoji": "🔚", "color": "#607d8b"},
-    "instrumental": {"emoji": "🎸", "color": "#2196f3"},
+    "intro": {"emoji": "🎬", "label": "前奏", "color": "#888"},
+    "verse": {"emoji": "🎤", "label": "主歌", "color": "#4caf50"},
+    "pre_chorus": {"emoji": "⬆️", "label": "導歌", "color": "#ff9800"},
+    "chorus": {"emoji": "🎵", "label": "副歌", "color": "#e94560"},
+    "bridge": {"emoji": "🌉", "label": "橋段", "color": "#9c27b0"},
+    "outro": {"emoji": "🔚", "label": "尾奏", "color": "#607d8b"},
+    "instrumental": {"emoji": "🎸", "label": "間奏", "color": "#2196f3"},
 }
 
 
@@ -196,6 +196,7 @@ def detect_sections(chords, key="C"):
     for s in merged:
         info = SECTION_TYPES.get(s["type"], SECTION_TYPES["verse"])
         s["emoji"] = info["emoji"]
+        s["label"] = info["label"]
         s["color"] = info["color"]
 
     return {

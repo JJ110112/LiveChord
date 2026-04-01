@@ -370,7 +370,7 @@
             if (i === 0 || displayed[i - 1].time < sec.start) {
               const marker = document.createElement("div");
               marker.className = "section-marker";
-              marker.textContent = `${sec.emoji} ${sec.type}`;
+              marker.textContent = `${sec.emoji} ${sec.label || sec.type}`;
               marker.style.color = sec.color;
               el.appendChild(marker);
             }
@@ -384,7 +384,7 @@
             if (i === 0 || displayed[i - 1].time < sec.start) {
               const rmarker = document.createElement("div");
               rmarker.className = "section-marker-ribbon";
-              rmarker.textContent = `${sec.emoji} ${sec.type}`;
+              rmarker.textContent = `${sec.emoji} ${sec.label || sec.type}`;
               rmarker.style.color = sec.color;
               rel.appendChild(rmarker);
             }
