@@ -63,10 +63,23 @@
 
 ---
 
-## 伍、未來目標與願景 (Roadmap)
-1. **Q1 目標**：實作 `Chord2Vec` 與機率矩陣，讓 LiveChord 具備「智慧和絃建議」提示燈光或按鈕。
-2. **Q2 目標**：完成 `Jazzify` 轉換引擎，並發布流行轉特定曲風 (Funk/Jazz/Neo-Soul) 的重配和聲 API。
-3. **Q3 目標**：導入外部大語言模型（如 Google Ultra 或 Claude），賦予系統「解讀人類情緒指令」的能力（如：「幫我把這首歌變得更憂鬱、更有都會感」）。
+## 伍、進度與未來目標 (Status & Roadmap)
+
+### 1. 系統開發狀態 (System Status)
+| 項目 | 狀態 | 數據與說明 |
+| :--- | :--- | :--- |
+| **調性歸一化** | ✅ 完成 | 自動加權算 Key，100% 移調至 C 大調 / A 小調 |
+| **和弦 Tokenization** | ✅ 完成 | 解析出核心級數，實作 Top 100 滿載詞彙過濾與「降級 (Graceful Degradation)」防呆邏輯 |
+| **階段一：Markov Chain** | ✅ 完成 | 實作 Bigram/Trigram 機制，支援動態回退 (Backoff) 與創造力亂數加權預測 |
+| **巨量音訊批次工具** | ✅ 完成 | **[特殊工具]** `batch_btc_worker.py` (支援 RTX 5080 + i9-13900KF 的多執行緒非同步打 GPU 腳本，已設定過濾 Classics/EDM/Sleep 等破壞學習之曲風) |
+| **漸進式自動學習** | ✅ 完成 | `auto_worker.py` 在掃描出新和弦後，背景自動重新訓練 Markov + Chord2Vec 矩陣 |
+| **旋律相容性檢測** | ❌ 未做 | (需要開發 `librosa.pyin` / F0 melody detection 模組化以避免 Jazzify 和弦撞音) |
+| **階段三：Transformer** | ❌ 未做 | (需要等待 78K 資料完整跑出 CUDA Token 後再行調試) |
+
+### 2. Roadmap 目標
+1. **Q1 目標**：實作 `Chord2Vec` 與機率矩陣，讓 LiveChord 具備「智慧和絃建議」提示按鈕。 **(✅ 已達標)**
+2. **Q2 目標**：完成 `Jazzify` 轉換引擎，並發佈流行轉特定曲風的重配和聲 API。 **(⚠️ Jazz 完成，Funk/Neo-Soul 未做，需等待 GPU 處理 Z:\Jam)**
+3. **Q3 目標**：導入外部大語言模型（如 Google Ultra 或 Claude），賦予系統「解讀人類情緒語音指令」的能力（例如下令：「幫我把這首歌變得更都會感一點」）。
 
 ---
 

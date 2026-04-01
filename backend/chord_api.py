@@ -345,7 +345,7 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
 
     for i, track_path in enumerate(tracks):
-        _batch_state["done"] = i
+        _batch_state["done"] = i + 1
         _batch_state["current_track"] = track_path
 
         # 檢查是否已有和弦譜

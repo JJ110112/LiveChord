@@ -180,6 +180,9 @@ def _worker_loop():
             if settings.get("auto_chord_enabled", True):
                 _do_auto_chord_detect(settings)
 
+            # ---- AI 模型漸進式學習 ----
+            _retrain_ai_models()
+
             # ---- 等待下次循環 ----
             interval = max(settings.get("auto_scan_interval_minutes", 30), 1)
             next_time = datetime.now().timestamp() + interval * 60
@@ -187,8 +190,11 @@ def _worker_loop():
             _worker_state["next_scan_at"] = datetime.fromtimestamp(next_time).strftime("%H:%M:%S")
             _worker_state["current_task"] = ""
 
-            # 可中斷的等待
-            _stop_event.wait(timeout=interval * 60)
+            # 可中斷的等待（stop 或 trigger 都會中斷）
+            _trigger_event.clear()
+            _trigger_event.wait(timeout=interval * 60)
+            if _stop_event.is_set():
+                break
 
         except Exception as e:
             _worker_state["error"] = str(e)
@@ -198,6 +204,42 @@ def _worker_loop():
     _worker_state["running"] = False
     _worker_state["status"] = "stopped"
     add_log("INFO", "自動工作器已停止")
+
+
+_last_chord_count = 0  # 記錄上次訓練時的和弦檔數量
+
+
+def _retrain_ai_models():
+    """當和弦資料有變更時，重新訓練 AI 模型"""
+    global _last_chord_count
+    try:
+        chord_files = list(CHORDS_DIR.glob("*.json")) if CHORDS_DIR.is_dir() else []
+        current_count = len(chord_files)
+
+        if current_count == _last_chord_count:
+            return  # 沒有變動，跳過
+
+        _worker_state["status"] = "detecting"
+        _worker_state["current_task"] = "AI 模型學習中"
+        add_log("INFO", f"AI 模型重新訓練（{_last_chord_count}→{current_count} 首）")
+
+        from ai.markov import retrain as markov_retrain
+        import ai.chord2vec as c2v_mod
+        import ai.groove_dict as gd_mod
+
+        markov_retrain(str(CHORDS_DIR))
+
+        c2v_mod._model = None
+        c2v_mod.get_chord2vec(str(CHORDS_DIR))
+
+        gd_mod._dict = None
+        gd_mod.get_groove_dict(str(CHORDS_DIR))
+
+        _last_chord_count = current_count
+        add_log("OK", f"AI 模型訓練完成（{current_count} 首和弦資料）")
+
+    except Exception as e:
+        add_log("ERROR", f"AI 訓練失敗: {e}")
 
 
 def _do_auto_scan(settings: dict):
@@ -335,12 +377,12 @@ def stop_worker():
     return True
 
 
+_trigger_event = threading.Event()
+
+
 def trigger_now():
-    """立即觸發一輪（中斷等待）"""
+    """立即觸發一輪（中斷等待，不停止工作器）"""
     if _worker_state["running"] and _worker_state["status"] == "waiting":
-        _stop_event.set()
-        # 重啟
-        time.sleep(1)
-        start_worker()
+        _trigger_event.set()
         return True
     return False

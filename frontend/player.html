@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#e94560">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="/css/style.css?v=34">
+  <link rel="stylesheet" href="/css/style.css?v=36">
 </head>
 <body>
 
@@ -125,19 +125,21 @@
       </div>
     </div>
     <div id="chordDisplay" class="chord-display-area">
-      <div class="chord-display-tools cd-tools-left">
+      <div class="chord-display-tools cd-tools-left fs-only">
         <button class="cd-tool-btn" id="btnMiniPrev" title="上一首">&#x23EE;</button>
         <button class="cd-tool-btn" id="btnMiniPlay" title="播放/暫停">&#x25B6;</button>
         <button class="cd-tool-btn" id="btnMiniNext" title="下一首">&#x23ED;</button>
         <button class="cd-tool-btn" id="btnMiniSpeed" title="播放速度">1x</button>
       </div>
-      <div class="chord-display-tools cd-tools-center">
+      <div class="chord-display-tools cd-tools-center fs-only">
         <span class="mini-title-wrap"><span class="mini-title" id="miniTitle"></span></span>
       </div>
       <div class="chord-display-tools cd-tools-right">
-        <button class="cd-tool-btn" id="btnZoomOut" title="縮小">−</button>
-        <button class="cd-tool-btn" id="btnZoomReset" title="重設">100%</button>
-        <button class="cd-tool-btn" id="btnZoomIn" title="放大">+</button>
+        <span class="fs-only" style="display:contents">
+          <button class="cd-tool-btn" id="btnZoomOut" title="縮小">−</button>
+          <button class="cd-tool-btn" id="btnZoomReset" title="重設">100%</button>
+          <button class="cd-tool-btn" id="btnZoomIn" title="放大">+</button>
+        </span>
         <button class="cd-tool-btn" id="btnFullscreen" title="全螢幕">&#x26F6;</button>
       </div>
       <div id="chordDisplayOverview" class="chord-timeline"></div>
@@ -153,8 +155,8 @@
 <div id="toast" class="toast"></div>
 <audio id="audio" preload="auto"></audio>
 
-<script src="/js/api.js?v=34"></script>
-<script src="/js/chord-render.js?v=34"></script>
-<script src="/js/player.js?v=34"></script>
+<script src="/js/api.js?v=36"></script>
+<script src="/js/chord-render.js?v=36"></script>
+<script src="/js/player.js?v=36"></script>
 </body>
 </html>

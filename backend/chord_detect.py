@@ -72,6 +72,7 @@ _config = None
 _mean = None
 _std = None
 _idx_to_chord = None
+_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def _load_model():
@@ -95,11 +96,22 @@ def _load_model():
     _model = BTC_model(config=_config.model)
     checkpoint = torch.load(
         os.path.join(BTC_DIR, "btc_model_large_voca.pt"),
-        map_location="cpu", weights_only=False
+        map_location=_device, weights_only=False
     )
     _mean = checkpoint["mean"]
     _std = checkpoint["std"]
     _model.load_state_dict(checkpoint["model"])
+    
+    # 針對極新顯卡 (如 RTX 5080) 的防呆機制：如果 PyTorch 尚未支援該架構，自動退回 CPU
+    try:
+        _model.to(_device)
+        # 測試一下 GPU 否會因為 kernel image 錯誤當掉
+        test_tensor = torch.zeros(1, dtype=torch.float32).to(_device)
+    except RuntimeError as e:
+        print(f"\n⚠️ 發現 GPU 架構過新導致無法推論 ({e})。正在降級為純粹的 i9 CPU 暴力運算模式...")
+        _device = torch.device("cpu")
+        _model.to(_device)
+        
     _model.eval()
 
     _idx_to_chord = idx2voca_chord()
@@ -170,7 +182,7 @@ def _run_btc(audio_path: str) -> list:
     lines = []
     start = 0.0
     with torch.no_grad():
-        ft = torch.tensor(feature, dtype=torch.float32).unsqueeze(0)
+        ft = torch.tensor(feature, dtype=torch.float32).unsqueeze(0).to(_device)
         for t in range(n_inst):
             out, _ = _model.self_attn_layers(ft[:, n_ts * t:n_ts * (t + 1), :])
             pred, _ = _model.output_layer(out)

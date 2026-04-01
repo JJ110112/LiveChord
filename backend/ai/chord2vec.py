@@ -43,7 +43,8 @@ class Chord2Vec:
         self.vocab = {w: i for i, w in enumerate(self.index2word)}
         vocab_size = len(self.vocab)
 
-        if vocab_size < 5:
+        if vocab_size < 3:
+            self.vectors = np.zeros((vocab_size, min(self.dim, 1)), dtype=np.float32)
             return stats
 
         # 建立共現矩陣 (co-occurrence matrix)

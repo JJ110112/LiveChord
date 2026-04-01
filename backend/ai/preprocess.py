@@ -139,8 +139,38 @@ def load_all_chord_sequences(chords_dir):
     return songs
 
 
-def build_training_data(chords_dir):
+VOCAB_LIMIT = 100  # 只保留前 N 常見的級數，罕見的降級為簡化版
+
+# 品質降級對照：罕見品質 → 基礎三和弦品質
+_SIMPLIFY_QUALITY = {
+    "maj7": "", "maj9": "", "maj11": "", "maj13": "", "6": "", "add9": "",
+    "m7": "m", "m9": "m", "m11": "m", "m6": "m", "madd9": "m",
+    "7": "", "9": "", "13": "", "7b9": "", "7#9": "", "7#11": "", "7b13": "",
+    "m7b5": "dim", "mM7": "m",
+    "sus2": "", "sus4": "",
+}
+
+
+def _simplify_degree(degree):
+    """將罕見級數降級為基礎版本
+    例: bIIImaj7 → bIII, VIm7b5 → VIdim
+    """
+    import re
+    m = re.match(r"^(bVII|#IV|bVI|bIII|bII|VII|VI|IV|III|II|V|I)(.*)", degree)
+    if not m:
+        return degree
+    root_deg = m.group(1)
+    quality = m.group(2)
+    simplified = _SIMPLIFY_QUALITY.get(quality, quality)
+    return root_deg + simplified
+
+
+def build_training_data(chords_dir, vocab_limit=VOCAB_LIMIT):
     """建立訓練資料：所有歌曲移調到 C 大調，輸出級數序列
+
+    Phase 1: 收集所有級數統計
+    Phase 2: 過濾罕見級數（降級為基礎三和弦）
+    Phase 3: 輸出清理後的序列
 
     Returns:
         degree_sequences: [[degree_str, ...], ...]  每首歌一個 list
@@ -149,23 +179,16 @@ def build_training_data(chords_dir):
     """
     songs = load_all_chord_sequences(chords_dir)
 
-    degree_sequences = []
-    transposed_sequences = []
-    total_chords = 0
-    unique_degrees = Counter()
-    unique_chords = Counter()
+    # Phase 1: 收集所有級數
+    raw_sequences = []
+    raw_transposed = []
 
     for song in songs:
         chord_names = song["chords"]
-
-        # 偵測 key
         key_semi = detect_key_from_chords(chord_names)
-
-        # 移調到 C (key_semi → 0)
         shift = -key_semi
         transposed = [transpose_chord(c, shift) for c in chord_names]
 
-        # 轉為級數
         degrees = []
         for c in chord_names:
             d = chord_to_degree(c, key_semi)
@@ -175,7 +198,7 @@ def build_training_data(chords_dir):
         if len(degrees) < 4:
             continue
 
-        # 去除連續重複（只保留和弦變化點）
+        # 去除連續重複
         deduped_degrees = [degrees[0]]
         deduped_transposed = [transposed[0]]
         for i in range(1, len(degrees)):
@@ -183,13 +206,66 @@ def build_training_data(chords_dir):
                 deduped_degrees.append(degrees[i])
                 deduped_transposed.append(transposed[i])
 
-        degree_sequences.append(deduped_degrees)
-        transposed_sequences.append(deduped_transposed)
-        total_chords += len(deduped_degrees)
+        raw_sequences.append(deduped_degrees)
+        raw_transposed.append(deduped_transposed)
 
-        for d in deduped_degrees:
+    # Phase 2: 建立詞彙表，過濾罕見級數
+    all_degrees = Counter()
+    for seq in raw_sequences:
+        all_degrees.update(seq)
+
+    # Top N 為核心詞彙
+    core_vocab = {d for d, _ in all_degrees.most_common(vocab_limit)}
+    filtered_count = 0
+
+    # Phase 3: 正規化序列
+    degree_sequences = []
+    transposed_sequences = []
+    total_chords = 0
+    unique_degrees = Counter()
+    unique_chords = Counter()
+
+    for seq, trans in zip(raw_sequences, raw_transposed):
+        cleaned = []
+        cleaned_trans = []
+        for d, t in zip(seq, trans):
+            if d in core_vocab:
+                cleaned.append(d)
+                cleaned_trans.append(t)
+            else:
+                # 降級為基礎版本
+                simplified = _simplify_degree(d)
+                if simplified in core_vocab:
+                    cleaned.append(simplified)
+                    cleaned_trans.append(t)
+                    filtered_count += 1
+                else:
+                    # 極度罕見：取級數根部
+                    import re
+                    m = re.match(r"^(bVII|#IV|bVI|bIII|bII|VII|VI|IV|III|II|V|I)", d)
+                    root = m.group(1) if m else d
+                    cleaned.append(root)
+                    cleaned_trans.append(t)
+                    filtered_count += 1
+
+        if len(cleaned) < 4:
+            continue
+
+        # 再次去除因降級產生的連續重複
+        final_deg = [cleaned[0]]
+        final_trans = [cleaned_trans[0]]
+        for i in range(1, len(cleaned)):
+            if cleaned[i] != cleaned[i - 1]:
+                final_deg.append(cleaned[i])
+                final_trans.append(cleaned_trans[i])
+
+        degree_sequences.append(final_deg)
+        transposed_sequences.append(final_trans)
+        total_chords += len(final_deg)
+
+        for d in final_deg:
             unique_degrees[d] += 1
-        for c in deduped_transposed:
+        for c in final_trans:
             unique_chords[c] += 1
 
     stats = {
@@ -197,6 +273,8 @@ def build_training_data(chords_dir):
         "total_chord_changes": total_chords,
         "unique_degrees": len(unique_degrees),
         "unique_chords": len(unique_chords),
+        "vocab_limit": vocab_limit,
+        "filtered_rare_chords": filtered_count,
         "top_degrees": unique_degrees.most_common(20),
         "top_chords": unique_chords.most_common(20),
     }

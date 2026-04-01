@@ -33,6 +33,7 @@ const ChordRender = {
     canvas.style.height = Math.round(sh * scale) + "px";
 
     const ctx = canvas.getContext("2d");
+    if (!ctx) return;
     ctx.scale(scale * dpr, scale * dpr);
     ctx.clearRect(0, 0, sw, sh);
 
@@ -217,6 +218,7 @@ const ChordRender = {
     canvas.style.height = Math.round(totalH * scale) + "px";
 
     const ctx = canvas.getContext("2d");
+    if (!ctx) return;
     ctx.scale(scale * dpr, scale * dpr);
     ctx.clearRect(0, 0, totalW, totalH);
 

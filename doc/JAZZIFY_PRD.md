@@ -10,15 +10,17 @@
 ### 1. 專案概述 (Project Overview)
 本計畫旨在於現有的 `LiveChord` 專案中，開發全新的 **Jazzify 重配和聲引擎**。系統將消化 78,929 首音訊/MIDI Tracks 作為基底資料庫，並結合專家級爵士樂理規則（如 II-V-I 插入、三全音代理、延伸和絃），允許使用者輸入一段流行音樂和絃，系統自動生成具有爵士風味的高階和絃進行。
 
-### 2. 核心目標與階段劃分 (Objectives & Phases)
-*   **階段一：Rule-Based 爵士樂理引擎 (Hybrid AI)**
-    *   **目標**：不依賴龐大訓練時間，先由 AI 動態解析輸入的基礎和絃，套用爵士樂理規則（添加 7/9/11/13 音、插入 Secondary Dominant）。
-    *   **產出**：一個可立即運作的 Python 模組 `reharmonizer.py` 與前端 API。
-*   **階段二：大數據萃取管線 (Data ETL Pipeline)**
-    *   **目標**：將 78,929 首歌曲送入現有的 `chord_detect.py` (BTC Transformer) 或 `pretty_midi` 解析器，抽取準確的「時間軸-和絃序列」。
-    *   **產出**：標準化、移調至 C 大調/A 小調的 `chord_corpus.json` 或 Vector Database。
-*   **階段三：資料驅動的 AI 預測模型 (Data-Driven ML)**
-    *   **目標**：從語料庫訓練 Markov Model、HMM 或調用 Google AI Ultra / Claude API 作為推理大腦，生成符合真實世界爵士大師習慣的彈奏替換方案。
+### 2. 核心目標與階段達成總覽 (Objectives & Progress)
+
+| 階段 | 目標 | 狀態 | 說明 |
+| :--- | :--- | :--- | :--- |
+| **階段一：Rule-Based 引擎** | `reharmonizer.py` + API | ✅ 完成 | 3 級 Jazzify（延伸音/ii-V/三全音代理），小調 ii 用 m7b5 |
+| **階段二：Data ETL Pipeline** | 標準化語料庫 | ✅ 完成 | `preprocess.py` 移調→C大調，詞彙過濾 Top 100 |
+| | 78,929 首 GPU 批次處理工具 | ✅ 完成 | **[特殊工具]** `batch_btc_worker.py` (針對 RTX 5080 + i9 優化之多執行緒 CUDA 高速處理腳本，排除 Classics/EDM 等雜訊分類) |
+| **階段三：AI 預測模型** | Markov Model | ✅ 完成 | 實裝 Bigram/Trigram，支援 Backoff 退回 |
+| | HMM / LLM 推理 | ❌ 未做 | 需等待 GPU 大批次處理完 78k 資料再進行訓練 |
+| | 多智能體 Prompts | ✅ 完成 | PM/Data RD/Backend RD/QA 已定義完成並記錄於文件內 |
+| | Jam Tracks 字典 | ⚠️ 部分完成 | 架構就緒 (`groove_dict.py`)，等待 GPU 批次運算 3,000 首獨立風格集以解鎖 Funk/Neo-Soul 引擎 |
 
 ### 3. 系統架構 (System Architecture)
 *   **核心服務**：FastAPI (Python)。
