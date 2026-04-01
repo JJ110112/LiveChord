@@ -11,6 +11,7 @@ from music_api import router as music_router
 from chord_api import router as chord_router
 from user_api import router as user_router
 from benchmark_api import router as benchmark_router
+from ai_api import router as ai_router
 import auto_worker
 
 
@@ -34,6 +35,7 @@ app.include_router(music_router)
 app.include_router(chord_router)
 app.include_router(user_router)
 app.include_router(benchmark_router)
+app.include_router(ai_router)
 
 # 前端靜態檔案
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"

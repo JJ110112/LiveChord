@@ -277,6 +277,15 @@
       chordData = await API.getChords(path);
       if (chordData.exists && chordData.chords && chordData.chords.length > 0) {
         hasChords = true;
+        // 和弦品質燈號
+        const srcBadge = $("#chordSource");
+        if (srcBadge) {
+          const rawSrc = chordData.source || "btc";
+          const src = rawSrc === "chordify" ? "midi" : rawSrc;
+          const labels = { midi: "MIDI", btc: "BTC" };
+          srcBadge.className = `chord-source-badge src-${src}`;
+          srcBadge.textContent = labels[src] || src;
+        }
         if (chordData.key) {
           const keyInfo = $("#chordKey");
           if (keyInfo) keyInfo.textContent = `Key: ${chordData.key}`;
@@ -789,33 +798,107 @@
   const btnEdit = $("#btnEdit");
   if (btnEdit) btnEdit.href = `/editor?path=${encodeURIComponent(trackPath)}`;
 
-  // ---- MIDI upload + import button ----
-  const btnMidi = $("#btnMidi");
-  const midiFileInput = $("#midiFileInput");
-  if (btnMidi && midiFileInput) {
-    btnMidi.addEventListener("click", () => {
-      midiFileInput.value = "";
-      midiFileInput.click();
-    });
+  // ---- AI 建議按鈕 ----
+  const btnAiSuggest = $("#btnAiSuggest");
+  if (btnAiSuggest) {
+    btnAiSuggest.addEventListener("click", async () => {
+      if (!chordData || !chordData.chords || chordData.chords.length === 0) {
+        showToast("尚無和弦資料", 2000);
+        return;
+      }
 
-    midiFileInput.addEventListener("change", async () => {
-      const file = midiFileInput.files[0];
-      if (!file) return;
+      // 取目前播放位置附近的和弦作為 context
+      const t = audio.currentTime || 0;
+      const displayed = _displayChords();
+      const recent = [];
+      for (let i = displayed.length - 1; i >= 0; i--) {
+        if (displayed[i].time <= t) {
+          for (let j = Math.max(0, i - 2); j <= i; j++) {
+            recent.push(displayed[j].chord);
+          }
+          break;
+        }
+      }
+      if (recent.length === 0 && displayed.length > 0) {
+        recent.push(displayed[0].chord);
+      }
 
-      detectOverlay.style.display = "";
-      detectMsg.textContent = "MIDI 匯入中…";
-      detectDetail.textContent = file.name;
+      const key = chordData.key || "C";
 
       try {
-        const r = await API.midiUpload(trackPath, file);
-        showToast(`MIDI 匯入完成！${r.chord_count} 和弦，Key: ${r.key}`, 3000);
-        chordCache = {};
-        await loadChords(trackPath);
-        updateActiveChord(audio.currentTime || -1);
+        const res = await fetch(`/api/ai/suggest?chords=${encodeURIComponent(recent.join(","))}&key=${encodeURIComponent(key)}&top_k=5`);
+        const data = await res.json();
+
+        if (data.suggestions && data.suggestions.length > 0) {
+          const msg = data.suggestions
+            .map(s => `${s.chord}(${s.degree}) ${Math.round(s.probability * 100)}%`)
+            .join("  ");
+          showToast(`AI: ${recent.join("→")} → ${msg}`, 5000);
+        } else {
+          showToast("AI 無法預測", 2000);
+        }
       } catch (err) {
-        showToast("MIDI 匯入失敗: " + err.message, 4000);
-      } finally {
-        detectOverlay.style.display = "none";
+        showToast("AI 預測失敗: " + err.message, 3000);
+      }
+    });
+  }
+
+  // ---- Jazzify 按鈕 ----
+  const btnJazzify = $("#btnJazzify");
+  let jazzifyActive = false;
+  let jazzifyLevel = 0;  // 0=off, 1/2/3=level
+  let originalChords = null;
+
+  if (btnJazzify) {
+    btnJazzify.addEventListener("click", async () => {
+      if (!chordData || !chordData.chords || chordData.chords.length === 0) {
+        showToast("尚無和弦資料", 2000);
+        return;
+      }
+
+      // 循環：off → L1 → L2 → L3 → off
+      jazzifyLevel = (jazzifyLevel + 1) % 4;
+
+      if (jazzifyLevel === 0) {
+        // 還原原始
+        if (originalChords) {
+          chordData.chords = originalChords;
+          originalChords = null;
+        }
+        jazzifyActive = false;
+        btnJazzify.textContent = "Jazzify";
+        btnJazzify.style.background = "rgba(255,152,0,.15)";
+        chordCache = {};
+        await preloadChordInfo(chordData.chords);
+        buildChordDOM();
+        updateActiveChord(audio.currentTime || -1);
+        showToast("已還原原始和弦", 1500);
+        return;
+      }
+
+      // 儲存原始（只在第一次）
+      if (!originalChords) {
+        originalChords = [...chordData.chords];
+      }
+
+      btnJazzify.textContent = `Jazz L${jazzifyLevel}...`;
+
+      try {
+        const res = await API.jazzify(originalChords, chordData.key || "C", jazzifyLevel);
+        chordData.chords = res.chords;
+        jazzifyActive = true;
+        btnJazzify.textContent = `Jazz L${jazzifyLevel}`;
+        btnJazzify.style.background = "rgba(255,152,0,.4)";
+        chordCache = {};
+        await preloadChordInfo(chordData.chords);
+        buildChordDOM();
+        updateActiveChord(audio.currentTime || -1);
+        showToast(`Jazzify L${jazzifyLevel}: ${res.original_count}→${res.jazzified_count} 和弦, ${res.changes.length} 變更`, 3000);
+      } catch (err) {
+        showToast("Jazzify 失敗: " + err.message, 3000);
+        jazzifyLevel = 0;
+        btnJazzify.textContent = "Jazzify";
+        btnJazzify.style.background = "rgba(255,152,0,.15)";
       }
     });
   }

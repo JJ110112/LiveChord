@@ -50,6 +50,7 @@ const API = {
   },
   chordTracks: () => API.get("/api/chords/tracks"),
   batchMidiImport: () => API.post("/api/chords/batch-midi-import"),
+  jazzify: (chords, key, level) => API.post("/api/ai/jazzify", { chords, key, level }),
 
   // 使用者
   getFavorites: () => API.get("/api/favorites"),
