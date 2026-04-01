@@ -1024,7 +1024,11 @@
           detectMsg.textContent = "MIDI 匯入中…";
           detectDetail.textContent = chosen.name;
           const result = await API.midiImport(trackPath, chosen.path);
-          showToast(`MIDI 匯入！${result.chord_count} 和弦，Key: ${result.key}`, 3000);
+          if (result.warning) {
+            showToast(`⚠️ ${result.warning}`, 6000);
+          } else {
+            showToast(`MIDI 匯入！${result.chord_count} 和弦，Key: ${result.key}`, 3000);
+          }
           chordCache = {};
           await loadChords(trackPath);
           updateActiveChord(audio.currentTime || -1);

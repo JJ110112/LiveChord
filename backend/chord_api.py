@@ -255,6 +255,24 @@ async def midi_import(path: str = Query(...), midi_path: str = Query(...)):
             roots.append(root)
     key = Counter(roots).most_common(1)[0][0] if roots else ""
 
+    # 驗證：比對 MIDI key 與音檔 key 是否一致
+    key_mismatch = False
+    audio_key = ""
+    try:
+        root = get_music_root()
+        full_audio = os.path.normpath(os.path.join(root, path))
+        if os.path.isfile(full_audio):
+            from chord_detect import detect_key
+            audio_key = detect_key(full_audio)
+            if audio_key and key:
+                from .preprocess import NOTE_TO_SEMI
+                midi_semi = NOTE_TO_SEMI.get(key.rstrip("m"), -1)
+                audio_semi = NOTE_TO_SEMI.get(audio_key.rstrip("m"), -1)
+                if midi_semi >= 0 and audio_semi >= 0 and midi_semi != audio_semi:
+                    key_mismatch = True
+    except Exception:
+        pass
+
     # 儲存
     sheet = {
         "path": path,
@@ -267,12 +285,15 @@ async def midi_import(path: str = Query(...), midi_path: str = Query(...)):
     chords_file = CHORDS_DIR / f"{_song_hash(path)}.json"
     chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    return {
+    result = {
         "ok": True, "path": path, "key": key,
         "chord_count": len(entries),
         "source": "midi",
         "midi_file": midi_path,
     }
+    if key_mismatch:
+        result["warning"] = f"調性不一致！MIDI={key}, 音檔={audio_key}。MIDI 可能來自不同版本。"
+    return result
 
 
 @router.post("/chords/midi-upload")

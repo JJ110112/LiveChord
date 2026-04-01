@@ -38,7 +38,14 @@ LiveChord 的野心已超越單純的「和絃預測器」，而是成為**顛�
 ### 4. 混合式智慧重配架構 (Hybrid AI Reharmonizer)
 為解決單純 Markov Chain 的「馬可夫失憶症（缺乏音樂意圖與段落認知）」，系統匯入以下混合架構：
 *   **相對調矩陣 (Relative Scale Matrix)**：強制將絕對和弦轉換為相對級數（Roman Numerals），讓模型具備「調性重力 (Tonal Gravity)」感知。
-*   **段落標籤與 Chord2Vec**：利用和弦切換的密度與延伸音張力，定義主歌與副歌的情緒標籤，結合向量語義尋找合理代理和弦。
+*   **段落標籤與 Chord2Vec**：利用和弦切換的密度與延伸音複雜度，為整首曲目標註情緒段落，找出合理代理和弦。架構內建之段落偵測條件定義如下：
+    *   `🎬 intro` (開頭)：前 8 秒，切換密度 ≤ 2
+    *   `🎤 verse` (主歌)：一般密度 + 基礎複雜度
+    *   `⬆️ pre_chorus` (導歌)：密度 > 0.8x avg + 複雜度明顯升高
+    *   `🎵 chorus` (副歌)：全曲高密度區段 或 高重複模式匹配
+    *   `🌉 bridge` (橋段)：獨特和弦出現率高（可能伴隨轉調）
+    *   `🎸 instrumental` (器樂插曲)：低密度 + ≤ 2 個和弦來回
+    *   `🔚 outro` (尾奏)：最後 8 秒，切換密度 ≤ 2
 *   **模式匹配引擎 (Pattern Matching Engine)**：特徵萃取器主動辨識 `ii-V-I`、`Modal Interchange` 等樂理結構，必要時介入防呆（Rule-based constraints），確保生成的和聲具備穩定的終止式落地感。
 *   **隱馬可夫與 Viterbi 解碼 (HMM & Viterbi Decoding)**：導入 `librosa.pyin` 提取的主旋律 (F0) 作為「觀測序列 (Observation)」。結合和弦本身的狀態轉移矩陣，與和弦對應旋律的「發射矩陣 (Emission)」，透過 Viterbi 演算法算出全曲最高分的完美和聲路徑，徹底根除爵士重配時容易「打架撞音」的問題。
 
