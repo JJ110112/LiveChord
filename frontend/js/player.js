@@ -179,6 +179,9 @@
     btnFullscreen.innerHTML = "&#x26F6;";
     if (btnPageFs) btnPageFs.innerHTML = "&#x26F6;";
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    // 退出全螢幕時重置縮放到 100%
+    zoomIdx = ZOOM_STEPS.indexOf(100);
+    _applyZoom();
   }
 
   if (btnFullscreen && chordDisplay) {
@@ -200,6 +203,9 @@
       chordDisplay.classList.remove("fullscreen");
       if (btnFullscreen) btnFullscreen.innerHTML = "&#x26F6;";
       if (btnPageFs) btnPageFs.innerHTML = "&#x26F6;";
+      // 重置縮放
+      zoomIdx = ZOOM_STEPS.indexOf(100);
+      _applyZoom();
     }
   });
 
@@ -533,6 +539,8 @@
         if (rCanvas && rCanvas._lastMidi) _prevMidi = rCanvas._lastMidi;
       }
     }
+    // 重新渲染段落標記
+    if (sectionData) _renderSectionMarkers();
   }
 
   async function _loadMissingCache(names) {
