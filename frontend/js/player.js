@@ -203,6 +203,25 @@
     }
   });
 
+  // 相對簡譜：notes 陣列相對於當前 key 的簡譜
+  function _notesToJianpu(notes, key) {
+    if (!notes || notes.length === 0) return "";
+    const JP = ["1","#1","2","#2","3","4","#4","5","#5","6","#6","7"];
+    const JPF = ["1","b2","2","b3","3","4","b5","5","b6","6","b7","7"];
+    const keySemi = noteToSemitone(key || "C");
+    return notes.map(n => {
+      const semi = noteToSemitone(n);
+      const interval = ((semi - keySemi) % 12 + 12) % 12;
+      return n.includes("b") ? JPF[interval] : JP[interval];
+    }).join(" ");
+  }
+
+  function _currentKey() {
+    if (!chordData || !chordData.key) return "C";
+    const shift = transpose - capo;
+    return shift === 0 ? chordData.key : transposeChord(chordData.key, shift);
+  }
+
   function showToast(msg, ms = 2000) {
     toast.textContent = msg;
     toast.classList.add("show");
@@ -477,7 +496,7 @@
     if (displayMode === "piano") {
       const jp = document.createElement("div");
       jp.className = "chord-jianpu";
-      jp.innerHTML = ChordRender.jianpuToHtml(cache.jianpu || "");
+      jp.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
       div.appendChild(jp);
       const pianoCanvas = document.createElement("canvas");
       ChordRender.drawPiano(pianoCanvas, cache.notes || [], 1);
@@ -499,18 +518,24 @@
     return div;
   }
 
+  function _splitChordName(name) {
+    const m = name.match(/^([A-G][b#]?)(.*)$/);
+    return m ? { root: m[1], quality: m[2] } : { root: name, quality: "" };
+  }
+
   function _fillChordEl(div, chord, cache) {
     div.innerHTML = "";
 
     const nameEl = document.createElement("div");
     nameEl.className = "chord-name";
-    nameEl.textContent = chord.chord;
+    const parts = _splitChordName(chord.chord);
+    nameEl.innerHTML = parts.root + (parts.quality ? `<span class="chord-quality">${parts.quality}</span>` : "");
     div.appendChild(nameEl);
 
     if (displayMode === "piano") {
       const jp = document.createElement("div");
       jp.className = "chord-jianpu";
-      jp.innerHTML = ChordRender.jianpuToHtml(cache.jianpu || "");
+      jp.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
       div.appendChild(jp);
       const pianoCanvas = document.createElement("canvas");
       pianoCanvas.style.marginTop = "4px";
@@ -606,13 +631,13 @@
         bigChordDiagram.innerHTML = "";
 
         if (displayMode === "piano") {
-          bigChordJianpu.innerHTML = ChordRender.jianpuToHtml(cache.jianpu || "");
+          bigChordJianpu.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
           const pianoCanvas = document.createElement("canvas");
           pianoCanvas.style.marginTop = "8px";
           ChordRender.drawPiano(pianoCanvas, cache.notes || [], 1.8);
           bigChordDiagram.appendChild(pianoCanvas);
         } else {
-          bigChordJianpu.innerHTML = ChordRender.jianpuToHtml(cache.jianpu || "");
+          bigChordJianpu.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
           const key = displayMode === "guitar" ? "diagram_guitar" : "diagram_ukulele";
           const diag = cache[key];
           if (diag) {
@@ -1007,18 +1032,30 @@
   const transposeVal = $("#transposeValue");
   const capoSelect = $("#capoSelect");
 
+  function _updateKeyDisplay() {
+    const keyInfo = $("#chordKey");
+    if (keyInfo && chordData && chordData.key) {
+      const shift = transpose - capo;
+      const newKey = shift === 0 ? chordData.key : transposeChord(chordData.key, shift);
+      keyInfo.textContent = `Key: ${newKey}`;
+    }
+  }
+
   if (transposeUpBtn) transposeUpBtn.addEventListener("click", () => {
     transpose = Math.min(transpose + 1, 11);
     transposeVal.textContent = transpose > 0 ? `+${transpose}` : transpose;
+    _updateKeyDisplay();
     buildChordDOM(); updateActiveChord(audio.currentTime || -1);
   });
   if (transposeDnBtn) transposeDnBtn.addEventListener("click", () => {
     transpose = Math.max(transpose - 1, -11);
     transposeVal.textContent = transpose > 0 ? `+${transpose}` : transpose;
+    _updateKeyDisplay();
     buildChordDOM(); updateActiveChord(audio.currentTime || -1);
   });
   if (capoSelect) capoSelect.addEventListener("change", () => {
     capo = parseInt(capoSelect.value) || 0;
+    _updateKeyDisplay();
     buildChordDOM(); updateActiveChord(audio.currentTime || -1);
   });
 
@@ -1102,4 +1139,23 @@ function transposeChord(chord, semi) {
   let r = semitoneToNote(noteToSemitone(m[1])+semi, flat) + (m[2]||"");
   if (m[3]) r += "/" + semitoneToNote(noteToSemitone(m[3])+semi, flat);
   return r;
+}
+
+// 相對於 key 的簡譜標記
+const JIANPU_NAMES = ["1","#1","2","#2","3","4","#4","5","#5","6","#6","7"];
+const JIANPU_FLAT  = ["1","b2","2","b3","3","4","b5","5","b6","6","b7","7"];
+
+function chordToJianpu(chord, key) {
+  const m = chord.match(/^([A-G][b#]?)/);
+  if (!m) return "";
+  const notes = chord.match(/^([A-G][b#]?)(.*?)(?:\/([A-G][b#]?))?$/);
+  if (!notes) return "";
+  const root = notes[1];
+  const keySemi = noteToSemitone(key || "C");
+  const useFlat = root.includes("b") || (key && key.includes("b"));
+
+  // 從 chord_table API 回傳的 notes 計算
+  // 這裡用簡化方式：根音相對於 key 的簡譜
+  const interval = ((noteToSemitone(root) - keySemi) % 12 + 12) % 12;
+  return useFlat ? JIANPU_FLAT[interval] : JIANPU_NAMES[interval];
 }

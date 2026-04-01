@@ -186,6 +186,10 @@ const ChordRender = {
       }
     }
 
+    // 區分核心音 (前4個: root,3rd,5th,7th) vs 延伸音 (9th,11th,13th)
+    const coreSet = new Set(absNotes.slice(0, 4));
+    const extSet = new Set(absNotes.slice(4));
+
     // 計算鍵盤範圍：顯示根音前 2 個白鍵到最高音後 2 個白鍵
     const whiteNotes = [0,2,4,5,7,9,11]; // semitones that are white keys
     const isWhite = (midi) => whiteNotes.includes(midi % 12);
@@ -224,19 +228,24 @@ const ChordRender = {
 
     const x0 = 1;
 
+    // 顏色：核心音=紅色, 延伸音=藍色
+    const CORE_COLOR = "#e94560";   // 紅 — 骨架 (1,3,5,7)
+    const EXT_COLOR  = "#4ca1ff";   // 藍 — 點綴 (9,11,13)
+
     // Draw white keys
     for (let i = 0; i < numWhites; i++) {
       const midi = whiteKeys[i];
       const x = x0 + i * ww;
-      const hit = pressedSet.has(midi);
+      const isCore = coreSet.has(midi);
+      const isExt = extSet.has(midi);
+      const hit = isCore || isExt;
       ctx.fillStyle = hit ? "#fff" : "#f0f0f0";
       ctx.fillRect(x, 0, ww - 1, wh);
       ctx.strokeStyle = "#999";
       ctx.lineWidth = 0.5;
       ctx.strokeRect(x, 0, ww - 1, wh);
       if (hit) {
-        // dot
-        ctx.fillStyle = "#222";
+        ctx.fillStyle = isExt ? EXT_COLOR : CORE_COLOR;
         ctx.beginPath();
         ctx.arc(x + (ww - 1) / 2, wh - dotR - 4, dotR, 0, Math.PI * 2);
         ctx.fill();
@@ -244,21 +253,23 @@ const ChordRender = {
     }
 
     // Draw black keys
-    const blackAfter = new Set([0, 1, 3, 4, 5]); // white key scale degrees that have a black key to their right: C,D,F,G,A
+    const blackAfter = new Set([0, 1, 3, 4, 5]);
     for (let i = 0; i < numWhites - 1; i++) {
       const midi = whiteKeys[i];
       const deg = midi % 12;
       if (!blackAfter.has(whiteNotes.indexOf(deg))) continue;
       const blackMidi = midi + 1;
       const x = x0 + (i + 1) * ww - bw / 2 - 0.5;
-      const hit = pressedSet.has(blackMidi);
-      ctx.fillStyle = hit ? "#333" : "#222";
+      const isCore = coreSet.has(blackMidi);
+      const isExt = extSet.has(blackMidi);
+      const hit = isCore || isExt;
+      ctx.fillStyle = hit ? "#444" : "#222";
       ctx.fillRect(x, 0, bw, bh);
       ctx.strokeStyle = "#000";
       ctx.lineWidth = 0.5;
       ctx.strokeRect(x, 0, bw, bh);
       if (hit) {
-        ctx.fillStyle = "#fff";
+        ctx.fillStyle = isExt ? EXT_COLOR : "#fff";
         ctx.beginPath();
         ctx.arc(x + bw / 2, bh - dotR - 3, dotR, 0, Math.PI * 2);
         ctx.fill();
