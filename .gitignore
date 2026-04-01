@@ -58,3 +58,5 @@ out2_utf8.txt
 out8.txt
 patch2_utf8.txt
 *.txt
+agent/.env
+agent/.langgraph_api/
