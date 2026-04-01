@@ -100,16 +100,21 @@ def _song_hash(path: str) -> str:
     """產生穩定的 song hash（用於和弦譜檔名）"""
     return hashlib.md5(path.encode("utf-8")).hexdigest()[:12]
 
-def _get_unique_chords(path: str) -> int:
-    """計算特定曲目的不重複和弦數"""
+def _get_chord_summary(path: str) -> dict:
+    """取得和弦摘要：unique count, key, chord list"""
     chords_file = DATA_DIR / "chords" / f"{_song_hash(path)}.json"
     if chords_file.is_file():
         try:
             cdata = json.loads(chords_file.read_text(encoding="utf-8"))
-            return len(set(c["chord"] for c in cdata.get("chords", []) if c.get("chord") and c["chord"] != "N"))
+            unique = sorted(set(c["chord"] for c in cdata.get("chords", []) if c.get("chord") and c["chord"] != "N"))
+            return {
+                "unique_chords": len(unique),
+                "chord_key": cdata.get("key", ""),
+                "chord_list": unique,
+            }
         except Exception:
-            return 0
-    return 0
+            pass
+    return {"unique_chords": 0, "chord_key": "", "chord_list": []}
 
 # ---------------------------------------------------------------------------
 # browse
@@ -148,10 +153,11 @@ async def browse(path: str = Query(default="")):
                 "has_cover": cover,
             })
         elif name.lower().endswith(".flac"):
+            summary = _get_chord_summary(rel)
             entries.append({
                 "name": name, "path": rel, "is_dir": False,
                 "has_cover": True,
-                "unique_chords": _get_unique_chords(rel),
+                **summary,
             })
     return {"current": os.path.relpath(target, root).replace("\\", "/"),
             "entries": entries}
@@ -183,7 +189,8 @@ async def search(q: str = Query(default="")):
         searchable = f"{t.get('title','')} {t.get('artist','')} {t.get('album','')} {fname}".lower()
         if q_lower in searchable:
             if "unique_chords" not in t:
-                t["unique_chords"] = _get_unique_chords(t.get("path", ""))
+                summary = _get_chord_summary(t.get("path", ""))
+                t.update(summary)
             results.append(t)
             if len(results) >= 50:
                 break
@@ -209,8 +216,9 @@ async def track_info(path: str = Query(...)):
     meta["has_cover"] = _find_cover(full) is not None
 
     # 檢查是否有和弦譜
-    meta["unique_chords"] = _get_unique_chords(path)
-    meta["has_chords"] = meta["unique_chords"] > 0
+    summary = _get_chord_summary(path)
+    meta.update(summary)
+    meta["has_chords"] = summary["unique_chords"] > 0
 
     return meta
 
