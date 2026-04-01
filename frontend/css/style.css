@@ -901,6 +901,14 @@ a:hover { text-decoration: underline; }
   border-radius: 0;
 }
 
+.chord-display-area.fullscreen .chord-timeline {
+  padding-top: 40px;
+}
+
+.chord-display-area.fullscreen .chord-ribbon {
+  margin-top: 32px;
+}
+
 /* 非全螢幕時隱藏播放控制/曲名/縮放 */
 .fs-only { display: none !important; }
 .chord-display-area.fullscreen .fs-only { display: flex !important; }
@@ -946,7 +954,7 @@ a:hover { text-decoration: underline; }
   display: flex;
   flex-wrap: wrap;
   align-content: flex-start;
-  padding-top: 28px;
+  padding-top: 32px;
   padding-bottom: 40px;
   row-gap: 24px;
   column-gap: 6px;
@@ -954,8 +962,8 @@ a:hover { text-decoration: underline; }
   min-height: 0;
   overflow-y: auto;
   scroll-behavior: smooth;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: #444 transparent;
 }
 .chord-timeline::-webkit-scrollbar {
   display: none;                   /* Chrome/Safari */
