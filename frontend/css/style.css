@@ -1114,9 +1114,9 @@ a:hover { text-decoration: underline; }
   overflow-x: auto;
   gap: 12px;
   padding-bottom: 4px;
-  scroll-behavior: smooth;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  cursor: grab;
 }
 .horizontal-scroll::-webkit-scrollbar {
   display: none;

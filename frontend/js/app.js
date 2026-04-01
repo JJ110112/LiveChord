@@ -312,27 +312,104 @@
     }
   }
 
-  // ---- 滾輪→橫向捲動 ----
-  document.querySelectorAll(".horizontal-scroll").forEach(el => {
+  // ---- 橫向捲動：滾輪 + 拖曳（含慣性）----
+  function _initHorizontalScroll(el) {
+    if (el.dataset.hscroll) return;
+    el.dataset.hscroll = "1";
+
+    // 滾輪→橫向
     el.addEventListener("wheel", (e) => {
       if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
         e.preventDefault();
         el.scrollLeft += e.deltaY;
       }
     }, { passive: false });
-  });
 
-  // MutationObserver: 動態載入的 horizontal-scroll 也要綁定
-  new MutationObserver(() => {
-    document.querySelectorAll(".horizontal-scroll:not([data-wheel])").forEach(el => {
-      el.dataset.wheel = "1";
-      el.addEventListener("wheel", (e) => {
-        if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-          e.preventDefault();
-          el.scrollLeft += e.deltaY;
+    // 拖曳 + 慣性
+    let isDragging = false;
+    let startX = 0, scrollStart = 0;
+    let lastX = 0, lastTime = 0, velocity = 0;
+    let momentumId = null;
+
+    function _stopMomentum() {
+      if (momentumId) { cancelAnimationFrame(momentumId); momentumId = null; }
+    }
+
+    function _startDrag(x) {
+      _stopMomentum();
+      isDragging = true;
+      startX = x;
+      scrollStart = el.scrollLeft;
+      lastX = x;
+      lastTime = Date.now();
+      velocity = 0;
+      el.style.cursor = "grabbing";
+      el.style.userSelect = "none";
+    }
+
+    function _moveDrag(x) {
+      if (!isDragging) return;
+      const dx = x - startX;
+      el.scrollLeft = scrollStart - dx;
+
+      // 計算速度
+      const now = Date.now();
+      const dt = now - lastTime;
+      if (dt > 0) {
+        velocity = (lastX - x) / dt * 16; // px per frame
+      }
+      lastX = x;
+      lastTime = now;
+    }
+
+    function _endDrag() {
+      if (!isDragging) return;
+      isDragging = false;
+      el.style.cursor = "";
+      el.style.userSelect = "";
+
+      // 慣性滑動
+      if (Math.abs(velocity) > 0.5) {
+        function coast() {
+          velocity *= 0.95; // 摩擦力
+          if (Math.abs(velocity) < 0.3) return;
+          el.scrollLeft += velocity;
+          momentumId = requestAnimationFrame(coast);
         }
-      }, { passive: false });
+        momentumId = requestAnimationFrame(coast);
+      }
+    }
+
+    // 滑鼠事件
+    el.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      _startDrag(e.clientX);
     });
+    window.addEventListener("mousemove", (e) => _moveDrag(e.clientX));
+    window.addEventListener("mouseup", _endDrag);
+
+    // 觸控事件（平板）
+    el.addEventListener("touchstart", (e) => {
+      _startDrag(e.touches[0].clientX);
+    }, { passive: true });
+    el.addEventListener("touchmove", (e) => {
+      _moveDrag(e.touches[0].clientX);
+    }, { passive: true });
+    el.addEventListener("touchend", _endDrag);
+
+    // 防止拖曳時觸發點擊
+    el.addEventListener("click", (e) => {
+      if (Math.abs(velocity) > 1 || Math.abs(lastX - startX) > 5) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    }, true);
+  }
+
+  // 初始化已有的 + 動態載入的
+  document.querySelectorAll(".horizontal-scroll").forEach(_initHorizontalScroll);
+  new MutationObserver(() => {
+    document.querySelectorAll(".horizontal-scroll").forEach(_initHorizontalScroll);
   }).observe(document.body, { childList: true, subtree: true });
 
   // ---- init ----
