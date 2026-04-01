@@ -35,9 +35,26 @@ class FavoriteItem(BaseModel):
     path: str
 
 
+import hashlib
+
+def _song_hash(path: str) -> str:
+    return hashlib.md5(path.encode("utf-8")).hexdigest()[:12]
+
+def _get_unique_chords(path: str) -> int:
+    chords_file = DATA_DIR / "chords" / f"{_song_hash(path)}.json"
+    if chords_file.is_file():
+        try:
+            cdata = json.loads(chords_file.read_text(encoding="utf-8"))
+            return len(set(c["chord"] for c in cdata.get("chords", []) if c.get("chord") and c["chord"] != "N"))
+        except:
+            pass
+    return 0
+
 @router.get("/favorites")
 async def get_favorites():
     data = _read_json(FAVORITES_FILE, {"favorites": []})
+    for f in data.get("favorites", []):
+        f["unique_chords"] = _get_unique_chords(f["path"])
     return data
 
 
@@ -71,6 +88,8 @@ async def remove_favorite(path: str = Query(...)):
 @router.get("/recent")
 async def get_recent():
     data = _read_json(RECENT_FILE, {"recent": []})
+    for r in data.get("recent", []):
+        r["unique_chords"] = _get_unique_chords(r["path"])
     return data
 
 

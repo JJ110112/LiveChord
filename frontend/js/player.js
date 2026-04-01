@@ -247,7 +247,19 @@
     try {
       const info = await API.trackInfo(path);
       const title = info.title || path.split("/").pop().replace(/\.flac$/i, "");
-      songTitle.textContent = title;
+      
+      let diffHtml = "";
+      const uc = info.unique_chords || 0;
+      if (uc > 0) {
+        let stars = 1;
+        if (uc >= 15) stars = 4;
+        else if (uc >= 9) stars = 3;
+        else if (uc >= 5) stars = 2;
+        diffHtml = ` <span title="分析: ${uc} 種和弦" style="font-size:0.85em; opacity:0.8; margin-left:8px; vertical-align:middle;">${"⭐".repeat(stars)}</span>`;
+      }
+      
+      const escTitle = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      songTitle.innerHTML = escTitle + diffHtml;
       songArtist.textContent = info.artist || "";
       songAlbum.textContent = info.album || "";
       const meta = [];

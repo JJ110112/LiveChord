@@ -147,7 +147,19 @@ def midi_to_lab(midi_path: str, verbose: bool = True) -> list:
         chords_unique = set(e["chord"] for e in entries)
         print(f"  Chords: {len(entries)} ({len(chords_unique)} unique)")
 
-    return entries
+    # 合併連續相同的和弦
+    merged_entries = []
+    for e in entries:
+        if merged_entries and merged_entries[-1]["chord"] == e["chord"]:
+            # 如果與上一個和弦相同，只更新結束時間
+            merged_entries[-1]["end"] = max(merged_entries[-1]["end"], e["end"])
+        else:
+            merged_entries.append(dict(e))
+            
+    if verbose and len(merged_entries) < len(entries):
+        print(f"  Merged down to {len(merged_entries)} chord segments")
+
+    return merged_entries
 
 
 def save_lab(entries: list, song_name: str, output_dir: str, source: str = "midi"):

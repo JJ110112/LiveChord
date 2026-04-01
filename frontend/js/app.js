@@ -47,6 +47,15 @@
     window.location.href = `/player?path=${encodeURIComponent(path)}`;
   }
 
+  function getDifficultyHtml(uc) {
+    if (!uc || uc <= 0) return "";
+    let stars = 1;
+    if (uc >= 15) stars = 4;
+    else if (uc >= 9) stars = 3;
+    else if (uc >= 5) stars = 2;
+    return ` <span class="difficulty" title="分析: ${uc} 種和弦" style="font-size:0.85em; opacity:0.8; margin-left:6px;">${"⭐".repeat(stars)}</span>`;
+  }
+
   // ---- tabs ----
 
   $$(".tabs button").forEach((btn) => {
@@ -145,7 +154,7 @@
           <img class="cover" src="${coverUrl}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
           <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
           <div class="info">
-            <div class="title">${escapeHtml(f.name.replace(/\.flac$/i, ""))}</div>
+            <div class="title">${escapeHtml(f.name.replace(/\.flac$/i, ""))}${getDifficultyHtml(f.unique_chords)}</div>
           </div>
         </div>`;
     }
@@ -171,7 +180,7 @@
       html += `
         <li data-path="${escapeHtml(f.path)}">
           <img src="${coverUrl}" style="width:36px;height:36px;border-radius:4px;object-fit:cover;background:#222;flex-shrink:0" loading="lazy" onerror="this.style.display='none'" alt="">
-          <span class="track-title">${escapeHtml(name)}</span>
+          <span class="track-title">${escapeHtml(name)}${getDifficultyHtml(f.unique_chords)}</span>
         </li>`;
     });
     trackList.innerHTML = html;
@@ -220,7 +229,7 @@
           <div class="result-item" data-path="${escapeHtml(r.path)}">
             <img class="r-cover" src="${coverUrl}" onerror="this.style.display='none'" loading="lazy" alt="">
             <div class="r-info">
-              <div class="r-title">${escapeHtml(r.title || r.path.split("/").pop())}</div>
+              <div class="r-title">${escapeHtml(r.title || r.path.split("/").pop())}${getDifficultyHtml(r.unique_chords)}</div>
               <div class="r-artist">${escapeHtml(r.artist || "")} ${r.album ? "— " + escapeHtml(r.album) : ""}</div>
             </div>
           </div>`;
@@ -255,7 +264,7 @@
         html += `
           <li data-path="${escapeHtml(f.path)}">
             <img src="${coverUrl}" style="width:36px;height:36px;border-radius:4px;object-fit:cover;background:#222" loading="lazy" onerror="this.style.display='none'" alt="">
-            <span class="track-title">${escapeHtml(name)}</span>
+            <span class="track-title">${escapeHtml(name)}${getDifficultyHtml(f.unique_chords)}</span>
           </li>`;
       });
       html += "</ul>";
@@ -285,7 +294,7 @@
         html += `
           <li data-path="${escapeHtml(r.path)}">
             <img src="${coverUrl}" style="width:36px;height:36px;border-radius:4px;object-fit:cover;background:#222" loading="lazy" onerror="this.style.display='none'" alt="">
-            <span class="track-title">${escapeHtml(name)}</span>
+            <span class="track-title">${escapeHtml(name)}${getDifficultyHtml(r.unique_chords)}</span>
           </li>`;
       });
       html += "</ul>";

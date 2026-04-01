@@ -53,7 +53,18 @@ LiveChord 的野心已超越單純的「和絃預測器」，而是成為**顛�
     *   `🎸 instrumental` (器樂插曲)：低密度 + ≤ 2 個和弦來回
     *   `🔚 outro` (尾奏)：最後 8 秒，切換密度 ≤ 2
 *   **模式匹配引擎 (Pattern Matching Engine)**：特徵萃取器主動辨識 `ii-V-I`、`Modal Interchange` 等樂理結構，必要時介入防呆（Rule-based constraints），確保生成的和聲具備穩定的終止式落地感。
-*   **隱馬可夫與 Viterbi 解碼 (HMM & Viterbi Decoding)**：導入 `librosa.pyin` 提取的主旋律 (F0) 作為「觀測序列 (Observation)」。結合和弦本身的狀態轉移矩陣，與和弦對應旋律的「發射矩陣 (Emission)」，透過 Viterbi 演算法算出全曲最高分的完美和聲路徑，徹底根除爵士重配時容易「打架撞音」的問題。
+
+### 3. 動態難易度評定 (Difficulty Rating System)
+- **核心理念**：透過分析歌曲的「不重複和弦種類 (Unique Chords)」來推斷歌曲的樂理複雜度與演奏難度。
+- **評級標準**：
+  * ⭐ (1-4 種和弦)：入門 (Novice)，典型流行/民謠。
+  * ⭐⭐ (5-8 種和弦)：中階 (Intermediate)，包含副屬和弦、借用和弦。
+  * ⭐⭐⭐ (9-14 種和弦)：進階 (Advanced)，典型 R&B、Funk、標準爵士。
+  * ⭐⭐⭐⭐ (15+ 種和弦)：大師 (Master)，充滿延伸音、轉調的 Neo-Soul 或複雜爵士。
+- **UI 呈現**：在首頁 (Browse/Recent/Favorites) 的曲目列表，以及播放頁 (Player) 的標題旁，自動顯示對應數量的星星，滑鼠懸浮 (Hover) 可看見具體的種類數量，讓練琴者一目了然挑戰難度。
+
+### 4. Viterbi Decoding & HMM 機率模型
+導入 `librosa.pyin` 提取的主旋律 (F0) 作為「觀測序列 (Observation)」。結合和弦本身的狀態轉移矩陣，與和弦對應旋律的「發射矩陣 (Emission)」，透過 Viterbi 演算法算出全曲最高分的完美和聲路徑，徹底根除爵士重配時容易「打架撞音」的問題。
 
 ---
 

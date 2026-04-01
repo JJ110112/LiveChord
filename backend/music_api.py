@@ -100,6 +100,16 @@ def _song_hash(path: str) -> str:
     """產生穩定的 song hash（用於和弦譜檔名）"""
     return hashlib.md5(path.encode("utf-8")).hexdigest()[:12]
 
+def _get_unique_chords(path: str) -> int:
+    """計算特定曲目的不重複和弦數"""
+    chords_file = DATA_DIR / "chords" / f"{_song_hash(path)}.json"
+    if chords_file.is_file():
+        try:
+            cdata = json.loads(chords_file.read_text(encoding="utf-8"))
+            return len(set(c["chord"] for c in cdata.get("chords", []) if c.get("chord") and c["chord"] != "N"))
+        except Exception:
+            return 0
+    return 0
 
 # ---------------------------------------------------------------------------
 # browse
@@ -141,6 +151,7 @@ async def browse(path: str = Query(default="")):
             entries.append({
                 "name": name, "path": rel, "is_dir": False,
                 "has_cover": True,
+                "unique_chords": _get_unique_chords(rel),
             })
     return {"current": os.path.relpath(target, root).replace("\\", "/"),
             "entries": entries}
@@ -171,6 +182,8 @@ async def search(q: str = Query(default="")):
         fname = os.path.splitext(os.path.basename(t.get('path','')))[0]
         searchable = f"{t.get('title','')} {t.get('artist','')} {t.get('album','')} {fname}".lower()
         if q_lower in searchable:
+            if "unique_chords" not in t:
+                t["unique_chords"] = _get_unique_chords(t.get("path", ""))
             results.append(t)
             if len(results) >= 50:
                 break
@@ -196,8 +209,8 @@ async def track_info(path: str = Query(...)):
     meta["has_cover"] = _find_cover(full) is not None
 
     # 檢查是否有和弦譜
-    chords_file = DATA_DIR / "chords" / f"{_song_hash(path)}.json"
-    meta["has_chords"] = chords_file.is_file()
+    meta["unique_chords"] = _get_unique_chords(path)
+    meta["has_chords"] = meta["unique_chords"] > 0
 
     return meta
 
@@ -399,7 +412,7 @@ def _scan_worker(mode: str = "incremental"):
                 parts = rel.split("/")
                 meta["genre"] = meta["genre"] or (parts[0] if len(parts) > 1 else "")
 
-                # 檢查和弦譜
+                # 檢查和弦譜（掃描時只檢查存在，不讀內容，避免大量 IO）
                 chords_file = DATA_DIR / "chords" / f"{_song_hash(rel)}.json"
                 meta["has_chords"] = chords_file.is_file()
 
