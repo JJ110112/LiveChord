@@ -1095,7 +1095,11 @@
         detectMsg.textContent = "AI 偵測和弦中…";
         detectDetail.textContent = "分析音訊中，請稍候";
         const result = await API.detectChords(trackPath);
-        showToast(`偵測完成！${result.chord_count} 和弦，Key: ${result.key}`, 3000);
+        if (result.chord_count === 0) {
+          showToast("⚠️ AI 無法辨識此音檔的和弦（可能是合成音色或非常規音源）", 5000);
+        } else {
+          showToast(`偵測完成！${result.chord_count} 和弦，Key: ${result.key}`, 3000);
+        }
         chordCache = {};
         await loadChords(trackPath);
         updateActiveChord(audio.currentTime || -1);
