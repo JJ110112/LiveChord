@@ -192,29 +192,60 @@ class ChordPredictor:
             "trigram_states": len(self.trigram),
         }
 
+    def save(self, path):
+        """儲存模型至 JSON"""
+        data = {
+            "total_songs": self.total_songs,
+            "total_transitions": self.total_transitions,
+            "bigram": {k: dict(v) for k, v in self.bigram.items()},
+            "trigram": {f"{k[0]}|||{k[1]}": dict(v) for k, v in self.trigram.items()},
+        }
+        Path(path).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    @classmethod
+    def load(cls, path):
+        """從 JSON 載入模型"""
+        p = cls()
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        p.total_songs = data["total_songs"]
+        p.total_transitions = data["total_transitions"]
+        for k, v in data["bigram"].items():
+            p.bigram[k] = Counter(v)
+        for k, v in data["trigram"].items():
+            parts = k.split("|||")
+            p.trigram[(parts[0], parts[1])] = Counter(v)
+        return p
+
 
 # ---- Singleton ----
 _predictor = None
+_MODELS_DIR = Path(__file__).parent.parent.parent / "data" / "models"
+_CACHE_FILE = _MODELS_DIR / "markov.json"
 
 
 def get_predictor(chords_dir=None):
-    """取得全域 predictor instance（lazy init）"""
+    """取得全域 predictor instance（優先從快取載入）"""
     global _predictor
     if _predictor is None:
-        if chords_dir is None:
-            chords_dir = Path(__file__).parent.parent.parent / "data" / "chords"
-        _predictor = ChordPredictor()
-        _predictor.train(str(chords_dir))
+        if _CACHE_FILE.is_file():
+            _predictor = ChordPredictor.load(str(_CACHE_FILE))
+        else:
+            if chords_dir is None:
+                chords_dir = Path(__file__).parent.parent.parent / "data" / "chords"
+            _predictor = ChordPredictor()
+            _predictor.train(str(chords_dir))
     return _predictor
 
 
 def retrain(chords_dir=None):
-    """重新訓練模型"""
+    """重新訓練模型並儲存快取"""
     global _predictor
     if chords_dir is None:
         chords_dir = Path(__file__).parent.parent.parent / "data" / "chords"
     _predictor = ChordPredictor()
     stats = _predictor.train(str(chords_dir))
+    _MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    _predictor.save(str(_CACHE_FILE))
     return stats
 
 

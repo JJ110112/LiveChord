@@ -26,6 +26,26 @@ class EmissionMatrix:
         self.counts = defaultdict(Counter)
         self.total_per_chord = Counter()
 
+    def save(self, path):
+        """儲存發射矩陣至 JSON"""
+        import json
+        data = {
+            "counts": {k: dict(v) for k, v in self.counts.items()},
+            "total_per_chord": dict(self.total_per_chord),
+        }
+        Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    @classmethod
+    def load(cls, path):
+        """從 JSON 載入發射矩陣"""
+        import json
+        em = cls()
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        for k, v in data["counts"].items():
+            em.counts[k] = Counter({int(pc): cnt for pc, cnt in v.items()})
+        em.total_per_chord = Counter(data["total_per_chord"])
+        return em
+
     def add_observation(self, chord_degree, melody_midi):
         """記錄一次觀測：在 chord_degree 下出現 melody_midi"""
         pc = melody_midi % 12  # pitch class 0-11
@@ -267,6 +287,45 @@ def build_transition_probs(chords_dir):
         trans[state] = {s: c / total for s, c in counter.items()}
 
     return trans, list(predictor.bigram.keys())
+
+
+def load_transition_probs(path):
+    """從 JSON 載入轉移機率"""
+    import json
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    return data["transitions"], data["states"]
+
+
+# ---- Singleton ----
+_emission = None
+_MODELS_DIR = Path(__file__).parent.parent.parent / "data" / "models"
+_EMISSION_CACHE = _MODELS_DIR / "emission.json"
+_TRANS_CACHE = _MODELS_DIR / "transition.json"
+
+
+def get_emission(chords_dir=None):
+    """取得全域 EmissionMatrix（優先從快取載入）"""
+    global _emission
+    if _emission is None:
+        if _EMISSION_CACHE.is_file():
+            _emission = EmissionMatrix.load(str(_EMISSION_CACHE))
+        else:
+            if chords_dir is None:
+                chords_dir = Path(__file__).parent.parent.parent / "data" / "chords"
+            _emission = build_emission_from_songs(str(chords_dir))
+    return _emission
+
+
+def get_viterbi_decoder(chords_dir=None):
+    """取得 ViterbiDecoder（使用快取的矩陣）"""
+    em = get_emission(chords_dir)
+    if _TRANS_CACHE.is_file():
+        trans, states = load_transition_probs(str(_TRANS_CACHE))
+    else:
+        if chords_dir is None:
+            chords_dir = str(Path(__file__).parent.parent.parent / "data" / "chords")
+        trans, states = build_transition_probs(chords_dir)
+    return ViterbiDecoder(trans, em, states)
 
 
 # ---- CLI ----

@@ -146,12 +146,41 @@ async def emission_stats(
     chord: str = Query(default="", description="和弦級數，如 I 或 V7"),
 ):
     """HMM 發射矩陣統計"""
-    from ai.hmm import build_emission_from_songs
+    from ai.hmm import get_emission
 
-    emission = build_emission_from_songs(str(CHORDS_DIR))
+    emission = get_emission(str(CHORDS_DIR))
     if chord:
         return {"chord": chord, "top_notes": emission.top_notes_for_chord(chord, 8)}
     return emission.get_stats()
+
+
+class ViterbiRequest(BaseModel):
+    melody_midi: list
+    key: str = "C"
+    top_k: int = 10
+
+
+@router.post("/viterbi")
+async def viterbi_decode(body: ViterbiRequest):
+    """Viterbi 解碼：給定旋律 MIDI 序列，找最優和弦路徑"""
+    from ai.hmm import get_viterbi_decoder
+    from ai.preprocess import SEMI_TO_NOTE
+
+    decoder = get_viterbi_decoder(str(CHORDS_DIR))
+    path, log_prob = decoder.decode(body.melody_midi, top_k=body.top_k)
+
+    # 將級數轉回絕對和弦
+    from ai.markov import get_predictor
+    predictor = get_predictor(str(CHORDS_DIR))
+    chords = [predictor.degree_to_chord(d, body.key) for d in path]
+
+    return {
+        "key": body.key,
+        "melody_notes": [SEMI_TO_NOTE[m % 12] for m in body.melody_midi],
+        "path_degrees": path,
+        "path_chords": chords,
+        "log_probability": round(log_prob, 2),
+    }
 
 
 @router.get("/sections")
@@ -188,22 +217,45 @@ async def detect_patterns(
 
 @router.post("/retrain")
 async def retrain():
-    """重新訓練所有模型"""
+    """重新訓練所有模型（含儲存快取）"""
     from ai.markov import retrain as do_retrain
     from ai.chord2vec import get_chord2vec
     from ai.groove_dict import get_groove_dict
 
     markov_stats = do_retrain(str(CHORDS_DIR))
 
+    # 重建轉移矩陣（Viterbi 用）
+    from ai.markov import get_predictor
+    import json as _json
+    predictor = get_predictor()
+    trans = {}
+    for state, counter in predictor.bigram.items():
+        total = sum(counter.values())
+        trans[state] = {s: round(c / total, 6) for s, c in counter.items()}
+    trans_path = DATA_DIR / "models" / "transition.json"
+    trans_path.write_text(_json.dumps({"states": list(predictor.bigram.keys()), "transitions": trans}, ensure_ascii=False), encoding="utf-8")
+
     # 重建 Chord2Vec
     import ai.chord2vec as c2v
     c2v._model = None
     c2v_model = get_chord2vec(str(CHORDS_DIR))
 
-    # 重建 Groove Dict
+    # 重建 Groove Dict + 儲存快取（刪除舊快取強制重建）
     import ai.groove_dict as gd_mod
     gd_mod._dict = None
+    if gd_mod._CACHE_FILE.is_file():
+        gd_mod._CACHE_FILE.unlink()
     gd = get_groove_dict(str(CHORDS_DIR))
+    gd_mod._MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    gd.save(str(gd_mod._CACHE_FILE))
+
+    # 重建 Emission + 儲存快取（刪除舊快取強制重建）
+    import ai.hmm as hmm_mod
+    hmm_mod._emission = None
+    if hmm_mod._EMISSION_CACHE.is_file():
+        hmm_mod._EMISSION_CACHE.unlink()
+    em = hmm_mod.get_emission(str(CHORDS_DIR))
+    em.save(str(hmm_mod._EMISSION_CACHE))
 
     return {
         "ok": True,

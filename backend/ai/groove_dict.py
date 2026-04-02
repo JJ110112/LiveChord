@@ -195,18 +195,50 @@ class GrooveDictionary:
             "voicing_spread_degrees": len(self.voicing_spread),
         }
 
+    def save(self, path, min_count=2):
+        """儲存字典至 JSON（過濾 count < min_count 的罕見 pattern）"""
+        data = {
+            "total_songs": self.total_songs,
+            "patterns_4": {"|".join(k): v for k, v in self.patterns_4.most_common() if v >= min_count},
+            "patterns_8": {"|".join(k): v for k, v in self.patterns_8.most_common() if v >= min_count},
+            "duration_dist": {k: dict(v) for k, v in self.duration_dist.items()},
+            "voicing_spread": {k: v for k, v in self.voicing_spread.items()},
+        }
+        Path(path).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    @classmethod
+    def load(cls, path):
+        """從 JSON 載入字典"""
+        gd = cls()
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        gd.total_songs = data["total_songs"]
+        for k, v in data["patterns_4"].items():
+            gd.patterns_4[tuple(k.split("|"))] = v
+        for k, v in data["patterns_8"].items():
+            gd.patterns_8[tuple(k.split("|"))] = v
+        for k, v in data["duration_dist"].items():
+            gd.duration_dist[k] = Counter(v)
+        for k, v in data["voicing_spread"].items():
+            gd.voicing_spread[k] = v
+        return gd
+
 
 # ---- Singleton ----
 _dict = None
+_MODELS_DIR = Path(__file__).parent.parent.parent / "data" / "models"
+_CACHE_FILE = _MODELS_DIR / "groove.json"
 
 
 def get_groove_dict(chords_dir=None):
     global _dict
     if _dict is None:
-        if chords_dir is None:
-            chords_dir = Path(__file__).parent.parent.parent / "data" / "chords"
-        _dict = GrooveDictionary()
-        _dict.build(str(chords_dir))
+        if _CACHE_FILE.is_file():
+            _dict = GrooveDictionary.load(str(_CACHE_FILE))
+        else:
+            if chords_dir is None:
+                chords_dir = Path(__file__).parent.parent.parent / "data" / "chords"
+            _dict = GrooveDictionary()
+            _dict.build(str(chords_dir))
     return _dict
 
 

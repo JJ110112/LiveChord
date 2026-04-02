@@ -480,6 +480,7 @@ a:hover { text-decoration: underline; }
   border-radius: 3px;
   cursor: pointer;
   position: relative;
+  touch-action: none;
 }
 
 .progress-bar .progress {
@@ -487,6 +488,26 @@ a:hover { text-decoration: underline; }
   background: var(--accent);
   border-radius: 3px;
   transition: width .1s linear;
+  position: relative;
+}
+
+.progress-bar .progress::after {
+  content: '';
+  position: absolute;
+  right: -5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity .15s;
+}
+
+.progress-bar:hover .progress::after,
+.progress-bar:active .progress::after {
+  opacity: 1;
 }
 
 .time-label {
@@ -961,9 +982,9 @@ a:hover { text-decoration: underline; }
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  scroll-behavior: smooth;
   scrollbar-width: thin;
   scrollbar-color: #444 transparent;
+  cursor: grab;
 }
 .chord-timeline::-webkit-scrollbar {
   display: none;                   /* Chrome/Safari */

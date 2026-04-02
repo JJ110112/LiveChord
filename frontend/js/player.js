@@ -882,12 +882,23 @@
     }
   });
 
-  // progress bar seek (三、時間軸點擊連動)
-  progressBar.addEventListener("click", (e) => {
+  // progress bar seek + drag (三、時間軸點擊/拖曳連動)
+  function _seekFromPointer(e) {
     const rect = progressBar.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     audio.currentTime = pct * (audio.duration || 0);
+  }
+  let _draggingProgress = false;
+  progressBar.addEventListener("pointerdown", (e) => {
+    _draggingProgress = true;
+    progressBar.setPointerCapture(e.pointerId);
+    _seekFromPointer(e);
   });
+  progressBar.addEventListener("pointermove", (e) => {
+    if (_draggingProgress) _seekFromPointer(e);
+  });
+  progressBar.addEventListener("pointerup", () => { _draggingProgress = false; });
+  progressBar.addEventListener("pointercancel", () => { _draggingProgress = false; });
 
   // 還原上次音量
   const savedVol = localStorage.getItem("livechord_volume");
@@ -1256,6 +1267,95 @@
   }
 
   // ---- init ----
+  // ---- 垂直拖曳捲動（Overview 和弦時間軸）----
+  function _initDragScroll(el) {
+    if (!el || el.dataset.dragscroll) return;
+    el.dataset.dragscroll = "1";
+
+    let isDragging = false;
+    let startY = 0, scrollStart = 0;
+    let lastY = 0, lastTime = 0, velocity = 0;
+    let momentumId = null;
+
+    function _stopMomentum() {
+      if (momentumId) { cancelAnimationFrame(momentumId); momentumId = null; }
+    }
+
+    function _startDrag(y) {
+      _stopMomentum();
+      isDragging = true;
+      startY = y;
+      scrollStart = el.scrollTop;
+      lastY = y;
+      lastTime = Date.now();
+      velocity = 0;
+      el.style.cursor = "grabbing";
+      el.style.userSelect = "none";
+    }
+
+    function _moveDrag(y) {
+      if (!isDragging) return;
+      const dy = y - startY;
+      el.scrollTop = scrollStart - dy;
+
+      const now = Date.now();
+      const dt = now - lastTime;
+      if (dt > 0) {
+        velocity = (lastY - y) / dt * 16;
+      }
+      lastY = y;
+      lastTime = now;
+    }
+
+    function _endDrag() {
+      if (!isDragging) return;
+      isDragging = false;
+      el.style.cursor = "";
+      el.style.userSelect = "";
+
+      if (Math.abs(velocity) > 0.5) {
+        function coast() {
+          velocity *= 0.95;
+          if (Math.abs(velocity) < 0.3) return;
+          el.scrollTop += velocity;
+          momentumId = requestAnimationFrame(coast);
+        }
+        momentumId = requestAnimationFrame(coast);
+      }
+    }
+
+    el.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      _startDrag(e.clientY);
+      e.preventDefault();
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!isDragging) return;
+      if (e.buttons === 0) { _endDrag(); return; }
+      _moveDrag(e.clientY);
+    });
+    window.addEventListener("mouseup", _endDrag);
+    document.addEventListener("mouseleave", _endDrag);
+
+    el.addEventListener("touchstart", (e) => {
+      _startDrag(e.touches[0].clientY);
+    }, { passive: true });
+    el.addEventListener("touchmove", (e) => {
+      _moveDrag(e.touches[0].clientY);
+    }, { passive: true });
+    el.addEventListener("touchend", _endDrag);
+
+    // prevent click after drag
+    el.addEventListener("click", (e) => {
+      if (Math.abs(velocity) > 1 || Math.abs(lastY - startY) > 5) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    }, true);
+  }
+
+  _initDragScroll(chordDisplayOverview);
+
   loadTrack(trackPath).then(() => {
     if (autoplay) audio.play().catch(() => {});
     if (restoreFs && chordDisplay) {

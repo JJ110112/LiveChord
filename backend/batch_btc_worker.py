@@ -25,12 +25,18 @@ import torch
 # 設定區
 # ---------------------------------------------------------------------------
 
-# 必須排除的資料夾清單 (Blacklist)
+# 必須排除的資料夾清單 (Blacklist) — 第一層 Genre
 SKIP_GENRES = {
     "classics", "classical", "symphony",
     "sleep", "relax", "meditation",
     "electronic dance music", "edm", "techno",
     "other"
+}
+
+# 專輯名稱關鍵字黑名單 — 無和弦內容（純鼓/節拍/音效）
+SKIP_ALBUM_KEYWORDS = {
+    "drum track", "drum loop", "hip-hop & rap beat",
+    "horror soundscape", "sound effect", "sfx",
 }
 
 # 支援的音檔格式
@@ -54,13 +60,19 @@ def _song_hash(rel_path: str) -> str:
     return hashlib.md5(rel_path.encode("utf-8")).hexdigest()[:12]
 
 def _is_skipped_genre(rel_path: str) -> bool:
-    """判斷該路徑是否屬於黑名單曲風"""
+    """判斷該路徑是否屬於黑名單曲風或無和弦內容"""
     parts = rel_path.replace("\\", "/").split("/")
     if len(parts) > 1:
-        # 假設第一層資料夾是曲風 (Genre)
+        # 第一層：Genre 資料夾
         genre = parts[0].lower()
         if genre in SKIP_GENRES:
             return True
+        # 第二層：專輯名稱關鍵字（純鼓/節拍/音效）
+        if len(parts) > 2:
+            album = parts[1].lower()
+            for kw in SKIP_ALBUM_KEYWORDS:
+                if kw in album:
+                    return True
     return False
 
 # ---------------------------------------------------------------------------
