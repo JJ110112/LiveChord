@@ -206,15 +206,37 @@ def _worker_loop():
     add_log("INFO", "自動工作器已停止")
 
 
-_last_chord_count = 0  # 記錄上次訓練時的和弦檔數量
+_last_chord_count = -1  # -1 = 尚未初始化
 
 
 def _retrain_ai_models():
-    """當和弦資料有變更時，重新訓練 AI 模型"""
+    """當和弦資料有變更時，重新訓練 AI 模型
+
+    若已有離線訓練快取（data/models/），首次啟動只載入快取不重訓。
+    只有當和弦數量實際增長時才觸發重訓。
+    """
     global _last_chord_count
     try:
         chord_files = list(CHORDS_DIR.glob("*.json")) if CHORDS_DIR.is_dir() else []
         current_count = len(chord_files)
+
+        # 首次啟動：記錄目前數量，若有快取就跳過重訓
+        if _last_chord_count == -1:
+            _last_chord_count = current_count
+            models_dir = DATA_DIR / "models"
+            if (models_dir / "markov.json").is_file():
+                add_log("INFO", f"AI 模型已有離線快取，載入中（{current_count} 首）")
+                # 確保 singletons 載入快取
+                from ai.markov import get_predictor
+                from ai.hmm import get_emission
+                from ai.groove_dict import get_groove_dict
+                get_predictor(str(CHORDS_DIR))
+                get_emission(str(CHORDS_DIR))
+                get_groove_dict(str(CHORDS_DIR))
+                add_log("OK", f"AI 模型快取載入完成")
+                return
+            # 無快取，fall through 執行完整訓練
+            _last_chord_count = 0
 
         if current_count == _last_chord_count:
             return  # 沒有變動，跳過
@@ -233,7 +255,12 @@ def _retrain_ai_models():
         c2v_mod.get_chord2vec(str(CHORDS_DIR))
 
         gd_mod._dict = None
-        gd_mod.get_groove_dict(str(CHORDS_DIR))
+        # 刪除舊快取強制從資料重建
+        if gd_mod._CACHE_FILE.is_file():
+            gd_mod._CACHE_FILE.unlink()
+        gd = gd_mod.get_groove_dict(str(CHORDS_DIR))
+        gd_mod._MODELS_DIR.mkdir(parents=True, exist_ok=True)
+        gd.save(str(gd_mod._CACHE_FILE))
 
         _last_chord_count = current_count
         add_log("OK", f"AI 模型訓練完成（{current_count} 首和弦資料）")
