@@ -10,10 +10,10 @@ from pathlib import Path
 
 
 def _normalize_name(name: str) -> str:
-    """正規化名稱：轉小寫、移除標點、連字號/底線→空格、壓縮空白"""
+    """正規化名稱：轉小寫、移除標點、連字號/底線→空格、壓縮空白、保留 CJK"""
     name = name.lower()
     name = re.sub(r"[_\-]", " ", name)            # 底線/連字號→空格
-    name = re.sub(r"[^a-z0-9\s]", "", name)       # 移除標點
+    name = re.sub(r"[^a-z0-9\s\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]", "", name)  # 保留 CJK/日/韓
     name = re.sub(r"\s+", " ", name).strip()       # 壓縮空白
     return name
 
@@ -31,8 +31,8 @@ def _midi_matches(song_name: str, midi_fname: str) -> bool:
     """比對歌曲名與 MIDI 檔名是否匹配"""
     sn = _normalize_name(song_name)
     mn = _normalize_name(midi_fname.replace(".mid", "").replace(".midi", ""))
-    # 雙向子字串包含
-    if sn in mn or mn in sn:
+    # 雙向子字串包含（兩邊都必須非空才比對）
+    if sn and mn and (sn in mn or mn in sn):
         return True
     # 關鍵字交集 >= 60% 的較短方
     sk = _extract_keywords(song_name)
