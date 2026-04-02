@@ -225,7 +225,7 @@ def _retrain_ai_models():
             _last_chord_count = current_count
             models_dir = DATA_DIR / "models"
             if (models_dir / "markov.json").is_file():
-                add_log("INFO", f"AI 模型已有離線快取，載入中（{current_count} 首）")
+                add_log("INFO", f"AI 模型已有離線快取，載入中")
                 # 確保 singletons 載入快取
                 from ai.markov import get_predictor
                 from ai.hmm import get_emission
