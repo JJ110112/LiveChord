@@ -183,8 +183,9 @@ def _run_btc(audio_path: str) -> list:
     feature = np.pad(feature, ((0, num_pad), (0, 0)), mode="constant", constant_values=0)
     n_inst = feature.shape[0] // n_ts
 
-    lines = []
-    start = 0.0
+    from scipy.signal import medfilt
+    
+    all_preds = []
     
     # 這裡的鎖 (可能是 user 自行定義的 Semaphore 或 Lock)
     with _inference_lock:
@@ -193,20 +194,45 @@ def _run_btc(audio_path: str) -> list:
             for t in range(n_inst):
                 out, _ = _model.self_attn_layers(ft[:, n_ts * t:n_ts * (t + 1), :])
                 pred, _ = _model.output_layer(out)
-                pred = pred.squeeze()
-                
-                for i in range(n_ts):
-                    if t == 0 and i == 0:
-                        prev = pred[i].item()
-                        continue
-                    if pred[i].item() != prev:
-                        lines.append((start, fps * (n_ts * t + i), _idx_to_chord[prev]))
-                        start = fps * (n_ts * t + i)
-                        prev = pred[i].item()
-                    if t == n_inst - 1 and i + num_pad == n_ts:
-                        if start != fps * (n_ts * t + i):
-                            lines.append((start, fps * (n_ts * t + i), _idx_to_chord[prev]))
-                        break
+                pred = pred.squeeze().cpu().numpy()
+                all_preds.extend(pred)
+
+    all_preds = np.array(all_preds)
+    
+    # 針對神經網路的 Frame-level 抖動，施加「眾數濾波 (Majority / Mode Filter)」平滑化！
+    # （絕對不能對數值類別使用中值濾波，會產生奇怪的幽靈和弦索引！）
+    # fps 約為 10.8。為了達到 Chordify 等級的大區塊和弦 (消除鋼琴 2 拍以內的過門變換)，
+    # 我們將 kernel_size 加大到 35 (約 3.2 秒)，這樣可以強制把小於 1.6 秒的變化全部濾除！
+    kernel_size = 35
+    pad_w = kernel_size // 2
+    padded = np.pad(all_preds, (pad_w, pad_w), mode='edge')
+    smoothed_preds = np.zeros_like(all_preds)
+    
+    for i in range(len(all_preds)):
+        window = padded[i : i + kernel_size]
+        # 取得 window 中出現最多次的 class
+        values, counts = np.unique(window, return_counts=True)
+        smoothed_preds[i] = values[np.argmax(counts)]
+        
+    lines = []
+    start = 0.0
+    prev = smoothed_preds[0]
+    
+    for i in range(1, len(smoothed_preds)):
+        if i >= len(smoothed_preds) - num_pad:
+            # 去除 padding 部分
+            break
+            
+        current = smoothed_preds[i]
+        if current != prev:
+            lines.append((start, fps * i, _idx_to_chord[prev]))
+            start = fps * i
+            prev = current
+            
+    # 收尾最後一個和弦
+    total_valid_frames = len(smoothed_preds) - num_pad
+    if start < fps * total_valid_frames:
+        lines.append((start, fps * total_valid_frames, _idx_to_chord[prev]))
 
     return lines
 
