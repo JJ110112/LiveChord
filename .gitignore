@@ -14,7 +14,14 @@ data/activity.log
 data/server.log
 data/chord_queue.json
 data/melodies/
+data/models/
 data/.local_music_root
+
+# 評估/測試產出
+backend/eval_results.json
+backend/batch_failures.txt
+backend/test_e2e.py
+backend/test_viterbi.py
 
 # Windows 自動啟動腳本（由 install-service.bat 產生）
 start-hidden.vbs
