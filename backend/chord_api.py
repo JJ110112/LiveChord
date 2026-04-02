@@ -170,6 +170,35 @@ async def detect_chords_api(path: str = Query(...)):
     try:
         key = detect_key(full)
         chords = detect_chords(full)
+        
+        # [Fallback] 如果 BTC 無法辨識（例如 8-bit chiptune 等非常規軌道），降級使用 Melody-to-Chord Viterbi 解析
+        if not chords:
+            print(f"[Fallback] BTC 失敗，啟動 Viterbi Melody-to-Chord 管道...")
+            from ai.melody_extractor import MelodyExtractor
+            from ai.hmm import get_viterbi_decoder
+            from ai.markov import get_predictor
+            
+            extractor = MelodyExtractor()
+            melody_events = extractor.extract_melody(full)
+            if melody_events:
+                midi_sequence = [evt["midi"] for evt in melody_events]
+                decoder = get_viterbi_decoder(str(CHORDS_DIR))
+                path_degrees, _ = decoder.decode(midi_sequence, top_k=20)
+                
+                predictor = get_predictor(str(CHORDS_DIR))
+                current_chord = None
+                for i, evt in enumerate(melody_events):
+                    chord_name = predictor.degree_to_chord(path_degrees[i], key)
+                    if chord_name != current_chord:
+                        chords.append({
+                            "time": evt["start"],
+                            "end": evt["end"],
+                            "chord": chord_name
+                        })
+                        current_chord = chord_name
+                    else:
+                        chords[-1]["end"] = evt["end"]
+                        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"偵測失敗: {e}")
 
