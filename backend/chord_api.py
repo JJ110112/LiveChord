@@ -210,7 +210,9 @@ async def midi_search(path: str = Query(...)):
 
     results = []
     if os.path.isdir(midi_root):
-        for dirpath, _, filenames in os.walk(midi_root):
+        for dirpath, dirnames, filenames in os.walk(midi_root):
+            # 跳過回收站等隱藏資料夾
+            dirnames[:] = [d for d in dirnames if not d.startswith(('#', '.', '@'))]
             for fname in filenames:
                 if not fname.lower().endswith(('.mid', '.midi')):
                     continue

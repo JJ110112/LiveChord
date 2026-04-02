@@ -302,7 +302,8 @@ def _find_midi_for_track(track_name: str) -> str:
     if not os.path.isdir(midi_root):
         return None
 
-    for dirpath, _, filenames in os.walk(midi_root):
+    for dirpath, dirnames, filenames in os.walk(midi_root):
+        dirnames[:] = [d for d in dirnames if not d.startswith(('#', '.', '@'))]
         for fname in filenames:
             if not fname.lower().endswith(('.mid', '.midi')):
                 continue
