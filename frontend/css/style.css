@@ -1065,13 +1065,6 @@ a:hover { text-decoration: underline; }
   transition: opacity 0.3s ease, flex 0.3s ease, min-height 0.3s ease;
 }
 
-.chord-88-keys.waterfall-active .keys88-ribbon {
-  opacity: 0;
-  flex: 0;
-  min-height: 0;
-  margin: 0;
-  pointer-events: none;
-}
 
 /* 88-key ribbon items: text-only, no piano canvas */
 .keys88-ribbon-item {
