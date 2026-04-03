@@ -123,10 +123,13 @@
   <div class="card">
     <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">設定</h2>
     <div class="collapse-content">
-      <div class="setting-row" style="flex-wrap:wrap;gap:8px">
-        <div style="flex:1;min-width:200px"><label>音樂庫路徑</label></div>
-        <input type="text" id="optMusicRoot" style="padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px;width:200px" placeholder="Y:/">
-        <button class="primary" id="btnSaveMusicRoot" style="padding:4px 12px;font-size:11px">儲存並掃描</button>
+      <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <label>音樂庫路徑</label>
+          <button id="btnAddRoot" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text-dim);cursor:pointer;font-size:11px">+ 新增</button>
+          <button class="primary" id="btnSaveMusicRoot" style="padding:4px 12px;font-size:11px;margin-left:auto">儲存並掃描</button>
+        </div>
+        <div id="musicRootsList" style="display:flex;flex-direction:column;gap:4px"></div>
       </div>
       <div class="setting-row">
         <div><label>自動掃描</label></div>
@@ -183,19 +186,39 @@
   }
   loadSettings();
 
+  // ---- 多音樂庫路徑管理 ----
+  const rootsList = $("#musicRootsList");
+
+  function addRootRow(value) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:6px;align-items:center";
+    row.innerHTML = `<input type="text" class="music-root-input" value="${esc(value || "")}" style="flex:1;padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px" placeholder="Y:/">
+      <button class="btn-remove-root" style="padding:2px 8px;border:1px solid #f44;border-radius:4px;background:transparent;color:#f44;cursor:pointer;font-size:11px">✕</button>`;
+    row.querySelector(".btn-remove-root").addEventListener("click", () => {
+      if (rootsList.children.length > 1) row.remove();
+      else showToast("至少保留一個路徑");
+    });
+    rootsList.appendChild(row);
+  }
+
   async function loadMusicRootSettings() {
     try {
       const s = await API.get("/api/settings");
-      $("#optMusicRoot").value = s.music_root || "";
-    } catch {}
+      rootsList.innerHTML = "";
+      const roots = s.music_roots || (s.music_root ? [s.music_root] : ["Y:/"]);
+      roots.forEach(r => addRootRow(r));
+    } catch { addRootRow("Y:/"); }
   }
   loadMusicRootSettings();
 
+  $("#btnAddRoot").addEventListener("click", () => addRootRow(""));
+
   $("#btnSaveMusicRoot").addEventListener("click", async () => {
-    const root = $("#optMusicRoot").value.trim();
-    if(!root) { showToast("路徑不能為空"); return; }
+    const roots = [...rootsList.querySelectorAll(".music-root-input")]
+      .map(i => i.value.trim()).filter(Boolean);
+    if (!roots.length) { showToast("至少需要一個路徑"); return; }
     try {
-      await API.post("/api/settings", { music_root: root });
+      await API.post("/api/settings", { music_roots: roots });
       showToast("已更新！掃描中...");
       await API.post("/api/library/scan?mode=full");
     } catch (e) { showToast("失敗：" + e.message); }

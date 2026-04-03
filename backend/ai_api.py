@@ -124,8 +124,8 @@ async def get_melody(
         return _json.loads(cache_file.read_text(encoding="utf-8"))
 
     # 即時提取
-    from config import get_music_root
-    full_path = os.path.join(get_music_root(), path)
+    from config import resolve_path
+    full_path = resolve_path(path)
     if not os.path.isfile(full_path):
         return {"error": "file not found", "melody": []}
 
