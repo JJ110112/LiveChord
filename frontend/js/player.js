@@ -155,7 +155,7 @@
         chordDisplay88.style.display = "flex";
         _updateHandSwitchVisibility();
         _switchZoomToTab("keys");
-        if (hasChords) bigChordBox.style.display = "";
+        if (hasChords) bigChordBox.style.display = "none";
         _init88Piano();
         _initWaterfall();
         _setupTeachControls();
@@ -1093,7 +1093,11 @@
         }
         await preloadChordInfo(chordData.chords);
         buildChordDOM();
-        bigChordBox.style.display = "";
+        if (activeTab === "diagrams" || activeTab === "keys") {
+          bigChordBox.style.display = "none";
+        } else {
+          bigChordBox.style.display = "";
+        }
         // 載入段落 + 旋律資訊
         _loadSections(path);
         _loadMelody(path);
@@ -1419,7 +1423,7 @@
       const chord = displayedChords[activeChordIdx];
       const cache = chordCache[chord.chord] || {};
 
-      if (activeTab === "diagrams" || activeTab === "keys88") {
+      if (activeTab === "diagrams" || activeTab === "keys") {
         bigChordBox.style.display = "none";
       } else {
         bigChordName.textContent = chord.chord;
