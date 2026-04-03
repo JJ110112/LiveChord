@@ -831,6 +831,20 @@
       ctx.roundRect(x + 1, yTop, kw - 2, noteH, r);
       ctx.fill();
 
+      // Contact glow (目前發聲中，音塊壓中底線)
+      if (yBottom >= h && yTop <= h) {
+         ctx.save();
+         ctx.fillStyle = color;
+         ctx.shadowColor = color;
+         ctx.shadowBlur = 10;
+         ctx.fillRect(x + 1, h - 4, kw - 2, 8);
+         ctx.fillStyle = "rgba(255,255,255,0.8)";
+         ctx.shadowBlur = 5;
+         ctx.shadowColor = "#fff";
+         ctx.fillRect(x + 3, h - 2, kw - 6, 4);
+         ctx.restore();
+      }
+
       // Finger number simplification: Only show if crossover, leap, or first
       if (evt.finger && yBottom > h * 0.4) {
         let showF = false;
@@ -856,10 +870,10 @@
              ctx.fillRect(x, yTop, kw, noteH); // highlight block for crossover
           }
           
-          // Shadow
-          ctx.fillStyle = "rgba(0,0,0,0.5)";
-          ctx.fillText(text, x + kw / 2 + 1, fy + 1);
-          // Text
+          // 增強對比度: 深色外框 + 純白內文
+          ctx.lineWidth = 2.5;
+          ctx.strokeStyle = "rgba(0,0,0,0.8)";
+          ctx.strokeText(text, x + kw / 2, fy);
           ctx.fillStyle = "#fff";
           ctx.fillText(text, x + kw / 2, fy);
         }
