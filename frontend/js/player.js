@@ -901,11 +901,20 @@
       else if (teachStyle === "Rhythm") hintText = "Rhythm 模式：強調第一拍與切分節奏";
       else hintText = "大師模式：" + teachStyle;
 
-      ctx.fillStyle = "rgba(255,255,255,0.4)";
       ctx.font = "12px sans-serif";
+      const txt = `🎵 AI Hint: ${hintText}`;
+      const textMetrics = ctx.measureText(txt);
+      const tw = textMetrics.width;
+
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.beginPath();
+      ctx.roundRect(22, 16, tw + 16, 24, 6);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
-      ctx.fillText(`🎵 AI Hint: ${hintText}`, 10, 10);
+      ctx.fillText(txt, 30, 21);
     }
 
   }
