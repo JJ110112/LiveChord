@@ -849,6 +849,8 @@ a:hover { text-decoration: underline; }
   display: flex;
   flex-direction: column;
   position: relative;
+  flex: 1;
+  min-height: 0;
 }
 
 .chord-display-area {
