@@ -946,8 +946,10 @@ a:hover { text-decoration: underline; }
   padding: 8px 0;
   overflow: hidden;
 }
-.chord-88-keys canvas {
+.chord-88-keys canvas#piano88Canvas {
   max-width: 100%;
+  margin: 0 auto;
+  display: block;
   image-rendering: crisp-edges;
 }
 .keys88-ribbon {

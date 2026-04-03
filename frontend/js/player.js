@@ -95,7 +95,7 @@
 
   // ---- 和弦區縮放 (must be before tab handlers that call _switchZoomToTab) ----
   const ZOOM_STEPS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300];
-  const ZOOM_DEFAULTS = { overview: 200, diagrams: 200, keys: 100 };
+  const ZOOM_DEFAULTS = { overview: 100, diagrams: 200, keys: 100 };
   const _tabZoom = {};
   for (const tab of ["overview", "diagrams", "keys"]) {
     const saved = parseInt(localStorage.getItem(`livechord_zoom_${tab}`));
@@ -772,7 +772,10 @@
     }
 
     if (toggle) {
-      toggle.checked = false;
+      waterfallActive = toggle.checked;
+      if (waterfallCanvas && waterfallActive) {
+        waterfallCanvas.classList.add("active");
+      }
       toggle.addEventListener("change", () => {
         waterfallActive = toggle.checked;
         if (waterfallCanvas) {
