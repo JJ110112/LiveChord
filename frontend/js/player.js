@@ -877,22 +877,7 @@
       ctx.fillText(`🎵 AI Hint: ${hintText}`, 10, 10);
     }
 
-    const chords = _displayChords();
-    let currentChordName = "";
-    if (chords) {
-      for (let i = chords.length - 1; i >= 0; i--) {
-        if (currentTime >= chords[i].time) { currentChordName = chords[i].chord; break; }
-      }
-    }
-    if (currentChordName) {
-      ctx.font = "bold 36px sans-serif";
-      ctx.shadowColor = "rgba(0, 0, 0, 0.9)";
-      ctx.shadowBlur = 10;
-      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
-      ctx.fillText(currentChordName, w / 2, 34);
-      ctx.shadowBlur = 0; // reset
-    }
-  }
+
 
   // Teaching controls setup
   function _setupTeachControls() {
