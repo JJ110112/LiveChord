@@ -1075,20 +1075,22 @@
             m.name.replace(/\.(mid|midi)$/i, "") === flacName
           );
 
-          const chosen = exactMatch || midiResult.results[0];
-          detectMsg.textContent = "MIDI 匯入中…";
-          detectDetail.textContent = chosen.name;
-          const result = await API.midiImport(trackPath, chosen.path);
-          if (result.warning) {
-            showToast(`⚠️ ${result.warning}`, 6000);
-          } else {
-            showToast(`MIDI 匯入！${result.chord_count} 和弦，Key: ${result.key}`, 3000);
+          if (exactMatch) {
+            detectMsg.textContent = "MIDI 匯入中…";
+            detectDetail.textContent = exactMatch.name;
+            const result = await API.midiImport(trackPath, exactMatch.path);
+            if (result.warning) {
+              showToast(`⚠️ ${result.warning}`, 6000);
+            } else {
+              showToast(`MIDI 匯入！${result.chord_count} 和弦，Key: ${result.key}`, 3000);
+            }
+            chordCache = {};
+            await loadChords(trackPath);
+            updateActiveChord(audio.currentTime || -1);
+            detectOverlay.style.display = "none";
+            return;
           }
-          chordCache = {};
-          await loadChords(trackPath);
-          updateActiveChord(audio.currentTime || -1);
-          detectOverlay.style.display = "none";
-          return;
+          // 無精確匹配 → 不自動匯入模糊結果，改用 BTC 偵測
         }
 
         // 無 MIDI → BTC 偵測
