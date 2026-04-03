@@ -416,16 +416,19 @@
 
   // ---- 88-key piano ----
 
+  function _get88PianoMaxWidth() {
+    const w = chordDisplay88.clientWidth || 800;
+    const containerH = chordDisplay88.clientHeight || 400;
+    const maxKeyH = Math.max(80, containerH - 40);  // leave room for labels
+    return Math.min(w, Math.round(maxKeyH / 6 * 52));  // keyH = keyW * 6
+  }
+
   function _init88Piano() {
     if (!chordDisplay88) return;
     piano88Canvas = $("#piano88Canvas");
     if (!piano88Canvas) return;
-    const w = chordDisplay88.clientWidth || 800;
     const dpr = window.devicePixelRatio || 1;
-    // Cap width so piano height stays within container
-    const containerH = chordDisplay88.clientHeight || 400;
-    const maxKeyH = Math.max(80, containerH - 40);  // leave room for labels
-    const maxW = Math.min(w, Math.round(maxKeyH / 6 * 52));  // keyH = keyW * 6
+    const maxW = _get88PianoMaxWidth();
     piano88Cache = ChordRender.init88PianoCache(maxW, dpr);
     const h = piano88Cache.totalH;
     piano88Canvas.width = Math.round(maxW * dpr);
@@ -509,10 +512,15 @@
     if (!chordData || !chordData.chords) return;
 
     // re-init cache if canvas resized
-    const w = chordDisplay88.clientWidth || 800;
+    const maxW = _get88PianoMaxWidth();
     const dpr = window.devicePixelRatio || 1;
-    if (Math.abs(piano88Cache.canvas.width / dpr - w) > 2) {
-      piano88Cache = ChordRender.init88PianoCache(w, dpr);
+    if (Math.abs(piano88Cache.canvas.width / dpr - maxW) > 2) {
+      piano88Cache = ChordRender.init88PianoCache(maxW, dpr);
+      const h = piano88Cache.totalH;
+      piano88Canvas.width = Math.round(maxW * dpr);
+      piano88Canvas.height = Math.round(h * dpr);
+      piano88Canvas.style.width = maxW + "px";
+      piano88Canvas.style.height = h + "px";
     }
 
     const chords = _displayChords();

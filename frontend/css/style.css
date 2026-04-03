@@ -947,7 +947,7 @@ a:hover { text-decoration: underline; }
   overflow: hidden;
 }
 .chord-88-keys canvas {
-  width: 100%;
+  max-width: 100%;
   image-rendering: crisp-edges;
 }
 .keys88-ribbon {
