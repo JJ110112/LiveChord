@@ -877,7 +877,7 @@
       ctx.fillText(`🎵 AI Hint: ${hintText}`, 10, 10);
     }
 
-
+  }
 
   // Teaching controls setup
   function _setupTeachControls() {
