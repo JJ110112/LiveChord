@@ -676,10 +676,9 @@
     ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    const cache = piano88Cache;
     let lastKey = null;
-    for (const p in cache.whiteXs) {
-      const wk = cache.whiteXs[p];
+    for (const p in piano88Cache.whiteXs) {
+      const wk = piano88Cache.whiteXs[p];
       ctx.moveTo(wk.x, 0);
       ctx.lineTo(wk.x, h);
       lastKey = wk;
