@@ -19,6 +19,15 @@
   let activeChordIdx = -1;
   let chordElements = [];
   let _ribbonPositions = [];
+  // 88-key piano state
+  let piano88Canvas = null;
+  let piano88Cache = null;
+  let piano88ChordMidis = [];
+  let piano88SustainNotes = [];
+  let piano88PrevMidi = null;
+  let piano88LastIdx = -1;
+  let piano88Hand = localStorage.getItem("livechord_88hand") || "both"; // "both"|"left"|"right"
+  let hasChords = false;
   let transpose = 0;
   let capo = 0;
   let favTracks = [];
@@ -53,15 +62,33 @@
   let activeTab = localStorage.getItem("livechord_tab") || "overview";
   let ribbonElements = [];
   const pxPerSec = 100;
+  const tabKeys = $("#tabKeys");
+  const chordDisplay88 = $("#chordDisplay88");
+
+  function _updateHandSwitchVisibility() {
+    const hs = document.querySelector("#handSwitch");
+    const ms = document.querySelector("#modeSwitch");
+    if (hs) hs.style.display = activeTab === "keys" ? "flex" : "none";
+    if (ms) ms.style.display = activeTab === "keys" ? "none" : "flex";
+  }
+
+  function _setAllTabsInactive() {
+    if (tabOverview) tabOverview.classList.remove("active");
+    if (tabDiagrams) tabDiagrams.classList.remove("active");
+    if (tabKeys) tabKeys.classList.remove("active");
+    chordDisplayOverview.style.display = "none";
+    chordDisplayDiagrams.style.display = "none";
+    if (chordDisplay88) chordDisplay88.style.display = "none";
+  }
 
   if (tabOverview && tabDiagrams) {
     tabOverview.addEventListener("click", () => {
       activeTab = "overview";
       localStorage.setItem("livechord_tab", "overview");
+      _setAllTabsInactive();
       tabOverview.classList.add("active");
-      tabDiagrams.classList.remove("active");
       chordDisplayOverview.style.display = "";
-      chordDisplayDiagrams.style.display = "none";
+      _updateHandSwitchVisibility();
       // Overview 顯示大和弦
       if (hasChords) bigChordBox.style.display = "";
       if (activeChordIdx >= 0 && activeChordIdx < chordElements.length) {
@@ -75,10 +102,10 @@
     tabDiagrams.addEventListener("click", () => {
       activeTab = "diagrams";
       localStorage.setItem("livechord_tab", "diagrams");
+      _setAllTabsInactive();
       tabDiagrams.classList.add("active");
-      tabOverview.classList.remove("active");
-      chordDisplayOverview.style.display = "none";
       chordDisplayDiagrams.style.display = "block";
+      _updateHandSwitchVisibility();
       // Diagrams 隱藏大和弦（避免重複）
       bigChordBox.style.display = "none";
       const t = audio.currentTime || 0;
@@ -87,8 +114,25 @@
       }
     });
 
+    if (tabKeys) {
+      tabKeys.addEventListener("click", () => {
+        activeTab = "keys";
+        localStorage.setItem("livechord_tab", "keys");
+        _setAllTabsInactive();
+        tabKeys.classList.add("active");
+        chordDisplay88.style.display = "flex";
+        _updateHandSwitchVisibility();
+        if (hasChords) bigChordBox.style.display = "";
+        _init88Piano();
+        _buildKeys88Ribbon();
+        piano88LastIdx = -1;
+        update88Piano(audio.currentTime || 0);
+      });
+    }
+
     // 還原上次 tab
     if (activeTab === "diagrams") tabDiagrams.click();
+    else if (activeTab === "keys" && tabKeys) tabKeys.click();
   }
   const bigChordDiagram = $("#bigChordDiagram");
 
@@ -330,6 +374,151 @@
     return -1;
   }
 
+  // ---- 88-key piano ----
+
+  function _init88Piano() {
+    if (!chordDisplay88) return;
+    piano88Canvas = $("#piano88Canvas");
+    if (!piano88Canvas) return;
+    const w = chordDisplay88.clientWidth || 800;
+    const dpr = window.devicePixelRatio || 1;
+    piano88Cache = ChordRender.init88PianoCache(w, dpr);
+    const h = piano88Cache.totalH;
+    piano88Canvas.width = Math.round(w * dpr);
+    piano88Canvas.height = Math.round(h * dpr);
+    piano88Canvas.style.width = w + "px";
+    piano88Canvas.style.height = h + "px";
+    // draw static keyboard immediately
+    ChordRender.draw88Piano(piano88Canvas, piano88Cache, [], -1, {});
+  }
+
+  let keys88RibbonTrack = null;
+  let keys88RibbonBuilt = false;
+
+  function _buildKeys88Ribbon() {
+    keys88RibbonTrack = $("#keys88RibbonTrack");
+    if (!keys88RibbonTrack) return;
+    keys88RibbonTrack.innerHTML = "";
+    keys88RibbonBuilt = false;
+
+    const chords = _displayChords();
+    if (!chords || chords.length === 0 || _ribbonPositions.length === 0) return;
+
+    for (let i = 0; i < chords.length; i++) {
+      const pos = _ribbonPositions[i] || { left: chords[i].time * pxPerSec, width: 120 };
+      const div = document.createElement("div");
+      div.className = "ribbon-item";
+      div.style.left = `${pos.left}px`;
+      div.style.width = `${pos.width}px`;
+      const nameEl = document.createElement("div");
+      nameEl.className = "chord-name";
+      nameEl.textContent = chords[i].chord;
+      div.appendChild(nameEl);
+      div.addEventListener("click", () => {
+        audio.currentTime = chords[i].time;
+      });
+      keys88RibbonTrack.appendChild(div);
+    }
+    keys88RibbonBuilt = true;
+  }
+
+  function update88Piano(currentTime) {
+    if (!piano88Canvas || !piano88Cache) return;
+    if (!chordData || !chordData.chords) return;
+
+    // re-init cache if canvas resized
+    const w = chordDisplay88.clientWidth || 800;
+    const dpr = window.devicePixelRatio || 1;
+    if (Math.abs(piano88Cache.canvas.width / dpr - w) > 2) {
+      piano88Cache = ChordRender.init88PianoCache(w, dpr);
+    }
+
+    const chords = _displayChords();
+    if (!chords || chords.length === 0) return;
+
+    // scroll the keys88 ribbon (fullscreen only)
+    if (keys88RibbonTrack && keys88RibbonBuilt && _ribbonPositions.length > 0) {
+      let scrollX = currentTime * pxPerSec;
+      for (let i = _ribbonPositions.length - 1; i >= 0; i--) {
+        const p = _ribbonPositions[i];
+        if (currentTime >= p.time) {
+          const frac = p.width > 0 ? (currentTime - p.time) * pxPerSec / ((i + 1 < _ribbonPositions.length ? _ribbonPositions[i+1].time - p.time : 4) * pxPerSec) : 0;
+          scrollX = p.left + Math.min(frac, 1) * p.width;
+          break;
+        }
+      }
+      keys88RibbonTrack.style.transform = `translateX(${-scrollX}px)`;
+    }
+
+    // find current chord index
+    let newIdx = -1;
+    for (let i = chords.length - 1; i >= 0; i--) {
+      if (currentTime >= chords[i].time) { newIdx = i; break; }
+    }
+
+    // on chord change, move old notes to sustain list
+    if (newIdx !== piano88LastIdx) {
+      if (piano88ChordMidis.length > 0) {
+        for (const m of piano88ChordMidis) {
+          piano88SustainNotes.push({ midi: m, release: currentTime });
+        }
+      }
+      piano88LastIdx = newIdx;
+
+      // highlight active ribbon item
+      if (keys88RibbonTrack && keys88RibbonBuilt) {
+        keys88RibbonTrack.querySelectorAll(".ribbon-item").forEach((el, i) => {
+          el.classList.toggle("active", i === newIdx);
+        });
+      }
+
+      if (newIdx >= 0) {
+        const chord = chords[newIdx];
+        const cache = chordCache[chord.chord] || {};
+        const notes = cache.notes || [];
+        piano88ChordMidis = ChordRender.voiceChordForLeftHand(notes, piano88PrevMidi);
+        piano88PrevMidi = [...piano88ChordMidis];
+
+        // update big chord box
+        bigChordName.textContent = chord.chord;
+        bigChordBox.style.display = "";
+        bigChordJianpu.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
+        bigChordDiagram.innerHTML = "";
+      } else {
+        piano88ChordMidis = [];
+      }
+    }
+
+    // prune old sustain notes
+    piano88SustainNotes = piano88SustainNotes.filter(n => currentTime - n.release < 0.5);
+
+    // determine what to show based on hand selection
+    let showChord = piano88ChordMidis;
+    let showMelody = _getMelodyMidi(currentTime);
+    if (piano88Hand === "left") showMelody = -1;
+    if (piano88Hand === "right") showChord = [];
+
+    ChordRender.draw88Piano(piano88Canvas, piano88Cache, showChord, showMelody, {
+      coreCount: Math.min(4, showChord.length),
+      sustainNotes: piano88Hand === "right" ? [] : piano88SustainNotes,
+      now: currentTime,
+    });
+  }
+
+  // resize observer for 88-key piano
+  if (chordDisplay88) {
+    let _resizeTimer = null;
+    new ResizeObserver(() => {
+      clearTimeout(_resizeTimer);
+      _resizeTimer = setTimeout(() => {
+        if (activeTab === "keys") {
+          _init88Piano();
+          update88Piano(audio.currentTime || 0);
+        }
+      }, 100);
+    }).observe(chordDisplay88);
+  }
+
   // ---- section detection ----
   let sectionData = null;
 
@@ -395,8 +584,6 @@
   }
 
   // ---- chord loading (自動偵測整合) ----
-
-  let hasChords = false;
 
   async function loadChords(path) {
     try {
@@ -798,6 +985,7 @@
       progress.style.width = (t / d * 100) + "%";
       timeCurrent.textContent = formatTime(t);
       updateActiveChord(t);
+      if (activeTab === "keys") update88Piano(t);
       rafId = requestAnimationFrame(tickSync);
     }
   }
@@ -820,6 +1008,7 @@
     progress.style.width = (t / (audio.duration || 1) * 100) + "%";
     timeCurrent.textContent = formatTime(t);
     updateActiveChord(t);
+    if (activeTab === "keys") { piano88LastIdx = -1; update88Piano(t); }
   });
 
   // ---- 循環模式：off → single → favorites ----
@@ -1164,6 +1353,32 @@
       updateActiveChord(audio.currentTime || -1);
     });
   });
+
+  // ---- hand switch (88-key mode) ----
+  const handSwitch = $("#handSwitch");
+  const modeSwitch = $("#modeSwitch");
+
+  if (handSwitch) {
+    document.querySelectorAll("#handSwitch .mode-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("#handSwitch .mode-btn").forEach((b) => {
+          b.style.background = "transparent";
+          b.style.color = "var(--text-dim)";
+          b.classList.remove("active");
+        });
+        btn.style.background = "var(--accent)";
+        btn.style.color = "#fff";
+        btn.classList.add("active");
+        piano88Hand = btn.dataset.hand;
+        localStorage.setItem("livechord_88hand", piano88Hand);
+        piano88LastIdx = -1; // force redraw
+        update88Piano(audio.currentTime || 0);
+      });
+    });
+    // restore saved hand selection
+    const savedBtn = handSwitch.querySelector(`[data-hand="${piano88Hand}"]`);
+    if (savedBtn) savedBtn.click();
+  }
 
   // ---- Transpose / Capo ----
   const transposeUpBtn = $("#btnTransposeUp");

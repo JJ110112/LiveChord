@@ -932,6 +932,46 @@ a:hover { text-decoration: underline; }
   margin-top: 32px;
 }
 
+/* 88-key piano view */
+.chord-88-keys {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  width: 100%;
+  min-height: 160px;
+  padding: 8px 0;
+  overflow: hidden;
+}
+.chord-88-keys canvas {
+  width: 100%;
+  image-rendering: crisp-edges;
+}
+.keys88-ribbon {
+  display: none;  /* hidden in non-fullscreen */
+}
+.chord-display-area.fullscreen .chord-88-keys {
+  flex: 1;
+  min-height: 0;
+  padding-top: 40px;
+  justify-content: flex-end;
+}
+.chord-display-area.fullscreen .chord-88-keys canvas {
+  max-height: 320px;
+  flex-shrink: 0;
+}
+.chord-display-area.fullscreen .keys88-ribbon {
+  display: block;
+  position: relative;
+  width: 100%;
+  flex: 1;
+  min-height: 80px;
+  background: var(--bg-hover);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+  margin-bottom: 8px;
+}
+
 /* 非全螢幕時隱藏播放控制/曲名/縮放 */
 .fs-only { display: none !important; }
 .chord-display-area.fullscreen .fs-only { display: flex !important; }
@@ -1112,6 +1152,7 @@ a:hover { text-decoration: underline; }
   .player-cover { width: 56px; height: 56px; }
   .chord-toolbar { padding: 8px; }
   .chord-ribbon { min-height: 100px; }
+  .chord-88-keys { min-height: 100px; }
   #modeSwitch { flex-wrap: wrap; }
 }
 

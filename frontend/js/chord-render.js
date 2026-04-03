@@ -407,6 +407,233 @@ const ChordRender = {
 
     return div;
   },
+
+  // =========================================================================
+  // 88 Piano Keys — full keyboard visualisation
+  // =========================================================================
+
+  /** Convert chord note-names to absolute MIDI in left-hand range (C2-C3) */
+  voiceChordForLeftHand(noteNames, prevMidi) {
+    if (!noteNames || noteNames.length === 0) return [];
+    const NOTE_MAP = { C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,Fb:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11,Cb:11 };
+    function nts(n) {
+      if (n in NOTE_MAP) return NOTE_MAP[n];
+      let s = NOTE_MAP[n[0]] || 0;
+      for (let i = 1; i < n.length; i++) { if (n[i]==="#") s++; else if (n[i]==="b") s--; }
+      return ((s % 12) + 12) % 12;
+    }
+    const semis = noteNames.map(n => nts(n));
+    const abs = [];
+    const rootOct = 3; // left-hand: root around C3 (MIDI 48)
+    let prev = semis[0] + rootOct * 12;
+    abs.push(prev);
+    for (let i = 1; i < semis.length; i++) {
+      let n = semis[i] + rootOct * 12;
+      while (n < prev) n += 12;
+      abs.push(n);
+      prev = n;
+    }
+    // voice leading towards previous chord voicing
+    if (prevMidi && prevMidi.length > 0) {
+      const pc = prevMidi.reduce((a,b) => a+b, 0) / prevMidi.length;
+      let best = [...abs], bestD = Infinity;
+      for (let shift = -12; shift <= 12; shift += 12) {
+        const cand = abs.map(n => {
+          let v = n + shift, minD = Math.abs(v - pc);
+          for (const o of [-12, 0, 12]) {
+            const t = n + shift + o;
+            if (t >= 36 && t <= 59 && Math.abs(t - pc) < minD) { minD = Math.abs(t - pc); v = t; }
+          }
+          return v;
+        });
+        cand.sort((a,b) => a-b);
+        const d = cand.reduce((s,n) => s + prevMidi.reduce((m,p) => Math.min(m, Math.abs(n-p)), 99), 0);
+        if (d < bestD) { bestD = d; best = cand; }
+      }
+      return best;
+    }
+    return abs;
+  },
+
+  /**
+   * Create offscreen canvas with static 88-key keyboard.
+   * Returns { canvas, whiteXs, blackXs, keyW, keyH, bKeyW, bKeyH }
+   */
+  init88PianoCache(width, dpr) {
+    // 88 keys: A0 (21) to C8 (108) — 52 white keys
+    const whites = [];
+    for (let m = 21; m <= 108; m++) { if ([0,2,4,5,7,9,11].includes(m % 12)) whites.push(m); }
+    const nw = whites.length; // 52
+    const kw = width / nw;
+    const kh = kw * 6;       // real piano ratio 1:6
+    const bw = kw * 0.48;    // black key ~48% of white width
+    const bh = kh * 0.65;    // black key ~65% of white height
+    const labelSpace = 16;
+    const totalH = kh + labelSpace;
+
+    const c = document.createElement("canvas");
+    c.width = Math.round(width * dpr);
+    c.height = Math.round(totalH * dpr);
+    const ctx = c.getContext("2d");
+    ctx.scale(dpr, dpr);
+
+    // white keys
+    for (let i = 0; i < nw; i++) {
+      const x = i * kw;
+      ctx.fillStyle = "#e8e8e8";
+      ctx.fillRect(x, 0, kw - 1, kh);
+      ctx.strokeStyle = "#888";
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(x, 0, kw - 1, kh);
+    }
+
+    // black keys
+    const blackAfterSemi = new Set([0, 1, 3, 4, 5]); // white key semitone index where black follows (C,D, F,G,A)
+    const whiteOrder = [0,2,4,5,7,9,11];
+    const blackXs = {};
+    for (let i = 0; i < nw - 1; i++) {
+      const deg = whites[i] % 12;
+      const wIdx = whiteOrder.indexOf(deg);
+      if (!blackAfterSemi.has(wIdx)) continue;
+      const bMidi = whites[i] + 1;
+      const x = (i + 1) * kw - bw / 2;
+      ctx.fillStyle = "#1a1a1a";
+      ctx.fillRect(x, 0, bw, bh);
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(x, 0, bw, bh);
+      blackXs[bMidi] = { x, w: bw, h: bh };
+    }
+
+    // white key x-positions lookup
+    const whiteXs = {};
+    for (let i = 0; i < nw; i++) whiteXs[whites[i]] = { x: i * kw, w: kw - 1, h: kh };
+
+    // octave labels + middle-C marker
+    ctx.fillStyle = "#555";
+    ctx.font = `${Math.max(9, Math.min(11, kw * 0.9))}px sans-serif`;
+    ctx.textAlign = "center";
+    for (let oct = 0; oct <= 8; oct++) {
+      const midi = oct * 12 + 12; // C of this octave (C0=12, C1=24, ..., C8=108)
+      if (midi < 21 || midi > 108) continue;
+      const info = whiteXs[midi];
+      if (!info) continue;
+      ctx.fillText("C" + oct, info.x + (info.w / 2), kh + 13);
+    }
+    // middle C (C4=60) subtle marker line
+    const c4 = whiteXs[60];
+    if (c4) {
+      ctx.strokeStyle = "rgba(233,69,96,0.35)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(c4.x + c4.w / 2, kh - 3);
+      ctx.lineTo(c4.x + c4.w / 2, kh + 2);
+      ctx.stroke();
+    }
+
+    return { canvas: c, whiteXs, blackXs, keyW: kw, keyH: kh, bKeyW: bw, bKeyH: bh, totalH };
+  },
+
+  /**
+   * Per-frame render of the 88-key piano.
+   * @param {HTMLCanvasElement} canvas  — visible canvas
+   * @param {Object} cache             — from init88PianoCache
+   * @param {number[]} chordMidis      — absolute MIDI for current chord
+   * @param {number} melodyMidi        — current melody MIDI (-1 = none)
+   * @param {Object} opts              — { coreCount, sustainNotes:[{midi,release}], now }
+   */
+  draw88Piano(canvas, cache, chordMidis, melodyMidi, opts) {
+    if (!canvas || !cache) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth || canvas.parentElement.clientWidth || 800;
+    const h = canvas.clientHeight || canvas.parentElement.clientHeight || 180;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+    }
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(1,0,0,1,0,0);
+    // blit static keyboard
+    ctx.drawImage(cache.canvas, 0, 0, canvas.width, canvas.height);
+    ctx.scale(dpr, dpr);
+
+    const { whiteXs, blackXs } = cache;
+    const CORE = "#e94560";
+    const EXT  = "#4ca1ff";
+    const MEL  = "#00e676";
+    const coreCount = (opts && opts.coreCount) || 4;
+    const sustainNotes = (opts && opts.sustainNotes) || [];
+    const now = (opts && opts.now) || 0;
+
+    // Collect all highlights: {midi, color, alpha}
+    const highlights = [];
+
+    // sustaining (fading) notes
+    for (const sn of sustainNotes) {
+      const age = now - sn.release;
+      if (age > 0.5) continue;
+      highlights.push({ midi: sn.midi, color: "#888", alpha: 0.35 * (1 - age / 0.5) });
+    }
+
+    // chord notes
+    const chordSet = new Set(chordMidis);
+    for (let i = 0; i < chordMidis.length; i++) {
+      highlights.push({ midi: chordMidis[i], color: i < coreCount ? CORE : EXT, alpha: 0.85 });
+    }
+
+    // melody note
+    if (melodyMidi >= 0) {
+      highlights.push({ midi: melodyMidi, color: MEL, alpha: 0.9 });
+    }
+
+    // Pass 1: draw WHITE key highlights only
+    for (const hl of highlights) {
+      const wk = whiteXs[hl.midi];
+      if (!wk) continue;
+      ctx.globalAlpha = hl.alpha;
+      ctx.fillStyle = hl.color;
+      ctx.fillRect(wk.x + 1, 1, wk.w - 2, wk.h - 2);
+    }
+
+    // Pass 2: re-draw ALL black keys from cache so they sit on top of white highlights
+    for (const midi in blackXs) {
+      const bk = blackXs[midi];
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#1a1a1a";
+      ctx.fillRect(bk.x, 0, bk.w, bk.h);
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(bk.x, 0, bk.w, bk.h);
+    }
+
+    // Pass 3: draw BLACK key highlights on top
+    for (const hl of highlights) {
+      const bk = blackXs[hl.midi];
+      if (!bk) continue;
+      ctx.globalAlpha = Math.min(1.0, hl.alpha + 0.15);
+      ctx.fillStyle = hl.color;
+      ctx.fillRect(bk.x + 1, 1, bk.w - 2, bk.h - 2);
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(bk.x + 2, 2, bk.w - 4, bk.h - 4);
+    }
+    ctx.globalAlpha = 1;
+
+    // Overlap indicator: chord+melody on same key
+    if (melodyMidi >= 0 && chordSet.has(melodyMidi)) {
+      const pos = whiteXs[melodyMidi] || blackXs[melodyMidi];
+      if (pos) {
+        ctx.fillStyle = CORE;
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath();
+        ctx.arc(pos.x + pos.w / 2, (pos.h || cache.bKeyH) - 8, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    ctx.setTransform(1,0,0,1,0,0);
+  },
 };
 
 function escapeHtml(str) {
