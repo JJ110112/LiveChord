@@ -29,6 +29,31 @@ def get_midi_root() -> str:
         return os.path.normpath(settings["midi_root"])
     return os.path.normpath(os.environ.get("LIVECHORD_MIDI_ROOT", "X:/"))
 
+def get_music_roots() -> list:
+    """音樂庫根目錄列表（支援多根目錄）"""
+    settings = _load_settings()
+    roots = settings.get("music_roots")
+    if roots and isinstance(roots, list):
+        return [os.path.normpath(r) for r in roots]
+    single = get_music_root()
+    return [single]
+
+
+def set_music_roots(roots: list):
+    """設定多音樂庫根目錄"""
+    _save_setting("music_roots", [os.path.normpath(r) for r in roots])
+
+
+def resolve_path(relative_path: str) -> str:
+    """將相對路徑解析為絕對路徑（嘗試所有根目錄）"""
+    for root in get_music_roots():
+        full = os.path.normpath(os.path.join(root, relative_path))
+        if os.path.exists(full):
+            return full
+    # 回傳第一個根目錄的路徑（即使不存在）
+    return os.path.normpath(os.path.join(get_music_roots()[0], relative_path))
+
+
 def set_music_root(new_path: str):
     _save_setting("music_root", os.path.normpath(new_path))
 
