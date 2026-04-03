@@ -849,6 +849,9 @@ a:hover { text-decoration: underline; }
   display: flex;
   flex-direction: column;
   position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .chord-display-area {
@@ -964,7 +967,7 @@ a:hover { text-decoration: underline; }
 }
 .chord-display-area.fullscreen .waterfall-canvas.active {
   display: block;
-  flex: 1;
+  flex: 4; /* Golden ratio part: Waterfall 40% */
   min-height: 120px;
 }
 
@@ -1003,26 +1006,30 @@ a:hover { text-decoration: underline; }
   color: var(--accent);
 }
 .chord-display-area.fullscreen .chord-88-keys {
-  flex: 1;
+  flex: 5; /* 40% Waterfall + 40% Keyboard area */
   min-height: 0;
-  padding-top: 40px;
-  justify-content: flex-end;
+  padding-top: 20px;
+  justify-content: flex-start;
 }
-.chord-display-area.fullscreen .chord-88-keys canvas {
-  max-height: 320px;
+.chord-display-area.fullscreen .chord-88-keys canvas#piano88Canvas {
+  flex: 4; /* Golden ratio part: Keyboard 40% */
+  max-height: unset;
   flex-shrink: 0;
+  margin-top: auto;
 }
 .chord-display-area.fullscreen .keys88-ribbon {
   display: block;
   position: relative;
   width: 100%;
-  flex: 1;
-  min-height: 80px;
+  flex: 2; /* Golden ratio part: Chord Ribbon 20% */
+  min-height: 60px;
+  max-height: 20vh;
   background: var(--bg-hover);
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
-  margin-bottom: 8px;
+  margin-bottom: -10px; /* pull closer to waterfall */
+  z-index: 2;
 }
 
 /* 88-key ribbon items: text-only, no piano canvas */
@@ -1039,12 +1046,12 @@ a:hover { text-decoration: underline; }
 }
 .keys88-ribbon-item .chord-jianpu {
   font-size: 13px;
-  color: #e94560;
+  color: #9c27b0; /* 紫色代表抽象理論 */
   opacity: 0.85;
 }
 .keys88-ribbon-item .melody-jianpu {
   font-size: 12px;
-  color: #00e676;
+  color: #ff9800; /* 橘色代表旋律 */
   opacity: 0.8;
   letter-spacing: 1px;
   margin-top: 2px;

@@ -96,6 +96,10 @@
   // ---- 和弦區縮放 (must be before tab handlers that call _switchZoomToTab) ----
   const ZOOM_STEPS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300];
   const ZOOM_DEFAULTS = { overview: 100, diagrams: 200, keys: 100 };
+  // one-time migration: clear old overview zoom (was 200, now 100)
+  if (localStorage.getItem("livechord_zoom_overview") === "200") {
+    localStorage.removeItem("livechord_zoom_overview");
+  }
   const _tabZoom = {};
   for (const tab of ["overview", "diagrams", "keys"]) {
     const saved = parseInt(localStorage.getItem(`livechord_zoom_${tab}`));
@@ -652,10 +656,29 @@
     const lookAhead = 4.0;  // seconds visible above piano
     const pxPerSec = h / lookAhead;
 
-    const LH_COLOR = "rgba(0,220,255,0.8)";   // cyan
-    const RH_COLOR = "rgba(255,165,0,0.8)";    // orange
-    const LH_GLOW  = "rgba(0,220,255,0.4)";
-    const RH_GLOW  = "rgba(255,165,0,0.4)";
+    // Semantic Colors
+    const LH_COLOR = "rgba(33, 150, 243, 0.9)";   // Blue (穩重/左手)
+    const RH_COLOR = "rgba(255, 152, 0, 0.9)";    // Orange (主旋律/右手)
+    const LH_GLOW  = "rgba(33, 150, 243, 0.4)";
+    const RH_GLOW  = "rgba(255, 152, 0, 0.4)";
+
+    // 畫拍線網格 (Beat Grid & Bar Lines)
+    const bpm = (accData.bpm || 100); 
+    const secPerBeat = 60 / bpm;
+    const firstBeatTime = Math.floor(currentTime / secPerBeat) * secPerBeat;
+    for (let bt = firstBeatTime; bt < currentTime + lookAhead; bt += secPerBeat) {
+      const beatNum = Math.round(bt / secPerBeat);
+      const isBarLine = (beatNum % 4 === 0);
+      const y = h - (bt - currentTime) * pxPerSec;
+      if (y < 0 || y > h) continue;
+      
+      ctx.strokeStyle = isBarLine ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.05)";
+      ctx.lineWidth = isBarLine ? 2 : 1;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
 
     const allEvents = [
       ...(accData.left_hand || []).map(e => ({...e, _hand: "left"})),
@@ -667,19 +690,38 @@
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
+    // 樂句線 (Phrase arc for Right Hand)
+    const rhEvents = allEvents.filter(e => e._hand === "right" && e.time >= currentTime && e.time <= currentTime + lookAhead);
+    if (rhEvents.length > 1) {
+      rhEvents.sort((a,b) => a.time - b.time);
+      ctx.strokeStyle = "rgba(255, 152, 0, 0.4)"; // light orange arc
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < rhEvents.length; i++) {
+        const evt = rhEvents[i];
+        const keyInfo = cache.whiteXs[evt.pitch] || cache.blackXs[evt.pitch];
+        if (!keyInfo) continue;
+        const x = keyInfo.x + keyInfo.w / 2;
+        const yTop = h - (evt.time + evt.duration - currentTime) * pxPerSec;
+        if (i === 0) ctx.moveTo(x, yTop);
+        else ctx.lineTo(x, yTop);
+      }
+      ctx.stroke();
+    }
+
+    // 將指法分群與優化顯示
+    let lhLastF = 0, rhLastF = 0;
+    
     for (const evt of allEvents) {
       const noteStart = evt.time;
       const noteEnd = evt.time + evt.duration;
 
-      // Only render visible notes
       if (noteEnd < currentTime || noteStart > currentTime + lookAhead) continue;
 
-      // Y position: bottom = currentTime, top = currentTime + lookAhead
       const yBottom = h - (noteStart - currentTime) * pxPerSec;
       const yTop = h - (noteEnd - currentTime) * pxPerSec;
       const noteH = Math.max(yBottom - yTop, 3);
 
-      // X position from piano key geometry
       const midi = evt.pitch;
       const keyInfo = cache.whiteXs[midi] || cache.blackXs[midi];
       if (!keyInfo) continue;
@@ -690,10 +732,10 @@
       const color = isLeft ? LH_COLOR : RH_COLOR;
       const glow = isLeft ? LH_GLOW : RH_GLOW;
 
-      // Glow effect for notes about to land
-      if (yBottom > h - 20) {
+      // Drop prediction shadow on the keys if it's right about to hit
+      if (yBottom > h - 40 && yBottom < h) {
         ctx.fillStyle = glow;
-        ctx.fillRect(x, yTop, kw, noteH + 10);
+        ctx.fillRect(x, h - 5, kw, -20); // predictive glow standing on the landing bar
       }
 
       // Note bar
@@ -703,20 +745,40 @@
       ctx.roundRect(x + 1, yTop, kw - 2, noteH, r);
       ctx.fill();
 
-      // Finger number (show when note is close to landing)
-      if (evt.finger && yBottom > h * 0.5) {
-        ctx.fillStyle = "#fff";
-        const fy = (yTop + yBottom) / 2;
-        ctx.fillText(evt.finger, x + kw / 2, fy);
+      // Finger number simplification: Only show if crossover, leap, or first
+      if (evt.finger && yBottom > h * 0.4) {
+        let showF = false;
+        const lastF = isLeft ? lhLastF : rhLastF;
+        
+        // Always show if it's a large jump in finger or a thumb crossover
+        if (lastF === 0 || Math.abs(evt.finger - lastF) > 1 || evt.finger === 1 || lastF === 1) {
+          showF = true;
+        }
+
+        if (showF) {
+          ctx.fillStyle = "#fff";
+          const fy = (yTop + yBottom) / 2;
+          
+          if (evt.finger === 1 && lastF > 1) {
+             // 跨指提示
+             ctx.fillText("↻1", x + kw / 2, fy);
+             ctx.fillStyle = "rgba(255,255,255,0.2)";
+             ctx.fillRect(x, yTop, kw, noteH); // highlight block for crossover
+          } else {
+             ctx.fillText(evt.finger, x + kw / 2, fy);
+          }
+        }
+        
+        if (isLeft) lhLastF = evt.finger; else rhLastF = evt.finger;
       }
     }
 
     // Landing line
-    ctx.strokeStyle = "rgba(255,255,255,0.3)";
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(255,255,255,0.4)";
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(0, h - 1);
-    ctx.lineTo(w, h - 1);
+    ctx.moveTo(0, h - 2);
+    ctx.lineTo(w, h - 2);
     ctx.stroke();
   }
 

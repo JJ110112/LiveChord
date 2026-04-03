@@ -157,18 +157,16 @@
         <canvas id="piano88Canvas"></canvas>
         <div id="teachControls" class="teach-controls">
           <select id="teachStyle" class="toolbar-select" title="伴奏風格">
-            <option value="Block">Block</option>
-            <option value="Arpeggio" selected>Arpeggio</option>
-            <option value="Rhythm">Rhythm</option>
-            <option value="Alberti">Alberti</option>
-            <option value="Shell">Shell</option>
-            <option value="Walking">Walking</option>
-            <option value="Stride">Stride</option>
+            <option value="Block">Beginner (Block)</option>
+            <option value="Arpeggio" selected>Flow (Arpeggio)</option>
+            <option value="Rhythm">Rhythm (Pop)</option>
+            <option value="Walking">Pro (Jazz Walking)</option>
+            <option value="Stride">Pro (Stride)</option>
           </select>
           <div class="teach-level-group">
-            <button class="mode-btn active" data-level="L1">L1</button>
-            <button class="mode-btn" data-level="L2">L2</button>
-            <button class="mode-btn" data-level="L3">L3</button>
+            <button class="mode-btn active" data-level="L1">基礎</button>
+            <button class="mode-btn" data-level="L2">進階</button>
+            <button class="mode-btn" data-level="L3">大師</button>
           </div>
           <button id="btnTeachAI" class="toolbar-btn" title="AI 推薦風格">AI</button>
           <label class="teach-toggle" title="教學瀑布流"><input type="checkbox" id="teachToggle" checked><span>Waterfall</span></label>
