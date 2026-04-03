@@ -99,10 +99,14 @@ CHORD_INTERVALS = {
 }
 
 
+_ENHARMONIC_SHARP = {'E#': 'F', 'B#': 'C', 'Fb': 'E', 'Cb': 'B'}
+
 def root_to_semitone(root: str) -> int:
     """將根音轉換為半音數 (C=0)"""
     if root in FLAT_TO_SHARP:
         root = FLAT_TO_SHARP[root]
+    elif root in _ENHARMONIC_SHARP:
+        root = _ENHARMONIC_SHARP[root]
     return NOTE_NAMES.index(root)
 
 
