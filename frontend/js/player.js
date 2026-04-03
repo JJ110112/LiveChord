@@ -91,6 +91,7 @@
       tabOverview.classList.add("active");
       chordDisplayOverview.style.display = "";
       _updateHandSwitchVisibility();
+      _switchZoomToTab("overview");
       // Overview 顯示大和弦
       if (hasChords) bigChordBox.style.display = "";
       if (activeChordIdx >= 0 && activeChordIdx < chordElements.length) {
@@ -108,6 +109,7 @@
       tabDiagrams.classList.add("active");
       chordDisplayDiagrams.style.display = "block";
       _updateHandSwitchVisibility();
+      _switchZoomToTab("diagrams");
       // Diagrams 隱藏大和弦（避免重複）
       bigChordBox.style.display = "none";
       const t = audio.currentTime || 0;
@@ -124,6 +126,7 @@
         tabKeys.classList.add("active");
         chordDisplay88.style.display = "flex";
         _updateHandSwitchVisibility();
+        _switchZoomToTab("keys");
         if (hasChords) bigChordBox.style.display = "";
         _init88Piano();
         _buildKeys88Ribbon();
@@ -140,8 +143,15 @@
 
   // ---- 和弦區縮放 ----
   const ZOOM_STEPS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300];
-  let zoomIdx = ZOOM_STEPS.indexOf(parseInt(localStorage.getItem("livechord_chord_zoom")) || 100);
-  if (zoomIdx < 0) zoomIdx = ZOOM_STEPS.indexOf(100);
+  const ZOOM_DEFAULTS = { overview: 200, diagrams: 200, keys: 100 };
+  // per-tab zoom: each tab has its own persisted zoom level
+  const _tabZoom = {};
+  for (const tab of ["overview", "diagrams", "keys"]) {
+    const saved = parseInt(localStorage.getItem(`livechord_zoom_${tab}`));
+    _tabZoom[tab] = ZOOM_STEPS.indexOf(saved > 0 ? saved : ZOOM_DEFAULTS[tab]);
+    if (_tabZoom[tab] < 0) _tabZoom[tab] = ZOOM_STEPS.indexOf(ZOOM_DEFAULTS[tab]);
+  }
+  let zoomIdx = _tabZoom[activeTab] || ZOOM_STEPS.indexOf(100);
   const btnZoomIn = $("#btnZoomIn");
   const btnZoomOut = $("#btnZoomOut");
   const btnZoomReset = $("#btnZoomReset");
@@ -152,12 +162,17 @@
     if (chordDisplayEl) {
       chordDisplayEl.style.transformOrigin = "top left";
       chordDisplayEl.style.transform = `scale(${pct / 100})`;
-      // 補償 scale 造成的尺寸縮減
       chordDisplayEl.style.width = (10000 / pct) + "%";
       chordDisplayEl.style.height = (10000 / pct) + "%";
     }
     if (btnZoomReset) btnZoomReset.textContent = pct + "%";
-    localStorage.setItem("livechord_chord_zoom", pct);
+    // persist per-tab
+    _tabZoom[activeTab] = zoomIdx;
+    localStorage.setItem(`livechord_zoom_${activeTab}`, pct);
+  }
+  function _switchZoomToTab(tab) {
+    zoomIdx = _tabZoom[tab] != null ? _tabZoom[tab] : ZOOM_STEPS.indexOf(ZOOM_DEFAULTS[tab]);
+    _applyZoom();
   }
   _applyZoom();
 
@@ -218,11 +233,8 @@
     chordDisplay.classList.add("fullscreen");
     btnFullscreen.innerHTML = "&#x2716;";
     if (btnPageFs) btnPageFs.innerHTML = "&#x2716;";
-    // default 200% zoom for overview/diagrams in fullscreen
-    if (activeTab !== "keys") {
-      zoomIdx = ZOOM_STEPS.indexOf(200);
-      _applyZoom();
-    }
+    // restore per-tab zoom (defaults: overview/diagrams=200%, keys=100%)
+    _switchZoomToTab(activeTab);
     document.documentElement.requestFullscreen().catch(() => {});
   }
   function _exitFullscreen() {
@@ -230,7 +242,7 @@
     btnFullscreen.innerHTML = "&#x26F6;";
     if (btnPageFs) btnPageFs.innerHTML = "&#x26F6;";
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    // 退出全螢幕時重置縮放到 100%
+    // reset to 100% when exiting fullscreen (non-fullscreen view)
     zoomIdx = ZOOM_STEPS.indexOf(100);
     _applyZoom();
   }
