@@ -403,18 +403,35 @@
     const chords = _displayChords();
     if (!chords || chords.length === 0 || _ribbonPositions.length === 0) return;
 
+    let _prevMidi = null;
     for (let i = 0; i < chords.length; i++) {
-      const pos = _ribbonPositions[i] || { left: chords[i].time * pxPerSec, width: 120 };
+      const chord = chords[i];
+      const cache = chordCache[chord.chord] || {};
+      const pos = _ribbonPositions[i] || { left: chord.time * pxPerSec, width: 120 };
       const div = document.createElement("div");
       div.className = "ribbon-item";
       div.style.left = `${pos.left}px`;
       div.style.width = `${pos.width}px`;
+
       const nameEl = document.createElement("div");
       nameEl.className = "chord-name";
-      nameEl.textContent = chords[i].chord;
+      nameEl.textContent = chord.chord;
       div.appendChild(nameEl);
+
+      // jianpu
+      const jp = document.createElement("div");
+      jp.className = "chord-jianpu";
+      jp.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
+      div.appendChild(jp);
+
+      // small piano diagram
+      const pianoCanvas = document.createElement("canvas");
+      ChordRender.drawPiano(pianoCanvas, cache.notes || [], 1, _prevMidi);
+      div.appendChild(pianoCanvas);
+      if (pianoCanvas._lastMidi) _prevMidi = pianoCanvas._lastMidi;
+
       div.addEventListener("click", () => {
-        audio.currentTime = chords[i].time;
+        audio.currentTime = chord.time;
       });
       keys88RibbonTrack.appendChild(div);
     }
