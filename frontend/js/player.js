@@ -422,11 +422,15 @@
     if (!piano88Canvas) return;
     const w = chordDisplay88.clientWidth || 800;
     const dpr = window.devicePixelRatio || 1;
-    piano88Cache = ChordRender.init88PianoCache(w, dpr);
+    // Cap width so piano height stays within container
+    const containerH = chordDisplay88.clientHeight || 400;
+    const maxKeyH = Math.max(80, containerH - 40);  // leave room for labels
+    const maxW = Math.min(w, Math.round(maxKeyH / 6 * 52));  // keyH = keyW * 6
+    piano88Cache = ChordRender.init88PianoCache(maxW, dpr);
     const h = piano88Cache.totalH;
-    piano88Canvas.width = Math.round(w * dpr);
+    piano88Canvas.width = Math.round(maxW * dpr);
     piano88Canvas.height = Math.round(h * dpr);
-    piano88Canvas.style.width = w + "px";
+    piano88Canvas.style.width = maxW + "px";
     piano88Canvas.style.height = h + "px";
     // draw static keyboard immediately
     ChordRender.draw88Piano(piano88Canvas, piano88Cache, [], -1, {});
