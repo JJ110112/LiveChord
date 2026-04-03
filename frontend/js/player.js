@@ -573,7 +573,8 @@
 
         // update big chord box
         bigChordName.textContent = chord.chord;
-        bigChordBox.style.display = "";
+        // HUD renders chord in waterfall directly, so hide big box if active
+        bigChordBox.style.display = waterfallActive ? "none" : "";
         bigChordJianpu.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
         bigChordDiagram.innerHTML = "";
       } else {
@@ -584,14 +585,28 @@
     // prune old sustain notes
     piano88SustainNotes = piano88SustainNotes.filter(n => currentTime - n.release < 0.5);
 
-    // determine what to show based on hand selection
-    let showChord = piano88ChordMidis;
-    let showMelody = _getMelodyMidi(currentTime);
-    if (piano88Hand === "left") showMelody = -1;
-    if (piano88Hand === "right") showChord = [];
+    // determine actual played notes from accData if available
+    let activeLh = [];
+    let activeRh = [];
+    if (waterfallActive && accData) {
+       for (const e of (accData.left_hand||[])) {
+           if (e.time <= currentTime && e.time + e.duration >= currentTime) activeLh.push(e.pitch);
+       }
+       for (const e of (accData.right_hand||[])) {
+           if (e.time <= currentTime && e.time + e.duration >= currentTime) activeRh.push(e.pitch);
+       }
+    } else {
+       activeLh = [...piano88ChordMidis];
+    }
+    
+    const mel = _getMelodyMidi(currentTime);
+    if (mel >= 0 && !activeRh.includes(mel)) activeRh.push(mel);
 
-    ChordRender.draw88Piano(piano88Canvas, piano88Cache, showChord, showMelody, {
-      coreCount: Math.min(4, showChord.length),
+    if (piano88Hand === "left") activeRh = [];
+    if (piano88Hand === "right") activeLh = [];
+
+    ChordRender.draw88Piano(piano88Canvas, piano88Cache, activeLh, activeRh, {
+      chordHints: piano88ChordMidis,
       sustainNotes: piano88Hand === "right" ? [] : piano88SustainNotes,
       now: currentTime,
     });
@@ -608,6 +623,7 @@
     if (toggle && toggle.checked) {
       waterfallActive = true;
       waterfallCanvas.classList.add("active");
+      if (chordDisplay88) chordDisplay88.classList.add("waterfall-active");
       _loadAccompaniment();
       setTimeout(_resizeWaterfall, 50);
     }
@@ -670,18 +686,26 @@
     const bpm = (accData.bpm || 100); 
     const secPerBeat = 60 / bpm;
     const firstBeatTime = Math.floor(currentTime / secPerBeat) * secPerBeat;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    ctx.font = "11px sans-serif";
     for (let bt = firstBeatTime; bt < currentTime + lookAhead; bt += secPerBeat) {
       const beatNum = Math.round(bt / secPerBeat);
+      const beatInBar = (beatNum % 4) + 1; // 1, 2, 3, 4
       const isBarLine = (beatNum % 4 === 0);
       const y = h - (bt - currentTime) * pxPerSec;
       if (y < 0 || y > h) continue;
       
-      ctx.strokeStyle = isBarLine ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.05)";
+      ctx.strokeStyle = isBarLine ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.08)";
       ctx.lineWidth = isBarLine ? 2 : 1;
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(w, y);
       ctx.stroke();
+
+      // Draw beat number at left edge
+      ctx.fillStyle = isBarLine ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.3)";
+      ctx.fillText(beatInBar, 8, y - 2);
     }
 
     const allEvents = [
@@ -698,19 +722,60 @@
     const rhEvents = allEvents.filter(e => e._hand === "right" && e.time >= currentTime && e.time <= currentTime + lookAhead);
     if (rhEvents.length > 1) {
       rhEvents.sort((a,b) => a.time - b.time);
-      ctx.strokeStyle = "rgba(255, 152, 0, 0.4)"; // light orange arc
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      for (let i = 0; i < rhEvents.length; i++) {
-        const evt = rhEvents[i];
-        const keyInfo = cache.whiteXs[evt.pitch] || cache.blackXs[evt.pitch];
-        if (!keyInfo) continue;
-        const x = keyInfo.x + keyInfo.w / 2;
-        const yTop = h - (evt.time + evt.duration - currentTime) * pxPerSec;
-        if (i === 0) ctx.moveTo(x, yTop);
-        else ctx.lineTo(x, yTop);
+      ctx.strokeStyle = "rgba(255, 152, 0, 0.6)"; // light orange arc
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      
+      for (let i = 1; i < rhEvents.length; i++) {
+        const evt1 = rhEvents[i-1];
+        const evt2 = rhEvents[i];
+        const keyInfo1 = cache.whiteXs[evt1.pitch] || cache.blackXs[evt1.pitch];
+        const keyInfo2 = cache.whiteXs[evt2.pitch] || cache.blackXs[evt2.pitch];
+        if (!keyInfo1 || !keyInfo2) continue;
+
+        const x1 = keyInfo1.x + keyInfo1.w / 2;
+        const y1 = h - (evt1.time + evt1.duration - currentTime) * pxPerSec;
+        const x2 = keyInfo2.x + keyInfo2.w / 2;
+        const y2 = h - (evt2.time + evt2.duration - currentTime) * pxPerSec;
+
+        ctx.beginPath();
+        // 虛線代表同音反覆，實線代表旋律移動
+        if (evt1.pitch === evt2.pitch) {
+           ctx.setLineDash([4, 4]);
+        } else {
+           ctx.setLineDash([]);
+        }
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
       }
-      ctx.stroke();
+      ctx.setLineDash([]); // reset
+    }
+
+    // 左手手型背景區塊 (Position Hand Block)
+    const lhEvents = allEvents.filter(e => e._hand === "left" && e.time >= currentTime && e.time <= currentTime + lookAhead);
+    if (lhEvents.length > 0) {
+      let minX = w, maxX = 0, minY = h, maxY = 0;
+      for (const evt of lhEvents) {
+        const ki = cache.whiteXs[evt.pitch] || cache.blackXs[evt.pitch];
+        if (!ki) continue;
+        const x = ki.x;
+        const ex = x + ki.w;
+        const yt = Math.max(0, h - (evt.time + evt.duration - currentTime) * pxPerSec);
+        const yb = Math.min(h, h - (evt.time - currentTime) * pxPerSec);
+        if (x < minX) minX = x;
+        if (ex > maxX) maxX = ex;
+        if (yt < minY) minY = yt;
+        if (yb > maxY) maxY = yb;
+      }
+      if (maxX > minX && maxY > minY) {
+        ctx.fillStyle = "rgba(33, 150, 243, 0.05)"; // very faint blue box
+        ctx.fillRect(minX - 4, minY - 4, maxX - minX + 8, maxY - minY + 8);
+        ctx.strokeStyle = "rgba(33, 150, 243, 0.15)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(minX - 4, minY - 4, maxX - minX + 8, maxY - minY + 8);
+      }
     }
 
     // 將指法分群與優化顯示
@@ -760,17 +825,26 @@
         }
 
         if (showF) {
-          ctx.fillStyle = "#fff";
           const fy = (yTop + yBottom) / 2;
+          ctx.font = "bold 13px sans-serif";
+          
+          let text = evt.finger;
+          let isCross = false;
           
           if (evt.finger === 1 && lastF > 1) {
              // 跨指提示
-             ctx.fillText("↻1", x + kw / 2, fy);
+             text = "↻1";
+             isCross = true;
              ctx.fillStyle = "rgba(255,255,255,0.2)";
              ctx.fillRect(x, yTop, kw, noteH); // highlight block for crossover
-          } else {
-             ctx.fillText(evt.finger, x + kw / 2, fy);
           }
+          
+          // Shadow
+          ctx.fillStyle = "rgba(0,0,0,0.5)";
+          ctx.fillText(text, x + kw / 2 + 1, fy + 1);
+          // Text
+          ctx.fillStyle = "#fff";
+          ctx.fillText(text, x + kw / 2, fy);
         }
         
         if (isLeft) lhLastF = evt.finger; else rhLastF = evt.finger;
@@ -784,6 +858,38 @@
     ctx.moveTo(0, h - 2);
     ctx.lineTo(w, h - 2);
     ctx.stroke();
+
+    // ---- HUD Overlay (AI Teach Hint & Current Chord) ----
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    
+    if (teachStyle) {
+      let hintText = "";
+      if (teachStyle === "Arpeggio") hintText = "Flow 分解伴奏推進中... 留意樂句波動";
+      else if (teachStyle === "Block") hintText = "Block 模式：雙手對齊抓穩柱狀和弦";
+      else if (teachStyle === "Rhythm") hintText = "Rhythm 模式：強調第一拍與切分節奏";
+      else hintText = "大師模式：" + teachStyle;
+
+      ctx.font = "12px sans-serif";
+      ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+      ctx.fillText(`🎵 AI Hint: ${hintText}`, w / 2, 12);
+    }
+
+    const chords = _displayChords();
+    let currentChordName = "";
+    if (chords) {
+      for (let i = chords.length - 1; i >= 0; i--) {
+        if (currentTime >= chords[i].time) { currentChordName = chords[i].chord; break; }
+      }
+    }
+    if (currentChordName) {
+      ctx.font = "bold 36px sans-serif";
+      ctx.shadowColor = "rgba(0, 0, 0, 0.9)";
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.fillText(currentChordName, w / 2, 34);
+      ctx.shadowBlur = 0; // reset
+    }
   }
 
   // Teaching controls setup
@@ -842,6 +948,9 @@
         waterfallActive = toggle.checked;
         if (waterfallCanvas) {
           waterfallCanvas.classList.toggle("active", waterfallActive);
+        }
+        if (chordDisplay88) {
+          chordDisplay88.classList.toggle("waterfall-active", waterfallActive);
         }
         if (waterfallActive) {
           _loadAccompaniment();

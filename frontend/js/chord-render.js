@@ -542,7 +542,7 @@ const ChordRender = {
    * @param {number} melodyMidi        — current melody MIDI (-1 = none)
    * @param {Object} opts              — { coreCount, sustainNotes:[{midi,release}], now }
    */
-  draw88Piano(canvas, cache, chordMidis, melodyMidi, opts) {
+  draw88Piano(canvas, cache, leftMidis, rightMidis, opts) {
     if (!canvas || !cache) return;
     const dpr = window.devicePixelRatio || 1;
     const w = canvas.clientWidth || canvas.parentElement.clientWidth || 800;
@@ -558,14 +558,22 @@ const ChordRender = {
     ctx.scale(dpr, dpr);
 
     const { whiteXs, blackXs } = cache;
-    const CORE = "rgba(156, 39, 176, 0.6)"; // Purple (理論底色)
-    const EXT  = "rgba(156, 39, 176, 0.3)";
-    const MEL  = "#FF9800"; // Orange (旋律)
-    const coreCount = (opts && opts.coreCount) || 4;
+    const LH_COLOR = "rgba(33, 150, 243, 0.9)"; // Blue for left hand
+    const RH_COLOR = "rgba(255, 152, 0, 0.9)"; // Orange for right hand
+    const CHORD_OUTLINE = "rgba(156, 39, 176, 0.8)"; // Purple outline
+    
+    // Convert rightMidis if it was still passed as single number temporarily
+    const rMidis = Array.isArray(rightMidis) ? rightMidis : (rightMidis >= 0 ? [rightMidis] : []);
+    const lMidis = Array.isArray(leftMidis) ? leftMidis : [];
+    
     const sustainNotes = (opts && opts.sustainNotes) || [];
+    const chordHints = (opts && opts.chordHints) || Array.isArray(opts && opts.coreCount === undefined ? leftMidis : []); 
+    // Fallback if not using teaching mode, the passed params are old format.
+    // If we pass chordHints, use it. Otherwise no outline.
+    
     const now = (opts && opts.now) || 0;
 
-    // Collect all highlights: {midi, color, alpha}
+    // Collect all highlights: {midi, color, alpha, outlineOnly}
     const highlights = [];
 
     // sustaining (fading) notes
@@ -575,15 +583,20 @@ const ChordRender = {
       highlights.push({ midi: sn.midi, color: "#888", alpha: 0.35 * (1 - age / 0.5) });
     }
 
-    // chord notes
-    const chordSet = new Set(chordMidis);
-    for (let i = 0; i < chordMidis.length; i++) {
-      highlights.push({ midi: chordMidis[i], color: i < coreCount ? CORE : EXT, alpha: 0.85 });
-    }
-
-    // melody note
-    if (melodyMidi >= 0) {
-      highlights.push({ midi: melodyMidi, color: MEL, alpha: 0.9 });
+    // Left hand
+    for (const m of lMidis) highlights.push({ midi: m, color: LH_COLOR, alpha: 0.85 });
+    
+    // Right hand
+    for (const m of rMidis) highlights.push({ midi: m, color: RH_COLOR, alpha: 0.9 });
+    
+    // Chord hints (outline only)
+    if (opts && opts.chordHints) {
+      for (const m of opts.chordHints) {
+        // Only draw outline if not already pressed by left hand
+        if (!lMidis.includes(m) && !rMidis.includes(m)) {
+          highlights.push({ midi: m, color: CHORD_OUTLINE, alpha: 1, outlineOnly: true });
+        }
+      }
     }
 
     // Pass 1: draw WHITE key highlights only
@@ -591,8 +604,14 @@ const ChordRender = {
       const wk = whiteXs[hl.midi];
       if (!wk) continue;
       ctx.globalAlpha = hl.alpha;
-      ctx.fillStyle = hl.color;
-      ctx.fillRect(wk.x + 1, 1, wk.w - 2, wk.h - 2);
+      if (hl.outlineOnly) {
+         ctx.strokeStyle = hl.color;
+         ctx.lineWidth = 2;
+         ctx.strokeRect(wk.x + 2, 2, wk.w - 4, wk.h - 4);
+      } else {
+         ctx.fillStyle = hl.color;
+         ctx.fillRect(wk.x + 1, 1, wk.w - 2, wk.h - 2);
+      }
     }
 
     // Pass 2: re-draw ALL black keys from cache so they sit on top of white highlights
@@ -611,24 +630,32 @@ const ChordRender = {
       const bk = blackXs[hl.midi];
       if (!bk) continue;
       ctx.globalAlpha = Math.min(1.0, hl.alpha + 0.15);
-      ctx.fillStyle = hl.color;
-      ctx.fillRect(bk.x + 1, 1, bk.w - 2, bk.h - 2);
-      ctx.globalAlpha = 0.25;
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(bk.x + 2, 2, bk.w - 4, bk.h - 4);
+      if (hl.outlineOnly) {
+         ctx.strokeStyle = hl.color;
+         ctx.lineWidth = 2;
+         ctx.strokeRect(bk.x + 2, 2, bk.w - 4, bk.h - 4);
+      } else {
+         ctx.fillStyle = hl.color;
+         ctx.fillRect(bk.x + 1, 1, bk.w - 2, bk.h - 2);
+         ctx.globalAlpha = 0.25;
+         ctx.fillStyle = "#fff";
+         ctx.fillRect(bk.x + 2, 2, bk.w - 4, bk.h - 4);
+      }
     }
     ctx.globalAlpha = 1;
 
     // Overlap indicator: chord+melody on same key
-    if (melodyMidi >= 0 && chordSet.has(melodyMidi)) {
-      const pos = whiteXs[melodyMidi] || blackXs[melodyMidi];
-      if (pos) {
-        ctx.fillStyle = CORE;
-        ctx.globalAlpha = 0.9;
-        ctx.beginPath();
-        ctx.arc(pos.x + pos.w / 2, (pos.h || cache.bKeyH) - 8, 3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
+    for (const m of rMidis) {
+      if (lMidis.includes(m)) {
+        const pos = whiteXs[m] || blackXs[m];
+        if (pos) {
+          ctx.fillStyle = LH_COLOR;
+          ctx.globalAlpha = 0.9;
+          ctx.beginPath();
+          ctx.arc(pos.x + pos.w / 2, (pos.h || cache.bKeyH) - 8, 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
       }
     }
 
