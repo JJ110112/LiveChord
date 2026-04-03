@@ -756,6 +756,8 @@
         if (rCanvas && rCanvas._lastMidi) _prevMidi = rCanvas._lastMidi;
       }
     }
+    // rebuild 88-key ribbon (uses _ribbonPositions + chordCache)
+    if (activeTab === "keys") _buildKeys88Ribbon();
     // 重新渲染段落標記
     if (sectionData) _renderSectionMarkers();
   }

@@ -166,3 +166,72 @@ class Test88Keys:
             return false;
         }""")
         assert is_drawn, "Canvas appears blank — static keyboard not drawn"
+
+    def test_fresh_load_ribbon_has_content(self, page: Page):
+        """After clearing cache and loading fresh, ribbon shows chord names and jianpu"""
+        # Use a track that has existing chord data
+        track_with_chords = "@1/POP/K-POP/Day6/All Alone.flac"
+        url = player_url(track_with_chords)
+
+        # Clear localStorage to simulate fresh load
+        page.goto(url)
+        page.evaluate("localStorage.clear()")
+        page.goto(url)
+        page.wait_for_timeout(4000)  # wait for chord data + cache to fully load
+
+        page.locator("#tabKeys").click()
+        page.wait_for_timeout(2000)  # wait for ribbon build + cache fetch
+
+        # Check that ribbon items exist with chord content
+        ribbon_items = page.evaluate("""() => {
+            const track = document.getElementById('keys88RibbonTrack');
+            if (!track) return { count: 0, hasNames: false, hasJianpu: false };
+            const items = track.querySelectorAll('.ribbon-item');
+            let hasNames = false, hasJianpu = false;
+            items.forEach(el => {
+                const name = el.querySelector('.chord-name');
+                if (name && name.textContent.trim()) hasNames = true;
+                const jp = el.querySelector('.chord-jianpu');
+                if (jp && jp.innerHTML.trim()) hasJianpu = true;
+            });
+            return { count: items.length, hasNames, hasJianpu };
+        }""")
+        assert ribbon_items["count"] > 0, "No ribbon items found"
+        assert ribbon_items["hasNames"], "Ribbon items have no chord names"
+        assert ribbon_items["hasJianpu"], "Ribbon items have no jianpu notation"
+
+    def test_fullscreen_ribbon_visible(self, page: Page):
+        """In fullscreen, the chord ribbon is visible above the keyboard"""
+        page.goto(player_url())
+        page.wait_for_timeout(2000)
+        page.locator("#tabKeys").click()
+        page.wait_for_timeout(500)
+
+        # Enter fullscreen via the button
+        page.locator("#btnFullscreen").click()
+        page.wait_for_timeout(500)
+
+        ribbon = page.locator("#keys88Ribbon")
+        expect(ribbon).to_be_visible()
+        box = ribbon.bounding_box()
+        assert box is not None and box["height"] > 50, "Ribbon not visible in fullscreen"
+
+    def test_hand_switch_persists(self, page: Page):
+        """Hand selection persists across page reloads"""
+        page.goto(player_url())
+        page.wait_for_timeout(2000)
+        page.locator("#tabKeys").click()
+        page.wait_for_timeout(300)
+
+        # Select right hand
+        page.locator('#handSwitch [data-hand="right"]').click()
+        page.wait_for_timeout(200)
+
+        # Reload and check
+        page.reload()
+        page.wait_for_timeout(2000)
+        page.locator("#tabKeys").click()
+        page.wait_for_timeout(300)
+
+        saved = page.evaluate("localStorage.getItem('livechord_88hand')")
+        assert saved == "right", f"Hand selection not persisted: {saved}"
