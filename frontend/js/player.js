@@ -1260,8 +1260,16 @@
     if (activeChordIdx >= 0 && activeChordIdx < chordElements.length) {
       const el = chordElements[activeChordIdx];
       el.classList.add("active");
-      if (activeTab === "overview") {
-        el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      if (activeTab === "overview" && !audio.paused) {
+        // Smart view: keep active chord in upper-center of chord area
+        const container = chordDisplayOverview;
+        const rect = el.getBoundingClientRect();
+        const cRect = container.getBoundingClientRect();
+        const targetY = cRect.top;
+        const diff = rect.top - targetY;
+        if (Math.abs(diff) > 10) {
+          container.scrollTop += diff;
+        }
       }
 
       if (ribbonElements[activeChordIdx]) {
@@ -1315,8 +1323,20 @@
     else audio.pause();
   });
 
-  audio.addEventListener("play", () => { btnPlay.innerHTML = "&#x23F8;"; });
-  audio.addEventListener("pause", () => { btnPlay.innerHTML = "&#x25B6;"; });
+  // Smart view: playing → chord area scrolls internally; paused → page scrolls freely
+  function _setSmartView(playing) {
+    if (chordDisplayOverview) {
+      if (playing) {
+        chordDisplayOverview.style.overflowY = "auto";
+        chordDisplayOverview.style.maxHeight = "calc(100vh - 320px)";
+      } else {
+        chordDisplayOverview.style.overflowY = "";
+        chordDisplayOverview.style.maxHeight = "";
+      }
+    }
+  }
+  audio.addEventListener("play", () => { btnPlay.innerHTML = "&#x23F8;"; _setSmartView(true); });
+  audio.addEventListener("pause", () => { btnPlay.innerHTML = "&#x25B6;"; _setSmartView(false); });
   audio.addEventListener("loadedmetadata", () => {
     timeDuration.textContent = formatTime(audio.duration);
   });
@@ -1448,8 +1468,20 @@
 
   volumeSlider.addEventListener("input", () => {
     audio.volume = parseFloat(volumeSlider.value);
+    audio.muted = false;
     localStorage.setItem("livechord_volume", volumeSlider.value);
+    btnMute.innerHTML = audio.volume === 0 ? "&#x1F507;" : "&#x1F509;";
   });
+
+  // Mute toggle
+  const btnMute = $("#btnMute");
+  let _preMuteVol = 1;
+  if (btnMute) {
+    btnMute.addEventListener("click", () => {
+      audio.muted = !audio.muted;
+      btnMute.innerHTML = audio.muted ? "&#x1F507;" : "&#x1F509;";
+    });
+  }
 
   // ---- 播放速度 ----
   const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
