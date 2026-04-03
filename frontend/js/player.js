@@ -218,6 +218,11 @@
     chordDisplay.classList.add("fullscreen");
     btnFullscreen.innerHTML = "&#x2716;";
     if (btnPageFs) btnPageFs.innerHTML = "&#x2716;";
+    // default 200% zoom for overview/diagrams in fullscreen
+    if (activeTab !== "keys") {
+      zoomIdx = ZOOM_STEPS.indexOf(200);
+      _applyZoom();
+    }
     document.documentElement.requestFullscreen().catch(() => {});
   }
   function _exitFullscreen() {
