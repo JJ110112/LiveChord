@@ -28,6 +28,8 @@
   let piano88LastIdx = -1;
   let piano88Hand = localStorage.getItem("livechord_88hand") || "both"; // "both"|"left"|"right"
   let hasChords = false;
+  let keys88RibbonTrack = null;
+  let keys88RibbonBuilt = false;
   let transpose = 0;
   let capo = 0;
   let favTracks = [];
@@ -391,9 +393,6 @@
     // draw static keyboard immediately
     ChordRender.draw88Piano(piano88Canvas, piano88Cache, [], -1, {});
   }
-
-  let keys88RibbonTrack = null;
-  let keys88RibbonBuilt = false;
 
   function _buildKeys88Ribbon() {
     keys88RibbonTrack = $("#keys88RibbonTrack");
