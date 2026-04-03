@@ -672,6 +672,24 @@
     const ctx = waterfallCtx;
     ctx.clearRect(0, 0, w, h);
 
+    // Draw vertical piano key grid
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const cache = piano88Cache;
+    let lastKey = null;
+    for (const p in cache.whiteXs) {
+      const wk = cache.whiteXs[p];
+      ctx.moveTo(wk.x, 0);
+      ctx.lineTo(wk.x, h);
+      lastKey = wk;
+    }
+    if (lastKey) {
+      ctx.moveTo(lastKey.x + lastKey.w, 0);
+      ctx.lineTo(lastKey.x + lastKey.w, h);
+    }
+    ctx.stroke();
+
     // Time window: show notes from currentTime to currentTime + lookAhead
     const lookAhead = 4.0;  // seconds visible above piano
     const pxPerSec = h / lookAhead;

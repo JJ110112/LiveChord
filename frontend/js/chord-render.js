@@ -605,6 +605,10 @@ const ChordRender = {
       if (!wk) continue;
       ctx.globalAlpha = hl.alpha;
       if (hl.outlineOnly) {
+         ctx.fillStyle = hl.color;
+         ctx.globalAlpha = 0.2;
+         ctx.fillRect(wk.x + 2, 2, wk.w - 4, wk.h - 4);
+         ctx.globalAlpha = hl.alpha;
          ctx.strokeStyle = hl.color;
          ctx.lineWidth = 2;
          ctx.strokeRect(wk.x + 2, 2, wk.w - 4, wk.h - 4);
@@ -631,6 +635,10 @@ const ChordRender = {
       if (!bk) continue;
       ctx.globalAlpha = Math.min(1.0, hl.alpha + 0.15);
       if (hl.outlineOnly) {
+         ctx.fillStyle = hl.color;
+         ctx.globalAlpha = 0.25;
+         ctx.fillRect(bk.x + 2, 2, bk.w - 4, bk.h - 4);
+         ctx.globalAlpha = Math.min(1.0, hl.alpha + 0.15);
          ctx.strokeStyle = hl.color;
          ctx.lineWidth = 2;
          ctx.strokeRect(bk.x + 2, 2, bk.w - 4, bk.h - 4);
