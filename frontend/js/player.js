@@ -33,7 +33,7 @@
   // Waterfall / teaching mode state
   let waterfallCanvas = null;
   let waterfallCtx = null;
-  let waterfallActive = false;
+  let waterfallActive = true;
   let teachStyle = localStorage.getItem("livechord_teach_style") || "Arpeggio";
   let teachLevel = localStorage.getItem("livechord_teach_level") || "L1";
   let accData = null;  // {left_hand:[], right_hand:[]} from API
