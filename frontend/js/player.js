@@ -103,6 +103,10 @@
     if (_tabZoom[tab] < 0) _tabZoom[tab] = ZOOM_STEPS.indexOf(ZOOM_DEFAULTS[tab]);
   }
   let zoomIdx = _tabZoom[activeTab] || ZOOM_STEPS.indexOf(100);
+  const btnZoomIn = $("#btnZoomIn");
+  const btnZoomOut = $("#btnZoomOut");
+  const btnZoomReset = $("#btnZoomReset");
+  const chordDisplayEl = $("#chordDisplay");
 
   if (tabOverview && tabDiagrams) {
     tabOverview.addEventListener("click", () => {
@@ -162,10 +166,6 @@
     if (activeTab === "diagrams") tabDiagrams.click();
     else if (activeTab === "keys" && tabKeys) tabKeys.click();
   }
-  const btnZoomIn = $("#btnZoomIn");
-  const btnZoomOut = $("#btnZoomOut");
-  const btnZoomReset = $("#btnZoomReset");
-  const chordDisplayEl = $("#chordDisplay");
 
   function _applyZoom() {
     const pct = ZOOM_STEPS[zoomIdx];
