@@ -870,9 +870,11 @@
       else if (teachStyle === "Rhythm") hintText = "Rhythm 模式：強調第一拍與切分節奏";
       else hintText = "大師模式：" + teachStyle;
 
+      ctx.fillStyle = "rgba(255,255,255,0.4)";
       ctx.font = "12px sans-serif";
-      ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
-      ctx.fillText(`🎵 AI Hint: ${hintText}`, w / 2, 12);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillText(`🎵 AI Hint: ${hintText}`, 10, 10);
     }
 
     const chords = _displayChords();
