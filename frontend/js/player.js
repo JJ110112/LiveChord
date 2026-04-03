@@ -573,8 +573,8 @@
 
         // update big chord box
         bigChordName.textContent = chord.chord;
-        // HUD renders chord in waterfall directly, so hide big box if active
-        bigChordBox.style.display = waterfallActive ? "none" : "";
+        // HUD renders chord in waterfall directly or keys88Ribbon, so hide big box 
+        bigChordBox.style.display = "none";
         bigChordJianpu.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
         bigChordDiagram.innerHTML = "";
       } else {
@@ -1410,7 +1410,7 @@
       const chord = displayedChords[activeChordIdx];
       const cache = chordCache[chord.chord] || {};
 
-      if (activeTab === "diagrams") {
+      if (activeTab === "diagrams" || activeTab === "keys88") {
         bigChordBox.style.display = "none";
       } else {
         bigChordName.textContent = chord.chord;
