@@ -963,7 +963,7 @@ a:hover { text-decoration: underline; }
   position: relative;
   width: 100%;
   flex: 1;
-  min-height: 60px;
+  min-height: 90px;
   background: var(--bg-hover);
   border-radius: var(--radius);
   overflow: hidden;
@@ -1054,7 +1054,7 @@ a:hover { text-decoration: underline; }
   position: relative;
   width: 100%;
   flex: 2; /* Golden ratio part: Chord Ribbon 20% */
-  min-height: 60px;
+  min-height: 90px;
   max-height: 20vh;
   background: var(--bg-hover);
   border-radius: var(--radius);
