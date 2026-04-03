@@ -849,9 +849,6 @@ a:hover { text-decoration: underline; }
   display: flex;
   flex-direction: column;
   position: relative;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
 }
 
 .chord-display-area {
@@ -942,9 +939,8 @@ a:hover { text-decoration: underline; }
 .chord-88-keys {
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: flex-start;
   width: 100%;
-  flex: 1;
   min-height: 0;
   padding: 8px 0;
   overflow: hidden;
@@ -1006,10 +1002,10 @@ a:hover { text-decoration: underline; }
   color: var(--accent);
 }
 .chord-display-area.fullscreen .chord-88-keys {
-  flex: 5; /* 40% Waterfall + 40% Keyboard area */
+  flex: 5;
   min-height: 0;
   padding-top: 20px;
-  justify-content: flex-start;
+  justify-content: flex-end;
 }
 .chord-display-area.fullscreen .chord-88-keys canvas#piano88Canvas {
   flex: 4; /* Golden ratio part: Keyboard 40% */

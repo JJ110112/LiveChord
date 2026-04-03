@@ -95,18 +95,14 @@
 
   // ---- 和弦區縮放 (must be before tab handlers that call _switchZoomToTab) ----
   const ZOOM_STEPS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300];
-  const ZOOM_DEFAULTS = { overview: 100, diagrams: 200, keys: 100 };
-  // one-time migration: clear old overview zoom (was 200, now 100)
-  if (localStorage.getItem("livechord_zoom_overview") === "200") {
-    localStorage.removeItem("livechord_zoom_overview");
-  }
-  const _tabZoom = {};
+  const ZOOM_FS_DEFAULTS = { overview: 200, diagrams: 200, keys: 100 };
+  const _tabZoomFs = {};
   for (const tab of ["overview", "diagrams", "keys"]) {
     const saved = parseInt(localStorage.getItem(`livechord_zoom_${tab}`));
-    _tabZoom[tab] = ZOOM_STEPS.indexOf(saved > 0 ? saved : ZOOM_DEFAULTS[tab]);
-    if (_tabZoom[tab] < 0) _tabZoom[tab] = ZOOM_STEPS.indexOf(ZOOM_DEFAULTS[tab]);
+    _tabZoomFs[tab] = ZOOM_STEPS.indexOf(saved > 0 ? saved : ZOOM_FS_DEFAULTS[tab]);
+    if (_tabZoomFs[tab] < 0) _tabZoomFs[tab] = ZOOM_STEPS.indexOf(ZOOM_FS_DEFAULTS[tab]);
   }
-  let zoomIdx = _tabZoom[activeTab] || ZOOM_STEPS.indexOf(100);
+  let zoomIdx = ZOOM_STEPS.indexOf(100);
   const btnZoomIn = $("#btnZoomIn");
   const btnZoomOut = $("#btnZoomOut");
   const btnZoomReset = $("#btnZoomReset");
@@ -171,10 +167,19 @@
     else if (activeTab === "keys" && tabKeys) tabKeys.click();
   }
 
+  function _isFullscreen() {
+    return chordDisplayEl && chordDisplayEl.closest(".fullscreen") != null;
+  }
   function _applyZoom() {
-    let pct = ZOOM_STEPS[zoomIdx];
-    if (activeTab === "keys") pct = 100; // Force 100% for dynamic canvas width to avoid visual layout overflow
-
+    let pct;
+    if (_isFullscreen()) {
+      pct = ZOOM_STEPS[zoomIdx];
+      if (activeTab === "keys") pct = 100;
+      _tabZoomFs[activeTab] = zoomIdx;
+      localStorage.setItem(`livechord_zoom_${activeTab}`, pct);
+    } else {
+      pct = 100; // Normal mode is always 100%
+    }
     if (chordDisplayEl) {
       chordDisplayEl.style.transformOrigin = "top left";
       chordDisplayEl.style.transform = `scale(${pct / 100})`;
@@ -182,12 +187,13 @@
       chordDisplayEl.style.height = (10000 / pct) + "%";
     }
     if (btnZoomReset) btnZoomReset.textContent = pct + "%";
-    // persist per-tab
-    _tabZoom[activeTab] = zoomIdx;
-    localStorage.setItem(`livechord_zoom_${activeTab}`, pct);
   }
   function _switchZoomToTab(tab) {
-    zoomIdx = _tabZoom[tab] != null ? _tabZoom[tab] : ZOOM_STEPS.indexOf(ZOOM_DEFAULTS[tab]);
+    if (_isFullscreen()) {
+      zoomIdx = _tabZoomFs[tab] != null ? _tabZoomFs[tab] : ZOOM_STEPS.indexOf(ZOOM_FS_DEFAULTS[tab]);
+    } else {
+      zoomIdx = ZOOM_STEPS.indexOf(100);
+    }
     _applyZoom();
   }
   _applyZoom();
@@ -258,15 +264,8 @@
     btnFullscreen.innerHTML = "&#x26F6;";
     if (btnPageFs) btnPageFs.innerHTML = "&#x26F6;";
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    // reset visual zoom to 100% for non-fullscreen, but do NOT persist
-    // (keep the per-tab fullscreen zoom saved for next enter)
     zoomIdx = ZOOM_STEPS.indexOf(100);
-    if (chordDisplayEl) {
-      chordDisplayEl.style.transform = "scale(1)";
-      chordDisplayEl.style.width = "100%";
-      chordDisplayEl.style.height = "100%";
-    }
-    if (btnZoomReset) btnZoomReset.textContent = "100%";
+    _applyZoom();
   }
 
   if (btnFullscreen && chordDisplay) {
@@ -288,14 +287,8 @@
       chordDisplay.classList.remove("fullscreen");
       if (btnFullscreen) btnFullscreen.innerHTML = "&#x26F6;";
       if (btnPageFs) btnPageFs.innerHTML = "&#x26F6;";
-      // reset visual zoom without persisting (keep saved fullscreen zoom)
       zoomIdx = ZOOM_STEPS.indexOf(100);
-      if (chordDisplayEl) {
-        chordDisplayEl.style.transform = "scale(1)";
-        chordDisplayEl.style.width = "100%";
-        chordDisplayEl.style.height = "100%";
-      }
-      if (btnZoomReset) btnZoomReset.textContent = "100%";
+      _applyZoom();
     }
   });
 
@@ -607,6 +600,14 @@
     waterfallCanvas = $("#waterfallCanvas");
     if (!waterfallCanvas) return;
     waterfallCtx = waterfallCanvas.getContext("2d");
+    // Activate waterfall if toggle is already checked (default on)
+    const toggle = $("#teachToggle");
+    if (toggle && toggle.checked) {
+      waterfallActive = true;
+      waterfallCanvas.classList.add("active");
+      _loadAccompaniment();
+      setTimeout(_resizeWaterfall, 50);
+    }
   }
 
   function _resizeWaterfall() {
@@ -834,10 +835,6 @@
     }
 
     if (toggle) {
-      waterfallActive = toggle.checked;
-      if (waterfallCanvas && waterfallActive) {
-        waterfallCanvas.classList.add("active");
-      }
       toggle.addEventListener("change", () => {
         waterfallActive = toggle.checked;
         if (waterfallCanvas) {
