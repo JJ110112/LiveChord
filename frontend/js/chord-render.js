@@ -558,9 +558,9 @@ const ChordRender = {
     ctx.scale(dpr, dpr);
 
     const { whiteXs, blackXs } = cache;
-    const CORE = "#e94560";
-    const EXT  = "#4ca1ff";
-    const MEL  = "#00e676";
+    const CORE = "rgba(156, 39, 176, 0.6)"; // Purple (理論底色)
+    const EXT  = "rgba(156, 39, 176, 0.3)";
+    const MEL  = "#FF9800"; // Orange (旋律)
     const coreCount = (opts && opts.coreCount) || 4;
     const sustainNotes = (opts && opts.sustainNotes) || [];
     const now = (opts && opts.now) || 0;
