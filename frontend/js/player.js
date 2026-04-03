@@ -145,16 +145,11 @@
       });
     }
 
-    // 還原上次 tab
-    if (activeTab === "diagrams") tabDiagrams.click();
-    else if (activeTab === "keys" && tabKeys) tabKeys.click();
-  }
   const bigChordDiagram = $("#bigChordDiagram");
 
-  // ---- 和弦區縮放 ----
+  // ---- 和弦區縮放 (must be before tab restore to avoid TDZ) ----
   const ZOOM_STEPS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300];
   const ZOOM_DEFAULTS = { overview: 200, diagrams: 200, keys: 200 };
-  // per-tab zoom: each tab has its own persisted zoom level
   const _tabZoom = {};
   for (const tab of ["overview", "diagrams", "keys"]) {
     const saved = parseInt(localStorage.getItem(`livechord_zoom_${tab}`));
@@ -162,6 +157,11 @@
     if (_tabZoom[tab] < 0) _tabZoom[tab] = ZOOM_STEPS.indexOf(ZOOM_DEFAULTS[tab]);
   }
   let zoomIdx = _tabZoom[activeTab] || ZOOM_STEPS.indexOf(100);
+
+    // 還原上次 tab
+    if (activeTab === "diagrams") tabDiagrams.click();
+    else if (activeTab === "keys" && tabKeys) tabKeys.click();
+  }
   const btnZoomIn = $("#btnZoomIn");
   const btnZoomOut = $("#btnZoomOut");
   const btnZoomReset = $("#btnZoomReset");
