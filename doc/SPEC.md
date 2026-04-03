@@ -200,9 +200,93 @@
 | A-03 | 自動工作排程 | 啟動/停止/手動觸發，調整設定（間隔/每週期數/跳過曲風）|
 | A-04 | 覆蓋率統計 | 全庫和弦偵測覆蓋率 + 批次狀態 |
 
-### 4.7 鋼琴教學模式（規劃中）
+### 4.7 鋼琴教學模式（Phase 10, 開發中）
 
-#### 4.7.1 彈奏模式 (Play Styles) — 88 鍵模式下可切換
+#### 4.7.1 雙軸架構：Jazzify × 彈奏難度
+
+教學模式的核心設計是**兩個獨立維度的交叉**：
+
+- **Y 軸：Jazzify (OFF/L1/L2/L3)** — 負責「大腦/編曲」(Harmony Complexity)，是**預處理器**，改寫和弦記號
+- **X 軸：彈奏難度 (L1/L2/L3)** — 負責「雙手/技巧」(Performance Density)，是**渲染引擎**，將和弦展開為具體指法
+
+兩軸獨立控制、交叉相乘，產生豐富的學習體驗：
+
+| | 彈奏 L1 (根音+旋律) | 彈奏 L2 (Shell Voicing) | 彈奏 L3 (Groove+二聲部) |
+|---|---|---|---|
+| **Jazzify OFF** | 純粹入門：C 根音 + 旋律 | 餐廳琴師：簡單和弦+琶音 | 熟練演奏：切分節奏滿場飛 |
+| **Jazzify L1** | 延伸和弦體驗 | 流行爵士風 | 進階演奏 |
+| **Jazzify L2** | ii-V-I 雙指體驗 | 標準爵士伴奏 | 專業爵士 |
+| **Jazzify L3** | 爵士體驗卡：Cmaj9 只按兩音 | Neo-Soul 伴奏 | Neo-Soul 全開：極限挑戰 |
+
+#### 4.7.2 資料管線 (Data Pipeline)
+
+資料流為**嚴格單向**：先 Jazzify 改編樂譜，再由伴奏引擎翻譯成按鍵。
+
+```
+原始 FLAC
+  ↓ BTC/Viterbi 偵測
+基礎和弦譜 (Basic Chords)
+  ↓ Jazzify 預處理 (OFF/L1/L2/L3) ← 使用者切換
+最終和弦譜 (Final Chords)
+  ↓ Accompaniment Engine ← 彈奏難度 (L1/L2/L3) + 伴奏風格 (Style)
+雙手 MIDI 音符陣列 (left_hand / right_hand)
+  ↓ Viterbi Fingering 指法推導
+帶指法的完整 MIDI Events
+  ↓
+前端 88 鍵 Canvas 瀑布流渲染
+```
+
+**觸發邏輯**：
+- 切換 Jazzify → 和弦記號更新 → 重新呼叫 `accompaniment_generator`
+- 切換彈奏 L1~L3 或 Style → 和弦不變，僅 `accompaniment_generator` 內部 Pattern 重算
+
+#### 4.7.3 AI 伴奏生成引擎 (Accompaniment Generator)
+
+後端核心模組 `backend/ai/accompaniment_generator.py`，將和弦+旋律「編譯」成左右手具體 MIDI 音符事件。
+
+**處理管線 (Pipeline):**
+
+1. **骨架化 (Skeleton Voicing)**：和弦文字 → chord_table.py 查表 → MIDI pitch 陣列，套用最短移動距離 Voice Leading
+2. **風格套用 (Style Pattern Routing)**：依 Pattern Dictionary 將和弦音映射到節拍相對座標
+3. **旋律防撞 (Conflict Resolution)**：掃描 ±0.5s 內旋律音，距離 < 4 半音則伴奏降八度躲避
+
+**Pattern Dictionary (樣式字典):**
+
+| 型態 | 定義 (時間比例: 音級) | 說明 |
+|------|----------------------|------|
+| Block | `[(0: R-3-5)]` | 柱狀和弦，拍頭同時按下 |
+| Arpeggio | `[(0: R), (0.25: 5th), (0.5: 10th), (0.75: 5th)]` | 經典分解琶音 |
+| Rhythm | `[(0: R), (0.5: R-3-5), (0.75: R-3-5)]` | 切分節奏 |
+| Alberti Bass | `[(0: R), (0.25: 5th), (0.5: 3rd), (0.75: 5th)]` | 古典 低-高-中-高 |
+| Shell Voicing | `[(0: 3rd+7th)]` | Jazz 精簡和弦 |
+| Walking Bass | `[(0: R), (0.25: 3rd), (0.5: 5th), (0.75: approach)]` | 逐拍行走低音 |
+| Stride | `[(0: R_low), (0.5: chord_mid)]` | 低音↔中音跳躍 |
+
+**輸出格式:**
+
+```json
+{
+  "left_hand": [{"time": 0.0, "duration": 0.45, "pitch": 48, "velocity": 70, "finger": 5}],
+  "right_hand": [{"time": 0.0, "duration": 1.0, "pitch": 72, "velocity": 90, "finger": 1}]
+}
+```
+
+#### 4.7.4 Viterbi 指法推導 (Fingering Engine)
+
+基於 HMM/Viterbi 動態規劃推導最優指法序列。
+
+- **狀態**：手指 {1=拇指, 2=食指, 3=中指, 4=無名指, 5=小指}
+- **觀察值**：音高序列
+- **物理成本模型**：
+  - 同音換指：鼓勵換指 (cost=2)，懲罰連點同指 (cost=10)
+  - 張手極限：超過八度 → cost=∞
+  - 順向性：音往上走、指編號也應往上，違反則高懲罰
+  - 穿指：拇指(1)穿過 2/3/4 指下方 → 低成本(5)，合法常見
+  - 小指穿指 → 極高懲罰(50)，幾乎不可能
+
+**驗證結果**：C 大調音階 `[60,62,64,65,67,69,71,72]` → 指法 `[1,2,3,1,2,3,4,5]` (標準穿指)
+
+#### 4.7.5 彈奏模式 (Play Styles) — 88 鍵模式下可切換
 
 | ID | 模式 | 左手 | 右手 | 適合曲風 | 難度 |
 |----|------|------|------|----------|------|
@@ -214,19 +298,7 @@
 | PS-06 | 和弦音訓練 (Chord Tone) | 和弦 | 標示 chord tone (綠) vs passing tone (灰) | 即興基礎 | ★★★ |
 | PS-07 | 雙手平衡 (Hand Balance) | 和弦 (弱 30%) | 旋律 (強 70%), 含音量條 | 全曲風 | ★★ |
 
-#### 4.7.2 伴奏型態分類 (Accompaniment Patterns)
-
-| 類型 | 左手 | 右手 | 代表曲風 |
-|------|------|------|----------|
-| Block | 根音 | 柱狀和弦 | Pop 基礎 |
-| Arpeggio | 分解和弦 (1-5-3-5) | 旋律 | 抒情/動漫/J-pop |
-| Alberti Bass | 低-高-中-高 | 旋律 | 古典 |
-| Rhythm | 低音拍點 | 切分和弦 | Pop/Rock/Jazz Pop |
-| Shell Voicing | 3rd + 7th | 延伸音 (9, 11, 13) | Jazz |
-| Walking Bass | 每拍不同音（連續行走）| 和弦/即興 | Jazz/Bossa Nova |
-| Stride | 低音↔中音跳躍 | 和弦 | Ragtime/Old Jazz |
-
-#### 4.7.3 曲風適配建議 (Genre-Specific Recommendations)
+#### 4.7.6 曲風適配建議 (Genre-Specific Recommendations)
 
 程式根據 track metadata (genre, BPM, key) + 音樂內容分析（和弦密度、音型、低音行為）自動建議彈奏模式：
 
@@ -241,7 +313,7 @@
 | 分散音型 | Arpeggio |
 | 低音逐拍變化 | Walking Bass |
 
-#### 4.7.4 難度階梯 (Scaffolding)
+#### 4.7.7 難度階梯 (Scaffolding)
 
 | Level | 左手 | 右手 | 說明 |
 |-------|------|------|------|
@@ -249,12 +321,86 @@
 | L2 中階 | Shell Voicing (3rd+7th) | 旋律 | 訓練和弦色彩感 |
 | L3 進階 | 節奏律動 (Groove) | 旋律+二聲部和聲 | 完整演奏能力 |
 
-#### 4.7.5 情境感知功能 (Context-Aware)
+#### 4.7.8 UI 佈局設計
 
-- **Voice Leading 導引線**：和弦切換時顯示手指移動路徑（哪些手指不動、哪些移半音）
+**一般模式（88-Key tab）：控制中心**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ ◀ ▶ ▶▶ 1x  Song Title                    - 200% + ✕   │  ← 播放列 + [A⇄B] 段落循環
+├─────────────────────────────────────────────────────────┤
+│ Key:D │ 🎹🎸🪕 │ Style:[Arpeggio▾] │ Lv:[L2] │ 🎩Jazz:L1 │  ← 教學設定儀表板
+├─────────────────────────────────────────────────────────┤
+│ ┌─ 和弦 Ribbon (縮小版) ──────────────────────────────┐ │
+│ │  ... Bm7  ═══▶ │ Em7 (#3 5 7 2) │ ▶═══  A7 ...    │ │  ← 15% 高度
+│ └─────────────────────────────────────────────────────┘ │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│              預判視野 (Look-ahead Zone)                   │  ← 30-40% 高度
+│         半透明方塊提示下 0.5s 即將亮起的按鍵               │
+│                                                         │
+├─────────────────────────────────────────────────────────┤
+│ ┌─ 88 鍵鋼琴 ─────────────────────────────────────────┐ │
+│ │ C1    C2    C3    C4    C5    C6    C7    C8         │ │  ← 底部鍵盤
+│ └─────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────┘
+```
+
+**專注模式（全螢幕）：沉浸式練琴**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ ┌─ 和弦跑馬燈 ────────────────────────────────────────┐ │
+│ │  ... Bm7 ═══▶ │ Em7 (3 5 7 2) │ ▶═══ A7 ...       │ │  ← 15% 頂部
+│ └─────────────────────────────────────────────────────┘ │
+├─────────────────────────────────────────────────────────┤
+│ ╔═══════════════════════════════════════════════════╗   │
+│ ║          瀑布流 Piano Roll Waterfall               ║   │
+│ ║                                                   ║   │
+│ ║    ┃2┃           ┃1┃                              ║   │  ← 60% 黃金區域
+│ ║    ┃ ┃  ┃3┃      ┃ ┃                              ║   │     青藍=左手
+│ ║    ▼  ▼  ▼       ▼                                ║   │     橘紅=右手
+│ ║  ──────────────────────────── 著陸線 ──────────     ║   │     方塊內=指法數字
+│ ╚═══════════════════════════════════════════════════╝   │
+├─────────────────────────────────────────────────────────┤
+│ ┌─ 88 鍵鋼琴 (光暈觸發) ──────────────────────────────┐ │
+│ │ C1    C2    C3    C4    C5    C6    C7    C8         │ │  ← 20% 底部
+│ └─────────────────────────────────────────────────────┘ │
+├─────────────────────────────────────────────────────────┤
+│                            [L2: Arpeggio] [0.8x] [A⇄B] │  ← 懸浮 HUD (右上角)
+└─────────────────────────────────────────────────────────┘
+```
+
+**UI 控制項位置原則**：
+- **Jazzify 開關** → 樂譜區 / Toolbar 上方（改寫和弦記號層）
+- **彈奏難度 L1~L3 + Style 選單** → 88 鍵 Canvas 正上方（改變物理演奏層）
+- 切換 Jazzify → 和弦字串更新 → 觸發伴奏引擎重算
+- 切換 L1~L3 / Style → 和弦不變 → 僅 Pattern 重算
+
+#### 4.7.9 前端瀑布流 (Piano Roll Waterfall)
+
+在 88 鍵 Canvas 上方新增瀑布流渲染層：
+
+- 音符長條由上往下掉落（Synthesia 風格），速度與播放同步
+- **左手 = 青藍色 (Cyan)**，**右手 = 橘紅色 (Orange)**
+- 長條長度 = duration，寬度 = 對應琴鍵寬度
+- 長條中央標示指法數字 (1-5)，接近琴鍵時數字放大
+- 落到琴鍵時觸發光暈 (glow effect)
+- **練琴控制**: A-B Repeat 區段選取、降速播放 (playbackRate)、左手/右手/原聲 靜音切換
+
+#### 4.7.10 情境感知功能 (Context-Aware)
+
+- **Voice Leading 導引線**：和弦切換時，Canvas 虛線連接相同/相近音符，提示手掌重心移動
 - **Chord Tone 標記**：旋律音標示為 chord tone (綠) 或 passing tone (灰)
-- **段落級模式切換**：Verse/Chorus 自動適配不同伴奏型態
-- **節拍視覺化**：Beat Markers 顯示重拍/弱拍位置
+- **段落級模式切換**：利用 section_detect 資料，Verse 自動 Arpeggio、Chorus 自動 Rhythm
+- **節拍視覺化**：根據 BPM 在瀑布流中畫水平線標示小節線和拍點 (Beat Markers)
+
+#### 4.7.11 WebMIDI 整合（未來）
+
+- 透過 WebMIDI API (`navigator.requestMIDIAccess()`) 接收 USB MIDI 電子琴訊號
+- 即時比對彈奏 Pitch & Timing 與系統軌道
+- 正確音符綠光、錯誤音符紅光閃爍
+- Score 評分系統
 
 ---
 
@@ -316,6 +462,7 @@ GET  /api/ai/emission?chord=               HMM emission matrix
 POST /api/ai/viterbi                       Viterbi 解碼（旋律→和弦）
 GET  /api/ai/sections?path=                段落偵測
 GET  /api/ai/patterns?chords=&key=         音樂理論 pattern 辨識
+GET  /api/ai/accompaniment?path=&level=&style=  伴奏生成（左右手 MIDI events + 指法）
 POST /api/ai/retrain                       重新訓練所有 AI 模型
 GET  /api/ai/stats                         模型統計
 GET  /api/ai/evaluate                      模型評估（perplexity, accuracy）
@@ -450,6 +597,23 @@ GET  /api/benchmark/score-all                全域聚合評分
 ]
 ```
 
+### 6.8 伴奏快取 (data/accompaniments/{hash}_{style}_{level}.json)
+
+```json
+{
+  "path": "POP/FIFTY FIFTY/Cupid.flac",
+  "style": "Arpeggio",
+  "level": "L2",
+  "bpm": 110,
+  "left_hand": [
+    {"time": 0.0, "duration": 0.45, "pitch": 48, "velocity": 70, "finger": 5}
+  ],
+  "right_hand": [
+    {"time": 0.0, "duration": 1.0, "pitch": 72, "velocity": 90, "finger": 1}
+  ]
+}
+```
+
 ---
 
 ## 7. 技術選型
@@ -519,6 +683,7 @@ LiveChord/
 │   │   ├── reharmonizer.py  # Jazzify 重配和
 │   │   ├── jazz_rules.py    # Jazz 規則庫
 │   │   ├── pattern_extractor.py # 音樂理論 pattern 辨識
+│   │   ├── accompaniment_generator.py # 伴奏生成 + Viterbi 指法推導
 │   │   ├── preprocess.py    # 資料前處理
 │   │   └── evaluate.py      # 模型評估
 │   └── requirements.txt
@@ -565,7 +730,7 @@ LiveChord/
 | **7** | AI 進階（Jazzify, Chord2Vec, Section Detect, Pattern）| ✅ 已完成 |
 | **8** | Benchmark 評測系統 + Playwright QA | ✅ 已完成 |
 | **9** | 88 鍵鋼琴模式 + Voice Leading + 旋律標示 | ✅ 已完成 |
-| **10** | 鋼琴教學模式（彈奏模式/伴奏型態/曲風適配/難度階梯）| 📋 規劃中 |
+| **10** | 鋼琴教學模式（伴奏生成/指法推導/瀑布流/WebMIDI）| 🚧 開發中 |
 
 ---
 
