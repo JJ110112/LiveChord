@@ -265,6 +265,137 @@ async def retrain():
     }
 
 
+@router.get("/accompaniment")
+def get_accompaniment(
+    path: str = Query(..., description="歌曲路徑"),
+    style: str = Query(default="Block", description="伴奏風格: Block/Arpeggio/Rhythm/Alberti/Shell/Walking/Stride"),
+    level: str = Query(default="L1", description="難度: L1/L2/L3"),
+):
+    """生成伴奏（左右手 MIDI events + 指法），含快取"""
+    import json as _json
+    import hashlib, os
+
+    ACC_DIR = DATA_DIR / "accompaniments"
+    ACC_DIR.mkdir(parents=True, exist_ok=True)
+
+    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    cache_file = ACC_DIR / f"{h}_{style}_{level}.json"
+
+    # 快取命中
+    if cache_file.is_file():
+        return _json.loads(cache_file.read_text(encoding="utf-8"))
+
+    # 載入和弦資料
+    chords_file = CHORDS_DIR / f"{h}.json"
+    if not chords_file.is_file():
+        return {"error": "no chord data", "left_hand": [], "right_hand": []}
+
+    chord_data = _json.loads(chords_file.read_text(encoding="utf-8"))
+    chords = chord_data.get("chords", [])
+    if not chords:
+        return {"error": "empty chords", "left_hand": [], "right_hand": []}
+
+    # 載入旋律快取
+    melody = []
+    melody_file = DATA_DIR / "melodies" / f"{h}.json"
+    if melody_file.is_file():
+        mel_data = _json.loads(melody_file.read_text(encoding="utf-8"))
+        melody = mel_data.get("melody", mel_data if isinstance(mel_data, list) else [])
+
+    # 取得 BPM 與 genre (從 library_cache)
+    bpm = 120.0
+    genre = ""
+    cache_path = DATA_DIR / "library_cache.json"
+    if cache_path.is_file():
+        try:
+            lib = _json.loads(cache_path.read_text(encoding="utf-8"))
+            for t in lib.get("tracks", []):
+                if t.get("path", "").replace("\\", "/") == path.replace("\\", "/"):
+                    genre = t.get("genre", "")
+                    dur = t.get("duration", 0)
+                    if dur > 0 and chords:
+                        # 估算 BPM: 中位和弦長度
+                        durations = [c.get("end", 0) - c.get("time", 0)
+                                     for c in chords if c.get("end", 0) > c.get("time", 0)]
+                        if durations:
+                            median_dur = sorted(durations)[len(durations) // 2]
+                            if median_dur > 0:
+                                bpm = 60.0 / median_dur
+                    break
+        except Exception:
+            pass
+
+    # 生成伴奏
+    from ai.accompaniment_generator import generate_accompaniment
+
+    result = generate_accompaniment(
+        chords=chords, melody=melody,
+        bpm=bpm, style=style, level=level, genre=genre,
+    )
+    result["path"] = path
+    result["bpm"] = round(bpm, 1)
+    result["genre"] = genre
+
+    # 寫入快取
+    try:
+        cache_file.write_text(
+            _json.dumps(result, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+    return result
+
+
+@router.get("/suggest-style")
+def suggest_style_api(
+    path: str = Query(..., description="歌曲路徑"),
+):
+    """根據曲風+BPM 建議伴奏風格"""
+    import json as _json
+    import hashlib
+
+    h = hashlib.md5(path.encode()).hexdigest()[:12]
+
+    bpm = 120.0
+    genre = ""
+    cache_path = DATA_DIR / "library_cache.json"
+    if cache_path.is_file():
+        try:
+            lib = _json.loads(cache_path.read_text(encoding="utf-8"))
+            for t in lib.get("tracks", []):
+                if t.get("path", "").replace("\\", "/") == path.replace("\\", "/"):
+                    genre = t.get("genre", "")
+                    break
+        except Exception:
+            pass
+
+    # 從和弦估算 BPM
+    chords_file = CHORDS_DIR / f"{h}.json"
+    if chords_file.is_file():
+        try:
+            chord_data = _json.loads(chords_file.read_text(encoding="utf-8"))
+            chords = chord_data.get("chords", [])
+            durations = [c.get("end", 0) - c.get("time", 0)
+                         for c in chords if c.get("end", 0) > c.get("time", 0)]
+            if durations:
+                median_dur = sorted(durations)[len(durations) // 2]
+                if median_dur > 0:
+                    bpm = 60.0 / median_dur
+        except Exception:
+            pass
+
+    from ai.accompaniment_generator import suggest_style
+
+    return {
+        "path": path,
+        "genre": genre,
+        "bpm": round(bpm, 1),
+        "suggested_styles": suggest_style(genre, bpm),
+    }
+
+
 @router.get("/stats")
 async def stats():
     """所有模型統計"""
