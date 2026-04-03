@@ -855,6 +855,9 @@ a:hover { text-decoration: underline; }
   position: relative;
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .chord-display-tools {
@@ -938,7 +941,8 @@ a:hover { text-decoration: underline; }
   flex-direction: column;
   justify-content: flex-end;
   width: 100%;
-  min-height: 160px;
+  flex: 1;
+  min-height: 0;
   padding: 8px 0;
   overflow: hidden;
 }
