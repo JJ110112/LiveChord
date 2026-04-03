@@ -143,7 +143,7 @@
 
   // ---- 和弦區縮放 ----
   const ZOOM_STEPS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300];
-  const ZOOM_DEFAULTS = { overview: 200, diagrams: 200, keys: 100 };
+  const ZOOM_DEFAULTS = { overview: 200, diagrams: 200, keys: 200 };
   // per-tab zoom: each tab has its own persisted zoom level
   const _tabZoom = {};
   for (const tab of ["overview", "diagrams", "keys"]) {
@@ -242,9 +242,15 @@
     btnFullscreen.innerHTML = "&#x26F6;";
     if (btnPageFs) btnPageFs.innerHTML = "&#x26F6;";
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    // reset to 100% when exiting fullscreen (non-fullscreen view)
+    // reset visual zoom to 100% for non-fullscreen, but do NOT persist
+    // (keep the per-tab fullscreen zoom saved for next enter)
     zoomIdx = ZOOM_STEPS.indexOf(100);
-    _applyZoom();
+    if (chordDisplayEl) {
+      chordDisplayEl.style.transform = "scale(1)";
+      chordDisplayEl.style.width = "100%";
+      chordDisplayEl.style.height = "100%";
+    }
+    if (btnZoomReset) btnZoomReset.textContent = "100%";
   }
 
   if (btnFullscreen && chordDisplay) {
@@ -266,9 +272,14 @@
       chordDisplay.classList.remove("fullscreen");
       if (btnFullscreen) btnFullscreen.innerHTML = "&#x26F6;";
       if (btnPageFs) btnPageFs.innerHTML = "&#x26F6;";
-      // 重置縮放
+      // reset visual zoom without persisting (keep saved fullscreen zoom)
       zoomIdx = ZOOM_STEPS.indexOf(100);
-      _applyZoom();
+      if (chordDisplayEl) {
+        chordDisplayEl.style.transform = "scale(1)";
+        chordDisplayEl.style.width = "100%";
+        chordDisplayEl.style.height = "100%";
+      }
+      if (btnZoomReset) btnZoomReset.textContent = "100%";
     }
   });
 
