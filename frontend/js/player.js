@@ -214,7 +214,7 @@
     if (!notes || notes.length === 0) return "";
     const JP = ["1","#1","2","#2","3","4","#4","5","#5","6","#6","7"];
     const JPF = ["1","b2","2","b3","3","4","b5","5","b6","6","b7","7"];
-    const keySemi = noteToSemitone(key || "C");
+    const keySemi = 0; // always C-relative solfege
     return notes.map(n => {
       const semi = noteToSemitone(n);
       const interval = ((semi - keySemi) % 12 + 12) % 12;
