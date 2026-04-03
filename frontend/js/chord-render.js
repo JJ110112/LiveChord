@@ -592,9 +592,20 @@ const ChordRender = {
     // Chord hints (outline only)
     if (opts && opts.chordHints) {
       for (const m of opts.chordHints) {
-        // Only draw outline if not already pressed by left hand
         if (!lMidis.includes(m) && !rMidis.includes(m)) {
-          highlights.push({ midi: m, color: CHORD_OUTLINE, alpha: 1, outlineOnly: true });
+          let isFallingLh = opts.fallingLh && opts.fallingLh.includes(m);
+          let isFallingRh = opts.fallingRh && opts.fallingRh.includes(m);
+          if (isFallingLh || isFallingRh) {
+            highlights.push({ 
+              midi: m, 
+              color: isFallingLh ? LH_COLOR : RH_COLOR, 
+              alpha: 0.8, 
+              outlineOnly: true,
+              glow: true
+            });
+          } else {
+            highlights.push({ midi: m, color: CHORD_OUTLINE, alpha: 1, outlineOnly: true });
+          }
         }
       }
     }
@@ -611,7 +622,12 @@ const ChordRender = {
          ctx.globalAlpha = hl.alpha;
          ctx.strokeStyle = hl.color;
          ctx.lineWidth = 2;
+         if (hl.glow) {
+           ctx.shadowBlur = 8;
+           ctx.shadowColor = hl.color;
+         }
          ctx.strokeRect(wk.x + 2, 2, wk.w - 4, wk.h - 4);
+         ctx.shadowBlur = 0; // reset
       } else {
          ctx.fillStyle = hl.color;
          ctx.fillRect(wk.x + 1, 1, wk.w - 2, wk.h - 2);
@@ -641,7 +657,12 @@ const ChordRender = {
          ctx.globalAlpha = Math.min(1.0, hl.alpha + 0.15);
          ctx.strokeStyle = hl.color;
          ctx.lineWidth = 2;
+         if (hl.glow) {
+           ctx.shadowBlur = 8;
+           ctx.shadowColor = hl.color;
+         }
          ctx.strokeRect(bk.x + 2, 2, bk.w - 4, bk.h - 4);
+         ctx.shadowBlur = 0; // reset
       } else {
          ctx.fillStyle = hl.color;
          ctx.fillRect(bk.x + 1, 1, bk.w - 2, bk.h - 2);
