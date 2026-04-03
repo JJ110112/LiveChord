@@ -209,6 +209,7 @@ async def detect_chords_api(path: str = Query(...)):
         "path": path,
         "key": key,
         "capo": 0,
+        "source": "btc",
         "chords": chords,
     }
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
@@ -224,6 +225,7 @@ async def detect_chords_api(path: str = Query(...)):
         "key": key,
         "chord_count": len(chords),
         "chords": chords,
+        "source": "btc",
     }
 
 
