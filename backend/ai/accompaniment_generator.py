@@ -204,12 +204,17 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
         # 只有根音
         raw = note_names_to_midi(notes[:1], base_octave=2)
     elif level == "L2" and len(notes) >= 4:
-        # Shell Voicing: 3rd + 7th (忽略 root 和 5th)
+        # Shell Voicing: 根音(C2) + 3rd/7th(C3)
         shell_notes = [notes[1], notes[3]] if len(notes) >= 4 else notes[1:3]
-        raw = note_names_to_midi(shell_notes, base_octave=2)
+        upper = note_names_to_midi(shell_notes, base_octave=3)
+        root_st = root_to_semitone(notes[0]) + 36 # C2 root
+        raw = [root_st] + upper
     else:
         # L3 或無足夠音符時用完整 voicing
-        raw = note_names_to_midi(notes, base_octave=2)
+        # Open Voicing: 根音(C2) + 剩餘和弦音(C3)
+        upper = note_names_to_midi(notes[1:], base_octave=3)
+        root_st = root_to_semitone(notes[0]) + 36 # C2 root
+        raw = [root_st] + upper
 
     # Clamp 到左手範圍
     pitches = clamp_to_range(raw, LH_LOW, LH_HIGH)

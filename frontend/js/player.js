@@ -637,6 +637,7 @@
     waterfallCanvas.width = Math.round(w * dpr);
     waterfallCanvas.height = Math.round(h * dpr);
     waterfallCtx.scale(dpr, dpr);
+    if (audio.paused) drawWaterfall(audio.currentTime || 0);
   }
 
   function _loadAccompaniment() {
@@ -845,37 +846,31 @@
          ctx.restore();
       }
 
-      // Finger number simplification: Only show if crossover, leap, or first
-      if (evt.finger && yBottom > h * 0.4) {
-        let showF = false;
+      // Show finger numbers for all mapped notes
+      if (evt.finger) {
+        let showF = true;
         const lastF = isLeft ? lhLastF : rhLastF;
         
-        // Always show if it's a large jump in finger or a thumb crossover
-        if (lastF === 0 || Math.abs(evt.finger - lastF) > 1 || evt.finger === 1 || lastF === 1) {
-          showF = true;
-        }
-
         if (showF) {
-          const fy = (yTop + yBottom) / 2;
+          // Display the number near the bottom of the falling block so it appears early
+          const fy = Math.min(yBottom - 10, yTop + noteH / 2 + 5);
           ctx.font = "bold 13px sans-serif";
           
           let text = evt.finger;
-          let isCross = false;
           
           if (evt.finger === 1 && lastF > 1) {
-             // 跨指提示
+             // Crossover hint
              text = "↻1";
-             isCross = true;
              ctx.fillStyle = "rgba(255,255,255,0.2)";
-             ctx.fillRect(x, yTop, kw, noteH); // highlight block for crossover
+             ctx.fillRect(x, Math.max(0, yTop), kw, noteH);
           }
           
-          // 增強對比度: 深色外框 + 純白內文
+          // High contrast text
           ctx.lineWidth = 2.5;
           ctx.strokeStyle = "rgba(0,0,0,0.8)";
-          ctx.strokeText(text, x + kw / 2, fy);
+          ctx.strokeText(text, x + kw / 2, Math.max(fy, 15));
           ctx.fillStyle = "#fff";
-          ctx.fillText(text, x + kw / 2, fy);
+          ctx.fillText(text, x + kw / 2, Math.max(fy, 15));
         }
         
         if (isLeft) lhLastF = evt.finger; else rhLastF = evt.finger;
@@ -1513,6 +1508,10 @@
     progress.style.width = (t / (audio.duration || 1) * 100) + "%";
     timeCurrent.textContent = formatTime(t);
     updateActiveChord(t);
+    if (activeTab === "keys") {
+      update88Piano(t);
+      drawWaterfall(t);
+    }
   });
 
   audio.addEventListener("seeked", () => {
