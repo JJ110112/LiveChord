@@ -399,6 +399,25 @@
     ChordRender.draw88Piano(piano88Canvas, piano88Cache, [], -1, {});
   }
 
+  // Get melody notes (as jianpu) within a time range
+  function _getMelodyJianpuInRange(start, end) {
+    if (!melodyData) return "";
+    const SEMI_TO_NAME = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+    const JP = ["1","\u{266F}1","2","\u{266F}2","3","4","\u{266F}4","5","\u{266F}5","6","\u{266F}6","7"];
+    const seen = new Set();
+    const notes = [];
+    for (const m of melodyData) {
+      if (m.start >= end) break;
+      if (m.end <= start) continue;
+      const pc = m.midi % 12;
+      if (!seen.has(pc)) {
+        seen.add(pc);
+        notes.push(JP[pc]);
+      }
+    }
+    return notes.join(" ");
+  }
+
   function _buildKeys88Ribbon() {
     keys88RibbonTrack = $("#keys88RibbonTrack");
     if (!keys88RibbonTrack) return;
@@ -408,32 +427,37 @@
     const chords = _displayChords();
     if (!chords || chords.length === 0 || _ribbonPositions.length === 0) return;
 
-    let _prevMidi = null;
     for (let i = 0; i < chords.length; i++) {
       const chord = chords[i];
       const cache = chordCache[chord.chord] || {};
       const pos = _ribbonPositions[i] || { left: chord.time * pxPerSec, width: 120 };
+      const chordEnd = (i + 1 < chords.length) ? chords[i + 1].time : chord.time + 4;
+
       const div = document.createElement("div");
-      div.className = "ribbon-item";
+      div.className = "ribbon-item keys88-ribbon-item";
       div.style.left = `${pos.left}px`;
       div.style.width = `${pos.width}px`;
 
+      // chord name
       const nameEl = document.createElement("div");
       nameEl.className = "chord-name";
       nameEl.textContent = chord.chord;
       div.appendChild(nameEl);
 
-      // jianpu
+      // chord jianpu
       const jp = document.createElement("div");
       jp.className = "chord-jianpu";
       jp.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
       div.appendChild(jp);
 
-      // small piano diagram
-      const pianoCanvas = document.createElement("canvas");
-      ChordRender.drawPiano(pianoCanvas, cache.notes || [], 1, _prevMidi);
-      div.appendChild(pianoCanvas);
-      if (pianoCanvas._lastMidi) _prevMidi = pianoCanvas._lastMidi;
+      // melody jianpu
+      const melJp = _getMelodyJianpuInRange(chord.time, chordEnd);
+      if (melJp) {
+        const melEl = document.createElement("div");
+        melEl.className = "melody-jianpu";
+        melEl.textContent = melJp;
+        div.appendChild(melEl);
+      }
 
       div.addEventListener("click", () => {
         audio.currentTime = chord.time;
