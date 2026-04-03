@@ -30,6 +30,14 @@
   let hasChords = false;
   let keys88RibbonTrack = null;
   let keys88RibbonBuilt = false;
+  // Waterfall / teaching mode state
+  let waterfallCanvas = null;
+  let waterfallCtx = null;
+  let waterfallActive = false;
+  let teachStyle = localStorage.getItem("livechord_teach_style") || "Arpeggio";
+  let teachLevel = localStorage.getItem("livechord_teach_level") || "L1";
+  let accData = null;  // {left_hand:[], right_hand:[]} from API
+  let accLoading = false;
   let transpose = 0;
   let capo = 0;
   let favTracks = [];
@@ -129,6 +137,8 @@
         _switchZoomToTab("keys");
         if (hasChords) bigChordBox.style.display = "";
         _init88Piano();
+        _initWaterfall();
+        _setupTeachControls();
         _buildKeys88Ribbon();
         piano88LastIdx = -1;
         update88Piano(audio.currentTime || 0);
@@ -573,6 +583,195 @@
     });
   }
 
+  // ---- Waterfall / Teaching Mode ----
+
+  function _initWaterfall() {
+    waterfallCanvas = $("#waterfallCanvas");
+    if (!waterfallCanvas) return;
+    waterfallCtx = waterfallCanvas.getContext("2d");
+  }
+
+  function _resizeWaterfall() {
+    if (!waterfallCanvas || !waterfallActive) return;
+    const w = chordDisplay88.clientWidth || 800;
+    const h = waterfallCanvas.clientHeight || 200;
+    const dpr = window.devicePixelRatio || 1;
+    waterfallCanvas.width = Math.round(w * dpr);
+    waterfallCanvas.height = Math.round(h * dpr);
+    waterfallCtx.scale(dpr, dpr);
+  }
+
+  function _loadAccompaniment() {
+    if (!trackPath || accLoading) return;
+    if (accData && accData._style === teachStyle && accData._level === teachLevel) return;
+    accLoading = true;
+    const url = `/api/ai/accompaniment?path=${encodeURIComponent(trackPath)}&style=${teachStyle}&level=${teachLevel}`;
+    fetch(url).then(r => r.json()).then(data => {
+      if (data.error) {
+        console.warn("Accompaniment:", data.error);
+        accData = null;
+      } else {
+        data._style = teachStyle;
+        data._level = teachLevel;
+        accData = data;
+      }
+      accLoading = false;
+    }).catch(e => {
+      console.error("Accompaniment fetch error:", e);
+      accData = null;
+      accLoading = false;
+    });
+  }
+
+  function drawWaterfall(currentTime) {
+    if (!waterfallCanvas || !waterfallCtx || !waterfallActive || !accData) return;
+    if (!piano88Cache) return;
+
+    const w = waterfallCanvas.clientWidth;
+    const h = waterfallCanvas.clientHeight;
+    if (w < 10 || h < 10) return;
+
+    const ctx = waterfallCtx;
+    ctx.clearRect(0, 0, w, h);
+
+    // Time window: show notes from currentTime to currentTime + lookAhead
+    const lookAhead = 4.0;  // seconds visible above piano
+    const pxPerSec = h / lookAhead;
+
+    const LH_COLOR = "rgba(0,220,255,0.8)";   // cyan
+    const RH_COLOR = "rgba(255,165,0,0.8)";    // orange
+    const LH_GLOW  = "rgba(0,220,255,0.4)";
+    const RH_GLOW  = "rgba(255,165,0,0.4)";
+
+    const allEvents = [
+      ...(accData.left_hand || []).map(e => ({...e, _hand: "left"})),
+      ...(accData.right_hand || []).map(e => ({...e, _hand: "right"})),
+    ];
+
+    const cache = piano88Cache;
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    for (const evt of allEvents) {
+      const noteStart = evt.time;
+      const noteEnd = evt.time + evt.duration;
+
+      // Only render visible notes
+      if (noteEnd < currentTime || noteStart > currentTime + lookAhead) continue;
+
+      // Y position: bottom = currentTime, top = currentTime + lookAhead
+      const yBottom = h - (noteStart - currentTime) * pxPerSec;
+      const yTop = h - (noteEnd - currentTime) * pxPerSec;
+      const noteH = Math.max(yBottom - yTop, 3);
+
+      // X position from piano key geometry
+      const midi = evt.pitch;
+      const keyInfo = cache.whiteXs[midi] || cache.blackXs[midi];
+      if (!keyInfo) continue;
+      const x = keyInfo.x;
+      const kw = keyInfo.w;
+
+      const isLeft = evt._hand === "left";
+      const color = isLeft ? LH_COLOR : RH_COLOR;
+      const glow = isLeft ? LH_GLOW : RH_GLOW;
+
+      // Glow effect for notes about to land
+      if (yBottom > h - 20) {
+        ctx.fillStyle = glow;
+        ctx.fillRect(x, yTop, kw, noteH + 10);
+      }
+
+      // Note bar
+      ctx.fillStyle = color;
+      const r = Math.min(4, noteH / 2);
+      ctx.beginPath();
+      ctx.roundRect(x + 1, yTop, kw - 2, noteH, r);
+      ctx.fill();
+
+      // Finger number (show when note is close to landing)
+      if (evt.finger && yBottom > h * 0.5) {
+        ctx.fillStyle = "#fff";
+        const fy = (yTop + yBottom) / 2;
+        ctx.fillText(evt.finger, x + kw / 2, fy);
+      }
+    }
+
+    // Landing line
+    ctx.strokeStyle = "rgba(255,255,255,0.3)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, h - 1);
+    ctx.lineTo(w, h - 1);
+    ctx.stroke();
+  }
+
+  // Teaching controls setup
+  function _setupTeachControls() {
+    const styleSelect = $("#teachStyle");
+    const levelBtns = document.querySelectorAll("#teachControls .teach-level-group .mode-btn");
+    const aiBtn = $("#btnTeachAI");
+    const toggle = $("#teachToggle");
+
+    if (styleSelect) {
+      styleSelect.value = teachStyle;
+      styleSelect.addEventListener("change", () => {
+        teachStyle = styleSelect.value;
+        localStorage.setItem("livechord_teach_style", teachStyle);
+        accData = null;
+        if (waterfallActive) _loadAccompaniment();
+      });
+    }
+
+    if (levelBtns.length) {
+      levelBtns.forEach(btn => {
+        if (btn.dataset.level === teachLevel) btn.classList.add("active");
+        else btn.classList.remove("active");
+        btn.addEventListener("click", () => {
+          levelBtns.forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          teachLevel = btn.dataset.level;
+          localStorage.setItem("livechord_teach_level", teachLevel);
+          accData = null;
+          if (waterfallActive) _loadAccompaniment();
+        });
+      });
+    }
+
+    if (aiBtn) {
+      aiBtn.addEventListener("click", () => {
+        if (!trackPath) return;
+        fetch(`/api/ai/suggest-style?path=${encodeURIComponent(trackPath)}`)
+          .then(r => r.json())
+          .then(data => {
+            if (data.suggested_styles && data.suggested_styles.length > 0) {
+              const best = data.suggested_styles[0];
+              if (styleSelect) styleSelect.value = best;
+              teachStyle = best;
+              localStorage.setItem("livechord_teach_style", best);
+              accData = null;
+              if (waterfallActive) _loadAccompaniment();
+              showToast("AI: " + data.suggested_styles.join(", "));
+            }
+          }).catch(() => {});
+      });
+    }
+
+    if (toggle) {
+      toggle.checked = false;
+      toggle.addEventListener("change", () => {
+        waterfallActive = toggle.checked;
+        if (waterfallCanvas) {
+          waterfallCanvas.classList.toggle("active", waterfallActive);
+        }
+        if (waterfallActive) {
+          _loadAccompaniment();
+          setTimeout(_resizeWaterfall, 50);
+        }
+      });
+    }
+  }
+
   // resize observer for 88-key piano
   if (chordDisplay88) {
     let _resizeTimer = null;
@@ -581,6 +780,7 @@
       _resizeTimer = setTimeout(() => {
         if (activeTab === "keys") {
           _init88Piano();
+          _resizeWaterfall();
           update88Piano(audio.currentTime || 0);
         }
       }, 100);
@@ -1055,7 +1255,10 @@
       progress.style.width = (t / d * 100) + "%";
       timeCurrent.textContent = formatTime(t);
       updateActiveChord(t);
-      if (activeTab === "keys") update88Piano(t);
+      if (activeTab === "keys") {
+        update88Piano(t);
+        drawWaterfall(t);
+      }
       rafId = requestAnimationFrame(tickSync);
     }
   }

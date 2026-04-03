@@ -949,6 +949,53 @@ a:hover { text-decoration: underline; }
 .keys88-ribbon {
   display: none;  /* hidden in non-fullscreen */
 }
+
+/* Waterfall canvas */
+.waterfall-canvas {
+  display: none;
+  width: 100%;
+  image-rendering: crisp-edges;
+}
+.chord-display-area.fullscreen .waterfall-canvas.active {
+  display: block;
+  flex: 1;
+  min-height: 120px;
+}
+
+/* Teaching controls bar */
+.teach-controls {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.chord-display-area.fullscreen .teach-controls {
+  display: flex;
+}
+.teach-controls select {
+  background: var(--bg-hover);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+.teach-level-group {
+  display: flex;
+  gap: 2px;
+}
+.teach-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.teach-toggle input:checked + span {
+  color: var(--accent);
+}
 .chord-display-area.fullscreen .chord-88-keys {
   flex: 1;
   min-height: 0;
