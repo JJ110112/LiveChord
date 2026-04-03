@@ -80,6 +80,9 @@
     const ms = document.querySelector("#modeSwitch");
     if (hs) hs.style.display = activeTab === "keys" ? "flex" : "none";
     if (ms) ms.style.display = activeTab === "keys" ? "none" : "flex";
+    // Hide zoom controls in keys tab (piano has fixed size)
+    const zoomWrap = document.querySelector(".cd-tools-right .fs-only");
+    if (zoomWrap) zoomWrap.style.display = activeTab === "keys" ? "none" : "";
   }
 
   function _setAllTabsInactive() {

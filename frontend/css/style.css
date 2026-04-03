@@ -713,7 +713,7 @@ a:hover { text-decoration: underline; }
 .chord-ribbon {
   position: relative;
   width: 100%;
-  flex: 1;
+  height: calc(100vh - 360px);
   min-height: 150px;
   background: var(--bg-hover);
   border-radius: var(--radius);
@@ -849,8 +849,6 @@ a:hover { text-decoration: underline; }
   display: flex;
   flex-direction: column;
   position: relative;
-  flex: 1;
-  min-height: 0;
 }
 
 .chord-display-area {
@@ -1010,8 +1008,6 @@ a:hover { text-decoration: underline; }
   justify-content: flex-end;
 }
 .chord-display-area.fullscreen .chord-88-keys canvas#piano88Canvas {
-  flex: 4; /* Golden ratio part: Keyboard 40% */
-  max-height: unset;
   flex-shrink: 0;
   margin-top: auto;
 }
