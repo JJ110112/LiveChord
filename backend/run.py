@@ -27,7 +27,9 @@ console_handler.setFormatter(fmt)
 logging.basicConfig(level=logging.INFO, handlers=[console_handler, file_handler])
 
 for name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
-    logging.getLogger(name).handlers = logging.root.handlers
+    logger = logging.getLogger(name)
+    logger.handlers = logging.root.handlers
+    logger.propagate = False
 
 import uvicorn
 

@@ -291,6 +291,19 @@ def _merge_segments(raw_segments: list, min_dur: float = 0.5) -> list:
 # 公開 API
 # ---------------------------------------------------------------------------
 
+def detect_chords_and_key(audio_path: str, min_dur: float = 0.5) -> tuple:
+    """
+    從音訊檔案偵測和弦並推導調性（只執行一次 BTC 推論）。
+
+    Returns:
+        (chords_list, key_string)
+    """
+    raw = _run_btc(audio_path)
+    chords = _merge_segments(raw, min_dur=min_dur)
+    key = _key_from_chords(chords) if chords else "C"
+    return chords, key
+
+
 def detect_chords(audio_path: str, min_dur: float = 0.5) -> list:
     """
     從音訊檔案偵測和弦（v4: BTC Transformer）。
@@ -365,6 +378,31 @@ def _key_from_chords(chords: list) -> str:
             best_key = NOTE_NAMES[tonic] + "m"
 
     return best_key
+
+
+# ---------------------------------------------------------------------------
+# 子程序隔離：在獨立程序中執行 BTC 推論，避免 GIL 阻塞 event loop
+# ---------------------------------------------------------------------------
+
+_btc_pool = None
+
+
+def _subprocess_detect(audio_path, min_dur=0.5):
+    """在子程序中執行（必須是 top-level function 才能 pickle）"""
+    return detect_chords_and_key(audio_path, min_dur)
+
+
+def detect_chords_and_key_isolated(audio_path: str, min_dur: float = 0.5) -> tuple:
+    """
+    在獨立子程序中執行 BTC 推論，完全隔離 GIL。
+    子程序第一次呼叫會載入模型（約數秒），之後重複使用同一程序。
+    """
+    global _btc_pool
+    if _btc_pool is None:
+        from concurrent.futures import ProcessPoolExecutor
+        _btc_pool = ProcessPoolExecutor(max_workers=1)
+    future = _btc_pool.submit(_subprocess_detect, audio_path, min_dur)
+    return future.result(timeout=600)
 
 
 # ---------------------------------------------------------------------------

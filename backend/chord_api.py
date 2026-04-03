@@ -5,6 +5,7 @@ import hashlib
 import os
 import re
 import time
+import asyncio
 import threading
 from pathlib import Path
 
@@ -49,7 +50,7 @@ from pydantic import BaseModel
 from chord_table import get_chord_info, get_chord_jianpu
 from chord_diagrams import get_chord_diagram
 
-from config import get_music_root
+from config import resolve_path
 
 router = APIRouter(prefix="/api", tags=["chord"])
 
@@ -142,10 +143,7 @@ async def save_chords(sheet: ChordSheet):
 @router.post("/chords/detect")
 async def detect_chords_api(path: str = Query(...)):
     """自動偵測音訊中的和弦，偵測完成後自動儲存"""
-    root = get_music_root()
-    full = os.path.normpath(os.path.join(root, path))
-    if not full.lower().startswith(root.lower()):
-        raise HTTPException(status_code=403, detail="路徑不允許")
+    full = resolve_path(path)
     if not os.path.isfile(full):
         raise HTTPException(status_code=404, detail="檔案不存在")
 
@@ -163,28 +161,28 @@ async def detect_chords_api(path: str = Query(...)):
             }
 
     try:
-        from chord_detect import detect_chords, detect_key
+        from chord_detect import detect_chords_and_key_isolated
     except ImportError as e:
         raise HTTPException(status_code=500, detail=f"缺少依賴: {e}")
 
-    try:
-        key = detect_key(full)
-        chords = detect_chords(full)
-        
+    def _sync_detect(audio_path):
+        """同步偵測（在子程序中執行，不阻塞 event loop）"""
+        chords, key = detect_chords_and_key_isolated(audio_path)
+
         # [Fallback] 如果 BTC 無法辨識（例如 8-bit chiptune 等非常規軌道），降級使用 Melody-to-Chord Viterbi 解析
         if not chords:
             print(f"[Fallback] BTC 失敗，啟動 Viterbi Melody-to-Chord 管道...")
             from ai.melody_extractor import MelodyExtractor
             from ai.hmm import get_viterbi_decoder
             from ai.markov import get_predictor
-            
+
             extractor = MelodyExtractor()
-            melody_events = extractor.extract_melody(full)
+            melody_events = extractor.extract_melody(audio_path)
             if melody_events:
                 midi_sequence = [evt["midi"] for evt in melody_events]
                 decoder = get_viterbi_decoder(str(CHORDS_DIR))
                 path_degrees, _ = decoder.decode(midi_sequence, top_k=20)
-                
+
                 predictor = get_predictor(str(CHORDS_DIR))
                 current_chord = None
                 for i, evt in enumerate(melody_events):
@@ -198,7 +196,11 @@ async def detect_chords_api(path: str = Query(...)):
                         current_chord = chord_name
                     else:
                         chords[-1]["end"] = evt["end"]
-                        
+
+        return chords, key
+
+    try:
+        chords, key = await asyncio.to_thread(_sync_detect, full)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"偵測失敗: {e}")
 
@@ -230,7 +232,7 @@ async def detect_chords_api(path: str = Query(...)):
 # ---------------------------------------------------------------------------
 
 @router.get("/chords/midi-search")
-async def midi_search(path: str = Query(...)):
+def midi_search(path: str = Query(...)):
     """搜尋 X:\\ 中與此曲目名稱相符的 MIDI 檔案"""
     from config import get_midi_root
     midi_root = get_midi_root()
@@ -253,7 +255,7 @@ async def midi_search(path: str = Query(...)):
 
 
 @router.post("/chords/midi-import")
-async def midi_import(path: str = Query(...), midi_path: str = Query(...)):
+def midi_import(path: str = Query(...), midi_path: str = Query(...)):
     """從 MIDI 檔案匯入和弦，儲存到 chords/{hash}.json"""
     from config import get_midi_root
     import sys
@@ -290,11 +292,10 @@ async def midi_import(path: str = Query(...), midi_path: str = Query(...)):
     key_mismatch = False
     audio_key = ""
     try:
-        root = get_music_root()
-        full_audio = os.path.normpath(os.path.join(root, path))
+        full_audio = resolve_path(path)
         if os.path.isfile(full_audio):
-            from chord_detect import detect_key
-            audio_key = detect_key(full_audio)
+            from chord_detect import detect_chords_and_key_isolated
+            btc_chords, audio_key = detect_chords_and_key_isolated(full_audio)
             if audio_key and key:
                 from .preprocess import NOTE_TO_SEMI
                 midi_semi = NOTE_TO_SEMI.get(key.rstrip("m"), -1)
@@ -302,28 +303,20 @@ async def midi_import(path: str = Query(...), midi_path: str = Query(...)):
                 if midi_semi >= 0 and audio_semi >= 0 and midi_semi != audio_semi:
                     key_mismatch = True
     except Exception:
-        pass
+        btc_chords = []
 
-    # key 不一致 → fallback BTC
-    if key_mismatch:
-        try:
-            from chord_detect import detect_chords
-            root = get_music_root()
-            full_audio = os.path.normpath(os.path.join(root, path))
-            btc_chords = detect_chords(full_audio)
-            if btc_chords:
-                sheet = {"path": path, "key": audio_key, "capo": 0,
-                         "source": "btc", "chords": btc_chords}
-                CHORDS_DIR.mkdir(parents=True, exist_ok=True)
-                chords_file = CHORDS_DIR / f"{_song_hash(path)}.json"
-                chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
-                return {
-                    "ok": True, "path": path, "key": audio_key,
-                    "chord_count": len(btc_chords), "source": "btc",
-                    "warning": f"MIDI 調性不符（MIDI={key}, 音檔={audio_key}），已改用 BTC 偵測",
-                }
-        except Exception:
-            pass
+    # key 不一致 → fallback BTC（已在上面一併偵測，不需再跑一次）
+    if key_mismatch and btc_chords:
+        sheet = {"path": path, "key": audio_key, "capo": 0,
+                 "source": "btc", "chords": btc_chords}
+        CHORDS_DIR.mkdir(parents=True, exist_ok=True)
+        chords_file = CHORDS_DIR / f"{_song_hash(path)}.json"
+        chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {
+            "ok": True, "path": path, "key": audio_key,
+            "chord_count": len(btc_chords), "source": "btc",
+            "warning": f"MIDI 調性不符（MIDI={key}, 音檔={audio_key}），已改用 BTC 偵測",
+        }
 
     # 儲存 MIDI 結果
     sheet = {
@@ -398,7 +391,7 @@ async def midi_upload(path: str = Query(...), file: UploadFile = File(...)):
 def _batch_detect_worker(tracks: list, skip_existing: bool):
     """背景批次偵測所有曲目的和弦"""
     global _batch_state
-    from chord_detect import detect_chords, detect_key
+    from chord_detect import detect_chords_and_key_isolated
 
     _batch_state.update({
         "running": True, "total": len(tracks), "done": 0,
@@ -420,14 +413,13 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
             _batch_state["skipped"] += 1
             continue
 
-        full = os.path.normpath(os.path.join(get_music_root(), track_path))
+        full = resolve_path(track_path)
         if not os.path.isfile(full):
             _batch_state["skipped"] += 1
             continue
 
         try:
-            key = detect_key(full)
-            chords = detect_chords(full)
+            chords, key = detect_chords_and_key_isolated(full)
             sheet = {"path": track_path, "key": key, "capo": 0, "chords": chords}
             chords_file.write_text(
                 json.dumps(sheet, ensure_ascii=False, indent=2),
@@ -494,7 +486,7 @@ async def batch_detect_status():
 
 
 @router.get("/chords/tracks")
-async def chords_tracks():
+def chords_tracks():
     """列出所有曲目及其和弦狀態（供 admin 管理用）"""
     if not CACHE_FILE.is_file():
         return {"tracks": []}
@@ -522,7 +514,7 @@ async def chords_tracks():
 
 
 @router.post("/chords/batch-midi-import")
-async def batch_midi_import():
+def batch_midi_import():
     """批次 MIDI 匯入：對所有尚無和弦的曲目搜尋 MIDI 並匯入"""
     from config import get_midi_root
     import sys
@@ -597,25 +589,34 @@ async def batch_midi_import():
     return {"ok": True, "imported": imported, "skipped": skipped, "errors": errors[:10]}
 
 
+_stats_cache = {"data": None, "ts": 0}
+_STATS_CACHE_TTL = 10  # 秒
+
+
 @router.get("/chords/stats")
-async def chords_stats():
-    """和弦譜統計（只計算 library 中的曲目）"""
+def chords_stats():
+    """和弦譜統計（只計算 library 中的曲目）— 使用快取避免阻塞"""
+    now = time.time()
+    if _stats_cache["data"] and now - _stats_cache["ts"] < _STATS_CACHE_TTL:
+        cached = _stats_cache["data"]
+        cached["batch_running"] = _batch_state["running"]
+        return cached
+
     total_tracks = 0
     tracks_with_chords = 0
 
     if CACHE_FILE.is_file():
         cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
-        tracks = cache.get("tracks", [])
-        total_tracks = len(tracks)
-        CHORDS_DIR.mkdir(parents=True, exist_ok=True)
-        for t in tracks:
-            h = _song_hash(t.get("path", ""))
-            if (CHORDS_DIR / f"{h}.json").is_file():
-                tracks_with_chords += 1
+        total_tracks = len(cache.get("tracks", []))
+    if CHORDS_DIR.is_dir():
+        tracks_with_chords = sum(1 for f in os.listdir(CHORDS_DIR) if f.endswith(".json"))
 
-    return {
+    result = {
         "total_tracks": total_tracks,
         "tracks_with_chords": tracks_with_chords,
         "coverage": round(tracks_with_chords / total_tracks * 100, 1) if total_tracks else 0,
         "batch_running": _batch_state["running"],
     }
+    _stats_cache["data"] = result
+    _stats_cache["ts"] = now
+    return result

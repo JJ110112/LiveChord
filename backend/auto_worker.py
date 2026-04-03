@@ -1,16 +1,18 @@
 """LiveChord 自動工作器 — 類似 Roon Core 的背景自動掃描與和弦分析"""
 
 import os
+import sys
 import json
 import time
 import hashlib
 import threading
 import logging
+import ctypes
 from pathlib import Path
 from datetime import datetime
 
 log = logging.getLogger("livechord.auto")
-from config import get_music_root
+from config import resolve_path
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 SETTINGS_FILE = DATA_DIR / "settings.json"
@@ -28,6 +30,7 @@ DEFAULT_SETTINGS = {
     "auto_scan_interval_minutes": 30,
     "auto_chord_enabled": False,
     "auto_chord_max_per_cycle": 20,     # 每輪最多偵測幾首
+    "auto_chord_delay_seconds": 1.0,    # 每首之間的延遲（秒），避免 CPU 飢餓導致前端無回應
     "auto_chord_skip_genres": [],        # 跳過的 genre（如 Classics）
 }
 
@@ -81,7 +84,7 @@ def _get_unanalyzed_tracks(settings: dict) -> list:
 
     cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
     tracks = cache.get("tracks", [])
-    skip_genres = set(g.lower() for g in settings.get("auto_chord_skip_genres", []))
+    skip_genres = [g.lower().strip() for g in settings.get("auto_chord_skip_genres", []) if g.strip()]
 
     # 測試歌曲的特殊識別
     test_songs = ["dancing queen", "abba", "test", "benchmark"]
@@ -92,8 +95,8 @@ def _get_unanalyzed_tracks(settings: dict) -> list:
     
     for t in tracks:
         # 跳過指定 genre
-        genre = t.get("genre", "").split("/")[0].lower()
-        if genre in skip_genres:
+        genre = t.get("genre", "").split("/")[0].lower().strip()
+        if any(genre.startswith(sg) for sg in skip_genres):
             continue
             
         track_path = t.get("path", "")
@@ -160,9 +163,21 @@ _worker_thread = None
 _stop_event = threading.Event()
 
 
+def _set_low_priority():
+    """降低當前執行緒優先級（Windows），讓 event loop 優先回應前端請求"""
+    if sys.platform == "win32":
+        try:
+            THREAD_PRIORITY_BELOW_NORMAL = -1
+            handle = ctypes.windll.kernel32.GetCurrentThread()
+            ctypes.windll.kernel32.SetThreadPriority(handle, THREAD_PRIORITY_BELOW_NORMAL)
+        except Exception:
+            pass
+
+
 def _worker_loop():
     """背景工作器主迴圈"""
     global _worker_state
+    _set_low_priority()
     _worker_state["running"] = True
     _worker_state["status"] = "idle"
     _worker_state["error"] = ""
@@ -360,14 +375,13 @@ def _do_auto_chord_detect(settings: dict):
                 add_log("WARN", f"MIDI 匯入失敗: {name} — {e}，改用 BTC")
 
         # fallback: BTC 自動偵測
-        full = os.path.normpath(os.path.join(get_music_root(), track_path))
+        full = resolve_path(track_path)
         if not os.path.isfile(full):
             continue
 
         try:
-            from chord_detect import detect_chords, detect_key
-            key = detect_key(full)
-            chords = detect_chords(full)
+            from chord_detect import detect_chords_and_key_isolated
+            chords, key = detect_chords_and_key_isolated(full)
             sheet = {"path": track_path, "key": key, "capo": 0,
                      "source": "btc", "chords": chords}
             chords_file = CHORDS_DIR / f"{_song_hash(track_path)}.json"
@@ -376,6 +390,11 @@ def _do_auto_chord_detect(settings: dict):
             add_log("OK", f"BTC 偵測: {name} (Key: {key}, {len(chords)} chords)")
         except Exception as e:
             add_log("ERROR", f"偵測失敗: {name} — {e}")
+
+        # 每首之間暫停，讓 event loop 有時間回應前端請求
+        delay = settings.get("auto_chord_delay_seconds", 1.0)
+        if delay > 0 and not _stop_event.is_set():
+            _stop_event.wait(timeout=delay)
 
     remaining = len(unanalyzed) - len(batch)
     _worker_state["detect_queue_size"] = remaining
