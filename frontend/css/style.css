@@ -650,6 +650,10 @@ a:hover { text-decoration: underline; }
   font-size: 12px;
   cursor: pointer;
 }
+.toolbar-select option {
+  background: var(--bg);
+  color: var(--text);
+}
 
 .mode-btn, .view-tab {
   padding: 4px 12px;
@@ -949,6 +953,7 @@ a:hover { text-decoration: underline; }
   position: fixed;
   inset: 0;
   z-index: 500;
+  overflow: hidden;
   background: var(--bg);
   padding: 8px;
   border-radius: 0;
@@ -958,15 +963,24 @@ a:hover { text-decoration: underline; }
 
 .chord-display-area.fullscreen #chordDisplayScaleTarget {
   margin-top: 40px;
-  overflow: auto;
+  overflow: auto !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.chord-display-area.fullscreen #chordDisplayScaleTarget::-webkit-scrollbar {
+  display: none;
 }
 
 .chord-display-area.fullscreen .chord-timeline {
+  padding-top: 24px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #444 transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.chord-display-area.fullscreen .chord-timeline::-webkit-scrollbar {
+  display: none;
 }
 
 .chord-display-area.fullscreen .chord-ribbon {
@@ -1140,7 +1154,7 @@ a:hover { text-decoration: underline; }
 
 /* 非全螢幕時隱藏播放控制/曲名/縮放 */
 .fs-only { display: none !important; }
-.chord-display-area.fullscreen .fs-only { display: flex !important; }
+.chord-display-area.fullscreen .fs-only { display: grid !important; }
 .chord-display-area.fullscreen .fs-only[style*="display:contents"] { display: contents !important; }
 
 .chord-source-badge {

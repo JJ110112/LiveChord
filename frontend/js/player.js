@@ -92,8 +92,10 @@
     if (topHs) topHs.style.display = activeTab === "keys" ? "flex" : "none";
     if (ms) ms.style.display = activeTab === "keys" ? "none" : "flex";
     // Hide zoom controls in keys tab (piano has fixed size)
-    const zoomWrap = document.querySelector(".cd-tools-right .fs-only");
-    if (zoomWrap) zoomWrap.style.display = activeTab === "keys" ? "none" : "";
+    const hideZoom = activeTab === "keys";
+    if (btnZoomIn) btnZoomIn.style.display = hideZoom ? "none" : "";
+    if (btnZoomOut) btnZoomOut.style.display = hideZoom ? "none" : "";
+    if (btnZoomReset) btnZoomReset.style.display = hideZoom ? "none" : "";
   }
 
   function _setAllTabsInactive() {
@@ -274,6 +276,7 @@
 
   function _enterFullscreen() {
     chordDisplay.classList.add("fullscreen");
+    document.body.style.overflow = "hidden";
     btnFullscreen.innerHTML = "&#x2716;";
     if (btnPageFs) btnPageFs.innerHTML = "&#x2716;";
     // restore per-tab zoom (defaults: overview/diagrams=200%, keys=100%)
@@ -282,6 +285,7 @@
   }
   function _exitFullscreen() {
     chordDisplay.classList.remove("fullscreen");
+    document.body.style.overflow = "";
     btnFullscreen.innerHTML = "&#x26F6;";
     if (btnPageFs) btnPageFs.innerHTML = "&#x26F6;";
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -306,6 +310,7 @@
   document.addEventListener("fullscreenchange", () => {
     if (!document.fullscreenElement && chordDisplay.classList.contains("fullscreen")) {
       chordDisplay.classList.remove("fullscreen");
+      document.body.style.overflow = "";
       if (btnFullscreen) btnFullscreen.innerHTML = "&#x26F6;";
       if (btnPageFs) btnPageFs.innerHTML = "&#x26F6;";
       zoomIdx = ZOOM_STEPS.indexOf(100);
@@ -1521,10 +1526,13 @@
         const container = chordDisplayOverview;
         const rect = el.getBoundingClientRect();
         const cRect = container.getBoundingClientRect();
-        const targetY = cRect.top;
+        // getBoundingClientRect returns screen-space (zoomed) pixels;
+        // scrollTop is in container (unzoomed) space — divide by scale
+        const scale = _isFullscreen() ? (ZOOM_STEPS[zoomIdx] || 100) / 100 : 1;
+        const targetY = cRect.top + 28 * scale; // offset for section markers above chord
         const diff = rect.top - targetY;
-        if (Math.abs(diff) > 10) {
-          container.scrollTop += diff;
+        if (Math.abs(diff) > 10 * scale) {
+          container.scrollTop += diff / scale;
         }
       }
 
@@ -1582,9 +1590,10 @@
   // Smart view: playing → chord area scrolls internally; paused → page scrolls freely
   function _setSmartView(playing) {
     if (chordDisplayOverview) {
+      const isFs = chordDisplay && chordDisplay.classList.contains("fullscreen");
       if (playing) {
         chordDisplayOverview.style.overflowY = "auto";
-        chordDisplayOverview.style.maxHeight = "calc(100vh - 320px)";
+        chordDisplayOverview.style.maxHeight = isFs ? "" : "calc(100vh - 320px)";
       } else {
         chordDisplayOverview.style.overflowY = "";
         chordDisplayOverview.style.maxHeight = "";

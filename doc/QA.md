@@ -1,6 +1,6 @@
 # LiveChord 品管文件
 
-> 版本: 3.0 | 日期: 2026-04-03
+> 版本: 3.3 | 日期: 2026-04-04
 > 和弦引擎: BTC Transformer (ISMIR 2019)
 > 對應規格書: SPEC.md v2.0
 
@@ -466,6 +466,8 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 | 旋律萃取 | pYIN 對純器樂曲效果較差 | 人聲曲目最佳 |
 | 88-Key Mobile | 88 鍵 Canvas 在小螢幕難以操作 | 建議桌面使用 |
 | 教學模式 | Phase 10 開發中，伴奏生成/瀑布流尚未完成 | 預計後續迭代 |
+| 沉浸模式縮放 | Overview/Diagrams 縮放後自動捲動需除以 scale 係數 | 已修復 v3.3 |
+| 下拉選單文字 | 深色主題下 select option 繼承白底白字 | 已修復 v3.3 |
 
 ---
 
@@ -493,7 +495,7 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
    - 播放頁: 三分頁切換、88 鍵、Jazzify、段落標記
    - 管理頁: 掃描、批次偵測、自動排程
    - Benchmark: 執行偵測、對比評分
-7. 佈署同步: 將變更的 backend/frontend 檔案複製到 W:\
+7. 佈署同步: AI agent 負責將變更的 backend/frontend 檔案複製到 W:\ 供人類驗證品質
 8. 重啟生產伺服器，確認 W:\ 上運行正常
 9. 記錄結果: 勾選上方清單，未通過項開 issue
 10. 全部 P0/P1 修復後 → 版本通過
@@ -588,3 +590,4 @@ AI 的每次提交必須附上兩種清單：
 | 3.0 | 2026-04-03 | 全面更新：補齊 AI/Benchmark/Auto Worker API 測試；更新 UI 測試與效能基準 |
 | 3.1 | 2026-04-04 | 新增第 12 節：提案 AI 指法生成與驗證雙軌架構 (Generator-Evaluator Architecture) |
 | 3.2 | 2026-04-04 | 新增第 13 節：邊緣運算與雙引擎批次處理架構 (Super Worker Edge Architecture) |
+| 3.3 | 2026-04-04 | 修復沉浸模式 UI：toolbar grid 佈局、縮放捲動抖動、scrollbar 隱藏、zoom/close 按鈕重疊、select option 深色主題 |
