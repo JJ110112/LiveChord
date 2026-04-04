@@ -155,15 +155,15 @@
   const btnZoomIn = $("#btnZoomIn");
   const btnZoomOut = $("#btnZoomOut");
   const btnZoomReset = $("#btnZoomReset");
-  const chordDisplayEl = $("#chordDisplay");
+  const chordZoomWrap = $("#chordZoomWrap");
 
   function _applyZoom() {
     const pct = ZOOM_STEPS[zoomIdx];
-    if (chordDisplayEl) {
-      chordDisplayEl.style.transformOrigin = "top left";
-      chordDisplayEl.style.transform = `scale(${pct / 100})`;
-      chordDisplayEl.style.width = (10000 / pct) + "%";
-      chordDisplayEl.style.height = (10000 / pct) + "%";
+    if (chordZoomWrap) {
+      chordZoomWrap.style.transformOrigin = "top left";
+      chordZoomWrap.style.transform = `scale(${pct / 100})`;
+      chordZoomWrap.style.width = (10000 / pct) + "%";
+      chordZoomWrap.style.height = (10000 / pct) + "%";
     }
     if (btnZoomReset) btnZoomReset.textContent = pct + "%";
     // persist per-tab
@@ -245,10 +245,10 @@
     // reset visual zoom to 100% for non-fullscreen, but do NOT persist
     // (keep the per-tab fullscreen zoom saved for next enter)
     zoomIdx = ZOOM_STEPS.indexOf(100);
-    if (chordDisplayEl) {
-      chordDisplayEl.style.transform = "scale(1)";
-      chordDisplayEl.style.width = "100%";
-      chordDisplayEl.style.height = "100%";
+    if (chordZoomWrap) {
+      chordZoomWrap.style.transform = "scale(1)";
+      chordZoomWrap.style.width = "100%";
+      chordZoomWrap.style.height = "100%";
     }
     if (btnZoomReset) btnZoomReset.textContent = "100%";
   }
@@ -274,10 +274,10 @@
       if (btnPageFs) btnPageFs.innerHTML = "&#x26F6;";
       // reset visual zoom without persisting (keep saved fullscreen zoom)
       zoomIdx = ZOOM_STEPS.indexOf(100);
-      if (chordDisplayEl) {
-        chordDisplayEl.style.transform = "scale(1)";
-        chordDisplayEl.style.width = "100%";
-        chordDisplayEl.style.height = "100%";
+      if (chordZoomWrap) {
+        chordZoomWrap.style.transform = "scale(1)";
+        chordZoomWrap.style.width = "100%";
+        chordZoomWrap.style.height = "100%";
       }
       if (btnZoomReset) btnZoomReset.textContent = "100%";
     }

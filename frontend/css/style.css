@@ -919,8 +919,18 @@ a:hover { text-decoration: underline; }
   flex-direction: column;
 }
 
+.chord-zoom-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+.chord-display-area.fullscreen .chord-zoom-wrap {
+  overflow: auto;
+  margin-top: 32px;
+}
+
 .chord-display-area.fullscreen .chord-timeline {
-  padding-top: 52px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -929,7 +939,6 @@ a:hover { text-decoration: underline; }
 }
 
 .chord-display-area.fullscreen .chord-ribbon {
-  margin-top: 32px;
 }
 
 /* 88-key piano view */
@@ -952,7 +961,7 @@ a:hover { text-decoration: underline; }
 .chord-display-area.fullscreen .chord-88-keys {
   flex: 1;
   min-height: 0;
-  padding-top: 40px;
+  padding-top: 0;
   justify-content: flex-end;
 }
 .chord-display-area.fullscreen .chord-88-keys canvas {

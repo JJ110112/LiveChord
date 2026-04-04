@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#e94560">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="/css/style.css?v=47">
+  <link rel="stylesheet" href="/css/style.css?v=48">
 </head>
 <body>
 
@@ -143,17 +143,19 @@
         </span>
         <button class="cd-tool-btn" id="btnFullscreen" title="全螢幕">&#x26F6;</button>
       </div>
-      <div id="chordDisplayOverview" class="chord-timeline"></div>
-      <div id="chordDisplayDiagrams" class="chord-ribbon" style="display:none">
-        <div class="ribbon-center-line"></div>
-        <div class="ribbon-track" id="ribbonTrack"></div>
-      </div>
-      <div id="chordDisplay88" class="chord-88-keys" style="display:none">
-        <div id="keys88Ribbon" class="keys88-ribbon">
+      <div id="chordZoomWrap" class="chord-zoom-wrap">
+        <div id="chordDisplayOverview" class="chord-timeline"></div>
+        <div id="chordDisplayDiagrams" class="chord-ribbon" style="display:none">
           <div class="ribbon-center-line"></div>
-          <div class="ribbon-track" id="keys88RibbonTrack"></div>
+          <div class="ribbon-track" id="ribbonTrack"></div>
         </div>
-        <canvas id="piano88Canvas"></canvas>
+        <div id="chordDisplay88" class="chord-88-keys" style="display:none">
+          <div id="keys88Ribbon" class="keys88-ribbon">
+            <div class="ribbon-center-line"></div>
+            <div class="ribbon-track" id="keys88RibbonTrack"></div>
+          </div>
+          <canvas id="piano88Canvas"></canvas>
+        </div>
       </div>
     </div>
   </div>
