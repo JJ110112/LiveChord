@@ -34,7 +34,8 @@
   let waterfallCanvas = null;
   let activeHand = localStorage.getItem("livechord_active_hand") || "both";
   let waterfallCtx = null;
-  let waterfallActive = localStorage.getItem("livechord_waterfall") !== "false";
+  let waterfallActive = true;
+  let show88ChordTones = localStorage.getItem("livechord_show_chord_tones") === "true";
   let teachStyle = localStorage.getItem("livechord_teach_style") || "Arpeggio";
   let teachLevel = localStorage.getItem("livechord_teach_level") || "L1";
   if (!["L1", "L2", "L3"].includes(teachLevel)) teachLevel = "L1";
@@ -80,9 +81,11 @@
   const chordDisplay88 = $("#chordDisplay88");
 
   function _updateHandSwitchVisibility() {
-    const hs = document.querySelector("#handSwitch");
+    const hs = document.querySelector("#handSwitchContainer");
+    const topHs = document.querySelector("#btnTopHandSwitch");
     const ms = document.querySelector("#modeSwitch");
     if (hs) hs.style.display = activeTab === "keys" ? "flex" : "none";
+    if (topHs) topHs.style.display = activeTab === "keys" ? "flex" : "none";
     if (ms) ms.style.display = activeTab === "keys" ? "none" : "flex";
     // Hide zoom controls in keys tab (piano has fixed size)
     const zoomWrap = document.querySelector(".cd-tools-right .fs-only");
@@ -636,8 +639,7 @@
     if (activeHand === "right") activeLh = [];
 
     let chordTones = [];
-    const showChordTonesCheck = document.getElementById("showChordTones");
-    const isChordTonesActive = showChordTonesCheck && showChordTonesCheck.checked && piano88ChordMidis && piano88ChordMidis.length > 0;
+    const isChordTonesActive = show88ChordTones && piano88ChordMidis && piano88ChordMidis.length > 0;
 
     if (isChordTonesActive) {
       chordTones = [...new Set(piano88ChordMidis.map(m => m % 12))];
@@ -695,15 +697,12 @@
     waterfallCanvas = $("#waterfallCanvas");
     if (!waterfallCanvas) return;
     waterfallCtx = waterfallCanvas.getContext("2d");
-    // Activate waterfall if toggle is already checked (default on)
-    const toggle = $("#teachToggle");
-    if (toggle && toggle.checked) {
-      waterfallActive = true;
-      waterfallCanvas.classList.add("active");
-      if (chordDisplay88) chordDisplay88.classList.add("waterfall-active");
-      _loadAccompaniment();
-      setTimeout(_resizeWaterfall, 50);
-    }
+    
+    waterfallActive = true;
+    waterfallCanvas.classList.add("active");
+    if (chordDisplay88) chordDisplay88.classList.add("waterfall-active");
+    _loadAccompaniment();
+    setTimeout(_resizeWaterfall, 50);
   }
 
   function _resizeWaterfall() {
@@ -811,7 +810,16 @@
       allEvents.push(...(accData.left_hand || []).map(e => ({...e, _hand: "left"})));
     }
     if (activeHand === "both" || activeHand === "right") {
-      allEvents.push(...(accData.right_hand || []).map(e => ({...e, _hand: "right"})));
+      let rhEvents = accData.right_hand || [];
+      if (rhEvents.length === 0 && typeof melodyData !== 'undefined' && melodyData) {
+        rhEvents = melodyData.map(m => ({
+          time: m.start,
+          duration: m.end - m.start,
+          pitch: m.midi,
+          finger: null
+        }));
+      }
+      allEvents.push(...rhEvents.map(e => ({...e, _hand: "right"})));
     }
 
     const cache = piano88Cache;
@@ -969,7 +977,7 @@
     const aiBtn = $("#btnTeachAI");
     const toggle = $("#teachToggle");
 
-    const handBtns = document.querySelectorAll("#handSwitch .mode-btn");
+    const handToggleBtns = document.querySelectorAll(".hand-toggle-btn");
 
     if (styleSelect) {
       styleSelect.value = teachStyle;
@@ -996,15 +1004,38 @@
       });
     }
     
-    if (handBtns.length) {
-      handBtns.forEach(btn => {
-        if (btn.dataset.hand === activeHand) btn.classList.add("active");
-        else btn.classList.remove("active");
+    if (handToggleBtns.length) {
+      const updateHandToggleUI = () => {
+        handToggleBtns.forEach(btn => {
+          const lImg = btn.querySelector(".hand-left");
+          const rImg = btn.querySelector(".hand-right");
+          if (lImg && rImg) {
+            lImg.classList.toggle("active", activeHand === "both" || activeHand === "left");
+            rImg.classList.toggle("active", activeHand === "both" || activeHand === "right");
+          }
+          let title = "雙手";
+          if (activeHand === "left") title = "僅左手";
+          if (activeHand === "right") title = "僅右手";
+          btn.title = `切換教學手勢 (${title})`;
+        });
+      };
+      // Init UI state
+      updateHandToggleUI();
+
+      handToggleBtns.forEach(btn => {
         btn.addEventListener("click", () => {
-          handBtns.forEach(b => b.classList.remove("active"));
-          btn.classList.add("active");
-          activeHand = btn.dataset.hand;
+          if (activeHand === "both") {
+            activeHand = "left";
+            showToast("手部切換: 顯示左手");
+          } else if (activeHand === "left") {
+            activeHand = "right";
+            showToast("手部切換: 顯示右手");
+          } else {
+            activeHand = "both";
+            showToast("手部切換: 顯示雙手");
+          }
           localStorage.setItem("livechord_active_hand", activeHand);
+          updateHandToggleUI();
         });
       });
     }
@@ -1028,32 +1059,34 @@
       });
     }
 
-    if (toggle) {
-      toggle.addEventListener("change", () => {
-        waterfallActive = toggle.checked;
-        if (waterfallCanvas) {
-          waterfallCanvas.classList.toggle("active", waterfallActive);
-        }
-        if (chordDisplay88) {
-          chordDisplay88.classList.toggle("waterfall-active", waterfallActive);
-        }
-        if (waterfallActive) {
-          _loadAccompaniment();
-          setTimeout(_resizeWaterfall, 50);
-        }
-      });
-    }
 
-    const toggleChordTones = $("#showChordTones");
-    if (toggleChordTones) {
-      // 預設關閉，並載入之前存檔的狀態
-      const saved = localStorage.getItem("livechord_show_chord_tones");
-      toggleChordTones.checked = (saved === "true");
-      toggleChordTones.addEventListener("change", () => {
-        localStorage.setItem("livechord_show_chord_tones", toggleChordTones.checked);
-        update88Piano(audio.currentTime || 0);
+    const btnShowChordTonesTB = $("#btnShowChordTonesTB");
+    const btnBottomShowChordTones = $("#btnBottomShowChordTones");
+    
+    const updateChordTonesUI = () => {
+      [btnShowChordTonesTB, btnBottomShowChordTones].forEach(btn => {
+        if (!btn) return;
+        if (show88ChordTones) {
+          btn.style.background = "rgba(156, 39, 176, 0.2)";
+          btn.style.textShadow = "0 0 10px rgba(156, 39, 176, 0.8)";
+        } else {
+          btn.style.background = "";
+          btn.style.textShadow = "";
+        }
       });
-    }
+    };
+    // Init state
+    updateChordTonesUI();
+
+    const handleChordTonesToggle = () => {
+      show88ChordTones = !show88ChordTones;
+      localStorage.setItem("livechord_show_chord_tones", show88ChordTones.toString());
+      updateChordTonesUI();
+      update88Piano(audio.currentTime || 0);
+    };
+
+    if (btnShowChordTonesTB) btnShowChordTonesTB.addEventListener("click", handleChordTonesToggle);
+    if (btnBottomShowChordTones) btnBottomShowChordTones.addEventListener("click", handleChordTonesToggle);
   }
 
   // resize observer for 88-key piano

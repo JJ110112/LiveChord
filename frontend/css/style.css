@@ -1085,54 +1085,54 @@ a:hover { text-decoration: underline; }
   display: block;
   position: relative;
   width: 100%;
-  flex: 2; /* Golden ratio part: Chord Ribbon 20% */
-  min-height: 90px;
-  max-height: 20vh;
-  background: var(--bg-hover);
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
-  margin-bottom: -10px; /* pull closer to waterfall */
-  z-index: 2;
-  transition: opacity 0.3s ease, flex 0.3s ease, min-height 0.3s ease;
+  flex: 0 0 60px; /* Fixed small size so it doesn't interfere */
+  margin-top: 10px;
+  background: transparent;
+  box-shadow: none;
+  z-index: 10;
 }
 
-
-/* 88-key ribbon items: text-only, no piano canvas */
+/* 88-key ribbon items: Synthesia-like floating texts */
 .keys88-ribbon-item {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 2px;
   text-align: center;
+  opacity: 0.5;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 .keys88-ribbon-item .chord-name {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
+  color: #eeeeee;
 }
 .keys88-ribbon-item .chord-jianpu {
-  font-size: 13px;
-  color: #9c27b0; /* 紫色代表抽象理論 */
-  opacity: 0.85;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
 }
 .keys88-ribbon-item .melody-jianpu {
-  font-size: 12px;
-  color: #ff9800; /* 橘色代表旋律 */
-  opacity: 0.8;
+  font-size: 11px;
+  color: rgba(255, 152, 0, 0.7);
   letter-spacing: 1px;
   margin-top: 2px;
 }
-.keys88-ribbon-item.active .chord-name {
-  font-size: 28px;
-  text-shadow: 0 0 12px rgba(233,69,96,0.6);
-}
-.keys88-ribbon-item.active .chord-jianpu {
+.keys88-ribbon-item.active {
   opacity: 1;
-  font-size: 15px;
+  transform: scale(1.1) translateY(-2px);
+  z-index: 10;
+}
+.keys88-ribbon-item.active .chord-name {
+  font-size: 24px;
+  color: #fff;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+  border-bottom: 3px solid #a23beb;
+  padding-bottom: 2px;
+  display: inline-block;
 }
 .keys88-ribbon-item.active .melody-jianpu {
-  opacity: 1;
-  font-size: 14px;
+  color: #ffcc80;
+  font-size: 12px;
 }
 
 /* 非全螢幕時隱藏播放控制/曲名/縮放 */
@@ -1379,4 +1379,41 @@ a:hover { text-decoration: underline; }
   display: block;
   margin-left: 0 !important;
   margin-top: 4px;
+}
+
+/* 統合版左右手切換按鈕 */
+.hand-toggle-btn {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 6px !important;
+  width: auto !important;
+  height: 28px !important;
+  background: transparent !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  cursor: pointer;
+  transition: all 0.15s ease !important;
+}
+.hand-toggle-btn:hover {
+  background: var(--bg-hover) !important;
+}
+.hand-icon {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  opacity: 0.3;
+  filter: grayscale(100%);
+  transition: all 0.2s ease-in-out;
+}
+.hand-icon.active {
+  opacity: 0.95;
+  filter: none;
+}
+.hand-icon.hand-left.active {
+  filter: drop-shadow(0 0 6px rgba(41, 182, 246, 0.6));
+}
+.hand-icon.hand-right.active {
+  filter: drop-shadow(0 0 6px rgba(255, 152, 0, 0.6));
 }

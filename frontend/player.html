@@ -95,6 +95,14 @@
         <a id="btnEdit" class="toolbar-btn tb-icon" style="text-decoration:none" title="編輯和弦譜">&#x270F;</a>
         <button id="btnAiSuggest" class="toolbar-btn tb-icon" style="color:#4caf50" title="AI 建議下一個和弦">&#x1F4A1;</button>
         <button id="btnJazzify" class="toolbar-btn tb-icon" style="color:#ff9800" title="Jazzify L1/L2/L3">&#x1F3B7;</button>
+        <!-- 組成音切換按鈕 -->
+        <button id="btnShowChordTonesTB" class="toolbar-btn tb-icon" style="color:#9c27b0; transition: all 0.2s;" title="顯示鍵盤和弦組成音">&#x1F3B5;</button>
+
+        <!-- 左右手開關 (統合) -->
+        <button id="btnTopHandSwitch" class="toolbar-btn hand-toggle-btn" style="margin-left:8px;" title="切換教學手勢 (雙手)">
+          <img src="/img/left-hand.png" class="hand-icon hand-left active" alt="L">
+          <img src="/img/right-hand.png" class="hand-icon hand-right active" alt="R">
+        </button>
       </div>
 
       <div style="display:flex;align-items:center;gap:6px">
@@ -163,13 +171,14 @@
             <button class="mode-btn" data-level="L2">進階</button>
             <button class="mode-btn" data-level="L3">大師</button>
           </div>
-          <div id="handSwitch" class="teach-level-group" style="display:flex;gap:2px">
-            <button class="mode-btn active" data-hand="both" title="雙手">LR</button>
-            <button class="mode-btn" data-hand="left" title="僅左手">L</button>
-            <button class="mode-btn" data-hand="right" title="僅右手">R</button>
+          <!-- 左右手開關 (統合) -->
+          <div id="handSwitchContainer" style="display:flex; align-items:center; margin-left:4px; margin-right:8px;">
+            <button id="btnBottomHandSwitch" class="toolbar-btn hand-toggle-btn" title="切換教學手勢 (雙手)">
+              <img src="/img/left-hand.png" class="hand-icon hand-left active" alt="L">
+              <img src="/img/right-hand.png" class="hand-icon hand-right active" alt="R">
+            </button>
           </div>
-          <label class="teach-toggle" title="教學瀑布流"><input type="checkbox" id="teachToggle" checked><span>Waterfall</span></label>
-          <label class="teach-toggle" title="全域顯示該和弦的所有組成音位置"><input type="checkbox" id="showChordTones"><span>組成音</span></label>
+          <button id="btnBottomShowChordTones" class="toolbar-btn tb-icon" style="color:#9c27b0; transition: all 0.2s;" title="顯示鍵盤和弦組成音">&#x1F3B5;</button>
         </div>
       </div>
     </div>
