@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#e94560">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="/css/style.css?v=53">
+  <link rel="stylesheet" href="/css/style.css?v=54">
 </head>
 <body>
 
@@ -132,53 +132,72 @@
       </div>
     </div>
     <div id="chordDisplay" class="chord-display-area">
-      <div class="chord-display-tools cd-tools-left fs-only">
-        <button class="cd-tool-btn" id="btnMiniPrev" title="上一首">&#x23EE;</button>
-        <button class="cd-tool-btn" id="btnMiniPlay" title="播放/暫停">&#x25B6;</button>
-        <button class="cd-tool-btn" id="btnMiniNext" title="下一首">&#x23ED;</button>
-        <button class="cd-tool-btn" id="btnMiniSpeed" title="播放速度">1x</button>
-      </div>
-      <div class="chord-display-tools cd-tools-center fs-only">
-        <span class="mini-title-wrap"><span class="mini-title" id="miniTitle"></span></span>
+      <div class="chord-display-tools fs-only" style="left: 4px; right: 4px; display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; height: auto; pointer-events: none;">
+        <div style="display: flex; gap: 16px; align-items: center; background: rgba(15,15,15,0.3); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-radius: 10px; padding: 4px 12px; pointer-events: auto; justify-self: start; max-width: 100%; overflow: hidden;">
+          <div style="display: flex; gap: 2px; flex-shrink: 0;">
+            <button class="cd-tool-btn" id="btnMiniPrev" title="上一首">&#x23EE;</button>
+            <button class="cd-tool-btn" id="btnMiniPlay" title="播放/暫停">&#x25B6;</button>
+            <button class="cd-tool-btn" id="btnMiniNext" title="下一首">&#x23ED;</button>
+            <button class="cd-tool-btn" id="btnMiniSpeed" title="播放速度">1x</button>
+          </div>
+          <div class="fs-progress-container" style="display: flex; align-items: center; width: 160px; min-width: 100px; gap: 8px; flex-shrink: 1;">
+            <span id="fsTimeCurrent" class="time-label" style="min-width: 32px; text-align: right; flex-shrink: 0;">0:00</span>
+            <div class="progress-bar" id="fsProgressBar" style="flex:1; min-width: 0;">
+              <div class="progress" id="fsProgress" style="width:0%"></div>
+            </div>
+            <span id="fsTimeDuration" class="time-label" style="min-width: 32px; text-align: left; flex-shrink: 0;">0:00</span>
+          </div>
+        </div>
+        <div style="display: flex; justify-content: center; min-width: 0; padding-top: 2px;">
+          <div style="display: inline-flex; align-items: center; background: rgba(15,15,15,0.3); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-radius: 10px; padding: 5px 16px; pointer-events: auto; max-width: 100%; overflow: hidden;">
+            <span class="mini-title-wrap" style="height: auto; overflow: hidden;"><span class="mini-title" id="miniTitle"></span></span>
+          </div>
+        </div>
+        <div style="display: flex; gap: 2px; align-items: center; justify-self: end; pointer-events: auto;">
+          <button class="cd-tool-btn" id="btnZoomOut" title="縮小">−</button>
+          <button class="cd-tool-btn" id="btnZoomReset" title="重設">100%</button>
+          <button class="cd-tool-btn" id="btnZoomIn" title="放大">+</button>
+        </div>
       </div>
       <div class="chord-display-tools cd-tools-right">
-
         <button class="cd-tool-btn" id="btnFullscreen" title="全螢幕">&#x26F6;</button>
       </div>
-      <div id="chordDisplayOverview" class="chord-timeline"></div>
-      <div id="chordDisplayDiagrams" class="chord-ribbon" style="display:none">
-        <div class="ribbon-center-line"></div>
-        <div class="ribbon-track" id="ribbonTrack"></div>
-      </div>
-      <div id="chordDisplay88" class="chord-88-keys" style="display:none">
-        <div id="keys88Ribbon" class="keys88-ribbon">
+      <div id="chordDisplayScaleTarget" style="flex:1; display:flex; flex-direction:column; transform-origin:top left; min-height:0; width:100%; overflow:hidden;">
+        <div id="chordDisplayOverview" class="chord-timeline"></div>
+        <div id="chordDisplayDiagrams" class="chord-ribbon" style="display:none">
           <div class="ribbon-center-line"></div>
-          <div class="ribbon-track" id="keys88RibbonTrack"></div>
+          <div class="ribbon-track" id="ribbonTrack"></div>
         </div>
-        <canvas id="waterfallCanvas" class="waterfall-canvas"></canvas>
-        <canvas id="piano88Canvas"></canvas>
-        <div id="teachControls" class="teach-controls">
-          <button id="btnTeachAI" class="toolbar-btn" title="AI 推薦風格">AI</button>
-          <select id="teachStyle" class="toolbar-select" title="伴奏風格">
-            <option value="Block">Block (柱狀和弦)</option>
-            <option value="Arpeggio" selected>Flow (分解伴奏)</option>
-            <option value="Rhythm">Rhythm (節奏)</option>
-            <option value="Walking">Pro (Jazz Walking)</option>
-            <option value="Stride">Pro (Stride)</option>
-          </select>
-          <div id="levelSwitch" class="teach-level-group">
-            <button class="mode-btn active" data-level="L1">基礎</button>
-            <button class="mode-btn" data-level="L2">進階</button>
-            <button class="mode-btn" data-level="L3">大師</button>
+        <div id="chordDisplay88" class="chord-88-keys" style="display:none">
+          <div id="keys88Ribbon" class="keys88-ribbon">
+            <div class="ribbon-center-line"></div>
+            <div class="ribbon-track" id="keys88RibbonTrack"></div>
           </div>
-          <!-- 左右手開關 (統合) -->
-          <div id="handSwitchContainer" style="display:flex; align-items:center; margin-left:4px; margin-right:8px;">
-            <button id="btnBottomHandSwitch" class="toolbar-btn hand-toggle-btn" title="切換教學手勢 (雙手)">
-              <img src="/img/left-hand.png" class="hand-icon hand-left active" alt="L">
-              <img src="/img/right-hand.png" class="hand-icon hand-right active" alt="R">
-            </button>
+          <canvas id="waterfallCanvas" class="waterfall-canvas"></canvas>
+          <canvas id="piano88Canvas"></canvas>
+          <div id="teachControls" class="teach-controls">
+            <button id="btnTeachAI" class="toolbar-btn" title="AI 推薦風格">AI</button>
+            <select id="teachStyle" class="toolbar-select" title="伴奏風格">
+              <option value="Block">Block (柱狀和弦)</option>
+              <option value="Arpeggio" selected>Flow (分解伴奏)</option>
+              <option value="Rhythm">Rhythm (節奏)</option>
+              <option value="Walking">Pro (Jazz Walking)</option>
+              <option value="Stride">Pro (Stride)</option>
+            </select>
+            <div id="levelSwitch" class="teach-level-group">
+              <button class="mode-btn active" data-level="L1">基礎</button>
+              <button class="mode-btn" data-level="L2">進階</button>
+              <button class="mode-btn" data-level="L3">大師</button>
+            </div>
+            <!-- 左右手開關 (統合) -->
+            <div id="handSwitchContainer" style="display:flex; align-items:center; margin-left:4px; margin-right:8px;">
+              <button id="btnBottomHandSwitch" class="toolbar-btn hand-toggle-btn" title="切換教學手勢 (雙手)">
+                <img src="/img/left-hand.png" class="hand-icon hand-left active" alt="L">
+                <img src="/img/right-hand.png" class="hand-icon hand-right active" alt="R">
+              </button>
+            </div>
+            <button id="btnBottomShowChordTones" class="toolbar-btn tb-icon" style="color:#9c27b0; transition: all 0.2s;" title="顯示鍵盤和弦組成音">&#x1F3B5;</button>
           </div>
-          <button id="btnBottomShowChordTones" class="toolbar-btn tb-icon" style="color:#9c27b0; transition: all 0.2s;" title="顯示鍵盤和弦組成音">&#x1F3B5;</button>
         </div>
       </div>
     </div>

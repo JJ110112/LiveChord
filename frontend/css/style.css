@@ -956,8 +956,12 @@ a:hover { text-decoration: underline; }
   flex-direction: column;
 }
 
+.chord-display-area.fullscreen #chordDisplayScaleTarget {
+  margin-top: 40px;
+  overflow: auto;
+}
+
 .chord-display-area.fullscreen .chord-timeline {
-  padding-top: 52px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -966,7 +970,6 @@ a:hover { text-decoration: underline; }
 }
 
 .chord-display-area.fullscreen .chord-ribbon {
-  margin-top: 32px;
 }
 
 /* 88-key piano view */

@@ -58,8 +58,12 @@
   const btnFav = $("#btnFav");
   const progressBar = $("#progressBar");
   const progress = $("#progress");
+  const fsProgressBar = $("#fsProgressBar");
+  const fsProgress = $("#fsProgress");
   const timeCurrent = $("#timeCurrent");
+  const fsTimeCurrent = $("#fsTimeCurrent");
   const timeDuration = $("#timeDuration");
+  const fsTimeDuration = $("#fsTimeDuration");
   const volumeSlider = $("#volumeSlider");
   const chordDisplayOverview = $("#chordDisplayOverview");
   const chordDisplayDiagrams = $("#chordDisplayDiagrams");
@@ -190,11 +194,18 @@
     } else {
       pct = 100; // Normal mode is always 100%
     }
-    if (chordDisplayEl) {
-      chordDisplayEl.style.transformOrigin = "top left";
-      chordDisplayEl.style.transform = `scale(${pct / 100})`;
-      chordDisplayEl.style.width = (10000 / pct) + "%";
-      chordDisplayEl.style.height = (10000 / pct) + "%";
+    const scaleTarget = document.getElementById("chordDisplayScaleTarget") || chordDisplayEl;
+    if (scaleTarget) {
+      scaleTarget.style.transformOrigin = "top left";
+      scaleTarget.style.transform = `scale(${pct / 100})`;
+      scaleTarget.style.width = (10000 / pct) + "%";
+      // To properly handle flex inside, min-height needs to be 0
+      scaleTarget.style.height = (10000 / pct) + "%";
+      if(scaleTarget.id === "chordDisplayScaleTarget") {
+         chordDisplayEl.style.transform = "none";
+         chordDisplayEl.style.width = "100%";
+         chordDisplayEl.style.height = "100%";
+      }
     }
     if (btnZoomReset) btnZoomReset.textContent = pct + "%";
   }
@@ -1633,6 +1644,7 @@
 
   audio.addEventListener("loadedmetadata", () => {
     timeDuration.textContent = formatTime(audio.duration);
+    if(fsTimeDuration) fsTimeDuration.textContent = formatTime(audio.duration);
   });
 
   // requestAnimationFrame 同步
@@ -1643,7 +1655,9 @@
       const t = audio.currentTime;
       const d = audio.duration || 1;
       progress.style.width = (t / d * 100) + "%";
+      if(fsProgress) fsProgress.style.width = progress.style.width;
       timeCurrent.textContent = formatTime(t);
+      if(fsTimeCurrent) fsTimeCurrent.textContent = formatTime(t);
       updateActiveChord(t);
       if (activeTab === "keys") {
         update88Piano(t);
@@ -1662,7 +1676,9 @@
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     const t = audio.currentTime;
     progress.style.width = (t / (audio.duration || 1) * 100) + "%";
+    if(fsProgress) fsProgress.style.width = progress.style.width;
     timeCurrent.textContent = formatTime(t);
+    if(fsTimeCurrent) fsTimeCurrent.textContent = formatTime(t);
     updateActiveChord(t);
     if (activeTab === "keys") {
       update88Piano(t);
@@ -1673,7 +1689,9 @@
   audio.addEventListener("seeked", () => {
     const t = audio.currentTime;
     progress.style.width = (t / (audio.duration || 1) * 100) + "%";
+    if(fsProgress) fsProgress.style.width = progress.style.width;
     timeCurrent.textContent = formatTime(t);
+    if(fsTimeCurrent) fsTimeCurrent.textContent = formatTime(t);
     updateActiveChord(t);
     if (activeTab === "keys") { piano88LastIdx = -1; update88Piano(t); }
   });
@@ -1755,6 +1773,25 @@
   });
   progressBar.addEventListener("pointerup", () => { _draggingProgress = false; });
   progressBar.addEventListener("pointercancel", () => { _draggingProgress = false; });
+
+  if (fsProgressBar) {
+    let _draggingFsProgress = false;
+    function _seekFromFsPointer(e) {
+      const rect = fsProgressBar.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      audio.currentTime = pct * (audio.duration || 0);
+    }
+    fsProgressBar.addEventListener("pointerdown", (e) => {
+      _draggingFsProgress = true;
+      fsProgressBar.setPointerCapture(e.pointerId);
+      _seekFromFsPointer(e);
+    });
+    fsProgressBar.addEventListener("pointermove", (e) => {
+      if (_draggingFsProgress) _seekFromFsPointer(e);
+    });
+    fsProgressBar.addEventListener("pointerup", () => { _draggingFsProgress = false; });
+    fsProgressBar.addEventListener("pointercancel", () => { _draggingFsProgress = false; });
+  }
 
   // 還原上次音量
   const savedVol = localStorage.getItem("livechord_volume");
