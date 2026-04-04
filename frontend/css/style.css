@@ -1,5 +1,7 @@
 /* LiveChord — 全站樣式 */
 
+/* ========== [COMPONENT: ROOT & GLOBAL] ========== */
+
 :root {
   --bg: #0d1117;
   --bg-card: rgba(22, 27, 34, 0.7);
@@ -12,6 +14,17 @@
   --radius: 12px;
   --shadow: 0 4px 16px rgba(0,0,0,.4);
   --glass-blur: blur(12px);
+
+  /* Purple chord gradient & glow (shared across active chord badges) */
+  --chord-gradient:
+    linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 38%, transparent 50%),
+    linear-gradient(180deg, #9b49db 0%, #7c3aed 30%, #6d28d9 60%, #5b21b6 100%);
+  --chord-glow:
+    0 0 24px rgba(147,51,234,0.5),
+    0 0 48px rgba(147,51,234,0.25),
+    inset 0 1px 2px rgba(255,255,255,0.35),
+    inset 0 -1px 2px rgba(0,0,0,0.2);
+  --chord-text-shadow: 0 0 14px rgba(255,255,255,0.4), 0 1px 2px rgba(0,0,0,0.3);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -26,7 +39,10 @@ body {
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-/* ---------- header ---------- */
+/* ========== [END: ROOT & GLOBAL] ========== */
+
+
+/* ========== [COMPONENT: HEADER] ========== */
 
 .header {
   display: flex;
@@ -118,7 +134,10 @@ a:hover { text-decoration: underline; }
   border-color: var(--accent);
 }
 
-/* ---------- tabs ---------- */
+/* ========== [END: HEADER] ========== */
+
+
+/* ========== [COMPONENT: TABS] ========== */
 
 .tabs {
   display: flex;
@@ -144,15 +163,16 @@ a:hover { text-decoration: underline; }
   border-bottom-color: var(--accent);
 }
 
-/* ---------- main content ---------- */
+/* ========== [END: TABS] ========== */
+
+
+/* ========== [COMPONENT: LAYOUT] ========== */
 
 .content {
   padding: 20px 24px;
   max-width: 1200px;
   margin: 0 auto;
 }
-
-/* ---------- breadcrumb ---------- */
 
 .breadcrumb {
   display: flex;
@@ -168,7 +188,10 @@ a:hover { text-decoration: underline; }
 .breadcrumb a:hover { color: var(--accent); }
 .breadcrumb .sep { color: #555; }
 
-/* ---------- grid ---------- */
+/* ========== [END: LAYOUT] ========== */
+
+
+/* ========== [COMPONENT: GRID] ========== */
 
 .grid {
   display: grid;
@@ -241,7 +264,10 @@ a:hover { text-decoration: underline; }
   margin-top: 4px;
 }
 
-/* ---------- track list ---------- */
+/* ========== [END: GRID] ========== */
+
+
+/* ========== [COMPONENT: TRACK LIST] ========== */
 
 .track-list {
   list-style: none;
@@ -278,7 +304,10 @@ a:hover { text-decoration: underline; }
   font-size: 13px;
 }
 
-/* ---------- search results ---------- */
+/* ========== [END: TRACK LIST] ========== */
+
+
+/* ========== [COMPONENT: SEARCH RESULTS] ========== */
 
 .search-results {
   position: absolute;
@@ -335,7 +364,10 @@ a:hover { text-decoration: underline; }
   color: var(--text-dim);
 }
 
-/* ---------- empty state ---------- */
+/* ========== [END: SEARCH RESULTS] ========== */
+
+
+/* ========== [COMPONENT: EMPTY STATE & LOADING] ========== */
 
 .empty {
   text-align: center;
@@ -345,8 +377,6 @@ a:hover { text-decoration: underline; }
 
 .empty .icon { font-size: 48px; margin-bottom: 12px; }
 .empty .msg { font-size: 15px; }
-
-/* ---------- loading ---------- */
 
 .loading {
   text-align: center;
@@ -366,7 +396,10 @@ a:hover { text-decoration: underline; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ---------- player page ---------- */
+/* ========== [END: EMPTY STATE & LOADING] ========== */
+
+
+/* ========== [COMPONENT: PLAYER PAGE] ========== */
 
 .player-page {
   max-width: 900px;
@@ -467,7 +500,10 @@ a:hover { text-decoration: underline; }
   color: var(--text-dim);
 }
 
-/* audio controls */
+/* ========== [END: PLAYER PAGE] ========== */
+
+
+/* ========== [COMPONENT: AUDIO CONTROLS] ========== */
 
 .audio-controls {
   background: var(--bg-card);
@@ -594,7 +630,10 @@ a:hover { text-decoration: underline; }
   accent-color: var(--accent);
 }
 
-/* chord toolbar */
+/* ========== [END: AUDIO CONTROLS] ========== */
+
+
+/* ========== [COMPONENT: CHORD TOOLBAR] ========== */
 
 .chord-toolbar {
   display: flex;
@@ -672,7 +711,10 @@ a:hover { text-decoration: underline; }
   border-color: var(--accent);
 }
 
-/* detect overlay */
+/* ========== [END: CHORD TOOLBAR] ========== */
+
+
+/* ========== [COMPONENT: DETECT OVERLAY] ========== */
 
 .detect-overlay {
   position: fixed;
@@ -719,7 +761,10 @@ a:hover { text-decoration: underline; }
   50% { transform: scaleY(1); transform-origin: bottom; opacity: 1; filter: drop-shadow(0 0 6px rgba(233,69,96, 0.6)); }
 }
 
-/* current chord big display */
+/* ========== [END: DETECT OVERLAY] ========== */
+
+
+/* ========== [COMPONENT: CURRENT CHORD BIG] ========== */
 
 .current-chord-big {
   text-align: center;
@@ -739,17 +784,11 @@ a:hover { text-decoration: underline; }
   display: inline-block;
   padding: 6px 24px;
   border-radius: 14px;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 38%, transparent 50%),
-    linear-gradient(180deg, #9b49db 0%, #7c3aed 30%, #6d28d9 60%, #5b21b6 100%);
+  background: var(--chord-gradient);
   border: 1.5px solid rgba(255,255,255,0.2);
   border-bottom-color: rgba(80,30,160,0.5);
-  box-shadow:
-    0 0 24px rgba(147,51,234,0.5),
-    0 0 48px rgba(147,51,234,0.25),
-    inset 0 1px 2px rgba(255,255,255,0.35),
-    inset 0 -1px 2px rgba(0,0,0,0.2);
-  text-shadow: 0 0 14px rgba(255,255,255,0.4), 0 1px 2px rgba(0,0,0,0.3);
+  box-shadow: var(--chord-glow);
+  text-shadow: var(--chord-text-shadow);
 }
 
 .big-chord-jianpu {
@@ -761,7 +800,118 @@ a:hover { text-decoration: underline; }
 
 .big-chord-jianpu sup { font-size: 15px; }
 
-/* chord ribbon (diagrams view) */
+/* ========== [END: CURRENT CHORD BIG] ========== */
+
+
+/* ========== [COMPONENT: CHORD SECTION & DISPLAY AREA] ========== */
+
+.chord-section {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.chord-section h3 {
+  font-size: 16px;
+  margin-bottom: 12px;
+  color: var(--text-dim);
+}
+
+.chord-display-area {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* --- fullscreen override --- */
+.chord-display-area.fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  overflow: hidden;
+  background: var(--bg);
+  padding: 8px;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chord-display-area.fullscreen #chordDisplayScaleTarget {
+  margin-top: 40px;
+  overflow: auto !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.chord-display-area.fullscreen #chordDisplayScaleTarget::-webkit-scrollbar {
+  display: none;
+}
+
+/* ========== [END: CHORD SECTION & DISPLAY AREA] ========== */
+
+
+/* ========== [COMPONENT: CHORD DISPLAY TOOLS] ========== */
+
+.chord-display-tools {
+  position: absolute;
+  top: 6px;
+  z-index: 20;
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  height: 26px;
+}
+.cd-tools-left { left: 4px; }
+.cd-tools-center { left: 50%; transform: translateX(-50%); z-index: 25; background: rgba(15,15,15,0.3); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-radius: 10px; padding: 2px 12px; max-width: 42%; }
+.cd-tools-right { right: 4px; }
+.cd-tool-btn {
+  background: rgba(255,255,255,0.08);
+  border: none;
+  border-radius: 4px;
+  color: rgba(255,255,255,0.35);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 7px;
+  transition: all .15s;
+}
+.cd-tool-btn:hover {
+  background: rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.8);
+}
+.cd-tool-btn.modified {
+  color: var(--accent);
+}
+
+.mini-title-wrap {
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+.mini-title {
+  display: inline-block;
+  white-space: nowrap;
+  font-size: 12px;
+  color: rgba(255,255,255,0.5);
+  line-height: 1;
+}
+.mini-title.marquee {
+  animation: marquee 10s linear infinite;
+}
+@keyframes marquee {
+  0%   { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+/* ========== [END: CHORD DISPLAY TOOLS] ========== */
+
+
+/* ========== [COMPONENT: CHORD RIBBON] ========== */
 
 .chord-ribbon {
   position: relative;
@@ -850,9 +1000,7 @@ a:hover { text-decoration: underline; }
 .ribbon-item.active .chord-name {
   font-size: 36px;
   color: #fff;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 38%, transparent 50%),
-    linear-gradient(180deg, #9b49db 0%, #7c3aed 30%, #6d28d9 60%, #5b21b6 100%);
+  background: var(--chord-gradient);
   border: 1.5px solid rgba(255,255,255,0.2);
   border-bottom-color: rgba(80,30,160,0.5);
   border-radius: 14px;
@@ -914,115 +1062,15 @@ a:hover { text-decoration: underline; }
   z-index: 10;
 }
 
-/* chord display */
-
-.chord-section {
-  background: var(--bg-card);
-  border-radius: var(--radius);
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-}
-
-.chord-display-area {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.chord-display-tools {
-  position: absolute;
-  top: 6px;
-  z-index: 20;
-  display: flex;
-  gap: 2px;
-  align-items: center;
-  height: 26px;
-}
-.cd-tools-left { left: 4px; }
-.cd-tools-center { left: 50%; transform: translateX(-50%); z-index: 25; background: rgba(15,15,15,0.3); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-radius: 10px; padding: 2px 12px; max-width: 42%; }
-.cd-tools-right { right: 4px; }
-.cd-tool-btn {
-  background: rgba(255,255,255,0.08);
-  border: none;
-  border-radius: 4px;
-  color: rgba(255,255,255,0.35);
-  cursor: pointer;
-  font-size: 12px;
-  padding: 3px 7px;
-  transition: all .15s;
-}
-.cd-tool-btn:hover {
-  background: rgba(255,255,255,0.15);
-  color: rgba(255,255,255,0.8);
-}
-.cd-tool-btn.modified {
-  color: var(--accent);
-}
-
-.mini-title-wrap {
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  height: 100%;
-}
-.mini-title {
-  display: inline-block;
-  white-space: nowrap;
-  font-size: 12px;
-  color: rgba(255,255,255,0.5);
-  line-height: 1;
-}
-.mini-title.marquee {
-  animation: marquee 10s linear infinite;
-}
-@keyframes marquee {
-  0%   { transform: translateX(100%); }
-  100% { transform: translateX(-100%); }
-}
-
-.chord-display-area.fullscreen {
-  position: fixed;
-  inset: 0;
-  z-index: 500;
-  overflow: hidden;
-  background: var(--bg);
-  padding: 8px;
-  border-radius: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.chord-display-area.fullscreen #chordDisplayScaleTarget {
-  margin-top: 40px;
-  overflow: auto !important;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-.chord-display-area.fullscreen #chordDisplayScaleTarget::-webkit-scrollbar {
-  display: none;
-}
-
-.chord-display-area.fullscreen .chord-timeline {
-  padding-top: 24px;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-.chord-display-area.fullscreen .chord-timeline::-webkit-scrollbar {
-  display: none;
-}
-
+/* --- fullscreen override --- */
 .chord-display-area.fullscreen .chord-ribbon {
 }
 
-/* 88-key piano view */
+/* ========== [END: CHORD RIBBON] ========== */
+
+
+/* ========== [COMPONENT: 88-KEY PIANO] ========== */
+
 .chord-88-keys {
   display: flex;
   flex-direction: column;
@@ -1038,34 +1086,117 @@ a:hover { text-decoration: underline; }
   display: block;
   image-rendering: crisp-edges;
 }
+
 .keys88-ribbon {
   display: none;  /* hidden in non-fullscreen */
 }
 .keys88-ribbon > .ribbon-center-line { top: 22px; }
 .keys88-ribbon > .ribbon-track { top: 22px; height: calc(100% - 22px); }
 
-/* Waterfall canvas */
+/* 88-key ribbon items: Synthesia-like floating texts */
+.keys88-ribbon-item {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-align: center;
+  opacity: 0.5;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.keys88-ribbon-item .chord-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #eeeeee;
+}
+.keys88-ribbon-item .chord-jianpu {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+}
+.keys88-ribbon-item .melody-jianpu {
+  font-size: 11px;
+  color: rgba(255, 152, 0, 0.7);
+  letter-spacing: 1px;
+  margin-top: 2px;
+}
+.keys88-ribbon-item.active {
+  opacity: 1;
+  transform-origin: top center;
+  transform: scale(1.05);
+  z-index: 10;
+}
+.keys88-ribbon-item.active .chord-name {
+  font-size: 18px;
+  color: #fff;
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 8px;
+  background: var(--chord-gradient);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-bottom-color: rgba(80,30,160,0.5);
+  box-shadow:
+    0 0 16px rgba(147,51,234,0.5),
+    0 0 32px rgba(147,51,234,0.2),
+    inset 0 1px 2px rgba(255,255,255,0.35),
+    inset 0 -1px 2px rgba(0,0,0,0.2);
+  text-shadow: 0 0 10px rgba(255,255,255,0.4), 0 1px 2px rgba(0,0,0,0.3);
+}
+.keys88-ribbon-item.active .melody-jianpu {
+  color: #ffcc80;
+  font-size: 12px;
+}
+
+/* --- fullscreen overrides --- */
+.chord-display-area.fullscreen .chord-88-keys {
+  flex: 5;
+  min-height: 0;
+  padding-top: 0;
+  justify-content: flex-end;
+}
+.chord-display-area.fullscreen .chord-88-keys canvas#piano88Canvas {
+  flex-shrink: 0;
+  margin-top: auto;
+}
+.chord-display-area.fullscreen .keys88-ribbon {
+  display: block;
+  position: relative;
+  width: 100%;
+  flex: 0 0 120px;
+  margin-top: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+  z-index: 10;
+}
+
+/* ========== [END: 88-KEY PIANO] ========== */
+
+
+/* ========== [COMPONENT: WATERFALL] ========== */
+
 .waterfall-canvas {
   display: none;
   width: 100%;
   image-rendering: crisp-edges;
 }
+
+/* --- fullscreen override --- */
 .chord-display-area.fullscreen .waterfall-canvas.active {
   display: block;
   flex: 4; /* Golden ratio part: Waterfall 40% */
   min-height: 120px;
 }
 
-/* Teaching controls bar */
+/* ========== [END: WATERFALL] ========== */
+
+
+/* ========== [COMPONENT: TEACH CONTROLS] ========== */
+
 .teach-controls {
   display: none;
   align-items: center;
   gap: 8px;
   padding: 4px 8px;
   font-size: 12px;
-}
-.chord-display-area.fullscreen .teach-controls {
-  display: flex;
 }
 .teach-controls select {
   background: rgba(255, 255, 255, 0.05);
@@ -1115,86 +1246,26 @@ a:hover { text-decoration: underline; }
 .teach-toggle input:checked + span {
   color: var(--accent);
 }
-.chord-display-area.fullscreen .chord-88-keys {
-  flex: 5;
-  min-height: 0;
-  padding-top: 0;
-  justify-content: flex-end;
-}
-.chord-display-area.fullscreen .chord-88-keys canvas#piano88Canvas {
-  flex-shrink: 0;
-  margin-top: auto;
-}
-.chord-display-area.fullscreen .keys88-ribbon {
-  display: block;
-  position: relative;
-  width: 100%;
-  flex: 0 0 120px;
-  margin-top: 0;
-  background: transparent;
-  box-shadow: none;
-  overflow: visible;
-  z-index: 10;
+
+/* --- fullscreen override --- */
+.chord-display-area.fullscreen .teach-controls {
+  display: flex;
 }
 
-/* 88-key ribbon items: Synthesia-like floating texts */
-.keys88-ribbon-item {
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  text-align: center;
-  opacity: 0.5;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-}
-.keys88-ribbon-item .chord-name {
-  font-size: 18px;
-  font-weight: 700;
-  color: #eeeeee;
-}
-.keys88-ribbon-item .chord-jianpu {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.6);
-}
-.keys88-ribbon-item .melody-jianpu {
-  font-size: 11px;
-  color: rgba(255, 152, 0, 0.7);
-  letter-spacing: 1px;
-  margin-top: 2px;
-}
-.keys88-ribbon-item.active {
-  opacity: 1;
-  transform-origin: top center;
-  transform: scale(1.05);
-  z-index: 10;
-}
-.keys88-ribbon-item.active .chord-name {
-  font-size: 18px;
-  color: #fff;
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 38%, transparent 50%),
-    linear-gradient(180deg, #9b49db 0%, #7c3aed 30%, #6d28d9 60%, #5b21b6 100%);
-  border: 1px solid rgba(255,255,255,0.2);
-  border-bottom-color: rgba(80,30,160,0.5);
-  box-shadow:
-    0 0 16px rgba(147,51,234,0.5),
-    0 0 32px rgba(147,51,234,0.2),
-    inset 0 1px 2px rgba(255,255,255,0.35),
-    inset 0 -1px 2px rgba(0,0,0,0.2);
-  text-shadow: 0 0 10px rgba(255,255,255,0.4), 0 1px 2px rgba(0,0,0,0.3);
-}
-.keys88-ribbon-item.active .melody-jianpu {
-  color: #ffcc80;
-  font-size: 12px;
-}
+/* ========== [END: TEACH CONTROLS] ========== */
+
+
+/* ========== [COMPONENT: FULLSCREEN UTILITIES] ========== */
 
 /* 非全螢幕時隱藏播放控制/曲名/縮放 */
 .fs-only { display: none !important; }
 .chord-display-area.fullscreen .fs-only { display: grid !important; }
 .chord-display-area.fullscreen .fs-only[style*="display:contents"] { display: contents !important; }
+
+/* ========== [END: FULLSCREEN UTILITIES] ========== */
+
+
+/* ========== [COMPONENT: CHORD SOURCE BADGE] ========== */
 
 .chord-source-badge {
   display: inline-flex;
@@ -1226,11 +1297,10 @@ a:hover { text-decoration: underline; }
 .chord-source-badge.src-btc { background: rgba(255,152,0,.12); color: #ff9800; }
 .chord-source-badge.src-btc::before { background: #ff9800; }
 
-.chord-section h3 {
-  font-size: 16px;
-  margin-bottom: 12px;
-  color: var(--text-dim);
-}
+/* ========== [END: CHORD SOURCE BADGE] ========== */
+
+
+/* ========== [COMPONENT: CHORD TIMELINE] ========== */
 
 .chord-timeline {
   display: flex;
@@ -1256,6 +1326,7 @@ a:hover { text-decoration: underline; }
   cursor: pointer;
   transition: all .15s;
   opacity: .6;
+  position: relative;
 }
 
 .chord-item:hover {
@@ -1281,9 +1352,7 @@ a:hover { text-decoration: underline; }
   transition: background 0.15s, box-shadow 0.15s, text-shadow 0.15s;
 }
 .chord-item.active .chord-name {
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 38%, transparent 50%),
-    linear-gradient(180deg, #9b49db 0%, #7c3aed 30%, #6d28d9 60%, #5b21b6 100%);
+  background: var(--chord-gradient);
   border: 1px solid rgba(255,255,255,0.2);
   border-bottom-color: rgba(80,30,160,0.5);
   box-shadow:
@@ -1324,10 +1393,6 @@ a:hover { text-decoration: underline; }
   color: #ccc;
 }
 
-.chord-item {
-  position: relative;
-}
-
 .chord-item.has-section::before {
   content: "";
   position: absolute;
@@ -1342,6 +1407,24 @@ a:hover { text-decoration: underline; }
   z-index: 1;
 }
 
+/* --- fullscreen override --- */
+.chord-display-area.fullscreen .chord-timeline {
+  padding-top: 24px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.chord-display-area.fullscreen .chord-timeline::-webkit-scrollbar {
+  display: none;
+}
+
+/* ========== [END: CHORD TIMELINE] ========== */
+
+
+/* ========== [COMPONENT: SECTION MARKERS] ========== */
+
 .section-marker {
   position: absolute;
   top: -18px;
@@ -1355,7 +1438,10 @@ a:hover { text-decoration: underline; }
   text-shadow: 0 1px 3px rgba(0,0,0,0.8);
 }
 
-/* ---------- toast ---------- */
+/* ========== [END: SECTION MARKERS] ========== */
+
+
+/* ========== [COMPONENT: TOAST] ========== */
 
 .toast {
   position: fixed;
@@ -1378,7 +1464,10 @@ a:hover { text-decoration: underline; }
   opacity: 1;
 }
 
-/* ---------- responsive ---------- */
+/* ========== [END: TOAST] ========== */
+
+
+/* ========== [COMPONENT: RESPONSIVE] ========== */
 
 /* tablet (768-1024px) */
 @media (max-width: 1024px) {
@@ -1401,7 +1490,10 @@ a:hover { text-decoration: underline; }
   #modeSwitch { flex-wrap: wrap; }
 }
 
-/* ---------- dashboard ---------- */
+/* ========== [END: RESPONSIVE] ========== */
+
+
+/* ========== [COMPONENT: DASHBOARD] ========== */
 
 .dashboard-layout {
   padding-bottom: 80px;
@@ -1463,6 +1555,11 @@ a:hover { text-decoration: underline; }
   margin-top: 4px;
 }
 
+/* ========== [END: DASHBOARD] ========== */
+
+
+/* ========== [COMPONENT: HAND TOGGLE] ========== */
+
 /* 統合版左右手切換按鈕 */
 .hand-toggle-btn {
   display: flex !important;
@@ -1499,3 +1596,5 @@ a:hover { text-decoration: underline; }
 .hand-icon.hand-right.active {
   filter: drop-shadow(0 0 6px rgba(255, 152, 0, 0.6));
 }
+
+/* ========== [END: HAND TOGGLE] ========== */
