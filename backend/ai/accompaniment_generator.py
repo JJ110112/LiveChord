@@ -512,25 +512,12 @@ def _assign_fingering(events: List[Dict], hand: str = "right"):
         rep_pitches.append(rep)
 
     # 1. 呼叫 Generator AI 產生初版指法
-    fingers = generate_fingers(rep_pitches, hand=hand)
+    rep_fingers = generate_fingers(rep_pitches, hand=hand)
 
-    # 2. 呼叫 Evaluator AI (Critic) 進行嚴格人體工學審核
-    qa_report = evaluate_fingers(rep_pitches, fingers, hand=hand)
-    
-    # 3. 處理 Reject 路徑 (Fallback 機制)
-    if not qa_report["valid"]:
-        # 若被判定為「外星人」指法或有致命跨距，強制啟用 Close Position 安全降級
-        # 這裡的簡單降級方案為全部初始化為保守順位，或拋棄跨距外的音符
-        # (這裡目前作保守設定，未來可再次呼叫 Generator 產生 beam search 第二名)
-        if hand == "left":
-            fingers = [5] * len(rep_pitches)
-        else:
-            fingers = [1] * len(rep_pitches)
-
-    # 將指法寫回所有 events (和絃散開邏輯)
+    # 2. 將指法寫回所有 events (和絃散開邏輯)
     for i, t in enumerate(sorted_times):
         group = time_groups[t]
-        base_finger = fingers[i] if i < len(fingers) else (1 if hand == "right" else 5)
+        base_finger = rep_fingers[i] if i < len(rep_fingers) else (1 if hand == "right" else 5)
         
         group_sorted = sorted(group, key=lambda e: e["pitch"])
         if len(group_sorted) == 1:
@@ -559,6 +546,28 @@ def _assign_fingering(events: List[Dict], hand: str = "right"):
                 for j, e in enumerate(group_sorted):
                     if j < len(fingers_to_assign):
                         e["finger"] = fingers_to_assign[j]
+
+    # 3. 呼叫 Evaluator AI (Critic) 對整體 events 進行嚴格人體工學審核
+    from .fingering_evaluator import evaluate_events
+    qa_report = evaluate_events(events, hand=hand)
+    
+    # 4. 處理 Reject 路徑 (Fallback 機制)
+    if not qa_report["valid"]:
+        import logging
+        logging.warning(f"[{hand.upper()} HAND] 指法約束測試失敗！啟用安全降級... 警告: {qa_report.get('warnings')}")
+        # 若被判定為「外星人」指法或有致命跨距，強制縮排跨度並給予保守指法
+        for t in sorted_times:
+            group = time_groups[t]
+            group_sorted = sorted(group, key=lambda e: e["pitch"])
+            # 依據主音(右手找高音，左手找低音) 向內擠壓
+            root_p = group_sorted[-1]["pitch"] if hand == "right" else group_sorted[0]["pitch"]
+            for e in group_sorted:
+                # 若跨距過大，強制拉回八度內
+                while abs(e["pitch"] - root_p) > 12:
+                    if e["pitch"] > root_p: e["pitch"] -= 12
+                    else: e["pitch"] += 12
+                # 將所有指法換為保守指 (免於錯位懲罰)
+                e["finger"] = 1 if hand == "right" else 5
 
 
 def calculate_physical_cost(delta_p: int, f_prev: int, f_curr: int,

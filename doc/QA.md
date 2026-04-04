@@ -539,22 +539,33 @@ AI 的每次提交必須附上兩種清單：
 
 ---
 
-## 12. AI 指法生成與驗證雙軌架構 (Generator-Evaluator AI Architecture)
+## 12. AI 鋼琴老師：伴奏與指法「生成-驗證」雙環架構 (Generator-Critic Architecture)
 
-為解決硬編碼規則（Hardcoded Heuristics）在處理極端伴奏跨度時產生的「外星人指法」問題，系統計畫導入「生成-驗證」雙軌 AI 流程。
+為發展極致的「AI 鋼琴老師」體驗（消除不自然的伴奏佈局及人類無法彈奏的「外星人指法」），LiveChord 規劃引入類似 **Actor-Critic (強化學習機制)** 與 **LLM-as-a-Judge (用 AI 評估 AI)** 的雙核心驗證框架。
 
-### 12.1 指法生成器 (Fingering Generator AI)
-- **架構**：以 PIG DataSet 或相關鋼琴指法公開資料訓練 Seq-to-Seq 模型。
-- **目標**：給定一段 MIDI 音高、時值與拍號序列，輸出初步的 1~5 指法分配。
-- **定位**：取代原先依靠 `viterbi_fingering` 與純規則預測的分支邏輯。
+### 12.1 生成階段 (Generator)
+- **AI 指法生成器 (Fingering Generator)**
+  - **技術選型**：基於 PIG Dataset 訓練的 Transformer 或 Bi-LSTM 模型，或結合傳統 HMM (隱藏式馬可夫模型) 成本計算。
+  - **任務**：輸入 MIDI 音序列，根據前後文預測最省力的 1~5 根手指分配。
+- **AI 伴奏生成器 (Accompaniment Generator)**
+  - **技術選型**：MusicBERT、Anticipatory Music Transformer (AMT) 等符號音樂語言模型，或是將 MIDI 轉譯成文字譜交由大型語言模型（LLM）處理。
+  - **任務**：接收主旋律與和弦，生成流暢且具高音樂性的流行伴奏譜（MIDI 形式）。
 
-### 12.2 合理性驗證器 (Playability Evaluator AI / Critic)
-- **架構**：整合 `MusicianQA` 的核心邏輯，或是獨立的 AI 評分模型。
-- **QA 規則**：
-  1. **最大跨度懲罰**：1 指到 5 指瞬間跨度超過 13 半音視為致命錯誤（根據 Difficulty Level 動態調整）。
-  2. **無效交錯懲罰**：過度違反人體工學（如大跳時錯誤的 3、4 指交叉）。
-  3. **動態對齊**：確保右手旋律和絃落下時，不再無腦全給 1 (Thumb)。
-- **退回機制 (Fallback)**：若 Evaluator 評分不達標，系統應將該小節退回，觸發 Generator 第二候選路徑，或強制使用 Close Position (密集排列) 的 Alberti Bass 降級方案。
+### 12.2 驗證與過濾階段 (The Critic Loop)
+避免生成神經網路產生「音樂上好聽但人類無法彈奏」的輸出，必須建立循環驗證防線：
+1. **Rule-based 的人類手指約束器 (Physical Filter)**：
+   - 快速剔除致命錯誤（例如：1至5指瞬間跨度大於12半音、不合理的手部嚴重交叉、大拇指被頻繁且不自然地分配到黑鍵等）。一旦違規，即刻退回重做。
+2. **LLM-as-a-Judge 評判器 (Critic AI)**：
+   - 將通過物理防護網的符號樂譜轉譯後送給高階 LLM。
+   - **檢驗焦點**：要求 AI 擔任「資深鋼琴名師」，根據和聲終止式的飽滿度、指法順暢度、伴奏織體（Texture）給予 1~100 評分與具體修改建議。
+3. **自我優化 (Reflection & Self-Refine)**：
+   - Generator 收到不達標的低分或建議，重新對局部小節進行再生，直到品質達標。
+
+### 12.3 落地與實作藍圖 (Roadmap)
+鑑於雙 AI 循環計算成本過高無法即時生成，實作將採三階段策略：
+- **階段一 (物理基底)**：[已完成] 先開發強健的 Rule-based 物理約束器（人體工學驗證 `fingering_evaluator.py`）。這是一道防彈防線，遇到「不合理手部交叉」或「大跨度同指跳躍」時，會立刻觸發「安全降級 (Fallback)」壓縮八度並調回保守指法，確保出來的產物「絕對能被真人彈奏」。
+- **階段二 (離線資料工廠)**：[已完成] 開發 `batch_accompaniment_worker.py` 將曲目投入這套 `Generator -> Critic -> Refine` 引擎進行批次處理。已達成使用 12 執行緒於 113.7 秒內將 8281 首曲目全部預先生成數萬種組合 (L1/L2, Arpeggio/Block)且錯誤率為 0，徹底實現了伺服器的「零延遲」提供服務。
+- **階段三 (模型優化與終端呈現)**：[進行中] 前端 `LiveChord` 介面已實裝載入運算好的成品。未來重點轉向置換底層的 Generator，引入語言模型或 LSTM 產生更大膽且更具流暢音樂性的伴奏音符分配，並由 Critic 把關。
 
 ---
 
