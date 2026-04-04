@@ -1,6 +1,6 @@
 # LiveChord 品管文件
 
-> 版本: 3.3 | 日期: 2026-04-04
+> 版本: 3.4 | 日期: 2026-04-05
 > 和弦引擎: BTC Transformer (ISMIR 2019)
 > 對應規格書: SPEC.md v2.0
 
@@ -580,7 +580,83 @@ AI 的每次提交必須附上兩種清單：
 
 ---
 
-## 14. 版本歷史
+## 14. 前端 UI 架構鐵律 (UI Architecture Rules)
+
+> 來自 2026-04-04 ~ 04-05 session 的慘痛教訓：一次 AI 鋼琴老師功能開發，因違反以下規則導致 10+ 次 UI 迴歸修復。
+
+### 規則 1：縮放狀態隔離 (Zoom State Isolation)
+
+| 模式 | 縮放比率 | 儲存 |
+|------|---------|------|
+| 一般模式（所有 tab） | **永遠 100%** | 不儲存 |
+| 沉浸/全螢幕模式 | 預設 200%，使用者可調 | `localStorage` per-tab |
+
+- 使用 `_tabZoomFs` 物件儲存全螢幕縮放，`_isFullscreen()` 判斷上下文
+- `_applyZoom()` 在非全螢幕時直接回傳 100%，不寫入 `localStorage`
+- **禁止**共用一組 zoom state 給兩種模式
+
+### 規則 2：CSS 選擇器隔離 (CSS Specificity Isolation)
+
+- **Canvas 元素**：必須用 `canvas#specificId` 選擇器，不可用 `.parent canvas`（會誤中同容器內其他 canvas）
+  - ❌ `.chord-88-keys canvas { display: block }` → 覆蓋了 `.waterfall-canvas { display: none }`
+  - ✅ `.chord-88-keys canvas#piano88Canvas { display: block }`
+- **Flex 擴展**：`flex: 1` 只在需要填滿的模式加（如 fullscreen），不放在 base rule
+  - ❌ `.chord-88-keys { flex: 1 }` → 一般模式鋼琴被推到底部
+  - ✅ `.chord-display-area.fullscreen .chord-88-keys { flex: 5 }`
+- **`display` 屬性**：base rule 設 `display: none` 的元素，fullscreen rule 必須完整覆蓋所有樣式，不可修改 base rule
+
+### 規則 3：scrollIntoView 禁用 (Scroll Containment)
+
+- 播放中自動捲動**禁止**使用 `el.scrollIntoView()`（會連帶捲動所有祖先，包括頁面 body）
+- 必須用 `getBoundingClientRect()` + 手動設定 `container.scrollTop` 實現區域內捲動
+- Smart View 邏輯：
+  - 播放中 → `chordDisplayOverview` 設 `overflow-y: auto` + `max-height`，區域內捲動
+  - 暫停時 → 移除限制，頁面自由捲動
+
+### 規則 4：display 屬性單一來源 (Single Source of Truth for display)
+
+- `bigChordBox.style.display` 在 5+ 處被設定，互相覆蓋
+- **原則**：每個 UI 元素的 `display` 必須有明確的優先順序：
+  1. Tab 切換時設定初始狀態
+  2. 資料載入完成時根據 tab 決定
+  3. `update` 函式中根據 `_isFullscreen()` 條件決定
+- **禁止**在 chord loading 的 error/success path 中硬編碼 `display: none`，除非確認所有 tab 都需要隱藏
+
+### 規則 5：transform 不影響鄰居 (Transform Isolation)
+
+- `transform: scale()` 的預設 `transform-origin` 是 `center`，會向所有方向擴展
+- 若元素有與鄰居對齊的邊界（如 color bar），必須設定 `transform-origin` 固定該邊：
+  - 頂部色條對齊 → `transform-origin: top center`
+  - 底部鍵盤對齊 → `transform-origin: bottom center`
+
+### 規則 6：Cache-Busting 版本號 (Version Bump)
+
+- 每次修改 `player.js` 或 `style.css`，**必須**同時更新 `player.html` 中的 `?v=` 參數
+- 否則瀏覽器會使用快取版本，導致「明明改了但沒效果」的幽靈 bug
+- 建議：CSS 和 JS 使用相同版號，同步遞增
+
+### 規則 7：變數宣告位置 (Variable Declaration Scope)
+
+- `let` 變數有 **Temporal Dead Zone (TDZ)**：在宣告前使用會拋出 `ReferenceError`
+- 所有共用 state 變數（`sectionData`, `chordData`, `hasChords` 等）**必須在檔案頂部 state 區塊統一宣告**
+- **禁止**在函式之間穿插宣告 state 變數
+
+### 規則 8：鍵盤容器高度 (Keys88 Ribbon Sizing)
+
+- `.keys88-ribbon` 的 `flex: 0 0 Npx` 必須能容納：段落標記 (20px) + 色條 (4px) + 放大的 active chord badge (30px) + jianpu (15px) + padding
+- 目前設定：`flex: 0 0 120px`，**不可低於 100px**
+- Active chord 使用 `transform-origin: top center` 確保向下擴展、色條對齊
+
+### 規則 9：W:\ 與 Git 雙向同步 (Dual Sync)
+
+- 修改 W:\（生產）→ 立刻同步到 git repo
+- 修改 git repo → 立刻同步到 W:\
+- **兩邊必須是同一份檔案**，不可各自維護不同版本
+- `cp` 整份檔案比 `Edit` 兩邊更安全
+
+---
+
+## 15. 版本歷史
 
 | 版本 | 日期 | 變更 |
 |------|------|------|
@@ -591,3 +667,4 @@ AI 的每次提交必須附上兩種清單：
 | 3.1 | 2026-04-04 | 新增第 12 節：提案 AI 指法生成與驗證雙軌架構 (Generator-Evaluator Architecture) |
 | 3.2 | 2026-04-04 | 新增第 13 節：邊緣運算與雙引擎批次處理架構 (Super Worker Edge Architecture) |
 | 3.3 | 2026-04-04 | 修復沉浸模式 UI：toolbar grid 佈局、縮放捲動抖動、scrollbar 隱藏、zoom/close 按鈕重疊、select option 深色主題 |
+| 3.4 | 2026-04-05 | 新增第 14 節：前端 UI 架構鐵律（9 條規則），源自 AI 鋼琴老師開發的 10+ 次 UI 迴歸修復經驗 |

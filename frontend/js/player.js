@@ -19,6 +19,7 @@
   let activeChordIdx = -1;
   let chordElements = [];
   let _ribbonPositions = [];
+  let sectionData = null;
   // 88-key piano state
   let piano88Canvas = null;
   let piano88Cache = null;
@@ -168,11 +169,12 @@
         chordDisplay88.style.display = "flex";
         _updateHandSwitchVisibility();
         _switchZoomToTab("keys");
-        if (hasChords) bigChordBox.style.display = "none";
+        bigChordBox.style.display = "";
         _init88Piano();
         _initWaterfall();
         _setupTeachControls();
         _buildKeys88Ribbon();
+        if (sectionData) _renderSectionMarkers();
         piano88LastIdx = -1;
         update88Piano(audio.currentTime || 0);
       });
@@ -620,12 +622,17 @@
         piano88ChordMidis = ChordRender.voiceChordForLeftHand(notes, piano88PrevMidi);
         piano88PrevMidi = [...piano88ChordMidis];
 
-        // update big chord box
+        // update big chord box (show in normal mode, hide in fullscreen where ribbon has it)
         bigChordName.textContent = chord.chord;
-        // HUD renders chord in waterfall directly or keys88Ribbon, so hide big box 
-        bigChordBox.style.display = "none";
+        bigChordBox.style.display = _isFullscreen() ? "none" : "";
         bigChordJianpu.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
         bigChordDiagram.innerHTML = "";
+        // show section color bar on big chord box
+        if (sectionData && sectionData.sections) {
+          const sec = sectionData.sections.find(s => chord.time >= s.start && chord.time < s.end);
+          bigChordBox.style.borderTopColor = sec ? sec.color : "transparent";
+          bigChordBox.title = sec ? `${sec.emoji} ${sec.label || sec.type}` : "";
+        }
       } else {
         piano88ChordMidis = [];
       }
@@ -1121,7 +1128,6 @@
   }
 
   // ---- section detection ----
-  let sectionData = null;
 
   async function _loadSections(path) {
     try {
@@ -1179,6 +1185,23 @@
               rel.appendChild(rmarker);
             }
           }
+
+          // 3. Piano88 ribbon — color bar + section label
+          if (keys88RibbonTrack) {
+            const k88items = keys88RibbonTrack.querySelectorAll(".keys88-ribbon-item");
+            const kel = k88items[i];
+            if (kel) {
+              kel.style.setProperty("--sec-color", sec.color);
+              kel.classList.add("has-section");
+              if (i === 0 || displayed[i - 1].time < sec.start) {
+                const kmarker = document.createElement("div");
+                kmarker.className = "section-marker-ribbon";
+                kmarker.textContent = `${sec.emoji} ${sec.label || sec.type}`;
+                kmarker.style.color = sec.color;
+                kel.appendChild(kmarker);
+              }
+            }
+          }
         }
       }
     }
@@ -1211,7 +1234,7 @@
         }
         await preloadChordInfo(chordData.chords);
         buildChordDOM();
-        if (activeTab === "diagrams" || activeTab === "keys") {
+        if (activeTab === "diagrams") {
           bigChordBox.style.display = "none";
         } else {
           bigChordBox.style.display = "";

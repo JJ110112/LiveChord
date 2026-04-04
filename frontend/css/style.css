@@ -725,16 +725,31 @@ a:hover { text-decoration: underline; }
   text-align: center;
   padding: 16px 20px 20px;
   margin-bottom: 16px;
-  background: linear-gradient(135deg, rgba(233,69,96,.08), rgba(233,69,96,.02));
-  border: 1px solid rgba(233,69,96,.2);
+  background: linear-gradient(135deg, rgba(147,51,234,.08), rgba(147,51,234,.02));
+  border: 1px solid rgba(147,51,234,.2);
+  border-top: 4px solid transparent;
   border-radius: var(--radius);
 }
 
 .big-chord-name {
   font-size: 48px;
   font-weight: 800;
-  color: var(--accent);
+  color: #fff;
   line-height: 1.1;
+  display: inline-block;
+  padding: 6px 24px;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 38%, transparent 50%),
+    linear-gradient(180deg, #9b49db 0%, #7c3aed 30%, #6d28d9 60%, #5b21b6 100%);
+  border: 1.5px solid rgba(255,255,255,0.2);
+  border-bottom-color: rgba(80,30,160,0.5);
+  box-shadow:
+    0 0 24px rgba(147,51,234,0.5),
+    0 0 48px rgba(147,51,234,0.25),
+    inset 0 1px 2px rgba(255,255,255,0.35),
+    inset 0 -1px 2px rgba(0,0,0,0.2);
+  text-shadow: 0 0 14px rgba(255,255,255,0.4), 0 1px 2px rgba(0,0,0,0.3);
 }
 
 .big-chord-jianpu {
@@ -753,6 +768,7 @@ a:hover { text-decoration: underline; }
   width: 100%;
   height: calc(100vh - 360px);
   min-height: 150px;
+  padding-top: 24px;
   background: var(--bg-hover);
   border-radius: var(--radius);
   overflow: hidden;
@@ -770,6 +786,9 @@ a:hover { text-decoration: underline; }
   box-shadow: 0 0 8px var(--accent);
   pointer-events: none;
 }
+
+.chord-ribbon > .ribbon-center-line { top: 24px; }
+.chord-ribbon > .ribbon-track { top: 24px; height: calc(100% - 24px); }
 
 .ribbon-track {
   position: absolute;
@@ -801,8 +820,8 @@ a:hover { text-decoration: underline; }
 
 .ribbon-item.active {
   opacity: 1;
-  background: rgba(233,69,96,0.15);
-  border-left-color: rgba(233,69,96,0.5);
+  background: transparent;
+  border-left-color: rgba(140,80,220,0.4);
   z-index: 5;
   padding-left: 24px;
   padding-right: 24px;
@@ -812,7 +831,10 @@ a:hover { text-decoration: underline; }
 .ribbon-item .chord-name {
   font-size: 22px;
   font-weight: bold;
-  transition: font-size 0.4s ease, color 0.4s ease, text-shadow 0.4s ease;
+  border-radius: 10px;
+  padding: 4px 12px;
+  transition: font-size 0.4s ease, color 0.4s ease, text-shadow 0.4s ease,
+              background 0.4s ease, box-shadow 0.4s ease, padding 0.4s ease;
 }
 
 .ribbon-item canvas {
@@ -828,12 +850,26 @@ a:hover { text-decoration: underline; }
 .ribbon-item.active .chord-name {
   font-size: 36px;
   color: #fff;
-  text-shadow: 0 0 12px rgba(233,69,96,0.6);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 38%, transparent 50%),
+    linear-gradient(180deg, #9b49db 0%, #7c3aed 30%, #6d28d9 60%, #5b21b6 100%);
+  border: 1.5px solid rgba(255,255,255,0.2);
+  border-bottom-color: rgba(80,30,160,0.5);
+  border-radius: 14px;
+  box-shadow:
+    0 0 24px rgba(147,51,234,0.6),
+    0 0 48px rgba(147,51,234,0.3),
+    inset 0 1px 2px rgba(255,255,255,0.35),
+    inset 0 -1px 2px rgba(0,0,0,0.2);
+  text-shadow: 0 0 14px rgba(255,255,255,0.5), 0 1px 2px rgba(0,0,0,0.3);
+  padding: 8px 20px;
+  min-width: 120px;
+  text-align: center;
 }
 
 .ribbon-item.active canvas {
   transform: scale(1.5);
-  filter: drop-shadow(0 2px 8px rgba(233,69,96,0.4));
+  filter: drop-shadow(0 2px 8px rgba(139,92,246,0.4));
 }
 
 .ribbon-item.active .chord-jianpu {
@@ -866,15 +902,15 @@ a:hover { text-decoration: underline; }
 
 .section-marker-ribbon {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  font-size: 10px;
+  top: -18px;
+  left: 0;
+  font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   white-space: nowrap;
   opacity: 0.95;
-  text-shadow: 0 1px 4px rgba(0,0,0,1);
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
   z-index: 10;
 }
 
@@ -1003,19 +1039,10 @@ a:hover { text-decoration: underline; }
   image-rendering: crisp-edges;
 }
 .keys88-ribbon {
-  display: block;
-  position: relative;
-  width: 100%;
-  flex: 1;
-  min-height: 90px;
-  background: var(--bg-hover);
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
-  margin-bottom: 10px;
-  z-index: 2;
-  transition: opacity 0.3s ease, flex 0.3s ease, min-height 0.3s ease;
+  display: none;  /* hidden in non-fullscreen */
 }
+.keys88-ribbon > .ribbon-center-line { top: 22px; }
+.keys88-ribbon > .ribbon-track { top: 22px; height: calc(100% - 22px); }
 
 /* Waterfall canvas */
 .waterfall-canvas {
@@ -1091,7 +1118,7 @@ a:hover { text-decoration: underline; }
 .chord-display-area.fullscreen .chord-88-keys {
   flex: 5;
   min-height: 0;
-  padding-top: 20px;
+  padding-top: 0;
   justify-content: flex-end;
 }
 .chord-display-area.fullscreen .chord-88-keys canvas#piano88Canvas {
@@ -1102,10 +1129,11 @@ a:hover { text-decoration: underline; }
   display: block;
   position: relative;
   width: 100%;
-  flex: 0 0 60px; /* Fixed small size so it doesn't interfere */
-  margin-top: 10px;
+  flex: 0 0 120px;
+  margin-top: 0;
   background: transparent;
   box-shadow: none;
+  overflow: visible;
   z-index: 10;
 }
 
@@ -1136,16 +1164,27 @@ a:hover { text-decoration: underline; }
 }
 .keys88-ribbon-item.active {
   opacity: 1;
-  transform: scale(1.1) translateY(-2px);
+  transform-origin: top center;
+  transform: scale(1.05);
   z-index: 10;
 }
 .keys88-ribbon-item.active .chord-name {
-  font-size: 24px;
+  font-size: 18px;
   color: #fff;
-  text-shadow: 0 2px 4px rgba(0,0,0,0.6);
-  border-bottom: 3px solid #a23beb;
-  padding-bottom: 2px;
   display: inline-block;
+  padding: 2px 10px;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 38%, transparent 50%),
+    linear-gradient(180deg, #9b49db 0%, #7c3aed 30%, #6d28d9 60%, #5b21b6 100%);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-bottom-color: rgba(80,30,160,0.5);
+  box-shadow:
+    0 0 16px rgba(147,51,234,0.5),
+    0 0 32px rgba(147,51,234,0.2),
+    inset 0 1px 2px rgba(255,255,255,0.35),
+    inset 0 -1px 2px rgba(0,0,0,0.2);
+  text-shadow: 0 0 10px rgba(255,255,255,0.4), 0 1px 2px rgba(0,0,0,0.3);
 }
 .keys88-ribbon-item.active .melody-jianpu {
   color: #ffcc80;
@@ -1225,22 +1264,45 @@ a:hover { text-decoration: underline; }
 }
 
 .chord-item.active {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--bg-hover);
+  border-color: rgba(139,92,246,0.4);
   color: #fff;
   opacity: 1;
   transform: scale(1.08);
-  box-shadow: 0 0 12px rgba(233,69,96,.5);
+  box-shadow: 0 0 16px rgba(147,51,234,0.35);
 }
 
 .chord-item .chord-name {
   font-size: 16px;
   font-weight: 700;
+  border-radius: 8px;
+  padding: 2px 8px;
+  display: inline-block;
+  transition: background 0.15s, box-shadow 0.15s, text-shadow 0.15s;
+}
+.chord-item.active .chord-name {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 38%, transparent 50%),
+    linear-gradient(180deg, #9b49db 0%, #7c3aed 30%, #6d28d9 60%, #5b21b6 100%);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-bottom-color: rgba(80,30,160,0.5);
+  box-shadow:
+    0 0 14px rgba(147,51,234,0.5),
+    0 0 28px rgba(147,51,234,0.2),
+    inset 0 1px 2px rgba(255,255,255,0.35),
+    inset 0 -1px 2px rgba(0,0,0,0.2);
+  text-shadow: 0 0 10px rgba(255,255,255,0.4), 0 1px 2px rgba(0,0,0,0.3);
+  color: #fff;
+  min-width: 60px;
+  text-align: center;
 }
 .chord-item .chord-name .chord-quality {
   font-weight: 400;
   opacity: 0.7;
   font-size: 13px;
+}
+.chord-item.active .chord-name .chord-quality {
+  opacity: 0.9;
 }
 
 .chord-item .chord-jianpu {
@@ -1250,13 +1312,16 @@ a:hover { text-decoration: underline; }
 }
 
 .chord-item.active .chord-jianpu {
-  color: rgba(255,255,255,.85);
+  color: #eee;
 }
 
 .chord-item .chord-time {
   font-size: 10px;
   color: #666;
   margin-top: 2px;
+}
+.chord-item.active .chord-time {
+  color: #ccc;
 }
 
 .chord-item {
