@@ -467,7 +467,7 @@ const ChordRender = {
     const kw = width / nw;
     const kh = kw * 6;       // real piano ratio 1:6
     const bw = kw * 0.48;    // black key ~48% of white width
-    const bh = kh * 0.65;    // black key ~65% of white height
+    const bh = kh * 0.62;    // black key ~62% of white height
     const labelSpace = 16;
     const totalH = kh + labelSpace;
 
@@ -477,32 +477,102 @@ const ChordRender = {
     const ctx = c.getContext("2d");
     ctx.scale(dpr, dpr);
 
-    // white keys
+    // Helper: roundRect support (Fallback if very old browser)
+    const drawRoundRect = (x, y, w, h, radii) => {
+      if (ctx.roundRect) {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, radii);
+      } else {
+        ctx.beginPath();
+        ctx.rect(x, y, w, h);
+      }
+    };
+
+    // Draw White Keys
     for (let i = 0; i < nw; i++) {
-      const x = i * kw;
-      ctx.fillStyle = "#e8e8e8";
-      ctx.fillRect(x, 0, kw - 1, kh);
-      ctx.strokeStyle = "#888";
-      ctx.lineWidth = 0.5;
-      ctx.strokeRect(x, 0, kw - 1, kh);
+        const x = i * kw;
+        // Ivory Gradient
+        const gradient = ctx.createLinearGradient(x, 0, x, kh);
+        gradient.addColorStop(0, "#eef0eb");     // top yellowish-white shadow
+        gradient.addColorStop(0.2, "#ffffff");   // main ivory body
+        gradient.addColorStop(0.95, "#fdfdfd");
+        gradient.addColorStop(1, "#dcdcdc");     // bottom light bevel/shadow
+
+        ctx.fillStyle = gradient;
+        drawRoundRect(x + 0.5, 0, kw - 1, kh, [0, 0, 4, 4]); // smooth round corners at bottom
+        ctx.fill();
+        
+        ctx.strokeStyle = "#999";
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+
+        // Inner shadow effect at the top for keys
+        const innerGlow = ctx.createLinearGradient(x, 0, x, kh * 0.1);
+        innerGlow.addColorStop(0, "rgba(0,0,0,0.15)");
+        innerGlow.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = innerGlow;
+        ctx.fillRect(x + 0.5, 0, kw - 1, kh * 0.1);
     }
 
-    // black keys
+    // Draw Black Keys with 3D reflection
     const blackAfterSemi = new Set([0, 1, 3, 4, 5]); // white key semitone index where black follows (C,D, F,G,A)
     const whiteOrder = [0,2,4,5,7,9,11];
     const blackXs = {};
+    
+    // Pass 1: Render shadows for black keys so they look "raised"
+    ctx.shadowColor = "rgba(0, 0, 0, 0.6)";
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetX = 2;
+    ctx.shadowOffsetY = 2;
     for (let i = 0; i < nw - 1; i++) {
-      const deg = whites[i] % 12;
-      const wIdx = whiteOrder.indexOf(deg);
-      if (!blackAfterSemi.has(wIdx)) continue;
-      const bMidi = whites[i] + 1;
-      const x = (i + 1) * kw - bw / 2;
-      ctx.fillStyle = "#1a1a1a";
-      ctx.fillRect(x, 0, bw, bh);
-      ctx.strokeStyle = "#000";
-      ctx.lineWidth = 0.5;
-      ctx.strokeRect(x, 0, bw, bh);
-      blackXs[bMidi] = { x, w: bw, h: bh };
+        const deg = whites[i] % 12;
+        const wIdx = whiteOrder.indexOf(deg);
+        if (!blackAfterSemi.has(wIdx)) continue;
+        const x = (i + 1) * kw - bw / 2;
+        drawRoundRect(x, 0, bw, bh, [0, 0, 3, 3]);
+        ctx.fillStyle = "#000";
+        ctx.fill();
+    }
+    // Turn off shadow for actual key rendering
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+
+    // Pass 2: Draw glossy black key surfaces
+    for (let i = 0; i < nw - 1; i++) {
+        const deg = whites[i] % 12;
+        const wIdx = whiteOrder.indexOf(deg);
+        if (!blackAfterSemi.has(wIdx)) continue;
+        const bMidi = whites[i] + 1;
+        const x = (i + 1) * kw - bw / 2;
+        
+        // Base dark gradient
+        const bgGrad = ctx.createLinearGradient(x, 0, x, bh);
+        bgGrad.addColorStop(0, "#111");
+        bgGrad.addColorStop(0.7, "#1a1a1a");
+        bgGrad.addColorStop(1, "#333"); // light edge reflection
+
+        drawRoundRect(x, 0, bw, bh, [0, 0, 3, 3]);
+        ctx.fillStyle = bgGrad;
+        ctx.fill();
+
+        // 3D Highlight Gloss (top to midway down, slanted slightly)
+        const hlX = x + bw * 0.15;
+        const hlW = bw * 0.7;
+        const hlH = bh * 0.85;
+        const hlGrad = ctx.createLinearGradient(hlX, 0, hlX, hlH);
+        hlGrad.addColorStop(0, "rgba(255,255,255,0.25)");
+        hlGrad.addColorStop(1, "rgba(255,255,255,0.0)");
+        drawRoundRect(hlX, 0, hlW, hlH, [0, 0, 2, 2]);
+        ctx.fillStyle = hlGrad;
+        ctx.fill();
+
+        ctx.strokeStyle = "#0d0d0d";
+        ctx.lineWidth = 1;
+        drawRoundRect(x, 0, bw, bh, [0, 0, 3, 3]);
+        ctx.stroke();
+
+        blackXs[bMidi] = { x, w: bw, h: bh };
     }
 
     // white key x-positions lookup
@@ -510,7 +580,7 @@ const ChordRender = {
     for (let i = 0; i < nw; i++) whiteXs[whites[i]] = { x: i * kw, w: kw - 1, h: kh };
 
     // octave labels + middle-C marker
-    ctx.fillStyle = "#555";
+    ctx.fillStyle = "#666";
     ctx.font = `${Math.max(9, Math.min(11, kw * 0.9))}px sans-serif`;
     ctx.textAlign = "center";
     for (let oct = 0; oct <= 8; oct++) {
@@ -523,8 +593,8 @@ const ChordRender = {
     // middle C (C4=60) subtle marker line
     const c4 = whiteXs[60];
     if (c4) {
-      ctx.strokeStyle = "rgba(233,69,96,0.35)";
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(41, 182, 246, 0.6)"; // Cyan marker
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(c4.x + c4.w / 2, kh - 3);
       ctx.lineTo(c4.x + c4.w / 2, kh + 2);
@@ -558,36 +628,31 @@ const ChordRender = {
     ctx.scale(dpr, dpr);
 
     const { whiteXs, blackXs } = cache;
-    const LH_COLOR = "rgba(33, 150, 243, 0.9)"; // Blue for left hand
-    const RH_COLOR = "rgba(255, 152, 0, 0.9)"; // Orange for right hand
-    const CHORD_OUTLINE = "rgba(156, 39, 176, 0.8)"; // Purple outline
-    
+    // Updated Hand Colors matching the waterfall + reference imagery
+    const LH_COLOR = "rgba(41, 182, 246, 0.9)";   // Bright Cyan (Left)
+    const RH_COLOR = "rgba(255, 152, 0, 0.9)";    // Deep Orange (Right)
+    const CHORD_OUTLINE = "rgba(182, 79, 255, 0.85)"; // Purple pill aura
+
     // Convert rightMidis if it was still passed as single number temporarily
     const rMidis = Array.isArray(rightMidis) ? rightMidis : (rightMidis >= 0 ? [rightMidis] : []);
     const lMidis = Array.isArray(leftMidis) ? leftMidis : [];
     
     const sustainNotes = (opts && opts.sustainNotes) || [];
     const chordHints = (opts && opts.chordHints) || Array.isArray(opts && opts.coreCount === undefined ? leftMidis : []); 
-    // Fallback if not using teaching mode, the passed params are old format.
-    // If we pass chordHints, use it. Otherwise no outline.
     
     const now = (opts && opts.now) || 0;
 
-    // Collect all highlights: {midi, color, alpha, outlineOnly}
     const highlights = [];
 
     // sustaining (fading) notes
     for (const sn of sustainNotes) {
       const age = now - sn.release;
-      if (age > 0.5) continue;
-      highlights.push({ midi: sn.midi, color: "#888", alpha: 0.35 * (1 - age / 0.5) });
+      if (age > 0.6) continue;
+      highlights.push({ midi: sn.midi, color: "rgba(100,100,100,0.5)", alpha: 0.35 * (1 - age / 0.6) });
     }
 
-    // Left hand
-    for (const m of lMidis) highlights.push({ midi: m, color: LH_COLOR, alpha: 0.85 });
-    
-    // Right hand
-    for (const m of rMidis) highlights.push({ midi: m, color: RH_COLOR, alpha: 0.9 });
+    for (const m of lMidis) highlights.push({ midi: m, color: LH_COLOR, alpha: 0.95 });
+    for (const m of rMidis) highlights.push({ midi: m, color: RH_COLOR, alpha: 0.95 });
     
     // Chord hints (outline only)
     if (opts && opts.chordHints) {
@@ -599,7 +664,7 @@ const ChordRender = {
             highlights.push({ 
               midi: m, 
               color: isFallingLh ? LH_COLOR : RH_COLOR, 
-              alpha: 0.8, 
+              alpha: 0.85, 
               outlineOnly: true,
               glow: true
             });
@@ -612,17 +677,26 @@ const ChordRender = {
 
     // Global Chord Tones (faint background highlight across keyboard)
     if (opts && opts.chordTones && opts.chordTones.length > 0) {
-      const FAINT_BLUE = "#29b6f6"; // 明顯的亮藍色
+      const FAINT_BLUE = "#4fc3f7"; // Soft cyan highlighting
       for (let m = 21; m <= 108; m++) {
         const pc = m % 12;
         if (opts.chordTones.includes(pc)) {
-           // Skip if already highlighted by something else
            if (!lMidis.includes(m) && !rMidis.includes(m) && !(opts.chordHints && opts.chordHints.includes(m))) {
-             highlights.push({ midi: m, color: FAINT_BLUE, alpha: 1.0, outlineOnly: true, fillFaint: true });
+             highlights.push({ midi: m, color: FAINT_BLUE, alpha: 0.9, outlineOnly: true, fillFaint: true });
            }
         }
       }
     }
+
+    const drawRoundRect = (x, y, w, h, radii) => {
+      if (ctx.roundRect) {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, radii);
+      } else {
+        ctx.beginPath();
+        ctx.rect(x, y, w, h);
+      }
+    };
 
     // Pass 1: draw WHITE key highlights only
     for (const hl of highlights) {
@@ -631,33 +705,45 @@ const ChordRender = {
       ctx.globalAlpha = hl.alpha;
       if (hl.outlineOnly) {
          ctx.fillStyle = hl.color;
-         ctx.globalAlpha = hl.fillFaint ? 0.1 : 0.2;
-         ctx.fillRect(wk.x + 2, 2, wk.w - 4, wk.h - 4);
+         ctx.globalAlpha = hl.fillFaint ? 0.2 : 0.3;
+         drawRoundRect(wk.x + 1.5, 1.5, wk.w - 3, wk.h - 3, [0, 0, 4, 4]);
+         ctx.fill();
          ctx.globalAlpha = hl.alpha;
          ctx.strokeStyle = hl.color;
-         ctx.lineWidth = hl.fillFaint ? 1 : 2;
+         ctx.lineWidth = hl.fillFaint ? 1.5 : 2.5;
          if (hl.glow) {
-           ctx.shadowBlur = 8;
+           ctx.shadowBlur = 12;
            ctx.shadowColor = hl.color;
          }
-         ctx.strokeRect(wk.x + 2, 2, wk.w - 4, wk.h - 4);
-         ctx.shadowBlur = 0; // reset
+         ctx.stroke();
+         ctx.shadowBlur = 0; 
       } else {
-         ctx.fillStyle = hl.color;
-         ctx.fillRect(wk.x + 1, 1, wk.w - 2, wk.h - 2);
+         // Create a glowing gradient for active hit
+         const pGrad = ctx.createLinearGradient(0, wk.h * 0.4, 0, wk.h);
+         pGrad.addColorStop(0, "rgba(255,255,255,0.1)");
+         pGrad.addColorStop(1, hl.color);
+         ctx.fillStyle = pGrad;
+         drawRoundRect(wk.x + 0.5, 0.5, wk.w - 1, wk.h - 1, [0, 0, 4, 4]);
+         ctx.fill();
       }
     }
 
-    // Pass 2: re-draw ALL black keys from cache so they sit on top of white highlights
+    // Pass 2: Re-render black keys over white highlights
+    ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 2;
     for (const midi in blackXs) {
-      const bk = blackXs[midi];
       ctx.globalAlpha = 1;
-      ctx.fillStyle = "#1a1a1a";
-      ctx.fillRect(bk.x, 0, bk.w, bk.h);
-      ctx.strokeStyle = "#000";
-      ctx.lineWidth = 0.5;
-      ctx.strokeRect(bk.x, 0, bk.w, bk.h);
+      const bk = blackXs[midi];
+      drawRoundRect(bk.x, 0, bk.w, bk.h, [0, 0, 3, 3]);
+      
+      const bgGrad = ctx.createLinearGradient(bk.x, 0, bk.x, bk.h);
+      bgGrad.addColorStop(0, "#111");
+      bgGrad.addColorStop(1, "#2a2a2a");
+      ctx.fillStyle = bgGrad;
+      ctx.fill();
     }
+    ctx.shadowBlur = 0;
 
     // Pass 3: draw BLACK key highlights on top
     for (const hl of highlights) {
@@ -666,23 +752,25 @@ const ChordRender = {
       ctx.globalAlpha = Math.min(1.0, hl.alpha + 0.15);
       if (hl.outlineOnly) {
          ctx.fillStyle = hl.color;
-         ctx.globalAlpha = hl.fillFaint ? 0.15 : 0.25;
-         ctx.fillRect(bk.x + 2, 2, bk.w - 4, bk.h - 4);
+         ctx.globalAlpha = hl.fillFaint ? 0.3 : 0.4;
+         drawRoundRect(bk.x + 1.5, 1.5, bk.w - 3, bk.h - 3, [0, 0, 3, 3]);
+         ctx.fill();
          ctx.globalAlpha = Math.min(1.0, hl.alpha + 0.15);
          ctx.strokeStyle = hl.color;
-         ctx.lineWidth = hl.fillFaint ? 1 : 2;
+         ctx.lineWidth = hl.fillFaint ? 1.5 : 2.5;
          if (hl.glow) {
-           ctx.shadowBlur = 8;
+           ctx.shadowBlur = 12;
            ctx.shadowColor = hl.color;
          }
-         ctx.strokeRect(bk.x + 2, 2, bk.w - 4, bk.h - 4);
-         ctx.shadowBlur = 0; // reset
+         ctx.stroke();
+         ctx.shadowBlur = 0; 
       } else {
-         ctx.fillStyle = hl.color;
-         ctx.fillRect(bk.x + 1, 1, bk.w - 2, bk.h - 2);
-         ctx.globalAlpha = 0.25;
-         ctx.fillStyle = "#fff";
-         ctx.fillRect(bk.x + 2, 2, bk.w - 4, bk.h - 4);
+         const pGrad = ctx.createLinearGradient(0, bk.h * 0.2, 0, bk.h);
+         pGrad.addColorStop(0, hl.color.replace(/[\d.]+\)$/g, '0.1)'));
+         pGrad.addColorStop(1, hl.color);
+         ctx.fillStyle = pGrad;
+         drawRoundRect(bk.x + 0.5, 0.5, bk.w - 1, bk.h - 1, [0, 0, 3, 3]);
+         ctx.fill();
       }
     }
     ctx.globalAlpha = 1;

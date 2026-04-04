@@ -41,6 +41,7 @@ app.include_router(ai_router)
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 app.mount("/css", StaticFiles(directory=FRONTEND_DIR / "css"), name="css")
 app.mount("/js", StaticFiles(directory=FRONTEND_DIR / "js"), name="js")
+app.mount("/img", StaticFiles(directory=FRONTEND_DIR / "img"), name="img")
 
 
 # ---------------------------------------------------------------------------
