@@ -44,7 +44,7 @@
   }
 
   function goPlayer(path) {
-    window.location.href = `/player?path=${encodeURIComponent(path)}`;
+    window.location.href = `/player?path=${encodeURIComponent(path)}&autoplay=1`;
   }
 
   function getDifficultyHtml(item) {
@@ -320,8 +320,10 @@
     // 滾輪→橫向
     el.addEventListener("wheel", (e) => {
       if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-        e.preventDefault();
-        el.scrollLeft += e.deltaY;
+        if (el.scrollWidth > Math.ceil(el.clientWidth)) {
+          e.preventDefault();
+          el.scrollLeft += e.deltaY;
+        }
       }
     }, { passive: false });
 

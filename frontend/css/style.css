@@ -674,7 +674,7 @@ a:hover { text-decoration: underline; }
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,.7);
-  z-index: 300;
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -686,6 +686,33 @@ a:hover { text-decoration: underline; }
   border-radius: 12px;
   padding: 32px 48px;
   text-align: center;
+}
+
+/* EQ Music Bars Animation */
+.music-bars {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 5px;
+  height: 30px;
+}
+
+.music-bars .bar {
+  width: 6px;
+  background-color: var(--accent);
+  border-radius: 3px;
+  animation: eq-jump 0.8s infinite ease-in-out;
+}
+
+.music-bars .bar:nth-child(1) { height: 10px; animation-delay: 0.1s; }
+.music-bars .bar:nth-child(2) { height: 26px; animation-delay: 0.4s; }
+.music-bars .bar:nth-child(3) { height: 18px; animation-delay: 0.2s; }
+.music-bars .bar:nth-child(4) { height: 24px; animation-delay: 0.5s; background-color: #ff9800; }
+.music-bars .bar:nth-child(5) { height: 14px; animation-delay: 0.3s; }
+
+@keyframes eq-jump {
+  0%, 100% { transform: scaleY(0.4); transform-origin: bottom; opacity: 0.7; }
+  50% { transform: scaleY(1); transform-origin: bottom; opacity: 1; filter: drop-shadow(0 0 6px rgba(233,69,96, 0.6)); }
 }
 
 /* current chord big display */

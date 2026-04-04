@@ -539,11 +539,41 @@ AI 的每次提交必須附上兩種清單：
 
 ---
 
-## 12. 版本歷史
+## 12. AI 指法生成與驗證雙軌架構 (Generator-Evaluator AI Architecture)
+
+為解決硬編碼規則（Hardcoded Heuristics）在處理極端伴奏跨度時產生的「外星人指法」問題，系統計畫導入「生成-驗證」雙軌 AI 流程。
+
+### 12.1 指法生成器 (Fingering Generator AI)
+- **架構**：以 PIG DataSet 或相關鋼琴指法公開資料訓練 Seq-to-Seq 模型。
+- **目標**：給定一段 MIDI 音高、時值與拍號序列，輸出初步的 1~5 指法分配。
+- **定位**：取代原先依靠 `viterbi_fingering` 與純規則預測的分支邏輯。
+
+### 12.2 合理性驗證器 (Playability Evaluator AI / Critic)
+- **架構**：整合 `MusicianQA` 的核心邏輯，或是獨立的 AI 評分模型。
+- **QA 規則**：
+  1. **最大跨度懲罰**：1 指到 5 指瞬間跨度超過 13 半音視為致命錯誤（根據 Difficulty Level 動態調整）。
+  2. **無效交錯懲罰**：過度違反人體工學（如大跳時錯誤的 3、4 指交叉）。
+  3. **動態對齊**：確保右手旋律和絃落下時，不再無腦全給 1 (Thumb)。
+- **退回機制 (Fallback)**：若 Evaluator 評分不達標，系統應將該小節退回，觸發 Generator 第二候選路徑，或強制使用 Close Position (密集排列) 的 Alberti Bass 降級方案。
+
+---
+
+## 13. 邊緣運算與雙引擎批次處理架構 (Super Worker Edge Architecture)
+
+為了解決 NAS NAS/伺服器 CPU 效能不足以應付數萬首曲目的 BTC 和弦推論與 pYIN 旋律擷取之問題，系統導入了高階 PC 作為「超級運算節點 (Super Worker)」的分散式處理策略：
+- **CPU/GPU 雙重引擎**：透過 `batch_super_worker.py` 在配備了旗艦級 CPU (如 i9) 與 GPU (如 RTX 5080) 的 PC 上運行，使用 `ThreadPoolExecutor` 提供 12~24 執行緒全速處理 CPU 密集的旋律擷取。
+- **Semaphore 保護機制**：利用 `threading.Semaphore(2)` 限制進入 PyTorch 的並發數，維持 GPU 滿載同時杜絕 VRAM OOM 崩潰。
+- **資料庫無縫連接**：運算結果直接透過網路磁碟寫入 NAS 共用目錄 (`W:\data`)，Server 徹底轉型為輕量級 Web 與 API 提供者，達成 **Zero-CPU Server** 目標。
+
+---
+
+## 14. 版本歷史
 
 | 版本 | 日期 | 變更 |
 |------|------|------|
 | 1.0 | 2025-03-25 | 初版：Phase 1-3 功能測試 |
 | 2.0 | 2026-03-28 | 和弦引擎升級 BTC Transformer，新增分級測試框架 |
 | 2.1 | 2026-04-03 | 新增第 11 節：AI 協作開發品管鐵律 (AI QA Protocol) |
-| 3.0 | 2026-04-03 | 全面更新：補齊 AI/Benchmark/Auto Worker API 測試；新增 88 鍵、三分頁、縮放、全螢幕、Jazzify、段落偵測、MIDI 匯入等 UI 測試；更新效能基準（GPU）；更新已知限制 |
+| 3.0 | 2026-04-03 | 全面更新：補齊 AI/Benchmark/Auto Worker API 測試；更新 UI 測試與效能基準 |
+| 3.1 | 2026-04-04 | 新增第 12 節：提案 AI 指法生成與驗證雙軌架構 (Generator-Evaluator Architecture) |
+| 3.2 | 2026-04-04 | 新增第 13 節：邊緣運算與雙引擎批次處理架構 (Super Worker Edge Architecture) |

@@ -61,8 +61,11 @@
   <!-- 偵測中覆蓋層 -->
   <div id="detectOverlay" class="detect-overlay" style="display:none">
     <div class="detect-box">
-      <div class="spinner" style="margin-bottom:12px"></div>
-      <div id="detectMsg" style="font-size:15px;margin-bottom:8px">正在偵測和弦…</div>
+      <div id="loadingSpinner" class="spinner" style="margin-bottom:12px; margin-left:auto; margin-right:auto;"></div>
+      <div id="musicBarsAnim" class="music-bars" style="display:none; margin-bottom:16px;">
+        <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+      </div>
+      <div id="detectMsg" style="font-size:15px;margin-bottom:8px;font-weight:bold;">正在偵測和弦…</div>
       <div id="detectDetail" style="font-size:12px;color:var(--text-dim)">首次播放需要分析音訊，請稍候</div>
     </div>
   </div>
@@ -118,11 +121,6 @@
           <button class="mode-btn" data-mode="guitar" title="吉他">&#x1F3B8;</button>
           <button class="mode-btn" data-mode="ukulele" title="烏克麗麗">&#x1FA95;</button>
         </div>
-        <div id="handSwitch" style="display:none;gap:2px">
-          <button class="mode-btn active" data-hand="both" title="Both hands">LR</button>
-          <button class="mode-btn" data-hand="left" title="Left hand (chords)">L</button>
-          <button class="mode-btn" data-hand="right" title="Right hand (melody)">R</button>
-        </div>
       </div>
     </div>
     <div id="chordDisplay" class="chord-display-area">
@@ -160,12 +158,18 @@
             <option value="Walking">Pro (Jazz Walking)</option>
             <option value="Stride">Pro (Stride)</option>
           </select>
-          <div class="teach-level-group">
+          <div id="levelSwitch" class="teach-level-group">
             <button class="mode-btn active" data-level="L1">基礎</button>
             <button class="mode-btn" data-level="L2">進階</button>
             <button class="mode-btn" data-level="L3">大師</button>
           </div>
+          <div id="handSwitch" class="teach-level-group" style="display:flex;gap:2px">
+            <button class="mode-btn active" data-hand="both" title="雙手">LR</button>
+            <button class="mode-btn" data-hand="left" title="僅左手">L</button>
+            <button class="mode-btn" data-hand="right" title="僅右手">R</button>
+          </div>
           <label class="teach-toggle" title="教學瀑布流"><input type="checkbox" id="teachToggle" checked><span>Waterfall</span></label>
+          <label class="teach-toggle" title="全域顯示該和弦的所有組成音位置"><input type="checkbox" id="showChordTones"><span>組成音</span></label>
         </div>
       </div>
     </div>

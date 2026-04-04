@@ -610,6 +610,20 @@ const ChordRender = {
       }
     }
 
+    // Global Chord Tones (faint background highlight across keyboard)
+    if (opts && opts.chordTones && opts.chordTones.length > 0) {
+      const FAINT_BLUE = "#29b6f6"; // 明顯的亮藍色
+      for (let m = 21; m <= 108; m++) {
+        const pc = m % 12;
+        if (opts.chordTones.includes(pc)) {
+           // Skip if already highlighted by something else
+           if (!lMidis.includes(m) && !rMidis.includes(m) && !(opts.chordHints && opts.chordHints.includes(m))) {
+             highlights.push({ midi: m, color: FAINT_BLUE, alpha: 1.0, outlineOnly: true, fillFaint: true });
+           }
+        }
+      }
+    }
+
     // Pass 1: draw WHITE key highlights only
     for (const hl of highlights) {
       const wk = whiteXs[hl.midi];
@@ -617,11 +631,11 @@ const ChordRender = {
       ctx.globalAlpha = hl.alpha;
       if (hl.outlineOnly) {
          ctx.fillStyle = hl.color;
-         ctx.globalAlpha = 0.2;
+         ctx.globalAlpha = hl.fillFaint ? 0.1 : 0.2;
          ctx.fillRect(wk.x + 2, 2, wk.w - 4, wk.h - 4);
          ctx.globalAlpha = hl.alpha;
          ctx.strokeStyle = hl.color;
-         ctx.lineWidth = 2;
+         ctx.lineWidth = hl.fillFaint ? 1 : 2;
          if (hl.glow) {
            ctx.shadowBlur = 8;
            ctx.shadowColor = hl.color;
@@ -652,11 +666,11 @@ const ChordRender = {
       ctx.globalAlpha = Math.min(1.0, hl.alpha + 0.15);
       if (hl.outlineOnly) {
          ctx.fillStyle = hl.color;
-         ctx.globalAlpha = 0.25;
+         ctx.globalAlpha = hl.fillFaint ? 0.15 : 0.25;
          ctx.fillRect(bk.x + 2, 2, bk.w - 4, bk.h - 4);
          ctx.globalAlpha = Math.min(1.0, hl.alpha + 0.15);
          ctx.strokeStyle = hl.color;
-         ctx.lineWidth = 2;
+         ctx.lineWidth = hl.fillFaint ? 1 : 2;
          if (hl.glow) {
            ctx.shadowBlur = 8;
            ctx.shadowColor = hl.color;

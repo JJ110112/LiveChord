@@ -16,7 +16,7 @@ import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
-from backend.chord_table import get_chord_notes, root_to_semitone
+from backend.chord_table import get_chord_notes, root_to_semitone, parse_chord
 
 # ==============================================================================
 # 壹、基礎常數
@@ -139,13 +139,31 @@ def voice_leading_optimize(pitches: List[int], prev_pitches: List[int],
     return result
 
 
-def expand_voicing(pitches: List[int], target_size: int) -> List[int]:
-    """擴展 voicing 到指定大小（八度疊加）。"""
+def expand_voicing(pitches: List[int], target_size: int, max_span: int = 13) -> List[int]:
+    """擴展 voicing 到指定大小（八度疊加），並強制進行人手合理性檢查（聲部過濾與最大跨度限制）。"""
     if not pitches:
         return []
     result = list(pitches)
+    base_pitch = min(pitches)
+    
+    # 嘗試往上疊加八度，並套用 Voice Filtering 與 Max Span Constraint
     while len(result) < target_size:
-        result.append(result[-len(pitches)] + 12)
+        next_pitch = result[-len(pitches)] + 12
+        if next_pitch - base_pitch <= max_span:
+            result.append(next_pitch)
+        else:
+            # 超過閾值：尋找該和絃的密集排列（Close Position）替代方案
+            close_pitch = next_pitch
+            while close_pitch - base_pitch > max_span:
+                close_pitch -= 12
+            
+            if close_pitch >= base_pitch and close_pitch not in result:
+                result.append(close_pitch)
+                result.sort()
+            else:
+                # 無可用的 Close Position，強制拋棄重複音 (Doubling notes)
+                break
+                
     return result[:target_size]
 
 
@@ -198,6 +216,10 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
     notes = get_chord_notes(chord_name)
     if not notes:
         return [], prev_lh
+
+    root_name, quality, bass_name = parse_chord(chord_name)
+    if bass_name:
+        notes[0] = bass_name
 
     # Level 決定 voicing 複雜度
     if level == "L1":
@@ -254,8 +276,9 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
                         pitch -= 12
                 else:
                     continue
-            elif idx < len(voicing):
-                pitch = voicing[idx]
+            elif len(voicing) > 0:
+                # 自動尋找密集排列替代：若原本的廣跨度被拋棄，透過取餘數讓琶音在合理範圍內盤旋
+                pitch = voicing[idx % len(voicing)]
             else:
                 continue
 
@@ -350,6 +373,26 @@ def _check_melody_conflict(pitch: int, time: float, dur: float,
     return False
 
 
+def _filter_lh_span(events: List[Dict], max_span: int = 13) -> List[Dict]:
+    """過濾左手音符，限制最大跨距。"""
+    time_groups: Dict[float, List[Dict]] = {}
+    for e in events:
+        t = e["time"]
+        if t not in time_groups:
+            time_groups[t] = []
+        time_groups[t].append(e)
+
+    filtered = []
+    for t, group in time_groups.items():
+        if not group: continue
+        group.sort(key=lambda x: x["pitch"])
+        min_pitch = group[0]["pitch"]
+        for e in group:
+            if e["pitch"] - min_pitch <= max_span:
+                filtered.append(e)
+    return filtered
+
+
 def generate_accompaniment(chords: List[Dict],
                            melody: List[Dict] = None,
                            bpm: float = 120.0,
@@ -417,6 +460,9 @@ def generate_accompaniment(chords: List[Dict],
         rh = _build_right_hand(chord_name, start, duration, level, melody, rh_velocity)
         right_events.extend(rh)
 
+    # 左手跨度限制過濾
+    left_events = _filter_lh_span(left_events, max_span=13)
+
     # 排序
     left_events.sort(key=lambda e: (e["time"], e["pitch"]))
     right_events.sort(key=lambda e: (e["time"], e["pitch"]))
@@ -434,17 +480,19 @@ def generate_accompaniment(chords: List[Dict],
     }
 
 
+from .fingering_model import generate_fingers
+from .fingering_evaluator import evaluate_fingers
+
 # ==============================================================================
-# 伍、Viterbi 指法推導
+# 伍、AI指法生成與驗證雙軌架構 (Generator-Evaluator Architecture)
 # ==============================================================================
 
 def _assign_fingering(events: List[Dict], hand: str = "right"):
-    """對事件序列注入 finger 欄位（就地修改）。"""
+    """使用雙軌AI 架構對事件序列注入 finger 欄位（就地修改）。"""
     if not events:
         return
 
-    # 提取不重疊的音符序列（同時按下的取最高/最低音）
-    # 簡化：按時間分組，每組取單音做指法
+    # 提取按時間點群組
     time_groups: Dict[float, List[Dict]] = {}
     for e in events:
         t = e["time"]
@@ -456,33 +504,61 @@ def _assign_fingering(events: List[Dict], hand: str = "right"):
     if not sorted_times:
         return
 
-    # 取每組的代表音 (右手取最高，左手取最低)
+    # 取每組的代表音 (右手取最高，左手取最低) 作為旋律/Bass線
     rep_pitches = []
     for t in sorted_times:
         group = time_groups[t]
-        if hand == "right":
-            rep = max(e["pitch"] for e in group)
-        else:
-            rep = min(e["pitch"] for e in group)
+        rep = max(e["pitch"] for e in group) if hand == "right" else min(e["pitch"] for e in group)
         rep_pitches.append(rep)
 
-    # Viterbi
-    fingers = viterbi_fingering(rep_pitches, hand=hand)
+    # 1. 呼叫 Generator AI 產生初版指法
+    fingers = generate_fingers(rep_pitches, hand=hand)
 
-    # 將指法寫回所有 events
+    # 2. 呼叫 Evaluator AI (Critic) 進行嚴格人體工學審核
+    qa_report = evaluate_fingers(rep_pitches, fingers, hand=hand)
+    
+    # 3. 處理 Reject 路徑 (Fallback 機制)
+    if not qa_report["valid"]:
+        # 若被判定為「外星人」指法或有致命跨距，強制啟用 Close Position 安全降級
+        # 這裡的簡單降級方案為全部初始化為保守順位，或拋棄跨距外的音符
+        # (這裡目前作保守設定，未來可再次呼叫 Generator 產生 beam search 第二名)
+        if hand == "left":
+            fingers = [5] * len(rep_pitches)
+        else:
+            fingers = [1] * len(rep_pitches)
+
+    # 將指法寫回所有 events (和絃散開邏輯)
     for i, t in enumerate(sorted_times):
         group = time_groups[t]
-        base_finger = fingers[i] if i < len(fingers) else 1
-        # 同時間的多音：按音高分配指法
-        group_sorted = sorted(group, key=lambda e: e["pitch"],
-                              reverse=(hand == "right"))
-        for j, e in enumerate(group_sorted):
-            if j == 0:
-                e["finger"] = base_finger
+        base_finger = fingers[i] if i < len(fingers) else (1 if hand == "right" else 5)
+        
+        group_sorted = sorted(group, key=lambda e: e["pitch"])
+        if len(group_sorted) == 1:
+            group_sorted[0]["finger"] = base_finger
+        else:
+            # Chord block
+            if hand == "right":
+                # 右手：最低音必定是拇指(1)，然後往上分配
+                fingers_to_assign = {
+                    2: [1, 5],
+                    3: [1, 3, 5],
+                    4: [1, 2, 3, 5],
+                    5: [1, 2, 3, 4, 5]
+                }.get(len(group_sorted), [1] * len(group_sorted))
+                for j, e in enumerate(group_sorted):
+                    if j < len(fingers_to_assign):
+                        e["finger"] = fingers_to_assign[j]
             else:
-                # 相鄰手指
-                f = base_finger - j if hand == "right" else base_finger + j
-                e["finger"] = max(1, min(5, f))
+                # 左手：最低音必定是小指(5)，一直到拇指(1)
+                fingers_to_assign = {
+                    2: [5, 1],
+                    3: [5, 3, 1],
+                    4: [5, 4, 2, 1],
+                    5: [5, 4, 3, 2, 1]
+                }.get(len(group_sorted), [5] * len(group_sorted))
+                for j, e in enumerate(group_sorted):
+                    if j < len(fingers_to_assign):
+                        e["finger"] = fingers_to_assign[j]
 
 
 def calculate_physical_cost(delta_p: int, f_prev: int, f_curr: int,
