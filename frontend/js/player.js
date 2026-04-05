@@ -1023,65 +1023,74 @@
 
       const isLeft = evt._hand === "left";
       const isOnBlackKey = !!cache.blackXs[midi];
-      // Phase 11: velocity-based color intensity
-      // vel 30→dim, 127→full brightness. Wide range for visible contrast.
+      // Phase 11: velocity → 0~1 using actual data range (typ. 55~95)
+      // Remap so min velocity in data → 0, max → 1 (aggressive contrast)
       const vel = evt.velocity || 80;
-      const velT = Math.min(1.0, Math.max(0.0, (vel - 30) / 97)); // 0~1 normalized
-      let color;
+      const velT = Math.min(1.0, Math.max(0.0, (vel - 55) / 40)); // 55→0, 95→1
+      // Apply power curve for more dramatic contrast (dim stays dim, bright pops)
+      const velP = velT * velT; // quadratic: 0.5→0.25, 0.8→0.64, 1.0→1.0
+      let color, glowColor;
       if (isLeft) {
-        // Blue channel: dim=dark navy, loud=bright blue
-        const r = Math.round(20 + velT * 80);
-        const g = Math.round(80 + velT * 100);
-        const b = Math.round(160 + velT * 86);
-        color = `rgba(${r}, ${g}, ${b}, ${isOnBlackKey ? 0.95 : 0.9})`;
+        // Blue: pp=very dark navy → ff=electric blue
+        const cr = Math.round(10 + velP * 100);
+        const cg = Math.round(40 + velP * 160);
+        const cb = Math.round(100 + velP * 155);
+        color = `rgba(${cr}, ${cg}, ${cb}, ${isOnBlackKey ? 0.95 : 0.9})`;
+        glowColor = `rgba(${Math.min(255, cr+80)}, ${Math.min(255, cg+60)}, 255, 1)`;
       } else {
-        // Orange channel: dim=dark amber, loud=bright orange
-        const r = Math.round(150 + velT * 105);
-        const g = Math.round(80 + velT * 100);
-        const b = Math.round(0 + velT * 30);
-        color = `rgba(${r}, ${g}, ${b}, ${isOnBlackKey ? 0.95 : 0.9})`;
+        // Orange: pp=dark brown → ff=blazing orange-yellow
+        const cr = Math.round(100 + velP * 155);
+        const cg = Math.round(40 + velP * 170);
+        const cb = Math.round(0 + velP * 50);
+        color = `rgba(${cr}, ${cg}, ${cb}, ${isOnBlackKey ? 0.95 : 0.9})`;
+        glowColor = `rgba(255, ${Math.min(255, cg+60)}, ${Math.min(255, cb+80)}, 1)`;
       }
       const glow = isLeft ? LH_GLOW : RH_GLOW;
 
       // Drop prediction shadow on the keys if it's right about to hit
       if (yBottom > h - 40 && yBottom < h) {
         ctx.fillStyle = glow;
-        ctx.fillRect(x, h - 5, kw, -20); // predictive glow standing on the landing bar
+        ctx.fillRect(x, h - 5, kw, -20);
       }
 
-      // Note bar — velocity-driven glow intensity
+      // Note bar + velocity glow
+      const rr = Math.min(4, noteH / 2);
       ctx.save();
-      if (velT > 0.5) {
-        // 強音: 發光光暈 (velT 0.5→微光, 1.0→強光)
-        const glowStrength = (velT - 0.5) * 2; // 0~1
-        ctx.shadowColor = color;
-        ctx.shadowBlur = 4 + glowStrength * 16; // 4~20px blur
+      if (velP > 0.15) {
+        // 任何中等以上力度都有光暈
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = Math.round(3 + velP * 25); // 3~28px
       }
       ctx.fillStyle = color;
-      const r = Math.min(4, noteH / 2);
       ctx.beginPath();
-      ctx.roundRect(x + 1, yTop, kw - 2, noteH, r);
+      ctx.roundRect(x + 1, yTop, kw - 2, noteH, rr);
       ctx.fill();
+      // 強音 (velP > 0.5): 再疊一層加強發光
+      if (velP > 0.5) {
+        ctx.shadowBlur = Math.round(velP * 35);
+        ctx.fill();
+      }
       ctx.restore();
 
-      // 弱音: 半透明邊框強調 (讓弱音也看得清楚)
-      if (velT < 0.35) {
-        ctx.strokeStyle = "rgba(255,255,255,0.15)";
+      // 弱音: 細邊框讓暗色方塊仍可辨識
+      if (velP < 0.15) {
+        ctx.strokeStyle = "rgba(255,255,255,0.2)";
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.roundRect(x + 1, yTop, kw - 2, noteH, r);
+        ctx.roundRect(x + 1, yTop, kw - 2, noteH, rr);
         ctx.stroke();
       }
 
-      // Contact glow (目前發聲中，音塊壓中底線) — 也依 velocity 調整
+      // Contact glow (觸鍵瞬間) — 強音爆發光
       if (yBottom >= h && yTop <= h) {
          ctx.save();
          ctx.fillStyle = color;
-         ctx.shadowColor = color;
-         ctx.shadowBlur = 6 + velT * 14; // 弱音 6px, 強音 20px
+         ctx.shadowColor = glowColor;
+         ctx.shadowBlur = 8 + velP * 22;
          ctx.fillRect(x + 1, h - 4, kw - 2, 8);
-         ctx.fillStyle = `rgba(255,255,255,${0.4 + velT * 0.5})`;
-         ctx.shadowBlur = 3 + velT * 7;
+         // 白光芯
+         ctx.fillStyle = `rgba(255,255,255,${0.3 + velP * 0.6})`;
+         ctx.shadowBlur = velP * 15;
          ctx.shadowColor = "#fff";
          ctx.fillRect(x + 3, h - 2, kw - 6, 4);
          ctx.restore();
