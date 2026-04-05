@@ -8,3 +8,4 @@ pretty_midi>=0.2
 mir_eval>=0.7
 demucs>=4.0
 basic-pitch>=0.3
+torchcodec>=0.1.0
