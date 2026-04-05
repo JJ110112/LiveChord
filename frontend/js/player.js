@@ -1023,12 +1023,24 @@
 
       const isLeft = evt._hand === "left";
       const isOnBlackKey = !!cache.blackXs[midi];
-      // Phase 11: velocity-based opacity (louder = more opaque)
+      // Phase 11: velocity-based color intensity
+      // vel 30→dim, 127→full brightness. Wide range for visible contrast.
       const vel = evt.velocity || 80;
-      const velAlpha = Math.min(1.0, Math.max(0.4, vel / 100));
-      const color = isLeft
-        ? (isOnBlackKey ? LH_BLACK : LH_WHITE).replace("0.9)", velAlpha + ")")
-        : (isOnBlackKey ? RH_BLACK : RH_WHITE).replace("0.9)", velAlpha + ")");
+      const velT = Math.min(1.0, Math.max(0.0, (vel - 30) / 97)); // 0~1 normalized
+      let color;
+      if (isLeft) {
+        // Blue channel: dim=dark navy, loud=bright blue
+        const r = Math.round(20 + velT * 80);
+        const g = Math.round(80 + velT * 100);
+        const b = Math.round(160 + velT * 86);
+        color = `rgba(${r}, ${g}, ${b}, ${isOnBlackKey ? 0.95 : 0.9})`;
+      } else {
+        // Orange channel: dim=dark amber, loud=bright orange
+        const r = Math.round(150 + velT * 105);
+        const g = Math.round(80 + velT * 100);
+        const b = Math.round(0 + velT * 30);
+        color = `rgba(${r}, ${g}, ${b}, ${isOnBlackKey ? 0.95 : 0.9})`;
+      }
       const glow = isLeft ? LH_GLOW : RH_GLOW;
 
       // Drop prediction shadow on the keys if it's right about to hit
