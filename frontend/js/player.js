@@ -1187,14 +1187,14 @@
 
     if (!_teacherMsgCache) return;
 
-    // 繪製底部左側浮動提示框
+    // 繪製底部右側浮動提示框 (靠近右手區域)
     const padding = 10;
-    const boxX = 12;
-    const boxY = h - 42;
     ctx.font = "12px 'Segoe UI', sans-serif";
     const metrics = ctx.measureText(_teacherMsgCache);
     const boxW = Math.min(metrics.width + padding * 2 + 20, w * 0.6);
     const boxH = 28;
+    const boxX = w - boxW - 12;
+    const boxY = h - 42;
 
     // 背景 — 半透明深色 pill
     ctx.fillStyle = "rgba(10, 10, 10, 0.65)";
@@ -1202,18 +1202,18 @@
     ctx.roundRect(boxX, boxY, boxW, boxH, 14);
     ctx.fill();
 
-    // 左側彩色小圓點 (呼吸動畫)
+    // 右側彩色小圓點 (呼吸動畫)
     const pulse = 0.6 + 0.4 * Math.sin(currentTime * 3);
     ctx.fillStyle = `rgba(76, 175, 80, ${pulse})`;
     ctx.beginPath();
-    ctx.arc(boxX + 16, boxY + boxH / 2, 4, 0, Math.PI * 2);
+    ctx.arc(boxX + boxW - 16, boxY + boxH / 2, 4, 0, Math.PI * 2);
     ctx.fill();
 
-    // 文字
+    // 文字 (右對齊，圓點左邊)
     ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-    ctx.textAlign = "left";
+    ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    ctx.fillText(_teacherMsgCache, boxX + 26, boxY + boxH / 2);
+    ctx.fillText(_teacherMsgCache, boxX + boxW - 26, boxY + boxH / 2);
   }
 
   function _generateTeacherMessage(t, nowPlaying, upcoming) {
