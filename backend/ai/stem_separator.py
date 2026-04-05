@@ -41,10 +41,10 @@ class StemSeparator:
         ]
 
         # Set up environment variables to fix Windows-specific bugs:
-        # 1. PYTHONUTF8=1 fixes cp1252 UnicodeEncodeError when printing Chinese filenames
-        # 2. TORCHAUDIO_BACKEND=soundfile forces torchaudio to use SoundFile and bypass the broken TorchCodec
+        # 3. PYTHONIOENCODING=utf-8 ensures stdout directly uses utf-8
         env = os.environ.copy()
         env["PYTHONUTF8"] = "1"
+        env["PYTHONIOENCODING"] = "utf-8"
         env["TORCHAUDIO_BACKEND"] = "soundfile"
         
         try:
