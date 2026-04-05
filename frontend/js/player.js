@@ -1016,9 +1016,12 @@
 
       const isLeft = evt._hand === "left";
       const isOnBlackKey = !!cache.blackXs[midi];
+      // Phase 11: velocity-based opacity (louder = more opaque)
+      const vel = evt.velocity || 80;
+      const velAlpha = Math.min(1.0, Math.max(0.4, vel / 100));
       const color = isLeft
-        ? (isOnBlackKey ? LH_BLACK : LH_WHITE)
-        : (isOnBlackKey ? RH_BLACK : RH_WHITE);
+        ? (isOnBlackKey ? LH_BLACK : LH_WHITE).replace("0.9)", velAlpha + ")")
+        : (isOnBlackKey ? RH_BLACK : RH_WHITE).replace("0.9)", velAlpha + ")");
       const glow = isLeft ? LH_GLOW : RH_GLOW;
 
       // Drop prediction shadow on the keys if it's right about to hit
@@ -1046,6 +1049,22 @@
          ctx.shadowColor = "#fff";
          ctx.fillRect(x + 3, h - 2, kw - 6, 4);
          ctx.restore();
+      }
+
+      // Phase 11: Articulation markers
+      if (evt.articulation === "staccato") {
+        // Staccato dot at bottom of note block
+        ctx.fillStyle = "#fff";
+        ctx.beginPath();
+        ctx.arc(x + kw / 2, yBottom - 4, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (evt.articulation === "legato" && noteH > 12) {
+        // Legato curve connecting to next note (subtle arc at top)
+        ctx.strokeStyle = "rgba(255,255,255,0.3)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x + kw / 2, yTop, kw * 0.4, Math.PI, 0);
+        ctx.stroke();
       }
 
       // Show finger numbers for all mapped notes
@@ -1078,6 +1097,39 @@
         if (isLeft) lhLastF = evt.finger; else rhLastF = evt.finger;
       }
     }
+
+    // ---- Phase 11: Pedal visualization ----
+    if (accData.pedal && accData.pedal.length > 0) {
+      for (const ped of accData.pedal) {
+        const pedStart = ped.start;
+        const pedEnd = ped.end;
+        if (pedEnd < currentTime || pedStart > currentTime + lookAhead) continue;
+
+        const yPedBottom = h - (pedStart - currentTime) * pxPerSec;
+        const yPedTop = h - (pedEnd - currentTime) * pxPerSec;
+        const depth = ped.depth || 1.0;
+        const alpha = depth * 0.15;
+
+        // Pedal sustain region (subtle green tint across full width)
+        ctx.fillStyle = `rgba(76, 175, 80, ${alpha})`;
+        ctx.fillRect(0, Math.max(0, yPedTop), w, Math.min(h, yPedBottom) - Math.max(0, yPedTop));
+
+        // Pedal change marker (horizontal dashed line at pedal start)
+        if (yPedBottom > 0 && yPedBottom < h) {
+          ctx.strokeStyle = depth >= 1.0 ? "rgba(76, 175, 80, 0.5)" : "rgba(76, 175, 80, 0.3)";
+          ctx.lineWidth = 1;
+          ctx.setLineDash(depth >= 1.0 ? [] : [3, 3]);
+          ctx.beginPath();
+          ctx.moveTo(0, yPedBottom);
+          ctx.lineTo(w, yPedBottom);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+    }
+
+    // ---- Phase 11: Velocity opacity on note blocks ----
+    // (Applied above via evt.velocity — opacity modulation already in color)
 
     // Landing line
     ctx.strokeStyle = "rgba(255,255,255,0.4)";

@@ -1,9 +1,9 @@
-"""AI 和弦預測 + Jazzify API"""
+"""AI 和弦預測 + Jazzify + Phase 11 教學引擎 API"""
 
 from fastapi import APIRouter, Query, Body
 from pydantic import BaseModel
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
@@ -270,8 +270,9 @@ def get_accompaniment(
     path: str = Query(..., description="歌曲路徑"),
     style: str = Query(default="Block", description="伴奏風格: Block/Arpeggio/Rhythm/Alberti/Shell/Walking/Stride"),
     level: str = Query(default="L1", description="難度: L1/L2/L3"),
+    section_type: str = Query(default="default", description="段落類型: intro/verse/chorus/bridge/outro/default"),
 ):
-    """生成伴奏（左右手 MIDI events + 指法），含快取"""
+    """生成伴奏（左右手 MIDI events + 指法 + 踏板 + 力度），含快取"""
     import json as _json
     import hashlib, os
 
@@ -279,7 +280,7 @@ def get_accompaniment(
     ACC_DIR.mkdir(parents=True, exist_ok=True)
 
     h = hashlib.md5(path.encode()).hexdigest()[:12]
-    cache_file = ACC_DIR / f"{h}_{style}_{level}.json"
+    cache_file = ACC_DIR / f"{h}_{style}_{level}_{section_type}.json"
 
     # 快取命中
     if cache_file.is_file():
@@ -331,10 +332,29 @@ def get_accompaniment(
     result = generate_accompaniment(
         chords=chords, melody=melody,
         bpm=bpm, style=style, level=level, genre=genre,
+        section_type=section_type,
     )
     result["path"] = path
     result["bpm"] = round(bpm, 1)
     result["genre"] = genre
+
+    # Phase 11: 踏板建議
+    try:
+        from ai.pedal_advisor import generate_pedal_suggestions
+        result["pedal"] = generate_pedal_suggestions(
+            chords, melody=melody, bpm=bpm,
+            style="rhythmic" if section_type == "chorus" else "legato",
+        )
+    except Exception:
+        result["pedal"] = []
+
+    # Phase 11: 力度表情
+    try:
+        from ai.dynamics_engine import generate_dynamics
+        all_events = result["left_hand"] + result["right_hand"]
+        generate_dynamics(all_events, bpm=int(bpm), section_type=section_type)
+    except Exception:
+        pass
 
     # 寫入快取
     try:
@@ -407,4 +427,174 @@ async def stats():
         "markov": get_predictor(str(CHORDS_DIR)).get_stats(),
         "chord2vec": get_chord2vec(str(CHORDS_DIR)).get_stats(),
         "groove": get_groove_dict(str(CHORDS_DIR)).get_stats(),
+    }
+
+
+# ==============================================================================
+# Phase 11: AI 鋼琴教師 V2 端點
+# ==============================================================================
+
+@router.get("/evaluate-melody")
+def evaluate_melody_api(
+    path: str = Query(..., description="歌曲路徑"),
+    voice: str = Query(default="default", description="聲部: soprano/alto/tenor/bass/piano_rh/piano_lh/default"),
+):
+    """旋律品質評測（音域/跳進比/樂句弧/節奏/置信度）"""
+    import json as _json, hashlib
+
+    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    melody_file = DATA_DIR / "melodies" / f"{h}.json"
+    if not melody_file.is_file():
+        return {"error": "no melody data", "overall_score": 0}
+
+    mel_data = _json.loads(melody_file.read_text(encoding="utf-8"))
+    melody = mel_data.get("melody", mel_data if isinstance(mel_data, list) else [])
+    if not melody:
+        return {"error": "empty melody", "overall_score": 0}
+
+    from ai.melody_evaluator import evaluate_melody
+    result = evaluate_melody(melody, voice=voice)
+    result["path"] = path
+    return result
+
+
+@router.get("/evaluate-accompaniment")
+def evaluate_accompaniment_api(
+    path: str = Query(..., description="歌曲路徑"),
+    style: str = Query(default="Block"),
+    level: str = Query(default="L1"),
+):
+    """伴奏品質評測（碰撞/voice leading/音域/密度/和聲）"""
+    import json as _json, hashlib
+
+    h = hashlib.md5(path.encode()).hexdigest()[:12]
+
+    # 載入伴奏快取
+    acc_file = DATA_DIR / "accompaniments" / f"{h}_{style}_{level}_default.json"
+    if not acc_file.is_file():
+        acc_file = DATA_DIR / "accompaniments" / f"{h}_{style}_{level}.json"
+    if not acc_file.is_file():
+        return {"error": "no accompaniment data, generate first", "overall_score": 0}
+
+    acc_data = _json.loads(acc_file.read_text(encoding="utf-8"))
+    left_hand = acc_data.get("left_hand", [])
+    right_hand = acc_data.get("right_hand", [])
+
+    # 載入旋律
+    melody = []
+    melody_file = DATA_DIR / "melodies" / f"{h}.json"
+    if melody_file.is_file():
+        mel_data = _json.loads(melody_file.read_text(encoding="utf-8"))
+        melody = mel_data.get("melody", [])
+
+    # 載入和弦
+    chords = []
+    chords_file = CHORDS_DIR / f"{h}.json"
+    if chords_file.is_file():
+        chord_data = _json.loads(chords_file.read_text(encoding="utf-8"))
+        chords = chord_data.get("chords", [])
+
+    bpm = acc_data.get("bpm", 120)
+
+    from ai.accompaniment_evaluator import evaluate_accompaniment
+    result = evaluate_accompaniment(left_hand, right_hand, melody, bpm=int(bpm), chords=chords)
+    result["path"] = path
+    result["style"] = style
+    result["level"] = level
+    return result
+
+
+@router.get("/pedal")
+def pedal_api(
+    path: str = Query(..., description="歌曲路徑"),
+    style: str = Query(default="legato", description="踏板風格: legato/rhythmic/half"),
+):
+    """AI 踏板建議"""
+    import json as _json, hashlib
+
+    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    chords_file = CHORDS_DIR / f"{h}.json"
+    if not chords_file.is_file():
+        return {"error": "no chord data", "pedal": []}
+
+    chord_data = _json.loads(chords_file.read_text(encoding="utf-8"))
+    chords = chord_data.get("chords", [])
+
+    melody = []
+    melody_file = DATA_DIR / "melodies" / f"{h}.json"
+    if melody_file.is_file():
+        mel_data = _json.loads(melody_file.read_text(encoding="utf-8"))
+        melody = mel_data.get("melody", [])
+
+    from ai.pedal_advisor import generate_pedal_suggestions, evaluate_pedal
+    pedals = generate_pedal_suggestions(chords, melody=melody, bpm=120, style=style)
+    score = evaluate_pedal(pedals, chords)
+
+    return {"path": path, "style": style, "pedal": pedals, "evaluation": score}
+
+
+@router.get("/dynamics")
+def dynamics_api(
+    path: str = Query(..., description="歌曲路徑"),
+    style: str = Query(default="Block"),
+    level: str = Query(default="L1"),
+    section_type: str = Query(default="verse"),
+):
+    """AI 力度表情（velocity + articulation）"""
+    import json as _json, hashlib
+
+    h = hashlib.md5(path.encode()).hexdigest()[:12]
+
+    # 載入伴奏快取
+    for suffix in [f"{style}_{level}_{section_type}", f"{style}_{level}_default", f"{style}_{level}"]:
+        acc_file = DATA_DIR / "accompaniments" / f"{h}_{suffix}.json"
+        if acc_file.is_file():
+            break
+    else:
+        return {"error": "no accompaniment data, generate first"}
+
+    acc_data = _json.loads(acc_file.read_text(encoding="utf-8"))
+    events = acc_data.get("left_hand", []) + acc_data.get("right_hand", [])
+
+    from ai.dynamics_engine import generate_dynamics, evaluate_dynamics
+    generate_dynamics(events, bpm=int(acc_data.get("bpm", 120)), section_type=section_type)
+    score = evaluate_dynamics(events)
+
+    return {
+        "path": path,
+        "section_type": section_type,
+        "total_events": len(events),
+        "evaluation": score,
+        "sample_events": events[:10],
+    }
+
+
+@router.get("/section-context")
+def section_context_api(
+    path: str = Query(..., description="歌曲路徑"),
+):
+    """取得歌曲的段落結構 + 各段落的 AI 建議參數"""
+    import json as _json, hashlib
+
+    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    chords_file = CHORDS_DIR / f"{h}.json"
+    if not chords_file.is_file():
+        return {"error": "no chord data"}
+
+    chord_data = _json.loads(chords_file.read_text(encoding="utf-8"))
+    chords = chord_data.get("chords", [])
+
+    from ai.section_detect import detect_sections
+    sections_result = detect_sections(chords, chord_data.get("key", "C"))
+    sections = sections_result.get("sections", [])
+
+    from ai.section_context import build_section_timeline
+    total_dur = chords[-1].get("end", 0) if chords else 0
+    timeline = build_section_timeline(sections, chords, total_dur)
+
+    return {
+        "path": path,
+        "sections": sections,
+        "timeline_sample": timeline[:20],
+        "total_sections": len(sections),
     }
