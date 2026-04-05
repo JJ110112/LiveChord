@@ -11,7 +11,6 @@ data/chords/ = BTC 偵測結果
 import os
 import sys
 import json
-import hashlib
 from pathlib import Path
 from collections import Counter
 
@@ -143,9 +142,7 @@ def score_song(gt_entries: list, det_entries: list):
     }
 
 
-def _song_hash(rel_path: str) -> str:
-    rel_path = rel_path.replace("\\", "/")
-    return hashlib.md5(rel_path.encode("utf-8")).hexdigest()[:12]
+from chord_cache import song_hash
 
 
 def main():
@@ -190,7 +187,7 @@ def main():
 
         # 找 BTC 偵測結果
         rel_path = audio_file.name
-        h = _song_hash(rel_path)
+        h = song_hash(rel_path)
         chord_file = CHORDS_DIR / f"{h}.json"
 
         if not chord_file.is_file():

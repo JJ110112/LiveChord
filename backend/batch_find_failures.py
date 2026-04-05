@@ -5,11 +5,11 @@
 import os
 import sys
 import json
-import hashlib
 import argparse
 from pathlib import Path
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
+from chord_cache import song_hash
 
 SKIP_GENRES = {
     "classics", "classical", "symphony",
@@ -25,9 +25,6 @@ SUPPORTED_EXT = {".flac", ".mp3", ".wav"}
 MAX_FILE_SIZE_MB = 100
 CHORDS_DIR = Path(__file__).parent.parent / "data" / "chords"
 
-def _song_hash(rel_path: str) -> str:
-    rel_path = rel_path.replace("\\", "/")
-    return hashlib.md5(rel_path.encode("utf-8")).hexdigest()[:12]
 
 def _is_skipped_genre(rel_path: str) -> bool:
     parts = rel_path.replace("\\", "/").split("/")
@@ -70,7 +67,7 @@ def main():
                 continue
 
             total += 1
-            h = _song_hash(rel_path)
+            h = song_hash(rel_path)
             out_file = CHORDS_DIR / f"{h}.json"
 
             if not out_file.is_file():

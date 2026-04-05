@@ -16,31 +16,10 @@
   const trackList = $("#trackList");
   const breadcrumb = $("#breadcrumb");
   const loading = $("#loading");
-  const toast = $("#toast");
-
-  // ---- helpers ----
-
-  function showToast(msg, ms = 2000) {
-    toast.textContent = msg;
-    toast.classList.add("show");
-    setTimeout(() => toast.classList.remove("show"), ms);
-  }
+  // showToast, escapeHtml moved to utils.js
 
   function showLoading(show) {
     loading.style.display = show ? "" : "none";
-  }
-
-  function formatDuration(sec) {
-    if (!sec) return "";
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return `${m}:${s.toString().padStart(2, "0")}`;
-  }
-
-  function escapeHtml(str) {
-    const d = document.createElement("div");
-    d.textContent = str;
-    return d.innerHTML;
   }
 
   function goPlayer(path) {

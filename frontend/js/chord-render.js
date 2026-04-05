@@ -794,15 +794,4 @@ const ChordRender = {
   },
 };
 
-function escapeHtml(str) {
-  const d = document.createElement("div");
-  d.textContent = str || "";
-  return d.innerHTML;
-}
-
-function formatTime(sec) {
-  if (sec == null) return "";
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
+// escapeHtml, formatTime moved to utils.js

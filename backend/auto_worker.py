@@ -4,7 +4,6 @@ import os
 import sys
 import json
 import time
-import hashlib
 import threading
 import logging
 import ctypes
@@ -13,6 +12,7 @@ from datetime import datetime
 
 log = logging.getLogger("livechord.auto")
 from config import resolve_path
+from chord_cache import song_hash
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 SETTINGS_FILE = DATA_DIR / "settings.json"
@@ -73,9 +73,6 @@ def get_log(limit: int = 50) -> list:
 # 和弦偵測佇列
 # ---------------------------------------------------------------------------
 
-def _song_hash(path: str) -> str:
-    return hashlib.md5(path.encode("utf-8")).hexdigest()[:12]
-
 
 def _get_unanalyzed_tracks(settings: dict) -> list:
     """取得尚未偵測和弦的曲目列表"""
@@ -104,7 +101,7 @@ def _get_unanalyzed_tracks(settings: dict) -> list:
             continue
             
         # 檢查和弦檔案：沒有 → 需偵測，有但來源是 btc → 可被 MIDI 升級
-        track_hash = _song_hash(track_path)
+        track_hash = song_hash(track_path)
         chord_file = CHORDS_DIR / f"{track_hash}.json"
 
         needs_detect = False
@@ -366,7 +363,7 @@ def _do_auto_chord_detect(settings: dict):
                     key = Counter(roots).most_common(1)[0][0] if roots else ""
                     sheet = {"path": track_path, "key": key, "capo": 0,
                              "source": "midi", "chords": entries}
-                    chords_file = CHORDS_DIR / f"{_song_hash(track_path)}.json"
+                    chords_file = CHORDS_DIR / f"{song_hash(track_path)}.json"
                     chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
                     _worker_state["detect_count"] += 1
                     add_log("OK", f"MIDI 匯入: {name} (Key: {key}, {len(entries)} chords)")
@@ -384,7 +381,7 @@ def _do_auto_chord_detect(settings: dict):
             chords, key = detect_chords_and_key_isolated(full)
             sheet = {"path": track_path, "key": key, "capo": 0,
                      "source": "btc", "chords": chords}
-            chords_file = CHORDS_DIR / f"{_song_hash(track_path)}.json"
+            chords_file = CHORDS_DIR / f"{song_hash(track_path)}.json"
             chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
             _worker_state["detect_count"] += 1
             add_log("OK", f"BTC 偵測: {name} (Key: {key}, {len(chords)} chords)")

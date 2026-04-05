@@ -8,7 +8,6 @@ import os
 import sys
 import json
 import time
-import hashlib
 import argparse
 import threading
 from pathlib import Path
@@ -19,6 +18,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from chord_detect import detect_chords, detect_key, _load_model
+from chord_cache import song_hash
 import torch
 
 # ---------------------------------------------------------------------------
@@ -53,11 +53,6 @@ CHORDS_DIR = Path(__file__).parent.parent / "data" / "chords"
 # 工具函式
 # ---------------------------------------------------------------------------
 
-def _song_hash(rel_path: str) -> str:
-    """與 auto_worker.py 一致的雜湊演算法"""
-    # 確保路徑斜線一致 (Windows \ 轉為 /)
-    rel_path = rel_path.replace("\\", "/")
-    return hashlib.md5(rel_path.encode("utf-8")).hexdigest()[:12]
 
 def _is_skipped_genre(rel_path: str) -> bool:
     """判斷該路徑是否屬於黑名單曲風或無和弦內容"""
@@ -85,7 +80,7 @@ _gpu_semaphore = threading.Semaphore(2)  # 最多 2 個同時用 GPU，避免 VR
 
 def process_track(root_dir: str, rel_path: str):
     full_path = os.path.join(root_dir, rel_path)
-    h = _song_hash(rel_path)
+    h = song_hash(rel_path)
     out_file = CHORDS_DIR / f"{h}.json"
 
     if out_file.is_file():

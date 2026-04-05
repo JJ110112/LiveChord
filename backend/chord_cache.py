@@ -16,8 +16,9 @@ INDEX_FILE = DATA_DIR / "chord_index.json"
 
 _chord_index_cache = None
 
-def _song_hash(path: str) -> str:
-    """產生穩定的 song hash"""
+def song_hash(path: str) -> str:
+    """產生穩定的 song hash（統一將反斜線轉為正斜線，避免 Windows 路徑不一致）"""
+    path = path.replace("\\", "/")
     return hashlib.md5(path.encode("utf-8")).hexdigest()[:12]
 
 def _load_chord_index():
@@ -41,40 +42,40 @@ def _save_chord_index():
 def get_chord_summary(path: str) -> dict:
     """取得和弦摘要：unique count, key, chord list。內建 mtime 驗證的快取機制"""
     _load_chord_index()
-    song_hash = _song_hash(path)
-    chords_file = CHORDS_DIR / f"{song_hash}.json"
-    
+    h = song_hash(path)
+    chords_file = CHORDS_DIR / f"{h}.json"
+
     if not chords_file.is_file():
         return {"unique_chords": 0, "chord_key": "", "chord_list": []}
-        
+
     try:
         mtime = os.path.getmtime(chords_file)
     except OSError:
         mtime = 0
-        
+
     # Check cache match
-    cached = _chord_index_cache.get(song_hash)
+    cached = _chord_index_cache.get(h)
     if cached and cached.get("mtime") == mtime:
         return {
             "unique_chords": cached.get("unique_chords", 0),
             "chord_key": cached.get("chord_key", ""),
             "chord_list": cached.get("chord_list", []),
         }
-        
+
     # Cache miss or expired: Recompute from file
     try:
         cdata = json.loads(chords_file.read_text(encoding="utf-8"))
         unique = sorted(set(c["chord"] for c in cdata.get("chords", []) if c.get("chord") and c["chord"] != "N"))
-        
+
         summary = {
             "unique_chords": len(unique),
             "chord_key": cdata.get("key", ""),
             "chord_list": unique,
             "mtime": mtime,
         }
-        
+
         # Update cache & persistence
-        _chord_index_cache[song_hash] = summary
+        _chord_index_cache[h] = summary
         _save_chord_index()
         
         return {
