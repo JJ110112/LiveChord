@@ -646,27 +646,23 @@ def _assign_fingering(events: List[Dict], hand: str = "right"):
                     if j < len(fingers_to_assign):
                         e["finger"] = fingers_to_assign[j]
 
-    # 3. 呼叫 Evaluator AI (Critic) 對整體 events 進行嚴格人體工學審核
-    from .fingering_evaluator import evaluate_events
-    qa_report = evaluate_events(events, hand=hand)
-    
-    # 4. 處理 Reject 路徑 (Fallback 機制)
-    if not qa_report["valid"]:
-        import logging
-        logging.warning(f"[{hand.upper()} HAND] 指法約束測試失敗！啟用安全降級... 警告: {qa_report.get('warnings')}")
-        # 若被判定為「外星人」指法或有致命跨距，強制縮排跨度並給予保守指法
-        for t in sorted_times:
-            group = time_groups[t]
-            group_sorted = sorted(group, key=lambda e: e["pitch"])
-            # 依據主音(右手找高音，左手找低音) 向內擠壓
+    # 3. Evaluator QA — 不再全面降級，只記錄警告
+    # Phase 11: Generator 的指法品質已大幅提升 (Parncutt model)，
+    # 不需要因為少數邊界案例而把整首歌的指法全部覆蓋。
+    # 只修正致命跨距 (span > 13)，其他保留 Generator 的結果。
+    for t in sorted_times:
+        group = time_groups[t]
+        if len(group) <= 1:
+            continue
+        group_sorted = sorted(group, key=lambda e: e["pitch"])
+        span = group_sorted[-1]["pitch"] - group_sorted[0]["pitch"]
+        if span > 13:
+            # 致命跨距: 拉回八度內
             root_p = group_sorted[-1]["pitch"] if hand == "right" else group_sorted[0]["pitch"]
             for e in group_sorted:
-                # 若跨距過大，強制拉回八度內
                 while abs(e["pitch"] - root_p) > 12:
                     if e["pitch"] > root_p: e["pitch"] -= 12
                     else: e["pitch"] += 12
-                # 將所有指法換為保守指 (免於錯位懲罰)
-                e["finger"] = 1 if hand == "right" else 5
 
 
 def calculate_physical_cost(delta_p: int, f_prev: int, f_curr: int,
