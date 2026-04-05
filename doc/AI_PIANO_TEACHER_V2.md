@@ -671,18 +671,68 @@ Phase 11d — 靈魂注入 ✅
 | `GET /api/ai/dynamics` | 力度表情 + 評分 |
 | `GET /api/ai/section-context` | 段落結構 + AI 參數時間軸 |
 | `GET /api/ai/accompaniment` | 強化: +section_type +nocache +pedal +dynamics |
+| `GET /api/ai/qa-battle` | QA Battle: 7 維度綜合品質對抗評測 |
 
 ### 瀑布流視覺強化
 
 | 功能 | 說明 |
 |------|------|
-| **Velocity 光暈** | 二次方曲線 + 資料感知 normalize：弱音暗褐/深藍 → 強音爆亮光暈 (28px) |
+| **Velocity 光暈** | 二次方曲線 + 資料感知 normalize：弱音暗褐無光 → 強音爆亮光暈 (28px + 雙層疊加) |
 | **踏板視覺化** | 綠色漸層區域 + 切換標記線 (虛線=半踏板) |
 | **Articulation 標記** | staccato 圓點 / legato 弧線 |
-| **AI 教師 HUD** | 右下角即時教學提示：拇指穿越警告、換和弦預備、力度表情、踏板狀態 |
+| **AI 教師 HUD** | 右下角即時教學提示（呼吸綠點 + 上下文感知）：拇指穿越、大跳警告、換和弦預備、力度表情、踏板狀態、黑鍵群提醒 |
 | **🔄 強制重新生成** | 清除快取按鈕，重新生成含踏板/力度的伴奏資料 |
 
 ### 實機測試截圖驗證
 
 - Christopher Cross - Arthur's Theme: 踏板綠區 ✅ 力度光暈 ✅ AI 教師提示 ✅
 - FIFTY FIFTY - Cupid: 瀑布流基本渲染 ✅ legato 弧線 ✅
+
+---
+
+## P1 驗證結果 (2026-04-05 完成)
+
+### 端到端 Pipeline 測試 (3 首 × 7 模組)
+
+| 歌曲 | 風格 | Melody | Accomp | Pedal | Dynamics | Playability | Overall | Verdict |
+|------|------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| ABBA - Dancing Queen | Pop | 64 | 69 | 99 | 77 | 70 | **72** | PASS |
+| Nat King Cole - Autumn Leaves | Jazz | 66 | 63 | 99 | 73 | 70 | **68** | PASS |
+| Queen - Bohemian Rhapsody | Rock | 64 | 55 | 80 | 77 | 70 | **62** | PASS |
+
+**Pipeline 效能**: 每首歌 < 0.15 秒（不含 BTC 和弦偵測），遠低於 3 秒目標。
+
+### QA Battle 統合架構
+
+`ai/battle_qa.py` — 一鍵跑全部 evaluator 並產出 verdict：
+
+```
+GET /api/ai/qa-battle?path=...&style=Arpeggio&level=L2
+
+{
+  "verdict": "pass",           // pass / warn / fail
+  "overall_score": 72,
+  "scores": {
+    "melody":        { "score": 64, "details": {...} },
+    "accompaniment": { "score": 69, "details": {...} },
+    "fingering":     { "score": 55, "left_hand": 29.5, "right_hand": 80.8 },
+    "pedal":         { "score": 99 },
+    "dynamics":      { "score": 77 },
+    "playability":   { "score": 70, "warnings": [...] },
+    "mix":           { "score": 100 }
+  },
+  "suggestions": [
+    "旋律碰撞率偏高，建議調整伴奏音域避開旋律",
+    "左手指法有不合理動作，建議啟用安全降級或降低難度"
+  ]
+}
+```
+
+### 評測參數校正
+
+| 問題 | 修正 |
+|------|------|
+| Voice Leading 琶音誤判 | 只在和弦轉換邊界計算，不算同和弦內琶音跳躍 |
+| 旋律碰撞假陽性 | 移除八度重疊判定，只計 ≤1 半音真碰撞 |
+| 樂句弧線全曲一段 | 加入 MAX_PHRASE_NOTES=16 自動切割 |
+| 平行五八度過度扣分 | 降低 penalty（pop/rock 常見手法）|
