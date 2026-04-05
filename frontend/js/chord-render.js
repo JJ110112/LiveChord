@@ -468,8 +468,9 @@ const ChordRender = {
     const kh = kw * 6;       // real piano ratio 1:6
     const bw = kw * 0.48;    // black key ~48% of white width
     const bh = kh * 0.62;    // black key ~62% of white height
+    const bevelH = Math.round(kh * 0.06); // front face depth for 3D effect
     const labelSpace = 16;
-    const totalH = kh + labelSpace;
+    const totalH = kh + bevelH + labelSpace;
 
     const c = document.createElement("canvas");
     c.width = Math.round(width * dpr);
@@ -488,52 +489,82 @@ const ChordRender = {
       }
     };
 
+    // Dark background for key gaps (deep shadow between keys)
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillRect(0, 0, width, kh + bevelH);
+
     // Draw White Keys
+    const gapW = Math.max(1, kw * 0.04); // gap between keys
     for (let i = 0; i < nw; i++) {
-        const x = i * kw;
-        // Ivory Gradient
+        const x = i * kw + gapW / 2;
+        const keyW = kw - gapW;
+
+        // Main ivory gradient — warm tone with center highlight
         const gradient = ctx.createLinearGradient(x, 0, x, kh);
-        gradient.addColorStop(0, "#eef0eb");     // top yellowish-white shadow
-        gradient.addColorStop(0.2, "#ffffff");   // main ivory body
-        gradient.addColorStop(0.95, "#fdfdfd");
-        gradient.addColorStop(1, "#dcdcdc");     // bottom light bevel/shadow
+        gradient.addColorStop(0,    "#e8e6e1");  // top: warm shadow (overhang)
+        gradient.addColorStop(0.05, "#f5f4f0");  // transition
+        gradient.addColorStop(0.15, "#fefefe");  // bright ivory
+        gradient.addColorStop(0.5,  "#ffffff");  // center highlight — light reflection
+        gradient.addColorStop(0.85, "#f8f7f3");  // warmth returning
+        gradient.addColorStop(0.95, "#ece9e3");  // pre-bevel darkening
+        gradient.addColorStop(1,    "#e0ddd7");  // bottom edge
 
         ctx.fillStyle = gradient;
-        drawRoundRect(x + 0.5, 0, kw - 1, kh, [0, 0, 4, 4]); // smooth round corners at bottom
+        drawRoundRect(x, 0, keyW, kh, [0, 0, 3, 3]);
         ctx.fill();
-        
-        ctx.strokeStyle = "#999";
-        ctx.lineWidth = 0.5;
-        ctx.stroke();
 
-        // Inner shadow effect at the top for keys
-        const innerGlow = ctx.createLinearGradient(x, 0, x, kh * 0.1);
-        innerGlow.addColorStop(0, "rgba(0,0,0,0.15)");
+        // Left edge shadow (inter-key depth)
+        const leftShadow = ctx.createLinearGradient(x, 0, x + kw * 0.08, 0);
+        leftShadow.addColorStop(0, "rgba(0,0,0,0.12)");
+        leftShadow.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = leftShadow;
+        ctx.fillRect(x, 0, kw * 0.08, kh);
+
+        // Right edge shadow (inter-key depth)
+        const rightShadow = ctx.createLinearGradient(x + keyW, 0, x + keyW - kw * 0.08, 0);
+        rightShadow.addColorStop(0, "rgba(0,0,0,0.10)");
+        rightShadow.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = rightShadow;
+        ctx.fillRect(x + keyW - kw * 0.08, 0, kw * 0.08, kh);
+
+        // Top inner shadow (soft, from overhang)
+        const innerGlow = ctx.createLinearGradient(x, 0, x, kh * 0.06);
+        innerGlow.addColorStop(0, "rgba(0,0,0,0.10)");
         innerGlow.addColorStop(1, "rgba(0,0,0,0)");
         ctx.fillStyle = innerGlow;
-        ctx.fillRect(x + 0.5, 0, kw - 1, kh * 0.1);
+        ctx.fillRect(x, 0, keyW, kh * 0.06);
+
+        // 3D front face (bevel) — realistic depth
+        const bevelGrad = ctx.createLinearGradient(x, kh, x, kh + bevelH);
+        bevelGrad.addColorStop(0,   "#d0cec8");  // top lip (lightest)
+        bevelGrad.addColorStop(0.2, "#b8b5ae");
+        bevelGrad.addColorStop(0.6, "#a8a5a0");
+        bevelGrad.addColorStop(1,   "#807d78");  // bottom (darkest)
+        ctx.fillStyle = bevelGrad;
+        drawRoundRect(x, kh, keyW, bevelH, [0, 0, 3, 3]);
+        ctx.fill();
     }
 
-    // Draw Black Keys with 3D reflection
+    // Draw Black Keys with enhanced 3D
     const blackAfterSemi = new Set([0, 1, 3, 4, 5]); // white key semitone index where black follows (C,D, F,G,A)
     const whiteOrder = [0,2,4,5,7,9,11];
     const blackXs = {};
-    
+    const bFaceH = Math.max(2, bh * 0.04); // black key front face height
+
     // Pass 1: Render shadows for black keys so they look "raised"
-    ctx.shadowColor = "rgba(0, 0, 0, 0.6)";
-    ctx.shadowBlur = 6;
-    ctx.shadowOffsetX = 2;
-    ctx.shadowOffsetY = 2;
+    ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 1;
+    ctx.shadowOffsetY = 3;
     for (let i = 0; i < nw - 1; i++) {
         const deg = whites[i] % 12;
         const wIdx = whiteOrder.indexOf(deg);
         if (!blackAfterSemi.has(wIdx)) continue;
         const x = (i + 1) * kw - bw / 2;
-        drawRoundRect(x, 0, bw, bh, [0, 0, 3, 3]);
+        drawRoundRect(x, 0, bw, bh + bFaceH, [0, 0, 3, 3]);
         ctx.fillStyle = "#000";
         ctx.fill();
     }
-    // Turn off shadow for actual key rendering
     ctx.shadowBlur = 0;
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
@@ -545,31 +576,53 @@ const ChordRender = {
         if (!blackAfterSemi.has(wIdx)) continue;
         const bMidi = whites[i] + 1;
         const x = (i + 1) * kw - bw / 2;
-        
-        // Base dark gradient
+
+        // Main body gradient
         const bgGrad = ctx.createLinearGradient(x, 0, x, bh);
-        bgGrad.addColorStop(0, "#111");
-        bgGrad.addColorStop(0.7, "#1a1a1a");
-        bgGrad.addColorStop(1, "#333"); // light edge reflection
+        bgGrad.addColorStop(0,    "#0a0a0a");  // very dark top
+        bgGrad.addColorStop(0.05, "#181818");  // slight lighten
+        bgGrad.addColorStop(0.7,  "#1a1a1a");  // body
+        bgGrad.addColorStop(0.95, "#282828");  // pre-edge lighten
+        bgGrad.addColorStop(1,    "#333");     // bottom edge reflection
 
         drawRoundRect(x, 0, bw, bh, [0, 0, 3, 3]);
         ctx.fillStyle = bgGrad;
         ctx.fill();
 
-        // 3D Highlight Gloss (top to midway down, slanted slightly)
-        const hlX = x + bw * 0.15;
-        const hlW = bw * 0.7;
-        const hlH = bh * 0.85;
+        // Top surface reflection — bright narrow band
+        const hlX = x + bw * 0.12;
+        const hlW = bw * 0.76;
+        const hlH = bh * 0.12;
         const hlGrad = ctx.createLinearGradient(hlX, 0, hlX, hlH);
-        hlGrad.addColorStop(0, "rgba(255,255,255,0.25)");
+        hlGrad.addColorStop(0, "rgba(255,255,255,0.35)");
         hlGrad.addColorStop(1, "rgba(255,255,255,0.0)");
-        drawRoundRect(hlX, 0, hlW, hlH, [0, 0, 2, 2]);
         ctx.fillStyle = hlGrad;
+        ctx.fillRect(hlX, 0, hlW, hlH);
+
+        // Longer subtle gloss (top to ~60%)
+        const longGloss = ctx.createLinearGradient(x, 0, x, bh * 0.6);
+        longGloss.addColorStop(0, "rgba(255,255,255,0.12)");
+        longGloss.addColorStop(1, "rgba(255,255,255,0.0)");
+        drawRoundRect(x + bw * 0.1, 0, bw * 0.8, bh * 0.6, [0, 0, 2, 2]);
+        ctx.fillStyle = longGloss;
         ctx.fill();
 
-        ctx.strokeStyle = "#0d0d0d";
-        ctx.lineWidth = 1;
-        drawRoundRect(x, 0, bw, bh, [0, 0, 3, 3]);
+        // Left edge highlight (light catch)
+        ctx.fillStyle = "rgba(255,255,255,0.06)";
+        ctx.fillRect(x, 0, 1, bh);
+
+        // Front face of black key
+        const bfGrad = ctx.createLinearGradient(x, bh, x, bh + bFaceH);
+        bfGrad.addColorStop(0, "#383838");
+        bfGrad.addColorStop(1, "#1a1a1a");
+        ctx.fillStyle = bfGrad;
+        drawRoundRect(x, bh, bw, bFaceH, [0, 0, 2, 2]);
+        ctx.fill();
+
+        // Outline
+        ctx.strokeStyle = "#0a0a0a";
+        ctx.lineWidth = 0.8;
+        drawRoundRect(x, 0, bw, bh + bFaceH, [0, 0, 3, 3]);
         ctx.stroke();
 
         blackXs[bMidi] = { x, w: bw, h: bh };
@@ -588,7 +641,7 @@ const ChordRender = {
       if (midi < 21 || midi > 108) continue;
       const info = whiteXs[midi];
       if (!info) continue;
-      ctx.fillText("C" + oct, info.x + (info.w / 2), kh + 13);
+      ctx.fillText("C" + oct, info.x + (info.w / 2), kh + bevelH + 13);
     }
     // middle C (C4=60) subtle marker line
     const c4 = whiteXs[60];
@@ -596,12 +649,12 @@ const ChordRender = {
       ctx.strokeStyle = "rgba(41, 182, 246, 0.6)"; // Cyan marker
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(c4.x + c4.w / 2, kh - 3);
-      ctx.lineTo(c4.x + c4.w / 2, kh + 2);
+      ctx.moveTo(c4.x + c4.w / 2, kh + bevelH - 3);
+      ctx.lineTo(c4.x + c4.w / 2, kh + bevelH + 2);
       ctx.stroke();
     }
 
-    return { canvas: c, whiteXs, blackXs, keyW: kw, keyH: kh, bKeyW: bw, bKeyH: bh, totalH };
+    return { canvas: c, whiteXs, blackXs, keyW: kw, keyH: kh, bKeyW: bw, bKeyH: bh, bevelH, totalH };
   },
 
   /**
@@ -730,20 +783,25 @@ const ChordRender = {
          ctx.fillRect(wk.x + 0.5, 0.5, wk.w - 1, wk.h * 0.5);
          // Bottom-edge illumination glow
          ctx.save();
-         const wGlowH = 12;
+         ctx.beginPath();
+         ctx.rect(wk.x, 0, wk.w, wk.h);
+         ctx.clip();
+         const wGlowH = 16;
          const wGlowY = wk.h - wGlowH;
-         const wGlowGrad = ctx.createLinearGradient(0, wGlowY, 0, wk.h + 4);
+         const wGlowGrad = ctx.createLinearGradient(0, wGlowY, 0, wk.h);
          wGlowGrad.addColorStop(0, "rgba(255,255,255,0)");
-         wGlowGrad.addColorStop(0.5, "rgba(255,255,255,0.7)");
-         wGlowGrad.addColorStop(1, hl.color);
+         wGlowGrad.addColorStop(1, "rgba(255,255,255,0.5)");
          ctx.fillStyle = wGlowGrad;
-         ctx.fillRect(wk.x + 2, wGlowY, wk.w - 4, wGlowH + 4);
-         // Bright light spot at bottom edge
-         ctx.shadowColor = hl.color;
-         ctx.shadowBlur = 15;
-         ctx.fillStyle = "rgba(255,255,255,0.9)";
-         ctx.fillRect(wk.x + wk.w * 0.2, wk.h - 3, wk.w * 0.6, 3);
+         ctx.fillRect(wk.x + 2, wGlowY, wk.w - 4, wGlowH);
          ctx.restore();
+         // Highlight the front face bevel too
+         if (cache.bevelH > 0) {
+           ctx.fillStyle = hl.color;
+           ctx.globalAlpha = 0.7;
+           drawRoundRect(wk.x + 0.5, wk.h, wk.w - 1, cache.bevelH, [0, 0, 3, 3]);
+           ctx.fill();
+           ctx.globalAlpha = hl.alpha;
+         }
       }
     }
 
@@ -796,19 +854,16 @@ const ChordRender = {
          ctx.fillRect(bk.x + 0.5, 0.5, bk.w - 1, bk.h * 0.4);
          // Bottom-edge illumination glow for black key
          ctx.save();
-         const bGlowH = 8;
+         ctx.beginPath();
+         ctx.rect(bk.x, 0, bk.w, bk.h);
+         ctx.clip();
+         const bGlowH = 10;
          const bGlowY = bk.h - bGlowH;
-         const bGlowGrad = ctx.createLinearGradient(0, bGlowY, 0, bk.h + 3);
+         const bGlowGrad = ctx.createLinearGradient(0, bGlowY, 0, bk.h);
          bGlowGrad.addColorStop(0, "rgba(255,255,255,0)");
-         bGlowGrad.addColorStop(0.5, "rgba(255,255,255,0.6)");
-         bGlowGrad.addColorStop(1, hl.color);
+         bGlowGrad.addColorStop(1, "rgba(255,255,255,0.45)");
          ctx.fillStyle = bGlowGrad;
-         ctx.fillRect(bk.x + 1, bGlowY, bk.w - 2, bGlowH + 3);
-         // Light spot
-         ctx.shadowColor = hl.color;
-         ctx.shadowBlur = 10;
-         ctx.fillStyle = "rgba(255,255,255,0.85)";
-         ctx.fillRect(bk.x + bk.w * 0.15, bk.h - 2, bk.w * 0.7, 2);
+         ctx.fillRect(bk.x + 1, bGlowY, bk.w - 2, bGlowH);
          ctx.restore();
       }
     }

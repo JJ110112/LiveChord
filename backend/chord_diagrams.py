@@ -211,6 +211,10 @@ UKULELE_CHORDS = {
     'C7':      {'strings': [0, 0, 0, 1], 'baseFret': 1, 'barres': []},
     'Cmaj7':   {'strings': [0, 0, 0, 2], 'baseFret': 1, 'barres': []},
     'Cm7':     {'strings': [3, 3, 3, 3], 'baseFret': 1, 'barres': [3]},
+    'C#':      {'strings': [1, 1, 1, 4], 'baseFret': 1, 'barres': [1]},
+    'Db':      {'strings': [1, 1, 1, 4], 'baseFret': 1, 'barres': [1]},
+    'C#m':     {'strings': [0, 4, 4, 4], 'baseFret': 1, 'barres': [4]},
+    'Dbm':     {'strings': [0, 4, 4, 4], 'baseFret': 1, 'barres': [4]},
     'D':       {'strings': [2, 2, 2, 0], 'baseFret': 1, 'barres': []},
     'Dm':      {'strings': [2, 2, 1, 0], 'baseFret': 1, 'barres': []},
     'D7':      {'strings': [2, 2, 2, 3], 'baseFret': 1, 'barres': []},
@@ -231,16 +235,24 @@ UKULELE_CHORDS = {
     'Am':      {'strings': [2, 0, 0, 0], 'baseFret': 1, 'barres': []},
     'A7':      {'strings': [0, 1, 0, 0], 'baseFret': 1, 'barres': []},
     'Am7':     {'strings': [0, 0, 0, 0], 'baseFret': 1, 'barres': [0]},
+    'A#':      {'strings': [3, 2, 1, 1], 'baseFret': 1, 'barres': [1]},
     'Bb':      {'strings': [3, 2, 1, 1], 'baseFret': 1, 'barres': [1]},
+    'A#m':     {'strings': [3, 1, 1, 1], 'baseFret': 1, 'barres': [1]},
     'Bbm':     {'strings': [3, 1, 1, 1], 'baseFret': 1, 'barres': [1]},
     'Bb7':     {'strings': [1, 2, 1, 1], 'baseFret': 1, 'barres': [1]},
     'B':       {'strings': [4, 3, 2, 2], 'baseFret': 1, 'barres': [2]},
     'Bm':      {'strings': [4, 2, 2, 2], 'baseFret': 1, 'barres': [2]},
     'B7':      {'strings': [2, 3, 2, 2], 'baseFret': 1, 'barres': [2]},
+    'D#':      {'strings': [0, 3, 3, 1], 'baseFret': 1, 'barres': []},
     'Eb':      {'strings': [0, 3, 3, 1], 'baseFret': 1, 'barres': []},
+    'D#m':     {'strings': [3, 3, 2, 1], 'baseFret': 1, 'barres': []},
     'Ebm':     {'strings': [3, 3, 2, 1], 'baseFret': 1, 'barres': []},
+    'G#':      {'strings': [5, 3, 4, 3], 'baseFret': 1, 'barres': []},
     'Ab':      {'strings': [5, 3, 4, 3], 'baseFret': 1, 'barres': []},
+    'G#m':     {'strings': [4, 3, 4, 2], 'baseFret': 1, 'barres': []},
     'Abm':     {'strings': [4, 3, 4, 2], 'baseFret': 1, 'barres': []},
+    'G#7':     {'strings': [1, 3, 2, 3], 'baseFret': 1, 'barres': []},
+    'G#m7':    {'strings': [4, 3, 4, 4], 'baseFret': 1, 'barres': []},
 
     # === maj7 系列 ===
     'Dmaj7':   {'strings': [2, 2, 2, 4], 'baseFret': 1, 'barres': []},
@@ -327,6 +339,10 @@ UKULELE_CHORDS = {
 
 def get_chord_diagram(chord_name, instrument='guitar'):
     """取得和弦圖資料"""
+    import re as _re
+    # Strip inversion suffix (e.g. "C#:1" → "C#")
+    chord_name = _re.sub(r':\d+$', '', chord_name)
+
     db = GUITAR_CHORDS if instrument == 'guitar' else UKULELE_CHORDS
     num_strings = 6 if instrument == 'guitar' else 4
 

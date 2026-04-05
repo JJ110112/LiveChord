@@ -401,7 +401,8 @@
 - 長條中央標示指法數字 (1-5)，接近琴鍵時數字放大
 - 落到琴鍵時觸發光暈 (glow effect)
 - **琴鍵高亮**：按下琴鍵時以實色填充（非漸層），頂部疊加淡白洗色保持 3D 感
-- **底部發光條 (Bottom-edge Illumination)**：按下琴鍵底部呈現漸層光暈 + 亮白光點，模擬 Synthesia 風格的「琴鍵發光」效果
+- **底部發光條 (Bottom-edge Illumination)**：按下琴鍵底部呈現漸層光暈，模擬 Synthesia 風格的「琴鍵發光」效果
+- **擬真鍵盤渲染 (Photorealistic Keyboard)**：純 2D Canvas 實現，含深色琴鍵間隙陰影、暖象牙色漸層（中段高光反射）、琴鍵左右邊緣陰影、立體前面板 (bevel)、黑鍵頂部反光帶與前面板厚度
 - **練琴控制**: A-B Repeat 區段選取、降速播放 (playbackRate)、左手/右手/原聲 靜音切換
 
 #### 4.7.10 情境感知功能 (Context-Aware)
