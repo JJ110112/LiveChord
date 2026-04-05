@@ -31,9 +31,10 @@ class StemSeparator:
 
         logger.info(f"Starting Demucs source separation for: {audio_file.name}")
         
-        # Demucs CLI command: python -m demucs -n htdemucs -o <output_dir> <audio_path>
+        # Use the patched demucs runner that bypasses torchaudio.save and uses soundfile directly
+        patched_runner = Path(__file__).parent / "run_demucs_patched.py"
         cmd = [
-            "python", "-m", "demucs",
+            "python", str(patched_runner),
             "-n", self.model_name,
             "-o", str(self.output_dir),
             str(audio_file)
