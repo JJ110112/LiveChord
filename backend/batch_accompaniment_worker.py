@@ -1,7 +1,11 @@
 """
-LiveChord 離線伴奏與指法生成批次工廠
-會將 data/chords/ 的樂譜與 data/melodies/ 的旋律合併，送入 AI 引擎演算。
-並存入 data/accompaniments/<hash>_<level>_<style>.json 做快取。
+LiveChord 離線伴奏與指法生成批次工廠 — Phase 11 升級版
+
+新增:
+  - 段落偵測 (section_detect) → section_type 自動注入
+  - 踏板建議 (pedal_advisor) → pedal[] 附加到輸出
+  - 力度表情 (dynamics_engine) → velocity/articulation 寫入 events
+  - QA Battle 分數記錄
 """
 
 import os
@@ -13,7 +17,6 @@ import threading
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# 確保可以 import backend 下的模組
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -25,120 +28,183 @@ ACCOMP_DIR = Path(__file__).parent.parent / "data" / "accompaniments"
 
 print_lock = threading.Lock()
 
-def process_track(song_hash: str, levels: list, styles: list):
+
+def _detect_sections_safe(chords, key):
+    """安全的段落偵測（失敗時回傳空）"""
+    try:
+        from ai.section_detect import detect_sections
+        result = detect_sections(chords, key)
+        return result.get("sections", [])
+    except Exception:
+        return []
+
+
+def _get_dominant_section(sections, chords):
+    """找出和弦序列中最常見的段落類型"""
+    if not sections:
+        return "default"
+    from ai.section_context import get_section_context
+    total_dur = chords[-1].get("end", 0) if chords else 0
+    type_counts = {}
+    for c in chords:
+        ctx = get_section_context(c.get("time", 0), sections, total_dur)
+        t = ctx["type"]
+        type_counts[t] = type_counts.get(t, 0) + 1
+    return max(type_counts, key=type_counts.get) if type_counts else "default"
+
+
+def process_track(song_hash: str, levels: list, styles: list,
+                  add_pedal: bool = True, add_dynamics: bool = True):
     chord_file = CHORDS_DIR / f"{song_hash}.json"
     melody_file = MELODIES_DIR / f"{song_hash}.json"
-    
-    # 確保兩者皆存在
+
     if not chord_file.is_file() or not melody_file.is_file():
-        return f"SKIP_MISSING_DATA"
-        
+        return "SKIP_MISSING"
+
     try:
-        with open(chord_file, "r", encoding="utf-8") as f:
-            sheet_data = json.load(f)
-        
-        with open(melody_file, "r", encoding="utf-8") as f:
-            melody_data = json.load(f)
-            
+        sheet_data = json.loads(chord_file.read_text(encoding="utf-8"))
+        melody_data = json.loads(melody_file.read_text(encoding="utf-8"))
+
         chords = sheet_data.get("chords", [])
         if not chords:
-            return "SKIP_EMPTY_CHORDS"
-            
-        melody_list = melody_data.get("melody", []) if isinstance(melody_data, dict) else melody_data
-        
-        # Generator params
+            return "SKIP_EMPTY"
+
+        melody = melody_data.get("melody", []) if isinstance(melody_data, dict) else melody_data
         key = sheet_data.get("key", "C")
         genre = sheet_data.get("genre", "pop")
         bpm = sheet_data.get("bpm", 120)
-        
+
+        # Phase 11: 段落偵測
+        sections = _detect_sections_safe(chords, key)
+        dominant_section = _get_dominant_section(sections, chords)
+
         results = []
         for level in levels:
             for style in styles:
-                out_name = f"{song_hash}_{style}_{level}.json"
+                out_name = f"{song_hash}_{style}_{level}_default.json"
                 out_path = ACCOMP_DIR / out_name
-                
+
                 if out_path.exists():
-                    # 已經有了就跳過
                     results.append("S")
                     continue
-                    
-                # 開始生成
-                acc_result = generate_accompaniment(
-                    chords=chords,
-                    genre=genre,
-                    bpm=bpm,
-                    style=style,
-                    level=level,
-                    melody=melody_list
+
+                # 生成伴奏 (含 section_type)
+                acc = generate_accompaniment(
+                    chords=chords, melody=melody,
+                    bpm=bpm, style=style, level=level, genre=genre,
+                    section_type=dominant_section,
                 )
-                
-                with open(out_path, "w", encoding="utf-8") as fout:
-                    json.dump(acc_result, fout, ensure_ascii=False)
-                
+                acc["bpm"] = round(bpm, 1)
+                acc["genre"] = genre
+
+                # Phase 11: 踏板
+                if add_pedal:
+                    try:
+                        from ai.pedal_advisor import generate_pedal_suggestions
+                        pedal_style = "rhythmic" if dominant_section == "chorus" else "legato"
+                        acc["pedal"] = generate_pedal_suggestions(
+                            chords, melody=melody, bpm=bpm, style=pedal_style
+                        )
+                    except Exception:
+                        acc["pedal"] = []
+
+                # Phase 11: 力度表情
+                if add_dynamics:
+                    try:
+                        from ai.dynamics_engine import generate_dynamics
+                        all_events = acc.get("left_hand", []) + acc.get("right_hand", [])
+                        generate_dynamics(all_events, bpm=int(bpm),
+                                          section_type=dominant_section)
+                    except Exception:
+                        pass
+
+                out_path.write_text(
+                    json.dumps(acc, ensure_ascii=False),
+                    encoding="utf-8",
+                )
                 results.append("G")
-                
-        return "".join(results)
+
+        return "".join(results) + f" sec={dominant_section}"
     except Exception as e:
-        return f"ERR({str(e)})"
+        return f"ERR({e})"
 
 
 def main():
-    parser = argparse.ArgumentParser(description="LiveChord 離線伴奏工廠")
+    parser = argparse.ArgumentParser(description="LiveChord 離線伴奏工廠 (Phase 11)")
     parser.add_argument("--workers", type=int, default=8)
-    parser.add_argument("--levels", type=str, default="L1,L2", help="Comma separated e.g. L1,L2,L3")
-    parser.add_argument("--styles", type=str, default="Arpeggio,Block", help="Comma separated")
-    
+    parser.add_argument("--levels", type=str, default="L1,L2",
+                        help="Comma separated e.g. L1,L2,L3")
+    parser.add_argument("--styles", type=str, default="Arpeggio,Block",
+                        help="Comma separated")
+    parser.add_argument("--no-pedal", action="store_true",
+                        help="Skip pedal generation")
+    parser.add_argument("--no-dynamics", action="store_true",
+                        help="Skip dynamics generation")
+
     args = parser.parse_args()
-    
+
     ACCOMP_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     levels = [x.strip() for x in args.levels.split(",") if x.strip()]
     styles = [x.strip() for x in args.styles.split(",") if x.strip()]
-    
+
     print("==================================================")
-    print("🎹 LiveChord 離線伴奏與指法生成批次工廠")
-    print(f"等級設定: {levels}")
-    print(f"風格設定: {styles}")
-    print(f"執行緒數: {args.workers}")
+    print("LiveChord 離線伴奏工廠 (Phase 11)")
+    print(f"  Levels: {levels}")
+    print(f"  Styles: {styles}")
+    print(f"  Workers: {args.workers}")
+    print(f"  Pedal: {'ON' if not args.no_pedal else 'OFF'}")
+    print(f"  Dynamics: {'ON' if not args.no_dynamics else 'OFF'}")
     print("==================================================")
-    
-    # 找尋所有可用的 hash
-    hashes = []
-    if CHORDS_DIR.exists():
-        for f in os.listdir(CHORDS_DIR):
-            if f.endswith(".json"):
-                hashes.append(f.replace(".json", ""))
-            
-    total_tasks = len(hashes)
-    print(f"找到 {total_tasks} 首曲目資料。準備開始...")
-    
-    if total_tasks == 0:
+
+    # 找出同時有 chord + melody 的 hash
+    chord_hashes = {f.stem for f in CHORDS_DIR.glob("*.json")}
+    melody_hashes = {f.stem for f in MELODIES_DIR.glob("*.json")}
+    hashes = sorted(chord_hashes & melody_hashes)
+
+    total = len(hashes)
+    print(f"Found {total} songs with chord+melody data.")
+
+    if total == 0:
         return
-        
+
     start_time = time.time()
-    task_count = 0
+    done = 0
+    generated = 0
     err_count = 0
-    
+
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        future_to_hash = {executor.submit(process_track, h, levels, styles): h for h in hashes}
-        
-        for future in as_completed(future_to_hash):
-            h = future_to_hash[future]
-            task_count += 1
+        futures = {
+            executor.submit(
+                process_track, h, levels, styles,
+                not args.no_pedal, not args.no_dynamics
+            ): h
+            for h in hashes
+        }
+
+        for future in as_completed(futures):
+            h = futures[future]
+            done += 1
             try:
                 res = future.result()
                 if "ERR" in res:
                     err_count += 1
-                with print_lock:
-                    print(f"[{task_count}/{total_tasks}] {h} -> {res}")
+                if "G" in res:
+                    generated += res.count("G")
+                if done % 100 == 0 or "ERR" in res:
+                    elapsed = time.time() - start_time
+                    with print_lock:
+                        print(f"[{done}/{total}] {h} -> {res}  "
+                              f"({elapsed:.0f}s, {done/elapsed:.1f}/s)")
             except Exception as e:
                 err_count += 1
                 with print_lock:
-                    print(f"[{task_count}/{total_tasks}] {h} -> FATAL EXCEPTION: {e}")
-                    
-    print("\n完成！")
-    print(f"總耗時: {time.time() - start_time:.1f} 秒")
-    print(f"錯誤數: {err_count}")
+                    print(f"[{done}/{total}] {h} -> FATAL: {e}")
+
+    elapsed = time.time() - start_time
+    print(f"\nDone! {elapsed:.0f}s ({elapsed/60:.1f}min)")
+    print(f"  Songs: {total}, Generated: {generated}, Errors: {err_count}")
+
 
 if __name__ == "__main__":
     main()

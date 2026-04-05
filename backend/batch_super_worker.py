@@ -75,7 +75,12 @@ def _is_skipped_genre(rel_path: str) -> bool:
 # ---------------------------------------------------------------------------
 print_lock = threading.Lock()
 _gpu_semaphore = threading.Semaphore(2)  # 最多 2 個同時用 GPU，避免 VRAM 爆
-_melody_extractor = MelodyExtractor()    # 全域實例
+# Phase 11: fast_mode 批次高速模式
+# - 關閉 adaptive_range (省去全頻段粗掃 pYIN)
+# - 關閉 onset detection (省去 onset_strength 計算)
+# - 保留 vibrato filter (成本低但品質提升明顯)
+# 預估速度提升: 0.08→0.13 首/秒 (+60%)
+_melody_extractor = MelodyExtractor(fast_mode=True, fmin="C3", fmax="C6")
 
 def process_track(root_dir: str, rel_path: str):
     full_path = os.path.join(root_dir, rel_path)
