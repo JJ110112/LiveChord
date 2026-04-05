@@ -41,9 +41,10 @@
   <!-- audio controls (compact) -->
   <div class="audio-controls">
     <div class="controls-row">
-      <button id="btnPrev" title="上一首">&#x23EE;</button>
+      <button id="btnRewind" title="回到開頭">&#x23EE;</button>
+      <button id="btnPrev" title="上一首">&#x23EA;</button>
       <button id="btnPlay" class="btn-play" title="播放">&#x25B6;</button>
-      <button id="btnNext" title="下一首">&#x23ED;</button>
+      <button id="btnNext" title="下一首">&#x23E9;</button>
       <span id="timeCurrent" class="time-label">0:00</span>
       <div class="progress-bar" id="progressBar" style="flex:1">
         <div class="ab-range" id="abRange" style="display:none"></div>
@@ -137,9 +138,10 @@
       <div class="chord-display-tools fs-only" style="left: 4px; right: 4px; display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; height: auto; pointer-events: none;">
         <div style="display: flex; gap: 16px; align-items: center; background: rgba(15,15,15,0.3); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-radius: 10px; padding: 4px 12px; pointer-events: auto; justify-self: start; max-width: 100%; overflow: hidden;">
           <div style="display: flex; gap: 2px; flex-shrink: 0;">
-            <button class="cd-tool-btn" id="btnMiniPrev" title="上一首">&#x23EE;</button>
+            <button class="cd-tool-btn" id="btnMiniRewind" title="回到開頭">&#x23EE;</button>
+            <button class="cd-tool-btn" id="btnMiniPrev" title="上一首">&#x23EA;</button>
             <button class="cd-tool-btn" id="btnMiniPlay" title="播放/暫停">&#x25B6;</button>
-            <button class="cd-tool-btn" id="btnMiniNext" title="下一首">&#x23ED;</button>
+            <button class="cd-tool-btn" id="btnMiniNext" title="下一首">&#x23E9;</button>
             <button class="cd-tool-btn" id="btnMiniSpeed" title="播放速度">1x</button>
           </div>
           <div class="fs-progress-container" style="display: flex; align-items: center; width: 160px; min-width: 100px; gap: 8px; flex-shrink: 1;">

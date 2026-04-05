@@ -307,6 +307,13 @@
     _applyZoom();
   });
 
+  // ---- rewind to start (or A-B loop start) ----
+  function _rewindToStart() {
+    audio.currentTime = (abState === "active" && abA != null) ? abA : 0;
+  }
+  const btnMiniRewind = $("#btnMiniRewind");
+  if (btnMiniRewind) btnMiniRewind.addEventListener("click", _rewindToStart);
+
   // ---- mini 播放控制（全螢幕用）----
   const btnMiniPlay = $("#btnMiniPlay");
   const btnMiniPrev = $("#btnMiniPrev");
@@ -2002,7 +2009,8 @@
   if (btnSpeed) btnSpeed.addEventListener("click", _cycleSpeed);
   if (btnMiniSpeed) btnMiniSpeed.addEventListener("click", _cycleSpeed);
 
-  // prev / next
+  // rewind / prev / next
+  $("#btnRewind").addEventListener("click", _rewindToStart);
   $("#btnPrev").addEventListener("click", _navPrev);
   $("#btnNext").addEventListener("click", _navNext);
 
