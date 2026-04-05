@@ -1,6 +1,6 @@
 # LiveChord 品管文件
 
-> 版本: 3.0 | 日期: 2026-04-03
+> 版本: 3.4 | 日期: 2026-04-05
 > 和弦引擎: BTC Transformer (ISMIR 2019)
 > 對應規格書: SPEC.md v2.0
 
@@ -466,6 +466,8 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 | 旋律萃取 | pYIN 對純器樂曲效果較差 | 人聲曲目最佳 |
 | 88-Key Mobile | 88 鍵 Canvas 在小螢幕難以操作 | 建議桌面使用 |
 | 教學模式 | Phase 10 開發中，伴奏生成/瀑布流尚未完成 | 預計後續迭代 |
+| 沉浸模式縮放 | Overview/Diagrams 縮放後自動捲動需除以 scale 係數 | 已修復 v3.3 |
+| 下拉選單文字 | 深色主題下 select option 繼承白底白字 | 已修復 v3.3 |
 
 ---
 
@@ -493,8 +495,10 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
    - 播放頁: 三分頁切換、88 鍵、Jazzify、段落標記
    - 管理頁: 掃描、批次偵測、自動排程
    - Benchmark: 執行偵測、對比評分
-7. 記錄結果: 勾選上方清單，未通過項開 issue
-8. 全部 P0/P1 修復後 → 版本通過
+7. 佈署同步: AI agent 負責將變更的 backend/frontend 檔案複製到 W:\ 供人類驗證品質
+8. 重啟生產伺服器，確認 W:\ 上運行正常
+9. 記錄結果: 勾選上方清單，未通過項開 issue
+10. 全部 P0/P1 修復後 → 版本通過
 ```
 
 ---
@@ -526,13 +530,141 @@ AI 的每次提交必須附上兩種清單：
 
 > **駁回權力**：當人類開發者回復「退回！你沒有跑測試就說寫完了，自己檢查 Script Error。」時，AI 必須重新啟動偵錯迴圈，執行自我測試。
 
+### 防線 5：佈署同步 (Deploy Sync)
+程式碼提交後，**必須同步至生產伺服器 W:\**。開發環境 (`C:\Users\hitea\Claude\LiveChord`) 與生產環境 (`W:\`) 是分離的，伺服器從 `W:\backend` 和 `W:\frontend` 執行。
+- **後端變更**：將修改的 `.py` 檔案複製到 `W:\backend\` 對應路徑。
+- **前端變更**：將修改的 `.html`、`.js`、`.css` 檔案複製到 `W:\frontend\` 對應路徑。
+- **新增檔案**：確認目標目錄存在，必要時建立子目錄。
+- **驗證**：同步後用 `ls -la` 確認檔案大小與時間戳正確。
+- **不同步的項目**：`data/`（生產環境有自己的資料）、`doc/`、`tests/`、`.git/`。
+- AI 在完成程式碼修改並通過測試後，**主動提醒或執行**佈署同步，不需使用者額外要求。
+
 ---
 
-## 12. 版本歷史
+## 12. AI 鋼琴老師：伴奏與指法「生成-驗證」雙環架構 (Generator-Critic Architecture)
+
+為發展極致的「AI 鋼琴老師」體驗（消除不自然的伴奏佈局及人類無法彈奏的「外星人指法」），LiveChord 規劃引入類似 **Actor-Critic (強化學習機制)** 與 **LLM-as-a-Judge (用 AI 評估 AI)** 的雙核心驗證框架。
+
+### 12.1 生成階段 (Generator)
+- **AI 指法生成器 (Fingering Generator)**
+  - **技術選型**：基於 PIG Dataset 訓練的 Transformer 或 Bi-LSTM 模型，或結合傳統 HMM (隱藏式馬可夫模型) 成本計算。
+  - **任務**：輸入 MIDI 音序列，根據前後文預測最省力的 1~5 根手指分配。
+- **AI 伴奏生成器 (Accompaniment Generator)**
+  - **技術選型**：MusicBERT、Anticipatory Music Transformer (AMT) 等符號音樂語言模型，或是將 MIDI 轉譯成文字譜交由大型語言模型（LLM）處理。
+  - **任務**：接收主旋律與和弦，生成流暢且具高音樂性的流行伴奏譜（MIDI 形式）。
+
+### 12.2 驗證與過濾階段 (The Critic Loop)
+避免生成神經網路產生「音樂上好聽但人類無法彈奏」的輸出，必須建立循環驗證防線：
+1. **Rule-based 的人類手指約束器 (Physical Filter)**：
+   - 快速剔除致命錯誤（例如：1至5指瞬間跨度大於12半音、不合理的手部嚴重交叉、大拇指被頻繁且不自然地分配到黑鍵等）。一旦違規，即刻退回重做。
+2. **LLM-as-a-Judge 評判器 (Critic AI)**：
+   - 將通過物理防護網的符號樂譜轉譯後送給高階 LLM。
+   - **檢驗焦點**：要求 AI 擔任「資深鋼琴名師」，根據和聲終止式的飽滿度、指法順暢度、伴奏織體（Texture）給予 1~100 評分與具體修改建議。
+3. **自我優化 (Reflection & Self-Refine)**：
+   - Generator 收到不達標的低分或建議，重新對局部小節進行再生，直到品質達標。
+
+### 12.3 落地與實作藍圖 (Roadmap)
+鑑於雙 AI 循環計算成本過高無法即時生成，實作將採三階段策略：
+- **階段一 (物理基底)**：[已完成] 先開發強健的 Rule-based 物理約束器（人體工學驗證 `fingering_evaluator.py`）。這是一道防彈防線，遇到「不合理手部交叉」或「大跨度同指跳躍」時，會立刻觸發「安全降級 (Fallback)」壓縮八度並調回保守指法，確保出來的產物「絕對能被真人彈奏」。
+- **階段二 (離線資料工廠)**：[已完成] 開發 `batch_accompaniment_worker.py` 將曲目投入這套 `Generator -> Critic -> Refine` 引擎進行批次處理。已達成使用 12 執行緒於 113.7 秒內將 8281 首曲目全部預先生成數萬種組合 (L1/L2, Arpeggio/Block)且錯誤率為 0，徹底實現了伺服器的「零延遲」提供服務。
+- **階段三 (模型優化與終端呈現)**：[進行中] 前端 `LiveChord` 介面已實裝載入運算好的成品。未來重點轉向置換底層的 Generator，引入語言模型或 LSTM 產生更大膽且更具流暢音樂性的伴奏音符分配，並由 Critic 把關。
+
+---
+
+## 13. 邊緣運算與雙引擎批次處理架構 (Super Worker Edge Architecture)
+
+為了解決 NAS NAS/伺服器 CPU 效能不足以應付數萬首曲目的 BTC 和弦推論與 pYIN 旋律擷取之問題，系統導入了高階 PC 作為「超級運算節點 (Super Worker)」的分散式處理策略：
+- **CPU/GPU 雙重引擎**：透過 `batch_super_worker.py` 在配備了旗艦級 CPU (如 i9) 與 GPU (如 RTX 5080) 的 PC 上運行，使用 `ThreadPoolExecutor` 提供 12~24 執行緒全速處理 CPU 密集的旋律擷取。
+- **Semaphore 保護機制**：利用 `threading.Semaphore(2)` 限制進入 PyTorch 的並發數，維持 GPU 滿載同時杜絕 VRAM OOM 崩潰。
+- **資料庫無縫連接**：運算結果直接透過網路磁碟寫入 NAS 共用目錄 (`W:\data`)，Server 徹底轉型為輕量級 Web 與 API 提供者，達成 **Zero-CPU Server** 目標。
+
+---
+
+## 14. 前端 UI 架構鐵律 (UI Architecture Rules)
+
+> 來自 2026-04-04 ~ 04-05 session 的慘痛教訓：一次 AI 鋼琴老師功能開發，因違反以下規則導致 10+ 次 UI 迴歸修復。
+
+### 規則 1：縮放狀態隔離 (Zoom State Isolation)
+
+| 模式 | 縮放比率 | 儲存 |
+|------|---------|------|
+| 一般模式（所有 tab） | **永遠 100%** | 不儲存 |
+| 沉浸/全螢幕模式 | 預設 200%，使用者可調 | `localStorage` per-tab |
+
+- 使用 `_tabZoomFs` 物件儲存全螢幕縮放，`_isFullscreen()` 判斷上下文
+- `_applyZoom()` 在非全螢幕時直接回傳 100%，不寫入 `localStorage`
+- **禁止**共用一組 zoom state 給兩種模式
+
+### 規則 2：CSS 選擇器隔離 (CSS Specificity Isolation)
+
+- **Canvas 元素**：必須用 `canvas#specificId` 選擇器，不可用 `.parent canvas`（會誤中同容器內其他 canvas）
+  - ❌ `.chord-88-keys canvas { display: block }` → 覆蓋了 `.waterfall-canvas { display: none }`
+  - ✅ `.chord-88-keys canvas#piano88Canvas { display: block }`
+- **Flex 擴展**：`flex: 1` 只在需要填滿的模式加（如 fullscreen），不放在 base rule
+  - ❌ `.chord-88-keys { flex: 1 }` → 一般模式鋼琴被推到底部
+  - ✅ `.chord-display-area.fullscreen .chord-88-keys { flex: 5 }`
+- **`display` 屬性**：base rule 設 `display: none` 的元素，fullscreen rule 必須完整覆蓋所有樣式，不可修改 base rule
+
+### 規則 3：scrollIntoView 禁用 (Scroll Containment)
+
+- 播放中自動捲動**禁止**使用 `el.scrollIntoView()`（會連帶捲動所有祖先，包括頁面 body）
+- 必須用 `getBoundingClientRect()` + 手動設定 `container.scrollTop` 實現區域內捲動
+- Smart View 邏輯：
+  - 播放中 → `chordDisplayOverview` 設 `overflow-y: auto` + `max-height`，區域內捲動
+  - 暫停時 → 移除限制，頁面自由捲動
+
+### 規則 4：display 屬性單一來源 (Single Source of Truth for display)
+
+- `bigChordBox.style.display` 在 5+ 處被設定，互相覆蓋
+- **原則**：每個 UI 元素的 `display` 必須有明確的優先順序：
+  1. Tab 切換時設定初始狀態
+  2. 資料載入完成時根據 tab 決定
+  3. `update` 函式中根據 `_isFullscreen()` 條件決定
+- **禁止**在 chord loading 的 error/success path 中硬編碼 `display: none`，除非確認所有 tab 都需要隱藏
+
+### 規則 5：transform 不影響鄰居 (Transform Isolation)
+
+- `transform: scale()` 的預設 `transform-origin` 是 `center`，會向所有方向擴展
+- 若元素有與鄰居對齊的邊界（如 color bar），必須設定 `transform-origin` 固定該邊：
+  - 頂部色條對齊 → `transform-origin: top center`
+  - 底部鍵盤對齊 → `transform-origin: bottom center`
+
+### 規則 6：Cache-Busting 版本號 (Version Bump)
+
+- 每次修改 `player.js` 或 `style.css`，**必須**同時更新 `player.html` 中的 `?v=` 參數
+- 否則瀏覽器會使用快取版本，導致「明明改了但沒效果」的幽靈 bug
+- 建議：CSS 和 JS 使用相同版號，同步遞增
+
+### 規則 7：變數宣告位置 (Variable Declaration Scope)
+
+- `let` 變數有 **Temporal Dead Zone (TDZ)**：在宣告前使用會拋出 `ReferenceError`
+- 所有共用 state 變數（`sectionData`, `chordData`, `hasChords` 等）**必須在檔案頂部 state 區塊統一宣告**
+- **禁止**在函式之間穿插宣告 state 變數
+
+### 規則 8：鍵盤容器高度 (Keys88 Ribbon Sizing)
+
+- `.keys88-ribbon` 的 `flex: 0 0 Npx` 必須能容納：段落標記 (20px) + 色條 (4px) + 放大的 active chord badge (30px) + jianpu (15px) + padding
+- 目前設定：`flex: 0 0 120px`，**不可低於 100px**
+- Active chord 使用 `transform-origin: top center` 確保向下擴展、色條對齊
+
+### 規則 9：W:\ 與 Git 雙向同步 (Dual Sync)
+
+- 修改 W:\（生產）→ 立刻同步到 git repo
+- 修改 git repo → 立刻同步到 W:\
+- **兩邊必須是同一份檔案**，不可各自維護不同版本
+- `cp` 整份檔案比 `Edit` 兩邊更安全
+
+---
+
+## 15. 版本歷史
 
 | 版本 | 日期 | 變更 |
 |------|------|------|
 | 1.0 | 2025-03-25 | 初版：Phase 1-3 功能測試 |
 | 2.0 | 2026-03-28 | 和弦引擎升級 BTC Transformer，新增分級測試框架 |
 | 2.1 | 2026-04-03 | 新增第 11 節：AI 協作開發品管鐵律 (AI QA Protocol) |
-| 3.0 | 2026-04-03 | 全面更新：補齊 AI/Benchmark/Auto Worker API 測試；新增 88 鍵、三分頁、縮放、全螢幕、Jazzify、段落偵測、MIDI 匯入等 UI 測試；更新效能基準（GPU）；更新已知限制 |
+| 3.0 | 2026-04-03 | 全面更新：補齊 AI/Benchmark/Auto Worker API 測試；更新 UI 測試與效能基準 |
+| 3.1 | 2026-04-04 | 新增第 12 節：提案 AI 指法生成與驗證雙軌架構 (Generator-Evaluator Architecture) |
+| 3.2 | 2026-04-04 | 新增第 13 節：邊緣運算與雙引擎批次處理架構 (Super Worker Edge Architecture) |
+| 3.3 | 2026-04-04 | 修復沉浸模式 UI：toolbar grid 佈局、縮放捲動抖動、scrollbar 隱藏、zoom/close 按鈕重疊、select option 深色主題 |
+| 3.4 | 2026-04-05 | 新增第 14 節：前端 UI 架構鐵律（9 條規則），源自 AI 鋼琴老師開發的 10+ 次 UI 迴歸修復經驗 |

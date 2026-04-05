@@ -99,17 +99,14 @@
   <div id="panels"></div>
   <div id="toast" class="toast"></div>
 
+<script src="/js/utils.js?v=1"></script>
 <script>
 const LEVELS = ["Lv1","Lv2","Lv3","Lv4","Lv5"];
 const LEVEL_NAMES = {Lv1:"三和弦流行",Lv2:"七和弦 R&B",Lv3:"爵士標準曲",Lv4:"複雜 Fusion",Lv5:"極難挑戰"};
 let currentLevel = "Lv1";
 let songsData = {};
 
-function showToast(msg, ms=2000) {
-  const t = document.getElementById("toast");
-  t.textContent = msg; t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), ms);
-}
+// showToast from utils.js
 
 // ---- init ----
 async function init() {

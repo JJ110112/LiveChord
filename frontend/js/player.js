@@ -19,6 +19,7 @@
   let activeChordIdx = -1;
   let chordElements = [];
   let _ribbonPositions = [];
+  let sectionData = null;
   // 88-key piano state
   let piano88Canvas = null;
   let piano88Cache = null;
@@ -30,9 +31,22 @@
   let hasChords = false;
   let keys88RibbonTrack = null;
   let keys88RibbonBuilt = false;
+  // Waterfall / teaching mode state
+  let waterfallCanvas = null;
+  let activeHand = localStorage.getItem("livechord_active_hand") || "both";
+  let waterfallCtx = null;
+  let waterfallActive = true;
+  let show88ChordTones = localStorage.getItem("livechord_show_chord_tones") === "true";
+  let teachStyle = localStorage.getItem("livechord_teach_style") || "Arpeggio";
+  let teachLevel = localStorage.getItem("livechord_teach_level") || "L1";
+  if (!["L1", "L2", "L3"].includes(teachLevel)) teachLevel = "L1";
+  let accData = null;  // {left_hand:[], right_hand:[]} from API
+  let accLoading = false;
   let transpose = 0;
   let capo = 0;
   let favTracks = [];
+  let activeLoadingTasks = 0;
+  let loadingDelayTimer = null;
 
   // ---- DOM ----
   const audio = $("#audio");
@@ -45,15 +59,18 @@
   const btnFav = $("#btnFav");
   const progressBar = $("#progressBar");
   const progress = $("#progress");
+  const fsProgressBar = $("#fsProgressBar");
+  const fsProgress = $("#fsProgress");
   const timeCurrent = $("#timeCurrent");
+  const fsTimeCurrent = $("#fsTimeCurrent");
   const timeDuration = $("#timeDuration");
+  const fsTimeDuration = $("#fsTimeDuration");
   const volumeSlider = $("#volumeSlider");
   const chordDisplayOverview = $("#chordDisplayOverview");
   const chordDisplayDiagrams = $("#chordDisplayDiagrams");
   const ribbonTrack = $("#ribbonTrack");
   const tabOverview = $("#tabOverview");
   const tabDiagrams = $("#tabDiagrams");
-  const toast = $("#toast");
   const detectOverlay = $("#detectOverlay");
   const detectMsg = $("#detectMsg");
   const detectDetail = $("#detectDetail");
@@ -67,11 +84,92 @@
   const tabKeys = $("#tabKeys");
   const chordDisplay88 = $("#chordDisplay88");
 
+  // ---- A-B Repeat state ----
+  const btnABRepeat = $("#btnABRepeat");
+  const abRange = $("#abRange");
+  const fsAbRange = $("#fsAbRange");
+  let abState = "idle";  // idle → a_set → active
+  let abA = null;        // start time (seconds)
+  let abB = null;        // end time (seconds)
+
+  function _updateABRangeUI() {
+    const d = audio.duration || 1;
+    if (abState === "active" && abA != null && abB != null) {
+      const left = (abA / d * 100) + "%";
+      const width = ((abB - abA) / d * 100) + "%";
+      [abRange, fsAbRange].forEach(el => {
+        if (!el) return;
+        el.style.display = "block";
+        el.style.left = left;
+        el.style.width = width;
+      });
+    } else if (abState === "a_set" && abA != null) {
+      const left = (abA / d * 100) + "%";
+      [abRange, fsAbRange].forEach(el => {
+        if (!el) return;
+        el.style.display = "block";
+        el.style.left = left;
+        el.style.width = "2px";
+      });
+    } else {
+      [abRange, fsAbRange].forEach(el => {
+        if (el) el.style.display = "none";
+      });
+    }
+  }
+
+  function _clearABRepeat() {
+    abState = "idle";
+    abA = null;
+    abB = null;
+    if (btnABRepeat) {
+      btnABRepeat.classList.remove("a-set", "ab-active");
+      btnABRepeat.textContent = "A-B";
+    }
+    _updateABRangeUI();
+  }
+
+  if (btnABRepeat) {
+    btnABRepeat.addEventListener("click", () => {
+      const t = audio.currentTime;
+      if (abState === "idle") {
+        abA = t;
+        abState = "a_set";
+        btnABRepeat.classList.add("a-set");
+        btnABRepeat.textContent = "A-⏸";
+        showToast("A 點: " + formatTime(t), 1500);
+      } else if (abState === "a_set") {
+        if (t <= abA) {
+          showToast("B 點必須在 A 點之後", 1500);
+          return;
+        }
+        abB = t;
+        abState = "active";
+        btnABRepeat.classList.remove("a-set");
+        btnABRepeat.classList.add("ab-active");
+        btnABRepeat.textContent = "A-B ✓";
+        audio.currentTime = abA;
+        showToast("A-B 循環: " + formatTime(abA) + " → " + formatTime(abB), 2000);
+      } else {
+        _clearABRepeat();
+        showToast("A-B 循環已取消", 1500);
+      }
+      _updateABRangeUI();
+    });
+  }
+
   function _updateHandSwitchVisibility() {
-    const hs = document.querySelector("#handSwitch");
+    const hs = document.querySelector("#handSwitchContainer");
+    const topHs = document.querySelector("#btnTopHandSwitch");
     const ms = document.querySelector("#modeSwitch");
     if (hs) hs.style.display = activeTab === "keys" ? "flex" : "none";
+    if (topHs) topHs.style.display = activeTab === "keys" ? "flex" : "none";
     if (ms) ms.style.display = activeTab === "keys" ? "none" : "flex";
+    // Hide zoom controls in keys tab (piano has fixed size)
+    const hideZoom = activeTab === "keys";
+    if (btnZoomIn) btnZoomIn.style.display = hideZoom ? "none" : "";
+    if (btnZoomOut) btnZoomOut.style.display = hideZoom ? "none" : "";
+    if (btnZoomReset) btnZoomReset.style.display = hideZoom ? "none" : "";
   }
 
   function _setAllTabsInactive() {
@@ -82,6 +180,23 @@
     chordDisplayDiagrams.style.display = "none";
     if (chordDisplay88) chordDisplay88.style.display = "none";
   }
+
+  const bigChordDiagram = $("#bigChordDiagram");
+
+  // ---- 和弦區縮放 (must be before tab handlers that call _switchZoomToTab) ----
+  const ZOOM_STEPS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300];
+  const ZOOM_FS_DEFAULTS = { overview: 200, diagrams: 200, keys: 100 };
+  const _tabZoomFs = {};
+  for (const tab of ["overview", "diagrams", "keys"]) {
+    const saved = parseInt(localStorage.getItem(`livechord_zoom_${tab}`));
+    _tabZoomFs[tab] = ZOOM_STEPS.indexOf(saved > 0 ? saved : ZOOM_FS_DEFAULTS[tab]);
+    if (_tabZoomFs[tab] < 0) _tabZoomFs[tab] = ZOOM_STEPS.indexOf(ZOOM_FS_DEFAULTS[tab]);
+  }
+  let zoomIdx = ZOOM_STEPS.indexOf(100);
+  const btnZoomIn = $("#btnZoomIn");
+  const btnZoomOut = $("#btnZoomOut");
+  const btnZoomReset = $("#btnZoomReset");
+  const chordDisplayEl = $("#chordDisplay");
 
   if (tabOverview && tabDiagrams) {
     tabOverview.addEventListener("click", () => {
@@ -127,9 +242,12 @@
         chordDisplay88.style.display = "flex";
         _updateHandSwitchVisibility();
         _switchZoomToTab("keys");
-        if (hasChords) bigChordBox.style.display = "";
+        bigChordBox.style.display = "";
         _init88Piano();
+        _initWaterfall();
+        _setupTeachControls();
         _buildKeys88Ribbon();
+        if (sectionData) _renderSectionMarkers();
         piano88LastIdx = -1;
         update88Piano(audio.currentTime || 0);
       });
@@ -139,39 +257,41 @@
     if (activeTab === "diagrams") tabDiagrams.click();
     else if (activeTab === "keys" && tabKeys) tabKeys.click();
   }
-  const bigChordDiagram = $("#bigChordDiagram");
 
-  // ---- 和弦區縮放 ----
-  const ZOOM_STEPS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300];
-  const ZOOM_DEFAULTS = { overview: 200, diagrams: 200, keys: 200 };
-  // per-tab zoom: each tab has its own persisted zoom level
-  const _tabZoom = {};
-  for (const tab of ["overview", "diagrams", "keys"]) {
-    const saved = parseInt(localStorage.getItem(`livechord_zoom_${tab}`));
-    _tabZoom[tab] = ZOOM_STEPS.indexOf(saved > 0 ? saved : ZOOM_DEFAULTS[tab]);
-    if (_tabZoom[tab] < 0) _tabZoom[tab] = ZOOM_STEPS.indexOf(ZOOM_DEFAULTS[tab]);
+  function _isFullscreen() {
+    return chordDisplayEl && chordDisplayEl.closest(".fullscreen") != null;
   }
-  let zoomIdx = _tabZoom[activeTab] || ZOOM_STEPS.indexOf(100);
-  const btnZoomIn = $("#btnZoomIn");
-  const btnZoomOut = $("#btnZoomOut");
-  const btnZoomReset = $("#btnZoomReset");
-  const chordDisplayEl = $("#chordDisplay");
-
   function _applyZoom() {
-    const pct = ZOOM_STEPS[zoomIdx];
-    if (chordDisplayEl) {
-      chordDisplayEl.style.transformOrigin = "top left";
-      chordDisplayEl.style.transform = `scale(${pct / 100})`;
-      chordDisplayEl.style.width = (10000 / pct) + "%";
-      chordDisplayEl.style.height = (10000 / pct) + "%";
+    let pct;
+    if (_isFullscreen()) {
+      pct = ZOOM_STEPS[zoomIdx];
+      if (activeTab === "keys") pct = 100;
+      _tabZoomFs[activeTab] = zoomIdx;
+      localStorage.setItem(`livechord_zoom_${activeTab}`, pct);
+    } else {
+      pct = 100; // Normal mode is always 100%
+    }
+    const scaleTarget = document.getElementById("chordDisplayScaleTarget") || chordDisplayEl;
+    if (scaleTarget) {
+      scaleTarget.style.transformOrigin = "top left";
+      scaleTarget.style.transform = `scale(${pct / 100})`;
+      scaleTarget.style.width = (10000 / pct) + "%";
+      // To properly handle flex inside, min-height needs to be 0
+      scaleTarget.style.height = (10000 / pct) + "%";
+      if(scaleTarget.id === "chordDisplayScaleTarget") {
+         chordDisplayEl.style.transform = "none";
+         chordDisplayEl.style.width = "100%";
+         chordDisplayEl.style.height = "100%";
+      }
     }
     if (btnZoomReset) btnZoomReset.textContent = pct + "%";
-    // persist per-tab
-    _tabZoom[activeTab] = zoomIdx;
-    localStorage.setItem(`livechord_zoom_${activeTab}`, pct);
   }
   function _switchZoomToTab(tab) {
-    zoomIdx = _tabZoom[tab] != null ? _tabZoom[tab] : ZOOM_STEPS.indexOf(ZOOM_DEFAULTS[tab]);
+    if (_isFullscreen()) {
+      zoomIdx = _tabZoomFs[tab] != null ? _tabZoomFs[tab] : ZOOM_STEPS.indexOf(ZOOM_FS_DEFAULTS[tab]);
+    } else {
+      zoomIdx = ZOOM_STEPS.indexOf(100);
+    }
     _applyZoom();
   }
   _applyZoom();
@@ -231,6 +351,7 @@
 
   function _enterFullscreen() {
     chordDisplay.classList.add("fullscreen");
+    document.body.style.overflow = "hidden";
     btnFullscreen.innerHTML = "&#x2716;";
     if (btnPageFs) btnPageFs.innerHTML = "&#x2716;";
     // restore per-tab zoom (defaults: overview/diagrams=200%, keys=100%)
@@ -239,18 +360,12 @@
   }
   function _exitFullscreen() {
     chordDisplay.classList.remove("fullscreen");
+    document.body.style.overflow = "";
     btnFullscreen.innerHTML = "&#x26F6;";
     if (btnPageFs) btnPageFs.innerHTML = "&#x26F6;";
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    // reset visual zoom to 100% for non-fullscreen, but do NOT persist
-    // (keep the per-tab fullscreen zoom saved for next enter)
     zoomIdx = ZOOM_STEPS.indexOf(100);
-    if (chordDisplayEl) {
-      chordDisplayEl.style.transform = "scale(1)";
-      chordDisplayEl.style.width = "100%";
-      chordDisplayEl.style.height = "100%";
-    }
-    if (btnZoomReset) btnZoomReset.textContent = "100%";
+    _applyZoom();
   }
 
   if (btnFullscreen && chordDisplay) {
@@ -270,16 +385,11 @@
   document.addEventListener("fullscreenchange", () => {
     if (!document.fullscreenElement && chordDisplay.classList.contains("fullscreen")) {
       chordDisplay.classList.remove("fullscreen");
+      document.body.style.overflow = "";
       if (btnFullscreen) btnFullscreen.innerHTML = "&#x26F6;";
       if (btnPageFs) btnPageFs.innerHTML = "&#x26F6;";
-      // reset visual zoom without persisting (keep saved fullscreen zoom)
       zoomIdx = ZOOM_STEPS.indexOf(100);
-      if (chordDisplayEl) {
-        chordDisplayEl.style.transform = "scale(1)";
-        chordDisplayEl.style.width = "100%";
-        chordDisplayEl.style.height = "100%";
-      }
-      if (btnZoomReset) btnZoomReset.textContent = "100%";
+      _applyZoom();
     }
   });
 
@@ -302,72 +412,74 @@
     return shift === 0 ? chordData.key : transposeChord(chordData.key, shift);
   }
 
-  function showToast(msg, ms = 2000) {
-    toast.textContent = msg;
-    toast.classList.add("show");
-    setTimeout(() => toast.classList.remove("show"), ms);
-  }
+  // showToast moved to utils.js
 
   // ===========================================================================
   // 一、載入 track：播放時若無和弦譜，自動偵測
   // ===========================================================================
 
   async function loadTrack(path) {
-    audio.src = API.trackStreamUrl(path);
-    cover.src = API.trackCoverUrl(path);
-    cover.style.display = "";
-
-    const miniTitle = $("#miniTitle");
+    _clearABRepeat();
+    _setLoadingState(true, "載入樂曲中...", "正在讀取歌曲資訊與和弦編排...");
     try {
-      const info = await API.trackInfo(path);
-      const title = info.title || path.split("/").pop().replace(/\.flac$/i, "");
-      
-      let diffHtml = "";
-      const uc = info.unique_chords || 0;
-      if (uc > 0) {
-        let stars = 1;
-        const labels = ["", "入門", "中階", "進階", "大師"];
-        if (uc >= 15) stars = 4;
-        else if (uc >= 9) stars = 3;
-        else if (uc >= 5) stars = 2;
-        const cl = (info.chord_list || []).join("  ");
-        diffHtml = `<div style="font-size:11px;color:var(--text-dim);margin-top:2px">${"⭐".repeat(stars)} ${labels[stars]}（${uc}種）${cl ? " — " + cl : ""}</div>`;
+      audio.src = API.trackStreamUrl(path);
+      cover.src = API.trackCoverUrl(path);
+      cover.style.display = "";
+
+      const miniTitle = $("#miniTitle");
+      try {
+        const info = await API.trackInfo(path);
+        const title = info.title || path.split("/").pop().replace(/\.flac$/i, "");
+        
+        let diffHtml = "";
+        const uc = info.unique_chords || 0;
+        if (uc > 0) {
+          let stars = 1;
+          const labels = ["", "入門", "中階", "進階", "大師"];
+          if (uc >= 15) stars = 4;
+          else if (uc >= 9) stars = 3;
+          else if (uc >= 5) stars = 2;
+          const cl = (info.chord_list || []).join("  ");
+          diffHtml = `<div style="font-size:11px;color:var(--text-dim);margin-top:2px">${"⭐".repeat(stars)} ${labels[stars]}（${uc}種）${cl ? " — " + cl : ""}</div>`;
+        }
+        
+        const escTitle = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        songTitle.innerHTML = escTitle;
+        songArtist.innerHTML = (info.artist || "") + diffHtml;
+        songAlbum.textContent = info.album || "";
+        const meta = [];
+        if (info.sample_rate) meta.push(`${info.sample_rate / 1000}kHz`);
+        if (info.bits_per_sample) meta.push(`${info.bits_per_sample}bit`);
+        if (info.channels) meta.push(info.channels === 2 ? "Stereo" : `${info.channels}ch`);
+        songMeta.textContent = meta.join(" / ");
+        document.title = `${title} — LiveChord`;
+        if (miniTitle) {
+          miniTitle.textContent = title;
+          requestAnimationFrame(() => {
+            const wrap = miniTitle.parentElement;
+            miniTitle.classList.toggle("marquee", miniTitle.scrollWidth > wrap.clientWidth);
+          });
+        }
+      } catch {
+        const title = path.split("/").pop().replace(/\.flac$/i, "");
+        songTitle.textContent = title;
+        if (miniTitle) miniTitle.textContent = title;
       }
-      
-      const escTitle = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      songTitle.innerHTML = escTitle;
-      songArtist.innerHTML = (info.artist || "") + diffHtml;
-      songAlbum.textContent = info.album || "";
-      const meta = [];
-      if (info.sample_rate) meta.push(`${info.sample_rate / 1000}kHz`);
-      if (info.bits_per_sample) meta.push(`${info.bits_per_sample}bit`);
-      if (info.channels) meta.push(info.channels === 2 ? "Stereo" : `${info.channels}ch`);
-      songMeta.textContent = meta.join(" / ");
-      document.title = `${title} — LiveChord`;
-      if (miniTitle) {
-        miniTitle.textContent = title;
-        requestAnimationFrame(() => {
-          const wrap = miniTitle.parentElement;
-          miniTitle.classList.toggle("marquee", miniTitle.scrollWidth > wrap.clientWidth);
-        });
-      }
-    } catch {
-      const title = path.split("/").pop().replace(/\.flac$/i, "");
-      songTitle.textContent = title;
-      if (miniTitle) miniTitle.textContent = title;
+
+      API.addRecent(path).catch(() => {});
+
+      try {
+        const favData = await API.getFavorites();
+        favTracks = (favData.favorites || []).map(f => f.path);
+        isFavorite = favTracks.includes(path);
+        updateFavButton();
+      } catch {}
+
+      await loadChords(path);
+      loadSiblings(path);
+    } finally {
+      _setLoadingState(false);
     }
-
-    API.addRecent(path).catch(() => {});
-
-    try {
-      const favData = await API.getFavorites();
-      favTracks = (favData.favorites || []).map(f => f.path);
-      isFavorite = favTracks.includes(path);
-      updateFavButton();
-    } catch {}
-
-    await loadChords(path);
-    loadSiblings(path);
   }
 
   async function loadSiblings(path) {
@@ -383,15 +495,36 @@
 
   // ---- melody data (for Dynamic Lead Sheet) ----
   let melodyData = null;
+  let _melodyPendingPlay = false;
 
   async function _loadMelody(path) {
+    const interceptPlay = () => {
+      audio.pause();
+      _melodyPendingPlay = true;
+      if (typeof btnPlay !== 'undefined' && btnPlay) btnPlay.innerHTML = "&#x25B6;";
+    };
+    audio.addEventListener("play", interceptPlay);
+
     try {
+      _setLoadingState(true, "AI 旋律提取中...", "首次播放需要分離音軌...");
+      if (!audio.paused) {
+        audio.pause();
+        _melodyPendingPlay = true;
+      }
+
       const res = await fetch(`/api/ai/melody?path=${encodeURIComponent(path)}`);
       const data = await res.json();
       if (data.melody && data.melody.length > 0) {
         melodyData = data.melody;
       }
-    } catch {}
+    } catch {} finally {
+      audio.removeEventListener("play", interceptPlay);
+      _setLoadingState(false);
+      if (_melodyPendingPlay) {
+        _melodyPendingPlay = false;
+        audio.play().catch(() => {});
+      }
+    }
   }
 
   function _getMelodyMidi(currentTime) {
@@ -406,17 +539,24 @@
 
   // ---- 88-key piano ----
 
+  function _get88PianoMaxWidth() {
+    const w = chordDisplay88.clientWidth || 800;
+    const containerH = chordDisplay88.clientHeight || 400;
+    const maxKeyH = Math.max(80, containerH - 40);  // leave room for labels
+    return Math.min(w, Math.round(maxKeyH / 6 * 52));  // keyH = keyW * 6
+  }
+
   function _init88Piano() {
     if (!chordDisplay88) return;
     piano88Canvas = $("#piano88Canvas");
     if (!piano88Canvas) return;
-    const w = chordDisplay88.clientWidth || 800;
     const dpr = window.devicePixelRatio || 1;
-    piano88Cache = ChordRender.init88PianoCache(w, dpr);
+    const maxW = _get88PianoMaxWidth();
+    piano88Cache = ChordRender.init88PianoCache(maxW, dpr);
     const h = piano88Cache.totalH;
-    piano88Canvas.width = Math.round(w * dpr);
+    piano88Canvas.width = Math.round(maxW * dpr);
     piano88Canvas.height = Math.round(h * dpr);
-    piano88Canvas.style.width = w + "px";
+    piano88Canvas.style.width = maxW + "px";
     piano88Canvas.style.height = h + "px";
     // draw static keyboard immediately
     ChordRender.draw88Piano(piano88Canvas, piano88Cache, [], -1, {});
@@ -495,10 +635,15 @@
     if (!chordData || !chordData.chords) return;
 
     // re-init cache if canvas resized
-    const w = chordDisplay88.clientWidth || 800;
+    const maxW = _get88PianoMaxWidth();
     const dpr = window.devicePixelRatio || 1;
-    if (Math.abs(piano88Cache.canvas.width / dpr - w) > 2) {
-      piano88Cache = ChordRender.init88PianoCache(w, dpr);
+    if (Math.abs(piano88Cache.canvas.width / dpr - maxW) > 2) {
+      piano88Cache = ChordRender.init88PianoCache(maxW, dpr);
+      const h = piano88Cache.totalH;
+      piano88Canvas.width = Math.round(maxW * dpr);
+      piano88Canvas.height = Math.round(h * dpr);
+      piano88Canvas.style.width = maxW + "px";
+      piano88Canvas.style.height = h + "px";
     }
 
     const chords = _displayChords();
@@ -547,11 +692,17 @@
         piano88ChordMidis = ChordRender.voiceChordForLeftHand(notes, piano88PrevMidi);
         piano88PrevMidi = [...piano88ChordMidis];
 
-        // update big chord box
+        // update big chord box (show in normal mode, hide in fullscreen where ribbon has it)
         bigChordName.textContent = chord.chord;
-        bigChordBox.style.display = "";
+        bigChordBox.style.display = _isFullscreen() ? "none" : "";
         bigChordJianpu.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
         bigChordDiagram.innerHTML = "";
+        // show section color bar on big chord box
+        if (sectionData && sectionData.sections) {
+          const sec = sectionData.sections.find(s => chord.time >= s.start && chord.time < s.end);
+          bigChordBox.style.borderTopColor = sec ? sec.color : "transparent";
+          bigChordBox.title = sec ? `${sec.emoji} ${sec.label || sec.type}` : "";
+        }
       } else {
         piano88ChordMidis = [];
       }
@@ -560,17 +711,513 @@
     // prune old sustain notes
     piano88SustainNotes = piano88SustainNotes.filter(n => currentTime - n.release < 0.5);
 
-    // determine what to show based on hand selection
-    let showChord = piano88ChordMidis;
-    let showMelody = _getMelodyMidi(currentTime);
-    if (piano88Hand === "left") showMelody = -1;
-    if (piano88Hand === "right") showChord = [];
+    // determine actual played notes from accData if available
+    let activeLh = [];
+    let activeRh = [];
+    if (waterfallActive && accData) {
+       for (const e of (accData.left_hand||[])) {
+           if (e.time <= currentTime && e.time + e.duration >= currentTime) activeLh.push(e.pitch);
+       }
+       for (const e of (accData.right_hand||[])) {
+           if (e.time <= currentTime && e.time + e.duration >= currentTime) activeRh.push(e.pitch);
+       }
+    } else {
+       activeLh = [...piano88ChordMidis];
+    }
+    
+    const mel = _getMelodyMidi(currentTime);
+    if (mel >= 0 && !activeRh.includes(mel)) activeRh.push(mel);
 
-    ChordRender.draw88Piano(piano88Canvas, piano88Cache, showChord, showMelody, {
-      coreCount: Math.min(4, showChord.length),
-      sustainNotes: piano88Hand === "right" ? [] : piano88SustainNotes,
+    if (activeHand === "left") activeRh = [];
+    if (activeHand === "right") activeLh = [];
+
+    let chordTones = [];
+    const isChordTonesActive = show88ChordTones && piano88ChordMidis && piano88ChordMidis.length > 0;
+
+    if (isChordTonesActive) {
+      chordTones = [...new Set(piano88ChordMidis.map(m => m % 12))];
+    }
+
+    ChordRender.draw88Piano(piano88Canvas, piano88Cache, activeLh, activeRh, {
+      chordTones: chordTones,
+      sustainNotes: activeHand === "right" ? [] : piano88SustainNotes,
       now: currentTime,
     });
+  }
+
+  // ---- Waterfall / Teaching Mode ----
+
+  function _setLoadingState(isLoading, msg, detail, type = 'spinner') {
+    if (isLoading) {
+      activeLoadingTasks++;
+      if (msg) detectMsg.textContent = msg;
+      if (detail) detectDetail.textContent = detail;
+      
+      const spinner = document.getElementById("loadingSpinner");
+      const musicBars = document.getElementById("musicBarsAnim");
+      if (spinner && musicBars) {
+        if (type === 'music') {
+          spinner.style.display = "none";
+          musicBars.style.display = "flex";
+        } else {
+          spinner.style.display = "block";
+          musicBars.style.display = "none";
+        }
+      }
+
+      if (type === 'music') {
+        clearTimeout(loadingDelayTimer);
+        // Show instantly for streaming buffers
+        if (activeLoadingTasks > 0) detectOverlay.style.display = "flex";
+      } else if (activeLoadingTasks === 1) {
+        clearTimeout(loadingDelayTimer);
+        // Delay overlay to avoid quick flashes if cached
+        loadingDelayTimer = setTimeout(() => {
+          if (activeLoadingTasks > 0) detectOverlay.style.display = "flex";
+        }, 500);
+      }
+    } else {
+      activeLoadingTasks--;
+      if (activeLoadingTasks <= 0) {
+        activeLoadingTasks = 0;
+        clearTimeout(loadingDelayTimer);
+        detectOverlay.style.display = "none";
+      }
+    }
+  }
+
+  function _initWaterfall() {
+    waterfallCanvas = $("#waterfallCanvas");
+    if (!waterfallCanvas) return;
+    waterfallCtx = waterfallCanvas.getContext("2d");
+    
+    waterfallActive = true;
+    waterfallCanvas.classList.add("active");
+    if (chordDisplay88) chordDisplay88.classList.add("waterfall-active");
+    _loadAccompaniment();
+    setTimeout(_resizeWaterfall, 50);
+  }
+
+  function _resizeWaterfall() {
+    if (!waterfallCanvas || !waterfallActive) return;
+    const w = chordDisplay88.clientWidth || 800;
+    const h = waterfallCanvas.clientHeight || 200;
+    const dpr = window.devicePixelRatio || 1;
+    waterfallCanvas.width = Math.round(w * dpr);
+    waterfallCanvas.height = Math.round(h * dpr);
+    waterfallCtx.scale(dpr, dpr);
+    if (audio.paused) drawWaterfall(audio.currentTime || 0);
+  }
+
+  function _loadAccompaniment() {
+    if (!trackPath || accLoading) return;
+    if (accData && accData._style === teachStyle && accData._level === teachLevel) return;
+    accLoading = true;
+    _setLoadingState(true, "AI 伴奏提取中...", "首次播放需要進行即時演算...");
+    const url = `/api/ai/accompaniment?path=${encodeURIComponent(trackPath)}&style=${teachStyle}&level=${teachLevel}`;
+    fetch(url).then(r => r.json()).then(data => {
+      if (data.error) {
+        console.warn("Accompaniment:", data.error);
+        accData = null;
+      } else {
+        data._style = teachStyle;
+        data._level = teachLevel;
+        accData = data;
+      }
+      accLoading = false;
+      _setLoadingState(false);
+    }).catch(e => {
+      console.error("Accompaniment fetch error:", e);
+      accData = null;
+      accLoading = false;
+      _setLoadingState(false);
+    });
+  }
+
+  function drawWaterfall(currentTime) {
+    if (!waterfallCanvas || !waterfallCtx || !waterfallActive || !accData) return;
+    if (!piano88Cache) return;
+
+    const w = waterfallCanvas.clientWidth;
+    const h = waterfallCanvas.clientHeight;
+    if (w < 10 || h < 10) return;
+
+    const ctx = waterfallCtx;
+    ctx.clearRect(0, 0, w, h);
+
+    // Draw vertical piano key grid
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    let lastKey = null;
+    for (const p in piano88Cache.whiteXs) {
+      const wk = piano88Cache.whiteXs[p];
+      ctx.moveTo(wk.x, 0);
+      ctx.lineTo(wk.x, h);
+      lastKey = wk;
+    }
+    if (lastKey) {
+      ctx.moveTo(lastKey.x + lastKey.w, 0);
+      ctx.lineTo(lastKey.x + lastKey.w, h);
+    }
+    ctx.stroke();
+
+    // Time window: show notes from currentTime to currentTime + lookAhead
+    const lookAhead = 4.0;  // seconds visible above piano
+    const pxPerSec = h / lookAhead;
+
+    // Semantic Colors
+    const LH_COLOR = "rgba(33, 150, 243, 0.9)";   // Blue (穩重/左手)
+    const RH_COLOR = "rgba(255, 152, 0, 0.9)";    // Orange (主旋律/右手)
+    const LH_GLOW  = "rgba(33, 150, 243, 0.4)";
+    const RH_GLOW  = "rgba(255, 152, 0, 0.4)";
+
+    // 畫拍線網格 (Beat Grid & Bar Lines)
+    const bpm = (accData.bpm || 100); 
+    const secPerBeat = 60 / bpm;
+    const firstBeatTime = Math.floor(currentTime / secPerBeat) * secPerBeat;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    ctx.font = "11px sans-serif";
+    for (let bt = firstBeatTime; bt < currentTime + lookAhead; bt += secPerBeat) {
+      const beatNum = Math.round(bt / secPerBeat);
+      const beatInBar = (beatNum % 4) + 1; // 1, 2, 3, 4
+      const isBarLine = (beatNum % 4 === 0);
+      const y = h - (bt - currentTime) * pxPerSec;
+      if (y < 0 || y > h) continue;
+      
+      ctx.strokeStyle = isBarLine ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.08)";
+      ctx.lineWidth = isBarLine ? 2 : 1;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+
+      // Draw beat number at left edge
+      ctx.fillStyle = isBarLine ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.3)";
+      ctx.fillText(beatInBar, 8, y - 2);
+    }
+
+    // A-B Repeat boundary lines on waterfall
+    if (abState !== "idle" && abA != null) {
+      const yA = h - (abA - currentTime) * pxPerSec;
+      if (yA >= 0 && yA <= h) {
+        ctx.strokeStyle = "#4fc3f7";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 3]);
+        ctx.beginPath(); ctx.moveTo(0, yA); ctx.lineTo(w, yA); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#4fc3f7";
+        ctx.font = "bold 11px sans-serif";
+        ctx.textAlign = "right";
+        ctx.fillText("A", w - 6, yA - 4);
+      }
+      if (abState === "active" && abB != null) {
+        const yB = h - (abB - currentTime) * pxPerSec;
+        if (yB >= 0 && yB <= h) {
+          ctx.strokeStyle = "#4caf50";
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 3]);
+          ctx.beginPath(); ctx.moveTo(0, yB); ctx.lineTo(w, yB); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = "#4caf50";
+          ctx.font = "bold 11px sans-serif";
+          ctx.textAlign = "right";
+          ctx.fillText("B", w - 6, yB - 4);
+        }
+        // Dim area outside A-B range
+        const yAclamped = Math.max(0, Math.min(h, yA));
+        const yBclamped = Math.max(0, Math.min(h, yB));
+        if (yBclamped < yAclamped) {
+          ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+          if (yBclamped > 0) ctx.fillRect(0, 0, w, yBclamped);
+          if (yAclamped < h) ctx.fillRect(0, yAclamped, w, h - yAclamped);
+        }
+      }
+    }
+
+    const allEvents = [];
+    if (activeHand === "both" || activeHand === "left") {
+      allEvents.push(...(accData.left_hand || []).map(e => ({...e, _hand: "left"})));
+    }
+    if (activeHand === "both" || activeHand === "right") {
+      let rhEvents = accData.right_hand || [];
+      if (rhEvents.length === 0 && typeof melodyData !== 'undefined' && melodyData) {
+        rhEvents = melodyData.map(m => ({
+          time: m.start,
+          duration: m.end - m.start,
+          pitch: m.midi,
+          finger: null
+        }));
+      }
+      allEvents.push(...rhEvents.map(e => ({...e, _hand: "right"})));
+    }
+
+    const cache = piano88Cache;
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    // 左手手型背景區塊 (Position Hand Block)
+    const lhEvents = allEvents.filter(e => e._hand === "left" && e.time >= currentTime && e.time <= currentTime + lookAhead);
+    if (lhEvents.length > 0) {
+      let minX = w, maxX = 0, minY = h, maxY = 0;
+      for (const evt of lhEvents) {
+        const ki = cache.whiteXs[evt.pitch] || cache.blackXs[evt.pitch];
+        if (!ki) continue;
+        const x = ki.x;
+        const ex = x + ki.w;
+        const yt = Math.max(0, h - (evt.time + evt.duration - currentTime) * pxPerSec);
+        const yb = Math.min(h, h - (evt.time - currentTime) * pxPerSec);
+        if (x < minX) minX = x;
+        if (ex > maxX) maxX = ex;
+        if (yt < minY) minY = yt;
+        if (yb > maxY) maxY = yb;
+      }
+      if (maxX > minX && maxY > minY) {
+        ctx.fillStyle = "rgba(33, 150, 243, 0.05)"; // very faint blue box
+        ctx.fillRect(minX - 4, minY - 4, maxX - minX + 8, maxY - minY + 8);
+        ctx.strokeStyle = "rgba(33, 150, 243, 0.15)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(minX - 4, minY - 4, maxX - minX + 8, maxY - minY + 8);
+      }
+    }
+
+    // 將指法分群與優化顯示
+    let lhLastF = 0, rhLastF = 0;
+    
+    for (const evt of allEvents) {
+      const noteStart = evt.time;
+      const noteEnd = evt.time + evt.duration;
+
+      if (noteEnd < currentTime || noteStart > currentTime + lookAhead) continue;
+
+      const yBottom = h - (noteStart - currentTime) * pxPerSec;
+      const yTop = h - (noteEnd - currentTime) * pxPerSec;
+      const noteH = Math.max(yBottom - yTop, 3);
+
+      const midi = evt.pitch;
+      const keyInfo = cache.whiteXs[midi] || cache.blackXs[midi];
+      if (!keyInfo) continue;
+      const x = keyInfo.x;
+      const kw = keyInfo.w;
+
+      const isLeft = evt._hand === "left";
+      const color = isLeft ? LH_COLOR : RH_COLOR;
+      const glow = isLeft ? LH_GLOW : RH_GLOW;
+
+      // Drop prediction shadow on the keys if it's right about to hit
+      if (yBottom > h - 40 && yBottom < h) {
+        ctx.fillStyle = glow;
+        ctx.fillRect(x, h - 5, kw, -20); // predictive glow standing on the landing bar
+      }
+
+      // Note bar
+      ctx.fillStyle = color;
+      const r = Math.min(4, noteH / 2);
+      ctx.beginPath();
+      ctx.roundRect(x + 1, yTop, kw - 2, noteH, r);
+      ctx.fill();
+
+      // Contact glow (目前發聲中，音塊壓中底線)
+      if (yBottom >= h && yTop <= h) {
+         ctx.save();
+         ctx.fillStyle = color;
+         ctx.shadowColor = color;
+         ctx.shadowBlur = 10;
+         ctx.fillRect(x + 1, h - 4, kw - 2, 8);
+         ctx.fillStyle = "rgba(255,255,255,0.8)";
+         ctx.shadowBlur = 5;
+         ctx.shadowColor = "#fff";
+         ctx.fillRect(x + 3, h - 2, kw - 6, 4);
+         ctx.restore();
+      }
+
+      // Show finger numbers for all mapped notes
+      if (evt.finger) {
+        let showF = false; // 先擱置指法，不要顯示
+        const lastF = isLeft ? lhLastF : rhLastF;
+        
+        if (showF) {
+          // Display the number near the bottom of the falling block so it appears early
+          const fy = Math.min(yBottom - 10, yTop + noteH / 2 + 5);
+          ctx.font = "bold 13px sans-serif";
+          
+          let text = evt.finger;
+          
+          if (evt.finger === 1 && lastF > 1) {
+             // Crossover hint
+             text = "↻1";
+             ctx.fillStyle = "rgba(255,255,255,0.2)";
+             ctx.fillRect(x, Math.max(0, yTop), kw, noteH);
+          }
+          
+          // High contrast text
+          ctx.lineWidth = 2.5;
+          ctx.strokeStyle = "rgba(0,0,0,0.8)";
+          ctx.strokeText(text, x + kw / 2, Math.max(fy, 15));
+          ctx.fillStyle = "#fff";
+          ctx.fillText(text, x + kw / 2, Math.max(fy, 15));
+        }
+        
+        if (isLeft) lhLastF = evt.finger; else rhLastF = evt.finger;
+      }
+    }
+
+    // Landing line
+    ctx.strokeStyle = "rgba(255,255,255,0.4)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, h - 2);
+    ctx.lineTo(w, h - 2);
+    ctx.stroke();
+
+    // ---- HUD Overlay (AI Teach Hint & Current Chord) ----
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    
+    if (teachStyle) {
+      let hintText = "";
+      if (teachStyle === "Arpeggio") hintText = "Flow 分解伴奏推進中... 留意樂句波動";
+      else if (teachStyle === "Block") hintText = "Block 模式：雙手對齊抓穩柱狀和弦";
+      else if (teachStyle === "Rhythm") hintText = "Rhythm 模式：強調第一拍與切分節奏";
+      else hintText = "大師模式：" + teachStyle;
+
+      ctx.font = "12px sans-serif";
+      const txt = `🎵 AI Hint: ${hintText}`;
+      const textMetrics = ctx.measureText(txt);
+      const tw = textMetrics.width;
+
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.beginPath();
+      ctx.roundRect(22, 16, tw + 16, 24, 6);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillText(txt, 30, 21);
+    }
+
+  }
+
+  // Teaching controls setup
+  function _setupTeachControls() {
+    const styleSelect = $("#teachStyle");
+    const levelBtns = document.querySelectorAll("#levelSwitch .mode-btn");
+    const aiBtn = $("#btnTeachAI");
+    const toggle = $("#teachToggle");
+
+    const handToggleBtns = document.querySelectorAll(".hand-toggle-btn");
+
+    if (styleSelect) {
+      styleSelect.value = teachStyle;
+      styleSelect.addEventListener("change", () => {
+        teachStyle = styleSelect.value;
+        localStorage.setItem("livechord_teach_style", teachStyle);
+        accData = null;
+        if (waterfallActive) _loadAccompaniment();
+      });
+    }
+
+    if (levelBtns.length) {
+      levelBtns.forEach(btn => {
+        if (btn.dataset.level === teachLevel) btn.classList.add("active");
+        else btn.classList.remove("active");
+        btn.addEventListener("click", () => {
+          levelBtns.forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          teachLevel = btn.dataset.level;
+          localStorage.setItem("livechord_teach_level", teachLevel);
+          accData = null;
+          if (waterfallActive) _loadAccompaniment();
+        });
+      });
+    }
+    
+    if (handToggleBtns.length) {
+      const updateHandToggleUI = () => {
+        handToggleBtns.forEach(btn => {
+          const lImg = btn.querySelector(".hand-left");
+          const rImg = btn.querySelector(".hand-right");
+          if (lImg && rImg) {
+            lImg.classList.toggle("active", activeHand === "both" || activeHand === "left");
+            rImg.classList.toggle("active", activeHand === "both" || activeHand === "right");
+          }
+          let title = "雙手";
+          if (activeHand === "left") title = "僅左手";
+          if (activeHand === "right") title = "僅右手";
+          btn.title = `切換教學手勢 (${title})`;
+        });
+      };
+      // Init UI state
+      updateHandToggleUI();
+
+      handToggleBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+          if (activeHand === "both") {
+            activeHand = "left";
+            showToast("手部切換: 顯示左手");
+          } else if (activeHand === "left") {
+            activeHand = "right";
+            showToast("手部切換: 顯示右手");
+          } else {
+            activeHand = "both";
+            showToast("手部切換: 顯示雙手");
+          }
+          localStorage.setItem("livechord_active_hand", activeHand);
+          updateHandToggleUI();
+        });
+      });
+    }
+
+    if (aiBtn) {
+      aiBtn.addEventListener("click", () => {
+        if (!trackPath) return;
+        fetch(`/api/ai/suggest-style?path=${encodeURIComponent(trackPath)}`)
+          .then(r => r.json())
+          .then(data => {
+            if (data.suggested_styles && data.suggested_styles.length > 0) {
+              const best = data.suggested_styles[0];
+              if (styleSelect) styleSelect.value = best;
+              teachStyle = best;
+              localStorage.setItem("livechord_teach_style", best);
+              accData = null;
+              if (waterfallActive) _loadAccompaniment();
+              showToast("AI: " + data.suggested_styles.join(", "));
+            }
+          }).catch(() => {});
+      });
+    }
+
+
+    const btnShowChordTonesTB = $("#btnShowChordTonesTB");
+    const btnBottomShowChordTones = $("#btnBottomShowChordTones");
+    
+    const updateChordTonesUI = () => {
+      [btnShowChordTonesTB, btnBottomShowChordTones].forEach(btn => {
+        if (!btn) return;
+        if (show88ChordTones) {
+          btn.style.background = "rgba(156, 39, 176, 0.2)";
+          btn.style.textShadow = "0 0 10px rgba(156, 39, 176, 0.8)";
+        } else {
+          btn.style.background = "";
+          btn.style.textShadow = "";
+        }
+      });
+    };
+    // Init state
+    updateChordTonesUI();
+
+    const handleChordTonesToggle = () => {
+      show88ChordTones = !show88ChordTones;
+      localStorage.setItem("livechord_show_chord_tones", show88ChordTones.toString());
+      updateChordTonesUI();
+      update88Piano(audio.currentTime || 0);
+    };
+
+    if (btnShowChordTonesTB) btnShowChordTonesTB.addEventListener("click", handleChordTonesToggle);
+    if (btnBottomShowChordTones) btnBottomShowChordTones.addEventListener("click", handleChordTonesToggle);
   }
 
   // resize observer for 88-key piano
@@ -581,6 +1228,7 @@
       _resizeTimer = setTimeout(() => {
         if (activeTab === "keys") {
           _init88Piano();
+          _resizeWaterfall();
           update88Piano(audio.currentTime || 0);
         }
       }, 100);
@@ -588,7 +1236,6 @@
   }
 
   // ---- section detection ----
-  let sectionData = null;
 
   async function _loadSections(path) {
     try {
@@ -646,6 +1293,23 @@
               rel.appendChild(rmarker);
             }
           }
+
+          // 3. Piano88 ribbon — color bar + section label
+          if (keys88RibbonTrack) {
+            const k88items = keys88RibbonTrack.querySelectorAll(".keys88-ribbon-item");
+            const kel = k88items[i];
+            if (kel) {
+              kel.style.setProperty("--sec-color", sec.color);
+              kel.classList.add("has-section");
+              if (i === 0 || displayed[i - 1].time < sec.start) {
+                const kmarker = document.createElement("div");
+                kmarker.className = "section-marker-ribbon";
+                kmarker.textContent = `${sec.emoji} ${sec.label || sec.type}`;
+                kmarker.style.color = sec.color;
+                kel.appendChild(kmarker);
+              }
+            }
+          }
         }
       }
     }
@@ -678,7 +1342,11 @@
         }
         await preloadChordInfo(chordData.chords);
         buildChordDOM();
-        bigChordBox.style.display = "";
+        if (activeTab === "diagrams") {
+          bigChordBox.style.display = "none";
+        } else {
+          bigChordBox.style.display = "";
+        }
         // 載入段落 + 旋律資訊
         _loadSections(path);
         _loadMelody(path);
@@ -984,8 +1652,19 @@
     if (activeChordIdx >= 0 && activeChordIdx < chordElements.length) {
       const el = chordElements[activeChordIdx];
       el.classList.add("active");
-      if (activeTab === "overview") {
-        el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      if (activeTab === "overview" && !audio.paused) {
+        // Smart view: keep active chord in upper-center of chord area
+        const container = chordDisplayOverview;
+        const rect = el.getBoundingClientRect();
+        const cRect = container.getBoundingClientRect();
+        // getBoundingClientRect returns screen-space (zoomed) pixels;
+        // scrollTop is in container (unzoomed) space — divide by scale
+        const scale = _isFullscreen() ? (ZOOM_STEPS[zoomIdx] || 100) / 100 : 1;
+        const targetY = cRect.top + 28 * scale; // offset for section markers above chord
+        const diff = rect.top - targetY;
+        if (Math.abs(diff) > 10 * scale) {
+          container.scrollTop += diff / scale;
+        }
       }
 
       if (ribbonElements[activeChordIdx]) {
@@ -996,7 +1675,7 @@
       const chord = displayedChords[activeChordIdx];
       const cache = chordCache[chord.chord] || {};
 
-      if (activeTab === "diagrams") {
+      if (activeTab === "diagrams" || activeTab === "keys") {
         bigChordBox.style.display = "none";
       } else {
         bigChordName.textContent = chord.chord;
@@ -1039,10 +1718,73 @@
     else audio.pause();
   });
 
-  audio.addEventListener("play", () => { btnPlay.innerHTML = "&#x23F8;"; });
-  audio.addEventListener("pause", () => { btnPlay.innerHTML = "&#x25B6;"; });
+  // Smart view: playing → chord area scrolls internally; paused → page scrolls freely
+  function _setSmartView(playing) {
+    if (chordDisplayOverview) {
+      const isFs = chordDisplay && chordDisplay.classList.contains("fullscreen");
+      if (playing) {
+        chordDisplayOverview.style.overflowY = "auto";
+        chordDisplayOverview.style.maxHeight = isFs ? "" : "calc(100vh - 320px)";
+      } else {
+        chordDisplayOverview.style.overflowY = "";
+        chordDisplayOverview.style.maxHeight = "";
+      }
+    }
+  }
+  let _audioIsLoading = false;
+  function _setAudioLoadingState(isLoading) {
+    if (isLoading && !_audioIsLoading) {
+      _audioIsLoading = true;
+      _setLoadingState(true, "正努力串流中...", "請稍後，音訊緩衝中...", "music");
+    } else if (!isLoading && _audioIsLoading) {
+      _audioIsLoading = false;
+      _setLoadingState(false);
+    }
+  }
+
+  let _streamWatcherTimer = null;
+  let _streamLastTime = -1;
+
+  function _startStreamWatcher() {
+    _stopStreamWatcher();
+    _streamLastTime = audio.currentTime;
+    _setAudioLoadingState(true);
+    
+    _streamWatcherTimer = setInterval(() => {
+      if (audio.paused) {
+        _stopStreamWatcher();
+        return;
+      }
+      if (audio.currentTime === _streamLastTime) {
+        _setAudioLoadingState(true);
+      } else {
+        _setAudioLoadingState(false);
+        _streamLastTime = audio.currentTime;
+      }
+    }, 500);
+  }
+
+  function _stopStreamWatcher() {
+    if (_streamWatcherTimer) clearInterval(_streamWatcherTimer);
+    _streamWatcherTimer = null;
+    _setAudioLoadingState(false);
+  }
+
+  audio.addEventListener("play", () => {
+    btnPlay.innerHTML = "&#x23F8;"; 
+    _setSmartView(true);
+    _startStreamWatcher();
+  });
+  
+  audio.addEventListener("pause", () => {
+    btnPlay.innerHTML = "&#x25B6;"; 
+    _setSmartView(false);
+    _stopStreamWatcher();
+  });
+
   audio.addEventListener("loadedmetadata", () => {
     timeDuration.textContent = formatTime(audio.duration);
+    if(fsTimeDuration) fsTimeDuration.textContent = formatTime(audio.duration);
   });
 
   // requestAnimationFrame 同步
@@ -1050,12 +1792,22 @@
 
   function tickSync() {
     if (!audio.paused) {
-      const t = audio.currentTime;
+      let t = audio.currentTime;
+      // A-B Repeat: loop back to A when reaching B
+      if (abState === "active" && abA != null && abB != null && t >= abB) {
+        audio.currentTime = abA;
+        t = abA;
+      }
       const d = audio.duration || 1;
       progress.style.width = (t / d * 100) + "%";
+      if(fsProgress) fsProgress.style.width = progress.style.width;
       timeCurrent.textContent = formatTime(t);
+      if(fsTimeCurrent) fsTimeCurrent.textContent = formatTime(t);
       updateActiveChord(t);
-      if (activeTab === "keys") update88Piano(t);
+      if (activeTab === "keys") {
+        update88Piano(t);
+        drawWaterfall(t);
+      }
       rafId = requestAnimationFrame(tickSync);
     }
   }
@@ -1069,14 +1821,22 @@
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     const t = audio.currentTime;
     progress.style.width = (t / (audio.duration || 1) * 100) + "%";
+    if(fsProgress) fsProgress.style.width = progress.style.width;
     timeCurrent.textContent = formatTime(t);
+    if(fsTimeCurrent) fsTimeCurrent.textContent = formatTime(t);
     updateActiveChord(t);
+    if (activeTab === "keys") {
+      update88Piano(t);
+      drawWaterfall(t);
+    }
   });
 
   audio.addEventListener("seeked", () => {
     const t = audio.currentTime;
     progress.style.width = (t / (audio.duration || 1) * 100) + "%";
+    if(fsProgress) fsProgress.style.width = progress.style.width;
     timeCurrent.textContent = formatTime(t);
+    if(fsTimeCurrent) fsTimeCurrent.textContent = formatTime(t);
     updateActiveChord(t);
     if (activeTab === "keys") { piano88LastIdx = -1; update88Piano(t); }
   });
@@ -1159,6 +1919,25 @@
   progressBar.addEventListener("pointerup", () => { _draggingProgress = false; });
   progressBar.addEventListener("pointercancel", () => { _draggingProgress = false; });
 
+  if (fsProgressBar) {
+    let _draggingFsProgress = false;
+    function _seekFromFsPointer(e) {
+      const rect = fsProgressBar.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      audio.currentTime = pct * (audio.duration || 0);
+    }
+    fsProgressBar.addEventListener("pointerdown", (e) => {
+      _draggingFsProgress = true;
+      fsProgressBar.setPointerCapture(e.pointerId);
+      _seekFromFsPointer(e);
+    });
+    fsProgressBar.addEventListener("pointermove", (e) => {
+      if (_draggingFsProgress) _seekFromFsPointer(e);
+    });
+    fsProgressBar.addEventListener("pointerup", () => { _draggingFsProgress = false; });
+    fsProgressBar.addEventListener("pointercancel", () => { _draggingFsProgress = false; });
+  }
+
   // 還原上次音量
   const savedVol = localStorage.getItem("livechord_volume");
   if (savedVol !== null) {
@@ -1169,8 +1948,20 @@
 
   volumeSlider.addEventListener("input", () => {
     audio.volume = parseFloat(volumeSlider.value);
+    audio.muted = false;
     localStorage.setItem("livechord_volume", volumeSlider.value);
+    btnMute.innerHTML = audio.volume === 0 ? "&#x1F507;" : "&#x1F509;";
   });
+
+  // Mute toggle
+  const btnMute = $("#btnMute");
+  let _preMuteVol = 1;
+  if (btnMute) {
+    btnMute.addEventListener("click", () => {
+      audio.muted = !audio.muted;
+      btnMute.innerHTML = audio.muted ? "&#x1F507;" : "&#x1F509;";
+    });
+  }
 
   // ---- 播放速度 ----
   const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -1657,45 +2448,4 @@
   });
 })();
 
-// ---- 移調工具函式 (全域) ----
-const NOTE_NAMES_SHARP = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
-const NOTE_NAMES_FLAT  = ["C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B"];
-
-function noteToSemitone(n) {
-  const m = {C:0,D:2,E:4,F:5,G:7,A:9,B:11};
-  let s = m[n[0].toUpperCase()] || 0;
-  if (n.length > 1) { if (n[1]==="#") s++; else if (n[1]==="b") s--; }
-  return ((s%12)+12)%12;
-}
-function semitoneToNote(s, flat) {
-  s = ((s%12)+12)%12;
-  return flat ? NOTE_NAMES_FLAT[s] : NOTE_NAMES_SHARP[s];
-}
-function transposeChord(chord, semi) {
-  if (!chord || semi === 0) return chord;
-  const m = chord.match(/^([A-G][b#]?)(.*?)(?:\/([A-G][b#]?))?$/);
-  if (!m) return chord;
-  const flat = m[1].includes("b") || chord.includes("b");
-  let r = semitoneToNote(noteToSemitone(m[1])+semi, flat) + (m[2]||"");
-  if (m[3]) r += "/" + semitoneToNote(noteToSemitone(m[3])+semi, flat);
-  return r;
-}
-
-// 相對於 key 的簡譜標記
-const JIANPU_NAMES = ["1","#1","2","#2","3","4","#4","5","#5","6","#6","7"];
-const JIANPU_FLAT  = ["1","b2","2","b3","3","4","b5","5","b6","6","b7","7"];
-
-function chordToJianpu(chord, key) {
-  const m = chord.match(/^([A-G][b#]?)/);
-  if (!m) return "";
-  const notes = chord.match(/^([A-G][b#]?)(.*?)(?:\/([A-G][b#]?))?$/);
-  if (!notes) return "";
-  const root = notes[1];
-  const keySemi = noteToSemitone(key || "C");
-  const useFlat = root.includes("b") || (key && key.includes("b"));
-
-  // 從 chord_table API 回傳的 notes 計算
-  // 這裡用簡化方式：根音相對於 key 的簡譜
-  const interval = ((noteToSemitone(root) - keySemi) % 12 + 12) % 12;
-  return useFlat ? JIANPU_FLAT[interval] : JIANPU_NAMES[interval];
-}
+// 移調工具函式、簡譜函式 moved to utils.js

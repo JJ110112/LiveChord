@@ -31,6 +31,9 @@ for name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
     logger.handlers = logging.root.handlers
     logger.propagate = False
 
+# Suppress harmless Windows asyncio "connection_lost" noise (client disconnect during streaming)
+logging.getLogger("asyncio").setLevel(logging.CRITICAL)
+
 import uvicorn
 
 if __name__ == "__main__":

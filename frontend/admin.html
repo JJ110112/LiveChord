@@ -9,7 +9,8 @@
   <meta name="theme-color" content="#e94560">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/base.css?v=1">
+  <link rel="stylesheet" href="/css/home.css?v=1">
   <style>
     .admin-page { max-width: 960px; margin: 0 auto; padding: 20px 24px; }
     .card { background: var(--bg-card); border-radius: var(--radius); padding: 20px; margin-bottom: 14px; }
@@ -162,16 +163,12 @@
 
 <div id="toast" class="toast"></div>
 
+<script src="/js/utils.js?v=1"></script>
 <script src="/js/api.js?v=2"></script>
 <script>
 (function() {
   const $ = s => document.querySelector(s);
-  const toast = $("#toast");
-  function showToast(msg, ms=2000) {
-    toast.textContent = msg;
-    toast.classList.add("show");
-    setTimeout(() => toast.classList.remove("show"), ms);
-  }
+  // showToast from utils.js
 
   // ---- 載入設定 ----
   async function loadSettings() {

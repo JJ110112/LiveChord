@@ -99,10 +99,22 @@ CHORD_INTERVALS = {
 }
 
 
+_ENHARMONIC_SHARP = {'E#': 'F', 'B#': 'C', 'Fb': 'E', 'Cb': 'B'}
+
 def root_to_semitone(root: str) -> int:
     """將根音轉換為半音數 (C=0)"""
+    # Handle double sharps (e.g. C## -> D)
+    if '##' in root:
+        base = root.replace('##', '')
+        return (NOTE_NAMES.index(base) + 2) % 12
+    # Handle double flats (e.g. Dbb -> C)
+    if 'bb' in root:
+        base = root.replace('bb', '')
+        return (NOTE_NAMES.index(base) - 2) % 12
     if root in FLAT_TO_SHARP:
         root = FLAT_TO_SHARP[root]
+    elif root in _ENHARMONIC_SHARP:
+        root = _ENHARMONIC_SHARP[root]
     return NOTE_NAMES.index(root)
 
 

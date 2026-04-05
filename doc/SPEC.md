@@ -1,6 +1,6 @@
 # LiveChord 規格書
 
-> 版本: 2.0 | 日期: 2026-04-03
+> 版本: 2.1 | 日期: 2026-04-05
 
 ## 1. 產品概述
 
@@ -376,6 +376,15 @@
 - **彈奏難度 L1~L3 + Style 選單** → 88 鍵 Canvas 正上方（改變物理演奏層）
 - 切換 Jazzify → 和弦字串更新 → 觸發伴奏引擎重算
 - 切換 L1~L3 / Style → 和弦不變 → 僅 Pattern 重算
+
+**UI 佈局不變量 (Layout Invariants)**：
+- **一般模式縮放**：所有 tab 永遠 100%，不可被全螢幕設定污染
+- **全螢幕縮放**：獨立 `_tabZoomFs` 儲存，預設 200%
+- **88 鍵容器**：一般模式不加 `flex: 1`（避免空白），全螢幕才用 `flex: 5`
+- **keys88-ribbon 高度**：≥ 120px（容納段落標記 + 色條 + 放大 chord badge + jianpu）
+- **Big Chord Box**：keys tab 一般模式顯示，全螢幕隱藏（ribbon 已有）
+- **Smart View 捲動**：播放中用 `container.scrollTop` 而非 `scrollIntoView`
+- **詳見 QA.md §14「前端 UI 架構鐵律」**
 
 #### 4.7.9 前端瀑布流 (Piano Roll Waterfall)
 

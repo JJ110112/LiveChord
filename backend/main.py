@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 
 from music_api import router as music_router
 from chord_api import router as chord_router
+from chord_batch import router as chord_batch_router
 from user_api import router as user_router
 from benchmark_api import router as benchmark_router
 from ai_api import router as ai_router
@@ -33,6 +34,7 @@ app = FastAPI(title="LiveChord", version="1.0.0", lifespan=lifespan)
 # 掛載 API routers
 app.include_router(music_router)
 app.include_router(chord_router)
+app.include_router(chord_batch_router)
 app.include_router(user_router)
 app.include_router(benchmark_router)
 app.include_router(ai_router)
@@ -41,6 +43,7 @@ app.include_router(ai_router)
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 app.mount("/css", StaticFiles(directory=FRONTEND_DIR / "css"), name="css")
 app.mount("/js", StaticFiles(directory=FRONTEND_DIR / "js"), name="js")
+app.mount("/img", StaticFiles(directory=FRONTEND_DIR / "img"), name="img")
 
 
 # ---------------------------------------------------------------------------

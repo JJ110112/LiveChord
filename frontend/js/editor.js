@@ -28,20 +28,7 @@
   const progressBar = $("#progressBar");
   const progress = $("#progress");
   const btnPlay = $("#btnPlay");
-  const toast = $("#toast");
-
-  function showToast(msg, ms = 2000) {
-    toast.textContent = msg;
-    toast.classList.add("show");
-    setTimeout(() => toast.classList.remove("show"), ms);
-  }
-
-  function formatTime(s) {
-    if (!s && s !== 0) return "";
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${m}:${sec.toString().padStart(2, "0")}`;
-  }
+  // showToast, formatTime moved to utils.js
 
   // ---- init ----
 

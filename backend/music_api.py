@@ -2,7 +2,6 @@
 
 import os
 import json
-import hashlib
 import time
 import threading
 from pathlib import Path
@@ -14,6 +13,7 @@ from fastapi.responses import FileResponse, StreamingResponse, Response
 from mutagen.flac import FLAC
 
 from config import get_music_root, get_music_roots, set_music_roots, resolve_path
+from batch_state import BatchState
 
 router = APIRouter(prefix="/api", tags=["music"])
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -22,17 +22,11 @@ CACHE_FILE = DATA_DIR / "library_cache.json"
 # ---------------------------------------------------------------------------
 # 掃描狀態（背景執行緒共享）
 # ---------------------------------------------------------------------------
-_scan_state = {
-    "running": False,
-    "progress": 0,        # 已掃描數
-    "total_dirs": 0,      # 已遍歷目錄數
-    "new_tracks": 0,      # 新增曲目數
-    "updated_tracks": 0,  # 更新曲目數
-    "mode": "",           # "full" or "incremental"
-    "started_at": "",
-    "finished_at": "",
-    "error": "",
-}
+_scan_state = BatchState(
+    progress=0, total_dirs=0,
+    new_tracks=0, updated_tracks=0, deleted_tracks=0,
+    mode="", error="",
+)
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -95,11 +89,7 @@ def _has_cover(filepath: str) -> bool:
     return False
 
 
-def _song_hash(path: str) -> str:
-    """產生穩定的 song hash（用於和弦譜檔名）"""
-    return hashlib.md5(path.encode("utf-8")).hexdigest()[:12]
-
-from chord_cache import get_chord_summary as _get_chord_summary
+from chord_cache import get_chord_summary as _get_chord_summary, song_hash
 
 # ---------------------------------------------------------------------------
 # browse
@@ -388,14 +378,14 @@ def cancel_scan():
 
 def _scan_worker(mode: str = "incremental"):
     """背景掃描執行緒（節流 I/O，可中斷）"""
-    global _scan_state, _scan_cancel
+    global _scan_cancel
     _scan_cancel = False
-    _scan_state.update({
-        "running": True, "progress": 0, "total_dirs": 0,
-        "new_tracks": 0, "updated_tracks": 0, "mode": mode,
-        "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "finished_at": "", "error": "",
-    })
+    _scan_state.update(
+        running=True, progress=0, total_dirs=0,
+        new_tracks=0, updated_tracks=0, deleted_tracks=0, mode=mode,
+        started_at=time.strftime("%Y-%m-%dT%H:%M:%S"),
+        finished_at="", error="",
+    )
 
     try:
         roots = get_music_roots()
@@ -464,7 +454,7 @@ def _scan_worker(mode: str = "incremental"):
                     genre_parts = inner_rel.split("/")
                     meta["genre"] = meta["genre"] or (genre_parts[0] if len(genre_parts) > 1 else "")
 
-                    chords_file = DATA_DIR / "chords" / f"{_song_hash(rel)}.json"
+                    chords_file = DATA_DIR / "chords" / f"{song_hash(rel)}.json"
                     meta["has_chords"] = chords_file.is_file()
 
                     tracks.append(meta)

@@ -35,11 +35,7 @@ class FavoriteItem(BaseModel):
     path: str
 
 
-import hashlib
 from chord_cache import get_chord_summary as _get_chord_summary
-
-def _song_hash(path: str) -> str:
-    return hashlib.md5(path.encode("utf-8")).hexdigest()[:12]
 
 @router.get("/favorites")
 async def get_favorites():
