@@ -579,6 +579,53 @@ def dynamics_api(
     }
 
 
+@router.get("/qa-battle")
+def qa_battle_api(
+    path: str = Query(..., description="歌曲路徑"),
+    style: str = Query(default="Block"),
+    level: str = Query(default="L1"),
+):
+    """QA Battle: 綜合品質評測 (所有 evaluator 對抗)"""
+    import json as _json, hashlib
+
+    h = hashlib.md5(path.encode()).hexdigest()[:12]
+
+    # 載入和弦
+    chords_file = CHORDS_DIR / f"{h}.json"
+    if not chords_file.is_file():
+        return {"error": "no chord data", "verdict": "fail"}
+    chord_data = _json.loads(chords_file.read_text(encoding="utf-8"))
+    chords = chord_data.get("chords", [])
+
+    # 載入旋律
+    melody = []
+    melody_file = DATA_DIR / "melodies" / f"{h}.json"
+    if melody_file.is_file():
+        mel_data = _json.loads(melody_file.read_text(encoding="utf-8"))
+        melody = mel_data.get("melody", [])
+
+    # 載入或生成伴奏
+    acc_file = DATA_DIR / "accompaniments" / f"{h}_{style}_{level}_default.json"
+    if not acc_file.is_file():
+        acc_file = DATA_DIR / "accompaniments" / f"{h}_{style}_{level}.json"
+
+    if acc_file.is_file():
+        acc = _json.loads(acc_file.read_text(encoding="utf-8"))
+    else:
+        from ai.accompaniment_generator import generate_accompaniment
+        acc = generate_accompaniment(chords, melody, bpm=120, style=style, level=level)
+
+    # 補踏板
+    if not acc.get("pedal"):
+        from ai.pedal_advisor import generate_pedal_suggestions
+        acc["pedal"] = generate_pedal_suggestions(chords, melody=melody, bpm=120)
+
+    from ai.battle_qa import run_full_qa
+    result = run_full_qa(chords, melody, acc, bpm=int(acc.get("bpm", 120)), level=level)
+    result["path"] = path
+    return result
+
+
 @router.get("/section-context")
 def section_context_api(
     path: str = Query(..., description="歌曲路徑"),

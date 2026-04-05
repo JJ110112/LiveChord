@@ -184,12 +184,14 @@ def phrase_arc_score(events: List[Dict], silence_threshold: float = 0.3) -> Dict
     if len(events) < 3:
         return {"score": 50, "num_phrases": 0, "phrase_details": []}
 
-    # 切割樂句
+    # 切割樂句 (靜音 OR 超過最大長度自動切割)
+    MAX_PHRASE_NOTES = 16  # 典型樂句 4-8 小節 ≈ 8-16 個音符
     phrases = []
     current_phrase = [events[0]]
     for i in range(1, len(events)):
         gap = events[i]["start"] - events[i-1]["end"]
-        if gap >= silence_threshold:
+        phrase_too_long = len(current_phrase) >= MAX_PHRASE_NOTES
+        if gap >= silence_threshold or phrase_too_long:
             if len(current_phrase) >= 3:
                 phrases.append(current_phrase)
             current_phrase = []

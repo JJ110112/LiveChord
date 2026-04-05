@@ -94,8 +94,8 @@ def melody_collision_score(
             mel_midi = melody_at_time.get(t_key)
             if mel_midi is not None:
                 distance = abs(acc_midi - mel_midi)
-                # 同八度內 ≤1 半音 = 碰撞
-                if distance <= 1 or (distance % 12 <= 1 and distance < 12):
+                # 同八度內同音 = 碰撞 (半音差 ≤1 且非八度重疊)
+                if distance <= 1:
                     collisions += 1
                     found_collision = True
                     if distance <= 1:  # 嚴重碰撞 (非八度)
@@ -122,12 +122,15 @@ def melody_collision_score(
     }
 
 
-def voice_leading_smoothness(events: List[Dict]) -> Dict[str, Any]:
+def voice_leading_smoothness(
+    events: List[Dict],
+    chords: Optional[List[Dict]] = None,
+) -> Dict[str, Any]:
     """
     4.2 Voice Leading Smoothness。
 
-    計算相鄰和弦之間聲部移動距離的平均值。
-    偵測平行五八度。
+    只在和弦轉換邊界計算聲部移動距離（忽略同和弦內的琶音跳躍）。
+    如果無和弦資料，fallback 到每 2 秒取一個快照。
 
     Returns:
         {
@@ -142,17 +145,39 @@ def voice_leading_smoothness(events: List[Dict]) -> Dict[str, Any]:
         return {"score": 100, "avg_movement": 0, "max_movement": 0,
                 "parallel_fifths": 0, "parallel_octaves": 0}
 
-    # 依時間分組
-    time_groups = {}
-    for e in events:
-        t = e.get("time", 0)
-        t_key = round(t, 3)
-        if t_key not in time_groups:
-            time_groups[t_key] = []
-        time_groups[t_key].append(e.get("pitch", e.get("midi", 60)))
+    # 確定和弦邊界時間點
+    boundary_times = set()
+    if chords and len(chords) > 1:
+        for c in chords:
+            boundary_times.add(round(c.get("time", 0), 2))
+    else:
+        # Fallback: 每 2 秒一個快照
+        all_times = [e.get("time", 0) for e in events]
+        if all_times:
+            t = min(all_times)
+            t_max = max(all_times)
+            while t <= t_max:
+                boundary_times.add(round(t, 2))
+                t += 2.0
 
-    sorted_times = sorted(time_groups.keys())
-    if len(sorted_times) < 2:
+    if len(boundary_times) < 2:
+        return {"score": 100, "avg_movement": 0, "max_movement": 0,
+                "parallel_fifths": 0, "parallel_octaves": 0}
+
+    # 在每個邊界時間點取一個 pitch snapshot（該和弦區段的所有不同 pitch）
+    sorted_boundaries = sorted(boundary_times)
+    snapshots = []
+    for i, bt in enumerate(sorted_boundaries):
+        next_bt = sorted_boundaries[i + 1] if i + 1 < len(sorted_boundaries) else bt + 10
+        pitches = sorted(set(
+            e.get("pitch", e.get("midi", 60))
+            for e in events
+            if bt <= e.get("time", 0) < next_bt
+        ))
+        if pitches:
+            snapshots.append(pitches)
+
+    if len(snapshots) < 2:
         return {"score": 100, "avg_movement": 0, "max_movement": 0,
                 "parallel_fifths": 0, "parallel_octaves": 0}
 
@@ -160,43 +185,40 @@ def voice_leading_smoothness(events: List[Dict]) -> Dict[str, Any]:
     parallel_5 = 0
     parallel_8 = 0
 
-    for i in range(len(sorted_times) - 1):
-        curr_pitches = sorted(time_groups[sorted_times[i]])
-        next_pitches = sorted(time_groups[sorted_times[i + 1]])
-
-        # 最少聲部數
-        n = min(len(curr_pitches), len(next_pitches))
+    for i in range(len(snapshots) - 1):
+        curr = snapshots[i]
+        nxt = snapshots[i + 1]
+        n = min(len(curr), len(nxt))
         if n == 0:
             continue
 
         for j in range(n):
-            mv = abs(next_pitches[j] - curr_pitches[j])
+            mv = abs(nxt[j] - curr[j])
             movements.append(mv)
 
-        # 平行五度/八度偵測
         if n >= 2:
             for j in range(n - 1):
                 for k in range(j + 1, n):
-                    iv_curr = abs(curr_pitches[k] - curr_pitches[j]) % 12
-                    iv_next = abs(next_pitches[k] - next_pitches[j]) % 12
-                    mv_j = next_pitches[j] - curr_pitches[j]
-                    mv_k = next_pitches[k] - curr_pitches[k]
-                    # 同方向移動
+                    iv_c = abs(curr[k] - curr[j]) % 12
+                    iv_n = abs(nxt[k] - nxt[j]) % 12
+                    mv_j = nxt[j] - curr[j]
+                    mv_k = nxt[k] - curr[k]
                     if mv_j * mv_k > 0:
-                        if iv_curr == 7 and iv_next == 7:
+                        if iv_c == 7 and iv_n == 7:
                             parallel_5 += 1
-                        if iv_curr == 0 and iv_next == 0 and mv_j != 0:
+                        if iv_c == 0 and iv_n == 0 and mv_j != 0:
                             parallel_8 += 1
 
     avg_mv = sum(movements) / len(movements) if movements else 0
     max_mv = max(movements) if movements else 0
 
-    # 分數: avg ≤ 3 半音 = 滿分
+    # 分數: avg ≤ 4 半音 = 滿分
     score = 100
-    if avg_mv > 3:
-        score -= int((avg_mv - 3) * 15)
-    score -= parallel_5 * 5
-    score -= parallel_8 * 8
+    if avg_mv > 4:
+        score -= int((avg_mv - 4) * 10)
+    # 平行五八度在流行/搖滾中常見，只輕微扣分
+    score -= min(parallel_5, 10) * 2
+    score -= min(parallel_8, 5) * 3
     score = max(0, min(100, score))
 
     return {
@@ -446,7 +468,7 @@ def evaluate_accompaniment(
                                "collision_ratio": 0.0, "severe_collisions": []}
 
     # 4.2 Voice leading
-    result["voice_leading"] = voice_leading_smoothness(all_events)
+    result["voice_leading"] = voice_leading_smoothness(all_events, chords=chords)
 
     # 4.3 音域平衡
     result["register"] = register_balance(left_hand, right_hand)
