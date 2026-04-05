@@ -67,3 +67,5 @@ patch2_utf8.txt
 *.txt
 agent/.env
 agent/.langgraph_api/
+recent_diff.md
+test_finger.py
