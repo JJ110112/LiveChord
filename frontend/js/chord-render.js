@@ -895,14 +895,17 @@ const ChordRender = {
     }
 
     // ---- Phase 11 P3: Fingering numbers on piano keys ----
+    // Shows current + upcoming (1s lookahead) fingerings
+    // Upcoming: dimmer + dashed border (prepare your hand!)
     const fMap = opts && opts.fingeringMap;
+    const fNow = (opts && opts.now) || 0;
     if (fMap && Object.keys(fMap).length > 0) {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
       for (const midiStr in fMap) {
         const midi = parseInt(midiStr);
-        const { finger, hand } = fMap[midiStr];
+        const { finger, hand, upcoming } = fMap[midiStr];
         if (!finger) continue;
 
         const isBlack = !!blackXs[midi];
@@ -911,29 +914,52 @@ const ChordRender = {
 
         const circleR = isBlack ? Math.min(ki.w * 0.35, 8) : Math.min(ki.w * 0.35, 10);
         const cx = ki.x + ki.w / 2;
-        // White key: circle near bottom; Black key: circle near bottom of black key
         const cy = isBlack ? ki.h - circleR - 4 : ki.h - circleR - 8;
 
-        // Circle background (hand-colored)
-        const circleColor = hand === "left"
-          ? (isBlack ? "rgba(33, 150, 243, 0.95)" : "rgba(33, 150, 243, 0.9)")
-          : (isBlack ? "rgba(255, 152, 0, 0.95)" : "rgba(255, 152, 0, 0.9)");
+        if (upcoming) {
+          // Upcoming: subtle pulsing circle (prepare hand position)
+          const pulse = 0.5 + 0.3 * Math.sin(fNow * 5);
+          const circleColor = hand === "left"
+            ? `rgba(33, 150, 243, ${pulse})`
+            : `rgba(255, 152, 0, ${pulse})`;
 
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = circleColor;
-        ctx.beginPath();
-        ctx.arc(cx, cy, circleR, 0, Math.PI * 2);
-        ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = circleColor;
+          ctx.beginPath();
+          ctx.arc(cx, cy, circleR, 0, Math.PI * 2);
+          ctx.fill();
 
-        // White border
-        ctx.strokeStyle = "rgba(255,255,255,0.9)";
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+          // Dashed border
+          ctx.strokeStyle = "rgba(255,255,255,0.6)";
+          ctx.lineWidth = 1;
+          ctx.setLineDash([2, 2]);
+          ctx.stroke();
+          ctx.setLineDash([]);
 
-        // Finger number
-        ctx.fillStyle = "#fff";
-        ctx.font = `bold ${Math.round(circleR * 1.3)}px sans-serif`;
-        ctx.fillText(String(finger), cx, cy + 0.5);
+          // Number (slightly transparent)
+          ctx.fillStyle = `rgba(255,255,255,${0.5 + pulse * 0.3})`;
+          ctx.font = `bold ${Math.round(circleR * 1.3)}px sans-serif`;
+          ctx.fillText(String(finger), cx, cy + 0.5);
+        } else {
+          // Currently playing: solid circle
+          const circleColor = hand === "left"
+            ? (isBlack ? "rgba(33, 150, 243, 0.95)" : "rgba(33, 150, 243, 0.9)")
+            : (isBlack ? "rgba(255, 152, 0, 0.95)" : "rgba(255, 152, 0, 0.9)");
+
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = circleColor;
+          ctx.beginPath();
+          ctx.arc(cx, cy, circleR, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = "rgba(255,255,255,0.9)";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          ctx.fillStyle = "#fff";
+          ctx.font = `bold ${Math.round(circleR * 1.3)}px sans-serif`;
+          ctx.fillText(String(finger), cx, cy + 0.5);
+        }
       }
     }
 

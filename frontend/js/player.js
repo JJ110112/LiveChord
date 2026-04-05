@@ -720,20 +720,31 @@
     piano88SustainNotes = piano88SustainNotes.filter(n => currentTime - n.release < 0.5);
 
     // determine actual played notes + fingering from accData
+    // fingeringMap includes lookahead: current + next 1s of notes
     let activeLh = [];
     let activeRh = [];
-    let fingeringMap = {};  // midi -> {finger, hand}
+    let fingeringMap = {};  // midi -> {finger, hand, upcoming}
+    const FINGER_LOOKAHEAD = 1.0; // show fingering 1s ahead
     if (waterfallActive && accData) {
        for (const e of (accData.left_hand||[])) {
-           if (e.time <= currentTime && e.time + e.duration >= currentTime) {
-               activeLh.push(e.pitch);
-               if (e.finger) fingeringMap[e.pitch] = { finger: e.finger, hand: "left" };
+           const playing = e.time <= currentTime && e.time + e.duration >= currentTime;
+           const upcoming = !playing && e.time > currentTime && e.time <= currentTime + FINGER_LOOKAHEAD;
+           if (playing) activeLh.push(e.pitch);
+           if ((playing || upcoming) && e.finger) {
+               // Don't overwrite a currently-playing finger with an upcoming one
+               if (!fingeringMap[e.pitch] || playing) {
+                   fingeringMap[e.pitch] = { finger: e.finger, hand: "left", upcoming: !playing };
+               }
            }
        }
        for (const e of (accData.right_hand||[])) {
-           if (e.time <= currentTime && e.time + e.duration >= currentTime) {
-               activeRh.push(e.pitch);
-               if (e.finger) fingeringMap[e.pitch] = { finger: e.finger, hand: "right" };
+           const playing = e.time <= currentTime && e.time + e.duration >= currentTime;
+           const upcoming = !playing && e.time > currentTime && e.time <= currentTime + FINGER_LOOKAHEAD;
+           if (playing) activeRh.push(e.pitch);
+           if ((playing || upcoming) && e.finger) {
+               if (!fingeringMap[e.pitch] || playing) {
+                   fingeringMap[e.pitch] = { finger: e.finger, hand: "right", upcoming: !playing };
+               }
            }
        }
     } else {
