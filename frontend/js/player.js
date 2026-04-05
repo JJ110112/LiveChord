@@ -1049,22 +1049,39 @@
         ctx.fillRect(x, h - 5, kw, -20); // predictive glow standing on the landing bar
       }
 
-      // Note bar
+      // Note bar — velocity-driven glow intensity
+      ctx.save();
+      if (velT > 0.5) {
+        // 強音: 發光光暈 (velT 0.5→微光, 1.0→強光)
+        const glowStrength = (velT - 0.5) * 2; // 0~1
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 4 + glowStrength * 16; // 4~20px blur
+      }
       ctx.fillStyle = color;
       const r = Math.min(4, noteH / 2);
       ctx.beginPath();
       ctx.roundRect(x + 1, yTop, kw - 2, noteH, r);
       ctx.fill();
+      ctx.restore();
 
-      // Contact glow (目前發聲中，音塊壓中底線)
+      // 弱音: 半透明邊框強調 (讓弱音也看得清楚)
+      if (velT < 0.35) {
+        ctx.strokeStyle = "rgba(255,255,255,0.15)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(x + 1, yTop, kw - 2, noteH, r);
+        ctx.stroke();
+      }
+
+      // Contact glow (目前發聲中，音塊壓中底線) — 也依 velocity 調整
       if (yBottom >= h && yTop <= h) {
          ctx.save();
          ctx.fillStyle = color;
          ctx.shadowColor = color;
-         ctx.shadowBlur = 10;
+         ctx.shadowBlur = 6 + velT * 14; // 弱音 6px, 強音 20px
          ctx.fillRect(x + 1, h - 4, kw - 2, 8);
-         ctx.fillStyle = "rgba(255,255,255,0.8)";
-         ctx.shadowBlur = 5;
+         ctx.fillStyle = `rgba(255,255,255,${0.4 + velT * 0.5})`;
+         ctx.shadowBlur = 3 + velT * 7;
          ctx.shadowColor = "#fff";
          ctx.fillRect(x + 3, h - 2, kw - 6, 4);
          ctx.restore();
