@@ -78,7 +78,7 @@ def _is_skipped_genre(rel_path: str) -> bool:
 # 核心任務處理
 # ---------------------------------------------------------------------------
 print_lock = threading.Lock()
-_gpu_semaphore = threading.Semaphore(2)  # 最多 2 個同時用 GPU，避免 VRAM 爆
+_gpu_semaphore = threading.Semaphore(6)  # RTX 5080 16GB VRAM — 放寬至 6 並發
 # Phase 11: fast_mode 批次高速模式
 # - 關閉 adaptive_range (省去全頻段粗掃 pYIN)
 # - 關閉 onset detection (省去 onset_strength 計算)
@@ -166,10 +166,15 @@ def process_track(root_dir: str, rel_path: str):
     return " | ".join(res_msgs)
 
 def main():
+    global _gpu_semaphore
+
     parser = argparse.ArgumentParser(description="LiveChord 巨量 BTC + 旋律 雙引擎批次工作站")
-    parser.add_argument("--root", type=str, required=True, help="音樂庫根目錄 (例如 Z:\ 或 Z:\Jam)")
-    parser.add_argument("--workers", type=int, default=12, help="並發執行緒數量 (預設 12，因為旋律十分吃重 CPU)")
+    parser.add_argument("--root", type=str, required=True, help="音樂庫根目錄 (例如 Z:\\ 或 Z:\\Jam)")
+    parser.add_argument("--workers", type=int, default=12, help="CPU 並發執行緒 (預設 12)")
+    parser.add_argument("--gpu-concurrent", type=int, default=6, help="GPU 並發數 (預設 6, RTX 5080 可到 8)")
     args = parser.parse_args()
+
+    _gpu_semaphore = threading.Semaphore(args.gpu_concurrent)
 
     # 初始化
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
@@ -180,7 +185,7 @@ def main():
     print(f"🚀 LiveChord 雙引擎批次工作站 啟動")
     print(f"📂 掃描目錄: {root_dir}")
     print(f"⏩ 排除風格: {', '.join(SKIP_GENRES)}")
-    print(f"🔥 並發執行緒: {args.workers} (CPU P-Cores 榨汁機準備就緒)")
+    print(f"🔥 CPU 執行緒: {args.workers} | GPU 並發: {args.gpu_concurrent}")
     print(f"==================================================")
 
     # 暖機 GPU 模型
