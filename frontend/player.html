@@ -45,6 +45,7 @@
       <button id="btnNext" title="下一首">&#x23ED;</button>
       <span id="timeCurrent" class="time-label">0:00</span>
       <div class="progress-bar" id="progressBar" style="flex:1">
+        <div class="ab-range" id="abRange" style="display:none"></div>
         <div class="progress" id="progress" style="width:0%"></div>
       </div>
       <span id="timeDuration" class="time-label">0:00</span>
@@ -143,6 +144,7 @@
           <div class="fs-progress-container" style="display: flex; align-items: center; width: 160px; min-width: 100px; gap: 8px; flex-shrink: 1;">
             <span id="fsTimeCurrent" class="time-label" style="min-width: 32px; text-align: right; flex-shrink: 0;">0:00</span>
             <div class="progress-bar" id="fsProgressBar" style="flex:1; min-width: 0;">
+              <div class="ab-range" id="fsAbRange" style="display:none"></div>
               <div class="progress" id="fsProgress" style="width:0%"></div>
             </div>
             <span id="fsTimeDuration" class="time-label" style="min-width: 32px; text-align: left; flex-shrink: 0;">0:00</span>
@@ -196,6 +198,7 @@
                 <img src="/img/right-hand.png" class="hand-icon hand-right active" alt="R">
               </button>
             </div>
+            <button id="btnABRepeat" class="toolbar-btn ab-repeat-btn" title="A-B 區段循環">A-B</button>
             <button id="btnBottomShowChordTones" class="toolbar-btn tb-icon" style="color:#9c27b0; transition: all 0.2s;" title="顯示鍵盤和弦組成音">&#x1F3B5;</button>
           </div>
         </div>

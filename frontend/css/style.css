@@ -1247,6 +1247,41 @@ a:hover { text-decoration: underline; }
   color: var(--accent);
 }
 
+/* --- A-B Repeat button --- */
+.ab-repeat-btn {
+  width: auto !important;
+  padding: 0 8px !important;
+  font-size: 11px !important;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-dim) !important;
+  transition: all 0.2s !important;
+}
+.ab-repeat-btn.a-set {
+  color: #4fc3f7 !important;
+  border-color: #4fc3f7 !important;
+  box-shadow: 0 0 6px rgba(79, 195, 247, 0.3);
+}
+.ab-repeat-btn.ab-active {
+  color: #fff !important;
+  background: rgba(76, 175, 80, 0.25) !important;
+  border-color: #4caf50 !important;
+  box-shadow: 0 0 8px rgba(76, 175, 80, 0.4);
+}
+
+/* --- A-B range overlay on progress bar --- */
+.ab-range {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(76, 175, 80, 0.35);
+  border-left: 2px solid #4fc3f7;
+  border-right: 2px solid #4caf50;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 1;
+}
+
 /* --- fullscreen override --- */
 .chord-display-area.fullscreen .teach-controls {
   display: flex;

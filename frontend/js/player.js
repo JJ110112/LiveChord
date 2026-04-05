@@ -85,6 +85,80 @@
   const tabKeys = $("#tabKeys");
   const chordDisplay88 = $("#chordDisplay88");
 
+  // ---- A-B Repeat state ----
+  const btnABRepeat = $("#btnABRepeat");
+  const abRange = $("#abRange");
+  const fsAbRange = $("#fsAbRange");
+  let abState = "idle";  // idle → a_set → active
+  let abA = null;        // start time (seconds)
+  let abB = null;        // end time (seconds)
+
+  function _updateABRangeUI() {
+    const d = audio.duration || 1;
+    if (abState === "active" && abA != null && abB != null) {
+      const left = (abA / d * 100) + "%";
+      const width = ((abB - abA) / d * 100) + "%";
+      [abRange, fsAbRange].forEach(el => {
+        if (!el) return;
+        el.style.display = "block";
+        el.style.left = left;
+        el.style.width = width;
+      });
+    } else if (abState === "a_set" && abA != null) {
+      const left = (abA / d * 100) + "%";
+      [abRange, fsAbRange].forEach(el => {
+        if (!el) return;
+        el.style.display = "block";
+        el.style.left = left;
+        el.style.width = "2px";
+      });
+    } else {
+      [abRange, fsAbRange].forEach(el => {
+        if (el) el.style.display = "none";
+      });
+    }
+  }
+
+  function _clearABRepeat() {
+    abState = "idle";
+    abA = null;
+    abB = null;
+    if (btnABRepeat) {
+      btnABRepeat.classList.remove("a-set", "ab-active");
+      btnABRepeat.textContent = "A-B";
+    }
+    _updateABRangeUI();
+  }
+
+  if (btnABRepeat) {
+    btnABRepeat.addEventListener("click", () => {
+      const t = audio.currentTime;
+      if (abState === "idle") {
+        abA = t;
+        abState = "a_set";
+        btnABRepeat.classList.add("a-set");
+        btnABRepeat.textContent = "A-⏸";
+        showToast("A 點: " + formatTime(t), 1500);
+      } else if (abState === "a_set") {
+        if (t <= abA) {
+          showToast("B 點必須在 A 點之後", 1500);
+          return;
+        }
+        abB = t;
+        abState = "active";
+        btnABRepeat.classList.remove("a-set");
+        btnABRepeat.classList.add("ab-active");
+        btnABRepeat.textContent = "A-B ✓";
+        audio.currentTime = abA;
+        showToast("A-B 循環: " + formatTime(abA) + " → " + formatTime(abB), 2000);
+      } else {
+        _clearABRepeat();
+        showToast("A-B 循環已取消", 1500);
+      }
+      _updateABRangeUI();
+    });
+  }
+
   function _updateHandSwitchVisibility() {
     const hs = document.querySelector("#handSwitchContainer");
     const topHs = document.querySelector("#btnTopHandSwitch");
@@ -350,6 +424,7 @@
   // ===========================================================================
 
   async function loadTrack(path) {
+    _clearABRepeat();
     _setLoadingState(true, "載入樂曲中...", "正在讀取歌曲資訊與和弦編排...");
     try {
       audio.src = API.trackStreamUrl(path);
@@ -826,6 +901,44 @@
       // Draw beat number at left edge
       ctx.fillStyle = isBarLine ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.3)";
       ctx.fillText(beatInBar, 8, y - 2);
+    }
+
+    // A-B Repeat boundary lines on waterfall
+    if (abState !== "idle" && abA != null) {
+      const yA = h - (abA - currentTime) * pxPerSec;
+      if (yA >= 0 && yA <= h) {
+        ctx.strokeStyle = "#4fc3f7";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 3]);
+        ctx.beginPath(); ctx.moveTo(0, yA); ctx.lineTo(w, yA); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#4fc3f7";
+        ctx.font = "bold 11px sans-serif";
+        ctx.textAlign = "right";
+        ctx.fillText("A", w - 6, yA - 4);
+      }
+      if (abState === "active" && abB != null) {
+        const yB = h - (abB - currentTime) * pxPerSec;
+        if (yB >= 0 && yB <= h) {
+          ctx.strokeStyle = "#4caf50";
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 3]);
+          ctx.beginPath(); ctx.moveTo(0, yB); ctx.lineTo(w, yB); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = "#4caf50";
+          ctx.font = "bold 11px sans-serif";
+          ctx.textAlign = "right";
+          ctx.fillText("B", w - 6, yB - 4);
+        }
+        // Dim area outside A-B range
+        const yAclamped = Math.max(0, Math.min(h, yA));
+        const yBclamped = Math.max(0, Math.min(h, yB));
+        if (yBclamped < yAclamped) {
+          ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+          if (yBclamped > 0) ctx.fillRect(0, 0, w, yBclamped);
+          if (yAclamped < h) ctx.fillRect(0, yAclamped, w, h - yAclamped);
+        }
+      }
     }
 
     const allEvents = [];
@@ -1684,7 +1797,12 @@
 
   function tickSync() {
     if (!audio.paused) {
-      const t = audio.currentTime;
+      let t = audio.currentTime;
+      // A-B Repeat: loop back to A when reaching B
+      if (abState === "active" && abA != null && abB != null && t >= abB) {
+        audio.currentTime = abA;
+        t = abA;
+      }
       const d = audio.duration || 1;
       progress.style.width = (t / d * 100) + "%";
       if(fsProgress) fsProgress.style.width = progress.style.width;

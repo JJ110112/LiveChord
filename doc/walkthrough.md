@@ -98,6 +98,30 @@ Request -> 檢查快取 data/accompaniments/{hash}_{style}_{level}.json
 
 ---
 
-## Step 3: 前端瀑布流 + 教學 UI (待實作)
+## Step 3: 前端瀑布流 + 教學 UI (完成)
+
+### 檔案: `frontend/js/player.js`, `frontend/player.html`, `frontend/css/style.css`
+
+#### 3.1 Canvas 瀑布流
+- 88 鍵 Canvas 上方瀑布流，lookAhead = 4 秒
+- 左手青藍 / 右手橘紅分色，接近琴鍵時 glow effect
+- 指法數字 (1-5) 標示在長條中央
+- Beat Grid 小節線 + 拍號標記
+- 左手手型背景區塊 (Position Hand Block)
+
+#### 3.2 教學控制列
+- Style 下拉 (Block/Flow/Rhythm/Walking/Stride)
+- Level 切換 (L1 基礎 / L2 進階 / L3 大師)
+- AI 推薦按鈕 → `/api/ai/suggest-style`
+- 左手/右手切換 (三態: 雙手 → 左手 → 右手)
+- Chord Tone 分色 (♪ 按鈕)
+
+#### 3.3 A-B Repeat 區段循環
+- 三段式狀態機: idle → a_set → active → idle
+- 第一次點擊設 A 點 (按鈕 `A-⏸` 青藍), 第二次設 B 點 (按鈕 `A-B ✓` 綠色), 第三次取消
+- tickSync 中偵測 `currentTime >= B` 時自動 seek 回 A
+- 進度條: 綠色半透明區塊 + A/B 邊界線
+- 瀑布流: A/B 虛線水平標記 + 範圍外區域變暗
+- 切歌自動清除狀態
 
 ## Step 4: 進階互動 (待實作)

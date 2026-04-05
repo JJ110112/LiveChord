@@ -48,7 +48,7 @@ Jazzify (OFF/L1-L3)          彈奏難度 (L1-L3) + 伴奏風格 (Style)
 
 ---
 
-## Step 3: 前端瀑布流 + 教學 UI — 待實作
+## Step 3: 前端瀑布流 + 教學 UI ✅ 完成
 
 **檔案**: `frontend/js/player.js`, `frontend/player.html`, `frontend/css/style.css`
 
@@ -65,7 +65,7 @@ Jazzify (OFF/L1-L3)          彈奏難度 (L1-L3) + 伴奏風格 (Style)
 - Style 下拉選單 (7 種)
 - Level 切換 (L1/L2/L3)
 - 「AI 推薦」按鈕 → 呼叫 /api/ai/suggest-style
-- A-B Repeat 區段選取條
+- A-B Repeat 區段循環 (三段式: 設 A → 設 B → 取消，進度條+瀑布流視覺標記)
 - 左手/右手/原聲 靜音切換
 
 ### 3.3 資料載入
@@ -83,7 +83,7 @@ Jazzify (OFF/L1-L3)          彈奏難度 (L1-L3) + 伴奏風格 (Style)
 ## Step 4: 進階互動 — 待實作 (漸進式)
 
 - Voice Leading 導引線: Canvas 虛線連接和弦切換時的相同/相近音
-- Beat Markers: 根據 BPM 畫水平小節線
+- ~~Beat Markers: 根據 BPM 畫水平小節線~~ ✅ (已在瀑布流中實作)
 - 段落級自動切換: section_detect → Verse=Arpeggio, Chorus=Rhythm
 - WebMIDI: `navigator.requestMIDIAccess()` 接收琴鍵, 比對正確性
 
@@ -93,5 +93,5 @@ Jazzify (OFF/L1-L3)          彈奏難度 (L1-L3) + 伴奏風格 (Style)
 
 1. **Step 1**: `python backend/ai/accompaniment_generator.py` → All tests passed ✅
 2. **Step 2**: `curl /api/ai/accompaniment?path=...&style=Arpeggio&level=L2` → JSON 回傳 ✅
-3. **Step 3**: 選一首已有和弦+旋律的歌，播放後確認瀑布流正確落下
+3. **Step 3**: 選一首已有和弦+旋律的歌，播放後確認瀑布流正確落下 ✅
 4. **Step 4**: Playwright QA 新增教學模式 test cases
