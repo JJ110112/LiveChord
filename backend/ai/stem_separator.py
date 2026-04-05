@@ -39,6 +39,13 @@ class StemSeparator:
             str(audio_file)
         ]
 
+        # Set up environment variables to fix Windows-specific bugs:
+        # 1. PYTHONUTF8=1 fixes cp1252 UnicodeEncodeError when printing Chinese filenames
+        # 2. TORCHAUDIO_BACKEND=soundfile forces torchaudio to use SoundFile and bypass the broken TorchCodec
+        env = os.environ.copy()
+        env["PYTHONUTF8"] = "1"
+        env["TORCHAUDIO_BACKEND"] = "soundfile"
+        
         try:
             # We run it synchronously as it's meant to be used by the background worker.
             process = subprocess.run(
@@ -46,7 +53,9 @@ class StemSeparator:
                 stdout=subprocess.PIPE, 
                 stderr=subprocess.PIPE, 
                 text=True,
-                check=True
+                check=True,
+                env=env,
+                encoding='utf-8' # Force read output as utf-8
             )
             logger.info("Separation completed successfully.")
         except subprocess.CalledProcessError as e:
