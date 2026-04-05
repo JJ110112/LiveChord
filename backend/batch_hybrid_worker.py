@@ -16,10 +16,8 @@ def run_hybrid_batch():
     Finds all songs that have chords but no hybrid midis yet, and processes them.
     This is extremely slow (Demucs + Basic Pitch), so it runs as a separate background job.
     """
-    # Detect data directory based on working directory
-    data_dir = Path('data')
-    if not data_dir.exists() and Path('../data').exists():
-        data_dir = Path('../data')
+    # Always use the NAS data directory so LiveChord server can access the output
+    data_dir = Path('W:/data')
         
     hybrid_out_dir = data_dir / "hybrid_bass"
     hybrid_out_dir.mkdir(exist_ok=True)

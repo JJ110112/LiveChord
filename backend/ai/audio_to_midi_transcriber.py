@@ -1,5 +1,6 @@
 import os
 import logging
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -48,31 +49,26 @@ class AudioToMidiTranscriber:
 
         logger.info(f"Transcribing {stem_type} stem: {audio_file.name}")
         try:
-            # Clean up stale output from previous runs (predict_and_save refuses to overwrite)
-            default_outname = self.output_dir / f"{audio_file.stem}_basic_pitch.mid"
-            if default_outname.exists():
-                default_outname.unlink()
+            # Use a temp directory so concurrent/repeated calls never collide
+            with tempfile.TemporaryDirectory() as tmpdir:
+                self._predict_and_save(
+                    [str(audio_file)],
+                    tmpdir,
+                    save_midi=True,
+                    sonify_midi=False,
+                    save_model_outputs=False,
+                    save_notes=False,
+                    model_or_model_path=self._model_path,
+                )
 
-            self._predict_and_save(
-                [str(audio_file)],
-                str(self.output_dir),
-                save_midi=True,
-                sonify_midi=False,
-                save_model_outputs=False,
-                save_notes=False,
-                model_or_model_path=self._model_path,
-            )
-            
-            # predict_and_save automatically names the output file as inputfilename_basic_pitch.mid
-            default_outname = self.output_dir / f"{audio_file.stem}_basic_pitch.mid"
-            if default_outname.exists():
-                # Rename to our structured format
-                default_outname.replace(out_path)
-                logger.info(f"Successfully transcribed to {out_path}")
-                return str(out_path)
-            else:
-                logger.error(f"basic_pitch did not produce the expected MIDI file at {default_outname}")
-                return None
+                tmp_midi = Path(tmpdir) / f"{audio_file.stem}_basic_pitch.mid"
+                if tmp_midi.exists():
+                    tmp_midi.replace(out_path)
+                    logger.info(f"Successfully transcribed to {out_path}")
+                    return str(out_path)
+                else:
+                    logger.error(f"basic_pitch did not produce the expected MIDI file at {tmp_midi}")
+                    return None
                 
         except Exception as e:
             logger.error(f"Transcription failed for {stem_path}: {e}")

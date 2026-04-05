@@ -72,3 +72,8 @@ test_finger.py
 
 # MIDI 測試/下載檔
 midi/
+
+# Hybrid extraction 產出（Demucs stems + Basic Pitch MIDI）
+data/hybrid_bass/
+separated/
+transcribed_midi/
