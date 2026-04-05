@@ -83,7 +83,11 @@ class EmissionMatrix:
 
 
 class ViterbiDecoder:
-    """Viterbi 解碼器：給定旋律，找最優和弦路徑"""
+    """Viterbi 解碼器：給定旋律，找最優和弦路徑
+
+    Phase 11a 重構: 內部委託給 viterbi_engine.build_chord_decoder，
+    對外 API 保持不變 (.decode(melody_midi_seq, top_k))。
+    """
 
     def __init__(self, transition_probs, emission_matrix, states):
         """
@@ -96,7 +100,7 @@ class ViterbiDecoder:
         self.states = states
 
     def decode(self, melody_midi_seq, top_k=5):
-        """Viterbi 解碼（log-space + top-K 剪枝）
+        """Viterbi 解碼（委託給統一引擎）
 
         Args:
             melody_midi_seq: [60, 64, 67, ...] MIDI 音高序列
@@ -106,78 +110,19 @@ class ViterbiDecoder:
             best_path: [chord_degree, ...] 最優和弦路徑
             log_prob: 路徑的 log 機率
         """
-        if not melody_midi_seq or not self.states:
-            return [], float("-inf")
+        from .viterbi_engine import build_chord_decoder
+        engine = build_chord_decoder(
+            self.trans, self.emission, self.states, beam_width=top_k
+        )
+        return engine.decode(melody_midi_seq)
 
-        T = len(melody_midi_seq)
-        S = len(self.states)
-
-        # 初始機率：均勻分佈（或可從 groove_dict 取）
-        log_init = math.log(1.0 / S)
-
-        # dp[t] = {state: (log_prob, prev_state)}
-        dp = [dict() for _ in range(T)]
-
-        # t=0: 初始化
-        obs = melody_midi_seq[0]
-        scores = []
-        for s in self.states:
-            lp = log_init + self.emission.log_probability(s, obs)
-            dp[0][s] = (lp, None)
-            scores.append((lp, s))
-
-        # 剪枝：只保留 top_k
-        scores.sort(reverse=True)
-        active = {s for _, s in scores[:top_k]}
-        dp[0] = {s: v for s, v in dp[0].items() if s in active}
-
-        # t=1..T-1
-        for t in range(1, T):
-            obs = melody_midi_seq[t]
-            candidates = []
-
-            for s in self.states:
-                emit_lp = self.emission.log_probability(s, obs)
-                best_lp = float("-inf")
-                best_prev = None
-
-                for prev_s in dp[t - 1]:
-                    prev_lp = dp[t - 1][prev_s][0]
-                    # 轉移機率
-                    trans_lp = math.log(
-                        self.trans.get(prev_s, {}).get(s, 1e-6)
-                    )
-                    total = prev_lp + trans_lp + emit_lp
-                    if total > best_lp:
-                        best_lp = total
-                        best_prev = prev_s
-
-                if best_prev is not None:
-                    dp[t][s] = (best_lp, best_prev)
-                    candidates.append((best_lp, s))
-
-            # 剪枝
-            candidates.sort(reverse=True)
-            active = {s for _, s in candidates[:top_k]}
-            dp[t] = {s: v for s, v in dp[t].items() if s in active}
-
-        # 回溯
-        if not dp[T - 1]:
-            return [], float("-inf")
-
-        best_final = max(dp[T - 1].items(), key=lambda x: x[1][0])
-        best_state = best_final[0]
-        best_log_prob = best_final[1][0]
-
-        path = [best_state]
-        for t in range(T - 1, 0, -1):
-            _, prev = dp[t][path[-1]]
-            if prev is None:
-                break
-            path.append(prev)
-        path.reverse()
-
-        return path, best_log_prob
+    def decode_nbest(self, melody_midi_seq, n=5, top_k=10):
+        """N-best 路徑解碼（新功能，供 QA Battle 使用）"""
+        from .viterbi_engine import build_chord_decoder
+        engine = build_chord_decoder(
+            self.trans, self.emission, self.states, beam_width=top_k
+        )
+        return engine.decode_nbest(melody_midi_seq, n=n)
 
 
 def build_emission_from_songs(chords_dir, music_dir=None):

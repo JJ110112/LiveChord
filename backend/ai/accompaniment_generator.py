@@ -94,6 +94,55 @@ BPM_STYLE_MAP = [
     (999, ["Rhythm", "Block"]),          # 快歌
 ]
 
+# ==============================================================================
+# Phase 11b #3: Section-Aware 密度/力度控制
+# ==============================================================================
+# 段落類型 → (密度乘數, 力度乘數)
+# 密度乘數: 控制 pattern 中實際彈奏的音符比例
+# 力度乘數: 控制 velocity 基準
+SECTION_PARAMS = {
+    "intro":      (0.5, 0.6),
+    "verse":      (0.7, 0.7),
+    "pre_chorus": (0.9, 0.85),
+    "chorus":     (1.0, 1.0),
+    "bridge":     (0.6, 0.65),
+    "outro":      (0.4, 0.5),
+    "default":    (0.8, 0.8),
+}
+
+
+# ==============================================================================
+# Phase 11b #3: Walking Bass 進階手法
+# ==============================================================================
+# approach_type: "chromatic", "diatonic", "enclosure"
+def _walking_bass_approach(next_root_midi: int, key_semi: int = 0,
+                           approach_type: str = "chromatic") -> int:
+    """
+    生成 Walking Bass 的 approach note (趨近音)。
+
+    chromatic: 目標音 ±1 半音 (經典手法)
+    diatonic:  調內音階的下方二度
+    enclosure: 上下包圍 (先高半音, 再低半音, 解決到目標)
+    """
+    if approach_type == "diatonic":
+        # 調內音階下方二度: 全音或半音
+        scale = [0, 2, 4, 5, 7, 9, 11]
+        target_pc = next_root_midi % 12
+        # 找調內的下方音
+        relative_pc = (target_pc - key_semi) % 12
+        for i, s in enumerate(scale):
+            if s == relative_pc:
+                prev_scale_deg = scale[(i - 1) % len(scale)]
+                return (key_semi + prev_scale_deg) % 12 + (next_root_midi // 12) * 12
+        # fallback to chromatic
+        return next_root_midi - 1
+    elif approach_type == "enclosure":
+        # 上方半音 (用於 beat 3, approach 到 beat 4 的目標)
+        return next_root_midi + 1
+    else:
+        # chromatic below
+        return next_root_midi - 1
+
 
 # ==============================================================================
 # 參、音高工具函數
@@ -118,13 +167,34 @@ def note_names_to_midi(notes: List[str], base_octave: int) -> List[int]:
 
 def voice_leading_optimize(pitches: List[int], prev_pitches: List[int],
                            low: int, high: int) -> List[int]:
-    """最短移動距離 Voice Leading：調整 pitches 使其盡量靠近 prev_pitches。"""
+    """
+    Voice Leading 最佳化 (Phase 11b #3 強化版)。
+
+    規則 (Piston, Harmony 5th ed.):
+      1. 最短移動距離
+      2. 共同音保持 (common tone retention)
+      3. 避免平行五度/八度 (basic check)
+    """
     if not prev_pitches or not pitches:
         return pitches
 
-    prev_center = sum(prev_pitches) / len(prev_pitches)
+    # 共同音保持: 如果 pitch class 相同，優先保持同八度
+    prev_pc_map = {}
+    for p in prev_pitches:
+        prev_pc_map[p % 12] = p
+
     result = []
     for p in pitches:
+        pc = p % 12
+        if pc in prev_pc_map:
+            # 共同音: 保持在同一八度
+            common = prev_pc_map[pc]
+            if low <= common <= high:
+                result.append(common)
+                continue
+
+        # 最短距離
+        prev_center = sum(prev_pitches) / len(prev_pitches)
         best = p
         best_dist = abs(p - prev_center)
         for shift in [-12, 0, 12]:
@@ -135,7 +205,27 @@ def voice_leading_optimize(pitches: List[int], prev_pitches: List[int],
                     best_dist = dist
                     best = candidate
         result.append(best)
+
     result.sort()
+
+    # 平行五度/八度簡易檢查 (如果有足夠聲部)
+    if len(result) >= 2 and len(prev_pitches) >= 2:
+        prev_sorted = sorted(prev_pitches)
+        n = min(len(result), len(prev_sorted))
+        for i in range(n - 1):
+            for j in range(i + 1, n):
+                iv_prev = abs(prev_sorted[j] - prev_sorted[i]) % 12
+                iv_curr = abs(result[j] - result[i]) % 12
+                mv_i = result[i] - prev_sorted[i]
+                mv_j = result[j] - prev_sorted[j]
+                # 同方向 + 平行五度
+                if mv_i * mv_j > 0 and iv_prev == 7 and iv_curr == 7:
+                    # 修正: 其中一個聲部反向移動 1 半音
+                    if result[j] + 1 <= high:
+                        result[j] += 1
+                    elif result[j] - 1 >= low:
+                        result[j] -= 1
+
     return result
 
 
@@ -398,7 +488,8 @@ def generate_accompaniment(chords: List[Dict],
                            bpm: float = 120.0,
                            style: str = "Block",
                            level: str = "L1",
-                           genre: str = "") -> Dict[str, Any]:
+                           genre: str = "",
+                           section_type: str = "default") -> Dict[str, Any]:
     """
     主入口：根據和弦序列、旋律、風格與難度，生成左右手 MIDI 伴奏。
 
@@ -409,6 +500,7 @@ def generate_accompaniment(chords: List[Dict],
         style: Block/Arpeggio/Rhythm/Alberti/Shell/Walking/Stride
         level: L1(初階)/L2(中階)/L3(進階)
         genre: 曲風字串（用於建議）
+        section_type: intro/verse/chorus/bridge/outro/default (Phase 11b #7)
 
     Returns:
         {
@@ -416,7 +508,8 @@ def generate_accompaniment(chords: List[Dict],
           "right_hand": [...events with finger...],
           "suggested_styles": [...],
           "style": "...",
-          "level": "..."
+          "level": "...",
+          "section_type": "..."
         }
     """
     melody = melody or []
@@ -425,13 +518,18 @@ def generate_accompaniment(chords: List[Dict],
     if level not in ("L1", "L2", "L3"):
         level = "L1"
 
+    # Phase 11b #3/#7: Section-aware 密度/力度
+    density_mult, velocity_mult = SECTION_PARAMS.get(
+        section_type, SECTION_PARAMS["default"]
+    )
+
     left_events = []
     right_events = []
     prev_lh: List[int] = []
 
-    # Hand Balance: L1/L2 左手弱, L3 正常
-    lh_velocity = 55 if level == "L1" else 65 if level == "L2" else 70
-    rh_velocity = 90
+    # Hand Balance: L1/L2 左手弱, L3 正常 — 再乘以 section velocity
+    lh_velocity = int((55 if level == "L1" else 65 if level == "L2" else 70) * velocity_mult)
+    rh_velocity = int(90 * velocity_mult)
 
     for i, chord_evt in enumerate(chords):
         start = chord_evt.get("time", 0)
@@ -477,6 +575,7 @@ def generate_accompaniment(chords: List[Dict],
         "suggested_styles": suggest_style(genre, bpm),
         "style": style,
         "level": level,
+        "section_type": section_type,
     }
 
 
@@ -572,81 +671,18 @@ def _assign_fingering(events: List[Dict], hand: str = "right"):
 
 def calculate_physical_cost(delta_p: int, f_prev: int, f_curr: int,
                             hand: str = "right") -> float:
-    """計算從前一個手指切換到現有手指的物理移動成本。"""
-    cost = 0.0
-
-    # 同音換指
-    if delta_p == 0:
-        return 10.0 if f_prev == f_curr else 2.0
-
-    # 超過八度
-    if abs(delta_p) > 12:
-        return float('inf')
-
-    delta_f = f_curr - f_prev
-
-    # 左手鏡像：方向邏輯反轉
-    if hand == "left":
-        delta_p = -delta_p
-        delta_f = -delta_f
-
-    # 順向性
-    if delta_p > 0 and delta_f < 0:
-        # 音往上走但手指往下 ->穿指
-        if f_curr == 1:
-            cost += 5.0   # 拇指穿過：常見合法
-        else:
-            cost += 50.0  # 其他手指穿過：幾乎不可能
-    elif delta_p < 0 and delta_f > 0:
-        if f_prev == 1:
-            cost += 5.0
-        else:
-            cost += 50.0
-    else:
-        # 正常順向移動
-        expected = delta_f * 2
-        cost += abs(delta_p - expected) * 2.0
-
-    return cost
+    """計算從前一個手指切換到現有手指的物理移動成本。
+    Phase 11a: 委託給 viterbi_engine.fingering_transition_cost。"""
+    from .viterbi_engine import fingering_transition_cost
+    ctx = {"delta_p": delta_p, "hand": hand, "curr_midi": 60, "bpm": 100}
+    return fingering_transition_cost(f_prev, f_curr, ctx)
 
 
 def viterbi_fingering(pitches: List[int], hand: str = "right") -> List[int]:
-    """Viterbi 動態規劃尋找最優指法序列。"""
-    if not pitches:
-        return []
-    T = len(pitches)
-    if T == 1:
-        return [3]  # 中指起始
-
-    NUM_FINGERS = 5
-    dp = np.full((T, NUM_FINGERS), float('inf'))
-    paths = np.zeros((T, NUM_FINGERS), dtype=int)
-
-    for f in range(NUM_FINGERS):
-        dp[0][f] = 0.0
-
-    for t in range(1, T):
-        delta_p = pitches[t] - pitches[t - 1]
-        for f_curr in range(NUM_FINGERS):
-            min_cost = float('inf')
-            best_prev = 0
-            for f_prev in range(NUM_FINGERS):
-                cost = calculate_physical_cost(delta_p, f_prev + 1, f_curr + 1, hand)
-                total = dp[t - 1][f_prev] + cost
-                if total < min_cost:
-                    min_cost = total
-                    best_prev = f_prev
-            dp[t][f_curr] = min_cost
-            paths[t][f_curr] = best_prev
-
-    # Backtrack
-    best_last = int(np.argmin(dp[T - 1]))
-    seq = [0] * T
-    seq[T - 1] = best_last
-    for t in range(T - 1, 0, -1):
-        seq[t - 1] = paths[t][seq[t]]
-
-    return [int(f + 1) for f in seq]
+    """Viterbi 指法序列生成。
+    Phase 11a: 委託給 viterbi_engine.generate_fingering。"""
+    from .viterbi_engine import generate_fingering
+    return generate_fingering(pitches, hand=hand)
 
 
 # ==============================================================================

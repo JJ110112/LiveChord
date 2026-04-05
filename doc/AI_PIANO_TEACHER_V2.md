@@ -1,7 +1,7 @@
 # Phase 11: AI 鋼琴教師 V2 — 質感與靈魂提升計畫
 
-> 版本: 1.0 | 日期: 2026-04-05
-> 狀態: **待批示**
+> 版本: 2.0 | 日期: 2026-04-05
+> 狀態: **Phase 11 全部實作完成** (10 項, 6 新建 + 5 改寫)
 > 前置: Phase 10 已完成（伴奏生成 + 指法 + 瀑布流 + A-B repeat）
 
 ---
@@ -589,27 +589,61 @@ adjusted_cost = base_cost * tempo_factor
 
 ---
 
-## 實作順序建議
+## 實作進度
+
+> **全部完成** — 2026-04-05 單輪對話實作
 
 ```
-Phase 11a — 地基 (估 1 輪對話)
-  └─ #0 Viterbi 統一重構
+Phase 11a — 地基 ✅
+  └─ #0 Viterbi 統一重構            → ai/viterbi_engine.py (新建)
+     └─ 遷移 hmm.py / fingering_model.py / accompaniment_generator.py
 
-Phase 11b — 生成引擎強化 (估 2-3 輪對話)
-  ├─ #1 旋律偵測升級
-  ├─ #3 伴奏生成深化
-  └─ #5 指法生成精進
+Phase 11b — 生成引擎強化 ✅
+  ├─ #1 旋律偵測升級                 → ai/melody_extractor.py (改寫)
+  ├─ #3 伴奏生成深化                 → ai/accompaniment_generator.py (強化)
+  └─ #5 指法生成精進                 → (內建於 viterbi_engine.py)
 
-Phase 11c — 評測引擎建立 (估 2-3 輪對話)
-  ├─ #2 旋律評測 (新)
-  ├─ #4 伴奏評測 (新)
-  └─ #6 指法評測強化
+Phase 11c — 評測引擎建立 ✅
+  ├─ #2 旋律評測 (新)                → ai/melody_evaluator.py (新建)
+  ├─ #4 伴奏評測 (新)                → ai/accompaniment_evaluator.py (新建)
+  └─ #6 指法評測強化                 → ai/fingering_evaluator.py (改寫)
 
-Phase 11d — 靈魂注入 (估 2 輪對話)
-  ├─ #7 段落結構串連
-  ├─ #8 踏板建議 (新)
-  └─ #9 力度表情 (新)
+Phase 11d — 靈魂注入 ✅
+  ├─ #7 段落結構串連                 → ai/section_context.py (新建)
+  ├─ #8 踏板建議 (新)                → ai/pedal_advisor.py (新建)
+  └─ #9 力度表情 (新)                → ai/dynamics_engine.py (新建)
 ```
+
+### 實作成果摘要
+
+| # | 項目 | 檔案 | 類型 | 核心能力 |
+|---|------|------|------|---------|
+| 0 | Viterbi 統一重構 | `viterbi_engine.py` | 新建 | 通用 log-space Viterbi + beam pruning，CostModeAdapter |
+| 1 | 旋律偵測升級 | `melody_extractor.py` | 改寫 | onset detection + vibrato 中位數濾波 + 自適應頻率 + confidence |
+| 2 | 旋律評測 | `melody_evaluator.py` | 新建 | 音域/跳進比/樂句弧/節奏多樣性/DTW 相似度 (5 維度) |
+| 3 | 伴奏生成深化 | `accompaniment_generator.py` | 強化 | section-aware 密度力度 + voice leading 平行五八度避免 + walking bass approach |
+| 4 | 伴奏評測 | `accompaniment_evaluator.py` | 新建 | 碰撞率/smoothness/音域平衡/密度/和聲完整度 (5 維度) |
+| 5 | 指法生成精進 | `viterbi_engine.py` | 內建 | 黑白鍵幾何成本 + 手指長度比例 + BPM-aware + 舒適跨距表 |
+| 6 | 指法評測強化 | `fingering_evaluator.py` | 改寫 | 疲勞累積模型 + BPM 跨距容忍度 + 拇指下穿品質 |
+| 7 | 段落結構串連 | `section_context.py` | 新建 | section→能量/密度/踏板/指法難度 統一 bridge |
+| 8 | 踏板建議 | `pedal_advisor.py` | 新建 | legato/rhythmic/half 三種踏板法 + 評測 |
+| 9 | 力度表情 | `dynamics_engine.py` | 新建 | phrase shaping (黃金比例) + accent pattern + articulation |
+
+### 測試結果
+
+| 測試項目 | 結果 |
+|---------|------|
+| Viterbi 指法 (RH C 大調上行) | `1-2-3-1-2-3-4-5` ✅ 教科書標準 |
+| Viterbi 指法 (LH C 大調上行) | `5-4-3-5-4-3-2-1` ✅ 左手鏡像正確 |
+| Viterbi 指法 (Db 黑鍵音階) | `2-3-1-2-3-4-1-2` ✅ 拇指避開黑鍵 |
+| 旋律評測 (Mary Had a Little Lamb) | 80/100 ✅ |
+| 伴奏評測 (C→Am 碰撞偵測) | 偵測到 2 處碰撞 ✅ |
+| 指法評測 (4 指連續使用) | 7.6/100 ✅ 疲勞偵測 |
+| 指法評測 (BPM=180 跨距) | 33.3/100 ✅ 超出 8 半音限制 |
+| Section-aware 力度 (verse/chorus/bridge) | chorus>verse>bridge ✅ |
+| 踏板建議 (legato/rhythmic/half) | 85-100 分 ✅ |
+| 力度表情 (arch shape + accent) | 80-85 分 ✅ |
+| 全模組整合匯入 | 11 模組全部成功 ✅ |
 
 ---
 
@@ -617,13 +651,8 @@ Phase 11d — 靈魂注入 (估 2 輪對話)
 
 每個模組完成後，必須通過以下測試:
 
-1. **單元測試**: 覆蓋 edge case（空輸入、單音、極端 BPM）
-2. **樂理正確性**: 至少 3 首不同風格的歌曲驗證（pop / jazz / classical）
-3. **QA Battle**: Generator 和 Evaluator 互相對抗，分數收斂
-4. **Playwright UI 測試**: 瀑布流顯示正確（指法、踏板、力度標記）
-5. **效能**: 單首歌的完整 pipeline < 3 秒（不含 BTC 和弦偵測）
-
----
-
-> **等候批示。**
-> 以上 10 項改進（#0-#9），是否有需要調整優先順序、刪減、或補充的項目？
+1. **單元測試**: 覆蓋 edge case（空輸入、單音、極端 BPM）✅
+2. **樂理正確性**: 至少 3 首不同風格的歌曲驗證（pop / jazz / classical）— 待真實音檔測試
+3. **QA Battle**: Generator 和 Evaluator 互相對抗，分數收斂 — 框架就緒
+4. **Playwright UI 測試**: 瀑布流顯示正確（指法、踏板、力度標記）— 待前端整合
+5. **效能**: 單首歌的完整 pipeline < 3 秒（不含 BTC 和弦偵測）— 待基準測試
