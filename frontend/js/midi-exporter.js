@@ -48,12 +48,12 @@ window.MidiExporter = (function() {
     return header.concat(trackData);
   }
 
-  function exportMidi(accData, title) {
+  function exportMidi(accData, title, style, level) {
     if (!accData) return;
-    
+
     const leftTrack = createTrack(accData.left_hand || [], 0);  // Ch 1
     const rightTrack = createTrack(accData.right_hand || [], 1); // Ch 2
-    
+
     // Format 1, 2 tracks, 480 ticks per quarter
     const mthd = [
       0x4D, 0x54, 0x68, 0x64, // MThd
@@ -62,22 +62,30 @@ window.MidiExporter = (function() {
       0x00, 0x02,             // 2 tracks
       0x01, 0xE0              // 480 ticks
     ];
-    
+
     const midiFile = mthd.concat(leftTrack, rightTrack);
     const u8 = new Uint8Array(midiFile);
-    const blob = new Blob([u8], { type: 'audio/midi' });
-    const url = URL.createObjectURL(blob);
-    
+
+    // 檔名: 曲名_伴奏型態_等級
+    const safeName = (title || 'AI_Accompaniment').replace(/[<>:"/\\|?*]+/g, '_');
+    const sStyle = style || 'Accomp';
+    const sLevel = level || 'L1';
+    const fileName = `${safeName}_${sStyle}_${sLevel}.mid`;
+
+    // 使用 data URI 避免 blob: insecure connection 警告
+    let binary = '';
+    for (let i = 0; i < u8.length; i++) {
+      binary += String.fromCharCode(u8[i]);
+    }
+    const dataUrl = 'data:audio/midi;base64,' + btoa(binary);
+
     const a = document.createElement('a');
     a.style.display = 'none';
-    a.href = url;
-    a.download = (title || 'AI_Accompaniment') + '.mid';
+    a.href = dataUrl;
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    setTimeout(() => {
-        URL.revokeObjectURL(url);
-    }, 1000);
   }
 
   return { exportMidi };

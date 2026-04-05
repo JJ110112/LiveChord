@@ -358,11 +358,11 @@ def get_accompaniment(
     except Exception:
         result["pedal"] = []
 
-    # Phase 11: 力度表情
+    # Phase 11: 力度表情 — 分手處理以保留左右手音量平衡
     try:
         from ai.dynamics_engine import generate_dynamics
-        all_events = result["left_hand"] + result["right_hand"]
-        generate_dynamics(all_events, bpm=int(bpm), section_type=section_type)
+        generate_dynamics(result["left_hand"], bpm=int(bpm), section_type=section_type)
+        generate_dynamics(result["right_hand"], bpm=int(bpm), section_type=section_type)
     except Exception:
         pass
 

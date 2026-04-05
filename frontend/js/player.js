@@ -2961,9 +2961,14 @@
   if (btnDownloadMidi) {
       btnDownloadMidi.addEventListener("click", () => {
           if (window.MidiExporter && accData) {
-              const rTitle = (typeof sectionData !== "undefined" && sectionData?.music_info?.title) ? sectionData.music_info.title : "Track";
-              window.MidiExporter.exportMidi(accData, rTitle + "_AI_Accomp");
-              showToast("MIDI 伴奏下載中...");
+              const rTitle = document.title.replace(/ — LiveChord$/, "") || trackPath.split("/").pop().replace(/\.\w+$/, "") || "Track";
+              try {
+                  window.MidiExporter.exportMidi(accData, rTitle, teachStyle, teachLevel);
+                  showToast("✅ MIDI 已下載至預設下載目錄");
+              } catch (err) {
+                  console.error("MIDI export error:", err);
+                  showToast("MIDI 匯出失敗: " + err.message, true);
+              }
           } else {
               showToast("尚無伴奏資料可下載", true);
           }

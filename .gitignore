@@ -69,3 +69,6 @@ agent/.env
 agent/.langgraph_api/
 recent_diff.md
 test_finger.py
+
+# MIDI 測試/下載檔
+midi/

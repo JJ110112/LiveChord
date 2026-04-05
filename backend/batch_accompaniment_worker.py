@@ -108,12 +108,13 @@ def process_track(song_hash: str, levels: list, styles: list,
                     except Exception:
                         acc["pedal"] = []
 
-                # Phase 11: 力度表情
+                # Phase 11: 力度表情 — 分手處理以保留左右手音量平衡
                 if add_dynamics:
                     try:
                         from ai.dynamics_engine import generate_dynamics
-                        all_events = acc.get("left_hand", []) + acc.get("right_hand", [])
-                        generate_dynamics(all_events, bpm=int(bpm),
+                        generate_dynamics(acc.get("left_hand", []), bpm=int(bpm),
+                                          section_type=dominant_section)
+                        generate_dynamics(acc.get("right_hand", []), bpm=int(bpm),
                                           section_type=dominant_section)
                     except Exception:
                         pass

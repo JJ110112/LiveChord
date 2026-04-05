@@ -147,17 +147,18 @@ def _phrase_velocity(
     section_energy: float,
 ) -> None:
     """
-    為一個樂句內的事件設定 velocity (原地修改)。
-    拱形曲線: velocity(t) = base + amplitude * sin(π * t / phrase_length)
-    峰值偏向黃金比例位置 (非對稱調整)。
+    為一個樂句內的事件調整 velocity (原地修改)。
+    以原始 velocity 為基底，疊加拱形曲線調變 (±20%)。
+    峰值偏向黃金比例位置 (非對稱 sin)。
     """
     n = len(phrase_indices)
     if n == 0:
         return
 
-    # base 和 amplitude 由段落能量決定
-    base = VELOCITY_MIN + (VELOCITY_MAX - VELOCITY_MIN) * section_energy * 0.5
-    amplitude = (VELOCITY_MAX - VELOCITY_MIN) * section_energy * 0.4
+    # 拱形調變幅度: ±20% of original velocity
+    modulation_depth = 0.20 * section_energy
+
+    p = math.log(0.5) / math.log(GOLDEN_RATIO) if GOLDEN_RATIO > 0 else 1.0
 
     for rank, idx in enumerate(phrase_indices):
         if n == 1:
@@ -165,15 +166,16 @@ def _phrase_velocity(
         else:
             t_norm = rank / (n - 1)
 
-        # 非對稱 sin: 用冪函數偏移峰值到黃金比例
-        # 令 u = t_norm^p, 其中 p 使得 sin 峰值落在 ~0.618
-        # sin(π * u) 峰值在 u=0.5 → 需要 t^p = 0.5 when t = 0.618
-        # p = log(0.5) / log(0.618) ≈ 1.44
-        p = math.log(0.5) / math.log(GOLDEN_RATIO) if GOLDEN_RATIO > 0 else 1.0
         u = t_norm ** p if t_norm > 0 else 0.0
+        # shape: 0 ~ 1, 代表樂句拱形位置
         shape = math.sin(math.pi * u)
 
-        vel = base + amplitude * shape
+        # 以原始 velocity 為基底，套用拱形調變
+        original_vel = events[idx].get("velocity", 80)
+        # 調變範圍: original * (1 - depth) ~ original * (1 + depth)
+        # shape=0 → 減弱, shape=1 → 增強
+        factor = 1.0 + modulation_depth * (2.0 * shape - 1.0)
+        vel = original_vel * factor
         vel = max(VELOCITY_MIN, min(VELOCITY_MAX, round(vel)))
         events[idx]["velocity"] = int(vel)
 
