@@ -31,9 +31,13 @@
 ┌───────────────────────▼─────────────────────────────────┐
 │  Python Backend (FastAPI)                                │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐  │
-│  │Music API │ │Chord API │ │ User API │ │Benchmark  │  │
-│  │(掃描/串流)│ │(CRUD/偵測)│ │(最愛/最近)│ │(評測系統) │  │
-│  └──────────┘ └──────────┘ └──────────┘ └───────────┘  │
+│  │Music API │ │Chord API │ │ChordBatch│ │ User API │  │
+│  │(掃描/串流)│ │(CRUD/偵測)│ │(批次/統計)│ │(最愛/最近)│  │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘  │
+│  ┌──────────┐ ┌──────────┐                              │
+│  │Benchmark │ │  AI API  │                              │
+│  │(評測系統) │ │(預測/Jazz)│                              │
+│  └──────────┘ └──────────┘                              │
 │  ┌──────────────────────────────────────────────────┐   │
 │  │ AI / ML 層                                        │   │
 │  │ BTC Transformer │ HMM/Viterbi │ Markov │ Jazzify │   │
@@ -671,11 +675,13 @@ LiveChord/
 │   ├── config.py            # 全域設定
 │   ├── music_api.py         # 音樂庫 API（瀏覽/搜尋/串流）
 │   ├── chord_api.py         # 和弦 API（CRUD/偵測/MIDI匯入）
+│   ├── chord_batch.py       # 批次和弦偵測/MIDI匯入/統計 API
+│   ├── batch_state.py       # 可重用背景任務狀態追蹤器
 │   ├── user_api.py          # 最愛/最近播放 API
 │   ├── ai_api.py            # AI API（預測/Jazzify/段落/旋律）
 │   ├── benchmark_api.py     # Benchmark 評測 API
 │   ├── chord_detect.py      # BTC Transformer 和弦偵測
-│   ├── chord_cache.py       # 和弦索引快取層
+│   ├── chord_cache.py       # 和弦索引快取層 + song_hash() 統一雜湊
 │   ├── chord_table.py       # 和弦 → 簡譜轉換
 │   ├── chord_diagrams.py    # 吉他/烏克麗麗指法圖
 │   ├── auto_worker.py       # 背景自動掃描+偵測排程
@@ -703,8 +709,12 @@ LiveChord/
 │   ├── admin.html           # 管理後台
 │   ├── benchmark.html       # Benchmark 評測頁
 │   ├── css/
-│   │   └── style.css
+│   │   ├── base.css         # 全站共用（root/header/tabs/layout/toast/responsive）
+│   │   ├── home.css         # Dashboard 頁（grid/track list/search/dashboard）
+│   │   ├── player.css       # 播放/編輯頁（player/chord/piano/waterfall/teach）
+│   │   └── style.css        # 舊版完整樣式（保留備用）
 │   └── js/
+│       ├── utils.js         # 共用工具（showToast/formatTime/escapeHtml/移調）
 │       ├── app.js           # 首頁邏輯
 │       ├── player.js        # 播放器邏輯（含 88 鍵 Canvas）
 │       ├── chord-render.js  # 和弦/簡譜/和弦圖渲染
