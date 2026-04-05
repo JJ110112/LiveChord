@@ -806,6 +806,16 @@ const ChordRender = {
     }
 
     // Pass 2: Re-render black keys over white highlights
+    // First erase any white highlight bleed under black key areas
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+    for (const midi in blackXs) {
+      const bk = blackXs[midi];
+      ctx.fillStyle = "#1a1a1a";
+      ctx.fillRect(bk.x - 1, 0, bk.w + 2, bk.h + 4);
+    }
+    // Then draw black keys with shadow
     ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
     ctx.shadowBlur = 6;
     ctx.shadowOffsetY = 2;
@@ -813,7 +823,7 @@ const ChordRender = {
       ctx.globalAlpha = 1;
       const bk = blackXs[midi];
       drawRoundRect(bk.x, 0, bk.w, bk.h, [0, 0, 3, 3]);
-      
+
       const bgGrad = ctx.createLinearGradient(bk.x, 0, bk.x, bk.h);
       bgGrad.addColorStop(0, "#111");
       bgGrad.addColorStop(1, "#2a2a2a");
