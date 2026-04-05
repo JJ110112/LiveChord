@@ -1146,33 +1146,161 @@
     ctx.lineTo(w, h - 2);
     ctx.stroke();
 
-    // ---- HUD Overlay (AI Teach Hint & Current Chord) ----
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    
-    if (teachStyle) {
-      let hintText = "";
-      if (teachStyle === "Arpeggio") hintText = "Flow 分解伴奏推進中... 留意樂句波動";
-      else if (teachStyle === "Block") hintText = "Block 模式：雙手對齊抓穩柱狀和弦";
-      else if (teachStyle === "Rhythm") hintText = "Rhythm 模式：強調第一拍與切分節奏";
-      else hintText = "大師模式：" + teachStyle;
+    // ---- AI Teacher HUD (bottom-left, context-aware) ----
+    _drawAITeacherHUD(ctx, w, h, currentTime, allEvents, pxPerSec);
 
-      ctx.font = "12px sans-serif";
-      const txt = `🎵 AI Hint: ${hintText}`;
-      const textMetrics = ctx.measureText(txt);
-      const tw = textMetrics.width;
+  }
 
-      ctx.fillStyle = "rgba(0,0,0,0.5)";
-      ctx.beginPath();
-      ctx.roundRect(22, 16, tw + 16, 24, 6);
-      ctx.fill();
+  // ===========================================================================
+  // AI Teacher HUD — 即時教學提示 (Phase 11)
+  // ===========================================================================
+  let _teacherMsgCache = "";
+  let _teacherMsgTime = 0;
 
-      ctx.fillStyle = "rgba(255,255,255,0.7)";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "top";
-      ctx.fillText(txt, 30, 21);
+  function _drawAITeacherHUD(ctx, w, h, currentTime, allEvents, pxPerSec) {
+    // 收集當前正在演奏的音符
+    const nowPlaying = allEvents.filter(e =>
+      e.time <= currentTime && e.time + e.duration > currentTime
+    );
+    // 即將到來的音符 (0.5s 內)
+    const upcoming = allEvents.filter(e =>
+      e.time > currentTime && e.time <= currentTime + 0.5
+    );
+
+    // 每 1.5 秒更新一次訊息，避免閃爍
+    if (currentTime - _teacherMsgTime > 1.5 || !_teacherMsgCache) {
+      _teacherMsgCache = _generateTeacherMessage(currentTime, nowPlaying, upcoming);
+      _teacherMsgTime = currentTime;
     }
 
+    if (!_teacherMsgCache) return;
+
+    // 繪製底部左側浮動提示框
+    const padding = 10;
+    const boxX = 12;
+    const boxY = h - 42;
+    ctx.font = "12px 'Segoe UI', sans-serif";
+    const metrics = ctx.measureText(_teacherMsgCache);
+    const boxW = Math.min(metrics.width + padding * 2 + 20, w * 0.6);
+    const boxH = 28;
+
+    // 背景 — 半透明深色 pill
+    ctx.fillStyle = "rgba(10, 10, 10, 0.65)";
+    ctx.beginPath();
+    ctx.roundRect(boxX, boxY, boxW, boxH, 14);
+    ctx.fill();
+
+    // 左側彩色小圓點 (呼吸動畫)
+    const pulse = 0.6 + 0.4 * Math.sin(currentTime * 3);
+    ctx.fillStyle = `rgba(76, 175, 80, ${pulse})`;
+    ctx.beginPath();
+    ctx.arc(boxX + 16, boxY + boxH / 2, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 文字
+    ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(_teacherMsgCache, boxX + 26, boxY + boxH / 2);
+  }
+
+  function _generateTeacherMessage(t, nowPlaying, upcoming) {
+    // 找當前和弦
+    let currentChordName = "";
+    let nextChordName = "";
+    if (chordData && chordData.chords) {
+      for (let i = chordData.chords.length - 1; i >= 0; i--) {
+        if (t >= chordData.chords[i].time) {
+          currentChordName = chordData.chords[i].chord || "";
+          if (i + 1 < chordData.chords.length) {
+            nextChordName = chordData.chords[i + 1].chord || "";
+          }
+          break;
+        }
+      }
+    }
+
+    // 分析即將到來的音符
+    const upLH = upcoming.filter(e => e._hand === "left");
+    const upRH = upcoming.filter(e => e._hand === "right");
+    const hasThumbCross = upcoming.some(e => e.finger === 1 && e._hand === "right");
+    const hasBlackKey = upcoming.some(e => {
+      const pc = (e.pitch || 0) % 12;
+      return [1, 3, 6, 8, 10].includes(pc);
+    });
+    const hasLargeJump = upcoming.length >= 2 &&
+      Math.abs((upcoming[upcoming.length - 1]?.pitch || 0) - (upcoming[0]?.pitch || 0)) > 7;
+
+    // 踏板狀態
+    let pedalActive = false;
+    if (accData && accData.pedal) {
+      pedalActive = accData.pedal.some(p => p.start <= t && p.end > t);
+    }
+
+    // 即將到來的力度變化
+    const upVelocities = upcoming.map(e => e.velocity || 80);
+    const avgVel = upVelocities.length > 0
+      ? upVelocities.reduce((a, b) => a + b, 0) / upVelocities.length : 80;
+
+    // 動態表情提示
+    let dynHint = "";
+    if (avgVel > 95) dynHint = "ff 全力推進！";
+    else if (avgVel > 80) dynHint = "f 有力地彈奏";
+    else if (avgVel < 50) dynHint = "pp 輕柔觸鍵...";
+    else if (avgVel < 65) dynHint = "p 溫柔地";
+
+    // Articulation 提示
+    const artTypes = upcoming.map(e => e.articulation).filter(Boolean);
+    let artHint = "";
+    if (artTypes.includes("staccato")) artHint = "斷奏 · ";
+    else if (artTypes.includes("legato")) artHint = "連奏 ~ ";
+
+    // 組合多樣化的教學訊息 — 根據情境優先級
+    const msgs = [];
+
+    // 高優先: 技術警告
+    if (hasThumbCross) {
+      msgs.push("注意拇指穿越 ↻ 保持手腕放鬆");
+    }
+    if (hasLargeJump) {
+      msgs.push("大跳躍即將到來 — 提前移動手位");
+    }
+    if (hasBlackKey && upRH.length > 2) {
+      msgs.push("黑鍵群 — 手指靠近琴蓋，指尖觸鍵");
+    }
+
+    // 中優先: 和弦/換和弦提示
+    if (nextChordName && upcoming.length > 0) {
+      const timeToNext = upcoming[0].time - t;
+      if (timeToNext < 0.3 && nextChordName !== currentChordName) {
+        msgs.push(`準備換和弦 → ${nextChordName}`);
+      }
+    }
+
+    // 表情提示
+    if (dynHint) msgs.push(dynHint);
+
+    // 踏板提示
+    if (pedalActive) {
+      msgs.push("踏板延音中 🎹");
+    }
+
+    // Articulation + 風格
+    if (artHint) msgs.push(artHint.trim());
+
+    // 低優先: 風格基礎提示
+    if (msgs.length === 0) {
+      if (teachStyle === "Arpeggio") msgs.push("流動的分解和弦 — 保持均勻觸鍵");
+      else if (teachStyle === "Block") msgs.push("柱狀和弦 — 雙手同步，力度均衡");
+      else if (teachStyle === "Rhythm") msgs.push("節奏伴奏 — 感受律動，強拍推進");
+      else if (teachStyle === "Walking") msgs.push("Walking Bass — 低音線條行走中");
+      else if (teachStyle === "Stride") msgs.push("Stride — 低音與和弦交替跳躍");
+      else if (teachStyle === "Shell") msgs.push("Shell Voicing — 3rd + 7th 骨架和聲");
+      else msgs.push("跟著音塊節奏，享受音樂 ♪");
+    }
+
+    // 取最高優先的一條
+    return msgs[0] || "";
   }
 
   // Teaching controls setup
