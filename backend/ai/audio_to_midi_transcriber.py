@@ -21,7 +21,10 @@ class AudioToMidiTranscriber:
             logger.info("Loading Basic Pitch model for the first time...")
             try:
                 from basic_pitch.inference import predict_and_save
+                from basic_pitch import build_icassp_2022_model_path, FilenameSuffix
                 self._predict_and_save = predict_and_save
+                # Use ONNX model — TF saved_model is broken on this Python 3.11 install
+                self._model_path = build_icassp_2022_model_path(FilenameSuffix.onnx)
             except ImportError:
                 logger.error("basic-pitch is not installed. Please pip install basic-pitch.")
                 raise
@@ -45,21 +48,26 @@ class AudioToMidiTranscriber:
 
         logger.info(f"Transcribing {stem_type} stem: {audio_file.name}")
         try:
-            # predict_and_save takes (audio_path_list, output_directory, save_midi, save_model_outputs, save_notes)
+            # Clean up stale output from previous runs (predict_and_save refuses to overwrite)
+            default_outname = self.output_dir / f"{audio_file.stem}_basic_pitch.mid"
+            if default_outname.exists():
+                default_outname.unlink()
+
             self._predict_and_save(
                 [str(audio_file)],
                 str(self.output_dir),
                 save_midi=True,
                 sonify_midi=False,
                 save_model_outputs=False,
-                save_notes=False
+                save_notes=False,
+                model_or_model_path=self._model_path,
             )
             
             # predict_and_save automatically names the output file as inputfilename_basic_pitch.mid
             default_outname = self.output_dir / f"{audio_file.stem}_basic_pitch.mid"
             if default_outname.exists():
                 # Rename to our structured format
-                default_outname.rename(out_path)
+                default_outname.replace(out_path)
                 logger.info(f"Successfully transcribed to {out_path}")
                 return str(out_path)
             else:

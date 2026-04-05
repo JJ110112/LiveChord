@@ -3,7 +3,7 @@ import os
 import soundfile as sf
 import demucs.audio
 
-def custom_save_audio(wav, path, samplerate, bitrate=320, clip='rescale', bits_per_sample=24, as_float=False):
+def custom_save_audio(wav, path, samplerate, bitrate=320, clip='rescale', bits_per_sample=24, as_float=False, **kwargs):
     # wav is a PyTorch tensor of shape [channels, time]
     # We transpose to [time, channels] for soundfile
     wav_np = wav.cpu().numpy().T

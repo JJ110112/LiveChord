@@ -53,7 +53,9 @@ class MidiSanitizer:
     def _get_chord_at_time(self, time_sec: float, chords: List[Dict[str, Any]]) -> str:
         """ Find the active chord symbol at a given timestamp """
         for chord in chords:
-            if chord.get('start_time', 0) <= time_sec <= chord.get('end_time', 9999):
+            start = chord.get('time', chord.get('start_time', 0))
+            end = chord.get('end', chord.get('end_time', 9999))
+            if start <= time_sec <= end:
                 return chord.get('chord', 'N')
         return 'N'
 

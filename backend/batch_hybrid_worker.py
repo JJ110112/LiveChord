@@ -80,7 +80,7 @@ def run_hybrid_batch():
             continue
             
         # 3. Sanitization
-        success = sanitizer.sanitize_bass(raw_bass_mid, chords_data, str(sanitized_bass_path))
+        success = sanitizer.sanitize_bass(raw_bass_mid, chords_data.get("chords", []), str(sanitized_bass_path))
         if success:
             logger.info(f"Successfully generated hybrid bass skeleton for {song_hash}")
             processed += 1
