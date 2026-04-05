@@ -771,3 +771,56 @@ GET /api/ai/qa-battle?path=...&style=Arpeggio&level=L2
 | onset_detect | ON | OFF (fast_mode) |
 | print 輸出 | 每首 3 行 | 靜音 |
 | **速度** | 0.08 首/秒 | **~0.13 首/秒 (+60%)** |
+
+---
+
+## 生產驗證結果 (2026-04-05 NUC 實機)
+
+### QA Battle Benchmark (NUC 15 Pro+ U9-285H)
+
+```
+Pop: Dancing Queen        PASS 72/100  (0.15s)
+Jazz: Autumn Leaves       PASS 74/100  (0.03s)
+Rock: Bohemian Rhapsody   PASS 67/100  (0.10s)
+```
+
+逐項分數:
+
+| 歌曲 | melody | accomp | fingering | pedal | dynamics | playability | overall |
+|------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Dancing Queen | 64 | 69 | 55 | 99 | 77 | 70 | **72** |
+| Autumn Leaves | 66 | 63 | 56 | 99 | 73 | 88 | **74** |
+| Bohemian Rhapsody | 64 | 55 | 37 | 80 | 77 | 86 | **67** |
+
+AI 建議:
+- Dancing Queen: 旋律碰撞率 15%，左手指法需安全降級
+- Autumn Leaves: 旋律碰撞率 37%，左手指法需安全降級
+- Bohemian Rhapsody: 樂句弧線不明顯，旋律碰撞率 22%
+
+### Accompaniment Factory 批次生產 (NUC 實機)
+
+```
+run_accompaniment_factory.bat 執行結果:
+  Songs:     6,346
+  Generated: 25,382 files (L1+L2 × Arpeggio+Block = 4 files/song)
+  Errors:    0
+  Time:      592s (9.9 min)
+  Speed:     10.7 songs/sec, 42.9 files/sec
+```
+
+每個生成的檔案包含:
+- 左手伴奏 events (含指法)
+- 右手伴奏 events (含指法)
+- 踏板建議 (legato/rhythmic by section)
+- 力度表情 (velocity + articulation)
+- 段落類型 (section_type)
+
+### 系統效能摘要
+
+| 操作 | 速度 | 環境 |
+|------|------|------|
+| QA Battle (單首) | 0.03~0.15s | NUC U9-285H |
+| 伴奏生成 (單首 4 檔) | 0.09s | NUC U9-285H |
+| 伴奏批次 (6,346 首) | 9.9 min | NUC U9-285H, 12 threads |
+| Super Worker (和弦+旋律) | ~0.13 首/秒 | NUC U9-285H + RTX 5080 |
+| 完整 Pipeline (無 BTC) | < 0.15s | 遠低於 3s 目標 |
