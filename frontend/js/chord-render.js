@@ -905,7 +905,7 @@ const ChordRender = {
 
       for (const midiStr in fMap) {
         const midi = parseInt(midiStr);
-        const { finger, hand, upcoming } = fMap[midiStr];
+        const { finger, hand, upcoming, crossFromPitch } = fMap[midiStr];
         if (!finger) continue;
 
         const isBlack = !!blackXs[midi];
@@ -915,6 +915,46 @@ const ChordRender = {
         const circleR = isBlack ? Math.min(ki.w * 0.35, 8) : Math.min(ki.w * 0.35, 10);
         const cx = ki.x + ki.w / 2;
         const cy = isBlack ? ki.h - circleR - 4 : ki.h - circleR - 8;
+
+        // ---- Draw Crossing Arc ----
+        if (crossFromPitch !== undefined && crossFromPitch !== null) {
+          const fromIsBlack = !!blackXs[crossFromPitch];
+          const fromKi = fromIsBlack ? blackXs[crossFromPitch] : whiteXs[crossFromPitch];
+          
+          if (fromKi) {
+            const startX = fromKi.x + fromKi.w / 2;
+            const startY = fromIsBlack ? fromKi.h - 12 : fromKi.h - 18;
+            const endX = cx;
+            const endY = cy;
+            
+            const midX = (startX + endX) / 2;
+            // Arc goes upwards (smaller Y) based on distance
+            const arcH = 20 + Math.min(Math.abs(endX - startX) * 0.15, 60);
+            const ctrlY = Math.min(startY, endY) - arcH;
+            
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.quadraticCurveTo(midX, ctrlY, endX, endY);
+            
+            // Flowing energy line effect
+            const crossColor = hand === "left" ? "#81d4fa" : "#ffcc80";
+            
+            ctx.strokeStyle = crossColor;
+            ctx.lineWidth = 2.5;
+            
+            // Flowing animation over time
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = crossColor;
+            ctx.globalAlpha = upcoming ? (0.4 + 0.6 * Math.sin(fNow * 8)) : 0.8;
+            
+            ctx.setLineDash([8, 6]);
+            ctx.lineDashOffset = -fNow * 40; 
+            
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
 
         if (upcoming) {
           // Upcoming: subtle pulsing circle (prepare hand position)

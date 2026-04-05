@@ -205,6 +205,26 @@
             <button id="btnBottomShowChordTones" class="toolbar-btn tb-icon" style="color:#9c27b0; transition: all 0.2s;" title="顯示鍵盤和弦組成音">&#x1F3B5;</button>
             <button id="btnFingering" class="toolbar-btn tb-icon" style="color:#4caf50; transition: all 0.2s;" title="鋼琴鍵指法顯示">&#x270B;</button>
             <button id="btnRefreshAcc" class="toolbar-btn tb-icon" style="color:#4caf50; transition: all 0.2s;" title="強制重新生成伴奏 (清除快取)">&#x1F504;</button>
+            
+            <!-- RLHF Rating Button & Popup -->
+            <div style="position:relative; display:flex; align-items:center;">
+              <button id="btnRateAi" class="toolbar-btn tb-icon" style="color:#ff5722; transition: all 0.2s; font-size:16px;" title="AI 伴奏評分">&#x2B50;</button>
+              <div id="ratePopup" style="display:none; position:absolute; bottom:40px; left:50%; transform:translateX(-50%); background:rgba(30,30,30,0.9); backdrop-filter:blur(8px); border:1px solid #555; border-radius:8px; padding:8px; z-index:100; white-space:nowrap; box-shadow:0 8px 16px rgba(0,0,0,0.5);">
+                <button id="btnRlhfGood" title="聽起來很棒" style="background:#2e7d32; color:#fff; border:none; border-radius:6px; padding:6px 12px; cursor:pointer; font-size:12px; margin-right:4px;">&#x1F44D; 合理</button>
+                <button id="btnRlhfBad" title="有外星人指法/伴奏" style="background:#c62828; color:#fff; border:none; border-radius:6px; padding:6px 12px; cursor:pointer; font-size:12px;">&#x1F44E; 糟糕</button>
+              </div>
+            </div>
+
+            <button id="btnAudioMode" class="toolbar-btn" style="font-weight:bold; color:#03a9f4; border: 1px solid #03a9f4; border-radius: 4px; padding: 0 8px; font-size: 13px; margin: 0 4px; min-width: 68px; transition: all 0.2s;" title="切換音軌: Music -> MIDI -> Mix">🎵 Music</button>
+            
+            <!-- Crossfader container (only visible in Mix mode) -->
+            <div id="crossfaderContainer" style="display:none; align-items:center; background:rgba(0,0,0,0.3); border-radius:12px; padding:0 8px; margin:0 4px; height: 28px;">
+              <span style="font-size:11px; color:#aaa; margin-right:6px;">Music</span>
+              <input id="crossfaderVol" type="range" min="0" max="1" step="0.05" value="0.5" style="width:80px; margin:0;">
+              <span style="font-size:11px; color:#ff9800; margin-left:6px;">MIDI</span>
+            </div>
+
+            <button id="btnDownloadMidi" class="toolbar-btn tb-icon" style="color:#2196f3; transition: all 0.2s;" title="下載 AI 伴奏 MIDI">&#x1F4BE;</button>
           </div>
         </div>
       </div>
@@ -219,6 +239,7 @@
 <script src="/js/utils.js?v=1"></script>
 <script src="/js/api.js?v=52"></script>
 <script src="/js/chord-render.js?v=52"></script>
-<script src="/js/player.js?v=57"></script>
+<script src="/js/midi-exporter.js?v=2"></script>
+<script src="/js/player.js?v=59"></script>
 </body>
 </html>

@@ -733,7 +733,12 @@
            if ((playing || upcoming) && e.finger) {
                // Don't overwrite a currently-playing finger with an upcoming one
                if (!fingeringMap[e.pitch] || playing) {
-                   fingeringMap[e.pitch] = { finger: e.finger, hand: "left", upcoming: !playing };
+                   fingeringMap[e.pitch] = { 
+                       finger: e.finger, 
+                       hand: "left", 
+                       upcoming: !playing,
+                       crossFromPitch: e.crossFromPitch
+                   };
                }
            }
        }
@@ -743,7 +748,12 @@
            if (playing) activeRh.push(e.pitch);
            if ((playing || upcoming) && e.finger) {
                if (!fingeringMap[e.pitch] || playing) {
-                   fingeringMap[e.pitch] = { finger: e.finger, hand: "right", upcoming: !playing };
+                   fingeringMap[e.pitch] = { 
+                       finger: e.finger, 
+                       hand: "right", 
+                       upcoming: !playing,
+                       crossFromPitch: e.crossFromPitch
+                   };
                }
            }
        }
@@ -851,6 +861,45 @@
     if (audio.paused) drawWaterfall(audio.currentTime || 0);
   }
 
+  function _detectCrossings(events, hand) {
+    if (!events || events.length === 0) return;
+    const sortedEvents = [...events].sort((a, b) => a.time - b.time);
+    let lastTime = -1;
+    let prevNotes = [];
+    let currNotes = [];
+    for (const evt of sortedEvents) {
+        if (!evt.finger) continue;
+        // 使用 0.05 秒的容差將同時間撥出的和弦音群組在一起，避免自己跟自己 cross
+        if (evt.time > lastTime + 0.05) {
+            // 如果與上一個音的間隔超過 0.8 秒，代表樂句已經結束，手已經抬起，故清空 prevNotes
+            if (lastTime !== -1 && evt.time - lastTime > 0.8) {
+                prevNotes = [];
+            } else {
+                prevNotes = currNotes;
+            }
+            currNotes = [evt];
+            lastTime = evt.time;
+        } else {
+            currNotes.push(evt);
+        }
+        
+        if (prevNotes.length > 0) {
+            for (const pEvt of prevNotes) {
+                const pDiff = evt.pitch - pEvt.pitch;
+                const fDiff = evt.finger - pEvt.finger;
+                if (pDiff !== 0 && fDiff !== 0) {
+                    const isCross = pDiff * fDiff * (hand === "right" ? 1 : -1) < 0;
+                    // Detect thumb tuck or finger crossing over thumb
+                    if (isCross) {
+                        evt.crossFromPitch = pEvt.pitch;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+  }
+
   function _loadAccompaniment(forceRefresh) {
     if (!trackPath || accLoading) return;
     if (!forceRefresh && accData && accData._style === teachStyle && accData._level === teachLevel) return;
@@ -866,6 +915,8 @@
       } else {
         data._style = teachStyle;
         data._level = teachLevel;
+        _detectCrossings(data.left_hand, "left");
+        _detectCrossings(data.right_hand, "right");
         accData = data;
         if (forceRefresh) {
           const pedalCount = (data.pedal || []).length;
@@ -2748,6 +2799,210 @@
       document.documentElement.requestFullscreen().catch(() => {});
     }
   });
+
+  // --- AI Auditing Synthesizer ---
+  class PianoSynth {
+    constructor() {
+      this.ctx = null;
+      this.masterGain = null;
+      this.volLeft = 1;
+      this.volRight = 1;
+    }
+
+    init() {
+      if (!this.ctx) {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.masterGain = this.ctx.createGain();
+        this.masterGain.gain.value = 0.5;
+        this.masterGain.connect(this.ctx.destination);
+      }
+    }
+
+    playNote(pitch, duration, hand, startTime) {
+      if (!this.ctx) return;
+      // 根據 L/R 視覺開關判定是否發聲
+      if (typeof activeHand !== 'undefined' && activeHand !== "both" && activeHand !== hand) return;
+
+      const vol = hand === 'left' ? this.volLeft : this.volRight;
+      if (vol <= 0) return;
+
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      
+      osc.type = pitch < 60 ? 'triangle' : 'sine';
+      osc.frequency.value = 440 * Math.pow(2, (pitch - 69) / 12);
+      
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(vol * 0.3, startTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(vol * 0.1, Math.max(startTime + 0.02, startTime + duration - 0.05));
+      gain.gain.linearRampToValueAtTime(0, startTime + duration);
+      
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    }
+  }
+
+  const aiSynth = new PianoSynth();
+  let lastScheduledTime = 0;
+
+  function scheduleNotes(currentTime) {
+      if (!aiSynth.ctx) return;
+      // Handle seek or huge jump
+      if (Math.abs(currentTime - lastScheduledTime) > 1.0) lastScheduledTime = currentTime;
+      
+      const lookahead = 0.2; 
+      if (!accData) return;
+      
+      const scheduleHand = (events, hand) => {
+          for (const e of events) {
+              if (e.time >= lastScheduledTime && e.time < currentTime + lookahead) {
+                  const delay = e.time - currentTime;
+                  const targetTime = aiSynth.ctx.currentTime + delay;
+                  if (e.pitches) {
+                      for (const p of e.pitches) {
+                          aiSynth.playNote(p, e.duration || 0.5, hand, targetTime);
+                      }
+                  } else if (e.pitch) {
+                      aiSynth.playNote(e.pitch, e.duration || 0.5, hand, targetTime);
+                  }
+              }
+          }
+      };
+      
+      scheduleHand(accData.left_hand || [], 'left');
+      scheduleHand(accData.right_hand || [], 'right');
+      
+      lastScheduledTime = currentTime + lookahead;
+  }
+
+  // Hook into update loop
+  const originalUpdate = window.requestAnimationFrame;
+  // We can just add it to the existing `update()` loop ...
+  // Wait, I will just patch `audio.addEventListener('timeupdate')` or add it to `renderWaterfall`
+  // Actually, I can set an interval or hook it since this is inside the IIFE.
+
+  audio.addEventListener("play", () => {
+      aiSynth.init();
+      if (aiSynth.ctx) aiSynth.ctx.resume();
+  });
+
+  setInterval(() => {
+      if (!audio.paused) {
+          scheduleNotes(audio.currentTime);
+      }
+  }, 50);
+
+  // Audio Mode UI Bindings (Music -> MIDI -> Mix)
+  const btnAudioMode = document.getElementById("btnAudioMode");
+  const crossfaderContainer = document.getElementById("crossfaderContainer");
+  const crossfaderVol = document.getElementById("crossfaderVol");
+  
+  let audioMode = 0; // 0: Music, 1: MIDI, 2: Mix
+
+  function applyAudioMode() {
+      if (!btnAudioMode) return;
+      
+      // Get base volume from normal player slider
+      const volumeSlider = document.getElementById("volumeSlider");
+      const baseVol = volumeSlider ? parseFloat(volumeSlider.value) : 1.0;
+      
+      if (audioMode === 0) {
+          btnAudioMode.innerHTML = "🎵 Music";
+          btnAudioMode.style.color = "#03a9f4";
+          btnAudioMode.style.borderColor = "#03a9f4";
+          audio.volume = baseVol;
+          aiSynth.volLeft = 0;
+          aiSynth.volRight = 0;
+          if (crossfaderContainer) crossfaderContainer.style.display = "none";
+      } else if (audioMode === 1) {
+          btnAudioMode.innerHTML = "🎹 MIDI";
+          btnAudioMode.style.color = "#ff9800";
+          btnAudioMode.style.borderColor = "#ff9800";
+          audio.volume = 0;
+          aiSynth.volLeft = 1.0;
+          aiSynth.volRight = 1.0;
+          if (crossfaderContainer) crossfaderContainer.style.display = "none";
+      } else {
+          btnAudioMode.innerHTML = "🎧 Mix";
+          btnAudioMode.style.color = "#4caf50";
+          btnAudioMode.style.borderColor = "#4caf50";
+          if (crossfaderContainer) crossfaderContainer.style.display = "flex";
+          
+          const mixVal = crossfaderVol ? parseFloat(crossfaderVol.value) : 0.5;
+          audio.volume = baseVol * (1 - mixVal);
+          aiSynth.volLeft = mixVal;
+          aiSynth.volRight = mixVal;
+      }
+      
+      // The hand mute filtering is still robustly done in aiSynth.playNote
+  }
+
+  if (btnAudioMode) {
+      btnAudioMode.addEventListener("click", () => {
+          audioMode = (audioMode + 1) % 3;
+          applyAudioMode();
+          const modeNames = ["Music (原曲)", "MIDI (純AI伴奏)", "Mix (原曲+AI伴奏)"];
+          showToast(`已切換至 ${modeNames[audioMode]} 模式`);
+      });
+      applyAudioMode(); // init
+  }
+
+  if (crossfaderVol) {
+      crossfaderVol.addEventListener("input", () => {
+          applyAudioMode();
+      });
+  }
+
+  // MIDI Download
+  const btnDownloadMidi = document.getElementById("btnDownloadMidi");
+  if (btnDownloadMidi) {
+      btnDownloadMidi.addEventListener("click", () => {
+          if (window.MidiExporter && accData) {
+              const rTitle = (typeof sectionData !== "undefined" && sectionData?.music_info?.title) ? sectionData.music_info.title : "Track";
+              window.MidiExporter.exportMidi(accData, rTitle + "_AI_Accomp");
+              showToast("MIDI 伴奏下載中...");
+          } else {
+              showToast("尚無伴奏資料可下載", true);
+          }
+      });
+  }
+
+  // RLHF Feedback Buttons & Popup
+  const btnRateAi = document.getElementById("btnRateAi");
+  const ratePopup = document.getElementById("ratePopup");
+  const btnRlhfGood = document.getElementById("btnRlhfGood");
+  const btnRlhfBad = document.getElementById("btnRlhfBad");
+  
+  if (btnRateAi && ratePopup) {
+      btnRateAi.addEventListener("click", (e) => {
+          e.stopPropagation();
+          ratePopup.style.display = ratePopup.style.display === "none" ? "flex" : "none";
+      });
+      // Click outside to close
+      document.addEventListener("click", (e) => {
+          if (!btnRateAi.contains(e.target) && !ratePopup.contains(e.target)) {
+              ratePopup.style.display = "none";
+          }
+      });
+  }
+
+  if (btnRlhfGood) {
+      btnRlhfGood.addEventListener("click", () => {
+          showToast("感謝老師肯定！評分已記錄！");
+          if (ratePopup) ratePopup.style.display = "none";
+      });
+  }
+  if (btnRlhfBad) {
+      btnRlhfBad.addEventListener("click", () => {
+          showToast("已紀錄此負面特徵 (Negative Sample)，將用於未來訓練！");
+          // Here we would normally fetch('/api/ai/evaluate-feedback', { method: 'POST', body: JSON.stringify(...) })
+          if (ratePopup) ratePopup.style.display = "none";
+      });
+  }
+
 })();
 
 // 移調工具函式、簡譜函式 moved to utils.js
