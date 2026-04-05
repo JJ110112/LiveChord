@@ -1,6 +1,6 @@
 # LiveChord 品管文件
 
-> 版本: 3.4 | 日期: 2026-04-05
+> 版本: 3.5 | 日期: 2026-04-05
 > 和弦引擎: BTC Transformer (ISMIR 2019)
 > 對應規格書: SPEC.md v2.0
 
@@ -336,6 +336,9 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 | K-06 | 手部模式記憶 | 重載後記住選擇 (localStorage) | ☐ |
 | K-07 | Canvas 響應式 | 視窗大小變化時鍵盤正確縮放 (ResizeObserver) | ☐ |
 | K-08 | DPI 適配 | 高 DPI 螢幕 (devicePixelRatio) 不模糊 | ☐ |
+| K-09 | 瀑布流白/黑鍵色階 | 同一手音符落在白鍵用淺色、黑鍵用深色（左手淺藍/深藍、右手淺橘/深橘） | ☐ |
+| K-10 | 琴鍵高亮清晰度 | 按下琴鍵實色填充，頂部有淡白洗色 3D 感，非漸層淡出 | ☐ |
+| K-11 | 琴鍵底部發光 | 按下琴鍵底部呈現光暈 + 亮白光點（Synthesia 風格） | ☐ |
 
 ### 4.6 播放頁 — 縮放與全螢幕
 
@@ -668,3 +671,4 @@ AI 的每次提交必須附上兩種清單：
 | 3.2 | 2026-04-04 | 新增第 13 節：邊緣運算與雙引擎批次處理架構 (Super Worker Edge Architecture) |
 | 3.3 | 2026-04-04 | 修復沉浸模式 UI：toolbar grid 佈局、縮放捲動抖動、scrollbar 隱藏、zoom/close 按鈕重疊、select option 深色主題 |
 | 3.4 | 2026-04-05 | 新增第 14 節：前端 UI 架構鐵律（9 條規則），源自 AI 鋼琴老師開發的 10+ 次 UI 迴歸修復經驗 |
+| 3.5 | 2026-04-05 | 新增 K-09~K-11：瀑布流白/黑鍵色階、琴鍵高亮清晰度、底部發光效果測試項目 |

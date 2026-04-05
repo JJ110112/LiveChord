@@ -718,13 +718,32 @@ const ChordRender = {
          ctx.stroke();
          ctx.shadowBlur = 0; 
       } else {
-         // Create a glowing gradient for active hit
-         const pGrad = ctx.createLinearGradient(0, wk.h * 0.4, 0, wk.h);
-         pGrad.addColorStop(0, "rgba(255,255,255,0.1)");
-         pGrad.addColorStop(1, hl.color);
-         ctx.fillStyle = pGrad;
+         // Solid color fill for full key coverage
+         ctx.fillStyle = hl.color;
          drawRoundRect(wk.x + 0.5, 0.5, wk.w - 1, wk.h - 1, [0, 0, 4, 4]);
          ctx.fill();
+         // Subtle lighter wash in top half for slight 3D look
+         const topWash = ctx.createLinearGradient(0, 0, 0, wk.h * 0.5);
+         topWash.addColorStop(0, "rgba(255,255,255,0.25)");
+         topWash.addColorStop(1, "rgba(255,255,255,0)");
+         ctx.fillStyle = topWash;
+         ctx.fillRect(wk.x + 0.5, 0.5, wk.w - 1, wk.h * 0.5);
+         // Bottom-edge illumination glow
+         ctx.save();
+         const wGlowH = 12;
+         const wGlowY = wk.h - wGlowH;
+         const wGlowGrad = ctx.createLinearGradient(0, wGlowY, 0, wk.h + 4);
+         wGlowGrad.addColorStop(0, "rgba(255,255,255,0)");
+         wGlowGrad.addColorStop(0.5, "rgba(255,255,255,0.7)");
+         wGlowGrad.addColorStop(1, hl.color);
+         ctx.fillStyle = wGlowGrad;
+         ctx.fillRect(wk.x + 2, wGlowY, wk.w - 4, wGlowH + 4);
+         // Bright light spot at bottom edge
+         ctx.shadowColor = hl.color;
+         ctx.shadowBlur = 15;
+         ctx.fillStyle = "rgba(255,255,255,0.9)";
+         ctx.fillRect(wk.x + wk.w * 0.2, wk.h - 3, wk.w * 0.6, 3);
+         ctx.restore();
       }
     }
 
@@ -765,12 +784,32 @@ const ChordRender = {
          ctx.stroke();
          ctx.shadowBlur = 0; 
       } else {
-         const pGrad = ctx.createLinearGradient(0, bk.h * 0.2, 0, bk.h);
-         pGrad.addColorStop(0, hl.color.replace(/[\d.]+\)$/g, '0.1)'));
-         pGrad.addColorStop(1, hl.color);
-         ctx.fillStyle = pGrad;
+         // Solid color fill for full black key
+         ctx.fillStyle = hl.color;
          drawRoundRect(bk.x + 0.5, 0.5, bk.w - 1, bk.h - 1, [0, 0, 3, 3]);
          ctx.fill();
+         // Lighter wash for top half
+         const bTopWash = ctx.createLinearGradient(0, 0, 0, bk.h * 0.4);
+         bTopWash.addColorStop(0, "rgba(255,255,255,0.2)");
+         bTopWash.addColorStop(1, "rgba(255,255,255,0)");
+         ctx.fillStyle = bTopWash;
+         ctx.fillRect(bk.x + 0.5, 0.5, bk.w - 1, bk.h * 0.4);
+         // Bottom-edge illumination glow for black key
+         ctx.save();
+         const bGlowH = 8;
+         const bGlowY = bk.h - bGlowH;
+         const bGlowGrad = ctx.createLinearGradient(0, bGlowY, 0, bk.h + 3);
+         bGlowGrad.addColorStop(0, "rgba(255,255,255,0)");
+         bGlowGrad.addColorStop(0.5, "rgba(255,255,255,0.6)");
+         bGlowGrad.addColorStop(1, hl.color);
+         ctx.fillStyle = bGlowGrad;
+         ctx.fillRect(bk.x + 1, bGlowY, bk.w - 2, bGlowH + 3);
+         // Light spot
+         ctx.shadowColor = hl.color;
+         ctx.shadowBlur = 10;
+         ctx.fillStyle = "rgba(255,255,255,0.85)";
+         ctx.fillRect(bk.x + bk.w * 0.15, bk.h - 2, bk.w * 0.7, 2);
+         ctx.restore();
       }
     }
     ctx.globalAlpha = 1;

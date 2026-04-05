@@ -871,6 +871,11 @@
     const RH_COLOR = "rgba(255, 152, 0, 0.9)";    // Orange (主旋律/右手)
     const LH_GLOW  = "rgba(33, 150, 243, 0.4)";
     const RH_GLOW  = "rgba(255, 152, 0, 0.4)";
+    // Per-key-type shades for white/black key visibility
+    const LH_WHITE = "rgba(100, 181, 246, 0.9)";  // lighter blue for white-key notes
+    const LH_BLACK = "rgba(30, 136, 229, 0.9)";   // deeper blue for black-key notes
+    const RH_WHITE = "rgba(255, 183, 77, 0.9)";   // lighter orange for white-key notes
+    const RH_BLACK = "rgba(245, 124, 0, 0.9)";    // deeper orange for black-key notes
 
     // 畫拍線網格 (Beat Grid & Bar Lines)
     const bpm = (accData.bpm || 100); 
@@ -1003,7 +1008,10 @@
       const kw = keyInfo.w;
 
       const isLeft = evt._hand === "left";
-      const color = isLeft ? LH_COLOR : RH_COLOR;
+      const isOnBlackKey = !!cache.blackXs[midi];
+      const color = isLeft
+        ? (isOnBlackKey ? LH_BLACK : LH_WHITE)
+        : (isOnBlackKey ? RH_BLACK : RH_WHITE);
       const glow = isLeft ? LH_GLOW : RH_GLOW;
 
       // Drop prediction shadow on the keys if it's right about to hit
