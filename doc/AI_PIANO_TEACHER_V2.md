@@ -654,5 +654,35 @@ Phase 11d — 靈魂注入 ✅
 1. **單元測試**: 覆蓋 edge case（空輸入、單音、極端 BPM）✅
 2. **樂理正確性**: 至少 3 首不同風格的歌曲驗證（pop / jazz / classical）— 待真實音檔測試
 3. **QA Battle**: Generator 和 Evaluator 互相對抗，分數收斂 — 框架就緒
-4. **Playwright UI 測試**: 瀑布流顯示正確（指法、踏板、力度標記）— 待前端整合
+4. **Playwright UI 測試**: 瀑布流顯示正確（指法、踏板、力度標記）✅ 已驗證
 5. **效能**: 單首歌的完整 pipeline < 3 秒（不含 BTC 和弦偵測）— 待基準測試
+
+---
+
+## Phase 11 前端整合 (2026-04-05 完成)
+
+### API 端點 (20 個，+5 新)
+
+| 端點 | 功能 |
+|------|------|
+| `GET /api/ai/evaluate-melody` | 旋律品質評分 (5 維度) |
+| `GET /api/ai/evaluate-accompaniment` | 伴奏品質評分 (5 維度) |
+| `GET /api/ai/pedal?style=legato` | 踏板建議 + 評分 |
+| `GET /api/ai/dynamics` | 力度表情 + 評分 |
+| `GET /api/ai/section-context` | 段落結構 + AI 參數時間軸 |
+| `GET /api/ai/accompaniment` | 強化: +section_type +nocache +pedal +dynamics |
+
+### 瀑布流視覺強化
+
+| 功能 | 說明 |
+|------|------|
+| **Velocity 光暈** | 二次方曲線 + 資料感知 normalize：弱音暗褐/深藍 → 強音爆亮光暈 (28px) |
+| **踏板視覺化** | 綠色漸層區域 + 切換標記線 (虛線=半踏板) |
+| **Articulation 標記** | staccato 圓點 / legato 弧線 |
+| **AI 教師 HUD** | 右下角即時教學提示：拇指穿越警告、換和弦預備、力度表情、踏板狀態 |
+| **🔄 強制重新生成** | 清除快取按鈕，重新生成含踏板/力度的伴奏資料 |
+
+### 實機測試截圖驗證
+
+- Christopher Cross - Arthur's Theme: 踏板綠區 ✅ 力度光暈 ✅ AI 教師提示 ✅
+- FIFTY FIFTY - Cupid: 瀑布流基本渲染 ✅ legato 弧線 ✅
