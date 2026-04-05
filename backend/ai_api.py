@@ -271,6 +271,7 @@ def get_accompaniment(
     style: str = Query(default="Block", description="伴奏風格: Block/Arpeggio/Rhythm/Alberti/Shell/Walking/Stride"),
     level: str = Query(default="L1", description="難度: L1/L2/L3"),
     section_type: str = Query(default="default", description="段落類型: intro/verse/chorus/bridge/outro/default"),
+    nocache: int = Query(default=0, description="1=強制重新生成（刪除快取）"),
 ):
     """生成伴奏（左右手 MIDI events + 指法 + 踏板 + 力度），含快取"""
     import json as _json
@@ -281,6 +282,15 @@ def get_accompaniment(
 
     h = hashlib.md5(path.encode()).hexdigest()[:12]
     cache_file = ACC_DIR / f"{h}_{style}_{level}_{section_type}.json"
+
+    # nocache: 清除此歌所有伴奏快取
+    if nocache:
+        import glob
+        for f in ACC_DIR.glob(f"{h}_*.json"):
+            try:
+                f.unlink()
+            except Exception:
+                pass
 
     # 快取命中
     if cache_file.is_file():

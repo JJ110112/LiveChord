@@ -816,12 +816,14 @@
     if (audio.paused) drawWaterfall(audio.currentTime || 0);
   }
 
-  function _loadAccompaniment() {
+  function _loadAccompaniment(forceRefresh) {
     if (!trackPath || accLoading) return;
-    if (accData && accData._style === teachStyle && accData._level === teachLevel) return;
+    if (!forceRefresh && accData && accData._style === teachStyle && accData._level === teachLevel) return;
     accLoading = true;
-    _setLoadingState(true, "AI 伴奏提取中...", "首次播放需要進行即時演算...");
-    const url = `/api/ai/accompaniment?path=${encodeURIComponent(trackPath)}&style=${teachStyle}&level=${teachLevel}`;
+    _setLoadingState(true, forceRefresh ? "AI 伴奏重新生成中..." : "AI 伴奏提取中...",
+                     forceRefresh ? "清除快取並重新演算（含踏板/力度）..." : "首次播放需要進行即時演算...");
+    let url = `/api/ai/accompaniment?path=${encodeURIComponent(trackPath)}&style=${teachStyle}&level=${teachLevel}`;
+    if (forceRefresh) url += "&nocache=1";
     fetch(url).then(r => r.json()).then(data => {
       if (data.error) {
         console.warn("Accompaniment:", data.error);
@@ -830,6 +832,11 @@
         data._style = teachStyle;
         data._level = teachLevel;
         accData = data;
+        if (forceRefresh) {
+          const pedalCount = (data.pedal || []).length;
+          const hasVel = (data.left_hand || []).some(e => e.velocity);
+          console.log(`[Refresh] pedal=${pedalCount}, velocity=${hasVel}`);
+        }
       }
       accLoading = false;
       _setLoadingState(false);
@@ -1285,6 +1292,16 @@
 
     if (btnShowChordTonesTB) btnShowChordTonesTB.addEventListener("click", handleChordTonesToggle);
     if (btnBottomShowChordTones) btnBottomShowChordTones.addEventListener("click", handleChordTonesToggle);
+
+    // Phase 11: Force refresh accompaniment (clear cache)
+    const btnRefreshAcc = $("#btnRefreshAcc");
+    if (btnRefreshAcc) {
+      btnRefreshAcc.addEventListener("click", () => {
+        accData = null;
+        _loadAccompaniment(true);
+        showToast("強制重新生成伴奏 (含踏板/力度)...", 3000);
+      });
+    }
   }
 
   // resize observer for 88-key piano
