@@ -75,5 +75,6 @@ midi/
 
 # Hybrid extraction 產出（Demucs stems + Basic Pitch MIDI）
 data/hybrid_bass/
+data/hybrid_melody/
 separated/
 transcribed_midi/

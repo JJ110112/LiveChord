@@ -51,9 +51,9 @@ SUPPORTED_EXT = {".flac", ".mp3", ".wav"}
 # 跳過超過此大小的檔案（MB），避免 OOM
 MAX_FILE_SIZE_MB = 100
 
-# 資料庫位置
-CHORDS_DIR = Path(__file__).parent.parent / "data" / "chords"
-MELODIES_DIR = Path(__file__).parent.parent / "data" / "melodies"
+# 資料庫位置 — 固定寫到 NAS，讓 LiveChord Server 即時存取
+CHORDS_DIR = Path("W:/data/chords")
+MELODIES_DIR = Path("W:/data/melodies")
 
 # ---------------------------------------------------------------------------
 # 工具函式

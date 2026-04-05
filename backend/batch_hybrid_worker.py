@@ -19,8 +19,10 @@ def run_hybrid_batch():
     # Always use the NAS data directory so LiveChord server can access the output
     data_dir = Path('W:/data')
         
-    hybrid_out_dir = data_dir / "hybrid_bass"
-    hybrid_out_dir.mkdir(exist_ok=True)
+    hybrid_bass_dir = data_dir / "hybrid_bass"
+    hybrid_melody_dir = data_dir / "hybrid_melody"
+    hybrid_bass_dir.mkdir(exist_ok=True)
+    hybrid_melody_dir.mkdir(exist_ok=True)
         
     separator = StemSeparator()
     transcriber = AudioToMidiTranscriber()
@@ -40,10 +42,11 @@ def run_hybrid_batch():
     
     for chord_path in chord_files:
         song_hash = chord_path.stem
-        sanitized_bass_path = hybrid_out_dir / f"{song_hash}.mid"
-        
-        # Skip if already processed
-        if sanitized_bass_path.exists():
+        sanitized_bass_path = hybrid_bass_dir / f"{song_hash}.mid"
+        sanitized_melody_path = hybrid_melody_dir / f"{song_hash}.mid"
+
+        # Skip if both already processed
+        if sanitized_bass_path.exists() and sanitized_melody_path.exists():
             continue
             
         with open(chord_path, 'r', encoding='utf-8') as f:
@@ -65,22 +68,29 @@ def run_hybrid_batch():
             
         logger.info(f"Processing Hybrid extraction for: {Path(audio_full_path).name}")
         
-        # 1. Stem Separation
+        # 1. Stem Separation (produces bass, vocals, drums, other)
         stems = separator.separate(audio_full_path)
-        if not stems or 'bass' not in stems:
-            logger.error(f"Failed to separate bass stem for {audio_full_path}.")
+        if not stems:
+            logger.error(f"Failed to separate stems for {audio_full_path}.")
             continue
-            
-        # 2. Transcription
-        raw_bass_mid = transcriber.transcribe(stems['bass'], 'bass')
-        if not raw_bass_mid:
-            logger.error(f"Failed to transcribe bass stem for {audio_full_path}.")
-            continue
-            
-        # 3. Sanitization
-        success = sanitizer.sanitize_bass(raw_bass_mid, chords_data.get("chords", []), str(sanitized_bass_path))
-        if success:
-            logger.info(f"Successfully generated hybrid bass skeleton for {song_hash}")
+
+        chords_list = chords_data.get("chords", [])
+
+        # 2a. Bass: Transcribe + Sanitize
+        if not sanitized_bass_path.exists() and 'bass' in stems:
+            raw_bass_mid = transcriber.transcribe(stems['bass'], 'bass')
+            if raw_bass_mid:
+                if sanitizer.sanitize_bass(raw_bass_mid, chords_list, str(sanitized_bass_path)):
+                    logger.info(f"Generated hybrid bass for {song_hash}")
+
+        # 2b. Melody (vocals): Transcribe + Sanitize
+        if not sanitized_melody_path.exists() and 'vocals' in stems:
+            raw_vocal_mid = transcriber.transcribe(stems['vocals'], 'melody')
+            if raw_vocal_mid:
+                if sanitizer.sanitize_melody(raw_vocal_mid, chords_list, str(sanitized_melody_path)):
+                    logger.info(f"Generated hybrid melody for {song_hash}")
+
+        if sanitized_bass_path.exists() and sanitized_melody_path.exists():
             processed += 1
             
     elapsed = time.time() - start_time

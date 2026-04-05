@@ -88,7 +88,8 @@ class MidiSanitizer:
             
         return pitch + diff
 
-    def sanitize_bass(self, raw_midi_path: str, chords: List[Dict[str, Any]], out_midi_path: str):
+    def _sanitize(self, raw_midi_path: str, chords: List[Dict[str, Any]], out_midi_path: str,
+                   pitch_low: int, pitch_high: int):
         """
         Reads raw_midi_path, snaps all notes to the closest chord tone specified in `chords`,
         and writes the result to out_midi_path.
@@ -123,10 +124,10 @@ class MidiSanitizer:
                     if valid_pitch_classes and active_chord != 'N':
                         new_pitch = self._snap_pitch(msg.note, valid_pitch_classes)
                         
-                        # Only allow bass range: e.g. E1 to G3 (~28 to 55)
-                        while new_pitch > 55:
+                        # Constrain to target range
+                        while new_pitch > pitch_high:
                             new_pitch -= 12
-                        while new_pitch < 28:
+                        while new_pitch < pitch_low:
                             new_pitch += 12
                             
                         # Avoid boundary issues
@@ -146,6 +147,14 @@ class MidiSanitizer:
         except Exception as e:
             logger.error(f"Failed to save sanitized MIDI {out_midi_path}: {e}")
             return False
+
+    def sanitize_bass(self, raw_midi_path: str, chords: List[Dict[str, Any]], out_midi_path: str):
+        """Snap bass notes to chord tones, constrained to E1-G3 (28-55)."""
+        return self._sanitize(raw_midi_path, chords, out_midi_path, pitch_low=28, pitch_high=55)
+
+    def sanitize_melody(self, raw_midi_path: str, chords: List[Dict[str, Any]], out_midi_path: str):
+        """Snap vocal/melody notes to chord tones, constrained to C3-C6 (48-84)."""
+        return self._sanitize(raw_midi_path, chords, out_midi_path, pitch_low=48, pitch_high=84)
 
 if __name__ == "__main__":
     # Test stub
