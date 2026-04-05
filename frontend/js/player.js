@@ -37,6 +37,7 @@
   let waterfallCtx = null;
   let waterfallActive = true;
   let show88ChordTones = localStorage.getItem("livechord_show_chord_tones") === "true";
+  let showFingering = localStorage.getItem("livechord_show_fingering") !== "false"; // 預設開啟
   let teachStyle = localStorage.getItem("livechord_teach_style") || "Arpeggio";
   let teachLevel = localStorage.getItem("livechord_teach_level") || "L1";
   if (!["L1", "L2", "L3"].includes(teachLevel)) teachLevel = "L1";
@@ -718,15 +719,22 @@
     // prune old sustain notes
     piano88SustainNotes = piano88SustainNotes.filter(n => currentTime - n.release < 0.5);
 
-    // determine actual played notes from accData if available
+    // determine actual played notes + fingering from accData
     let activeLh = [];
     let activeRh = [];
+    let fingeringMap = {};  // midi -> {finger, hand}
     if (waterfallActive && accData) {
        for (const e of (accData.left_hand||[])) {
-           if (e.time <= currentTime && e.time + e.duration >= currentTime) activeLh.push(e.pitch);
+           if (e.time <= currentTime && e.time + e.duration >= currentTime) {
+               activeLh.push(e.pitch);
+               if (e.finger) fingeringMap[e.pitch] = { finger: e.finger, hand: "left" };
+           }
        }
        for (const e of (accData.right_hand||[])) {
-           if (e.time <= currentTime && e.time + e.duration >= currentTime) activeRh.push(e.pitch);
+           if (e.time <= currentTime && e.time + e.duration >= currentTime) {
+               activeRh.push(e.pitch);
+               if (e.finger) fingeringMap[e.pitch] = { finger: e.finger, hand: "right" };
+           }
        }
     } else {
        activeLh = [...piano88ChordMidis];
@@ -745,10 +753,26 @@
       chordTones = [...new Set(piano88ChordMidis.map(m => m % 12))];
     }
 
+    // Phase 11: pedal state
+    let pedalActive = false;
+    let pedalDepth = 0;
+    if (accData && accData.pedal) {
+      for (const p of accData.pedal) {
+        if (p.start <= currentTime && p.end > currentTime) {
+          pedalActive = true;
+          pedalDepth = p.depth || 1.0;
+          break;
+        }
+      }
+    }
+
     ChordRender.draw88Piano(piano88Canvas, piano88Cache, activeLh, activeRh, {
       chordTones: chordTones,
       sustainNotes: activeHand === "right" ? [] : piano88SustainNotes,
       now: currentTime,
+      fingeringMap: showFingering ? fingeringMap : null,
+      pedalActive: pedalActive,
+      pedalDepth: pedalDepth,
     });
   }
 
@@ -1458,6 +1482,22 @@
 
     if (btnShowChordTonesTB) btnShowChordTonesTB.addEventListener("click", handleChordTonesToggle);
     if (btnBottomShowChordTones) btnBottomShowChordTones.addEventListener("click", handleChordTonesToggle);
+
+    // Phase 11: Fingering toggle
+    const btnFingering = $("#btnFingering");
+    if (btnFingering) {
+      const updateFingeringUI = () => {
+        btnFingering.style.background = showFingering ? "rgba(76, 175, 80, 0.2)" : "";
+        btnFingering.style.textShadow = showFingering ? "0 0 10px rgba(76, 175, 80, 0.8)" : "";
+      };
+      updateFingeringUI();
+      btnFingering.addEventListener("click", () => {
+        showFingering = !showFingering;
+        localStorage.setItem("livechord_show_fingering", showFingering.toString());
+        updateFingeringUI();
+        showToast(showFingering ? "指法顯示: ON" : "指法顯示: OFF", 1500);
+      });
+    }
 
     // Phase 11: Force refresh accompaniment (clear cache)
     const btnRefreshAcc = $("#btnRefreshAcc");

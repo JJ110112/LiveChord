@@ -894,6 +894,71 @@ const ChordRender = {
       }
     }
 
+    // ---- Phase 11 P3: Fingering numbers on piano keys ----
+    const fMap = opts && opts.fingeringMap;
+    if (fMap && Object.keys(fMap).length > 0) {
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+
+      for (const midiStr in fMap) {
+        const midi = parseInt(midiStr);
+        const { finger, hand } = fMap[midiStr];
+        if (!finger) continue;
+
+        const isBlack = !!blackXs[midi];
+        const ki = isBlack ? blackXs[midi] : whiteXs[midi];
+        if (!ki) continue;
+
+        const circleR = isBlack ? Math.min(ki.w * 0.35, 8) : Math.min(ki.w * 0.35, 10);
+        const cx = ki.x + ki.w / 2;
+        // White key: circle near bottom; Black key: circle near bottom of black key
+        const cy = isBlack ? ki.h - circleR - 4 : ki.h - circleR - 8;
+
+        // Circle background (hand-colored)
+        const circleColor = hand === "left"
+          ? (isBlack ? "rgba(33, 150, 243, 0.95)" : "rgba(33, 150, 243, 0.9)")
+          : (isBlack ? "rgba(255, 152, 0, 0.95)" : "rgba(255, 152, 0, 0.9)");
+
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = circleColor;
+        ctx.beginPath();
+        ctx.arc(cx, cy, circleR, 0, Math.PI * 2);
+        ctx.fill();
+
+        // White border
+        ctx.strokeStyle = "rgba(255,255,255,0.9)";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Finger number
+        ctx.fillStyle = "#fff";
+        ctx.font = `bold ${Math.round(circleR * 1.3)}px sans-serif`;
+        ctx.fillText(String(finger), cx, cy + 0.5);
+      }
+    }
+
+    // ---- Phase 11 P3: Pedal indicator bar ----
+    const pedalOn = opts && opts.pedalActive;
+    if (cache.bevelH > 0) {
+      const bevelY = cache.wKeyH;
+      const barH = cache.bevelH;
+      if (pedalOn) {
+        const depth = (opts && opts.pedalDepth) || 1.0;
+        // Glowing green bar when pedal is pressed
+        ctx.fillStyle = depth >= 1.0
+          ? "rgba(76, 175, 80, 0.6)"
+          : "rgba(76, 175, 80, 0.3)";  // half-pedal dimmer
+        ctx.fillRect(0, bevelY, w, barH);
+        // Label
+        ctx.fillStyle = "rgba(255,255,255,0.8)";
+        ctx.font = "bold 9px sans-serif";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(depth >= 1.0 ? "PEDAL" : "½ PED", 6, bevelY + barH / 2);
+      }
+    }
+
+    ctx.globalAlpha = 1;
     ctx.setTransform(1,0,0,1,0,0);
   },
 };
