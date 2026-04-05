@@ -736,3 +736,38 @@ GET /api/ai/qa-battle?path=...&style=Arpeggio&level=L2
 | 旋律碰撞假陽性 | 移除八度重疊判定，只計 ≤1 半音真碰撞 |
 | 樂句弧線全曲一段 | 加入 MAX_PHRASE_NOTES=16 自動切割 |
 | 平行五八度過度扣分 | 降低 penalty（pop/rock 常見手法）|
+
+---
+
+## P2 生產力工具 (2026-04-05 完成)
+
+### 批次檔一覽 (W:\ 目錄下雙擊執行)
+
+| 批次檔 | 用途 | 使用時機 | 預估時間 |
+|--------|------|---------|---------|
+| `start.bat` | 啟動 LiveChord 伺服器 | 每次開機後執行 | 即時 |
+| `Run-SuperWorker.bat` | BTC 和弦 + pYIN 旋律雙引擎掃描 | NAS 新增音樂後，需要批次偵測和弦+旋律 | 依剩餘量 |
+| `run_accompaniment_factory.bat` | 標準伴奏生成 (L1+L2 × 2 風格) | Super Worker 完成後，為所有歌生成伴奏+踏板+力度 | ~1hr/6000首 |
+| `run_accompaniment_full.bat` | 完整伴奏 (L1~L3 × 5 風格 = 15 檔/首) | 想要所有風格×難度的完整組合時 | 較久 |
+| `run_accompaniment_fast.bat` | 高速伴奏 (不含踏板/力度) | 只需要基本伴奏指法，不需要教學輔助資料時 | 最快 |
+| `run_retrain_models.bat` | 重新訓練 AI 模型 | Super Worker 跑完一大批後，更新 Markov/Chord2Vec/Emission | ~2 分鐘 |
+| `run_qa_test.bat` | QA 品質測試 (3 首基準歌曲) | 修改 AI 模組後，快速驗證品質未退化 | ~3 秒 |
+
+### 建議執行順序
+
+```
+1. start.bat                      ← 開機啟動伺服器
+2. Run-SuperWorker.bat             ← NAS 有新歌時跑（可背景）
+3. run_retrain_models.bat          ← Super Worker 跑完一批後更新模型
+4. run_accompaniment_factory.bat   ← 為已有和弦+旋律的歌生成伴奏
+5. run_qa_test.bat                 ← 隨時可跑，驗證系統品質
+```
+
+### Super Worker 加速 (Phase 11)
+
+| 項目 | 之前 | 之後 |
+|------|------|------|
+| adaptive_range | ON (雙重 pYIN) | OFF (fast_mode) |
+| onset_detect | ON | OFF (fast_mode) |
+| print 輸出 | 每首 3 行 | 靜音 |
+| **速度** | 0.08 首/秒 | **~0.13 首/秒 (+60%)** |
