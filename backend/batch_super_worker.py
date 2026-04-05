@@ -11,8 +11,12 @@ import json
 import time
 import argparse
 import threading
+import warnings
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# 靜音 librosa n_fft 警告 (短音訊片段無害)
+warnings.filterwarnings("ignore", message="n_fft=.*is too large")
 
 # 確保可以 import backend 下的模組
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
