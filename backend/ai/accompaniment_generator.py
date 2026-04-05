@@ -489,7 +489,9 @@ def generate_accompaniment(chords: List[Dict],
                            style: str = "Block",
                            level: str = "L1",
                            genre: str = "",
-                           section_type: str = "default") -> Dict[str, Any]:
+                           section_type: str = "default",
+                           hybrid_bass_events: List[Dict] = None,
+                           hybrid_melody_events: List[Dict] = None) -> Dict[str, Any]:
     """
     主入口：根據和弦序列、旋律、風格與難度，生成左右手 MIDI 伴奏。
 
@@ -513,10 +515,28 @@ def generate_accompaniment(chords: List[Dict],
         }
     """
     melody = melody or []
-    if style not in STYLE_DICT:
+    if style not in STYLE_DICT and style != "Hybrid":
         style = "Block"
     if level not in ("L1", "L2", "L3"):
         level = "L1"
+
+    if style == "Hybrid":
+        # Hybrid mode uses pre-sanitized audio-to-midi events
+        left_events = [e.copy() for e in (hybrid_bass_events or [])]
+        right_events = [e.copy() for e in (hybrid_melody_events or melody)]
+        # Force hand assignments
+        for e in left_events: e["hand"] = "left"
+        for e in right_events: e["hand"] = "right"
+        _assign_fingering(left_events, hand="left")
+        _assign_fingering(right_events, hand="right")
+        return {
+            "left_hand": left_events,
+            "right_hand": right_events,
+            "suggested_styles": ["Hybrid"],
+            "style": "Hybrid",
+            "level": level,
+            "section_type": section_type,
+        }
 
     # Phase 11b #3/#7: Section-aware 密度/力度
     density_mult, velocity_mult = SECTION_PARAMS.get(

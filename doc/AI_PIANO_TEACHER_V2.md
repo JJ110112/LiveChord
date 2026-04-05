@@ -904,4 +904,23 @@ Phase 11 修正：移除全面降級，只修正致命跨距 (>13 半音)，保�
 | `441874b` | 修正批次檔路徑 |
 | `97ec682` | P3: 鍵盤指法圓圈 + 踏板指示燈 |
 | `043a9cd` | 修正指法全面降級問題 |
+| `043a9cd` | 修正指法全面降級問題 |
 | `67007f7` | 指法 lookahead (提前 1 秒顯示) |
+
+---
+
+## Phase 12: 音訊啟發混合架構 (Hybrid AI Generation)
+
+> 日期: 2026-04-05
+> 狀態: **基礎架構實作完成**
+
+為了突破純粹由和弦規則 (Rule-based) 生成伴奏的限制（死板、缺乏人類律動），我們設計並引進了全新的 **Hybrid 音訊啟發生成系統**。
+
+### 核心模組實作：
+1. **Stem 分離** (`backend/ai/stem_separator.py`): 自動載入 Demucs 模型，將原作音訊拆分為 Bass / Vocals 骨幹音軌。
+2. **Audio-to-MIDI** (`backend/ai/audio_to_midi_transcriber.py`): 透過 Spotify 的 `basic-pitch` 擷取充滿原始人類 Groove 的粗糙 MIDI 骨架。
+3. **Midi Sanitizer** (`backend/ai/midi_sanitizer.py`): 這套嶄新的過濾器會拿粗糙的 AI 轉錄音符，對比 LiveChord 極高準確度的 `chords.json`。遇上泛音錯音時強制吸附回正確的和弦音，完美融合了「人類律動＋無走音和聲」。
+4. **Hybrid Generator**: 在 `accompaniment_generator.py` 中開新分支，支援封裝修正過後的 `hybrid_bass` 作為底部。
+5. **Batch Worker**: 抽離耗時的 AI 模型運算，建立獨立的 `batch_hybrid_worker.py` 來跑批次。
+
+詳細規格請參照 [HYBRID_GENERATION_SPEC.md](HYBRID_GENERATION_SPEC.md)。
