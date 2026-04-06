@@ -36,7 +36,9 @@ const NOTE_NAMES_FLAT  = ["C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B"];
 function noteToSemitone(n) {
   const m = {C:0,D:2,E:4,F:5,G:7,A:9,B:11};
   let s = m[n[0].toUpperCase()] || 0;
-  if (n.length > 1) { if (n[1]==="#") s++; else if (n[1]==="b") s--; }
+  for (let i = 1; i < n.length; i++) {
+    if (n[i] === "#") s++; else if (n[i] === "b") s--;
+  }
   return ((s%12)+12)%12;
 }
 

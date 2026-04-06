@@ -67,6 +67,12 @@ def resolve_path(track_path: str) -> str:
             idx = 0
         if 0 <= idx < len(roots):
             return os.path.normpath(os.path.join(roots[idx], rest))
+    # Try all roots, return the first that exists on disk
+    for root in roots:
+        candidate = os.path.normpath(os.path.join(root, track_path))
+        if os.path.exists(candidate):
+            return candidate
+    # Fallback to first root (caller will check existence)
     return os.path.normpath(os.path.join(roots[0], track_path))
 
 

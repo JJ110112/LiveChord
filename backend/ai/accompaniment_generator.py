@@ -37,21 +37,29 @@ RH_LOW, RH_HIGH = 60, 84
 # velocity_ratio: 相對力度 (1.0 = 基準)
 
 STYLE_DICT = {
+    # ── Pop Ballad 系列 (參考 Ron Drotos Pop Ballad Accompaniment) ──
     "Block": [
+        # Lesson 1/4: 全部和弦音同時下鍵
         (0.0, [0, 1, 2], 1.0),
     ],
     "Arpeggio": [
-        (0.0,  [0],    1.0),
-        (0.25, [1],    0.8),
-        (0.50, [2],    0.8),
-        (0.75, [1],    0.7),
+        # Lesson 5/8: 分解伴奏 — root 錨定，上方音流動
+        # L2 voicing [root,5th,oct]: R→5→8→5 (經典 pop ballad 搖擺)
+        # L3 voicing [root,3rd,5th,...]: R→3→5→3
+        (0.0,  [0],  1.0),     # Beat 1: 根音 (bass anchor)
+        (0.25, [1],  0.7),     # Beat 2: 上方音
+        (0.50, [2],  0.75),    # Beat 3: 最高音
+        (0.75, [1],  0.65),    # Beat 4: 回落
     ],
     "Rhythm": [
-        (0.0,  [0],       1.0),
-        (0.50, [0, 1, 2], 0.85),
-        (0.75, [0, 1, 2], 0.7),
+        # Lesson 2/11: 附點節奏 .œ jœ ˙ (pop ballad 標誌性節奏)
+        # 附點四分(1.5拍) + 八分(0.5拍) + 二分(2拍)
+        (0.0,    [0, 2], 1.0),    # Beat 1: root+octave (附點四分音符)
+        (0.375,  [0],    0.65),   # Beat 2+: root only (輕觸八分音符)
+        (0.5,    [0, 2], 0.8),    # Beat 3: root+octave (二分音符，sustained)
     ],
     "Alberti": [
+        # 古典分解: 低-高-中-高
         (0.0,  [0],  1.0),   # 低 (Root)
         (0.25, [2],  0.75),   # 高 (5th)
         (0.50, [1],  0.8),    # 中 (3rd)
@@ -209,6 +217,8 @@ def voice_leading_optimize(pitches: List[int], prev_pitches: List[int],
     result.sort()
 
     # 平行五度/八度簡易檢查 (如果有足夠聲部)
+    # 只在修正後仍為和弦音時才套用，避免產生不屬於和弦的音
+    chord_pcs = {p % 12 for p in pitches}
     if len(result) >= 2 and len(prev_pitches) >= 2:
         prev_sorted = sorted(prev_pitches)
         n = min(len(result), len(prev_sorted))
@@ -220,11 +230,13 @@ def voice_leading_optimize(pitches: List[int], prev_pitches: List[int],
                 mv_j = result[j] - prev_sorted[j]
                 # 同方向 + 平行五度
                 if mv_i * mv_j > 0 and iv_prev == 7 and iv_curr == 7:
-                    # 修正: 其中一個聲部反向移動 1 半音
-                    if result[j] + 1 <= high:
+                    original = result[j]
+                    if result[j] + 1 <= high and (result[j] + 1) % 12 in chord_pcs:
                         result[j] += 1
-                    elif result[j] - 1 >= low:
+                    elif result[j] - 1 >= low and (result[j] - 1) % 12 in chord_pcs:
                         result[j] -= 1
+                    # 若偏移後不是和弦音，寧可保留平行五度也不彈錯音
+                    # (不做任何修正)
 
     return result
 
@@ -312,20 +324,32 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
         notes[0] = bass_name
 
     # Level 決定 voicing 複雜度
+    # 參考 Ron Drotos《Pop Ballad Accompaniment》:
+    #   L1 = Lesson 1 (whole note root)
+    #   L2 = Lesson 11 (octave bass: root + 5th + octave)
+    #   L3 = Lesson 12/14 (full voicing + passing tones)
     if level == "L1":
-        # 只有根音
+        # 只有根音 (C2)
         raw = note_names_to_midi(notes[:1], base_octave=2)
-    elif level == "L2" and len(notes) >= 4:
-        # Shell Voicing: 根音(C2) + 3rd/7th(C3)
-        shell_notes = [notes[1], notes[3]] if len(notes) >= 4 else notes[1:3]
-        upper = note_names_to_midi(shell_notes, base_octave=3)
-        root_st = root_to_semitone(notes[0]) + 36 # C2 root
-        raw = [root_st] + upper
+    elif level == "L2":
+        # Pop Octave Bass: root(C2) + 5th + root octave(C3)
+        root_st = root_to_semitone(notes[0]) + 36  # C2 root
+        # 取五度音 (第 3 個組成音)
+        fifth_name = notes[min(2, len(notes) - 1)]
+        fifth_midi = root_to_semitone(fifth_name) + 36
+        while fifth_midi <= root_st:
+            fifth_midi += 12
+        # 若五度超過八度範圍，拉回
+        oct_st = root_st + 12  # Root octave (C3)
+        if fifth_midi > oct_st:
+            fifth_midi -= 12
+            if fifth_midi <= root_st:
+                fifth_midi = root_st + 7  # fallback: 純五度
+        raw = sorted(set([root_st, fifth_midi, oct_st]))
     else:
-        # L3 或無足夠音符時用完整 voicing
-        # Open Voicing: 根音(C2) + 剩餘和弦音(C3)
+        # L3: Open Voicing — root(C2) + 全部和弦音(C3)
         upper = note_names_to_midi(notes[1:], base_octave=3)
-        root_st = root_to_semitone(notes[0]) + 36 # C2 root
+        root_st = root_to_semitone(notes[0]) + 36  # C2 root
         raw = [root_st] + upper
 
     # Clamp 到左手範圍
@@ -350,10 +374,11 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
     voicing = expand_voicing(pitches, max(max_idx, len(pitches)))
 
     events = []
-    for frac, indices, vel_ratio in pattern:
+    for pi, (frac, indices, vel_ratio) in enumerate(pattern):
         event_time = start_time + frac * duration
-        # 每個 pattern step 的持續時間
-        event_dur = (duration / len(pattern)) * 0.85
+        # Gap-based duration: 音符持續到下一個 pattern 位置 (×0.9 留呼吸空間)
+        next_frac = pattern[pi + 1][0] if pi + 1 < len(pattern) else 1.0
+        event_dur = (next_frac - frac) * duration * 0.9
 
         for idx in indices:
             # Walking Bass approach note: -1 表示下一和弦根音的半音下方
@@ -390,6 +415,40 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
                 "velocity": velocity,
                 "hand": "left",
             })
+
+    # ── L3 Passing Tone (Lesson 12/14): 在最後半拍加經過音趨近下一根音 ──
+    if level == "L3" and next_root_midi is not None and style in ("Arpeggio", "Rhythm", "Block"):
+        current_root = pitches[0] if pitches else None
+        if current_root is not None:
+            # 找最近的 next root 在 LH 範圍內的八度位置
+            target_pc = next_root_midi % 12
+            base_oct = (current_root // 12) * 12
+            candidates = [target_pc + base_oct + off for off in (-12, 0, 12)]
+            candidates = [c for c in candidates if LH_LOW <= c <= LH_HIGH]
+            if candidates:
+                target = min(candidates, key=lambda x: abs(x - current_root))
+                # 從下方二度趨近 (ascending approach — pop ballad 常用)
+                passing = target - 2
+                if passing == current_root:
+                    passing = target - 1  # 避免重複根音
+                # 若超出範圍，改從上方趨近
+                if not (LH_LOW <= passing <= LH_HIGH):
+                    passing = target + 2
+                    if passing == current_root:
+                        passing = target + 1
+                # 同根音不加經過音
+                if target == current_root:
+                    passing = None
+                if passing is not None and LH_LOW <= passing <= LH_HIGH:
+                    pt_time = start_time + duration * 0.875  # 最後 1/8 拍
+                    pt_dur = duration * 0.125 * 0.9
+                    events.append({
+                        "time": round(pt_time, 3),
+                        "duration": round(pt_dur, 3),
+                        "pitch": int(passing),
+                        "velocity": int(base_velocity * 0.6),
+                        "hand": "left",
+                    })
 
     return events, pitches
 
@@ -489,9 +548,7 @@ def generate_accompaniment(chords: List[Dict],
                            style: str = "Block",
                            level: str = "L1",
                            genre: str = "",
-                           section_type: str = "default",
-                           hybrid_bass_events: List[Dict] = None,
-                           hybrid_melody_events: List[Dict] = None) -> Dict[str, Any]:
+                           section_type: str = "default") -> Dict[str, Any]:
     """
     主入口：根據和弦序列、旋律、風格與難度，生成左右手 MIDI 伴奏。
 
@@ -515,28 +572,10 @@ def generate_accompaniment(chords: List[Dict],
         }
     """
     melody = melody or []
-    if style not in STYLE_DICT and style != "Hybrid":
+    if style not in STYLE_DICT:
         style = "Block"
     if level not in ("L1", "L2", "L3"):
         level = "L1"
-
-    if style == "Hybrid":
-        # Hybrid mode uses pre-sanitized audio-to-midi events
-        left_events = [e.copy() for e in (hybrid_bass_events or [])]
-        right_events = [e.copy() for e in (hybrid_melody_events or melody)]
-        # Force hand assignments
-        for e in left_events: e["hand"] = "left"
-        for e in right_events: e["hand"] = "right"
-        _assign_fingering(left_events, hand="left")
-        _assign_fingering(right_events, hand="right")
-        return {
-            "left_hand": left_events,
-            "right_hand": right_events,
-            "suggested_styles": ["Hybrid"],
-            "style": "Hybrid",
-            "level": level,
-            "section_type": section_type,
-        }
 
     # Phase 11b #3/#7: Section-aware 密度/力度
     density_mult, velocity_mult = SECTION_PARAMS.get(

@@ -1416,7 +1416,7 @@
     if (msgs.length === 0) {
       if (teachStyle === "Arpeggio") msgs.push("流動的分解和弦 — 保持均勻觸鍵");
       else if (teachStyle === "Block") msgs.push("柱狀和弦 — 雙手同步，力度均衡");
-      else if (teachStyle === "Rhythm") msgs.push("節奏伴奏 — 感受律動，強拍推進");
+      else if (teachStyle === "Rhythm") msgs.push("Ballad 附點節奏 — 長-短-長，抒情搖擺");
       else if (teachStyle === "Walking") msgs.push("Walking Bass — 低音線條行走中");
       else if (teachStyle === "Stride") msgs.push("Stride — 低音與和弦交替跳躍");
       else if (teachStyle === "Shell") msgs.push("Shell Voicing — 3rd + 7th 骨架和聲");
@@ -2800,13 +2800,62 @@
     }
   });
 
-  // --- AI Auditing Synthesizer ---
+  // --- AI Auditing Synthesizer (Salamander Grand Piano Sampler) ---
   class PianoSynth {
     constructor() {
       this.ctx = null;
       this.masterGain = null;
       this.volLeft = 1;
       this.volRight = 1;
+      this.samples = {};    // MIDI note -> AudioBuffer
+      this.loading = false;
+      this.loaded = false;
+      // Salamander Grand Piano (CC-BY-3.0) via Tone.js CDN
+      this._baseUrl = "https://tonejs.github.io/audio/salamander/";
+      // Notes we actually load (every 3 semitones covers 88 keys with pitch-shift)
+      this._sampleNotes = [
+        21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54,
+        57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90,
+        93, 96, 99, 102, 105, 108
+      ];
+    }
+
+    _noteToName(midi) {
+      // Tone.js Salamander uses sharps (Cs, Ds, Fs, Gs, As), not flats
+      const names = ['C','Cs','D','Ds','E','F','Fs','G','Gs','A','As','B'];
+      const oct = Math.floor(midi / 12) - 1;
+      return names[midi % 12] + oct;
+    }
+
+    async _loadSamples() {
+      if (this.loading || this.loaded) return;
+      this.loading = true;
+      const promises = this._sampleNotes.map(async (note) => {
+        const name = this._noteToName(note);
+        const url = this._baseUrl + name + ".mp3";
+        try {
+          const resp = await fetch(url);
+          if (!resp.ok) return;
+          const buf = await resp.arrayBuffer();
+          this.samples[note] = await this.ctx.decodeAudioData(buf);
+        } catch (e) {
+          console.warn("Failed to load sample:", name, e);
+        }
+      });
+      await Promise.all(promises);
+      this.loaded = true;
+      this.loading = false;
+      console.log(`Piano samples loaded: ${Object.keys(this.samples).length} notes`);
+    }
+
+    _findClosestSample(pitch) {
+      let best = this._sampleNotes[0];
+      let bestDist = Math.abs(pitch - best);
+      for (const n of this._sampleNotes) {
+        const d = Math.abs(pitch - n);
+        if (d < bestDist) { bestDist = d; best = n; }
+      }
+      return best;
     }
 
     init() {
@@ -2815,31 +2864,53 @@
         this.masterGain = this.ctx.createGain();
         this.masterGain.gain.value = 0.5;
         this.masterGain.connect(this.ctx.destination);
+        this._loadSamples();
       }
     }
 
     playNote(pitch, duration, hand, startTime) {
       if (!this.ctx) return;
-      // 根據 L/R 視覺開關判定是否發聲
       if (typeof activeHand !== 'undefined' && activeHand !== "both" && activeHand !== hand) return;
 
       const vol = hand === 'left' ? this.volLeft : this.volRight;
       if (vol <= 0) return;
 
+      // Sampler mode (preferred)
+      if (this.loaded && Object.keys(this.samples).length > 0) {
+        const sampleNote = this._findClosestSample(pitch);
+        const buffer = this.samples[sampleNote];
+        if (!buffer) return;
+
+        const source = this.ctx.createBufferSource();
+        source.buffer = buffer;
+        // Pitch-shift by adjusting playback rate
+        source.playbackRate.value = Math.pow(2, (pitch - sampleNote) / 12);
+
+        const gain = this.ctx.createGain();
+        source.connect(gain);
+        gain.connect(this.masterGain);
+
+        // Natural piano envelope with release
+        gain.gain.setValueAtTime(vol * 0.4, startTime);
+        gain.gain.setValueAtTime(vol * 0.4, startTime + Math.max(0, duration - 0.08));
+        gain.gain.linearRampToValueAtTime(0, startTime + duration + 0.1);
+
+        source.start(startTime);
+        source.stop(startTime + duration + 0.15);
+        return;
+      }
+
+      // Fallback: oscillator (while samples are loading)
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
-      
       osc.type = pitch < 60 ? 'triangle' : 'sine';
       osc.frequency.value = 440 * Math.pow(2, (pitch - 69) / 12);
-      
       osc.connect(gain);
       gain.connect(this.masterGain);
-      
       gain.gain.setValueAtTime(0, startTime);
       gain.gain.linearRampToValueAtTime(vol * 0.3, startTime + 0.02);
       gain.gain.exponentialRampToValueAtTime(vol * 0.1, Math.max(startTime + 0.02, startTime + duration - 0.05));
       gain.gain.linearRampToValueAtTime(0, startTime + duration);
-      
       osc.start(startTime);
       osc.stop(startTime + duration);
     }
