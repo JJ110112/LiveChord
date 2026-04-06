@@ -110,6 +110,25 @@ BPM_STYLE_MAP = [
 ]
 
 # ==============================================================================
+# Style → 固定 LH/RH 行為 (取代 L1/L2/L3 level 系統)
+# ==============================================================================
+# 每個 style 自帶一個合理的 voicing 複雜度，不需要使用者再選 level
+# lh_level: 控制左手 voicing (L1=根音, L2=root+5th+oct, L3=full voicing)
+# rh_mode:  控制右手 (fill_only/fill_harmony/fill_block/arpeggio/1+3)
+# lh_vel:   左手基準力度
+# rh_vel:   右手基準力度
+STYLE_CONFIG = {
+    "1+3":     {"lh_level": "L1", "rh_mode": "1+3",          "lh_vel": 55, "rh_vel": 85},
+    "Block":   {"lh_level": "L2", "rh_mode": "fill_only",    "lh_vel": 60, "rh_vel": 90},
+    "Arpeggio":{"lh_level": "L2", "rh_mode": "fill_only",    "lh_vel": 60, "rh_vel": 85},
+    "Rhythm":  {"lh_level": "L2", "rh_mode": "fill_harmony", "lh_vel": 65, "rh_vel": 90},
+    "Alberti": {"lh_level": "L2", "rh_mode": "fill_only",    "lh_vel": 60, "rh_vel": 85},
+    "Shell":   {"lh_level": "L3", "rh_mode": "fill_harmony", "lh_vel": 65, "rh_vel": 85},
+    "Walking": {"lh_level": "L3", "rh_mode": "fill_harmony", "lh_vel": 70, "rh_vel": 85},
+    "Stride":  {"lh_level": "L3", "rh_mode": "fill_block",   "lh_vel": 70, "rh_vel": 90},
+}
+
+# ==============================================================================
 # Phase 11b #3: Section-Aware 密度/力度控制
 # ==============================================================================
 # 段落類型 → (密度乘數, 力度乘數)
@@ -837,17 +856,14 @@ def generate_accompaniment(chords: List[Dict],
     auto_mode = (style == "Auto")
     if style not in STYLE_DICT and not auto_mode:
         style = "Block"
-    if level not in ("L1", "L2", "L3"):
-        level = "L1"
+
+    # level 參數保留向後相容，但實際由 STYLE_CONFIG 決定
+    # (前端不再傳 level，後端忽略)
 
     left_events = []
     right_events = []
     prev_lh: List[int] = []
-    prev_rh_1plus3: List[int] = []  # 1+3 RH voice leading state
-
-    # 基準力度 (L1/L2 左手弱, L3 正常)
-    base_lh_vel = 55 if level == "L1" else 65 if level == "L2" else 70
-    base_rh_vel = 90
+    prev_rh_1plus3: List[int] = []
 
     for i, chord_evt in enumerate(chords):
         start = chord_evt.get("time", 0)
@@ -866,18 +882,25 @@ def generate_accompaniment(chords: List[Dict],
                     chord_section = sec.get("type", "default")
                     break
 
-        # Section-aware 密度/力度
+        # ── Auto mode: 段落決定 style ──
+        if auto_mode:
+            current_style = SECTION_STYLE_MAP.get(chord_section, "Arpeggio")
+        else:
+            current_style = style
+
+        # 從 STYLE_CONFIG 取得此 style 的固定參數
+        cfg = STYLE_CONFIG.get(current_style, STYLE_CONFIG["Block"])
+        lh_level = cfg["lh_level"]
+        rh_mode = cfg["rh_mode"]
+        base_lh_vel = cfg["lh_vel"]
+        base_rh_vel = cfg["rh_vel"]
+
+        # Section-aware 力度調變
         density_mult, velocity_mult = SECTION_PARAMS.get(
             chord_section, SECTION_PARAMS["default"]
         )
         lh_velocity = int(base_lh_vel * velocity_mult)
         rh_velocity = int(base_rh_vel * velocity_mult)
-
-        # ── Auto mode: 段落決定 pattern ──
-        if auto_mode:
-            current_style = SECTION_STYLE_MAP.get(chord_section, "Arpeggio")
-        else:
-            current_style = style
 
         # 計算下一和弦根音 (Walking Bass approach note)
         next_root_midi = None
@@ -888,26 +911,23 @@ def generate_accompaniment(chords: List[Dict],
 
         # 左手
         lh, prev_lh = _build_left_hand(
-            chord_name, start, duration, current_style, level,
+            chord_name, start, duration, current_style, lh_level,
             prev_lh, next_root_midi, melody, lh_velocity
         )
         left_events.extend(lh)
 
-        # ── Per-chord RH ──
-        if current_style == "1+3":
-            # 1+3 配置: RH 每拍彈三音 block chord
+        # ── 右手 ──
+        if rh_mode == "1+3":
             rh, prev_rh_1plus3 = _build_rh_1plus3(
                 chord_name, start, duration, bpm,
                 prev_rh_1plus3, rh_velocity
             )
             right_events.extend(rh)
         else:
-            if auto_mode:
-                rh_mode = RH_SECTION_MODE.get(chord_section, "fill_only")
-            else:
-                rh_mode = "fill_only" if level == "L1" else "fill_harmony"
-            rh = _build_right_hand(chord_name, start, duration, level, melody,
-                                   rh_velocity, rh_mode=rh_mode)
+            # Auto mode: 段落覆蓋 rh_mode
+            actual_rh_mode = RH_SECTION_MODE.get(chord_section, rh_mode) if auto_mode else rh_mode
+            rh = _build_right_hand(chord_name, start, duration, lh_level, melody,
+                                   rh_velocity, rh_mode=actual_rh_mode)
             right_events.extend(rh)
 
     # 左手跨度限制過濾
