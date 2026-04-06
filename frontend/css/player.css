@@ -248,7 +248,7 @@
   bottom: 0;
   left: 0;
   right: 0;
-  z-index: 600;
+  z-index: 9000;
   background: rgba(13,17,23,0.92);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -326,17 +326,18 @@
   position: relative;
 }
 .instrument-menu {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 4px;
-  background: var(--bg-card);
+  position: fixed;
+  bottom: 50px;
+  right: 16px;
+  background: rgba(22,27,34,0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: var(--shadow);
-  z-index: 200;
+  box-shadow: 0 -4px 24px rgba(0,0,0,0.5);
+  z-index: 10000;
   overflow: hidden;
-  min-width: 120px;
+  min-width: 130px;
 }
 .inst-option {
   display: block;

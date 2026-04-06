@@ -2576,9 +2576,18 @@
   }
 
   if (btnInstrument && instrumentMenu) {
+    // Move menu to body so it's not clipped by overflow:hidden ancestors
+    document.body.appendChild(instrumentMenu);
     btnInstrument.addEventListener("click", (e) => {
       e.stopPropagation();
-      instrumentMenu.style.display = instrumentMenu.style.display === "none" ? "block" : "none";
+      const show = instrumentMenu.style.display === "none";
+      if (show) {
+        const r = btnInstrument.getBoundingClientRect();
+        instrumentMenu.style.left = "";
+        instrumentMenu.style.right = (window.innerWidth - r.right) + "px";
+        instrumentMenu.style.bottom = (window.innerHeight - r.top + 4) + "px";
+      }
+      instrumentMenu.style.display = show ? "block" : "none";
     });
     document.addEventListener("click", () => { instrumentMenu.style.display = "none"; });
 
