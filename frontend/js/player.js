@@ -2346,6 +2346,28 @@
   if (btnSpeed) btnSpeed.addEventListener("click", _cycleSpeed);
   if (btnMiniSpeed) btnMiniSpeed.addEventListener("click", _cycleSpeed);
 
+  // --- mini volume slider (overlay) ---
+  const miniVolumeSlider = $("#miniVolumeSlider");
+  const btnMiniMute = $("#btnMiniMute");
+  if (miniVolumeSlider) {
+    miniVolumeSlider.addEventListener("input", () => {
+      audio.volume = parseFloat(miniVolumeSlider.value);
+      if (volumeSlider) volumeSlider.value = miniVolumeSlider.value;
+    });
+    // sync from main volume slider
+    if (volumeSlider) {
+      volumeSlider.addEventListener("input", () => {
+        miniVolumeSlider.value = volumeSlider.value;
+      });
+    }
+  }
+  if (btnMiniMute) {
+    btnMiniMute.addEventListener("click", () => {
+      audio.muted = !audio.muted;
+      btnMiniMute.textContent = audio.muted ? "\u{1F507}" : "\u{1F509}";
+    });
+  }
+
   // rewind / prev / next
   $("#btnRewind").addEventListener("click", _rewindToStart);
   $("#btnPrev").addEventListener("click", _navPrev);
@@ -3100,13 +3122,24 @@
   const OPEN_MIDI_G = [40, 45, 50, 55, 59, 64];
 
   function _initGuitarTab() {
-    if (!chordData || !chordData.chords || chordData.chords.length === 0) return;
+    if (!chordData || !chordData.chords || chordData.chords.length === 0) {
+      // Retry after chords load
+      setTimeout(() => { if (activeTab === "guitar") _initGuitarTab(); }, 1000);
+      return;
+    }
     _guitarInitialized = true;
     _guitarActiveIdx = -1;
     _guitarVoicingIdx = 0;
     _buildGuitarTimeline();
     _prefetchGuitarData();
-    _updateGuitarTab(audio.currentTime || 0);
+    // Force initial render (even when paused at time 0)
+    const chords = _displayChords();
+    if (chords && chords.length > 0) {
+      _guitarActiveIdx = 0;
+      _renderGuitarFretboard(chords[0].chord, 0);
+      _renderGuitarTeachInfo(chords[0].chord);
+      _updateGuitarTimeline(audio.currentTime || 0);
+    }
   }
 
   async function _prefetchGuitarData() {
