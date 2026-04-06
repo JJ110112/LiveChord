@@ -118,13 +118,21 @@ BPM_STYLE_MAP = [
 # lh_vel:   左手基準力度
 # rh_vel:   右手基準力度
 STYLE_CONFIG = {
+    # LH 根音, RH 三和音 block 每拍
     "1+3":     {"lh_level": "L1", "rh_mode": "1+3",          "lh_vel": 55, "rh_vel": 85},
-    "Block":   {"lh_level": "L2", "rh_mode": "fill_only",    "lh_vel": 60, "rh_vel": 90},
+    # LH root+5th+oct 柱狀, RH 三和音柱狀, 換和弦同時下鍵
+    "Block":   {"lh_level": "L2", "rh_mode": "1+3_once",     "lh_vel": 60, "rh_vel": 90},
+    # LH root+5th+oct 琶音, RH gap-fill
     "Arpeggio":{"lh_level": "L2", "rh_mode": "fill_only",    "lh_vel": 60, "rh_vel": 85},
+    # LH root+5th+oct 附點, RH gap-fill harmony
     "Rhythm":  {"lh_level": "L2", "rh_mode": "fill_harmony", "lh_vel": 65, "rh_vel": 90},
+    # LH 古典分解, RH gap-fill
     "Alberti": {"lh_level": "L2", "rh_mode": "fill_only",    "lh_vel": 60, "rh_vel": 85},
+    # LH 3rd+7th, RH gap-fill harmony
     "Shell":   {"lh_level": "L3", "rh_mode": "fill_harmony", "lh_vel": 65, "rh_vel": 85},
+    # LH Walking Bass, RH gap-fill harmony
     "Walking": {"lh_level": "L3", "rh_mode": "fill_harmony", "lh_vel": 70, "rh_vel": 85},
+    # LH 低音+和弦跳, RH gap-fill block
     "Stride":  {"lh_level": "L3", "rh_mode": "fill_block",   "lh_vel": 70, "rh_vel": 90},
 }
 
@@ -429,8 +437,8 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
     # 取得 pattern
     pattern = STYLE_DICT.get(style, STYLE_DICT["Block"])
 
-    # L1 強制簡化 pattern
-    if level == "L1" and style not in ("Block", "Shell"):
+    # L1 強制簡化 pattern: 只彈根音一次
+    if level == "L1":
         pattern = [(0.0, [0], 1.0)]
 
     # 擴展 voicing 到 pattern 需要的最大索引
@@ -609,7 +617,8 @@ def _build_fill_notes(chord_notes: List[str], gap_start: float, gap_dur: float,
 
 def _build_rh_1plus3(chord_name: str, start_time: float, duration: float,
                      bpm: float, prev_rh_pitches: List[int],
-                     base_velocity: int = 85) -> Tuple[List[Dict], List[int]]:
+                     base_velocity: int = 85,
+                     once: bool = False) -> Tuple[List[Dict], List[int]]:
     """
     1+3 配置: 右手每拍彈三個和弦音 block chord (C4 附近)。
 
@@ -645,16 +654,16 @@ def _build_rh_1plus3(chord_name: str, start_time: float, duration: float,
     if len(pitches) < 3:
         pitches = expand_voicing(pitches, 3, max_span=12)[:3]
 
-    # 計算每拍的時間
+    # 計算每拍的時間 (once=True: 只彈一次)
     beat_dur = 60.0 / bpm
-    n_beats = max(1, int(round(duration / beat_dur)))
+    n_beats = 1 if once else max(1, int(round(duration / beat_dur)))
 
     events = []
     for b in range(n_beats):
         beat_time = start_time + b * beat_dur
         if beat_time >= start_time + duration - 0.05:
             break
-        note_dur = beat_dur * 0.85  # 留呼吸空間
+        note_dur = (duration * 0.9 if once else beat_dur * 0.85)  # once: 持續整個和弦
         vel_ratio = 1.0 if b == 0 else 0.75  # 第一拍稍重
         for p in pitches:
             events.append({
@@ -917,10 +926,11 @@ def generate_accompaniment(chords: List[Dict],
         left_events.extend(lh)
 
         # ── 右手 ──
-        if rh_mode == "1+3":
+        if rh_mode in ("1+3", "1+3_once"):
             rh, prev_rh_1plus3 = _build_rh_1plus3(
                 chord_name, start, duration, bpm,
-                prev_rh_1plus3, rh_velocity
+                prev_rh_1plus3, rh_velocity,
+                once=(rh_mode == "1+3_once"),
             )
             right_events.extend(rh)
         else:
