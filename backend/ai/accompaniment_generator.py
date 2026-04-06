@@ -118,7 +118,7 @@ SECTION_PARAMS = {
     "default":    (0.8, 0.8),
 }
 
-# ── Section → Pattern 自動切換 (style="Auto" 時啟用) ──
+# ── Section → LH Pattern 自動切換 (style="Auto" 時啟用) ──
 # 參考 Ron Drotos Pop Ballad Accompaniment 各 Lesson 的段落編排
 SECTION_STYLE_MAP = {
     "intro":      "Block",      # Lesson 1: 稀疏全音符，建立氛圍
@@ -129,6 +129,31 @@ SECTION_STYLE_MAP = {
     "outro":      "Block",      # 收尾
     "default":    "Arpeggio",
 }
+
+# ── Section → RH 伴奏模式 (style="Auto" 時啟用) ──
+# 核心原則: RH 伴奏閃避人聲，在人聲空白處 (gap) 補 fill
+#   - intro/outro: 尚無人聲，RH 彈和弦琶音營造氛圍
+#   - verse: 人聲主導，RH 只在 gap 補單音 fill (不搶戲)
+#   - pre_chorus: 情緒推升，gap 處補稍豐富的 fill
+#   - chorus: 最飽滿段落，gap 處補複音 block chord
+#   - bridge: 對比回落，RH 彈和弦琶音
+RH_SECTION_MODE = {
+    "intro":      "arpeggio",       # 和弦琶音 (無人聲段)
+    "verse":      "fill_only",      # gap 補單音 fill
+    "pre_chorus": "fill_harmony",   # gap 補 1~2 音 fill
+    "chorus":     "fill_block",     # gap 補複音 block chord
+    "bridge":     "arpeggio",       # 琶音回落
+    "outro":      "arpeggio",       # 琶音收尾
+    "default":    "fill_only",
+}
+
+# RH 琶音 Pattern (用於 intro/bridge/outro — 右手範圍 C4~C6)
+RH_ARPEGGIO_PATTERN = [
+    (0.0,  [0], 0.8),    # Beat 1: Root
+    (0.25, [1], 0.65),   # Beat 2: 3rd
+    (0.50, [2], 0.7),    # Beat 3: 5th
+    (0.75, [1], 0.6),    # Beat 4: 3rd (回落)
+]
 
 
 # ==============================================================================
@@ -466,57 +491,164 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
     return events, pitches
 
 
+def _find_gaps(melody_segment: List[Dict], chord_start: float,
+               chord_end: float, min_gap: float = 0.3) -> List[Tuple[float, float]]:
+    """
+    找出人聲空白區間 (gaps)。
+
+    在和弦時間範圍內，找出旋律音符之間 >= min_gap 的沉默段。
+    回傳: [(gap_start, gap_end), ...]
+    """
+    # 收集落在此和弦內的旋律區段
+    occupied = []
+    for m in melody_segment:
+        ms = m.get("start", m.get("time", 0))
+        me = m.get("end", ms + m.get("duration", 0.5))
+        # 裁切到和弦邊界
+        s = max(ms, chord_start)
+        e = min(me, chord_end)
+        if s < e:
+            occupied.append((s, e))
+
+    # 按起始排序、合併重疊
+    occupied.sort()
+    merged = []
+    for s, e in occupied:
+        if merged and s <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+        else:
+            merged.append((s, e))
+
+    # 從和弦邊界找空白
+    gaps = []
+    cursor = chord_start
+    for s, e in merged:
+        if s - cursor >= min_gap:
+            gaps.append((cursor, s))
+        cursor = e
+    if chord_end - cursor >= min_gap:
+        gaps.append((cursor, chord_end))
+
+    return gaps
+
+
+def _build_fill_notes(chord_notes: List[str], gap_start: float, gap_dur: float,
+                      level: str, base_velocity: int,
+                      intense: bool = False) -> List[Dict]:
+    """
+    在人聲空白處生成 fill 音符。
+
+    原則:
+      - 不彈根音 (root)，用 3rd / 5th / 7th
+      - 一般段落: 單音 fill (1~2 個音)
+      - 激情段落 (intense=True): 複音 block chord fill
+    """
+    # 取非根音的和弦音 (跳過 index 0 = root)
+    upper_notes = chord_notes[1:] if len(chord_notes) > 1 else chord_notes
+    raw = note_names_to_midi(upper_notes, base_octave=4)
+    pitches = clamp_to_range(raw, RH_LOW, RH_HIGH)
+    if not pitches:
+        return []
+
+    events = []
+
+    if intense:
+        # ── 激情段落: 複音 block chord fill ──
+        fill_dur = min(gap_dur * 0.8, gap_dur - 0.05)
+        for p in pitches[:4]:
+            events.append({
+                "time": round(gap_start, 3),
+                "duration": round(fill_dur, 3),
+                "pitch": int(p),
+                "velocity": int(base_velocity * 0.75),
+                "hand": "right",
+                "chord_tone": True,
+            })
+    else:
+        # ── 一般段落: 1~2 個單音 fill ──
+        n_notes = 2 if gap_dur > 0.8 and level != "L1" else 1
+        note_dur = gap_dur / n_notes * 0.85
+        for i in range(min(n_notes, len(pitches))):
+            events.append({
+                "time": round(gap_start + i * (gap_dur / n_notes), 3),
+                "duration": round(note_dur, 3),
+                "pitch": int(pitches[i % len(pitches)]),
+                "velocity": int(base_velocity * 0.6),
+                "hand": "right",
+                "chord_tone": True,
+            })
+
+    return events
+
+
 def _build_right_hand(chord_name: str, start_time: float, duration: float,
                       level: str, melody_segment: List[Dict],
-                      base_velocity: int = 90) -> List[Dict]:
-    """生成單一和弦的右手事件（基於旋律）。"""
+                      base_velocity: int = 90,
+                      rh_mode: str = "melody_only") -> List[Dict]:
+    """
+    生成單一和弦的右手事件。
+
+    核心原則: RH 伴奏閃避人聲，在空白處補 fill。
+      - "arpeggio":       無人聲段 → 和弦琶音 (intro/bridge/outro)
+      - "fill_only":      人聲唱時閃開，空白處補單音 fill (verse)
+      - "fill_harmony":   同 fill_only + 空白處 fill 稍豐富 (pre_chorus)
+      - "fill_block":     空白處補複音 block chord (chorus)
+
+    rh_mode 舊名對照 (保持 API 相容):
+      melody_only    → fill_only
+      melody_harmony → fill_harmony
+      block_melody   → fill_block
+    """
+    # 舊名相容
+    mode_alias = {
+        "melody_only": "fill_only",
+        "melody_harmony": "fill_harmony",
+        "block_melody": "fill_block",
+    }
+    rh_mode = mode_alias.get(rh_mode, rh_mode)
+
     events = []
     chord_notes = get_chord_notes(chord_name)
-    chord_pitches_pc = set()  # pitch class set for chord tone marking
+    chord_pitches_pc = set()
     for n in chord_notes:
         chord_pitches_pc.add(root_to_semitone(n) % 12)
 
-    for m in melody_segment:
-        m_start = m.get("start", m.get("time", 0))
-        m_end = m.get("end", m_start + m.get("duration", 0.5))
-        m_midi = m.get("midi", 60)
+    chord_end = start_time + duration
 
-        # 只取落在此和弦時間範圍內的旋律
-        if m_end <= start_time or m_start >= start_time + duration:
-            continue
-
-        # 裁切到和弦邊界
-        note_start = max(m_start, start_time)
-        note_end = min(m_end, start_time + duration)
-        note_dur = note_end - note_start
-        if note_dur < 0.05:
-            continue
-
-        is_chord_tone = (m_midi % 12) in chord_pitches_pc
-
-        evt = {
-            "time": round(note_start, 3),
-            "duration": round(note_dur, 3),
-            "pitch": int(m_midi),
-            "velocity": base_velocity,
-            "hand": "right",
-            "chord_tone": is_chord_tone,
-        }
-
-        events.append(evt)
-
-        # L2: 加入和聲三度
-        if level in ("L2", "L3") and is_chord_tone and note_dur > 0.2:
-            harmony_pitch = m_midi + 4  # 大三度上方
-            if harmony_pitch <= RH_HIGH:
+    # ── arpeggio 模式: 右手彈和弦琶音 (intro/bridge/outro 無人聲段) ──
+    if rh_mode == "arpeggio":
+        raw = note_names_to_midi(chord_notes, base_octave=4)
+        pitches = clamp_to_range(raw, RH_LOW, RH_HIGH)
+        if not pitches:
+            pitches = [RH_LOW]
+        voicing = expand_voicing(pitches, 4)
+        for pi, (frac, indices, vel_ratio) in enumerate(RH_ARPEGGIO_PATTERN):
+            evt_time = start_time + frac * duration
+            next_frac = RH_ARPEGGIO_PATTERN[pi + 1][0] if pi + 1 < len(RH_ARPEGGIO_PATTERN) else 1.0
+            evt_dur = (next_frac - frac) * duration * 0.9
+            for idx in indices:
+                pitch = voicing[idx % len(voicing)]
                 events.append({
-                    "time": round(note_start, 3),
-                    "duration": round(note_dur, 3),
-                    "pitch": int(harmony_pitch),
-                    "velocity": int(base_velocity * 0.6),
+                    "time": round(evt_time, 3),
+                    "duration": round(evt_dur, 3),
+                    "pitch": int(pitch),
+                    "velocity": int(base_velocity * vel_ratio),
                     "hand": "right",
-                    "chord_tone": (harmony_pitch % 12) in chord_pitches_pc,
+                    "chord_tone": True,
                 })
+        return events
+
+    # ── fill 模式: 找人聲空白，在 gap 補音 ──
+    gaps = _find_gaps(melody_segment, start_time, chord_end)
+    intense = (rh_mode == "fill_block")
+
+    for gap_start, gap_end in gaps:
+        gap_dur = gap_end - gap_start
+        fill_events = _build_fill_notes(
+            chord_notes, gap_start, gap_dur,
+            level, base_velocity, intense=intense,
+        )
+        events.extend(fill_events)
 
     return events
 
@@ -562,7 +694,8 @@ def generate_accompaniment(chords: List[Dict],
                            level: str = "L1",
                            genre: str = "",
                            section_type: str = "default",
-                           sections: List[Dict] = None) -> Dict[str, Any]:
+                           sections: List[Dict] = None,
+                           humanize: float = 1.0) -> Dict[str, Any]:
     """
     主入口：根據和弦序列、旋律、風格與難度，生成左右手 MIDI 伴奏。
 
@@ -575,6 +708,7 @@ def generate_accompaniment(chords: List[Dict],
         genre: 曲風字串（用於建議）
         section_type: intro/verse/chorus/bridge/outro/default (legacy)
         sections: [{"type":"verse","start":0,"end":30}, ...] 段落列表
+        humanize: 人性化強度 0.0=機械精準, 1.0=正常, 2.0=誇張
 
     Returns:
         {
@@ -646,8 +780,16 @@ def generate_accompaniment(chords: List[Dict],
         )
         left_events.extend(lh)
 
-        # 右手（旋律 + 和聲）
-        rh = _build_right_hand(chord_name, start, duration, level, melody, rh_velocity)
+        # ── Per-chord RH mode ──
+        if auto_mode:
+            rh_mode = RH_SECTION_MODE.get(chord_section, "fill_only")
+        else:
+            # 非 Auto: L1=fill_only, L2+=fill_harmony
+            rh_mode = "fill_only" if level == "L1" else "fill_harmony"
+
+        # 右手（段落感知）
+        rh = _build_right_hand(chord_name, start, duration, level, melody,
+                               rh_velocity, rh_mode=rh_mode)
         right_events.extend(rh)
 
     # 左手跨度限制過濾
@@ -660,6 +802,12 @@ def generate_accompaniment(chords: List[Dict],
     # Viterbi 指法推導
     _assign_fingering(left_events, hand="left")
     _assign_fingering(right_events, hand="right")
+
+    # Humanization: timing 微偏移 + velocity 抖動
+    if humanize > 0:
+        from .dynamics_engine import humanize as _humanize
+        _humanize(left_events, bpm=bpm, amount=humanize, seed=42)
+        _humanize(right_events, bpm=bpm, amount=humanize, seed=123)
 
     return {
         "left_hand": left_events,

@@ -454,6 +454,87 @@ def evaluate_dynamics(events: List[Dict]) -> Dict[str, Any]:
 # 測試
 # ──────────────────────────────────────────
 
+# ──────────────────────────────────────────
+# Humanization (Timing + Velocity 微調)
+# ──────────────────────────────────────────
+#
+# 學術依據:
+#   - Repp (1999): 鋼琴家在強拍 (downbeat) 傾向提前 10~20ms (anticipation)
+#   - Dixon (2001): Expressive timing deviations, tempo drift
+#   - Goebl (2001): 旋律音比伴奏音早 ~30ms (melody lead)
+#
+# 實務觀察:
+#   - 強拍稍微提前 → 聽起來有「推進感」
+#   - 弱拍稍微延後 → laid-back feel
+#   - velocity 加隨機抖動 ±3~8 → 避免機械感
+#   - 所有偏移量都很小 (< 30ms)，不影響節奏辨識
+
+import random
+
+# 每拍的 timing 偏移 (秒), 負=提前, 正=延後
+# 4/4 拍: beat1 提前, beat2 稍後, beat3 微提前, beat4 稍後
+HUMANIZE_TIMING = {
+    "4/4": [-0.015, +0.010, -0.008, +0.012],
+    "3/4": [-0.015, +0.010, +0.008],
+    "2/4": [-0.015, +0.010],
+    "6/8": [-0.012, +0.008, +0.005, -0.010, +0.008, +0.005],
+}
+
+# velocity 隨機抖動範圍
+HUMANIZE_VEL_JITTER = 5
+
+
+def humanize(events: List[Dict], bpm: float = 120,
+             time_sig: str = "4/4", amount: float = 1.0,
+             seed: int = None) -> List[Dict]:
+    """
+    為 MIDI 事件加入人性化的 timing 與 velocity 微調。
+
+    Args:
+        events:   [{time, pitch, duration, velocity, ...}, ...]
+        bpm:      速度
+        time_sig: 拍號
+        amount:   強度 0.0 (無) ~ 1.0 (正常) ~ 2.0 (誇張)
+        seed:     隨機種子 (可重現)
+
+    Returns:
+        events (原地修改)
+    """
+    if not events or amount <= 0:
+        return events
+
+    rng = random.Random(seed)
+    beat_dur = 60.0 / bpm
+    timing_offsets = HUMANIZE_TIMING.get(time_sig, HUMANIZE_TIMING["4/4"])
+    n_beats = len(timing_offsets)
+
+    for evt in events:
+        t = evt.get("time", 0)
+
+        # 判斷此音落在哪一拍
+        beat_in_bar = (t / beat_dur) % n_beats
+        beat_idx = int(beat_in_bar) % n_beats
+
+        # Timing 偏移: 基準 + 小量隨機
+        base_offset = timing_offsets[beat_idx] * amount
+        jitter = rng.gauss(0, 0.005) * amount  # σ=5ms
+        time_shift = base_offset + jitter
+
+        new_time = t + time_shift
+        if new_time < 0:
+            new_time = 0
+        evt["time"] = round(new_time, 4)
+
+        # Velocity 抖動
+        if "velocity" in evt:
+            vel_jitter = rng.randint(-HUMANIZE_VEL_JITTER, HUMANIZE_VEL_JITTER)
+            vel_jitter = int(vel_jitter * amount)
+            new_vel = max(VELOCITY_MIN, min(VELOCITY_MAX, evt["velocity"] + vel_jitter))
+            evt["velocity"] = new_vel
+
+    return events
+
+
 if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding="utf-8")
