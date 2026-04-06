@@ -78,21 +78,28 @@ STYLE_DICT = {
         (0.0,  [0],       1.0),    # 低音 Root (低八度)
         (0.50, [1, 2, 3], 0.85),   # 中音 和弦 (正常八度)
     ],
+    # ── 1+3 配置 (NiceChord 好和弦) ──
+    # LH: 根音一個 (C2~C3)，換和弦時彈一次
+    # RH: 三個和弦音 block (C4 附近)，每拍彈一次
+    # 此 pattern 只用於 LH (根音全音符)，RH 由 _build_rh_1plus3 專門處理
+    "1+3": [
+        (0.0, [0], 0.9),     # LH: 根音 (全音符，只彈一次)
+    ],
 }
 
 # 曲風適配表
 GENRE_STYLE_MAP = {
-    "pop":       ["Block", "Arpeggio", "Rhythm"],
-    "ballad":    ["Arpeggio", "Block"],
-    "jazz":      ["Shell", "Walking", "Stride"],
+    "pop":       ["Block", "Arpeggio", "Rhythm", "1+3"],
+    "ballad":    ["Arpeggio", "Block", "1+3"],
+    "jazz":      ["Shell", "Walking", "Stride", "1+3"],
     "bossa":     ["Shell", "Walking"],
     "classical": ["Alberti", "Arpeggio"],
     "rock":      ["Rhythm", "Block"],
-    "r&b":       ["Rhythm", "Shell", "Arpeggio"],
+    "r&b":       ["Rhythm", "Shell", "Arpeggio", "1+3"],
     "electronic": ["Block", "Rhythm"],
     "edm":       ["Block", "Rhythm"],
-    "country":   ["Arpeggio", "Block"],
-    "folk":      ["Arpeggio", "Block"],
+    "country":   ["Arpeggio", "Block", "1+3"],
+    "folk":      ["Arpeggio", "Block", "1+3"],
     "latin":     ["Rhythm", "Walking"],
 }
 
@@ -581,6 +588,68 @@ def _build_fill_notes(chord_notes: List[str], gap_start: float, gap_dur: float,
     return events
 
 
+def _build_rh_1plus3(chord_name: str, start_time: float, duration: float,
+                     bpm: float, prev_rh_pitches: List[int],
+                     base_velocity: int = 85) -> Tuple[List[Dict], List[int]]:
+    """
+    1+3 配置: 右手每拍彈三個和弦音 block chord (C4 附近)。
+
+    Voice Leading: 選擇離前一組 voicing 最近的轉位。
+    參考: NiceChord 好和弦 https://nicechord.com/post/1-plus-3-voicing/
+    """
+    chord_notes = get_chord_notes(chord_name)
+    if not chord_notes:
+        return [], prev_rh_pitches
+
+    # 取最多 3 個和弦音 (root, 3rd, 5th 或含 7th 時取 3rd, 5th, 7th)
+    if len(chord_notes) >= 4:
+        # 有 7th: 用 3rd, 5th, 7th (跳過 root — LH 已經彈了)
+        picked = chord_notes[1:4]
+    else:
+        picked = chord_notes[:3]
+
+    # 轉為 MIDI (C4 附近 = octave 4)
+    raw = note_names_to_midi(picked, base_octave=3)
+    # 限制在 C3(48) ~ G5(79) — 「中央 C 附近」
+    pitches = clamp_to_range(raw, 48, 79)
+    if not pitches:
+        pitches = clamp_to_range(raw, 48, 84)
+    if not pitches:
+        return [], prev_rh_pitches
+
+    # Voice Leading: 跟前一組 voicing 最近
+    if prev_rh_pitches:
+        pitches = voice_leading_optimize(pitches, prev_rh_pitches, 48, 79)
+
+    # 確保恰好 3 個音
+    pitches = sorted(set(pitches))[:3]
+    if len(pitches) < 3:
+        pitches = expand_voicing(pitches, 3, max_span=12)[:3]
+
+    # 計算每拍的時間
+    beat_dur = 60.0 / bpm
+    n_beats = max(1, int(round(duration / beat_dur)))
+
+    events = []
+    for b in range(n_beats):
+        beat_time = start_time + b * beat_dur
+        if beat_time >= start_time + duration - 0.05:
+            break
+        note_dur = beat_dur * 0.85  # 留呼吸空間
+        vel_ratio = 1.0 if b == 0 else 0.75  # 第一拍稍重
+        for p in pitches:
+            events.append({
+                "time": round(beat_time, 3),
+                "duration": round(note_dur, 3),
+                "pitch": int(p),
+                "velocity": int(base_velocity * vel_ratio),
+                "hand": "right",
+                "chord_tone": True,
+            })
+
+    return events, pitches
+
+
 def _build_right_hand(chord_name: str, start_time: float, duration: float,
                       level: str, melody_segment: List[Dict],
                       base_velocity: int = 90,
@@ -746,7 +815,7 @@ def generate_accompaniment(chords: List[Dict],
         chords: [{"time": 0, "end": 4.5, "chord": "Cmaj7"}, ...]
         melody: [{"start": 0.5, "end": 1.0, "midi": 72}, ...]
         bpm: 歌曲 BPM
-        style: Block/Arpeggio/Rhythm/Alberti/Shell/Walking/Stride/Auto
+        style: Block/Arpeggio/Rhythm/Alberti/Shell/Walking/Stride/1+3/Auto
         level: L1(初階)/L2(中階)/L3(進階)
         genre: 曲風字串（用於建議）
         section_type: intro/verse/chorus/bridge/outro/default (legacy)
@@ -774,6 +843,7 @@ def generate_accompaniment(chords: List[Dict],
     left_events = []
     right_events = []
     prev_lh: List[int] = []
+    prev_rh_1plus3: List[int] = []  # 1+3 RH voice leading state
 
     # 基準力度 (L1/L2 左手弱, L3 正常)
     base_lh_vel = 55 if level == "L1" else 65 if level == "L2" else 70
@@ -823,17 +893,22 @@ def generate_accompaniment(chords: List[Dict],
         )
         left_events.extend(lh)
 
-        # ── Per-chord RH mode ──
-        if auto_mode:
-            rh_mode = RH_SECTION_MODE.get(chord_section, "fill_only")
+        # ── Per-chord RH ──
+        if current_style == "1+3":
+            # 1+3 配置: RH 每拍彈三音 block chord
+            rh, prev_rh_1plus3 = _build_rh_1plus3(
+                chord_name, start, duration, bpm,
+                prev_rh_1plus3, rh_velocity
+            )
+            right_events.extend(rh)
         else:
-            # 非 Auto: L1=fill_only, L2+=fill_harmony
-            rh_mode = "fill_only" if level == "L1" else "fill_harmony"
-
-        # 右手（段落感知）
-        rh = _build_right_hand(chord_name, start, duration, level, melody,
-                               rh_velocity, rh_mode=rh_mode)
-        right_events.extend(rh)
+            if auto_mode:
+                rh_mode = RH_SECTION_MODE.get(chord_section, "fill_only")
+            else:
+                rh_mode = "fill_only" if level == "L1" else "fill_harmony"
+            rh = _build_right_hand(chord_name, start, duration, level, melody,
+                                   rh_velocity, rh_mode=rh_mode)
+            right_events.extend(rh)
 
     # 左手跨度限制過濾
     left_events = _filter_lh_span(left_events, max_span=13)
