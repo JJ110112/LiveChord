@@ -667,6 +667,49 @@ def _check_melody_conflict(pitch: int, time: float, dur: float,
     return False
 
 
+def _filter_hand_collision(lh: List[Dict], rh: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+    """
+    左右手碰撞過濾: LH 音高不得 >= 同時段 RH 最低音。
+
+    規則: 同一時間窗口 (±0.05s) 內，如果 LH 某音 >= RH 最低音，
+    將該 LH 音下移一個八度；若仍超出範圍則移除。
+    """
+    if not lh or not rh:
+        return lh, rh
+
+    # 建立 RH 時間→最低音 mapping
+    rh_floor: Dict[float, int] = {}
+    for e in rh:
+        t = round(e["time"], 2)
+        p = e["pitch"]
+        if t not in rh_floor or p < rh_floor[t]:
+            rh_floor[t] = p
+
+    filtered_lh = []
+    for e in lh:
+        t = round(e["time"], 2)
+        p = e["pitch"]
+
+        # 找最近的 RH 時間窗
+        rh_min = None
+        for rt, rp in rh_floor.items():
+            if abs(rt - t) <= 0.05:
+                if rh_min is None or rp < rh_min:
+                    rh_min = rp
+
+        if rh_min is not None and p >= rh_min:
+            # 下移八度
+            new_p = p - 12
+            if new_p >= LH_LOW:
+                e = {**e, "pitch": new_p}
+                filtered_lh.append(e)
+            # 否則丟棄 (超出左手範圍)
+        else:
+            filtered_lh.append(e)
+
+    return filtered_lh, rh
+
+
 def _filter_lh_span(events: List[Dict], max_span: int = 13) -> List[Dict]:
     """過濾左手音符，限制最大跨距。"""
     time_groups: Dict[float, List[Dict]] = {}
@@ -794,6 +837,9 @@ def generate_accompaniment(chords: List[Dict],
 
     # 左手跨度限制過濾
     left_events = _filter_lh_span(left_events, max_span=13)
+
+    # 左右手碰撞過濾: LH 最高音不得 >= RH 最低音 (同時間)
+    left_events, right_events = _filter_hand_collision(left_events, right_events)
 
     # 排序
     left_events.sort(key=lambda e: (e["time"], e["pitch"]))

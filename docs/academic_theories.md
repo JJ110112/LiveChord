@@ -48,6 +48,8 @@
 | **Voice Leading 最佳化**（最小移動、共同音保留、平行五八度迴避） | `backend/ai/accompaniment_generator.py` | 前後和弦的 voicing | 平滑連接的 voicing 序列 | 確保和弦轉位符合聲學規則 | Piston (1987) |
 | **Style Pattern Dictionary**（7 種伴奏型態） | `backend/ai/accompaniment_generator.py` | 和弦 + BPM + 風格 | 左右手 MIDI 事件 + 踏板 | Block / Arpeggio / Rhythm / Alberti / Shell / Walking / Stride | Drotos (Pop Piano Book) |
 | **Melody Collision Avoidance** | `backend/ai/accompaniment_generator.py` | 伴奏音 + 旋律音 | 調整後的伴奏（下移八度或移除） | 避免伴奏與旋律撞音（≤4 半音） | — |
+| **LH/RH Hand Collision Filter** | `backend/ai/accompaniment_generator.py` | 左右手事件列表 | 過濾後的 LH（下移八度或移除） | 避免左手最高音 >= 右手最低音 | — |
+| **RH Section-Aware Gap-Fill** | `backend/ai/accompaniment_generator.py` | 和弦 + 旋律 + 段落類型 | RH 事件（填空 / 琶音 / block chord） | RH 閃避人聲，在空白處用和弦 3rd/5th/7th 補 fill | — |
 | **Viterbi Fingering Optimization** | `backend/ai/fingering_model.py` | MIDI 音高序列 + 手別 + BPM | 最佳指法序列 [1-5] | 產生人體工學可行的指法 | Parncutt et al. (1997), Al Kasimi et al. (2007) |
 | **Ergonomic Fingering Evaluation**（三階段評估） | `backend/ai/fingering_evaluator.py` | 事件列表 [{time, pitch, finger}] | 人體工學分數 + 警告 | 驗證指法的舒適度與可行性 | Parncutt (1997), Jacobs (2001) |
 | **Sustain Pedal Advisory** | `backend/ai/pedal_advisor.py` | 和弦 + 段落 + BPM + 旋律 | 踏板事件 [{start, end, depth}] | 產生 legato / rhythmic / half-pedal 踏板建議 | Banowetz (1985), Schnabel (1942) |
@@ -61,6 +63,8 @@
 |---|---|---|---|---|---|
 | **Velocity Curve Modeling**（正弦曲線 + 黃金比例） | `backend/ai/dynamics_engine.py` | 事件序列 + 段落 + BPM | 帶力度的事件 [{velocity, articulation}] | 模擬真實演奏的力度起伏 | Todd (1992), Palmer (1997) |
 | **Articulation Generation**（legato / staccato / portato） | `backend/ai/dynamics_engine.py` | 事件序列 + BPM | 調整後的音符時值 | 模擬不同觸鍵風格 | Repp (1999) |
+| **Humanization**（Timing 微偏移 + Velocity 抖動） | `backend/ai/dynamics_engine.py` | 事件序列 + BPM + amount | timing ±5~30ms 偏移 + velocity ±5 抖動 | 強拍提前 (anticipation)、消除機械感 | Repp (1999), Dixon (2001), Goebl (2001) |
+| **Piano Sustain Envelope**（音域感知延音） | `frontend/js/player.js` (PianoSynth) | MIDI pitch + duration | 低音 1.2s / 中音 0.8s / 高音 0.5s release | 模擬真實鋼琴弦的自然衰減 | — |
 | **Section Energy Mapping** | `backend/ai/section_context.py` | 時間 + 段落列表 | 能量等級、密度乘數、踏板風格 | 段落感知的參數調變 | — |
 
 ---
@@ -132,3 +136,5 @@
 | Fitzgerald (2010) | Fitzgerald, D. "Harmonic/Percussive Separation Using Median Filtering." *DAFx*, 2010. |
 | Jacobs (2001) | Jacobs, J. P. "Refinements to the Ergonomic Model of Keyboard Fingering." *Music Perception*, 2001. |
 | Schnabel (1942) | Schnabel, A. *Music and the Line of Most Resistance*. Princeton University Press, 1942. |
+| Dixon (2001) | Dixon, S. "Automatic Extraction of Tempo and Beat from Expressive Performances." *JNMR*, 2001. |
+| Goebl (2001) | Goebl, W. "Melody Lead in Piano Performance: Expressive Device or Artifact?" *JASA*, 2001. |
