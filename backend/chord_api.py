@@ -45,8 +45,8 @@ def _midi_matches(song_name: str, midi_fname: str) -> bool:
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File
 from pydantic import BaseModel
 
-from chord_table import get_chord_info, get_chord_jianpu
-from chord_diagrams import get_chord_diagram
+from chord_table import get_chord_info, get_chord_jianpu, analyze_chord_in_key
+from chord_diagrams import get_chord_diagram, get_chord_voicings
 from chord_cache import song_hash
 
 from config import resolve_path
@@ -82,6 +82,23 @@ async def chord_diagram(instrument: str, name: str):
     if not diagram:
         raise HTTPException(status_code=404, detail=f"無 {instrument} 和弦圖: {name}")
     return diagram
+
+
+@router.get("/chord/voicings/{instrument}/{name:path}")
+def chord_voicings_api(instrument: str, name: str):
+    """取得和弦所有把位指法"""
+    if instrument not in ("guitar", "ukulele"):
+        raise HTTPException(status_code=400, detail="instrument 須為 guitar 或 ukulele")
+    voicings = get_chord_voicings(name, instrument=instrument)
+    num_strings = 6 if instrument == "guitar" else 4
+    return {"name": name, "numStrings": num_strings, "voicings": voicings}
+
+
+@router.get("/chord/analysis/{key}/{name:path}")
+def chord_analysis_api(key: str, name: str):
+    """回傳和弦在調性中的級數分析"""
+    result = analyze_chord_in_key(key, name)
+    return result
 
 
 # ---------------------------------------------------------------------------

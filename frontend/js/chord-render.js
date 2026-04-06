@@ -1027,6 +1027,205 @@ const ChordRender = {
     ctx.globalAlpha = 1;
     ctx.setTransform(1,0,0,1,0,0);
   },
+
+  /**
+   * 繪製大型水平吉他指板（Guitar Teaching Mode）
+   * @param {HTMLCanvasElement} canvas
+   * @param {Object} data - {strings, baseFret, barres, fingers, numStrings, name}
+   * @param {Object} opts - {scale, rootNote, highlightRoot}
+   */
+  drawGuitarFretboard(canvas, data, opts = {}) {
+    if (!canvas || !data) return;
+
+    const numStrings = data.numStrings || 6;
+    const strings = data.strings || [];
+    const baseFret = data.baseFret || 1;
+    const barres = data.barres || [];
+    const fingers = data.fingers || [];
+    const scale = opts.scale || 1;
+    const rootNote = opts.rootNote || null;
+    const highlightRoot = opts.highlightRoot !== false;
+
+    // Open string note names (low E to high e)
+    const OPEN_STRINGS = ["E", "A", "D", "G", "B", "E"];
+    const OPEN_MIDI = [40, 45, 50, 55, 59, 64]; // E2 A2 D3 G3 B3 E4
+    const STRING_LABELS = ["E", "A", "D", "G", "B", "e"];
+    const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+    // Layout
+    const numFrets = 4;
+    const stringSpacing = 36 * scale;
+    const fretSpacing = 100 * scale;
+    const leftPad = 56 * scale;  // for string names + X/O markers
+    const topPad = 20 * scale;
+    const dotR = 14 * scale;
+    const fontSize = Math.round(13 * scale);
+
+    const W = leftPad + numFrets * fretSpacing + 30 * scale;
+    const H = topPad + (numStrings - 1) * stringSpacing + 50 * scale;
+
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, W, H);
+
+    // String Y positions (string 0 = low E at bottom, string 5 = high e at top)
+    function stringY(i) {
+      return topPad + (numStrings - 1 - i) * stringSpacing;
+    }
+    // Fret X positions
+    function fretX(f) {
+      return leftPad + f * fretSpacing;
+    }
+
+    // Draw fret lines (vertical)
+    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    ctx.lineWidth = 1;
+    for (let f = 0; f <= numFrets; f++) {
+      const x = fretX(f);
+      ctx.beginPath();
+      ctx.moveTo(x, stringY(numStrings - 1));
+      ctx.lineTo(x, stringY(0));
+      ctx.stroke();
+    }
+
+    // Nut (thick line at fret 0 if baseFret === 1)
+    if (baseFret === 1) {
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 4 * scale;
+      const x = fretX(0);
+      ctx.beginPath();
+      ctx.moveTo(x, stringY(numStrings - 1) - 2);
+      ctx.lineTo(x, stringY(0) + 2);
+      ctx.stroke();
+    } else {
+      // Show baseFret number
+      ctx.fillStyle = "#888";
+      ctx.font = `${Math.round(11 * scale)}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(baseFret + "", fretX(0) - 12 * scale, stringY(numStrings - 1) - 16 * scale);
+    }
+
+    // Draw string lines (horizontal) and labels
+    for (let i = 0; i < numStrings; i++) {
+      const y = stringY(i);
+      const isMuted = strings[i] === -1;
+
+      // String line
+      ctx.strokeStyle = isMuted ? "rgba(255,80,80,0.15)" : "rgba(255,255,255,0.35)";
+      ctx.lineWidth = isMuted ? 1 : (1.5 + (numStrings - 1 - i) * 0.2) * scale;
+      ctx.beginPath();
+      ctx.moveTo(fretX(0), y);
+      ctx.lineTo(fretX(numFrets), y);
+      ctx.stroke();
+
+      // String name (left side)
+      ctx.fillStyle = isMuted ? "#e74c3c" : "rgba(255,255,255,0.6)";
+      ctx.font = `bold ${fontSize}px sans-serif`;
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      ctx.fillText(STRING_LABELS[i], leftPad - 24 * scale, y);
+
+      // X or O marker
+      if (isMuted) {
+        ctx.fillStyle = "#e74c3c";
+        ctx.font = `bold ${Math.round(16 * scale)}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.fillText("✕", leftPad - 10 * scale, y);
+      } else if (strings[i] === 0) {
+        ctx.strokeStyle = "rgba(255,255,255,0.5)";
+        ctx.lineWidth = 1.5 * scale;
+        ctx.beginPath();
+        ctx.arc(leftPad - 10 * scale, y, 5 * scale, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    // Fret numbers (bottom)
+    ctx.fillStyle = "#666";
+    ctx.font = `${Math.round(10 * scale)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    for (let f = 1; f <= numFrets; f++) {
+      const x = fretX(f - 0.5);
+      ctx.fillText((baseFret - 1 + f) + "", x, stringY(0) + 14 * scale);
+    }
+
+    // Determine root note semitone for highlighting
+    let rootSemi = -1;
+    if (rootNote) {
+      const idx = NOTE_NAMES.indexOf(rootNote);
+      if (idx >= 0) rootSemi = idx;
+    }
+
+    // Draw barres
+    for (const b of barres) {
+      const fretPos = b - baseFret + 1;
+      if (fretPos < 1 || fretPos > numFrets) continue;
+      // Find the range of strings the barre covers
+      let lo = numStrings, hi = -1;
+      for (let s = 0; s < numStrings; s++) {
+        if (strings[s] === b) {
+          lo = Math.min(lo, s);
+          hi = Math.max(hi, s);
+        }
+      }
+      if (lo <= hi) {
+        const x = fretX(fretPos - 0.5);
+        const y1 = stringY(hi);
+        const y2 = stringY(lo);
+        ctx.strokeStyle = "rgba(255,255,255,0.5)";
+        ctx.lineWidth = 6 * scale;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(x, y1);
+        ctx.lineTo(x, y2);
+        ctx.stroke();
+        ctx.lineCap = "butt";
+      }
+    }
+
+    // Draw finger dots
+    for (let i = 0; i < numStrings; i++) {
+      const fret = strings[i];
+      if (fret <= 0) continue; // skip muted and open
+
+      const fretPos = fret - baseFret + 1;
+      if (fretPos < 1 || fretPos > numFrets) continue;
+
+      const x = fretX(fretPos - 0.5);
+      const y = stringY(i);
+
+      // Check if this is a root note
+      const noteMidi = OPEN_MIDI[i] + fret;
+      const noteSemi = noteMidi % 12;
+      const isRoot = highlightRoot && rootSemi >= 0 && noteSemi === rootSemi;
+
+      // Draw dot
+      ctx.beginPath();
+      ctx.arc(x, y, dotR, 0, Math.PI * 2);
+      ctx.fillStyle = isRoot ? "#ff9800" : "#9c27b0";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.3)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Draw finger number
+      const finger = fingers[i] || 0;
+      if (finger > 0) {
+        ctx.fillStyle = "#fff";
+        ctx.font = `bold ${Math.round(12 * scale)}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(finger + "", x, y);
+      }
+    }
+  },
 };
 
 // escapeHtml, formatTime moved to utils.js

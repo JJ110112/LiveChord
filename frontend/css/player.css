@@ -13,6 +13,7 @@
   display: flex;
   gap: 14px;
   margin-bottom: 10px;
+  transition: all 0.3s;
 }
 
 .player-cover {
@@ -310,6 +311,43 @@
   border-color: var(--accent);
 }
 
+/* --- Instrument dropdown --- */
+.instrument-dropdown {
+  position: relative;
+}
+.instrument-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  z-index: 200;
+  overflow: hidden;
+  min-width: 120px;
+}
+.inst-option {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+.inst-option:hover {
+  background: var(--bg-hover);
+}
+.inst-option.active {
+  color: var(--accent);
+  font-weight: 700;
+}
+
 /* ========== [END: CHORD TOOLBAR] ========== */
 
 
@@ -419,17 +457,8 @@
   color: var(--text-dim);
 }
 
+/* 預設沉浸式佈局 (不再需要 .fullscreen class toggle) */
 .chord-display-area {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* --- fullscreen override --- */
-.chord-display-area.fullscreen {
   position: fixed;
   inset: 0;
   z-index: 500;
@@ -441,20 +470,20 @@
   flex-direction: column;
 }
 
-.chord-display-area.fullscreen #chordDisplayScaleTarget {
+.chord-display-area #chordDisplayScaleTarget {
   margin-top: 40px;
   overflow: auto !important;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
-.chord-display-area.fullscreen #chordDisplayScaleTarget::-webkit-scrollbar {
+.chord-display-area #chordDisplayScaleTarget::-webkit-scrollbar {
   display: none;
 }
 
 /* ========== [END: CHORD SECTION & DISPLAY AREA] ========== */
 
 
-/* ========== [COMPONENT: CHORD DISPLAY TOOLS] ========== */
+/* ========== [COMPONENT: CHORD DISPLAY TOOLS (OVERLAY)] ========== */
 
 .chord-display-tools {
   position: absolute;
@@ -507,7 +536,47 @@
   100% { transform: translateX(-100%); }
 }
 
+/* 覆蓋工具列預設顯示 (取代舊 .fs-only) */
+.chord-overlay-tools {
+  display: grid !important;
+}
+
 /* ========== [END: CHORD DISPLAY TOOLS] ========== */
+
+
+/* ========== [COMPONENT: PIANO TAB] ========== */
+
+.chord-piano-tab {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 子模式切換列 */
+.piano-submode-bar {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px;
+  justify-content: center;
+}
+.sub-tab {
+  padding: 3px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.2s;
+}
+.sub-tab.active {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  border-color: rgba(255,255,255,0.3);
+}
+
+/* ========== [END: PIANO TAB] ========== */
 
 
 /* ========== [COMPONENT: CHORD RIBBON] ========== */
@@ -515,7 +584,7 @@
 .chord-ribbon {
   position: relative;
   width: 100%;
-  height: calc(100vh - 360px);
+  flex: 1;
   min-height: 150px;
   padding-top: 24px;
   background: var(--bg-hover);
@@ -661,10 +730,6 @@
   z-index: 10;
 }
 
-/* --- fullscreen override --- */
-.chord-display-area.fullscreen .chord-ribbon {
-}
-
 /* ========== [END: CHORD RIBBON] ========== */
 
 
@@ -673,10 +738,11 @@
 .chord-88-keys {
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
+  justify-content: flex-end;
   width: 100%;
+  flex: 5;
   min-height: 0;
-  padding: 8px 0;
+  padding: 0;
   overflow: hidden;
 }
 .chord-88-keys canvas#piano88Canvas {
@@ -684,10 +750,20 @@
   margin: 0 auto;
   display: block;
   image-rendering: crisp-edges;
+  flex-shrink: 0;
+  margin-top: auto;
 }
 
 .keys88-ribbon {
-  display: none;  /* hidden in non-fullscreen */
+  display: block;
+  position: relative;
+  width: 100%;
+  flex: 0 0 120px;
+  margin-top: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+  z-index: 10;
 }
 .keys88-ribbon > .ribbon-center-line { top: 22px; }
 .keys88-ribbon > .ribbon-track { top: 22px; height: calc(100% - 22px); }
@@ -744,29 +820,6 @@
   font-size: 12px;
 }
 
-/* --- fullscreen overrides --- */
-.chord-display-area.fullscreen .chord-88-keys {
-  flex: 5;
-  min-height: 0;
-  padding-top: 0;
-  justify-content: flex-end;
-}
-.chord-display-area.fullscreen .chord-88-keys canvas#piano88Canvas {
-  flex-shrink: 0;
-  margin-top: auto;
-}
-.chord-display-area.fullscreen .keys88-ribbon {
-  display: block;
-  position: relative;
-  width: 100%;
-  flex: 0 0 120px;
-  margin-top: 0;
-  background: transparent;
-  box-shadow: none;
-  overflow: visible;
-  z-index: 10;
-}
-
 /* ========== [END: 88-KEY PIANO] ========== */
 
 
@@ -778,10 +831,9 @@
   image-rendering: crisp-edges;
 }
 
-/* --- fullscreen override --- */
-.chord-display-area.fullscreen .waterfall-canvas.active {
+.waterfall-canvas.active {
   display: block;
-  flex: 4; /* Golden ratio part: Waterfall 40% */
+  flex: 4;
   min-height: 120px;
 }
 
@@ -791,7 +843,7 @@
 /* ========== [COMPONENT: TEACH CONTROLS] ========== */
 
 .teach-controls {
-  display: none;
+  display: flex;
   align-items: center;
   gap: 8px;
   padding: 4px 8px;
@@ -881,22 +933,7 @@
   z-index: 1;
 }
 
-/* --- fullscreen override --- */
-.chord-display-area.fullscreen .teach-controls {
-  display: flex;
-}
-
 /* ========== [END: TEACH CONTROLS] ========== */
-
-
-/* ========== [COMPONENT: FULLSCREEN UTILITIES] ========== */
-
-/* 非全螢幕時隱藏播放控制/曲名/縮放 */
-.fs-only { display: none !important; }
-.chord-display-area.fullscreen .fs-only { display: grid !important; }
-.chord-display-area.fullscreen .fs-only[style*="display:contents"] { display: contents !important; }
-
-/* ========== [END: FULLSCREEN UTILITIES] ========== */
 
 
 /* ========== [COMPONENT: CHORD SOURCE BADGE] ========== */
@@ -940,14 +977,19 @@
   display: flex;
   flex-wrap: wrap;
   align-content: flex-start;
-  padding-top: 32px;
+  padding-top: 24px;
   padding-bottom: 40px;
   row-gap: 24px;
   column-gap: 6px;
   cursor: grab;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 .chord-timeline::-webkit-scrollbar {
-  display: none;                   /* Chrome/Safari */
+  display: none;
 }
 
 .chord-item {
@@ -1041,19 +1083,6 @@
   z-index: 1;
 }
 
-/* --- fullscreen override --- */
-.chord-display-area.fullscreen .chord-timeline {
-  padding-top: 24px;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-.chord-display-area.fullscreen .chord-timeline::-webkit-scrollbar {
-  display: none;
-}
-
 /* ========== [END: CHORD TIMELINE] ========== */
 
 
@@ -1076,7 +1105,6 @@
 
 /* ========== [COMPONENT: HAND TOGGLE] ========== */
 
-/* 統合版左右手切換按鈕 */
 .hand-toggle-btn {
   display: flex !important;
   align-items: center;
@@ -1114,3 +1142,335 @@
 }
 
 /* ========== [END: HAND TOGGLE] ========== */
+
+
+/* ========== [COMPONENT: GUITAR TAB] ========== */
+
+.chord-guitar-tab {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.guitar-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr 300px;
+  flex: 1;
+  min-height: 0;
+  gap: 1px;
+  background: rgba(255,255,255,0.03);
+}
+
+.guitar-panel-left,
+.guitar-panel-center,
+.guitar-panel-right {
+  background: var(--bg);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+
+/* --- 左欄: 和弦時間軸 --- */
+.guitar-panel-left {
+  padding: 12px 0;
+}
+
+.gt-timeline-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.gt-timeline-item:hover {
+  background: rgba(255,255,255,0.03);
+}
+.gt-timeline-item.active {
+  border-left-color: var(--accent);
+  background: rgba(33,150,243,0.08);
+}
+.gt-timeline-item.played {
+  opacity: 0.35;
+}
+.gt-timeline-item.future {
+  opacity: 0.65;
+}
+.gt-timeline-chord {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  min-width: 60px;
+}
+.gt-timeline-item.active .gt-timeline-chord {
+  color: #fff;
+}
+.gt-timeline-jianpu {
+  font-size: 12px;
+  color: var(--text-dim);
+  flex: 1;
+}
+.gt-timeline-time {
+  font-size: 11px;
+  color: #666;
+  min-width: 36px;
+  text-align: right;
+}
+.gt-timeline-item.active .gt-timeline-time {
+  color: var(--text-dim);
+}
+
+.gt-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.8;
+}
+.gt-section-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* --- 中欄: 指板主區 --- */
+.guitar-panel-center {
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.gt-chord-header {
+  text-align: center;
+}
+.gt-main-chord-name {
+  font-size: 56px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.1;
+}
+.gt-main-chord-name .gt-chord-root {
+  color: var(--accent);
+}
+.gt-chord-intervals {
+  font-size: 18px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  letter-spacing: 12px;
+}
+
+#guitarFretboardCanvas {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.gt-chord-detail {
+  display: flex;
+  gap: 32px;
+  justify-content: center;
+}
+.gt-detail-item {
+  text-align: center;
+}
+.gt-detail-label {
+  display: block;
+  font-size: 11px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+.gt-detail-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 2px;
+}
+
+.gt-voicing-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.gt-voicing-label {
+  font-size: 12px;
+  color: #666;
+  margin-right: 4px;
+}
+.gt-voicing-btn {
+  padding: 6px 16px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+.gt-voicing-btn:hover {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.2);
+}
+.gt-voicing-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* --- 右欄: 教學資訊 --- */
+.guitar-panel-right {
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.gt-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gt-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0;
+}
+
+/* Fingering guide */
+.gt-fingering-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gt-finger-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.gt-finger-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  color: #fff;
+  flex-shrink: 0;
+}
+.gt-finger-dot.root {
+  background: #ff9800;
+}
+.gt-finger-dot.normal {
+  background: #9c27b0;
+}
+
+/* Next chord preview */
+.gt-next-chord-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gt-next-countdown {
+  font-size: 12px;
+  color: #666;
+}
+.gt-next-name {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text);
+}
+.gt-next-intervals {
+  font-size: 13px;
+  color: var(--accent);
+}
+.gt-next-tip {
+  background: rgba(76,175,80,0.1);
+  border: 1px solid rgba(76,175,80,0.25);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* Chord in key */
+.gt-chord-in-key-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gt-roman {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.gt-roman-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+}
+.gt-roman-key {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.gt-roman-explain {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* --- Responsive --- */
+@media (max-width: 900px) {
+  .guitar-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 140px 1fr 240px;
+  }
+  .guitar-panel-left {
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    overflow-y: hidden;
+    display: flex;
+    flex-wrap: nowrap;
+    padding: 8px;
+    gap: 0;
+  }
+  .gt-timeline-item {
+    flex-shrink: 0;
+    flex-direction: column;
+    padding: 6px 12px;
+    gap: 2px;
+    border-left: none;
+    border-bottom: 3px solid transparent;
+  }
+  .gt-timeline-item.active {
+    border-left-color: transparent;
+    border-bottom-color: var(--accent);
+  }
+}
+
+/* ========== [END: GUITAR TAB] ========== */

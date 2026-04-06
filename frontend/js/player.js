@@ -68,10 +68,14 @@
   const fsTimeDuration = $("#fsTimeDuration");
   const volumeSlider = $("#volumeSlider");
   const chordDisplayOverview = $("#chordDisplayOverview");
-  const chordDisplayDiagrams = $("#chordDisplayDiagrams");
+  const chordDisplayPiano = $("#chordDisplayPiano");
+  const pianoStaticView = $("#pianoStaticView");
+  const pianoWaterfallView = $("#pianoWaterfallView");
   const ribbonTrack = $("#ribbonTrack");
   const tabOverview = $("#tabOverview");
-  const tabDiagrams = $("#tabDiagrams");
+  const tabPiano = $("#tabPiano");
+  const tabGuitar = $("#tabGuitar");
+  const chordDisplayGuitar = $("#chordDisplayGuitar");
   const detectOverlay = $("#detectOverlay");
   const detectMsg = $("#detectMsg");
   const detectDetail = $("#detectDetail");
@@ -79,11 +83,17 @@
   const bigChordName = $("#bigChordName");
   const bigChordJianpu = $("#bigChordJianpu");
 
+  // Tab migration: old values → new
   let activeTab = localStorage.getItem("livechord_tab") || "overview";
+  if (activeTab === "piano" || activeTab === "guitar") {
+    activeTab = "piano";
+    localStorage.setItem("livechord_tab", "piano");
+  }
+  let pianoSubmode = localStorage.getItem("livechord_piano_submode") || "waterfall";
   let ribbonElements = [];
   const pxPerSec = 100;
-  const tabKeys = $("#tabKeys");
-  const chordDisplay88 = $("#chordDisplay88");
+  // Backward compat aliases
+  const chordDisplay88 = pianoWaterfallView;
 
   // ---- A-B Repeat state ----
   const btnABRepeat = $("#btnABRepeat");
@@ -162,12 +172,11 @@
   function _updateHandSwitchVisibility() {
     const hs = document.querySelector("#handSwitchContainer");
     const topHs = document.querySelector("#btnTopHandSwitch");
-    const ms = document.querySelector("#modeSwitch");
-    if (hs) hs.style.display = activeTab === "keys" ? "flex" : "none";
-    if (topHs) topHs.style.display = activeTab === "keys" ? "flex" : "none";
-    if (ms) ms.style.display = activeTab === "keys" ? "none" : "flex";
-    // Hide zoom controls in keys tab (piano has fixed size)
-    const hideZoom = activeTab === "keys";
+    const isPianoWaterfall = activeTab === "piano" && pianoSubmode === "waterfall";
+    if (hs) hs.style.display = isPianoWaterfall ? "flex" : "none";
+    if (topHs) topHs.style.display = isPianoWaterfall ? "flex" : "none";
+    // Hide zoom controls in piano waterfall tab (piano has fixed size)
+    const hideZoom = isPianoWaterfall || activeTab === "guitar";
     if (btnZoomIn) btnZoomIn.style.display = hideZoom ? "none" : "";
     if (btnZoomOut) btnZoomOut.style.display = hideZoom ? "none" : "";
     if (btnZoomReset) btnZoomReset.style.display = hideZoom ? "none" : "";
@@ -175,21 +184,25 @@
 
   function _setAllTabsInactive() {
     if (tabOverview) tabOverview.classList.remove("active");
-    if (tabDiagrams) tabDiagrams.classList.remove("active");
-    if (tabKeys) tabKeys.classList.remove("active");
+    if (tabPiano) tabPiano.classList.remove("active");
+    if (tabGuitar) tabGuitar.classList.remove("active");
     chordDisplayOverview.style.display = "none";
-    chordDisplayDiagrams.style.display = "none";
-    if (chordDisplay88) chordDisplay88.style.display = "none";
+    if (chordDisplayPiano) chordDisplayPiano.style.display = "none";
+    if (chordDisplayGuitar) chordDisplayGuitar.style.display = "none";
   }
 
   const bigChordDiagram = $("#bigChordDiagram");
 
   // ---- 和弦區縮放 (must be before tab handlers that call _switchZoomToTab) ----
   const ZOOM_STEPS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300];
-  const ZOOM_FS_DEFAULTS = { overview: 200, diagrams: 200, keys: 100 };
+  const ZOOM_FS_DEFAULTS = { overview: 200, piano: 200, guitar: 100 };
   const _tabZoomFs = {};
-  for (const tab of ["overview", "diagrams", "keys"]) {
-    const saved = parseInt(localStorage.getItem(`livechord_zoom_${tab}`));
+  for (const tab of ["overview", "piano", "guitar"]) {
+    // Migrate old localStorage keys
+    let saved = parseInt(localStorage.getItem(`livechord_zoom_${tab}`));
+    if (!saved && tab === "piano") {
+      saved = parseInt(localStorage.getItem("livechord_zoom_diagrams")) || parseInt(localStorage.getItem("livechord_zoom_keys"));
+    }
     _tabZoomFs[tab] = ZOOM_STEPS.indexOf(saved > 0 ? saved : ZOOM_FS_DEFAULTS[tab]);
     if (_tabZoomFs[tab] < 0) _tabZoomFs[tab] = ZOOM_STEPS.indexOf(ZOOM_FS_DEFAULTS[tab]);
   }
@@ -199,79 +212,87 @@
   const btnZoomReset = $("#btnZoomReset");
   const chordDisplayEl = $("#chordDisplay");
 
-  if (tabOverview && tabDiagrams) {
-    tabOverview.addEventListener("click", () => {
-      activeTab = "overview";
-      localStorage.setItem("livechord_tab", "overview");
-      _setAllTabsInactive();
-      tabOverview.classList.add("active");
+  // --- Piano sub-mode switching ---
+  function _switchPianoSubmode(mode) {
+    pianoSubmode = mode;
+    localStorage.setItem("livechord_piano_submode", mode);
+    const btnS = $("#btnSubStatic");
+    const btnW = $("#btnSubWaterfall");
+    if (btnS) btnS.classList.toggle("active", mode === "static");
+    if (btnW) btnW.classList.toggle("active", mode === "waterfall");
+    if (pianoStaticView) pianoStaticView.style.display = mode === "static" ? "block" : "none";
+    if (pianoWaterfallView) pianoWaterfallView.style.display = mode === "waterfall" ? "flex" : "none";
+    if (mode === "waterfall") {
+      _init88Piano();
+      _initWaterfall();
+      _setupTeachControls();
+      _buildKeys88Ribbon();
+      if (sectionData) _renderSectionMarkers();
+      piano88LastIdx = -1;
+      update88Piano(audio.currentTime || 0);
+    } else {
+      const t = audio.currentTime || 0;
+      if (ribbonTrack) ribbonTrack.style.transform = `translateX(${-t * pxPerSec}px)`;
+    }
+    _updateHandSwitchVisibility();
+  }
+
+  // Sub-mode button handlers
+  const btnSubStatic = $("#btnSubStatic");
+  const btnSubWaterfall = $("#btnSubWaterfall");
+  if (btnSubStatic) btnSubStatic.addEventListener("click", () => _switchPianoSubmode("static"));
+  if (btnSubWaterfall) btnSubWaterfall.addEventListener("click", () => _switchPianoSubmode("waterfall"));
+
+  // --- Main tab switching ---
+  function _switchTab(tab) {
+    activeTab = tab;
+    localStorage.setItem("livechord_tab", tab);
+    _setAllTabsInactive();
+
+    if (tab === "overview") {
+      if (tabOverview) tabOverview.classList.add("active");
       chordDisplayOverview.style.display = "";
-      _updateHandSwitchVisibility();
-      _switchZoomToTab("overview");
-      // Overview 顯示大和弦
       if (hasChords) bigChordBox.style.display = "";
       if (activeChordIdx >= 0 && activeChordIdx < chordElements.length) {
         chordElements[activeChordIdx].scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
       }
-      // 重新觸發高亮更新
       activeChordIdx = -1;
       updateActiveChord(audio.currentTime || -1);
-    });
-
-    tabDiagrams.addEventListener("click", () => {
-      activeTab = "diagrams";
-      localStorage.setItem("livechord_tab", "diagrams");
-      _setAllTabsInactive();
-      tabDiagrams.classList.add("active");
-      chordDisplayDiagrams.style.display = "block";
-      _updateHandSwitchVisibility();
-      _switchZoomToTab("diagrams");
-      // Diagrams 隱藏大和弦（避免重複）
+    } else if (tab === "piano") {
+      if (tabPiano) tabPiano.classList.add("active");
+      if (chordDisplayPiano) chordDisplayPiano.style.display = "flex";
       bigChordBox.style.display = "none";
-      const t = audio.currentTime || 0;
-      if (ribbonTrack) {
-        ribbonTrack.style.transform = `translateX(${-t * pxPerSec}px)`;
-      }
-    });
-
-    if (tabKeys) {
-      tabKeys.addEventListener("click", () => {
-        activeTab = "keys";
-        localStorage.setItem("livechord_tab", "keys");
-        _setAllTabsInactive();
-        tabKeys.classList.add("active");
-        chordDisplay88.style.display = "flex";
-        _updateHandSwitchVisibility();
-        _switchZoomToTab("keys");
-        bigChordBox.style.display = "";
-        _init88Piano();
-        _initWaterfall();
-        _setupTeachControls();
-        _buildKeys88Ribbon();
-        if (sectionData) _renderSectionMarkers();
-        piano88LastIdx = -1;
-        update88Piano(audio.currentTime || 0);
-      });
+      _switchPianoSubmode(pianoSubmode);
+    } else if (tab === "guitar") {
+      if (tabGuitar) tabGuitar.classList.add("active");
+      if (chordDisplayGuitar) chordDisplayGuitar.style.display = "flex";
+      bigChordBox.style.display = "none";
+      if (typeof _initGuitarTab === "function") _initGuitarTab();
     }
 
-    // 還原上次 tab
-    if (activeTab === "diagrams") tabDiagrams.click();
-    else if (activeTab === "keys" && tabKeys) tabKeys.click();
+    _updateHandSwitchVisibility();
+    _switchZoomToTab(tab);
   }
 
+  if (tabOverview) tabOverview.addEventListener("click", () => _switchTab("overview"));
+  if (tabPiano) tabPiano.addEventListener("click", () => _switchTab("piano"));
+  if (tabGuitar) tabGuitar.addEventListener("click", () => _switchTab("guitar"));
+
+  // 還原上次 tab
+  if (activeTab === "piano") _switchTab("piano");
+  else if (activeTab === "guitar") _switchTab("guitar");
+
   function _isFullscreen() {
-    return chordDisplayEl && chordDisplayEl.closest(".fullscreen") != null;
+    // Always immersive now — the display area is always fixed/fullscreen
+    return true;
   }
   function _applyZoom() {
     let pct;
-    if (_isFullscreen()) {
-      pct = ZOOM_STEPS[zoomIdx];
-      if (activeTab === "keys") pct = 100;
-      _tabZoomFs[activeTab] = zoomIdx;
-      localStorage.setItem(`livechord_zoom_${activeTab}`, pct);
-    } else {
-      pct = 100; // Normal mode is always 100%
-    }
+    pct = ZOOM_STEPS[zoomIdx];
+    if (activeTab === "piano" && pianoSubmode === "waterfall") pct = 100;
+    if (activeTab === "guitar") pct = 100;
+    _tabZoomFs[activeTab] = zoomIdx;
+    localStorage.setItem(`livechord_zoom_${activeTab}`, pct);
     const scaleTarget = document.getElementById("chordDisplayScaleTarget") || chordDisplayEl;
     if (scaleTarget) {
       scaleTarget.style.transformOrigin = "top left";
@@ -328,7 +349,7 @@
     audio.addEventListener("pause", () => { btnMiniPlay.innerHTML = "&#x25B6;"; });
   }
   function _navUrl(path) {
-    const fs = chordDisplay.classList.contains("fullscreen") || document.fullscreenElement ? "&fs=1" : "";
+    const fs = document.fullscreenElement ? "&fs=1" : "";
     return `/player?path=${encodeURIComponent(path)}&autoplay=1${fs}`;
   }
   function _navPrev() {
@@ -352,51 +373,28 @@
   if (btnMiniPrev) btnMiniPrev.addEventListener("click", _navPrev);
   if (btnMiniNext) btnMiniNext.addEventListener("click", _navNext);
 
-  // ---- 全螢幕切換（一鍵：CSS fullscreen + 瀏覽器全螢幕）----
+  // ---- 全螢幕（預設沉浸式，btnPageFs 控制瀏覽器原生全螢幕）----
   const chordDisplay = $("#chordDisplay");
-  const btnFullscreen = $("#btnFullscreen");
   const btnPageFs = $("#btnPageFs");
 
-  function _enterFullscreen() {
-    chordDisplay.classList.add("fullscreen");
-    document.body.style.overflow = "hidden";
-    btnFullscreen.innerHTML = "&#x2716;";
-    if (btnPageFs) btnPageFs.innerHTML = "&#x2716;";
-    // restore per-tab zoom (defaults: overview/diagrams=200%, keys=100%)
-    _switchZoomToTab(activeTab);
-    document.documentElement.requestFullscreen().catch(() => {});
-  }
-  function _exitFullscreen() {
-    chordDisplay.classList.remove("fullscreen");
-    document.body.style.overflow = "";
-    btnFullscreen.innerHTML = "&#x26F6;";
-    if (btnPageFs) btnPageFs.innerHTML = "&#x26F6;";
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    zoomIdx = ZOOM_STEPS.indexOf(100);
-    _applyZoom();
-  }
+  // Always immersive - hide body overflow
+  document.body.style.overflow = "hidden";
 
-  if (btnFullscreen && chordDisplay) {
-    btnFullscreen.addEventListener("click", () => {
-      if (chordDisplay.classList.contains("fullscreen")) _exitFullscreen();
-      else _enterFullscreen();
-    });
-  }
-  // header 的全螢幕按鈕也同步
   if (btnPageFs) {
     btnPageFs.onclick = () => {
-      if (chordDisplay.classList.contains("fullscreen")) _exitFullscreen();
-      else _enterFullscreen();
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+        btnPageFs.innerHTML = "&#x26F6;";
+      } else {
+        document.documentElement.requestFullscreen().catch(() => {});
+        btnPageFs.innerHTML = "&#x2716;";
+      }
     };
   }
-  // Esc 或瀏覽器退出全螢幕時同步狀態
   document.addEventListener("fullscreenchange", () => {
-    if (!document.fullscreenElement && chordDisplay.classList.contains("fullscreen")) {
-      chordDisplay.classList.remove("fullscreen");
-      document.body.style.overflow = "";
-      if (btnFullscreen) btnFullscreen.innerHTML = "&#x26F6;";
+    if (!document.fullscreenElement) {
       if (btnPageFs) btnPageFs.innerHTML = "&#x26F6;";
-      zoomIdx = ZOOM_STEPS.indexOf(100);
+      // Keep zoom intact — we're always immersive
       _applyZoom();
     }
   });
@@ -548,14 +546,15 @@
   // ---- 88-key piano ----
 
   function _get88PianoMaxWidth() {
-    const w = chordDisplay88.clientWidth || 800;
-    const containerH = chordDisplay88.clientHeight || 400;
-    const maxKeyH = Math.max(80, containerH - 40);  // leave room for labels
-    return Math.min(w, Math.round(maxKeyH / 6 * 52));  // keyH = keyW * 6
+    const container = pianoWaterfallView || chordDisplay88;
+    const w = (container && container.clientWidth) || 800;
+    const containerH = (container && container.clientHeight) || 400;
+    const maxKeyH = Math.max(80, containerH - 40);
+    return Math.min(w, Math.round(maxKeyH / 5.1 * 52));  // 15% shorter keys
   }
 
   function _init88Piano() {
-    if (!chordDisplay88) return;
+    if (!pianoWaterfallView) return;
     piano88Canvas = $("#piano88Canvas");
     if (!piano88Canvas) return;
     const dpr = window.devicePixelRatio || 1;
@@ -1579,7 +1578,7 @@
     new ResizeObserver(() => {
       clearTimeout(_resizeTimer);
       _resizeTimer = setTimeout(() => {
-        if (activeTab === "keys") {
+        if (activeTab === "piano" && pianoSubmode === "waterfall") {
           _init88Piano();
           _resizeWaterfall();
           update88Piano(audio.currentTime || 0);
@@ -1695,7 +1694,7 @@
         }
         await preloadChordInfo(chordData.chords);
         buildChordDOM();
-        if (activeTab === "diagrams") {
+        if (activeTab === "piano" && pianoSubmode === "static") {
           bigChordBox.style.display = "none";
         } else {
           bigChordBox.style.display = "";
@@ -1830,7 +1829,7 @@
       }
     }
     // rebuild 88-key ribbon (uses _ribbonPositions + chordCache)
-    if (activeTab === "keys") _buildKeys88Ribbon();
+    if (activeTab === "piano" && pianoSubmode === "waterfall") _buildKeys88Ribbon();
     // 重新渲染段落標記
     if (sectionData) _renderSectionMarkers();
   }
@@ -1963,7 +1962,7 @@
   function updateActiveChord(currentTime) {
     if (!chordData || !chordData.chords || chordElements.length === 0) return;
 
-    if (activeTab === "diagrams" && ribbonTrack && _ribbonPositions.length > 0) {
+    if (activeTab === "piano" && pianoSubmode === "static" && ribbonTrack && _ribbonPositions.length > 0) {
       // Interpolate scroll from adjusted positions
       let scrollX = currentTime * pxPerSec;
       for (let i = _ribbonPositions.length - 1; i >= 0; i--) {
@@ -2028,7 +2027,7 @@
       const chord = displayedChords[activeChordIdx];
       const cache = chordCache[chord.chord] || {};
 
-      if (activeTab === "diagrams" || activeTab === "keys") {
+      if (activeTab === "piano" || activeTab === "guitar") {
         bigChordBox.style.display = "none";
       } else {
         bigChordName.textContent = chord.chord;
@@ -2074,10 +2073,9 @@
   // Smart view: playing → chord area scrolls internally; paused → page scrolls freely
   function _setSmartView(playing) {
     if (chordDisplayOverview) {
-      const isFs = chordDisplay && chordDisplay.classList.contains("fullscreen");
       if (playing) {
         chordDisplayOverview.style.overflowY = "auto";
-        chordDisplayOverview.style.maxHeight = isFs ? "" : "calc(100vh - 320px)";
+        chordDisplayOverview.style.maxHeight = "";
       } else {
         chordDisplayOverview.style.overflowY = "";
         chordDisplayOverview.style.maxHeight = "";
@@ -2157,10 +2155,11 @@
       timeCurrent.textContent = formatTime(t);
       if(fsTimeCurrent) fsTimeCurrent.textContent = formatTime(t);
       updateActiveChord(t);
-      if (activeTab === "keys") {
+      if (activeTab === "piano" && pianoSubmode === "waterfall") {
         update88Piano(t);
         drawWaterfall(t);
       }
+      if (activeTab === "guitar") _updateGuitarTab(t);
       rafId = requestAnimationFrame(tickSync);
     }
   }
@@ -2178,7 +2177,7 @@
     timeCurrent.textContent = formatTime(t);
     if(fsTimeCurrent) fsTimeCurrent.textContent = formatTime(t);
     updateActiveChord(t);
-    if (activeTab === "keys") {
+    if (activeTab === "piano" && pianoSubmode === "waterfall") {
       update88Piano(t);
       drawWaterfall(t);
     }
@@ -2191,7 +2190,7 @@
     timeCurrent.textContent = formatTime(t);
     if(fsTimeCurrent) fsTimeCurrent.textContent = formatTime(t);
     updateActiveChord(t);
-    if (activeTab === "keys") { piano88LastIdx = -1; update88Piano(t); }
+    if (activeTab === "piano" && pianoSubmode === "waterfall") { piano88LastIdx = -1; update88Piano(t); }
   });
 
   // ---- 循環模式：off → single → favorites ----
@@ -2542,9 +2541,11 @@
     btnFav.classList.toggle("active", isFavorite);
   }
 
-  // ---- mode switch ----
-  // 簡譜/吉他/烏克麗麗模式切換（只限 #modeSwitch 內的按鈕）
+  // ---- instrument dropdown ----
   const capoGroup = $("#capoGroup");
+  const btnInstrument = $("#btnInstrument");
+  const instrumentMenu = $("#instrumentMenu");
+  const INST_ICONS = { piano: "\u{1F3B9}", guitar: "\u{1F3B8}", ukulele: "\u{1FA95}" };
 
   function _updateCapoVisibility() {
     if (capoGroup) {
@@ -2552,26 +2553,29 @@
     }
   }
 
-  document.querySelectorAll("#modeSwitch .mode-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("#modeSwitch .mode-btn").forEach((b) => {
-        b.style.background = "transparent";
-        b.style.color = "var(--text-dim)";
-        b.classList.remove("active");
-      });
-      btn.style.background = "var(--accent)";
-      btn.style.color = "#fff";
-      btn.classList.add("active");
-      displayMode = btn.dataset.mode;
-      _updateCapoVisibility();
-      buildChordDOM();
-      updateActiveChord(audio.currentTime || -1);
+  if (btnInstrument && instrumentMenu) {
+    btnInstrument.addEventListener("click", (e) => {
+      e.stopPropagation();
+      instrumentMenu.style.display = instrumentMenu.style.display === "none" ? "block" : "none";
     });
-  });
+    document.addEventListener("click", () => { instrumentMenu.style.display = "none"; });
+
+    document.querySelectorAll(".inst-option").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".inst-option").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        displayMode = btn.dataset.mode;
+        btnInstrument.textContent = INST_ICONS[displayMode] || "\u{1F3B9}";
+        _updateCapoVisibility();
+        buildChordDOM();
+        updateActiveChord(audio.currentTime || -1);
+        instrumentMenu.style.display = "none";
+      });
+    });
+  }
 
   // ---- hand switch (88-key mode) ----
   const handSwitch = $("#handSwitch");
-  const modeSwitch = $("#modeSwitch");
 
   if (handSwitch) {
     document.querySelectorAll("#handSwitch .mode-btn").forEach((btn) => {
@@ -2794,10 +2798,9 @@
 
   loadTrack(trackPath).then(() => {
     if (autoplay) audio.play().catch(() => {});
-    if (restoreFs && chordDisplay) {
-      chordDisplay.classList.add("fullscreen");
-      if (btnFullscreen) btnFullscreen.innerHTML = "&#x2716;";
+    if (restoreFs) {
       document.documentElement.requestFullscreen().catch(() => {});
+      if (btnPageFs) btnPageFs.innerHTML = "&#x2716;";
     }
   });
 
@@ -3078,6 +3081,300 @@
           // Here we would normally fetch('/api/ai/evaluate-feedback', { method: 'POST', body: JSON.stringify(...) })
           if (ratePopup) ratePopup.style.display = "none";
       });
+  }
+
+  // ===========================================================================
+  // GUITAR TAB (Phase 3B)
+  // ===========================================================================
+
+  let _guitarInitialized = false;
+  let _guitarVoicingsCache = {};  // chordName -> {voicings: [...]}
+  let _guitarAnalysisCache = {};  // chordName -> {roman, degree, ...}
+  let _guitarActiveIdx = -1;
+  let _guitarVoicingIdx = 0;
+
+  const FINGER_NAMES = ["", "食指", "中指", "無名指", "小指"];
+  const STRING_NAMES_ZH = ["6弦 E", "5弦 A", "4弦 D", "3弦 G", "2弦 B", "1弦 e"];
+  const NOTE_SEMIS = { C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11 };
+  const SEMI_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  const OPEN_MIDI_G = [40, 45, 50, 55, 59, 64];
+
+  function _initGuitarTab() {
+    if (!chordData || !chordData.chords || chordData.chords.length === 0) return;
+    _guitarInitialized = true;
+    _guitarActiveIdx = -1;
+    _guitarVoicingIdx = 0;
+    _buildGuitarTimeline();
+    _prefetchGuitarData();
+    _updateGuitarTab(audio.currentTime || 0);
+  }
+
+  async function _prefetchGuitarData() {
+    const chords = _displayChords();
+    if (!chords) return;
+    const names = [...new Set(chords.map(c => c.chord))];
+    const key = _currentKey();
+    await Promise.all(names.map(async (name) => {
+      try {
+        if (!_guitarVoicingsCache[name])
+          _guitarVoicingsCache[name] = await API.chordVoicings("guitar", name);
+      } catch {}
+      try {
+        if (!_guitarAnalysisCache[name])
+          _guitarAnalysisCache[name] = await API.chordAnalysis(key, name);
+      } catch {}
+    }));
+    // Re-render after data loaded
+    _updateGuitarTab(audio.currentTime || 0);
+  }
+
+  function _buildGuitarTimeline() {
+    const container = $("#guitarTimeline");
+    if (!container) return;
+    container.innerHTML = "";
+
+    const chords = _displayChords();
+    if (!chords) return;
+
+    let lastSection = null;
+    for (let i = 0; i < chords.length; i++) {
+      const c = chords[i];
+
+      // Section header
+      if (sectionData && sectionData.sections) {
+        const sec = sectionData.sections.find(s => Math.abs(s.start - c.time) < 0.5);
+        if (sec && sec.label !== lastSection) {
+          lastSection = sec.label;
+          const hdr = document.createElement("div");
+          hdr.className = "gt-section-header";
+          hdr.innerHTML = `<span class="gt-section-dot" style="background:${sec.color || '#888'}"></span>${sec.label}`;
+          container.appendChild(hdr);
+        }
+      }
+
+      const item = document.createElement("div");
+      item.className = "gt-timeline-item future";
+      item.dataset.idx = i;
+      item.dataset.time = c.time;
+      item.innerHTML = `
+        <span class="gt-timeline-chord">${c.chord}</span>
+        <span class="gt-timeline-jianpu">${(chordCache[c.chord]||{}).jianpu||""}</span>
+        <span class="gt-timeline-time">${formatTime(c.time)}</span>
+      `;
+      item.addEventListener("click", () => {
+        audio.currentTime = parseFloat(c.time);
+        if (audio.paused) audio.play();
+      });
+      container.appendChild(item);
+    }
+  }
+
+  function _updateGuitarTimeline(currentTime) {
+    const container = $("#guitarTimeline");
+    if (!container) return;
+    const items = container.querySelectorAll(".gt-timeline-item");
+    const chords = _displayChords();
+    if (!chords) return;
+
+    let activeIdx = -1;
+    for (let i = chords.length - 1; i >= 0; i--) {
+      if (currentTime >= chords[i].time) { activeIdx = i; break; }
+    }
+
+    items.forEach((item, i) => {
+      item.classList.remove("active", "played", "future");
+      if (i < activeIdx) item.classList.add("played");
+      else if (i === activeIdx) item.classList.add("active");
+      else item.classList.add("future");
+    });
+
+    // Scroll active into view
+    if (activeIdx >= 0 && activeIdx < items.length) {
+      items[activeIdx].scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    return activeIdx;
+  }
+
+  function _renderGuitarFretboard(chordName, voicingIdx) {
+    const canvas = $("#guitarFretboardCanvas");
+    const nameEl = $("#gtChordName");
+    const intervalsEl = $("#gtChordIntervals");
+    const fingeringEl = $("#gtFingering");
+    const notesEl = $("#gtNotes");
+    const typeEl = $("#gtType");
+    const voicingRow = $("#gtVoicingRow");
+
+    if (!canvas) return;
+
+    // Get voicing data
+    const voicingsData = _guitarVoicingsCache[chordName];
+    const voicings = voicingsData ? voicingsData.voicings : [];
+    const diagram = voicings[voicingIdx] || (chordCache[chordName] || {}).diagram_guitar;
+
+    if (!diagram) {
+      if (nameEl) nameEl.textContent = chordName;
+      return;
+    }
+
+    // Chord name display
+    if (nameEl) nameEl.textContent = chordName;
+
+    // Intervals
+    const cache = chordCache[chordName] || {};
+    if (intervalsEl && cache.notes) {
+      intervalsEl.textContent = cache.notes.join("  ");
+    }
+
+    // Get root note for highlighting
+    const rootNote = cache.notes ? cache.notes[0] : null;
+    let rootClean = rootNote;
+    if (rootClean && rootClean.length > 1 && rootClean[1] === "b") {
+      const fb = { Db:"C#", Eb:"D#", Gb:"F#", Ab:"G#", Bb:"A#" };
+      rootClean = fb[rootClean] || rootClean;
+    }
+
+    // Draw fretboard
+    ChordRender.drawGuitarFretboard(canvas, diagram, {
+      scale: 1.2,
+      rootNote: rootClean,
+      highlightRoot: true,
+    });
+
+    // Fingering string
+    if (fingeringEl) {
+      fingeringEl.textContent = (diagram.strings || []).map(f => f === -1 ? "x" : f === 0 ? "o" : f).join("  ");
+    }
+
+    // Notes
+    if (notesEl && cache.notes) {
+      notesEl.textContent = cache.notes.join(" · ");
+    }
+
+    // Type
+    const analysis = _guitarAnalysisCache[chordName];
+    if (typeEl) {
+      typeEl.textContent = (analysis && analysis.type_name) || cache.type_name || "";
+    }
+
+    // Voicing buttons
+    if (voicingRow) {
+      voicingRow.innerHTML = '<span class="gt-voicing-label">Voicing variants</span>';
+      if (voicings.length > 1) {
+        voicings.forEach((v, idx) => {
+          const btn = document.createElement("button");
+          btn.className = "gt-voicing-btn" + (idx === voicingIdx ? " active" : "");
+          btn.textContent = (v.label || `#${idx+1}`) + ` ${String.fromCodePoint(0x2460 + idx)}`;
+          btn.addEventListener("click", () => {
+            _guitarVoicingIdx = idx;
+            _renderGuitarFretboard(chordName, idx);
+            _renderGuitarTeachInfo(chordName);
+          });
+          voicingRow.appendChild(btn);
+        });
+      }
+    }
+  }
+
+  function _renderGuitarTeachInfo(chordName) {
+    const chords = _displayChords();
+    const key = _currentKey();
+
+    // Fingering guide
+    const listEl = $("#gtFingeringList");
+    if (listEl) {
+      listEl.innerHTML = "";
+      const voicingsData = _guitarVoicingsCache[chordName];
+      const voicings = voicingsData ? voicingsData.voicings : [];
+      const diagram = voicings[_guitarVoicingIdx] || (chordCache[chordName] || {}).diagram_guitar;
+
+      if (diagram && diagram.fingers) {
+        const cache = chordCache[chordName] || {};
+        const rootNote = cache.notes ? cache.notes[0] : null;
+        let rootSemi = -1;
+        if (rootNote) {
+          let rn = rootNote;
+          const fb = { Db:"C#", Eb:"D#", Gb:"F#", Ab:"G#", Bb:"A#" };
+          if (fb[rn]) rn = fb[rn];
+          rootSemi = NOTE_SEMIS[rn] != null ? NOTE_SEMIS[rn] : -1;
+        }
+
+        for (let s = 0; s < 6; s++) {
+          const finger = diagram.fingers[s];
+          if (finger <= 0) continue;
+          const fret = diagram.strings[s];
+          const noteMidi = OPEN_MIDI_G[s] + fret;
+          const noteSemi = noteMidi % 12;
+          const noteName = SEMI_NAMES[noteSemi];
+          const isRoot = rootSemi >= 0 && noteSemi === rootSemi;
+
+          const item = document.createElement("div");
+          item.className = "gt-finger-item";
+          item.innerHTML = `
+            <span class="gt-finger-dot ${isRoot ? 'root' : 'normal'}">${finger}</span>
+            <span>${FINGER_NAMES[finger]} on ${STRING_NAMES_ZH[s]} fret ${fret}${isRoot ? " — root note " + noteName : ""}</span>
+          `;
+          listEl.appendChild(item);
+        }
+      }
+    }
+
+    // Next chord preview
+    const nextEl = $("#gtNextChordContent");
+    if (nextEl && chords) {
+      nextEl.innerHTML = "";
+      // Find current chord index
+      let curIdx = -1;
+      for (let i = chords.length - 1; i >= 0; i--) {
+        if (audio.currentTime >= chords[i].time) { curIdx = i; break; }
+      }
+      const nextChord = curIdx >= 0 && curIdx < chords.length - 1 ? chords[curIdx + 1] : null;
+
+      if (nextChord) {
+        const countdown = Math.max(0, nextChord.time - audio.currentTime);
+        nextEl.innerHTML = `
+          <div class="gt-next-countdown">Coming up in ${countdown.toFixed(0)}s</div>
+          <div class="gt-next-name">${nextChord.chord}</div>
+          <div class="gt-next-intervals">${(chordCache[nextChord.chord]||{}).jianpu||""}</div>
+          <div class="gt-next-tip">Practice transitioning smoothly from ${chordName} to ${nextChord.chord}</div>
+        `;
+      } else {
+        nextEl.innerHTML = '<div class="gt-next-countdown">Last chord in song</div>';
+      }
+    }
+
+    // Chord in key
+    const keyEl = $("#gtChordInKeyContent");
+    if (keyEl) {
+      const analysis = _guitarAnalysisCache[chordName];
+      if (analysis) {
+        keyEl.innerHTML = `
+          <div class="gt-roman">
+            <span class="gt-roman-badge">${analysis.roman}</span>
+            <span class="gt-roman-key">in key ${key}</span>
+          </div>
+          <div class="gt-roman-explain">${analysis.explanation}</div>
+        `;
+      } else {
+        keyEl.innerHTML = "";
+      }
+    }
+  }
+
+  function _updateGuitarTab(currentTime) {
+    if (activeTab !== "guitar" || !_guitarInitialized) return;
+
+    const activeIdx = _updateGuitarTimeline(currentTime);
+    if (activeIdx === _guitarActiveIdx) return;
+    _guitarActiveIdx = activeIdx;
+    _guitarVoicingIdx = 0;
+
+    const chords = _displayChords();
+    if (!chords || activeIdx < 0 || activeIdx >= chords.length) return;
+
+    const chordName = chords[activeIdx].chord;
+    _renderGuitarFretboard(chordName, 0);
+    _renderGuitarTeachInfo(chordName);
   }
 
 })();

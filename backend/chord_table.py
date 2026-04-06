@@ -269,6 +269,107 @@ def get_chord_jianpu(chord_str: str) -> str:
     return ' '.join(jianpu)
 
 
+QUALITY_NAMES = {
+    '': 'Major', 'm': 'Minor', 'min': 'Minor',
+    'dim': 'Diminished', 'aug': 'Augmented',
+    'sus2': 'Suspended 2nd', 'sus4': 'Suspended 4th', 'sus': 'Suspended 4th',
+    '7': 'Dominant 7th', 'maj7': 'Major 7th', 'm7': 'Minor 7th', 'min7': 'Minor 7th',
+    'dim7': 'Diminished 7th', 'm7b5': 'Half-Diminished',
+    'aug7': 'Augmented 7th', '7b5': 'Dominant 7th ♭5', '7#5': 'Dominant 7th ♯5',
+    '6': 'Major 6th', 'm6': 'Minor 6th', '6/9': 'Major 6/9',
+    '9': 'Dominant 9th', 'maj9': 'Major 9th', 'm9': 'Minor 9th',
+    '11': 'Dominant 11th', 'm11': 'Minor 11th',
+    '13': 'Dominant 13th',
+    'add9': 'Add 9th', 'madd9': 'Minor Add 9th',
+    'mM7': 'Minor Major 7th',
+    '7sus4': '7th Suspended 4th', '7sus2': '7th Suspended 2nd',
+    '7b9': 'Dominant 7th ♭9', '7#9': 'Dominant 7th ♯9',
+    '7#11': 'Dominant 7th ♯11',
+}
+
+# 自然大調各級和弦的半音數 → 羅馬數字
+_MAJOR_SCALE_SEMITONES = [0, 2, 4, 5, 7, 9, 11]
+_ROMAN_NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII']
+
+
+def analyze_chord_in_key(key: str, chord_str: str) -> dict:
+    """
+    分析和弦在調性中的級數 (Roman numeral analysis)
+    Returns: {roman, degree, type_name, explanation}
+    """
+    root, quality, bass = parse_chord(chord_str)
+    if not root:
+        return {'roman': '?', 'degree': 0, 'type_name': '', 'explanation': ''}
+
+    key_semi = root_to_semitone(key)
+    chord_semi = root_to_semitone(root)
+    interval = (chord_semi - key_semi) % 12
+
+    # Find degree in major scale
+    if interval in _MAJOR_SCALE_SEMITONES:
+        degree_idx = _MAJOR_SCALE_SEMITONES.index(interval)
+        roman = _ROMAN_NUMERALS[degree_idx]
+        prefix = ''
+    else:
+        # Chromatic alteration — prefer ♭ (more common in music theory)
+        found = False
+        for i, s in enumerate(_MAJOR_SCALE_SEMITONES):
+            if (s - 1) % 12 == interval:
+                roman = _ROMAN_NUMERALS[i]
+                prefix = '♭'
+                degree_idx = i
+                found = True
+                break
+        if not found:
+            for i, s in enumerate(_MAJOR_SCALE_SEMITONES):
+                if (s + 1) % 12 == interval:
+                    roman = _ROMAN_NUMERALS[i]
+                    prefix = '♯'
+                    degree_idx = i
+                    found = True
+                    break
+        if not found:
+            roman = '?'
+            prefix = ''
+            degree_idx = 0
+
+    # Minor chords use lowercase Roman
+    is_minor = quality in ('m', 'min', 'm7', 'min7', 'm9', 'm11', 'm6', 'dim', 'dim7', 'm7b5',
+                           'mM7', 'madd9', 'mb5', 'm6/9')
+    if is_minor:
+        roman = roman.lower()
+
+    # Append quality suffix to Roman
+    quality_suffix = ''
+    if quality in ('7', 'maj7', 'm7', 'min7', 'dim7', 'm7b5', 'aug7', '9', 'maj9', 'm9',
+                    '11', 'm11', '13', 'mM7', '6', 'm6', 'add9', 'sus2', 'sus4', '7sus4'):
+        quality_suffix = quality.replace('min7', 'm7')
+        # For minor qualities, strip the leading 'm' since Roman is already lowercase
+        if quality_suffix.startswith('m') and is_minor and quality_suffix != 'maj7' and quality_suffix != 'maj9':
+            quality_suffix = quality_suffix[1:] if len(quality_suffix) > 1 else ''
+    elif quality == 'dim':
+        quality_suffix = '°'
+    elif quality == 'aug':
+        quality_suffix = '+'
+
+    full_roman = f'{prefix}{roman}{quality_suffix}'
+    type_name = QUALITY_NAMES.get(quality, quality or 'Major')
+    degree = degree_idx + 1
+
+    # Generate explanation
+    if prefix:
+        explanation = f'{chord_str} is the {prefix}{roman}{quality_suffix} in key {key} — borrowed chord'
+    else:
+        explanation = f'{chord_str} is the {full_roman} in key {key}'
+
+    return {
+        'roman': full_roman,
+        'degree': degree,
+        'type_name': type_name,
+        'explanation': explanation,
+    }
+
+
 def get_chord_info(chord_str: str) -> dict:
     """
     取得和弦的完整資訊
@@ -284,6 +385,7 @@ def get_chord_info(chord_str: str) -> dict:
         'bass': bass,
         'notes': notes,
         'jianpu': jianpu,
+        'type_name': QUALITY_NAMES.get(quality, quality or 'Major'),
     }
 
 
