@@ -118,6 +118,18 @@ SECTION_PARAMS = {
     "default":    (0.8, 0.8),
 }
 
+# ── Section → Pattern 自動切換 (style="Auto" 時啟用) ──
+# 參考 Ron Drotos Pop Ballad Accompaniment 各 Lesson 的段落編排
+SECTION_STYLE_MAP = {
+    "intro":      "Block",      # Lesson 1: 稀疏全音符，建立氛圍
+    "verse":      "Arpeggio",   # Lesson 5/8: 流動分解，襯托人聲
+    "pre_chorus": "Arpeggio",   # 仍流動但密度/力度由 SECTION_PARAMS 提升
+    "chorus":     "Rhythm",     # Lesson 11: 附點節奏，有力推進
+    "bridge":     "Arpeggio",   # 對比回落
+    "outro":      "Block",      # 收尾
+    "default":    "Arpeggio",
+}
+
 
 # ==============================================================================
 # Phase 11b #3: Walking Bass 進階手法
@@ -359,8 +371,9 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
     if not pitches:
         return [], prev_lh
 
-    # Voice Leading
-    pitches = voice_leading_optimize(pitches, prev_lh, LH_LOW, LH_HIGH)
+    # Voice Leading (L2 pop octave bass 不做 VL，避免 3 音 voicing 碰撞產生重複音)
+    if level != "L2":
+        pitches = voice_leading_optimize(pitches, prev_lh, LH_LOW, LH_HIGH)
 
     # 取得 pattern
     pattern = STYLE_DICT.get(style, STYLE_DICT["Block"])
@@ -548,7 +561,8 @@ def generate_accompaniment(chords: List[Dict],
                            style: str = "Block",
                            level: str = "L1",
                            genre: str = "",
-                           section_type: str = "default") -> Dict[str, Any]:
+                           section_type: str = "default",
+                           sections: List[Dict] = None) -> Dict[str, Any]:
     """
     主入口：根據和弦序列、旋律、風格與難度，生成左右手 MIDI 伴奏。
 
@@ -556,10 +570,11 @@ def generate_accompaniment(chords: List[Dict],
         chords: [{"time": 0, "end": 4.5, "chord": "Cmaj7"}, ...]
         melody: [{"start": 0.5, "end": 1.0, "midi": 72}, ...]
         bpm: 歌曲 BPM
-        style: Block/Arpeggio/Rhythm/Alberti/Shell/Walking/Stride
+        style: Block/Arpeggio/Rhythm/Alberti/Shell/Walking/Stride/Auto
         level: L1(初階)/L2(中階)/L3(進階)
         genre: 曲風字串（用於建議）
-        section_type: intro/verse/chorus/bridge/outro/default (Phase 11b #7)
+        section_type: intro/verse/chorus/bridge/outro/default (legacy)
+        sections: [{"type":"verse","start":0,"end":30}, ...] 段落列表
 
     Returns:
         {
@@ -572,23 +587,20 @@ def generate_accompaniment(chords: List[Dict],
         }
     """
     melody = melody or []
-    if style not in STYLE_DICT:
+    sections = sections or []
+    auto_mode = (style == "Auto")
+    if style not in STYLE_DICT and not auto_mode:
         style = "Block"
     if level not in ("L1", "L2", "L3"):
         level = "L1"
-
-    # Phase 11b #3/#7: Section-aware 密度/力度
-    density_mult, velocity_mult = SECTION_PARAMS.get(
-        section_type, SECTION_PARAMS["default"]
-    )
 
     left_events = []
     right_events = []
     prev_lh: List[int] = []
 
-    # Hand Balance: L1/L2 左手弱, L3 正常 — 再乘以 section velocity
-    lh_velocity = int((55 if level == "L1" else 65 if level == "L2" else 70) * velocity_mult)
-    rh_velocity = int(90 * velocity_mult)
+    # 基準力度 (L1/L2 左手弱, L3 正常)
+    base_lh_vel = 55 if level == "L1" else 65 if level == "L2" else 70
+    base_rh_vel = 90
 
     for i, chord_evt in enumerate(chords):
         start = chord_evt.get("time", 0)
@@ -599,6 +611,27 @@ def generate_accompaniment(chords: List[Dict],
         if duration < 0.1:
             continue
 
+        # ── Per-chord section lookup ──
+        chord_section = "default"
+        if sections:
+            for sec in sections:
+                if sec.get("start", 0) <= start < sec.get("end", float("inf")):
+                    chord_section = sec.get("type", "default")
+                    break
+
+        # Section-aware 密度/力度
+        density_mult, velocity_mult = SECTION_PARAMS.get(
+            chord_section, SECTION_PARAMS["default"]
+        )
+        lh_velocity = int(base_lh_vel * velocity_mult)
+        rh_velocity = int(base_rh_vel * velocity_mult)
+
+        # ── Auto mode: 段落決定 pattern ──
+        if auto_mode:
+            current_style = SECTION_STYLE_MAP.get(chord_section, "Arpeggio")
+        else:
+            current_style = style
+
         # 計算下一和弦根音 (Walking Bass approach note)
         next_root_midi = None
         if i + 1 < len(chords):
@@ -608,7 +641,7 @@ def generate_accompaniment(chords: List[Dict],
 
         # 左手
         lh, prev_lh = _build_left_hand(
-            chord_name, start, duration, style, level,
+            chord_name, start, duration, current_style, level,
             prev_lh, next_root_midi, melody, lh_velocity
         )
         left_events.extend(lh)

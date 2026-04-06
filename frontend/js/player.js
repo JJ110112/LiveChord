@@ -38,7 +38,7 @@
   let waterfallActive = true;
   let show88ChordTones = localStorage.getItem("livechord_show_chord_tones") === "true";
   let showFingering = localStorage.getItem("livechord_show_fingering") !== "false"; // 預設開啟
-  let teachStyle = localStorage.getItem("livechord_teach_style") || "Arpeggio";
+  let teachStyle = localStorage.getItem("livechord_teach_style") || "Auto";
   let teachLevel = localStorage.getItem("livechord_teach_level") || "L1";
   if (!["L1", "L2", "L3"].includes(teachLevel)) teachLevel = "L1";
   let accData = null;  // {left_hand:[], right_hand:[]} from API
@@ -1414,7 +1414,8 @@
 
     // 低優先: 風格基礎提示
     if (msgs.length === 0) {
-      if (teachStyle === "Arpeggio") msgs.push("流動的分解和弦 — 保持均勻觸鍵");
+      if (teachStyle === "Auto") msgs.push("段落自適 — 主歌分解、副歌附點、前奏柱狀");
+      else if (teachStyle === "Arpeggio") msgs.push("流動的分解和弦 — 保持均勻觸鍵");
       else if (teachStyle === "Block") msgs.push("柱狀和弦 — 雙手同步，力度均衡");
       else if (teachStyle === "Rhythm") msgs.push("Ballad 附點節奏 — 長-短-長，抒情搖擺");
       else if (teachStyle === "Walking") msgs.push("Walking Bass — 低音線條行走中");

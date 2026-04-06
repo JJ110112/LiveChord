@@ -336,13 +336,23 @@ def get_accompaniment(
         except Exception:
             pass
 
+    # 載入段落資料 (Auto mode 用)
+    sections = []
+    if style == "Auto":
+        try:
+            from ai.section_detect import detect_sections
+            sec_result = detect_sections(chords, chord_data.get("key", "C"))
+            sections = sec_result.get("sections", [])
+        except Exception:
+            pass
+
     # 生成伴奏
     from ai.accompaniment_generator import generate_accompaniment
 
     result = generate_accompaniment(
         chords=chords, melody=melody,
         bpm=bpm, style=style, level=level, genre=genre,
-        section_type=section_type,
+        section_type=section_type, sections=sections,
     )
     result["path"] = path
     result["bpm"] = round(bpm, 1)
