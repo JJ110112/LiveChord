@@ -74,6 +74,35 @@
   const resizeHandle = $("#resizeHandle");
   const instrumentPanel = $("#instrumentPanel");
 
+  // Marquee scrolling for overflowing song title
+  function _checkMarquee(el) {
+    if (!el) return;
+    el.classList.remove("marquee");
+    // Unwrap existing marquee-inner
+    const existing = el.querySelector(".marquee-inner");
+    if (existing) el.textContent = existing.firstChild.textContent;
+    // Check if text overflows
+    requestAnimationFrame(() => {
+      if (el.scrollWidth > el.clientWidth + 2) {
+        const text = el.textContent;
+        el.textContent = "";
+        // Two copies for seamless loop: [text   text   ] scrolls -50%
+        const span = document.createElement("span");
+        span.className = "marquee-inner";
+        span.textContent = text;
+        const sep = document.createTextNode("   \u00A0\u00A0\u00A0   ");
+        span.appendChild(sep);
+        const copy = document.createTextNode(text);
+        span.appendChild(copy);
+        el.appendChild(span);
+        el.classList.add("marquee");
+        // Duration proportional to text length (~ 50px/sec)
+        const dur = Math.max(8, span.scrollWidth / 50);
+        el.style.setProperty("--marquee-dur", dur + "s");
+      }
+    });
+  }
+
   function _updateCapoVisibility() {
     if (capoGroup) {
       capoGroup.style.display = (activeTab === "guitar" || activeTab === "ukulele") ? "" : "none";
@@ -251,7 +280,8 @@
         const sec = sectionData.sections.find(s => Math.abs(s.start - c.time) < 0.5);
         if (sec && sec.label !== lastSection) {
           lastSection = sec.label;
-          sectionHdr = { label: sec.label, color: sec.color || '#888' };
+          const modeTag = sec.mode && sec.mode !== "Major" && sec.mode !== "Minor" ? ` ${sec.mode}` : "";
+          sectionHdr = { label: sec.label + modeTag, color: sec.color || '#888' };
         }
       }
 
@@ -557,9 +587,11 @@
         songTitle.innerHTML = escTitle;
         songTitle.title = _trackArtist ? `${title} — ${_trackArtist}` : title;
         document.title = `${title} — LiveChord`;
+        _checkMarquee(songTitle);
       } catch {
         const title = path.split("/").pop().replace(/\.flac$/i, "");
         songTitle.textContent = title;
+        _checkMarquee(songTitle);
       }
 
       API.addRecent(path).catch(() => {});
@@ -1782,6 +1814,7 @@
     // Rebuild ribbon to include section markers now that sectionData is available
     _buildUnifiedRibbon();
     updateActiveChord(audio.currentTime || 0);
+    _updateKeyDisplay(audio.currentTime || 0);
   }
 
   // ---- chord loading (自動偵測整合) ----
@@ -1802,7 +1835,9 @@
         }
         if (chordData.key) {
           const keyInfo = $("#chordKey");
-          if (keyInfo) keyInfo.textContent = `Key: ${chordData.key}`;
+          const _ma = { Mixolydian:"Mix", Dorian:"Dor", Lydian:"Lyd", Aeolian:"Aeo", Blues:"Blues" };
+          const _ml = chordData.mode && _ma[chordData.mode] ? ` ${_ma[chordData.mode]}` : "";
+          if (keyInfo) keyInfo.textContent = `Key: ${chordData.key}${_ml}`;
         }
         if (chordData.capo) {
           capo = chordData.capo;
@@ -2064,6 +2099,7 @@
       }
       _updateProgress(t);
       updateActiveChord(t);
+      _updateKeyDisplay(t);
       if (activeTab === "piano") {
         update88Piano(t);
         drawWaterfall(t);
@@ -2426,13 +2462,72 @@
   const transposeVal = $("#transposeValue");
   const capoSelect = $("#capoSelect");
 
-  function _updateKeyDisplay() {
+  function _updateKeyDisplay(currentTime) {
     const keyInfo = $("#chordKey");
-    if (keyInfo && chordData && chordData.key) {
-      const shift = transpose - capo;
-      const newKey = shift === 0 ? chordData.key : transposeChord(chordData.key, shift);
-      keyInfo.textContent = `Key: ${newKey}`;
+    if (!keyInfo || !chordData || !chordData.key) return;
+    const shift = transpose - capo;
+    const baseKey = shift === 0 ? chordData.key : transposeChord(chordData.key, shift);
+
+    // Detect per-section key changes & mode
+    if (sectionData && sectionData.sections) {
+      const globalIsMajor = !baseKey.endsWith("m");
+      const globalRoot = baseKey.replace(/m$/, "");
+      const rawRoot = k => k.replace(/m.*$/, "");
+      const normalize = k => {
+        if (!globalIsMajor || !/^[A-G][b#]?m$/.test(k)) return k;
+        const mRoot = k.replace(/m$/, "");
+        if (mRoot === globalRoot) return baseKey;
+        return transposeChord(mRoot, 3);
+      };
+
+      // Build per-section normalized key sequence
+      const secKeys = sectionData.sections
+        .filter(s => s.key)
+        .map(s => normalize(shift === 0 ? s.key : transposeChord(s.key, shift)));
+
+      // Filter: only keep sustained modulations (key must persist 2+ consecutive sections)
+      // Single-section deviations = modal borrowing, not modulation
+      const stable = [];
+      for (let i = 0; i < secKeys.length; i++) {
+        const r = rawRoot(secKeys[i]);
+        const prevR = i > 0 ? rawRoot(secKeys[i - 1]) : null;
+        const nextR = i < secKeys.length - 1 ? rawRoot(secKeys[i + 1]) : null;
+        // Keep if: same as previous OR same as next (sustained)
+        if (r === prevR || r === nextR) {
+          if (stable.length === 0 || rawRoot(stable[stable.length - 1]) !== r) {
+            stable.push(secKeys[i]);
+          }
+        }
+      }
+      // Fallback: if nothing survived, use global key
+      if (stable.length === 0) stable.push(baseKey);
+
+      const t = currentTime != null ? currentTime : (audio.currentTime || 0);
+      const curSec = [...sectionData.sections].reverse().find(s => t >= s.start);
+      const curMode = curSec && curSec.mode ? curSec.mode : "";
+      const modeAbbr = { Mixolydian: "Mix", Dorian: "Dor", Lydian: "Lyd", Aeolian: "Aeo", Phrygian: "Phr", Blues: "Blues" };
+      const curModeLabel = modeAbbr[curMode] || "";
+
+      const uniqueRoots = new Set(stable.map(rawRoot));
+      if (uniqueRoots.size > 1) {
+        const curRaw = curSec && curSec.key ? normalize(shift === 0 ? curSec.key : transposeChord(curSec.key, shift)) : baseKey;
+        const display = stable.map(k => {
+          if (rawRoot(k) === rawRoot(curRaw)) {
+            return `<span style="color:#fff;text-shadow:0 0 6px rgba(255,255,255,0.4)">${k}</span>`;
+          }
+          return `<span style="opacity:0.35">${k}</span>`;
+        }).join(' <span style="opacity:0.3">→</span> ');
+        const modeSuffix = curModeLabel ? ` <span style="color:rgba(255,255,255,0.7);font-size:0.85em">${curModeLabel}</span>` : "";
+        keyInfo.innerHTML = `Key: ${display}${modeSuffix}`;
+        return;
+      }
+      // No modulation — show single key with mode if non-standard
+      if (curModeLabel) {
+        keyInfo.innerHTML = `Key: ${baseKey} <span style="color:rgba(255,255,255,0.7);font-size:0.85em">${curModeLabel}</span>`;
+        return;
+      }
     }
+    keyInfo.textContent = `Key: ${baseKey}`;
   }
 
   if (transposeUpBtn) transposeUpBtn.addEventListener("click", () => {
@@ -3370,20 +3465,38 @@
         const isActive = (cB >= h - 30 && cT <= h - 10);
         const fClr = (ev.finger && FINGER_COLORS[ev.finger]) || PICK_CLR;
         ctx.save();
-        if (isActive) { ctx.shadowColor = fClr; ctx.shadowBlur = 10; }
+        if (isActive) { ctx.shadowColor = fClr; ctx.shadowBlur = 14; }
         ctx.fillStyle = fClr;
         ctx.beginPath();
         ctx.arc(x, cy, r, 0, Math.PI * 2);
         ctx.fill();
         // Finger letter
         if (ev.finger) {
-          ctx.fillStyle = "#fff";
+          ctx.fillStyle = ev.finger === "a" ? "#333" : "#fff";
           ctx.font = `bold ${Math.round(r * 1.2)}px sans-serif`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.fillText(ev.finger, x, cy);
         }
         ctx.restore();
+        // Contact glow at now-line (string flash)
+        if (cB >= h - 4 && cT <= h) {
+          ctx.save();
+          ctx.fillStyle = fClr;
+          ctx.shadowColor = fClr;
+          ctx.shadowBlur = 18;
+          ctx.beginPath();
+          ctx.arc(x, h, r * 0.7, 0, Math.PI * 2);
+          ctx.fill();
+          // White core
+          ctx.fillStyle = "rgba(255,255,255,0.7)";
+          ctx.shadowColor = "#fff";
+          ctx.shadowBlur = 12;
+          ctx.beginPath();
+          ctx.arc(x, h, r * 0.35, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
       } else if (ev.type === "pluck") {
         // Simultaneous multi-string pluck (e.g. ima)
         const cy = (cT + cB) / 2;
@@ -3394,17 +3507,34 @@
           const fg = ev.fingers[si] || "i";
           const fClr = FINGER_COLORS[fg] || PICK_CLR;
           ctx.save();
-          if (isActive) { ctx.shadowColor = fClr; ctx.shadowBlur = 10; }
+          if (isActive) { ctx.shadowColor = fClr; ctx.shadowBlur = 14; }
           ctx.fillStyle = fClr;
           ctx.beginPath();
           ctx.arc(x, cy, r, 0, Math.PI * 2);
           ctx.fill();
-          ctx.fillStyle = "#fff";
+          ctx.fillStyle = fg === "a" ? "#333" : "#fff";
           ctx.font = `bold ${Math.round(r * 1.2)}px sans-serif`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.fillText(fg, x, cy);
           ctx.restore();
+          // Contact glow
+          if (cB >= h - 4 && cT <= h) {
+            ctx.save();
+            ctx.fillStyle = fClr;
+            ctx.shadowColor = fClr;
+            ctx.shadowBlur = 18;
+            ctx.beginPath();
+            ctx.arc(x, h, r * 0.7, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(255,255,255,0.7)";
+            ctx.shadowColor = "#fff";
+            ctx.shadowBlur = 12;
+            ctx.beginPath();
+            ctx.arc(x, h, r * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
         }
       }
     }

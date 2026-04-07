@@ -49,8 +49,8 @@
   left: 0;
   right: 0;
   height: 44px;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
+  justify-content: space-between;
   align-items: center;
   gap: 16px;
   padding: 0 16px;
@@ -72,11 +72,14 @@
 .topbar-logo:hover { opacity: 0.8; }
 
 .topbar-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 0;
-  position: relative;
+  max-width: 50%;
+  pointer-events: auto;
 }
 
 .topbar-title {
@@ -85,12 +88,26 @@
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
   max-width: 400px;
   cursor: pointer;
   padding: 4px 12px;
   border-radius: 8px;
   transition: background .15s;
+}
+.topbar-title.marquee {
+  text-overflow: clip;
+}
+.topbar-title:not(.marquee) {
+  text-overflow: ellipsis;
+}
+.topbar-title .marquee-inner {
+  display: inline-block;
+  padding-right: 60px;
+  animation: marquee-scroll var(--marquee-dur, 14s) linear infinite;
+}
+@keyframes marquee-scroll {
+  0%   { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
 }
 .topbar-title:hover {
   background: var(--bg-hover);
@@ -471,9 +488,12 @@
 .gt-compact-bar {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   padding: 4px 0;
   flex-shrink: 0;
+  position: relative;
+  width: 100%;
 }
 
 .gt-main-chord-name {
@@ -481,12 +501,15 @@
   font-weight: 800;
   color: #fff;
   line-height: 1;
+  text-align: center;
 }
 
 .gt-voicing-row {
   display: flex;
   align-items: center;
   gap: 3px;
+  position: absolute;
+  right: 8px;
 }
 .gt-voicing-btn {
   padding: 2px 8px;
@@ -562,28 +585,40 @@
 }
 
 /* Soundhole — absolute background, centered in right panel */
+/* Soundhole with rosette — realistic guitar aesthetic */
 .gt-soundhole {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 110px;
-  height: 110px;
+  width: 120px;
+  height: 120px;
   border-radius: 50%;
   z-index: 0;
   pointer-events: none;
-  border: 4px solid rgba(180,140,80,0.18);
-  outline: 2px solid rgba(180,140,80,0.08);
-  outline-offset: 4px;
-  box-shadow:
-    inset 0 0 50px rgba(0,0,0,0.9),
-    inset 0 0 100px rgba(0,0,0,0.6),
-    0 0 12px rgba(80,50,20,0.2),
-    0 0 0 10px rgba(180,140,80,0.05);
+  /* Deep black hole interior */
   background: radial-gradient(circle,
-    rgba(0,0,0,0.8) 0%,
-    rgba(10,5,2,0.5) 55%,
-    transparent 80%);
+    #000 0%,
+    #0a0604 40%,
+    rgba(15,10,5,0.9) 60%,
+    transparent 72%);
+  /* Rosette rings */
+  border: 3px solid rgba(160,120,60,0.35);
+  outline: 2px solid rgba(140,100,50,0.25);
+  outline-offset: 2px;
+  box-shadow:
+    /* Inner depth */
+    inset 0 0 30px 10px rgba(0,0,0,1),
+    inset 0 0 60px rgba(0,0,0,0.8),
+    /* Rosette decorative rings */
+    0 0 0 5px rgba(100,70,30,0.15),
+    0 0 0 7px rgba(180,140,70,0.2),
+    0 0 0 8px rgba(100,70,30,0.12),
+    0 0 0 11px rgba(60,40,15,0.1),
+    0 0 0 13px rgba(180,140,70,0.15),
+    0 0 0 14px rgba(100,70,30,0.08),
+    /* Outer wood glow */
+    0 0 20px rgba(120,80,30,0.08);
 }
 
 /* ========== [END: GUITAR/UKULELE TAB] ========== */
