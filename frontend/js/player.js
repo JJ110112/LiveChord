@@ -2513,17 +2513,17 @@
         const curRaw = curSec && curSec.key ? normalize(shift === 0 ? curSec.key : transposeChord(curSec.key, shift)) : baseKey;
         const display = stable.map(k => {
           if (rawRoot(k) === rawRoot(curRaw)) {
-            return `<span style="color:#fff;text-shadow:0 0 6px rgba(255,255,255,0.4)">${k}</span>`;
+            return `<span style="color:#00e5ff;text-shadow:0 0 8px rgba(0,229,255,0.5)">${k}</span>`;
           }
           return `<span style="opacity:0.35">${k}</span>`;
         }).join(' <span style="opacity:0.3">→</span> ');
-        const modeSuffix = curModeLabel ? ` <span style="color:rgba(255,255,255,0.7);font-size:0.85em">${curModeLabel}</span>` : "";
+        const modeSuffix = curModeLabel ? ` <span style="color:#00e5ff;opacity:0.7;font-size:0.85em">${curModeLabel}</span>` : "";
         keyInfo.innerHTML = `Key: ${display}${modeSuffix}`;
         return;
       }
       // No modulation — show single key with mode if non-standard
       if (curModeLabel) {
-        keyInfo.innerHTML = `Key: ${baseKey} <span style="color:rgba(255,255,255,0.7);font-size:0.85em">${curModeLabel}</span>`;
+        keyInfo.innerHTML = `Key: ${baseKey} <span style="color:#00e5ff;opacity:0.7;font-size:0.85em">${curModeLabel}</span>`;
         return;
       }
     }
@@ -3584,7 +3584,23 @@
     const rhInfo = $("#gtRhHint");
     if (lhInfo) {
       const nextName = activeIdx < chords.length - 1 ? chords[activeIdx + 1].chord : null;
-      lhInfo.textContent = nextName ? `左手 ${chordName} → ${nextName}` : `左手 ${chordName}`;
+      if (nextName) {
+        // Calculate position jump from voicing data
+        const curV = _guitarVoicingsCache[chordName];
+        const nextV = _guitarVoicingsCache[nextName];
+        const curDiag = (curV ? curV.voicings[_guitarVoicingIdx] : null) || (chordCache[chordName] || {}).diagram_guitar;
+        const nextDiag = (nextV ? nextV.voicings[0] : null) || (chordCache[nextName] || {}).diagram_guitar;
+        let jumpLabel = "";
+        if (curDiag && nextDiag && curDiag.strings && nextDiag.strings) {
+          const curMin = Math.min(...curDiag.strings.filter(f => f > 0), 99);
+          const nxtMin = Math.min(...nextDiag.strings.filter(f => f > 0), 99);
+          const dist = Math.abs(nxtMin - curMin);
+          if (dist >= 2) jumpLabel = nxtMin > curMin ? ` ↓${dist}格` : ` ↑${dist}格`;
+        }
+        lhInfo.textContent = `左手 ${chordName} → ${nextName}${jumpLabel}`;
+      } else {
+        lhInfo.textContent = `左手 ${chordName}`;
+      }
     }
     if (rhInfo) {
       if (guitarStrumStyle === "arpeggio") {

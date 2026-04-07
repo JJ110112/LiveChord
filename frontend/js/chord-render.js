@@ -1412,7 +1412,7 @@ const ChordRender = {
       }
       if (minS <= maxS) {
         ctx.fillStyle = FINGER_CLR[1] || "rgba(255,255,255,0.5)";
-        ctx.globalAlpha = 0.6;
+        ctx.globalAlpha = 0.45;
         ctx.beginPath();
         ctx.roundRect(strX(minS) - dotR, y - dotR * 0.7, strX(maxS) - strX(minS) + dotR * 2, dotR * 1.4, dotR * 0.7);
         ctx.fill();
@@ -1431,22 +1431,8 @@ const ChordRender = {
       const finger = fingers[s] || 0;
       const color = FINGER_CLR[finger] || "#9c27b0";
 
-      // Glow effect (pressed-down feel)
-      ctx.save();
-      ctx.shadowColor = color;
-      ctx.shadowBlur = dotR * 1.5;
+      // Subtle fill (matching right panel style)
       ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(x, y, dotR, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-      // Inner highlight for 3D pressed effect
-      const grad = ctx.createRadialGradient(x - dotR * 0.25, y - dotR * 0.25, 0, x, y, dotR);
-      grad.addColorStop(0, "rgba(255,255,255,0.4)");
-      grad.addColorStop(0.5, "rgba(255,255,255,0.05)");
-      grad.addColorStop(1, "transparent");
-      ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.arc(x, y, dotR, 0, Math.PI * 2);
       ctx.fill();
@@ -1489,6 +1475,15 @@ const ChordRender = {
       const ghostAlpha = opts.nextAlpha != null ? opts.nextAlpha : 0.55;
       ctx.setLineDash(ghostAlpha > 0.6 ? [] : [4, 3]);
       ctx.globalAlpha = ghostAlpha;
+
+      // Compute position jump distance
+      const curFrets = strings.filter(f => f > 0);
+      const nextFrets = nStrings.filter(f => f > 0);
+      const curMinFret = curFrets.length > 0 ? Math.min(...curFrets) : 1;
+      const nextMinFret = nextFrets.length > 0 ? Math.min(...nextFrets) : 1;
+      const jumpDist = Math.abs(nextMinFret - curMinFret);
+      const jumpDir = nextMinFret > curMinFret ? "↓" : "↑";
+      const nextName = nextData.name || "next";
 
       if (allVisible) {
         for (let s = 0; s < nStrings.length; s++) {
@@ -1537,14 +1532,39 @@ const ChordRender = {
           }
         }
       } else {
-        // Next chord is in a different fret region — show label
-        ctx.globalAlpha = 0.5;
-        ctx.fillStyle = "rgba(255,152,0,0.6)";
-        ctx.font = `bold ${Math.round(dotR * 0.9)}px sans-serif`;
+        // Next chord doesn't fit — show name only
+        ctx.globalAlpha = ghostAlpha;
+        ctx.fillStyle = "rgba(255,152,0,0.85)";
+        ctx.font = `bold ${Math.round(dotR * 1.1)}px sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        const nextName = nextData.name || "next";
-        ctx.fillText("→ " + nextName, W / 2, padTop + fretSpacing * 0.3);
+        ctx.fillText(`${jumpDir} ${nextMinFret}格  ${nextName}`, W / 2, padTop + fretSpacing * 0.4);
+      }
+
+      // Position jump warning (gradient + label) for jumps ≥ 2 frets
+      if (jumpDist >= 2) {
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+        const grad = ctx.createLinearGradient(0, 0, 0, H);
+        if (nextMinFret > curMinFret) {
+          grad.addColorStop(0.65, "transparent");
+          grad.addColorStop(1, `rgba(255,152,0,${ghostAlpha * 0.18})`);
+        } else {
+          grad.addColorStop(0, `rgba(255,152,0,${ghostAlpha * 0.18})`);
+          grad.addColorStop(0.35, "transparent");
+        }
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, W, H);
+        // Jump label (only if ghosts were visible — else branch already shows it)
+        if (allVisible) {
+          ctx.globalAlpha = ghostAlpha;
+          ctx.fillStyle = "rgba(255,152,0,0.8)";
+          ctx.font = `bold ${Math.round(dotR * 0.9)}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          const labelY = nextMinFret > curMinFret ? H - padBot - 8 : padTop + 12;
+          ctx.fillText(`${jumpDir} ${nextMinFret}格`, W / 2, labelY);
+        }
       }
 
       ctx.restore();

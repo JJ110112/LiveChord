@@ -176,7 +176,7 @@
   background: var(--bg-hover);
 }
 .topbar-btn.btn-fav { font-size: 18px; }
-.topbar-btn.btn-fav.active { color: var(--accent); }
+.topbar-btn.btn-fav.active { color: #fff; text-shadow: 0 0 6px rgba(255,255,255,0.4); }
 
 /* ========== [END: TOP BAR] ========== */
 
@@ -585,40 +585,29 @@
 }
 
 /* Soundhole — absolute background, centered in right panel */
-/* Soundhole with rosette — realistic guitar aesthetic */
+/* Soundhole — subtle hint, not dominant */
 .gt-soundhole {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 120px;
-  height: 120px;
+  width: 110px;
+  height: 110px;
   border-radius: 50%;
   z-index: 0;
   pointer-events: none;
-  /* Deep black hole interior */
   background: radial-gradient(circle,
-    #000 0%,
-    #0a0604 40%,
-    rgba(15,10,5,0.9) 60%,
-    transparent 72%);
-  /* Rosette rings */
-  border: 3px solid rgba(160,120,60,0.35);
-  outline: 2px solid rgba(140,100,50,0.25);
-  outline-offset: 2px;
+    rgba(30,25,20,0.3) 0%,
+    rgba(40,30,20,0.15) 50%,
+    transparent 70%);
+  border: 2px solid rgba(160,130,80,0.12);
+  outline: 1px solid rgba(160,130,80,0.06);
+  outline-offset: 3px;
   box-shadow:
-    /* Inner depth */
-    inset 0 0 30px 10px rgba(0,0,0,1),
-    inset 0 0 60px rgba(0,0,0,0.8),
-    /* Rosette decorative rings */
-    0 0 0 5px rgba(100,70,30,0.15),
-    0 0 0 7px rgba(180,140,70,0.2),
-    0 0 0 8px rgba(100,70,30,0.12),
-    0 0 0 11px rgba(60,40,15,0.1),
-    0 0 0 13px rgba(180,140,70,0.15),
-    0 0 0 14px rgba(100,70,30,0.08),
-    /* Outer wood glow */
-    0 0 20px rgba(120,80,30,0.08);
+    0 0 0 5px rgba(140,110,60,0.06),
+    0 0 0 7px rgba(160,130,80,0.08),
+    0 0 0 9px rgba(140,110,60,0.04),
+    0 0 30px rgba(80,60,30,0.05);
 }
 
 /* ========== [END: GUITAR/UKULELE TAB] ========== */
