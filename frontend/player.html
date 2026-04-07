@@ -14,12 +14,6 @@
 </head>
 <body>
 
-<!-- ===== TOP: Thin progress bar ===== -->
-<div id="topProgress" class="top-progress-bar">
-  <div id="topProgressFill" class="top-progress-fill" style="width:0%"></div>
-  <div id="topAbRange" class="ab-range" style="display:none"></div>
-</div>
-
 <!-- ===== TOP: Top Bar ===== -->
 <header class="player-topbar">
   <a href="/" class="topbar-logo" title="返回首頁">LiveChord</a>
@@ -60,10 +54,22 @@
     <!-- LEFT: Unified Chord Ribbon (replaces Overview) -->
     <div id="chordRibbonPanel" class="chord-ribbon-panel">
       <div id="unifiedRibbonTrack" class="ribbon-v-track"></div>
+      <div class="ribbon-scale-bar">
+        <div class="tb-item" id="tbRibbonScale">
+          <button class="tb-trigger" title="和弦圖大小" style="font-size:13px">&#x1F50D;</button>
+          <div class="tb-popup" style="bottom:calc(100% + 4px)">
+            <button id="btnScaleDown" class="scale-btn" title="縮小">−</button>
+            <span id="scaleLabel" class="scale-label">0.6</span>
+            <button id="btnScaleUp" class="scale-btn" title="放大">+</button>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- RESIZE HANDLE -->
-    <div id="resizeHandle" class="resize-handle"></div>
+    <!-- RESIZE HANDLE with toggle button -->
+    <div id="resizeHandle" class="resize-handle">
+      <button id="btnToggleRibbon" class="ribbon-toggle-btn" title="顯示/隱藏和弦列表">&#x276E;</button>
+    </div>
 
     <!-- RIGHT: Instrument Panel -->
     <div id="instrumentPanel" class="instrument-panel">
@@ -78,70 +84,55 @@
 
       <!-- Guitar Tab -->
       <div id="chordDisplayGuitar" class="chord-guitar-tab" style="display:none">
-        <div class="guitar-layout">
-          <div class="guitar-panel-center" id="guitarFretboard">
-            <div class="gt-chord-header">
-              <div id="gtChordName" class="gt-main-chord-name">—</div>
-              <div id="gtChordIntervals" class="gt-chord-intervals"></div>
+        <div class="gt-teaching-layout">
+          <!-- LEFT: Vertical Fretboard (Left Hand) -->
+          <div class="gt-left-panel">
+            <div class="gt-compact-bar">
+              <span id="gtChordName" class="gt-main-chord-name">—</span>
+              <div class="gt-voicing-row" id="gtVoicingRow"></div>
             </div>
-            <canvas id="guitarFretboardCanvas"></canvas>
-            <div class="gt-chord-detail">
-              <div class="gt-detail-item">
-                <span class="gt-detail-label">指法</span>
-                <span id="gtFingering" class="gt-detail-value">—</span>
-              </div>
-              <div class="gt-detail-item">
-                <span class="gt-detail-label">組成音</span>
-                <span id="gtNotes" class="gt-detail-value">—</span>
-              </div>
-              <div class="gt-detail-item">
-                <span class="gt-detail-label">和弦類型</span>
-                <span id="gtType" class="gt-detail-value">—</span>
-              </div>
+            <canvas id="guitarVerticalFretboard"></canvas>
+            <div class="gt-finger-legend">
+              <span class="gt-fl" style="color:#ef5350">&#x2460; 食</span>
+              <span class="gt-fl" style="color:#ff9800">&#x2461; 中</span>
+              <span class="gt-fl" style="color:#ffeb3b">&#x2462; 無名</span>
+              <span class="gt-fl" style="color:#66bb6a">&#x2463; 小</span>
             </div>
-            <div class="gt-voicing-row" id="gtVoicingRow">
-              <span class="gt-voicing-label">把位變化</span>
-            </div>
-            <!-- Floating hint (next chord, key analysis) -->
-            <div id="guitarHint" class="gt-floating-hint" style="display:none">
-              <div id="gtNextChordHint" class="gt-hint-line"></div>
-              <div id="gtKeyAnalysisHint" class="gt-hint-line"></div>
-            </div>
+            <div id="gtLhHint" class="gt-panel-hint">左手：按住和弦</div>
+          </div>
+          <!-- MIDDLE: Line -->
+          <div class="gt-mid-line"></div>
+          <!-- RIGHT: Right-Hand Waterfall -->
+          <div class="gt-right-panel">
+            <canvas id="guitarRhWaterfall"></canvas>
+            <div class="gt-soundhole"></div>
+            <div id="gtRhHint" class="gt-panel-hint">右手：刷弦節奏</div>
           </div>
         </div>
       </div>
 
       <!-- Ukulele Tab -->
       <div id="chordDisplayUkulele" class="chord-guitar-tab" style="display:none">
-        <div class="guitar-layout">
-          <div class="guitar-panel-center" id="ukuleleFretboard">
-            <div class="gt-chord-header">
-              <div id="ukChordName" class="gt-main-chord-name">—</div>
-              <div id="ukChordIntervals" class="gt-chord-intervals"></div>
+        <div class="gt-teaching-layout">
+          <div class="gt-left-panel">
+            <div class="gt-compact-bar">
+              <span id="ukChordName" class="gt-main-chord-name">—</span>
+              <div class="gt-voicing-row" id="ukVoicingRow"></div>
             </div>
-            <canvas id="ukuleleFretboardCanvas"></canvas>
-            <div class="gt-chord-detail">
-              <div class="gt-detail-item">
-                <span class="gt-detail-label">指法</span>
-                <span id="ukFingering" class="gt-detail-value">—</span>
-              </div>
-              <div class="gt-detail-item">
-                <span class="gt-detail-label">組成音</span>
-                <span id="ukNotes" class="gt-detail-value">—</span>
-              </div>
-              <div class="gt-detail-item">
-                <span class="gt-detail-label">和弦類型</span>
-                <span id="ukType" class="gt-detail-value">—</span>
-              </div>
+            <canvas id="ukuleleVerticalFretboard"></canvas>
+            <div class="gt-finger-legend">
+              <span class="gt-fl" style="color:#ef5350">&#x2460; 食</span>
+              <span class="gt-fl" style="color:#ff9800">&#x2461; 中</span>
+              <span class="gt-fl" style="color:#ffeb3b">&#x2462; 無名</span>
+              <span class="gt-fl" style="color:#66bb6a">&#x2463; 小</span>
             </div>
-            <div class="gt-voicing-row" id="ukVoicingRow">
-              <span class="gt-voicing-label">把位變化</span>
-            </div>
-            <!-- Floating hint (next chord, key analysis) -->
-            <div id="ukuleleHint" class="gt-floating-hint" style="display:none">
-              <div id="ukNextChordHint" class="gt-hint-line"></div>
-              <div id="ukKeyAnalysisHint" class="gt-hint-line"></div>
-            </div>
+            <div id="ukLhHint" class="gt-panel-hint">左手：按住和弦</div>
+          </div>
+          <div class="gt-mid-line"></div>
+          <div class="gt-right-panel">
+            <canvas id="ukuleleRhWaterfall"></canvas>
+            <div class="gt-soundhole"></div>
+            <div id="ukRhHint" class="gt-panel-hint">右手：刷弦節奏</div>
           </div>
         </div>
       </div>
@@ -156,6 +147,12 @@
   </div>
 
 </div><!-- /chordDisplay -->
+
+<!-- ===== Progress Bar (between content and toolbar) ===== -->
+<div id="topProgress" class="progress-bar-mid">
+  <div id="topProgressFill" class="top-progress-fill" style="width:0%"></div>
+  <div id="topAbRange" class="ab-range" style="display:none"></div>
+</div>
 
 <!-- ===== BOTTOM: Compact Toolbar ===== -->
 <div class="bottom-toolbar">

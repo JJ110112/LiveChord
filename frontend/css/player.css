@@ -3,14 +3,14 @@
 
 /* ========== [COMPONENT: TOP PROGRESS BAR] ========== */
 
-.top-progress-bar {
+.progress-bar-mid {
   position: fixed;
-  top: 0;
+  bottom: 44px;
   left: 0;
   right: 0;
-  height: 4px;
-  background: rgba(255,255,255,0.12);
-  z-index: 9100;
+  height: 5px;
+  background: rgba(255,255,255,0.1);
+  z-index: 8000;
   cursor: pointer;
   touch-action: none;
   transition: height .15s;
@@ -22,7 +22,7 @@
   border-radius: 0 2px 2px 0;
   box-shadow: 0 0 6px rgba(33,150,243,0.5);
 }
-.top-progress-bar .ab-range {
+.progress-bar-mid .ab-range {
   position: absolute;
   top: 0;
   height: 100%;
@@ -32,8 +32,10 @@
   pointer-events: none;
   z-index: 1;
 }
-.top-progress-bar:hover {
+.progress-bar-mid:hover {
   height: 8px;
+  /* Don't expand upward into toolbar popups */
+  pointer-events: auto;
 }
 
 /* ========== [END: TOP PROGRESS BAR] ========== */
@@ -43,7 +45,7 @@
 
 .player-topbar {
   position: fixed;
-  top: 4px;
+  top: 0;
   left: 0;
   right: 0;
   height: 44px;
@@ -166,10 +168,10 @@
 
 .chord-display-area {
   position: fixed;
-  top: 48px;
+  top: 44px;
   left: 0;
   right: 0;
-  bottom: 44px;
+  bottom: 49px;
   z-index: 500;
   overflow: hidden;
   background: var(--bg);
@@ -303,6 +305,40 @@
 .resize-handle:hover, .resize-handle:active {
   background: var(--accent);
 }
+.resize-handle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ribbon-toggle-btn {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 40px;
+  background: rgba(22,27,34,0.9);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  z-index: 5;
+  transition: all .15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ribbon-toggle-btn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+.ribbon-toggle-btn.collapsed {
+  /* Arrow points right when ribbon is hidden */
+}
 
 /* --- Right: Instrument Panel --- */
 .instrument-panel {
@@ -311,6 +347,36 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* --- Ribbon Scale Bar --- */
+.ribbon-scale-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  padding: 3px 0;
+  background: rgba(13,17,23,0.92);
+  border-top: 1px solid var(--border);
+  z-index: 5;
+}
+.scale-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 2px 8px;
+  transition: all .15s;
+  font-weight: 600;
+}
+.scale-btn:hover { color: var(--text); border-color: var(--text-dim); }
+.scale-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 28px;
+  text-align: center;
 }
 
 /* ========== [END: MIDDLE SPLIT LAYOUT] ========== */
@@ -358,7 +424,7 @@
 /* ========== [END: PIANO TAB] ========== */
 
 
-/* ========== [COMPONENT: GUITAR/UKULELE TAB] ========== */
+/* ========== [COMPONENT: GUITAR/UKULELE TAB — TWO-PANEL TEACHING] ========== */
 
 .chord-guitar-tab {
   flex: 1;
@@ -367,109 +433,136 @@
   flex-direction: column;
 }
 
-.guitar-layout {
+.gt-teaching-layout {
   display: flex;
   flex: 1;
   min-height: 0;
 }
 
-.guitar-panel-center {
+/* --- LEFT PANEL: Vertical Fretboard --- */
+.gt-left-panel {
   flex: 1;
-  background: var(--bg);
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.1) transparent;
-  padding: 24px 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  padding: 6px 8px;
+  overflow: hidden;
+  min-width: 0;
   position: relative;
 }
 
-.gt-chord-header { text-align: center; }
+.gt-finger-legend {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 0;
+  flex-shrink: 0;
+}
+.gt-fl { white-space: nowrap; }
+
+#guitarVerticalFretboard, #ukuleleVerticalFretboard {
+  flex: 1;
+  width: 80%;
+  min-height: 0;
+  image-rendering: crisp-edges;
+}
+
+.gt-compact-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  flex-shrink: 0;
+}
+
 .gt-main-chord-name {
-  font-size: 56px;
+  font-size: 22px;
   font-weight: 800;
   color: #fff;
-  line-height: 1.1;
-}
-.gt-main-chord-name .gt-chord-root { color: var(--accent); }
-.gt-chord-intervals {
-  font-size: 18px;
-  color: var(--text-dim);
-  margin-top: 4px;
-  letter-spacing: 12px;
-}
-
-#guitarFretboardCanvas, #ukuleleFretboardCanvas {
-  max-width: 100%;
-  border-radius: 8px;
-}
-
-.gt-chord-detail {
-  display: flex;
-  gap: 32px;
-  justify-content: center;
-}
-.gt-detail-item { text-align: center; }
-.gt-detail-label {
-  display: block;
-  font-size: 11px;
-  color: #666;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 2px;
-}
-.gt-detail-value {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: 2px;
+  line-height: 1;
 }
 
 .gt-voicing-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-.gt-voicing-label {
-  font-size: 12px;
-  color: #666;
-  margin-right: 4px;
+  gap: 3px;
 }
 .gt-voicing-btn {
-  padding: 6px 16px;
-  border-radius: 20px;
+  padding: 2px 8px;
+  border-radius: 10px;
   background: rgba(255,255,255,0.05);
   border: 1px solid var(--border);
   color: var(--text-dim);
   cursor: pointer;
-  font-size: 12px;
-  transition: all 0.2s;
+  font-size: 11px;
+  transition: all 0.15s;
 }
-.gt-voicing-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+.gt-voicing-btn:hover { background: rgba(255,255,255,0.1); }
 .gt-voicing-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-/* Floating hint (bottom-right) */
-.gt-floating-hint {
-  position: absolute;
-  bottom: 16px;
-  right: 16px;
-  background: rgba(22,27,34,0.92);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 14px;
-  font-size: 12px;
-  color: var(--text-dim);
-  max-width: 240px;
-  z-index: 10;
+/* --- MIDDLE: Vertical Line --- */
+.gt-mid-line {
+  flex: 0 0 1px;
+  background: var(--border);
 }
-.gt-hint-line { margin-bottom: 4px; }
-.gt-hint-line:last-child { margin-bottom: 0; }
+
+/* --- Panel Hint (bottom-right of each panel) --- */
+.gt-panel-hint {
+  position: absolute;
+  bottom: 6px;
+  right: 8px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.35);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* --- RIGHT PANEL: Right-Hand Waterfall --- */
+.gt-right-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  position: relative; /* for hint positioning */
+}
+
+#guitarRhWaterfall, #ukuleleRhWaterfall {
+  flex: 1;
+  width: 80%;
+  margin: 0 auto;
+  min-height: 0;
+  image-rendering: crisp-edges;
+  position: relative;
+  z-index: 1;
+}
+
+/* Soundhole — absolute background, centered in right panel */
+.gt-soundhole {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  z-index: 0;
+  pointer-events: none;
+  border: 4px solid rgba(180,140,80,0.18);
+  outline: 2px solid rgba(180,140,80,0.08);
+  outline-offset: 4px;
+  box-shadow:
+    inset 0 0 50px rgba(0,0,0,0.9),
+    inset 0 0 100px rgba(0,0,0,0.6),
+    0 0 12px rgba(80,50,20,0.2),
+    0 0 0 10px rgba(180,140,80,0.05);
+  background: radial-gradient(circle,
+    rgba(0,0,0,0.8) 0%,
+    rgba(10,5,2,0.5) 55%,
+    transparent 80%);
+}
 
 /* ========== [END: GUITAR/UKULELE TAB] ========== */
 

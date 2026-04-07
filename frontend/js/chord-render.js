@@ -1272,6 +1272,254 @@ const ChordRender = {
       }
     }
   },
+
+  /**
+   * Draw a VERTICAL fretboard (strings vertical, frets horizontal).
+   * Standard guitar teaching orientation.
+   * Supports colored finger dots: 1=red, 2=orange, 3=yellow, 4=green
+   * @param {HTMLCanvasElement} canvas
+   * @param {Object} data - {strings, fingers, baseFret, barres, numStrings, name}
+   * @param {Object} opts - {nextData, canvasW, canvasH}
+   *   nextData: diagram for the next chord (drawn as ghost)
+   */
+  drawVerticalFretboard(canvas, data, opts = {}) {
+    if (!canvas || !data) return;
+
+    const numStrings = data.numStrings || 6;
+    const strings = [...(data.strings || [])];
+    const barres = [...(data.barres || [])];
+    const fingers = data.fingers || [];
+
+    // Normalize frets (same logic as drawGuitarFretboard)
+    const _dataBase = data.baseFret || 1;
+    if (_dataBase > 1) {
+      const maxRel = Math.max(...strings.filter(f => f > 0), 0);
+      if (maxRel > 0 && maxRel <= 5) {
+        for (let i = 0; i < strings.length; i++) {
+          if (strings[i] > 0) strings[i] = strings[i] + _dataBase - 1;
+        }
+        for (let i = 0; i < barres.length; i++) {
+          if (barres[i] > 0 && barres[i] <= 5) barres[i] = barres[i] + _dataBase - 1;
+        }
+      }
+    }
+
+    const fretted = strings.filter(f => f > 0);
+    const hasOpen = strings.some(f => f === 0);
+    const maxFret = fretted.length > 0 ? Math.max(...fretted) : 1;
+    let baseFret = 1;
+    if (!hasOpen && maxFret > 4) baseFret = Math.min(...fretted);
+    const numFrets = 5;
+
+    // Use canvas element size
+    const dpr = window.devicePixelRatio || 1;
+    const W = opts.canvasW || canvas.clientWidth || 240;
+    const H = opts.canvasH || canvas.clientHeight || 400;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, W, H);
+
+    // Layout: strings vertical, frets horizontal — scale to fit
+    const padTop = Math.round(H * 0.06);
+    const padBot = Math.round(H * 0.03);
+    const padLeft = Math.round(W * 0.1);
+    const padRight = Math.round(W * 0.05);
+    const stringSpacing = (W - padLeft - padRight) / Math.max(numStrings - 1, 1);
+    const fretSpacing = (H - padTop - padBot) / numFrets;
+    const dotR = Math.min(stringSpacing * 0.35, fretSpacing * 0.3, 18);
+
+    function strX(s) { return padLeft + s * stringSpacing; }
+    function fretY(f) { return padTop + f * fretSpacing; }
+
+    // Finger colors
+    const FINGER_CLR = { 1: "#ef5350", 2: "#ff9800", 3: "#ffeb3b", 4: "#66bb6a" };
+
+    // Draw fret lines (horizontal)
+    for (let f = 0; f <= numFrets; f++) {
+      const y = fretY(f);
+      ctx.strokeStyle = f === 0 && baseFret === 1 ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.15)";
+      ctx.lineWidth = f === 0 && baseFret === 1 ? 3 : 1;
+      ctx.beginPath();
+      ctx.moveTo(strX(0) - 4, y);
+      ctx.lineTo(strX(numStrings - 1) + 4, y);
+      ctx.stroke();
+    }
+
+    // Draw string lines (vertical)
+    for (let s = 0; s < numStrings; s++) {
+      const x = strX(s);
+      ctx.strokeStyle = "rgba(255,255,255,0.2)";
+      ctx.lineWidth = s === 0 ? 1.5 : 1;
+      ctx.beginPath();
+      ctx.moveTo(x, fretY(0));
+      ctx.lineTo(x, fretY(numFrets));
+      ctx.stroke();
+    }
+
+    // Fret numbers on left
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for (let f = 1; f <= numFrets; f++) {
+      const fretNum = baseFret + f - 1;
+      ctx.fillText(fretNum, padLeft - 8, fretY(f - 1) + fretSpacing / 2);
+    }
+
+    // Open/muted markers above nut
+    const STRING_LABELS = data._stringLabels || (numStrings === 4 ? ["G","C","E","A"] : ["E","A","D","G","B","e"]);
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "center";
+    for (let s = 0; s < numStrings; s++) {
+      const x = strX(s);
+      const fret = strings[s];
+      if (fret === 0) {
+        ctx.strokeStyle = "rgba(255,255,255,0.5)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, padTop - 12, 5, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (fret === -1) {
+        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        ctx.font = "bold 12px sans-serif";
+        ctx.textBaseline = "middle";
+        ctx.fillText("×", x, padTop - 12);
+      }
+    }
+
+    // Draw barres
+    for (const b of barres) {
+      const relF = b - baseFret + 1;
+      if (relF < 1 || relF > numFrets) continue;
+      const y = fretY(relF - 1) + fretSpacing / 2;
+      // Find leftmost and rightmost strings in this barre
+      let minS = numStrings, maxS = -1;
+      for (let s = 0; s < numStrings; s++) {
+        if (strings[s] === b) { minS = Math.min(minS, s); maxS = Math.max(maxS, s); }
+      }
+      if (minS <= maxS) {
+        ctx.fillStyle = FINGER_CLR[1] || "rgba(255,255,255,0.5)";
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.roundRect(strX(minS) - dotR, y - dotR * 0.7, strX(maxS) - strX(minS) + dotR * 2, dotR * 1.4, dotR * 0.7);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Draw finger dots — current chord (with pressed-down glow)
+    for (let s = 0; s < strings.length; s++) {
+      const fret = strings[s];
+      if (fret <= 0) continue;
+      const relF = fret - baseFret + 1;
+      if (relF < 1 || relF > numFrets) continue;
+      const x = strX(s);
+      const y = fretY(relF - 1) + fretSpacing / 2;
+      const finger = fingers[s] || 0;
+      const color = FINGER_CLR[finger] || "#9c27b0";
+
+      // Glow effect (pressed-down feel)
+      ctx.save();
+      ctx.shadowColor = color;
+      ctx.shadowBlur = dotR * 1.5;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, dotR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Inner highlight for 3D pressed effect
+      const grad = ctx.createRadialGradient(x - dotR * 0.25, y - dotR * 0.25, 0, x, y, dotR);
+      grad.addColorStop(0, "rgba(255,255,255,0.4)");
+      grad.addColorStop(0.5, "rgba(255,255,255,0.05)");
+      grad.addColorStop(1, "transparent");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, dotR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Finger number
+      if (finger > 0) {
+        ctx.fillStyle = finger === 3 ? "#333" : "#fff";
+        ctx.font = `bold ${Math.round(dotR * 1.1)}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(finger, x, y);
+      }
+    }
+
+    // Draw next chord ghost (if provided) — dashed outlines, higher visibility
+    const nextData = opts.nextData;
+    if (nextData && nextData.strings) {
+      const nStrings = [...nextData.strings];
+      const nBase = nextData.baseFret || 1;
+      if (nBase > 1) {
+        const maxR = Math.max(...nStrings.filter(f => f > 0), 0);
+        if (maxR > 0 && maxR <= 5) {
+          for (let i = 0; i < nStrings.length; i++) {
+            if (nStrings[i] > 0) nStrings[i] = nStrings[i] + nBase - 1;
+          }
+        }
+      }
+
+      // Use current chord's baseFret for coordinate mapping
+      // If next chord doesn't fit, show a "position shift" label instead
+      let allVisible = true;
+      for (let s = 0; s < nStrings.length; s++) {
+        const fret = nStrings[s];
+        if (fret <= 0) continue;
+        const relFCur = fret - baseFret + 1;
+        if (relFCur < 1 || relFCur > numFrets) { allVisible = false; break; }
+      }
+
+      ctx.save();
+      const ghostAlpha = opts.nextAlpha != null ? opts.nextAlpha : 0.55;
+      ctx.setLineDash(ghostAlpha > 0.6 ? [] : [4, 3]);
+      ctx.globalAlpha = ghostAlpha;
+
+      if (allVisible) {
+        for (let s = 0; s < nStrings.length; s++) {
+          const fret = nStrings[s];
+          if (fret <= 0) continue;
+          const relFCur = fret - baseFret + 1;
+          const x = strX(s);
+          const y = fretY(relFCur - 1) + fretSpacing / 2;
+          const nFinger = (nextData.fingers || [])[s] || 0;
+          const color = FINGER_CLR[nFinger] || "#ff9800";
+
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(x, y, dotR * 0.9, 0, Math.PI * 2);
+          ctx.stroke();
+
+          if (nFinger > 0) {
+            ctx.fillStyle = color;
+            ctx.globalAlpha = ghostAlpha * 0.5;
+            ctx.beginPath();
+            ctx.arc(x, y, dotR * 0.9, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = ghostAlpha;
+          }
+        }
+      } else {
+        // Next chord is in a different fret region — show label
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = "rgba(255,152,0,0.6)";
+        ctx.font = `bold ${Math.round(dotR * 0.9)}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const nextName = nextData.name || "next";
+        ctx.fillText("→ " + nextName, W / 2, padTop + fretSpacing * 0.3);
+      }
+
+      ctx.restore();
+    }
+  },
 };
 
 // escapeHtml, formatTime moved to utils.js

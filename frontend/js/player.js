@@ -206,7 +206,8 @@
     _updateCapoVisibility();
     _updateHandSwitchVisibility();
 
-    // Rebuild unified ribbon (always piano style)
+    // Load per-instrument scale and rebuild ribbon
+    _loadRibbonScale();
     _buildUnifiedRibbon();
   }
 
@@ -215,8 +216,7 @@
     btn.addEventListener("click", () => _switchTab(btn.dataset.tab));
   });
 
-  // Restore last tab
-  _switchTab(activeTab);
+  // Tab restore deferred until after scale declarations (see below)
 
   // ---- rewind to start (or A-B loop start) ----
   function _rewindToStart() {
@@ -232,21 +232,24 @@
     const chords = _displayChords();
     if (!chords || chords.length === 0) return;
 
+    // Build in reverse order: last chord at top, first chord at bottom
+    // This matches the waterfall direction (time flows top→bottom)
     let lastSection = null;
     let _prevMidi = null;
 
+    // First pass: collect items in normal order for _prevMidi voice leading
+    const items = [];
     for (let i = 0; i < chords.length; i++) {
       const c = chords[i];
+      const cache = chordCache[c.chord] || {};
 
       // Section header
+      let sectionHdr = null;
       if (sectionData && sectionData.sections) {
         const sec = sectionData.sections.find(s => Math.abs(s.start - c.time) < 0.5);
         if (sec && sec.label !== lastSection) {
           lastSection = sec.label;
-          const hdr = document.createElement("div");
-          hdr.className = "rv-section-header";
-          hdr.innerHTML = `<span class="rv-section-dot" style="background:${sec.color || '#888'}"></span>${sec.label}`;
-          unifiedRibbonTrack.appendChild(hdr);
+          sectionHdr = { label: sec.label, color: sec.color || '#888' };
         }
       }
 
@@ -264,24 +267,22 @@
       nameEl.textContent = c.chord;
       item.appendChild(nameEl);
 
-      const cache = chordCache[c.chord] || {};
       const jp = document.createElement("div");
       jp.className = "rv-jianpu";
       jp.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
       item.appendChild(jp);
 
-      // Draw instrument-appropriate diagram
       if (activeTab === "guitar" && cache.diagram_guitar) {
         const canvas = document.createElement("canvas");
-        ChordRender.drawDiagram(canvas, cache.diagram_guitar, 0.6);
+        ChordRender.drawDiagram(canvas, cache.diagram_guitar, ribbonScale);
         item.appendChild(canvas);
       } else if (activeTab === "ukulele" && cache.diagram_ukulele) {
         const canvas = document.createElement("canvas");
-        ChordRender.drawDiagram(canvas, cache.diagram_ukulele, 0.6);
+        ChordRender.drawDiagram(canvas, cache.diagram_ukulele, ribbonScale);
         item.appendChild(canvas);
       } else {
         const pianoCanvas = document.createElement("canvas");
-        ChordRender.drawPiano(pianoCanvas, cache.notes || [], 0.7, _prevMidi);
+        ChordRender.drawPiano(pianoCanvas, cache.notes || [], ribbonScale, _prevMidi);
         item.appendChild(pianoCanvas);
         if (pianoCanvas._lastMidi) _prevMidi = pianoCanvas._lastMidi;
       }
@@ -291,8 +292,29 @@
       timeEl.textContent = formatTime(c.time);
       item.appendChild(timeEl);
 
+      items.push({ item, sectionHdr, idx: i });
+    }
+
+    // Append in reverse: last chord first (top), first chord last (bottom)
+    for (let j = items.length - 1; j >= 0; j--) {
+      const { item, sectionHdr } = items[j];
+      if (sectionHdr) {
+        const hdr = document.createElement("div");
+        hdr.className = "rv-section-header";
+        hdr.innerHTML = `<span class="rv-section-dot" style="background:${sectionHdr.color}"></span>${sectionHdr.label}`;
+        unifiedRibbonTrack.appendChild(hdr);
+      }
       unifiedRibbonTrack.appendChild(item);
-      ribbonElements.push(item);
+    }
+
+    // ribbonElements keeps normal index order for updateActiveChord
+    ribbonElements = items.map(it => it.item);
+
+    // Scroll to bottom (first chord = song start)
+    if (chordRibbonPanel) {
+      requestAnimationFrame(() => {
+        chordRibbonPanel.scrollTop = chordRibbonPanel.scrollHeight;
+      });
     }
   }
 
@@ -303,6 +325,7 @@
     let _startW = 0;
 
     resizeHandle.addEventListener("pointerdown", (e) => {
+      if (e.target.closest(".ribbon-toggle-btn")) return; // let button handle it
       _resizing = true;
       _startX = e.clientX;
       _startW = chordRibbonPanel.offsetWidth;
@@ -324,6 +347,59 @@
     // Restore saved width
     const savedRibbonW = parseInt(localStorage.getItem("livechord_ribbon_width"));
     if (savedRibbonW > 0) chordRibbonPanel.style.width = savedRibbonW + "px";
+  }
+
+  // ---- Ribbon diagram scale (+/−) ----
+  const _ribbonScales = {};
+  for (const t of ["piano", "guitar", "ukulele"]) {
+    const v = parseFloat(localStorage.getItem(`livechord_ribbon_scale_${t}`));
+    _ribbonScales[t] = (v >= 1) ? v : 1.0;
+  }
+  let ribbonScale = _ribbonScales[activeTab] || 1.0;
+  const scaleLabel = $("#scaleLabel");
+
+  function _loadRibbonScale() {
+    ribbonScale = _ribbonScales[activeTab] || 1.0;
+    _updateScaleLabel();
+  }
+  function _updateScaleLabel() {
+    if (scaleLabel) scaleLabel.textContent = ribbonScale.toFixed(1);
+  }
+  function _changeRibbonScale(delta) {
+    ribbonScale = Math.round(Math.max(1, Math.min(3, ribbonScale + delta)) * 10) / 10;
+    _ribbonScales[activeTab] = ribbonScale;
+    localStorage.setItem(`livechord_ribbon_scale_${activeTab}`, ribbonScale);
+    _updateScaleLabel();
+    _buildUnifiedRibbon();
+    updateActiveChord(audio.currentTime || 0);
+  }
+  const btnScaleUp = $("#btnScaleUp");
+  const btnScaleDown = $("#btnScaleDown");
+  if (btnScaleUp) btnScaleUp.addEventListener("click", () => _changeRibbonScale(0.1));
+  if (btnScaleDown) btnScaleDown.addEventListener("click", () => _changeRibbonScale(-0.1));
+  _updateScaleLabel();
+
+  // Restore last tab (deferred here so _ribbonScales is initialized)
+  _switchTab(activeTab);
+
+  // ---- Toggle chord ribbon visibility ----
+  const btnToggleRibbon = $("#btnToggleRibbon");
+  let ribbonVisible = localStorage.getItem("livechord_ribbon_visible") !== "false";
+
+  function _applyRibbonVisibility() {
+    if (chordRibbonPanel) chordRibbonPanel.style.display = ribbonVisible ? "" : "none";
+    if (resizeHandle) resizeHandle.style.width = ribbonVisible ? "" : "22px";
+    if (btnToggleRibbon) btnToggleRibbon.innerHTML = ribbonVisible ? "&#x276E;" : "&#x276F;";
+  }
+  _applyRibbonVisibility();
+
+  if (btnToggleRibbon) {
+    btnToggleRibbon.addEventListener("click", (e) => {
+      e.stopPropagation();
+      ribbonVisible = !ribbonVisible;
+      localStorage.setItem("livechord_ribbon_visible", ribbonVisible);
+      _applyRibbonVisibility();
+    });
   }
 
   // ---- Top progress bar seek ----
@@ -2775,7 +2851,7 @@
     if (chords && chords.length > 0) {
       _guitarActiveIdx = 0;
       _renderGuitarFretboard(chords[0].chord, 0);
-      _renderGuitarHint(chords[0].chord);
+      _drawRhWaterfall("#guitarRhWaterfall", audio.currentTime || 0, 6, _guitarVoicingsCache, "guitar");
     }
   }
 
@@ -2800,79 +2876,51 @@
 
   // Guitar/Ukulele timelines removed — unified ribbon replaces them
 
-  function _renderGuitarFretboard(chordName, voicingIdx) {
-    const canvas = $("#guitarFretboardCanvas");
-    const nameEl = $("#gtChordName");
-    const intervalsEl = $("#gtChordIntervals");
-    const fingeringEl = $("#gtFingering");
-    const notesEl = $("#gtNotes");
-    const typeEl = $("#gtType");
-    const voicingRow = $("#gtVoicingRow");
+  // Guitar strum style for right-hand waterfall
+  let guitarStrumStyle = localStorage.getItem("livechord_guitar_strum_style") || "pattern";
 
+  // ---- Guitar: Left Panel (Vertical Fretboard) ----
+  function _renderGuitarFretboard(chordName, voicingIdx) {
+    const canvas = $("#guitarVerticalFretboard");
+    const nameEl = $("#gtChordName");
+    const voicingRow = $("#gtVoicingRow");
     if (!canvas) return;
 
-    // Get voicing data
     const voicingsData = _guitarVoicingsCache[chordName];
     const voicings = voicingsData ? voicingsData.voicings : [];
     const diagram = voicings[voicingIdx] || (chordCache[chordName] || {}).diagram_guitar;
 
-    if (!diagram) {
-      if (nameEl) nameEl.textContent = chordName;
-      return;
-    }
-
-    // Chord name display
     if (nameEl) nameEl.textContent = chordName;
+    if (!diagram) return;
 
-    // Intervals
-    const cache = chordCache[chordName] || {};
-    if (intervalsEl && cache.notes) {
-      intervalsEl.textContent = cache.notes.join("  ");
+    // Get next chord diagram for ghost overlay
+    let nextDiag = null;
+    const chords = _displayChords();
+    if (chords && _guitarActiveIdx >= 0 && _guitarActiveIdx < chords.length - 1) {
+      const nextName = chords[_guitarActiveIdx + 1].chord;
+      const nv = _guitarVoicingsCache[nextName];
+      const nd = (nv ? nv.voicings[0] : null) || (chordCache[nextName] || {}).diagram_guitar;
+      if (nd) nextDiag = { ...nd, name: nextName };
     }
 
-    // Get root note for highlighting
-    const rootNote = cache.notes ? cache.notes[0] : null;
-    let rootClean = rootNote;
-    if (rootClean && rootClean.length > 1 && rootClean[1] === "b") {
-      const fb = { Db:"C#", Eb:"D#", Gb:"F#", Ab:"G#", Bb:"A#" };
-      rootClean = fb[rootClean] || rootClean;
-    }
-
-    // Draw fretboard
-    ChordRender.drawGuitarFretboard(canvas, diagram, {
-      scale: 1.2,
-      rootNote: rootClean,
-      highlightRoot: true,
+    ChordRender.drawVerticalFretboard(canvas, diagram, {
+      canvasW: canvas.clientWidth,
+      canvasH: canvas.clientHeight,
+      nextData: nextDiag,
     });
 
-    // Fingering string
-    if (fingeringEl) {
-      fingeringEl.textContent = (diagram.strings || []).map(f => f === -1 ? "x" : f === 0 ? "o" : f).join("  ");
-    }
-
-    // Notes
-    if (notesEl && cache.notes) {
-      notesEl.textContent = cache.notes.join(" · ");
-    }
-
-    // Type
-    const analysis = _guitarAnalysisCache[chordName];
-    if (typeEl) {
-      typeEl.textContent = (analysis && analysis.type_name) || cache.type_name || "";
-    }
-
-    // Voicing buttons
+    // Voicing pills
     if (voicingRow) {
-      voicingRow.innerHTML = '<span class="gt-voicing-label">把位變化</span>';
+      voicingRow.innerHTML = '';
       if (voicings.length > 1) {
         voicings.forEach((v, idx) => {
           const btn = document.createElement("button");
           btn.className = "gt-voicing-btn" + (idx === voicingIdx ? " active" : "");
-          btn.textContent = (v.label || `#${idx+1}`) + ` ${String.fromCodePoint(0x2460 + idx)}`;
+          btn.textContent = String.fromCodePoint(0x2460 + idx);
+          btn.title = v.label || `把位 ${idx + 1}`;
           btn.addEventListener("click", () => {
             _guitarVoicingIdx = idx;
             _renderGuitarFretboard(chordName, idx);
-            _renderGuitarTeachInfo(chordName);
           });
           voicingRow.appendChild(btn);
         });
@@ -2880,49 +2928,238 @@
     }
   }
 
-  // Floating hint for guitar (bottom-right of fretboard)
-  function _renderGuitarHint(chordName) {
-    const hintEl = $("#guitarHint");
-    const nextHint = $("#gtNextChordHint");
-    const keyHint = $("#gtKeyAnalysisHint");
-    if (!hintEl) return;
+  // Animated fretboard redraw with blinking ghost (called every frame near chord change)
+  function _renderGuitarFretboardAnimated(chordName, voicingIdx, countdown) {
+    const canvas = $("#guitarVerticalFretboard");
+    if (!canvas) return;
 
+    const voicingsData = _guitarVoicingsCache[chordName];
+    const voicings = voicingsData ? voicingsData.voicings : [];
+    const diagram = voicings[voicingIdx] || (chordCache[chordName] || {}).diagram_guitar;
+    if (!diagram) return;
+
+    let nextDiag = null;
     const chords = _displayChords();
-    const key = _currentKey();
-    let hasContent = false;
+    if (chords && _guitarActiveIdx >= 0 && _guitarActiveIdx < chords.length - 1) {
+      const nextName = chords[_guitarActiveIdx + 1].chord;
+      const nv = _guitarVoicingsCache[nextName];
+      const nd = (nv ? nv.voicings[0] : null) || (chordCache[nextName] || {}).diagram_guitar;
+      if (nd) nextDiag = { ...nd, name: nextName };
+    }
 
-    // Next chord
-    if (nextHint && chords) {
-      let curIdx = -1;
-      for (let i = chords.length - 1; i >= 0; i--) {
-        if (audio.currentTime >= chords[i].time) { curIdx = i; break; }
-      }
-      const nextChord = curIdx >= 0 && curIdx < chords.length - 1 ? chords[curIdx + 1] : null;
-      if (nextChord) {
-        const countdown = Math.max(0, nextChord.time - audio.currentTime);
-        nextHint.innerHTML = `下一個: <strong>${nextChord.chord}</strong> (${countdown.toFixed(0)}s)`;
-        hasContent = true;
+    // Blink speed increases as countdown decreases
+    // countdown 2s → slow pulse, countdown 0.3s → rapid blink
+    const blinkFreq = countdown < 0.5 ? 12 : countdown < 1.0 ? 8 : 4;
+    const blinkAlpha = 0.3 + 0.5 * (0.5 + 0.5 * Math.sin(performance.now() / 1000 * blinkFreq * Math.PI * 2));
+
+    ChordRender.drawVerticalFretboard(canvas, diagram, {
+      canvasW: canvas.clientWidth,
+      canvasH: canvas.clientHeight,
+      nextData: nextDiag,
+      nextAlpha: blinkAlpha,
+    });
+  }
+
+  // Same for ukulele
+  function _renderUkuleleFretboardAnimated(chordName, voicingIdx, countdown) {
+    const canvas = $("#ukuleleVerticalFretboard");
+    if (!canvas) return;
+
+    const voicingsData = _ukuleleVoicingsCache[chordName];
+    const voicings = voicingsData ? voicingsData.voicings : [];
+    const diagram = voicings[voicingIdx] || (chordCache[chordName] || {}).diagram_ukulele;
+    if (!diagram) return;
+
+    let nextDiag = null;
+    const chords = _displayChords();
+    if (chords && _ukuleleActiveIdx >= 0 && _ukuleleActiveIdx < chords.length - 1) {
+      const nextName = chords[_ukuleleActiveIdx + 1].chord;
+      const nv = _ukuleleVoicingsCache[nextName];
+      const nd = (nv ? nv.voicings[0] : null) || (chordCache[nextName] || {}).diagram_ukulele;
+      if (nd) nextDiag = { ...nd, numStrings: 4, name: nextName };
+    }
+
+    const blinkFreq = countdown < 0.5 ? 12 : countdown < 1.0 ? 8 : 4;
+    const blinkAlpha = 0.3 + 0.5 * (0.5 + 0.5 * Math.sin(performance.now() / 1000 * blinkFreq * Math.PI * 2));
+
+    ChordRender.drawVerticalFretboard(canvas, {
+      ...diagram, numStrings: 4, _stringLabels: UK_STRING_LABELS,
+    }, {
+      canvasW: canvas.clientWidth,
+      canvasH: canvas.clientHeight,
+      nextData: nextDiag,
+      nextAlpha: blinkAlpha,
+    });
+  }
+
+  // ---- Right-Hand Pattern Generator ----
+  function _generateRhEvents(chords, numStrings, voicingsCache, style, bpm) {
+    const events = [];
+    const beatDur = 60 / (bpm || 100);
+    const eighth = beatDur / 2;
+
+    for (let i = 0; i < chords.length; i++) {
+      const c = chords[i];
+      const end = (i + 1 < chords.length) ? chords[i + 1].time : c.time + 4;
+      const cache = chordCache[c.chord] || {};
+      const vData = voicingsCache[c.chord];
+      const diagram = (vData ? vData.voicings[0] : null) || cache.diagram_guitar || cache.diagram_ukulele;
+      const activeStrings = [];
+      if (diagram && diagram.strings) {
+        diagram.strings.forEach((f, s) => { if (f >= 0) activeStrings.push(s); });
       } else {
-        nextHint.textContent = "";
+        for (let s = 0; s < numStrings; s++) activeStrings.push(s);
+      }
+
+      if (style === "block") {
+        for (let t = c.time; t < end - 0.05; t += beatDur) {
+          events.push({ time: t, dur: beatDur * 0.8, type: "strum", dir: "down", strings: activeStrings, chordIdx: i });
+        }
+      } else if (style === "arpeggio") {
+        const noteDur = beatDur / activeStrings.length;
+        for (let t = c.time; t < end - 0.05; t += beatDur) {
+          activeStrings.forEach((s, j) => {
+            events.push({ time: t + j * noteDur, dur: noteDur * 0.9, type: "pick", string: s, chordIdx: i });
+          });
+        }
+      } else {
+        // "pattern": D-DU-UDU (8th notes per 2-beat bar)
+        const pat = ["D","","D","U","","U","D","U"];
+        for (let t = c.time; t < end - 0.05; t += beatDur * 2) {
+          pat.forEach((dir, j) => {
+            const et = t + j * eighth;
+            if (et >= end) return;
+            if (dir) events.push({ time: et, dur: eighth * 0.8, type: "strum", dir: dir === "D" ? "down" : "up", strings: activeStrings, chordIdx: i });
+          });
+        }
+      }
+    }
+    return events;
+  }
+
+  // ---- Right-Hand Waterfall Renderer ----
+  function _drawRhWaterfall(canvasId, currentTime, numStrings, voicingsCache, instrument) {
+    const canvas = $(canvasId);
+    if (!canvas) return;
+    const chords = _displayChords();
+    if (!chords || chords.length === 0) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    if (w === 0 || h === 0) return;
+
+    if (Math.abs(canvas.width / dpr - w) > 2 || Math.abs(canvas.height / dpr - h) > 2) {
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+    }
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const bpm = (accData && accData.bpm) || 100;
+    const rhEvents = _generateRhEvents(chords, numStrings, voicingsCache, guitarStrumStyle, bpm);
+
+    const lookAhead = 4.0;
+    const pxPerSec = (h - 20) / lookAhead; // reserve 20px at bottom for labels
+    const pad = Math.round(w * 0.1);
+    const stringSpacing = (w - pad * 2) / Math.max(numStrings - 1, 1);
+    function strX(s) { return pad + s * stringSpacing; }
+
+    const STRING_LABELS = instrument === "ukulele" ? ["G","C","E","A"] : ["E","A","D","G","B","e"];
+
+    // String lines + labels at bottom
+    for (let s = 0; s < numStrings; s++) {
+      const x = strX(s);
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h - 20); ctx.stroke();
+      // String label at bottom
+      ctx.fillStyle = "rgba(255,255,255,0.45)";
+      ctx.font = "bold 11px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(STRING_LABELS[s], x, h - 16);
+    }
+
+    // Beat grid
+    const secPerBeat = 60 / bpm;
+    const firstBeat = Math.floor(currentTime / secPerBeat) * secPerBeat;
+    for (let bt = firstBeat; bt < currentTime + lookAhead; bt += secPerBeat) {
+      const beatNum = Math.round(bt / secPerBeat);
+      const isBar = (beatNum % 4 === 0);
+      const y = h - (bt - currentTime) * pxPerSec;
+      if (y < 0 || y > h) continue;
+      ctx.strokeStyle = isBar ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.04)";
+      ctx.lineWidth = isBar ? 1 : 0.5;
+      ctx.beginPath(); ctx.moveTo(pad - 8, y); ctx.lineTo(w - pad + 8, y); ctx.stroke();
+    }
+
+    // Draw RH events
+    const STRUM_CLR = "rgb(0,151,167)";       // solid cyan for down-strums
+    const PICK_CLR  = "rgb(0,172,193)";       // solid cyan for picks
+    const STRUM_UP_CLR = "rgb(38,166,154)";   // solid teal for up-strums
+
+    for (const ev of rhEvents) {
+      const yBot = h - (ev.time - currentTime) * pxPerSec;
+      const yTop = yBot - ev.dur * pxPerSec;
+      if (yTop > h || yBot < 0) continue;
+      const cT = Math.max(0, yTop);
+      const cB = Math.min(h, yBot);
+
+      if (ev.type === "strum") {
+        // Rectangle spanning active strings
+        const xs = ev.strings.map(s => strX(s));
+        const minX = Math.min(...xs) - stringSpacing * 0.3;
+        const maxX = Math.max(...xs) + stringSpacing * 0.3;
+        const clr = ev.dir === "up" ? STRUM_UP_CLR : STRUM_CLR;
+        ctx.fillStyle = clr;
+        const r = 4;
+        ctx.beginPath();
+        ctx.roundRect(minX, cT, maxX - minX, cB - cT, r);
+        ctx.fill();
+
+        // Arrow indicator — larger, glow when active (near now line)
+        const isActive = (cB >= h - 30 && cT <= h - 10);
+        const arrowSize = isActive ? 20 : 14;
+        const arrowY = (cT + cB) / 2;
+        ctx.save();
+        if (isActive) {
+          ctx.shadowColor = "#fff";
+          ctx.shadowBlur = 12;
+        }
+        ctx.fillStyle = isActive ? "#fff" : "rgba(255,255,255,0.7)";
+        ctx.font = `bold ${arrowSize}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(ev.dir === "down" ? "▶" : "◀", (minX + maxX) / 2, arrowY);
+        ctx.restore();
+      } else if (ev.type === "pick") {
+        // Circle on single string
+        const x = strX(ev.string);
+        const cy = (cT + cB) / 2;
+        const r = Math.min(stringSpacing * 0.3, 8);
+        ctx.fillStyle = PICK_CLR;
+        ctx.beginPath();
+        ctx.arc(x, cy, r, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
 
-    // Key analysis
-    if (keyHint) {
-      const analysis = _guitarAnalysisCache[chordName];
-      if (analysis) {
-        keyHint.innerHTML = `${analysis.roman} <span style="opacity:0.6">${key}</span>`;
-        hasContent = true;
-      } else {
-        keyHint.textContent = "";
-      }
-    }
-
-    hintEl.style.display = hasContent ? "" : "none";
+    // Now line above string labels
+    ctx.strokeStyle = "rgba(0,188,212,0.5)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(pad - 8, h - 20);
+    ctx.lineTo(w - pad + 8, h - 20);
+    ctx.stroke();
   }
 
   function _updateGuitarTab(currentTime) {
     if (activeTab !== "guitar" || !_guitarInitialized) return;
+
+    // Draw right-hand waterfall
+    _drawRhWaterfall("#guitarRhWaterfall", currentTime, 6, _guitarVoicingsCache, "guitar");
 
     const chords = _displayChords();
     if (!chords) return;
@@ -2932,15 +3169,33 @@
       if (currentTime >= chords[i].time) { activeIdx = i; break; }
     }
 
+    // Redraw fretboard every frame when next chord is approaching (blink effect)
+    const nextChordTime = (activeIdx >= 0 && activeIdx < chords.length - 1) ? chords[activeIdx + 1].time : null;
+    const countdown = nextChordTime != null ? nextChordTime - currentTime : 99;
+    if (countdown < 2.0 && activeIdx >= 0) {
+      // Re-render with countdown for blinking ghost
+      _renderGuitarFretboardAnimated(chords[activeIdx].chord, _guitarVoicingIdx, countdown);
+    }
+
     if (activeIdx === _guitarActiveIdx) return;
     _guitarActiveIdx = activeIdx;
     _guitarVoicingIdx = 0;
 
     if (activeIdx < 0 || activeIdx >= chords.length) return;
-
     const chordName = chords[activeIdx].chord;
     _renderGuitarFretboard(chordName, 0);
-    _renderGuitarHint(chordName);
+
+    // Update middle panel tutorial info
+    const lhInfo = $("#gtLhHint");
+    const rhInfo = $("#gtRhHint");
+    if (lhInfo) {
+      const nextName = activeIdx < chords.length - 1 ? chords[activeIdx + 1].chord : null;
+      lhInfo.textContent = nextName ? `左手 ${chordName} → ${nextName}` : `左手 ${chordName}`;
+    }
+    if (rhInfo) {
+      const styleLabels = { block: "右手 下刷", arpeggio: "右手 琶音", pattern: "右手 D DU UDU" };
+      rhInfo.textContent = styleLabels[guitarStrumStyle] || "右手";
+    }
   }
 
   // =====================================================
@@ -2970,7 +3225,7 @@
     if (chords && chords.length > 0) {
       _ukuleleActiveIdx = 0;
       _renderUkuleleFretboard(chords[0].chord, 0);
-      _renderUkuleleHint(chords[0].chord);
+      _drawRhWaterfall("#ukuleleRhWaterfall", audio.currentTime || 0, 4, _ukuleleVoicingsCache, "ukulele");
     }
   }
 
@@ -2995,11 +3250,11 @@
   // Ukulele timeline removed — unified ribbon replaces it
 
   function _renderUkuleleFretboard(chordName, voicingIdx) {
-    const canvas = $("#ukuleleFretboardCanvas");
+    const canvas = $("#ukuleleVerticalFretboard");
     const nameEl = $("#ukChordName");
-    const intervalsEl = $("#ukChordIntervals");
-    const fingeringEl = $("#ukFingering");
-    const notesEl = $("#ukNotes");
+    const intervalsEl = null;
+    const fingeringEl = null;
+    const notesEl = null;
     const typeEl = $("#ukType");
     const voicingRow = $("#ukVoicingRow");
 
@@ -3028,41 +3283,38 @@
       rootClean = fb[rootClean] || rootClean;
     }
 
-    // Draw fretboard using the same renderer but with 4 strings
-    ChordRender.drawGuitarFretboard(canvas, {
+    // Draw vertical fretboard with next chord ghost
+    let nextDiag = null;
+    const chords = _displayChords();
+    if (chords && _ukuleleActiveIdx >= 0 && _ukuleleActiveIdx < chords.length - 1) {
+      const nextName = chords[_ukuleleActiveIdx + 1].chord;
+      const nv = _ukuleleVoicingsCache[nextName];
+      const nd = (nv ? nv.voicings[0] : null) || (chordCache[nextName] || {}).diagram_ukulele;
+      if (nd) nextDiag = { ...nd, numStrings: 4, name: nextName };
+    }
+
+    ChordRender.drawVerticalFretboard(canvas, {
       ...diagram,
       numStrings: 4,
       _stringLabels: UK_STRING_LABELS,
-      _openMidi: UK_OPEN_MIDI,
     }, {
-      scale: 1.2,
-      rootNote: rootClean,
-      highlightRoot: true,
+      canvasW: canvas.clientWidth,
+      canvasH: canvas.clientHeight,
+      nextData: nextDiag,
     });
 
-    if (fingeringEl) {
-      fingeringEl.textContent = (diagram.strings || []).map(f => f === -1 ? "x" : f === 0 ? "o" : f).join("  ");
-    }
-    if (notesEl && cache.notes) {
-      notesEl.textContent = cache.notes.join(" · ");
-    }
-    const analysis = _ukuleleAnalysisCache[chordName];
-    if (typeEl) {
-      typeEl.textContent = (analysis && analysis.type_name) || cache.type_name || "";
-    }
-
-    // Voicing buttons
+    // Voicing pills
     if (voicingRow) {
-      voicingRow.innerHTML = '<span class="gt-voicing-label">把位變化</span>';
+      voicingRow.innerHTML = '';
       if (voicings.length > 1) {
         voicings.forEach((v, idx) => {
           const btn = document.createElement("button");
           btn.className = "gt-voicing-btn" + (idx === voicingIdx ? " active" : "");
-          btn.textContent = (v.label || `#${idx+1}`) + ` ${String.fromCodePoint(0x2460 + idx)}`;
+          btn.textContent = String.fromCodePoint(0x2460 + idx);
+          btn.title = v.label || `把位 ${idx + 1}`;
           btn.addEventListener("click", () => {
             _ukuleleVoicingIdx = idx;
             _renderUkuleleFretboard(chordName, idx);
-            _renderUkuleleTeachInfo(chordName);
           });
           voicingRow.appendChild(btn);
         });
@@ -3070,47 +3322,10 @@
     }
   }
 
-  // Floating hint for ukulele (bottom-right of fretboard)
-  function _renderUkuleleHint(chordName) {
-    const hintEl = $("#ukuleleHint");
-    const nextHint = $("#ukNextChordHint");
-    const keyHint = $("#ukKeyAnalysisHint");
-    if (!hintEl) return;
-
-    const chords = _displayChords();
-    const key = _currentKey();
-    let hasContent = false;
-
-    if (nextHint && chords) {
-      let curIdx = -1;
-      for (let i = chords.length - 1; i >= 0; i--) {
-        if (audio.currentTime >= chords[i].time) { curIdx = i; break; }
-      }
-      const nextChord = curIdx >= 0 && curIdx < chords.length - 1 ? chords[curIdx + 1] : null;
-      if (nextChord) {
-        const countdown = Math.max(0, nextChord.time - audio.currentTime);
-        nextHint.innerHTML = `下一個: <strong>${nextChord.chord}</strong> (${countdown.toFixed(0)}s)`;
-        hasContent = true;
-      } else {
-        nextHint.textContent = "";
-      }
-    }
-
-    if (keyHint) {
-      const analysis = _ukuleleAnalysisCache[chordName];
-      if (analysis) {
-        keyHint.innerHTML = `${analysis.roman} <span style="opacity:0.6">${key}</span>`;
-        hasContent = true;
-      } else {
-        keyHint.textContent = "";
-      }
-    }
-
-    hintEl.style.display = hasContent ? "" : "none";
-  }
-
   function _updateUkuleleTab(currentTime) {
     if (activeTab !== "ukulele" || !_ukuleleInitialized) return;
+
+    _drawRhWaterfall("#ukuleleRhWaterfall", currentTime, 4, _ukuleleVoicingsCache, "ukulele");
 
     const chords = _displayChords();
     if (!chords) return;
@@ -3120,15 +3335,19 @@
       if (currentTime >= chords[i].time) { activeIdx = i; break; }
     }
 
+    // Blink ghost near chord change
+    const nextChordTime = (activeIdx >= 0 && activeIdx < chords.length - 1) ? chords[activeIdx + 1].time : null;
+    const countdown = nextChordTime != null ? nextChordTime - currentTime : 99;
+    if (countdown < 2.0 && activeIdx >= 0) {
+      _renderUkuleleFretboardAnimated(chords[activeIdx].chord, _ukuleleVoicingIdx, countdown);
+    }
+
     if (activeIdx === _ukuleleActiveIdx) return;
     _ukuleleActiveIdx = activeIdx;
     _ukuleleVoicingIdx = 0;
 
     if (activeIdx < 0 || activeIdx >= chords.length) return;
-
-    const chordName = chords[activeIdx].chord;
-    _renderUkuleleFretboard(chordName, 0);
-    _renderUkuleleHint(chordName);
+    _renderUkuleleFretboard(chords[activeIdx].chord, 0);
   }
 
 })();
