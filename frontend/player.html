@@ -10,63 +10,37 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=1">
-  <link rel="stylesheet" href="/css/player.css?v=2">
+  <link rel="stylesheet" href="/css/player.css?v=3">
 </head>
 <body>
 
-<!-- header (hidden in immersive, shown on hover) -->
-<header class="header" style="position:relative">
-  <a href="/" style="text-decoration:none"><h1>LiveChord</h1></a>
-  <div class="search-box">
-    <input id="searchInput" type="text" placeholder="搜尋歌曲、演出者、專輯…" autocomplete="off">
-    <div id="searchResults" class="search-results"></div>
+<!-- ===== TOP: Thin progress bar ===== -->
+<div id="topProgress" class="top-progress-bar">
+  <div id="topProgressFill" class="top-progress-fill" style="width:0%"></div>
+  <div id="topAbRange" class="ab-range" style="display:none"></div>
+</div>
+
+<!-- ===== TOP: Top Bar ===== -->
+<header class="player-topbar">
+  <a href="/" class="topbar-logo" title="返回首頁">LiveChord</a>
+  <div class="topbar-center">
+    <span id="songTitle" class="topbar-title" title="">—</span>
+    <button id="btnFav" class="topbar-btn btn-fav" title="收藏">&#x2661;</button>
+    <div id="topbarSearch" class="topbar-search" style="display:none">
+      <input id="searchInput" type="text" placeholder="搜尋歌曲、演出者、專輯…" autocomplete="off">
+      <div id="searchResults" class="search-results"></div>
+    </div>
   </div>
-  <nav></nav>
-  <button id="btnPageFs" class="header-fs-btn" title="全螢幕">&#x26F6;</button>
+  <div class="topbar-right">
+    <span id="chordSource" class="chord-source-badge"></span>
+    <span id="chordKey" class="topbar-key"></span>
+    <button id="btnRateAiTop" class="topbar-btn" style="color:#ff5722" title="和弦品質評論">&#x2B50;</button>
+    <button id="btnPageFs" class="topbar-btn" title="全螢幕">&#x26F6;</button>
+  </div>
 </header>
 
-<div class="player-page">
-
-  <!-- song info (compact in immersive mode) -->
-  <div class="player-header" id="playerHeader">
-    <img id="cover" class="player-cover" src="" alt="" onerror="this.style.display='none'">
-    <div class="player-info">
-      <div id="songTitle" class="song-title">—</div>
-      <div id="songArtist" class="song-artist"></div>
-      <div id="songAlbum" class="song-album"></div>
-      <div id="songMeta" class="song-meta"></div>
-    </div>
-  </div>
-
-  <!-- audio controls (compact) -->
-  <div class="audio-controls">
-    <div class="controls-row">
-      <button id="btnRewind" title="回到開頭">&#x23EE;</button>
-      <button id="btnPrev" title="上一首">&#x23EA;</button>
-      <button id="btnPlay" class="btn-play" title="播放">&#x25B6;</button>
-      <button id="btnNext" title="下一首">&#x23E9;</button>
-      <span id="timeCurrent" class="time-label">0:00</span>
-      <div class="progress-bar" id="progressBar" style="flex:1">
-        <div class="ab-range" id="abRange" style="display:none"></div>
-        <div class="progress" id="progress" style="width:0%"></div>
-      </div>
-      <span id="timeDuration" class="time-label">0:00</span>
-      <button id="btnFav" class="btn-fav" title="收藏">&#x2661;</button>
-      <button id="btnLoop" class="speed-btn" title="循環模式">&#x1F501;</button>
-      <button id="btnSpeed" class="speed-btn" title="播放速度">1x</button>
-      <button id="btnAudioMode" class="speed-btn" style="font-weight:bold; color:#03a9f4; border: 1px solid #03a9f4; border-radius: 4px; padding: 0 6px; font-size: 12px; min-width: 56px; white-space: nowrap; transition: all 0.2s;" title="切換音軌: Music -> MIDI -> Mix">🎵 Music</button>
-      <!-- Crossfader (only visible in Mix mode) -->
-      <div id="crossfaderContainer" style="display:none; align-items:center; gap:4px;">
-        <span style="font-size:10px; color:#aaa;">Music</span>
-        <input id="crossfaderVol" type="range" min="0" max="1" step="0.05" value="0.5" style="width:60px; margin:0;">
-        <span style="font-size:10px; color:#ff9800;">MIDI</span>
-      </div>
-      <div class="volume-control">
-        <span id="btnMute" style="cursor:pointer">&#x1F509;</span>
-        <input id="volumeSlider" type="range" min="0" max="1" step="0.05" value="1">
-      </div>
-    </div>
-  </div>
+<!-- ===== MIDDLE: Main Display Area ===== -->
+<div id="chordDisplay" class="chord-display-area">
 
   <!-- 偵測中覆蓋層 -->
   <div id="detectOverlay" class="detect-overlay" style="display:none">
@@ -80,271 +54,223 @@
     </div>
   </div>
 
-  <!-- chord display -->
-  <div class="chord-section" id="chordSection">
-    <!-- 當前和弦大字顯示 -->
-    <div id="currentChordBig" class="current-chord-big" style="display:none">
-      <div id="bigChordName" class="big-chord-name">—</div>
-      <div id="bigChordJianpu" class="big-chord-jianpu"></div>
-      <div id="bigChordDiagram"></div>
+  <!-- Split layout: Chord Ribbon | Resize Handle | Instrument View -->
+  <div id="chordDisplayScaleTarget" class="middle-split">
+
+    <!-- LEFT: Unified Chord Ribbon (replaces Overview) -->
+    <div id="chordRibbonPanel" class="chord-ribbon-panel">
+      <div id="unifiedRibbonTrack" class="ribbon-v-track"></div>
     </div>
 
-    <!-- 主顯示區 (預設沉浸式) -->
-    <div id="chordDisplay" class="chord-display-area immersive">
-      <!-- 底部工具列 (tab切換 + 共用控制) -->
-      <div class="chord-toolbar">
-        <div style="display:flex;align-items:center;gap:8px">
-          <span id="chordSource" class="chord-source-badge"></span>
-          <span id="chordKey" style="font-size:14px;font-weight:700;color:var(--text)"></span>
+    <!-- RESIZE HANDLE -->
+    <div id="resizeHandle" class="resize-handle"></div>
 
-          <!-- 四個主 Tab: Overview | Piano | Guitar | Ukulele -->
-          <div class="chord-view-tabs" style="display:flex; gap:2px; margin-left:8px; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:2px;">
-            <button id="tabOverview" class="view-tab active" style="border:none;" title="Overview 全覽">&#x25A6;</button>
-            <button id="tabPiano" class="view-tab" style="border:none;" title="Piano 鋼琴">&#x2328;</button>
-            <button id="tabGuitar" class="view-tab" style="border:none;" title="Guitar 吉他">&#x1F3B8;</button>
-            <button id="tabUkulele" class="view-tab" style="border:none;" title="Ukulele 烏克麗麗">&#x1FA95;</button>
-          </div>
+    <!-- RIGHT: Instrument Panel -->
+    <div id="instrumentPanel" class="instrument-panel">
 
-          <button id="btnDetect" class="toolbar-btn tb-icon" title="偵測和弦">&#x1F50D;</button>
-          <a id="btnEdit" class="toolbar-btn tb-icon" style="text-decoration:none" title="編輯和弦譜">&#x270F;</a>
-          <button id="btnAiSuggest" class="toolbar-btn tb-icon" style="color:#4caf50" title="AI 建議下一個和弦">&#x1F4A1;</button>
-          <button id="btnJazzify" class="toolbar-btn tb-icon" style="color:#ff9800" title="Jazzify L1/L2/L3">&#x1F3B7;</button>
-          <button id="btnShowChordTonesTB" class="toolbar-btn tb-icon" style="color:#9c27b0; transition: all 0.2s;" title="顯示鍵盤和弦組成音">&#x1F3B5;</button>
-
-          <!-- 左右手開關 (統合) -->
-          <button id="btnTopHandSwitch" class="toolbar-btn hand-toggle-btn" style="margin-left:8px;" title="切換教學手勢 (雙手)">
-            <img src="/img/left-hand.png" class="hand-icon hand-left active" alt="L">
-            <img src="/img/right-hand.png" class="hand-icon hand-right active" alt="R">
-          </button>
-        </div>
-
-        <div style="display:flex;align-items:center;gap:6px">
-          <!-- A-B 循環 (所有 tab 共用) -->
-          <button id="btnABRepeat" class="toolbar-btn ab-repeat-btn" title="A-B 區段循環">A-B</button>
-
-          <!-- 移調 -->
-          <span style="font-size:13px;color:var(--text-dim)" title="移調">&#x2195;</span>
-          <button id="btnTransposeDown" class="toolbar-btn">-</button>
-          <span id="transposeValue" style="font-size:12px;min-width:16px;text-align:center;color:var(--text-dim)">0</span>
-          <button id="btnTransposeUp" class="toolbar-btn">+</button>
-
-          <!-- Capo (吉他/烏克麗麗時顯示) -->
-          <div id="capoGroup" class="toolbar-group" style="display:none">
-            <select id="capoSelect" class="toolbar-select" title="Capo">
-              <option value="0">C0</option>
-              <option value="1">C1</option>
-              <option value="2">C2</option>
-              <option value="3">C3</option>
-              <option value="4">C4</option>
-              <option value="5">C5</option>
-              <option value="6">C6</option>
-              <option value="7">C7</option>
-            </select>
-          </div>
-
-          <!-- 樂器切換已整合至主 Tab (Overview/Piano/Guitar/Ukulele) -->
+      <!-- Piano Tab -->
+      <div id="chordDisplayPiano" class="chord-piano-tab" style="display:none">
+        <div id="pianoWaterfallView" class="chord-88-keys">
+          <canvas id="waterfallCanvas" class="waterfall-canvas"></canvas>
+          <canvas id="piano88Canvas"></canvas>
         </div>
       </div>
 
-      <!-- 頂部覆蓋工具列 (迷你播放控制 + 曲名 + 縮放) -->
-      <div class="chord-display-tools chord-overlay-tools" style="left: 4px; right: 4px; display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; height: auto; pointer-events: none;">
-        <div style="display: flex; gap: 16px; align-items: center; background: rgba(15,15,15,0.3); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-radius: 10px; padding: 4px 12px; pointer-events: auto; justify-self: start; max-width: 100%; overflow: hidden;">
-          <div style="display: flex; gap: 2px; flex-shrink: 0;">
-            <button class="cd-tool-btn" id="btnMiniRewind" title="回到開頭">&#x23EE;</button>
-            <button class="cd-tool-btn" id="btnMiniPrev" title="上一首">&#x23EA;</button>
-            <button class="cd-tool-btn" id="btnMiniPlay" title="播放/暫停">&#x25B6;</button>
-            <button class="cd-tool-btn" id="btnMiniNext" title="下一首">&#x23E9;</button>
-            <button class="cd-tool-btn" id="btnMiniSpeed" title="播放速度">1x</button>
-          </div>
-          <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
-            <span id="btnMiniMute" class="cd-tool-btn" style="cursor:pointer; font-size:14px;">&#x1F509;</span>
-            <input id="miniVolumeSlider" type="range" min="0" max="1" step="0.05" value="1" style="width:60px; accent-color:var(--accent);">
-          </div>
-          <div class="fs-progress-container" style="display: flex; align-items: center; width: 280px; min-width: 160px; gap: 8px; flex-shrink: 1;">
-            <span id="fsTimeCurrent" class="time-label" style="min-width: 32px; text-align: right; flex-shrink: 0;">0:00</span>
-            <div class="progress-bar" id="fsProgressBar" style="flex:1; min-width: 0;">
-              <div class="ab-range" id="fsAbRange" style="display:none"></div>
-              <div class="progress" id="fsProgress" style="width:0%"></div>
+      <!-- Guitar Tab -->
+      <div id="chordDisplayGuitar" class="chord-guitar-tab" style="display:none">
+        <div class="guitar-layout">
+          <div class="guitar-panel-center" id="guitarFretboard">
+            <div class="gt-chord-header">
+              <div id="gtChordName" class="gt-main-chord-name">—</div>
+              <div id="gtChordIntervals" class="gt-chord-intervals"></div>
             </div>
-            <span id="fsTimeDuration" class="time-label" style="min-width: 32px; text-align: left; flex-shrink: 0;">0:00</span>
+            <canvas id="guitarFretboardCanvas"></canvas>
+            <div class="gt-chord-detail">
+              <div class="gt-detail-item">
+                <span class="gt-detail-label">指法</span>
+                <span id="gtFingering" class="gt-detail-value">—</span>
+              </div>
+              <div class="gt-detail-item">
+                <span class="gt-detail-label">組成音</span>
+                <span id="gtNotes" class="gt-detail-value">—</span>
+              </div>
+              <div class="gt-detail-item">
+                <span class="gt-detail-label">和弦類型</span>
+                <span id="gtType" class="gt-detail-value">—</span>
+              </div>
+            </div>
+            <div class="gt-voicing-row" id="gtVoicingRow">
+              <span class="gt-voicing-label">把位變化</span>
+            </div>
+            <!-- Floating hint (next chord, key analysis) -->
+            <div id="guitarHint" class="gt-floating-hint" style="display:none">
+              <div id="gtNextChordHint" class="gt-hint-line"></div>
+              <div id="gtKeyAnalysisHint" class="gt-hint-line"></div>
+            </div>
           </div>
-        </div>
-        <div style="display: flex; justify-content: center; min-width: 0; padding-top: 2px;">
-          <div style="display: inline-flex; align-items: center; background: rgba(15,15,15,0.3); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-radius: 10px; padding: 5px 16px; pointer-events: auto; max-width: 360px; overflow: hidden;">
-            <span class="mini-title-wrap" style="height: auto; overflow: hidden;"><span class="mini-title" id="miniTitle"></span></span>
-          </div>
-        </div>
-        <div style="display: flex; gap: 2px; align-items: center; justify-self: end; pointer-events: auto; margin-right: 32px;">
-          <button class="cd-tool-btn" id="btnZoomOut" title="縮小">−</button>
-          <button class="cd-tool-btn" id="btnZoomReset" title="重設">100%</button>
-          <button class="cd-tool-btn" id="btnZoomIn" title="放大">+</button>
         </div>
       </div>
 
-      <div id="chordDisplayScaleTarget" style="flex:1; display:flex; flex-direction:column; transform-origin:top left; min-height:0; width:100%; overflow:hidden;">
-
-        <!-- Overview Tab -->
-        <div id="chordDisplayOverview" class="chord-timeline"></div>
-
-        <!-- Piano Tab (合併原 Diagrams + 88-Keys) -->
-        <div id="chordDisplayPiano" class="chord-piano-tab" style="display:none">
-          <!-- 子模式切換: 靜態 vs 瀑布 -->
-          <div class="piano-submode-bar">
-            <button id="btnSubStatic" class="sub-tab" data-submode="static">靜態</button>
-            <button id="btnSubWaterfall" class="sub-tab active" data-submode="waterfall">瀑布</button>
-          </div>
-          <!-- 靜態 ribbon (原 Diagrams) -->
-          <div id="pianoStaticView" class="chord-ribbon" style="display:none">
-            <div class="ribbon-center-line"></div>
-            <div class="ribbon-track" id="ribbonTrack"></div>
-          </div>
-          <!-- 瀑布流 (原 88-Keys) -->
-          <div id="pianoWaterfallView" class="chord-88-keys">
-            <div id="keys88Ribbon" class="keys88-ribbon">
-              <div class="ribbon-center-line"></div>
-              <div class="ribbon-track" id="keys88RibbonTrack"></div>
+      <!-- Ukulele Tab -->
+      <div id="chordDisplayUkulele" class="chord-guitar-tab" style="display:none">
+        <div class="guitar-layout">
+          <div class="guitar-panel-center" id="ukuleleFretboard">
+            <div class="gt-chord-header">
+              <div id="ukChordName" class="gt-main-chord-name">—</div>
+              <div id="ukChordIntervals" class="gt-chord-intervals"></div>
             </div>
-            <canvas id="waterfallCanvas" class="waterfall-canvas"></canvas>
-            <canvas id="piano88Canvas"></canvas>
-          </div>
-          <!-- 教學控制 toggle + panel (僅 Piano tab) -->
-          <div id="teachControlsWrapper" style="position:relative;">
-            <button id="btnToggleTeach" class="toolbar-btn tb-icon" style="font-size:16px; color:var(--text-dim); transition:all 0.2s;" title="展開伴奏/教學工具列">&#x2699;</button>
-            <div id="teachControls" class="teach-controls" style="display:none;">
-              <button id="btnTeachAI" class="toolbar-btn" title="AI 推薦風格">AI</button>
-              <select id="teachStyle" class="toolbar-select" title="伴奏風格">
-                <option value="Auto" selected>Auto (段落自適)</option>
-                <option value="Block">Block (柱狀和弦)</option>
-                <option value="Arpeggio">Flow (分解伴奏)</option>
-                <option value="Rhythm">Ballad (附點節奏)</option>
-                <option value="Walking">Pro (Jazz Walking)</option>
-                <option value="Stride">Pro (Stride)</option>
-              </select>
-              <div id="handSwitchContainer" style="display:flex; align-items:center; margin-left:4px; margin-right:8px;">
-                <button id="btnBottomHandSwitch" class="toolbar-btn hand-toggle-btn" title="切換教學手勢 (雙手)">
-                  <img src="/img/left-hand.png" class="hand-icon hand-left active" alt="L">
-                  <img src="/img/right-hand.png" class="hand-icon hand-right active" alt="R">
-                </button>
+            <canvas id="ukuleleFretboardCanvas"></canvas>
+            <div class="gt-chord-detail">
+              <div class="gt-detail-item">
+                <span class="gt-detail-label">指法</span>
+                <span id="ukFingering" class="gt-detail-value">—</span>
               </div>
-              <button id="btnBottomShowChordTones" class="toolbar-btn tb-icon" style="color:#9c27b0; transition: all 0.2s;" title="顯示鍵盤和弦組成音">&#x1F3B5;</button>
-              <button id="btnFingering" class="toolbar-btn tb-icon" style="color:#4caf50; transition: all 0.2s;" title="鋼琴鍵指法顯示">&#x270B;</button>
-              <button id="btnRefreshAcc" class="toolbar-btn tb-icon" style="color:#4caf50; transition: all 0.2s;" title="強制重新生成伴奏 (清除快取)">&#x1F504;</button>
-
-              <!-- RLHF Rating Button & Popup -->
-              <div style="position:relative; display:flex; align-items:center;">
-                <button id="btnRateAi" class="toolbar-btn tb-icon" style="color:#ff5722; transition: all 0.2s; font-size:16px;" title="AI 伴奏評分">&#x2B50;</button>
-                <div id="ratePopup" style="display:none; position:absolute; bottom:40px; left:50%; transform:translateX(-50%); background:rgba(30,30,30,0.9); backdrop-filter:blur(8px); border:1px solid #555; border-radius:8px; padding:8px; z-index:100; white-space:nowrap; box-shadow:0 8px 16px rgba(0,0,0,0.5);">
-                  <button id="btnRlhfGood" title="聽起來很棒" style="background:#2e7d32; color:#fff; border:none; border-radius:6px; padding:6px 12px; cursor:pointer; font-size:12px; margin-right:4px;">&#x1F44D; 合理</button>
-                  <button id="btnRlhfBad" title="有外星人指法/伴奏" style="background:#c62828; color:#fff; border:none; border-radius:6px; padding:6px 12px; cursor:pointer; font-size:12px;">&#x1F44E; 糟糕</button>
-                </div>
+              <div class="gt-detail-item">
+                <span class="gt-detail-label">組成音</span>
+                <span id="ukNotes" class="gt-detail-value">—</span>
               </div>
-
-              <button id="btnDownloadMidi" class="toolbar-btn tb-icon" style="color:#2196f3; transition: all 0.2s;" title="下載 AI 伴奏 MIDI">&#x1F4BE;</button>
+              <div class="gt-detail-item">
+                <span class="gt-detail-label">和弦類型</span>
+                <span id="ukType" class="gt-detail-value">—</span>
+              </div>
+            </div>
+            <div class="gt-voicing-row" id="ukVoicingRow">
+              <span class="gt-voicing-label">把位變化</span>
+            </div>
+            <!-- Floating hint (next chord, key analysis) -->
+            <div id="ukuleleHint" class="gt-floating-hint" style="display:none">
+              <div id="ukNextChordHint" class="gt-hint-line"></div>
+              <div id="ukKeyAnalysisHint" class="gt-hint-line"></div>
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Guitar Tab (新增) -->
-        <div id="chordDisplayGuitar" class="chord-guitar-tab" style="display:none">
-          <div class="guitar-layout">
-            <!-- 左欄: 和弦時間軸 -->
-            <div class="guitar-panel-left" id="guitarTimeline"></div>
-            <!-- 中欄: 指板主區 -->
-            <div class="guitar-panel-center" id="guitarFretboard">
-              <div class="gt-chord-header">
-                <div id="gtChordName" class="gt-main-chord-name">—</div>
-                <div id="gtChordIntervals" class="gt-chord-intervals"></div>
-              </div>
-              <canvas id="guitarFretboardCanvas"></canvas>
-              <div class="gt-chord-detail">
-                <div class="gt-detail-item">
-                  <span class="gt-detail-label">指法</span>
-                  <span id="gtFingering" class="gt-detail-value">—</span>
-                </div>
-                <div class="gt-detail-item">
-                  <span class="gt-detail-label">組成音</span>
-                  <span id="gtNotes" class="gt-detail-value">—</span>
-                </div>
-                <div class="gt-detail-item">
-                  <span class="gt-detail-label">和弦類型</span>
-                  <span id="gtType" class="gt-detail-value">—</span>
-                </div>
-              </div>
-              <div class="gt-voicing-row" id="gtVoicingRow">
-                <span class="gt-voicing-label">把位變化</span>
-              </div>
-            </div>
-            <!-- 右欄: 教學資訊 -->
-            <div class="guitar-panel-right" id="guitarTeachInfo">
-              <div class="gt-section" id="gtFingeringGuide">
-                <h4 class="gt-section-title">指法導引</h4>
-                <div id="gtFingeringList" class="gt-fingering-list"></div>
-              </div>
-              <div class="gt-section" id="gtNextChord">
-                <h4 class="gt-section-title">下一個和弦</h4>
-                <div id="gtNextChordContent" class="gt-next-chord-content"></div>
-              </div>
-              <div class="gt-section" id="gtChordInKey">
-                <h4 class="gt-section-title">調性分析</h4>
-                <div id="gtChordInKeyContent" class="gt-chord-in-key-content"></div>
-              </div>
-            </div>
-          </div>
-        </div>
+    </div><!-- /instrumentPanel -->
+  </div><!-- /chordDisplayScaleTarget -->
 
-        <!-- Ukulele Tab -->
-        <div id="chordDisplayUkulele" class="chord-guitar-tab" style="display:none">
-          <div class="guitar-layout ukulele-layout">
-            <!-- 左欄: 和弦時間軸 -->
-            <div class="guitar-panel-left" id="ukuleleTimeline"></div>
-            <!-- 中欄: 指板主區 -->
-            <div class="guitar-panel-center" id="ukuleleFretboard">
-              <div class="gt-chord-header">
-                <div id="ukChordName" class="gt-main-chord-name">—</div>
-                <div id="ukChordIntervals" class="gt-chord-intervals"></div>
-              </div>
-              <canvas id="ukuleleFretboardCanvas"></canvas>
-              <div class="gt-chord-detail">
-                <div class="gt-detail-item">
-                  <span class="gt-detail-label">指法</span>
-                  <span id="ukFingering" class="gt-detail-value">—</span>
-                </div>
-                <div class="gt-detail-item">
-                  <span class="gt-detail-label">組成音</span>
-                  <span id="ukNotes" class="gt-detail-value">—</span>
-                </div>
-                <div class="gt-detail-item">
-                  <span class="gt-detail-label">和弦類型</span>
-                  <span id="ukType" class="gt-detail-value">—</span>
-                </div>
-              </div>
-              <div class="gt-voicing-row" id="ukVoicingRow">
-                <span class="gt-voicing-label">把位變化</span>
-              </div>
-            </div>
-            <!-- 右欄: 教學資訊 -->
-            <div class="guitar-panel-right" id="ukuleleTeachInfo">
-              <div class="gt-section" id="ukFingeringGuide">
-                <h4 class="gt-section-title">指法導引</h4>
-                <div id="ukFingeringList" class="gt-fingering-list"></div>
-              </div>
-              <div class="gt-section" id="ukNextChord">
-                <h4 class="gt-section-title">下一個和弦</h4>
-                <div id="ukNextChordContent" class="gt-next-chord-content"></div>
-              </div>
-              <div class="gt-section" id="ukChordInKey">
-                <h4 class="gt-section-title">調性分析</h4>
-                <div id="ukChordInKeyContent" class="gt-chord-in-key-content"></div>
-              </div>
-            </div>
-          </div>
-        </div>
+  <!-- RLHF rate popup (anchored to top-bar star button) -->
+  <div id="ratePopup" class="rate-popup" style="display:none">
+    <button id="btnRlhfGood" class="rate-good" title="聽起來很棒">&#x1F44D; 合理</button>
+    <button id="btnRlhfBad" class="rate-bad" title="有外星人指法/伴奏">&#x1F44E; 糟糕</button>
+  </div>
 
+</div><!-- /chordDisplay -->
+
+<!-- ===== BOTTOM: Compact Toolbar ===== -->
+<div class="bottom-toolbar">
+
+  <!-- 1. Instrument select -->
+  <div class="tb-item" id="tbInstrument">
+    <button class="tb-trigger" id="btnInstrument" title="樂器選擇">&#x1F3B9;</button>
+    <div class="tb-popup">
+      <button class="tb-popup-btn" data-tab="piano" title="Piano 鋼琴">&#x1F3B9; 鋼琴</button>
+      <button class="tb-popup-btn" data-tab="guitar" title="Guitar 吉他">&#x1F3B8; 吉他</button>
+      <button class="tb-popup-btn" data-tab="ukulele" title="Ukulele 烏克麗麗">&#x1FA95; 烏克</button>
+    </div>
+  </div>
+
+  <!-- 2. Playback -->
+  <div class="tb-item tb-playback" id="tbPlayback">
+    <button id="btnPrev" class="tb-trigger" title="上一首 / 回到開頭">&#x23EA;</button>
+    <span id="timeCurrent" class="tb-time">0:00</span>
+    <button id="btnPlay" class="tb-trigger tb-play-btn" title="播放">&#x25B6;</button>
+    <span id="timeDuration" class="tb-time">0:00</span>
+  </div>
+
+  <!-- 3. Volume -->
+  <div class="tb-item" id="tbVolume">
+    <button id="btnMute" class="tb-trigger" title="音量">&#x1F509;</button>
+    <div class="tb-popup tb-popup-volume">
+      <input id="volumeSlider" type="range" min="0" max="1" step="0.05" value="1">
+    </div>
+  </div>
+
+  <!-- 4. Speed -->
+  <div class="tb-item">
+    <button id="btnSpeed" class="tb-trigger tb-text-btn" title="播放速度">1x</button>
+  </div>
+
+  <!-- 5. Loop -->
+  <div class="tb-item">
+    <button id="btnLoop" class="tb-trigger" title="循環模式">&#x1F501;</button>
+  </div>
+
+  <!-- 6. A-B -->
+  <div class="tb-item">
+    <button id="btnABRepeat" class="tb-trigger ab-repeat-btn" title="A-B 區段循環">A-B</button>
+  </div>
+
+  <!-- 7. Transpose -->
+  <div class="tb-item" id="tbTranspose">
+    <button class="tb-trigger" title="移調工具">&#x2195;</button>
+    <div class="tb-popup tb-popup-transpose">
+      <button id="btnTransposeDown" class="tb-popup-btn">−</button>
+      <span id="transposeValue" class="tb-transpose-val">0</span>
+      <button id="btnTransposeUp" class="tb-popup-btn">+</button>
+      <div id="capoGroup" class="tb-capo-group" style="display:none">
+        <span class="tb-capo-label">Capo</span>
+        <select id="capoSelect" class="tb-select">
+          <option value="0">C0</option>
+          <option value="1">C1</option>
+          <option value="2">C2</option>
+          <option value="3">C3</option>
+          <option value="4">C4</option>
+          <option value="5">C5</option>
+          <option value="6">C6</option>
+          <option value="7">C7</option>
+        </select>
       </div>
     </div>
   </div>
 
-</div>
+  <!-- 8. Jazzify -->
+  <div class="tb-item">
+    <button id="btnJazzify" class="tb-trigger" style="color:#ff9800" title="Jazzify L1/L2/L3">&#x1F3B7;</button>
+  </div>
+
+  <!-- 9. AI Teaching -->
+  <div class="tb-item" id="tbTeaching">
+    <button class="tb-trigger" title="AI 伴奏教學">&#x1F916;</button>
+    <div class="tb-popup tb-popup-wide">
+      <button id="btnTeachAI" class="tb-popup-btn" title="AI 推薦風格">AI</button>
+      <select id="teachStyle" class="tb-select" title="伴奏風格">
+        <option value="Auto" selected>Auto</option>
+        <option value="Block">Block</option>
+        <option value="Arpeggio">Flow</option>
+        <option value="Rhythm">Ballad</option>
+        <option value="Walking">Walking</option>
+        <option value="Stride">Stride</option>
+      </select>
+      <button id="btnTopHandSwitch" class="tb-popup-btn hand-toggle-btn" title="切換教學手勢">
+        <img src="/img/left-hand.png" class="hand-icon hand-left active" alt="L">
+        <img src="/img/right-hand.png" class="hand-icon hand-right active" alt="R">
+      </button>
+      <button id="btnShowChordTonesTB" class="tb-popup-btn" style="color:#9c27b0" title="顯示和弦組成音">&#x1F3B5;</button>
+      <button id="btnFingering" class="tb-popup-btn" style="color:#4caf50" title="鋼琴鍵指法">&#x270B;</button>
+      <button id="btnRefreshAcc" class="tb-popup-btn" style="color:#4caf50" title="強制重新生成伴奏">&#x1F504;</button>
+      <button id="btnDownloadMidi" class="tb-popup-btn" style="color:#2196f3" title="下載 MIDI">&#x1F4BE;</button>
+      <div class="tb-separator"></div>
+      <button id="btnAudioMode" class="tb-popup-btn" style="color:#03a9f4" title="切換音軌">&#x1F3B5; Music</button>
+      <div id="crossfaderContainer" style="display:none; align-items:center; gap:4px;">
+        <span style="font-size:10px; color:#aaa;">Music</span>
+        <input id="crossfaderVol" type="range" min="0" max="1" step="0.05" value="0.5" style="width:60px;">
+        <span style="font-size:10px; color:#ff9800;">MIDI</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10. Tools -->
+  <div class="tb-item" id="tbTools">
+    <button class="tb-trigger" title="工具">&#x1F527;</button>
+    <div class="tb-popup">
+      <button id="btnDetect" class="tb-popup-btn" title="偵測和弦">&#x1F50D; 偵測</button>
+      <a id="btnEdit" class="tb-popup-btn" style="text-decoration:none" title="編輯和弦譜">&#x270F; 編輯</a>
+      <button id="btnAiSuggest" class="tb-popup-btn" style="color:#4caf50" title="AI 建議下一個和弦">&#x1F4A1; AI建議</button>
+    </div>
+  </div>
+
+</div><!-- /bottom-toolbar -->
 
 <div id="toast" class="toast"></div>
 <audio id="audio" preload="metadata"></audio>
@@ -353,6 +279,6 @@
 <script src="/js/api.js?v=53"></script>
 <script src="/js/chord-render.js?v=53"></script>
 <script src="/js/midi-exporter.js?v=1"></script>
-<script src="/js/player.js?v=60"></script>
+<script src="/js/player.js?v=61"></script>
 </body>
 </html>
