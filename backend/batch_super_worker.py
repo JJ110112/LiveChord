@@ -15,8 +15,12 @@ import warnings
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# 靜音 librosa n_fft 警告 (短音訊片段無害)
+# 靜音 librosa / audioread 各類無害警告
 warnings.filterwarnings("ignore", message="n_fft=.*is too large")
+warnings.filterwarnings("ignore", message="PySoundFile failed")
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning, module="librosa")
+warnings.filterwarnings("ignore", category=UserWarning, module="ai.melody_extractor")
 
 # 確保可以 import backend 下的模組
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -26,6 +30,17 @@ from chord_detect import detect_chords, detect_key, _load_model
 from chord_cache import song_hash
 from ai.melody_extractor import MelodyExtractor
 import torch
+
+def _format_duration(seconds):
+    """將秒數格式化為 X天 X時 X分"""
+    d = int(seconds // 86400)
+    h = int((seconds % 86400) // 3600)
+    m = int((seconds % 3600) // 60)
+    parts = []
+    if d > 0: parts.append(f"{d}天")
+    if h > 0: parts.append(f"{h}時")
+    parts.append(f"{m}分")
+    return " ".join(parts)
 
 # ---------------------------------------------------------------------------
 # 設定區
@@ -261,16 +276,21 @@ def main():
                     
             if task_count % 50 == 0:
                 elapsed = time.time() - start_time
-                tps = task_count / elapsed
+                tps = task_count / elapsed if elapsed > 0 else 0
+                remaining = total_tasks - task_count
+                eta_sec = remaining / tps if tps > 0 else 0
+                eta_str = _format_duration(eta_sec)
+                _ft = time.localtime(time.time() + eta_sec)
+                finish_time = f"{_ft.tm_year}/{_ft.tm_mon:02d}/{_ft.tm_mday:02d} {_ft.tm_hour:02d}:{_ft.tm_min:02d}"
                 with print_lock:
-                    print(f"--- 系統狀態報告: 已掃描 {task_count}/{total_tasks} ({task_count/total_tasks:.1%}) | 處理速度: {tps:.2f} 首/秒 ---")
+                    print(f"--- 系統狀態報告: 已掃描 {task_count}/{total_tasks} ({task_count/total_tasks:.1%}) | 處理速度: {tps:.2f} 首/秒 | 剩餘: {eta_str} | 預計完成: {finish_time} ---")
 
     end_time = time.time()
     total_time = end_time - start_time
-    
+
     print(f"\n==================================================")
     print(f"🎉 任務完成！")
-    print(f"⏳ 總耗時: {total_time/3600:.2f} 小時 ({total_time:.1f} 秒)")
+    print(f"⏳ 總耗時: {_format_duration(total_time)} ({total_time:.1f} 秒)")
     print(f"📊 統計結果:")
     print(f"   - 總掃描數: {total_tasks}")
     print(f"   - ✅ 實際處理: {process_count}")

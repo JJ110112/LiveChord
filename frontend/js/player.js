@@ -3235,7 +3235,7 @@
 
     // Scroll active into view
     if (activeIdx >= 0 && activeIdx < items.length) {
-      items[activeIdx].scrollIntoView({ behavior: "smooth", block: "nearest" });
+      items[activeIdx].scrollIntoView({ behavior: "smooth", block: "center" });
     }
 
     return activeIdx;
@@ -3304,7 +3304,7 @@
 
     // Voicing buttons
     if (voicingRow) {
-      voicingRow.innerHTML = '<span class="gt-voicing-label">Voicing variants</span>';
+      voicingRow.innerHTML = '<span class="gt-voicing-label">把位變化</span>';
       if (voicings.length > 1) {
         voicings.forEach((v, idx) => {
           const btn = document.createElement("button");
@@ -3357,7 +3357,7 @@
           item.className = "gt-finger-item";
           item.innerHTML = `
             <span class="gt-finger-dot ${isRoot ? 'root' : 'normal'}">${finger}</span>
-            <span>${FINGER_NAMES[finger]} on ${STRING_NAMES_ZH[s]} fret ${fret}${isRoot ? " — root note " + noteName : ""}</span>
+            <span>${FINGER_NAMES[finger]} 按 ${STRING_NAMES_ZH[s]} 第 ${fret} 格${isRoot ? " — 根音 " + noteName : ""}</span>
           `;
           listEl.appendChild(item);
         }
@@ -3378,13 +3378,13 @@
       if (nextChord) {
         const countdown = Math.max(0, nextChord.time - audio.currentTime);
         nextEl.innerHTML = `
-          <div class="gt-next-countdown">Coming up in ${countdown.toFixed(0)}s</div>
+          <div class="gt-next-countdown">${countdown.toFixed(0)} 秒後切換</div>
           <div class="gt-next-name">${nextChord.chord}</div>
           <div class="gt-next-intervals">${(chordCache[nextChord.chord]||{}).jianpu||""}</div>
-          <div class="gt-next-tip">Practice transitioning smoothly from ${chordName} to ${nextChord.chord}</div>
+          <div class="gt-next-tip">練習從 ${chordName} 順暢轉換到 ${nextChord.chord}</div>
         `;
       } else {
-        nextEl.innerHTML = '<div class="gt-next-countdown">Last chord in song</div>';
+        nextEl.innerHTML = '<div class="gt-next-countdown">歌曲最後一個和弦</div>';
       }
     }
 
@@ -3396,7 +3396,7 @@
         keyEl.innerHTML = `
           <div class="gt-roman">
             <span class="gt-roman-badge">${analysis.roman}</span>
-            <span class="gt-roman-key">in key ${key}</span>
+            <span class="gt-roman-key">調性 ${key}</span>
           </div>
           <div class="gt-roman-explain">${analysis.explanation}</div>
         `;
@@ -3528,7 +3528,7 @@
       else item.classList.add("future");
     });
     if (activeIdx >= 0 && activeIdx < items.length) {
-      items[activeIdx].scrollIntoView({ behavior: "smooth", block: "nearest" });
+      items[activeIdx].scrollIntoView({ behavior: "smooth", block: "center" });
     }
     return activeIdx;
   }
@@ -3592,7 +3592,7 @@
 
     // Voicing buttons
     if (voicingRow) {
-      voicingRow.innerHTML = '<span class="gt-voicing-label">Voicing variants</span>';
+      voicingRow.innerHTML = '<span class="gt-voicing-label">把位變化</span>';
       if (voicings.length > 1) {
         voicings.forEach((v, idx) => {
           const btn = document.createElement("button");
@@ -3645,7 +3645,7 @@
           item.className = "gt-finger-item";
           item.innerHTML = `
             <span class="gt-finger-dot ${isRoot ? 'root' : 'normal'}">${finger}</span>
-            <span>${UK_FINGER_NAMES[finger]} on ${UK_STRING_NAMES_ZH[s]} fret ${fret}${isRoot ? " — root note " + noteName : ""}</span>
+            <span>${UK_FINGER_NAMES[finger]} 按 ${UK_STRING_NAMES_ZH[s]} 第 ${fret} 格${isRoot ? " — 根音 " + noteName : ""}</span>
           `;
           listEl.appendChild(item);
         }
@@ -3664,13 +3664,13 @@
       if (nextChord) {
         const countdown = Math.max(0, nextChord.time - audio.currentTime);
         nextEl.innerHTML = `
-          <div class="gt-next-countdown">Coming up in ${countdown.toFixed(0)}s</div>
+          <div class="gt-next-countdown">${countdown.toFixed(0)} 秒後切換</div>
           <div class="gt-next-name">${nextChord.chord}</div>
           <div class="gt-next-intervals">${(chordCache[nextChord.chord]||{}).jianpu||""}</div>
-          <div class="gt-next-tip">Practice transitioning smoothly from ${chordName} to ${nextChord.chord}</div>
+          <div class="gt-next-tip">練習從 ${chordName} 順暢轉換到 ${nextChord.chord}</div>
         `;
       } else {
-        nextEl.innerHTML = '<div class="gt-next-countdown">Last chord in song</div>';
+        nextEl.innerHTML = '<div class="gt-next-countdown">歌曲最後一個和弦</div>';
       }
     }
 
@@ -3682,7 +3682,7 @@
         keyEl.innerHTML = `
           <div class="gt-roman">
             <span class="gt-roman-badge">${analysis.roman}</span>
-            <span class="gt-roman-key">in key ${key}</span>
+            <span class="gt-roman-key">調性 ${key}</span>
           </div>
           <div class="gt-roman-explain">${analysis.explanation}</div>
         `;

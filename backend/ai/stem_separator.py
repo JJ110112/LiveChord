@@ -60,7 +60,11 @@ class StemSeparator:
             )
             logger.info("Separation completed successfully.")
         except subprocess.CalledProcessError as e:
-            logger.error(f"Demucs separation failed: {e.stderr}")
+            # Only show the last meaningful error line, not tqdm progress bars
+            stderr = (e.stderr or "").strip()
+            err_lines = [l for l in stderr.splitlines() if l.strip() and not l.strip().startswith(('%', '|', '\r'))]
+            last_err = err_lines[-1] if err_lines else stderr[-200:]
+            logger.error(f"Demucs failed: {last_err}")
             return None
 
         # Demucs saves files to output_dir / model_name / song_name / stem.wav

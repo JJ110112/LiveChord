@@ -270,21 +270,21 @@ def get_chord_jianpu(chord_str: str) -> str:
 
 
 QUALITY_NAMES = {
-    '': 'Major', 'm': 'Minor', 'min': 'Minor',
-    'dim': 'Diminished', 'aug': 'Augmented',
-    'sus2': 'Suspended 2nd', 'sus4': 'Suspended 4th', 'sus': 'Suspended 4th',
-    '7': 'Dominant 7th', 'maj7': 'Major 7th', 'm7': 'Minor 7th', 'min7': 'Minor 7th',
-    'dim7': 'Diminished 7th', 'm7b5': 'Half-Diminished',
-    'aug7': 'Augmented 7th', '7b5': 'Dominant 7th ♭5', '7#5': 'Dominant 7th ♯5',
-    '6': 'Major 6th', 'm6': 'Minor 6th', '6/9': 'Major 6/9',
-    '9': 'Dominant 9th', 'maj9': 'Major 9th', 'm9': 'Minor 9th',
-    '11': 'Dominant 11th', 'm11': 'Minor 11th',
-    '13': 'Dominant 13th',
-    'add9': 'Add 9th', 'madd9': 'Minor Add 9th',
-    'mM7': 'Minor Major 7th',
-    '7sus4': '7th Suspended 4th', '7sus2': '7th Suspended 2nd',
-    '7b9': 'Dominant 7th ♭9', '7#9': 'Dominant 7th ♯9',
-    '7#11': 'Dominant 7th ♯11',
+    '': '大調', 'm': '小調', 'min': '小調',
+    'dim': '減和弦', 'aug': '增和弦',
+    'sus2': '掛二和弦', 'sus4': '掛四和弦', 'sus': '掛四和弦',
+    '7': '屬七和弦', 'maj7': '大七和弦', 'm7': '小七和弦', 'min7': '小七和弦',
+    'dim7': '減七和弦', 'm7b5': '半減七和弦',
+    'aug7': '增七和弦', '7b5': '屬七♭5', '7#5': '屬七♯5',
+    '6': '大六和弦', 'm6': '小六和弦', '6/9': '大六九和弦',
+    '9': '屬九和弦', 'maj9': '大九和弦', 'm9': '小九和弦',
+    '11': '屬十一和弦', 'm11': '小十一和弦',
+    '13': '屬十三和弦',
+    'add9': '加九和弦', 'madd9': '小加九和弦',
+    'mM7': '小大七和弦',
+    '7sus4': '屬七掛四', '7sus2': '屬七掛二',
+    '7b9': '屬七♭9', '7#9': '屬七♯9',
+    '7#11': '屬七♯11',
 }
 
 # 自然大調各級和弦的半音數 → 羅馬數字
@@ -359,14 +359,14 @@ def analyze_chord_in_key(key: str, chord_str: str) -> dict:
         quality_suffix = '+'
 
     full_roman = f'{prefix}{roman}{quality_suffix}'
-    type_name = QUALITY_NAMES.get(quality, quality or 'Major')
+    type_name = QUALITY_NAMES.get(quality, quality or '大調')
     degree = degree_idx + 1
 
     # Generate explanation
     if prefix:
-        explanation = f'{chord_str} is the {prefix}{roman}{quality_suffix} in key {key} — borrowed chord'
+        explanation = f'{chord_str} 是 {key} 調的 {prefix}{roman}{quality_suffix} — 借用和弦'
     else:
-        explanation = f'{chord_str} is the {full_roman} in key {key}'
+        explanation = f'{chord_str} 是 {key} 調的 {full_roman}'
 
     return {
         'roman': full_roman,
@@ -391,7 +391,7 @@ def get_chord_info(chord_str: str) -> dict:
         'bass': bass,
         'notes': notes,
         'jianpu': jianpu,
-        'type_name': QUALITY_NAMES.get(quality, quality or 'Major'),
+        'type_name': QUALITY_NAMES.get(quality, quality or '大調'),
     }
 
 

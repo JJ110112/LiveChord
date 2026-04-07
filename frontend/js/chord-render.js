@@ -20,9 +20,31 @@ const ChordRender = {
     if (!data || !canvas) return;
 
     const numStrings = data.numStrings || 6;
-    const strings = data.strings || [];
-    const baseFret = data.baseFret || 1;
-    const barres = data.barres || [];
+    const strings = [...(data.strings || [])];
+    const barres = [...(data.barres || [])];
+
+    // Normalize relative frets to absolute
+    const _dataBase = data.baseFret || 1;
+    if (_dataBase > 1) {
+      const _maxRel = Math.max(...strings.filter(f => f > 0), 0);
+      if (_maxRel > 0 && _maxRel <= 5) {
+        for (let i = 0; i < strings.length; i++) {
+          if (strings[i] > 0) strings[i] = strings[i] + _dataBase - 1;
+        }
+        for (let i = 0; i < barres.length; i++) {
+          if (barres[i] > 0 && barres[i] <= 5) barres[i] = barres[i] + _dataBase - 1;
+        }
+      }
+    }
+
+    // Auto-calculate baseFret
+    const _fretted = strings.filter(f => f > 0);
+    const _hasOpen = strings.some(f => f === 0);
+    const _maxFret = _fretted.length > 0 ? Math.max(..._fretted) : 1;
+    let baseFret = 1;
+    if (!_hasOpen && _maxFret > 4) {
+      baseFret = Math.min(..._fretted);
+    }
 
     const sw = numStrings === 6 ? 60 : 44;
     const sh = 74;
@@ -1038,9 +1060,34 @@ const ChordRender = {
     if (!canvas || !data) return;
 
     const numStrings = data.numStrings || 6;
-    const strings = data.strings || [];
-    const baseFret = data.baseFret || 1;
-    const barres = data.barres || [];
+    const strings = [...(data.strings || [])];
+    const barres = [...(data.barres || [])];
+
+    // Normalize fret data: if baseFret > 1 and frets look relative (small values),
+    // convert to absolute frets for consistent rendering.
+    const _dataBase = data.baseFret || 1;
+    if (_dataBase > 1) {
+      const maxRel = Math.max(...strings.filter(f => f > 0), 0);
+      if (maxRel > 0 && maxRel <= 5) {
+        // Relative frets: convert to absolute
+        for (let i = 0; i < strings.length; i++) {
+          if (strings[i] > 0) strings[i] = strings[i] + _dataBase - 1;
+        }
+        // Also convert barres to absolute
+        for (let i = 0; i < barres.length; i++) {
+          if (barres[i] > 0 && barres[i] <= 5) barres[i] = barres[i] + _dataBase - 1;
+        }
+      }
+    }
+
+    // Auto-calculate baseFret from absolute fret positions
+    const fretted = strings.filter(f => f > 0);
+    const hasOpen = strings.some(f => f === 0);
+    const maxFret = fretted.length > 0 ? Math.max(...fretted) : 1;
+    let baseFret = 1;
+    if (!hasOpen && maxFret > 4) {
+      baseFret = Math.min(...fretted);
+    }
     const fingers = data.fingers || [];
     const scale = opts.scale || 1;
     const rootNote = opts.rootNote || null;

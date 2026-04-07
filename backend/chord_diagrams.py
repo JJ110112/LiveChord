@@ -340,138 +340,138 @@ UKULELE_CHORDS = {
 # 吉他和弦替代把位 (每個和弦 2~4 種按法)
 GUITAR_VOICINGS = {
     'C': [
-        {'label': 'Open', 'strings': [-1, 3, 2, 0, 1, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 3, 2, 0, 1, 0]},
-        {'label': 'Barre 3rd', 'strings': [-1, 3, 5, 5, 5, 3], 'baseFret': 1, 'barres': [3], 'fingers': [0, 1, 3, 3, 3, 1]},
-        {'label': 'Barre 8th', 'strings': [1, 1, 3, 3, 3, 1], 'baseFret': 8, 'barres': [1], 'fingers': [1, 1, 2, 3, 4, 1]},
+        {'label': '開放', 'strings': [-1, 3, 2, 0, 1, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 3, 2, 0, 1, 0]},
+        {'label': '封閉 3格', 'strings': [-1, 3, 5, 5, 5, 3], 'baseFret': 1, 'barres': [3], 'fingers': [0, 1, 3, 3, 3, 1]},
+        {'label': '封閉 8格', 'strings': [1, 1, 3, 3, 3, 1], 'baseFret': 8, 'barres': [1], 'fingers': [1, 1, 2, 3, 4, 1]},
     ],
     'Cm': [
-        {'label': 'Barre 3rd', 'strings': [-1, 3, 5, 5, 4, 3], 'baseFret': 1, 'barres': [3], 'fingers': [0, 1, 3, 4, 2, 1]},
-        {'label': 'Barre 8th', 'strings': [1, 1, 3, 3, 1, 1], 'baseFret': 8, 'barres': [1], 'fingers': [1, 1, 3, 4, 1, 1]},
+        {'label': '封閉 3格', 'strings': [-1, 3, 5, 5, 4, 3], 'baseFret': 1, 'barres': [3], 'fingers': [0, 1, 3, 4, 2, 1]},
+        {'label': '封閉 8格', 'strings': [1, 1, 3, 3, 1, 1], 'baseFret': 8, 'barres': [1], 'fingers': [1, 1, 3, 4, 1, 1]},
         {'label': 'High', 'strings': [-1, -1, 1, 3, 2, 1], 'baseFret': 8, 'barres': [1], 'fingers': [0, 0, 1, 4, 3, 1]},
     ],
     'C7': [
-        {'label': 'Open', 'strings': [-1, 3, 2, 3, 1, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 3, 2, 4, 1, 0]},
-        {'label': 'Barre 3rd', 'strings': [-1, 3, 5, 3, 5, 3], 'baseFret': 1, 'barres': [3], 'fingers': [0, 1, 3, 1, 4, 1]},
-        {'label': 'Barre 8th', 'strings': [1, 1, 3, 1, 3, 1], 'baseFret': 8, 'barres': [1], 'fingers': [1, 1, 3, 1, 4, 1]},
+        {'label': '開放', 'strings': [-1, 3, 2, 3, 1, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 3, 2, 4, 1, 0]},
+        {'label': '封閉 3格', 'strings': [-1, 3, 5, 3, 5, 3], 'baseFret': 1, 'barres': [3], 'fingers': [0, 1, 3, 1, 4, 1]},
+        {'label': '封閉 8格', 'strings': [1, 1, 3, 1, 3, 1], 'baseFret': 8, 'barres': [1], 'fingers': [1, 1, 3, 1, 4, 1]},
     ],
     'Cmaj7': [
-        {'label': 'Open', 'strings': [-1, 3, 2, 0, 0, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 3, 2, 0, 0, 0]},
-        {'label': 'Barre 3rd', 'strings': [-1, 3, 5, 4, 5, 3], 'baseFret': 1, 'barres': [3], 'fingers': [0, 1, 3, 2, 4, 1]},
+        {'label': '開放', 'strings': [-1, 3, 2, 0, 0, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 3, 2, 0, 0, 0]},
+        {'label': '封閉 3格', 'strings': [-1, 3, 5, 4, 5, 3], 'baseFret': 1, 'barres': [3], 'fingers': [0, 1, 3, 2, 4, 1]},
     ],
     'D': [
-        {'label': 'Open', 'strings': [-1, -1, 0, 2, 3, 2], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 0, 1, 3, 2]},
-        {'label': 'Barre 5th', 'strings': [-1, 5, 7, 7, 7, 5], 'baseFret': 1, 'barres': [5], 'fingers': [0, 1, 3, 3, 3, 1]},
-        {'label': 'Barre 10th', 'strings': [1, 1, 3, 3, 3, 1], 'baseFret': 10, 'barres': [1], 'fingers': [1, 1, 2, 3, 4, 1]},
+        {'label': '開放', 'strings': [-1, -1, 0, 2, 3, 2], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 0, 1, 3, 2]},
+        {'label': '封閉 5格', 'strings': [-1, 5, 7, 7, 7, 5], 'baseFret': 1, 'barres': [5], 'fingers': [0, 1, 3, 3, 3, 1]},
+        {'label': '封閉 10格', 'strings': [1, 1, 3, 3, 3, 1], 'baseFret': 10, 'barres': [1], 'fingers': [1, 1, 2, 3, 4, 1]},
     ],
     'Dm': [
-        {'label': 'Open', 'strings': [-1, -1, 0, 2, 3, 1], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 0, 2, 3, 1]},
-        {'label': 'Barre 5th', 'strings': [-1, 5, 7, 7, 6, 5], 'baseFret': 1, 'barres': [5], 'fingers': [0, 1, 3, 4, 2, 1]},
-        {'label': 'Barre 10th', 'strings': [1, 1, 3, 3, 1, 1], 'baseFret': 10, 'barres': [1], 'fingers': [1, 1, 3, 4, 1, 1]},
+        {'label': '開放', 'strings': [-1, -1, 0, 2, 3, 1], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 0, 2, 3, 1]},
+        {'label': '封閉 5格', 'strings': [-1, 5, 7, 7, 6, 5], 'baseFret': 1, 'barres': [5], 'fingers': [0, 1, 3, 4, 2, 1]},
+        {'label': '封閉 10格', 'strings': [1, 1, 3, 3, 1, 1], 'baseFret': 10, 'barres': [1], 'fingers': [1, 1, 3, 4, 1, 1]},
     ],
     'D7': [
-        {'label': 'Open', 'strings': [-1, -1, 0, 2, 1, 2], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 0, 2, 1, 3]},
-        {'label': 'Barre 5th', 'strings': [-1, 5, 7, 5, 7, 5], 'baseFret': 1, 'barres': [5], 'fingers': [0, 1, 3, 1, 4, 1]},
+        {'label': '開放', 'strings': [-1, -1, 0, 2, 1, 2], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 0, 2, 1, 3]},
+        {'label': '封閉 5格', 'strings': [-1, 5, 7, 5, 7, 5], 'baseFret': 1, 'barres': [5], 'fingers': [0, 1, 3, 1, 4, 1]},
     ],
     'Dmaj7': [
-        {'label': 'Open', 'strings': [-1, -1, 0, 2, 2, 2], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 0, 1, 2, 3]},
-        {'label': 'Barre 5th', 'strings': [-1, 5, 7, 6, 7, 5], 'baseFret': 1, 'barres': [5], 'fingers': [0, 1, 3, 2, 4, 1]},
+        {'label': '開放', 'strings': [-1, -1, 0, 2, 2, 2], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 0, 1, 2, 3]},
+        {'label': '封閉 5格', 'strings': [-1, 5, 7, 6, 7, 5], 'baseFret': 1, 'barres': [5], 'fingers': [0, 1, 3, 2, 4, 1]},
     ],
     'E': [
-        {'label': 'Open', 'strings': [0, 2, 2, 1, 0, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 2, 3, 1, 0, 0]},
-        {'label': 'Barre 7th', 'strings': [-1, 7, 9, 9, 9, 7], 'baseFret': 1, 'barres': [7], 'fingers': [0, 1, 3, 3, 3, 1]},
+        {'label': '開放', 'strings': [0, 2, 2, 1, 0, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 2, 3, 1, 0, 0]},
+        {'label': '封閉 7格', 'strings': [-1, 7, 9, 9, 9, 7], 'baseFret': 1, 'barres': [7], 'fingers': [0, 1, 3, 3, 3, 1]},
     ],
     'Em': [
-        {'label': 'Open', 'strings': [0, 2, 2, 0, 0, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 2, 3, 0, 0, 0]},
-        {'label': 'Barre 7th', 'strings': [-1, 7, 9, 9, 8, 7], 'baseFret': 1, 'barres': [7], 'fingers': [0, 1, 3, 4, 2, 1]},
+        {'label': '開放', 'strings': [0, 2, 2, 0, 0, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 2, 3, 0, 0, 0]},
+        {'label': '封閉 7格', 'strings': [-1, 7, 9, 9, 8, 7], 'baseFret': 1, 'barres': [7], 'fingers': [0, 1, 3, 4, 2, 1]},
         {'label': 'High', 'strings': [-1, -1, 2, 0, 0, 0], 'baseFret': 7, 'barres': [], 'fingers': [0, 0, 2, 0, 0, 0]},
     ],
     'E7': [
-        {'label': 'Open', 'strings': [0, 2, 0, 1, 0, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 2, 0, 1, 0, 0]},
-        {'label': 'Barre 7th', 'strings': [-1, 7, 9, 7, 9, 7], 'baseFret': 1, 'barres': [7], 'fingers': [0, 1, 3, 1, 4, 1]},
+        {'label': '開放', 'strings': [0, 2, 0, 1, 0, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 2, 0, 1, 0, 0]},
+        {'label': '封閉 7格', 'strings': [-1, 7, 9, 7, 9, 7], 'baseFret': 1, 'barres': [7], 'fingers': [0, 1, 3, 1, 4, 1]},
     ],
     'Emaj7': [
-        {'label': 'Open', 'strings': [0, 2, 1, 1, 0, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 3, 1, 2, 0, 0]},
-        {'label': 'Barre 7th', 'strings': [-1, 7, 9, 8, 9, 7], 'baseFret': 1, 'barres': [7], 'fingers': [0, 1, 3, 2, 4, 1]},
+        {'label': '開放', 'strings': [0, 2, 1, 1, 0, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 3, 1, 2, 0, 0]},
+        {'label': '封閉 7格', 'strings': [-1, 7, 9, 8, 9, 7], 'baseFret': 1, 'barres': [7], 'fingers': [0, 1, 3, 2, 4, 1]},
     ],
     'F': [
-        {'label': 'Barre', 'strings': [1, 1, 2, 3, 3, 1], 'baseFret': 1, 'barres': [1], 'fingers': [1, 1, 2, 3, 4, 1]},
+        {'label': '封閉', 'strings': [1, 1, 2, 3, 3, 1], 'baseFret': 1, 'barres': [1], 'fingers': [1, 1, 2, 3, 4, 1]},
         {'label': 'Easy', 'strings': [-1, -1, 3, 2, 1, 1], 'baseFret': 1, 'barres': [1], 'fingers': [0, 0, 3, 2, 1, 1]},
-        {'label': 'Barre 8th', 'strings': [-1, 8, 10, 10, 10, 8], 'baseFret': 1, 'barres': [8], 'fingers': [0, 1, 3, 3, 3, 1]},
+        {'label': '封閉 8格', 'strings': [-1, 8, 10, 10, 10, 8], 'baseFret': 1, 'barres': [8], 'fingers': [0, 1, 3, 3, 3, 1]},
     ],
     'Fm': [
-        {'label': 'Barre', 'strings': [1, 1, 3, 3, 1, 1], 'baseFret': 1, 'barres': [1], 'fingers': [1, 1, 3, 4, 1, 1]},
-        {'label': 'Barre 8th', 'strings': [-1, 8, 10, 10, 9, 8], 'baseFret': 1, 'barres': [8], 'fingers': [0, 1, 3, 4, 2, 1]},
+        {'label': '封閉', 'strings': [1, 1, 3, 3, 1, 1], 'baseFret': 1, 'barres': [1], 'fingers': [1, 1, 3, 4, 1, 1]},
+        {'label': '封閉 8格', 'strings': [-1, 8, 10, 10, 9, 8], 'baseFret': 1, 'barres': [8], 'fingers': [0, 1, 3, 4, 2, 1]},
     ],
     'F7': [
-        {'label': 'Barre', 'strings': [1, 1, 2, 1, 3, 1], 'baseFret': 1, 'barres': [1], 'fingers': [1, 1, 2, 1, 3, 1]},
+        {'label': '封閉', 'strings': [1, 1, 2, 1, 3, 1], 'baseFret': 1, 'barres': [1], 'fingers': [1, 1, 2, 1, 3, 1]},
         {'label': 'Easy', 'strings': [-1, -1, 3, 2, 1, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 4, 3, 2, 0]},
     ],
     'Fmaj7': [
-        {'label': 'Open', 'strings': [-1, -1, 3, 2, 1, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 3, 2, 1, 0]},
-        {'label': 'Barre', 'strings': [1, 1, 2, 2, 3, 1], 'baseFret': 1, 'barres': [1], 'fingers': [1, 1, 2, 3, 4, 1]},
+        {'label': '開放', 'strings': [-1, -1, 3, 2, 1, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 3, 2, 1, 0]},
+        {'label': '封閉', 'strings': [1, 1, 2, 2, 3, 1], 'baseFret': 1, 'barres': [1], 'fingers': [1, 1, 2, 3, 4, 1]},
     ],
     'G': [
-        {'label': 'Open', 'strings': [3, 2, 0, 0, 0, 3], 'baseFret': 1, 'barres': [], 'fingers': [2, 1, 0, 0, 0, 3]},
-        {'label': 'Barre 3rd', 'strings': [3, 3, 5, 5, 5, 3], 'baseFret': 1, 'barres': [3], 'fingers': [1, 1, 2, 3, 4, 1]},
+        {'label': '開放', 'strings': [3, 2, 0, 0, 0, 3], 'baseFret': 1, 'barres': [], 'fingers': [2, 1, 0, 0, 0, 3]},
+        {'label': '封閉 3格', 'strings': [3, 3, 5, 5, 5, 3], 'baseFret': 1, 'barres': [3], 'fingers': [1, 1, 2, 3, 4, 1]},
         {'label': 'High', 'strings': [-1, -1, 5, 4, 3, 3], 'baseFret': 1, 'barres': [3], 'fingers': [0, 0, 4, 3, 1, 1]},
     ],
     'Gm': [
-        {'label': 'Barre 3rd', 'strings': [3, 5, 5, 3, 3, 3], 'baseFret': 1, 'barres': [3], 'fingers': [1, 3, 4, 1, 1, 1]},
-        {'label': 'Barre 10th', 'strings': [-1, 10, 12, 12, 11, 10], 'baseFret': 1, 'barres': [10], 'fingers': [0, 1, 3, 4, 2, 1]},
+        {'label': '封閉 3格', 'strings': [3, 5, 5, 3, 3, 3], 'baseFret': 1, 'barres': [3], 'fingers': [1, 3, 4, 1, 1, 1]},
+        {'label': '封閉 10格', 'strings': [-1, 10, 12, 12, 11, 10], 'baseFret': 1, 'barres': [10], 'fingers': [0, 1, 3, 4, 2, 1]},
         {'label': 'Easy', 'strings': [-1, -1, 5, 3, 3, 3], 'baseFret': 1, 'barres': [3], 'fingers': [0, 0, 4, 1, 1, 1]},
     ],
     'G7': [
-        {'label': 'Open', 'strings': [3, 2, 0, 0, 0, 1], 'baseFret': 1, 'barres': [], 'fingers': [3, 2, 0, 0, 0, 1]},
-        {'label': 'Barre 3rd', 'strings': [3, 3, 5, 3, 5, 3], 'baseFret': 1, 'barres': [3], 'fingers': [1, 1, 3, 1, 4, 1]},
+        {'label': '開放', 'strings': [3, 2, 0, 0, 0, 1], 'baseFret': 1, 'barres': [], 'fingers': [3, 2, 0, 0, 0, 1]},
+        {'label': '封閉 3格', 'strings': [3, 3, 5, 3, 5, 3], 'baseFret': 1, 'barres': [3], 'fingers': [1, 1, 3, 1, 4, 1]},
     ],
     'Gmaj7': [
-        {'label': 'Open', 'strings': [3, 2, 0, 0, 0, 2], 'baseFret': 1, 'barres': [], 'fingers': [3, 2, 0, 0, 0, 1]},
-        {'label': 'Barre 3rd', 'strings': [3, 3, 5, 4, 5, 3], 'baseFret': 1, 'barres': [3], 'fingers': [1, 1, 3, 2, 4, 1]},
+        {'label': '開放', 'strings': [3, 2, 0, 0, 0, 2], 'baseFret': 1, 'barres': [], 'fingers': [3, 2, 0, 0, 0, 1]},
+        {'label': '封閉 3格', 'strings': [3, 3, 5, 4, 5, 3], 'baseFret': 1, 'barres': [3], 'fingers': [1, 1, 3, 2, 4, 1]},
     ],
     'A': [
-        {'label': 'Open', 'strings': [-1, 0, 2, 2, 2, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 1, 2, 3, 0]},
-        {'label': 'Barre 5th', 'strings': [5, 5, 7, 7, 7, 5], 'baseFret': 1, 'barres': [5], 'fingers': [1, 1, 2, 3, 4, 1]},
+        {'label': '開放', 'strings': [-1, 0, 2, 2, 2, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 1, 2, 3, 0]},
+        {'label': '封閉 5格', 'strings': [5, 5, 7, 7, 7, 5], 'baseFret': 1, 'barres': [5], 'fingers': [1, 1, 2, 3, 4, 1]},
         {'label': 'High', 'strings': [-1, -1, 7, 6, 5, 5], 'baseFret': 1, 'barres': [5], 'fingers': [0, 0, 4, 3, 1, 1]},
     ],
     'Am': [
-        {'label': 'Open', 'strings': [-1, 0, 2, 2, 1, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 2, 3, 1, 0]},
-        {'label': 'Barre 5th', 'strings': [5, 5, 7, 7, 5, 5], 'baseFret': 1, 'barres': [5], 'fingers': [1, 1, 3, 4, 1, 1]},
+        {'label': '開放', 'strings': [-1, 0, 2, 2, 1, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 2, 3, 1, 0]},
+        {'label': '封閉 5格', 'strings': [5, 5, 7, 7, 5, 5], 'baseFret': 1, 'barres': [5], 'fingers': [1, 1, 3, 4, 1, 1]},
         {'label': 'High', 'strings': [-1, -1, 7, 5, 5, 5], 'baseFret': 1, 'barres': [5], 'fingers': [0, 0, 4, 1, 1, 1]},
     ],
     'A7': [
-        {'label': 'Open', 'strings': [-1, 0, 2, 0, 2, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 1, 0, 2, 0]},
-        {'label': 'Barre 5th', 'strings': [5, 5, 7, 5, 7, 5], 'baseFret': 1, 'barres': [5], 'fingers': [1, 1, 3, 1, 4, 1]},
+        {'label': '開放', 'strings': [-1, 0, 2, 0, 2, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 1, 0, 2, 0]},
+        {'label': '封閉 5格', 'strings': [5, 5, 7, 5, 7, 5], 'baseFret': 1, 'barres': [5], 'fingers': [1, 1, 3, 1, 4, 1]},
     ],
     'Amaj7': [
-        {'label': 'Open', 'strings': [-1, 0, 2, 1, 2, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 2, 1, 3, 0]},
-        {'label': 'Barre 5th', 'strings': [5, 5, 7, 6, 7, 5], 'baseFret': 1, 'barres': [5], 'fingers': [1, 1, 3, 2, 4, 1]},
+        {'label': '開放', 'strings': [-1, 0, 2, 1, 2, 0], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 2, 1, 3, 0]},
+        {'label': '封閉 5格', 'strings': [5, 5, 7, 6, 7, 5], 'baseFret': 1, 'barres': [5], 'fingers': [1, 1, 3, 2, 4, 1]},
     ],
     'B': [
-        {'label': 'Barre 2nd', 'strings': [-1, 2, 4, 4, 4, 2], 'baseFret': 1, 'barres': [2], 'fingers': [0, 1, 2, 3, 4, 1]},
-        {'label': 'Barre 7th', 'strings': [7, 7, 9, 9, 9, 7], 'baseFret': 1, 'barres': [7], 'fingers': [1, 1, 2, 3, 4, 1]},
+        {'label': '封閉 2格', 'strings': [-1, 2, 4, 4, 4, 2], 'baseFret': 1, 'barres': [2], 'fingers': [0, 1, 2, 3, 4, 1]},
+        {'label': '封閉 7格', 'strings': [7, 7, 9, 9, 9, 7], 'baseFret': 1, 'barres': [7], 'fingers': [1, 1, 2, 3, 4, 1]},
         {'label': 'Easy', 'strings': [-1, 2, 4, 4, 4, -1], 'baseFret': 1, 'barres': [], 'fingers': [0, 1, 2, 3, 4, 0]},
     ],
     'Bm': [
-        {'label': 'Barre 2nd', 'strings': [-1, 2, 4, 4, 3, 2], 'baseFret': 1, 'barres': [2], 'fingers': [0, 1, 3, 4, 2, 1]},
-        {'label': 'Barre 7th', 'strings': [7, 7, 9, 9, 7, 7], 'baseFret': 1, 'barres': [7], 'fingers': [1, 1, 3, 4, 1, 1]},
+        {'label': '封閉 2格', 'strings': [-1, 2, 4, 4, 3, 2], 'baseFret': 1, 'barres': [2], 'fingers': [0, 1, 3, 4, 2, 1]},
+        {'label': '封閉 7格', 'strings': [7, 7, 9, 9, 7, 7], 'baseFret': 1, 'barres': [7], 'fingers': [1, 1, 3, 4, 1, 1]},
         {'label': 'Easy', 'strings': [-1, -1, 4, 4, 3, 2], 'baseFret': 1, 'barres': [], 'fingers': [0, 0, 3, 4, 2, 1]},
     ],
     'B7': [
-        {'label': 'Open', 'strings': [-1, 2, 1, 2, 0, 2], 'baseFret': 1, 'barres': [], 'fingers': [0, 2, 1, 3, 0, 4]},
-        {'label': 'Barre 7th', 'strings': [7, 7, 9, 7, 9, 7], 'baseFret': 1, 'barres': [7], 'fingers': [1, 1, 3, 1, 4, 1]},
+        {'label': '開放', 'strings': [-1, 2, 1, 2, 0, 2], 'baseFret': 1, 'barres': [], 'fingers': [0, 2, 1, 3, 0, 4]},
+        {'label': '封閉 7格', 'strings': [7, 7, 9, 7, 9, 7], 'baseFret': 1, 'barres': [7], 'fingers': [1, 1, 3, 1, 4, 1]},
     ],
     'Bmaj7': [
-        {'label': 'Barre 2nd', 'strings': [-1, 2, 4, 3, 4, 2], 'baseFret': 1, 'barres': [2], 'fingers': [0, 1, 3, 2, 4, 1]},
-        {'label': 'Barre 7th', 'strings': [7, 7, 9, 8, 9, 7], 'baseFret': 1, 'barres': [7], 'fingers': [1, 1, 3, 2, 4, 1]},
+        {'label': '封閉 2格', 'strings': [-1, 2, 4, 3, 4, 2], 'baseFret': 1, 'barres': [2], 'fingers': [0, 1, 3, 2, 4, 1]},
+        {'label': '封閉 7格', 'strings': [7, 7, 9, 8, 9, 7], 'baseFret': 1, 'barres': [7], 'fingers': [1, 1, 3, 2, 4, 1]},
     ],
     'Bb': [
-        {'label': 'Barre 1st', 'strings': [-1, 1, 3, 3, 3, 1], 'baseFret': 1, 'barres': [1], 'fingers': [0, 1, 2, 3, 4, 1]},
-        {'label': 'Barre 6th', 'strings': [6, 6, 8, 8, 8, 6], 'baseFret': 1, 'barres': [6], 'fingers': [1, 1, 2, 3, 4, 1]},
+        {'label': '封閉 1格', 'strings': [-1, 1, 3, 3, 3, 1], 'baseFret': 1, 'barres': [1], 'fingers': [0, 1, 2, 3, 4, 1]},
+        {'label': '封閉 6格', 'strings': [6, 6, 8, 8, 8, 6], 'baseFret': 1, 'barres': [6], 'fingers': [1, 1, 2, 3, 4, 1]},
         {'label': 'Easy', 'strings': [-1, 1, 3, 3, 3, -1], 'baseFret': 1, 'barres': [], 'fingers': [0, 1, 2, 3, 4, 0]},
     ],
     'Bbm': [
-        {'label': 'Barre 1st', 'strings': [-1, 1, 3, 3, 2, 1], 'baseFret': 1, 'barres': [1], 'fingers': [0, 1, 3, 4, 2, 1]},
-        {'label': 'Barre 6th', 'strings': [6, 6, 8, 8, 6, 6], 'baseFret': 1, 'barres': [6], 'fingers': [1, 1, 3, 4, 1, 1]},
+        {'label': '封閉 1格', 'strings': [-1, 1, 3, 3, 2, 1], 'baseFret': 1, 'barres': [1], 'fingers': [0, 1, 3, 4, 2, 1]},
+        {'label': '封閉 6格', 'strings': [6, 6, 8, 8, 6, 6], 'baseFret': 1, 'barres': [6], 'fingers': [1, 1, 3, 4, 1, 1]},
     ],
 }
 
@@ -575,7 +575,7 @@ def get_chord_voicings(chord_name, instrument='guitar'):
         default_strings = tuple(default.get('strings', []))
         already = any(tuple(v.get('strings', [])) == default_strings for v in voicings)
         if not already:
-            default['label'] = default.get('label', 'Standard')
+            default['label'] = default.get('label', '標準')
             voicings.insert(0, default)
 
     return voicings
