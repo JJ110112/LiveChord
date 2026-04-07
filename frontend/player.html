@@ -93,10 +93,10 @@
             </div>
             <canvas id="guitarVerticalFretboard"></canvas>
             <div class="gt-finger-legend">
-              <span class="gt-fl" style="color:#ef5350">&#x2460; 食</span>
-              <span class="gt-fl" style="color:#ff9800">&#x2461; 中</span>
-              <span class="gt-fl" style="color:#ffeb3b">&#x2462; 無名</span>
-              <span class="gt-fl" style="color:#66bb6a">&#x2463; 小</span>
+              <span class="gt-fl" style="color:#ef5350">① 食指</span>
+              <span class="gt-fl" style="color:#ff9800">② 中指</span>
+              <span class="gt-fl" style="color:#ffeb3b">③ 無名指</span>
+              <span class="gt-fl" style="color:#66bb6a">④ 小指</span>
             </div>
             <div id="gtLhHint" class="gt-panel-hint">左手：按住和弦</div>
           </div>
@@ -104,8 +104,35 @@
           <div class="gt-mid-line"></div>
           <!-- RIGHT: Right-Hand Waterfall -->
           <div class="gt-right-panel">
+            <div class="gt-compact-bar" id="gtArpSelector" style="display:none">
+              <select id="gtArpPattern" class="gt-arp-select" title="琶音指法 Pattern">
+                <optgroup label="Classical">
+                  <option value="pima">p-i-m-a</option>
+                  <option value="pimami">p-i-m-a-m-i</option>
+                  <option value="pami">p-a-m-i</option>
+                  <option value="pima_chord">p + ima</option>
+                </optgroup>
+                <optgroup label="Travis">
+                  <option value="travis_basic">Travis Basic</option>
+                  <option value="travis_pinch">Travis Pinch</option>
+                </optgroup>
+                <optgroup label="Folk / Pop">
+                  <option value="folk_44">Folk 4/4</option>
+                  <option value="pop_ballad">Pop Ballad</option>
+                </optgroup>
+              </select>
+            </div>
+            <div id="gtRhStyleLabel" class="gt-compact-bar" style="display:none">
+              <span class="gt-rh-style-name">—</span>
+            </div>
             <canvas id="guitarRhWaterfall"></canvas>
             <div class="gt-soundhole"></div>
+            <div class="gt-finger-legend" id="gtRhFingerLegend" style="display:none">
+              <span class="gt-fl" style="color:#00bcd4">&#x24DF; 拇指</span>
+              <span class="gt-fl" style="color:#ef5350">&#x24D8; 食指</span>
+              <span class="gt-fl" style="color:#ff9800">&#x24DC; 中指</span>
+              <span class="gt-fl" style="color:#ffeb3b">&#x24D0; 無名指</span>
+            </div>
             <div id="gtRhHint" class="gt-panel-hint">右手：刷弦節奏</div>
           </div>
         </div>
@@ -121,10 +148,10 @@
             </div>
             <canvas id="ukuleleVerticalFretboard"></canvas>
             <div class="gt-finger-legend">
-              <span class="gt-fl" style="color:#ef5350">&#x2460; 食</span>
-              <span class="gt-fl" style="color:#ff9800">&#x2461; 中</span>
-              <span class="gt-fl" style="color:#ffeb3b">&#x2462; 無名</span>
-              <span class="gt-fl" style="color:#66bb6a">&#x2463; 小</span>
+              <span class="gt-fl" style="color:#ef5350">① 食指</span>
+              <span class="gt-fl" style="color:#ff9800">② 中指</span>
+              <span class="gt-fl" style="color:#ffeb3b">③ 無名指</span>
+              <span class="gt-fl" style="color:#66bb6a">④ 小指</span>
             </div>
             <div id="ukLhHint" class="gt-panel-hint">左手：按住和弦</div>
           </div>
@@ -231,6 +258,11 @@
     <button class="tb-trigger" title="AI 伴奏教學">&#x1F916;</button>
     <div class="tb-popup tb-popup-wide">
       <button id="btnTeachAI" class="tb-popup-btn" title="AI 推薦風格">AI</button>
+      <select id="guitarStyleSelect" class="tb-select" title="吉他右手風格" style="display:none">
+        <option value="arpeggio" selected>Arpeggio</option>
+        <option value="pattern">Rhythm</option>
+        <option value="block">Block</option>
+      </select>
       <select id="teachStyle" class="tb-select" title="伴奏風格">
         <option value="Auto" selected>Auto</option>
         <option value="Block">Block</option>

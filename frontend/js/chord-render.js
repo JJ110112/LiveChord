@@ -1324,7 +1324,7 @@ const ChordRender = {
     ctx.clearRect(0, 0, W, H);
 
     // Layout: strings vertical, frets horizontal — scale to fit
-    const padTop = Math.round(H * 0.06);
+    const padTop = Math.round(H * 0.09);
     const padBot = Math.round(H * 0.03);
     const padLeft = Math.round(W * 0.1);
     const padRight = Math.round(W * 0.05);
@@ -1370,8 +1370,17 @@ const ChordRender = {
       ctx.fillText(fretNum, padLeft - 8, fretY(f - 1) + fretSpacing / 2);
     }
 
-    // Open/muted markers above nut
+    // String name labels at top
     const STRING_LABELS = data._stringLabels || (numStrings === 4 ? ["G","C","E","A"] : ["E","A","D","G","B","e"]);
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    for (let s = 0; s < numStrings; s++) {
+      ctx.fillText(STRING_LABELS[s], strX(s), 4);
+    }
+
+    // Open/muted markers above nut
     ctx.font = "10px sans-serif";
     ctx.textAlign = "center";
     for (let s = 0; s < numStrings; s++) {
@@ -1491,19 +1500,40 @@ const ChordRender = {
           const nFinger = (nextData.fingers || [])[s] || 0;
           const color = FINGER_CLR[nFinger] || "#ff9800";
 
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.arc(x, y, dotR * 0.9, 0, Math.PI * 2);
-          ctx.stroke();
+          // Check if this position overlaps with current chord
+          const curFret = strings[s];
+          const samePos = curFret > 0 && curFret === fret;
 
-          if (nFinger > 0) {
-            ctx.fillStyle = color;
-            ctx.globalAlpha = ghostAlpha * 0.5;
+          if (samePos) {
+            // "Stay" indicator: bright outer ring + keep badge
+            ctx.globalAlpha = ghostAlpha;
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 2.5;
             ctx.beginPath();
-            ctx.arc(x, y, dotR * 0.9, 0, Math.PI * 2);
+            ctx.arc(x, y, dotR * 1.25, 0, Math.PI * 2);
+            ctx.stroke();
+            // Small "keep" dot at top-right of the ring
+            ctx.fillStyle = "#00e676";
+            ctx.globalAlpha = Math.min(ghostAlpha + 0.2, 1);
+            ctx.beginPath();
+            ctx.arc(x + dotR * 0.85, y - dotR * 0.85, dotR * 0.3, 0, Math.PI * 2);
             ctx.fill();
             ctx.globalAlpha = ghostAlpha;
+          } else {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(x, y, dotR * 0.9, 0, Math.PI * 2);
+            ctx.stroke();
+
+            if (nFinger > 0) {
+              ctx.fillStyle = color;
+              ctx.globalAlpha = ghostAlpha * 0.5;
+              ctx.beginPath();
+              ctx.arc(x, y, dotR * 0.9, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.globalAlpha = ghostAlpha;
+            }
           }
         }
       } else {
