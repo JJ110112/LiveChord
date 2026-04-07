@@ -301,7 +301,13 @@ def analyze_chord_in_key(key: str, chord_str: str) -> dict:
     if not root:
         return {'roman': '?', 'degree': 0, 'type_name': '', 'explanation': ''}
 
-    key_semi = root_to_semitone(key)
+    # Strip quality suffix from key (e.g. "Dm" -> "D", "Bbm" -> "Bb")
+    key_root = key
+    if len(key_root) >= 2 and key_root[-1] == 'm' and key_root[-1] != '#':
+        key_root = key_root[:-1]
+    if len(key_root) >= 4 and key_root.endswith("min"):
+        key_root = key_root[:-3]
+    key_semi = root_to_semitone(key_root)
     chord_semi = root_to_semitone(root)
     interval = (chord_semi - key_semi) % 12
 

@@ -858,8 +858,21 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 8px;
+  padding: 6px 12px;
   font-size: 12px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  background: rgba(22, 27, 34, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 4px;
+  z-index: 100;
+  box-shadow: 0 -4px 16px rgba(0,0,0,0.4);
 }
 .teach-controls select {
   background: rgba(255, 255, 255, 0.05);

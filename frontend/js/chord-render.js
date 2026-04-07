@@ -1046,10 +1046,9 @@ const ChordRender = {
     const rootNote = opts.rootNote || null;
     const highlightRoot = opts.highlightRoot !== false;
 
-    // Open string note names (low E to high e)
-    const OPEN_STRINGS = ["E", "A", "D", "G", "B", "E"];
-    const OPEN_MIDI = [40, 45, 50, 55, 59, 64]; // E2 A2 D3 G3 B3 E4
-    const STRING_LABELS = ["E", "A", "D", "G", "B", "e"];
+    // Open string note names — use custom labels/MIDI for ukulele etc.
+    const OPEN_MIDI = data._openMidi || [40, 45, 50, 55, 59, 64]; // default: guitar E2 A2 D3 G3 B3 E4
+    const STRING_LABELS = data._stringLabels || ["E", "A", "D", "G", "B", "e"];
     const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
     // Layout

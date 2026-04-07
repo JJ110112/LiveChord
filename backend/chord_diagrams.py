@@ -524,6 +524,31 @@ def get_chord_diagram(chord_name, instrument='guitar'):
                 data['numStrings'] = num_strings
                 return data
 
+        # Fallback: simplify chord quality (e.g. Dm6 -> Dm7 -> Dm, Cmaj9 -> Cmaj7 -> C)
+        _simplify = [
+            (r'(m?)(?:add|sus|aug|dim)?\d+', r'\g<1>7'),   # Dm6/Dm9/Dm11 -> Dm7
+            (r'(m?)7', r'\g<1>'),                            # Dm7 -> Dm
+            (r'maj7', ''),                                   # Cmaj7 -> C
+            (r'dim7?', 'm'),                                 # Cdim -> Cm
+            (r'aug', ''),                                    # Caug -> C
+            (r'sus[24]', ''),                                # Csus4 -> C
+        ]
+        for pat, repl in _simplify:
+            simpler = root + re.sub(pat, repl, suffix)
+            if simpler != chord_name and simpler in db:
+                data = db[simpler].copy()
+                data['name'] = chord_name
+                data['numStrings'] = num_strings
+                return data
+            # Also try enharmonic of simplified
+            if root in enharmonic:
+                alt_simpler = enharmonic[root] + re.sub(pat, repl, suffix)
+                if alt_simpler != chord_name and alt_simpler in db:
+                    data = db[alt_simpler].copy()
+                    data['name'] = chord_name
+                    data['numStrings'] = num_strings
+                    return data
+
     return None
 
 

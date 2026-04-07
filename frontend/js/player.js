@@ -75,20 +75,24 @@
   const tabOverview = $("#tabOverview");
   const tabPiano = $("#tabPiano");
   const tabGuitar = $("#tabGuitar");
+  const tabUkulele = $("#tabUkulele");
   const chordDisplayGuitar = $("#chordDisplayGuitar");
+  const chordDisplayUkulele = $("#chordDisplayUkulele");
   const detectOverlay = $("#detectOverlay");
   const detectMsg = $("#detectMsg");
   const detectDetail = $("#detectDetail");
   const bigChordBox = $("#currentChordBig");
   const bigChordName = $("#bigChordName");
   const bigChordJianpu = $("#bigChordJianpu");
+  const capoGroup = $("#capoGroup");
 
-  // Tab migration: old values → new
-  let activeTab = localStorage.getItem("livechord_tab") || "overview";
-  if (activeTab === "piano" || activeTab === "guitar") {
-    activeTab = "piano";
-    localStorage.setItem("livechord_tab", "piano");
+  function _updateCapoVisibility() {
+    if (capoGroup) {
+      capoGroup.style.display = (activeTab === "guitar" || activeTab === "ukulele") ? "" : "none";
+    }
   }
+
+  let activeTab = localStorage.getItem("livechord_tab") || "overview";
   let pianoSubmode = localStorage.getItem("livechord_piano_submode") || "waterfall";
   let ribbonElements = [];
   const pxPerSec = 100;
@@ -176,7 +180,7 @@
     if (hs) hs.style.display = isPianoWaterfall ? "flex" : "none";
     if (topHs) topHs.style.display = isPianoWaterfall ? "flex" : "none";
     // Hide zoom controls in piano waterfall tab (piano has fixed size)
-    const hideZoom = isPianoWaterfall || activeTab === "guitar";
+    const hideZoom = isPianoWaterfall || activeTab === "guitar" || activeTab === "ukulele";
     if (btnZoomIn) btnZoomIn.style.display = hideZoom ? "none" : "";
     if (btnZoomOut) btnZoomOut.style.display = hideZoom ? "none" : "";
     if (btnZoomReset) btnZoomReset.style.display = hideZoom ? "none" : "";
@@ -186,18 +190,20 @@
     if (tabOverview) tabOverview.classList.remove("active");
     if (tabPiano) tabPiano.classList.remove("active");
     if (tabGuitar) tabGuitar.classList.remove("active");
+    if (tabUkulele) tabUkulele.classList.remove("active");
     chordDisplayOverview.style.display = "none";
     if (chordDisplayPiano) chordDisplayPiano.style.display = "none";
     if (chordDisplayGuitar) chordDisplayGuitar.style.display = "none";
+    if (chordDisplayUkulele) chordDisplayUkulele.style.display = "none";
   }
 
   const bigChordDiagram = $("#bigChordDiagram");
 
   // ---- 和弦區縮放 (must be before tab handlers that call _switchZoomToTab) ----
   const ZOOM_STEPS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300];
-  const ZOOM_FS_DEFAULTS = { overview: 200, piano: 200, guitar: 100 };
+  const ZOOM_FS_DEFAULTS = { overview: 200, piano: 200, guitar: 100, ukulele: 100 };
   const _tabZoomFs = {};
-  for (const tab of ["overview", "piano", "guitar"]) {
+  for (const tab of ["overview", "piano", "guitar", "ukulele"]) {
     // Migrate old localStorage keys
     let saved = parseInt(localStorage.getItem(`livechord_zoom_${tab}`));
     if (!saved && tab === "piano") {
@@ -249,6 +255,11 @@
     localStorage.setItem("livechord_tab", tab);
     _setAllTabsInactive();
 
+    // Set displayMode based on tab for chord diagram rendering
+    if (tab === "guitar") displayMode = "guitar";
+    else if (tab === "ukulele") displayMode = "ukulele";
+    else displayMode = "piano";
+
     if (tab === "overview") {
       if (tabOverview) tabOverview.classList.add("active");
       chordDisplayOverview.style.display = "";
@@ -268,7 +279,13 @@
       if (chordDisplayGuitar) chordDisplayGuitar.style.display = "flex";
       bigChordBox.style.display = "none";
       if (typeof _initGuitarTab === "function") _initGuitarTab();
+    } else if (tab === "ukulele") {
+      if (tabUkulele) tabUkulele.classList.add("active");
+      if (chordDisplayUkulele) chordDisplayUkulele.style.display = "flex";
+      bigChordBox.style.display = "none";
+      if (typeof _initUkuleleTab === "function") _initUkuleleTab();
     }
+    _updateCapoVisibility();
 
     _updateHandSwitchVisibility();
     _switchZoomToTab(tab);
@@ -277,10 +294,12 @@
   if (tabOverview) tabOverview.addEventListener("click", () => _switchTab("overview"));
   if (tabPiano) tabPiano.addEventListener("click", () => _switchTab("piano"));
   if (tabGuitar) tabGuitar.addEventListener("click", () => _switchTab("guitar"));
+  if (tabUkulele) tabUkulele.addEventListener("click", () => _switchTab("ukulele"));
 
   // 還原上次 tab
   if (activeTab === "piano") _switchTab("piano");
   else if (activeTab === "guitar") _switchTab("guitar");
+  else if (activeTab === "ukulele") _switchTab("ukulele");
 
   function _isFullscreen() {
     // Always immersive now — the display area is always fixed/fullscreen
@@ -290,7 +309,7 @@
     let pct;
     pct = ZOOM_STEPS[zoomIdx];
     if (activeTab === "piano" && pianoSubmode === "waterfall") pct = 100;
-    if (activeTab === "guitar") pct = 100;
+    if (activeTab === "guitar" || activeTab === "ukulele") pct = 100;
     _tabZoomFs[activeTab] = zoomIdx;
     localStorage.setItem(`livechord_zoom_${activeTab}`, pct);
     const scaleTarget = document.getElementById("chordDisplayScaleTarget") || chordDisplayEl;
@@ -933,6 +952,10 @@
     });
   }
 
+  // AI Teacher HUD state (must be before drawWaterfall)
+  let _teacherMsgCache = "";
+  let _teacherMsgTime = 0;
+
   function drawWaterfall(currentTime) {
     if (!waterfallCanvas || !waterfallCtx || !waterfallActive || !accData) return;
     if (!piano88Cache) return;
@@ -1277,8 +1300,6 @@
   // ===========================================================================
   // AI Teacher HUD — 即時教學提示 (Phase 11)
   // ===========================================================================
-  let _teacherMsgCache = "";
-  let _teacherMsgTime = 0;
 
   function _drawAITeacherHUD(ctx, w, h, currentTime, allEvents, pxPerSec) {
     // 收集當前正在演奏的音符
@@ -1568,6 +1589,23 @@
         accData = null;
         _loadAccompaniment(true);
         showToast("強制重新生成伴奏 (含踏板/力度)...", 3000);
+      });
+    }
+
+    // Teach-controls toggle
+    const btnToggleTeach = $("#btnToggleTeach");
+    const teachPanel = $("#teachControls");
+    if (btnToggleTeach && teachPanel) {
+      let teachOpen = localStorage.getItem("livechord_teach_open") === "true";
+      function _syncTeachToggle() {
+        teachPanel.style.display = teachOpen ? "flex" : "none";
+        btnToggleTeach.style.color = teachOpen ? "var(--accent)" : "var(--text-dim)";
+      }
+      _syncTeachToggle();
+      btnToggleTeach.addEventListener("click", () => {
+        teachOpen = !teachOpen;
+        localStorage.setItem("livechord_teach_open", teachOpen.toString());
+        _syncTeachToggle();
       });
     }
   }
@@ -2160,6 +2198,7 @@
         drawWaterfall(t);
       }
       if (activeTab === "guitar") _updateGuitarTab(t);
+      if (activeTab === "ukulele") _updateUkuleleTab(t);
       rafId = requestAnimationFrame(tickSync);
     }
   }
@@ -2295,7 +2334,9 @@
   if (savedVol !== null) {
     const v = parseFloat(savedVol);
     audio.volume = v;
-    volumeSlider.value = v;
+    if (volumeSlider) volumeSlider.value = v;
+    const _miniVol = $("#miniVolumeSlider");
+    if (_miniVol) _miniVol.value = v;
   }
 
   volumeSlider.addEventListener("input", () => {
@@ -2353,6 +2394,8 @@
     miniVolumeSlider.addEventListener("input", () => {
       audio.volume = parseFloat(miniVolumeSlider.value);
       if (volumeSlider) volumeSlider.value = miniVolumeSlider.value;
+      localStorage.setItem("livechord_volume", miniVolumeSlider.value);
+      if (btnMute) btnMute.innerHTML = audio.volume === 0 ? "&#x1F507;" : "&#x1F509;";
     });
     // sync from main volume slider
     if (volumeSlider) {
@@ -2563,47 +2606,7 @@
     btnFav.classList.toggle("active", isFavorite);
   }
 
-  // ---- instrument dropdown ----
-  const capoGroup = $("#capoGroup");
-  const btnInstrument = $("#btnInstrument");
-  const instrumentMenu = $("#instrumentMenu");
-  const INST_ICONS = { piano: "\u{1F3B9}", guitar: "\u{1F3B8}", ukulele: "\u{1FA95}" };
-
-  function _updateCapoVisibility() {
-    if (capoGroup) {
-      capoGroup.style.display = (displayMode === "guitar" || displayMode === "ukulele") ? "" : "none";
-    }
-  }
-
-  if (btnInstrument && instrumentMenu) {
-    // Move menu to body so it's not clipped by overflow:hidden ancestors
-    document.body.appendChild(instrumentMenu);
-    btnInstrument.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const show = instrumentMenu.style.display === "none";
-      if (show) {
-        const r = btnInstrument.getBoundingClientRect();
-        instrumentMenu.style.left = "";
-        instrumentMenu.style.right = (window.innerWidth - r.right) + "px";
-        instrumentMenu.style.bottom = (window.innerHeight - r.top + 4) + "px";
-      }
-      instrumentMenu.style.display = show ? "block" : "none";
-    });
-    document.addEventListener("click", () => { instrumentMenu.style.display = "none"; });
-
-    document.querySelectorAll(".inst-option").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        document.querySelectorAll(".inst-option").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-        displayMode = btn.dataset.mode;
-        btnInstrument.textContent = INST_ICONS[displayMode] || "\u{1F3B9}";
-        _updateCapoVisibility();
-        buildChordDOM();
-        updateActiveChord(audio.currentTime || -1);
-        instrumentMenu.style.display = "none";
-      });
-    });
-  }
+  // ---- instrument / capo (driven by tab selection) ----
 
   // ---- hand switch (88-key mode) ----
   const handSwitch = $("#handSwitch");
@@ -3417,6 +3420,292 @@
     const chordName = chords[activeIdx].chord;
     _renderGuitarFretboard(chordName, 0);
     _renderGuitarTeachInfo(chordName);
+  }
+
+  // =====================================================
+  // ========== UKULELE TAB (similar to Guitar) ==========
+  // =====================================================
+  let _ukuleleInitialized = false;
+  let _ukuleleActiveIdx = -1;
+  let _ukuleleVoicingIdx = 0;
+  const _ukuleleVoicingsCache = {};
+  const _ukuleleAnalysisCache = {};
+
+  const UK_FINGER_NAMES = ["", "食指", "中指", "無名指", "小指"];
+  const UK_STRING_NAMES_ZH = ["4弦 G", "3弦 C", "2弦 E", "1弦 A"];
+  const UK_OPEN_MIDI = [55, 48, 52, 57]; // G3 C3 E3 A3 (standard ukulele tuning)
+  const UK_STRING_LABELS = ["G", "C", "E", "A"];
+
+  function _initUkuleleTab() {
+    if (!chordData || !chordData.chords || chordData.chords.length === 0) {
+      setTimeout(() => { if (activeTab === "ukulele") _initUkuleleTab(); }, 1000);
+      return;
+    }
+    _ukuleleInitialized = true;
+    _ukuleleActiveIdx = -1;
+    _ukuleleVoicingIdx = 0;
+    _buildUkuleleTimeline();
+    _prefetchUkuleleData();
+    const chords = _displayChords();
+    if (chords && chords.length > 0) {
+      _ukuleleActiveIdx = 0;
+      _renderUkuleleFretboard(chords[0].chord, 0);
+      _renderUkuleleTeachInfo(chords[0].chord);
+      _updateUkuleleTimeline(audio.currentTime || 0);
+    }
+  }
+
+  async function _prefetchUkuleleData() {
+    const chords = _displayChords();
+    if (!chords) return;
+    const names = [...new Set(chords.map(c => c.chord))];
+    const key = _currentKey();
+    await Promise.all(names.map(async (name) => {
+      try {
+        if (!_ukuleleVoicingsCache[name])
+          _ukuleleVoicingsCache[name] = await API.chordVoicings("ukulele", name);
+      } catch {}
+      try {
+        if (!_ukuleleAnalysisCache[name])
+          _ukuleleAnalysisCache[name] = await API.chordAnalysis(key, name);
+      } catch {}
+    }));
+    _updateUkuleleTab(audio.currentTime || 0);
+  }
+
+  function _buildUkuleleTimeline() {
+    const container = $("#ukuleleTimeline");
+    if (!container) return;
+    container.innerHTML = "";
+    const chords = _displayChords();
+    if (!chords) return;
+
+    let lastSection = null;
+    for (let i = 0; i < chords.length; i++) {
+      const c = chords[i];
+      if (sectionData && sectionData.sections) {
+        const sec = sectionData.sections.find(s => Math.abs(s.start - c.time) < 0.5);
+        if (sec && sec.label !== lastSection) {
+          lastSection = sec.label;
+          const hdr = document.createElement("div");
+          hdr.className = "gt-section-header";
+          hdr.innerHTML = `<span class="gt-section-dot" style="background:${sec.color || '#888'}"></span>${sec.label}`;
+          container.appendChild(hdr);
+        }
+      }
+      const item = document.createElement("div");
+      item.className = "gt-timeline-item future";
+      item.dataset.idx = i;
+      item.dataset.time = c.time;
+      item.innerHTML = `
+        <span class="gt-timeline-chord">${c.chord}</span>
+        <span class="gt-timeline-jianpu">${(chordCache[c.chord]||{}).jianpu||""}</span>
+        <span class="gt-timeline-time">${formatTime(c.time)}</span>
+      `;
+      item.addEventListener("click", () => {
+        audio.currentTime = parseFloat(c.time);
+        if (audio.paused) audio.play();
+      });
+      container.appendChild(item);
+    }
+  }
+
+  function _updateUkuleleTimeline(currentTime) {
+    const container = $("#ukuleleTimeline");
+    if (!container) return;
+    const items = container.querySelectorAll(".gt-timeline-item");
+    const chords = _displayChords();
+    if (!chords) return;
+
+    let activeIdx = -1;
+    for (let i = chords.length - 1; i >= 0; i--) {
+      if (currentTime >= chords[i].time) { activeIdx = i; break; }
+    }
+    items.forEach((item, i) => {
+      item.classList.remove("active", "played", "future");
+      if (i < activeIdx) item.classList.add("played");
+      else if (i === activeIdx) item.classList.add("active");
+      else item.classList.add("future");
+    });
+    if (activeIdx >= 0 && activeIdx < items.length) {
+      items[activeIdx].scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    return activeIdx;
+  }
+
+  function _renderUkuleleFretboard(chordName, voicingIdx) {
+    const canvas = $("#ukuleleFretboardCanvas");
+    const nameEl = $("#ukChordName");
+    const intervalsEl = $("#ukChordIntervals");
+    const fingeringEl = $("#ukFingering");
+    const notesEl = $("#ukNotes");
+    const typeEl = $("#ukType");
+    const voicingRow = $("#ukVoicingRow");
+
+    if (!canvas) return;
+
+    const voicingsData = _ukuleleVoicingsCache[chordName];
+    const voicings = voicingsData ? voicingsData.voicings : [];
+    const diagram = voicings[voicingIdx] || (chordCache[chordName] || {}).diagram_ukulele;
+
+    if (!diagram) {
+      if (nameEl) nameEl.textContent = chordName;
+      return;
+    }
+
+    if (nameEl) nameEl.textContent = chordName;
+
+    const cache = chordCache[chordName] || {};
+    if (intervalsEl && cache.notes) {
+      intervalsEl.textContent = cache.notes.join("  ");
+    }
+
+    const rootNote = cache.notes ? cache.notes[0] : null;
+    let rootClean = rootNote;
+    if (rootClean && rootClean.length > 1 && rootClean[1] === "b") {
+      const fb = { Db:"C#", Eb:"D#", Gb:"F#", Ab:"G#", Bb:"A#" };
+      rootClean = fb[rootClean] || rootClean;
+    }
+
+    // Draw fretboard using the same renderer but with 4 strings
+    ChordRender.drawGuitarFretboard(canvas, {
+      ...diagram,
+      numStrings: 4,
+      _stringLabels: UK_STRING_LABELS,
+      _openMidi: UK_OPEN_MIDI,
+    }, {
+      scale: 1.2,
+      rootNote: rootClean,
+      highlightRoot: true,
+    });
+
+    if (fingeringEl) {
+      fingeringEl.textContent = (diagram.strings || []).map(f => f === -1 ? "x" : f === 0 ? "o" : f).join("  ");
+    }
+    if (notesEl && cache.notes) {
+      notesEl.textContent = cache.notes.join(" · ");
+    }
+    const analysis = _ukuleleAnalysisCache[chordName];
+    if (typeEl) {
+      typeEl.textContent = (analysis && analysis.type_name) || cache.type_name || "";
+    }
+
+    // Voicing buttons
+    if (voicingRow) {
+      voicingRow.innerHTML = '<span class="gt-voicing-label">Voicing variants</span>';
+      if (voicings.length > 1) {
+        voicings.forEach((v, idx) => {
+          const btn = document.createElement("button");
+          btn.className = "gt-voicing-btn" + (idx === voicingIdx ? " active" : "");
+          btn.textContent = (v.label || `#${idx+1}`) + ` ${String.fromCodePoint(0x2460 + idx)}`;
+          btn.addEventListener("click", () => {
+            _ukuleleVoicingIdx = idx;
+            _renderUkuleleFretboard(chordName, idx);
+            _renderUkuleleTeachInfo(chordName);
+          });
+          voicingRow.appendChild(btn);
+        });
+      }
+    }
+  }
+
+  function _renderUkuleleTeachInfo(chordName) {
+    const chords = _displayChords();
+    const key = _currentKey();
+
+    // Fingering guide
+    const listEl = $("#ukFingeringList");
+    if (listEl) {
+      listEl.innerHTML = "";
+      const voicingsData = _ukuleleVoicingsCache[chordName];
+      const voicings = voicingsData ? voicingsData.voicings : [];
+      const diagram = voicings[_ukuleleVoicingIdx] || (chordCache[chordName] || {}).diagram_ukulele;
+
+      if (diagram && diagram.fingers) {
+        const cache = chordCache[chordName] || {};
+        const rootNote = cache.notes ? cache.notes[0] : null;
+        let rootSemi = -1;
+        if (rootNote) {
+          let rn = rootNote;
+          const fb = { Db:"C#", Eb:"D#", Gb:"F#", Ab:"G#", Bb:"A#" };
+          if (fb[rn]) rn = fb[rn];
+          rootSemi = NOTE_SEMIS[rn] != null ? NOTE_SEMIS[rn] : -1;
+        }
+
+        for (let s = 0; s < 4; s++) {
+          const finger = diagram.fingers[s];
+          if (finger <= 0) continue;
+          const fret = diagram.strings[s];
+          const noteMidi = UK_OPEN_MIDI[s] + fret;
+          const noteSemi = noteMidi % 12;
+          const noteName = SEMI_NAMES[noteSemi];
+          const isRoot = rootSemi >= 0 && noteSemi === rootSemi;
+
+          const item = document.createElement("div");
+          item.className = "gt-finger-item";
+          item.innerHTML = `
+            <span class="gt-finger-dot ${isRoot ? 'root' : 'normal'}">${finger}</span>
+            <span>${UK_FINGER_NAMES[finger]} on ${UK_STRING_NAMES_ZH[s]} fret ${fret}${isRoot ? " — root note " + noteName : ""}</span>
+          `;
+          listEl.appendChild(item);
+        }
+      }
+    }
+
+    // Next chord preview
+    const nextEl = $("#ukNextChordContent");
+    if (nextEl && chords) {
+      nextEl.innerHTML = "";
+      let curIdx = -1;
+      for (let i = chords.length - 1; i >= 0; i--) {
+        if (audio.currentTime >= chords[i].time) { curIdx = i; break; }
+      }
+      const nextChord = curIdx >= 0 && curIdx < chords.length - 1 ? chords[curIdx + 1] : null;
+      if (nextChord) {
+        const countdown = Math.max(0, nextChord.time - audio.currentTime);
+        nextEl.innerHTML = `
+          <div class="gt-next-countdown">Coming up in ${countdown.toFixed(0)}s</div>
+          <div class="gt-next-name">${nextChord.chord}</div>
+          <div class="gt-next-intervals">${(chordCache[nextChord.chord]||{}).jianpu||""}</div>
+          <div class="gt-next-tip">Practice transitioning smoothly from ${chordName} to ${nextChord.chord}</div>
+        `;
+      } else {
+        nextEl.innerHTML = '<div class="gt-next-countdown">Last chord in song</div>';
+      }
+    }
+
+    // Chord in key
+    const keyEl = $("#ukChordInKeyContent");
+    if (keyEl) {
+      const analysis = _ukuleleAnalysisCache[chordName];
+      if (analysis) {
+        keyEl.innerHTML = `
+          <div class="gt-roman">
+            <span class="gt-roman-badge">${analysis.roman}</span>
+            <span class="gt-roman-key">in key ${key}</span>
+          </div>
+          <div class="gt-roman-explain">${analysis.explanation}</div>
+        `;
+      } else {
+        keyEl.innerHTML = "";
+      }
+    }
+  }
+
+  function _updateUkuleleTab(currentTime) {
+    if (activeTab !== "ukulele" || !_ukuleleInitialized) return;
+
+    const activeIdx = _updateUkuleleTimeline(currentTime);
+    if (activeIdx === _ukuleleActiveIdx) return;
+    _ukuleleActiveIdx = activeIdx;
+    _ukuleleVoicingIdx = 0;
+
+    const chords = _displayChords();
+    if (!chords || activeIdx < 0 || activeIdx >= chords.length) return;
+
+    const chordName = chords[activeIdx].chord;
+    _renderUkuleleFretboard(chordName, 0);
+    _renderUkuleleTeachInfo(chordName);
   }
 
 })();
