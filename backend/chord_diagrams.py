@@ -1,8 +1,10 @@
 """
-吉他/烏克麗麗和弦圖資料庫
+和弦圖資料庫 — 支援多樂器 (guitar, ukulele, ...)
 每個和弦包含: strings (按法), baseFret (起始格), barres (封弦格數列表)
 strings: 從低音弦到高音弦, -1=悶音(X), 0=空弦(O), 1~=品格位置
 """
+
+from instrument_registry import get_instrument, list_instruments
 
 # 吉他和弦 (6弦, EADGBE)
 GUITAR_CHORDS = {
@@ -475,6 +477,16 @@ GUITAR_VOICINGS = {
     ],
 }
 
+# ---- 樂器 → 和弦資料映射 (新增樂器在此加一行) ----
+CHORD_DBS = {
+    "guitar": GUITAR_CHORDS,
+    "ukulele": UKULELE_CHORDS,
+}
+
+VOICING_DBS = {
+    "guitar": GUITAR_VOICINGS,
+}
+
 
 def get_chord_diagram(chord_name, instrument='guitar'):
     """取得和弦圖資料"""
@@ -482,8 +494,11 @@ def get_chord_diagram(chord_name, instrument='guitar'):
     # Strip inversion suffix (e.g. "C#:1" → "C#")
     chord_name = _re.sub(r':\d+$', '', chord_name)
 
-    db = GUITAR_CHORDS if instrument == 'guitar' else UKULELE_CHORDS
-    num_strings = 6 if instrument == 'guitar' else 4
+    db = CHORD_DBS.get(instrument)
+    if db is None:
+        return None
+    inst_meta = get_instrument(instrument)
+    num_strings = inst_meta["num_strings"] if inst_meta else 6
 
     # 直接查找
     if chord_name in db:
@@ -556,13 +571,15 @@ def get_chord_voicings(chord_name, instrument='guitar'):
     """取得和弦所有把位指法 (list of dicts)"""
     import re as _re
     chord_name = _re.sub(r':\d+$', '', chord_name)
-    num_strings = 6 if instrument == 'guitar' else 4
+    inst_meta = get_instrument(instrument)
+    num_strings = inst_meta["num_strings"] if inst_meta else 6
 
     voicings = []
 
-    # Check GUITAR_VOICINGS first (only for guitar)
-    if instrument == 'guitar' and 'GUITAR_VOICINGS' in globals() and chord_name in GUITAR_VOICINGS:
-        for v in GUITAR_VOICINGS[chord_name]:
+    # Check instrument-specific voicings DB
+    voicing_db = VOICING_DBS.get(instrument)
+    if voicing_db and chord_name in voicing_db:
+        for v in voicing_db[chord_name]:
             d = v.copy()
             d['name'] = chord_name
             d['numStrings'] = num_strings
@@ -583,5 +600,5 @@ def get_chord_voicings(chord_name, instrument='guitar'):
 
 def list_available_chords(instrument='guitar'):
     """列出可用的和弦"""
-    db = GUITAR_CHORDS if instrument == 'guitar' else UKULELE_CHORDS
+    db = CHORD_DBS.get(instrument, {})
     return sorted(db.keys())

@@ -48,6 +48,7 @@ from pydantic import BaseModel
 from chord_table import get_chord_info, get_chord_jianpu, analyze_chord_in_key
 from chord_diagrams import get_chord_diagram, get_chord_voicings
 from chord_cache import song_hash
+from instrument_registry import get_instrument, list_instruments, INSTRUMENTS
 
 from config import resolve_path
 
@@ -58,6 +59,16 @@ CHORDS_DIR = DATA_DIR / "chords"
 CACHE_FILE = DATA_DIR / "library_cache.json"
 
 
+
+
+# ---------------------------------------------------------------------------
+# instrument registry
+# ---------------------------------------------------------------------------
+
+@router.get("/instruments")
+def instruments_api():
+    """回傳所有已註冊樂器及其 metadata"""
+    return {name: meta for name, meta in INSTRUMENTS.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -75,9 +86,9 @@ async def chord_info(name: str):
 
 @router.get("/chord/diagram/{instrument}/{name:path}")
 async def chord_diagram(instrument: str, name: str):
-    """取得和弦圖（吉他/烏克麗麗）"""
-    if instrument not in ("guitar", "ukulele"):
-        raise HTTPException(status_code=400, detail="instrument 須為 guitar 或 ukulele")
+    """取得和弦圖（吉他/烏克麗麗/...）"""
+    if instrument not in list_instruments():
+        raise HTTPException(status_code=400, detail=f"instrument 須為 {', '.join(list_instruments())}")
     diagram = get_chord_diagram(name, instrument=instrument)
     if not diagram:
         raise HTTPException(status_code=404, detail=f"無 {instrument} 和弦圖: {name}")
@@ -87,10 +98,11 @@ async def chord_diagram(instrument: str, name: str):
 @router.get("/chord/voicings/{instrument}/{name:path}")
 def chord_voicings_api(instrument: str, name: str):
     """取得和弦所有把位指法"""
-    if instrument not in ("guitar", "ukulele"):
-        raise HTTPException(status_code=400, detail="instrument 須為 guitar 或 ukulele")
+    if instrument not in list_instruments():
+        raise HTTPException(status_code=400, detail=f"instrument 須為 {', '.join(list_instruments())}")
     voicings = get_chord_voicings(name, instrument=instrument)
-    num_strings = 6 if instrument == "guitar" else 4
+    inst_meta = get_instrument(instrument)
+    num_strings = inst_meta["num_strings"] if inst_meta else 6
     return {"name": name, "numStrings": num_strings, "voicings": voicings}
 
 

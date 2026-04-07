@@ -105,7 +105,7 @@
 
   function _updateCapoVisibility() {
     if (capoGroup) {
-      capoGroup.style.display = (activeTab === "guitar" || activeTab === "ukulele") ? "" : "none";
+      capoGroup.style.display = InstrumentRegistry.isStringInstrument(activeTab) ? "" : "none";
     }
   }
 
@@ -225,12 +225,14 @@
       _initWaterfall();
       piano88LastIdx = -1;
       update88Piano(audio.currentTime || 0);
-    } else if (tab === "guitar") {
-      if (chordDisplayGuitar) chordDisplayGuitar.style.display = "flex";
-      if (typeof _initGuitarTab === "function") _initGuitarTab();
-    } else if (tab === "ukulele") {
-      if (chordDisplayUkulele) chordDisplayUkulele.style.display = "flex";
-      if (typeof _initUkuleleTab === "function") _initUkuleleTab();
+    } else {
+      // String instruments via registry (guitar, ukulele, ...)
+      const inst = InstrumentRegistry.get(tab);
+      if (inst) {
+        const container = $(inst._config.selectors.container);
+        if (container) container.style.display = "flex";
+        inst.init();
+      }
     }
     _setupTeachControls();
     _updateCapoVisibility();
@@ -304,13 +306,10 @@
       jp.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
       item.appendChild(jp);
 
-      if (activeTab === "guitar" && cache.diagram_guitar) {
+      const _diagKey = `diagram_${activeTab}`;
+      if (InstrumentRegistry.isStringInstrument(activeTab) && cache[_diagKey]) {
         const canvas = document.createElement("canvas");
-        ChordRender.drawDiagram(canvas, cache.diagram_guitar, ribbonScale);
-        item.appendChild(canvas);
-      } else if (activeTab === "ukulele" && cache.diagram_ukulele) {
-        const canvas = document.createElement("canvas");
-        ChordRender.drawDiagram(canvas, cache.diagram_ukulele, ribbonScale);
+        ChordRender.drawDiagram(canvas, cache[_diagKey], ribbonScale);
         item.appendChild(canvas);
       } else {
         const pianoCanvas = document.createElement("canvas");
@@ -1727,7 +1726,7 @@
     const arpSelectorDiv = $("#gtArpSelector");
 
     function _syncGuitarArpUI() {
-      const isStringTab = (activeTab === "guitar" || activeTab === "ukulele");
+      const isStringTab = InstrumentRegistry.isStringInstrument(activeTab);
       const isArp = guitarStrumStyle === "arpeggio";
       // Top bar: arp selector or style label
       if (arpSelectorDiv) {
@@ -1891,14 +1890,22 @@
     const names = [...new Set(chords.map((c) => c.chord))];
     await Promise.all(names.map(async (name) => {
       if (chordCache[name]) return;
-      chordCache[name] = { jianpu: "", notes: [], diagram_guitar: null, diagram_ukulele: null };
+      const entry = { jianpu: "", notes: [] };
+      // Dynamically create diagram slots for all registered string instruments
+      for (const id of InstrumentRegistry.list()) {
+        if (InstrumentRegistry.isStringInstrument(id)) entry[`diagram_${id}`] = null;
+      }
+      chordCache[name] = entry;
       try {
         const info = await API.chordInfo(name);
         chordCache[name].jianpu = info.jianpu || "";
         chordCache[name].notes = info.notes || [];
       } catch {}
-      try { chordCache[name].diagram_guitar = await API.chordDiagram("guitar", name); } catch {}
-      try { chordCache[name].diagram_ukulele = await API.chordDiagram("ukulele", name); } catch {}
+      for (const id of InstrumentRegistry.list()) {
+        if (InstrumentRegistry.isStringInstrument(id)) {
+          try { chordCache[name][`diagram_${id}`] = await API.chordDiagram(id, name); } catch {}
+        }
+      }
     }));
   }
 
@@ -1948,14 +1955,21 @@
     const unique = [...new Set(names)];
     await Promise.all(unique.map(async (name) => {
       if (chordCache[name]) return;
-      chordCache[name] = { jianpu: "", notes: [], diagram_guitar: null, diagram_ukulele: null };
+      const entry = { jianpu: "", notes: [] };
+      for (const id of InstrumentRegistry.list()) {
+        if (InstrumentRegistry.isStringInstrument(id)) entry[`diagram_${id}`] = null;
+      }
+      chordCache[name] = entry;
       try {
         const info = await API.chordInfo(name);
         chordCache[name].jianpu = info.jianpu || "";
         chordCache[name].notes = info.notes || [];
       } catch {}
-      try { chordCache[name].diagram_guitar = await API.chordDiagram("guitar", name); } catch {}
-      try { chordCache[name].diagram_ukulele = await API.chordDiagram("ukulele", name); } catch {}
+      for (const id of InstrumentRegistry.list()) {
+        if (InstrumentRegistry.isStringInstrument(id)) {
+          try { chordCache[name][`diagram_${id}`] = await API.chordDiagram(id, name); } catch {}
+        }
+      }
     }));
   }
 
@@ -2103,9 +2117,10 @@
       if (activeTab === "piano") {
         update88Piano(t);
         drawWaterfall(t);
+      } else {
+        const _inst = InstrumentRegistry.get(activeTab);
+        if (_inst) _inst.update(t);
       }
-      if (activeTab === "guitar") _updateGuitarTab(t);
-      if (activeTab === "ukulele") _updateUkuleleTab(t);
       rafId = requestAnimationFrame(tickSync);
     }
   }
@@ -3000,770 +3015,69 @@
   }
 
   // ===========================================================================
-  // GUITAR TAB (Phase 3B)
+  // STRING INSTRUMENTS — Guitar / Ukulele / ... (registry-based)
   // ===========================================================================
-
-  let _guitarInitialized = false;
-  let _guitarVoicingsCache = {};  // chordName -> {voicings: [...]}
-  let _guitarAnalysisCache = {};  // chordName -> {roman, degree, ...}
-  let _guitarActiveIdx = -1;
-  let _guitarVoicingIdx = 0;
-
-  const FINGER_NAMES = ["", "食指", "中指", "無名指", "小指"];
-  const STRING_NAMES_ZH = ["6弦 E", "5弦 A", "4弦 D", "3弦 G", "2弦 B", "1弦 e"];
-  const NOTE_SEMIS = { C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11 };
-  const SEMI_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
-  const OPEN_MIDI_G = [40, 45, 50, 55, 59, 64];
-
-  function _initGuitarTab() {
-    if (!chordData || !chordData.chords || chordData.chords.length === 0) {
-      setTimeout(() => { if (activeTab === "guitar") _initGuitarTab(); }, 1000);
-      return;
-    }
-    _guitarInitialized = true;
-    _guitarActiveIdx = -1;
-    _guitarVoicingIdx = 0;
-    _prefetchGuitarData();
-    const chords = _displayChords();
-    if (chords && chords.length > 0) {
-      _guitarActiveIdx = 0;
-      _renderGuitarFretboard(chords[0].chord, 0);
-      _drawRhWaterfall("#guitarRhWaterfall", audio.currentTime || 0, 6, _guitarVoicingsCache, "guitar");
-    }
-  }
-
-  async function _prefetchGuitarData() {
-    const chords = _displayChords();
-    if (!chords) return;
-    const names = [...new Set(chords.map(c => c.chord))];
-    const key = _currentKey();
-    await Promise.all(names.map(async (name) => {
-      try {
-        if (!_guitarVoicingsCache[name])
-          _guitarVoicingsCache[name] = await API.chordVoicings("guitar", name);
-      } catch {}
-      try {
-        if (!_guitarAnalysisCache[name])
-          _guitarAnalysisCache[name] = await API.chordAnalysis(key, name);
-      } catch {}
-    }));
-    // Re-render after data loaded
-    _updateGuitarTab(audio.currentTime || 0);
-  }
-
-  // Guitar/Ukulele timelines removed — unified ribbon replaces them
 
   // Guitar strum style for right-hand waterfall
   var guitarStrumStyle = localStorage.getItem("livechord_guitar_strum_style") || "arpeggio";
   var guitarArpPattern = localStorage.getItem("livechord_guitar_arp_pattern") || "pima";
 
-  // ---- Arpeggio Pattern Library ----
-  // zone: "bass"=lowest active string, "bass_alt"=2nd lowest, "1"/"2"/"3"=treble strings
-  // finger: "p"=thumb, "i"=index, "m"=middle, "a"=ring, "ima"=simultaneous pluck
-  // null step = rest
-  const ARPEGGIO_PATTERNS = {
-    pima: {
-      name: "p-i-m-a", category: "classical", subdiv: 1,
-      steps: [
-        { finger: "p", zone: "bass" },
-        { finger: "i", zone: "3" },
-        { finger: "m", zone: "2" },
-        { finger: "a", zone: "1" },
-      ],
-      description: "基本上行琶音",
-    },
-    pimami: {
-      name: "p-i-m-a-m-i", category: "classical", subdiv: 2,
-      steps: [
-        { finger: "p", zone: "bass" },
-        { finger: "i", zone: "3" },
-        { finger: "m", zone: "2" },
-        { finger: "a", zone: "1" },
-        { finger: "m", zone: "2" },
-        { finger: "i", zone: "3" },
-      ],
-      description: "古典滾奏（Romance）",
-    },
-    pami: {
-      name: "p-a-m-i", category: "classical", subdiv: 1,
-      steps: [
-        { finger: "p", zone: "bass" },
-        { finger: "a", zone: "1" },
-        { finger: "m", zone: "2" },
-        { finger: "i", zone: "3" },
-      ],
-      description: "下行琶音",
-    },
-    pima_chord: {
-      name: "p + ima", category: "classical", subdiv: 1,
-      steps: [
-        { finger: "p", zone: "bass" },
-        { finger: "ima", zone: "321" },
-        null,
-        { finger: "ima", zone: "321" },
-      ],
-      description: "低音+和弦撥（Bossa Nova）",
-    },
-    travis_basic: {
-      name: "Travis Basic", category: "travis", subdiv: 2,
-      steps: [
-        { finger: "p", zone: "bass" },
-        null,
-        { finger: "p", zone: "bass_alt" },
-        { finger: "m", zone: "2" },
-        { finger: "p", zone: "bass" },
-        { finger: "i", zone: "3" },
-        { finger: "p", zone: "bass_alt" },
-        { finger: "m", zone: "2" },
-      ],
-      description: "交替 Bass（Merle Travis）",
-    },
-    travis_pinch: {
-      name: "Travis Pinch", category: "travis", subdiv: 2,
-      steps: [
-        { finger: "p", zone: "bass" },
-        { finger: "i", zone: "3" },
-        { finger: "p", zone: "bass_alt" },
-        { finger: "m", zone: "2" },
-        { finger: "p", zone: "bass" },
-        { finger: "i", zone: "3" },
-        { finger: "p", zone: "bass_alt" },
-        { finger: "a", zone: "1" },
-      ],
-      description: "交替 Bass + Fill",
-    },
-    folk_44: {
-      name: "Folk 4/4", category: "folk", subdiv: 2,
-      steps: [
-        { finger: "p", zone: "bass" },
-        { finger: "i", zone: "3" },
-        { finger: "m", zone: "2" },
-        { finger: "a", zone: "1" },
-        { finger: "p", zone: "bass" },
-        { finger: "a", zone: "1" },
-        { finger: "m", zone: "2" },
-        { finger: "i", zone: "3" },
-      ],
-      description: "民謠指彈（Dust in the Wind）",
-    },
-    pop_ballad: {
-      name: "Pop Ballad", category: "pop", subdiv: 2,
-      steps: [
-        { finger: "p", zone: "bass" },
-        { finger: "i", zone: "3" },
-        { finger: "m", zone: "2" },
-        { finger: "i", zone: "3" },
-        { finger: "a", zone: "1" },
-        { finger: "i", zone: "3" },
-        { finger: "m", zone: "2" },
-        { finger: "i", zone: "3" },
-      ],
-      description: "流行抒情",
+  // ===========================================================================
+  // STRING INSTRUMENT REGISTRY — 新增樂器只需加 config + register()
+  // ===========================================================================
+  const _playerBridge = {
+    $,
+    getChordData: () => chordData,
+    getDisplayChords: () => _displayChords(),
+    getAudio: () => audio,
+    getChordCache: () => chordCache,
+    getCurrentKey: () => _currentKey(),
+    getStrumStyle: () => guitarStrumStyle,
+    getArpPattern: () => guitarArpPattern,
+    getAccData: () => accData,
+    getActiveTab: () => activeTab,
+    API,
+    ChordRender,
+  };
+
+  const GUITAR_CONFIG = {
+    id: "guitar",
+    numStrings: 6,
+    openMidi: [40, 45, 50, 55, 59, 64],
+    stringLabels: ["E", "A", "D", "G", "B", "e"],
+    stringNamesZh: ["6弦 E", "5弦 A", "4弦 D", "3弦 G", "2弦 B", "1弦 e"],
+    diagramCacheKey: "diagram_guitar",
+    selectors: {
+      container: "#chordDisplayGuitar",
+      fretboardCanvas: "#guitarVerticalFretboard",
+      waterfallCanvas: "#guitarRhWaterfall",
+      chordName: "#gtChordName",
+      voicingRow: "#gtVoicingRow",
+      lhHint: "#gtLhHint",
+      rhHint: "#gtRhHint",
     },
   };
 
-  // Right-hand finger colors — aligned with left-hand: i=①red, m=②orange, a=③yellow
-  const FINGER_COLORS = {
-    p: "#00bcd4", // cyan — thumb (左手無對應，獨立色)
-    i: "#ef5350", // red — index (= left ① 食指)
-    m: "#ff9800", // orange — middle (= left ② 中指)
-    a: "#ffeb3b", // yellow — ring (= left ③ 無名指)
+  const UKULELE_CONFIG = {
+    id: "ukulele",
+    numStrings: 4,
+    openMidi: [55, 48, 52, 57],
+    stringLabels: ["G", "C", "E", "A"],
+    stringNamesZh: ["4弦 G", "3弦 C", "2弦 E", "1弦 A"],
+    diagramCacheKey: "diagram_ukulele",
+    selectors: {
+      container: "#chordDisplayUkulele",
+      fretboardCanvas: "#ukuleleVerticalFretboard",
+      waterfallCanvas: "#ukuleleRhWaterfall",
+      chordName: "#ukChordName",
+      voicingRow: "#ukVoicingRow",
+      lhHint: "#ukLhHint",
+      rhHint: "#ukRhHint",
+    },
   };
 
-  // Resolve arpeggio zone to actual string index(es)
-  function _resolveArpZone(zone, diagram, numStrings) {
-    const active = [];
-    if (diagram && diagram.strings) {
-      diagram.strings.forEach((f, s) => { if (f >= 0) active.push(s); });
-    } else {
-      for (let s = 0; s < numStrings; s++) active.push(s);
-    }
-    switch (zone) {
-      case "bass":      return active.length > 0 ? active[0] : 0;
-      case "bass_alt":  return active.length > 1 ? active[1] : active[0] || 0;
-      case "1":         return numStrings - 1;
-      case "2":         return numStrings - 2;
-      case "3":         return numStrings - 3;
-      case "321":       return [numStrings - 3, numStrings - 2, numStrings - 1];
-      default:          return 0;
-    }
-  }
-
-  // ---- Guitar: Left Panel (Vertical Fretboard) ----
-  function _renderGuitarFretboard(chordName, voicingIdx) {
-    const canvas = $("#guitarVerticalFretboard");
-    const nameEl = $("#gtChordName");
-    const voicingRow = $("#gtVoicingRow");
-    if (!canvas) return;
-
-    const voicingsData = _guitarVoicingsCache[chordName];
-    const voicings = voicingsData ? voicingsData.voicings : [];
-    const diagram = voicings[voicingIdx] || (chordCache[chordName] || {}).diagram_guitar;
-
-    if (nameEl) nameEl.textContent = chordName;
-    if (!diagram) return;
-
-    // Get next chord diagram for ghost overlay
-    let nextDiag = null;
-    const chords = _displayChords();
-    if (chords && _guitarActiveIdx >= 0 && _guitarActiveIdx < chords.length - 1) {
-      const nextName = chords[_guitarActiveIdx + 1].chord;
-      const nv = _guitarVoicingsCache[nextName];
-      const nd = (nv ? nv.voicings[0] : null) || (chordCache[nextName] || {}).diagram_guitar;
-      if (nd) nextDiag = { ...nd, name: nextName };
-    }
-
-    ChordRender.drawVerticalFretboard(canvas, diagram, {
-      canvasW: canvas.clientWidth,
-      canvasH: canvas.clientHeight,
-      nextData: nextDiag,
-    });
-
-    // Voicing pills
-    if (voicingRow) {
-      voicingRow.innerHTML = '';
-      if (voicings.length > 1) {
-        voicings.forEach((v, idx) => {
-          const btn = document.createElement("button");
-          btn.className = "gt-voicing-btn" + (idx === voicingIdx ? " active" : "");
-          btn.textContent = String.fromCodePoint(0x2460 + idx);
-          btn.title = v.label || `把位 ${idx + 1}`;
-          btn.addEventListener("click", () => {
-            _guitarVoicingIdx = idx;
-            _renderGuitarFretboard(chordName, idx);
-          });
-          voicingRow.appendChild(btn);
-        });
-      }
-    }
-  }
-
-  // Animated fretboard redraw with blinking ghost (called every frame near chord change)
-  function _renderGuitarFretboardAnimated(chordName, voicingIdx, countdown) {
-    const canvas = $("#guitarVerticalFretboard");
-    if (!canvas) return;
-
-    const voicingsData = _guitarVoicingsCache[chordName];
-    const voicings = voicingsData ? voicingsData.voicings : [];
-    const diagram = voicings[voicingIdx] || (chordCache[chordName] || {}).diagram_guitar;
-    if (!diagram) return;
-
-    let nextDiag = null;
-    const chords = _displayChords();
-    if (chords && _guitarActiveIdx >= 0 && _guitarActiveIdx < chords.length - 1) {
-      const nextName = chords[_guitarActiveIdx + 1].chord;
-      const nv = _guitarVoicingsCache[nextName];
-      const nd = (nv ? nv.voicings[0] : null) || (chordCache[nextName] || {}).diagram_guitar;
-      if (nd) nextDiag = { ...nd, name: nextName };
-    }
-
-    // Blink speed increases as countdown decreases
-    // countdown 2s → slow pulse, countdown 0.3s → rapid blink
-    const blinkFreq = countdown < 0.5 ? 12 : countdown < 1.0 ? 8 : 4;
-    const blinkAlpha = 0.3 + 0.5 * (0.5 + 0.5 * Math.sin(performance.now() / 1000 * blinkFreq * Math.PI * 2));
-
-    ChordRender.drawVerticalFretboard(canvas, diagram, {
-      canvasW: canvas.clientWidth,
-      canvasH: canvas.clientHeight,
-      nextData: nextDiag,
-      nextAlpha: blinkAlpha,
-    });
-  }
-
-  // Same for ukulele
-  function _renderUkuleleFretboardAnimated(chordName, voicingIdx, countdown) {
-    const canvas = $("#ukuleleVerticalFretboard");
-    if (!canvas) return;
-
-    const voicingsData = _ukuleleVoicingsCache[chordName];
-    const voicings = voicingsData ? voicingsData.voicings : [];
-    const diagram = voicings[voicingIdx] || (chordCache[chordName] || {}).diagram_ukulele;
-    if (!diagram) return;
-
-    let nextDiag = null;
-    const chords = _displayChords();
-    if (chords && _ukuleleActiveIdx >= 0 && _ukuleleActiveIdx < chords.length - 1) {
-      const nextName = chords[_ukuleleActiveIdx + 1].chord;
-      const nv = _ukuleleVoicingsCache[nextName];
-      const nd = (nv ? nv.voicings[0] : null) || (chordCache[nextName] || {}).diagram_ukulele;
-      if (nd) nextDiag = { ...nd, numStrings: 4, name: nextName };
-    }
-
-    const blinkFreq = countdown < 0.5 ? 12 : countdown < 1.0 ? 8 : 4;
-    const blinkAlpha = 0.3 + 0.5 * (0.5 + 0.5 * Math.sin(performance.now() / 1000 * blinkFreq * Math.PI * 2));
-
-    ChordRender.drawVerticalFretboard(canvas, {
-      ...diagram, numStrings: 4, _stringLabels: UK_STRING_LABELS,
-    }, {
-      canvasW: canvas.clientWidth,
-      canvasH: canvas.clientHeight,
-      nextData: nextDiag,
-      nextAlpha: blinkAlpha,
-    });
-  }
-
-  // ---- Right-Hand Pattern Generator ----
-  function _generateRhEvents(chords, numStrings, voicingsCache, style, bpm) {
-    const events = [];
-    const beatDur = 60 / (bpm || 100);
-    const eighth = beatDur / 2;
-
-    for (let i = 0; i < chords.length; i++) {
-      const c = chords[i];
-      const end = (i + 1 < chords.length) ? chords[i + 1].time : c.time + 4;
-      const cache = chordCache[c.chord] || {};
-      const vData = voicingsCache[c.chord];
-      const diagram = (vData ? vData.voicings[0] : null) || cache.diagram_guitar || cache.diagram_ukulele;
-      const activeStrings = [];
-      if (diagram && diagram.strings) {
-        diagram.strings.forEach((f, s) => { if (f >= 0) activeStrings.push(s); });
-      } else {
-        for (let s = 0; s < numStrings; s++) activeStrings.push(s);
-      }
-
-      if (style === "block") {
-        for (let t = c.time; t < end - 0.05; t += beatDur) {
-          events.push({ time: t, dur: beatDur * 0.8, type: "strum", dir: "down", strings: activeStrings, chordIdx: i });
-        }
-      } else if (style === "arpeggio") {
-        const pat = ARPEGGIO_PATTERNS[guitarArpPattern] || ARPEGGIO_PATTERNS.pima;
-        const stepDur = beatDur / pat.subdiv;
-        const cycleDur = stepDur * pat.steps.length;
-        for (let t = c.time; t < end - 0.05; t += cycleDur) {
-          pat.steps.forEach((step, j) => {
-            if (!step) return;
-            const et = t + j * stepDur;
-            if (et >= end) return;
-            const resolved = _resolveArpZone(step.zone, diagram, numStrings);
-            if (Array.isArray(resolved)) {
-              // Simultaneous pluck (e.g. ima on strings 3,2,1)
-              events.push({ time: et, dur: stepDur * 0.9, type: "pluck", strings: resolved,
-                fingers: step.finger.split(""), chordIdx: i });
-            } else {
-              events.push({ time: et, dur: stepDur * 0.9, type: "pick", string: resolved,
-                finger: step.finger, chordIdx: i });
-            }
-          });
-        }
-      } else {
-        // "pattern": D-DU-UDU (8th notes per 2-beat bar)
-        const pat = ["D","","D","U","","U","D","U"];
-        for (let t = c.time; t < end - 0.05; t += beatDur * 2) {
-          pat.forEach((dir, j) => {
-            const et = t + j * eighth;
-            if (et >= end) return;
-            if (dir) events.push({ time: et, dur: eighth * 0.8, type: "strum", dir: dir === "D" ? "down" : "up", strings: activeStrings, chordIdx: i });
-          });
-        }
-      }
-    }
-    return events;
-  }
-
-  // ---- Right-Hand Waterfall Renderer ----
-  function _drawRhWaterfall(canvasId, currentTime, numStrings, voicingsCache, instrument) {
-    const canvas = $(canvasId);
-    if (!canvas) return;
-    const chords = _displayChords();
-    if (!chords || chords.length === 0) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    if (w === 0 || h === 0) return;
-
-    if (Math.abs(canvas.width / dpr - w) > 2 || Math.abs(canvas.height / dpr - h) > 2) {
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
-    }
-    const ctx = canvas.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-
-    const bpm = (accData && accData.bpm) || 100;
-    const rhEvents = _generateRhEvents(chords, numStrings, voicingsCache, guitarStrumStyle, bpm);
-
-    const lookAhead = 4.0;
-    const pxPerSec = h / lookAhead;
-    const padL = Math.round(w * 0.1);
-    const padR = Math.round(w * 0.05);
-    const stringSpacing = (w - padL - padR) / Math.max(numStrings - 1, 1);
-    function strX(s) { return padL + s * stringSpacing; }
-
-    // String lines (full height)
-    for (let s = 0; s < numStrings; s++) {
-      const x = strX(s);
-      ctx.strokeStyle = "rgba(255,255,255,0.2)";
-      ctx.lineWidth = s === 0 ? 1.5 : 1;
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-    }
-
-    // Beat grid — chord-based (aligned to actual note positions)
-    const _gridChords2 = _displayChords();
-    if (_gridChords2 && _gridChords2.length > 0) {
-      for (let ci = 0; ci < _gridChords2.length; ci++) {
-        const gc = _gridChords2[ci];
-        const gcEnd = (ci + 1 < _gridChords2.length) ? _gridChords2[ci + 1].time : gc.time + 4;
-        const gcDur = gcEnd - gc.time;
-        for (let b = 0; b < 4; b++) {
-          const bt = gc.time + (b / 4) * gcDur;
-          if (bt < currentTime - 0.1 || bt > currentTime + lookAhead) continue;
-          const y = h - (bt - currentTime) * pxPerSec;
-          if (y < 0 || y > h) continue;
-          const isBar = (b === 0);
-          ctx.strokeStyle = isBar ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.04)";
-          ctx.lineWidth = isBar ? 1 : 0.5;
-          ctx.beginPath(); ctx.moveTo(padL - 8, y); ctx.lineTo(w - padR + 8, y); ctx.stroke();
-        }
-      }
-    }
-
-    // Draw RH events
-    const STRUM_CLR = "rgb(0,151,167)";       // solid cyan for down-strums
-    const PICK_CLR  = "rgb(0,172,193)";       // solid cyan for picks
-    const STRUM_UP_CLR = "rgb(38,166,154)";   // solid teal for up-strums
-
-    for (const ev of rhEvents) {
-      const yBot = h - (ev.time - currentTime) * pxPerSec;
-      const yTop = yBot - ev.dur * pxPerSec;
-      if (yTop > h || yBot < 0) continue;
-      const cT = Math.max(0, yTop);
-      const cB = Math.min(h, yBot);
-
-      if (ev.type === "strum") {
-        // Rectangle spanning active strings
-        const xs = ev.strings.map(s => strX(s));
-        const minX = Math.min(...xs) - stringSpacing * 0.3;
-        const maxX = Math.max(...xs) + stringSpacing * 0.3;
-        const clr = ev.dir === "up" ? STRUM_UP_CLR : STRUM_CLR;
-        ctx.fillStyle = clr;
-        const r = 4;
-        ctx.beginPath();
-        ctx.roundRect(minX, cT, maxX - minX, cB - cT, r);
-        ctx.fill();
-
-        // Arrow indicator — larger, glow when active (near now line)
-        const isActive = (cB >= h - 30 && cT <= h - 10);
-        const arrowSize = isActive ? 20 : 14;
-        const arrowY = (cT + cB) / 2;
-        ctx.save();
-        if (isActive) {
-          ctx.shadowColor = "#fff";
-          ctx.shadowBlur = 12;
-        }
-        ctx.fillStyle = isActive ? "#fff" : "rgba(255,255,255,0.7)";
-        ctx.font = `bold ${arrowSize}px sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(ev.dir === "down" ? "▶" : "◀", (minX + maxX) / 2, arrowY);
-        ctx.restore();
-      } else if (ev.type === "pick") {
-        // Colored circle with finger label
-        const x = strX(ev.string);
-        const cy = (cT + cB) / 2;
-        const r = Math.min(stringSpacing * 0.4, 18);
-        const isActive = (cB >= h - 30 && cT <= h - 10);
-        const fClr = (ev.finger && FINGER_COLORS[ev.finger]) || PICK_CLR;
-        ctx.save();
-        if (isActive) { ctx.shadowColor = fClr; ctx.shadowBlur = 14; }
-        ctx.fillStyle = fClr;
-        ctx.beginPath();
-        ctx.arc(x, cy, r, 0, Math.PI * 2);
-        ctx.fill();
-        // Finger letter
-        if (ev.finger) {
-          ctx.fillStyle = ev.finger === "a" ? "#333" : "#fff";
-          ctx.font = `bold ${Math.round(r * 1.2)}px sans-serif`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText(ev.finger, x, cy);
-        }
-        ctx.restore();
-        // Contact glow at now-line (string flash)
-        if (cB >= h - 4 && cT <= h) {
-          ctx.save();
-          ctx.fillStyle = fClr;
-          ctx.shadowColor = fClr;
-          ctx.shadowBlur = 18;
-          ctx.beginPath();
-          ctx.arc(x, h, r * 0.7, 0, Math.PI * 2);
-          ctx.fill();
-          // White core
-          ctx.fillStyle = "rgba(255,255,255,0.7)";
-          ctx.shadowColor = "#fff";
-          ctx.shadowBlur = 12;
-          ctx.beginPath();
-          ctx.arc(x, h, r * 0.35, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-        }
-      } else if (ev.type === "pluck") {
-        // Simultaneous multi-string pluck (e.g. ima)
-        const cy = (cT + cB) / 2;
-        const r = Math.min(stringSpacing * 0.4, 18);
-        const isActive = (cB >= h - 30 && cT <= h - 10);
-        for (let si = 0; si < ev.strings.length; si++) {
-          const x = strX(ev.strings[si]);
-          const fg = ev.fingers[si] || "i";
-          const fClr = FINGER_COLORS[fg] || PICK_CLR;
-          ctx.save();
-          if (isActive) { ctx.shadowColor = fClr; ctx.shadowBlur = 14; }
-          ctx.fillStyle = fClr;
-          ctx.beginPath();
-          ctx.arc(x, cy, r, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = fg === "a" ? "#333" : "#fff";
-          ctx.font = `bold ${Math.round(r * 1.2)}px sans-serif`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText(fg, x, cy);
-          ctx.restore();
-          // Contact glow
-          if (cB >= h - 4 && cT <= h) {
-            ctx.save();
-            ctx.fillStyle = fClr;
-            ctx.shadowColor = fClr;
-            ctx.shadowBlur = 18;
-            ctx.beginPath();
-            ctx.arc(x, h, r * 0.7, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = "rgba(255,255,255,0.7)";
-            ctx.shadowColor = "#fff";
-            ctx.shadowBlur = 12;
-            ctx.beginPath();
-            ctx.arc(x, h, r * 0.35, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-          }
-        }
-      }
-    }
-
-    // Now line at bottom
-    ctx.strokeStyle = "rgba(0,188,212,0.5)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(padL - 8, h);
-    ctx.lineTo(w - padR + 8, h);
-    ctx.stroke();
-
-  }
-
-  function _updateGuitarTab(currentTime) {
-    if (activeTab !== "guitar" || !_guitarInitialized) return;
-
-    // Draw right-hand waterfall
-    _drawRhWaterfall("#guitarRhWaterfall", currentTime, 6, _guitarVoicingsCache, "guitar");
-
-    const chords = _displayChords();
-    if (!chords) return;
-
-    let activeIdx = -1;
-    for (let i = chords.length - 1; i >= 0; i--) {
-      if (currentTime >= chords[i].time) { activeIdx = i; break; }
-    }
-
-    // Redraw fretboard every frame when next chord is approaching (blink effect)
-    const nextChordTime = (activeIdx >= 0 && activeIdx < chords.length - 1) ? chords[activeIdx + 1].time : null;
-    const countdown = nextChordTime != null ? nextChordTime - currentTime : 99;
-    if (countdown < 2.0 && activeIdx >= 0) {
-      // Re-render with countdown for blinking ghost
-      _renderGuitarFretboardAnimated(chords[activeIdx].chord, _guitarVoicingIdx, countdown);
-    }
-
-    if (activeIdx === _guitarActiveIdx) return;
-    _guitarActiveIdx = activeIdx;
-    _guitarVoicingIdx = 0;
-
-    if (activeIdx < 0 || activeIdx >= chords.length) return;
-    const chordName = chords[activeIdx].chord;
-    _renderGuitarFretboard(chordName, 0);
-
-    // Update middle panel tutorial info
-    const lhInfo = $("#gtLhHint");
-    const rhInfo = $("#gtRhHint");
-    if (lhInfo) {
-      const nextName = activeIdx < chords.length - 1 ? chords[activeIdx + 1].chord : null;
-      if (nextName) {
-        // Calculate position jump from voicing data
-        const curV = _guitarVoicingsCache[chordName];
-        const nextV = _guitarVoicingsCache[nextName];
-        const curDiag = (curV ? curV.voicings[_guitarVoicingIdx] : null) || (chordCache[chordName] || {}).diagram_guitar;
-        const nextDiag = (nextV ? nextV.voicings[0] : null) || (chordCache[nextName] || {}).diagram_guitar;
-        let jumpLabel = "";
-        if (curDiag && nextDiag && curDiag.strings && nextDiag.strings) {
-          const curMin = Math.min(...curDiag.strings.filter(f => f > 0), 99);
-          const nxtMin = Math.min(...nextDiag.strings.filter(f => f > 0), 99);
-          const dist = Math.abs(nxtMin - curMin);
-          if (dist >= 2) jumpLabel = nxtMin > curMin ? ` ↓${dist}格` : ` ↑${dist}格`;
-        }
-        lhInfo.textContent = `左手 ${chordName} → ${nextName}${jumpLabel}`;
-      } else {
-        lhInfo.textContent = `左手 ${chordName}`;
-      }
-    }
-    if (rhInfo) {
-      if (guitarStrumStyle === "arpeggio") {
-        const pat = ARPEGGIO_PATTERNS[guitarArpPattern];
-        rhInfo.textContent = pat ? `右手 ${pat.name}` : "右手 琶音";
-      } else {
-        const styleLabels = { block: "右手 下刷", pattern: "右手 D DU UDU" };
-        rhInfo.textContent = styleLabels[guitarStrumStyle] || "右手";
-      }
-    }
-  }
-
-  // =====================================================
-  // ========== UKULELE TAB (similar to Guitar) ==========
-  // =====================================================
-  let _ukuleleInitialized = false;
-  let _ukuleleActiveIdx = -1;
-  let _ukuleleVoicingIdx = 0;
-  const _ukuleleVoicingsCache = {};
-  const _ukuleleAnalysisCache = {};
-
-  const UK_FINGER_NAMES = ["", "食指", "中指", "無名指", "小指"];
-  const UK_STRING_NAMES_ZH = ["4弦 G", "3弦 C", "2弦 E", "1弦 A"];
-  const UK_OPEN_MIDI = [55, 48, 52, 57]; // G3 C3 E3 A3 (standard ukulele tuning)
-  const UK_STRING_LABELS = ["G", "C", "E", "A"];
-
-  function _initUkuleleTab() {
-    if (!chordData || !chordData.chords || chordData.chords.length === 0) {
-      setTimeout(() => { if (activeTab === "ukulele") _initUkuleleTab(); }, 1000);
-      return;
-    }
-    _ukuleleInitialized = true;
-    _ukuleleActiveIdx = -1;
-    _ukuleleVoicingIdx = 0;
-    _prefetchUkuleleData();
-    const chords = _displayChords();
-    if (chords && chords.length > 0) {
-      _ukuleleActiveIdx = 0;
-      _renderUkuleleFretboard(chords[0].chord, 0);
-      _drawRhWaterfall("#ukuleleRhWaterfall", audio.currentTime || 0, 4, _ukuleleVoicingsCache, "ukulele");
-    }
-  }
-
-  async function _prefetchUkuleleData() {
-    const chords = _displayChords();
-    if (!chords) return;
-    const names = [...new Set(chords.map(c => c.chord))];
-    const key = _currentKey();
-    await Promise.all(names.map(async (name) => {
-      try {
-        if (!_ukuleleVoicingsCache[name])
-          _ukuleleVoicingsCache[name] = await API.chordVoicings("ukulele", name);
-      } catch {}
-      try {
-        if (!_ukuleleAnalysisCache[name])
-          _ukuleleAnalysisCache[name] = await API.chordAnalysis(key, name);
-      } catch {}
-    }));
-    _updateUkuleleTab(audio.currentTime || 0);
-  }
-
-  // Ukulele timeline removed — unified ribbon replaces it
-
-  function _renderUkuleleFretboard(chordName, voicingIdx) {
-    const canvas = $("#ukuleleVerticalFretboard");
-    const nameEl = $("#ukChordName");
-    const intervalsEl = null;
-    const fingeringEl = null;
-    const notesEl = null;
-    const typeEl = $("#ukType");
-    const voicingRow = $("#ukVoicingRow");
-
-    if (!canvas) return;
-
-    const voicingsData = _ukuleleVoicingsCache[chordName];
-    const voicings = voicingsData ? voicingsData.voicings : [];
-    const diagram = voicings[voicingIdx] || (chordCache[chordName] || {}).diagram_ukulele;
-
-    if (!diagram) {
-      if (nameEl) nameEl.textContent = chordName;
-      return;
-    }
-
-    if (nameEl) nameEl.textContent = chordName;
-
-    const cache = chordCache[chordName] || {};
-    if (intervalsEl && cache.notes) {
-      intervalsEl.textContent = cache.notes.join("  ");
-    }
-
-    const rootNote = cache.notes ? cache.notes[0] : null;
-    let rootClean = rootNote;
-    if (rootClean && rootClean.length > 1 && rootClean[1] === "b") {
-      const fb = { Db:"C#", Eb:"D#", Gb:"F#", Ab:"G#", Bb:"A#" };
-      rootClean = fb[rootClean] || rootClean;
-    }
-
-    // Draw vertical fretboard with next chord ghost
-    let nextDiag = null;
-    const chords = _displayChords();
-    if (chords && _ukuleleActiveIdx >= 0 && _ukuleleActiveIdx < chords.length - 1) {
-      const nextName = chords[_ukuleleActiveIdx + 1].chord;
-      const nv = _ukuleleVoicingsCache[nextName];
-      const nd = (nv ? nv.voicings[0] : null) || (chordCache[nextName] || {}).diagram_ukulele;
-      if (nd) nextDiag = { ...nd, numStrings: 4, name: nextName };
-    }
-
-    ChordRender.drawVerticalFretboard(canvas, {
-      ...diagram,
-      numStrings: 4,
-      _stringLabels: UK_STRING_LABELS,
-    }, {
-      canvasW: canvas.clientWidth,
-      canvasH: canvas.clientHeight,
-      nextData: nextDiag,
-    });
-
-    // Voicing pills
-    if (voicingRow) {
-      voicingRow.innerHTML = '';
-      if (voicings.length > 1) {
-        voicings.forEach((v, idx) => {
-          const btn = document.createElement("button");
-          btn.className = "gt-voicing-btn" + (idx === voicingIdx ? " active" : "");
-          btn.textContent = String.fromCodePoint(0x2460 + idx);
-          btn.title = v.label || `把位 ${idx + 1}`;
-          btn.addEventListener("click", () => {
-            _ukuleleVoicingIdx = idx;
-            _renderUkuleleFretboard(chordName, idx);
-          });
-          voicingRow.appendChild(btn);
-        });
-      }
-    }
-  }
-
-  function _updateUkuleleTab(currentTime) {
-    if (activeTab !== "ukulele" || !_ukuleleInitialized) return;
-
-    _drawRhWaterfall("#ukuleleRhWaterfall", currentTime, 4, _ukuleleVoicingsCache, "ukulele");
-
-    const chords = _displayChords();
-    if (!chords) return;
-
-    let activeIdx = -1;
-    for (let i = chords.length - 1; i >= 0; i--) {
-      if (currentTime >= chords[i].time) { activeIdx = i; break; }
-    }
-
-    // Blink ghost near chord change
-    const nextChordTime = (activeIdx >= 0 && activeIdx < chords.length - 1) ? chords[activeIdx + 1].time : null;
-    const countdown = nextChordTime != null ? nextChordTime - currentTime : 99;
-    if (countdown < 2.0 && activeIdx >= 0) {
-      _renderUkuleleFretboardAnimated(chords[activeIdx].chord, _ukuleleVoicingIdx, countdown);
-    }
-
-    if (activeIdx === _ukuleleActiveIdx) return;
-    _ukuleleActiveIdx = activeIdx;
-    _ukuleleVoicingIdx = 0;
-
-    if (activeIdx < 0 || activeIdx >= chords.length) return;
-    _renderUkuleleFretboard(chords[activeIdx].chord, 0);
-  }
+  InstrumentRegistry.register("guitar",  new StringInstrument(GUITAR_CONFIG,  _playerBridge));
+  InstrumentRegistry.register("ukulele", new StringInstrument(UKULELE_CONFIG, _playerBridge));
 
 })();
 
