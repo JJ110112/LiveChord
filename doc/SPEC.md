@@ -177,6 +177,7 @@
 | 鍵盤樂器 | 配色 | LH=cyan `rgba(41,182,246)` / RH=orange `rgba(255,152,0)` |
 | 鍵盤樂器 | `fingeringMap` | 鍵盤底部圓圈指法數字，支援 upcoming 脈動預覽 |
 | 鍵盤樂器 | 瀑布流 | velocity-responsive 配色、contact flash、articulation 標記 |
+| 鍵盤樂器 | `_drawAITeacherHUD()` | 即時教學提示 (力度/和弦切換/黑鍵群/踏板)，透過 bridge 共用 |
 | 弦樂器 (Guitar, Ukulele) | `StringInstrument` | 共用指板 + 右手瀑布流基底類別 |
 | 弦樂器 | `arpeggio-patterns.js` | 共用右手撥弦/刷弦模式庫 |
 | 所有樂器 | `InstrumentRegistry` | register/get/list 統一管理，`needsDiagram()` |

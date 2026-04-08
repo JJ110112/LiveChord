@@ -377,6 +377,7 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 | AR-12 | 記憶分頁恢復 | 上次使用編曲琴→回首頁→開新歌→面板正常顯示 | ☐ |
 | AR-13 | Canvas DPI 適配 | 高 DPI 螢幕瀑布流與鍵盤不模糊 | ☐ |
 | AR-14 | 響應式佈局 | 視窗縮放後瀑布流與鍵盤重新計算尺寸，比例正確 | ☐ |
+| AR-15 | AI 教學提示 | 瀑布流右下角顯示 AI Teacher HUD (力度/和弦/黑鍵提示)，與鋼琴 tab 共用 | ☐ |
 
 ### 4.8 樂器一致性測試 (Instrument Consistency)
 

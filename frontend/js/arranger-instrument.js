@@ -434,6 +434,4 @@ class ArrangerInstrument {
       ctx.setLineDash([]);
     }
   }
-
-}
 }
