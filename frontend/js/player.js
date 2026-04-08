@@ -2038,13 +2038,7 @@
   const btnPrev = $("#btnPrev");
   if (btnPrev) {
     btnPrev.addEventListener("click", () => {
-      if (!audio.paused) {
-        // Playing: rewind to start
-        _rewindToStart();
-      } else {
-        // Stopped: previous song
-        _navPrev();
-      }
+      _rewindToStart();
     });
   }
 
