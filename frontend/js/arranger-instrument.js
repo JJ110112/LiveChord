@@ -213,17 +213,21 @@ class ArrangerInstrument {
 
   _drawUnifiedWaterfall(currentTime) {
     const canvas = this._wfCanvas;
-    if (!canvas) return;
-    const W = canvas.clientWidth;
-    const H = canvas.clientHeight;
+    if (!canvas || !canvas.parentElement) return;
+    // Read size from parent to avoid canvas intrinsic-size feedback loop
+    const W = canvas.parentElement.clientWidth;
+    const H = canvas.clientHeight || canvas.parentElement.clientHeight;
     if (W < 10 || H < 30) return;
 
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.round(W * dpr);
-    canvas.height = Math.round(H * dpr);
-    canvas.style.width = W + "px";
-    canvas.style.height = H + "px";
+    if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+      canvas.style.width = W + "px";
+      canvas.style.height = H + "px";
+    }
     const ctx = canvas.getContext("2d");
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, W, H);
 
@@ -454,8 +458,8 @@ class ArrangerInstrument {
 
   _drawKeyboard(currentTime) {
     const canvas = this._kbCanvas;
-    if (!canvas) return;
-    const W = canvas.clientWidth || (canvas.parentElement ? canvas.parentElement.clientWidth : 0);
+    if (!canvas || !canvas.parentElement) return;
+    const W = canvas.parentElement.clientWidth;
     if (W < 10) return;
     const dpr = window.devicePixelRatio || 1;
     const ChordRender = this._b.ChordRender;
