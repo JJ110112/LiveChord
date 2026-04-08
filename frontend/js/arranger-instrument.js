@@ -138,7 +138,8 @@ class ArrangerInstrument {
     const splitKey = cache.whiteXs[this._splitPoint] || cache.blackXs[this._splitPoint];
     if (!splitKey) return false;
     const sx = splitKey.x + splitKey.w;
-    return Math.abs(x - sx) < 15 && y < 20;
+    // Wide hit area: ±20px horizontal, top 30px of keyboard
+    return Math.abs(x - sx) < 20 && y < 30;
   }
 
   _onSplitDragStart(e) {
@@ -168,7 +169,9 @@ class ArrangerInstrument {
       this._kbCanvas.style.cursor = "grabbing";
     } else {
       // Show grab cursor when hovering near the arrow
-      this._kbCanvas.style.cursor = this._isNearSplitArrow(pt.clientX, pt.clientY) ? "grab" : "default";
+      const near = this._isNearSplitArrow(pt.clientX, pt.clientY);
+      this._hoverSplit = near;
+      this._kbCanvas.style.cursor = near ? "grab" : "default";
     }
   }
 
@@ -481,21 +484,22 @@ class ArrangerInstrument {
       const sx = splitKey.x + splitKey.w;
       const arrowW = 10;
       const arrowH = 14;
-      // Draw filled red triangle pointing down
-      ctx.fillStyle = this._draggingSplit ? "rgba(255, 60, 60, 1)" : "rgba(255, 80, 80, 0.85)";
+      // Draw filled red triangle pointing down (hover=brighter, drag=brightest)
+      const arrowColor = this._draggingSplit ? "rgba(255, 50, 50, 1)"
+        : this._hoverSplit ? "rgba(255, 70, 70, 0.95)"
+        : "rgba(255, 80, 80, 0.65)";
+      ctx.fillStyle = arrowColor;
+      if (this._draggingSplit || this._hoverSplit) {
+        ctx.shadowColor = "rgba(255, 50, 50, 0.6)";
+        ctx.shadowBlur = 8;
+      }
       ctx.beginPath();
       ctx.moveTo(sx - arrowW, 0);
       ctx.lineTo(sx + arrowW, 0);
       ctx.lineTo(sx, arrowH);
       ctx.closePath();
       ctx.fill();
-      // Thin line extending from arrow tip to bottom of keys
-      ctx.strokeStyle = "rgba(255, 80, 80, 0.3)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(sx, arrowH);
-      ctx.lineTo(sx, cache.keyH + cache.bevelH);
-      ctx.stroke();
+      ctx.shadowBlur = 0;
     }
   }
 }
