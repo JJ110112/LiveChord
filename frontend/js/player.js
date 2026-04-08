@@ -3046,6 +3046,7 @@
     getAccData: () => accData,
     getMelodyData: () => melodyData,
     getActiveTab: () => activeTab,
+    drawAITeacherHUD: _drawAITeacherHUD,
     API,
     ChordRender,
   };

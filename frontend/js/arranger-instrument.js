@@ -374,6 +374,13 @@ class ArrangerInstrument {
     this._activeLh = activeLh;
     this._activeRh = activeRh;
     this._fingeringMap = fingeringMap;
+
+    // AI Teacher HUD (shared with piano tab)
+    if (this._b.drawAITeacherHUD) {
+      const lookAhead = 4.0;
+      const pxPerSec = H / lookAhead;
+      this._b.drawAITeacherHUD(ctx, W, H, currentTime, allEvents, pxPerSec);
+    }
   }
 
   /* ======================================================================
