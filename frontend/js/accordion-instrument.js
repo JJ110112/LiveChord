@@ -287,15 +287,15 @@ class AccordionInstrument {
     const stepIsChord = (step === "C");
     const stepIsAlt = (step === "Ab");
 
-    // Column headers with finger colors
+    // Column headers with finger colors — positioned just above the first button row
     ctx.font = "bold 11px sans-serif";
     ctx.textAlign = "center";
-    ctx.textBaseline = "top";
+    ctx.textBaseline = "bottom";
     for (let d = 0; d < nTypes; d++) {
       const row = D2R[d];
       const finger = RFINGER[row];
       ctx.fillStyle = FCLR[finger];
-      ctx.fillText(DLABELS[d], gridLeft + (d + 0.5) * colW, 2);
+      ctx.fillText(DLABELS[d], gridLeft + (d + 0.5) * colW, padTop + headerH - 2);
     }
 
     // Draw buttons
