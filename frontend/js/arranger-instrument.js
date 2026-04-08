@@ -7,7 +7,7 @@
  *   - Split point indicator on keyboard + waterfall
  *   - Full 61-key range: C1 (MIDI 36) ~ C6 (MIDI 96)
  *
- * Split point default: F#2 (MIDI 54 in Yamaha octave where C3=middle C).
+ * Split point default: G#3 (MIDI 56 in Yamaha octave where C3=middle C).
  */
 class ArrangerInstrument {
   constructor(config, bridge) {
@@ -18,7 +18,7 @@ class ArrangerInstrument {
     this._cache = {};          // chord name -> arranger voicing from API
     // Migration: clear stale split value from old versions
     const storedSplit = localStorage.getItem("livechord_arranger_split");
-    if (storedSplit && parseInt(storedSplit) < 56) {
+    if (storedSplit && parseInt(storedSplit) < 48) {
       localStorage.removeItem("livechord_arranger_split");
     }
     this._splitPoint = parseInt(localStorage.getItem("livechord_arranger_split") || "56");
@@ -76,11 +76,28 @@ class ArrangerInstrument {
       kb.addEventListener("mousedown", (e) => this._onSplitDragStart(e));
       kb.addEventListener("mousemove", (e) => this._onSplitDragMove(e));
       kb.addEventListener("mouseup", () => this._onSplitDragEnd());
-      kb.addEventListener("mouseleave", () => this._onSplitDragEnd());
+      kb.addEventListener("mouseleave", () => {
+        if (!this._draggingSplit) {
+          this._hoverSplit = false;
+          this._kbCanvas.style.cursor = "default";
+        }
+      });
       // Touch support
       kb.addEventListener("touchstart", (e) => this._onSplitDragStart(e), { passive: false });
       kb.addEventListener("touchmove", (e) => this._onSplitDragMove(e), { passive: false });
       kb.addEventListener("touchend", () => this._onSplitDragEnd());
+    }
+
+    // ResizeObserver: re-render when flex layout changes canvas dimensions
+    // (e.g. keyboard canvas sizing itself changes waterfall height)
+    if (this._wfCanvas && !this._wfCanvas._arrResizeObs) {
+      const ro = new ResizeObserver(() => {
+        if (this._b.getActiveTab() !== this._config.id) return;
+        const t = this._b.getAudio().currentTime || 0;
+        this.update(t);
+      });
+      ro.observe(this._wfCanvas);
+      this._wfCanvas._arrResizeObs = ro;
     }
 
     this.prefetchData();
@@ -152,6 +169,11 @@ class ArrangerInstrument {
     if (this._isNearSplitArrow(pt.clientX, pt.clientY)) {
       this._draggingSplit = true;
       if (e.preventDefault) e.preventDefault();
+      // Attach to window so drag continues outside canvas
+      this._windowMoveHandler = (ev) => this._onSplitDragMove(ev);
+      this._windowUpHandler = () => this._onSplitDragEnd();
+      window.addEventListener("mousemove", this._windowMoveHandler);
+      window.addEventListener("mouseup", this._windowUpHandler);
     }
   }
 
@@ -184,6 +206,13 @@ class ArrangerInstrument {
     if (this._draggingSplit) {
       this._draggingSplit = false;
       this._kbCanvas.style.cursor = "default";
+      // Remove window-level drag listeners
+      if (this._windowMoveHandler) {
+        window.removeEventListener("mousemove", this._windowMoveHandler);
+        window.removeEventListener("mouseup", this._windowUpHandler);
+        this._windowMoveHandler = null;
+        this._windowUpHandler = null;
+      }
     }
   }
 
@@ -223,8 +252,6 @@ class ArrangerInstrument {
     if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
       canvas.width = Math.round(W * dpr);
       canvas.height = Math.round(H * dpr);
-      canvas.style.width = W + "px";
-      canvas.style.height = H + "px";
     }
     const ctx = canvas.getContext("2d");
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -487,6 +514,8 @@ class ArrangerInstrument {
 
     // Split point: red downward arrow at top of keyboard (draggable)
     const ctx = canvas.getContext("2d");
+    // Re-apply DPI scaling — draw88Piano resets ctx.setTransform to identity
+    ctx.scale(dpr, dpr);
     const splitMidi = this._splitPoint;
     const splitKey = cache.whiteXs[splitMidi] || cache.blackXs[splitMidi];
     if (splitKey) {

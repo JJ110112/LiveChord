@@ -711,6 +711,19 @@ AI 的每次提交必須附上兩種清單：
 - **兩邊必須是同一份檔案**，不可各自維護不同版本
 - `cp` 整份檔案比 `Edit` 兩邊更安全
 
+### 規則 10：Canvas 尺寸必須跟隨佈局 (Canvas Buffer ↔ Flex Sync)
+
+- **問題根源**：`requestAnimationFrame` 動畫迴圈只在播放中運行（`!audio.paused`），暫停時 Canvas buffer 不會自動更新。若 flex 佈局在初始化後改變（例如鍵盤 canvas 設定高度導致瀑布流 canvas 縮小），buffer 尺寸與顯示尺寸不一致 → 文字/音符放大或壓縮。
+- **解決方案**：對需要動態調整的 canvas 使用 `ResizeObserver`，在尺寸改變時觸發重繪
+  ```javascript
+  // 範例：arranger 瀑布流 canvas
+  const ro = new ResizeObserver(() => this.update(audio.currentTime || 0));
+  ro.observe(waterfallCanvas);
+  ```
+- **禁止**依賴 `canvas.style.width/height` 控制 flex 子元素尺寸 — 讓 CSS `flex` 規則控制顯示大小，JS 只設 `canvas.width/height`（buffer 像素數）
+- **範例**：鋼琴瀑布流 `_resizeWaterfall()` 只設 `canvas.width = w * dpr`，不設 `canvas.style.height`
+- **來源**：2026-04-08 arranger 編曲鍵盤初次載入文字放大 bug — `update()` 只在 `init()` 時執行一次，後續 flex 重排未觸發重繪
+
 ---
 
 ## 15. 版本歷史
@@ -729,3 +742,4 @@ AI 的每次提交必須附上兩種清單：
 | 3.6 | 2026-04-05 | 新增 K-12 擬真鍵盤渲染、CS-12 升降號和弦圖完整性；補齊烏克麗麗 C#/Db/D#/G#/A# 和弦 |
 | 3.7 | 2026-04-08 | 新增手風琴 (Accordion) 樂器：21鍵 Stradella 低音教學面板 + 瀑布流；新增 §4.6 AC-01~AC-12 測試項目；修復樂器記憶分頁恢復空白面板 bug（初始化順序問題） |
 | 3.8 | 2026-04-08 | 新增編曲鍵盤 (Arranger) 樂器：PSR-SX900 Fingered 和弦教學 + 統一瀑布流；新增 §4.7 AR-01~AR-14 測試項目；新增 §4.8 IC-01~IC-08 樂器一致性測試；SPEC.md 新增樂器架構共用原則 |
+| 3.9 | 2026-04-08 | 修復 arranger 瀑布流文字放大 bug：ResizeObserver 同步 canvas buffer 與 flex 佈局；修復分割點拖拽（window 事件監聽）；修復 DPI 縮放；新增規則 10 Canvas Buffer ↔ Flex Sync |

@@ -81,9 +81,14 @@
     // Unwrap existing marquee-inner
     const existing = el.querySelector(".marquee-inner");
     if (existing) el.textContent = existing.firstChild.textContent;
-    // Check if text overflows
-    requestAnimationFrame(() => {
-      if (el.scrollWidth > el.clientWidth + 2) {
+    // Check if text overflows (double RAF ensures layout is settled)
+    requestAnimationFrame(() => { requestAnimationFrame(() => {
+      // Temporarily set overflow:auto — some browsers report
+      // scrollWidth === clientWidth when overflow:hidden is active
+      el.style.overflow = "auto";
+      const overflows = el.scrollWidth > el.clientWidth;
+      el.style.overflow = "";
+      if (overflows) {
         const text = el.textContent;
         el.textContent = "";
         // Two copies for seamless loop: [text   text   ] scrolls -50%
@@ -100,7 +105,7 @@
         const dur = Math.max(8, span.scrollWidth / 50);
         el.style.setProperty("--marquee-dur", dur + "s");
       }
-    });
+    }); });
   }
 
   function _updateCapoVisibility() {
