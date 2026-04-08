@@ -103,7 +103,9 @@ class ArrangerInstrument {
     localStorage.setItem("livechord_arranger_split", String(val));
     this._cache = {};
     this._pianoCache = null;
+    this._kbCache = null;
     this._lastWidth = 0;
+    this._lastKbWidth = 0;
     this._activeChordName = null;
     this.prefetchData();
     requestAnimationFrame(() => this.update(this._b.getAudio().currentTime || 0));
@@ -375,8 +377,8 @@ class ArrangerInstrument {
     this._activeRh = activeRh;
     this._fingeringMap = fingeringMap;
 
-    // AI Teacher HUD (shared with piano tab)
-    if (this._b.drawAITeacherHUD) {
+    // AI Teacher HUD (shared with piano tab) — skip if canvas too small
+    if (this._b.drawAITeacherHUD && H > 100) {
       const lookAhead = 4.0;
       const pxPerSec = H / lookAhead;
       this._b.drawAITeacherHUD(ctx, W, H, currentTime, allEvents, pxPerSec);
@@ -393,22 +395,21 @@ class ArrangerInstrument {
     const W = canvas.clientWidth || (canvas.parentElement ? canvas.parentElement.clientWidth : 0);
     if (W < 10) return;
     const dpr = window.devicePixelRatio || 1;
-
-    // Ensure cache
     const ChordRender = this._b.ChordRender;
-    if (!this._pianoCache || Math.abs(this._lastWidth - W) > 2) {
-      this._pianoCache = ChordRender.initRangePianoCache(W, dpr,
+
+    // Keyboard needs its own cache at its own width (may differ from waterfall)
+    if (!this._kbCache || Math.abs(this._lastKbWidth - W) > 2) {
+      this._kbCache = ChordRender.initRangePianoCache(W, dpr,
         ArrangerInstrument.MIDI_LOW, ArrangerInstrument.MIDI_HIGH);
-      this._lastWidth = W;
+      this._lastKbWidth = W;
     }
-    const cache = this._pianoCache;
+    const cache = this._kbCache;
     const pianoH = cache.totalH;
 
-    // Set canvas style height to match piano cache
     canvas.style.width = W + "px";
     canvas.style.height = pianoH + "px";
 
-    // Use draw88Piano for proper 3-pass rendering (white hl → black redraw → black hl)
+    // Use draw88Piano for proper 3-pass rendering
     const activeLh = [...(this._activeLh || [])];
     const activeRh = [...(this._activeRh || [])];
     const fMap = this._fingeringMap || {};
@@ -417,9 +418,8 @@ class ArrangerInstrument {
       now: this._b.getAudio().currentTime || 0,
     });
 
-    // Split point marker on keyboard (drawn after draw88Piano)
+    // Split point dashed line on keyboard
     const ctx = canvas.getContext("2d");
-    // draw88Piano already called ctx.scale(dpr, dpr), continue in that coordinate space
     const splitMidi = this._splitPoint;
     const splitKey = cache.whiteXs[splitMidi] || cache.blackXs[splitMidi];
     if (splitKey) {
