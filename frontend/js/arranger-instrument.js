@@ -54,17 +54,29 @@ class ArrangerInstrument {
     const sel = this._config.selectors;
     this._wfCanvas = document.querySelector(sel.waterfallCanvas);
     this._kbCanvas = document.querySelector(sel.keyboardCanvas);
-    this._splitSelect = document.querySelector(sel.splitPointSelect);
-
-    if (this._splitSelect) {
-      this._splitSelect.value = String(this._splitPoint);
-      this._splitSelect.onchange = () => this._onSplitChange();
-    }
 
     this._activeIdx = -1;
     this._activeChordName = null;
     this._pianoCache = null;
+    this._kbCache = null;
     this._lastWidth = 0;
+    this._lastKbWidth = 0;
+    this._draggingSplit = false;
+
+    // Set up drag handlers on keyboard canvas (only once)
+    if (this._kbCanvas && !this._kbCanvas._arrDragBound) {
+      this._kbCanvas._arrDragBound = true;
+      const kb = this._kbCanvas;
+      kb.style.cursor = "default";
+      kb.addEventListener("mousedown", (e) => this._onSplitDragStart(e));
+      kb.addEventListener("mousemove", (e) => this._onSplitDragMove(e));
+      kb.addEventListener("mouseup", () => this._onSplitDragEnd());
+      kb.addEventListener("mouseleave", () => this._onSplitDragEnd());
+      // Touch support
+      kb.addEventListener("touchstart", (e) => this._onSplitDragStart(e), { passive: false });
+      kb.addEventListener("touchmove", (e) => this._onSplitDragMove(e), { passive: false });
+      kb.addEventListener("touchend", () => this._onSplitDragEnd());
+    }
 
     this.prefetchData();
     requestAnimationFrame(() => {
@@ -96,19 +108,75 @@ class ArrangerInstrument {
     return this._cache[chordName + ":" + this._splitPoint] || null;
   }
 
-  _onSplitChange() {
-    const val = parseInt(this._splitSelect.value);
-    if (isNaN(val)) return;
-    this._splitPoint = val;
-    localStorage.setItem("livechord_arranger_split", String(val));
-    this._cache = {};
-    this._pianoCache = null;
-    this._kbCache = null;
-    this._lastWidth = 0;
-    this._lastKbWidth = 0;
-    this._activeChordName = null;
-    this.prefetchData();
-    requestAnimationFrame(() => this.update(this._b.getAudio().currentTime || 0));
+  /* ---- Split point drag on keyboard ---- */
+
+  _splitFromX(clientX) {
+    const cache = this._kbCache;
+    if (!cache) return this._splitPoint;
+    const rect = this._kbCanvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    // Find the nearest key boundary
+    let bestMidi = this._splitPoint;
+    let bestDist = Infinity;
+    const checkKey = (midi, ki) => {
+      const rightEdge = ki.x + ki.w;
+      const d = Math.abs(x - rightEdge);
+      if (d < bestDist) { bestDist = d; bestMidi = parseInt(midi); }
+    };
+    for (const m in cache.whiteXs) checkKey(m, cache.whiteXs[m]);
+    for (const m in cache.blackXs) checkKey(m, cache.blackXs[m]);
+    // Clamp to valid range (C2=48 ~ C3=60 Yamaha)
+    return Math.max(48, Math.min(60, bestMidi));
+  }
+
+  _isNearSplitArrow(clientX, clientY) {
+    const cache = this._kbCache;
+    if (!cache) return false;
+    const rect = this._kbCanvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const splitKey = cache.whiteXs[this._splitPoint] || cache.blackXs[this._splitPoint];
+    if (!splitKey) return false;
+    const sx = splitKey.x + splitKey.w;
+    return Math.abs(x - sx) < 15 && y < 20;
+  }
+
+  _onSplitDragStart(e) {
+    const pt = e.touches ? e.touches[0] : e;
+    if (this._isNearSplitArrow(pt.clientX, pt.clientY)) {
+      this._draggingSplit = true;
+      if (e.preventDefault) e.preventDefault();
+    }
+  }
+
+  _onSplitDragMove(e) {
+    const pt = e.touches ? e.touches[0] : e;
+    if (this._draggingSplit) {
+      if (e.preventDefault) e.preventDefault();
+      const newSplit = this._splitFromX(pt.clientX);
+      if (newSplit !== this._splitPoint) {
+        this._splitPoint = newSplit;
+        localStorage.setItem("livechord_arranger_split", String(newSplit));
+        this._cache = {};
+        this._pianoCache = null;
+        this._kbCache = null;
+        this._lastWidth = 0;
+        this._lastKbWidth = 0;
+        this._activeChordName = null;
+        this.prefetchData();
+      }
+      this._kbCanvas.style.cursor = "grabbing";
+    } else {
+      // Show grab cursor when hovering near the arrow
+      this._kbCanvas.style.cursor = this._isNearSplitArrow(pt.clientX, pt.clientY) ? "grab" : "default";
+    }
+  }
+
+  _onSplitDragEnd() {
+    if (this._draggingSplit) {
+      this._draggingSplit = false;
+      this._kbCanvas.style.cursor = "default";
+    }
   }
 
   /* ---- Main update (called every frame) ---- */
@@ -177,20 +245,7 @@ class ArrangerInstrument {
     }
     ctx.stroke();
 
-    // Split point vertical line in waterfall
     const splitMidi = this._splitPoint;
-    const splitKeyInfo = cache.whiteXs[splitMidi] || cache.blackXs[splitMidi];
-    if (splitKeyInfo) {
-      const sx = splitKeyInfo.x + splitKeyInfo.w;
-      ctx.strokeStyle = "rgba(255, 80, 80, 0.35)";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 4]);
-      ctx.beginPath();
-      ctx.moveTo(sx, 0);
-      ctx.lineTo(sx, H);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
 
     // Time grid
     const lookAhead = 4.0;
@@ -418,20 +473,29 @@ class ArrangerInstrument {
       now: this._b.getAudio().currentTime || 0,
     });
 
-    // Split point dashed line on keyboard
+    // Split point: red downward arrow at top of keyboard (draggable)
     const ctx = canvas.getContext("2d");
     const splitMidi = this._splitPoint;
     const splitKey = cache.whiteXs[splitMidi] || cache.blackXs[splitMidi];
     if (splitKey) {
       const sx = splitKey.x + splitKey.w;
-      ctx.strokeStyle = "rgba(255, 80, 80, 0.5)";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 4]);
+      const arrowW = 10;
+      const arrowH = 14;
+      // Draw filled red triangle pointing down
+      ctx.fillStyle = this._draggingSplit ? "rgba(255, 60, 60, 1)" : "rgba(255, 80, 80, 0.85)";
       ctx.beginPath();
-      ctx.moveTo(sx, 0);
+      ctx.moveTo(sx - arrowW, 0);
+      ctx.lineTo(sx + arrowW, 0);
+      ctx.lineTo(sx, arrowH);
+      ctx.closePath();
+      ctx.fill();
+      // Thin line extending from arrow tip to bottom of keys
+      ctx.strokeStyle = "rgba(255, 80, 80, 0.3)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(sx, arrowH);
       ctx.lineTo(sx, cache.keyH + cache.bevelH);
       ctx.stroke();
-      ctx.setLineDash([]);
     }
   }
 }

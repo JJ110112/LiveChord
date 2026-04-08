@@ -3111,7 +3111,6 @@
       container: "#chordDisplayArranger",
       waterfallCanvas: "#arrangerWaterfall",
       keyboardCanvas: "#arrangerKeyboard",
-      splitPointSelect: "#arrSplitPointSelect",
     },
   };
   InstrumentRegistry.register("arranger", new ArrangerInstrument(ARRANGER_CONFIG, _playerBridge));
