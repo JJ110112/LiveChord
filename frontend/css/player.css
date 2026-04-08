@@ -723,48 +723,27 @@
   display: flex;
   flex-direction: column;
 }
-.arr-teaching-layout {
+.arr-unified-layout {
   display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
-}
-.arr-left-panel {
-  flex: 0 0 35%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 6px 8px;
-  min-width: 0;
+  position: relative;
   overflow: hidden;
 }
-.arr-right-panel {
+.arr-waterfall-canvas {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 6px 8px;
-  min-width: 0;
-  overflow: hidden;
-  position: relative;
-}
-.arr-chord-name-row {
-  position: relative;
-  text-align: center;
   width: 100%;
-  flex-shrink: 0;
-  margin-bottom: 2px;
+  min-height: 0;
 }
-.arr-main-chord-name {
-  font-size: 22px;
-  font-weight: bold;
-  color: #fff;
-  text-shadow: 0 0 8px rgba(100,180,255,0.3);
+.arr-keyboard-canvas {
+  flex-shrink: 0;
+  width: 100%;
 }
 .arr-split-select {
   position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 6px;
+  right: 8px;
   background: rgba(30,30,40,0.85);
   color: #ccc;
   border: 1px solid rgba(255,255,255,0.15);
@@ -773,24 +752,15 @@
   font-size: 11px;
   outline: none;
   cursor: pointer;
+  z-index: 2;
 }
-.arr-finger-legend {
-  display: flex;
-  gap: 8px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 0;
-  flex-shrink: 0;
-}
-#arrangerChordInput {
-  flex: 1;
-  width: 100%;
-  min-height: 0;
-}
-#arrangerMelodyWaterfall {
-  flex: 1;
-  width: 100%;
-  min-height: 0;
+.arr-hint {
+  position: absolute;
+  bottom: 4px;
+  right: 8px;
+  font-size: 10px;
+  color: rgba(255,255,255,0.35);
+  z-index: 2;
 }
 /* ========== [END: ARRANGER KEYBOARD TAB] ========== */
 

@@ -3108,11 +3108,9 @@
     id: "arranger",
     selectors: {
       container: "#chordDisplayArranger",
-      chordInputCanvas: "#arrangerChordInput",
-      waterfallCanvas: "#arrangerMelodyWaterfall",
-      chordName: "#arrChordName",
+      waterfallCanvas: "#arrangerWaterfall",
+      keyboardCanvas: "#arrangerKeyboard",
       lhHint: "#arrLhHint",
-      rhHint: "#arrRhHint",
       splitPointSelect: "#arrSplitPointSelect",
     },
   };
