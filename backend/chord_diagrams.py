@@ -554,6 +554,133 @@ for _root in _ACC_COLS:
             ACCORDION_BASS_MAP[_name] = _res
 
 
+# ---------------------------------------------------------------------------
+# Arranger keyboard: Fingered chord input (Yamaha PSR-SX900 style)
+# Left hand presses 3-4 keys below the split point to input a chord.
+# The lowest note = root; interval pattern determines chord quality.
+# ---------------------------------------------------------------------------
+_ARR_FINGERED_INTERVALS = {
+    # quality -> list of semitone offsets from root
+    "":        [0, 4, 7],           # Major
+    "m":       [0, 3, 7],           # Minor
+    "min":     [0, 3, 7],
+    "7":       [0, 4, 7, 10],       # Dominant 7th
+    "maj7":    [0, 4, 7, 11],       # Major 7th
+    "m7":      [0, 3, 7, 10],       # Minor 7th
+    "min7":    [0, 3, 7, 10],
+    "dim":     [0, 3, 6],           # Diminished
+    "dim7":    [0, 3, 6, 9],        # Diminished 7th
+    "aug":     [0, 4, 8],           # Augmented
+    "sus4":    [0, 5, 7],           # Suspended 4th
+    "sus2":    [0, 2, 7],           # Suspended 2nd
+    "sus":     [0, 5, 7],
+    "6":       [0, 4, 7, 9],        # Major 6th
+    "m6":      [0, 3, 7, 9],        # Minor 6th
+    "add9":    [0, 2, 4, 7],        # Add 9th
+    "madd9":   [0, 2, 3, 7],        # Minor add 9th
+    "m7b5":    [0, 3, 6, 10],       # Half-diminished
+    "mM7":     [0, 3, 7, 11],       # Minor major 7th
+    "aug7":    [0, 4, 8, 10],       # Augmented 7th
+    "7sus4":   [0, 5, 7, 10],       # 7th sus4
+    "7sus2":   [0, 2, 7, 10],       # 7th sus2
+    # Extended chords: simplified to fit below split point
+    "9":       [0, 4, 7, 10],       # Dom 9th → omit 9th (same as 7)
+    "maj9":    [0, 4, 7, 11],       # Maj 9th → omit 9th (same as maj7)
+    "m9":      [0, 3, 7, 10],       # Min 9th → omit 9th (same as m7)
+    "11":      [0, 4, 7, 10],       # Dom 11th → simplified
+    "m11":     [0, 3, 7, 10],
+    "13":      [0, 4, 7, 10],
+    "7b9":     [0, 4, 7, 10],       # 7b9 → same as 7 (narrow range)
+    "7#9":     [0, 4, 7, 10],
+    "7#11":    [0, 4, 7, 10],
+    "7b5":     [0, 4, 6, 10],       # 7b5
+    "7#5":     [0, 4, 8, 10],       # 7#5
+    "mb5":     [0, 3, 6],           # = dim
+    "6/9":     [0, 4, 7, 9],        # 6/9 → same as 6
+}
+
+# LH fingering for block chords (low→high): pinky=5 ... thumb=1
+_ARR_FINGERING = {
+    3: [5, 3, 1],
+    4: [5, 3, 2, 1],
+    5: [5, 4, 3, 2, 1],
+}
+
+
+def _arranger_resolve(chord_name, split_point=54):
+    """Resolve chord to Fingered-mode MIDI notes below the split point.
+
+    Returns dict: midi_notes, root, quality, fingering, split_point,
+                  available, warning.
+    """
+    import re as _re
+    m = _re.match(r'^([A-G][b#]?)(.*)', chord_name)
+    if not m:
+        return None
+    root, suffix = m.group(1), m.group(2)
+
+    # Handle slash chords: use the main chord
+    if '/' in suffix:
+        suffix = suffix.split('/')[0]
+
+    # Look up interval template
+    intervals = _ARR_FINGERED_INTERVALS.get(suffix)
+    if intervals is None:
+        # Try simplification: strip trailing numbers, etc.
+        for try_q in [_re.sub(r'\d+$', '', suffix), _re.sub(r'(m?).*', r'\1', suffix), '']:
+            if try_q in _ARR_FINGERED_INTERVALS:
+                intervals = _ARR_FINGERED_INTERVALS[try_q]
+                break
+    if intervals is None:
+        intervals = _ARR_FINGERED_INTERVALS[""]  # fallback to major
+
+    # Compute root MIDI: place root in the lowest octave that fits in range
+    from chord_table import root_to_semitone
+    pc = root_to_semitone(root)  # 0-11, C=0
+    midi_low = 36  # C1 = lowest key on 61-key keyboard
+
+    # Find root octave: start from MIDI 36 upward
+    root_midi = midi_low + pc
+    if root_midi < midi_low:
+        root_midi += 12
+
+    # Build MIDI notes
+    midi_notes = [root_midi + iv for iv in intervals]
+
+    # Check if all notes fit at or below split point (split key belongs to LH)
+    warning = None
+    if any(n > split_point for n in midi_notes):
+        # Try lowering root by an octave
+        if root_midi - 12 >= midi_low:
+            root_midi -= 12
+            midi_notes = [root_midi + iv for iv in intervals]
+        # If still exceeding, truncate to notes at or below split
+        if any(n > split_point for n in midi_notes):
+            original_count = len(midi_notes)
+            midi_notes = [n for n in midi_notes if n <= split_point]
+            if len(midi_notes) < 3:
+                warning = f"分割點 {split_point} 太低，{chord_name} 按鍵不足 3 鍵"
+            elif len(midi_notes) < original_count:
+                warning = f"{chord_name} 部分音超出分割點，已省略"
+
+    # Ensure minimum 3 notes
+    available = len(midi_notes) >= 3
+
+    # Assign fingering
+    n = len(midi_notes)
+    fingering = _ARR_FINGERING.get(n, list(range(5, 5 - n, -1)))
+
+    return {
+        "midi_notes": midi_notes,
+        "root": root,
+        "quality": suffix or "major",
+        "fingering": fingering,
+        "split_point": split_point,
+        "available": available,
+        "warning": warning,
+    }
+
+
 # ---- 樂器 → 和弦資料映射 (新增樂器在此加一行) ----
 CHORD_DBS = {
     "guitar": GUITAR_CHORDS,
@@ -575,6 +702,13 @@ def get_chord_diagram(chord_name, instrument='guitar'):
     # Accordion uses dynamic resolution, not static fretboard lookup
     if instrument == "accordion":
         result = _acc_resolve(chord_name)
+        if result:
+            result["name"] = chord_name
+        return result
+
+    # Arranger: Fingered chord input below split point
+    if instrument == "arranger":
+        result = _arranger_resolve(chord_name)
         if result:
             result["name"] = chord_name
         return result
@@ -660,6 +794,14 @@ def get_chord_voicings(chord_name, instrument='guitar'):
     # Accordion has no voicing variants — return the single bass mapping
     if instrument == "accordion":
         result = _acc_resolve(chord_name)
+        if result:
+            result["name"] = chord_name
+            return [result]
+        return []
+
+    # Arranger has no voicing variants — single Fingered resolution
+    if instrument == "arranger":
+        result = _arranger_resolve(chord_name)
         if result:
             result["name"] = chord_name
             return [result]

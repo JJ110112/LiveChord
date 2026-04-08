@@ -196,6 +196,8 @@
     if (chordDisplayUkulele) chordDisplayUkulele.style.display = "none";
     const chordDisplayAccordion = $("#chordDisplayAccordion");
     if (chordDisplayAccordion) chordDisplayAccordion.style.display = "none";
+    const chordDisplayArranger = $("#chordDisplayArranger");
+    if (chordDisplayArranger) chordDisplayArranger.style.display = "none";
     // Update instrument button icon
     document.querySelectorAll("#tbInstrument .tb-popup-btn").forEach(b => b.classList.remove("active"));
   }
@@ -212,10 +214,11 @@
     if (tab === "guitar") displayMode = "guitar";
     else if (tab === "ukulele") displayMode = "ukulele";
     else if (tab === "accordion") displayMode = "accordion";
+    else if (tab === "arranger") displayMode = "arranger";
     else displayMode = "piano";
 
     // Update instrument trigger icon
-    const iconMap = { piano: "\u{1F3B9}", guitar: "\u{1F3B8}", ukulele: "\u{1FA95}", accordion: "\u{1FA97}" };
+    const iconMap = { piano: "\u{1F3B9}", guitar: "\u{1F3B8}", ukulele: "\u{1FA95}", accordion: "\u{1FA97}", arranger: "\u{1F3B9}" };
     const btnInstrument = $("#btnInstrument");
     if (btnInstrument) btnInstrument.textContent = iconMap[tab] || "\u2328";
     // Highlight active in popup
@@ -3100,6 +3103,20 @@
     },
   };
   InstrumentRegistry.register("accordion", new AccordionInstrument(ACCORDION_CONFIG, _playerBridge));
+
+  const ARRANGER_CONFIG = {
+    id: "arranger",
+    selectors: {
+      container: "#chordDisplayArranger",
+      chordInputCanvas: "#arrangerChordInput",
+      waterfallCanvas: "#arrangerMelodyWaterfall",
+      chordName: "#arrChordName",
+      lhHint: "#arrLhHint",
+      rhHint: "#arrRhHint",
+      splitPointSelect: "#arrSplitPointSelect",
+    },
+  };
+  InstrumentRegistry.register("arranger", new ArrangerInstrument(ARRANGER_CONFIG, _playerBridge));
 
 })();
 

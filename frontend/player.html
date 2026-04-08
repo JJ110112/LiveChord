@@ -196,6 +196,47 @@
         </div>
       </div>
 
+      <!-- Arranger Keyboard Tab -->
+      <div id="chordDisplayArranger" class="chord-arranger-tab" style="display:none">
+        <div class="arr-teaching-layout">
+          <!-- LEFT: Chord Input Zone (Left Hand) -->
+          <div class="arr-left-panel">
+            <div class="arr-chord-name-row">
+              <span id="arrChordName" class="arr-main-chord-name">--</span>
+              <select id="arrSplitPointSelect" class="arr-split-select" title="分割點 Split Point">
+                <option value="48">C2</option>
+                <option value="49">C#2</option>
+                <option value="50">D2</option>
+                <option value="51">D#2</option>
+                <option value="52">E2</option>
+                <option value="53">F2</option>
+                <option value="54" selected>F#2</option>
+                <option value="55">G2</option>
+                <option value="56">G#2</option>
+                <option value="57">A2</option>
+                <option value="58">A#2</option>
+                <option value="59">B2</option>
+                <option value="60">C3</option>
+              </select>
+            </div>
+            <canvas id="arrangerChordInput"></canvas>
+            <div class="arr-finger-legend">
+              <span class="gt-fl" style="color:#66bb6a">&#9316; 小指</span>
+              <span class="gt-fl" style="color:#ffeb3b">&#9314; 中指</span>
+              <span class="gt-fl" style="color:#ef5350">&#9312; 拇指</span>
+            </div>
+            <div id="arrLhHint" class="gt-panel-hint">左手：和弦輸入 (Fingered)</div>
+          </div>
+          <!-- MIDDLE: Line -->
+          <div class="gt-mid-line"></div>
+          <!-- RIGHT: Melody Waterfall (Right Hand) -->
+          <div class="arr-right-panel">
+            <canvas id="arrangerMelodyWaterfall"></canvas>
+            <div id="arrRhHint" class="gt-panel-hint">右手：旋律區</div>
+          </div>
+        </div>
+      </div>
+
     </div><!-- /instrumentPanel -->
   </div><!-- /chordDisplayScaleTarget -->
 
@@ -224,6 +265,7 @@
       <button class="tb-popup-btn" data-tab="guitar" title="Guitar 吉他">&#x1F3B8; 吉他</button>
       <button class="tb-popup-btn" data-tab="ukulele" title="Ukulele 烏克麗麗">&#x1FA95; 烏克</button>
       <button class="tb-popup-btn" data-tab="accordion" title="Accordion 手風琴">&#x1FA97; 手風琴</button>
+      <button class="tb-popup-btn" data-tab="arranger" title="Arranger 編曲鍵盤">&#x1F3B9; 編曲琴</button>
     </div>
   </div>
 
@@ -344,6 +386,7 @@
 <script src="/js/string-instrument.js?v=1"></script>
 <script src="/js/instrument-registry.js?v=1"></script>
 <script src="/js/accordion-instrument.js?v=1"></script>
+<script src="/js/arranger-instrument.js?v=1"></script>
 <script src="/js/midi-exporter.js?v=1"></script>
 <script src="/js/player.js?v=62"></script>
 </body>

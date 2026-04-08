@@ -683,8 +683,11 @@ const ChordRender = {
    * Accordion right-hand piano cache — F3 (MIDI 53) to C6 (MIDI 84).
    * 19 white keys, 13 black keys. Same 3D rendering as 88-key version.
    */
-  initAccordionPianoCache(width, dpr) {
-    const MIDI_LO = 53, MIDI_HI = 84;
+  /**
+   * Build an offscreen piano keyboard cache for a given MIDI range.
+   * Used by both accordion (53-84) and arranger (dynamic split).
+   */
+  initRangePianoCache(width, dpr, MIDI_LO, MIDI_HI) {
     const whites = [];
     for (let m = MIDI_LO; m <= MIDI_HI; m++) { if ([0,2,4,5,7,9,11].includes(m % 12)) whites.push(m); }
     const nw = whites.length; // 19
@@ -789,21 +792,18 @@ const ChordRender = {
     const whiteXs = {};
     for (let i = 0; i < nw; i++) whiteXs[whites[i]] = { x: i * kw, w: kw - 1, h: kh };
 
-    // Octave labels (C4, C5) + middle-C marker
+    // Octave labels (C2, C3, C4, C5, C6) for all C notes in range
     ctx.fillStyle = "#666";
     ctx.font = `${Math.max(9, Math.min(11, kw * 0.9))}px sans-serif`;
     ctx.textAlign = "center";
-    for (const oct of [4, 5]) {
+    for (let oct = 1; oct <= 8; oct++) {
       const midi = oct * 12 + 12;
       if (midi < MIDI_LO || midi > MIDI_HI) continue;
       const info = whiteXs[midi];
       if (!info) continue;
       ctx.fillText("C" + oct, info.x + (info.w / 2), kh + bevelH + 13);
     }
-    // C6 label
-    if (whiteXs[84]) {
-      ctx.fillText("C6", whiteXs[84].x + (whiteXs[84].w / 2), kh + bevelH + 13);
-    }
+    // Middle-C marker if in range
     const c4 = whiteXs[60];
     if (c4) {
       ctx.strokeStyle = "rgba(41, 182, 246, 0.6)";
@@ -814,7 +814,12 @@ const ChordRender = {
       ctx.stroke();
     }
 
-    return { canvas: c, whiteXs, blackXs, keyW: kw, keyH: kh, bKeyW: bw, bKeyH: bh, bevelH, totalH };
+    return { canvas: c, whiteXs, blackXs, keyW: kw, keyH: kh, bKeyW: bw, bKeyH: bh, bevelH, totalH, midiLo: MIDI_LO, midiHi: MIDI_HI };
+  },
+
+  /** Convenience: accordion piano cache (F3–C6) */
+  initAccordionPianoCache(width, dpr) {
+    return this.initRangePianoCache(width, dpr, 53, 84);
   },
 
   /**

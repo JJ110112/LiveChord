@@ -25,8 +25,12 @@ window.InstrumentRegistry = {
     return this._instruments[id] instanceof AccordionInstrument;
   },
 
+  isArranger(id) {
+    return this._instruments[id] instanceof ArrangerInstrument;
+  },
+
   /** Returns true for any instrument that needs chord diagram caching */
   needsDiagram(id) {
-    return this.isStringInstrument(id) || this.isAccordion(id);
+    return this.isStringInstrument(id) || this.isAccordion(id) || this.isArranger(id);
   },
 };

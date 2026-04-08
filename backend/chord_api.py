@@ -85,11 +85,17 @@ async def chord_info(name: str):
 
 
 @router.get("/chord/diagram/{instrument}/{name:path}")
-async def chord_diagram(instrument: str, name: str):
+async def chord_diagram(instrument: str, name: str, split: int = Query(None)):
     """取得和弦圖（吉他/烏克麗麗/...）"""
     if instrument not in list_instruments():
         raise HTTPException(status_code=400, detail=f"instrument 須為 {', '.join(list_instruments())}")
-    diagram = get_chord_diagram(name, instrument=instrument)
+    if instrument == "arranger" and split is not None:
+        from chord_diagrams import _arranger_resolve
+        diagram = _arranger_resolve(name, split_point=split)
+        if diagram:
+            diagram["name"] = name
+    else:
+        diagram = get_chord_diagram(name, instrument=instrument)
     if not diagram:
         raise HTTPException(status_code=404, detail=f"無 {instrument} 和弦圖: {name}")
     return diagram
@@ -104,6 +110,8 @@ def chord_voicings_api(instrument: str, name: str):
     inst_meta = get_instrument(instrument)
     if instrument == "accordion":
         return {"name": name, "type": "accordion", "voicings": voicings}
+    if instrument == "arranger":
+        return {"name": name, "type": "arranger", "voicings": voicings}
     num_strings = inst_meta.get("num_strings", 6) if inst_meta else 6
     return {"name": name, "numStrings": num_strings, "voicings": voicings}
 
