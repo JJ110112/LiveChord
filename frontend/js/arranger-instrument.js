@@ -16,13 +16,13 @@ class ArrangerInstrument {
     this._activeChordName = null;
     this._activeIdx = -1;
     this._cache = {};          // chord name -> arranger voicing from API
-    this._splitPoint = parseInt(localStorage.getItem("livechord_arranger_split") || "54");
+    this._splitPoint = parseInt(localStorage.getItem("livechord_arranger_split") || "56");
     this._pianoCache = null;   // offscreen keyboard cache (full 61-key range)
     this._lastWidth = 0;
   }
 
   /* ---- Constants ---- */
-  static DEFAULT_SPLIT = 54;   // F#2 (Yamaha: C3 = middle C = MIDI 60)
+  static DEFAULT_SPLIT = 56;   // G#3 (MIDI 56)
   static MIDI_LOW = 21;        // A0 (same as 88-key piano for consistent sizing)
   static MIDI_HIGH = 108;      // C8
 

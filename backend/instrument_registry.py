@@ -28,7 +28,7 @@ INSTRUMENTS = {
         "keys": 61,
         "midi_low": 36,
         "midi_high": 96,
-        "default_split": 54,       # F#2 in Yamaha octave (C3=middle C=MIDI 60)
+        "default_split": 56,       # G#3 (MIDI 56)
         "left_hand": "fingered_chord",
         "right_hand": "piano",
     },

@@ -607,7 +607,7 @@ _ARR_FINGERING = {
 }
 
 
-def _arranger_resolve(chord_name, split_point=54):
+def _arranger_resolve(chord_name, split_point=56):
     """Resolve chord to Fingered-mode MIDI notes below the split point.
 
     Returns dict: midi_notes, root, quality, fingering, split_point,
