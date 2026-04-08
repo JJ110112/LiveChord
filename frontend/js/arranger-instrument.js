@@ -16,6 +16,11 @@ class ArrangerInstrument {
     this._activeChordName = null;
     this._activeIdx = -1;
     this._cache = {};          // chord name -> arranger voicing from API
+    // Migration: clear stale split value from old versions
+    const storedSplit = localStorage.getItem("livechord_arranger_split");
+    if (storedSplit && parseInt(storedSplit) < 56) {
+      localStorage.removeItem("livechord_arranger_split");
+    }
     this._splitPoint = parseInt(localStorage.getItem("livechord_arranger_split") || "56");
     this._pianoCache = null;   // offscreen keyboard cache (full 61-key range)
     this._lastWidth = 0;
