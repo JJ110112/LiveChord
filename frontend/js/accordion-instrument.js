@@ -230,9 +230,9 @@ class AccordionInstrument {
     const areaW = W - padLeft - padRight;
     const areaH = H - padTop - padBot - headerH;
     const colW = areaW / nTypes;
-    const rowH = areaH / (nKeys + 0.5); // +0.5 accounts for offset
+    const rowH = areaH / (nKeys + 1.0); // +1.0 accounts for parallelogram offset
     const btnR = Math.min(colW, rowH) * 0.36;
-    const offsetY = rowH * 0.5; // Stradella diagonal shift
+    const offsetY = rowH * 0.5; // Stradella diagonal shift per column
 
     const active = this._resolveChord(chordName);
     const ghost = ghostName ? this._resolveChord(ghostName) : null;
@@ -253,8 +253,8 @@ class AccordionInstrument {
 
       for (let d = 0; d < nTypes; d++) {
         const row = D2R[d]; // data row: 0=Bass, 1=Major, 2=Minor
-        // Stradella offset: center column (Major, d=1) shifts down
-        const dy = (d === 1) ? offsetY : 0;
+        // Stradella offset: parallelogram — each column shifts down by d * half-row
+        const dy = d * offsetY;
         const cx = padLeft + (d + 0.5) * colW;
         const cy = padTop + headerH + (ki + 0.5) * rowH + dy;
 
