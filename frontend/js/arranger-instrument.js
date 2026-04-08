@@ -23,8 +23,8 @@ class ArrangerInstrument {
 
   /* ---- Constants ---- */
   static DEFAULT_SPLIT = 54;   // F#2 (Yamaha: C3 = middle C = MIDI 60)
-  static MIDI_LOW = 36;        // C1
-  static MIDI_HIGH = 96;       // C6
+  static MIDI_LOW = 21;        // A0 (same as 88-key piano for consistent sizing)
+  static MIDI_HIGH = 108;      // C8
 
   /* ---- Semantic colors (same as piano tab) ---- */
   static LH_COLOR = "rgba(33, 150, 243, 0.9)";
@@ -275,6 +275,7 @@ class ArrangerInstrument {
     // Draw note bars
     const activeLh = new Set();
     const activeRh = new Set();
+    const fingeringMap = {};
 
     for (const evt of allEvents) {
       const noteStart = evt.time;
@@ -344,10 +345,14 @@ class ArrangerInstrument {
         ctx.stroke();
       }
 
-      // Track active keys
+      // Track active keys + fingering
       if (currentTime >= evt.time && currentTime < noteEnd) {
-        if (isLeft) activeLh.add(midi);
-        else activeRh.add(midi);
+        if (isLeft) {
+          activeLh.add(midi);
+          if (evt.finger) fingeringMap[midi] = { finger: evt.finger, hand: "left" };
+        } else {
+          activeRh.add(midi);
+        }
       }
 
       // Contact flash
@@ -364,20 +369,12 @@ class ArrangerInstrument {
         ctx.restore();
       }
 
-      // Finger number for LH chord notes
-      if (isLeft && evt.finger && yBottom > 0 && yTop < H && noteH > 16) {
-        const circled = String.fromCodePoint(0x2460 + evt.finger - 1);
-        ctx.fillStyle = "rgba(255,255,255,0.85)";
-        ctx.font = "bold 12px sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(circled, x + kw / 2, (yTop + yBottom) / 2);
-      }
     }
 
-    // Store active keys for keyboard highlighting
+    // Store active keys + fingering for keyboard highlighting
     this._activeLh = activeLh;
     this._activeRh = activeRh;
+    this._fingeringMap = fingeringMap;
   }
 
   /* ======================================================================
@@ -408,7 +405,11 @@ class ArrangerInstrument {
     // Use draw88Piano for proper 3-pass rendering (white hl → black redraw → black hl)
     const activeLh = [...(this._activeLh || [])];
     const activeRh = [...(this._activeRh || [])];
-    ChordRender.draw88Piano(canvas, cache, activeLh, activeRh, {});
+    const fMap = this._fingeringMap || {};
+    ChordRender.draw88Piano(canvas, cache, activeLh, activeRh, {
+      fingeringMap: fMap,
+      now: this._b.getAudio().currentTime || 0,
+    });
 
     // Split point marker on keyboard (drawn after draw88Piano)
     const ctx = canvas.getContext("2d");
