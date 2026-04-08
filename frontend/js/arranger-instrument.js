@@ -137,18 +137,12 @@ class ArrangerInstrument {
 
   _drawUnifiedWaterfall(currentTime) {
     const canvas = this._wfCanvas;
-    if (!canvas || !canvas.parentElement) return;
-    const container = canvas.parentElement;
-    const cw = container.clientWidth;
-    // Reserve space for keyboard below
-    const kbCanvas = this._kbCanvas;
-    const kbH = kbCanvas ? (kbCanvas.clientHeight || 0) : 0;
-    const ch = container.clientHeight - kbH;
-    if (cw < 10 || ch < 30) return;
+    if (!canvas) return;
+    const W = canvas.clientWidth;
+    const H = canvas.clientHeight;
+    if (W < 10 || H < 30) return;
 
     const dpr = window.devicePixelRatio || 1;
-    const W = cw;
-    const H = ch;
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     canvas.style.width = W + "px";
@@ -392,9 +386,8 @@ class ArrangerInstrument {
 
   _drawKeyboard(currentTime) {
     const canvas = this._kbCanvas;
-    if (!canvas || !canvas.parentElement) return;
-    const container = canvas.parentElement;
-    const W = container.clientWidth;
+    if (!canvas) return;
+    const W = canvas.clientWidth || (canvas.parentElement ? canvas.parentElement.clientWidth : 0);
     if (W < 10) return;
     const dpr = window.devicePixelRatio || 1;
 
