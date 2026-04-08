@@ -352,6 +352,7 @@ class ArrangerInstrument {
           if (evt.finger) fingeringMap[midi] = { finger: evt.finger, hand: "left" };
         } else {
           activeRh.add(midi);
+          if (evt.finger) fingeringMap[midi] = { finger: evt.finger, hand: "right" };
         }
       }
 
