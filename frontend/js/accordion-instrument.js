@@ -41,7 +41,12 @@ class AccordionInstrument {
 
   /* ---- Finger color constants (guitar color scheme) ---- */
   static FINGER_CLR = { 1: "#ef5350", 2: "#ff9800", 3: "#ffeb3b", 4: "#66bb6a" };
-  static ROW_FINGER = { 0: 2, 1: 3, 2: 4 }; // Bass=finger2(orange), Major=finger3(yellow), Minor=finger4(green)
+  // Row→finger for static colors (headers, dimmed buttons):
+  // Bass row → finger 3 (middle, yellow), Major/Minor → finger 2 (index, orange)
+  static ROW_FINGER = { 0: 3, 1: 2, 2: 2 };
+  // Step→finger for active beat animation:
+  // B(bass)=③middle, C(chord)=②index, Ab(alt bass)=④ring
+  static STEP_FINGER = { "B": 3, "C": 2, "Ab": 4 };
 
   /* ---- Display mapping ---- */
   // Map display column index (0=left .. 2=right) to data row index
@@ -327,13 +332,18 @@ class AccordionInstrument {
 
         // Determine if this button is "playing now" based on beat step
         let isPlaying = false;
+        let playingStep = null;
         if (isChordBtn) {
-          if (row === 0 && stepIsBass) isPlaying = true;       // Bass button on B step
-          if (row !== 0 && stepIsChord) isPlaying = true;      // Chord button on C step
+          if (row === 0 && stepIsBass) { isPlaying = true; playingStep = "B"; }
+          if (row !== 0 && stepIsChord) { isPlaying = true; playingStep = "C"; }
         }
-        if (isAltBass && stepIsAlt) isPlaying = true;          // Alt bass on Ab step
-        // Also dim the chord buttons: show them as "belongs to chord" but not currently playing
+        if (isAltBass && stepIsAlt) { isPlaying = true; playingStep = "Ab"; }
         const belongsToChord = isChordBtn && !isPlaying;
+
+        // Active finger/color based on step (not row)
+        const SFINGER = AccordionInstrument.STEP_FINGER;
+        const playFinger = playingStep ? SFINGER[playingStep] : finger;
+        const playColor = playingStep ? FCLR[playFinger] : fingerColor;
 
         // Button circle
         ctx.beginPath();
@@ -341,10 +351,10 @@ class AccordionInstrument {
 
         if (isPlaying) {
           // Bright: currently playing this beat step
-          ctx.fillStyle = fingerColor;
+          ctx.fillStyle = playColor;
           ctx.fill();
           ctx.save();
-          ctx.shadowColor = fingerColor;
+          ctx.shadowColor = playColor;
           ctx.shadowBlur = 14;
           ctx.beginPath();
           ctx.arc(cx, cy, btnR, 0, Math.PI * 2);
@@ -423,11 +433,11 @@ class AccordionInstrument {
 
         // Label + finger number
         if (isPlaying) {
-          ctx.fillStyle = finger === 3 ? "#333" : "#fff";
+          ctx.fillStyle = playFinger === 3 ? "#333" : "#fff";
           ctx.font = `bold ${Math.round(btnR * 1.0)}px sans-serif`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillText(finger, cx, cy);
+          ctx.fillText(playFinger, cx, cy);
         } else {
           ctx.fillStyle = isGhost ? fingerColor : (belongsToChord ? fingerColor : "#bbb");
           ctx.globalAlpha = isGhost ? ghostAlpha : (belongsToChord ? 0.6 : 1);
