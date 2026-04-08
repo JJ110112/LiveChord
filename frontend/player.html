@@ -169,16 +169,14 @@
         <div class="acc-teaching-layout">
           <!-- LEFT: Bass & Chord Display (Left Hand) -->
           <div class="acc-left-panel">
-            <div class="acc-compact-bar">
-              <select id="accBassPatternSelect" class="acc-pattern-select" title="低音模式">
-                <option value="bass_chord">Bass-Chord 基本型</option>
-                <option value="alternating_bass">Alternating Bass 交替低音</option>
-                <option value="waltz">Waltz 華爾滋 (3/4)</option>
-                <option value="march">March 進行曲 (2/4)</option>
-              </select>
-            </div>
             <div class="acc-chord-name-row">
               <span id="accChordName" class="acc-main-chord-name">--</span>
+              <select id="accBassPatternSelect" class="acc-pattern-select" title="低音模式">
+                <option value="bass_chord">Bass-Chord</option>
+                <option value="alternating_bass">Alt Bass</option>
+                <option value="waltz">Waltz 3/4</option>
+                <option value="march">March 2/4</option>
+              </select>
             </div>
             <canvas id="accordionBassGrid"></canvas>
             <div class="acc-finger-legend">

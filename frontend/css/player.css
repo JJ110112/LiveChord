@@ -658,10 +658,17 @@
 }
 
 .acc-chord-name-row {
+  position: relative;
   text-align: center;
   width: 100%;
   flex-shrink: 0;
   margin-bottom: 2px;
+}
+.acc-chord-name-row .acc-pattern-select {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .acc-main-chord-name {
