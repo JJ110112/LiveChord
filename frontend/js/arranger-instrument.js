@@ -401,76 +401,18 @@ class ArrangerInstrument {
     const cache = this._pianoCache;
     const pianoH = cache.totalH;
 
-    canvas.width = Math.round(W * dpr);
-    canvas.height = Math.round(pianoH * dpr);
+    // Set canvas style height to match piano cache
     canvas.style.width = W + "px";
     canvas.style.height = pianoH + "px";
+
+    // Use draw88Piano for proper 3-pass rendering (white hl → black redraw → black hl)
+    const activeLh = [...(this._activeLh || [])];
+    const activeRh = [...(this._activeRh || [])];
+    ChordRender.draw88Piano(canvas, cache, activeLh, activeRh, {});
+
+    // Split point marker on keyboard (drawn after draw88Piano)
     const ctx = canvas.getContext("2d");
-    ctx.scale(dpr, dpr);
-
-    // Draw cached static keyboard
-    ctx.drawImage(cache.canvas, 0, 0, cache.canvas.width, cache.canvas.height,
-                  0, 0, W, pianoH);
-
-    const kh = cache.keyH;
-    const bh = cache.bKeyH;
-    const activeLh = this._activeLh || new Set();
-    const activeRh = this._activeRh || new Set();
-    const LH_CLR = ArrangerInstrument.LH_COLOR;
-    const RH_CLR = ArrangerInstrument.RH_COLOR;
-
-    // Pass 1: White key highlights
-    const allActive = new Set([...activeLh, ...activeRh]);
-    for (const midi of allActive) {
-      const wk = cache.whiteXs[midi];
-      if (!wk) continue;
-      const clr = activeLh.has(midi) ? LH_CLR : RH_CLR;
-      ctx.save();
-      ctx.globalAlpha = 0.9;
-      ctx.fillStyle = clr;
-      ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(wk.x + 0.5, 0.5, wk.w - 1, kh - 1, [0, 0, 4, 4]);
-      else ctx.rect(wk.x + 0.5, 0.5, wk.w - 1, kh - 1);
-      ctx.fill();
-      // Top wash
-      const topWash = ctx.createLinearGradient(0, 0, 0, kh * 0.5);
-      topWash.addColorStop(0, "rgba(255,255,255,0.25)");
-      topWash.addColorStop(1, "rgba(255,255,255,0)");
-      ctx.fillStyle = topWash;
-      ctx.fillRect(wk.x + 0.5, 0.5, wk.w - 1, kh * 0.5);
-      // Bottom glow
-      ctx.shadowColor = clr;
-      ctx.shadowBlur = 15;
-      ctx.fillStyle = clr;
-      ctx.fillRect(wk.x + 2, kh - 6, wk.w - 4, 6);
-      ctx.restore();
-    }
-
-    // Pass 2: Black key highlights
-    for (const midi of allActive) {
-      const bk = cache.blackXs[midi];
-      if (!bk) continue;
-      const clr = activeLh.has(midi) ? LH_CLR : RH_CLR;
-      ctx.save();
-      ctx.globalAlpha = 0.9;
-      ctx.fillStyle = clr;
-      ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(bk.x, 0, bk.w, bh, [0, 0, 3, 3]);
-      else ctx.rect(bk.x, 0, bk.w, bh);
-      ctx.fill();
-      const hlGrad = ctx.createLinearGradient(bk.x, 0, bk.x, bh * 0.3);
-      hlGrad.addColorStop(0, "rgba(255,255,255,0.3)");
-      hlGrad.addColorStop(1, "rgba(255,255,255,0)");
-      ctx.fillStyle = hlGrad;
-      ctx.fillRect(bk.x + bk.w * 0.1, 0, bk.w * 0.8, bh * 0.3);
-      ctx.shadowColor = clr;
-      ctx.shadowBlur = 12;
-      ctx.fillStyle = clr;
-      ctx.fillRect(bk.x + 1, bh - 4, bk.w - 2, 4);
-      ctx.restore();
-    }
-
-    // Split point marker on keyboard
+    // draw88Piano already called ctx.scale(dpr, dpr), continue in that coordinate space
     const splitMidi = this._splitPoint;
     const splitKey = cache.whiteXs[splitMidi] || cache.blackXs[splitMidi];
     if (splitKey) {
@@ -479,13 +421,12 @@ class ArrangerInstrument {
       ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.moveTo(sx, 0);
-      ctx.lineTo(sx, kh + cache.bevelH);
+      ctx.lineTo(sx, cache.keyH + cache.bevelH);
       ctx.stroke();
-      // Small label
       ctx.fillStyle = "rgba(255, 80, 80, 0.8)";
       ctx.font = "bold 9px sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("SPLIT", sx, kh + cache.bevelH + 11);
+      ctx.fillText("SPLIT", sx, cache.keyH + cache.bevelH + 11);
     }
   }
 
