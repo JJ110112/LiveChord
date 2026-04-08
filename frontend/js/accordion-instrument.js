@@ -1,7 +1,10 @@
 /**
- * AccordionInstrument — 手風琴左手 Stradella 低音系統教學
+ * AccordionInstrument — 手風琴左手 Stradella 低音系統教學 + 右手鍵盤瀑布流
  *
- * 21-button layout: 3 rows × 7 columns
+ * LEFT PANEL:  3 rows × 7 columns Stradella bass grid with finger color indicators
+ *              and ghost chord preview (guitar-style).
+ * RIGHT PANEL: Piano-style keyboard waterfall for right-hand (F3–C6, MIDI 53–84).
+ *
  * Columns (circle of fifths): Bb, F, C, G, D, A, E
  * Rows: 0=Bass (single notes), 1=Major chords, 2=Minor chords
  * C bass (col 2, row 0) has a concave dimple for tactile reference.
@@ -17,6 +20,8 @@ class AccordionInstrument {
     this._cache = {};          // chord name -> bass mapping from API
     this._bassPattern = localStorage.getItem("livechord_acc_pattern") || "bass_chord";
     this._lastDrawn = null;
+    this._pianoCache = null;
+    this._lastWfWidth = 0;
   }
 
   /* ---- Stradella constants ---- */
@@ -33,6 +38,15 @@ class AccordionInstrument {
     AccordionInstrument.COLS.forEach((c, i) => m[c] = i);
     return m;
   })();
+
+  /* ---- Finger color constants (guitar color scheme) ---- */
+  static FINGER_CLR = { 1: "#ef5350", 2: "#ff9800", 3: "#ffeb3b", 4: "#66bb6a" };
+  static ROW_FINGER = { 0: 2, 1: 3, 2: 4 }; // Bass=finger2(orange), Major=finger3(yellow), Minor=finger4(green)
+
+  /* ---- Display mapping ---- */
+  // Map display column index (0=left .. 2=right) to data row index
+  static DISP_TO_ROW = [2, 1, 0];           // Minor, Major, Bass
+  static DISP_LABELS = ["Minor", "Major", "Bass"];
 
   /* ---- Interface methods (same as StringInstrument) ---- */
 
@@ -64,7 +78,6 @@ class AccordionInstrument {
         if (this._patternLabel) {
           this._patternLabel.textContent = this._patternSelect.options[this._patternSelect.selectedIndex].text;
         }
-        this._drawBassWaterfall(this._b.getAudio().currentTime || 0);
       };
     }
     if (this._patternLabel && this._patternSelect) {
@@ -73,6 +86,8 @@ class AccordionInstrument {
 
     this._activeIdx = -1;
     this._activeChordName = null;
+    this._pianoCache = null;
+    this._lastWfWidth = 0;
 
     this.prefetchData();
     // Defer first render so container layout is computed
@@ -98,11 +113,41 @@ class AccordionInstrument {
     }));
   }
 
+  /* ---- Bass pattern definitions ---- */
+  static PATTERNS = {
+    bass_chord:       { beats: 4, steps: ["B","C","B","C"] },
+    alternating_bass: { beats: 4, steps: ["B","C","Ab","C"] },
+    waltz:            { beats: 3, steps: ["B","C","C"] },
+    march:            { beats: 2, steps: ["B","C"] },
+  };
+
+  /** Compute the current beat step (B/C/Ab) from the pattern */
+  _currentStep(currentTime) {
+    const pat = AccordionInstrument.PATTERNS[this._bassPattern]
+             || AccordionInstrument.PATTERNS.bass_chord;
+    const accData = this._b.getAccData ? this._b.getAccData() : null;
+    const bpm = (accData && accData.bpm) ? accData.bpm : 120;
+    const beatDur = 60.0 / bpm;
+
+    const chords = this._b.getDisplayChords();
+    if (!chords || !chords.length) return "B";
+
+    // Find current chord start
+    let chordStart = 0;
+    for (let i = chords.length - 1; i >= 0; i--) {
+      if (currentTime >= chords[i].time) { chordStart = chords[i].time; break; }
+    }
+
+    const elapsed = currentTime - chordStart;
+    const beatIdx = Math.floor(elapsed / beatDur);
+    const stepIdx = beatIdx % pat.steps.length;
+    return pat.steps[Math.max(0, stepIdx)];
+  }
+
   update(currentTime) {
     const chords = this._b.getDisplayChords();
     if (!chords || !chords.length) {
-      // Still draw the empty waterfall frame (headers, lane dividers)
-      this._drawBassWaterfall(currentTime);
+      this._drawKeyboardWaterfall(currentTime);
       return;
     }
 
@@ -126,20 +171,23 @@ class AccordionInstrument {
       }
     }
 
-    if (chordName !== this._activeChordName || ghostName !== this._ghostChordName) {
+    // Current beat step for bass pattern visualization
+    const step = this._currentStep(currentTime);
+
+    // Always update chord name / hints on chord change
+    if (chordName !== this._activeChordName) {
       this._activeChordName = chordName;
       this._activeIdx = idx;
-      this._ghostChordName = ghostName;
-      this._ghostAlpha = ghostAlpha;
-      this.renderBassGrid(chordName, ghostName, ghostAlpha);
       if (this._chordNameEl) this._chordNameEl.textContent = chordName || "--";
       this._updateHints(chordName);
-    } else if (ghostAlpha !== this._ghostAlpha) {
-      this._ghostAlpha = ghostAlpha;
-      this.renderBassGrid(chordName, ghostName, ghostAlpha);
     }
+    this._ghostChordName = ghostName;
+    this._ghostAlpha = ghostAlpha;
 
-    this._drawBassWaterfall(currentTime);
+    // Re-render bass grid every frame (step changes continuously)
+    this.renderBassGrid(chordName, ghostName, ghostAlpha, step);
+
+    this._drawKeyboardWaterfall(currentTime);
   }
 
   /* ---- Chord -> button resolution (client-side mirror of backend) ---- */
@@ -183,22 +231,15 @@ class AccordionInstrument {
     };
   }
 
-  /* ---- Bass Grid Canvas Rendering ---- */
+  /* ---- Bass Grid Canvas Rendering (enhanced with finger colors & ghost) ---- */
   /*
    * Physical layout (player's view, looking down at left hand):
    *   Vertical axis  = circle-of-fifths keys, E(top) → Bb(bottom)
    *   Horizontal axis = Minor(left) → Major(center) → Bass(right, near bellows)
    *   Alternating columns offset down by half a row (Stradella diagonal)
-   *
-   * Display column order (left→right): Minor(row2), Major(row1), Bass(row0)
    */
 
-  // Map display column index (0=left .. 2=right) to data row index
-  static DISP_TO_ROW = [2, 1, 0];           // Minor, Major, Bass
-  static DISP_LABELS = ["Minor", "Major", "Bass"];
-  static DISP_COLORS = ["#ff9800", "#ff9800", "#00bcd4"];
-
-  renderBassGrid(chordName, ghostName, ghostAlpha) {
+  renderBassGrid(chordName, ghostName, ghostAlpha, step) {
     const canvas = this._gridCanvas;
     if (!canvas || !canvas.parentElement) return;
     const rect = canvas.parentElement.getBoundingClientRect();
@@ -214,36 +255,47 @@ class AccordionInstrument {
     const W = rect.width, H = drawH;
     ctx.clearRect(0, 0, W, H);
 
-    const COLS = AccordionInstrument.COLS;   // ["Bb","F","C","G","D","A","E"]
+    const COLS = AccordionInstrument.COLS;
     const D2R = AccordionInstrument.DISP_TO_ROW;
     const DLABELS = AccordionInstrument.DISP_LABELS;
-    const DCOLORS = AccordionInstrument.DISP_COLORS;
+    const FCLR = AccordionInstrument.FINGER_CLR;
+    const RFINGER = AccordionInstrument.ROW_FINGER;
     const nKeys = COLS.length;  // 7
     const nTypes = 3;
 
-    // Keys top→bottom: E, A, D, G, C, F, Bb
     const keysTopDown = [...COLS].reverse();
 
-    // Layout — reserve extra half-row for Stradella offset
-    const padTop = 20, padBot = 16, padLeft = 8, padRight = 8;
+    // Layout — compact columns with reduced horizontal spacing
+    const padTop = 20, padBot = 16;
     const headerH = 16;
-    const areaW = W - padLeft - padRight;
+    const maxColW = 80; // cap column width for tighter layout
+    const naturalColW = (W - 16) / nTypes;
+    const colW = Math.min(naturalColW, maxColW);
+    const totalGridW = colW * nTypes;
+    const gridLeft = (W - totalGridW) / 2; // center the grid
     const areaH = H - padTop - padBot - headerH;
-    const colW = areaW / nTypes;
-    const rowH = areaH / (nKeys + 1.0); // +1.0 accounts for parallelogram offset
+    const rowH = areaH / (nKeys + 1.0);
     const btnR = Math.min(colW, rowH) * 0.36;
-    const offsetY = rowH * 0.5; // Stradella diagonal shift per column
+    const offsetY = rowH * 0.5;
 
     const active = this._resolveChord(chordName);
     const ghost = ghostName ? this._resolveChord(ghostName) : null;
 
-    // Column headers
+    // Determine which rows are "playing now" based on bass pattern step
+    // step: "B" = bass row only, "C" = chord row only, "Ab" = alt bass only
+    const stepIsBass = (step === "B");
+    const stepIsChord = (step === "C");
+    const stepIsAlt = (step === "Ab");
+
+    // Column headers with finger colors
     ctx.font = "bold 11px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     for (let d = 0; d < nTypes; d++) {
-      ctx.fillStyle = DCOLORS[d];
-      ctx.fillText(DLABELS[d], padLeft + (d + 0.5) * colW, 2);
+      const row = D2R[d];
+      const finger = RFINGER[row];
+      ctx.fillStyle = FCLR[finger];
+      ctx.fillText(DLABELS[d], gridLeft + (d + 0.5) * colW, 2);
     }
 
     // Draw buttons
@@ -253,16 +305,17 @@ class AccordionInstrument {
 
       for (let d = 0; d < nTypes; d++) {
         const row = D2R[d]; // data row: 0=Bass, 1=Major, 2=Minor
-        // Stradella offset: parallelogram — each column shifts down by d * half-row
+        const finger = RFINGER[row];
+        const fingerColor = FCLR[finger];
         const dy = d * offsetY;
-        const cx = padLeft + (d + 0.5) * colW;
+        const cx = gridLeft + (d + 0.5) * colW;
         const cy = padTop + headerH + (ki + 0.5) * rowH + dy;
 
-        // Match against data
-        let isActive = false, isAltBass = false, isGhost = false;
+        // Match against chord resolution data
+        let isChordBtn = false, isAltBass = false, isGhost = false;
         if (active && active.buttons) {
           for (const btn of active.buttons) {
-            if (btn.col === col && btn.row === row) isActive = true;
+            if (btn.col === col && btn.row === row) isChordBtn = true;
           }
           if (active.altBass && active.altBass.col === col && row === 0) isAltBass = true;
         }
@@ -272,48 +325,119 @@ class AccordionInstrument {
           }
         }
 
+        // Determine if this button is "playing now" based on beat step
+        let isPlaying = false;
+        if (isChordBtn) {
+          if (row === 0 && stepIsBass) isPlaying = true;       // Bass button on B step
+          if (row !== 0 && stepIsChord) isPlaying = true;      // Chord button on C step
+        }
+        if (isAltBass && stepIsAlt) isPlaying = true;          // Alt bass on Ab step
+        // Also dim the chord buttons: show them as "belongs to chord" but not currently playing
+        const belongsToChord = isChordBtn && !isPlaying;
+
         // Button circle
-        const isBass = (row === 0);
         ctx.beginPath();
         ctx.arc(cx, cy, btnR, 0, Math.PI * 2);
-        if (isActive) {
-          ctx.fillStyle = isBass ? "rgba(0,188,212,0.85)" : "rgba(255,152,0,0.85)";
+
+        if (isPlaying) {
+          // Bright: currently playing this beat step
+          ctx.fillStyle = fingerColor;
           ctx.fill();
-          ctx.shadowColor = isBass ? "#00bcd4" : "#ff9800";
-          ctx.shadowBlur = 12;
+          ctx.save();
+          ctx.shadowColor = fingerColor;
+          ctx.shadowBlur = 14;
+          ctx.beginPath();
+          ctx.arc(cx, cy, btnR, 0, Math.PI * 2);
           ctx.fill();
-          ctx.shadowBlur = 0;
+          ctx.restore();
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        } else if (belongsToChord) {
+          // Dimmed: belongs to chord but not the active beat step
+          ctx.fillStyle = fingerColor;
+          ctx.globalAlpha = 0.3;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = fingerColor;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
         } else if (isGhost) {
-          ctx.fillStyle = isBass ? `rgba(0,188,212,${ghostAlpha})` : `rgba(255,152,0,${ghostAlpha})`;
+          ctx.save();
+          ctx.setLineDash(ghostAlpha > 0.6 ? [] : [4, 3]);
+          ctx.globalAlpha = ghostAlpha * 0.5;
+          ctx.fillStyle = fingerColor;
           ctx.fill();
-        } else if (isAltBass) {
-          ctx.fillStyle = "rgba(0,188,212,0.25)";
+          ctx.globalAlpha = ghostAlpha;
+          ctx.strokeStyle = fingerColor;
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.restore();
+        } else if (isAltBass && !stepIsAlt) {
+          // Alt bass dimmed when not on Ab step
+          ctx.fillStyle = "rgba(255,152,0,0.15)";
           ctx.fill();
+          ctx.strokeStyle = "rgba(255,255,255,0.15)";
+          ctx.lineWidth = 1;
+          ctx.stroke();
         } else {
           ctx.fillStyle = "rgba(60,60,70,0.7)";
           ctx.fill();
+          ctx.strokeStyle = "rgba(255,255,255,0.2)";
+          ctx.lineWidth = 1;
+          ctx.stroke();
         }
 
-        ctx.strokeStyle = isActive ? "#fff" : "rgba(255,255,255,0.2)";
-        ctx.lineWidth = isActive ? 2 : 1;
-        ctx.stroke();
+        // Ghost "keep" indicator
+        if (isGhost && active && active.buttons) {
+          let activeAtSamePos = false;
+          for (const btn of active.buttons) {
+            if (btn.col === col && btn.row === row) { activeAtSamePos = true; break; }
+          }
+          if (activeAtSamePos) {
+            ctx.save();
+            ctx.globalAlpha = ghostAlpha;
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(cx, cy, btnR * 1.25, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fillStyle = "#00e676";
+            ctx.globalAlpha = Math.min(ghostAlpha + 0.2, 1);
+            ctx.beginPath();
+            ctx.arc(cx + btnR * 0.85, cy - btnR * 0.85, btnR * 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+        }
 
         // Dimple on C bass
         if (col === AccordionInstrument.DIMPLE_COL && row === 0) {
           ctx.beginPath();
           ctx.arc(cx, cy, btnR * 0.3, 0, Math.PI * 2);
-          ctx.strokeStyle = isActive ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.25)";
+          ctx.strokeStyle = isPlaying ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.25)";
           ctx.lineWidth = 1.5;
           ctx.stroke();
         }
 
-        // Label
-        ctx.fillStyle = isActive ? "#fff" : "#bbb";
-        ctx.font = (isActive ? "bold " : "") + "11px sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        const label = row === 0 ? keyName : (row === 1 ? keyName : keyName + "m");
-        ctx.fillText(label, cx, cy);
+        // Label + finger number
+        if (isPlaying) {
+          ctx.fillStyle = finger === 3 ? "#333" : "#fff";
+          ctx.font = `bold ${Math.round(btnR * 1.0)}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(finger, cx, cy);
+        } else {
+          ctx.fillStyle = isGhost ? fingerColor : (belongsToChord ? fingerColor : "#bbb");
+          ctx.globalAlpha = isGhost ? ghostAlpha : (belongsToChord ? 0.6 : 1);
+          ctx.font = "11px sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          const label = row === 0 ? keyName : (row === 1 ? keyName : keyName + "m");
+          ctx.fillText(label, cx, cy);
+          ctx.globalAlpha = 1;
+        }
       }
     }
 
@@ -326,147 +450,261 @@ class AccordionInstrument {
     }
   }
 
-  /* ---- Bass Pattern Waterfall ---- */
+  /* ---- Keyboard Waterfall (Right Hand, Piano-style) ---- */
 
-  _drawBassWaterfall(currentTime) {
+  _drawKeyboardWaterfall(currentTime) {
     const canvas = this._wfCanvas;
     if (!canvas || !canvas.parentElement) return;
     const rect = canvas.parentElement.getBoundingClientRect();
-    if (rect.width < 10 || rect.height < 50) return; // not laid out yet
+    if (rect.width < 10 || rect.height < 50) return;
     const dpr = window.devicePixelRatio || 1;
-    const drawH = Math.max(rect.height - 40, 60);
-    canvas.width = rect.width * dpr;
-    canvas.height = drawH * dpr;
-    canvas.style.width = rect.width + "px";
-    canvas.style.height = drawH + "px";
+    const W = rect.width;
+    const H = rect.height;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
     const ctx = canvas.getContext("2d");
     ctx.scale(dpr, dpr);
-    const W = rect.width, H = drawH;
     ctx.clearRect(0, 0, W, H);
 
-    const chords = this._b.getDisplayChords();
-    if (!chords || !chords.length) return;
+    // Initialize or rebuild piano cache on width change
+    const ChordRender = this._b.ChordRender;
+    if (!this._pianoCache || Math.abs(this._lastWfWidth - W) > 2) {
+      this._pianoCache = ChordRender.initAccordionPianoCache(W, dpr);
+      this._lastWfWidth = W;
+    }
+    const cache = this._pianoCache;
+    const pianoH = cache.totalH;
+    const waterfallH = H - pianoH; // area above the keyboard for falling notes
 
-    // Pattern definition
-    const patterns = {
-      bass_chord:       { beats: 4, steps: ["B","C","B","C"] },
-      alternating_bass: { beats: 4, steps: ["B","C","Ab","C"] },
-      waltz:            { beats: 3, steps: ["B","C","C"] },
-      march:            { beats: 2, steps: ["B","C"] },
-    };
-    const pat = patterns[this._bassPattern] || patterns.bass_chord;
-
-    // Visible window: show 6 seconds centered on current time
-    const windowBefore = 1.0; // 1s of past
-    const windowAfter = 5.0;  // 5s of future
-    const tStart = currentTime - windowBefore;
-    const tEnd = currentTime + windowAfter;
-    const totalT = tEnd - tStart;
-
-    // Lanes
-    const lanes = ["Bass", "Chord"];
-    const laneW = W / lanes.length;
-    const colors = { B: "#00bcd4", C: "#ff9800", Ab: "#26a69a" };
-    const labels = { B: "Bass", C: "Chord", Ab: "Alt" };
-
-    // Lane headers
-    ctx.font = "bold 11px sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    for (let i = 0; i < lanes.length; i++) {
-      ctx.fillStyle = i === 0 ? "#00bcd4" : "#ff9800";
-      ctx.fillText(lanes[i], (i + 0.5) * laneW, 2);
+    if (waterfallH < 20) {
+      // Not enough space for waterfall, just draw the keyboard
+      ctx.drawImage(cache.canvas, 0, 0, cache.canvas.width, cache.canvas.height,
+                    0, H - pianoH, W, pianoH);
+      return;
     }
 
-    // Current time line
-    const curY = ((currentTime - tStart) / totalT) * H;
-    ctx.strokeStyle = "rgba(255,255,255,0.5)";
+    // Draw vertical piano key grid lines in the waterfall area
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
     ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]);
     ctx.beginPath();
-    ctx.moveTo(0, curY);
-    ctx.lineTo(W, curY);
+    let lastKey = null;
+    for (const p in cache.whiteXs) {
+      const wk = cache.whiteXs[p];
+      ctx.moveTo(wk.x, 0);
+      ctx.lineTo(wk.x, waterfallH);
+      lastKey = wk;
+    }
+    if (lastKey) {
+      ctx.moveTo(lastKey.x + lastKey.w, 0);
+      ctx.lineTo(lastKey.x + lastKey.w, waterfallH);
+    }
     ctx.stroke();
-    ctx.setLineDash([]);
 
-    // Generate bass events for visible chords
-    const accData = this._b.getAccData ? this._b.getAccData() : null;
-    const bpm = (accData && accData.bpm) ? accData.bpm : 120;
-    const beatDur = 60.0 / bpm;
-
-    for (let ci = 0; ci < chords.length; ci++) {
-      const chord = chords[ci];
-      const nextTime = ci + 1 < chords.length ? chords[ci + 1].time : (chord.end || chord.time + 4);
-      if (nextTime < tStart || chord.time > tEnd) continue;
-
-      const chordDur = nextTime - chord.time;
-      const resolved = this._resolveChord(chord.chord);
-
-      // Generate pattern beats within this chord (limit iterations for safety)
-      let t = chord.time;
-      let maxIter = 200;
-      while (t < nextTime && --maxIter > 0) {
-        for (let si = 0; si < pat.steps.length && t < nextTime; si++) {
-          const step = pat.steps[si];
-          const stepEnd = Math.min(t + beatDur, nextTime);
-          if (t + beatDur * 0.1 > tEnd) { t = nextTime; break; }
-          if (stepEnd < tStart) { t += beatDur; continue; }
-
-          // Map step to lane
-          const laneIdx = (step === "B" || step === "Ab") ? 0 : 1;
-          const y1 = ((t - tStart) / totalT) * H;
-          const y2 = ((stepEnd - tStart) / totalT) * H;
-          const x = laneIdx * laneW + 4;
-          const w = laneW - 8;
-
-          // Is this the current beat?
-          const isCurrent = currentTime >= t && currentTime < stepEnd;
-          const color = colors[step] || "#888";
-
-          ctx.globalAlpha = isCurrent ? 1.0 : (t < currentTime ? 0.3 : 0.7);
-          ctx.fillStyle = color;
-          const rr = 4;
+    // Beat grid (chord-based)
+    const lookAhead = 4.0;
+    const pxPerSec = waterfallH / lookAhead;
+    const chords = this._b.getDisplayChords();
+    if (chords && chords.length > 0) {
+      ctx.textAlign = "left";
+      ctx.textBaseline = "bottom";
+      ctx.font = "11px sans-serif";
+      for (let ci = 0; ci < chords.length; ci++) {
+        const gc = chords[ci];
+        const gcEnd = (ci + 1 < chords.length) ? chords[ci + 1].time : gc.time + 4;
+        const gcDur = gcEnd - gc.time;
+        for (let b = 0; b < 4; b++) {
+          const bt = gc.time + (b / 4) * gcDur;
+          if (bt < currentTime - 0.1 || bt > currentTime + lookAhead) continue;
+          const y = waterfallH - (bt - currentTime) * pxPerSec;
+          if (y < 0 || y > waterfallH) continue;
+          const isBarLine = (b === 0);
+          ctx.strokeStyle = isBarLine ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.08)";
+          ctx.lineWidth = isBarLine ? 2 : 1;
           ctx.beginPath();
-          ctx.moveTo(x + rr, y1);
-          ctx.lineTo(x + w - rr, y1);
-          ctx.quadraticCurveTo(x + w, y1, x + w, y1 + rr);
-          ctx.lineTo(x + w, y2 - rr);
-          ctx.quadraticCurveTo(x + w, y2, x + w - rr, y2);
-          ctx.lineTo(x + rr, y2);
-          ctx.quadraticCurveTo(x, y2, x, y2 - rr);
-          ctx.lineTo(x, y1 + rr);
-          ctx.quadraticCurveTo(x, y1, x + rr, y1);
-          ctx.fill();
-
-          // Label
-          if (y2 - y1 > 16) {
-            ctx.globalAlpha = isCurrent ? 1.0 : 0.6;
-            ctx.fillStyle = "#fff";
-            ctx.font = "10px sans-serif";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            const btnLabel = step === "B"
-              ? (resolved && resolved.buttons && resolved.buttons[0] ? resolved.buttons[0].label : "?")
-              : step === "Ab"
-                ? (resolved && resolved.altBass ? resolved.altBass.label : "?")
-                : (resolved && resolved.buttons && resolved.buttons[1] ? resolved.buttons[1].label : "?");
-            ctx.fillText(btnLabel, x + w / 2, (y1 + y2) / 2);
-          }
-
-          ctx.globalAlpha = 1.0;
-          t += beatDur;
+          ctx.moveTo(0, y);
+          ctx.lineTo(W, y);
+          ctx.stroke();
+          ctx.fillStyle = isBarLine ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.3)";
+          ctx.fillText(b + 1, 8, y - 2);
         }
       }
     }
 
-    // Lane divider
-    ctx.strokeStyle = "rgba(255,255,255,0.1)";
-    ctx.lineWidth = 1;
-    for (let i = 1; i < lanes.length; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * laneW, 16);
-      ctx.lineTo(i * laneW, H);
-      ctx.stroke();
+    // Right-hand note events (fallback to melody if no accompaniment right_hand)
+    const accData = this._b.getAccData ? this._b.getAccData() : null;
+    let rhEvents = (accData && accData.right_hand) ? accData.right_hand : [];
+    if (rhEvents.length === 0) {
+      const melodyData = this._b.getMelodyData ? this._b.getMelodyData() : null;
+      if (melodyData && melodyData.length > 0) {
+        rhEvents = melodyData.map(m => ({
+          time: m.start,
+          duration: m.end - m.start,
+          pitch: m.midi,
+          velocity: 80,
+          finger: null,
+        }));
+      }
+    }
+    const activeKeys = new Set(); // collect currently-sounding MIDI notes for keyboard highlight
+    if (rhEvents.length > 0) {
+      ctx.font = "bold 11px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+
+      for (const evt of rhEvents) {
+        const noteStart = evt.time;
+        const noteEnd = evt.time + evt.duration;
+        if (noteEnd < currentTime || noteStart > currentTime + lookAhead) continue;
+
+        const yBottom = waterfallH - (noteStart - currentTime) * pxPerSec;
+        const yTop = waterfallH - (noteEnd - currentTime) * pxPerSec;
+        const noteH = Math.max(yBottom - yTop, 3);
+
+        const midi = evt.pitch;
+        const keyInfo = cache.whiteXs[midi] || cache.blackXs[midi];
+        if (!keyInfo) continue;
+        const x = keyInfo.x;
+        const kw = keyInfo.w;
+        const isOnBlackKey = !!cache.blackXs[midi];
+
+        // Velocity-responsive orange color
+        const vel = evt.velocity || 80;
+        const velT = Math.min(1.0, Math.max(0.0, (vel - 55) / 40));
+        const velP = velT * velT;
+        const cr = Math.round(100 + velP * 155);
+        const cg = Math.round(40 + velP * 170);
+        const cb = Math.round(0 + velP * 50);
+        const color = `rgba(${cr}, ${cg}, ${cb}, ${isOnBlackKey ? 0.95 : 0.9})`;
+        const glowColor = `rgba(255, ${Math.min(255, cg + 60)}, ${Math.min(255, cb + 80)}, 1)`;
+
+        // Prediction shadow on keys
+        if (yBottom > waterfallH - 40 && yBottom < waterfallH) {
+          ctx.fillStyle = "rgba(255, 152, 0, 0.4)";
+          ctx.fillRect(x, waterfallH - 5, kw, -20);
+        }
+
+        // Note bar with velocity glow
+        const rr = Math.min(4, noteH / 2);
+        ctx.save();
+        if (velP > 0.15) {
+          ctx.shadowColor = glowColor;
+          ctx.shadowBlur = Math.round(3 + velP * 25);
+        }
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.roundRect(x + 1, yTop, kw - 2, noteH, rr);
+        ctx.fill();
+        if (velP > 0.5) {
+          ctx.shadowBlur = Math.round(velP * 35);
+          ctx.fill();
+        }
+        ctx.restore();
+
+        // Dim outline for very quiet notes
+        if (velP < 0.15) {
+          ctx.strokeStyle = "rgba(255,255,255,0.2)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(x + 1, yTop, kw - 2, noteH, rr);
+          ctx.stroke();
+        }
+
+        // Track active (currently sounding) keys
+        if (currentTime >= evt.time && currentTime < evt.time + evt.duration) {
+          activeKeys.add(midi);
+        }
+
+        // Contact flash
+        if (yBottom >= waterfallH && yTop <= waterfallH) {
+          ctx.save();
+          ctx.fillStyle = color;
+          ctx.shadowColor = glowColor;
+          ctx.shadowBlur = 8 + velP * 22;
+          ctx.fillRect(x + 1, waterfallH - 4, kw - 2, 8);
+          ctx.fillStyle = `rgba(255,255,255,${0.3 + velP * 0.6})`;
+          ctx.shadowBlur = velP * 15;
+          ctx.shadowColor = "#fff";
+          ctx.fillRect(x + 3, waterfallH - 2, kw - 6, 4);
+          ctx.restore();
+        }
+
+        // Articulation markers
+        if (evt.articulation === "staccato") {
+          ctx.fillStyle = "#fff";
+          ctx.beginPath();
+          ctx.arc(x + kw / 2, yBottom - 4, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (evt.articulation === "legato" && noteH > 12) {
+          ctx.strokeStyle = "rgba(255,255,255,0.3)";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(x + kw / 2, yTop, kw * 0.4, Math.PI, 0);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Draw piano keyboard at the bottom (static cached image)
+    ctx.drawImage(cache.canvas, 0, 0, cache.canvas.width, cache.canvas.height,
+                  0, waterfallH, W, pianoH);
+
+    // Highlight active keys on the keyboard
+    if (activeKeys.size > 0) {
+      const kh = cache.keyH;
+      const bh = cache.bKeyH;
+      const RH_COLOR = "rgba(255, 152, 0, 0.9)";
+
+      // Pass 1: White key highlights
+      for (const midi of activeKeys) {
+        const wk = cache.whiteXs[midi];
+        if (!wk) continue;
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = RH_COLOR;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(wk.x + 0.5, waterfallH + 0.5, wk.w - 1, kh - 1, [0, 0, 4, 4]);
+        else ctx.rect(wk.x + 0.5, waterfallH + 0.5, wk.w - 1, kh - 1);
+        ctx.fill();
+        // Top wash for 3D
+        const topWash = ctx.createLinearGradient(0, waterfallH, 0, waterfallH + kh * 0.5);
+        topWash.addColorStop(0, "rgba(255,255,255,0.25)");
+        topWash.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = topWash;
+        ctx.fillRect(wk.x + 0.5, waterfallH + 0.5, wk.w - 1, kh * 0.5);
+        // Bottom glow
+        ctx.shadowColor = RH_COLOR;
+        ctx.shadowBlur = 15;
+        ctx.fillStyle = RH_COLOR;
+        ctx.fillRect(wk.x + 2, waterfallH + kh - 6, wk.w - 4, 6);
+        ctx.restore();
+      }
+
+      // Pass 2: Black key highlights (draw on top)
+      for (const midi of activeKeys) {
+        const bk = cache.blackXs[midi];
+        if (!bk) continue;
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = RH_COLOR;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(bk.x, waterfallH, bk.w, bh, [0, 0, 3, 3]);
+        else ctx.rect(bk.x, waterfallH, bk.w, bh);
+        ctx.fill();
+        // Glossy highlight
+        const hlGrad = ctx.createLinearGradient(bk.x, waterfallH, bk.x, waterfallH + bh * 0.3);
+        hlGrad.addColorStop(0, "rgba(255,255,255,0.3)");
+        hlGrad.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = hlGrad;
+        ctx.fillRect(bk.x + bk.w * 0.1, waterfallH, bk.w * 0.8, bh * 0.3);
+        // Bottom glow
+        ctx.shadowColor = RH_COLOR;
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = RH_COLOR;
+        ctx.fillRect(bk.x + 1, waterfallH + bh - 4, bk.w - 2, 4);
+        ctx.restore();
+      }
     }
   }
 

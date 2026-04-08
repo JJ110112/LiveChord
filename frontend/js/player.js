@@ -3047,6 +3047,7 @@
     getStrumStyle: () => guitarStrumStyle,
     getArpPattern: () => guitarArpPattern,
     getAccData: () => accData,
+    getMelodyData: () => melodyData,
     getActiveTab: () => activeTab,
     API,
     ChordRender,
@@ -3096,7 +3097,7 @@
     selectors: {
       container: "#chordDisplayAccordion",
       bassGridCanvas: "#accordionBassGrid",
-      waterfallCanvas: "#accordionBassWaterfall",
+      waterfallCanvas: "#accordionKeyboardWaterfall",
       chordName: "#accChordName",
       lhHint: "#accLhHint",
       rhHint: "#accRhHint",

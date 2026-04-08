@@ -167,19 +167,8 @@
       <!-- Accordion Tab -->
       <div id="chordDisplayAccordion" class="chord-accordion-tab" style="display:none">
         <div class="acc-teaching-layout">
-          <!-- LEFT: Bass Grid (Left Hand) -->
+          <!-- LEFT: Bass & Chord Display (Left Hand) -->
           <div class="acc-left-panel">
-            <div class="acc-compact-bar">
-              <span id="accChordName" class="acc-main-chord-name">--</span>
-              <span id="accBassPatternLabel" class="acc-bass-pattern-label"></span>
-            </div>
-            <canvas id="accordionBassGrid"></canvas>
-            <div id="accLhHint" class="gt-panel-hint">左手：低音鈕</div>
-          </div>
-          <!-- MIDDLE: Line -->
-          <div class="gt-mid-line"></div>
-          <!-- RIGHT: Bass Pattern Waterfall -->
-          <div class="acc-right-panel">
             <div class="acc-compact-bar">
               <select id="accBassPatternSelect" class="acc-pattern-select" title="低音模式">
                 <option value="bass_chord">Bass-Chord 基本型</option>
@@ -188,7 +177,22 @@
                 <option value="march">March 進行曲 (2/4)</option>
               </select>
             </div>
-            <canvas id="accordionBassWaterfall"></canvas>
+            <div class="acc-chord-name-row">
+              <span id="accChordName" class="acc-main-chord-name">--</span>
+            </div>
+            <canvas id="accordionBassGrid"></canvas>
+            <div class="acc-finger-legend">
+              <span class="gt-fl" style="color:#ff9800">&#9313; Bass</span>
+              <span class="gt-fl" style="color:#ffeb3b">&#9314; Major</span>
+              <span class="gt-fl" style="color:#66bb6a">&#9315; Minor</span>
+            </div>
+            <div id="accLhHint" class="gt-panel-hint">左手：低音鈕</div>
+          </div>
+          <!-- MIDDLE: Line -->
+          <div class="gt-mid-line"></div>
+          <!-- RIGHT: Keyboard Waterfall (Right Hand) -->
+          <div class="acc-right-panel">
+            <canvas id="accordionKeyboardWaterfall"></canvas>
             <div id="accRhHint" class="gt-panel-hint">右手：鍵盤</div>
           </div>
         </div>

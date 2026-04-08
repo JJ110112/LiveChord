@@ -680,6 +680,144 @@ const ChordRender = {
   },
 
   /**
+   * Accordion right-hand piano cache — F3 (MIDI 53) to C6 (MIDI 84).
+   * 19 white keys, 13 black keys. Same 3D rendering as 88-key version.
+   */
+  initAccordionPianoCache(width, dpr) {
+    const MIDI_LO = 53, MIDI_HI = 84;
+    const whites = [];
+    for (let m = MIDI_LO; m <= MIDI_HI; m++) { if ([0,2,4,5,7,9,11].includes(m % 12)) whites.push(m); }
+    const nw = whites.length; // 19
+    const kw = width / nw;
+    const kh = kw * 6;
+    const bw = kw * 0.48;
+    const bh = kh * 0.62;
+    const bevelH = Math.round(kh * 0.06);
+    const labelSpace = 16;
+    const totalH = kh + bevelH + labelSpace;
+
+    const c = document.createElement("canvas");
+    c.width = Math.round(width * dpr);
+    c.height = Math.round(totalH * dpr);
+    const ctx = c.getContext("2d");
+    ctx.scale(dpr, dpr);
+
+    const drawRoundRect = (x, y, w, h, radii) => {
+      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, w, h, radii); }
+      else { ctx.beginPath(); ctx.rect(x, y, w, h); }
+    };
+
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillRect(0, 0, width, kh + bevelH);
+
+    // White keys
+    const gapW = Math.max(1, kw * 0.04);
+    for (let i = 0; i < nw; i++) {
+      const x = i * kw + gapW / 2;
+      const keyW = kw - gapW;
+      const gradient = ctx.createLinearGradient(x, 0, x, kh);
+      gradient.addColorStop(0, "#e8e6e1"); gradient.addColorStop(0.05, "#f5f4f0");
+      gradient.addColorStop(0.15, "#fefefe"); gradient.addColorStop(0.5, "#ffffff");
+      gradient.addColorStop(0.85, "#f8f7f3"); gradient.addColorStop(0.95, "#ece9e3");
+      gradient.addColorStop(1, "#e0ddd7");
+      ctx.fillStyle = gradient;
+      drawRoundRect(x, 0, keyW, kh, [0, 0, 3, 3]); ctx.fill();
+      const leftShadow = ctx.createLinearGradient(x, 0, x + kw * 0.08, 0);
+      leftShadow.addColorStop(0, "rgba(0,0,0,0.12)"); leftShadow.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = leftShadow; ctx.fillRect(x, 0, kw * 0.08, kh);
+      const rightShadow = ctx.createLinearGradient(x + keyW, 0, x + keyW - kw * 0.08, 0);
+      rightShadow.addColorStop(0, "rgba(0,0,0,0.10)"); rightShadow.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = rightShadow; ctx.fillRect(x + keyW - kw * 0.08, 0, kw * 0.08, kh);
+      const innerGlow = ctx.createLinearGradient(x, 0, x, kh * 0.06);
+      innerGlow.addColorStop(0, "rgba(0,0,0,0.10)"); innerGlow.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = innerGlow; ctx.fillRect(x, 0, keyW, kh * 0.06);
+      const bevelGrad = ctx.createLinearGradient(x, kh, x, kh + bevelH);
+      bevelGrad.addColorStop(0, "#d0cec8"); bevelGrad.addColorStop(0.2, "#b8b5ae");
+      bevelGrad.addColorStop(0.6, "#a8a5a0"); bevelGrad.addColorStop(1, "#807d78");
+      ctx.fillStyle = bevelGrad;
+      drawRoundRect(x, kh, keyW, bevelH, [0, 0, 3, 3]); ctx.fill();
+    }
+
+    // Black keys
+    const blackAfterSemi = new Set([0, 1, 3, 4, 5]);
+    const whiteOrder = [0,2,4,5,7,9,11];
+    const blackXs = {};
+    const bFaceH = Math.max(2, bh * 0.04);
+
+    ctx.shadowColor = "rgba(0, 0, 0, 0.7)"; ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 3;
+    for (let i = 0; i < nw - 1; i++) {
+      const deg = whites[i] % 12;
+      const wIdx = whiteOrder.indexOf(deg);
+      if (!blackAfterSemi.has(wIdx)) continue;
+      const bMidi = whites[i] + 1;
+      if (bMidi > MIDI_HI) continue;
+      const x = (i + 1) * kw - bw / 2;
+      drawRoundRect(x, 0, bw, bh + bFaceH, [0, 0, 3, 3]);
+      ctx.fillStyle = "#000"; ctx.fill();
+    }
+    ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+
+    for (let i = 0; i < nw - 1; i++) {
+      const deg = whites[i] % 12;
+      const wIdx = whiteOrder.indexOf(deg);
+      if (!blackAfterSemi.has(wIdx)) continue;
+      const bMidi = whites[i] + 1;
+      if (bMidi > MIDI_HI) continue;
+      const x = (i + 1) * kw - bw / 2;
+      const bgGrad = ctx.createLinearGradient(x, 0, x, bh);
+      bgGrad.addColorStop(0, "#0a0a0a"); bgGrad.addColorStop(0.05, "#181818");
+      bgGrad.addColorStop(0.7, "#1a1a1a"); bgGrad.addColorStop(0.95, "#282828");
+      bgGrad.addColorStop(1, "#333");
+      drawRoundRect(x, 0, bw, bh, [0, 0, 3, 3]); ctx.fillStyle = bgGrad; ctx.fill();
+      const hlX = x + bw * 0.12, hlW = bw * 0.76, hlH = bh * 0.12;
+      const hlGrad = ctx.createLinearGradient(hlX, 0, hlX, hlH);
+      hlGrad.addColorStop(0, "rgba(255,255,255,0.35)"); hlGrad.addColorStop(1, "rgba(255,255,255,0.0)");
+      ctx.fillStyle = hlGrad; ctx.fillRect(hlX, 0, hlW, hlH);
+      const longGloss = ctx.createLinearGradient(x, 0, x, bh * 0.6);
+      longGloss.addColorStop(0, "rgba(255,255,255,0.12)"); longGloss.addColorStop(1, "rgba(255,255,255,0.0)");
+      drawRoundRect(x + bw * 0.1, 0, bw * 0.8, bh * 0.6, [0, 0, 2, 2]); ctx.fillStyle = longGloss; ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.06)"; ctx.fillRect(x, 0, 1, bh);
+      const bfGrad = ctx.createLinearGradient(x, bh, x, bh + bFaceH);
+      bfGrad.addColorStop(0, "#383838"); bfGrad.addColorStop(1, "#1a1a1a");
+      ctx.fillStyle = bfGrad; drawRoundRect(x, bh, bw, bFaceH, [0, 0, 2, 2]); ctx.fill();
+      ctx.strokeStyle = "#0a0a0a"; ctx.lineWidth = 0.8;
+      drawRoundRect(x, 0, bw, bh + bFaceH, [0, 0, 3, 3]); ctx.stroke();
+      blackXs[bMidi] = { x, w: bw, h: bh };
+    }
+
+    const whiteXs = {};
+    for (let i = 0; i < nw; i++) whiteXs[whites[i]] = { x: i * kw, w: kw - 1, h: kh };
+
+    // Octave labels (C4, C5) + middle-C marker
+    ctx.fillStyle = "#666";
+    ctx.font = `${Math.max(9, Math.min(11, kw * 0.9))}px sans-serif`;
+    ctx.textAlign = "center";
+    for (const oct of [4, 5]) {
+      const midi = oct * 12 + 12;
+      if (midi < MIDI_LO || midi > MIDI_HI) continue;
+      const info = whiteXs[midi];
+      if (!info) continue;
+      ctx.fillText("C" + oct, info.x + (info.w / 2), kh + bevelH + 13);
+    }
+    // C6 label
+    if (whiteXs[84]) {
+      ctx.fillText("C6", whiteXs[84].x + (whiteXs[84].w / 2), kh + bevelH + 13);
+    }
+    const c4 = whiteXs[60];
+    if (c4) {
+      ctx.strokeStyle = "rgba(41, 182, 246, 0.6)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(c4.x + c4.w / 2, kh + bevelH - 3);
+      ctx.lineTo(c4.x + c4.w / 2, kh + bevelH + 2);
+      ctx.stroke();
+    }
+
+    return { canvas: c, whiteXs, blackXs, keyW: kw, keyH: kh, bKeyW: bw, bKeyH: bh, bevelH, totalH };
+  },
+
+  /**
    * Per-frame render of the 88-key piano.
    * @param {HTMLCanvasElement} canvas  — visible canvas
    * @param {Object} cache             — from init88PianoCache
