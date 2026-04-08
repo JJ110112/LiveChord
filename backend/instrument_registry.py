@@ -13,6 +13,16 @@ INSTRUMENTS = {
         "string_labels": ["G", "C", "E", "A"],
         "frets": 15,
     },
+    "accordion": {
+        "type": "accordion",
+        "right_hand": "piano",
+        "left_hand": "stradella",
+        "bass_rows": 3,
+        "bass_cols": 7,
+        "bass_columns": ["Bb", "F", "C", "G", "D", "A", "E"],
+        "bass_row_labels": ["Bass", "Major", "Minor"],
+        "dimple_col": 2,
+    },
 }
 
 

@@ -164,6 +164,36 @@
         </div>
       </div>
 
+      <!-- Accordion Tab -->
+      <div id="chordDisplayAccordion" class="chord-accordion-tab" style="display:none">
+        <div class="acc-teaching-layout">
+          <!-- LEFT: Bass Grid (Left Hand) -->
+          <div class="acc-left-panel">
+            <div class="acc-compact-bar">
+              <span id="accChordName" class="acc-main-chord-name">--</span>
+              <span id="accBassPatternLabel" class="acc-bass-pattern-label"></span>
+            </div>
+            <canvas id="accordionBassGrid"></canvas>
+            <div id="accLhHint" class="gt-panel-hint">左手：低音鈕</div>
+          </div>
+          <!-- MIDDLE: Line -->
+          <div class="gt-mid-line"></div>
+          <!-- RIGHT: Bass Pattern Waterfall -->
+          <div class="acc-right-panel">
+            <div class="acc-compact-bar">
+              <select id="accBassPatternSelect" class="acc-pattern-select" title="低音模式">
+                <option value="bass_chord">Bass-Chord 基本型</option>
+                <option value="alternating_bass">Alternating Bass 交替低音</option>
+                <option value="waltz">Waltz 華爾滋 (3/4)</option>
+                <option value="march">March 進行曲 (2/4)</option>
+              </select>
+            </div>
+            <canvas id="accordionBassWaterfall"></canvas>
+            <div id="accRhHint" class="gt-panel-hint">右手：鍵盤</div>
+          </div>
+        </div>
+      </div>
+
     </div><!-- /instrumentPanel -->
   </div><!-- /chordDisplayScaleTarget -->
 
@@ -191,6 +221,7 @@
       <button class="tb-popup-btn" data-tab="piano" title="Piano 鋼琴">&#x1F3B9; 鋼琴</button>
       <button class="tb-popup-btn" data-tab="guitar" title="Guitar 吉他">&#x1F3B8; 吉他</button>
       <button class="tb-popup-btn" data-tab="ukulele" title="Ukulele 烏克麗麗">&#x1FA95; 烏克</button>
+      <button class="tb-popup-btn" data-tab="accordion" title="Accordion 手風琴">&#x1FA97; 手風琴</button>
     </div>
   </div>
 
@@ -310,6 +341,7 @@
 <script src="/js/arpeggio-patterns.js?v=1"></script>
 <script src="/js/string-instrument.js?v=1"></script>
 <script src="/js/instrument-registry.js?v=1"></script>
+<script src="/js/accordion-instrument.js?v=1"></script>
 <script src="/js/midi-exporter.js?v=1"></script>
 <script src="/js/player.js?v=62"></script>
 </body>

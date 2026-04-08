@@ -194,6 +194,8 @@
     if (chordDisplayPiano) chordDisplayPiano.style.display = "none";
     if (chordDisplayGuitar) chordDisplayGuitar.style.display = "none";
     if (chordDisplayUkulele) chordDisplayUkulele.style.display = "none";
+    const chordDisplayAccordion = $("#chordDisplayAccordion");
+    if (chordDisplayAccordion) chordDisplayAccordion.style.display = "none";
     // Update instrument button icon
     document.querySelectorAll("#tbInstrument .tb-popup-btn").forEach(b => b.classList.remove("active"));
   }
@@ -209,10 +211,11 @@
     // Set displayMode based on tab
     if (tab === "guitar") displayMode = "guitar";
     else if (tab === "ukulele") displayMode = "ukulele";
+    else if (tab === "accordion") displayMode = "accordion";
     else displayMode = "piano";
 
     // Update instrument trigger icon
-    const iconMap = { piano: "\u{1F3B9}", guitar: "\u{1F3B8}", ukulele: "\u{1FA95}" };
+    const iconMap = { piano: "\u{1F3B9}", guitar: "\u{1F3B8}", ukulele: "\u{1FA95}", accordion: "\u{1FA97}" };
     const btnInstrument = $("#btnInstrument");
     if (btnInstrument) btnInstrument.textContent = iconMap[tab] || "\u2328";
     // Highlight active in popup
@@ -1845,6 +1848,15 @@
         }
         await preloadChordInfo(chordData.chords);
         buildChordDOM();
+        // Re-init active instrument so it picks up new chord data
+        if (activeTab !== "piano") {
+          const inst = InstrumentRegistry.get(activeTab);
+          if (inst) {
+            const container = $(inst._config.selectors.container);
+            if (container) container.style.display = "flex";
+            inst.init();
+          }
+        }
         // Chords loaded
         // 載入段落 + 旋律資訊
         _loadSections(path);
@@ -1893,7 +1905,7 @@
       const entry = { jianpu: "", notes: [] };
       // Dynamically create diagram slots for all registered string instruments
       for (const id of InstrumentRegistry.list()) {
-        if (InstrumentRegistry.isStringInstrument(id)) entry[`diagram_${id}`] = null;
+        if (InstrumentRegistry.needsDiagram(id)) entry[`diagram_${id}`] = null;
       }
       chordCache[name] = entry;
       try {
@@ -1902,7 +1914,7 @@
         chordCache[name].notes = info.notes || [];
       } catch {}
       for (const id of InstrumentRegistry.list()) {
-        if (InstrumentRegistry.isStringInstrument(id)) {
+        if (InstrumentRegistry.needsDiagram(id)) {
           try { chordCache[name][`diagram_${id}`] = await API.chordDiagram(id, name); } catch {}
         }
       }
@@ -1957,7 +1969,7 @@
       if (chordCache[name]) return;
       const entry = { jianpu: "", notes: [] };
       for (const id of InstrumentRegistry.list()) {
-        if (InstrumentRegistry.isStringInstrument(id)) entry[`diagram_${id}`] = null;
+        if (InstrumentRegistry.needsDiagram(id)) entry[`diagram_${id}`] = null;
       }
       chordCache[name] = entry;
       try {
@@ -1966,7 +1978,7 @@
         chordCache[name].notes = info.notes || [];
       } catch {}
       for (const id of InstrumentRegistry.list()) {
-        if (InstrumentRegistry.isStringInstrument(id)) {
+        if (InstrumentRegistry.needsDiagram(id)) {
           try { chordCache[name][`diagram_${id}`] = await API.chordDiagram(id, name); } catch {}
         }
       }
@@ -3078,6 +3090,21 @@
 
   InstrumentRegistry.register("guitar",  new StringInstrument(GUITAR_CONFIG,  _playerBridge));
   InstrumentRegistry.register("ukulele", new StringInstrument(UKULELE_CONFIG, _playerBridge));
+
+  const ACCORDION_CONFIG = {
+    id: "accordion",
+    selectors: {
+      container: "#chordDisplayAccordion",
+      bassGridCanvas: "#accordionBassGrid",
+      waterfallCanvas: "#accordionBassWaterfall",
+      chordName: "#accChordName",
+      lhHint: "#accLhHint",
+      rhHint: "#accRhHint",
+      patternSelect: "#accBassPatternSelect",
+      patternLabel: "#accBassPatternLabel",
+    },
+  };
+  InstrumentRegistry.register("accordion", new AccordionInstrument(ACCORDION_CONFIG, _playerBridge));
 
 })();
 

@@ -477,10 +477,88 @@ GUITAR_VOICINGS = {
     ],
 }
 
+# ---------------------------------------------------------------------------
+# Accordion: 21-button Stradella bass map (3 rows × 7 columns)
+# Columns follow circle of fifths: Bb, F, C, G, D, A, E
+# Rows: 0=Bass (single note), 1=Major chord, 2=Minor chord
+# C bass (col=2) has a concave dimple for tactile reference.
+# ---------------------------------------------------------------------------
+_ACC_COLS = ["Bb", "F", "C", "G", "D", "A", "E"]
+_ACC_COL_IDX = {n: i for i, n in enumerate(_ACC_COLS)}
+# Enharmonic mapping to bring roots into the 7-column range
+_ACC_ENHARMONIC = {
+    "A#": "Bb", "Cb": "B", "B#": "C", "Fb": "E", "E#": "F",
+    "Gb": "F#", "G#": "Ab", "D#": "Eb", "C#": "Db",
+}
+
+def _acc_resolve(chord_name):
+    """Resolve a chord name to accordion bass buttons.
+    Returns dict with keys: buttons, altBass, root, quality, warning (optional).
+    """
+    import re as _re
+    m = _re.match(r'^([A-G][b#]?)(.*)', chord_name)
+    if not m:
+        return None
+    root, suffix = m.group(1), m.group(2)
+
+    # Determine quality -> row
+    is_minor = bool(_re.match(r'^m($|[^a])', suffix))  # m, m7, m6 but not maj
+    row = 2 if is_minor else 1  # 1=Major, 2=Minor
+
+    # Normalize root to one of the 7 columns
+    norm_root = _ACC_ENHARMONIC.get(root, root)
+    warning = None
+    if norm_root not in _ACC_COL_IDX:
+        # Root not available on 21-button layout (B, Eb, Ab, Db, F#)
+        warning = f"21鍵無 {root} 低音，建議使用五度代替"
+        # Fallback: use the fifth as bass (e.g., B -> use E column)
+        _fifth_map = {"B": "E", "Eb": "Bb", "Ab": "Bb", "Db": "F", "F#": "D"}
+        fallback = _fifth_map.get(norm_root)
+        if fallback and fallback in _ACC_COL_IDX:
+            col = _ACC_COL_IDX[fallback]
+            return {
+                "buttons": [{"col": col, "row": 0, "label": fallback}],
+                "altBass": None,
+                "root": root,
+                "quality": "minor" if is_minor else "major",
+                "warning": warning,
+                "available": False,
+            }
+        return {"buttons": [], "root": root, "quality": "minor" if is_minor else "major",
+                "warning": f"21鍵無法演奏 {chord_name}", "available": False}
+
+    col = _ACC_COL_IDX[norm_root]
+    # Alt bass = one fifth up (next column to the right in circle-of-fifths)
+    alt_col = col + 1 if col < 6 else None
+    alt_bass = {"col": alt_col, "row": 0, "label": _ACC_COLS[alt_col]} if alt_col is not None else None
+
+    return {
+        "buttons": [
+            {"col": col, "row": 0, "label": norm_root},       # Bass note
+            {"col": col, "row": row, "label": chord_name},     # Chord button
+        ],
+        "altBass": alt_bass,
+        "root": root,
+        "quality": "minor" if is_minor else "major",
+        "available": True,
+    }
+
+
+# Build static ACCORDION_BASS_MAP for common chords
+ACCORDION_BASS_MAP = {}
+for _root in _ACC_COLS:
+    for _suf, _label in [("", _root), ("m", _root + "m")]:
+        _name = _root + _suf
+        _res = _acc_resolve(_name)
+        if _res:
+            ACCORDION_BASS_MAP[_name] = _res
+
+
 # ---- 樂器 → 和弦資料映射 (新增樂器在此加一行) ----
 CHORD_DBS = {
     "guitar": GUITAR_CHORDS,
     "ukulele": UKULELE_CHORDS,
+    "accordion": ACCORDION_BASS_MAP,
 }
 
 VOICING_DBS = {
@@ -494,11 +572,18 @@ def get_chord_diagram(chord_name, instrument='guitar'):
     # Strip inversion suffix (e.g. "C#:1" → "C#")
     chord_name = _re.sub(r':\d+$', '', chord_name)
 
+    # Accordion uses dynamic resolution, not static fretboard lookup
+    if instrument == "accordion":
+        result = _acc_resolve(chord_name)
+        if result:
+            result["name"] = chord_name
+        return result
+
     db = CHORD_DBS.get(instrument)
     if db is None:
         return None
     inst_meta = get_instrument(instrument)
-    num_strings = inst_meta["num_strings"] if inst_meta else 6
+    num_strings = inst_meta.get("num_strings", 6) if inst_meta else 6
 
     # 直接查找
     if chord_name in db:
@@ -571,8 +656,17 @@ def get_chord_voicings(chord_name, instrument='guitar'):
     """取得和弦所有把位指法 (list of dicts)"""
     import re as _re
     chord_name = _re.sub(r':\d+$', '', chord_name)
+
+    # Accordion has no voicing variants — return the single bass mapping
+    if instrument == "accordion":
+        result = _acc_resolve(chord_name)
+        if result:
+            result["name"] = chord_name
+            return [result]
+        return []
+
     inst_meta = get_instrument(instrument)
-    num_strings = inst_meta["num_strings"] if inst_meta else 6
+    num_strings = inst_meta.get("num_strings", 6) if inst_meta else 6
 
     voicings = []
 

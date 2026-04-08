@@ -102,7 +102,9 @@ def chord_voicings_api(instrument: str, name: str):
         raise HTTPException(status_code=400, detail=f"instrument 須為 {', '.join(list_instruments())}")
     voicings = get_chord_voicings(name, instrument=instrument)
     inst_meta = get_instrument(instrument)
-    num_strings = inst_meta["num_strings"] if inst_meta else 6
+    if instrument == "accordion":
+        return {"name": name, "type": "accordion", "voicings": voicings}
+    num_strings = inst_meta.get("num_strings", 6) if inst_meta else 6
     return {"name": name, "numStrings": num_strings, "voicings": voicings}
 
 

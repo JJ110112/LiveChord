@@ -612,6 +612,87 @@
 
 /* ========== [END: GUITAR/UKULELE TAB] ========== */
 
+/* ========== [ACCORDION TAB] ========== */
+.chord-accordion-tab {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.acc-teaching-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.acc-left-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.acc-right-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 8px;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.acc-compact-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  width: 100%;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.acc-main-chord-name {
+  font-size: 22px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 8px rgba(100,180,255,0.3);
+}
+
+.acc-bass-pattern-label {
+  font-size: 11px;
+  color: #aaa;
+}
+
+.acc-pattern-select {
+  background: rgba(30,30,40,0.85);
+  color: #ccc;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+}
+
+#accordionBassGrid {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+}
+
+#accordionBassWaterfall {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+}
+/* ========== [END: ACCORDION TAB] ========== */
+
 
 /* ========== [COMPONENT: RLHF RATE POPUP] ========== */
 
