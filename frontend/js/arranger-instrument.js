@@ -54,7 +54,6 @@ class ArrangerInstrument {
     const sel = this._config.selectors;
     this._wfCanvas = document.querySelector(sel.waterfallCanvas);
     this._kbCanvas = document.querySelector(sel.keyboardCanvas);
-    this._lhHintEl = document.querySelector(sel.lhHint);
     this._splitSelect = document.querySelector(sel.splitPointSelect);
 
     if (this._splitSelect) {
@@ -124,7 +123,6 @@ class ArrangerInstrument {
       if (chordName !== this._activeChordName) {
         this._activeChordName = chordName;
         this._activeIdx = idx;
-        this._updateHints(chordName);
       }
     }
     this._drawUnifiedWaterfall(currentTime);
@@ -419,34 +417,16 @@ class ArrangerInstrument {
     const splitKey = cache.whiteXs[splitMidi] || cache.blackXs[splitMidi];
     if (splitKey) {
       const sx = splitKey.x + splitKey.w;
-      ctx.strokeStyle = "rgba(255, 80, 80, 0.7)";
-      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = "rgba(255, 80, 80, 0.5)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
       ctx.beginPath();
       ctx.moveTo(sx, 0);
       ctx.lineTo(sx, cache.keyH + cache.bevelH);
       ctx.stroke();
-      ctx.fillStyle = "rgba(255, 80, 80, 0.8)";
-      ctx.font = "bold 9px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("SPLIT", sx, cache.keyH + cache.bevelH + 11);
+      ctx.setLineDash([]);
     }
   }
 
-  /* ---- Hints ---- */
-
-  _updateHints(chordName) {
-    const resolved = this._resolveChord(chordName);
-    if (!resolved || !resolved.available) {
-      if (this._lhHintEl) {
-        this._lhHintEl.textContent = resolved && resolved.warning
-          ? resolved.warning
-          : "左手：和弦輸入區";
-      }
-      return;
-    }
-    const notes = resolved.midi_notes.map(m => ArrangerInstrument.midiToName(m));
-    if (this._lhHintEl) {
-      this._lhHintEl.textContent = `${chordName}: ${notes.join(" + ")}`;
-    }
-  }
+}
 }

@@ -3110,7 +3110,6 @@
       container: "#chordDisplayArranger",
       waterfallCanvas: "#arrangerWaterfall",
       keyboardCanvas: "#arrangerKeyboard",
-      lhHint: "#arrLhHint",
       splitPointSelect: "#arrSplitPointSelect",
     },
   };
