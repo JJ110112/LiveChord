@@ -475,8 +475,10 @@ class AccordionInstrument {
       this._lastWfWidth = W;
     }
     const cache = this._pianoCache;
-    const pianoH = cache.totalH;
-    const waterfallH = H - pianoH; // area above the keyboard for falling notes
+    // Cap keyboard to ~25% of panel height so waterfall gets enough space
+    const maxPianoH = Math.round(H * 0.25);
+    const pianoH = Math.min(cache.totalH, maxPianoH);
+    const waterfallH = H - pianoH;
 
     if (waterfallH < 20) {
       // Not enough space for waterfall, just draw the keyboard
