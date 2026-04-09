@@ -1,7 +1,9 @@
 import os
+import re
 import subprocess
 import logging
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Optional, Dict
 
@@ -11,7 +13,9 @@ class StemSeparator:
     """
     Uses Demucs to separate audio into stems (bass, drums, other, vocals).
     """
-    def __init__(self, output_dir: str = 'separated'):
+    def __init__(self, output_dir: str = None):
+        if output_dir is None:
+            output_dir = os.environ.get('LIVECHORD_SEPARATED_DIR', 'W:/data/separated')
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         # Using the fastest default model 'htdemucs' (or 'htdemucs_ft' for fine-tuned)
@@ -30,14 +34,29 @@ class StemSeparator:
             return None
 
         logger.info(f"Starting Demucs source separation for: {audio_file.name}")
-        
+
+        # Demucs 用 audio_file.stem 作為輸出子目錄名稱。
+        # Windows 不允許目錄名以 . 或空白結尾（例如「奇跡を望むなら...」），
+        # 也不允許含有 <>:"/\|?* 等字元。
+        # 如果檔名有這些問題，先複製到安全名稱的暫存檔再呼叫 Demucs。
+        safe_stem = re.sub(r'[<>:"/\\|?*]', '_', audio_file.stem).rstrip('. ')
+        tmp_copy = None
+        input_file = audio_file
+        if safe_stem != audio_file.stem:
+            tmp_dir = self.output_dir / "_tmp"
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+            tmp_copy = tmp_dir / (safe_stem + audio_file.suffix)
+            shutil.copy2(str(audio_file), str(tmp_copy))
+            input_file = tmp_copy
+            logger.info(f"  Unsafe filename, using temp copy: {safe_stem}")
+
         # Use the patched demucs runner that bypasses torchaudio.save and uses soundfile directly
         patched_runner = Path(__file__).parent / "run_demucs_patched.py"
         cmd = [
             "python", str(patched_runner),
             "-n", self.model_name,
             "-o", str(self.output_dir),
-            str(audio_file)
+            str(input_file)
         ]
 
         # Set up environment variables to fix Windows-specific bugs:
@@ -67,9 +86,13 @@ class StemSeparator:
             logger.error(f"Demucs failed: {last_err}")
             return None
 
+        # 清理暫存複製
+        if tmp_copy and tmp_copy.exists():
+            tmp_copy.unlink(missing_ok=True)
+
         # Demucs saves files to output_dir / model_name / song_name / stem.wav
-        # The song_name is usually the file name without extension
-        song_name = audio_file.stem
+        # song_name 使用 input_file.stem（可能是安全化後的名稱）
+        song_name = input_file.stem
         stem_dir = self.output_dir / self.model_name / song_name
 
         if not stem_dir.exists():

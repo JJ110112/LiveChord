@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiveChord — Extraction Manager</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2196F3">
+  <link rel="stylesheet" href="/css/base.css?v=1">
+  <link rel="stylesheet" href="/css/home.css?v=1">
+  <style>
+    .admin-page { max-width: 960px; margin: 0 auto; padding: 20px 24px; }
+    .card { background: var(--bg-card); border-radius: var(--radius); padding: 20px; margin-bottom: 14px; }
+    .card h2 { font-size: 16px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+    .card h2 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .dot-green { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+    .dot-yellow { background: #ff9800; box-shadow: 0 0 6px #ff9800; }
+    .dot-red { background: #f44; box-shadow: 0 0 6px #f44; }
+    .dot-gray { background: #555; }
+    .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 6px; margin-bottom: 10px; }
+    .stat-box { background: var(--bg); border-radius: 8px; padding: 8px; text-align: center; }
+    .stat-box .num { font-size: 20px; font-weight: 800; color: var(--accent); }
+    .stat-box .num.warn { color: #f44; }
+    .stat-box .label { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+    .progress-track { height: 5px; background: #222; border-radius: 3px; overflow: hidden; margin: 6px 0; }
+    .progress-track .bar { height: 100%; border-radius: 3px; transition: width .5s; }
+    .bar-green { background: #4caf50; }
+    .bar-blue { background: var(--accent); }
+    .bar-yellow { background: #ff9800; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+    .actions button { padding: 5px 12px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text); cursor: pointer; font-size: 11px; transition: all .15s; }
+    .actions button:hover { background: var(--bg-hover); }
+    .actions button.danger { background: #d32f2f; border-color: #d32f2f; color: #fff; }
+    .actions button.danger:hover { background: #b71c1c; }
+    .actions button:disabled { opacity: .4; cursor: not-allowed; }
+    .log-box { background: #0a0a0a; border-radius: 6px; padding: 10px 14px; max-height: 240px; overflow-y: auto; font-size: 11px; font-family: "Consolas", monospace; line-height: 1.6; }
+    .log-box .ts { color: #555; }
+    .log-box .ok { color: #4caf50; }
+    .log-box .info { color: #888; }
+    .log-box .error { color: #f66; }
+    .log-box .src { color: #ff9800; font-weight: 600; }
+    .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+    .badge-running { background: rgba(76,175,80,.15); color: #4caf50; }
+    .badge-completed { background: rgba(33,150,243,.15); color: #2196f3; }
+    .badge-stopped { background: rgba(244,67,54,.15); color: #f44; }
+    .badge-stale { background: rgba(244,67,54,.15); color: #f44; }
+    .badge-idle { background: rgba(255,255,255,.08); color: #888; }
+    .current-task { font-size: 11px; color: var(--text-dim); margin-top: 4px; min-height: 14px; }
+    .eta-row { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+    .eta-row strong { color: var(--text); }
+    .meta-row { font-size: 10px; color: var(--text-dim); margin-top: 6px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .collapse-content { display: none; }
+    .collapse-content.show { display: block; }
+    .collapse-toggle { cursor: pointer; user-select: none; }
+    .collapse-toggle::after { content: " ▸"; font-size: 12px; }
+    .collapse-toggle.open::after { content: " ▾"; }
+    .hint { font-size: 11px; color: var(--text-dim); margin-top: 10px; padding: 8px 12px; background: rgba(255,255,255,.03); border-radius: 6px; border-left: 3px solid var(--border); }
+    .hint code { background: rgba(255,255,255,.08); padding: 1px 4px; border-radius: 3px; font-size: 10px; }
+    .job-card { background: var(--bg); border-radius: 8px; padding: 14px; margin-bottom: 10px; }
+    .job-card h3 { font-size: 13px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .device-icon { font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <a href="/" style="text-decoration:none"><h1>LiveChord</h1></a>
+  <span style="color:var(--text-dim);font-size:14px;margin-left:12px">Extraction Manager</span>
+  <a href="/admin" style="margin-left:auto;font-size:12px;color:var(--text-dim)">Core</a>
+</header>
+
+<div class="admin-page">
+
+  <!-- ======== 任務面板 ======== -->
+  <div class="card">
+    <h2>
+      <span class="dot dot-gray" id="overallDot"></span>
+      擷取進度
+      <span class="badge badge-idle" id="overallBadge">idle</span>
+    </h2>
+
+    <div id="jobsContainer">
+      <div style="font-size:12px;color:var(--text-dim)">等待擷取任務啟動...</div>
+    </div>
+
+    <div class="actions">
+      <button class="danger" id="btnStopAll" disabled>全部停止</button>
+      <button class="danger" id="btnStopPC" disabled style="background:transparent;border-color:#d32f2f;color:#d32f2f">停止 PC</button>
+      <button class="danger" id="btnStopNUC" disabled style="background:transparent;border-color:#ff9800;color:#ff9800">停止 NUC</button>
+    </div>
+
+    <div class="hint">
+      <strong>PC</strong> (GPU+i9): <code>Run-SuperWorker.bat</code> 或 <code>Run-ChordWorker-PC.bat</code><br>
+      <strong>NUC</strong> (CPU): <code>Run-MelodyWorker-NUC.bat</code><br>
+      <strong>Hybrid</strong>: <code>run_hybrid_extraction.bat</code> (PC only)
+    </div>
+  </div>
+
+  <!-- ======== 活動記錄 ======== -->
+  <div class="card">
+    <h2 class="collapse-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">活動記錄</h2>
+    <div class="collapse-content show">
+      <div class="log-box" id="logBox"><span class="info">等待擷取任務啟動...</span></div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="/js/utils.js?v=1"></script>
+<script src="/js/api.js?v=2"></script>
+<script>
+(function() {
+  const $ = s => document.querySelector(s);
+
+  function fmt(n) {
+    if (n == null || n === '--') return '--';
+    return Number(n).toLocaleString();
+  }
+
+  function fmtDuration(sec) {
+    if (!sec || sec <= 0) return '--';
+    const d = Math.floor(sec / 86400);
+    const h = Math.floor((sec % 86400) / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const parts = [];
+    if (d > 0) parts.push(d + '天');
+    if (h > 0) parts.push(h + '時');
+    parts.push(m + '分');
+    return parts.join(' ');
+  }
+
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+  }
+
+  const typeLabels = {
+    super_both: '和弦+旋律', super_melody: '旋律 (CPU)',
+    super_chord: '和弦 (GPU)', hybrid: 'Hybrid MIDI',
+    super: '和弦+旋律'
+  };
+
+  function renderJobCard(job) {
+    const src = job._source || '?';
+    const status = job.status || 'idle';
+    const dotCls = { running: 'dot-green', completed: 'dot-green', stopped: 'dot-red', stale: 'dot-red' }[status] || 'dot-gray';
+    const badgeLabels = { running: '執行中', completed: '已完成', stopped: '已停止', stale: '可能中斷', idle: '閒置' };
+    const barCls = status === 'completed' ? 'bar-blue' : status === 'stale' ? 'bar-yellow' : 'bar-green';
+    const pct = job.total > 0 ? (job.done / job.total * 100) : 0;
+    const icon = src === 'PC' ? '🖥️' : '📦';
+    const jt = job.job_type || '';
+
+    return `<div class="job-card">
+      <h3>
+        <span class="device-icon">${icon}</span>
+        <span>${src}</span>
+        <span class="badge badge-${status === 'error' ? 'stopped' : status}">${badgeLabels[status] || status}</span>
+        <span style="font-size:10px;color:var(--text-dim);margin-left:auto">${typeLabels[jt] || jt}</span>
+      </h3>
+      <div class="stat-row">
+        <div class="stat-box"><div class="num">${fmt(job.total)}</div><div class="label">總計</div></div>
+        <div class="stat-box"><div class="num">${fmt(job.done)}</div><div class="label">已掃描</div></div>
+        <div class="stat-box"><div class="num">${fmt(job.processed)}</div><div class="label">已處理</div></div>
+        <div class="stat-box"><div class="num">${fmt(job.skipped)}</div><div class="label">已跳過</div></div>
+        <div class="stat-box"><div class="num${(job.errors||0)>0?' warn':''}">${fmt(job.errors)}</div><div class="label">錯誤</div></div>
+      </div>
+      <div class="progress-track"><div class="bar ${barCls}" style="width:${pct.toFixed(1)}%"></div></div>
+      <div class="eta-row">
+        <span>速度: <strong>${job.real_tps > 0 ? job.real_tps.toFixed(4) : '--'}</strong> 首/秒</span>
+        <span>剩餘: <strong>${fmtDuration(job.eta_seconds)}</strong></span>
+        <span>完成: <strong>${job.estimated_finish || '--'}</strong></span>
+      </div>
+      <div class="current-task">${job.current_file ? '目前: ' + esc(job.current_file) : (job.message || '')}</div>
+      <div class="meta-row">
+        <span>來源: ${esc(job.root_dir || '--')}</span>
+        <span>Workers: ${job.workers || '--'}</span>
+        ${job.gpu_concurrent ? '<span>GPU: ' + job.gpu_concurrent + '</span>' : ''}
+        <span>PID: ${job.pid || '--'}</span>
+      </div>
+    </div>`;
+  }
+
+  // ---- Status polling ----
+  async function pollStatus() {
+    try {
+      const s = await API.get('/api/extraction/status');
+      updateUI(s);
+    } catch (e) {
+      updateUI({ status: 'error', jobs: [] });
+    }
+  }
+
+  function updateUI(s) {
+    const status = s.status || 'idle';
+    const jobs = s.jobs || [];
+
+    // Overall dot & badge
+    const dotMap = { running: 'dot-green', completed: 'dot-green', stopped: 'dot-red', stale: 'dot-red', idle: 'dot-gray' };
+    $('#overallDot').className = 'dot ' + (dotMap[status] || 'dot-gray');
+    const badgeLabels = { running: '執行中', completed: '已完成', stopped: '已停止', stale: '異常', idle: '閒置' };
+    const badge = $('#overallBadge');
+    badge.textContent = badgeLabels[status] || status;
+    badge.className = 'badge badge-' + (status === 'error' ? 'stopped' : status);
+
+    // Job cards
+    const container = $('#jobsContainer');
+    if (jobs.length > 0) {
+      container.innerHTML = jobs.map(renderJobCard).join('');
+    } else {
+      container.innerHTML = '<div style="font-size:12px;color:var(--text-dim)">沒有任務在執行</div>';
+    }
+
+    // Buttons
+    const anyActive = jobs.some(j => j.status === 'running' || j.status === 'stale');
+    const pcActive = jobs.some(j => j._source === 'PC' && (j.status === 'running' || j.status === 'stale'));
+    const nucActive = jobs.some(j => j._source === 'NUC' && (j.status === 'running' || j.status === 'stale'));
+    $('#btnStopAll').disabled = !anyActive;
+    $('#btnStopPC').disabled = !pcActive;
+    $('#btnStopNUC').disabled = !nucActive;
+  }
+
+  // ---- Logs polling ----
+  async function pollLogs() {
+    try {
+      const res = await API.get('/api/extraction/logs?limit=80');
+      renderLogs(res.logs || []);
+    } catch {}
+  }
+
+  function renderLogs(logs) {
+    if (!logs.length) return;
+    const box = $('#logBox');
+    const wasAtBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
+    box.innerHTML = logs.map(l => {
+      const cls = l.level === 'OK' ? 'ok' : l.level === 'ERR' ? 'error' : 'info';
+      const src = l.source ? `<span class="src">[${l.source}]</span> ` : '';
+      return `<div><span class="ts">${esc(l.time)}</span> ${src}<span class="${cls}">[${l.level}]</span> ${esc(l.msg)}</div>`;
+    }).join('');
+    if (wasAtBottom) box.scrollTop = box.scrollHeight;
+  }
+
+  // ---- Stop buttons ----
+  async function doStop(target, label) {
+    if (!confirm(`確定要停止 ${label} 的擷取任務？`)) return;
+    try {
+      const res = await API.post(`/api/extraction/stop?target=${target}`);
+      showToast(res.message || '已發送停止信號');
+    } catch (e) {
+      showToast('停止失敗: ' + e.message);
+    }
+  }
+  $('#btnStopAll').addEventListener('click', () => doStop('all', '所有'));
+  $('#btnStopPC').addEventListener('click', () => doStop('pc', 'PC'));
+  $('#btnStopNUC').addEventListener('click', () => doStop('nuc', 'NUC'));
+
+  // ---- Start polling ----
+  pollStatus();
+  pollLogs();
+  setInterval(pollStatus, 3000);
+  setInterval(pollLogs, 5000);
+})();
+</script>
+</body>
+</html>

@@ -13,6 +13,7 @@ from chord_batch import router as chord_batch_router
 from user_api import router as user_router
 from benchmark_api import router as benchmark_router
 from ai_api import router as ai_router
+from extraction_api import router as extraction_router
 import auto_worker
 
 
@@ -38,6 +39,7 @@ app.include_router(chord_batch_router)
 app.include_router(user_router)
 app.include_router(benchmark_router)
 app.include_router(ai_router)
+app.include_router(extraction_router)
 
 # 前端靜態檔案
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
@@ -128,6 +130,11 @@ async def admin():
 @app.get("/benchmark")
 async def benchmark():
     return FileResponse(FRONTEND_DIR / "benchmark.html")
+
+
+@app.get("/extraction")
+async def extraction():
+    return FileResponse(FRONTEND_DIR / "extraction.html")
 
 
 if __name__ == "__main__":
