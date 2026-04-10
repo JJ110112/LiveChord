@@ -140,6 +140,7 @@ def _add_log(level: str, msg: str):
 # ---------------------------------------------------------------------------
 print_lock = threading.Lock()
 _gpu_semaphore = threading.Semaphore(6)  # RTX 5080 16GB VRAM — 放寬至 6 並發
+_task_history = collections.deque(maxlen=2000) # 用於動態預測最近 2000 筆的跳過率
 # Phase 11: fast_mode 批次高速模式
 # - 關閉 adaptive_range (省去全頻段粗掃 pYIN)
 # - 關閉 onset detection (省去 onset_strength 計算)
@@ -206,44 +207,73 @@ def process_track(root_dir: str, rel_path: str):
     except OSError:
         return "ERROR_FS (file access)"
 
-    res_msgs = []
-
-    # 1. 旋律擷取 (CPU 密集 - 無 GPU 鎖)
-    if do_melody and not melody_done:
+    # --- 跨進程/機器鎖機制 (Atomic Lock) ---
+    lock_file = CHORDS_DIR / f"{h}.lock"
+    try:
+        # 使用 os.O_CREAT | os.O_EXCL 達成原子操作 (Atomic)建立鎖檔案
+        # 若已有其他機器建立，會觸發 FileExistsError
+        fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+    except FileExistsError:
+        # 發現鎖，檢查是否為陳舊鎖 (超過 2 小時沒更新，當作上一個工作站已經當機崩潰)
         try:
-            extractor = _ensure_melody_extractor()
-            melody = extractor.extract_melody(full_path)
-            res = {"path": rel_path.replace("\\", "/"), "melody": melody}
-            with open(melody_file, "w", encoding="utf-8") as f:
-                json.dump(res, f, ensure_ascii=False, indent=2)
-            res_msgs.append(f"Melody:OK({len(melody)}notes)")
-        except Exception as e:
-            res_msgs.append(f"Melody:ERR({e})")
-
-    # 2. 和弦偵測 (GPU 密集 - 受 Semaphore 限制)
-    if do_chord and not chord_done:
-        try:
-            _lazy_import_chord()
-            with _gpu_semaphore:
-                chords = detect_chords(full_path)
-
-            if not chords:
-                res_msgs.append("Chord:NO_CHORDS")
+            mtime = os.path.getmtime(lock_file)
+            if time.time() - mtime > 7200:
+                Path(lock_file).touch()  # 強行接管，更新修改時間
             else:
-                from chord_detect import _key_from_chords
-                key = _key_from_chords(chords)
-                sheet = {
-                    "path": rel_path.replace("\\", "/"),
-                    "key": key,
-                    "capo": 0,
-                    "source": "btc_batch",
-                    "chords": chords
-                }
-                with open(chord_file, "w", encoding="utf-8") as f:
-                    json.dump(sheet, f, ensure_ascii=False, indent=2)
-                res_msgs.append(f"Chord:OK({key})")
-        except Exception as e:
-            res_msgs.append(f"Chord:ERR({e})")
+                return "SKIP_LOCK"
+        except Exception:
+            return "SKIP_LOCK"
+    except Exception:
+        # 忽略其他網路磁碟報錯，繼續嘗試
+        pass
+
+    res_msgs = []
+    try:
+        # 1. 旋律擷取 (CPU 密集 - 無 GPU 鎖)
+        if do_melody and not melody_done:
+            try:
+                extractor = _ensure_melody_extractor()
+                melody = extractor.extract_melody(full_path)
+                res = {"path": rel_path.replace("\\", "/"), "melody": melody}
+                with open(melody_file, "w", encoding="utf-8") as f:
+                    json.dump(res, f, ensure_ascii=False, indent=2)
+                res_msgs.append(f"Melody:OK({len(melody)}notes)")
+            except Exception as e:
+                res_msgs.append(f"Melody:ERR({e})")
+
+        # 2. 和弦偵測 (GPU 密集 - 受 Semaphore 限制)
+        if do_chord and not chord_done:
+            try:
+                _lazy_import_chord()
+                with _gpu_semaphore:
+                    chords = detect_chords(full_path)
+
+                if not chords:
+                    res_msgs.append("Chord:NO_CHORDS")
+                else:
+                    from chord_detect import _key_from_chords
+                    key = _key_from_chords(chords)
+                    sheet = {
+                        "path": rel_path.replace("\\", "/"),
+                        "key": key,
+                        "capo": 0,
+                        "source": "btc_batch",
+                        "chords": chords
+                    }
+                    with open(chord_file, "w", encoding="utf-8") as f:
+                        json.dump(sheet, f, ensure_ascii=False, indent=2)
+                    res_msgs.append(f"Chord:OK({key})")
+            except Exception as e:
+                res_msgs.append(f"Chord:ERR({e})")
+
+    finally:
+        # 結束後解除清理鎖機制
+        try:
+            if lock_file.exists():
+                lock_file.unlink()
+        except Exception:
+            pass
 
     return " | ".join(res_msgs)
 
@@ -354,22 +384,26 @@ def main():
             task_count += 1
             try:
                 result = future.result()
-                if result == "SKIP" or result.startswith("SKIP_BIG"):
+                if result == "SKIP" or result.startswith("SKIP_BIG") or result == "SKIP_LOCK":
                     skip_count += 1
+                    _task_history.append(0) # 0 表示非實際耗時工作
                 elif "ERR" in result:
                     err_count += 1
+                    _task_history.append(1) # 1 表示實際有運算 (失敗也是算力)
                     log_msg = f"{path} -> {result}"
                     _add_log("ERR", log_msg)
                     with print_lock:
                         print(f"[{task_count}/{total_tasks}] ⚠️ {log_msg}")
                 else:
                     process_count += 1
+                    _task_history.append(1) # 1 表示實際有運算
                     log_msg = f"{path} -> {result}"
                     _add_log("OK", log_msg)
                     with print_lock:
                         print(f"[{task_count}/{total_tasks}] ✅ {log_msg}")
             except Exception as exc:
                 err_count += 1
+                _task_history.append(1)
                 log_msg = f"嚴重錯誤 {path}: {exc}"
                 _add_log("ERR", log_msg)
                 with print_lock:
@@ -380,10 +414,20 @@ def main():
                 actual = process_count + err_count  # 實際有處理的（排除 skip）
                 if actual > 0:
                     real_tps = actual / elapsed
-                    skip_ratio = skip_count / task_count if task_count > 0 else 0
+                    
+                    # 取最近 2000 首做為預測根據，避免歷史包袱稀釋跳過率
+                    if len(_task_history) > 0:
+                        recent_work_ratio = sum(_task_history) / len(_task_history)
+                    else:
+                        recent_work_ratio = 1.0
+                    
+                    # 如果近期幾乎全是舊檔案，保守估計接下來還是有些微處女地，下限設 0.02
+                    recent_work_ratio = max(recent_work_ratio, 0.02)
+                    
                     remaining_all = total_tasks - task_count
-                    remaining_process = remaining_all * (1 - skip_ratio)
+                    remaining_process = remaining_all * recent_work_ratio
                     eta_sec = remaining_process / real_tps
+
                 else:
                     scan_tps = task_count / elapsed if elapsed > 0 else 0
                     eta_sec = (total_tasks - task_count) / scan_tps if scan_tps > 0 else 0
