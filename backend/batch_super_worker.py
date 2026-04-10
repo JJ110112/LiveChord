@@ -384,9 +384,11 @@ def main():
             task_count += 1
             try:
                 result = future.result()
-                if result == "SKIP" or result.startswith("SKIP_BIG") or result == "SKIP_LOCK":
+                if result == "SKIP":
                     skip_count += 1
-                    _task_history.append(0) # 0 表示非實際耗時工作
+                elif result.startswith("SKIP_BIG") or result == "SKIP_LOCK":
+                    skip_count += 1
+                    _task_history.append(0) # 0 表示非實際耗時工作 (前線跳過)
                 elif "ERR" in result:
                     err_count += 1
                     _task_history.append(1) # 1 表示實際有運算 (失敗也是算力)
