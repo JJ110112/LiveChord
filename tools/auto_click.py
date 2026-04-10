@@ -115,7 +115,7 @@ class App:
             if clip != self._last_clip:
                 self._last_clip = clip
                 if clip and ("youtube.com" in clip or "youtu.be" in clip or "chordify.net" in clip):
-                    self.url_var.set(clip)
+                    self.url_var.set(self._clean_youtube_url(clip))
                     vid = self._extract_video_id(clip)
                     if vid:
                         self._set_status(f"ID: {vid}", "#4caf50")
@@ -146,7 +146,8 @@ class App:
             self.root.after(0, lambda: self.btn_run.configure(state="normal", bg="#e94560"))
 
     def _do_run(self):
-        url = self.url_var.get().strip()
+        url = self._clean_youtube_url(self.url_var.get().strip())
+        self.url_var.set(url)
         if not url:
             self._print("[ERROR] URL 為空，請先複製 YouTube 網址")
             self._set_status("URL 為空", "#f44")
@@ -286,6 +287,13 @@ class App:
                 self._print(f"  [WARN] {e}")
             time.sleep(0.5)
         return False
+
+    def _clean_youtube_url(self, url):
+        """Strip playlist/radio params, keep only ?v=VIDEO_ID."""
+        vid = self._extract_video_id(url)
+        if vid and ("youtube.com" in url or "youtu.be" in url):
+            return f"https://www.youtube.com/watch?v={vid}"
+        return url
 
     def _extract_video_id(self, text):
         m = re.search(r"[?&]v=([a-zA-Z0-9_-]+)", text)
