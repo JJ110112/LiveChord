@@ -131,7 +131,7 @@ def _extract_midi_features(song_hash, data_dir="W:/data"):
 # 主入口
 # ---------------------------------------------------------------------------
 
-def detect_sections(chords, key="C", song_hash=None, data_dir="W:/data"):
+def detect_sections(chords, key="C", song_hash=None, data_dir="W:/data", mode="auto"):
     if not chords or len(chords) < 4:
         return {"sections": [], "analysis": {}}
 
@@ -190,10 +190,15 @@ def detect_sections(chords, key="C", song_hash=None, data_dir="W:/data"):
         })
 
     # 段落判定
-    if is_simple:
-        _classify_simple(windows_data)
-    else:
-        _classify_pop(windows_data)
+    dl_success = False
+    if mode in ["auto", "dl"]:
+        dl_success = _classify_dl(windows_data, data_dir)
+        
+    if not dl_success:
+        if is_simple:
+            _classify_simple(windows_data)
+        else:
+            _classify_pop(windows_data)
 
     # 合併相鄰同類型 + 高相似度強制合併
     merged = _merge_sections(windows_data)
@@ -365,6 +370,57 @@ def _classify_pop(windows_data):
             w["type"] = "instrumental"
         else:
             w["type"] = "verse"
+
+
+# ---------------------------------------------------------------------------
+# 深度學習 (V5): BiLSTM 時序模型
+# ---------------------------------------------------------------------------
+
+def _classify_dl(windows_data, data_dir):
+    """使用 PyTorch BiLSTM 模型預測段落標籤。若模型尚未訓練則回傳 False 觸發 Fallback"""
+    if not windows_data:
+        return False
+        
+    try:
+        import torch
+        from pathlib import Path
+        try:
+            from .section_model import BiLSTMSectionTagger, ID_TO_SECTION, NUM_FEATURES
+        except ImportError:
+            from section_model import BiLSTMSectionTagger, ID_TO_SECTION, NUM_FEATURES
+
+        model_path = Path(data_dir) / "models" / "section_detector.pth"
+        if not model_path.exists():
+            return False
+
+        # Extract numerical features for each window
+        feature_sequence = []
+        for w in windows_data:
+            feat = [
+                float(w["density"]),
+                float(w["complexity"]),
+                float(len(w["unique"])),
+                float(w["melody_density"]),
+                float(w["melody_avg_pitch"]),
+                float(w["bass_density"])
+            ]
+            feature_sequence.append(feat)
+
+        x = torch.tensor(feature_sequence, dtype=torch.float32)
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        model = BiLSTMSectionTagger().to(device)
+        model.load_state_dict(torch.load(model_path, map_location=device))
+        model.eval()
+
+        preds = model.predict(x.to(device))
+        for i, w in enumerate(windows_data):
+            w["type"] = ID_TO_SECTION.get(preds[i], "verse")
+            
+        return True
+    except Exception as e:
+        print("[Section Detect V5] DL Inference Failed:", e)
+        return False
 
 
 # ---------------------------------------------------------------------------
