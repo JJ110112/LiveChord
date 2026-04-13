@@ -14,6 +14,7 @@ from user_api import router as user_router
 from benchmark_api import router as benchmark_router
 from ai_api import router as ai_router
 from extraction_api import router as extraction_router
+from jam_tracks_api import router as jam_tracks_router
 import auto_worker
 
 
@@ -40,6 +41,7 @@ app.include_router(user_router)
 app.include_router(benchmark_router)
 app.include_router(ai_router)
 app.include_router(extraction_router)
+app.include_router(jam_tracks_router)
 
 # 前端靜態檔案
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
