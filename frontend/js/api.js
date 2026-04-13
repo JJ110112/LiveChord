@@ -54,6 +54,11 @@ const API = {
   chordAnalysis: (key, name) => API.get(`/api/chord/analysis/${encodeURIComponent(key)}/${encodeURIComponent(name)}`),
   jazzify: (chords, key, level, mode = "rule-based") => API.post("/api/ai/jazzify", { chords, key, level, mode }),
 
+  // Jam Tracks
+  jamTracksStyles: () => API.get("/api/jam_tracks/styles"),
+  jamTracksList: (style, limit = 100, offset = 0) =>
+    API.get(`/api/jam_tracks?style=${encodeURIComponent(style)}&limit=${limit}&offset=${offset}`),
+
   // 使用者
   getFavorites: () => API.get("/api/favorites"),
   addFavorite: (path) => API.post("/api/favorites", { path }),

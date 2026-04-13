@@ -291,20 +291,11 @@
     }
   }
 
-  // ---- 橫向捲動：滾輪 + 拖曳（含慣性）----
+  // ---- 橫向捲動：拖曳（含慣性）----
+  // 滑鼠滾輪保留給整頁垂直捲動；想要橫向捲動請用拖曳、觸控板或水平滾輪。
   function _initHorizontalScroll(el) {
     if (el.dataset.hscroll) return;
     el.dataset.hscroll = "1";
-
-    // 滾輪→橫向
-    el.addEventListener("wheel", (e) => {
-      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-        if (el.scrollWidth > Math.ceil(el.clientWidth)) {
-          e.preventDefault();
-          el.scrollLeft += e.deltaY;
-        }
-      }
-    }, { passive: false });
 
     // 拖曳 + 慣性
     let isDragging = false;
