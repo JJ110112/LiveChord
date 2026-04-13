@@ -9,11 +9,18 @@ import math
 import numpy as np
 from collections import Counter
 
-from .preprocess import (
-    build_training_data, NOTE_TO_SEMI, SEMI_TO_NOTE,
-    parse_chord_name, chord_to_degree
-)
-from .markov import get_predictor
+try:
+    from .preprocess import (
+        build_training_data, NOTE_TO_SEMI, SEMI_TO_NOTE,
+        parse_chord_name, chord_to_degree
+    )
+    from .markov import get_predictor
+except ImportError:
+    from preprocess import (
+        build_training_data, NOTE_TO_SEMI, SEMI_TO_NOTE,
+        parse_chord_name, chord_to_degree
+    )
+    from markov import get_predictor
 
 
 # 和弦品質 → 組成音的半音偏移
@@ -172,7 +179,10 @@ def full_evaluation(chords_dir):
     test_seqs = degree_sequences[split:]
 
     # Train a fresh predictor on train set
-    from .markov import ChordPredictor
+    try:
+        from .markov import ChordPredictor
+    except ImportError:
+        from markov import ChordPredictor
     predictor = ChordPredictor()
     # 手動餵入 train sequences
     for seq in train_seqs:

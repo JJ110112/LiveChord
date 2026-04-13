@@ -7,7 +7,10 @@ import json
 from collections import defaultdict, Counter
 from pathlib import Path
 
-from .preprocess import build_training_data, SEMI_TO_NOTE, NOTE_TO_SEMI, DEGREE_NAMES
+try:
+    from .preprocess import build_training_data, SEMI_TO_NOTE, NOTE_TO_SEMI, DEGREE_NAMES
+except ImportError:
+    from preprocess import build_training_data, SEMI_TO_NOTE, NOTE_TO_SEMI, DEGREE_NAMES
 
 
 class ChordPredictor:

@@ -8,8 +8,12 @@ Level 3: + 三全音代理 + 二次屬和弦 + 13th
 """
 
 import copy
-from .preprocess import NOTE_TO_SEMI, SEMI_TO_NOTE, chord_to_degree, parse_chord_name
-from . import jazz_rules
+try:
+    from .preprocess import NOTE_TO_SEMI, SEMI_TO_NOTE, chord_to_degree, parse_chord_name
+    from . import jazz_rules
+except ImportError:
+    from preprocess import NOTE_TO_SEMI, SEMI_TO_NOTE, chord_to_degree, parse_chord_name
+    import jazz_rules
 
 # 最小可插入持續時間（秒）
 MIN_INSERT_DURATION = 1.2
@@ -113,8 +117,12 @@ class Reharmonizer:
 
     def _run_qa_battle(self, original_chords, jazzified_chords):
         try:
-            from .musician_qa import run_musician_qa
-            from .producer_qa import run_producer_qa
+            try:
+                from .musician_qa import run_musician_qa
+                from .producer_qa import run_producer_qa
+            except ImportError:
+                from musician_qa import run_musician_qa
+                from producer_qa import run_producer_qa
             
             musician_report = run_musician_qa(jazzified_chords, level=self.level)
             producer_report = run_producer_qa(original_chords, jazzified_chords)
@@ -140,7 +148,10 @@ class Reharmonizer:
 
         避免 Jazzify 把和弦改得面目全非
         """
-        from .evaluate import pitch_class_overlap
+        try:
+            from .evaluate import pitch_class_overlap
+        except ImportError:
+            from evaluate import pitch_class_overlap
         changes = []
         j = 0
         for i in range(len(original)):
@@ -413,7 +424,10 @@ class Reharmonizer:
 
     def _detect_patterns(self, chords, key):
         """Pass 5: 偵測 Jazzify 後的和弦中已識別的樂理結構"""
-        from .pattern_extractor import PatternExtractor
+        try:
+            from .pattern_extractor import PatternExtractor
+        except ImportError:
+            from pattern_extractor import PatternExtractor
         extractor = PatternExtractor()
         chord_names = [c["chord"] for c in chords]
         return extractor.extract_patterns(chord_names, key)
