@@ -8,10 +8,9 @@ import re
 from pathlib import Path
 from collections import Counter
 try:
-    from .preprocess import transpose_chord, detect_key_from_chords, parse_chord_name, _simplify_quality
+    from .preprocess import transpose_chord, detect_key_from_chords, parse_chord_name
 except ImportError:
     from preprocess import transpose_chord, detect_key_from_chords, parse_chord_name
-    _simplify_quality = {} # Hack fallback for direct run
 
 # 正規化時間區隔 (秒)
 # 為了避免詞彙庫過度膨脹，我們將持續時間量化為 0.5s 的倍數
