@@ -295,8 +295,14 @@
       let phraseLabelEn = '';
 
       if (sectionData && sectionData.sections) {
-        // Robust matching: find the section this chord belongs to (with 0.5s tolerance to catch chords playing slightly early)
-        const activeSec = sectionData.sections.find(s => c.time >= s.start - 0.5 && c.time <= s.end);
+        // Robust matching: find the section this chord belongs to
+        // c.time < s.end prevents boundaries from artificially extending backwards
+        let activeSec = sectionData.sections.find(s => c.time >= s.start - 0.5 && c.time < s.end);
+        
+        // Exemption for exactly the last chord at the very end of the song
+        if (!activeSec && sectionData.sections.length > 0) {
+            activeSec = sectionData.sections[sectionData.sections.length - 1];
+        }
         if (activeSec) {
           phraseColor = activeSec.color || '#888';
           // Check if this is the first chord we see for this specific section block timestamp
