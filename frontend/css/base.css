@@ -252,7 +252,7 @@ a:hover { text-decoration: underline; }
 
 .toast {
   position: fixed;
-  bottom: 24px;
+  bottom: 64px;
   right: 24px;
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -263,7 +263,7 @@ a:hover { text-decoration: underline; }
   transform: translateY(80px);
   opacity: 0;
   transition: all .3s;
-  z-index: 500;
+  z-index: 15000;
 }
 
 .toast.show {
