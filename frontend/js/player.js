@@ -366,11 +366,16 @@
     // ribbonElements keeps normal index order for updateActiveChord
     ribbonElements = items.map(it => it.item);
 
-    // Scroll to bottom (first chord = song start)
+    // Scroll to bottom only on fresh load (first chord = song start).
+    // When rebuilding mid-song (e.g. AI Transformer toggle, transpose change),
+    // leave positioning to the caller via updateActiveChord(..., forceScroll=true).
     if (chordRibbonPanel) {
-      requestAnimationFrame(() => {
-        chordRibbonPanel.scrollTop = chordRibbonPanel.scrollHeight;
-      });
+      const isFreshLoad = activeChordIdx < 0 && (!audio || !audio.currentTime || audio.currentTime < 0.1);
+      if (isFreshLoad) {
+        requestAnimationFrame(() => {
+          chordRibbonPanel.scrollTop = chordRibbonPanel.scrollHeight;
+        });
+      }
     }
   }
 
@@ -1987,7 +1992,7 @@
       _buildDOMFromChords(chords);
       _loadMissingCache(uncached).then(() => {
         _buildDOMFromChords(chords);
-        updateActiveChord(audio.currentTime || -1);
+        requestAnimationFrame(() => updateActiveChord(audio.currentTime || -1, true));
       });
       return;
     }
@@ -2447,7 +2452,7 @@
         await preloadChordInfo(chordData.chords);
         buildChordDOM();
         activeChordIdx = -1; // 強制重新觸發
-        updateActiveChord(audio.currentTime || -1, true);
+        requestAnimationFrame(() => updateActiveChord(audio.currentTime || -1, true));
         showToast("已還原原始和弦", 1500);
         return;
       }
@@ -2461,19 +2466,22 @@
 
       try {
         const res = await API.jazzify(originalChords, chordData.key || "C", 3, "transformer");
+        if (res.error) {
+          throw new Error(res.error);
+        }
         chordData.chords = res.chords;
         jazzifyAIActive = true;
-        jazzifyActive = true; 
+        jazzifyActive = true;
         jazzifyLevel = 3; // Sync UI state conceptually
         btnJazzifyAI.textContent = "AI";
         btnJazzifyAI.style.background = "rgba(156,39,176,.3)";
         if (btnJazzify) btnJazzify.style.background = "";
-        
+
         chordCache = {};
         await preloadChordInfo(chordData.chords);
         buildChordDOM();
         activeChordIdx = -1; // 強制重新觸發
-        updateActiveChord(audio.currentTime || -1, true);
+        requestAnimationFrame(() => updateActiveChord(audio.currentTime || -1, true));
         showToast(`AI Transformer 重配: ${res.original_count}→${res.jazzified_count} 和弦`, 3000);
       } catch (err) {
         showToast("AI Jazzify 失敗: " + err.message, 3000);

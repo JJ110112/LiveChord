@@ -316,6 +316,7 @@ class Reharmonizer:
     def _apply_transformer(self, original_chords, result_chords, key_semi, melody_data, key_str):
         """使用神經網路進行 Jazzify"""
         changes = []
+        transformer_error = None
         try:
             import torch
             import json
@@ -405,6 +406,7 @@ class Reharmonizer:
             print(f"Transformer Error: {e}")
             import traceback
             traceback_str = traceback.format_exc()
+            transformer_error = str(e)
             changes.append({
                 "position": 0, "original": "-", "jazzified": "Error",
                 "rule": f"TRANSFORMER FAILED: {str(e)} | Trace: {traceback_str}"
@@ -413,7 +415,7 @@ class Reharmonizer:
         # Viterbi 旋律保護層
         result_chords, melody_fixes = self._melody_avoid(result_chords, key_semi, melody_data)
         changes.extend(melody_fixes)
-        
+
         patterns = self._detect_patterns(result_chords, key_str)
         qa_reports = self._run_qa_battle(original_chords, result_chords)
 
@@ -426,6 +428,7 @@ class Reharmonizer:
             "changes": changes,
             "patterns": patterns,
             "qa": qa_reports,
+            "error": transformer_error,
         }
 
     def _detect_patterns(self, chords, key):

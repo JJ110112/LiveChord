@@ -8,9 +8,9 @@ import re
 from pathlib import Path
 from collections import Counter
 try:
-    from .preprocess import transpose_chord, detect_key_from_chords, parse_chord_name
+    from .preprocess import transpose_chord, detect_key_from_chords, parse_chord_name, NOTE_TO_SEMI
 except ImportError:
-    from preprocess import transpose_chord, detect_key_from_chords, parse_chord_name
+    from preprocess import transpose_chord, detect_key_from_chords, parse_chord_name, NOTE_TO_SEMI
 
 # 正規化時間區隔 (秒)
 # 為了避免詞彙庫過度膨脹，我們將持續時間量化為 0.5s 的倍數
@@ -23,18 +23,26 @@ def _quantize_duration(dur_seconds: float) -> str:
     dur = max(TIME_RESOLUTION, min(MAX_DURATION, dur))
     return f"DUR_{dur:.1f}"
 
-def tokenize_song(chords_list: list) -> list:
+def tokenize_song(chords_list: list, key_str: str | None = None) -> list:
     """
     將單首歌的和弦列表轉化為時序 Token 陣列
     輸入範例: [{"time": 0.0, "end": 2.0, "chord": "Cmaj7"}, ...]
     輸出範例: ["Cmaj7", "DUR_2.0", "Am7", "DUR_2.0", ...]
+
+    key_str: 選用的調性字串（例如 "C", "Gm"）。若提供，使用它決定 C 化移調量；
+    否則回退到 detect_key_from_chords 的啟發式判斷。
     """
     chord_names = [c["chord"] for c in chords_list if c.get("chord") and c["chord"] not in ("N", "X", "NC", "")]
     if len(chord_names) < 4:
         return []
 
-    # 偵測原曲 Key 半音 (C=0, C#=1...)
-    key_semi = detect_key_from_chords(chord_names)
+    # 決定原曲 Key 半音 (C=0, C#=1...)：優先使用呼叫者提供的 key_str
+    key_semi = None
+    if key_str:
+        root = key_str.rstrip("m")
+        key_semi = NOTE_TO_SEMI.get(root)
+    if key_semi is None:
+        key_semi = detect_key_from_chords(chord_names)
     
     # 決定移調多少半音，強制歸一化至 C 大調 (根音位移 -key_semi)
     shift = -key_semi
