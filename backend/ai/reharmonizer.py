@@ -22,13 +22,14 @@ class Reharmonizer:
         """
         self.level = min(max(level, 1), 3)
 
-    def jazzify(self, chords, key="C", melody_data=None):
+    def jazzify(self, chords, key="C", melody_data=None, mode="rule-based"):
         """主入口：重配和聲
 
         Args:
             chords: [{time, end, chord}, ...]
             melody_data: [{start, end, midi}, ...] 可選旋律資料
             key: 調性字串如 "C", "Gm"
+            mode: "rule-based" 或是 "transformer"
 
         Returns:
             {
@@ -51,6 +52,9 @@ class Reharmonizer:
         # 深拷貝避免改動原資料
         result = [copy.deepcopy(c) for c in chords]
         changes = []
+
+        if mode == "transformer":
+            return self._apply_transformer(chords, result, key_semi, melody_data, key)
 
         # Pass 1: Extensions
         for i, c in enumerate(result):
@@ -297,6 +301,115 @@ class Reharmonizer:
                     phrase[-1]["chord"] = simplified
 
         return chords
+
+    def _apply_transformer(self, original_chords, result_chords, key_semi, melody_data, key_str):
+        """使用神經網路進行 Jazzify"""
+        changes = []
+        try:
+            import torch
+            import json
+            from pathlib import Path
+            from .tokenizer import tokenize_song
+            from .preprocess import transpose_chord
+            from .transformer_reharmonizer import TransformerReharmonizer, greedy_decode
+            
+            models_dir = Path("W:/data/models")
+            if not models_dir.exists():
+                models_dir = Path(__file__).parent.parent.parent / "data" / "models"
+                
+            model_path = models_dir / "transformer_jazzify.pth"
+            vocab_path = models_dir / "vocab.json"
+            
+            if not model_path.exists() or not vocab_path.exists():
+                raise FileNotFoundError("Transformer model or vocab missing. Train it first!")
+                
+            with open(vocab_path, 'r', encoding='utf-8') as f:
+                vocab = json.load(f)
+            inv_vocab = {v: k for k, v in vocab.items()}
+            
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            model = TransformerReharmonizer(vocab_size=len(vocab), d_model=256, nhead=8, num_encoder_layers=4, num_decoder_layers=4, dim_feedforward=512, dropout=0.1).to(device)
+            model.load_state_dict(torch.load(model_path, map_location=device))
+            model.eval()
+            
+            # Step 1: Tokenize to C Major
+            tokens = tokenize_song(original_chords)
+            if tokens:
+                # Step 2: Convert to tensor
+                src_indices = [vocab.get(t, vocab.get("<UNK>", 3)) for t in tokens]
+                src_tensor = torch.tensor(src_indices, dtype=torch.long).unsqueeze(1).to(device)
+                src_mask = torch.zeros((len(src_indices), len(src_indices)), dtype=torch.bool).to(device)
+                
+                sos_idx = vocab.get("<SOS>", 1)
+                eos_idx = vocab.get("<EOS>", 2)
+                
+                # Step 3: Decode
+                with torch.no_grad():
+                    ys, probs = greedy_decode(model, src_tensor, src_mask, max_len=128, start_symbol=sos_idx, end_symbol=eos_idx, device=device)
+                    
+                out_indices = ys.squeeze(1).cpu().tolist()
+                
+                # Step 4: Reconstruct Timeline & Transpose back
+                current_time = original_chords[0]["time"] if original_chords else 0.0
+                new_chords = []
+                
+                i = 1 
+                while i < len(out_indices):
+                    idx = out_indices[i]
+                    if idx == eos_idx: break
+                    
+                    token = inv_vocab.get(idx, "")
+                    
+                    dur_val = 2.0
+                    if i + 1 < len(out_indices):
+                        next_idx = out_indices[i+1]
+                        next_token = inv_vocab.get(next_idx, "")
+                        if next_token.startswith("DUR_"):
+                            try:
+                                dur_val = float(next_token.replace("DUR_", ""))
+                            except ValueError:
+                                pass
+                            i += 1
+                    
+                    if not token.startswith("DUR_") and not token.startswith("<"):
+                        # Transpose back FROM C Major to the original key
+                        final_chord = transpose_chord(token, key_semi)
+                        
+                        new_chords.append({
+                            "time": current_time,
+                            "end": current_time + dur_val,
+                            "chord": final_chord
+                        })
+                        current_time += dur_val
+                        
+                    i += 1
+                    
+                if new_chords:
+                    result_chords = new_chords
+                    changes.append({
+                        "position": 0, "original": "POP",
+                        "jazzified": "JAZZ", "rule": "Transformer Seq2Seq Inference",
+                    })
+        except Exception as e:
+            print(f"Transformer Error: {e}")
+
+        # Viterbi 旋律保護層
+        result_chords, melody_fixes = self._melody_avoid(result_chords, key_semi, melody_data)
+        changes.extend(melody_fixes)
+        
+        patterns = self._detect_patterns(result_chords, key_str)
+        qa_reports = self._run_qa_battle(original_chords, result_chords)
+
+        return {
+            "key": key_str,
+            "level": "transformer",
+            "original_count": len(original_chords),
+            "jazzified_count": len(result_chords),
+            "chords": result_chords,
+            "changes": changes,
+            "patterns": patterns,
+            "qa": qa_reports,
+        }
 
     def _detect_patterns(self, chords, key):
         """Pass 5: 偵測 Jazzify 後的和弦中已識別的樂理結構"""

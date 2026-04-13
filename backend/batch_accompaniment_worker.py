@@ -29,11 +29,11 @@ ACCOMP_DIR = Path(__file__).parent.parent / "data" / "accompaniments"
 print_lock = threading.Lock()
 
 
-def _detect_sections_safe(chords, key):
+def _detect_sections_safe(chords, key, song_hash=None):
     """安全的段落偵測（失敗時回傳空）"""
     try:
         from ai.section_detect import detect_sections
-        result = detect_sections(chords, key)
+        result = detect_sections(chords, key, song_hash=song_hash)
         return result.get("sections", [])
     except Exception:
         return []
@@ -75,7 +75,7 @@ def process_track(song_hash: str, levels: list, styles: list,
         bpm = sheet_data.get("bpm", 120)
 
         # Phase 11: 段落偵測
-        sections = _detect_sections_safe(chords, key)
+        sections = _detect_sections_safe(chords, key, song_hash=song_hash)
         dominant_section = _get_dominant_section(sections, chords)
 
         results = []

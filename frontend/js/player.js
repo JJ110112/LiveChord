@@ -287,14 +287,24 @@
       const c = chords[i];
       const cache = chordCache[c.chord] || {};
 
-      // Section header
+      // Section header & Phrase Colors
       let sectionHdr = null;
+      let phraseColor = 'var(--accent)';
+      let phraseLabel = '';
+      let isPhraseStart = false;
+
       if (sectionData && sectionData.sections) {
         const sec = sectionData.sections.find(s => Math.abs(s.start - c.time) < 0.5);
         if (sec && sec.label !== lastSection) {
           lastSection = sec.label;
           const modeTag = sec.mode && sec.mode !== "Major" && sec.mode !== "Minor" ? ` ${sec.mode}` : "";
           sectionHdr = { label: sec.label + modeTag, color: sec.color || '#888' };
+          isPhraseStart = true;
+        }
+        const activeSec = sectionData.sections.find(s => c.time >= s.start && c.time < s.end) || sec;
+        if (activeSec) {
+          phraseColor = activeSec.color || '#888';
+          phraseLabel = activeSec.label;
         }
       }
 
@@ -302,6 +312,10 @@
       item.className = "rv-item";
       item.dataset.idx = i;
       item.dataset.time = c.time;
+      item.style.setProperty('--chord-idx', i); // for flex order
+      item.style.setProperty('--phrase-color', phraseColor);
+      if (isPhraseStart) item.dataset.phraseStart = "true";
+      item.dataset.phrase = phraseLabel;
       item.addEventListener("click", () => {
         audio.currentTime = c.time;
         updateActiveChord(c.time);
@@ -420,6 +434,26 @@
   if (btnScaleUp) btnScaleUp.addEventListener("click", () => _changeRibbonScale(0.1));
   if (btnScaleDown) btnScaleDown.addEventListener("click", () => _changeRibbonScale(-0.1));
   _updateScaleLabel();
+
+  // ---- Overview Mode Toggle ----
+  const btnToggleOverview = $("#btnToggleOverview");
+  let isOverviewMode = false;
+  if (btnToggleOverview) {
+    btnToggleOverview.addEventListener("click", (e) => {
+      e.stopPropagation();
+      isOverviewMode = !isOverviewMode;
+      btnToggleOverview.classList.toggle("active", isOverviewMode);
+      if (chordRibbonPanel) {
+        if (isOverviewMode) {
+          chordRibbonPanel.classList.add("overview-mode");
+        } else {
+          chordRibbonPanel.classList.remove("overview-mode");
+        }
+      }
+      // Scroll to current chord immediately on toggle
+      updateActiveChord(audio.currentTime || 0);
+    });
+  }
 
   // Restore last tab (deferred here so _ribbonScales is initialized)
   _switchTab(activeTab);

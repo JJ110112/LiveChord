@@ -247,7 +247,7 @@
 .rv-item:hover { opacity: 0.75; background: rgba(255,255,255,0.03); }
 .rv-item.active {
   opacity: 1;
-  border-left-color: var(--accent);
+  border-left-color: var(--phrase-color, var(--accent));
   background: rgba(33,150,243,0.08);
 }
 .rv-item.played { opacity: 0.3; }
@@ -398,6 +398,53 @@
 }
 
 /* ========== [END: MIDDLE SPLIT LAYOUT] ========== */
+
+
+/* ========== [COMPONENT: OVERVIEW MODE] ========== */
+
+.chord-ribbon-panel.overview-mode {
+  width: 50% !important;
+  max-width: 50% !important;
+  border-right: 2px solid var(--border);
+}
+.chord-ribbon-panel.overview-mode .ribbon-v-track {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-content: flex-start;
+  padding: 16px;
+  gap: 12px;
+}
+.chord-ribbon-panel.overview-mode .rv-item {
+  order: var(--chord-idx, 0); /* Flex order override for correct visual direction */
+  width: 140px;
+  border-left: none;
+  border-top: 4px solid var(--phrase-color, #888);
+  background: rgba(0,0,0,0.4);
+  border-radius: 6px;
+  position: relative;
+  padding-top: 24px;
+}
+.chord-ribbon-panel.overview-mode .rv-item.active {
+  background: rgba(139, 92, 246, 0.2);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+  border-top-color: var(--phrase-color, var(--accent));
+  transform: scale(1.05);
+  z-index: 2;
+}
+.chord-ribbon-panel.overview-mode .rv-item[data-phrase-start="true"]::before {
+  content: attr(data-phrase);
+  position: absolute;
+  top: 4px;
+  left: 8px;
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--phrase-color, #fff);
+}
+.chord-ribbon-panel.overview-mode .rv-section-header {
+  display: none;
+}
+/* ========== [END: OVERVIEW MODE] ========== */
 
 
 /* ========== [COMPONENT: PIANO TAB] ========== */

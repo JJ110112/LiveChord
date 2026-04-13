@@ -191,12 +191,13 @@ async def detect_sections_api(
     import json as _json
     from ai.section_detect import detect_sections
 
-    chords_file = CHORDS_DIR / f"{__import__('hashlib').md5(path.encode()).hexdigest()[:12]}.json"
+    h = __import__('hashlib').md5(path.encode()).hexdigest()[:12]
+    chords_file = CHORDS_DIR / f"{h}.json"
     if not chords_file.is_file():
         return {"error": "no chord data"}
 
     data = _json.loads(chords_file.read_text(encoding="utf-8"))
-    result = detect_sections(data.get("chords", []), data.get("key", "C"))
+    result = detect_sections(data.get("chords", []), data.get("key", "C"), song_hash=h)
     result["path"] = path
     return result
 
@@ -341,7 +342,7 @@ def get_accompaniment(
     if style == "Auto":
         try:
             from ai.section_detect import detect_sections
-            sec_result = detect_sections(chords, chord_data.get("key", "C"))
+            sec_result = detect_sections(chords, chord_data.get("key", "C"), song_hash=h)
             sections = sec_result.get("sections", [])
         except Exception:
             pass
@@ -652,7 +653,7 @@ def section_context_api(
     chords = chord_data.get("chords", [])
 
     from ai.section_detect import detect_sections
-    sections_result = detect_sections(chords, chord_data.get("key", "C"))
+    sections_result = detect_sections(chords, chord_data.get("key", "C"), song_hash=h)
     sections = sections_result.get("sections", [])
 
     from ai.section_context import build_section_timeline
