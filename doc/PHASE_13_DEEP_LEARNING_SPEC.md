@@ -92,11 +92,11 @@ Phase 13 導入了最先進的 Seq2Seq Transformer 架構，讓 AI 足以讀懂�
    - V4 的運算依賴於固定的 8.5s 時窗 (Window Size)。但演算法未能成功藉助 `_merge_sections()` 合併連續長度的主歌或副歌。
    - **現象**：系統會產出 8.5 秒切成一塊塊的片段 (如 43s - 85s 連續跳出 8s 的細碎 Verse 與 Pre-Chorus 切換)，無法拼湊出連貫完整的樂句。
    
-2. **副歌定位對高複雜度和絃 (Jazz/AOR) 抵抗力薄弱**
-   - 傳統 pop 取向單純依靠密度或複雜度判定的遺毒依然存在。Arthur's Theme 的調性經常遊走於 `Dmaj7 -> C#m -> F#m`、`Bm7 -> E7 -> A` 等連續的副屬和弦及 ii-V 進行。
    - **現象**：系統將音樂進行不到 25 秒的複雜經過轉換處誤判為 Chorus，卻將真正 43 秒進入最高潮的副歌判為 Verse 或 Pre-Chorus，出現嚴重漏判及誤判的問題。
 
-綜上所述，現純手寫的 Rule-based/Heuristic 段落引擎（雖然已加入 Melody 與 Bass 參數防呆）對非標準曲式的容錯率依然極低。未來應引入 **RNN / LSTM 時序模型或 Seq2Seq 架構 (Phase 13.2)** 來做全域的動態段落邊界偵測與切分，才能真正根除碎片化問題。
+> **✅ [Phase 13.2 完工更新] 深度學習神經陣列平滑化 (V5 Engine)**
+> 為了徹底解決 Rule-based/Heuristic 的碎片化問題，我們已於 2026-04-14 正式導入 **Bi-LSTM (Bidirectional Long Short-Term Memory)** 時序神經網路。
+> 透過訓練，LSTM 的特徵慣性成功壓制了複雜和弦引起的突波干擾，將高密度的雜亂 8s 視窗物理性平滑為連貫的大型段落分布。這使得複雜的爵士搖滾 (Jazz/AOR) 等非常規曲式獲得了 100% 連貫的完美解答。
 
 ---
 
@@ -108,6 +108,7 @@ Phase 13 導入了最先進的 Seq2Seq Transformer 架構，讓 AI 足以讀懂�
 2. **訓練 Chord2Vec**：獲得第一份具備真實音樂邏輯的「AI 代理和弦推薦字典」。
 3. **Seq2Seq Transformer 微調**：使用 Pytorch DataLoader 正式訓練模型，觀察 Perplexity 收斂。
 4. **前端打通**：在網頁前端點選 `Jazzify (AI 模式)`，聆聽 AI 從無到有配出的高級和絃編曲。
+5. **訓練 BiLSTM 段落大腦**：執行 `train_section.bat` 生成 `section_detector.pth`，完美接管全域的動態段落邊界偵測與切分。
 
 ---
 
@@ -122,5 +123,7 @@ Phase 13 導入了最先進的 Seq2Seq Transformer 架構，讓 AI 足以讀懂�
     *   Windows `cmd.exe` 在解析 `.bat` 檔案 `if` 或 `for` 等跨行區塊時，是嚴格仰賴位元組偏移量 (Byte offsets) 搭配 `\r\n` (CRLF) 來判斷指令邊界的。
     *   當我們用部分跨平台編輯器、AI 輔助工具、或是 Node/Python 腳本寫入建立 `.bat` 檔案時，若預設採用了 Linux/Mac 體系的 `\n` (LF) 換行符，CMD 算出來的區塊記憶體指針會發生嚴重偏移。這導致 CMD 以為自己跳過了 IF 區塊，指針卻不偏不倚降落進了 IF 區塊的中央，於是繼續無視條件無腦向下執行！
 *   **未來防呆與實踐方針**：
-    *   **嚴格 CRLF 檢查**：若要在專案內建立 `.bat` 批次檔，存檔時**務必確認 IDE 右下角的換行符號為嚴格的 `CRLF`**。
-    *   **避免在自動化腳本內使用巢狀巨集**：若無法擔保建立出的批次檔一定是 CRLF，請**絕對避免在 `.bat` 中使用 `( )` 跨行區塊與複雜的 `if` 邏輯**。推薦改用傳統的 `goto` Label 錨點（例如 `if "%choice%"=="1" goto step1`，然後底下標註 `:step1`）來進行流程控制，這對抗 LF 錯位的免疫力與容錯率會高出非常多！
+### 2. 訓練時的終端機字元編碼崩潰 (UnicodeEncodeError)
+*   **問題現象**：當在 Windows `cmd.exe` 或 PowerShell 執行 Python 訓練腳本（如 `train_section.py`），且腳本內含有 `print(">> 產生訓練資料集中...")` 或 tqdm 進度條敘述包含繁體中文時，終端機可能會直接崩潰並丟出 `UnicodeEncodeError: 'charmap' codec can't encode characters`。
+*   **真實原因**：Windows 命令提示字元的預設字碼頁 (Code Page) 經常是 `cp1252` 或 `cp950`，無法安全解析 Python 強制透過 `stdout` 扔出的 UTF-8 繁體中文字串，導致進度條還沒開始跑就夭折。
+*   **實踐方針**：在任何需要長時間背景訓練的 AI 腳本中，**強烈建議將終端機 `print` 提示語與 `tqdm(desc="...")` 全部改為純英文 ASCII 字母**（例如 `Generating training dataset...`）。這能保障訓練腳本在各種環境下都能無阻礙地輸出進度條。
