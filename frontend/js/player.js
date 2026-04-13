@@ -360,6 +360,20 @@
         item.appendChild(gridPhraseEl);
       }
       
+      // Allow right-clicking ANY chord block to assign/split section
+      item.addEventListener("contextmenu", (e) => {
+          if (typeof showSectionMenu === 'function') {
+             // Find current section info for this chord
+             let currentType = "verse";
+             if (sectionData && sectionData.sections) {
+                 const curSec = sectionData.sections.find(s => c.time >= s.start - 0.5 && c.time < s.end);
+                 if (curSec) currentType = curSec.type;
+             }
+             // Using c.time to split or modify
+             showSectionMenu(e, c.time, currentType);
+          }
+      });
+      
       item.addEventListener("click", () => {
         audio.currentTime = c.time;
         updateActiveChord(c.time);
@@ -3272,16 +3286,37 @@
       setTimeout(() => document.addEventListener("click", closeMenu), 0);
   };
   
-  window.saveSectionFeedback = async function(sectionStartIndex, newType) {
+  window.saveSectionFeedback = async function(splitTime, newType) {
       if (!sectionData || !sectionData.sections) return;
       
-      const sec = sectionData.sections.find(s => s.start === sectionStartIndex);
+      const TOLERANCE = 0.5; // seconds
+      
+      // Look for an exact boundary (existing section start)
+      let sec = sectionData.sections.find(s => Math.abs(s.start - splitTime) <= TOLERANCE);
       if (sec) {
           sec.type = newType;
+      } else {
+          // It's a SPLIT! We are cutting a section into two.
+          let parentSec = sectionData.sections.find(s => splitTime > s.start && splitTime < s.end);
+          if (parentSec) {
+              let newSec = {
+                  type: newType,
+                  start: splitTime,
+                  end: parentSec.end
+              };
+              parentSec.end = splitTime;
+              sectionData.sections.push(newSec);
+              sectionData.sections.sort((a,b) => a.start - b.start);
+          } else {
+              // Edge case: no parent, just append
+              sectionData.sections.push({ type: newType, start: splitTime, end: splitTime + 10 });
+              sectionData.sections.sort((a,b) => a.start - b.start);
+          }
+      }
           
-          const urlParams = new URLSearchParams(window.location.search);
-          const path = urlParams.get('path');
-          if (!path) return;
+      const urlParams = new URLSearchParams(window.location.search);
+      const path = urlParams.get('path');
+      if (!path) return;
           
           const body = {
               path: path,
