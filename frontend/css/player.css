@@ -432,14 +432,22 @@
   transform: scale(1.05);
   z-index: 2;
 }
-.chord-ribbon-panel.overview-mode .rv-item[data-phrase-start="true"]::before {
-  content: attr(data-phrase);
+.rv-grid-phrase {
+  display: none;
+}
+.chord-ribbon-panel.overview-mode .rv-grid-phrase {
+  display: block;
   position: absolute;
   top: 4px;
   left: 8px;
   font-size: 12px;
   font-weight: bold;
-  color: var(--phrase-color, #fff);
+  cursor: pointer;
+  z-index: 10;
+}
+.chord-ribbon-panel.overview-mode .rv-grid-phrase:hover {
+  text-decoration: underline;
+  opacity: 0.8;
 }
 .chord-ribbon-panel.overview-mode .rv-section-header {
   display: none;

@@ -290,21 +290,29 @@
       // Section header & Phrase Colors
       let sectionHdr = null;
       let phraseColor = 'var(--accent)';
-      let phraseLabel = '';
       let isPhraseStart = false;
+      let phraseLabelZh = '';
+      let phraseLabelEn = '';
 
       if (sectionData && sectionData.sections) {
-        const sec = sectionData.sections.find(s => Math.abs(s.start - c.time) < 0.5);
-        if (sec && sec.label !== lastSection) {
-          lastSection = sec.label;
-          const modeTag = sec.mode && sec.mode !== "Major" && sec.mode !== "Minor" ? ` ${sec.mode}` : "";
-          sectionHdr = { label: sec.label + modeTag, color: sec.color || '#888' };
-          isPhraseStart = true;
-        }
-        const activeSec = sectionData.sections.find(s => c.time >= s.start && c.time < s.end) || sec;
+        // Robust matching: find the section this chord belongs to (with 0.5s tolerance to catch chords playing slightly early)
+        const activeSec = sectionData.sections.find(s => c.time >= s.start - 0.5 && c.time <= s.end);
         if (activeSec) {
           phraseColor = activeSec.color || '#888';
-          phraseLabel = activeSec.label;
+          // Check if this is the first chord we see for this specific section block timestamp
+          if (activeSec.start !== lastSection) {
+            lastSection = activeSec.start;
+            const modeTag = activeSec.mode && activeSec.mode !== "Major" && activeSec.mode !== "Minor" ? ` ${activeSec.mode}` : "";
+            
+            const baseType = activeSec.type.replace(/\d+|'/g, ''); 
+            const enType = baseType.charAt(0).toUpperCase() + baseType.slice(1).replace('_', ' ');
+            
+            phraseLabelZh = activeSec.label + modeTag;
+            phraseLabelEn = enType + modeTag;
+            
+            sectionHdr = { labelZh: phraseLabelZh, labelEn: phraseLabelEn, color: phraseColor };
+            isPhraseStart = true;
+          }
         }
       }
 
@@ -314,8 +322,31 @@
       item.dataset.time = c.time;
       item.style.setProperty('--chord-idx', i); // for flex order
       item.style.setProperty('--phrase-color', phraseColor);
-      if (isPhraseStart) item.dataset.phraseStart = "true";
-      item.dataset.phrase = phraseLabel;
+      
+      if (isPhraseStart) {
+        item.dataset.phraseStart = "true";
+        const gridPhraseEl = document.createElement("div");
+        gridPhraseEl.className = "rv-grid-phrase";
+        gridPhraseEl.dataset.zh = phraseLabelZh;
+        gridPhraseEl.dataset.en = phraseLabelEn;
+        gridPhraseEl.style.color = phraseColor;
+        
+        // Initial setup
+        const curLang = window.liveChordPhraseLang || 'zh';
+        gridPhraseEl.textContent = curLang === 'zh' ? phraseLabelZh : phraseLabelEn;
+        
+        // Toggle language function
+        gridPhraseEl.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const nextLang = (window.liveChordPhraseLang || 'zh') === 'zh' ? 'en' : 'zh';
+          window.liveChordPhraseLang = nextLang;
+          document.querySelectorAll(".rv-grid-phrase, .rv-section-text").forEach(el => {
+            el.textContent = el.dataset[nextLang];
+          });
+        });
+        item.appendChild(gridPhraseEl);
+      }
+      
       item.addEventListener("click", () => {
         audio.currentTime = c.time;
         updateActiveChord(c.time);
@@ -357,7 +388,20 @@
       if (sectionHdr) {
         const hdr = document.createElement("div");
         hdr.className = "rv-section-header";
-        hdr.innerHTML = `<span class="rv-section-dot" style="background:${sectionHdr.color}"></span>${sectionHdr.label}`;
+        
+        const curLang = window.liveChordPhraseLang || 'zh';
+        const txt = curLang === 'zh' ? sectionHdr.labelZh : sectionHdr.labelEn;
+        hdr.innerHTML = `<span class="rv-section-dot" style="background:${sectionHdr.color}"></span><span class="rv-section-text" data-zh="${sectionHdr.labelZh}" data-en="${sectionHdr.labelEn}">${txt}</span>`;
+        
+        hdr.style.cursor = "pointer";
+        hdr.addEventListener("click", (e) => {
+          const nextLang = (window.liveChordPhraseLang || 'zh') === 'zh' ? 'en' : 'zh';
+          window.liveChordPhraseLang = nextLang;
+          document.querySelectorAll(".rv-grid-phrase, .rv-section-text").forEach(el => {
+            el.textContent = el.dataset[nextLang];
+          });
+        });
+        
         unifiedRibbonTrack.appendChild(hdr);
       }
       unifiedRibbonTrack.appendChild(item);
