@@ -2030,7 +2030,7 @@
   // Overview chord items and horizontal ribbon removed — unified vertical ribbon replaces them
 
   /** 更新高亮：unified ribbon + instrument panels */
-  function updateActiveChord(currentTime) {
+  function updateActiveChord(currentTime, forceScroll = false) {
     if (!chordData || !chordData.chords || ribbonElements.length === 0) return;
 
     const displayedChords = _displayChords();
@@ -2059,7 +2059,7 @@
       el.classList.add("active");
 
       // Auto-scroll ribbon to keep active chord visible
-      if (!audio.paused && chordRibbonPanel) {
+      if (chordRibbonPanel && (!audio.paused || forceScroll)) {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
       }
     }
@@ -2446,7 +2446,8 @@
         chordCache = {};
         await preloadChordInfo(chordData.chords);
         buildChordDOM();
-        updateActiveChord(audio.currentTime || -1);
+        activeChordIdx = -1; // 強制重新觸發
+        updateActiveChord(audio.currentTime || -1, true);
         showToast("已還原原始和弦", 1500);
         return;
       }
@@ -2471,7 +2472,8 @@
         chordCache = {};
         await preloadChordInfo(chordData.chords);
         buildChordDOM();
-        updateActiveChord(audio.currentTime || -1);
+        activeChordIdx = -1; // 強制重新觸發
+        updateActiveChord(audio.currentTime || -1, true);
         showToast(`AI Transformer 重配: ${res.original_count}→${res.jazzified_count} 和弦`, 3000);
       } catch (err) {
         showToast("AI Jazzify 失敗: " + err.message, 3000);

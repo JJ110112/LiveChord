@@ -344,7 +344,7 @@ class Reharmonizer:
             model.eval()
             
             # Step 1: Tokenize to C Major
-            tokens = tokenize_song(original_chords)
+            tokens = tokenize_song(original_chords, key_str=key_str)
             if tokens:
                 # Step 2: Convert to tensor
                 src_indices = [vocab.get(t, vocab.get("<UNK>", 3)) for t in tokens]
@@ -403,6 +403,12 @@ class Reharmonizer:
                     })
         except Exception as e:
             print(f"Transformer Error: {e}")
+            import traceback
+            traceback_str = traceback.format_exc()
+            changes.append({
+                "position": 0, "original": "-", "jazzified": "Error",
+                "rule": f"TRANSFORMER FAILED: {str(e)} | Trace: {traceback_str}"
+            })
 
         # Viterbi 旋律保護層
         result_chords, melody_fixes = self._melody_avoid(result_chords, key_semi, melody_data)
