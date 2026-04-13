@@ -2367,6 +2367,14 @@
       // 循環：off → L1 → L2 → L3 → off
       jazzifyLevel = (jazzifyLevel + 1) % 4;
 
+      if (jazzifyAIActive) {
+        jazzifyAIActive = false;
+        if (btnJazzifyAI) {
+           btnJazzifyAI.textContent = "AI";
+           btnJazzifyAI.style.background = "";
+        }
+      }
+
       if (jazzifyLevel === 0) {
         // 還原原始
         if (originalChords) {
@@ -2407,6 +2415,69 @@
         jazzifyLevel = 0;
         btnJazzify.textContent = "\u{1F3B7}";
         btnJazzify.style.background = "";
+      }
+    });
+  }
+
+  const btnJazzifyAI = $("#btnJazzifyAI");
+  let jazzifyAIActive = false;
+
+  if (btnJazzifyAI) {
+    btnJazzifyAI.addEventListener("click", async () => {
+      if (!chordData || !chordData.chords || chordData.chords.length === 0) {
+        showToast("尚無和弦資料", 2000);
+        return;
+      }
+
+      if (jazzifyAIActive) {
+        // 還原原始
+        if (originalChords) {
+          chordData.chords = originalChords;
+          originalChords = null;
+        }
+        jazzifyAIActive = false;
+        jazzifyActive = false;
+        jazzifyLevel = 0;
+        btnJazzifyAI.style.background = "";
+        if (btnJazzify) {
+          btnJazzify.textContent = "\u{1F3B7}";
+          btnJazzify.style.background = "";
+        }
+        chordCache = {};
+        await preloadChordInfo(chordData.chords);
+        buildChordDOM();
+        updateActiveChord(audio.currentTime || -1);
+        showToast("已還原原始和弦", 1500);
+        return;
+      }
+
+      // 儲存原始
+      if (!originalChords) {
+        originalChords = [...chordData.chords];
+      }
+
+      btnJazzifyAI.textContent = "⌛";
+
+      try {
+        const res = await API.jazzify(originalChords, chordData.key || "C", 3, "transformer");
+        chordData.chords = res.chords;
+        jazzifyAIActive = true;
+        jazzifyActive = true; 
+        jazzifyLevel = 3; // Sync UI state conceptually
+        btnJazzifyAI.textContent = "AI";
+        btnJazzifyAI.style.background = "rgba(156,39,176,.3)";
+        if (btnJazzify) btnJazzify.style.background = "";
+        
+        chordCache = {};
+        await preloadChordInfo(chordData.chords);
+        buildChordDOM();
+        updateActiveChord(audio.currentTime || -1);
+        showToast(`AI Transformer 重配: ${res.original_count}→${res.jazzified_count} 和弦`, 3000);
+      } catch (err) {
+        showToast("AI Jazzify 失敗: " + err.message, 3000);
+        jazzifyAIActive = false;
+        btnJazzifyAI.textContent = "AI";
+        btnJazzifyAI.style.background = "";
       }
     });
   }

@@ -52,7 +52,7 @@ const API = {
   batchMidiImport: () => API.post("/api/chords/batch-midi-import"),
   chordVoicings: (inst, name) => API.get(`/api/chord/voicings/${inst}/${encodeURIComponent(name)}`),
   chordAnalysis: (key, name) => API.get(`/api/chord/analysis/${encodeURIComponent(key)}/${encodeURIComponent(name)}`),
-  jazzify: (chords, key, level) => API.post("/api/ai/jazzify", { chords, key, level }),
+  jazzify: (chords, key, level, mode = "rule-based") => API.post("/api/ai/jazzify", { chords, key, level, mode }),
 
   // 使用者
   getFavorites: () => API.get("/api/favorites"),

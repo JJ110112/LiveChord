@@ -56,6 +56,7 @@ class JazzifyRequest(BaseModel):
     chords: list
     key: str = "C"
     level: int = 1
+    mode: str = "rule-based"
 
 
 @router.post("/jazzify")
@@ -64,7 +65,7 @@ async def jazzify(body: JazzifyRequest):
     from ai.reharmonizer import Reharmonizer
 
     rh = Reharmonizer(level=body.level)
-    result = rh.jazzify(body.chords, key=body.key)
+    result = rh.jazzify(body.chords, key=body.key, mode=body.mode)
     return result
 
 
