@@ -107,34 +107,40 @@ async def manifest():
     return FileResponse(FRONTEND_DIR / "manifest.json", media_type="application/manifest+json")
 
 
+NO_CACHE_HEADERS = {
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
 @app.get("/")
-async def index():
-    return FileResponse(FRONTEND_DIR / "index.html")
+async def root():
+    return FileResponse(FRONTEND_DIR / "index.html", headers=NO_CACHE_HEADERS)
 
 
 @app.get("/player")
 async def player():
-    return FileResponse(FRONTEND_DIR / "player.html")
+    return FileResponse(FRONTEND_DIR / "player.html", headers=NO_CACHE_HEADERS)
 
 
 @app.get("/editor")
 async def editor():
-    return FileResponse(FRONTEND_DIR / "editor.html")
+    return FileResponse(FRONTEND_DIR / "editor.html", headers=NO_CACHE_HEADERS)
 
 
 @app.get("/admin")
 async def admin():
-    return FileResponse(FRONTEND_DIR / "admin.html")
+    return FileResponse(FRONTEND_DIR / "admin.html", headers=NO_CACHE_HEADERS)
 
 
 @app.get("/benchmark")
 async def benchmark():
-    return FileResponse(FRONTEND_DIR / "benchmark.html")
+    return FileResponse(FRONTEND_DIR / "benchmark.html", headers=NO_CACHE_HEADERS)
 
 
 @app.get("/extraction")
 async def extraction():
-    return FileResponse(FRONTEND_DIR / "extraction.html")
+    return FileResponse(FRONTEND_DIR / "extraction.html", headers=NO_CACHE_HEADERS)
 
 
 if __name__ == "__main__":
