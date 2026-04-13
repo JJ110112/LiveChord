@@ -14,13 +14,10 @@ from collections import Counter
 import sys
 from pathlib import Path
 
-# 為了能在單獨執行被當作 module 也要可以執行
-if __name__ == "__main__":
-    if str(Path(__file__).resolve().parent.parent.parent) not in sys.path:
-        sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-    from backend.ai.preprocess import chord_to_degree, NOTE_TO_SEMI, parse_chord_name
-else:
+try:
     from .preprocess import chord_to_degree, NOTE_TO_SEMI, parse_chord_name
+except ImportError:
+    from preprocess import chord_to_degree, NOTE_TO_SEMI, parse_chord_name
 try:
     import mido
 except ImportError:

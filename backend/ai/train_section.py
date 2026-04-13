@@ -20,7 +20,7 @@ class SectionDataset(Dataset):
         self.files = glob.glob(str(self.chords_dir / "*.json"))[:max_songs]
         self.samples = []
         
-        print(">> 產生訓練資料集中... (萃取 V4 啟發式特徵與標籤)")
+        print(">> Generating training dataset... (Extracting V4 heuristic features & labels)")
         # For efficiency in this demo script, we process a limited subset sequentially
         # In a real cluster environment, we would parallelize this.
         for f in tqdm(self.files):
