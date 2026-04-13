@@ -132,6 +132,17 @@ def detect_sections(chords, key="C", song_hash=None, data_dir="W:/data", mode="a
     if not chords or len(chords) < 4:
         return {"sections": [], "analysis": {}}
 
+    # RLHF Hook: 優先載入人類標記的 Ground Truth
+    if song_hash:
+        try:
+            import json
+            human_path = Path(data_dir) / "human_sections" / f"{song_hash}.json"
+            if human_path.exists():
+                human_data = json.loads(human_path.read_text(encoding="utf-8"))
+                return {"sections": human_data.get("sections", []), "analysis": {"mode": "human-loop"}}
+        except Exception as e:
+            print(f"[RLHF] Failed to load human sections: {e}")
+
     key_semi = NOTE_TO_SEMI.get(key.rstrip("m"), 0)
     total_dur = chords[-1].get("end", chords[-1]["time"] + 4)
 

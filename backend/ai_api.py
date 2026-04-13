@@ -160,6 +160,16 @@ class ViterbiRequest(BaseModel):
     key: str = "C"
     top_k: int = 10
 
+class EvaluateFeedbackRequest(BaseModel):
+    path: str
+    action: str  # "good" or "bad"
+    context: dict = {}
+
+class SectionsFeedbackRequest(BaseModel):
+    path: str
+    sections: list
+    
+
 
 @router.post("/viterbi")
 async def viterbi_decode(body: ViterbiRequest):
@@ -201,6 +211,44 @@ async def detect_sections_api(
     result = detect_sections(data.get("chords", []), data.get("key", "C"), song_hash=h)
     result["path"] = path
     return result
+
+@router.post("/evaluate-feedback")
+async def evaluate_feedback_api(body: EvaluateFeedbackRequest):
+    """(RLHF) 接收和弦星星評分並附加至紀錄檔"""
+    import json as _json
+    from datetime import datetime
+    file_path = DATA_DIR / "human_feedback" / "chord_eval.jsonl"
+    import hashlib
+    song_hash = hashlib.md5(body.path.encode()).hexdigest()[:12]
+    
+    record = {
+        "timestamp": datetime.now().isoformat(),
+        "path": body.path,
+        "song_hash": song_hash,
+        "action": body.action,
+        "context": body.context
+    }
+    with open(file_path, "a", encoding="utf-8") as f:
+        f.write(_json.dumps(record, ensure_ascii=False) + "\n")
+    return {"status": "success", "message": "Feedback recorded"}
+
+@router.post("/sections/feedback")
+async def sections_feedback_api(body: SectionsFeedbackRequest):
+    """(RLHF) 接收使用者人工修正的樂句並作為 Ground Truth 保存"""
+    import json as _json
+    import hashlib
+    song_hash = hashlib.md5(body.path.encode()).hexdigest()[:12]
+    file_path = DATA_DIR / "human_sections" / f"{song_hash}.json"
+    
+    data = {
+        "path": body.path,
+        "song_hash": song_hash,
+        "human_labeled": True,
+        "sections": body.sections
+    }
+    with open(file_path, "w", encoding="utf-8") as f:
+        _json.dump(data, f, ensure_ascii=False, indent=2)
+    return {"status": "success", "message": f"Sections for {song_hash} saved"}
 
 
 @router.get("/patterns")

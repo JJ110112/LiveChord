@@ -310,7 +310,13 @@
             phraseLabelZh = activeSec.label + modeTag;
             phraseLabelEn = enType + modeTag;
             
-            sectionHdr = { labelZh: phraseLabelZh, labelEn: phraseLabelEn, color: phraseColor };
+            sectionHdr = { 
+                labelZh: phraseLabelZh, 
+                labelEn: phraseLabelEn, 
+                color: phraseColor,
+                start: activeSec.start,
+                type: activeSec.type
+            };
             isPhraseStart = true;
           }
         }
@@ -335,7 +341,7 @@
         const curLang = window.liveChordPhraseLang || 'zh';
         gridPhraseEl.textContent = curLang === 'zh' ? phraseLabelZh : phraseLabelEn;
         
-        // Toggle language function
+        // Toggle language function on left click
         gridPhraseEl.addEventListener("click", (e) => {
           e.stopPropagation();
           const nextLang = (window.liveChordPhraseLang || 'zh') === 'zh' ? 'en' : 'zh';
@@ -343,6 +349,13 @@
           document.querySelectorAll(".rv-grid-phrase, .rv-section-text").forEach(el => {
             el.textContent = el.dataset[nextLang];
           });
+        });
+
+        // Edit Section Modal on right click
+        gridPhraseEl.addEventListener("contextmenu", (e) => {
+          if (typeof showSectionMenu === 'function' && sectionHdr) {
+             showSectionMenu(e, sectionHdr.start, sectionHdr.type);
+          }
         });
         item.appendChild(gridPhraseEl);
       }
@@ -400,6 +413,12 @@
           document.querySelectorAll(".rv-grid-phrase, .rv-section-text").forEach(el => {
             el.textContent = el.dataset[nextLang];
           });
+        });
+        // Add Edit context menu
+        hdr.addEventListener("contextmenu", (e) => {
+          if (typeof showSectionMenu === 'function') {
+             showSectionMenu(e, sectionHdr.start, sectionHdr.type);
+          }
         });
         
         unifiedRibbonTrack.appendChild(hdr);
@@ -3176,16 +3195,121 @@
   if (btnRlhfGood) {
       btnRlhfGood.addEventListener("click", () => {
           showToast("感謝老師肯定！評分已記錄！");
+          const urlParams = new URLSearchParams(window.location.search);
+          const path = urlParams.get('path');
+          if (path) {
+              fetch('/api/ai/evaluate-feedback', {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify({ path: path, action: "good", context: { time: audio ? audio.currentTime : 0 } })
+              });
+          }
           if (ratePopup) ratePopup.style.display = "none";
       });
   }
   if (btnRlhfBad) {
       btnRlhfBad.addEventListener("click", () => {
           showToast("已紀錄此負面特徵 (Negative Sample)，將用於未來訓練！");
-          // Here we would normally fetch('/api/ai/evaluate-feedback', { method: 'POST', body: JSON.stringify(...) })
+          const urlParams = new URLSearchParams(window.location.search);
+          const path = urlParams.get('path');
+          if (path) {
+              fetch('/api/ai/evaluate-feedback', {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify({ path: path, action: "bad", context: { time: audio ? audio.currentTime : 0 } })
+              });
+          }
           if (ratePopup) ratePopup.style.display = "none";
       });
   }
+
+  // --- RLHF Section Editor ---
+  window.showSectionMenu = function(e, sectionStartIndex, originalType) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      document.querySelectorAll(".rv-section-menu").forEach(m => m.remove());
+      
+      const menu = document.createElement("div");
+      menu.className = "rv-section-menu";
+      menu.style.left = e.pageX + "px";
+      menu.style.top = e.pageY + "px";
+      
+      const title = document.createElement("div");
+      title.className = "title";
+      title.textContent = "修改樂句模型標籤 (RLHF)";
+      menu.appendChild(title);
+      
+      const types = [
+        { type: "intro", label: "前奏 (Intro)" },
+        { type: "verse", label: "主歌 (Verse)" },
+        { type: "pre_chorus", label: "導歌 (PreChorus)" },
+        { type: "chorus", label: "副歌 (Chorus)" },
+        { type: "instrumental", label: "間奏 (Interlude)" },
+        { type: "bridge", label: "橋段 (Bridge)" },
+        { type: "outro", label: "尾奏 (Outro)" }
+      ];
+      
+      types.forEach(t => {
+          const item = document.createElement("div");
+          item.className = "rv-section-menu-item";
+          if (originalType === t.type) {
+              item.style.fontWeight = "bold";
+              item.style.color = "#4caf50";
+          }
+          item.innerHTML = `<span style="flex:1">${t.label}</span>${originalType === t.type ? "✓" : ""}`;
+          item.onclick = async (ev) => {
+              ev.stopPropagation();
+              menu.remove();
+              await window.saveSectionFeedback(sectionStartIndex, t.type);
+          };
+          menu.appendChild(item);
+      });
+      
+      document.body.appendChild(menu);
+      
+      const closeMenu = () => { menu.remove(); document.removeEventListener("click", closeMenu); };
+      setTimeout(() => document.addEventListener("click", closeMenu), 0);
+  };
+  
+  window.saveSectionFeedback = async function(sectionStartIndex, newType) {
+      if (!sectionData || !sectionData.sections) return;
+      
+      const sec = sectionData.sections.find(s => s.start === sectionStartIndex);
+      if (sec) {
+          sec.type = newType;
+          
+          const urlParams = new URLSearchParams(window.location.search);
+          const path = urlParams.get('path');
+          if (!path) return;
+          
+          const body = {
+              path: path,
+              sections: sectionData.sections.map(s => ({
+                  type: s.type,
+                  start: s.start,
+                  end: s.end
+              }))
+          };
+          
+          try {
+              showToast("正在儲存人工修正...");
+              let res = await fetch('/api/ai/sections/feedback', {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify(body)
+              });
+              if (res.ok) {
+                  showToast("✅ 修正成功！重新載入...");
+                  _loadSections(path);
+              } else {
+                  showToast("❌ 修正失敗（伺服器回應異常）", true);
+              }
+          } catch(e) {
+              showToast("❌ 修正失敗：" + e.message, true);
+          }
+      }
+  };
 
   // ===========================================================================
   // STRING INSTRUMENTS — Guitar / Ukulele / ... (registry-based)
