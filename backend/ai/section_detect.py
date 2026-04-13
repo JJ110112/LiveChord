@@ -410,7 +410,15 @@ def _classify_dl(windows_data, data_dir):
         model.load_state_dict(torch.load(model_path, map_location=device))
         model.eval()
 
-        preds = model.predict(x.to(device))
+        preds = model.predict(x.to(device)).tolist()
+        
+        # Post-Processing: 1-Window Spike Filter (Debouncing)
+        # Prevents isolated 8s neural net misclassifications (e.g. Verse -> Chorus -> Verse)
+        for _ in range(2): # Run twice to handle adjacent dual spikes if any edge cases exist, though 1 is usually enough
+            for i in range(1, len(preds) - 1):
+                if preds[i] != preds[i-1] and preds[i-1] == preds[i+1]:
+                    preds[i] = preds[i-1]
+                    
         for i, w in enumerate(windows_data):
             w["type"] = ID_TO_SECTION.get(preds[i], "verse")
             
