@@ -139,7 +139,20 @@ def detect_sections(chords, key="C", song_hash=None, data_dir="W:/data", mode="a
             human_path = Path(data_dir) / "human_sections" / f"{song_hash}.json"
             if human_path.exists():
                 human_data = json.loads(human_path.read_text(encoding="utf-8"))
-                return {"sections": human_data.get("sections", []), "analysis": {"mode": "human-loop"}}
+                final_sections = human_data.get("sections", [])
+                
+                # 重新回填前端所需的 label 與 color 顯示屬性
+                for s in final_sections:
+                    t = s.get("type", "verse")
+                    if t in SECTION_TYPES:
+                        s["label"] = SECTION_TYPES[t]["label"]
+                        s["emoji"] = SECTION_TYPES[t]["emoji"]
+                        s["color"] = SECTION_TYPES[t]["color"]
+                    else:
+                        s["label"] = t
+                        s["color"] = "#888"
+                        
+                return {"sections": final_sections, "analysis": {"mode": "human-loop"}}
         except Exception as e:
             print(f"[RLHF] Failed to load human sections: {e}")
 
