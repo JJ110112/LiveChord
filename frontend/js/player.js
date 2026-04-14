@@ -3384,7 +3384,9 @@
   window.saveSectionFeedback = async function(splitTime, newType) {
       if (!sectionData || !sectionData.sections) return;
       
-      const TOLERANCE = 0.5; // seconds
+      // Reduce tolerance to 0.01s so that clicking a chord block 
+      // doesn't accidentally snap to a nearby boundary.
+      const TOLERANCE = 0.01; // seconds
       
       // Look for the CLOSEST exact boundary
       let sec = null;
