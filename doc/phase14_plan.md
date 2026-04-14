@@ -6,7 +6,17 @@
 
 ### 1. 邀請碼註冊與登入機制 (Auth)
 - **`frontend/login.html`**: 新增玻璃擬物風格的登入/註冊頁面。
-- **邀請碼防護**: 預設邀請碼為 `LiveChordAlpha`。可以建立 `data/config.json` 寫入 `{"invite_code": "自訂密碼"}` 覆寫，並且已將 `data/config.json` 加入 `.gitignore` 確保密語不會外洩。
+- **邀請碼防護**: 系統預設的邀請碼為 `LiveChordAlpha`。
+  
+  **🛠️ 如何修改為專屬密語？**
+  如果您想要更換邀請碼，請直接在您的伺服器 (NUC) 的 `W:\data\` 目錄底下（或是原始碼對應的 `backend/data/` 內），手動新增一個 `config.json` 檔案，裡面寫入：
+  ```json
+  {
+    "invite_code": "您的專屬神祕密碼"
+  }
+  ```
+  存檔後，新密碼立刻生效！另外，`data/config.json` 已經加入 `.gitignore` 保護，所以不用擔心您的密語會在 Git 同步時外洩。
+
 - 完善的路由保護，所有頁面包含 `/admin` 與背景掃描 API (`/api/auto/start`) 皆受登入身分與權限保護。
 
 ### 2. 多使用者資料隔離設計與 Admin 管理員
