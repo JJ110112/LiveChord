@@ -296,6 +296,9 @@
     }
     currentSecPerBeat = 60 / estimatedBpm;
     const secPerBeat = currentSecPerBeat;
+    
+    const bpmEl = document.getElementById("chordBpm");
+    if (bpmEl) bpmEl.textContent = `BPM: ${Math.round(estimatedBpm)}`;
 
     // Build in reverse order: last chord at top, first chord at bottom
     // This matches the waterfall direction (time flows top→bottom)
