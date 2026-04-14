@@ -84,9 +84,9 @@ def _load_model():
     if _model is not None:
         return
 
-    from btc_model import BTC_model
-    from utils.hparams import HParams
-    from utils.mir_eval_modules import idx2voca_chord
+    from btc_model import BTC_model  # type: ignore
+    from utils.hparams import HParams  # type: ignore
+    from utils.mir_eval_modules import idx2voca_chord  # type: ignore
 
     old_cwd = os.getcwd()
     os.chdir(BTC_DIR)
