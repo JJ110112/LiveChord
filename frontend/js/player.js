@@ -3340,6 +3340,7 @@
       menu.appendChild(title);
       
       const types = [
+        { type: "dialogue", label: "對白 (Dialogue)" },
         { type: "intro", label: "前奏 (Intro)" },
         { type: "verse", label: "主歌 (Verse)" },
         { type: "pre_chorus", label: "導歌 (PreChorus)" },

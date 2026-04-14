@@ -25,6 +25,7 @@ except ImportError:
 
 
 SECTION_TYPES = {
+    "dialogue": {"emoji": "🗣️", "label": "對白", "color": "#795548"},
     "intro": {"emoji": "🎬", "label": "前奏", "color": "#888"},
     "verse": {"emoji": "🎤", "label": "主歌", "color": "#4caf50"},
     "pre_chorus": {"emoji": "⬆️", "label": "導歌", "color": "#ff9800"},
