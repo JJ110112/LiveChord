@@ -3386,8 +3386,17 @@
       
       const TOLERANCE = 0.5; // seconds
       
-      // Look for an exact boundary (existing section start)
-      let sec = sectionData.sections.find(s => Math.abs(s.start - splitTime) <= TOLERANCE);
+      // Look for the CLOSEST exact boundary
+      let sec = null;
+      let minDiff = TOLERANCE + 0.001;
+      for (let s of sectionData.sections) {
+          let diff = Math.abs(s.start - splitTime);
+          if (diff <= TOLERANCE && diff < minDiff) {
+              minDiff = diff;
+              sec = s;
+          }
+      }
+      
       if (sec) {
           sec.type = newType;
       } else {
