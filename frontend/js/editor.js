@@ -73,16 +73,25 @@
   audio.addEventListener("play", () => { btnPlay.innerHTML = "&#x23F8;"; tickPlayhead(); });
   audio.addEventListener("pause", () => { btnPlay.innerHTML = "&#x25B6;"; });
 
+  function updatePlayheadUI() {
+    const t = audio.currentTime;
+    const d = audio.duration || 1;
+    playhead.style.left = (t * pixelsPerSec) + "px";
+    progress.style.width = (t / d * 100) + "%";
+    $("#timeCurrent").textContent = formatTime(t);
+  }
+
   function tickPlayhead() {
     if (!audio.paused) {
-      const t = audio.currentTime;
-      const d = audio.duration || 1;
-      playhead.style.left = (t * pixelsPerSec) + "px";
-      progress.style.width = (t / d * 100) + "%";
-      $("#timeCurrent").textContent = formatTime(t);
+      updatePlayheadUI();
       requestAnimationFrame(tickPlayhead);
     }
   }
+
+  audio.addEventListener("timeupdate", () => {
+    if (audio.paused) updatePlayheadUI();
+  });
+  audio.addEventListener("seeked", updatePlayheadUI);
 
   progressBar.addEventListener("click", (e) => {
     const rect = progressBar.getBoundingClientRect();
@@ -184,10 +193,11 @@
     function onMove(ev) {
       const dx = ev.clientX - dragStartX;
       const dt = dx / pixelsPerSec;
-      const newTime = Math.max(0, dragOrigTime + dt);
+      let newTime = Math.max(0, dragOrigTime + dt);
+      newTime = snapTime(newTime);
       const dur = dragOrigEnd - dragOrigTime;
-      chords[idx].time = round2(newTime);
-      chords[idx].end = round2(newTime + dur);
+      chords[idx].time = newTime;
+      chords[idx].end = newTime + dur;
       render();
     }
 
@@ -213,8 +223,10 @@
     function onMove(ev) {
       const dx = ev.clientX - dragStartX;
       const dt = dx / pixelsPerSec;
-      const newEnd = Math.max(chords[idx].time + 0.1, dragOrigEnd + dt);
-      chords[idx].end = round2(newEnd);
+      let newEnd = Math.max(chords[idx].time + 0.1, dragOrigEnd + dt);
+      newEnd = snapTime(newEnd);
+      if (newEnd <= chords[idx].time) newEnd = chords[idx].time + 0.1;
+      chords[idx].end = newEnd;
       render();
     }
 
@@ -237,14 +249,15 @@
 
     const rect = timeline.getBoundingClientRect();
     const x = e.clientX - rect.left + timeline.parentElement.scrollLeft;
-    const t = x / pixelsPerSec;
+    let t = x / pixelsPerSec;
+    t = snapTime(t);
 
     const chord = paletteChord || prompt("輸入和弦名稱:", "C");
     if (!chord) return;
 
     chords.push({
-      time: round2(t),
-      end: round2(t + 4),
+      time: t,
+      end: t + 4,
       chord: chord,
     });
     sortChords();
@@ -397,6 +410,15 @@
   // ---- helpers ----
 
   function round2(v) { return Math.round(v * 100) / 100; }
+  
+  function snapTime(v) {
+      const chk = $("#chkSnap");
+      // 若開啟貼齊，自動貼齊 0.25 秒
+      if (chk && chk.checked) {
+          return Math.round(v * 4) / 4;
+      }
+      return round2(v);
+  }
 
   function sortChords() {
     chords.sort((a, b) => a.time - b.time);
