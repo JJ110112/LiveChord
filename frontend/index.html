@@ -26,11 +26,11 @@
     <input id="searchInput" type="text" placeholder="搜尋歌曲、演出者、專輯…" autocomplete="off">
     <div id="searchResults" class="search-results"></div>
   </div>
-  <nav>
+  <nav style="margin-right: 32px;">
     <div style="display:flex; align-items:center; gap: 10px;">
       <span id="userGreeting" style="font-size: 0.85em; color: var(--text-muted);"></span>
-      <button onclick="exportData()" class="header-fs-btn" style="font-size: 0.85em;">匯出資料</button>
-      <button onclick="logout()" class="header-fs-btn" style="font-size: 0.85em;">登出</button>
+      <button onclick="exportData()">匯出資料</button>
+      <button onclick="logout()">登出</button>
     </div>
   </nav>
   <button class="header-fs-btn" title="全螢幕" onclick="
@@ -106,8 +106,6 @@
                 const navDiv = document.querySelector("nav div");
                 const adminBtn = document.createElement("button");
                 adminBtn.textContent = "管理後台";
-                adminBtn.className = "header-fs-btn";
-                adminBtn.style.fontSize = "0.85em";
                 adminBtn.onclick = () => window.location.href = "/admin";
                 // Insert before the export button
                 navDiv.insertBefore(adminBtn, navDiv.querySelector("button"));
