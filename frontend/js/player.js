@@ -3394,14 +3394,29 @@
           // It's a SPLIT! We are cutting a section into two.
           let parentSec = sectionData.sections.find(s => splitTime > s.start && splitTime < s.end);
           if (parentSec) {
-              let newSec = {
-                  type: newType,
-                  start: splitTime,
-                  end: parentSec.end
-              };
-              parentSec.end = splitTime;
-              sectionData.sections.push(newSec);
-              sectionData.sections.sort((a,b) => a.start - b.start);
+              if (parentSec.type === newType) {
+                  // If the user selects the same type as the current block, 
+                  // they intend to move the start boundary forward (e.g. shrinking it).
+                  // Fill the gap by extending the previous section.
+                  sectionData.sections.sort((a,b) => a.start - b.start);
+                  let idx = sectionData.sections.indexOf(parentSec);
+                  if (idx > 0) {
+                      sectionData.sections[idx - 1].end = splitTime;
+                  } else {
+                      sectionData.sections.push({ type: "verse", start: parentSec.start, end: splitTime });
+                  }
+                  parentSec.start = splitTime;
+                  sectionData.sections.sort((a,b) => a.start - b.start);
+              } else {
+                  let newSec = {
+                      type: newType,
+                      start: splitTime,
+                      end: parentSec.end
+                  };
+                  parentSec.end = splitTime;
+                  sectionData.sections.push(newSec);
+                  sectionData.sections.sort((a,b) => a.start - b.start);
+              }
           } else {
               // Edge case: no parent, just append
               sectionData.sections.push({ type: newType, start: splitTime, end: splitTime + 10 });
