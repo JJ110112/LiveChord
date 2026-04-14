@@ -11,7 +11,7 @@
   let chords = [];          // [{time, end, chord}]
   let songKey = "";
   let selectedIdx = -1;
-  let pixelsPerSec = 15;    // 縮放比例
+  let pixelsPerSec = parseInt(localStorage.getItem("livechord_editor_zoom")) || 15;
   let paletteChord = "";    // 面板選中的和弦
   let duration = 0;
   let isDragging = false;
@@ -50,6 +50,8 @@
         $("#keyInput").value = songKey;
       }
     } catch {}
+
+    $("#zoomSlider").value = pixelsPerSec;
 
     buildPalette();
     render();
@@ -95,6 +97,7 @@
 
   $("#zoomSlider").addEventListener("input", (e) => {
     pixelsPerSec = parseInt(e.target.value);
+    localStorage.setItem("livechord_editor_zoom", pixelsPerSec);
     if (duration) timeline.style.width = Math.max(duration * pixelsPerSec, 800) + "px";
     buildRuler();
     render();
