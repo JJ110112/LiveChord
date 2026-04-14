@@ -322,7 +322,15 @@
     let lastSectionType = null;
     let _prevMidi = null;
 
-    // First pass: collect items in normal order for _prevMidi voice leading
+    // First pass: Pre-calculate total section occurrences for numbering
+    let typeCounts = {};
+    if (sectionData && sectionData.sections) {
+        for (let s of sectionData.sections) {
+            typeCounts[s.type] = (typeCounts[s.type] || 0) + 1;
+        }
+    }
+
+    let typeOccurrences = {};
     const items = [];
     for (let i = 0; i < chords.length; i++) {
       const c = chords[i];
@@ -336,26 +344,33 @@
       let phraseLabelEn = '';
 
       if (sectionData && sectionData.sections) {
-        // Robust matching: find the section this chord belongs to
-        // c.time < s.end prevents boundaries from artificially extending backwards
         let activeSec = sectionData.sections.find(s => c.time >= s.start - 0.5 && c.time < s.end);
         
-        // Exemption for exactly the last chord at the very end of the song
         if (!activeSec && sectionData.sections.length > 0) {
             activeSec = sectionData.sections[sectionData.sections.length - 1];
         }
         if (activeSec) {
           phraseColor = activeSec.color || '#888';
-          // Check if this is the first chord we see for this specific section block timestamp
           if (activeSec.type !== lastSectionType) {
             lastSectionType = activeSec.type;
-            const modeTag = activeSec.mode && activeSec.mode !== "Major" && activeSec.mode !== "Minor" ? ` ${activeSec.mode}` : "";
             
+            typeOccurrences[activeSec.type] = (typeOccurrences[activeSec.type] || 0) + 1;
+            const count = typeOccurrences[activeSec.type];
+            const total = typeCounts[activeSec.type] || 1;
+            
+            // Do not number intro, outro, dialogue unless they really appear multiple times
+            const noNumberTypes = ['intro', 'outro', 'dialogue'];
+            let numStr = "";
+            if (total > 1 && !noNumberTypes.includes(activeSec.type)) {
+                numStr = ` ${count}`;
+            }
+            
+            const modeTag = activeSec.mode && activeSec.mode !== "Major" && activeSec.mode !== "Minor" ? ` ${activeSec.mode}` : "";
             const baseType = activeSec.type.replace(/\d+|'/g, ''); 
             const enType = baseType.charAt(0).toUpperCase() + baseType.slice(1).replace('_', ' ');
             
-            phraseLabelZh = activeSec.label + modeTag;
-            phraseLabelEn = enType + modeTag;
+            phraseLabelZh = activeSec.label + numStr + modeTag;
+            phraseLabelEn = enType + numStr + modeTag;
             
             sectionHdr = { 
                 labelZh: phraseLabelZh, 
