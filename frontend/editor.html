@@ -212,15 +212,12 @@
   const originalFetch = window.fetch;
   window.fetch = function() {
     let [resource, config] = arguments;
-    if(config == null) {
-        config = {};
-    }
-    if(config.headers == null) {
-        config.headers = {};
-    }
-    const token = localStorage.getItem("livechord_token");
-    if(token) {
-        config.headers['Authorization'] = `Bearer ${token}`;
+    if(config == null) config = {};
+    const url = typeof resource === 'string' ? resource : (resource instanceof Request ? resource.url : '');
+    if (url.startsWith('/') || url.includes(window.location.host)) {
+        if(config.headers == null) config.headers = {};
+        const token = localStorage.getItem("livechord_token");
+        if(token) config.headers['Authorization'] = `Bearer ${token}`;
     }
     return originalFetch(resource, config);
   };

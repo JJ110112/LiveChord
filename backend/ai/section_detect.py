@@ -225,9 +225,15 @@ def detect_sections(chords, key="C", song_hash=None, data_dir="W:/data", mode="a
         # 優先嘗試深度學習模型 V5，失敗或未安裝則 fallback 到 Rule-based (V4/V3)
         actual_data_dir = fallback_data_dir if fallback_data_dir else data_dir
         if not _classify_dl(windows_data, actual_data_dir):
-            _classify_rule_based(windows_data, chords)
+            if is_simple:
+                _classify_simple(windows_data)
+            else:
+                _classify_pop(windows_data)
     else:
-        _classify_rule_based(windows_data, chords)
+        if is_simple:
+            _classify_simple(windows_data)
+        else:
+            _classify_pop(windows_data)
 
     # 合併相鄰同類型 + 高相似度強制合併
     merged = _merge_sections(windows_data)
@@ -442,7 +448,7 @@ def _classify_dl(windows_data, data_dir):
         model.load_state_dict(torch.load(model_path, map_location=device))
         model.eval()
 
-        preds = model.predict(x.to(device)).tolist()
+        preds = model.predict(x.to(device))
         
         # Post-Processing: 1-Window Spike Filter (Debouncing)
         # Prevents isolated 8s neural net misclassifications (e.g. Verse -> Chorus -> Verse)
