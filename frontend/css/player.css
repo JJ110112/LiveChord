@@ -1258,3 +1258,26 @@
   background: var(--accent, #4caf50);
   color: white;
 }
+
+/* Chord Beats Indicator */
+.rv-beats {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  align-items: center;
+  margin-top: 6px;
+  height: 6px;
+  flex-wrap: wrap;
+}
+.beat-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: rgba(255,255,255,0.3);
+}
+.beat-strong {
+  background-color: rgba(255,255,255,0.9);
+  width: 5px;
+  height: 5px;
+  box-shadow: 0 0 3px rgba(255,255,255,0.5);
+}

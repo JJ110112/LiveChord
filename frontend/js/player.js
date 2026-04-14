@@ -276,6 +276,25 @@
     const chords = _displayChords();
     if (!chords || chords.length === 0) return;
 
+    // 估算 BPM 與每拍秒數
+    let estimatedBpm = 100;
+    if (chords.length >= 4) {
+      let diffs = [];
+      for(let i=0; i<chords.length-1; i++) {
+        let d = chords[i+1].time - chords[i].time;
+        if (d > 0.3 && d < 6.0) diffs.push(d);
+      }
+      if (diffs.length > 0) {
+        diffs.sort((a,b) => a-b);
+        let median = diffs[Math.floor(diffs.length/2)];
+        let beatSec = median;
+        if (median > 1.8) beatSec = median / 4;
+        else if (median > 0.9) beatSec = median / 2;
+        estimatedBpm = 60 / beatSec;
+      }
+    }
+    const secPerBeat = 60 / estimatedBpm;
+
     // Build in reverse order: last chord at top, first chord at bottom
     // This matches the waterfall direction (time flows top→bottom)
     let lastSectionType = null;
@@ -412,6 +431,24 @@
       timeEl.textContent = formatTime(c.time);
       item.appendChild(timeEl);
 
+      // 動態節拍指示器 (Dynamic Beat Indicator)
+      let durSec = 2.0; // 預設最後一拍長度
+      if (i < chords.length - 1) {
+          durSec = chords[i+1].time - c.time;
+      }
+      let beats = Math.round(durSec / secPerBeat);
+      if (beats < 1) beats = 1;
+      if (beats > 16) beats = 16;
+      
+      const beatsEl = document.createElement("div");
+      beatsEl.className = "rv-beats";
+      let dotHtml = "";
+      for (let b=1; b<=beats; b++) {
+          dotHtml += `<span class="beat-dot ${b % 4 === 1 ? 'beat-strong' : ''}"></span>`;
+      }
+      beatsEl.innerHTML = dotHtml;
+      item.appendChild(beatsEl);
+
       items.push({ item, sectionHdr, idx: i });
     }
 
@@ -525,12 +562,10 @@
 
   // ---- Overview Mode Toggle ----
   const btnToggleOverview = $("#btnToggleOverview");
-  let isOverviewMode = false;
-  if (btnToggleOverview) {
-    btnToggleOverview.addEventListener("click", (e) => {
-      e.stopPropagation();
-      isOverviewMode = !isOverviewMode;
-      btnToggleOverview.classList.toggle("active", isOverviewMode);
+  let isOverviewMode = localStorage.getItem("livechord_overview_mode") === "true";
+  
+  function _applyOverviewMode() {
+      if (btnToggleOverview) btnToggleOverview.classList.toggle("active", isOverviewMode);
       if (chordRibbonPanel) {
         if (isOverviewMode) {
           chordRibbonPanel.classList.add("overview-mode");
@@ -538,8 +573,17 @@
           chordRibbonPanel.classList.remove("overview-mode");
         }
       }
+  }
+  
+  if (btnToggleOverview) {
+    _applyOverviewMode();
+    btnToggleOverview.addEventListener("click", (e) => {
+      e.stopPropagation();
+      isOverviewMode = !isOverviewMode;
+      localStorage.setItem("livechord_overview_mode", isOverviewMode);
+      _applyOverviewMode();
       // Scroll to current chord immediately on toggle
-      updateActiveChord(audio.currentTime || 0);
+      updateActiveChord(audio.currentTime || 0, true);
     });
   }
 
