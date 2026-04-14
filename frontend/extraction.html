@@ -277,6 +277,14 @@
   pollLogs();
   setInterval(pollStatus, 3000);
   setInterval(pollLogs, 5000);
+  
+  if (window.location.search.includes('embed=1')) {
+    const header = document.querySelector('.header');
+    if (header) header.style.display = 'none';
+    const adminPage = document.querySelector('.admin-page');
+    if (adminPage) adminPage.style.padding = '0';
+    document.body.style.background = 'transparent';
+  }
 })();
 </script>
 </body>

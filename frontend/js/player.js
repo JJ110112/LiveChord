@@ -848,32 +848,15 @@
   let _melodyPendingPlay = false;
 
   async function _loadMelody(path) {
-    const interceptPlay = () => {
-      audio.pause();
-      _melodyPendingPlay = true;
-      if (typeof btnPlay !== 'undefined' && btnPlay) btnPlay.innerHTML = "&#x25B6;";
-    };
-    audio.addEventListener("play", interceptPlay);
-
     try {
-      _setLoadingState(true, "AI 旋律提取中...", "首次播放需要分離音軌...");
-      if (!audio.paused) {
-        audio.pause();
-        _melodyPendingPlay = true;
-      }
-
+      _setLoadingState(true, "AI 旋律擷取中...", "不會影響音樂播放，請稍候...");
       const res = await fetch(`/api/ai/melody?path=${encodeURIComponent(path)}`);
       const data = await res.json();
       if (data.melody && data.melody.length > 0) {
         melodyData = data.melody;
       }
     } catch {} finally {
-      audio.removeEventListener("play", interceptPlay);
       _setLoadingState(false);
-      if (_melodyPendingPlay) {
-        _melodyPendingPlay = false;
-        audio.play().catch(() => {});
-      }
     }
   }
 
@@ -1281,7 +1264,7 @@
   var _teacherMsgTime = 0;
 
   function drawWaterfall(currentTime) {
-    if (!waterfallCanvas || !waterfallCtx || !waterfallActive || !accData) return;
+    if (!waterfallCanvas || !waterfallCtx || !waterfallActive) return;
     if (!piano88Cache) return;
 
     const w = waterfallCanvas.clientWidth;
@@ -1391,20 +1374,58 @@
     }
 
     const allEvents = [];
-    if (activeHand === "both" || activeHand === "left") {
-      allEvents.push(...(accData.left_hand || []).map(e => ({...e, _hand: "left"})));
-    }
-    if (activeHand === "both" || activeHand === "right") {
-      let rhEvents = accData.right_hand || [];
-      if (rhEvents.length === 0 && typeof melodyData !== 'undefined' && melodyData) {
-        rhEvents = melodyData.map(m => ({
-          time: m.start,
-          duration: m.end - m.start,
-          pitch: m.midi,
-          finger: null
-        }));
+    if (accData) {
+      if (activeHand === "both" || activeHand === "left") {
+        allEvents.push(...(accData.left_hand || []).map(e => ({...e, _hand: "left"})));
       }
-      allEvents.push(...rhEvents.map(e => ({...e, _hand: "right"})));
+      if (activeHand === "both" || activeHand === "right") {
+        let rhEvents = accData.right_hand || [];
+        if (rhEvents.length === 0 && typeof melodyData !== 'undefined' && melodyData) {
+          rhEvents = melodyData.map(m => ({
+            time: m.start,
+            duration: m.end - m.start,
+            pitch: m.midi,
+            finger: null
+          }));
+        }
+        allEvents.push(...rhEvents.map(e => ({...e, _hand: "right"})));
+      }
+    } else {
+      // Fallback: 如果 AI 伴奏還沒演算完，降級顯示普通的和弦方塊！
+      if (activeHand === "both" || activeHand === "left") {
+        if (_gridChords && _gridChords.length > 0) {
+            for (let ci = 0; ci < _gridChords.length; ci++) {
+                const gc = _gridChords[ci];
+                const gcEnd = (ci + 1 < _gridChords.length) ? _gridChords[ci + 1].time : gc.time + 4;
+                if (gcEnd < currentTime || gc.time > currentTime + lookAhead) continue;
+                const cache = chordCache[gc.chord] || {};
+                const notes = cache.notes || [];
+                const midis = ChordRender.voiceChordForLeftHand(notes, null);
+                for (const m of midis) {
+                    allEvents.push({
+                        time: gc.time,
+                        duration: gcEnd - gc.time,
+                        pitch: m,
+                        finger: null,
+                        _hand: "left",
+                        velocity: 70
+                    });
+                }
+            }
+        }
+      }
+      if (activeHand === "both" || activeHand === "right") {
+        if (typeof melodyData !== 'undefined' && melodyData) {
+          const rhEvents = melodyData.map(m => ({
+            time: m.start,
+            duration: m.end - m.start,
+            pitch: m.midi,
+            finger: null,
+            _hand: "right"
+          }));
+          allEvents.push(...rhEvents);
+        }
+      }
     }
 
     const cache = piano88Cache;
@@ -1579,7 +1600,7 @@
     }
 
     // ---- Phase 11: Pedal visualization ----
-    if (accData.pedal && accData.pedal.length > 0) {
+    if (accData && accData.pedal && accData.pedal.length > 0) {
       for (const ped of accData.pedal) {
         const pedStart = ped.start;
         const pedEnd = ped.end;
@@ -2121,11 +2142,17 @@
         // 和弦品質燈號
         const srcBadge = $("#chordSource");
         if (srcBadge) {
-          const rawSrc = chordData.source || "btc";
+          let rawSrc = chordData.source || "btc";
+          if (rawSrc === "btc_batch" || rawSrc === "chordy") rawSrc = "btc"; // map variants to btc
           const src = rawSrc === "chordify" ? "midi" : rawSrc;
           const labels = { midi: "MIDI", btc: "BTC" };
           srcBadge.className = `chord-source-badge src-${src}`;
-          srcBadge.textContent = labels[src] || src;
+          srcBadge.textContent = labels[src] || src.toUpperCase();
+          if (chordData.quality_score) {
+            srcBadge.title = `AI 信心評分: ${chordData.quality_score}`;
+          } else {
+            srcBadge.title = `和弦來源: ${labels[src] || src}`;
+          }
         }
         if (chordData.key) {
           const keyInfo = $("#chordKey");

@@ -85,7 +85,6 @@
 <header class="header">
   <a href="/" style="text-decoration:none"><h1>LiveChord</h1></a>
   <span style="color:var(--text-dim);font-size:14px;margin-left:12px">Core</span>
-  <a href="/extraction" style="margin-left:auto;font-size:12px;color:var(--text-dim)">Extraction Manager</a>
 </header>
 
 <div class="admin-page">
@@ -137,15 +136,26 @@
     </div>
   </div>
 
+  <!-- ======== 分散式萃取管理器 (Extraction Manager) ======== -->
+  <div class="card" style="padding-bottom:0; overflow:hidden;">
+    <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">分散式萃取叢集 (Extraction Manager)</h2>
+    <div class="collapse-content" style="margin: -10px -20px 0 -20px;">
+      <iframe src="/extraction?embed=1" style="width:100%; height:80vh; border:none; display:block;"></iframe>
+    </div>
+  </div>
+
   <!-- ======== 設定（可收合）======== -->
   <div class="card">
     <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">設定</h2>
     <div class="collapse-content">
       <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px">
-        <div style="display:flex;align-items:center;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <label>音樂庫路徑</label>
           <button id="btnAddRoot" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text-dim);cursor:pointer;font-size:11px">+ 新增</button>
-          <button class="primary" id="btnSaveMusicRoot" style="padding:4px 12px;font-size:11px;margin-left:auto">儲存並掃描</button>
+          <div style="margin-left:auto; display:flex; gap:6px;">
+            <button class="primary" id="btnSaveMusicRoot" style="padding:4px 12px;font-size:11px;" title="僅更新路徑並同步新檔案">基礎儲存</button>
+            <button class="primary" id="btnOneClickSetup" style="padding:4px 12px;font-size:11px;background:#e94560;border-color:#e94560;" title="一鍵開啟所有自動化並開始 AI 計算">🚀 傻瓜一鍵就緒</button>
+          </div>
         </div>
         <div id="musicRootsList" style="display:flex;flex-direction:column;gap:4px"></div>
       </div>
@@ -250,6 +260,45 @@
       showToast("已更新！掃描中...");
       await API.post("/api/library/scan?mode=full");
     } catch (e) { showToast("失敗：" + e.message); }
+  });
+
+  $("#btnOneClickSetup").addEventListener("click", async () => {
+    if (!confirm("這將會：\n1. 儲存目前設定的音樂庫路徑並掃描\n2. 開啟定期掃描\n3. 開啟 AI 自動偵測和弦\n4. 啟動背景 Core 開始運作\n\n確定要一鍵就緒嗎？")) return;
+    const roots = [...rootsList.querySelectorAll(".music-root-input")]
+      .map(i => i.value.trim()).filter(Boolean);
+    if (!roots.length) { showToast("至少需要一個路徑"); return; }
+    
+    const btn = $("#btnOneClickSetup");
+    const origText = btn.textContent;
+    btn.textContent = "⚙️ 初始化與啟動中...";
+    btn.disabled = true;
+
+    try {
+      showToast("系統初始化中，請稍候...");
+      await API.post("/api/settings", { music_roots: roots });
+      
+      // 非同步拋出掃描，不必等整個資料庫掃完才回應前端
+      API.post("/api/library/scan?mode=full").catch(console.error);
+      
+      $("#optAutoScan").checked = true;
+      $("#optAutoChord").checked = true;
+      await API.post("/api/auto/settings", {
+        auto_scan_enabled: true,
+        auto_scan_interval_minutes: parseInt($("#optScanInterval").value) || 30,
+        auto_chord_enabled: true,
+        auto_chord_max_per_cycle: parseInt($("#optMaxPerCycle").value) || 20,
+        auto_chord_skip_genres: $("#optSkipGenres").value.split(",").map(s => s.trim()).filter(Boolean),
+      });
+      
+      const r = await API.post("/api/auto/start");
+      showToast("🚀 " + r.message + "，所有功能已就緒並在背景運作！");
+      btn.textContent = "✅ 已全部就緒";
+      setTimeout(() => { btn.disabled = false; btn.textContent = origText; }, 5000);
+    } catch (e) { 
+      showToast("發生錯誤：" + e.message); 
+      btn.textContent = "❌ 失敗";
+      setTimeout(() => { btn.disabled = false; btn.textContent = origText; }, 3000);
+    }
   });
 
   // ---- 設定自動儲存 ----
@@ -420,9 +469,12 @@
         API.get("/api/chords/batch-detect/status"),
       ]);
 
-      $("#sTotalTracks").textContent = chords.total_tracks || 0;
+      const scanTotal = (scanSt.running && scanSt.progress > chords.total_tracks) ? scanSt.progress : chords.total_tracks;
+      const coveragePct = scanTotal > 0 ? Math.round(chords.tracks_with_chords / scanTotal * 1000) / 10 : 0;
+      
+      $("#sTotalTracks").textContent = scanTotal || 0;
       $("#sWithChords").textContent = chords.tracks_with_chords || 0;
-      $("#sCoverage").textContent = chords.coverage + "%";
+      $("#sCoverage").textContent = coveragePct + "%";
       $("#sQueueSize").textContent = core.detect_queue_size || 0;
 
       const st = statusMap[core.status] || statusMap.stopped;
