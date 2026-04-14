@@ -3288,6 +3288,15 @@
       
       document.body.appendChild(menu);
       
+      // 動態避免超出視窗下方邊境 (Dynamic repositioning to avoid bottom clipping)
+      const rect = menu.getBoundingClientRect();
+      if (e.clientY + rect.height > window.innerHeight) {
+          let adjustedTop = e.pageY - rect.height;
+          // 若連上方都超出，則稍微留白
+          if (adjustedTop < window.scrollY) adjustedTop = window.scrollY + 10;
+          menu.style.top = adjustedTop + "px";
+      }
+      
       const closeMenu = () => { menu.remove(); document.removeEventListener("click", closeMenu); };
       setTimeout(() => document.addEventListener("click", closeMenu), 0);
   };
