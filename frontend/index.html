@@ -97,6 +97,22 @@
   if (username) {
       const greeting = document.getElementById("userGreeting");
       if (greeting) greeting.textContent = `Hello, ${username}`;
+      
+      // Check admin status
+      fetch("/api/auth/is_admin")
+        .then(res => res.json())
+        .then(data => {
+            if (data.is_admin) {
+                const navDiv = document.querySelector("nav div");
+                const adminBtn = document.createElement("button");
+                adminBtn.textContent = "管理後台";
+                adminBtn.className = "header-fs-btn";
+                adminBtn.style.fontSize = "0.85em";
+                adminBtn.onclick = () => window.location.href = "/admin";
+                // Insert before the export button
+                navDiv.insertBefore(adminBtn, navDiv.querySelector("button"));
+            }
+        }).catch(err => console.error(err));
   }
 
   function logout() {

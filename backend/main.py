@@ -16,6 +16,8 @@ from ai_api import router as ai_router
 from extraction_api import router as extraction_router
 from jam_tracks_api import router as jam_tracks_router
 from auth_api import router as auth_router
+import auth_api
+from fastapi import Depends
 import auto_worker
 
 
@@ -58,22 +60,22 @@ app.mount("/img", StaticFiles(directory=FRONTEND_DIR / "img"), name="img")
 # ---------------------------------------------------------------------------
 
 @app.get("/api/auto/status")
-async def auto_status():
+async def auto_status(admin: str = Depends(auth_api.get_admin_user)):
     return auto_worker.get_worker_state()
 
 
 @app.get("/api/auto/log")
-async def auto_log(limit: int = 50):
+async def auto_log(limit: int = 50, admin: str = Depends(auth_api.get_admin_user)):
     return {"log": auto_worker.get_log(limit)}
 
 
 @app.get("/api/auto/settings")
-async def auto_settings_get():
+async def auto_settings_get(admin: str = Depends(auth_api.get_admin_user)):
     return auto_worker.load_settings()
 
 
 @app.post("/api/auto/settings")
-async def auto_settings_save(body: dict):
+async def auto_settings_save(body: dict, admin: str = Depends(auth_api.get_admin_user)):
     settings = auto_worker.load_settings()
     settings.update(body)
     auto_worker.save_settings(settings)
@@ -81,19 +83,19 @@ async def auto_settings_save(body: dict):
 
 
 @app.post("/api/auto/start")
-async def auto_start():
+async def auto_start(admin: str = Depends(auth_api.get_admin_user)):
     ok = auto_worker.start_worker()
     return {"ok": ok, "message": "已啟動" if ok else "已在運行中"}
 
 
 @app.post("/api/auto/stop")
-async def auto_stop():
+async def auto_stop(admin: str = Depends(auth_api.get_admin_user)):
     ok = auto_worker.stop_worker()
     return {"ok": ok, "message": "正在停止" if ok else "未在運行"}
 
 
 @app.post("/api/auto/trigger")
-async def auto_trigger():
+async def auto_trigger(admin: str = Depends(auth_api.get_admin_user)):
     ok = auto_worker.trigger_now()
     return {"ok": ok, "message": "已觸發" if ok else "工作器非等待狀態"}
 

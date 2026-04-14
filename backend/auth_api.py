@@ -23,6 +23,12 @@ def init_db():
                 token TEXT NOT NULL
             )
         """)
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0")
+            # Upgrade the first user to admin automatically if retrofitting schema
+            conn.execute("UPDATE users SET is_admin = 1 WHERE rowid = (SELECT MIN(rowid) FROM users)")
+        except sqlite3.OperationalError:
+            pass
         conn.commit()
 
 init_db()
@@ -60,8 +66,12 @@ async def register(req: RegisterRequest):
     
     try:
         with sqlite3.connect(DB_PATH) as conn:
-            conn.execute("INSERT INTO users (username, password_hash, token) VALUES (?, ?, ?)", 
-                         (req.username.strip(), pw_hash, token))
+            cursor = conn.execute("SELECT COUNT(*) FROM users")
+            count = cursor.fetchone()[0]
+            is_admin = 1 if count == 0 else 0
+            
+            conn.execute("INSERT INTO users (username, password_hash, token, is_admin) VALUES (?, ?, ?, ?)", 
+                         (req.username.strip(), pw_hash, token, is_admin))
             conn.commit()
             
             # Create user data directory
@@ -96,6 +106,24 @@ def get_current_user(authorization: str = Header(None)):
             
         return row[0]
 
-@router.get("/me")
-async def get_me(username: str = Depends(get_current_user)):
-    return {"ok": True, "username": username}
+def get_admin_user(authorization: str = Header(None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="未授權 (Unauthorized)")
+        
+    token = authorization.replace("Bearer ", "")
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.execute("SELECT username, is_admin FROM users WHERE token=?", (token,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=401, detail="無效憑證 (Invalid Token)")
+        if row[1] != 1:
+            raise HTTPException(status_code=403, detail="需要管理員權限 (Admin Privileges Required)")
+            
+        return row[0]
+
+@router.get("/is_admin")
+async def check_is_admin(username: str = Depends(get_current_user)):
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.execute("SELECT is_admin FROM users WHERE username=?", (username,))
+        row = cursor.fetchone()
+        return {"ok": True, "is_admin": bool(row and row[0] == 1)}
