@@ -210,7 +210,7 @@
     function onMove(ev) {
       const dx = ev.clientX - dragStartX;
       const dt = dx / pixelsPerSec;
-      const newEnd = Math.max(chords[idx].time + 0.5, dragOrigEnd + dt);
+      const newEnd = Math.max(chords[idx].time + 0.1, dragOrigEnd + dt);
       chords[idx].end = round2(newEnd);
       render();
     }
@@ -281,6 +281,14 @@
     if (e.key === " ") {
       e.preventDefault();
       if (audio.paused) audio.play(); else audio.pause();
+    }
+    if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        audio.currentTime = Math.max(0, audio.currentTime - 5);
+    }
+    if (e.key === "ArrowRight") {
+        e.preventDefault();
+        audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 5);
     }
     if (e.key === "Escape") deselectAll();
   });
@@ -358,9 +366,8 @@
 
   function buildPalette() {
     const container = $("#chordPalette");
-    const roots = ["C", "D", "E", "F", "G", "A", "B",
-                   "Db", "Eb", "Gb", "Ab", "Bb"];
-    const types = ["", "m", "7", "m7", "maj7"];
+    const roots = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+    const types = ["", "m", "7", "m7", "maj7", "aug", "dim", "sus2", "sus4", "m7b5", "maj9"];
 
     for (const r of roots) {
       for (const t of types) {

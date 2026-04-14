@@ -63,7 +63,7 @@
       font-weight: 600;
       cursor: pointer;
       transition: background .15s;
-      min-width: 30px;
+      min-width: 5px;
       overflow: hidden;
     }
     .chord-block:hover { background: rgba(233, 69, 96, 0.5); }
@@ -155,8 +155,10 @@
       <span id="timeDuration">0:00</span>
     </div>
     <div class="controls-row">
+      <button onclick="document.getElementById('audio').currentTime -= 5" class="btn-play" style="font-size:14px; padding: 4px 8px;" title="倒轉 5 秒">⏪</button>
       <button id="btnPlay" class="btn-play" title="播放/暫停">&#x25B6;</button>
-      <div class="volume-control">
+      <button onclick="document.getElementById('audio').currentTime += 5" class="btn-play" style="font-size:14px; padding: 4px 8px;" title="快進 5 秒">⏩</button>
+      <div class="volume-control" style="margin-left: 12px;">
         <span>&#x1F509;</span>
         <input id="volumeSlider" type="range" min="0" max="1" step="0.05" value="1">
       </div>
@@ -174,7 +176,7 @@
     <button id="btnDelete" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#f66">刪除</button>
     <div class="sep"></div>
     <label>縮放:</label>
-    <input id="zoomSlider" type="range" min="5" max="40" value="15" style="width:100px">
+    <input id="zoomSlider" type="range" min="5" max="150" value="15" style="width:100px">
     <div class="sep"></div>
     <button id="btnImport" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px">匯入 ChordPro</button>
   </div>
