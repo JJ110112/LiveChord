@@ -278,7 +278,7 @@
 
     // Build in reverse order: last chord at top, first chord at bottom
     // This matches the waterfall direction (time flows top→bottom)
-    let lastSection = null;
+    let lastSectionType = null;
     let _prevMidi = null;
 
     // First pass: collect items in normal order for _prevMidi voice leading
@@ -306,8 +306,8 @@
         if (activeSec) {
           phraseColor = activeSec.color || '#888';
           // Check if this is the first chord we see for this specific section block timestamp
-          if (activeSec.start !== lastSection) {
-            lastSection = activeSec.start;
+          if (activeSec.type !== lastSectionType) {
+            lastSectionType = activeSec.type;
             const modeTag = activeSec.mode && activeSec.mode !== "Major" && activeSec.mode !== "Minor" ? ` ${activeSec.mode}` : "";
             
             const baseType = activeSec.type.replace(/\d+|'/g, ''); 
