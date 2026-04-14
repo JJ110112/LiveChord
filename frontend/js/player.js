@@ -294,11 +294,28 @@
         estimatedBpm = 60 / beatSec;
       }
     }
+    
+    const urlParamsBpm = new URLSearchParams(window.location.search);
+    const bpmPath = urlParamsBpm.get("path") || "default";
+    let bpmMult = parseFloat(localStorage.getItem(`bpm_mult_${bpmPath}`)) || 1.0;
+    
+    estimatedBpm = estimatedBpm * bpmMult;
     currentSecPerBeat = 60 / estimatedBpm;
     const secPerBeat = currentSecPerBeat;
     
     const bpmEl = document.getElementById("chordBpm");
-    if (bpmEl) bpmEl.textContent = `BPM: ${Math.round(estimatedBpm)}`;
+    if (bpmEl) {
+        bpmEl.textContent = `BPM: ${Math.round(estimatedBpm)}`;
+        bpmEl.style.cursor = "pointer";
+        bpmEl.title = "點擊切換 BPM 倍率 (自動儲存)";
+        bpmEl.onclick = () => {
+            if (bpmMult === 1.0) bpmMult = 0.5;
+            else if (bpmMult === 0.5) bpmMult = 2.0;
+            else bpmMult = 1.0;
+            localStorage.setItem(`bpm_mult_${bpmPath}`, bpmMult);
+            _buildUnifiedRibbon();
+        };
+    }
 
     // Build in reverse order: last chord at top, first chord at bottom
     // This matches the waterfall direction (time flows top→bottom)
