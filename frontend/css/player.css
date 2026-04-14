@@ -1281,3 +1281,12 @@
   height: 5px;
   box-shadow: 0 0 3px rgba(255,255,255,0.5);
 }
+
+.beat-active {
+  background-color: var(--accent) !important;
+  width: 6px !important;
+  height: 6px !important;
+  box-shadow: 0 0 8px var(--accent);
+  transform: scale(1.2);
+  transition: all 0.1s ease-out;
+}

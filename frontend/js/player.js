@@ -43,6 +43,7 @@
   if (!["L1", "L2", "L3"].includes(teachLevel)) teachLevel = "L1";
   let accData = null;  // {left_hand:[], right_hand:[]} from API
   let _beatPhase = 0;  // beat grid phase offset (seconds)
+  let currentSecPerBeat = 0.6; // For chord dot lighting
   let accLoading = false;
   let transpose = 0;
   let capo = 0;
@@ -293,7 +294,8 @@
         estimatedBpm = 60 / beatSec;
       }
     }
-    const secPerBeat = 60 / estimatedBpm;
+    currentSecPerBeat = 60 / estimatedBpm;
+    const secPerBeat = currentSecPerBeat;
 
     // Build in reverse order: last chord at top, first chord at bottom
     // This matches the waterfall direction (time flows top→bottom)
@@ -493,7 +495,11 @@
       const isFreshLoad = activeChordIdx < 0 && (!audio || !audio.currentTime || audio.currentTime < 0.1);
       if (isFreshLoad) {
         requestAnimationFrame(() => {
-          chordRibbonPanel.scrollTop = chordRibbonPanel.scrollHeight;
+          if (chordRibbonPanel.classList.contains("overview-mode")) {
+            chordRibbonPanel.scrollTop = 0;
+          } else {
+            chordRibbonPanel.scrollTop = chordRibbonPanel.scrollHeight;
+          }
         });
       }
     }
@@ -2277,6 +2283,28 @@
   // requestAnimationFrame sync
   let rafId = null;
 
+  function _updateBeatDots(t) {
+    if (activeChordIdx >= 0 && activeChordIdx < ribbonElements.length) {
+      const el = ribbonElements[activeChordIdx];
+      const startTime = parseFloat(el.dataset.time);
+      const elapsed = t - startTime;
+      let beatIdx = Math.floor(elapsed / currentSecPerBeat);
+      if (beatIdx < 0) beatIdx = 0;
+      
+      const dots = el.querySelectorAll(".beat-dot");
+      if (dots.length > 0) {
+          if (beatIdx >= dots.length) beatIdx = dots.length - 1; // Clamp to last dot
+          dots.forEach((dot, idx) => {
+              if (idx === beatIdx) {
+                  dot.classList.add("beat-active");
+              } else {
+                  dot.classList.remove("beat-active");
+              }
+          });
+      }
+    }
+  }
+
   function _updateProgress(t) {
     const d = audio.duration || 1;
     const pct = (t / d * 100) + "%";
@@ -2293,6 +2321,7 @@
       }
       _updateProgress(t);
       updateActiveChord(t);
+      _updateBeatDots(t);
       _updateKeyDisplay(t);
       if (activeTab === "piano") {
         update88Piano(t);
@@ -2315,6 +2344,7 @@
     const t = audio.currentTime;
     _updateProgress(t);
     updateActiveChord(t);
+    _updateBeatDots(t);
     if (activeTab === "piano") { update88Piano(t); drawWaterfall(t); }
   });
 
