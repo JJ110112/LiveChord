@@ -11,6 +11,11 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=1">
   <link rel="stylesheet" href="/css/home.css?v=1">
+  <script>
+    if (!localStorage.getItem("livechord_token")) {
+      window.location.href = "/login";
+    }
+  </script>
   <style>
     .admin-page { max-width: 960px; margin: 0 auto; padding: 20px 24px; }
     .card { background: var(--bg-card); border-radius: var(--radius); padding: 20px; margin-bottom: 14px; }
@@ -165,6 +170,23 @@
 <div id="toast" class="toast"></div>
 
 <script src="/js/utils.js?v=1"></script>
+<script>
+  const originalFetch = window.fetch;
+  window.fetch = function() {
+    let [resource, config] = arguments;
+    if(config == null) {
+        config = {};
+    }
+    if(config.headers == null) {
+        config.headers = {};
+    }
+    const token = localStorage.getItem("livechord_token");
+    if(token) {
+        config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return originalFetch(resource, config);
+  };
+</script>
 <script src="/js/api.js?v=2"></script>
 <script>
 (function() {

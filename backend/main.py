@@ -124,21 +124,25 @@ async def root():
 
 
 @app.get("/login")
+@app.get("/login.html")
 async def login_page():
     return FileResponse(FRONTEND_DIR / "login.html", headers=NO_CACHE_HEADERS)
 
 
 @app.get("/player")
+@app.get("/player.html")
 async def player():
     return FileResponse(FRONTEND_DIR / "player.html", headers=NO_CACHE_HEADERS)
 
 
 @app.get("/editor")
+@app.get("/editor.html")
 async def editor():
     return FileResponse(FRONTEND_DIR / "editor.html", headers=NO_CACHE_HEADERS)
 
 
 @app.get("/admin")
+@app.get("/admin.html")
 async def admin():
     return FileResponse(FRONTEND_DIR / "admin.html", headers=NO_CACHE_HEADERS)
 

@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="/css/home.css?v=1">
   <script>
     if (!localStorage.getItem("livechord_token")) {
-      window.location.href = "/login.html";
+      window.location.href = "/login";
     }
   </script>
 </head>
@@ -102,7 +102,7 @@
   function logout() {
       localStorage.removeItem("livechord_token");
       localStorage.removeItem("livechord_username");
-      window.location.href = "/login.html";
+      window.location.href = "/login";
   }
 
   async function exportData() {

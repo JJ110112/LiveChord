@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LiveChord — 基準測試</title>
   <link rel="icon" href="/favicon.svg">
+  <script>
+    if (!localStorage.getItem("livechord_token")) {
+      window.location.href = "/login";
+    }
+  </script>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:'Segoe UI',sans-serif; background:#0d0d1a; color:#e0e0e0; padding:20px; }
@@ -100,6 +105,17 @@
   <div id="toast" class="toast"></div>
 
 <script src="/js/utils.js?v=1"></script>
+<script>
+  const originalFetch = window.fetch;
+  window.fetch = function() {
+    let [resource, config] = arguments;
+    if(config == null) config = {};
+    if(config.headers == null) config.headers = {};
+    const token = localStorage.getItem("livechord_token");
+    if(token) config.headers['Authorization'] = `Bearer ${token}`;
+    return originalFetch(resource, config);
+  };
+</script>
 <script>
 const LEVELS = ["Lv1","Lv2","Lv3","Lv4","Lv5"];
 const LEVEL_NAMES = {Lv1:"三和弦流行",Lv2:"七和弦 R&B",Lv3:"爵士標準曲",Lv4:"複雜 Fusion",Lv5:"極難挑戰"};
