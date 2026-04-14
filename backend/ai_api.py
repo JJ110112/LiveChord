@@ -194,9 +194,14 @@ async def viterbi_decode(body: ViterbiRequest):
     }
 
 
+from auth_api import get_current_user
+from fastapi import Depends
+
 @router.get("/sections")
 async def detect_sections_api(
     path: str = Query(..., description="歌曲路徑"),
+    author: str = Query(None, description="要載入哪個使用者的標註 (可選)"),
+    username: str = Depends(get_current_user)
 ):
     """偵測段落結構（Intro/Verse/Chorus/Bridge/Outro）"""
     import json as _json
@@ -208,16 +213,26 @@ async def detect_sections_api(
         return {"error": "no chord data"}
 
     data = _json.loads(chords_file.read_text(encoding="utf-8"))
-    result = detect_sections(data.get("chords", []), data.get("key", "C"), song_hash=h)
+    
+    # 決定要讀取的 Ground Truth (標註) 來源，優先讀取 author，否則讀自己的
+    target_user = author if author else username
+    user_data_dir = DATA_DIR / "users" / target_user
+    
+    result = detect_sections(data.get("chords", []), data.get("key", "C"), song_hash=h, data_dir=str(user_data_dir), fallback_data_dir=str(DATA_DIR))
     result["path"] = path
+    result["author"] = target_user
     return result
 
 @router.post("/evaluate-feedback")
-async def evaluate_feedback_api(body: EvaluateFeedbackRequest):
+async def evaluate_feedback_api(body: EvaluateFeedbackRequest, username: str = Depends(get_current_user)):
     """(RLHF) 接收和弦星星評分並附加至紀錄檔"""
     import json as _json
     from datetime import datetime
-    file_path = DATA_DIR / "human_feedback" / "chord_eval.jsonl"
+    
+    user_dir = DATA_DIR / "users" / username / "human_feedback"
+    user_dir.mkdir(parents=True, exist_ok=True)
+    file_path = user_dir / "chord_eval.jsonl"
+    
     import hashlib
     song_hash = hashlib.md5(body.path.encode()).hexdigest()[:12]
     
@@ -233,12 +248,15 @@ async def evaluate_feedback_api(body: EvaluateFeedbackRequest):
     return {"status": "success", "message": "Feedback recorded"}
 
 @router.post("/sections/feedback")
-async def sections_feedback_api(body: SectionsFeedbackRequest):
+async def sections_feedback_api(body: SectionsFeedbackRequest, username: str = Depends(get_current_user)):
     """(RLHF) 接收使用者人工修正的樂句並作為 Ground Truth 保存"""
     import json as _json
     import hashlib
     song_hash = hashlib.md5(body.path.encode()).hexdigest()[:12]
-    file_path = DATA_DIR / "human_sections" / f"{song_hash}.json"
+    
+    user_dir = DATA_DIR / "users" / username / "human_sections"
+    user_dir.mkdir(parents=True, exist_ok=True)
+    file_path = user_dir / f"{song_hash}.json"
     
     data = {
         "path": body.path,
@@ -249,6 +267,25 @@ async def sections_feedback_api(body: SectionsFeedbackRequest):
     with open(file_path, "w", encoding="utf-8") as f:
         _json.dump(data, f, ensure_ascii=False, indent=2)
     return {"status": "success", "message": f"Sections for {song_hash} saved"}
+
+@router.get("/human_sections/authors")
+async def get_human_section_authors(path: str = Query(..., description="歌曲路徑")):
+    """List all users who have created a ground truth entry for this song."""
+    import hashlib
+    song_hash = hashlib.md5(path.encode()).hexdigest()[:12]
+    
+    users_dir = DATA_DIR / "users"
+    if not users_dir.exists():
+        return {"authors": []}
+        
+    authors = []
+    for user_folder in users_dir.iterdir():
+        if user_folder.is_dir():
+            target_file = user_folder / "human_sections" / f"{song_hash}.json"
+            if target_file.exists():
+                authors.append(user_folder.name)
+                
+    return {"authors": authors}
 
 
 @router.get("/patterns")

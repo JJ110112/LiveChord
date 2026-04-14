@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiveChord - 登入</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/index.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #0f172a, #1e1b4b);
+      margin: 0;
+      color: var(--text-color);
+      font-family: 'Inter', sans-serif;
+    }
+    
+    .auth-container {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 1.5rem;
+      padding: 3rem;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .auth-container::before {
+      content: '';
+      position: absolute;
+      top: -50px;
+      left: -50px;
+      width: 100px;
+      height: 100px;
+      background: var(--accent);
+      filter: blur(50px);
+      border-radius: 50%;
+      opacity: 0.5;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 2rem;
+      color: var(--accent);
+      font-size: 2rem;
+      letter-spacing: -0.5px;
+    }
+    
+    .tabs {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 0.5rem;
+    }
+    
+    .tab {
+      flex: 1;
+      text-align: center;
+      cursor: pointer;
+      padding: 0.5rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      transition: all 0.3s ease;
+      position: relative;
+    }
+    
+    .tab.active {
+      color: var(--accent);
+    }
+    
+    .tab.active::after {
+      content: '';
+      position: absolute;
+      bottom: -9px;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: var(--accent);
+      border-radius: 2px 2px 0 0;
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 0.5rem;
+      color: var(--text-color);
+      font-size: 1rem;
+      transition: all 0.3s ease;
+      box-sizing: border-box;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(119, 90, 246, 0.2);
+    }
+
+    .btn {
+      width: 100%;
+      padding: 0.875rem;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 0.5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 6px rgba(119, 90, 246, 0.3);
+    }
+
+    .btn:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 12px rgba(119, 90, 246, 0.4);
+    }
+    
+    .error-msg {
+      color: #ff5252;
+      font-size: 0.875rem;
+      text-align: center;
+      margin-top: 1rem;
+      height: 1.2rem;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="auth-container">
+    <h1>LiveChord</h1>
+    
+    <div class="tabs">
+      <div class="tab active" id="tab-login" onclick="switchTab('login')">登入</div>
+      <div class="tab" id="tab-register" onclick="switchTab('register')">註冊</div>
+    </div>
+
+    <!-- 登入表單 -->
+    <form id="login-form" onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label>使用者名稱</label>
+        <input type="text" id="login-username" required placeholder="例如: Eric">
+      </div>
+      <div class="form-group">
+        <label>密碼</label>
+        <input type="password" id="login-password" required placeholder="您的密碼">
+      </div>
+      <button type="submit" class="btn">登入</button>
+    </form>
+
+    <!-- 註冊表單 -->
+    <form id="register-form" class="hidden" onsubmit="handleRegister(event)">
+      <div class="form-group">
+        <label>使用者名稱</label>
+        <input type="text" id="reg-username" required placeholder="想一個響亮的名字" minlength="3">
+      </div>
+      <div class="form-group">
+        <label>密碼</label>
+        <input type="password" id="reg-password" required placeholder="設定密碼" minlength="4">
+      </div>
+      <div class="form-group">
+        <label>邀請碼 (Invite Code)</label>
+        <input type="text" id="reg-invite" required placeholder="站長發放的密碼">
+      </div>
+      <button type="submit" class="btn">建立帳號</button>
+    </form>
+
+    <div class="error-msg" id="error-msg"></div>
+  </div>
+
+  <script>
+    // 若已登入，直接導向首頁
+    if (localStorage.getItem("livechord_token")) {
+      window.location.href = "/";
+    }
+
+    function switchTab(mode) {
+      document.getElementById("error-msg").textContent = "";
+      
+      const loginTab = document.getElementById("tab-login");
+      const regTab = document.getElementById("tab-register");
+      const loginForm = document.getElementById("login-form");
+      const regForm = document.getElementById("register-form");
+
+      if (mode === 'login') {
+        loginTab.classList.add("active");
+        regTab.classList.remove("active");
+        loginForm.classList.remove("hidden");
+        regForm.classList.add("hidden");
+      } else {
+        regTab.classList.add("active");
+        loginTab.classList.remove("active");
+        regForm.classList.remove("hidden");
+        loginForm.classList.add("hidden");
+      }
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const u = document.getElementById("login-username").value;
+      const p = document.getElementById("login-password").value;
+      const err = document.getElementById("error-msg");
+      
+      try {
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: u, password: p })
+        });
+        const data = await res.json();
+        
+        if (data.ok) {
+          localStorage.setItem("livechord_token", data.token);
+          localStorage.setItem("livechord_username", data.username);
+          window.location.href = "/";
+        } else {
+          err.textContent = data.detail || "登入失敗";
+        }
+      } catch (e) {
+        err.textContent = "網路錯誤";
+      }
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      const u = document.getElementById("reg-username").value;
+      const p = document.getElementById("reg-password").value;
+      const inv = document.getElementById("reg-invite").value;
+      const err = document.getElementById("error-msg");
+      
+      try {
+        const res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: u, password: p, invite_code: inv })
+        });
+        const data = await res.json();
+        
+        if (data.ok) {
+          localStorage.setItem("livechord_token", data.token);
+          localStorage.setItem("livechord_username", data.username);
+          window.location.href = "/";
+        } else {
+          err.textContent = data.detail || "註冊失敗";
+        }
+      } catch (e) {
+        err.textContent = "網路錯誤";
+      }
+    }
+  </script>
+</body>
+</html>

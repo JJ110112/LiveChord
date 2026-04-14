@@ -129,11 +129,11 @@ def _extract_midi_features(song_hash, data_dir="W:/data"):
 # 主入口
 # ---------------------------------------------------------------------------
 
-def detect_sections(chords, key="C", song_hash=None, data_dir="W:/data", mode="auto"):
+def detect_sections(chords, key="C", song_hash=None, data_dir="W:/data", mode="auto", fallback_data_dir=None):
     if not chords or len(chords) < 4:
         return {"sections": [], "analysis": {}}
 
-    # RLHF Hook: 優先載入人類標記的 Ground Truth
+    # RLHF Hook: 優先載入人類標記的 Ground Truth (只從指定的 user_dir 載入)
     if song_hash:
         try:
             import json
@@ -171,7 +171,9 @@ def detect_sections(chords, key="C", song_hash=None, data_dir="W:/data", mode="a
     unique_all = {c["chord"] for c in chords if c.get("chord") and c["chord"] != "N"}
     is_simple = len(unique_all) <= 5 and total_dur < 150
 
-    melody_all, bass_all = _extract_midi_features(song_hash, data_dir)
+    # Models and feature files are in fallback_data_dir (which is the root data directory)
+    actual_data_dir = fallback_data_dir if fallback_data_dir else data_dir
+    melody_all, bass_all = _extract_midi_features(song_hash, actual_data_dir)
 
     bpm, WINDOW = _estimate_bpm_and_window(chords, is_simple)
 
@@ -219,16 +221,13 @@ def detect_sections(chords, key="C", song_hash=None, data_dir="W:/data", mode="a
             "bass_density": bass_density
         })
 
-    # 段落判定
-    dl_success = False
-    if mode in ["auto", "dl"]:
-        dl_success = _classify_dl(windows_data, data_dir)
-        
-    if not dl_success:
-        if is_simple:
-            _classify_simple(windows_data)
-        else:
-            _classify_pop(windows_data)
+    if mode == "auto":
+        # 優先嘗試深度學習模型 V5，失敗或未安裝則 fallback 到 Rule-based (V4/V3)
+        actual_data_dir = fallback_data_dir if fallback_data_dir else data_dir
+        if not _classify_dl(windows_data, actual_data_dir):
+            _classify_rule_based(windows_data, chords)
+    else:
+        _classify_rule_based(windows_data, chords)
 
     # 合併相鄰同類型 + 高相似度強制合併
     merged = _merge_sections(windows_data)

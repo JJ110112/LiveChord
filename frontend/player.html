@@ -11,6 +11,11 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=2">
   <link rel="stylesheet" href="/css/player.css?v=3">
+  <script>
+    if (!localStorage.getItem("livechord_token")) {
+      window.location.href = "/login.html";
+    }
+  </script>
 </head>
 <body>
 
@@ -354,7 +359,7 @@
 <div id="toast" class="toast"></div>
 <audio id="audio" preload="metadata"></audio>
 
-<script src="/js/utils.js?v=1"></script>
+<script src="/js/utils.js?v=2"></script>
 <script src="/js/api.js?v=54"></script>
 <script src="/js/chord-render.js?v=53"></script>
 <script src="/js/arpeggio-patterns.js?v=1"></script>
@@ -363,6 +368,24 @@
 <script src="/js/accordion-instrument.js?v=1"></script>
 <script src="/js/arranger-instrument.js?v=2"></script>
 <script src="/js/midi-exporter.js?v=1"></script>
-<script src="/js/player.js?v=65"></script>
+<script>
+  const originalFetch = window.fetch;
+  window.fetch = function() {
+    let [resource, config] = arguments;
+    if(config == null) {
+        config = {};
+    }
+    if(config.headers == null) {
+        config.headers = {};
+    }
+    const token = localStorage.getItem("livechord_token");
+    if(token) {
+        config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return originalFetch(resource, config);
+  };
+</script>
+<script src="/js/player.js?v=68"></script>
+<script src="/js/editor.js?v=11"></script>
 </body>
 </html>
