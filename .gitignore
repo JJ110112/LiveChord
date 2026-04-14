@@ -16,6 +16,11 @@ data/chord_queue.json
 data/melodies/
 data/models/
 data/.local_music_root
+data/config.json
+data/users.db
+data/users/
+data/human_sections/
+data/human_feedback/
 
 # 評估/測試產出
 backend/eval_results.json
