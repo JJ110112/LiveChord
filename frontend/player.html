@@ -31,6 +31,19 @@
     </div>
   </div>
   <div class="topbar-right">
+    <div id="versionsContainer" class="versions-dropdown" style="display:none">
+      <button id="btnVersionsToggle" class="btn-version">
+        <span id="currentVersionName">官方 AI 版</span> 
+        <span style="font-size:10px">▼</span>
+      </button>
+      <div id="versionsList" class="versions-list">
+        <div class="versions-header">
+          Edits
+          <div class="versions-subtitle">Check out how other users improved the chords of this song.</div>
+        </div>
+        <div id="versionsItems"></div>
+      </div>
+    </div>
     <span id="chordBpm" class="topbar-key" style="color:var(--text-dim); margin-right:6px;"></span>
     <span id="chordSource" class="chord-source-badge"></span>
     <span id="chordKey" class="topbar-key"></span>

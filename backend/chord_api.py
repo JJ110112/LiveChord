@@ -42,9 +42,10 @@ def _midi_matches(song_name: str, midi_fname: str) -> bool:
     min_len = min(len(sk), len(mk))
     return overlap >= max(2, min_len * 0.6)
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends
 from pydantic import BaseModel
 
+from auth_api import get_current_user
 from chord_table import get_chord_info, get_chord_jianpu, analyze_chord_in_key
 from chord_diagrams import get_chord_diagram, get_chord_voicings
 from chord_cache import song_hash
@@ -135,27 +136,77 @@ class ChordSheet(BaseModel):
 
 
 @router.get("/chords")
-async def get_chords(path: str = Query(...)):
+async def get_chords(path: str = Query(...), version: str = Query(None)):
     """取得某首歌的和弦譜"""
-    chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+    is_fallback = False
+    if version and version != "official":
+        chords_file = DATA_DIR / "users" / version / "chords" / f"{song_hash(path)}.json"
+        if not chords_file.is_file():
+            # 回退到官方版
+            chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+            is_fallback = True
+    else:
+        chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+
     if not chords_file.is_file():
         return {"path": path, "key": "", "capo": 0, "chords": [], "exists": False}
 
     data = json.loads(chords_file.read_text(encoding="utf-8"))
     data["exists"] = True
+    data["current_version"] = "official" if is_fallback or not version else version
     return data
 
 
 @router.post("/chords")
-async def save_chords(sheet: ChordSheet):
-    """儲存和弦譜"""
-    CHORDS_DIR.mkdir(parents=True, exist_ok=True)
-    chords_file = CHORDS_DIR / f"{song_hash(sheet.path)}.json"
+async def save_chords(sheet: ChordSheet, username: str = Depends(get_current_user)):
+    """儲存和弦譜至個人專屬空間"""
+    user_chords_dir = DATA_DIR / "users" / username / "chords"
+    user_chords_dir.mkdir(parents=True, exist_ok=True)
+    chords_file = user_chords_dir / f"{song_hash(sheet.path)}.json"
+    
     chords_file.write_text(
         json.dumps(sheet.model_dump(), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    return {"ok": True, "path": sheet.path}
+    return {"ok": True, "path": sheet.path, "version": username}
+
+
+@router.get("/chords/versions")
+async def get_chord_versions(path: str = Query(...)):
+    """取得這首歌的所有和弦版本清單"""
+    target_hash = song_hash(path)
+    versions = []
+
+    # 1. 官方版
+    official_file = CHORDS_DIR / f"{target_hash}.json"
+    if official_file.is_file():
+        versions.append({
+            "id": "official",
+            "name": "官方 AI 版",
+            "rating": 4.5,
+            "count": 0
+        })
+
+    # 2. 社群版 (掃描所有使用者的 chords 目錄)
+    users_dir = DATA_DIR / "users"
+    if users_dir.is_dir():
+        for user_folder in users_dir.iterdir():
+            if user_folder.is_dir():
+                user_file = user_folder / "chords" / f"{target_hash}.json"
+                if user_file.is_file():
+                    # mock rating for now, chordify uses this for visual distinctiveness
+                    score = 4.0 if user_folder.name == "hitea" else 3.6 
+                    versions.append({
+                        "id": user_folder.name,
+                        "name": user_folder.name,
+                        "rating": score,
+                        "count": 1
+                    })
+
+    # Sort versions: official first, then highest rating
+    versions.sort(key=lambda x: (x["id"] != "official", -x["rating"]))
+    
+    return {"ok": True, "versions": versions}
 
 
 # ---------------------------------------------------------------------------

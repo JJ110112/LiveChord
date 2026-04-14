@@ -414,9 +414,14 @@ def _scan_worker(mode: str = "incremental"):
             for dirpath, dirnames, filenames in os.walk(root):
                 if _scan_cancel:
                     break
-                dirnames[:] = [d for d in dirnames
-                               if not d.startswith(".") and d not in
-                               ("#recycle", "@eaDir", "@tmp", "#snapshot")]
+                
+                # 過濾隱藏資料夾與不希望掃描的系統/特定音樂分類資料夾
+                exclude_dirs = {
+                    "#recycle", "@eaDir", "@tmp", "#snapshot",
+                    "Classics", "Classical", "Sleep", "Electronic Dance Music"
+                }
+                dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in exclude_dirs]
+                
                 _scan_state["total_dirs"] += 1
 
                 for fname in filenames:
@@ -428,6 +433,10 @@ def _scan_worker(mode: str = "incremental"):
                     rel = prefix + inner_rel
                     seen_paths.add(rel)
                     _scan_state["progress"] += 1
+                    
+                    # 節流：即使是快速的增量掃描，也定期釋放 GIL 以免卡住前端請求 (FastAPI)
+                    if _scan_state["progress"] % 250 == 0:
+                        time.sleep(0.01)
 
                     if mode == "incremental" and rel in existing:
                         try:

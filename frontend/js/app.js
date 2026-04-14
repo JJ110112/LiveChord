@@ -74,12 +74,18 @@
         // 純音軌 → 列表模式
         browseGrid.style.display = "none";
         trackList.style.display = "";
+        const filterInput = $("#dirFilter");
+        filterInput.style.display = files.length > 15 ? "" : "none";
+        filterInput.value = "";
         renderTrackList(files);
       } else {
+        $("#dirFilter").style.display = "none";
         renderGrid(dirs, files);
       }
     } catch (err) {
       browseGrid.innerHTML = `<div class="empty"><div class="icon">&#x26A0;</div><div class="msg">${escapeHtml(err.message)}</div></div>`;
+    } finally {
+      showLoading(false);
     }
   }
 
@@ -161,6 +167,15 @@
       li.addEventListener("click", () => goPlayer(li.dataset.path));
     });
   }
+
+  // ---- directory filter ----
+  $("#dirFilter").addEventListener("input", (e) => {
+    const term = e.target.value.toLowerCase();
+    trackList.querySelectorAll("li").forEach(li => {
+      const title = li.querySelector(".track-title").textContent.toLowerCase();
+      li.style.display = title.includes(term) ? "" : "none";
+    });
+  });
 
   // ---- search ----
 

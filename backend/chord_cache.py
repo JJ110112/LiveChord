@@ -16,9 +16,12 @@ INDEX_FILE = DATA_DIR / "chord_index.json"
 
 _chord_index_cache = None
 
+import re
+
 def song_hash(path: str) -> str:
-    """產生穩定的 song hash（統一將反斜線轉為正斜線，避免 Windows 路徑不一致）"""
+    """產生穩定的 song hash（統一將反斜線轉為正斜線，同時移除 @N/ 前綴以相容舊版單一路徑的 hash）"""
     path = path.replace("\\", "/")
+    path = re.sub(r"^@\d+/", "", path)
     return hashlib.md5(path.encode("utf-8")).hexdigest()[:12]
 
 def _load_chord_index():

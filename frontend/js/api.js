@@ -36,7 +36,12 @@ const API = {
   // 和弦
   chordInfo: (name) => API.get(`/api/chord/info/${encodeURIComponent(name)}`),
   chordDiagram: (inst, name) => API.get(`/api/chord/diagram/${inst}/${encodeURIComponent(name)}`),
-  getChords: (path) => API.get(`/api/chords?path=${encodeURIComponent(path)}`),
+  getChords: (path, version = null) => {
+    let url = `/api/chords?path=${encodeURIComponent(path)}`;
+    if (version) url += `&version=${encodeURIComponent(version)}`;
+    return API.get(url);
+  },
+  getChordVersions: (path) => API.get(`/api/chords/versions?path=${encodeURIComponent(path)}`),
   saveChords: (data) => API.post("/api/chords", data),
   detectChords: (path) => API.post(`/api/chords/detect?path=${encodeURIComponent(path)}`),
   midiSearch: (path) => API.get(`/api/chords/midi-search?path=${encodeURIComponent(path)}`),
@@ -48,7 +53,7 @@ const API = {
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     return res.json();
   },
-  chordTracks: () => API.get("/api/chords/tracks"),
+  chordTracks: (page = 1, limit = 100, query = "", status = "all") => API.get(`/api/chords/tracks?page=${page}&limit=${limit}&query=${encodeURIComponent(query)}&status=${status}`),
   batchMidiImport: () => API.post("/api/chords/batch-midi-import"),
   chordVoicings: (inst, name) => API.get(`/api/chord/voicings/${inst}/${encodeURIComponent(name)}`),
   chordAnalysis: (key, name) => API.get(`/api/chord/analysis/${encodeURIComponent(key)}/${encodeURIComponent(name)}`),

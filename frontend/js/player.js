@@ -319,7 +319,7 @@
 
     // Build in reverse order: last chord at top, first chord at bottom
     // This matches the waterfall direction (time flows top→bottom)
-    let lastSectionType = null;
+    let lastSectionSec = null;
     let _prevMidi = null;
 
     // First pass: Pre-calculate total section occurrences for numbering
@@ -351,8 +351,8 @@
         }
         if (activeSec) {
           phraseColor = activeSec.color || '#888';
-          if (activeSec.type !== lastSectionType) {
-            lastSectionType = activeSec.type;
+          if (activeSec !== lastSectionSec) {
+            lastSectionSec = activeSec;
             
             typeOccurrences[activeSec.type] = (typeOccurrences[activeSec.type] || 0) + 1;
             const count = typeOccurrences[activeSec.type];
@@ -413,26 +413,29 @@
           });
         });
 
-        // Edit Section Modal on right click
         gridPhraseEl.addEventListener("contextmenu", (e) => {
           if (typeof showSectionMenu === 'function' && sectionHdr) {
-             showSectionMenu(e, sectionHdr.start, sectionHdr.type);
+             let activeSec = null;
+             if (sectionData && sectionData.sections) {
+                 activeSec = sectionData.sections.find(s => Math.abs(s.start - sectionHdr.start) < 0.1);
+             }
+             // null for chordTime because they clicked the header, we strictly want to edit the boundary
+             showSectionMenu(e, null, activeSec);
           }
         });
         item.appendChild(gridPhraseEl);
       }
       
-      // Allow right-clicking ANY chord block to assign/split section
       item.addEventListener("contextmenu", (e) => {
           if (typeof showSectionMenu === 'function') {
-             // Find current section info for this chord
-             let currentType = "verse";
+             let activeSec = null;
              if (sectionData && sectionData.sections) {
-                 const curSec = sectionData.sections.find(s => c.time >= s.start - 0.5 && c.time < s.end);
-                 if (curSec) currentType = curSec.type;
+                 activeSec = sectionData.sections.find(s => c.time >= s.start - 0.5 && c.time < s.end);
              }
-             // Using c.time to split or modify
-             showSectionMenu(e, c.time, currentType);
+             if (!activeSec && sectionData && sectionData.sections && sectionData.sections.length > 0) {
+                 activeSec = sectionData.sections[sectionData.sections.length - 1];
+             }
+             showSectionMenu(e, c.time, activeSec);
           }
       });
       
@@ -820,7 +823,9 @@
         updateFavButton();
       } catch {}
 
-      await loadChords(path);
+      currentChordVersion = null;
+      await loadVersions(path);
+      await loadChords(path, currentChordVersion);
       loadSiblings(path);
     } finally {
       _setLoadingState(false);
@@ -2035,10 +2040,82 @@
   }
 
   // ---- chord loading (自動偵測整合) ----
+  
+  let currentChordVersion = null;
+  let availableVersions = [];
 
-  async function loadChords(path) {
+  async function loadVersions(path) {
     try {
-      chordData = await API.getChords(path);
+        const res = await API.getChordVersions(path);
+        availableVersions = res.versions || [];
+        _renderVersionsDropdown(path);
+    } catch(e) {
+        console.error("loadVersions error:", e);
+    }
+  }
+
+  function _renderVersionsDropdown(path) {
+      const container = $("#versionsContainer");
+      const listEl = $("#versionsItems");
+      const currentNameEl = $("#currentVersionName");
+      
+      if (!container || !listEl || !currentNameEl) return;
+      if (availableVersions.length <= 1) {
+          container.style.display = "none";
+          return;
+      }
+      
+      container.style.display = "inline-block";
+      listEl.innerHTML = "";
+      
+      let currentVersionData = availableVersions.find(v => v.id === (currentChordVersion || "official")) || availableVersions[0];
+      currentNameEl.textContent = currentVersionData.name;
+
+      availableVersions.forEach(ver => {
+          const item = document.createElement("div");
+          item.className = "version-item" + (currentVersionData.id === ver.id ? " active" : "");
+          item.innerHTML = `
+            <div class="version-name">${ver.name} <span class="version-count">(${ver.count})</span></div>
+            <div class="version-rating">${ver.rating.toFixed(1)} <span class="star">★</span></div>
+          `;
+          item.addEventListener("click", async () => {
+              $("#versionsContainer").classList.remove("active");
+              if (currentChordVersion === ver.id) return;
+              
+              currentChordVersion = ver.id;
+              currentNameEl.textContent = ver.name;
+              
+              // Highlight selected
+              listEl.querySelectorAll(".version-item").forEach(el => el.classList.remove("active"));
+              item.classList.add("active");
+              
+              // Reload chords smoothly
+              _setLoadingState(true, "切換版本中...", "載入 " + ver.name + " 的和弦");
+              try { await loadChords(path, currentChordVersion); }
+              finally { _setLoadingState(false); }
+          });
+          listEl.appendChild(item);
+      });
+  }
+
+  const btnVersionsToggle = $("#btnVersionsToggle");
+  if (btnVersionsToggle) {
+      btnVersionsToggle.addEventListener("click", (e) => {
+          const container = $("#versionsContainer");
+          if(container) container.classList.toggle("active");
+          e.stopPropagation();
+      });
+      document.addEventListener("click", () => {
+          const container = $("#versionsContainer");
+          if(container) container.classList.remove("active");
+      });
+      const listEl = $("#versionsList");
+      if(listEl) listEl.addEventListener("click", e => e.stopPropagation());
+  }
+
+  async function loadChords(path, version = null) {
+    try {
+      chordData = await API.getChords(path, version);
       if (chordData.exists && chordData.chords && chordData.chords.length > 0) {
         hasChords = true;
         // 和弦品質燈號
@@ -2098,6 +2175,7 @@
       detectDetail.textContent = `調性: ${result.key}`;
 
       chordCache = {};
+      await loadVersions(trackPath);
       await loadChords(trackPath);
     } catch (err) {
       detectMsg.textContent = "偵測失敗";
@@ -3355,7 +3433,7 @@
   }
 
   // --- RLHF Section Editor ---
-  window.showSectionMenu = function(e, sectionStartIndex, originalType) {
+  window.showSectionMenu = function(e, chordTime, activeSec) {
       e.preventDefault();
       e.stopPropagation();
       
@@ -3365,11 +3443,6 @@
       menu.className = "rv-section-menu";
       menu.style.left = e.pageX + "px";
       menu.style.top = e.pageY + "px";
-      
-      const title = document.createElement("div");
-      title.className = "title";
-      title.textContent = "修改樂句模型標籤 (RLHF)";
-      menu.appendChild(title);
       
       const types = [
         { type: "dialogue", label: "對白 (Dialogue)" },
@@ -3382,31 +3455,136 @@
         { type: "outro", label: "尾奏 (Outro)" }
       ];
       
-      types.forEach(t => {
-          const item = document.createElement("div");
-          item.className = "rv-section-menu-item";
-          if (originalType === t.type) {
-              item.style.fontWeight = "bold";
-              item.style.color = "#4caf50";
+      const isBoundary = (chordTime === null || (activeSec && Math.abs(chordTime - activeSec.start) < 0.5));
+      
+      function _adjustBounds() {
+          const rect = menu.getBoundingClientRect();
+          let top = e.pageY;
+          if (e.clientY + rect.height > window.innerHeight) {
+              top = e.pageY - rect.height;
+              if (top < window.scrollY) top = window.scrollY + 10;
           }
-          item.innerHTML = `<span style="flex:1">${t.label}</span>${originalType === t.type ? "✓" : ""}`;
-          item.onclick = async (ev) => {
+          menu.style.top = top + "px";
+      }
+      
+      function renderTypeList(titleText, callback) {
+          menu.innerHTML = "";
+          const t = document.createElement("div");
+          t.className = "title";
+          t.innerHTML = `<span>${titleText}</span><span style="opacity:0.6;float:right;cursor:pointer">🔙 回上層</span>`;
+          t.querySelector("span:last-child").onclick = (ev) => { ev.stopPropagation(); renderMain(); };
+          menu.appendChild(t);
+          
+          let originalType = activeSec ? activeSec.type : null;
+          types.forEach(tObj => {
+              const item = document.createElement("div");
+              item.className = "rv-section-menu-item";
+              const isSelected = (titleText.includes("修改") && originalType === tObj.type);
+              if (isSelected) {
+                  item.style.fontWeight = "bold";
+                  item.style.color = "#4caf50";
+              }
+              item.innerHTML = `<span style="flex:1">${tObj.label}</span>${isSelected ? "✓" : ""}`;
+              item.onclick = async (ev) => {
+                  ev.stopPropagation();
+                  menu.remove();
+                  await callback(tObj.type);
+              };
+              menu.appendChild(item);
+          });
+          _adjustBounds();
+      }
+      
+      function renderMain() {
+          menu.innerHTML = "";
+          const t1 = document.createElement("div");
+          t1.className = "title";
+          t1.textContent = activeSec ? `目前段落: ${activeSec.labelZh || activeSec.type}` : `樂句模型標籤`;
+          menu.appendChild(t1);
+          
+          const renameItem = document.createElement("div");
+          renameItem.className = "rv-section-menu-item";
+          renameItem.innerHTML = `<span style="flex:1">📝 修改本段名稱...</span>`;
+          renameItem.onclick = (ev) => {
               ev.stopPropagation();
-              menu.remove();
-              await window.saveSectionFeedback(sectionStartIndex, t.type);
+              let exactTime = activeSec ? activeSec.start : chordTime;
+              renderTypeList("修改名稱", async (newType) => {
+                  await window.saveSectionFeedback(exactTime, newType);
+              });
           };
-          menu.appendChild(item);
-      });
+          menu.appendChild(renameItem);
+          
+          if (chordTime !== null && !isBoundary) {
+              const splitItem = document.createElement("div");
+              splitItem.className = "rv-section-menu-item";
+              splitItem.innerHTML = `<span style="flex:1">✂️ 從此和弦切出新段...</span>`;
+              splitItem.onclick = (ev) => {
+                  ev.stopPropagation();
+                  renderTypeList("切出新段落", async (newType) => {
+                      await window.saveSectionFeedback(chordTime, newType);
+                  });
+              };
+              menu.appendChild(splitItem);
+          }
+          
+          if (activeSec) {
+              const delItem = document.createElement("div");
+              delItem.className = "rv-section-menu-item";
+              delItem.style.color = "#f44";
+              delItem.innerHTML = `<span style="flex:1">❌ 移除本段 (向上合併)</span>`;
+              delItem.onclick = async (ev) => {
+                  ev.stopPropagation();
+                  menu.remove();
+                  await window.deleteSectionBoundary(activeSec.start);
+              };
+              menu.appendChild(delItem);
+          }
+          _adjustBounds();
+      }
       
       document.body.appendChild(menu);
-      
-      // 動態避免超出視窗下方邊境 (Dynamic repositioning to avoid bottom clipping)
-      const rect = menu.getBoundingClientRect();
-      if (e.clientY + rect.height > window.innerHeight) {
-          let adjustedTop = e.pageY - rect.height;
-          // 若連上方都超出，則稍微留白
-          if (adjustedTop < window.scrollY) adjustedTop = window.scrollY + 10;
-          menu.style.top = adjustedTop + "px";
+
+      if (isBoundary) {
+          // Fast-path: directly show the 8 types + 1 delete button
+          menu.innerHTML = "";
+          const t1 = document.createElement("div");
+          t1.className = "title";
+          t1.textContent = activeSec ? `📝 修改目前段落 (${activeSec.type})` : `修改樂句標籤`;
+          menu.appendChild(t1);
+          
+          let originalType = activeSec ? activeSec.type : null;
+          types.forEach(tObj => {
+              const item = document.createElement("div");
+              item.className = "rv-section-menu-item";
+              if (originalType === tObj.type) {
+                  item.style.fontWeight = "bold";
+                  item.style.color = "#4caf50";
+              }
+              item.innerHTML = `<span style="flex:1">${tObj.label}</span>${originalType === tObj.type ? "✓" : ""}`;
+              item.onclick = async (ev) => {
+                  ev.stopPropagation();
+                  menu.remove();
+                  let exactTime = activeSec ? activeSec.start : chordTime;
+                  await window.saveSectionFeedback(exactTime, tObj.type);
+              };
+              menu.appendChild(item);
+          });
+          
+          if (activeSec) {
+              const delItem = document.createElement("div");
+              delItem.className = "rv-section-menu-item";
+              delItem.style.color = "#f44";
+              delItem.innerHTML = `<span style="flex:1">❌ 移除分界點 (向上合併)</span>`;
+              delItem.onclick = async (ev) => {
+                  ev.stopPropagation();
+                  menu.remove();
+                  await window.deleteSectionBoundary(activeSec.start);
+              };
+              menu.appendChild(delItem);
+          }
+          _adjustBounds();
+      } else {
+          renderMain();
       }
       
       const closeMenu = () => { menu.remove(); document.removeEventListener("click", closeMenu); };
@@ -3416,9 +3594,9 @@
   window.saveSectionFeedback = async function(splitTime, newType) {
       if (!sectionData || !sectionData.sections) return;
       
-      // Reduce tolerance to 0.01s so that clicking a chord block 
-      // doesn't accidentally snap to a nearby boundary.
-      const TOLERANCE = 0.01; // seconds
+      // Relax tolerance to 0.2s so that clicking the first chord block
+      // correctly snaps to the backend-rounded boundary (which is rounded to 0.1s).
+      const TOLERANCE = 0.2; // seconds
       
       // Look for the CLOSEST exact boundary
       let sec = null;
@@ -3437,29 +3615,15 @@
           // It's a SPLIT! We are cutting a section into two.
           let parentSec = sectionData.sections.find(s => splitTime > s.start && splitTime < s.end);
           if (parentSec) {
-              if (parentSec.type === newType) {
-                  // If the user selects the same type as the current block, 
-                  // they intend to move the start boundary forward (e.g. shrinking it).
-                  // Fill the gap by extending the previous section.
-                  sectionData.sections.sort((a,b) => a.start - b.start);
-                  let idx = sectionData.sections.indexOf(parentSec);
-                  if (idx > 0) {
-                      sectionData.sections[idx - 1].end = splitTime;
-                  } else {
-                      sectionData.sections.push({ type: "verse", start: parentSec.start, end: splitTime });
-                  }
-                  parentSec.start = splitTime;
-                  sectionData.sections.sort((a,b) => a.start - b.start);
-              } else {
-                  let newSec = {
-                      type: newType,
-                      start: splitTime,
-                      end: parentSec.end
-                  };
-                  parentSec.end = splitTime;
-                  sectionData.sections.push(newSec);
-                  sectionData.sections.sort((a,b) => a.start - b.start);
-              }
+              // 當使用者在同一大段落中切分，都視為「插入一個新段落」，不論名稱為何
+              let newSec = {
+                  type: newType,
+                  start: splitTime,
+                  end: parentSec.end
+              };
+              parentSec.end = splitTime;
+              sectionData.sections.push(newSec);
+              sectionData.sections.sort((a,b) => a.start - b.start);
           } else {
               // Edge case: no parent, just append
               sectionData.sections.push({ type: newType, start: splitTime, end: splitTime + 10 });
@@ -3470,6 +3634,37 @@
       const urlParams = new URLSearchParams(window.location.search);
       const path = urlParams.get('path');
       if (!path) return;
+          
+      await _syncSectionsToBackend(path);
+  };
+  
+  window.deleteSectionBoundary = async function(splitTime) {
+      if (!sectionData || !sectionData.sections) return;
+      
+      const TOLERANCE = 0.2;
+      let secIdx = -1;
+      for (let i = 0; i < sectionData.sections.length; i++) {
+          if (Math.abs(sectionData.sections[i].start - splitTime) <= TOLERANCE) {
+              secIdx = i; break;
+          }
+      }
+      
+      if (secIdx > 0) {
+          // 向上合併
+          sectionData.sections[secIdx - 1].end = sectionData.sections[secIdx].end;
+          sectionData.sections.splice(secIdx, 1);
+          
+          const urlParams = new URLSearchParams(window.location.search);
+          const path = urlParams.get('path');
+          if (path) {
+              await _syncSectionsToBackend(path);
+          }
+      } else if (secIdx === 0) {
+          showToast("這是第一段，無法向上合併！");
+      }
+  };
+  
+  async function _syncSectionsToBackend(path) {
           
           const body = {
               path: path,
@@ -3496,7 +3691,7 @@
           } catch(e) {
               showToast("❌ 修正失敗：" + e.message, true);
           }
-  };
+  }
 
   // ===========================================================================
   // STRING INSTRUMENTS — Guitar / Ukulele / ... (registry-based)

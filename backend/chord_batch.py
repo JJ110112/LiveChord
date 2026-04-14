@@ -246,21 +246,70 @@ def batch_midi_import():
 # ---------------------------------------------------------------------------
 
 @router.get("/chords/tracks")
-def chords_tracks():
-    """列出所有曲目及其和弦狀態（供 admin 管理用）"""
+def chords_tracks(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=100, ge=1, le=1000),
+    query: str = Query(default=""),
+    status: str = Query(default="all") # "all", "has_chords", "no_chords"
+):
+    """列出所有曲目及其和弦狀態（供 admin 管理用，支援分頁與搜尋）"""
     if not CACHE_FILE.is_file():
-        return {"tracks": []}
+        return {"tracks": [], "total": 0, "page": 1, "limit": limit, "total_pages": 0}
+        
     cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
+    all_tracks = cache.get("tracks", [])
+    
+    # Optional: Fast filtering before disk I/O
+    if query or status != "all":
+        filtered_tracks = []
+        q_lower = query.lower()
+        for t in all_tracks:
+            p = t.get("path", "")
+            if query and q_lower not in p.lower() and q_lower not in t.get("title", "").lower() and q_lower not in t.get("artist", "").lower():
+                continue
+            
+            # For status filter, we only need to check if file exists (fast)
+            if status != "all":
+                h = song_hash(p)
+                has_chords = (CHORDS_DIR / f"{h}.json").is_file()
+                if status == "has_chords" and not has_chords:
+                    continue
+                if status == "no_chords" and has_chords:
+                    continue
+            filtered_tracks.append(t)
+        all_tracks = filtered_tracks
+
+    # Sort tracks (latest first)
+    all_tracks.sort(key=lambda x: x.get("mtime", 0), reverse=True)
+    
+    # Pagination slicing
+    total = len(all_tracks)
+    total_pages = max(1, (total + limit - 1) // limit)
+    page = min(page, total_pages)
+    start_idx = (page - 1) * limit
+    sliced_tracks = all_tracks[start_idx : start_idx + limit]
+
     result = []
-    for t in cache.get("tracks", []):
+    # ONLY perform JSON parsing for the sliced tracks
+    for t in sliced_tracks:
         p = t.get("path", "")
         h = song_hash(p)
         chord_file = CHORDS_DIR / f"{h}.json"
-        info = {"path": p, "title": t.get("title", ""), "artist": t.get("artist", ""),
-                "has_chords": chord_file.is_file(), "source": "", "mtime": t.get("mtime", 0)}
-        if chord_file.is_file():
+        has_chords = chord_file.is_file()
+        
+        info = {
+            "path": p,
+            "title": t.get("title", ""),
+            "artist": t.get("artist", ""),
+            "has_chords": has_chords,
+            "source": "",
+            "mtime": t.get("mtime", 0)
+        }
+        
+        if has_chords:
             try:
+                # the bottleneck operation, run only ~100 times!
                 cd = json.loads(chord_file.read_text(encoding="utf-8"))
                 info["source"] = cd.get("source", "btc") or "btc"
                 info["chord_count"] = len(cd.get("chords", []))
@@ -268,8 +317,14 @@ def chords_tracks():
             except Exception:
                 pass
         result.append(info)
-    result.sort(key=lambda x: x.get("mtime", 0), reverse=True)
-    return {"tracks": result}
+
+    return {
+        "tracks": result,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages
+    }
 
 
 _stats_cache = {"data": None, "ts": 0}

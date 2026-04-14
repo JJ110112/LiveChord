@@ -117,11 +117,22 @@
   <div class="card">
     <h2 class="collapse-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">和弦管理</h2>
     <div class="collapse-content show">
-      <div class="actions" style="margin-bottom:8px">
+      <div class="actions" style="margin-bottom:8px; display:flex; gap:8px; align-items:center;">
+        <input type="text" id="trackSearch" placeholder="搜尋曲目或歌手..." class="num-input" style="flex:1; max-width:200px; text-align:left;">
+        <select id="trackStatus" class="num-input" style="width: auto;">
+          <option value="all">全部</option>
+          <option value="no_chords">未偵測</option>
+          <option value="has_chords">已偵測</option>
+        </select>
         <button id="btnRefreshTracks">重新整理</button>
       </div>
-      <div id="trackList" style="max-height:50vh;overflow-y:auto;">
+      <div id="trackList" style="max-height:50vh;overflow-y:auto; margin-bottom:8px;">
         <span style="color:var(--text-dim);font-size:12px">載入中…</span>
+      </div>
+      <div id="paginationBar" style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-dim); justify-content:center;">
+        <button id="btnPrevPage" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;">上一頁</button>
+        <span id="pageInfo">頁 1 / 1</span>
+        <button id="btnNextPage" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;">下一頁</button>
       </div>
     </div>
   </div>
@@ -299,12 +310,25 @@
   // ---- 和弦管理 ----
   const trackList = $("#trackList");
   const midiStatus = $("#midiStatus");
+  
+  let currentPage = 1;
+  let currentTotalPages = 1;
 
-  async function loadTrackList() {
+  async function loadTrackList(page = 1) {
     trackList.innerHTML = '<span style="color:var(--text-dim);font-size:12px">載入中…</span>';
     try {
-      const data = await API.chordTracks();
+      const q = $("#trackSearch").value.trim();
+      const st = $("#trackStatus").value;
+      const data = await API.chordTracks(page, 100, q, st);
       const tracks = data.tracks || [];
+      
+      currentPage = data.page || 1;
+      currentTotalPages = data.total_pages || 1;
+      
+      $("#pageInfo").textContent = `頁 ${currentPage} / ${currentTotalPages} (共 ${data.total || 0} 首)`;
+      $("#btnPrevPage").disabled = currentPage <= 1;
+      $("#btnNextPage").disabled = currentPage >= currentTotalPages;
+
       if (!tracks.length) { trackList.innerHTML = '<span style="color:var(--text-dim);font-size:12px">無曲目</span>'; return; }
       trackList.innerHTML = tracks.map((t, i) => {
         const src = t.source || "";
@@ -358,7 +382,16 @@
   }
   loadTrackList();
 
-  $("#btnRefreshTracks").addEventListener("click", loadTrackList);
+  $("#btnRefreshTracks").addEventListener("click", () => loadTrackList(1));
+  $("#btnPrevPage").addEventListener("click", () => loadTrackList(currentPage - 1));
+  $("#btnNextPage").addEventListener("click", () => loadTrackList(currentPage + 1));
+  
+  let trackSearchTimer;
+  $("#trackSearch").addEventListener("input", () => {
+    clearTimeout(trackSearchTimer);
+    trackSearchTimer = setTimeout(() => loadTrackList(1), 500);
+  });
+  $("#trackStatus").addEventListener("change", () => loadTrackList(1));
 
   $("#btnBatchMidi").addEventListener("click", async () => {
     midiStatus.textContent = "匯入中…";
