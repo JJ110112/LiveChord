@@ -446,7 +446,7 @@
       beatsEl.className = "rv-beats";
       let dotHtml = "";
       for (let b=1; b<=beats; b++) {
-          dotHtml += `<span class="beat-dot ${b % 4 === 1 ? 'beat-strong' : ''}"></span>`;
+          dotHtml += `<span class="beat-dot"></span>`;
       }
       beatsEl.innerHTML = dotHtml;
       item.appendChild(beatsEl);
@@ -2187,6 +2187,8 @@
     if (activeChordIdx >= 0 && activeChordIdx < ribbonElements.length) {
       ribbonElements[activeChordIdx].classList.remove("active");
       ribbonElements[activeChordIdx].classList.add("played");
+      const activeDots = ribbonElements[activeChordIdx].querySelectorAll(".beat-active");
+      activeDots.forEach(d => d.classList.remove("beat-active"));
     }
 
     activeChordIdx = newIdx;

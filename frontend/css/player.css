@@ -1275,18 +1275,13 @@
   border-radius: 50%;
   background-color: rgba(255,255,255,0.3);
 }
-.beat-strong {
-  background-color: rgba(255,255,255,0.9);
-  width: 5px;
-  height: 5px;
-  box-shadow: 0 0 3px rgba(255,255,255,0.5);
-}
+
 
 .beat-active {
-  background-color: var(--accent) !important;
+  background-color: var(--phrase-color, var(--accent)) !important;
   width: 6px !important;
   height: 6px !important;
-  box-shadow: 0 0 8px var(--accent);
+  box-shadow: 0 0 8px var(--phrase-color, var(--accent));
   transform: scale(1.2);
   transition: all 0.1s ease-out;
 }
