@@ -16,6 +16,7 @@ from chord_cache import (
     update_entry_from_file as cache_update_entry,
     invalidate as cache_invalidate,
 )
+from data_cache import invalidate_chord_hash_set as _invalidate_chord_hash_set
 from config import resolve_path
 from batch_state import BatchState
 from task_lock import get_task_lock
@@ -121,6 +122,7 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
     # 觸發一次同步，把所有 update_entry 寫入磁碟（單次 IO）
     if _batch_state["succeeded"] > 0:
         cache_ensure_synced(force=True)
+        _invalidate_chord_hash_set()
 
     if _batch_state["succeeded"] > 0 and CACHE_FILE.is_file():
         try:
@@ -321,6 +323,7 @@ def batch_midi_import():
 
     if imported > 0:
         cache_ensure_synced(force=True)
+        _invalidate_chord_hash_set()
         try:
             tmp = CACHE_FILE.with_suffix(".tmp")
             tmp.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
@@ -412,21 +415,24 @@ _STATS_CACHE_TTL = 10
 
 @router.get("/chords/stats")
 def chords_stats():
-    """和弦譜統計（只計算 library 中的曲目）— 使用快取避免阻塞"""
+    """和弦譜統計 — 只計算 auto_chord_active_groups 啟用的群組，
+    讓上方統計（總曲目 / 和弦譜 / 覆蓋率）反映使用者實際關注的範圍。
+    使用快取避免重複計算。"""
     now = time.time()
     if _stats_cache["data"] and now - _stats_cache["ts"] < _STATS_CACHE_TTL:
         cached = _stats_cache["data"]
         cached["batch_running"] = _batch_state.running
         return cached
 
-    total_tracks = 0
-    tracks_with_chords = 0
+    from library_groups import list_groups
+    from auto_worker import load_settings
+    settings = load_settings()
+    active = set(settings.get("auto_chord_active_groups", []) or [])
 
-    if CACHE_FILE.is_file():
-        cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
-        total_tracks = len(cache.get("tracks", []))
-    if CHORDS_DIR.is_dir():
-        tracks_with_chords = sum(1 for f in os.listdir(CHORDS_DIR) if f.endswith(".json"))
+    groups = list_groups()
+    relevant = [g for g in groups if not active or g["group_id"] in active]
+    total_tracks = sum(g["track_count"] for g in relevant)
+    tracks_with_chords = sum(g["chords_done"] for g in relevant)
 
     result = {
         "total_tracks": total_tracks,

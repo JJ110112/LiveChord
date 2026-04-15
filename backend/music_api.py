@@ -393,6 +393,15 @@ def _scan_worker(mode: str = "incremental"):
         roots = get_music_roots()
         DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+        # 讀取啟用群組（active_groups）— 若有設定，掃描只會走訪這些頂層資料夾
+        # 已快取但屬於未啟用群組的條目會被「保留」(不會誤刪也不會重掃)
+        try:
+            from auto_worker import load_settings
+            _settings = load_settings()
+            active_groups = set(_settings.get("auto_chord_active_groups", []) or [])
+        except Exception:
+            active_groups = set()
+
         # 載入現有快取（增量模式用）
         existing = {}
         if mode == "incremental" and CACHE_FILE.is_file():
@@ -426,6 +435,13 @@ def _scan_worker(mode: str = "incremental"):
             except OSError:
                 return
 
+            # 是否在 music_root 第一層（用來套 active_groups 過濾）
+            is_at_root = (current_rel_prefix == root_prefix)
+            try:
+                root_idx = int(root_prefix[1:-1]) if root_prefix.startswith("@") else 0
+            except ValueError:
+                root_idx = 0
+
             dirs = []
             for entry in entries:
                 if _scan_cancel:
@@ -434,13 +450,24 @@ def _scan_worker(mode: str = "incremental"):
                     continue
 
                 if entry.is_dir():
-                    exclude_dirs = {
-                        "#recycle", "@eaDir", "@tmp", "#snapshot",
-                        "Classics", "Classical", "Sleep", "Electronic Dance Music"
-                    }
-                    if entry.name not in exclude_dirs:
-                        dirs.append(entry)
+                    # 只排除系統 / 同步 / 回收筒等技術目錄。
+                    exclude_dirs = {"#recycle", "@eaDir", "@tmp", "#snapshot"}
+                    if entry.name in exclude_dirs:
+                        continue
+                    # 在 music_root 第一層套 active_groups 過濾：
+                    # 只有勾選的子資料夾會被走訪，其他直接跳過（節省 SMB I/O）
+                    if is_at_root and active_groups:
+                        gid = f"@{root_idx}/{entry.name}"
+                        if gid not in active_groups:
+                            continue
+                    dirs.append(entry)
                 elif entry.is_file() and entry.name.lower().endswith(".flac"):
+                    # 在 music_root 第一層的 .flac 檔，若 active_groups 有設定且未涵蓋
+                    # 「未分類」群組，則跳過（這些檔案歸屬 @{idx}/未分類）
+                    if is_at_root and active_groups:
+                        gid_uncategorized = f"@{root_idx}/未分類"
+                        if gid_uncategorized not in active_groups:
+                            continue
                     full = entry.path
                     rel = current_rel_prefix + entry.name
                     seen_paths.add(rel)
@@ -506,14 +533,44 @@ def _scan_worker(mode: str = "incremental"):
             prefix = f"@{root_idx}/" if root_idx > 0 else ""
             if not os.path.isdir(root):
                 continue
-            
+
             _scan_dir(root, prefix, prefix)
+
+        # 保留：未啟用群組的既有條目維持原本快取（不重掃但也不誤刪）
+        if active_groups:
+            try:
+                from library_groups import _split_group
+                preserved = 0
+                for old_rel, old_t in existing.items():
+                    if old_rel in seen_paths:
+                        continue
+                    r_idx, label, _ = _split_group(old_rel)
+                    gid = f"@{r_idx}/{label}"
+                    if gid not in active_groups:
+                        tracks.append(old_t)
+                        seen_paths.add(old_rel)
+                        preserved += 1
+                if preserved:
+                    _scan_state["preserved_tracks"] = preserved
+            except Exception:
+                pass
 
         # 計算刪除的曲目數
         deleted = old_paths - seen_paths
 
-        # 最終存檔
-        _save_cache(tracks)
+        # 只在實際有變動時才重寫 cache 檔。沒變動就保持 mtime 不變，
+        # 讓 data_cache.get_library_cache 的 mtime 比對命中，避免下次 admin
+        # 載入時白白重 parse 50MB JSON。
+        changed = (_scan_state["new_tracks"] > 0
+                   or _scan_state["updated_tracks"] > 0
+                   or len(deleted) > 0)
+        if changed or not CACHE_FILE.is_file():
+            _save_cache(tracks)
+            try:
+                from data_cache import invalidate_library_cache
+                invalidate_library_cache()
+            except Exception:
+                pass
 
         _scan_state["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
         _scan_state["deleted_tracks"] = len(deleted)

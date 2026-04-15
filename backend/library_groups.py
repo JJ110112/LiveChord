@@ -13,6 +13,7 @@ from pathlib import Path
 
 from chord_cache import song_hash
 from config import get_music_roots
+from data_cache import get_library_cache, get_chord_hash_set
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 CACHE_FILE = DATA_DIR / "library_cache.json"
@@ -57,48 +58,57 @@ def _root_label(root_idx: int) -> str:
 
 
 def _chord_hash_set() -> set:
-    if not CHORDS_DIR.is_dir():
-        return set()
-    try:
-        return {n[:-5] for n in os.listdir(CHORDS_DIR) if n.endswith(".json")}
-    except OSError:
-        return set()
+    """向下相容：保留函式，內部委派給共享快取。"""
+    return get_chord_hash_set()
 
 
 def list_groups() -> list[dict]:
-    """從 library_cache 計算所有群組與覆蓋率"""
-    if not CACHE_FILE.is_file():
-        return []
-
-    try:
-        cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return []
-
-    chord_hashes = _chord_hash_set()
+    """從 library_cache 計算所有群組與覆蓋率。
+    每個已設定的 music_root 至少會回傳一筆 placeholder（即使尚無曲目），
+    讓使用者在 admin 介面可以看到所有掛載的音樂庫。
+    """
+    cache = get_library_cache()
+    chord_hashes = get_chord_hash_set()
     groups: dict[tuple[int, str], dict] = {}
 
-    for t in cache.get("tracks", []):
-        path = t.get("path", "")
-        if not path:
-            continue
-        root_idx, label, prefix = _split_group(path)
-        key = (root_idx, label)
-        g = groups.get(key)
-        if g is None:
-            g = {
-                "group_id": f"@{root_idx}/{label}",
-                "root_idx": root_idx,
-                "root_label": _root_label(root_idx),
-                "label": label,
-                "path_prefix": prefix,
+    if cache:
+        for t in cache.get("tracks", []):
+            path = t.get("path", "")
+            if not path:
+                continue
+            root_idx, label, prefix = _split_group(path)
+            key = (root_idx, label)
+            g = groups.get(key)
+            if g is None:
+                g = {
+                    "group_id": f"@{root_idx}/{label}",
+                    "root_idx": root_idx,
+                    "root_label": _root_label(root_idx),
+                    "label": label,
+                    "path_prefix": prefix,
+                    "track_count": 0,
+                    "chords_done": 0,
+                }
+                groups[key] = g
+            g["track_count"] += 1
+            if song_hash(path) in chord_hashes:
+                g["chords_done"] += 1
+
+    # 為每一個未出現任何 group 的 music_root 補上 placeholder，避免使用者
+    # 因為某個音樂庫尚未掃描或暫時離線就完全看不到該根目錄。
+    roots = get_music_roots()
+    for idx in range(len(roots)):
+        if not any(g["root_idx"] == idx for g in groups.values()):
+            key = (idx, UNCATEGORIZED)
+            groups[key] = {
+                "group_id": f"@{idx}/{UNCATEGORIZED}",
+                "root_idx": idx,
+                "root_label": _root_label(idx),
+                "label": UNCATEGORIZED,
+                "path_prefix": "",
                 "track_count": 0,
                 "chords_done": 0,
             }
-            groups[key] = g
-        g["track_count"] += 1
-        if song_hash(path) in chord_hashes:
-            g["chords_done"] += 1
 
     result = list(groups.values())
     for g in result:

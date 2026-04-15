@@ -25,13 +25,15 @@ import library_groups
 
 
 # ---------------------------------------------------------------------------
-# App lifecycle: 啟動時自動開始背景工作器
+# App lifecycle: 啟動時依設定決定是否開啟 Core
 # ---------------------------------------------------------------------------
 
 @asynccontextmanager
 async def lifespan(app):
     settings = auto_worker.load_settings()
-    if settings.get("auto_scan_enabled") or settings.get("auto_chord_enabled"):
+    # 只有明確開啟 auto_start_on_boot 才自動啟動 Core
+    # 預設關閉，使用者需手動點 ▶ 啟動 Core，避免在還沒設定群組時就開始擷取
+    if settings.get("auto_start_on_boot", False):
         auto_worker.start_worker()
     yield
     auto_worker.stop_worker()
@@ -116,6 +118,52 @@ async def tasks_status(admin: str = Depends(auth_api.get_admin_user)):
 async def library_groups_list(admin: str = Depends(auth_api.get_admin_user)):
     """依「root 第一層資料夾」回傳曲目群組與和弦覆蓋率"""
     return {"groups": library_groups.list_groups()}
+
+
+@app.get("/api/diag/paths")
+def diag_paths():
+    """從 service 進程的視角檢查每個 music_root 是否真的可以讀到。
+    用來診斷 NUC 上的網路磁碟掛載狀態。免認證以便瀏覽器直開。"""
+    import os
+    from config import get_music_roots, get_midi_root
+    result = {"music_roots": [], "midi_root": {}}
+    for i, r in enumerate(get_music_roots()):
+        info = {"index": i, "path": r, "exists": False, "is_dir": False, "flac_count": 0, "samples": [], "error": ""}
+        try:
+            info["exists"] = os.path.exists(r)
+            info["is_dir"] = os.path.isdir(r)
+            if info["is_dir"]:
+                names = os.listdir(r)
+                flacs = [n for n in names if n.lower().endswith(".flac")]
+                info["flac_count"] = len(flacs)
+                info["samples"] = flacs[:5]
+        except Exception as e:
+            info["error"] = f"{type(e).__name__}: {e}"
+        result["music_roots"].append(info)
+    midi_root = get_midi_root()
+    midi_info = {"path": midi_root, "exists": False, "is_dir": False, "mid_count": 0, "error": ""}
+    try:
+        midi_info["exists"] = os.path.exists(midi_root) if midi_root else False
+        midi_info["is_dir"] = os.path.isdir(midi_root) if midi_root else False
+        if midi_info["is_dir"]:
+            midi_info["mid_count"] = sum(1 for _, _, fs in os.walk(midi_root) for f in fs if f.lower().endswith((".mid", ".midi")))
+    except Exception as e:
+        midi_info["error"] = f"{type(e).__name__}: {e}"
+    result["midi_root"] = midi_info
+    return result
+
+
+@app.get("/api/library/genres")
+def library_genres_list(admin: str = Depends(auth_api.get_admin_user)):
+    """從 library_cache 計算所有 distinct genre（取第一層）與計數，依數量遞減排序。"""
+    from collections import Counter
+    from data_cache import get_library_tracks
+    counter = Counter()
+    for t in get_library_tracks():
+        g = (t.get("genre") or "").split("/")[0].strip()
+        if g:
+            counter[g] += 1
+    return {"genres": [{"name": k, "count": v} for k, v in counter.most_common()]}
 
 
 # ---------------------------------------------------------------------------
