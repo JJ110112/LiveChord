@@ -438,6 +438,8 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 
 ### 4.12 Admin 管理頁
 
+> **預設測試帳號**：本地端測試與管理頁登入請使用帳號 `admin`，密碼 `admin`。
+
 | # | 測試項目 | 預期結果 | 通過 |
 |---|----------|----------|------|
 | A-01 | 載入管理頁 | 顯示統計儀表板 | ☐ |
