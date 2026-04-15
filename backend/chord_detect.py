@@ -8,7 +8,12 @@ import sys
 import numpy as np
 import torch
 import librosa
+import soundfile as sf
 import threading
+
+# 單曲最大分析長度（秒）。超長合輯（例如 29 首精選）會被截斷至此長度，
+# 避免 librosa.load 產生超過 NumPy 最大陣列的情況。
+MAX_ANALYZE_SECONDS = 900  # 15 分鐘
 
 # BTC 模型路徑
 BTC_DIR = os.path.join(os.path.dirname(__file__), "btc")
@@ -125,6 +130,24 @@ def _load_model():
 # 特徵提取（與 BTC 原始程式碼一致）
 # ---------------------------------------------------------------------------
 
+def _load_audio_mono(audio_path: str, target_sr: int) -> tuple:
+    """
+    直接用 soundfile 載入音訊，避開 librosa.load 對 audioread 的 fallback
+    （NUC 端無 ffmpeg 會噴 NoBackendError）。超長檔案截斷至 MAX_ANALYZE_SECONDS。
+    回傳 (mono_float32_at_target_sr, was_truncated)
+    """
+    info = sf.info(audio_path)
+    native_sr = info.samplerate
+    max_frames = int(native_sr * MAX_ANALYZE_SECONDS)
+    truncated = info.frames > max_frames
+    frames_to_read = max_frames if truncated else -1
+    data, _ = sf.read(audio_path, frames=frames_to_read, dtype="float32", always_2d=True)
+    y = data.mean(axis=1) if data.shape[1] > 1 else data[:, 0]
+    if native_sr != target_sr:
+        y = librosa.resample(y, orig_sr=native_sr, target_sr=target_sr)
+    return y, truncated
+
+
 def _audio_to_features(audio_path: str):
     """提取 CQT 特徵（與 BTC 訓練時一致）"""
     sr = _config.mp3["song_hz"]  # 22050
@@ -133,7 +156,10 @@ def _audio_to_features(audio_path: str):
     hop_length = _config.feature["hop_length"]  # 2048
     inst_len = _config.mp3["inst_len"]  # 10.0
 
-    y, _ = librosa.load(audio_path, sr=sr, mono=True)
+    y, truncated = _load_audio_mono(audio_path, sr)
+    if truncated:
+        print(f"[chord_detect] truncated to {MAX_ANALYZE_SECONDS}s: {audio_path}",
+              file=sys.stderr)
 
     # 分段計算 CQT（與原始程式碼一致，避免 OOM）
     feature = None

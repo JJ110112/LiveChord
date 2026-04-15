@@ -528,6 +528,38 @@ def _do_auto_chord_detect(settings: dict):
         lock.release()
 
 
+def _classify_detect_error(e: Exception, full_path: str) -> str:
+    """把底層例外轉成人話，特別標示 0-byte 與損毀流這兩個最常見的原因。"""
+    name = type(e).__name__
+    msg = str(e) or "<空訊息>"
+    try:
+        if not os.path.isfile(full_path):
+            return f"檔案不存在: {full_path}"
+        size_bytes = os.path.getsize(full_path)
+        size_mb = size_bytes / (1024 * 1024)
+    except Exception:
+        size_bytes = -1
+        size_mb = -1
+
+    if size_bytes == 0:
+        return "檔案為 0 bytes（下載失敗或被截斷），建議重新取得"
+
+    msg_low = msg.lower()
+    if "lost sync" in msg_low or "decoder lost sync" in msg_low:
+        return f"FLAC 串流損毀（decoder lost sync，{size_mb:.0f} MB），建議重新取得"
+    if "format not recognised" in msg_low or "format not recognized" in msg_low:
+        return f"檔頭無法辨識（可能損毀或非 FLAC，{size_mb:.0f} MB）"
+    if name == "NoBackendError":
+        return "音訊解碼失敗（soundfile/audioread 皆無法開啟；多半為檔案損毀）"
+    if name == "ValueError" and "array is too big" in msg_low:
+        return f"檔案過大無法載入（{size_mb:.0f} MB；MAX_ANALYZE_SECONDS 未生效？）"
+    if name == "LibsndfileError":
+        return f"libsndfile 解碼錯誤: {msg}"
+    if name == "TimeoutError":
+        return "BTC 子程序逾時（>10 分鐘）"
+    return f"{name}: {msg}"
+
+
 def _auto_chord_detect_loop(settings: dict, batch: list, unanalyzed: list, lock, midi_index: list):
     for i, track_path in enumerate(batch):
         if _stop_event.is_set():
@@ -594,7 +626,8 @@ def _auto_chord_detect_loop(settings: dict, batch: list, unanalyzed: list, lock,
             _worker_state["detect_count"] += 1
             add_log("OK", f"BTC 偵測: {name} (Key: {key}, {len(chords)} chords)")
         except Exception as e:
-            add_log("ERROR", f"偵測失敗: {name} — {type(e).__name__}: {e or '<空訊息>'}")
+            reason = _classify_detect_error(e, full)
+            add_log("ERROR", f"偵測失敗: {name} — {reason}")
 
         # 每首之間暫停，讓 event loop 有時間回應前端請求
         delay = settings.get("auto_chord_delay_seconds", 1.0)
