@@ -346,7 +346,7 @@
       parts.push(`<label class="${cls}" data-cat="${catKey}">
         <input type="checkbox" class="gt-cat-cb" data-cat="${catKey}"${checked}${disabled}>
         <span class="gt-cat-label">${catLabel}</span>
-        <span class="gt-cat-stat">${items.length} · ${total} 首</span>
+        <span class="gt-cat-stat">${total} 首</span>
       </label>`);
     }
     host.innerHTML = parts.join("");
