@@ -29,6 +29,27 @@ _batch_state = BatchState(
     errors=[],
 )
 
+# admin 列表 polling 用：chords 目錄 hash 集合的短 TTL 快取
+_chord_hashes_cache = {"set": None, "ts": 0.0}
+_CHORD_HASHES_TTL = 5.0
+
+
+def _get_chord_hashes() -> set:
+    """一次 listdir 產生 chord hash 集合，避免每檔 is_file() 打到 FS"""
+    now = time.time()
+    cached = _chord_hashes_cache["set"]
+    if cached is not None and now - _chord_hashes_cache["ts"] < _CHORD_HASHES_TTL:
+        return cached
+    hashes = set()
+    if CHORDS_DIR.is_dir():
+        try:
+            hashes = {n[:-5] for n in os.listdir(CHORDS_DIR) if n.endswith(".json")}
+        except OSError:
+            pass
+    _chord_hashes_cache["set"] = hashes
+    _chord_hashes_cache["ts"] = now
+    return hashes
+
 
 def get_batch_state() -> BatchState:
     """供其他模組查詢批次狀態（如 chord_api.chords_stats）"""
@@ -87,18 +108,19 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
 
     if _batch_state["succeeded"] > 0 and CACHE_FILE.is_file():
         try:
+            # 一次 listdir 取代每檔一次 is_file()（同時捎帶修正其他歷史遺留的 stale 條目）
+            chord_hashes = {n[:-5] for n in os.listdir(CHORDS_DIR) if n.endswith(".json")} if CHORDS_DIR.is_dir() else set()
             cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
             modified = False
             for t in cache.get("tracks", []):
-                if not t.get("has_chords"):
-                    cf = CHORDS_DIR / f"{song_hash(t.get('path', ''))}.json"
-                    if cf.is_file():
-                        t["has_chords"] = True
-                        modified = True
+                if not t.get("has_chords") and song_hash(t.get("path", "")) in chord_hashes:
+                    t["has_chords"] = True
+                    modified = True
             if modified:
                 tmp = CACHE_FILE.with_suffix(".tmp")
                 tmp.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
                 tmp.replace(CACHE_FILE)
+            _chord_hashes_cache["set"] = None  # 使 admin 列表快取失效
         except Exception:
             pass
 
@@ -286,7 +308,10 @@ def chords_tracks(
     cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
     all_tracks = cache.get("tracks", [])
-    
+
+    # 用一次 listdir 取代每檔 is_file()（admin polling 下避免 43k+ 個 stat syscall）
+    chord_hashes = _get_chord_hashes()
+
     # Optional: Fast filtering before disk I/O
     if query or status != "all":
         filtered_tracks = []
@@ -295,11 +320,9 @@ def chords_tracks(
             p = t.get("path", "")
             if query and q_lower not in p.lower() and q_lower not in t.get("title", "").lower() and q_lower not in t.get("artist", "").lower():
                 continue
-            
-            # For status filter, we only need to check if file exists (fast)
+
             if status != "all":
-                h = song_hash(p)
-                has_chords = (CHORDS_DIR / f"{h}.json").is_file()
+                has_chords = song_hash(p) in chord_hashes
                 if status == "has_chords" and not has_chords:
                     continue
                 if status == "no_chords" and has_chords:
@@ -309,7 +332,7 @@ def chords_tracks(
 
     # Sort tracks (latest first)
     all_tracks.sort(key=lambda x: x.get("mtime", 0), reverse=True)
-    
+
     # Pagination slicing
     total = len(all_tracks)
     total_pages = max(1, (total + limit - 1) // limit)
@@ -322,9 +345,9 @@ def chords_tracks(
     for t in sliced_tracks:
         p = t.get("path", "")
         h = song_hash(p)
+        has_chords = h in chord_hashes
         chord_file = CHORDS_DIR / f"{h}.json"
-        has_chords = chord_file.is_file()
-        
+
         info = {
             "path": p,
             "title": t.get("title", ""),

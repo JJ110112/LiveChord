@@ -400,6 +400,15 @@ def _scan_worker(mode: str = "incremental"):
         # 保存現有路徑集合，用於偵測刪除
         old_paths = set(existing.keys())
 
+        # 一次 listdir 取代每檔一次的 is_file()（43k+ 檔時省下整輪 stat syscall）
+        chords_dir = DATA_DIR / "chords"
+        chord_hashes = set()
+        if chords_dir.is_dir():
+            try:
+                chord_hashes = {n[:-5] for n in os.listdir(chords_dir) if n.endswith(".json")}
+            except OSError:
+                pass
+
         tracks = []
         seen_paths = set()
         _new_meta_count = 0   # 本輪讀取 metadata 的次數（用於節流）
@@ -465,8 +474,7 @@ def _scan_worker(mode: str = "incremental"):
                     genre_parts = inner_rel.split("/")
                     meta["genre"] = meta["genre"] or (genre_parts[0] if len(genre_parts) > 1 else "")
 
-                    chords_file = DATA_DIR / "chords" / f"{song_hash(rel)}.json"
-                    meta["has_chords"] = chords_file.is_file()
+                    meta["has_chords"] = song_hash(rel) in chord_hashes
 
                     tracks.append(meta)
 
@@ -475,7 +483,11 @@ def _scan_worker(mode: str = "incremental"):
                     if _new_meta_count % 50 == 0:
                         time.sleep(0.05)
 
-                    if len(tracks) % 3000 == 0:
+                    # 週期存檔：incremental 模式下若還沒遇到新/更新，跳過（純拷貝 7MB 無意義）
+                    if len(tracks) % 3000 == 0 and (
+                        mode != "incremental"
+                        or _scan_state["new_tracks"] + _scan_state["updated_tracks"] > 0
+                    ):
                         merged = list(tracks)
                         for old_rel, old_t in existing.items():
                             if old_rel not in seen_paths:
