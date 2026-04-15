@@ -154,14 +154,9 @@
     </div>
     <div class="progress-track"><div class="bar green" id="coreBar" style="width:0%"></div></div>
     <div class="current-task" id="currentTask"></div>
-    <div class="core-actions" style="margin-top:12px">
-      <button id="btnCoreToggle" style="display:none">⏸ 停止 Core</button>
-    </div>
-  </div>
 
-  <!-- ======== Card 2: 設定（預設展開）======== -->
-  <div class="card">
-    <h2 class="collapse-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">⚙️ 設定</h2>
+    <!-- ======== 設定（合併進 Core 卡片，預設展開）======== -->
+    <h2 class="collapse-toggle open" style="margin-top:16px" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">⚙️ 設定</h2>
     <div class="collapse-content show">
       <!-- 1. 音樂庫路徑 -->
       <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px">
@@ -211,8 +206,9 @@
         <span style="font-size:11px;color:var(--text-dim)">只影響下次後端服務重啟時的行為，不影響目前 Core 狀態</span>
       </div>
       <!-- 7. 套用設定並啟動 -->
-      <div class="setting-row" style="justify-content:flex-end;margin-top:4px">
+      <div class="setting-row" style="justify-content:flex-end;margin-top:4px;gap:8px">
         <button class="primary" id="btnApplyAndStart" title="儲存所有設定 → 增量掃描 → 啟動 Core">💾 套用設定並啟動</button>
+        <button id="btnCoreToggle" style="display:none">⏸ 停止 Core</button>
       </div>
     </div>
   </div>
