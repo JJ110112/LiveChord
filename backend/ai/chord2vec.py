@@ -6,13 +6,12 @@ Chord2Vec: 將和弦序列轉換為語意連續的高維空間向量
 import json
 import numpy as np
 from pathlib import Path
-from scipy.sparse import lil_matrix
-from scipy.sparse.linalg import svds
 
 def build_co_occurrence_matrix(sequences, vocab, window_size=2):
     """
     建立共現矩陣
     """
+    from scipy.sparse import lil_matrix
     vocab_size = len(vocab)
     # 使用 LIL 矩陣有利於逐項構建
     matrix = lil_matrix((vocab_size, vocab_size), dtype=np.float32)
@@ -68,6 +67,7 @@ def train_chord2vec(models_dir, dim=32):
     matrix = build_co_occurrence_matrix(sequences, vocab, window_size=2)
     
     print(f"Performing Truncated SVD (dim={dim})...")
+    from scipy.sparse.linalg import svds
     # 進行特徵分解 (SVD)
     # k 是我們想要的維度
     U, Sigma, VT = svds(matrix, k=dim)

@@ -70,16 +70,17 @@ async def jazzify(body: JazzifyRequest):
 
 
 @router.get("/similar")
-async def similar(
+def similar(
     chord: str = Query(..., description="和弦級數，如 IIm7"),
     top_k: int = Query(default=5),
 ):
     """Chord2Vec: 找相似和弦"""
-    from ai.chord2vec import get_chord2vec
-
-    model = get_chord2vec(str(CHORDS_DIR))
-    results = model.similar(chord, top_k=top_k)
-    return {"chord": chord, "similar": [{"degree": d, "similarity": round(s, 3)} for d, s in results]}
+    try:
+        from ai.chord2vec import get_similar_chords
+    except ImportError as e:
+        return {"chord": chord, "similar": [], "error": f"chord2vec unavailable: {e}"}
+    results = get_similar_chords(chord, top_n=top_k)
+    return {"chord": chord, "similar": [{"degree": d, "similarity": round(float(s), 3)} for d, s in results]}
 
 
 @router.get("/groove")
@@ -99,7 +100,7 @@ async def groove(
 
 
 @router.get("/evaluate")
-async def evaluate():
+def evaluate():
     """模型評測：perplexity, accuracy"""
     from ai.evaluate import full_evaluation
 
@@ -531,17 +532,30 @@ def suggest_style_api(
 
 
 @router.get("/stats")
-async def stats():
+def stats():
     """所有模型統計"""
     from ai.markov import get_predictor
-    from ai.chord2vec import get_chord2vec
     from ai.groove_dict import get_groove_dict
 
-    return {
+    result = {
         "markov": get_predictor(str(CHORDS_DIR)).get_stats(),
-        "chord2vec": get_chord2vec(str(CHORDS_DIR)).get_stats(),
         "groove": get_groove_dict(str(CHORDS_DIR)).get_stats(),
     }
+    try:
+        from pathlib import Path as _P
+        models_dir = _P(CHORDS_DIR).parent / "models"
+        emb = models_dir / "chord_embeddings.npy"
+        vocab = models_dir / "vocab.json"
+        if emb.exists() and vocab.exists():
+            import json as _json, numpy as _np
+            v = _json.loads(vocab.read_text(encoding="utf-8"))
+            arr = _np.load(emb, mmap_mode="r")
+            result["chord2vec"] = {"vocab_size": len(v), "embedding_dim": int(arr.shape[1])}
+        else:
+            result["chord2vec"] = {"status": "not_trained"}
+    except Exception as e:
+        result["chord2vec"] = {"error": str(e)}
+    return result
 
 
 # ==============================================================================

@@ -97,3 +97,4 @@ transcribed_midi/
 # Playwright MCP artifacts (QA screenshots, snapshots, console logs)
 .playwright-mcp/
 ghost-keys-qa-*.png
+qa-*.png

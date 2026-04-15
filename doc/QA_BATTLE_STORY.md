@@ -70,3 +70,44 @@ AI 的恐怖之處就在於：當你滿足了現狀，他們的要求會跟著�
 我們負責寫程式，而多智能體負責扮演「最挑剔的奧客」與「最毒舌的專家」。他們不斷試圖突破現有的防線，而我們則將他們的攻擊一一轉化為固若金湯的規則引擎。
 
 **三位專家應該暫時滿意了...至少在他們看到下一個可以挑剔的地方之前 😄。** 而 LiveChord 已經準備好，在下一個版本裡，讓所有的吉他、貝斯與鋼琴手，在彈奏第一聲和弦時，為之驚豔。
+
+---
+
+## 🔥 番外篇：AI 品管員的意外獵物（2026-04-16）
+
+一次例行性的 QA 測試，AI 代理用 curl 掃過 `/api/ai/*` 的全部端點，準備交回一份安靜的「全綠」報告。直到呼叫打進 `/api/ai/evaluate` 那一刻——
+
+整台 uvicorn **瞬間凍結**。TCP 還會三向交握，但 HTTP 再也不吐半個 byte。累積的 CLOSE_WAIT socket 一行一行堆在 netstat 裡，server.log 停在最後一筆 ERROR 之後再無動靜。長達 4 分鐘的沉默後，AI 代理終於忍不住翻開原始碼：
+
+```python
+@router.get("/evaluate")
+async def evaluate():
+    from ai.evaluate import full_evaluation
+    return full_evaluation(str(CHORDS_DIR))  # ← 同步版！跑 296 首歌！
+```
+
+`async def` + 同步重度計算 = 事件迴圈被單一請求獨佔。這違反了 repo 的 `feedback_async_def` 鐵律：**檔案 I/O 與 CPU 密集端點必須用普通 `def`**，讓 FastAPI 自動丟進 threadpool。
+
+同一趟還挖出 `/api/ai/stats` 與 `/api/ai/similar` 互相關聯的暗坑：
+- `ai_api.py` import 了 `ai.chord2vec` 模組裡**從未存在**的 `get_chord2vec` 函式
+- `ai/chord2vec.py` 在模組 top-level 就 `from scipy.sparse import lil_matrix`，遇上 numpy 2.x + scipy 1.17 組合會先 raise `_no_nep50_warning` AttributeError
+- 這道雙重地雷讓兩個端點預設 500
+
+### 修復
+
+| 檔案 | 動作 |
+| :--- | :--- |
+| `backend/ai_api.py` | `/evaluate` 與 `/stats` 改 `async def` → `def`；`/similar` 改用 `get_similar_chords` + `try/except ImportError` 優雅降級；`/stats` 改為直接讀 `chord_embeddings.npy` + `vocab.json`，跳過 chord2vec 模組 |
+| `backend/ai/chord2vec.py` | `from scipy.sparse import lil_matrix` 與 `from scipy.sparse.linalg import svds` 都從 top-level 搬進實際使用的函式內部（lazy import），這樣即使 scipy 相依出問題，推論路徑（只用 numpy）仍可正常運作 |
+
+### 驗證
+
+重啟後再次打 `/api/ai/evaluate`，84 秒返回 `{"markov_model":{"perplexity":17.31,...}}`。關鍵是——**在這 84 秒期間，其他 API 仍然即時響應**。threadpool 隔離生效，事件迴圈不再被單一請求綁架。
+
+### 教訓
+
+1. **鐵律是給人遵守的，不是寫完就忘的**：`feedback_async_def` 明確說了「不要用 `async def` 包同步計算」，但 `ai_api.py` 幾乎全檔都犯。這次只修了 3 個引爆的端點，其他 `async def` 仍待後續一致化。
+2. **AI 的品管迴圈能抓到人工掃不到的 hang**：傳統 pytest 跑 unit test 永遠不會觸發這種「端點能回但整個事件迴圈死掉」的狀態，必須真的打出請求並觀察鄰近請求的可用性。
+3. **lazy import 是相依地雷的最佳緩衝墊**：把危險 import 搬進函式內，可以讓模組 load 階段保持乾淨，只有真正踩到該路徑才會爆——而且還能 `try/except` 兜底。
+
+AI 代理原本以為只是要跑個標準 QA checklist，結果順手救了一個 P0。這大概就是 `Agentic QA` 的真正價值：**它不只是逐項打勾，還會在每個打勾之前問一句「這樣真的 OK 嗎？」**
