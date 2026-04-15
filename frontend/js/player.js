@@ -2075,41 +2075,113 @@
     }
   }
 
+  function _renderStarWidget(ver, path) {
+      const wrap = document.createElement("div");
+      wrap.className = "rating-stars" + (ver.can_rate ? "" : " disabled");
+      const baseTitle = ver.count > 0
+          ? `平均 ${ver.rating.toFixed(1)} ★ (${ver.count} 票)`
+          : "尚無評分";
+      wrap.title = ver.can_rate ? baseTitle : (ver.is_self ? "不能對自己的版本評分" : "請先登入");
+
+      const stars = [];
+      for (let i = 1; i <= 5; i++) {
+          const s = document.createElement("span");
+          s.className = "rs-star" + (i <= (ver.my_rating || 0) ? " mine" : "");
+          s.textContent = "★";
+          s.dataset.score = String(i);
+          stars.push(s);
+          wrap.appendChild(s);
+      }
+
+      const paint = (n, mode) => {
+          stars.forEach((el, idx) => {
+              el.classList.toggle("hover", mode === "hover" && idx < n);
+              el.classList.toggle("mine", mode !== "hover" && idx < n);
+          });
+      };
+
+      if (!ver.can_rate) return wrap;
+
+      stars.forEach(s => {
+          const score = parseInt(s.dataset.score);
+          s.addEventListener("mouseenter", (e) => { e.stopPropagation(); paint(score, "hover"); });
+          s.addEventListener("click", async (e) => {
+              e.stopPropagation();
+              const next = (ver.my_rating === score) ? 0 : score;
+              try {
+                  const res = await API.rateChordVersion(path, ver.id, next);
+                  ver.my_rating = res.my_rating;
+                  ver.rating = res.rating;
+                  ver.count = res.count;
+                  paint(ver.my_rating, "set");
+                  const avgEl = wrap.parentElement && wrap.parentElement.querySelector(".rating-avg");
+                  if (avgEl) {
+                      avgEl.textContent = ver.count > 0 ? `${ver.rating.toFixed(1)} ★ (${ver.count})` : "—";
+                  }
+                  wrap.title = ver.count > 0
+                      ? `平均 ${ver.rating.toFixed(1)} ★ (${ver.count} 票)`
+                      : "尚無評分";
+                  showToast(next === 0 ? "已收回評分" : `已評 ${next} 顆星`);
+              } catch (err) {
+                  console.error("rate failed:", err);
+                  showToast("評分失敗", true);
+              }
+          });
+      });
+      wrap.addEventListener("mouseleave", () => paint(ver.my_rating || 0, "set"));
+
+      return wrap;
+  }
+
   function _renderVersionsDropdown(path) {
       const container = $("#versionsContainer");
       const listEl = $("#versionsItems");
       const currentNameEl = $("#currentVersionName");
-      
+
       if (!container || !listEl || !currentNameEl) return;
       if (availableVersions.length <= 1) {
           container.style.display = "none";
           return;
       }
-      
+
       container.style.display = "inline-block";
       listEl.innerHTML = "";
-      
+
       let currentVersionData = availableVersions.find(v => v.id === (currentChordVersion || "official")) || availableVersions[0];
       currentNameEl.textContent = currentVersionData.name;
 
       availableVersions.forEach(ver => {
           const item = document.createElement("div");
           item.className = "version-item" + (currentVersionData.id === ver.id ? " active" : "");
-          item.innerHTML = `
-            <div class="version-name">${ver.name} <span class="version-count">(${ver.count})</span></div>
-            <div class="version-rating">${ver.rating.toFixed(1)} <span class="star">★</span></div>
-          `;
-          item.addEventListener("click", async () => {
+
+          const left = document.createElement("div");
+          left.className = "version-name";
+          left.textContent = ver.name;
+
+          const right = document.createElement("div");
+          right.className = "version-rating";
+          const stars = _renderStarWidget(ver, path);
+          const avg = document.createElement("span");
+          avg.className = "rating-avg";
+          avg.textContent = ver.count > 0 ? `${ver.rating.toFixed(1)} ★ (${ver.count})` : "—";
+          right.appendChild(stars);
+          right.appendChild(avg);
+
+          item.appendChild(left);
+          item.appendChild(right);
+
+          item.addEventListener("click", async (e) => {
+              if (e.target.closest(".rating-stars")) return; // star clicks don't switch versions
               $("#versionsContainer").classList.remove("active");
               if (currentChordVersion === ver.id) return;
-              
+
               currentChordVersion = ver.id;
               currentNameEl.textContent = ver.name;
-              
+
               // Highlight selected
               listEl.querySelectorAll(".version-item").forEach(el => el.classList.remove("active"));
               item.classList.add("active");
-              
+
               // Reload chords smoothly
               _setLoadingState(true, "切換版本中...", "載入 " + ver.name + " 的和弦");
               try { await loadChords(path, currentChordVersion); }

@@ -1377,12 +1377,46 @@
   font-size: 13px;
   color: var(--text-dim);
   display: flex;
-  align-items: center;
-  gap: 4px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
 }
 
 .version-rating .star {
   color: #8b5cf6;
+}
+
+.version-rating .rating-avg {
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+  line-height: 1;
+}
+
+.rating-stars {
+  display: inline-flex;
+  gap: 1px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.rating-stars.disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.rating-stars .rs-star {
+  font-size: 14px;
+  color: #4a4a52;
+  transition: color 0.1s;
+  padding: 0 1px;
+}
+
+.rating-stars .rs-star.mine {
+  color: #8b5cf6;
+}
+
+.rating-stars .rs-star.hover {
+  color: #c084fc;
 }
 
 .version-count {

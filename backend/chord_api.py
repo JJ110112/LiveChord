@@ -6,6 +6,8 @@ import re
 import time
 import asyncio
 from pathlib import Path
+from threading import Lock
+from typing import Optional
 
 
 def _normalize_name(name: str) -> str:
@@ -42,10 +44,11 @@ def _midi_matches(song_name: str, midi_fname: str) -> bool:
     min_len = min(len(sk), len(mk))
     return overlap >= max(2, min_len * 0.6)
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends, Header
 from pydantic import BaseModel
 
-from auth_api import get_current_user
+from auth_api import get_current_user, DB_PATH as AUTH_DB_PATH
+import sqlite3
 from chord_table import get_chord_info, get_chord_jianpu, analyze_chord_in_key
 from chord_diagrams import get_chord_diagram, get_chord_voicings
 from chord_cache import song_hash, update_entry_from_file as cache_update_entry
@@ -58,6 +61,54 @@ router = APIRouter(prefix="/api", tags=["chord"])
 DATA_DIR = Path(__file__).parent.parent / "data"
 CHORDS_DIR = DATA_DIR / "chords"
 CACHE_FILE = DATA_DIR / "library_cache.json"
+RATINGS_FILE = DATA_DIR / "ratings.json"
+
+_ratings_lock = Lock()
+
+
+def _load_ratings() -> dict:
+    if not RATINGS_FILE.is_file():
+        return {}
+    try:
+        return json.loads(RATINGS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_ratings(data: dict) -> None:
+    RATINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = RATINGS_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(RATINGS_FILE)
+
+
+def _version_rating(votes: dict) -> tuple:
+    """Return (avg, count) from a {username: score} dict."""
+    if not votes:
+        return (0.0, 0)
+    vals = [v for v in votes.values() if isinstance(v, (int, float))]
+    if not vals:
+        return (0.0, 0)
+    return (round(sum(vals) / len(vals), 1), len(vals))
+
+
+def _optional_user(authorization: str = Header(None)) -> Optional[str]:
+    """Return username if Authorization header is valid, else None (no error)."""
+    if not authorization:
+        return None
+    try:
+        return get_current_user(authorization)
+    except HTTPException:
+        return None
+
+
+def _is_admin(username: str) -> bool:
+    try:
+        with sqlite3.connect(AUTH_DB_PATH) as conn:
+            row = conn.execute("SELECT is_admin FROM users WHERE username=?", (username,)).fetchone()
+            return bool(row and row[0] == 1)
+    except Exception:
+        return False
 
 
 
@@ -172,20 +223,32 @@ async def save_chords(sheet: ChordSheet, username: str = Depends(get_current_use
 
 
 @router.get("/chords/versions")
-async def get_chord_versions(path: str = Query(...)):
-    """取得這首歌的所有和弦版本清單"""
+def get_chord_versions(path: str = Query(...), username: Optional[str] = Depends(_optional_user)):
+    """取得這首歌的所有和弦版本清單，含真實平均評分與目前使用者自己的評分"""
     target_hash = song_hash(path)
     versions = []
+
+    all_ratings = _load_ratings().get(target_hash, {})
+    is_admin = _is_admin(username) if username else False
+
+    def _build(version_id: str, name: str):
+        votes = all_ratings.get(version_id, {})
+        avg, count = _version_rating(votes)
+        is_self = bool(username) and version_id == username
+        return {
+            "id": version_id,
+            "name": name,
+            "rating": avg,
+            "count": count,
+            "my_rating": votes.get(username, 0) if username else 0,
+            "can_rate": bool(username) and (not is_self or is_admin),
+            "is_self": is_self,
+        }
 
     # 1. 官方版
     official_file = CHORDS_DIR / f"{target_hash}.json"
     if official_file.is_file():
-        versions.append({
-            "id": "official",
-            "name": "官方 AI 版",
-            "rating": 4.5,
-            "count": 0
-        })
+        versions.append(_build("official", "官方 AI 版"))
 
     # 2. 社群版 (掃描所有使用者的 chords 目錄)
     users_dir = DATA_DIR / "users"
@@ -194,19 +257,55 @@ async def get_chord_versions(path: str = Query(...)):
             if user_folder.is_dir():
                 user_file = user_folder / "chords" / f"{target_hash}.json"
                 if user_file.is_file():
-                    # mock rating for now, chordify uses this for visual distinctiveness
-                    score = 4.0 if user_folder.name == "hitea" else 3.6 
-                    versions.append({
-                        "id": user_folder.name,
-                        "name": user_folder.name,
-                        "rating": score,
-                        "count": 1
-                    })
+                    versions.append(_build(user_folder.name, user_folder.name))
 
-    # Sort versions: official first, then highest rating
-    versions.sort(key=lambda x: (x["id"] != "official", -x["rating"]))
-    
-    return {"ok": True, "versions": versions}
+    # Sort versions: official first, then highest rating, then most votes
+    versions.sort(key=lambda x: (x["id"] != "official", -x["rating"], -x["count"]))
+
+    return {"ok": True, "versions": versions, "current_user": username}
+
+
+class RatingRequest(BaseModel):
+    path: str
+    version: str
+    score: int  # 1..5, or 0 to remove existing vote
+
+
+@router.post("/chords/rate")
+def rate_chord_version(req: RatingRequest, username: str = Depends(get_current_user)):
+    """對某個和弦版本評分。score=0 代表收回先前的評分。
+    一般使用者不能評自己上傳的版本（防刷分）；管理員不在此限。"""
+    if not (0 <= req.score <= 5):
+        raise HTTPException(status_code=400, detail="score must be between 0 and 5")
+
+    if req.version == username and not _is_admin(username):
+        raise HTTPException(status_code=403, detail="不能對自己的版本評分 (Cannot rate your own version)")
+
+    target_hash = song_hash(req.path)
+
+    with _ratings_lock:
+        data = _load_ratings()
+        song_votes = data.setdefault(target_hash, {})
+        version_votes = song_votes.setdefault(req.version, {})
+
+        if req.score == 0:
+            version_votes.pop(username, None)
+            if not version_votes:
+                song_votes.pop(req.version, None)
+            if not song_votes:
+                data.pop(target_hash, None)
+        else:
+            version_votes[username] = int(req.score)
+
+        _save_ratings(data)
+
+    avg, count = _version_rating(data.get(target_hash, {}).get(req.version, {}))
+    return {
+        "ok": True,
+        "rating": avg,
+        "count": count,
+        "my_rating": int(req.score),
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -42,6 +42,7 @@ const API = {
     return API.get(url);
   },
   getChordVersions: (path) => API.get(`/api/chords/versions?path=${encodeURIComponent(path)}`),
+  rateChordVersion: (path, version, score) => API.post("/api/chords/rate", { path, version, score }),
   saveChords: (data) => API.post("/api/chords", data),
   detectChords: (path) => API.post(`/api/chords/detect?path=${encodeURIComponent(path)}`),
   midiSearch: (path) => API.get(`/api/chords/midi-search?path=${encodeURIComponent(path)}`),
