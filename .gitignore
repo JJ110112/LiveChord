@@ -93,3 +93,7 @@ data/hybrid_bass/
 data/hybrid_melody/
 separated/
 transcribed_midi/
+
+# Playwright MCP artifacts (QA screenshots, snapshots, console logs)
+.playwright-mcp/
+ghost-keys-qa-*.png
