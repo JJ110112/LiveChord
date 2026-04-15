@@ -8,10 +8,62 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import re
 
+from chord_cache import song_hash
+
 router = APIRouter(prefix="/api/benchmark", tags=["benchmark"])
 
-TEST_SONGS_DIR = Path(__file__).parent.parent / "data" / "test_songs"
+DATA_DIR = Path(__file__).parent.parent / "data"
+TEST_SONGS_DIR = DATA_DIR / "test_songs"
+CHORDS_DIR = DATA_DIR / "chords"
+LIBRARY_CACHE_FILE = DATA_DIR / "library_cache.json"
+
+LIBRARY_LEVEL = "library"
+LIBRARY_GT_DIR = TEST_SONGS_DIR / LIBRARY_LEVEL  # GT 寫在 data/test_songs/library/{hash}.lab
+
 LEVELS = ["Lv1", "Lv2", "Lv3", "Lv4", "Lv5"]
+ALL_LEVELS = LEVELS + [LIBRARY_LEVEL]
+
+
+def _is_library(level: str) -> bool:
+    return level == LIBRARY_LEVEL
+
+
+def _library_gt_path(song_id: str) -> Path:
+    """library mode 下，song_id 即 song_hash"""
+    LIBRARY_GT_DIR.mkdir(parents=True, exist_ok=True)
+    return LIBRARY_GT_DIR / f"{song_id}.lab"
+
+
+def _library_cache_path(song_id: str) -> Path:
+    """library mode 下的偵測來源 — 直接讀現成 chord cache"""
+    return CHORDS_DIR / f"{song_id}.json"
+
+
+def _list_library_songs() -> list:
+    """從 library_cache.json 拉所有掃描完成的曲目，以 song_hash 當 id"""
+    if not LIBRARY_CACHE_FILE.is_file():
+        return []
+    try:
+        cache = json.loads(LIBRARY_CACHE_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    LIBRARY_GT_DIR.mkdir(parents=True, exist_ok=True)
+    songs = []
+    for tr in cache.get("tracks", []):
+        p = tr.get("path", "")
+        if not p:
+            continue
+        h = song_hash(p)
+        songs.append({
+            "name": tr.get("title") or Path(p).stem,
+            "file": p,
+            "level": LIBRARY_LEVEL,
+            "hash": h,
+            "has_ground_truth": (LIBRARY_GT_DIR / f"{h}.lab").is_file(),
+            "has_detection": (CHORDS_DIR / f"{h}.json").is_file(),
+        })
+    songs.sort(key=lambda s: s["name"].lower())
+    return songs
 
 
 # ---------------------------------------------------------------------------
@@ -19,7 +71,7 @@ LEVELS = ["Lv1", "Lv2", "Lv3", "Lv4", "Lv5"]
 # ---------------------------------------------------------------------------
 
 @router.get("/songs")
-async def list_songs():
+def list_songs():
     """列出所有測試曲目（按等級分組）"""
     result = {}
     for lv in LEVELS:
@@ -45,6 +97,9 @@ async def list_songs():
                 })
         result[lv] = songs
 
+    # 主音樂庫 — 把 library_cache 內已掃描的曲目接出來，QA 可直接點用
+    result[LIBRARY_LEVEL] = _list_library_songs()
+
     return result
 
 
@@ -66,9 +121,13 @@ class GroundTruthData(BaseModel):
 
 
 @router.get("/ground-truth/{level}/{song}")
-async def get_ground_truth(level: str, song: str):
-    """取得某首歌的 ground truth"""
-    gt_file = TEST_SONGS_DIR / level / f"{song}.lab"
+def get_ground_truth(level: str, song: str):
+    """取得某首歌的 ground truth（library mode 下 song 即 song_hash）"""
+    if _is_library(level):
+        gt_file = _library_gt_path(song)
+    else:
+        gt_file = TEST_SONGS_DIR / level / f"{song}.lab"
+
     if not gt_file.is_file():
         return {"exists": False, "entries": [], "source": "", "key": ""}
 
@@ -81,14 +140,18 @@ async def get_ground_truth(level: str, song: str):
 
 
 @router.post("/ground-truth")
-async def save_ground_truth(data: GroundTruthData):
+def save_ground_truth(data: GroundTruthData):
     """儲存 ground truth（從前端貼上參考資料）"""
-    if data.level not in LEVELS:
+    if data.level not in ALL_LEVELS:
         raise HTTPException(400, f"無效等級: {data.level}")
 
-    lv_dir = TEST_SONGS_DIR / data.level
-    if not lv_dir.is_dir():
-        raise HTTPException(400, f"目錄不存在: {data.level}")
+    if _is_library(data.level):
+        LIBRARY_GT_DIR.mkdir(parents=True, exist_ok=True)
+        lv_dir = LIBRARY_GT_DIR
+    else:
+        lv_dir = TEST_SONGS_DIR / data.level
+        if not lv_dir.is_dir():
+            raise HTTPException(400, f"目錄不存在: {data.level}")
 
     # 驗證時間戳記的合理性和順序
     for i, entry in enumerate(data.entries):
@@ -134,8 +197,27 @@ async def save_ground_truth(data: GroundTruthData):
 # ---------------------------------------------------------------------------
 
 @router.post("/detect/{level}/{song}")
-async def run_detection(level: str, song: str):
-    """對測試曲目執行 BTC 偵測，結果存為 .det.lab"""
+def run_detection(level: str, song: str):
+    """對測試曲目執行偵測。
+
+    library mode：song 是 song_hash，直接讀現成 chord cache，不重跑 BTC。
+    Lv1~Lv5：對 .flac 跑 chord_detect 並寫 .det.lab。
+    """
+    if _is_library(level):
+        chord_json = _library_cache_path(song)
+        if not chord_json.is_file():
+            raise HTTPException(404, f"chord cache 不存在: {song}")
+        try:
+            data = json.loads(chord_json.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as e:
+            raise HTTPException(500, f"讀取 chord cache 失敗: {str(e)}")
+        chords = data.get("chords", [])
+        key = data.get("key", "")
+        return {
+            "ok": True, "key": key, "chord_count": len(chords),
+            "entries": chords, "from_cache": True,
+        }
+
     flac = TEST_SONGS_DIR / level / f"{song}.flac"
     if not flac.is_file():
         raise HTTPException(404, f"找不到: {flac.name}")
@@ -152,8 +234,23 @@ async def run_detection(level: str, song: str):
 
 
 @router.get("/detection/{level}/{song}")
-async def get_detection(level: str, song: str):
-    """取得偵測結果"""
+def get_detection(level: str, song: str):
+    """取得偵測結果（library mode 從 chord cache 即時組裝）"""
+    if _is_library(level):
+        chord_json = _library_cache_path(song)
+        if not chord_json.is_file():
+            return {"exists": False, "entries": [], "key": ""}
+        try:
+            data = json.loads(chord_json.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {"exists": False, "entries": [], "key": ""}
+        return {
+            "exists": True,
+            "entries": data.get("chords", []),
+            "key": data.get("key", ""),
+            "from_cache": True,
+        }
+
     det_file = TEST_SONGS_DIR / level / f"{song}.det.lab"
     if not det_file.is_file():
         return {"exists": False, "entries": [], "key": ""}
@@ -274,18 +371,29 @@ def _score_segment(gt_entries: list, det_entries: list, tolerance: float = 1.0):
 
 
 @router.get("/score/{level}/{song}")
-async def score_song(level: str, song: str):
-    """比對某首歌的 ground truth vs 偵測結果"""
-    gt_file = TEST_SONGS_DIR / level / f"{song}.lab"
-    det_file = TEST_SONGS_DIR / level / f"{song}.det.lab"
+def score_song(level: str, song: str):
+    """比對某首歌的 ground truth vs 偵測結果（library mode 偵測來源 = chord cache）"""
+    if _is_library(level):
+        gt_file = _library_gt_path(song)
+        if not gt_file.is_file():
+            raise HTTPException(400, "尚無 ground truth，請先貼上參考資料")
+        cache_file = _library_cache_path(song)
+        if not cache_file.is_file():
+            raise HTTPException(400, "尚無偵測結果（chord cache 不存在）")
+        gt = json.loads(gt_file.read_text(encoding="utf-8"))
+        cache = json.loads(cache_file.read_text(encoding="utf-8"))
+        det = {"key": cache.get("key", ""), "entries": cache.get("chords", [])}
+    else:
+        gt_file = TEST_SONGS_DIR / level / f"{song}.lab"
+        det_file = TEST_SONGS_DIR / level / f"{song}.det.lab"
 
-    if not gt_file.is_file():
-        raise HTTPException(400, "尚無 ground truth，請先貼上參考資料")
-    if not det_file.is_file():
-        raise HTTPException(400, "尚無偵測結果，請先執行偵測")
+        if not gt_file.is_file():
+            raise HTTPException(400, "尚無 ground truth，請先貼上參考資料")
+        if not det_file.is_file():
+            raise HTTPException(400, "尚無偵測結果，請先執行偵測")
 
-    gt = json.loads(gt_file.read_text(encoding="utf-8"))
-    det = json.loads(det_file.read_text(encoding="utf-8"))
+        gt = json.loads(gt_file.read_text(encoding="utf-8"))
+        det = json.loads(det_file.read_text(encoding="utf-8"))
 
     # Key 比對
     gt_key_root = _parse_root(gt.get("key", ""))
@@ -301,8 +409,22 @@ async def score_song(level: str, song: str):
     return result
 
 
+def _summarise_scores(lv_scores: list) -> dict:
+    if not lv_scores:
+        return {}
+    avg_root = round(sum(s["root_accuracy"] for s in lv_scores) / len(lv_scores), 1)
+    avg_full = round(sum(s["full_accuracy"] for s in lv_scores) / len(lv_scores), 1)
+    key_pct = round(sum(1 for s in lv_scores if s["key_match"]) / len(lv_scores) * 100, 1)
+    return {
+        "songs": lv_scores,
+        "avg_root_accuracy": avg_root,
+        "avg_full_accuracy": avg_full,
+        "key_accuracy": key_pct,
+    }
+
+
 @router.get("/score-all")
-async def score_all():
+def score_all():
     """計算所有等級的總分"""
     results = {}
     for lv in LEVELS:
@@ -333,11 +455,37 @@ async def score_all():
                 "full_accuracy": score["full_accuracy"],
             })
 
-        if lv_scores:
-            avg_root = round(sum(s["root_accuracy"] for s in lv_scores) / len(lv_scores), 1)
-            avg_full = round(sum(s["full_accuracy"] for s in lv_scores) / len(lv_scores), 1)
-            key_pct = round(sum(1 for s in lv_scores if s["key_match"]) / len(lv_scores) * 100, 1)
-            results[lv] = {"songs": lv_scores, "avg_root_accuracy": avg_root,
-                           "avg_full_accuracy": avg_full, "key_accuracy": key_pct}
+        summary = _summarise_scores(lv_scores)
+        if summary:
+            results[lv] = summary
+
+    # library 等級 — 以 song_hash 為 key，用 chord cache 當偵測來源
+    if LIBRARY_GT_DIR.is_dir():
+        lib_scores = []
+        for gt_file in sorted(LIBRARY_GT_DIR.glob("*.lab")):
+            if gt_file.name.endswith(".det.lab"):
+                continue
+            song_id = gt_file.stem
+            cache_file = _library_cache_path(song_id)
+            if not cache_file.is_file():
+                continue
+            try:
+                gt = json.loads(gt_file.read_text(encoding="utf-8"))
+                cache = json.loads(cache_file.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+            det = {"key": cache.get("key", ""), "entries": cache.get("chords", [])}
+            score = _score_segment(gt.get("entries", []), det.get("entries", []))
+            gt_key_root = _parse_root(gt.get("key", ""))
+            det_key_root = _parse_root(det.get("key", ""))
+            lib_scores.append({
+                "song": song_id,
+                "key_match": (gt_key_root == det_key_root) and (gt_key_root >= 0),
+                "root_accuracy": score["root_accuracy"],
+                "full_accuracy": score["full_accuracy"],
+            })
+        summary = _summarise_scores(lib_scores)
+        if summary:
+            results[LIBRARY_LEVEL] = summary
 
     return results

@@ -120,10 +120,20 @@
   };
 </script>
 <script>
-const LEVELS = ["Lv1","Lv2","Lv3","Lv4","Lv5"];
-const LEVEL_NAMES = {Lv1:"三和弦流行",Lv2:"七和弦 R&B",Lv3:"爵士標準曲",Lv4:"複雜 Fusion",Lv5:"極難挑戰"};
+const LEVELS = ["Lv1","Lv2","Lv3","Lv4","Lv5","library"];
+const LEVEL_NAMES = {
+  Lv1:"三和弦流行", Lv2:"七和弦 R&B", Lv3:"爵士標準曲",
+  Lv4:"複雜 Fusion", Lv5:"極難挑戰",
+  library:"📚 主音樂庫"
+};
 let currentLevel = "Lv1";
 let songsData = {};
+
+// library mode: 用 song_hash 當 id；Lv1~Lv5: 用檔名
+function songIdOf(song) { return song.hash || song.name; }
+function findSong(lv, sid) {
+  return (songsData[lv] || []).find(s => songIdOf(s) === sid);
+}
 
 // showToast from utils.js
 
@@ -131,7 +141,9 @@ let songsData = {};
 async function init() {
   songsData = await (await fetch("/api/benchmark/songs")).json();
   buildTabs();
-  switchLevel("Lv1");
+  // dev 上 Lv1~5 通常是空的，library 才有資料 → 預設停在 library tab
+  const initialLevel = (songsData.library && songsData.library.length) ? "library" : "Lv1";
+  switchLevel(initialLevel);
   loadScoreAll();
 }
 
@@ -140,7 +152,8 @@ function buildTabs() {
   LEVELS.forEach(lv => {
     const t = document.createElement("div");
     t.className = "tab" + (lv === currentLevel ? " active" : "");
-    t.textContent = `${lv} ${LEVEL_NAMES[lv]}`;
+    // Lv1~Lv5 顯示 "Lv1 三和弦流行"；library 直接顯示 "📚 主音樂庫"
+    t.textContent = lv.startsWith("Lv") ? `${lv} ${LEVEL_NAMES[lv]}` : LEVEL_NAMES[lv];
     t.onclick = () => switchLevel(lv);
     tabs.appendChild(t);
   });
@@ -165,9 +178,10 @@ function renderLevel(lv) {
 
 // ---- song card ----
 function createSongCard(song, lv) {
+  const sid = songIdOf(song);
   const card = document.createElement("div");
   card.className = "song-card";
-  card.id = `card-${lv}-${song.name}`;
+  card.id = `card-${lv}-${sid}`;
 
   card.innerHTML = `
     <div class="song-header">
@@ -178,15 +192,15 @@ function createSongCard(song, lv) {
       </span>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-sm" onclick="toggleGT('${lv}','${song.name}')">編輯 Ground Truth</button>
-      <button class="btn btn-sm" onclick="runDetect('${lv}','${song.name}',this)">執行偵測</button>
+      <button class="btn btn-sm" onclick="toggleGT('${lv}','${sid}')">編輯 Ground Truth</button>
+      <button class="btn btn-sm" onclick="runDetect('${lv}','${sid}',this)">執行偵測</button>
       ${song.has_ground_truth && song.has_detection ?
-        `<button class="btn btn-sm btn-primary" onclick="runScore('${lv}','${song.name}')">評分</button>` : ''}
-      <button class="btn btn-sm" onclick="previewChords('${lv}','${song.name}')">預覽和弦</button>
+        `<button class="btn btn-sm btn-primary" onclick="runScore('${lv}','${sid}')">評分</button>` : ''}
+      <button class="btn btn-sm" onclick="previewChords('${lv}','${sid}')">預覽和弦</button>
     </div>
-    <div id="gt-${lv}-${song.name}" class="gt-section" style="display:none"></div>
-    <div id="preview-${lv}-${song.name}"></div>
-    <div id="score-${lv}-${song.name}"></div>
+    <div id="gt-${lv}-${sid}" class="gt-section" style="display:none"></div>
+    <div id="preview-${lv}-${sid}"></div>
+    <div id="score-${lv}-${sid}"></div>
   `;
   return card;
 }
@@ -284,7 +298,8 @@ async function saveGT(lv, song) {
     // 更新 badge
     const badges = document.querySelector(`#card-${lv}-${song} .song-badges`);
     if (badges && !badges.innerHTML.includes("badge-gt")) {
-      songsData[lv].find(s => s.name === song).has_ground_truth = true;
+      const target = findSong(lv, song);
+      if (target) target.has_ground_truth = true;
       renderLevel(lv);
     }
   }
@@ -297,7 +312,8 @@ async function runDetect(lv, song, btn) {
     const resp = await fetch(`/api/benchmark/detect/${lv}/${encodeURIComponent(song)}`, {method:"POST"});
     const r = await resp.json();
     showToast(`偵測完成: ${r.chord_count} 個和弦, Key: ${r.key}`);
-    songsData[lv].find(s => s.name === song).has_detection = true;
+    const target = findSong(lv, song);
+    if (target) target.has_detection = true;
     renderLevel(lv);
   } catch(e) {
     showToast("偵測失敗: " + e.message);

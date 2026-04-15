@@ -34,12 +34,19 @@ _scan_state = BatchState(
 # ---------------------------------------------------------------------------
 
 def _safe_path(path: str) -> str:
-    """驗證路徑在任一 MUSIC_ROOT 內，防止路徑穿越"""
-    resolved = os.path.normpath(path)
-    if ".." in resolved:
-        raise HTTPException(status_code=403, detail="路徑不允許")
+    """驗證路徑在任一 MUSIC_ROOT 內，防止路徑穿越
+
+    用 commonpath 做 segment-level 檢查，避免子字串誤判（例如檔名含 `...` 省略號）。
+    realpath 已展開符號連結與相對段，所以 `..` 攻擊會被 commonpath 自動排除。
+    """
+    resolved = os.path.realpath(path)
     for root in get_music_roots():
-        if resolved.lower().startswith(root.lower()):
+        root_real = os.path.realpath(root)
+        try:
+            common = os.path.commonpath([resolved, root_real])
+        except ValueError:
+            continue  # 不同 drive
+        if common.lower() == root_real.lower():
             return resolved
     raise HTTPException(status_code=403, detail="路徑不允許")
 
@@ -315,7 +322,7 @@ async def track_stream(request: Request, path: str = Query(...)):
 
 
 @router.get("/track/cover")
-async def track_cover(path: str = Query(...)):
+def track_cover(path: str = Query(...)):
     """取得專輯封面（優先同目錄 cover.jpg，fallback FLAC 內嵌圖片）"""
     full = _safe_path(resolve_path(path))
 
