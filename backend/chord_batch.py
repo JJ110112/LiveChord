@@ -84,6 +84,24 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
     _batch_state["done"] = len(tracks)
     _batch_state["current_track"] = ""
     _batch_state["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+
+    if _batch_state["succeeded"] > 0 and CACHE_FILE.is_file():
+        try:
+            cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+            modified = False
+            for t in cache.get("tracks", []):
+                if not t.get("has_chords"):
+                    cf = CHORDS_DIR / f"{song_hash(t.get('path', ''))}.json"
+                    if cf.is_file():
+                        t["has_chords"] = True
+                        modified = True
+            if modified:
+                tmp = CACHE_FILE.with_suffix(".tmp")
+                tmp.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+                tmp.replace(CACHE_FILE)
+        except Exception:
+            pass
+
     _batch_state["running"] = False
 
 
@@ -235,8 +253,17 @@ def batch_midi_import():
             sheet = {"path": p, "key": key, "capo": 0, "source": "midi", "chords": entries}
             chord_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
             imported += 1
+            t["has_chords"] = True
         except Exception as e:
             errors.append({"path": p, "error": str(e)})
+
+    if imported > 0:
+        try:
+            tmp = CACHE_FILE.with_suffix(".tmp")
+            tmp.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(CACHE_FILE)
+        except Exception:
+            pass
 
     return {"ok": True, "imported": imported, "skipped": skipped, "errors": errors[:10]}
 

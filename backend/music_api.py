@@ -404,33 +404,34 @@ def _scan_worker(mode: str = "incremental"):
         seen_paths = set()
         _new_meta_count = 0   # 本輪讀取 metadata 的次數（用於節流）
 
-        for root_idx, root in enumerate(roots):
+        def _scan_dir(current_dir: str, current_rel_prefix: str, root_prefix: str):
+            nonlocal _new_meta_count
             if _scan_cancel:
-                break
-            prefix = f"@{root_idx}/" if root_idx > 0 else ""
-            if not os.path.isdir(root):
-                continue
+                return
+            _scan_state["total_dirs"] += 1
 
-            for dirpath, dirnames, filenames in os.walk(root):
+            try:
+                entries = list(os.scandir(current_dir))
+            except OSError:
+                return
+
+            dirs = []
+            for entry in entries:
                 if _scan_cancel:
-                    break
-                
-                # 過濾隱藏資料夾與不希望掃描的系統/特定音樂分類資料夾
-                exclude_dirs = {
-                    "#recycle", "@eaDir", "@tmp", "#snapshot",
-                    "Classics", "Classical", "Sleep", "Electronic Dance Music"
-                }
-                dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in exclude_dirs]
-                
-                _scan_state["total_dirs"] += 1
+                    return
+                if entry.name.startswith("."):
+                    continue
 
-                for fname in filenames:
-                    if not fname.lower().endswith(".flac"):
-                        continue
-
-                    full = os.path.join(dirpath, fname)
-                    inner_rel = os.path.relpath(full, root).replace("\\", "/")
-                    rel = prefix + inner_rel
+                if entry.is_dir():
+                    exclude_dirs = {
+                        "#recycle", "@eaDir", "@tmp", "#snapshot",
+                        "Classics", "Classical", "Sleep", "Electronic Dance Music"
+                    }
+                    if entry.name not in exclude_dirs:
+                        dirs.append(entry)
+                elif entry.is_file() and entry.name.lower().endswith(".flac"):
+                    full = entry.path
+                    rel = current_rel_prefix + entry.name
                     seen_paths.add(rel)
                     _scan_state["progress"] += 1
                     
@@ -440,7 +441,7 @@ def _scan_worker(mode: str = "incremental"):
 
                     if mode == "incremental" and rel in existing:
                         try:
-                            mtime = os.path.getmtime(full)
+                            mtime = entry.stat().st_mtime
                             old_mtime = existing[rel].get("mtime", 0)
                             if mtime == old_mtime:
                                 tracks.append(existing[rel])
@@ -455,11 +456,12 @@ def _scan_worker(mode: str = "incremental"):
                     meta["path"] = rel
 
                     try:
-                        meta["mtime"] = os.path.getmtime(full)
+                        meta["mtime"] = entry.stat().st_mtime
                     except OSError:
                         meta["mtime"] = 0
 
                     # 從目錄結構推斷 genre（去掉 @N/ 前綴）
+                    inner_rel = rel[len(root_prefix):] if root_prefix and rel.startswith(root_prefix) else rel
                     genre_parts = inner_rel.split("/")
                     meta["genre"] = meta["genre"] or (genre_parts[0] if len(genre_parts) > 1 else "")
 
@@ -474,7 +476,23 @@ def _scan_worker(mode: str = "incremental"):
                         time.sleep(0.05)
 
                     if len(tracks) % 3000 == 0:
-                        _save_cache(tracks)
+                        merged = list(tracks)
+                        for old_rel, old_t in existing.items():
+                            if old_rel not in seen_paths:
+                                merged.append(old_t)
+                        _save_cache(merged)
+
+            for d in dirs:
+                _scan_dir(d.path, current_rel_prefix + d.name + "/", root_prefix)
+
+        for root_idx, root in enumerate(roots):
+            if _scan_cancel:
+                break
+            prefix = f"@{root_idx}/" if root_idx > 0 else ""
+            if not os.path.isdir(root):
+                continue
+            
+            _scan_dir(root, prefix, prefix)
 
         # 計算刪除的曲目數
         deleted = old_paths - seen_paths
