@@ -13,6 +13,7 @@ from datetime import datetime
 log = logging.getLogger("livechord.auto")
 from config import resolve_path
 from chord_cache import song_hash
+from task_lock import get_task_lock
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 SETTINGS_FILE = DATA_DIR / "settings.json"
@@ -282,28 +283,32 @@ def _retrain_ai_models():
 
 
 def _do_auto_scan(settings: dict):
-    """執行一輪增量掃描"""
+    """執行一輪增量掃描（受 task_lock 保護）"""
     from music_api import _scan_worker, _scan_state
 
-    # 如果已有掃描在跑，跳過
-    if _scan_state["running"]:
+    lock = get_task_lock()
+    if not lock.try_acquire("SCAN", "AUTO"):
+        add_log("INFO", "略過自動掃描：另一任務進行中")
         return
 
-    _worker_state["status"] = "scanning"
-    _worker_state["current_task"] = "掃描音樂庫"
-    add_log("INFO", "開始自動增量掃描")
+    try:
+        _worker_state["status"] = "scanning"
+        _worker_state["current_task"] = "掃描音樂庫"
+        add_log("INFO", "開始自動增量掃描")
 
-    _scan_worker("incremental")
+        _scan_worker("incremental")
 
-    new = _scan_state.get("new_tracks", 0)
-    updated = _scan_state.get("updated_tracks", 0)
-    _worker_state["scan_count"] += 1
-    _worker_state["last_scan_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        new = _scan_state.get("new_tracks", 0)
+        updated = _scan_state.get("updated_tracks", 0)
+        _worker_state["scan_count"] += 1
+        _worker_state["last_scan_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    if new > 0 or updated > 0:
-        add_log("INFO", f"掃描完成: 新增 {new}, 更新 {updated}")
-    else:
-        add_log("INFO", "掃描完成: 無變動")
+        if new > 0 or updated > 0:
+            add_log("INFO", f"掃描完成: 新增 {new}, 更新 {updated}")
+        else:
+            add_log("INFO", "掃描完成: 無變動")
+    finally:
+        lock.release()
 
 
 def _find_midi_for_track(track_name: str) -> str:
@@ -325,7 +330,7 @@ def _find_midi_for_track(track_name: str) -> str:
 
 
 def _do_auto_chord_detect(settings: dict):
-    """偵測佇列中的曲目和弦（優先用 MIDI，fallback BTC）"""
+    """偵測佇列中的曲目和弦（優先用 MIDI，fallback BTC，受 task_lock 保護）"""
     unanalyzed = _get_unanalyzed_tracks(settings)
     max_per_cycle = settings.get("auto_chord_max_per_cycle", 20)
     batch = unanalyzed[:max_per_cycle]
@@ -336,17 +341,31 @@ def _do_auto_chord_detect(settings: dict):
         add_log("INFO", "所有曲目已有和弦譜")
         return
 
-    _worker_state["status"] = "detecting"
-    add_log("INFO", f"開始自動偵測和弦: {len(batch)} 首（佇列剩餘 {len(unanalyzed)}）")
+    lock = get_task_lock()
+    if not lock.try_acquire("CHORD_BATCH", "AUTO"):
+        add_log("INFO", "略過自動偵測：另一任務進行中")
+        return
 
-    CHORDS_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        _worker_state["status"] = "detecting"
+        add_log("INFO", f"開始自動偵測和弦: {len(batch)} 首（佇列剩餘 {len(unanalyzed)}）")
+        lock.update_progress(total=len(batch))
 
+        CHORDS_DIR.mkdir(parents=True, exist_ok=True)
+
+        _auto_chord_detect_loop(settings, batch, unanalyzed, lock)
+    finally:
+        lock.release()
+
+
+def _auto_chord_detect_loop(settings: dict, batch: list, unanalyzed: list, lock):
     for i, track_path in enumerate(batch):
         if _stop_event.is_set():
             break
 
         name = track_path.split("/")[-1].replace(".flac", "")
         _worker_state["current_task"] = f"偵測和弦 ({i+1}/{len(batch)}): {name}"
+        lock.update_progress(current_item=track_path, done=i + 1)
 
         # 優先用 MIDI
         midi_path = _find_midi_for_track(name)

@@ -19,6 +19,8 @@ from auth_api import router as auth_router
 import auth_api
 from fastapi import Depends
 import auto_worker
+from task_lock import get_task_lock
+import library_groups
 
 
 
@@ -98,6 +100,22 @@ async def auto_stop(admin: str = Depends(auth_api.get_admin_user)):
 async def auto_trigger(admin: str = Depends(auth_api.get_admin_user)):
     ok = auto_worker.trigger_now()
     return {"ok": ok, "message": "已觸發" if ok else "工作器非等待狀態"}
+
+
+# ---------------------------------------------------------------------------
+# 中央任務鎖 + 群組 API
+# ---------------------------------------------------------------------------
+
+@app.get("/api/tasks/status")
+async def tasks_status(admin: str = Depends(auth_api.get_admin_user)):
+    """目前佔用 task_lock 的任務（scan / chord_batch / ...）"""
+    return {"current": get_task_lock().status()}
+
+
+@app.get("/api/library/groups")
+async def library_groups_list(admin: str = Depends(auth_api.get_admin_user)):
+    """依「root 第一層資料夾」回傳曲目群組與和弦覆蓋率"""
+    return {"groups": library_groups.list_groups()}
 
 
 # ---------------------------------------------------------------------------

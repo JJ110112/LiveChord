@@ -12,6 +12,8 @@ from fastapi import APIRouter, HTTPException, Query
 from chord_cache import song_hash
 from config import resolve_path
 from batch_state import BatchState
+from task_lock import get_task_lock
+from library_groups import filter_tracks_by_group
 
 router = APIRouter(prefix="/api", tags=["chord-batch"])
 
@@ -64,6 +66,7 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
     """背景批次偵測所有曲目的和弦"""
     from chord_detect import detect_chords_and_key_isolated
 
+    lock = get_task_lock()
     _batch_state.update(
         running=True, total=len(tracks), done=0,
         current_track="", succeeded=0, failed=0,
@@ -71,12 +74,14 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
         started_at=time.strftime("%Y-%m-%dT%H:%M:%S"),
         finished_at="",
     )
+    lock.update_progress(total=len(tracks))
 
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
 
     for i, track_path in enumerate(tracks):
         _batch_state["done"] = i + 1
         _batch_state["current_track"] = track_path
+        lock.update_progress(current_item=track_path, done=i + 1)
 
         chords_file = CHORDS_DIR / f"{song_hash(track_path)}.json"
         if skip_existing and chords_file.is_file():
@@ -127,32 +132,55 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
     _batch_state["running"] = False
 
 
+def _batch_thread_entry(tracks: list, skip_existing: bool):
+    try:
+        _batch_detect_worker(tracks, skip_existing)
+    finally:
+        get_task_lock().release()
+
+
 @router.post("/chords/batch-detect")
 async def batch_detect(
     skip_existing: bool = Query(default=True),
     genre: str = Query(default=""),
+    group_id: str = Query(default=""),
 ):
-    """啟動批次和弦偵測（背景非同步）"""
-    if _batch_state.running:
-        return {"ok": False, "message": "批次偵測進行中",
-                "done": _batch_state["done"], "total": _batch_state["total"]}
+    """啟動批次和弦偵測（背景非同步）
 
+    可選擇範圍：
+    - group_id=@<root_idx>/<label>：只處理該群組
+    - genre=<prefix>：依路徑前綴過濾（向後相容）
+    - 兩者皆無：處理整個音樂庫
+    """
     if not CACHE_FILE.is_file():
         raise HTTPException(status_code=400, detail="請先執行音樂庫掃描")
 
     cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
-    tracks = [t["path"] for t in cache.get("tracks", [])]
+    track_dicts = cache.get("tracks", [])
 
-    if genre:
+    if group_id:
+        track_dicts = filter_tracks_by_group(track_dicts, group_id)
+
+    tracks = [t["path"] for t in track_dicts]
+
+    if genre and not group_id:
         tracks = [p for p in tracks if p.lower().startswith(genre.lower())]
 
     if not tracks:
         return {"ok": False, "message": "找不到曲目"}
 
-    t = threading.Thread(target=_batch_detect_worker, args=(tracks, skip_existing), daemon=True)
+    lock = get_task_lock()
+    scope = group_id or genre or "ALL"
+    if not lock.try_acquire("CHORD_BATCH", scope):
+        cur = lock.status() or {}
+        return {"ok": False,
+                "message": f"後台正在處理 {cur.get('kind', '')} ({cur.get('scope', '')})，請稍候",
+                "done": _batch_state["done"], "total": _batch_state["total"]}
+
+    t = threading.Thread(target=_batch_thread_entry, args=(tracks, skip_existing), daemon=True)
     t.start()
 
-    return {"ok": True, "message": f"批次偵測已啟動（{len(tracks)} 首）", "total": len(tracks)}
+    return {"ok": True, "message": f"批次偵測已啟動（{len(tracks)} 首）", "total": len(tracks), "scope": scope}
 
 
 @router.get("/chords/batch-detect/status")

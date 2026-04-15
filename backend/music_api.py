@@ -14,6 +14,7 @@ from mutagen.flac import FLAC
 
 from config import get_music_root, get_music_roots, set_music_roots, resolve_path
 from batch_state import BatchState
+from task_lock import get_task_lock
 
 router = APIRouter(prefix="/api", tags=["music"])
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -380,6 +381,7 @@ def _scan_worker(mode: str = "incremental"):
     """背景掃描執行緒（節流 I/O，可中斷）"""
     global _scan_cancel
     _scan_cancel = False
+    lock = get_task_lock()
     _scan_state.update(
         running=True, progress=0, total_dirs=0,
         new_tracks=0, updated_tracks=0, deleted_tracks=0, mode=mode,
@@ -482,6 +484,7 @@ def _scan_worker(mode: str = "incremental"):
                     _new_meta_count += 1
                     if _new_meta_count % 50 == 0:
                         time.sleep(0.05)
+                        lock.update_progress(current_item=rel, done=_scan_state["progress"])
 
                     # 週期存檔：incremental 模式下若還沒遇到新/更新，跳過（純拷貝 7MB 無意義）
                     if len(tracks) % 3000 == 0 and (
@@ -521,6 +524,32 @@ def _scan_worker(mode: str = "incremental"):
         _scan_state["running"] = False
 
 
+def _scan_thread_entry(mode: str):
+    """執行緒進入點：跑 worker 完成後釋放 task_lock。"""
+    try:
+        _scan_worker(mode)
+    finally:
+        get_task_lock().release()
+
+
+def _start_scan(mode: str) -> dict:
+    if mode not in ("full", "incremental"):
+        mode = "incremental"
+
+    lock = get_task_lock()
+    if not lock.try_acquire("SCAN", "ALL"):
+        cur = lock.status() or {}
+        return {
+            "ok": False,
+            "message": f"後台正在處理 {cur.get('kind', '')} ({cur.get('scope', '')})，請稍候",
+            "progress": _scan_state["progress"],
+        }
+
+    t = threading.Thread(target=_scan_thread_entry, args=(mode,), daemon=True)
+    t.start()
+    return {"ok": True, "message": f"背景掃描已啟動（{mode}模式）"}
+
+
 @router.post("/library/scan")
 async def library_scan(mode: str = Query(default="incremental")):
     """
@@ -528,39 +557,13 @@ async def library_scan(mode: str = Query(default="incremental")):
     mode=full: 全部重新掃描（忽略快取）
     mode=incremental: 增量掃描（只讀取新增/修改的檔案）
     """
-    if _scan_state["running"]:
-        return {
-            "ok": False,
-            "message": "掃描進行中，請稍候",
-            "progress": _scan_state["progress"],
-        }
-
-    if mode not in ("full", "incremental"):
-        mode = "incremental"
-
-    t = threading.Thread(target=_scan_worker, args=(mode,), daemon=True)
-    t.start()
-
-    return {"ok": True, "message": f"背景掃描已啟動（{mode}模式）"}
+    return _start_scan(mode)
 
 
 @router.get("/library/scan")
 async def library_scan_get(mode: str = Query(default="incremental")):
     """GET 相容：同 POST（方便瀏覽器/批次檔呼叫）"""
-    if _scan_state["running"]:
-        return {
-            "ok": False,
-            "message": "掃描進行中，請稍候",
-            "progress": _scan_state["progress"],
-        }
-
-    if mode not in ("full", "incremental"):
-        mode = "incremental"
-
-    t = threading.Thread(target=_scan_worker, args=(mode,), daemon=True)
-    t.start()
-
-    return {"ok": True, "message": f"背景掃描已啟動（{mode}模式）"}
+    return _start_scan(mode)
 
 
 @router.get("/library/scan/status")
