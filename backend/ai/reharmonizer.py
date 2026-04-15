@@ -325,7 +325,7 @@ class Reharmonizer:
             from .preprocess import transpose_chord
             from .transformer_reharmonizer import TransformerReharmonizer, greedy_decode
             
-            models_dir = Path("W:/data/models")
+            models_dir = Path("V:/data/models")
             if not models_dir.exists():
                 models_dir = Path(__file__).parent.parent.parent / "data" / "models"
                 

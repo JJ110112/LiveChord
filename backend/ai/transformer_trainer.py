@@ -248,7 +248,7 @@ if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding="utf-8")
     
-    models_dir = Path("W:/data/models")
+    models_dir = Path("V:/data/models")
     if not models_dir.exists():
         models_dir = Path(__file__).parent.parent.parent / "data" / "models"
         

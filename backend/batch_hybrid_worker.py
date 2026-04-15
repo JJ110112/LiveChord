@@ -63,7 +63,7 @@ def run_hybrid_batch(separated_dir=None, progress_file=None, stop_file=None):
         _stop_file = Path(stop_file)
 
     # Always use the NAS data directory so LiveChord server can access the output
-    data_dir = Path('W:/data')
+    data_dir = Path('V:/data')
 
     hybrid_bass_dir = data_dir / "hybrid_bass"
     hybrid_melody_dir = data_dir / "hybrid_melody"
@@ -149,7 +149,7 @@ def run_hybrid_batch(separated_dir=None, progress_file=None, stop_file=None):
                 "status": "running",
                 "pid": os.getpid(),
                 "started_at": started_at,
-                "root_dir": "W:/data/chords",
+                "root_dir": "V:/data/chords",
                 "total": total_pending,
                 "done": idx,
                 "processed": processed,
@@ -213,7 +213,7 @@ def run_hybrid_batch(separated_dir=None, progress_file=None, stop_file=None):
         "status": final_status,
         "pid": os.getpid(),
         "started_at": started_at,
-        "root_dir": "W:/data/chords",
+        "root_dir": "V:/data/chords",
         "total": total_pending,
         "done": idx if 'idx' in dir() else 0,
         "processed": processed,

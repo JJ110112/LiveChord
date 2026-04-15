@@ -15,7 +15,7 @@ class StemSeparator:
     """
     def __init__(self, output_dir: str = None):
         if output_dir is None:
-            output_dir = os.environ.get('LIVECHORD_SEPARATED_DIR', 'W:/data/separated')
+            output_dir = os.environ.get('LIVECHORD_SEPARATED_DIR', 'V:/data/separated')
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         # Using the fastest default model 'htdemucs' (or 'htdemucs_ft' for fine-tuned)

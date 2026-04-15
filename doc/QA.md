@@ -552,8 +552,8 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
    - 播放頁: 三分頁切換、88 鍵、Jazzify、段落標記
    - 管理頁: 掃描、批次偵測、自動排程
    - Benchmark: 執行偵測、對比評分
-7. 佈署同步: AI agent 負責將變更的 backend/frontend 檔案複製到 W:\ 供人類驗證品質
-8. 重啟生產伺服器，確認 W:\ 上運行正常
+7. 佈署同步: AI agent 負責將變更的 backend/frontend 檔案複製到 V:\ 供人類驗證品質
+8. 重啟生產伺服器，確認 V:\ 上運行正常
 9. 記錄結果: 勾選上方清單，未通過項開 issue
 10. 全部 P0/P1 修復後 → 版本通過
 ```
@@ -588,9 +588,9 @@ AI 的每次提交必須附上兩種清單：
 > **駁回權力**：當人類開發者回復「退回！你沒有跑測試就說寫完了，自己檢查 Script Error。」時，AI 必須重新啟動偵錯迴圈，執行自我測試。
 
 ### 防線 5：佈署同步 (Deploy Sync)
-程式碼提交後，**必須同步至生產伺服器 W:\**。開發環境 (`C:\Users\hitea\Claude\LiveChord`) 與生產環境 (`W:\`) 是分離的，伺服器從 `W:\backend` 和 `W:\frontend` 執行。
-- **後端變更**：將修改的 `.py` 檔案複製到 `W:\backend\` 對應路徑。
-- **前端變更**：將修改的 `.html`、`.js`、`.css` 檔案複製到 `W:\frontend\` 對應路徑。
+程式碼提交後，**必須同步至生產伺服器 V:\**（NUC 上的 `C:\LiveChord`，從 PC 端以 V:\ 掛載）。開發環境 (`C:\Users\hitea\Claude\LiveChord`) 與生產環境 (`V:\`) 是分離的，伺服器從 `V:\backend` 和 `V:\frontend` 執行。
+- **後端變更**：將修改的 `.py` 檔案複製到 `V:\backend\` 對應路徑。
+- **前端變更**：將修改的 `.html`、`.js`、`.css` 檔案複製到 `V:\frontend\` 對應路徑。
 - **新增檔案**：確認目標目錄存在，必要時建立子目錄。
 - **驗證**：同步後用 `ls -la` 確認檔案大小與時間戳正確。
 - **不同步的項目**：`data/`（生產環境有自己的資料）、`doc/`、`tests/`、`.git/`。
@@ -633,7 +633,7 @@ AI 的每次提交必須附上兩種清單：
 為了解決 NAS NAS/伺服器 CPU 效能不足以應付數萬首曲目的 BTC 和弦推論與 pYIN 旋律擷取之問題，系統導入了高階 PC 作為「超級運算節點 (Super Worker)」的分散式處理策略：
 - **CPU/GPU 雙重引擎**：透過 `batch_super_worker.py` 在配備了旗艦級 CPU (如 i9) 與 GPU (如 RTX 5080) 的 PC 上運行，使用 `ThreadPoolExecutor` 提供 12~24 執行緒全速處理 CPU 密集的旋律擷取。
 - **Semaphore 保護機制**：利用 `threading.Semaphore(2)` 限制進入 PyTorch 的並發數，維持 GPU 滿載同時杜絕 VRAM OOM 崩潰。
-- **資料庫無縫連接**：運算結果直接透過網路磁碟寫入 NAS 共用目錄 (`W:\data`)，Server 徹底轉型為輕量級 Web 與 API 提供者，達成 **Zero-CPU Server** 目標。
+- **資料庫無縫連接**：運算結果直接透過網路磁碟寫入 NAS 共用目錄 (`V:\data`)，Server 徹底轉型為輕量級 Web 與 API 提供者，達成 **Zero-CPU Server** 目標。
 
 ---
 
@@ -704,11 +704,12 @@ AI 的每次提交必須附上兩種清單：
 - 目前設定：`flex: 0 0 120px`，**不可低於 100px**
 - Active chord 使用 `transform-origin: top center` 確保向下擴展、色條對齊
 
-### 規則 9：W:\ 與 Git 雙向同步 (Dual Sync)
+### 規則 9：V:\ 與 Git 雙向同步 (Dual Sync)
 
-- 修改 W:\（生產）→ 立刻同步到 git repo
-- 修改 git repo → 立刻同步到 W:\
+- 修改 V:\（生產，NUC 的 C:\LiveChord）→ 立刻同步到 git repo
+- 修改 git repo → 立刻同步到 V:\
 - **兩邊必須是同一份檔案**，不可各自維護不同版本
+- 注意：W:\（NAS \\LOVE\LiveChordServer）為 PC 端批次 worker 用的另一份共用副本，與 V:\ 是兩個獨立目錄，不要混淆
 - `cp` 整份檔案比 `Edit` 兩邊更安全
 
 ### 規則 10：Canvas 尺寸必須跟隨佈局 (Canvas Buffer ↔ Flex Sync)

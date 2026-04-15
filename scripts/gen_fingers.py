@@ -14,8 +14,8 @@ import re
 import sys
 import os
 
-INPUT_FILE = r"W:\backend\chord_diagrams.py"
-OUTPUT_FILE = r"W:\backend\chord_diagrams.py"
+INPUT_FILE = r"V:\backend\chord_diagrams.py"
+OUTPUT_FILE = r"V:\backend\chord_diagrams.py"
 
 
 def compute_fingers(strings, barres):

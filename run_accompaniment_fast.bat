@@ -11,7 +11,7 @@ echo ==================================================
 echo.
 timeout /t 3
 
-cd /d W:\
+cd /d V:\
 python backend\batch_accompaniment_worker.py --workers 16 --levels L1,L2 --styles Arpeggio,Block --no-pedal --no-dynamics
 
 echo.

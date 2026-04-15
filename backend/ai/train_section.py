@@ -14,7 +14,7 @@ import re
 import math
 
 class SectionDataset(Dataset):
-    def __init__(self, data_dir="W:/data", max_songs=40000):
+    def __init__(self, data_dir="V:/data", max_songs=40000):
         self.data_dir = Path(data_dir)
         self.chords_dir = self.data_dir / "chords"
         self.files = glob.glob(str(self.chords_dir / "*.json"))[:max_songs]
@@ -196,7 +196,7 @@ def train():
             
     print("\nTraining Complete! Saving section_detector.pth...")
     
-    models_dir = Path("W:/data/models")
+    models_dir = Path("V:/data/models")
     models_dir.mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), models_dir / "section_detector.pth")
     print("Done!")

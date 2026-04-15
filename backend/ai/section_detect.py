@@ -95,7 +95,7 @@ def _contains_ii_v(degrees):
     return False
 
 
-def _extract_midi_features(song_hash, data_dir="W:/data"):
+def _extract_midi_features(song_hash, data_dir="V:/data"):
     """讀取 Melody 與 Bass MIDI 資訊，轉為絕對時間戳清單"""
     melody_events = []
     bass_events = []
@@ -129,7 +129,7 @@ def _extract_midi_features(song_hash, data_dir="W:/data"):
 # 主入口
 # ---------------------------------------------------------------------------
 
-def detect_sections(chords, key="C", song_hash=None, data_dir="W:/data", mode="auto", fallback_data_dir=None):
+def detect_sections(chords, key="C", song_hash=None, data_dir="V:/data", mode="auto", fallback_data_dir=None):
     if not chords or len(chords) < 4:
         return {"sections": [], "analysis": {}}
 
@@ -501,7 +501,7 @@ if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     from pathlib import Path
 
-    chords_dir = Path("W:/data/chords") if Path("W:/data/chords").is_dir() else Path("../data/chords")
+    chords_dir = Path("V:/data/chords") if Path("V:/data/chords").is_dir() else Path("../data/chords")
     test_songs = ["小蜜蜂.flac", "Get It On.flac", "Dancing Queen.flac",
                   "For Once In My Life.flac", "Super Mario Bros. Theme Song.flac"]
 
@@ -512,7 +512,7 @@ if __name__ == "__main__":
             continue
         data = json.loads(f.read_text(encoding="utf-8"))
         key = data.get("key", "C")
-        result = detect_sections(data["chords"], key, song_hash=h, data_dir=str(Path("W:/data")))
+        result = detect_sections(data["chords"], key, song_hash=h, data_dir=str(Path("V:/data")))
         name = song.replace(".flac", "")
         a = result["analysis"]
 

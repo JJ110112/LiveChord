@@ -133,7 +133,7 @@ def test_data_rd_agent():
 
     # Test 1: Preprocess
     from ai.preprocess import build_training_data
-    data_dir = "W:/data/chords" if os.path.isdir("W:/data/chords") else "../data/chords"
+    data_dir = "V:/data/chords" if os.path.isdir("V:/data/chords") else "../data/chords"
     degrees, transposed, stats = build_training_data(data_dir)
 
     if stats["total_songs"] > 0:
@@ -254,7 +254,7 @@ def test_backend_rd_agent():
     # Test 7: HMM emission matrix
     from ai.hmm import build_emission_from_songs
     emission = build_emission_from_songs(
-        "W:/data/chords" if os.path.isdir("W:/data/chords") else "../data/chords"
+        "V:/data/chords" if os.path.isdir("V:/data/chords") else "../data/chords"
     )
     if emission.get_stats()["chord_states"] > 10:
         _log("BackendRD", "PASS", f"HMM 發射矩陣: {emission.get_stats()['chord_states']} 狀態")
@@ -368,7 +368,7 @@ def test_qa_agent():
 
     # Test 9: Evaluation metrics
     from ai.evaluate import full_evaluation
-    data_dir = "W:/data/chords" if os.path.isdir("W:/data/chords") else "../data/chords"
+    data_dir = "V:/data/chords" if os.path.isdir("V:/data/chords") else "../data/chords"
     eval_result = full_evaluation(data_dir)
     if "markov_model" in eval_result:
         ppl = eval_result["markov_model"]["perplexity"]

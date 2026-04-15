@@ -15,7 +15,7 @@ echo Press Ctrl+C to cancel, or any key to continue.
 pause >nul
 echo.
 
-cd /d W:\
+cd /d V:\
 python backend\batch_accompaniment_worker.py --workers 8 --levels L1,L2,L3 --styles Arpeggio,Block,Rhythm,Shell,Walking
 
 echo.

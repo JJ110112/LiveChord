@@ -4,11 +4,12 @@ LiveChord Extraction Manager — 監控 PC 端批次擷取進度
 架構:
   - NUC: 執行 LiveChord server (FastAPI)，提供 Web UI 監控
   - PC:  有 GPU + i9，直接執行批次擷取腳本
-  - W:   NAS 共用儲存，進度檔與停止信號透過此處跨機器通訊
+  - V:   NUC 本地 SSD 共享，進度檔與停止信號透過此處跨機器通訊
+         （PC 透過 SMB 寫入，NUC 本地讀取）
 
-PC 端的 batch worker 寫入進度到 W:/data/.extraction_progress.json
+PC 端的 batch worker 寫入進度到 V:/data/.extraction_progress.json
 NUC 端的 Web UI 讀取該檔案顯示進度
-停止信號透過 W:/data/.extraction_stop sentinel file 傳遞
+停止信號透過 V:/data/.extraction_stop sentinel file 傳遞
 """
 
 import os
@@ -16,10 +17,10 @@ import json
 from pathlib import Path
 
 
-PROGRESS_FILE = Path("W:/data/.extraction_progress.json")       # PC 端
-PROGRESS_FILE_NUC = Path("W:/data/.extraction_progress_nuc.json")  # NUC 端
-STOP_FILE = Path("W:/data/.extraction_stop")
-STOP_FILE_NUC = Path("W:/data/.extraction_stop_nuc")
+PROGRESS_FILE = Path("V:/data/.extraction_progress.json")       # PC 端
+PROGRESS_FILE_NUC = Path("V:/data/.extraction_progress_nuc.json")  # NUC 端
+STOP_FILE = Path("V:/data/.extraction_stop")
+STOP_FILE_NUC = Path("V:/data/.extraction_stop_nuc")
 
 
 class ExtractionManager:

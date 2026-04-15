@@ -18,7 +18,7 @@ if "%choice%"=="1" (
     echo ===================================================
     echo   [STEP 1] Running Tokenizer (Multi-threaded)
     echo ===================================================
-    python backend\ai\tokenizer.py "W:\data\chords"
+    python backend\ai\tokenizer.py "V:\data\chords"
     
     echo.
     echo ===================================================
@@ -36,6 +36,6 @@ python backend\ai\transformer_trainer.py
 echo.
 echo ===================================================
 echo All training pipelines completed!
-echo The generated model is saved at W:\data\models\
+echo The generated model is saved at V:\data\models\
 echo ===================================================
 pause

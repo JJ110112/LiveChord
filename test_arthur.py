@@ -7,7 +7,7 @@ from section_detect import detect_sections
 
 # Need to find Arthur's theme Hash since I don't know it exactly. I will find it.
 def find_arthur():
-    for file in glob.glob("W:/data/chords/*.json"):
+    for file in glob.glob("V:/data/chords/*.json"):
         try:
             with open(file, 'r', encoding='utf-8') as f:
                 d = json.load(f)

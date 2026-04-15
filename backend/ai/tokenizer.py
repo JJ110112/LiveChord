@@ -193,12 +193,12 @@ if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding="utf-8")
     
-    # Check if a custom path is specified via sys.argv, else defaults to W:/data/chords
+    # Check if a custom path is specified via sys.argv, else defaults to V:/data/chords
     if len(sys.argv) > 1:
         data_dir = Path(sys.argv[1])
     else:
-        # 預設使用 production 的 W:\data\chords
-        data_dir = Path("W:/data/chords")
+        # 預設使用 production 的 V:\data\chords（NUC 本地 SSD 共享）
+        data_dir = Path("V:/data/chords")
         if not data_dir.exists():
             data_dir = Path(__file__).parent.parent.parent / "data" / "chords"
             

@@ -88,7 +88,7 @@ def get_similar_chords(chord_name, top_n=5, models_dir=None):
     推論功能：找出最相似的 N 個和弦
     """
     if not models_dir:
-        models_dir = Path("W:/data/models")
+        models_dir = Path("V:/data/models")
         
     vocab_file = models_dir / "vocab.json"
     emb_file = models_dir / "chord_embeddings.npy"
@@ -134,7 +134,7 @@ def get_similar_chords(chord_name, top_n=5, models_dir=None):
 
 if __name__ == "__main__":
     import sys
-    models_dir = Path("W:/data/models")
+    models_dir = Path("V:/data/models")
     if not models_dir.exists():
         models_dir = Path(__file__).parent.parent.parent / "data" / "models"
         

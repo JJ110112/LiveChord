@@ -89,8 +89,8 @@ SUPPORTED_EXT = {".flac", ".mp3", ".wav"}
 MAX_FILE_SIZE_MB = 100
 
 # 資料庫位置 — 固定寫到 NAS，讓 LiveChord Server 即時存取
-CHORDS_DIR = Path("W:/data/chords")
-MELODIES_DIR = Path("W:/data/melodies")
+CHORDS_DIR = Path("V:/data/chords")
+MELODIES_DIR = Path("V:/data/melodies")
 
 # ---------------------------------------------------------------------------
 # 工具函式

@@ -278,7 +278,7 @@ if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding="utf-8")
 
-    data_dir = "W:/data/chords"
+    data_dir = "V:/data/chords"
     print("Building theoretical emission matrix...")
     emission = build_emission_from_songs(data_dir)
     print(f"Stats: {emission.get_stats()}")
