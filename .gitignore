@@ -6,6 +6,8 @@ __pycache__/
 # 運行時資料（不進版控）
 data/library_cache.json
 data/library_cache.tmp
+data/chord_index.json
+data/chord_index.tmp
 data/recent.json
 data/favorites.json
 data/chords/

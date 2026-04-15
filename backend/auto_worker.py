@@ -12,7 +12,7 @@ from datetime import datetime
 
 log = logging.getLogger("livechord.auto")
 from config import resolve_path
-from chord_cache import song_hash
+from chord_cache import song_hash, update_entry_from_file as cache_update_entry, ensure_synced as cache_ensure_synced
 from task_lock import get_task_lock
 
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -384,6 +384,7 @@ def _auto_chord_detect_loop(settings: dict, batch: list, unanalyzed: list, lock)
                              "source": "midi", "chords": entries}
                     chords_file = CHORDS_DIR / f"{song_hash(track_path)}.json"
                     chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
+                    cache_update_entry(track_path)
                     _worker_state["detect_count"] += 1
                     add_log("OK", f"MIDI 匯入: {name} (Key: {key}, {len(entries)} chords)")
                     continue
@@ -402,6 +403,7 @@ def _auto_chord_detect_loop(settings: dict, batch: list, unanalyzed: list, lock)
                      "source": "btc", "chords": chords}
             chords_file = CHORDS_DIR / f"{song_hash(track_path)}.json"
             chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
+            cache_update_entry(track_path)
             _worker_state["detect_count"] += 1
             add_log("OK", f"BTC 偵測: {name} (Key: {key}, {len(chords)} chords)")
         except Exception as e:
@@ -415,6 +417,7 @@ def _auto_chord_detect_loop(settings: dict, batch: list, unanalyzed: list, lock)
     remaining = len(unanalyzed) - len(batch)
     _worker_state["detect_queue_size"] = remaining
     _worker_state["last_detect_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cache_ensure_synced(force=True)
     add_log("INFO", f"本輪偵測完成，佇列剩餘 {remaining} 首")
 
 

@@ -9,7 +9,13 @@ from collections import Counter
 
 from fastapi import APIRouter, HTTPException, Query
 
-from chord_cache import song_hash
+from chord_cache import (
+    song_hash,
+    ensure_synced as cache_ensure_synced,
+    get_chord_meta,
+    update_entry_from_file as cache_update_entry,
+    invalidate as cache_invalidate,
+)
 from config import resolve_path
 from batch_state import BatchState
 from task_lock import get_task_lock
@@ -95,11 +101,12 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
 
         try:
             chords, key = detect_chords_and_key_isolated(full)
-            sheet = {"path": track_path, "key": key, "capo": 0, "chords": chords}
+            sheet = {"path": track_path, "key": key, "capo": 0, "source": "btc", "chords": chords}
             chords_file.write_text(
                 json.dumps(sheet, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
+            cache_update_entry(track_path)
             _batch_state["succeeded"] += 1
         except Exception as e:
             _batch_state["failed"] += 1
@@ -110,6 +117,10 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
     _batch_state["done"] = len(tracks)
     _batch_state["current_track"] = ""
     _batch_state["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+
+    # 觸發一次同步，把所有 update_entry 寫入磁碟（單次 IO）
+    if _batch_state["succeeded"] > 0:
+        cache_ensure_synced(force=True)
 
     if _batch_state["succeeded"] > 0 and CACHE_FILE.is_file():
         try:
@@ -302,12 +313,14 @@ def batch_midi_import():
             key = Counter(roots).most_common(1)[0][0] if roots else ""
             sheet = {"path": p, "key": key, "capo": 0, "source": "midi", "chords": entries}
             chord_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
+            cache_update_entry(p)
             imported += 1
             t["has_chords"] = True
         except Exception as e:
             errors.append({"path": p, "error": str(e)})
 
     if imported > 0:
+        cache_ensure_synced(force=True)
         try:
             tmp = CACHE_FILE.with_suffix(".tmp")
             tmp.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
@@ -329,18 +342,21 @@ def chords_tracks(
     query: str = Query(default=""),
     status: str = Query(default="all") # "all", "has_chords", "no_chords"
 ):
-    """列出所有曲目及其和弦狀態（供 admin 管理用，支援分頁與搜尋）"""
+    """列出所有曲目及其和弦狀態（供 admin 管理用，支援分頁與搜尋）
+
+    所有 has_chords / source / chord_count / key 都從 chord_cache 取得，
+    避免每首曲子打開 chord JSON。
+    """
     if not CACHE_FILE.is_file():
         return {"tracks": [], "total": 0, "page": 1, "limit": limit, "total_pages": 0}
-        
+
+    # 同步 chord_cache 與磁碟（5 秒 TTL，幾乎零成本）
+    cache_ensure_synced()
+
     cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
-    CHORDS_DIR.mkdir(parents=True, exist_ok=True)
     all_tracks = cache.get("tracks", [])
 
-    # 用一次 listdir 取代每檔 is_file()（admin polling 下避免 43k+ 個 stat syscall）
-    chord_hashes = _get_chord_hashes()
-
-    # Optional: Fast filtering before disk I/O
+    # 篩選：has_chords 透過 cache lookup
     if query or status != "all":
         filtered_tracks = []
         q_lower = query.lower()
@@ -350,7 +366,7 @@ def chords_tracks(
                 continue
 
             if status != "all":
-                has_chords = song_hash(p) in chord_hashes
+                has_chords = get_chord_meta(p)["has_chords"]
                 if status == "has_chords" and not has_chords:
                     continue
                 if status == "no_chords" and has_chords:
@@ -358,10 +374,8 @@ def chords_tracks(
             filtered_tracks.append(t)
         all_tracks = filtered_tracks
 
-    # Sort tracks (latest first)
     all_tracks.sort(key=lambda x: x.get("mtime", 0), reverse=True)
 
-    # Pagination slicing
     total = len(all_tracks)
     total_pages = max(1, (total + limit - 1) // limit)
     page = min(page, total_pages)
@@ -369,39 +383,26 @@ def chords_tracks(
     sliced_tracks = all_tracks[start_idx : start_idx + limit]
 
     result = []
-    # ONLY perform JSON parsing for the sliced tracks
     for t in sliced_tracks:
         p = t.get("path", "")
-        h = song_hash(p)
-        has_chords = h in chord_hashes
-        chord_file = CHORDS_DIR / f"{h}.json"
-
-        info = {
+        meta = get_chord_meta(p)
+        result.append({
             "path": p,
             "title": t.get("title", ""),
             "artist": t.get("artist", ""),
-            "has_chords": has_chords,
-            "source": "",
-            "mtime": t.get("mtime", 0)
-        }
-        
-        if has_chords:
-            try:
-                # the bottleneck operation, run only ~100 times!
-                cd = json.loads(chord_file.read_text(encoding="utf-8"))
-                info["source"] = cd.get("source", "btc") or "btc"
-                info["chord_count"] = len(cd.get("chords", []))
-                info["key"] = cd.get("key", "")
-            except Exception:
-                pass
-        result.append(info)
+            "has_chords": meta["has_chords"],
+            "source": meta["source"],
+            "chord_count": meta["chord_count"],
+            "key": meta["chord_key"],
+            "mtime": t.get("mtime", 0),
+        })
 
     return {
         "tracks": result,
         "total": total,
         "page": page,
         "limit": limit,
-        "total_pages": total_pages
+        "total_pages": total_pages,
     }
 
 

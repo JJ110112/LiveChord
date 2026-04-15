@@ -48,7 +48,7 @@ from pydantic import BaseModel
 from auth_api import get_current_user
 from chord_table import get_chord_info, get_chord_jianpu, analyze_chord_in_key
 from chord_diagrams import get_chord_diagram, get_chord_voicings
-from chord_cache import song_hash
+from chord_cache import song_hash, update_entry_from_file as cache_update_entry
 from instrument_registry import get_instrument, list_instruments, INSTRUMENTS
 
 from config import resolve_path
@@ -291,6 +291,7 @@ async def detect_chords_api(path: str = Query(...)):
         json.dumps(sheet, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    cache_update_entry(path)
 
     return {
         "ok": True,
@@ -387,6 +388,7 @@ def midi_import(path: str = Query(...), midi_path: str = Query(...)):
         CHORDS_DIR.mkdir(parents=True, exist_ok=True)
         chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
         chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
+        cache_update_entry(path)
         return {
             "ok": True, "path": path, "key": audio_key,
             "chord_count": len(btc_chords), "source": "btc",
@@ -401,6 +403,7 @@ def midi_import(path: str = Query(...), midi_path: str = Query(...)):
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
     chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
     chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
+    cache_update_entry(path)
 
     return {
         "ok": True, "path": path, "key": key,
@@ -451,6 +454,7 @@ async def midi_upload(path: str = Query(...), file: UploadFile = File(...)):
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
     chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
     chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
+    cache_update_entry(path)
 
     return {
         "ok": True, "path": path, "key": key,
