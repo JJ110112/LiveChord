@@ -199,14 +199,21 @@
     </div>`;
   }
 
+  let isIdle = true;
+  let statusTimer = null;
+  let logTimer = null;
+
   // ---- Status polling ----
   async function pollStatus() {
     try {
       const s = await API.get('/api/extraction/status');
+      isIdle = s.status === 'idle' || s.status === 'completed';
       updateUI(s);
     } catch (e) {
       updateUI({ status: 'error', jobs: [] });
     }
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(pollStatus, isIdle ? 10000 : 3000); // 閒置時放緩到 10 秒
   }
 
   function updateUI(s) {
@@ -241,9 +248,13 @@
   // ---- Logs polling ----
   async function pollLogs() {
     try {
-      const res = await API.get('/api/extraction/logs?limit=80');
-      renderLogs(res.logs || []);
+      if (!isIdle) {
+        const res = await API.get('/api/extraction/logs?limit=80');
+        renderLogs(res.logs || []);
+      }
     } catch {}
+    clearTimeout(logTimer);
+    logTimer = setTimeout(pollLogs, isIdle ? 20000 : 5000); // 閒置時放緩到 20 秒，且不請求 log
   }
 
   function renderLogs(logs) {
@@ -275,8 +286,6 @@
   // ---- Start polling ----
   pollStatus();
   pollLogs();
-  setInterval(pollStatus, 3000);
-  setInterval(pollLogs, 5000);
   
   if (window.location.search.includes('embed=1')) {
     const header = document.querySelector('.header');

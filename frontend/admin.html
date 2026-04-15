@@ -460,6 +460,9 @@
     detecting: { dot: "dot-green", badge: "badge-detecting", text: "偵測中" },
   };
 
+  let coreIdle = true;
+  let adminStatusTimer = null;
+
   async function pollStatus() {
     try {
       const [core, chords, scanSt, batchSt] = await Promise.all([
@@ -468,6 +471,8 @@
         API.libraryScanStatus(),
         API.get("/api/chords/batch-detect/status"),
       ]);
+      
+      coreIdle = (!core.running) && !scanSt.running && !batchSt.running;
 
       const scanTotal = (scanSt.running && scanSt.progress > chords.total_tracks) ? scanSt.progress : chords.total_tracks;
       const coveragePct = scanTotal > 0 ? Math.round(chords.tracks_with_chords / scanTotal * 1000) / 10 : 0;
@@ -508,21 +513,25 @@
     } catch {}
 
     try {
-      const logData = await API.get("/api/auto/log?limit=30");
-      const box = $("#logBox");
-      const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
-      box.innerHTML = logData.log.map(e => {
-        const cls = e.level === "OK" ? "ok" : e.level === "ERROR" ? "error" : "info";
-        return `<div><span class="ts">${e.time}</span> <span class="${cls}">[${e.level}]</span> ${esc(e.msg)}</div>`;
-      }).join("") || '<span class="info">無記錄</span>';
-      if (atBottom) box.scrollTop = box.scrollHeight;
+      if (!coreIdle) {
+        const logData = await API.get("/api/auto/log?limit=30");
+        const box = $("#logBox");
+        const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
+        box.innerHTML = logData.log.map(e => {
+          const cls = e.level === "OK" ? "ok" : e.level === "ERROR" ? "error" : "info";
+          return `<div><span class="ts">${e.time}</span> <span class="${cls}">[${e.level}]</span> ${esc(e.msg)}</div>`;
+        }).join("") || '<span class="info">無記錄</span>';
+        if (atBottom) box.scrollTop = box.scrollHeight;
+      }
     } catch {}
+    
+    clearTimeout(adminStatusTimer);
+    adminStatusTimer = setTimeout(pollStatus, coreIdle ? 10000 : 3000);
   }
 
   function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 
   pollStatus();
-  setInterval(pollStatus, 3000);
 })();
 </script>
 </body>
