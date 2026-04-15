@@ -117,7 +117,8 @@ async def get_melody(
     MELODY_DIR = DATA_DIR / "melodies"
     MELODY_DIR.mkdir(parents=True, exist_ok=True)
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
     cache_file = MELODY_DIR / f"{h}.json"
 
     # 有快取直接回傳
@@ -207,7 +208,8 @@ async def detect_sections_api(
     import json as _json
     from ai.section_detect import detect_sections
 
-    h = __import__('hashlib').md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
     chords_file = CHORDS_DIR / f"{h}.json"
     if not chords_file.is_file():
         return {"error": "no chord data"}
@@ -234,7 +236,8 @@ async def evaluate_feedback_api(body: EvaluateFeedbackRequest, username: str = D
     file_path = user_dir / "chord_eval.jsonl"
     
     import hashlib
-    song_hash = hashlib.md5(body.path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    song_hash = get_song_hash(body.path)
     
     record = {
         "timestamp": datetime.now().isoformat(),
@@ -252,7 +255,8 @@ async def sections_feedback_api(body: SectionsFeedbackRequest, username: str = D
     """(RLHF) 接收使用者人工修正的樂句並作為 Ground Truth 保存"""
     import json as _json
     import hashlib
-    song_hash = hashlib.md5(body.path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    song_hash = get_song_hash(body.path)
     
     user_dir = DATA_DIR / "users" / username / "human_sections"
     user_dir.mkdir(parents=True, exist_ok=True)
@@ -272,7 +276,8 @@ async def sections_feedback_api(body: SectionsFeedbackRequest, username: str = D
 async def get_human_section_authors(path: str = Query(..., description="歌曲路徑")):
     """List all users who have created a ground truth entry for this song."""
     import hashlib
-    song_hash = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    song_hash = get_song_hash(path)
     
     users_dir = DATA_DIR / "users"
     if not users_dir.exists():
@@ -367,7 +372,8 @@ def get_accompaniment(
     ACC_DIR = DATA_DIR / "accompaniments"
     ACC_DIR.mkdir(parents=True, exist_ok=True)
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
     cache_file = ACC_DIR / f"{h}_{style}_{level}_{section_type}.json"
 
     # nocache: 清除此歌所有伴奏快取
@@ -483,7 +489,8 @@ def suggest_style_api(
     import json as _json
     import hashlib
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
 
     bpm = 120.0
     genre = ""
@@ -549,7 +556,8 @@ def evaluate_melody_api(
     """旋律品質評測（音域/跳進比/樂句弧/節奏/置信度）"""
     import json as _json, hashlib
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
     melody_file = DATA_DIR / "melodies" / f"{h}.json"
     if not melody_file.is_file():
         return {"error": "no melody data", "overall_score": 0}
@@ -574,7 +582,8 @@ def evaluate_accompaniment_api(
     """伴奏品質評測（碰撞/voice leading/音域/密度/和聲）"""
     import json as _json, hashlib
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
 
     # 載入伴奏快取
     acc_file = DATA_DIR / "accompaniments" / f"{h}_{style}_{level}_default.json"
@@ -619,7 +628,8 @@ def pedal_api(
     """AI 踏板建議"""
     import json as _json, hashlib
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
     chords_file = CHORDS_DIR / f"{h}.json"
     if not chords_file.is_file():
         return {"error": "no chord data", "pedal": []}
@@ -650,7 +660,8 @@ def dynamics_api(
     """AI 力度表情（velocity + articulation）"""
     import json as _json, hashlib
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
 
     # 載入伴奏快取
     for suffix in [f"{style}_{level}_{section_type}", f"{style}_{level}_default", f"{style}_{level}"]:
@@ -685,7 +696,8 @@ def qa_battle_api(
     """QA Battle: 綜合品質評測 (所有 evaluator 對抗)"""
     import json as _json, hashlib
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
 
     # 載入和弦
     chords_file = CHORDS_DIR / f"{h}.json"
@@ -730,7 +742,8 @@ def section_context_api(
     """取得歌曲的段落結構 + 各段落的 AI 建議參數"""
     import json as _json, hashlib
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
     chords_file = CHORDS_DIR / f"{h}.json"
     if not chords_file.is_file():
         return {"error": "no chord data"}

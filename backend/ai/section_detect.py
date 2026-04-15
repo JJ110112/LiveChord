@@ -142,13 +142,10 @@ def detect_sections(chords, key="C", song_hash=None, data_dir="W:/data", mode="a
                 human_data = json.loads(human_path.read_text(encoding="utf-8"))
                 raw_human = human_data.get("sections", [])
                 
-                # Merge adjacent identical sections (supports natural undo)
+                # 直接載入人類標註的陣列 (不向上合併同名區塊，允許 Chorus 接 Chorus 等特殊需求)
                 final_sections = []
                 for s in raw_human:
-                    if final_sections and final_sections[-1]["type"] == s.get("type"):
-                        final_sections[-1]["end"] = max(final_sections[-1]["end"], s.get("end", 0))
-                    else:
-                        final_sections.append(dict(s))
+                    final_sections.append(dict(s))
                 
                 # 重新回填前端所需的 label 與 color 顯示屬性
                 for s in final_sections:
