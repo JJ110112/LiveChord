@@ -1380,13 +1380,16 @@
       }
       if (activeHand === "both" || activeHand === "right") {
         let rhEvents = accData.right_hand || [];
-        if (rhEvents.length === 0 && typeof melodyData !== 'undefined' && melodyData) {
-          rhEvents = melodyData.map(m => ({
+        // Always merge melody: activeRh unconditionally adds _getMelodyMidi (see line ~1081),
+        // so the waterfall must match or the melody lights keys without a falling bar (ghost keys).
+        if (typeof melodyData !== 'undefined' && melodyData) {
+          const melEvents = melodyData.map(m => ({
             time: m.start,
             duration: m.end - m.start,
             pitch: m.midi,
             finger: null
           }));
+          rhEvents = [...rhEvents, ...melEvents];
         }
         allEvents.push(...rhEvents.map(e => ({...e, _hand: "right"})));
       }

@@ -5,9 +5,10 @@ Project-specific guidance for Claude Code working in this repo. Also see [doc/QA
 ## Environment
 
 - **Dev repo**: `c:\Users\hitea\Claude\LiveChord` (git, source of truth)
+- **Local testing**: IDE Live Server is installed, Playwright MCP is registered for AI-driven local QA.
 - **Prod runtime** (NUC, mounted as `V:\` from PC): backend runs from `V:\backend`, frontend from `V:\frontend`
-- **Batch worker share** (NAS, PC-side): `W:\` — separate copy for batch workers, not the runtime
 - **Backend server**: FastAPI/uvicorn, `main:app` on `0.0.0.0:8800` (see [backend/run.py](backend/run.py))
+- **Production QA Server**: `http://192.168.50.6:8800/` (has been human tested)
 - **Admin page**: `http://localhost:8800/admin`
 
 ## Deploy Sync (QA §590 防線5)
@@ -21,6 +22,8 @@ After any code change:
 ## UI QA (feedback_playwright_qa)
 
 Any change to frontend files requires Playwright verification before claiming done:
+- Uses Playwright MCP registered in IDE. AI should trigger playwright testing locally via Live Server or target URLs.
+- Target `http://192.168.50.6:8800/` (v:\) if the feature is already deployed, as it has been human tested.
 - Test the changed buttons / appearance / behaviour
 - Cover edge cases (hard reload, no cache)
 - Watch for regressions in unrelated features

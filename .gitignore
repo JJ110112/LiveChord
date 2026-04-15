@@ -4,6 +4,7 @@ __pycache__/
 *.egg-info/
 
 # 運行時資料（不進版控）
+songs/
 data/library_cache.json
 data/library_cache.tmp
 data/chord_index.json
@@ -14,9 +15,16 @@ data/chords/
 data/settings.json
 data/activity.log
 data/server.log
+data/server.log.*
 data/chord_queue.json
+data/.queue_cursor.json
 data/melodies/
 data/models/
+data/accompaniments/
+data/auth.db
+data/jam_tracks.json
+data/ratings.json
+data/style_map.json
 data/.local_music_root
 data/config.json
 data/users.db

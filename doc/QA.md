@@ -550,8 +550,9 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 2. 啟動伺服器: start.bat
 3. 執行 API 測試: cd tests && pytest
 4. 執行和弦準確度: cd data/test_songs && python run_test.py all
-5. 執行 Playwright UI 測試: npx playwright test
-6. 手動 UI 測試: 開啟 http://localhost:8800 逐項驗收
+5. 執行 Playwright UI 測試: 利用已註冊的 Playwright MCP 與 IDE Live Server 進行本地端 AI 輔助測試。
+6. 手動 UI 測試: 開啟 http://localhost:8800 或 V:\ 伺服器 (http://192.168.50.6:8800/) 逐項驗收
+   - 此伺服器 (V:\) 已由人類測試過可用。
    - Dashboard: 搜尋、最愛、最近播放、難度星級
    - 播放頁: 三分頁切換、88 鍵、Jazzify、段落標記
    - 管理頁: 掃描、批次偵測、自動排程
