@@ -29,6 +29,19 @@
     .stat-box { background: var(--bg); border-radius: 8px; padding: 10px; text-align: center; }
     .stat-box .num { font-size: 22px; font-weight: 800; color: var(--accent); }
     .stat-box .label { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+    .card.scanning .stat-row { opacity: 0.55; transition: opacity .3s; }
+    .scanning-banner {
+      background: rgba(255, 180, 0, 0.12);
+      border: 1px solid rgba(255, 180, 0, 0.25);
+      color: #ffb74d;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin: 0 0 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
     .progress-track { height: 4px; background: #222; border-radius: 2px; overflow: hidden; margin: 6px 0; }
     .progress-track .bar { height: 100%; background: var(--accent); border-radius: 2px; transition: width .5s; }
     .progress-track .bar.green { background: #4caf50; }
@@ -139,13 +152,14 @@
 <div class="admin-page">
 
   <!-- ======== Card 1: Core 狀態與快速啟動 ======== -->
-  <div class="card">
+  <div class="card" id="coreCard">
     <h2>
       <span class="dot dot-gray" id="coreDot"></span>
       LiveChord Core
       <span class="badge badge-stopped" id="coreBadge">stopped</span>
       <span id="lockTag" class="lock-tag" style="display:none"></span>
     </h2>
+    <div class="scanning-banner" id="scanningBanner" style="display:none">🔄 掃描中 · 數字將持續變動，掃描完成後即穩定</div>
     <div class="stat-row">
       <div class="stat-box"><div class="num" id="sTotalTracks">—</div><div class="label">總曲目</div></div>
       <div class="stat-box"><div class="num" id="sWithChords">—</div><div class="label">和弦譜</div></div>
@@ -821,6 +835,13 @@
       $("#sWithChords").textContent = chords.tracks_with_chords || 0;
       $("#sCoverage").textContent = coveragePct + "%";
       $("#sQueueSize").textContent = core.detect_queue_size || 0;
+
+      // 掃描中視覺提示：stat-row 半透明 + 黃色 banner
+      const scanRunning = !!chords.scan_running || isScan;
+      const coreCard = $("#coreCard");
+      const scanBanner = $("#scanningBanner");
+      if (coreCard) coreCard.classList.toggle("scanning", scanRunning);
+      if (scanBanner) scanBanner.style.display = scanRunning ? "flex" : "none";
 
       const st = statusMap[core.status] || statusMap.stopped;
       $("#coreDot").className = "dot " + st.dot;

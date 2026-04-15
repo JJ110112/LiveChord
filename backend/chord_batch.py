@@ -422,6 +422,11 @@ def chords_stats():
     if _stats_cache["data"] and now - _stats_cache["ts"] < _STATS_CACHE_TTL:
         cached = _stats_cache["data"]
         cached["batch_running"] = _batch_state.running
+        try:
+            from music_api import _scan_state
+            cached["scan_running"] = bool(_scan_state.get("running", False))
+        except Exception:
+            pass
         return cached
 
     from library_groups import list_groups
@@ -434,11 +439,18 @@ def chords_stats():
     total_tracks = sum(g["track_count"] for g in relevant)
     tracks_with_chords = sum(g["chords_done"] for g in relevant)
 
+    try:
+        from music_api import _scan_state
+        scan_running = bool(_scan_state.get("running", False))
+    except Exception:
+        scan_running = False
+
     result = {
         "total_tracks": total_tracks,
         "tracks_with_chords": tracks_with_chords,
         "coverage": round(tracks_with_chords / total_tracks * 100, 1) if total_tracks else 0,
         "batch_running": _batch_state.running,
+        "scan_running": scan_running,
     }
     _stats_cache["data"] = result
     _stats_cache["ts"] = now

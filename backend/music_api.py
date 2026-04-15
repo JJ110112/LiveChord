@@ -422,6 +422,9 @@ def _scan_worker(mode: str = "incremental"):
 
         tracks = []
         seen_paths = set()
+        # scandir() 失敗（SMB 斷線、權限錯誤等）的相對路徑前綴集合。
+        # 最終 save 時，此前綴之下的舊條目會被保留，避免被當成「已刪除」誤清。
+        errored_prefixes: set = set()
         _new_meta_count = 0   # 本輪讀取 metadata 的次數（用於節流）
 
         def _scan_dir(current_dir: str, current_rel_prefix: str, root_prefix: str):
@@ -433,6 +436,7 @@ def _scan_worker(mode: str = "incremental"):
             try:
                 entries = list(os.scandir(current_dir))
             except OSError:
+                errored_prefixes.add(current_rel_prefix)
                 return
 
             # 是否在 music_root 第一層（用來套 active_groups 過濾）
@@ -536,22 +540,36 @@ def _scan_worker(mode: str = "incremental"):
 
             _scan_dir(root, prefix, prefix)
 
-        # 保留：未啟用群組的既有條目維持原本快取（不重掃但也不誤刪）
-        if active_groups:
+        # 保留：
+        # (1) 未啟用群組的既有條目 — 本輪不會走訪，完整保留避免誤刪
+        # (2) 啟用群組但所屬目錄 scandir 失敗 — SMB 斷線/權限錯誤時，
+        #     不能把整個目錄視為「已刪除」而清掉；保留舊條目等下次掃描
+        if active_groups or errored_prefixes:
             try:
                 from library_groups import _split_group
                 preserved = 0
+                preserved_errored = 0
                 for old_rel, old_t in existing.items():
                     if old_rel in seen_paths:
                         continue
                     r_idx, label, _ = _split_group(old_rel)
                     gid = f"@{r_idx}/{label}"
-                    if gid not in active_groups:
+                    keep = False
+                    if active_groups and gid not in active_groups:
+                        keep = True
+                    elif errored_prefixes and any(
+                        old_rel.startswith(p) for p in errored_prefixes
+                    ):
+                        keep = True
+                        preserved_errored += 1
+                    if keep:
                         tracks.append(old_t)
                         seen_paths.add(old_rel)
                         preserved += 1
                 if preserved:
                     _scan_state["preserved_tracks"] = preserved
+                if preserved_errored:
+                    _scan_state["preserved_errored"] = preserved_errored
             except Exception:
                 pass
 

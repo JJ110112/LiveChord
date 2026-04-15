@@ -447,7 +447,11 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 | A-05 | 自動排程設定 | 調整間隔/每週期數/跳過曲風 | ☐ |
 | A-06 | 工作器啟停 | 啟動/停止/立即觸發 | ☐ |
 | A-07 | 活動紀錄 | 顯示最近操作 log | ☐ |
-| A-08 | 覆蓋率統計 | 顯示總曲數、已偵測、覆蓋率 % | ☐ |
+| A-08 | 覆蓋率統計 | 顯示總曲數、已偵測、覆蓋率 %（**只計入 `auto_chord_active_groups` 的群組**） | ☐ |
+| A-09 | 掃描中視覺提示 | SCAN 任務運行時，Core 卡片上方出現黃色「掃描中 · 數字將持續變動」banner，且 stat-row 半透明；掃描結束自動還原 | ☐ |
+| A-10 | 設定區塊合併 | 「⚙️ 設定」摺疊區塊位於 LiveChord Core 卡片內；「停止 Core」按鈕位於「💾 套用設定並啟動」右側 | ☐ |
+
+> **統計語意**：`/api/chords/stats` 回傳的 `total_tracks / tracks_with_chords / coverage` 只累計 `auto_chord_active_groups` 勾選的群組；非啟用群組的曲目與和弦檔仍保留在磁碟，但不會出現在儀表板數字中。API 另回傳 `scan_running` 與 `batch_running` 兩個狀態旗標供前端切換 UX。
 
 ### 4.13 Benchmark 評測頁
 
@@ -712,7 +716,15 @@ AI 的每次提交必須附上兩種清單：
 - 注意：W:\（NAS \\LOVE\LiveChordServer）為 PC 端批次 worker 用的另一份共用副本，與 V:\ 是兩個獨立目錄，不要混淆
 - `cp` 整份檔案比 `Edit` 兩邊更安全
 
-### 規則 10：Canvas 尺寸必須跟隨佈局 (Canvas Buffer ↔ Flex Sync)
+### 規則 10.5：library_cache 掃描保留既有條目 (Scan Preservation)
+
+- **問題根源**：`_scan_worker` 若遇到 `os.scandir` 失敗（SMB 斷線、權限錯誤等），原本會直接 `return` 並把該目錄下的舊條目當成「已刪除」從 library_cache 移除，造成大量曲目憑空消失。非 active 群組雖有 preservation loop 保護，**active 群組的 I/O 錯誤目錄沒有被保護**。
+- **解決方案**：`_scan_worker` 維護一個 `errored_prefixes: set[str]`，在 `_scan_dir` 的 `except OSError` 分支 `errored_prefixes.add(current_rel_prefix)`；最終 preservation loop 除了保留非 active 群組，也保留 `old_rel.startswith(prefix)` 的條目。
+- **不要做**：把 scandir 錯誤當成空目錄處理；這會讓暫時的網路抖動變成永久資料流失。
+- **驗證**：scan 結束後 `_scan_state["preserved_errored"]` 若 > 0 表示有觸發保留機制，應留意 NAS 連線狀況。
+- **來源**：2026-04-15 使用者看到 admin 總曲目從 45955 下降到 27000 — 實際上是 full scan 從 0 爬升中的正常現象，但同時發現 active 群組 I/O 錯誤會導致真正的資料丟失，順手補上保護。
+
+### 規則 11：Canvas 尺寸必須跟隨佈局 (Canvas Buffer ↔ Flex Sync)
 
 - **問題根源**：`requestAnimationFrame` 動畫迴圈只在播放中運行（`!audio.paused`），暫停時 Canvas buffer 不會自動更新。若 flex 佈局在初始化後改變（例如鍵盤 canvas 設定高度導致瀑布流 canvas 縮小），buffer 尺寸與顯示尺寸不一致 → 文字/音符放大或壓縮。
 - **解決方案**：對需要動態調整的 canvas 使用 `ResizeObserver`，在尺寸改變時觸發重繪
@@ -738,6 +750,7 @@ AI 的每次提交必須附上兩種清單：
 | 3.1 | 2026-04-04 | 新增第 12 節：提案 AI 指法生成與驗證雙軌架構 (Generator-Evaluator Architecture) |
 | 3.2 | 2026-04-04 | 新增第 13 節：邊緣運算與雙引擎批次處理架構 (Super Worker Edge Architecture) |
 | 3.3 | 2026-04-04 | 修復沉浸模式 UI：toolbar grid 佈局、縮放捲動抖動、scrollbar 隱藏、zoom/close 按鈕重疊、select option 深色主題 |
+| 3.4 | 2026-04-15 | Admin Core 卡片合併設定區塊；掃描中新增黃色 banner 與半透明 stat-row；`/api/chords/stats` 新增 `scan_running` 旗標；`_scan_worker` 新增 `errored_prefixes` 保留 I/O 失敗目錄下的舊條目（規則 10.5） |
 | 3.4 | 2026-04-05 | 新增第 14 節：前端 UI 架構鐵律（9 條規則），源自 AI 鋼琴老師開發的 10+ 次 UI 迴歸修復經驗 |
 | 3.5 | 2026-04-05 | 新增 K-09~K-11：瀑布流白/黑鍵色階、琴鍵高亮清晰度、底部發光效果測試項目 |
 | 3.6 | 2026-04-05 | 新增 K-12 擬真鍵盤渲染、CS-12 升降號和弦圖完整性；補齊烏克麗麗 C#/Db/D#/G#/A# 和弦 |
