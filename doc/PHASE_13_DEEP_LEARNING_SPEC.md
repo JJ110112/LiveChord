@@ -49,12 +49,15 @@ Phase 13 導入了最先進的 Seq2Seq Transformer 架構，讓 AI 足以讀懂�
 - **[整合與防護]** 在 `reharmonizer.py` 擴充了 `mode="transformer"`，在接獲 Transformer 推理出來的和弦機率分佈後，我們**疊加套用 Viterbi 解碼與旋律發射機率 (Emission Probability)**。
 - 只要 Transformer 吐出的新和弦跟旋律發生小二度碰撞，機率直接歸零，確保輸出的樂譜具備 **100% 音樂合理性 (Playability & Harmonic Safety)**。
 
-### 5. 紫色 ✨AI 按鈕 (前端 UI 與概念定位)
+### 5. 統一 Jazzify 按鈕 (前端 UI 與概念定位)
+- **UI**: 單一 🎷 按鈕，五段循環：Off → L1 → L2 → L3 → ✨AI → Off
+  - **L1/L2/L3** (橘色)：規則引擎 — L1 延伸音, L2 +ii-V+9th, L3 +tritone sub+secondary dom+13th
+  - **✨AI** (紫色)：Seq2Seq Transformer 神經網路，輸出再經規則引擎 L3 後處理使 level 語義生效
+  - **世代計數器** (`jazzifyReqGen`)：快速連點時 stale API callback 不會覆蓋最新狀態
 - **定位**：頂級爵士作曲家/編曲家 🎼
-- **工作內容**：負責改寫樂譜 (Reharmonization)。
-- **運作原理**：基於動用高效能 GPU (如 RTX 5080) 與 5 萬首曲庫訓練出來的深度學習神經網路 (Seq2Seq Transformer)。
+- **運作原理**：AI 模式基於高效能 GPU (如 RTX 5080) 與 5 萬首曲庫訓練出來的深度學習神經網路 (Seq2Seq Transformer)，再疊加規則引擎後處理。
 - **實際效果**：當套用時，它看的是整首歌的**「和弦進行」**。如果原本的歌是傳統流行樂的四和弦進行 `C -> Am -> F -> G`，這位神級編曲家會直接把樂譜劃掉，大刀闊斧幫使用者改成複雜度極高的爵士和聲，如 `Cmaj9 -> A7(b13) -> Dm9 -> G13(b9)`。
-- **神經網路特色**：它具備「前後文語意理解」，會像真人一樣看後面的和弦來決定前面要不要偷塞個過渡和弦 (Passing Chord)，或是使用代理和弦 (Tritone Substitution)。簡而言之，它改變的是這首歌的「DNA (和弦本體)」。相比於「機器人 (AI 伴奏教學)」單純負責指法與律動，紫色按鈕負責從根本上改寫音樂的基因。
+- **神經網路特色**：它具備「前後文語意理解」，會像真人一樣看後面的和弦來決定前面要不要偷塞個過渡和弦 (Passing Chord)，或是使用代理和弦 (Tritone Substitution)。簡而言之，它改變的是這首歌的「DNA (和弦本體)」。相比於「機器人 (AI 伴奏教學)」單純負責指法與律動，Jazzify 按鈕的 AI 段負責從根本上改寫音樂的基因。
 
 
 ---

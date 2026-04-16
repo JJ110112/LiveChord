@@ -412,6 +412,37 @@ class Reharmonizer:
                 "rule": f"TRANSFORMER FAILED: {str(e)} | Trace: {traceback_str}"
             })
 
+        # Post-process transformer output through rule engine at self.level
+        is_minor = key_str.endswith("m") and len(key_str) > 1
+
+        for i, c in enumerate(result_chords):
+            original = c["chord"]
+            new_chord = self._apply_extension(original, key_semi, is_minor)
+            if new_chord != original:
+                c["chord"] = new_chord
+                changes.append({
+                    "position": i, "original": original,
+                    "jazzified": new_chord, "rule": "transformer+extension",
+                })
+
+        if self.level >= 2:
+            result_chords, new_changes = self._insert_ii_v(result_chords, key_semi)
+            changes.extend(new_changes)
+
+        if self.level >= 3:
+            result_chords, new_changes = self._apply_tritone(result_chords, key_semi)
+            changes.extend(new_changes)
+
+        if self.level >= 3:
+            result_chords, new_changes = self._insert_secondary_dom(result_chords, key_semi)
+            changes.extend(new_changes)
+
+        if self.level >= 2:
+            result_chords = self._balance_phrase_tension(result_chords, key_semi)
+
+        result_chords, overlap_fixes = self._overlap_downgrade(original_chords, result_chords)
+        changes.extend(overlap_fixes)
+
         # Viterbi 旋律保護層
         result_chords, melody_fixes = self._melody_avoid(result_chords, key_semi, melody_data)
         changes.extend(melody_fixes)
@@ -421,7 +452,7 @@ class Reharmonizer:
 
         return {
             "key": key_str,
-            "level": "transformer",
+            "level": self.level,
             "original_count": len(original_chords),
             "jazzified_count": len(result_chords),
             "chords": result_chords,

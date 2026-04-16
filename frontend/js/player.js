@@ -2730,11 +2730,11 @@
     });
   }
 
-  // ---- Jazzify 按鈕 ----
+  // ---- Jazzify 按鈕 (merged: off → L1 → L2 → L3 → ✨AI → off) ----
   const btnJazzify = $("#btnJazzify");
-  let jazzifyActive = false;
-  let jazzifyLevel = 0;  // 0=off, 1/2/3=level
+  let jazzifyLevel = 0;  // 0=off, 1/2/3=rule-based, 4=AI transformer
   let originalChords = null;
+  let jazzifyReqGen = 0;  // generation counter — stale async callbacks check this
 
   if (btnJazzify) {
     btnJazzify.addEventListener("click", async () => {
@@ -2743,125 +2743,68 @@
         return;
       }
 
-      // 循環：off → L1 → L2 → L3 → off
-      jazzifyLevel = (jazzifyLevel + 1) % 4;
-
-      if (jazzifyAIActive) {
-        jazzifyAIActive = false;
-        if (btnJazzifyAI) {
-           btnJazzifyAI.textContent = "AI";
-           btnJazzifyAI.style.background = "";
-        }
-      }
+      jazzifyLevel = (jazzifyLevel + 1) % 5;
+      const myGen = ++jazzifyReqGen;
 
       if (jazzifyLevel === 0) {
-        // 還原原始
         if (originalChords) {
           chordData.chords = originalChords;
           originalChords = null;
         }
-        jazzifyActive = false;
         btnJazzify.textContent = "\u{1F3B7}";
         btnJazzify.style.background = "";
+        btnJazzify.style.color = "";
         chordCache = {};
         await preloadChordInfo(chordData.chords);
+        if (myGen !== jazzifyReqGen) return;
         buildChordDOM();
-        updateActiveChord(audio.currentTime || -1);
+        activeChordIdx = -1;
+        requestAnimationFrame(() => updateActiveChord(audio.currentTime || -1, true));
         showToast("已還原原始和弦", 1500);
         return;
       }
 
-      // 儲存原始（只在第一次）
       if (!originalChords) {
         originalChords = [...chordData.chords];
       }
 
-      btnJazzify.textContent = `${jazzifyLevel}...`;
+      btnJazzify.textContent = "\u23F3";
+
+      const isAI = (jazzifyLevel === 4);
+      const apiLevel = isAI ? 3 : jazzifyLevel;
+      const mode = isAI ? "transformer" : "rule-based";
 
       try {
-        const res = await API.jazzify(originalChords, chordData.key || "C", jazzifyLevel);
+        const res = await API.jazzify(originalChords, chordData.key || "C", apiLevel, mode);
+        if (myGen !== jazzifyReqGen) return;
+        if (res.error) throw new Error(res.error);
         chordData.chords = res.chords;
-        jazzifyActive = true;
-        btnJazzify.textContent = `${jazzifyLevel}`;
-        btnJazzify.style.background = "rgba(255,152,0,.3)";
+
+        if (isAI) {
+          btnJazzify.textContent = "\u2728AI";
+          btnJazzify.style.background = "rgba(156,39,176,.3)";
+          btnJazzify.style.color = "#9c27b0";
+        } else {
+          btnJazzify.textContent = `${jazzifyLevel}`;
+          btnJazzify.style.background = "rgba(255,152,0,.3)";
+          btnJazzify.style.color = "#ff9800";
+        }
+
         chordCache = {};
         await preloadChordInfo(chordData.chords);
+        if (myGen !== jazzifyReqGen) return;
         buildChordDOM();
-        updateActiveChord(audio.currentTime || -1);
-        showToast(`Jazzify L${jazzifyLevel}: ${res.original_count}→${res.jazzified_count} 和弦, ${res.changes.length} 變更`, 3000);
+        activeChordIdx = -1;
+        requestAnimationFrame(() => updateActiveChord(audio.currentTime || -1, true));
+        const label = isAI ? "AI Transformer" : `Jazzify L${jazzifyLevel}`;
+        showToast(`${label}: ${res.original_count}→${res.jazzified_count} 和弦, ${res.changes.length} 變更`, 3000);
       } catch (err) {
+        if (myGen !== jazzifyReqGen) return;
         showToast("Jazzify 失敗: " + err.message, 3000);
         jazzifyLevel = 0;
         btnJazzify.textContent = "\u{1F3B7}";
         btnJazzify.style.background = "";
-      }
-    });
-  }
-
-  const btnJazzifyAI = $("#btnJazzifyAI");
-  let jazzifyAIActive = false;
-
-  if (btnJazzifyAI) {
-    btnJazzifyAI.addEventListener("click", async () => {
-      if (!chordData || !chordData.chords || chordData.chords.length === 0) {
-        showToast("尚無和弦資料", 2000);
-        return;
-      }
-
-      if (jazzifyAIActive) {
-        // 還原原始
-        if (originalChords) {
-          chordData.chords = originalChords;
-          originalChords = null;
-        }
-        jazzifyAIActive = false;
-        jazzifyActive = false;
-        jazzifyLevel = 0;
-        btnJazzifyAI.style.background = "";
-        if (btnJazzify) {
-          btnJazzify.textContent = "\u{1F3B7}";
-          btnJazzify.style.background = "";
-        }
-        chordCache = {};
-        await preloadChordInfo(chordData.chords);
-        buildChordDOM();
-        activeChordIdx = -1; // 強制重新觸發
-        requestAnimationFrame(() => updateActiveChord(audio.currentTime || -1, true));
-        showToast("已還原原始和弦", 1500);
-        return;
-      }
-
-      // 儲存原始
-      if (!originalChords) {
-        originalChords = [...chordData.chords];
-      }
-
-      btnJazzifyAI.textContent = "⌛";
-
-      try {
-        const res = await API.jazzify(originalChords, chordData.key || "C", 3, "transformer");
-        if (res.error) {
-          throw new Error(res.error);
-        }
-        chordData.chords = res.chords;
-        jazzifyAIActive = true;
-        jazzifyActive = true;
-        jazzifyLevel = 3; // Sync UI state conceptually
-        btnJazzifyAI.textContent = "AI";
-        btnJazzifyAI.style.background = "rgba(156,39,176,.3)";
-        if (btnJazzify) btnJazzify.style.background = "";
-
-        chordCache = {};
-        await preloadChordInfo(chordData.chords);
-        buildChordDOM();
-        activeChordIdx = -1; // 強制重新觸發
-        requestAnimationFrame(() => updateActiveChord(audio.currentTime || -1, true));
-        showToast(`AI Transformer 重配: ${res.original_count}→${res.jazzified_count} 和弦`, 3000);
-      } catch (err) {
-        showToast("AI Jazzify 失敗: " + err.message, 3000);
-        jazzifyAIActive = false;
-        btnJazzifyAI.textContent = "AI";
-        btnJazzifyAI.style.background = "";
+        btnJazzify.style.color = "";
       }
     });
   }

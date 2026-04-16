@@ -416,14 +416,16 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 | AI-U04 | BTC fallback | 無 MIDI 時使用 BTC 偵測 | ☐ |
 | AI-U05 | Viterbi fallback | BTC 偵測 0 和弦時自動 Viterbi fallback | ☐ |
 | AI-U06 | 偵測失敗 | 錯誤訊息 + 重試選項 | ☐ |
-| AI-U07 | Jazzify OFF→L1 | 點擊切換，和弦更新，顯示變更數量 | ☐ |
-| AI-U08 | Jazzify L1→L2→L3 | 逐級切換，和弦複雜度遞增 | ☐ |
-| AI-U09 | Jazzify L3→OFF | 還原原始和弦 | ☐ |
-| AI-U10 | Jazzify 橘色指示 | 啟用時工具列背景橘色 | ☐ |
-| AI-U11 | AI 和弦建議 | 點擊按鈕，Toast 顯示 Top 5 候選 + 機率 + degree | ☐ |
-| AI-U12 | 段落標記顯示 | 段落色彩標記在和弦方塊上方 | ☐ |
-| AI-U13 | 段落標籤 | 第一個和弦顯示段落名稱（前奏/主歌/副歌...） | ☐ |
-| AI-U14 | 難度星級 | 根據和弦數量顯示 1-4 星 | ☐ |
+| AI-U07 | Jazzify OFF→L1 | 點擊切換，規則引擎 L1 擴展音，和弦更新 | ☐ |
+| AI-U08 | Jazzify L1→L2→L3 | 逐級切換，和弦數與複雜度遞增 (L2 ii-V, L3 tritone/sec dom) | ☐ |
+| AI-U09 | Jazzify L3→✨AI | 切到 Transformer 神經網路模式，標籤變紫色 ✨AI | ☐ |
+| AI-U10 | Jazzify ✨AI→OFF | 完成循環，還原原始和弦 | ☐ |
+| AI-U11 | Jazzify 色彩指示 | L1/L2/L3 橘色背景，✨AI 紫色背景，OFF 無背景 | ☐ |
+| AI-U12 | Jazzify 快速點擊 | 連點 5 下最終狀態正確（世代計數器抑制 stale callback） | ☐ |
+| AI-U13 | AI 和弦建議 | 點擊按鈕，Toast 顯示 Top 5 候選 + 機率 + degree | ☐ |
+| AI-U14 | 段落標記顯示 | 段落色彩標記在和弦方塊上方 | ☐ |
+| AI-U15 | 段落標籤 | 第一個和弦顯示段落名稱（前奏/主歌/副歌...） | ☐ |
+| AI-U16 | 難度星級 | 根據和弦數量顯示 1-4 星 | ☐ |
 
 ### 4.11 和弦編輯器
 
