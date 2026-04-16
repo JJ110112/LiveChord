@@ -2694,6 +2694,107 @@
     window._updateEditLink = _updateEditLink;
   }
 
+  // ---- Chord Correction buttons ----
+  const _corrRebuild = () => {
+    chordCache = {};
+    buildChordDOM();
+    activeChordIdx = -1;
+    requestAnimationFrame(() => updateActiveChord(audio.currentTime || -1, true));
+    const btnSave = $("#btnSaveCorrected"), btnRevert = $("#btnRevertCorrection");
+    if (window.ChordCorrection && window.ChordCorrection.hasBackup()) {
+      if (btnSave) btnSave.style.display = "";
+      if (btnRevert) btnRevert.style.display = "";
+    }
+  };
+  // Expose state for chord-correction.js
+  Object.defineProperty(window, '_playerActiveChordIdx', { get: () => activeChordIdx });
+  Object.defineProperty(window, '_playerSecPerBeat', { get: () => currentSecPerBeat });
+
+  const btnBeatTap = $("#btnBeatTap");
+  if (btnBeatTap) {
+    btnBeatTap.addEventListener("click", () => {
+      if (!chordData || !chordData.chords || chordData.chords.length === 0) {
+        showToast("尚無和弦資料", 2000); return;
+      }
+      window.ChordCorrection.enterBeatTap(chordData, audio, _corrRebuild);
+    });
+  }
+
+  const btnChordAlign = $("#btnChordAlign");
+  if (btnChordAlign) {
+    btnChordAlign.addEventListener("click", () => {
+      if (!chordData || !chordData.chords || chordData.chords.length === 0) {
+        showToast("尚無和弦資料", 2000); return;
+      }
+      window.ChordCorrection.enterChordAlign(
+        chordData, audio, () => activeChordIdx, _corrRebuild
+      );
+    });
+  }
+
+  const btnAutoSplit = $("#btnAutoSplit");
+  if (btnAutoSplit) {
+    btnAutoSplit.addEventListener("click", () => {
+      if (!chordData || !chordData.chords || chordData.chords.length === 0) {
+        showToast("尚無和弦資料", 2000); return;
+      }
+      const CC = window.ChordCorrection;
+      CC.backup(chordData);
+      let count = 0;
+      for (let i = chordData.chords.length - 1; i >= 0; i--) {
+        const dur = (i < chordData.chords.length - 1)
+          ? chordData.chords[i + 1].time - chordData.chords[i].time : 2.0;
+        const beats = Math.round(dur / currentSecPerBeat);
+        if (beats >= 8) {
+          const half = Math.floor(beats / 2);
+          CC.splitChord(chordData, i, half, beats - half, currentSecPerBeat);
+          count++;
+        }
+      }
+      if (count > 0) { _corrRebuild(); showToast(`已切分 ${count} 個長和弦`, 2500); }
+      else showToast("沒有需要切分的長和弦 (≥8拍)", 2000);
+    });
+  }
+
+  const btnSaveCorrected = $("#btnSaveCorrected");
+  if (btnSaveCorrected) {
+    btnSaveCorrected.addEventListener("click", async () => {
+      if (!chordData) return;
+      try {
+        const result = await API.saveChords({
+          path: trackPath,
+          key: chordData.key || "",
+          capo: capo,
+          bpm: chordData.bpm || 0,
+          chords: chordData.chords,
+        });
+        if (result && result.version) {
+          currentChordVersion = result.version;
+          const url = new URL(window.location);
+          url.searchParams.set("version", result.version);
+          window.history.replaceState({}, "", url);
+          if (window._updateEditLink) window._updateEditLink();
+        }
+        showToast("校正版本已儲存", 2000);
+        btnSaveCorrected.style.display = "none";
+      } catch (err) {
+        showToast("儲存失敗: " + err.message, 3000);
+      }
+    });
+  }
+
+  const btnRevertCorrection = $("#btnRevertCorrection");
+  if (btnRevertCorrection) {
+    btnRevertCorrection.addEventListener("click", () => {
+      if (window.ChordCorrection && window.ChordCorrection.hasBackup()) {
+        window.ChordCorrection.revert(chordData, _corrRebuild);
+        btnSaveCorrected.style.display = "none";
+        btnRevertCorrection.style.display = "none";
+        showToast("已還原至校正前", 2000);
+      }
+    });
+  }
+
   // ---- AI 建議按鈕 ----
   const btnAiSuggest = $("#btnAiSuggest");
   if (btnAiSuggest) {
@@ -3548,14 +3649,80 @@
           });
           _adjustBounds();
       }
-      
+
+      // ---- Chord Split sub-menu (integrated with section assignment) ----
+      function renderSplitOptions(chordIdx, chordName, totalBeats) {
+          const CC = window.ChordCorrection;
+          if (!CC) return;
+          menu.innerHTML = "";
+          const t = document.createElement("div");
+          t.className = "title";
+          t.innerHTML = `<span>\u2702 切分 ${chordName} (${totalBeats} 拍)</span><span style="opacity:0.6;float:right;cursor:pointer">\uD83D\uDD19 回上層</span>`;
+          t.querySelector("span:last-child").onclick = (ev) => { ev.stopPropagation(); renderMain(); };
+          menu.appendChild(t);
+
+          const options = CC.generateSplitOptions(totalBeats);
+
+          // Group 1: Just split
+          const h1 = document.createElement("div");
+          h1.className = "rv-section-menu-label";
+          h1.textContent = "僅切割:";
+          menu.appendChild(h1);
+
+          options.forEach(([l, r]) => {
+              const item = document.createElement("div");
+              item.className = "rv-section-menu-item";
+              item.innerHTML = `<span style="flex:1">${l}+${r}</span>`;
+              item.onclick = (ev) => {
+                  ev.stopPropagation();
+                  menu.remove();
+                  CC.backup(chordData);
+                  CC.splitChord(chordData, chordIdx, l, r, currentSecPerBeat);
+                  if (typeof _corrRebuild === "function") _corrRebuild();
+                  else if (typeof window._chordRebuild === "function") window._chordRebuild();
+                  showToast(`已切分 ${l}+${r} 拍`, 2000);
+              };
+              menu.appendChild(item);
+          });
+
+          // Separator
+          const sep = document.createElement("div");
+          sep.className = "rv-section-menu-sep";
+          menu.appendChild(sep);
+
+          // Group 2: Split + section boundary
+          const h2 = document.createElement("div");
+          h2.className = "rv-section-menu-label";
+          h2.textContent = "切割並分段:";
+          menu.appendChild(h2);
+
+          options.forEach(([l, r]) => {
+              const item = document.createElement("div");
+              item.className = "rv-section-menu-item";
+              item.innerHTML = `<span style="flex:1">${l}+${r} \u2192 選段落...</span>`;
+              item.onclick = (ev) => {
+                  ev.stopPropagation();
+                  renderTypeList(`切分 ${l}+${r} \u2192 新段落`, async (newType) => {
+                      CC.backup(chordData);
+                      const splitTime = CC.splitChord(chordData, chordIdx, l, r, currentSecPerBeat);
+                      await window.saveSectionFeedback(splitTime, newType);
+                      if (typeof _corrRebuild === "function") _corrRebuild();
+                      else if (typeof window._chordRebuild === "function") window._chordRebuild();
+                      showToast(`已切分 ${l}+${r} 拍，並建立段落`, 2500);
+                  });
+              };
+              menu.appendChild(item);
+          });
+          _adjustBounds();
+      }
+
       function renderMain() {
           menu.innerHTML = "";
           const t1 = document.createElement("div");
           t1.className = "title";
           t1.textContent = activeSec ? `目前段落: ${activeSec.labelZh || activeSec.type}` : `樂句模型標籤`;
           menu.appendChild(t1);
-          
+
           const renameItem = document.createElement("div");
           renameItem.className = "rv-section-menu-item";
           renameItem.innerHTML = `<span style="flex:1">📝 修改本段名稱...</span>`;
@@ -3567,7 +3734,7 @@
               });
           };
           menu.appendChild(renameItem);
-          
+
           if (chordTime !== null && !isBoundary) {
               const splitItem = document.createElement("div");
               splitItem.className = "rv-section-menu-item";
@@ -3580,7 +3747,30 @@
               };
               menu.appendChild(splitItem);
           }
-          
+
+          // ---- Chord Split (切分和弦) ----
+          if (chordTime !== null && window.ChordCorrection) {
+              const chords = chordData ? chordData.chords : [];
+              const ci = chords.findIndex(c => Math.abs(c.time - chordTime) < 0.15);
+              if (ci >= 0) {
+                  const durSec = ci < chords.length - 1
+                      ? chords[ci + 1].time - chords[ci].time
+                      : (chords[ci].end ? chords[ci].end - chords[ci].time : 2.0);
+                  const beats = Math.round(durSec / currentSecPerBeat);
+                  if (beats >= 4) {
+                      const csItem = document.createElement("div");
+                      csItem.className = "rv-section-menu-item";
+                      csItem.style.color = "#ff9800";
+                      csItem.innerHTML = `<span style="flex:1">\u2702 切分和弦 (${beats} 拍)...</span>`;
+                      csItem.onclick = (ev) => {
+                          ev.stopPropagation();
+                          renderSplitOptions(ci, chords[ci].chord, beats);
+                      };
+                      menu.appendChild(csItem);
+                  }
+              }
+          }
+
           if (activeSec) {
               const delItem = document.createElement("div");
               delItem.className = "rv-section-menu-item";
