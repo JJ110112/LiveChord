@@ -417,7 +417,7 @@
 }
 .chord-ribbon-panel.overview-mode .rv-item {
   order: var(--chord-idx, 0); /* Flex order override for correct visual direction */
-  width: 140px;
+  width: calc(140px * var(--ribbon-scale, 1));
   border-left: none;
   border-top: 4px solid var(--phrase-color, #888);
   background: rgba(0,0,0,0.4);

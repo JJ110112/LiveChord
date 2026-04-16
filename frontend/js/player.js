@@ -650,6 +650,7 @@
   function _loadRibbonScale() {
     ribbonScale = _ribbonScales[activeTab] || 1.0;
     _updateScaleLabel();
+    if (chordRibbonPanel) chordRibbonPanel.style.setProperty("--ribbon-scale", ribbonScale);
   }
   function _updateScaleLabel() {
     if (scaleLabel) scaleLabel.textContent = ribbonScale.toFixed(1);
@@ -659,6 +660,7 @@
     _ribbonScales[activeTab] = ribbonScale;
     localStorage.setItem(`livechord_ribbon_scale_${activeTab}`, ribbonScale);
     _updateScaleLabel();
+    if (chordRibbonPanel) chordRibbonPanel.style.setProperty("--ribbon-scale", ribbonScale);
     _buildUnifiedRibbon();
     updateActiveChord(audio.currentTime || 0);
   }
