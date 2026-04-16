@@ -60,12 +60,20 @@
         if (secBrowse) secBrowse.style.display = "none";
         if (secRecent) secRecent.style.display = "none";
         // Show beta sections
-        const secUpload = $("#secUpload");
+        const betaFab = $("#betaFab");
         const secBetaRecent = $("#secBetaRecent");
         const secHistory = $("#secHistory");
-        if (secUpload) secUpload.style.display = "";
+        if (betaFab) betaFab.style.display = "flex";
         if (secBetaRecent) secBetaRecent.style.display = "";
         if (secHistory) secHistory.style.display = "";
+        // Close FAB panel on outside click
+        document.addEventListener("click", (e) => {
+          const panel = $("#betaFabPanel");
+          const fab = $("#betaFab");
+          if (panel && fab && !panel.contains(e.target) && !fab.contains(e.target)) {
+            panel.classList.remove("open");
+          }
+        });
       } else if (_isBetaMode) {
         // Admin in beta mode: show history section alongside regular sections
         const secHistory = $("#secHistory");

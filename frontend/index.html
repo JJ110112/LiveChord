@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=1">
-  <link rel="stylesheet" href="/css/home.css?v=5">
+  <link rel="stylesheet" href="/css/home.css?v=6">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -71,43 +71,34 @@
     <div id="historyGrid" class="horizontal-scroll" style="margin-top:12px"></div>
   </section>
 
-  <!-- beta upload section — compact, at the bottom (hidden by default) -->
-  <section id="secUpload" class="dash-section" style="display:none">
-    <h2 class="dash-title">新增歌曲</h2>
-    <div class="beta-upload-compact">
-      <div class="upload-drop-zone-compact" id="betaDropZone">
-        <span>&#x1F3B5; 拖曳音檔至此，或點擊選取</span>
-        <span class="upload-hint">MP3, FLAC, WAV, M4A, OGG (上限 200 MB)</span>
-        <input type="file" id="betaFileInput" accept="audio/*" style="display:none">
-      </div>
-      <div class="beta-file-info" id="betaFileInfo" style="display:none">
-        <span id="betaFileName"></span>
-        <span id="betaFileSize" style="color:var(--text-dim);margin-left:8px"></span>
-        <button class="btn-small btn-accent" id="betaUploadBtn" onclick="window._betaStartUpload()">開始分析</button>
-      </div>
-      <div class="beta-progress" id="betaUploadProgress" style="display:none">
-        <div class="progress-bar"><div class="progress-fill" id="betaProgressFill"></div></div>
-        <div class="progress-info">
-          <span id="betaProgressText">分析中...</span>
-          <span id="betaProgressPct">0%</span>
-        </div>
-      </div>
-      <div class="beta-yt-row" style="margin-top:10px">
-        <div style="display:flex;gap:8px;align-items:center">
-          <span>&#x1F3AC;</span>
-          <input type="text" id="betaYtUrl" placeholder="貼上 YouTube URL..." style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.85rem">
-          <button class="btn-small btn-accent" id="betaYtBtn" onclick="window._betaStartYoutube()">分析</button>
-        </div>
-        <div class="beta-progress" id="betaYtProgress" style="display:none;margin-top:8px">
-          <div class="progress-bar"><div class="progress-fill" id="betaYtFill"></div></div>
-          <div class="progress-info">
-            <span id="betaYtText">處理中...</span>
-            <span id="betaYtPct">0%</span>
-          </div>
-        </div>
-      </div>
+  <!-- beta FAB + popup (hidden by default) -->
+  <div id="betaFab" class="beta-fab" style="display:none" onclick="document.getElementById('betaFabPanel').classList.toggle('open')">+</div>
+  <div id="betaFabPanel" class="beta-fab-panel">
+    <div class="fab-panel-title">新增歌曲</div>
+    <div class="fab-section" id="betaDropZone">
+      <span>&#x1F3B5; 拖曳音檔或點擊選取</span>
+      <span class="upload-hint">MP3, FLAC, WAV, M4A, OGG (200 MB)</span>
+      <input type="file" id="betaFileInput" accept="audio/*" style="display:none">
     </div>
-  </section>
+    <div class="beta-file-info" id="betaFileInfo" style="display:none">
+      <span id="betaFileName"></span>
+      <span id="betaFileSize" style="color:var(--text-dim);margin-left:8px"></span>
+      <button class="btn-small btn-accent" id="betaUploadBtn" onclick="window._betaStartUpload()">分析</button>
+    </div>
+    <div class="beta-progress" id="betaUploadProgress" style="display:none">
+      <div class="progress-bar"><div class="progress-fill" id="betaProgressFill"></div></div>
+      <div class="progress-info"><span id="betaProgressText">分析中...</span><span id="betaProgressPct">0%</span></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+      <span>&#x1F3AC;</span>
+      <input type="text" id="betaYtUrl" placeholder="YouTube URL..." style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.85rem">
+      <button class="btn-small btn-accent" id="betaYtBtn" onclick="window._betaStartYoutube()">分析</button>
+    </div>
+    <div class="beta-progress" id="betaYtProgress" style="display:none;margin-top:8px">
+      <div class="progress-bar"><div class="progress-fill" id="betaYtFill"></div></div>
+      <div class="progress-info"><span id="betaYtText">處理中...</span><span id="betaYtPct">0%</span></div>
+    </div>
+  </div>
 
   <!-- browse section -->
   <section id="secBrowse" class="dash-section">
@@ -221,6 +212,6 @@
       }
   }
 </script>
-<script src="/js/app.js?v=45"></script>
+<script src="/js/app.js?v=46"></script>
 </body>
 </html>
