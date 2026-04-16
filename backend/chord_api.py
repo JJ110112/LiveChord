@@ -183,17 +183,22 @@ class ChordSheet(BaseModel):
     path: str
     key: str = ""
     capo: int = 0
+    bpm: float = 0
     chords: list = []
 
 
 @router.get("/chords")
-async def get_chords(path: str = Query(...), version: str = Query(None)):
+async def get_chords(path: str = Query(...), version: str = Query(None),
+                     username: Optional[str] = Depends(_optional_user)):
     """取得某首歌的和弦譜"""
     is_fallback = False
+    if not version and username:
+        user_file = DATA_DIR / "users" / username / "chords" / f"{song_hash(path)}.json"
+        if user_file.is_file():
+            version = username
     if version and version != "official":
         chords_file = DATA_DIR / "users" / version / "chords" / f"{song_hash(path)}.json"
         if not chords_file.is_file():
-            # 回退到官方版
             chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
             is_fallback = True
     else:

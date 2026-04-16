@@ -380,6 +380,118 @@
     showToast("已刪除");
   });
 
+  // ---- replace all ----
+
+  $("#btnReplaceAll").addEventListener("click", () => {
+    const from = prompt("要取代的和弦名稱 (例: Am):");
+    if (!from) return;
+    const to = prompt(`將所有 "${from}" 取代為:`);
+    if (!to) return;
+    let count = 0;
+    chords.forEach(c => { if (c.chord === from) { c.chord = to; count++; } });
+    if (count === 0) {
+      showToast(`找不到和弦 "${from}"`);
+    } else {
+      render();
+      showToast(`已將 ${count} 個 "${from}" 取代為 "${to}"`);
+    }
+  });
+
+  // ---- split ----
+
+  let splitTarget = null;
+
+  function showSplitPopup(chord, anchorEl) {
+    splitTarget = chord;
+    const beatSec = 60 / songBPM;
+    const durSec = (chord.end || chord.time + 2) - chord.time;
+    const totalBeats = Math.round((durSec / beatSec) * 2) / 2; // round to 0.5
+
+    const optionsEl = $("#splitOptions");
+    optionsEl.innerHTML = "";
+    const step = 0.5;
+    for (let left = step; left < totalBeats; left += step) {
+      const right = Math.round((totalBeats - left) * 10) / 10;
+      if (right < step) continue;
+      // only show "round" ratios to keep UI clean (integer or .5)
+      if (left % 0.5 !== 0 || right % 0.5 !== 0) continue;
+      const btn = document.createElement("button");
+      btn.className = "toolbar-btn";
+      btn.style.cssText = "padding:4px 10px;font-size:12px;";
+      btn.textContent = `${left} / ${right}`;
+      btn.addEventListener("click", () => { doSplit(left, right); });
+      optionsEl.appendChild(btn);
+    }
+
+    // pre-fill custom with even split
+    const half = Math.round(totalBeats / 2 * 2) / 2;
+    $("#splitCustomLeft").value = half;
+    $("#splitCustomRight").value = Math.round((totalBeats - half) * 10) / 10;
+
+    // position popup near the chord block
+    const popup = $("#splitPopup");
+    popup.style.display = "block";
+    if (anchorEl) {
+      const rect = anchorEl.getBoundingClientRect();
+      popup.style.left = Math.min(rect.left, window.innerWidth - 280) + "px";
+      popup.style.top = (rect.bottom + 4) + "px";
+    }
+  }
+
+  function hideSplitPopup() {
+    $("#splitPopup").style.display = "none";
+    splitTarget = null;
+  }
+
+  function doSplit(leftBeats, rightBeats) {
+    if (!splitTarget) return;
+    const chord = splitTarget;
+    const beatSec = 60 / songBPM;
+    const splitTime = chord.time + leftBeats * beatSec;
+    const origEnd = chord.end || chord.time + 2;
+
+    chord.end = splitTime;
+    const newChord = { time: splitTime, end: origEnd, chord: chord.chord };
+    const idx = chords.indexOf(chord);
+    chords.splice(idx + 1, 0, newChord);
+    sortChords();
+
+    selectedChords.clear();
+    selectedChords.add(newChord);
+    lastSelectedChord = newChord;
+    render();
+    hideSplitPopup();
+    showToast(`已分割為 ${leftBeats} / ${rightBeats} 拍`);
+  }
+
+  $("#btnSplit").addEventListener("click", () => {
+    if (selectedChords.size !== 1) {
+      showToast("請選取恰好 1 個和弦來分割");
+      return;
+    }
+    const chord = selectedChords.values().next().value;
+    const blockEl = timeline.querySelector(`.chord-block[data-idx="${chords.indexOf(chord)}"]`);
+    showSplitPopup(chord, blockEl);
+  });
+
+  $("#splitCustomBtn").addEventListener("click", () => {
+    const left = parseFloat($("#splitCustomLeft").value);
+    const right = parseFloat($("#splitCustomRight").value);
+    if (!left || !right || left <= 0 || right <= 0) {
+      showToast("請輸入有效的拍數");
+      return;
+    }
+    doSplit(left, right);
+  });
+
+  document.addEventListener("click", (e) => {
+    if ($("#splitPopup").style.display !== "none" &&
+        !e.target.closest("#splitPopup") &&
+        !e.target.closest("#btnSplit")) {
+      hideSplitPopup();
+    }
+  });
+
   // ---- nudge ----
   
   if ($("#btnNudgeLeft")) {
@@ -460,6 +572,12 @@
   document.addEventListener("keydown", (e) => {
     if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
 
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "h") {
+        e.preventDefault();
+        $("#btnReplaceAll").click();
+        return;
+    }
+
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
         if (selectedChords.size > 0) {
             clipboardChords = Array.from(selectedChords).map(c => ({...c})).sort((a, b) => a.time - b.time);
@@ -509,7 +627,214 @@
         e.preventDefault();
         audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 5);
     }
-    if (e.key === "Escape") deselectAll();
+    if (e.key === "?") {
+      const overlay = $("#helpOverlay");
+      const backdrop = $("#helpBackdrop");
+      const show = overlay.style.display === "none" || !overlay.style.display;
+      overlay.style.display = show ? "block" : "none";
+      backdrop.style.display = show ? "block" : "none";
+      return;
+    }
+    if (e.key === "Escape") {
+      if ($("#helpOverlay").style.display === "block") {
+        $("#helpOverlay").style.display = "none";
+        $("#helpBackdrop").style.display = "none";
+        return;
+      }
+      if ($("#splitPopup").style.display !== "none") { hideSplitPopup(); return; }
+      deselectAll();
+    }
+    if (e.key.toLowerCase() === "r" && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      toggleRecordMode();
+      return;
+    }
+    if (e.key.toLowerCase() === "t" && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      handleTap();
+      return;
+    }
+    if (e.key.toLowerCase() === "s" && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      $("#btnSplit").click();
+      return;
+    }
+  });
+
+  // ---- record mode (live chord input) ----
+
+  let isRecordMode = false;
+
+  function placeLiveChord(name) {
+    const t = snapTime(audio.currentTime);
+    const beatSec = 60 / songBPM;
+    const defaultDur = beatSec * 4;
+    const existing = chords.find(c => Math.abs(c.time - t) < beatSec * 0.25);
+    if (existing) {
+      existing.chord = name;
+    } else {
+      chords.push({ time: t, end: t + defaultDur, chord: name });
+      sortChords();
+    }
+    render();
+    showToast(`${name} @ ${formatTime(t)}`);
+  }
+
+  function toggleRecordMode() {
+    isRecordMode = !isRecordMode;
+    $("#recordModeIndicator").style.display = isRecordMode ? "" : "none";
+    $("#liveChordInput").style.display = isRecordMode ? "" : "none";
+    $("#btnRecordMode").style.background = isRecordMode ? "rgba(233,30,99,0.3)" : "";
+    if (isRecordMode) {
+      $("#liveChordText").value = "";
+      $("#liveChordText").focus();
+      if (audio.paused) audio.play();
+    }
+  }
+
+  $("#btnRecordMode").addEventListener("click", toggleRecordMode);
+
+  $("#liveChordText").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const name = e.target.value.trim();
+      if (!name) return;
+      placeLiveChord(name);
+      e.target.value = "";
+    }
+    if (e.key === "Escape") {
+      toggleRecordMode();
+    }
+    e.stopPropagation();
+  });
+
+  // ---- MIDI input ----
+
+  let midiAccess = null;
+  let midiHeldNotes = new Set();
+  let midiChordTimeout = null;
+
+  const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  const CHORD_MAP = {
+    "0,4,7": "", "0,3,7": "m", "0,4,7,10": "7", "0,3,7,10": "m7",
+    "0,4,7,11": "maj7", "0,3,6": "dim", "0,4,8": "aug",
+    "0,2,7": "sus2", "0,5,7": "sus4", "0,3,6,10": "m7b5",
+    "0,4,7,11,14": "maj9", "0,4,7,10,14": "9", "0,3,7,11": "mMaj7",
+    "0,4,7,10,17": "11", "0,3,7,10,14": "m9",
+  };
+
+  function detectChordFromMIDI(midiNotes) {
+    const pitchClasses = [...new Set(midiNotes.map(n => n % 12))].sort((a, b) => a - b);
+    if (pitchClasses.length < 2) return null;
+    // try each pitch class as root (to handle inversions)
+    for (const root of pitchClasses) {
+      const intervals = pitchClasses.map(pc => (pc - root + 12) % 12).sort((a, b) => a - b);
+      const key = intervals.join(",");
+      if (CHORD_MAP[key] !== undefined) {
+        return NOTE_NAMES[root] + CHORD_MAP[key];
+      }
+    }
+    return null;
+  }
+
+  function handleMIDIMessage(msg) {
+    const [status, note, velocity] = msg.data;
+    const command = status & 0xf0;
+    if (command === 0x90 && velocity > 0) {
+      midiHeldNotes.add(note);
+      if (midiChordTimeout) clearTimeout(midiChordTimeout);
+      midiChordTimeout = setTimeout(() => {
+        if (midiHeldNotes.size >= 2 && isRecordMode) {
+          const notes = Array.from(midiHeldNotes).sort((a, b) => a - b);
+          const chordName = detectChordFromMIDI(notes);
+          if (chordName) placeLiveChord(chordName);
+        }
+      }, 50);
+    } else if (command === 0x80 || (command === 0x90 && velocity === 0)) {
+      midiHeldNotes.delete(note);
+    }
+  }
+
+  async function initMIDI() {
+    if (!navigator.requestMIDIAccess) {
+      showToast("此瀏覽器不支援 Web MIDI API");
+      return;
+    }
+    try {
+      midiAccess = await navigator.requestMIDIAccess();
+      for (const input of midiAccess.inputs.values()) {
+        input.onmidimessage = handleMIDIMessage;
+      }
+      midiAccess.onstatechange = (e) => {
+        if (e.port.type === "input" && e.port.state === "connected") {
+          e.port.onmidimessage = handleMIDIMessage;
+          showToast("MIDI 裝置已連接: " + e.port.name);
+        }
+      };
+      const count = midiAccess.inputs.size;
+      showToast(count > 0 ? `MIDI 已連接 (${count} 裝置)` : "未偵測到 MIDI 裝置，請連接後自動偵測");
+    } catch (err) {
+      showToast("MIDI 連接失敗: " + err.message);
+    }
+  }
+
+  $("#btnMIDI").addEventListener("click", initMIDI);
+
+  $("#helpBackdrop").addEventListener("click", () => {
+    $("#helpOverlay").style.display = "none";
+    $("#helpBackdrop").style.display = "none";
+  });
+
+  // ---- tap tempo ----
+
+  let tapTimestamps = [];
+  const TAP_RESET_MS = 3000;
+
+  function handleTap() {
+    const now = performance.now();
+    if (tapTimestamps.length > 0 && now - tapTimestamps[tapTimestamps.length - 1] > TAP_RESET_MS) {
+      tapTimestamps = [];
+    }
+    tapTimestamps.push(now);
+    // flash button
+    const btn = $("#btnTapTempo");
+    btn.style.background = "rgba(255,87,34,0.4)";
+    setTimeout(() => { btn.style.background = ""; }, 120);
+
+    if (tapTimestamps.length < 2) {
+      $("#tapBpmDisplay").textContent = "繼續打拍...";
+      return;
+    }
+    if (tapTimestamps.length > 16) tapTimestamps.shift();
+
+    let total = 0;
+    for (let i = 1; i < tapTimestamps.length; i++) {
+      total += tapTimestamps[i] - tapTimestamps[i - 1];
+    }
+    const avgMs = total / (tapTimestamps.length - 1);
+    const bpm = Math.round(60000 / avgMs);
+    $("#tapBpmDisplay").textContent = `${bpm} BPM (${tapTimestamps.length} 拍)`;
+    $("#btnApplyTapBpm").style.display = "";
+    $("#btnApplyTapBpm").dataset.bpm = bpm;
+    $("#btnResetTap").style.display = "";
+  }
+
+  $("#btnTapTempo").addEventListener("click", handleTap);
+
+  $("#btnApplyTapBpm").addEventListener("click", () => {
+    const bpm = parseInt($("#btnApplyTapBpm").dataset.bpm);
+    if (bpm > 0) {
+      songBPM = bpm;
+      render();
+      showToast(`BPM 已更新為 ${bpm}`);
+    }
+  });
+
+  $("#btnResetTap").addEventListener("click", () => {
+    tapTimestamps = [];
+    $("#tapBpmDisplay").textContent = "";
+    $("#btnApplyTapBpm").style.display = "none";
+    $("#btnResetTap").style.display = "none";
   });
 
   // ---- save ----
@@ -517,12 +842,18 @@
   $("#btnSave").addEventListener("click", async () => {
     songKey = $("#keyInput").value.trim();
     try {
-      await API.saveChords({
+      const result = await API.saveChords({
         path: trackPath,
         key: songKey,
         capo: 0,
+        bpm: songBPM,
         chords: chords,
       });
+      if (result && result.version) {
+        const url = new URL(window.location);
+        url.searchParams.set("version", result.version);
+        window.history.replaceState({}, "", url);
+      }
       showToast("已儲存！", 2000);
     } catch (err) {
       showToast("儲存失敗: " + err.message, 3000);

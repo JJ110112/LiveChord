@@ -2189,6 +2189,7 @@
               _setLoadingState(true, "切換版本中...", "載入 " + ver.name + " 的和弦");
               try { await loadChords(path, currentChordVersion); }
               finally { _setLoadingState(false); }
+              if (window._updateEditLink) window._updateEditLink();
           });
           listEl.appendChild(item);
       });
@@ -2683,7 +2684,15 @@
 
   // ---- edit link ----
   const btnEdit = $("#btnEdit");
-  if (btnEdit) btnEdit.href = `/editor?path=${encodeURIComponent(trackPath)}`;
+  if (btnEdit) {
+    function _updateEditLink() {
+      let editUrl = `/editor?path=${encodeURIComponent(trackPath)}`;
+      if (currentChordVersion) editUrl += `&version=${encodeURIComponent(currentChordVersion)}`;
+      btnEdit.href = editUrl;
+    }
+    _updateEditLink();
+    window._updateEditLink = _updateEditLink;
+  }
 
   // ---- AI 建議按鈕 ----
   const btnAiSuggest = $("#btnAiSuggest");

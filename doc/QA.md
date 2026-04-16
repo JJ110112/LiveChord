@@ -437,6 +437,30 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 | E-04 | 拖曳調整時間 | 拖曳和弦標記調整 time/end | ☐ |
 | E-05 | 刪除和弦 | 選取後刪除 | ☐ |
 | E-06 | 儲存 | 儲存後播放頁可讀取 | ☐ |
+| E-S01 | 儲存持久性 | 編輯→儲存→返回播放→再進編輯器→編輯保留 | ☐ |
+| E-S02 | 無編輯回退 | 無使用者編輯時載入官方版本 | ☐ |
+| E-S03 | URL 版本參數 | 儲存後 URL 含 `?version={username}` | ☐ |
+| E-R01 | 全域取代 | 多個 Am→Bm 全部替換成功 | ☐ |
+| E-R02 | 取代無匹配 | 取代不存在的和弦→顯示「找不到」 | ☐ |
+| E-R03 | Ctrl+H 快捷鍵 | 按 Ctrl+H 開啟取代對話框 | ☐ |
+| E-SP01 | 分割 4 拍和弦 | 選取→分割 2/2→產生兩個同名和弦 | ☐ |
+| E-SP02 | 分割 8 拍和弦 | 選取→分割 6/2→驗證時長 | ☐ |
+| E-SP03 | 自訂比例分割 | 使用自訂輸入框→任意比例 | ☐ |
+| E-SP04 | 分割彈窗關閉 | 點擊外部→彈窗關閉 | ☐ |
+| E-SP05 | 多選防護 | 選取 2 個和弦→分割→提示「選取恰好 1 個」 | ☐ |
+| E-T01 | 打拍節奏 | 按 T 鍵 8 次 ~120 BPM→顯示約 120 | ☐ |
+| E-T02 | 套用 BPM | 打拍→套用→和弦方塊拍數更新 | ☐ |
+| E-T03 | 打拍重置 | 打拍→等 4 秒→重新打拍→計數器重置 | ☐ |
+| E-T04 | BPM 持久化 | 打拍→儲存→重載→BPM 保留 | ☐ |
+| E-LI01 | 即時輸入模式 | 按 R→浮動輸入框 + REC 指示燈出現 | ☐ |
+| E-LI02 | 打字放置和弦 | 錄音模式輸入 Am + Enter→和弦放在播放頭 | ☐ |
+| E-LI03 | 替換現有和弦 | 在已有和弦附近放置→替換而非重複 | ☐ |
+| E-LI04 | Escape 退出 | 錄音模式按 Escape→模式退出 | ☐ |
+| E-MI01 | MIDI 連接 | 點擊 MIDI 按鈕→成功/錯誤提示 | ☐ |
+| E-MI02 | MIDI 和弦偵測 | (手動) MIDI 控制器彈奏→和弦自動放置 | ☐ |
+| E-HK01 | ? 快捷鍵說明 | 按 ? 顯示快捷鍵一覽面板 | ☐ |
+| E-REG01 | 既有功能回歸 | 選取、拖曳、縮放、複製貼上、刪除、正規化、匯入 | ☐ |
+| E-REG02 | 播放頁回歸 | 播放頁和弦顯示、版本切換、瀑布流正常 | ☐ |
 
 ### 4.12 Admin 管理頁
 
@@ -553,17 +577,16 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 1. 將測試曲目 FLAC 放入 data/test_songs/Lv1~Lv5/
 2. 啟動伺服器: start.bat
 3. 執行 API 測試: cd tests && pytest
-4. 執行和弦準確度: cd data/test_songs && python run_test.py all
+4. 執行和弦準確度: cd songs && python run_test.py all
 5. 執行 Playwright UI 測試: 利用已註冊的 Playwright MCP 與 IDE Live Server 進行本地端 AI 輔助測試。
-6. 手動 UI 測試: 開啟 http://localhost:8800 或 V:\ 伺服器 (http://192.168.50.6:8800/) 逐項驗收
-   - 此伺服器 (V:\) 已由人類測試過可用。
+6. UI 測試: 開啟 http://localhost:8800 逐項驗收
    - Dashboard: 搜尋、最愛、最近播放、難度星級
    - 播放頁: 三分頁切換、88 鍵、Jazzify、段落標記
    - 管理頁: 掃描、批次偵測、自動排程
    - Benchmark: 執行偵測、對比評分
 7. 佈署同步: AI agent 負責將變更的 backend/frontend 檔案複製到 V:\ 供人類驗證品質
 8. 重啟生產伺服器，確認 V:\ 上運行正常
-9. 記錄結果: 勾選上方清單，未通過項開 issue
+9. 記錄QA結果到 \doc: 勾選上方清單，未通過項開 issue
 10. 全部 P0/P1 修復後 → 版本通過
 ```
 
