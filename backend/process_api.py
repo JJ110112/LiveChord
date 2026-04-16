@@ -7,20 +7,22 @@ import queue
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from auth_api import get_current_user, get_admin_user
 from config import is_beta_mode
 from process_queue import (
-    ProcessJob, JobStatus, TMP_DIR,
+    ProcessJob, JobStatus, TMP_DIR, COVERS_DIR,
     submit_job, get_job, generate_job_id, compute_file_hash,
-    check_quota, get_user_daily_count, get_audit_log, CHORDS_DIR,
+    check_quota, get_user_daily_count, get_audit_log, get_user_audit_log,
+    CHORDS_DIR,
 )
 
 router = APIRouter(prefix="/api/process", tags=["process"])
 
-# Max upload size: 50 MB
-MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+# Max upload size: 200 MB
+MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 
 ALLOWED_MIME_TYPES = {
     "audio/mpeg", "audio/mp3", "audio/flac", "audio/x-flac",
@@ -60,7 +62,7 @@ def upload_audio(file: UploadFile = File(...),
     # Read file with size limit
     data = file.file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=400, detail="檔案超過 50MB 上限")
+        raise HTTPException(status_code=400, detail="檔案超過 200MB 上限")
 
     # Save to tmp
     ext = os.path.splitext(file.filename or "audio.mp3")[1] or ".mp3"
@@ -144,6 +146,8 @@ def job_status(job_id: str, username: str = Depends(get_current_user)):
         "title": job.title,
         "error": job.error_msg if job.status == JobStatus.ERROR else "",
         "result_hash": job.result_hash if job.status == JobStatus.DONE else None,
+        "source_type": job.source_type,
+        "youtube_url": job.youtube_url if job.source_type == "youtube" else "",
     }
 
 
@@ -163,6 +167,30 @@ def job_result(job_id: str, username: str = Depends(get_current_user)):
 
     import json
     return json.loads(chord_file.read_text(encoding="utf-8"))
+
+
+# ---------------------------------------------------------------------------
+# Cover art
+# ---------------------------------------------------------------------------
+
+@router.get("/cover/{hash}")
+def get_cover(hash: str):
+    """Serve cover art for a processed song."""
+    cover_path = COVERS_DIR / f"{hash}.jpg"
+    if not cover_path.is_file():
+        raise HTTPException(status_code=404, detail="No cover")
+    return FileResponse(cover_path, media_type="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+
+# ---------------------------------------------------------------------------
+# User history (non-admin)
+# ---------------------------------------------------------------------------
+
+@router.get("/my-history", dependencies=[Depends(_require_beta)])
+def my_history(limit: int = 20, username: str = Depends(get_current_user)):
+    """Get current user's own process history from audit log."""
+    return {"history": get_user_audit_log(username, limit)}
 
 
 # ---------------------------------------------------------------------------

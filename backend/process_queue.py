@@ -147,7 +147,6 @@ def compute_file_hash(filepath: str) -> str:
 
 def _save_chord_json(job: ProcessJob, chords: list, key: str) -> str:
     """Save chord JSON in the same format as chord_batch.py. Returns song hash."""
-    # For uploaded songs, use a virtual path so they don't collide with library
     virtual_path = f"__upload/{job.job_id}"
     hash_val = hashlib.md5(virtual_path.encode("utf-8")).hexdigest()[:12]
 
@@ -159,9 +158,39 @@ def _save_chord_json(job: ProcessJob, chords: list, key: str) -> str:
         "title": job.title,
         "chords": chords,
     }
+    if job.youtube_url:
+        sheet["youtube_url"] = job.youtube_url
     out_file = CHORDS_DIR / f"{hash_val}.json"
     out_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
     return hash_val
+
+
+def _extract_cover(audio_path: str, result_hash: str):
+    """Extract embedded cover art from audio file and save as JPEG."""
+    try:
+        from mutagen import File as MutagenFile
+        audio = MutagenFile(audio_path)
+        if audio is None:
+            return
+        cover_data = None
+        # FLAC
+        if hasattr(audio, "pictures") and audio.pictures:
+            cover_data = audio.pictures[0].data
+        # MP3 (ID3)
+        elif hasattr(audio, "tags") and audio.tags:
+            for key in audio.tags:
+                if key.startswith("APIC"):
+                    cover_data = audio.tags[key].data
+                    break
+        # MP4/M4A
+        elif hasattr(audio, "tags") and audio.tags and "covr" in audio.tags:
+            cover_data = bytes(audio.tags["covr"][0])
+        if cover_data and len(cover_data) > 100:
+            cover_path = COVERS_DIR / f"{result_hash}.jpg"
+            cover_path.write_bytes(cover_data)
+            logger.info("Cover extracted for %s (%d bytes)", result_hash, len(cover_data))
+    except Exception as e:
+        logger.debug("Cover extraction failed for %s: %s", result_hash, e)
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +215,7 @@ def _download_youtube(url: str, output_path: str) -> str:
     """Download audio from YouTube URL using yt-dlp. Returns path to wav file."""
     result = subprocess.run(
         [YTDLP_BIN, "-x", "--audio-format", "wav", "--audio-quality", "0",
-         "--max-filesize", "50m", "--no-playlist",
+         "--max-filesize", "200m", "--no-playlist",
          "-o", output_path, url],
         capture_output=True, text=True, timeout=180
     )
@@ -210,6 +239,10 @@ def _download_youtube(url: str, output_path: str) -> str:
 # Audit log
 # ---------------------------------------------------------------------------
 
+COVERS_DIR = DATA_DIR / "covers"
+COVERS_DIR.mkdir(parents=True, exist_ok=True)
+
+
 def _init_audit_db():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(AUDIT_DB_PATH) as conn:
@@ -228,6 +261,11 @@ def _init_audit_db():
                 completed_at TEXT DEFAULT ''
             )
         """)
+        # Migration: add result_hash column
+        try:
+            conn.execute("ALTER TABLE process_audit ADD COLUMN result_hash TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
         conn.commit()
 
 
@@ -239,12 +277,13 @@ def _write_audit(job: ProcessJob, chord_count: int = 0):
         with sqlite3.connect(AUDIT_DB_PATH) as conn:
             conn.execute(
                 """INSERT INTO process_audit
-                   (job_id, username, source_type, file_hash, youtube_url, title, status, chord_count, created_at, completed_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                   (job_id, username, source_type, file_hash, youtube_url, title, status, chord_count, created_at, completed_at, result_hash)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (job.job_id, job.username, job.source_type, job.file_hash,
                  job.youtube_url, job.title, job.status.value, chord_count,
                  time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(job.created_at)),
-                 time.strftime("%Y-%m-%dT%H:%M:%S"))
+                 time.strftime("%Y-%m-%dT%H:%M:%S"),
+                 job.result_hash or "")
             )
             conn.commit()
     except Exception as e:
@@ -259,6 +298,26 @@ def get_audit_log(limit: int = 50, offset: int = 0) -> list[dict]:
             (limit, offset)
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def get_user_audit_log(username: str, limit: int = 20) -> list[dict]:
+    """Get a specific user's process history."""
+    with sqlite3.connect(AUDIT_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM process_audit WHERE username=? ORDER BY id DESC LIMIT ?",
+            (username, limit)
+        ).fetchall()
+    results = []
+    for r in rows:
+        d = dict(r)
+        # Reconstruct result_hash for old rows that don't have it
+        if not d.get("result_hash") and d["status"] == "done":
+            d["result_hash"] = hashlib.md5(
+                f"__upload/{d['job_id']}".encode("utf-8")
+            ).hexdigest()[:12]
+        results.append(d)
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -304,10 +363,21 @@ def _worker_loop():
             chords, key = detect_chords_and_key_isolated(audio_path)
             job.progress = 90
 
-            # Step 3: Save chord JSON
+            # Step 3: Extract cover art (before audio is deleted)
+            if job.source_type == "upload" and audio_path:
+                _extract_cover(audio_path, "pending")  # placeholder, real hash below
+
+            # Step 4: Save chord JSON
             result_hash = _save_chord_json(job, chords, key)
             chord_count = len(chords)
             job.result_hash = result_hash
+
+            # Rename cover file to final hash if extracted
+            if job.source_type == "upload":
+                pending_cover = COVERS_DIR / "pending.jpg"
+                if pending_cover.is_file():
+                    pending_cover.rename(COVERS_DIR / f"{result_hash}.jpg")
+
             job.status = JobStatus.DONE
             job.progress = 100
             logger.info("Job %s done: %s chords, key=%s", job_id, chord_count, key)

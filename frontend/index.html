@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=1">
-  <link rel="stylesheet" href="/css/home.css?v=1">
+  <link rel="stylesheet" href="/css/home.css?v=2">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       window.location.href = "/login";
@@ -55,6 +55,50 @@
     <div id="favList" class="horizontal-scroll"></div>
   </section>
 
+  <!-- beta upload section (hidden by default, shown for beta non-admin) -->
+  <section id="secUpload" class="dash-section" style="display:none">
+    <div class="beta-upload-card">
+      <div class="upload-drop-zone" id="betaDropZone">
+        <div class="upload-icon">&#x1F3B5;</div>
+        <div class="upload-text">拖曳音檔至此，或點擊選取</div>
+        <div class="upload-hint">支援 MP3, FLAC, WAV, M4A, OGG (上限 200 MB)</div>
+        <input type="file" id="betaFileInput" accept="audio/*" style="display:none">
+      </div>
+      <div class="beta-file-info" id="betaFileInfo" style="display:none">
+        <span id="betaFileName"></span>
+        <span id="betaFileSize" style="color:var(--text-dim);margin-left:8px"></span>
+        <button class="btn-small btn-accent" id="betaUploadBtn" onclick="window._betaStartUpload()">開始分析</button>
+      </div>
+      <div class="beta-progress" id="betaUploadProgress" style="display:none">
+        <div class="progress-bar"><div class="progress-fill" id="betaProgressFill"></div></div>
+        <div class="progress-info">
+          <span id="betaProgressText">分析中...</span>
+          <span id="betaProgressPct">0%</span>
+        </div>
+      </div>
+    </div>
+    <div class="beta-yt-card" style="margin-top:12px">
+      <div style="display:flex;gap:10px;align-items:center">
+        <span style="font-size:1.2rem">&#x1F3AC;</span>
+        <input type="text" id="betaYtUrl" placeholder="貼上 YouTube URL..." style="flex:1;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.95rem">
+        <button class="btn-small btn-accent" id="betaYtBtn" onclick="window._betaStartYoutube()">分析</button>
+      </div>
+      <div class="beta-progress" id="betaYtProgress" style="display:none;margin-top:10px">
+        <div class="progress-bar"><div class="progress-fill" id="betaYtFill"></div></div>
+        <div class="progress-info">
+          <span id="betaYtText">處理中...</span>
+          <span id="betaYtPct">0%</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- beta history section (hidden by default) -->
+  <section id="secHistory" class="dash-section" style="display:none">
+    <h2 class="dash-title">我的分析記錄</h2>
+    <div id="historyGrid" class="grid" style="margin-top:12px"></div>
+  </section>
+
   <!-- browse section -->
   <section id="secBrowse" class="dash-section">
     <div class="browse-header" style="position: sticky; top: 56px; z-index: 10; background: var(--bg); padding: 10px 0; display: flex; align-items: center; justify-content: space-between;">
@@ -77,7 +121,7 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/js/utils.js?v=1"></script>
+<script src="/js/utils.js?v=2"></script>
 <script src="/js/api.js?v=57"></script>
 <script>
   // Insert auth token into all fetch requests in api.js globally!
@@ -112,16 +156,20 @@
                 navDiv.insertBefore(adminBtn, navDiv.querySelector("button"));
             }
         }).catch(err => console.error(err));
-      // Beta mode: show "New Song Analysis" button
+      // Beta mode: "新歌分析" button for admin (non-admin has upload on homepage)
       fetch("/api/config/public")
         .then(res => res.json())
         .then(cfg => {
             if (cfg.deployment_mode === "beta") {
-                const navDiv = document.querySelector("nav div");
-                const processBtn = document.createElement("button");
-                processBtn.textContent = "新歌分析";
-                processBtn.onclick = () => window.location.href = "/process";
-                navDiv.insertBefore(processBtn, navDiv.querySelector("button"));
+                fetch("/api/auth/is_admin").then(r => r.json()).then(d => {
+                    if (d.is_admin) {
+                        const navDiv = document.querySelector("nav div");
+                        const processBtn = document.createElement("button");
+                        processBtn.textContent = "新歌分析";
+                        processBtn.onclick = () => window.location.href = "/process";
+                        navDiv.insertBefore(processBtn, navDiv.querySelector("button"));
+                    }
+                }).catch(() => {});
             }
         }).catch(() => {});
   }
@@ -155,6 +203,6 @@
       }
   }
 </script>
-<script src="/js/app.js?v=37"></script>
+<script src="/js/app.js?v=38"></script>
 </body>
 </html>

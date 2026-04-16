@@ -199,7 +199,7 @@
     <h2><span class="icon">&#x1F4E4;</span> 上傳音檔分析</h2>
     <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
       <div>將音檔拖曳至此處，或點擊選取</div>
-      <div class="hint">支援 MP3, FLAC, WAV, M4A, OGG (上限 50 MB)</div>
+      <div class="hint">支援 MP3, FLAC, WAV, M4A, OGG (上限 200 MB)</div>
       <input type="file" id="fileInput" accept="audio/*">
     </div>
     <div class="file-info" id="fileInfo">
@@ -244,6 +244,7 @@
 
 </div>
 
+<script src="/js/utils.js?v=2"></script>
 <script src="/js/api.js?v=5"></script>
 <script>
   /* ── Fetch interceptor (inject auth token) ── */
@@ -266,7 +267,8 @@
 
   /* ── State ── */
   let selectedFile = null;
-  const jobs = [];           // { job_id, title, status, progress, result_hash, error, pollTimer }
+  const pendingFiles = {};   // job_id → File (for IndexedDB pass-through)
+  const jobs = [];           // { job_id, title, status, progress, result_hash, error, source_type, youtube_url }
   const POLL_MS = 2000;
 
   /* ── TOS guard ── */
@@ -280,11 +282,34 @@
       }
     } catch (e) {}
     loadQuota();
+    loadHistory();
   })();
 
   async function loadQuota() {
-    /* No dedicated quota endpoint — we show a static message for now */
     document.getElementById('quotaInfo').textContent = '每日額度：10 首';
+  }
+
+  async function loadHistory() {
+    try {
+      const res = await fetch('/api/process/my-history?limit=20');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.history || data.history.length === 0) return;
+      for (const h of data.history) {
+        if (jobs.some(j => j.job_id === h.job_id)) continue;
+        jobs.push({
+          job_id: h.job_id,
+          title: h.title || 'Unknown',
+          status: h.status,
+          progress: h.status === 'done' ? 100 : 0,
+          result_hash: h.result_hash || null,
+          error: h.status === 'error' ? 'Failed' : '',
+          source_type: h.source_type || '',
+          youtube_url: h.youtube_url || '',
+        });
+      }
+      renderJobs();
+    } catch (e) {}
   }
 
   /* ── File picker / drag-drop ── */
@@ -303,8 +328,8 @@
   });
 
   function pickFile(file) {
-    if (file.size > 50 * 1024 * 1024) {
-      alert('檔案超過 50 MB 上限');
+    if (file.size > 200 * 1024 * 1024) {
+      alert('檔案超過 200 MB 上限');
       return;
     }
     selectedFile = file;
@@ -337,6 +362,7 @@
         throw new Error(err.detail || res.statusText);
       }
       const data = await res.json();
+      pendingFiles[data.job_id] = selectedFile;
       fill.style.width = '30%';
       text.textContent = '已排入佇列';
       pct.textContent = '30%';
@@ -407,6 +433,8 @@
         entry.progress = d.progress;
         entry.result_hash = d.result_hash;
         entry.error = d.error;
+        entry.source_type = d.source_type || entry.source_type;
+        entry.youtube_url = d.youtube_url || entry.youtube_url;
         if (d.title) entry.title = d.title;
 
         if (fill) { fill.style.width = d.progress + '%'; }
@@ -418,9 +446,16 @@
 
         if (d.status === 'done' || d.status === 'error') {
           clearInterval(timer);
-          if (d.status === 'done' && statusText) statusText.textContent = '完成！點擊下方查看和弦';
+          if (d.status === 'done') {
+            // Store audio blob in IndexedDB for auto-play in player
+            const pf = pendingFiles[jobId];
+            if (pf && d.result_hash) {
+              try { await audioDBStore(d.result_hash, pf); } catch (e) {}
+              delete pendingFiles[jobId];
+            }
+            if (statusText) statusText.textContent = '完成！';
+          }
           if (d.status === 'error' && statusText) statusText.textContent = '失敗: ' + (d.error || 'Unknown');
-          // Re-enable buttons
           document.getElementById('btnUpload').disabled = !selectedFile;
           document.getElementById('btnYoutube').disabled = false;
         }
@@ -445,6 +480,9 @@
       let action = '';
       if (j.status === 'done' && j.result_hash) {
         action = `<a class="action-link" href="/player?hash=${j.result_hash}">查看和弦</a>`;
+        if (j.source_type === 'youtube' && j.youtube_url) {
+          action = `<a class="action-link" href="${esc(j.youtube_url)}" target="_blank" style="margin-right:8px">YouTube</a>` + action;
+        }
       } else if (j.status === 'error' && j.error) {
         action = `<span style="font-size:0.8rem;color:#f44336">${esc(j.error.slice(0, 60))}</span>`;
       }

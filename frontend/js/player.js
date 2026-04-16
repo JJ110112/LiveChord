@@ -3377,8 +3377,29 @@
           }
           await preloadChordInfo(chordData.chords);
           buildChordDOM();
-          // Show prominent prompt to load local audio — play button will open file picker
-          showToast("按 ▶ 播放鍵載入本地音檔", 8000);
+
+          // Try to auto-load audio from IndexedDB (uploaded file pass-through)
+          let audioLoaded = false;
+          try {
+            const blob = await audioDBLoad(hashMode);
+            if (blob) {
+              const objUrl = URL.createObjectURL(blob);
+              audio.src = objUrl;
+              _usingLocalFile = true;
+              audio.play().catch(() => {});
+              audioLoaded = true;
+              audioDBDelete(hashMode); // clean up storage
+            }
+          } catch (e) { console.warn("IndexedDB load failed:", e); }
+
+          // YouTube embed mode
+          const ytUrl = chordData.youtube_url || "";
+          const ytVideoId = extractYouTubeId(ytUrl);
+          if (!audioLoaded && ytVideoId) {
+            _initYouTubeEmbed(ytVideoId);
+          } else if (!audioLoaded) {
+            showToast("按 ▶ 播放鍵載入本地音檔", 8000);
+          }
         } else {
           songTitle.textContent = "分析結果";
           showToast("和弦資料為空", 3000);
@@ -3398,6 +3419,74 @@
         if (btnPageFs) btnPageFs.innerHTML = "&#x2716;";
       }
     });
+  }
+
+  // --- YouTube IFrame embed for chord sync ---
+  let _ytPlayer = null;
+  let _ytSyncTimer = null;
+
+  function _initYouTubeEmbed(videoId) {
+    const container = document.getElementById("ytEmbedContainer");
+    const closeBtn = document.getElementById("ytEmbedClose");
+    if (!container) return;
+    container.style.display = "";
+
+    // Close button
+    if (closeBtn) {
+      closeBtn.onclick = () => {
+        container.style.display = "none";
+        if (_ytSyncTimer) { clearInterval(_ytSyncTimer); _ytSyncTimer = null; }
+        if (_ytPlayer) { try { _ytPlayer.destroy(); } catch (e) {} _ytPlayer = null; }
+      };
+    }
+
+    // Load YouTube IFrame API
+    if (!window.YT) {
+      const tag = document.createElement("script");
+      tag.src = "https://www.youtube.com/iframe_api";
+      document.head.appendChild(tag);
+      window.onYouTubeIframeAPIReady = () => _createYTPlayer(videoId);
+    } else {
+      _createYTPlayer(videoId);
+    }
+  }
+
+  function _createYTPlayer(videoId) {
+    _ytPlayer = new YT.Player("ytEmbed", {
+      videoId: videoId,
+      playerVars: { autoplay: 1, modestbranding: 1, rel: 0 },
+      events: {
+        onReady: () => {
+          showToast("YouTube 播放器就緒", 2000);
+          _startYTSync();
+        },
+        onError: (e) => {
+          const container = document.getElementById("ytEmbedContainer");
+          if (container) container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px">此影片無法嵌入播放<br>請在 YouTube 開啟播放</div>';
+        }
+      }
+    });
+  }
+
+  function _startYTSync() {
+    if (_ytSyncTimer) clearInterval(_ytSyncTimer);
+    _ytSyncTimer = setInterval(() => {
+      if (!_ytPlayer || typeof _ytPlayer.getCurrentTime !== "function") return;
+      try {
+        const t = _ytPlayer.getCurrentTime();
+        if (t > 0) {
+          updateActiveChord(t);
+          // Update time display
+          timeCurrent.textContent = formatTime(t);
+          const dur = _ytPlayer.getDuration();
+          if (dur > 0) {
+            timeDuration.textContent = formatTime(dur);
+            const pct = (t / dur) * 100;
+            seekBar.value = pct;
+          }
+        }
+      } catch (e) {}
+    }, 100); // 10 fps sync
   }
 
   // --- AI Auditing Synthesizer (Salamander Grand Piano Sampler) ---

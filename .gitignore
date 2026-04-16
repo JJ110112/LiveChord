@@ -35,6 +35,7 @@ data/feedback.db
 data/analytics.db
 data/audit.db
 data/tmp/
+data/covers/
 
 # 評估/測試產出
 backend/eval_results.json

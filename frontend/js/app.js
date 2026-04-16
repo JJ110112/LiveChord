@@ -59,8 +59,187 @@
         if (secBrowse) secBrowse.style.display = "none";
         if (secRecent) secRecent.style.display = "none";
         if (secFavorites) secFavorites.style.display = "none";
+        // Show beta upload + history sections
+        const secUpload = $("#secUpload");
+        const secHistory = $("#secHistory");
+        if (secUpload) secUpload.style.display = "";
+        if (secHistory) secHistory.style.display = "";
       }
     } catch {}
+  }
+
+  // ---- beta upload logic (homepage) ----
+  let _betaSelectedFile = null;
+  const _betaPendingFiles = {};
+  const POLL_MS = 2000;
+
+  function _initBetaUpload() {
+    const dropZone = $("#betaDropZone");
+    const fileInput = $("#betaFileInput");
+    if (!dropZone || !fileInput) return;
+
+    dropZone.addEventListener("click", () => fileInput.click());
+    dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragover"); });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+    dropZone.addEventListener("drop", e => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+      if (e.dataTransfer.files.length) _betaPickFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files.length) _betaPickFile(fileInput.files[0]);
+    });
+  }
+
+  function _betaPickFile(file) {
+    if (file.size > 200 * 1024 * 1024) { alert("檔案超過 200 MB 上限"); return; }
+    _betaSelectedFile = file;
+    $("#betaFileName").textContent = file.name;
+    $("#betaFileSize").textContent = `(${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+    $("#betaFileInfo").style.display = "flex";
+  }
+
+  window._betaStartUpload = async function() {
+    if (!_betaSelectedFile) return;
+    const btn = $("#betaUploadBtn");
+    btn.disabled = true;
+    const prog = $("#betaUploadProgress");
+    const fill = $("#betaProgressFill");
+    const text = $("#betaProgressText");
+    const pct = $("#betaProgressPct");
+    prog.style.display = "";
+    fill.style.width = "10%";
+    text.textContent = "上傳中...";
+    pct.textContent = "10%";
+
+    try {
+      const form = new FormData();
+      form.append("file", _betaSelectedFile);
+      const res = await fetch("/api/process/upload", { method: "POST", body: form });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || res.statusText);
+      }
+      const data = await res.json();
+      _betaPendingFiles[data.job_id] = _betaSelectedFile;
+      fill.style.width = "30%";
+      text.textContent = "已排入佇列，分析中...";
+      pct.textContent = "30%";
+      _betaPollJob(data.job_id, fill, text, pct);
+    } catch (e) {
+      text.textContent = "失敗: " + e.message;
+      fill.style.width = "0%";
+      btn.disabled = false;
+    }
+    _betaSelectedFile = null;
+    $("#betaFileInfo").style.display = "none";
+    $("#betaFileInput").value = "";
+  };
+
+  window._betaStartYoutube = async function() {
+    const input = $("#betaYtUrl");
+    const url = input.value.trim();
+    if (!url) return;
+    const btn = $("#betaYtBtn");
+    btn.disabled = true;
+    const prog = $("#betaYtProgress");
+    const fill = $("#betaYtFill");
+    const text = $("#betaYtText");
+    const pct = $("#betaYtPct");
+    prog.style.display = "";
+    fill.style.width = "10%";
+    text.textContent = "提交中...";
+    pct.textContent = "10%";
+
+    try {
+      const res = await fetch("/api/process/youtube", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || res.statusText);
+      }
+      const data = await res.json();
+      fill.style.width = "20%";
+      text.textContent = "已排入佇列，分析中...";
+      pct.textContent = "20%";
+      _betaPollJob(data.job_id, fill, text, pct);
+      input.value = "";
+    } catch (e) {
+      text.textContent = "失敗: " + e.message;
+      fill.style.width = "0%";
+    }
+    btn.disabled = false;
+  };
+
+  function _betaPollJob(jobId, fill, statusText, pctText) {
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/process/status/${jobId}`);
+        if (!res.ok) { clearInterval(timer); return; }
+        const d = await res.json();
+        if (fill) fill.style.width = d.progress + "%";
+        if (pctText) pctText.textContent = d.progress + "%";
+        const labels = { queued: "排隊中", processing: "分析中", done: "完成！", error: "失敗" };
+        if (statusText) statusText.textContent = labels[d.status] || d.status;
+
+        if (d.status === "done" && d.result_hash) {
+          clearInterval(timer);
+          // Store audio blob in IndexedDB for auto-play
+          const pendingFile = _betaPendingFiles[jobId];
+          if (pendingFile) {
+            await audioDBStore(d.result_hash, pendingFile);
+            delete _betaPendingFiles[jobId];
+          }
+          // Navigate to player
+          setTimeout(() => {
+            window.location.href = `/player?hash=${encodeURIComponent(d.result_hash)}`;
+          }, 500);
+        } else if (d.status === "error") {
+          clearInterval(timer);
+          if (statusText) statusText.textContent = "失敗: " + (d.error || "Unknown");
+          $("#betaUploadBtn") && ($("#betaUploadBtn").disabled = false);
+          $("#betaYtBtn") && ($("#betaYtBtn").disabled = false);
+        }
+      } catch (e) {}
+    }, POLL_MS);
+  }
+
+  // ---- beta history ----
+  async function _loadBetaHistory() {
+    const section = $("#secHistory");
+    const grid = $("#historyGrid");
+    if (!section || !grid) return;
+    try {
+      const res = await fetch("/api/process/my-history?limit=20");
+      if (!res.ok) return;
+      const data = await res.json();
+      const items = (data.history || []).filter(h => h.status === "done" && h.result_hash);
+      if (items.length === 0) {
+        grid.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)">尚無分析記錄</div>';
+        return;
+      }
+      grid.innerHTML = items.map(h => {
+        const isYT = h.source_type === "youtube";
+        const videoId = isYT ? extractYouTubeId(h.youtube_url || "") : null;
+        const coverHtml = videoId
+          ? `<img class="cover-bg" src="https://img.youtube.com/vi/${videoId}/mqdefault.jpg" onerror="this.outerHTML='<div class=\\'cover-placeholder\\'>&#x1F3AC;</div>'" loading="lazy">`
+          : `<img class="cover-bg" src="/api/process/cover/${escapeHtml(h.result_hash)}" onerror="this.outerHTML='<div class=\\'cover-placeholder\\'>&#x1F3B5;</div>'" loading="lazy">`;
+        const title = h.title || "分析結果";
+        const date = (h.completed_at || "").slice(0, 10);
+        return `<div class="grid-item" data-hash="${escapeHtml(h.result_hash)}" data-yt="${isYT ? '1' : ''}" style="cursor:pointer">
+          ${coverHtml}
+          <div class="info"><div class="title">${escapeHtml(title)}</div><div class="subtitle">${date}</div></div>
+        </div>`;
+      }).join("");
+      grid.querySelectorAll(".grid-item").forEach(el => {
+        el.addEventListener("click", () => goPlayer("", el.dataset.hash));
+      });
+    } catch (e) {
+      console.error("loadBetaHistory error:", e);
+    }
   }
 
   // ---- dashboard init ----
@@ -73,7 +252,10 @@
     try {
       showLoading(true);
       const tasks = [];
-      if (!_isBetaNonAdmin) {
+      if (_isBetaNonAdmin) {
+        _initBetaUpload();
+        tasks.push(_loadBetaHistory());
+      } else {
         tasks.push(loadRecent(), loadFavorites(), browse(currentPath));
       }
       await Promise.allSettled(tasks);

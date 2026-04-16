@@ -68,6 +68,12 @@
     </div>
   </div>
 
+  <!-- YouTube embed (hidden by default, shown in YouTube mode) -->
+  <div id="ytEmbedContainer" style="display:none; position:absolute; top:8px; right:8px; z-index:20; border-radius:10px; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,0.5); resize:both; width:320px; height:180px; min-width:200px; min-height:112px; max-width:640px; max-height:360px;">
+    <div id="ytEmbed" style="width:100%;height:100%"></div>
+    <button id="ytEmbedClose" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.6);color:#fff;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:14px;line-height:24px;text-align:center" title="關閉 YouTube">&#x2715;</button>
+  </div>
+
   <!-- Split layout: Chord Ribbon | Resize Handle | Instrument View -->
   <div id="chordDisplayScaleTarget" class="middle-split">
 
@@ -456,6 +462,6 @@
     return originalFetch(resource, config);
   };
 </script>
-<script src="/js/player.js?v=78"></script>
+<script src="/js/player.js?v=79"></script>
 </body>
 </html>
