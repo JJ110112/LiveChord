@@ -1,5 +1,6 @@
 """Beta Feedback API — 和弦評價、留言、Bug 回報"""
 
+import html
 import sqlite3
 import time
 from pathlib import Path
@@ -9,6 +10,14 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from auth_api import get_current_user, get_admin_user
+from config import is_beta_mode
+
+
+def _require_beta():
+    """Only allow user-facing feedback endpoints in beta mode."""
+    if not is_beta_mode():
+        raise HTTPException(status_code=404, detail="Not available")
+
 
 router = APIRouter(prefix="/api/feedback", tags=["feedback"])
 
@@ -82,9 +91,11 @@ class BugStatusUpdate(BaseModel):
 # Rating endpoints
 # ---------------------------------------------------------------------------
 
-@router.post("/rating")
+@router.post("/rating", dependencies=[Depends(_require_beta)])
 def submit_rating(req: RatingRequest, username: str = Depends(get_current_user)):
     now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    comment = html.escape(req.comment.strip()) if req.comment else ""
+    song_title = html.escape(req.song_title.strip()) if req.song_title else ""
     with _get_conn() as conn:
         # Upsert: one rating per user per song
         existing = conn.execute(
@@ -94,12 +105,12 @@ def submit_rating(req: RatingRequest, username: str = Depends(get_current_user))
         if existing:
             conn.execute(
                 "UPDATE ratings SET rating=?, comment=?, song_title=?, created_at=? WHERE id=?",
-                (req.rating, req.comment, req.song_title, now, existing["id"])
+                (req.rating, comment, song_title, now, existing["id"])
             )
         else:
             conn.execute(
                 "INSERT INTO ratings (song_hash, song_title, username, rating, comment, created_at) VALUES (?,?,?,?,?,?)",
-                (req.song_hash, req.song_title, username, req.rating, req.comment, now)
+                (req.song_hash, song_title, username, req.rating, comment, now)
             )
         conn.commit()
     return {"ok": True}
@@ -135,13 +146,16 @@ def rating_summary(song_hash: str):
 # Bug report endpoints
 # ---------------------------------------------------------------------------
 
-@router.post("/bug")
+@router.post("/bug", dependencies=[Depends(_require_beta)])
 def submit_bug(req: BugReportRequest, username: str = Depends(get_current_user)):
     now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    description = html.escape(req.description.strip())
+    page_url = html.escape(req.page_url.strip()) if req.page_url else ""
+    browser_info = html.escape(req.browser_info.strip()) if req.browser_info else ""
     with _get_conn() as conn:
         conn.execute(
             "INSERT INTO bug_reports (username, category, description, page_url, browser_info, created_at) VALUES (?,?,?,?,?,?)",
-            (username, req.category, req.description, req.page_url, req.browser_info, now)
+            (username, req.category, description, page_url, browser_info, now)
         )
         conn.commit()
     return {"ok": True}

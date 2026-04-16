@@ -1,14 +1,22 @@
 """Beta Analytics API — 匿名使用統計"""
 
+import html
 import sqlite3
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import Optional
 
 from auth_api import get_current_user, get_admin_user
+from config import is_beta_mode
+
+
+def _require_beta():
+    if not is_beta_mode():
+        raise HTTPException(status_code=404, detail="Not available")
+
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -47,14 +55,15 @@ class EventRequest(BaseModel):
     payload: dict = {}
 
 
-@router.post("/event")
+@router.post("/event", dependencies=[Depends(_require_beta)])
 def track_event(req: EventRequest, username: str = Depends(get_current_user)):
     import json
     now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    event_type = html.escape(req.event_type.strip())
     with _get_conn() as conn:
         conn.execute(
             "INSERT INTO events (event_type, username, payload, created_at) VALUES (?,?,?,?)",
-            (req.event_type, username, json.dumps(req.payload, ensure_ascii=False), now)
+            (event_type, username, json.dumps(req.payload, ensure_ascii=False), now)
         )
         conn.commit()
     return {"ok": True}

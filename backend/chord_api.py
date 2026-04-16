@@ -213,6 +213,17 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
     return data
 
 
+@router.get("/chords/by-hash")
+async def get_chords_by_hash(hash: str = Query(..., min_length=8, max_length=16)):
+    """直接用 hash 取得和弦譜（給 process 結果用）"""
+    chords_file = CHORDS_DIR / f"{hash}.json"
+    if not chords_file.is_file():
+        return {"hash": hash, "key": "", "capo": 0, "chords": [], "exists": False}
+    data = json.loads(chords_file.read_text(encoding="utf-8"))
+    data["exists"] = True
+    return data
+
+
 @router.post("/chords")
 async def save_chords(sheet: ChordSheet, username: str = Depends(get_current_user)):
     """儲存和弦譜至個人專屬空間"""

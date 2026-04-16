@@ -67,10 +67,10 @@ Layer 3: Local Client App (本地擷取)        ← Phase 3 (Production)
 | 樂器檢視 | 鋼琴/吉他/烏克麗麗指法圖 | ✅ 已有 |
 | 移調/Capo | 即時移調 | ✅ 已有 |
 | AI 功能 | Jazzify, 和弦預測, 段落分析 | ✅ 已有 |
-| **Tester 音訊播放** | tester 自備 MP3/FLAC，瀏覽器本地播放 | 🔨 需新增 |
-| **和弦準確度評價** | 按歌評分 + 留言 | 🔨 需新增 |
-| **問題回報** | Bug report / feature request 表單 | 🔨 需新增 |
-| **使用統計** | 追蹤 tester 的使用行為（匿名） | 🔨 需新增 |
+| **Tester 音訊播放** | tester 自備 MP3/FLAC，瀏覽器本地播放 | ✅ 已完成 |
+| **和弦準確度評價** | 按歌評分 + 留言 | ✅ 已完成 |
+| **問題回報** | Bug report / feature request 表單 | ✅ 已完成 |
+| **使用統計** | 追蹤 tester 的使用行為（匿名） | ✅ 已完成 |
 
 ### 3.2 需新增的功能
 
@@ -171,21 +171,21 @@ ingress:
 
 Phase 1 上外網前必須完成：
 
-- [ ] **Rate limiting** — 登入/註冊 API 加 rate limit（防暴力破解）
-- [ ] **密碼強度** — 要求最少 8 字元
+- [x] **Rate limiting** — 登入/註冊 API 加 rate limit（防暴力破解）— 10 req/5min per IP
+- [x] **密碼強度** — 要求最少 8 字元
 - [ ] **HTTPS only** — Cloudflare Tunnel 自動提供
-- [ ] **Invite code 管理** — Admin 可生成/撤銷多組 invite code
-- [ ] **Token 過期** — 加入 token expiry（目前永久有效）
-- [ ] **Input sanitization** — 所有用戶輸入做 XSS 過濾
-- [ ] **Admin 頁面 IP 限制** — 只允許 LAN IP 存取 /admin
+- [x] **Invite code 管理** — Admin 可生成/撤銷多組 invite code
+- [x] **Token 過期** — 加入 token expiry（30 天）
+- [x] **Input sanitization** — 所有用戶輸入做 `html.escape()` XSS 過濾
+- [x] **Admin 頁面 IP 限制** — beta mode 下只允許 LAN IP 存取 /admin
 
 ---
 
-## 4. Phase 2 — Server-side Processing（Beta Extended）
+## 4. Phase 2 — Server-side Processing（Beta Extended）✅ 已實作
 
 > 目標：tester 可以處理資料庫沒有的新歌
-> 前提：Phase 1 回饋穩定後啟動
-> 預估工期：3-4 週
+> 實作日期：2026-04-16
+> 狀態：核心功能已完成，YouTube 需確認 yt-dlp PATH
 
 ### 4.1 新歌處理流程
 
@@ -458,22 +458,23 @@ Week 2:
   └── Day 5:   E2E 測試 + 修 bug + 準備 beta 文件
 ```
 
-### Phase 2 — Sprint 計畫
+### Phase 2 — Sprint 計畫 ✅ 已完成
 
 ```
-Week 3-4:
-  ├── Upload API + 處理隊列
-  ├── yt-dlp 整合 (YouTube URL → chord)
-  ├── Job status polling UI
-  ├── TOS 頁面 + 同意機制
-  ├── 每日額度限制
-  └── 音檔自動清理 + audit log
+2026-04-16 實作完成:
+  ├── ✅ Upload API + 處理隊列 (process_queue.py + process_api.py)
+  ├── ✅ yt-dlp 整合 (YouTube URL → chord) — 需確認 NUC PATH
+  ├── ✅ Job status polling UI (frontend/process.html)
+  ├── ✅ TOS 頁面 + 同意機制 (frontend/tos.html + auth_api)
+  ├── ✅ 每日額度限制 (10 首/天, in-memory)
+  ├── ✅ 音檔自動清理 (即時刪除 + 5分鐘掃描) + audit log (data/audit.db)
+  ├── ✅ Player ?hash= mode (分析結果直接進播放器)
+  └── ✅ XSS sanitization + admin IP restriction + beta mode gating
 
-Week 5-6:
+待完成:
   ├── 壓力測試（多人同時上傳）
   ├── 錯誤處理強化
-  ├── Beta tester 回饋修正
-  └── Phase 2 穩定化
+  └── Beta tester 回饋修正
 ```
 
 ---
@@ -497,15 +498,15 @@ Week 5-6:
 **Phase 1 上線標準：**
 - [ ] 外網可透過 HTTPS 存取
 - [ ] 5 位 tester 完成註冊
-- [ ] 搜尋 + 瀏覽和弦功能正常
-- [ ] 本地音檔播放 + 和弦同步正常
-- [ ] Feedback 系統可收集評價與 bug
+- [x] 搜尋 + 瀏覽和弦功能正常
+- [x] 本地音檔播放 + 和弦同步正常
+- [x] Feedback 系統可收集評價與 bug
 
 **Phase 2 上線標準：**
-- [ ] 上傳音檔 → 和弦擷取 → 回傳 < 2 分鐘
-- [ ] YouTube URL → 和弦擷取成功率 > 90%
-- [ ] 音檔處理後 10 分鐘內自動刪除
-- [ ] 每日額度限制正常運作
+- [x] 上傳音檔 → 和弦擷取 → 回傳 < 2 分鐘 (實測 ~1 秒，靜音檔)
+- [ ] YouTube URL → 和弦擷取成功率 > 90% (待確認 yt-dlp PATH)
+- [x] 音檔處理後 10 分鐘內自動刪除 (即時刪除 + 5 分鐘掃描)
+- [x] 每日額度限制正常運作 (10 首/天)
 
 **Beta 結束標準：**
 - [ ] 收到 50+ 歌曲評價

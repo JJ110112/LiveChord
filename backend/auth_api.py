@@ -1,3 +1,4 @@
+import html as html_mod
 import sqlite3
 import hashlib
 import os
@@ -54,6 +55,15 @@ def init_db():
         # Add token_created_at column for expiry
         try:
             conn.execute("ALTER TABLE users ADD COLUMN token_created_at REAL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        # Add TOS consent column
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN tos_accepted INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN tos_accepted_at TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass
         conn.commit()
@@ -138,11 +148,12 @@ async def register(req: RegisterRequest, request: Request):
     if not _validate_invite_code(req.invite_code):
         raise HTTPException(status_code=403, detail="邀請碼錯誤 (Invalid Invite Code)")
 
-    if len(req.username) < 3:
-        raise HTTPException(status_code=400, detail="使用者名稱太短 (Username too short)")
     if len(req.password) < 8:
         raise HTTPException(status_code=400, detail="密碼至少 8 個字元 (Password must be at least 8 characters)")
 
+    username = html_mod.escape(req.username.strip())
+    if len(username) < 3:
+        raise HTTPException(status_code=400, detail="使用者名稱太短 (Username too short)")
     pw_hash = hash_password(req.password)
     token = secrets.token_hex(32)
     now = time.time()
@@ -155,15 +166,15 @@ async def register(req: RegisterRequest, request: Request):
 
             conn.execute(
                 "INSERT INTO users (username, password_hash, token, is_admin, token_created_at) VALUES (?, ?, ?, ?, ?)",
-                (req.username.strip(), pw_hash, token, is_admin, now)
+                (username, pw_hash, token, is_admin, now)
             )
             conn.commit()
 
             # Create user data directory
-            user_dir = DATA_DIR / "users" / req.username.strip() / "human_sections"
+            user_dir = DATA_DIR / "users" / username / "human_sections"
             user_dir.mkdir(parents=True, exist_ok=True)
 
-            return {"ok": True, "token": token, "username": req.username}
+            return {"ok": True, "token": token, "username": username}
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=400, detail="帳號已被註冊 (Username already exists)")
 
@@ -282,3 +293,28 @@ def list_users(admin: str = Depends(get_admin_user)):
                         "last_login": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(r["token_created_at"]))
                         if r["token_created_at"] else None}
                        for r in rows]}
+
+
+# ---------------------------------------------------------------------------
+# TOS (Terms of Service) consent
+# ---------------------------------------------------------------------------
+
+@router.get("/tos-status")
+def tos_status(username: str = Depends(get_current_user)):
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute(
+            "SELECT tos_accepted FROM users WHERE username=?", (username,)
+        ).fetchone()
+    return {"accepted": bool(row and row[0])}
+
+
+@router.post("/accept-tos")
+def accept_tos(username: str = Depends(get_current_user)):
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "UPDATE users SET tos_accepted=1, tos_accepted_at=? WHERE username=?",
+            (now, username)
+        )
+        conn.commit()
+    return {"ok": True}

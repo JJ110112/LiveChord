@@ -5,9 +5,10 @@
 
   const params = new URLSearchParams(window.location.search);
   const trackPath = params.get("path");
+  const hashMode = params.get("hash");   // process result: load by hash directly
   const autoplay = params.get("autoplay") === "1";
   const restoreFs = params.get("fs") === "1";
-  if (!trackPath) { window.location.href = "/"; return; }
+  if (!trackPath && !hashMode) { window.location.href = "/"; return; }
 
   // ---- state ----
   let isFavorite = false;
@@ -112,15 +113,19 @@
     });
   }
 
-  // Show local-file toolbar button: fetch deployment mode at startup
-  (async () => {
-    try {
-      const cfg = await fetch("/api/config/public").then(r => r.json());
-      if (cfg.deployment_mode === "beta" && tbLocalFile) {
-        tbLocalFile.style.display = "";
-      }
-    } catch {}
-  })();
+  // Show local-file toolbar button: always in hash mode, otherwise beta mode only
+  if (hashMode && tbLocalFile) {
+    tbLocalFile.style.display = "";
+  } else {
+    (async () => {
+      try {
+        const cfg = await fetch("/api/config/public").then(r => r.json());
+        if (cfg.deployment_mode === "beta" && tbLocalFile) {
+          tbLocalFile.style.display = "";
+        }
+      } catch {}
+    })();
+  }
 
   // When audio stream fails (NAS not reachable), show the prompt
   if (audio) {
@@ -3343,13 +3348,52 @@
   // Enable drag scroll on chord ribbon panel
   _initDragScroll(chordRibbonPanel);
 
-  loadTrack(trackPath).then(() => {
-    if (autoplay) audio.play().catch(() => {});
-    if (restoreFs) {
-      document.documentElement.requestFullscreen().catch(() => {});
-      if (btnPageFs) btnPageFs.innerHTML = "&#x2716;";
-    }
-  });
+  if (hashMode) {
+    // Hash mode: load chord data directly by hash (from process results)
+    (async () => {
+      _setLoadingState(true, "載入和弦中...", "讀取分析結果...");
+      try {
+        const res = await fetch(`/api/chords/by-hash?hash=${encodeURIComponent(hashMode)}`);
+        if (!res.ok) throw new Error("找不到和弦資料");
+        chordData = await res.json();
+        if (chordData.exists && chordData.chords && chordData.chords.length > 0) {
+          hasChords = true;
+          const title = chordData.title || "分析結果";
+          songTitle.textContent = title;
+          document.title = `${title} — LiveChord`;
+          if (chordData.key) {
+            const keyInfo = $("#chordKey");
+            if (keyInfo) keyInfo.textContent = `Key: ${chordData.key}`;
+          }
+          const srcBadge = $("#chordSource");
+          if (srcBadge) {
+            srcBadge.className = "chord-source-badge src-btc";
+            srcBadge.textContent = "BTC";
+          }
+          await preloadChordInfo(chordData.chords);
+          buildChordDOM();
+          // Show hint to load local audio
+          showToast("此為新歌分析結果 — 請載入本地音檔以播放", 5000);
+        } else {
+          songTitle.textContent = "分析結果";
+          showToast("和弦資料為空", 3000);
+        }
+      } catch (e) {
+        songTitle.textContent = "載入失敗";
+        showToast("載入失敗: " + e.message, 4000);
+      } finally {
+        _setLoadingState(false);
+      }
+    })();
+  } else {
+    loadTrack(trackPath).then(() => {
+      if (autoplay) audio.play().catch(() => {});
+      if (restoreFs) {
+        document.documentElement.requestFullscreen().catch(() => {});
+        if (btnPageFs) btnPageFs.innerHTML = "&#x2716;";
+      }
+    });
+  }
 
   // --- AI Auditing Synthesizer (Salamander Grand Piano Sampler) ---
   class PianoSynth {

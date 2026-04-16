@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiveChord - 使用條款</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/index.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #0f172a, #1e1b4b);
+      margin: 0;
+      color: var(--text-color);
+      font-family: 'Inter', sans-serif;
+    }
+
+    .tos-container {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 1.5rem;
+      padding: 2.5rem;
+      width: 100%;
+      max-width: 560px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .tos-container::before {
+      content: '';
+      position: absolute;
+      top: -50px;
+      left: -50px;
+      width: 100px;
+      height: 100px;
+      background: var(--accent);
+      filter: blur(50px);
+      border-radius: 50%;
+      opacity: 0.5;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .tos-content {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      max-height: 400px;
+      overflow-y: auto;
+      margin-bottom: 1.5rem;
+      line-height: 1.7;
+      font-size: 0.9rem;
+    }
+
+    .tos-content h3 {
+      color: var(--accent);
+      margin: 1rem 0 0.5rem;
+      font-size: 1rem;
+    }
+
+    .tos-content h3:first-child { margin-top: 0; }
+
+    .tos-content ul {
+      padding-left: 1.2rem;
+      margin: 0.5rem 0;
+    }
+
+    .tos-content li { margin-bottom: 0.3rem; }
+
+    .btn-accept {
+      width: 100%;
+      padding: 0.9rem;
+      border: none;
+      border-radius: 0.75rem;
+      background: var(--accent);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .btn-accept:hover { opacity: 0.85; }
+    .btn-accept:disabled { opacity: 0.4; cursor: default; }
+
+    .back-link {
+      display: block;
+      text-align: center;
+      margin-top: 1rem;
+      color: rgba(255, 255, 255, 0.5);
+      text-decoration: none;
+      font-size: 0.85rem;
+    }
+
+    .back-link:hover { color: rgba(255, 255, 255, 0.8); }
+  </style>
+</head>
+<body>
+  <div class="tos-container">
+    <h1>LiveChord Beta 使用條款</h1>
+    <div class="tos-content">
+      <h3>1. 服務說明</h3>
+      <p>LiveChord 是一個音樂和弦分析學習工具。Beta 測試階段提供以下功能：</p>
+      <ul>
+        <li>瀏覽既有和弦資料庫（54,000+ 首）</li>
+        <li>上傳音檔進行和弦自動偵測</li>
+        <li>透過 YouTube URL 擷取和弦</li>
+      </ul>
+
+      <h3>2. 音檔處理規則</h3>
+      <ul>
+        <li>上傳之音檔<strong>僅用於和弦分析</strong>，處理完畢後立即刪除</li>
+        <li>音檔最長保留 10 分鐘，逾時自動清除</li>
+        <li>Server 不儲存任何音訊檔案副本</li>
+        <li>僅保留分析結果（和弦進行、調性）</li>
+      </ul>
+
+      <h3>3. 使用限制</h3>
+      <ul>
+        <li>每位使用者每日最多處理 10 首新歌</li>
+        <li>單一音檔大小上限 50 MB</li>
+        <li>本服務僅供<strong>個人音樂學習用途</strong></li>
+      </ul>
+
+      <h3>4. 資料使用</h3>
+      <ul>
+        <li>產生之和弦資料可能用於改善服務品質</li>
+        <li>匿名使用統計用於了解功能使用狀況</li>
+        <li>不會將個人資訊提供給第三方</li>
+      </ul>
+
+      <h3>5. 免責聲明</h3>
+      <ul>
+        <li>和弦分析結果為 AI 自動產生，準確度可能有限</li>
+        <li>Beta 階段服務可能不穩定，恕不保證可用性</li>
+        <li>使用者應確保上傳之內容不違反當地法律</li>
+      </ul>
+    </div>
+
+    <button class="btn-accept" id="btnAccept" onclick="acceptTos()">我同意以上條款</button>
+    <a class="back-link" href="/">返回首頁</a>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('livechord_token');
+    if (!token) {
+      location.href = '/login';
+    }
+
+    async function acceptTos() {
+      const btn = document.getElementById('btnAccept');
+      btn.disabled = true;
+      btn.textContent = '處理中...';
+      try {
+        const res = await fetch('/api/auth/accept-tos', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token },
+        });
+        if (!res.ok) throw new Error('Failed');
+        // Redirect back to process page (or wherever the user came from)
+        const back = new URLSearchParams(location.search).get('next') || '/process';
+        location.href = back;
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = '我同意以上條款';
+        alert('操作失敗，請重試');
+      }
+    }
+
+    // If already accepted, redirect away
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/tos-status', {
+          headers: { 'Authorization': 'Bearer ' + token },
+        });
+        const data = await res.json();
+        if (data.accepted) {
+          const back = new URLSearchParams(location.search).get('next') || '/process';
+          location.href = back;
+        }
+      } catch (e) {}
+    })();
+  </script>
+</body>
+</html>

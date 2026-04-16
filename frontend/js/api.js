@@ -79,6 +79,18 @@ const API = {
   trackEvent: (event_type, payload = {}) =>
     API.post("/api/analytics/event", { event_type, payload }).catch(() => {}),
 
+  // 新歌處理 (Beta Phase 2)
+  processUpload: async (file) => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch("/api/process/upload", { method: "POST", body: form });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.json();
+  },
+  processYoutube: (url) => API.post("/api/process/youtube", { url }),
+  processStatus: (jobId) => API.get(`/api/process/status/${jobId}`),
+  processResult: (jobId) => API.get(`/api/process/result/${jobId}`),
+
   // 使用者
   getFavorites: () => API.get("/api/favorites"),
   addFavorite: (path) => API.post("/api/favorites", { path }),

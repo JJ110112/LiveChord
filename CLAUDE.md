@@ -9,7 +9,8 @@ Project-specific guidance for Claude Code working in this repo. Also see [doc/QA
 - **Prod runtime** (NUC, mounted as `V:\` from PC): backend runs from `V:\backend`, frontend from `V:\frontend`
 - **Backend server**: FastAPI/uvicorn, `main:app` on `0.0.0.0:8800` (see [backend/run.py](backend/run.py))
 - **Production QA Server**: `http://192.168.50.6:8800/` (has been human tested)
-- **Local Admin Account**: User: `admin` / Password: `admin`
+- **Production Admin Account**: User: `hitea`
+- **Dev Admin Account**: User: `admin` / Password: `admin`
 - **Admin page**: `http://localhost:8800/admin`
 
 ## Deploy Sync (QA §590 防線5)
@@ -39,11 +40,15 @@ Any change to frontend files requires Playwright verification before claiming do
 ## Beta Productization
 
 - **Deployment mode**: `data/settings.json` → `"deployment_mode": "personal"` (default) or `"beta"`
-- In beta mode: feedback UI, bug report FAB, analytics tracking, local audio playback are enabled
+- In beta mode: feedback UI, bug report FAB, analytics tracking, local audio playback, process page are enabled
 - In personal mode: all beta features hidden, zero impact on existing usage
-- **New backend modules**: `feedback_api.py` (ratings + bugs), `analytics_api.py` (usage tracking)
+- **Phase 1 modules**: `feedback_api.py` (ratings + bugs), `analytics_api.py` (usage tracking)
+- **Phase 2 modules**: `process_queue.py` (job queue + worker + audit), `process_api.py` (upload/YouTube endpoints)
 - **Invite code system**: multi-code with expiry, managed via Admin page → "Beta 回饋" card
-- **Security**: rate limiting on auth endpoints, password ≥8 chars, token 30-day expiry
+- **Security**: rate limiting on auth endpoints, password ≥8 chars, token 30-day expiry, XSS sanitization on all user inputs, admin IP restriction (LAN-only in beta mode)
+- **TOS**: `/tos` page, consent required before using process features
+- **Process flow**: upload audio or YouTube URL → queue → BTC GPU detection → chord JSON → player `?hash=`
+- **Prerequisites for YouTube**: `yt-dlp` + `ffmpeg` must be on NUC system PATH
 - Productization roadmap: [doc/PRODUCTIZATION.md](doc/PRODUCTIZATION.md)
 
 ## Reference

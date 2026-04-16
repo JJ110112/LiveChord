@@ -1,11 +1,12 @@
 """LiveChord — 即時音樂和弦+簡譜顯示網站"""
 
+import ipaddress
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from music_api import router as music_router
 from chord_api import router as chord_router
@@ -18,6 +19,7 @@ from jam_tracks_api import router as jam_tracks_router
 from auth_api import router as auth_router
 from feedback_api import router as feedback_router
 from analytics_api import router as analytics_router
+from process_api import router as process_router
 import auth_api
 from fastapi import Depends
 import auto_worker
@@ -55,6 +57,45 @@ app.include_router(jam_tracks_router)
 app.include_router(auth_router)
 app.include_router(feedback_router)
 app.include_router(analytics_router)
+app.include_router(process_router)
+
+# ---------------------------------------------------------------------------
+# Admin IP 限制 (beta mode 時只允許 LAN 存取 /admin 相關路徑)
+# ---------------------------------------------------------------------------
+_LAN_NETWORKS = [
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("127.0.0.0/8"),
+]
+_ADMIN_PREFIXES = ("/admin", "/api/auto/", "/api/tasks/", "/api/library/")
+
+
+def _is_lan_ip(ip_str: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(ip_str)
+        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+            addr = addr.ipv4_mapped
+        return any(addr in net for net in _LAN_NETWORKS)
+    except ValueError:
+        return False
+
+
+@app.middleware("http")
+async def admin_lan_restriction(request: Request, call_next):
+    from config import is_beta_mode
+    path = request.url.path
+    if is_beta_mode() and any(path.startswith(p) for p in _ADMIN_PREFIXES):
+        # Check real client IP: CF-Connecting-IP (Cloudflare), X-Forwarded-For, or direct
+        client_ip = (
+            request.headers.get("cf-connecting-ip")
+            or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+            or (request.client.host if request.client else "")
+        )
+        if not _is_lan_ip(client_ip):
+            return JSONResponse(status_code=403, content={"detail": "Admin access restricted to LAN"})
+    return await call_next(request)
+
 
 # 前端靜態檔案
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
@@ -238,6 +279,18 @@ async def benchmark():
 @app.get("/extraction")
 async def extraction():
     return FileResponse(FRONTEND_DIR / "extraction.html", headers=NO_CACHE_HEADERS)
+
+
+@app.get("/process")
+@app.get("/process.html")
+async def process_page():
+    return FileResponse(FRONTEND_DIR / "process.html", headers=NO_CACHE_HEADERS)
+
+
+@app.get("/tos")
+@app.get("/tos.html")
+async def tos_page():
+    return FileResponse(FRONTEND_DIR / "tos.html", headers=NO_CACHE_HEADERS)
 
 
 if __name__ == "__main__":

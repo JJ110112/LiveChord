@@ -78,7 +78,7 @@
 <div id="toast" class="toast"></div>
 
 <script src="/js/utils.js?v=1"></script>
-<script src="/js/api.js?v=56"></script>
+<script src="/js/api.js?v=57"></script>
 <script>
   // Insert auth token into all fetch requests in api.js globally!
   const originalFetch = window.fetch;
@@ -112,6 +112,18 @@
                 navDiv.insertBefore(adminBtn, navDiv.querySelector("button"));
             }
         }).catch(err => console.error(err));
+      // Beta mode: show "New Song Analysis" button
+      fetch("/api/config/public")
+        .then(res => res.json())
+        .then(cfg => {
+            if (cfg.deployment_mode === "beta") {
+                const navDiv = document.querySelector("nav div");
+                const processBtn = document.createElement("button");
+                processBtn.textContent = "新歌分析";
+                processBtn.onclick = () => window.location.href = "/process";
+                navDiv.insertBefore(processBtn, navDiv.querySelector("button"));
+            }
+        }).catch(() => {});
   }
 
   function logout() {
