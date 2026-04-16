@@ -14,7 +14,11 @@
   <link rel="stylesheet" href="/css/player.css?v=7">
   <script>
     if (!localStorage.getItem("livechord_token")) {
-      window.location.href = "/login";
+      fetch('/api/auth/is_admin').then(r => {
+        if (!r.ok) window.location.href = "/login";
+      }).catch(() => {
+        window.location.href = "/login";
+      });
     }
   </script>
 </head>

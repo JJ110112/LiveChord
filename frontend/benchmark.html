@@ -7,7 +7,11 @@
   <link rel="icon" href="/favicon.svg">
   <script>
     if (!localStorage.getItem("livechord_token")) {
-      window.location.href = "/login";
+      fetch('/api/auth/is_admin').then(r => {
+        if (!r.ok) window.location.href = "/login";
+      }).catch(() => {
+        window.location.href = "/login";
+      });
     }
   </script>
   <style>

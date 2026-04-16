@@ -62,29 +62,17 @@ app.include_router(process_router)
 # ---------------------------------------------------------------------------
 # Admin IP 限制 (beta mode 時只允許 LAN 存取 /admin 相關路徑)
 # ---------------------------------------------------------------------------
-_LAN_NETWORKS = [
-    ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("10.0.0.0/8"),
-    ipaddress.ip_network("172.16.0.0/12"),
-    ipaddress.ip_network("127.0.0.0/8"),
-]
-_ADMIN_PREFIXES = ("/admin", "/api/auto/", "/api/tasks/", "/api/library/")
 
-
-def _is_lan_ip(ip_str: str) -> bool:
-    try:
-        addr = ipaddress.ip_address(ip_str)
-        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
-            addr = addr.ipv4_mapped
-        return any(addr in net for net in _LAN_NETWORKS)
-    except ValueError:
-        return False
 
 
 @app.middleware("http")
 async def admin_lan_restriction(request: Request, call_next):
-    from config import is_beta_mode
+    from config import is_beta_mode, is_lan_ip
     path = request.url.path
+    
+    # We still keep _ADMIN_PREFIXES definition here for local use
+    _ADMIN_PREFIXES = ("/admin", "/api/auto/", "/api/tasks/", "/api/library/")
+    
     if is_beta_mode() and any(path.startswith(p) for p in _ADMIN_PREFIXES):
         # Check real client IP: CF-Connecting-IP (Cloudflare), X-Forwarded-For, or direct
         client_ip = (
@@ -92,7 +80,7 @@ async def admin_lan_restriction(request: Request, call_next):
             or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
             or (request.client.host if request.client else "")
         )
-        if not _is_lan_ip(client_ip):
+        if not is_lan_ip(client_ip):
             return JSONResponse(status_code=403, content={"detail": "Admin access restricted to LAN"})
     return await call_next(request)
 

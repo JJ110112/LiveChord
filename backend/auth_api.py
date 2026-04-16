@@ -199,7 +199,18 @@ async def login(req: LoginRequest, request: Request):
         conn.commit()
         return {"ok": True, "token": new_token, "username": req.username}
 
-def get_current_user(authorization: str = Header(None)):
+def get_current_user(request: Request, authorization: str = Header(None)):
+    from config import is_beta_mode, is_lan_ip
+    
+    if not is_beta_mode():
+        client_ip = (
+            request.headers.get("cf-connecting-ip")
+            or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+            or (request.client.host if request.client else "")
+        )
+        if is_lan_ip(client_ip):
+            return "admin"  # auto-bypass on LAN
+
     if not authorization:
         raise HTTPException(status_code=401, detail="未授權 (Unauthorized)")
 
@@ -215,7 +226,18 @@ def get_current_user(authorization: str = Header(None)):
             raise HTTPException(status_code=401, detail="憑證已過期，請重新登入 (Token expired)")
         return row[0]
 
-def get_admin_user(authorization: str = Header(None)):
+def get_admin_user(request: Request, authorization: str = Header(None)):
+    from config import is_beta_mode, is_lan_ip
+    
+    if not is_beta_mode():
+        client_ip = (
+            request.headers.get("cf-connecting-ip")
+            or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+            or (request.client.host if request.client else "")
+        )
+        if is_lan_ip(client_ip):
+            return "admin"  # auto-bypass on LAN
+
     if not authorization:
         raise HTTPException(status_code=401, detail="未授權 (Unauthorized)")
 

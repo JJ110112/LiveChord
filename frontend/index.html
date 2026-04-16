@@ -14,7 +14,11 @@
   <link rel="stylesheet" href="/css/home.css?v=2">
   <script>
     if (!localStorage.getItem("livechord_token")) {
-      window.location.href = "/login";
+      fetch('/api/auth/is_admin').then(r => {
+        if (!r.ok) window.location.href = "/login";
+      }).catch(() => {
+        window.location.href = "/login";
+      });
     }
   </script>
 </head>
@@ -144,32 +148,31 @@
     return originalFetch(resource, config);
   };
   
-  const username = localStorage.getItem("livechord_username");
-  if (username) {
-      const greeting = document.getElementById("userGreeting");
-      if (greeting) greeting.textContent = `Hello, ${username}`;
-      
-      // Check admin status
-      fetch("/api/auth/is_admin")
-        .then(res => res.json())
-        .then(data => {
-            if (data.is_admin) {
-                const navDiv = document.querySelector("nav div");
+  let username = localStorage.getItem("livechord_username");
+  
+  // Check admin status anyway to handle LAN bypass
+  fetch("/api/auth/is_admin")
+    .then(res => res.json())
+    .then(data => {
+        if (data.is_admin) {
+            if (!username) {
+                username = "Admin (LAN)";
+            }
+            const greeting = document.getElementById("userGreeting");
+            if (greeting) greeting.textContent = `Hello, ${username}`;
+
+            const navDiv = document.querySelector("nav div");
+            // Only add button if it's not already there
+            if (!navDiv.querySelector("button.admin-btn")) {
                 const adminBtn = document.createElement("button");
+                adminBtn.className = "admin-btn";
                 adminBtn.textContent = "管理後台";
                 adminBtn.onclick = () => window.location.href = "/admin";
-                // Insert before the export button
                 navDiv.insertBefore(adminBtn, navDiv.querySelector("button"));
-            }
-        }).catch(err => console.error(err));
-      // Beta mode: "新歌分析" button for admin (non-admin has upload on homepage)
-      fetch("/api/config/public")
-        .then(res => res.json())
-        .then(cfg => {
-            if (cfg.deployment_mode === "beta") {
-                fetch("/api/auth/is_admin").then(r => r.json()).then(d => {
-                    if (d.is_admin) {
-                        const navDiv = document.querySelector("nav div");
+                
+                // For Beta mode admin "新歌分析" button
+                fetch("/api/config/public").then(r => r.json()).then(cfg => {
+                    if (cfg.deployment_mode === "beta") {
                         const processBtn = document.createElement("button");
                         processBtn.textContent = "新歌分析";
                         processBtn.onclick = () => window.location.href = "/process";
@@ -177,8 +180,16 @@
                     }
                 }).catch(() => {});
             }
-        }).catch(() => {});
-  }
+        } else if (username) {
+            const greeting = document.getElementById("userGreeting");
+            if (greeting) greeting.textContent = `Hello, ${username}`;
+        }
+    }).catch(err => {
+        if (username) {
+            const greeting = document.getElementById("userGreeting");
+            if (greeting) greeting.textContent = `Hello, ${username}`;
+        }
+    });
 
   function logout() {
       localStorage.removeItem("livechord_token");
