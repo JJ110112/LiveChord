@@ -496,7 +496,7 @@ Week 2:
 ## 10. 成功標準
 
 **Phase 1 上線標準：**
-- [ ] 外網可透過 HTTPS 存取
+- [x] 外網可透過 HTTPS 存取 — https://livechord.org (Cloudflare Tunnel, 2026-04-16)
 - [ ] 5 位 tester 完成註冊
 - [x] 搜尋 + 瀏覽和弦功能正常
 - [x] 本地音檔播放 + 和弦同步正常

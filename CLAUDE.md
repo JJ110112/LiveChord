@@ -8,7 +8,7 @@ Project-specific guidance for Claude Code working in this repo. Also see [doc/QA
 - **Local testing**: IDE Live Server is installed, Playwright MCP is registered for AI-driven local QA.
 - **Prod runtime** (NUC, mounted as `V:\` from PC): backend runs from `V:\backend`, frontend from `V:\frontend`
 - **Backend server**: FastAPI/uvicorn, `main:app` on `0.0.0.0:8800` (see [backend/run.py](backend/run.py))
-- **Production QA Server**: `http://192.168.50.6:8800/` (has been human tested)
+- **Production QA Server**: `http://192.168.50.6:8800/` (LAN) / `https://livechord.org` (public, Cloudflare Tunnel)
 - **Production Admin Account**: User: `hitea`
 - **Dev Admin Account**: User: `admin` / Password: `admin`
 - **Admin page**: `http://localhost:8800/admin`
