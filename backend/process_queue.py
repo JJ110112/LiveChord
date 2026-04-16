@@ -310,6 +310,7 @@ def get_user_audit_log(username: str, limit: int = 20) -> list[dict]:
             (username,)
         ).fetchall()
     seen_titles = set()
+    seen_hashes = set()
     results = []
     for r in rows:
         d = dict(r)
@@ -318,6 +319,12 @@ def get_user_audit_log(username: str, limit: int = 20) -> list[dict]:
             d["result_hash"] = hashlib.md5(
                 f"__upload/{d['job_id']}".encode("utf-8")
             ).hexdigest()[:12]
+        # Deduplicate by result_hash
+        rh = d.get("result_hash") or ""
+        if rh and rh in seen_hashes:
+            continue
+        if rh:
+            seen_hashes.add(rh)
         # Deduplicate by title (keep most recent)
         title_key = (d.get("title") or "").strip().lower()
         if title_key and title_key in seen_titles:

@@ -236,8 +236,8 @@
       const data = await res.json();
       const items = (data.history || []).filter(h => h.status === "done" && h.result_hash);
 
-      // Recent plays — horizontal scroll (top 8, same style as admin recent)
-      if (recentContainer && items.length > 0) {
+      // Recent plays — only show when there are more items than the grid would repeat
+      if (recentContainer && items.length > 8) {
         recentContainer.innerHTML = items.slice(0, 8).map(h => {
           const title = h.title || "分析結果";
           return `<div class="grid-item" data-hash="${escapeHtml(h.result_hash)}" style="cursor:pointer;min-width:140px">
