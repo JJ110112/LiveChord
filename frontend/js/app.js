@@ -61,10 +61,12 @@
         if (secBrowse) secBrowse.style.display = "none";
         if (secRecent) secRecent.style.display = "none";
         if (secFavorites) secFavorites.style.display = "none";
-        // Show beta upload + history sections
+        // Show beta sections
         const secUpload = $("#secUpload");
+        const secBetaRecent = $("#secBetaRecent");
         const secHistory = $("#secHistory");
         if (secUpload) secUpload.style.display = "";
+        if (secBetaRecent) secBetaRecent.style.display = "";
         if (secHistory) secHistory.style.display = "";
       } else if (_isBetaMode) {
         // Admin in beta mode: show history section alongside regular sections
@@ -216,35 +218,59 @@
   }
 
   // ---- beta history ----
+  function _buildCoverHtml(h) {
+    const isYT = h.source_type === "youtube";
+    const _extId = typeof extractYouTubeId === "function" ? extractYouTubeId
+      : (u) => { const m = (u||"").match(/(?:v=|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})/); return m ? m[1] : null; };
+    const videoId = isYT ? _extId(h.youtube_url || "") : null;
+    return videoId
+      ? `<img class="cover-bg" src="https://img.youtube.com/vi/${videoId}/mqdefault.jpg" onerror="this.outerHTML='<div class=\\'cover-placeholder\\'>&#x1F3AC;</div>'" loading="lazy">`
+      : `<img class="cover-bg" src="/api/process/cover/${escapeHtml(h.result_hash)}" onerror="this.outerHTML='<div class=\\'cover-placeholder\\'>&#x1F3B5;</div>'" loading="lazy">`;
+  }
+
   async function _loadBetaHistory() {
-    const section = $("#secHistory");
     const grid = $("#historyGrid");
-    if (!section || !grid) return;
+    const recentContainer = $("#betaRecentList");
+    const recentSection = $("#secBetaRecent");
     try {
-      const res = await fetch("/api/process/my-history?limit=20");
+      const res = await fetch("/api/process/my-history?limit=30");
       if (!res.ok) return;
       const data = await res.json();
       const items = (data.history || []).filter(h => h.status === "done" && h.result_hash);
-      if (items.length === 0) {
-        grid.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)">尚無分析記錄</div>';
-        return;
+
+      // Recent plays — horizontal scroll (top 8, same style as admin recent)
+      if (recentContainer && items.length > 0) {
+        recentContainer.innerHTML = items.slice(0, 8).map(h => {
+          const title = h.title || "分析結果";
+          return `<div class="grid-item" data-hash="${escapeHtml(h.result_hash)}" style="cursor:pointer;min-width:140px">
+            ${_buildCoverHtml(h)}
+            <div class="info"><div class="title">${escapeHtml(title)}</div></div>
+          </div>`;
+        }).join("");
+        recentContainer.querySelectorAll(".grid-item").forEach(el => {
+          el.addEventListener("click", () => goPlayer("", el.dataset.hash));
+        });
+        if (recentSection) recentSection.style.display = "";
       }
-      grid.innerHTML = items.map(h => {
-        const isYT = h.source_type === "youtube";
-        const videoId = isYT ? extractYouTubeId(h.youtube_url || "") : null;
-        const coverHtml = videoId
-          ? `<img class="cover-bg" src="https://img.youtube.com/vi/${videoId}/mqdefault.jpg" onerror="this.outerHTML='<div class=\\'cover-placeholder\\'>&#x1F3AC;</div>'" loading="lazy">`
-          : `<img class="cover-bg" src="/api/process/cover/${escapeHtml(h.result_hash)}" onerror="this.outerHTML='<div class=\\'cover-placeholder\\'>&#x1F3B5;</div>'" loading="lazy">`;
-        const title = h.title || "分析結果";
-        const date = (h.completed_at || "").slice(0, 10);
-        return `<div class="grid-item" data-hash="${escapeHtml(h.result_hash)}" data-yt="${isYT ? '1' : ''}" style="cursor:pointer">
-          ${coverHtml}
-          <div class="info"><div class="title">${escapeHtml(title)}</div><div class="subtitle">${date}</div></div>
-        </div>`;
-      }).join("");
-      grid.querySelectorAll(".grid-item").forEach(el => {
-        el.addEventListener("click", () => goPlayer("", el.dataset.hash));
-      });
+
+      // Library grid (all items)
+      if (grid) {
+        if (items.length === 0) {
+          grid.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)">尚無歌曲，上傳音檔或貼上 YouTube URL 開始分析</div>';
+          return;
+        }
+        grid.innerHTML = items.map(h => {
+          const title = h.title || "分析結果";
+          const date = (h.completed_at || "").slice(0, 10);
+          return `<div class="grid-item" data-hash="${escapeHtml(h.result_hash)}" style="cursor:pointer">
+            ${_buildCoverHtml(h)}
+            <div class="info"><div class="title">${escapeHtml(title)}</div><div class="subtitle">${date}</div></div>
+          </div>`;
+        }).join("");
+        grid.querySelectorAll(".grid-item").forEach(el => {
+          el.addEventListener("click", () => goPlayer("", el.dataset.hash));
+        });
+      }
     } catch (e) {
       console.error("loadBetaHistory error:", e);
     }

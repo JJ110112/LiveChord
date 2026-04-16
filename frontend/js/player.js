@@ -3045,17 +3045,19 @@
   }
 
   // ---- favorite ----
+  const _favPath = trackPath || (hashMode ? `__hash/${hashMode}` : "");
   btnFav.addEventListener("click", async () => {
+    if (!_favPath) return;
     try {
       if (isFavorite) {
-        await API.removeFavorite(trackPath);
+        await API.removeFavorite(_favPath);
         isFavorite = false;
-        favTracks = favTracks.filter(p => p !== trackPath);
+        favTracks = favTracks.filter(p => p !== _favPath);
         showToast("已取消收藏");
       } else {
-        await API.addFavorite(trackPath);
+        await API.addFavorite(_favPath);
         isFavorite = true;
-        if (!favTracks.includes(trackPath)) favTracks.unshift(trackPath);
+        if (!favTracks.includes(_favPath)) favTracks.unshift(_favPath);
         showToast("已加入最愛");
       }
       updateFavButton();
