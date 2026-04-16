@@ -311,6 +311,7 @@ def get_user_audit_log(username: str, limit: int = 20) -> list[dict]:
         ).fetchall()
     seen_titles = set()
     seen_hashes = set()
+    seen_urls = set()
     results = []
     for r in rows:
         d = dict(r)
@@ -325,6 +326,12 @@ def get_user_audit_log(username: str, limit: int = 20) -> list[dict]:
             continue
         if rh:
             seen_hashes.add(rh)
+        # Deduplicate by youtube_url
+        yt = (d.get("youtube_url") or "").strip()
+        if yt and yt in seen_urls:
+            continue
+        if yt:
+            seen_urls.add(yt)
         # Deduplicate by title (keep most recent)
         title_key = (d.get("title") or "").strip().lower()
         if title_key and title_key in seen_titles:

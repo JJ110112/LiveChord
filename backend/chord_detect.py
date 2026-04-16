@@ -5,11 +5,14 @@
 
 import os
 import sys
+import warnings
 import numpy as np
 import torch
 import librosa
 import soundfile as sf
 import threading
+
+warnings.filterwarnings("ignore", message="n_fft=.*is too large for input signal")
 
 # 單曲最大分析長度（秒）。超長合輯（例如 29 首精選）會被截斷至此長度，
 # 避免 librosa.load 產生超過 NumPy 最大陣列的情況。

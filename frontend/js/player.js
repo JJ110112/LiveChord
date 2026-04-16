@@ -2716,10 +2716,15 @@
   }
 
   volumeSlider.addEventListener("input", () => {
-    audio.volume = parseFloat(volumeSlider.value);
+    const v = parseFloat(volumeSlider.value);
+    audio.volume = v;
     audio.muted = false;
+    if (_ytPlayer && typeof _ytPlayer.setVolume === "function") {
+      _ytPlayer.setVolume(v * 100);
+      _ytPlayer.unMute();
+    }
     localStorage.setItem("livechord_volume", volumeSlider.value);
-    btnMute.innerHTML = audio.volume === 0 ? "&#x1F507;" : "&#x1F509;";
+    if (btnMute) btnMute.innerHTML = v === 0 ? "&#x1F507;" : "&#x1F509;";
   });
 
   // Mute toggle
@@ -2728,6 +2733,9 @@
   if (btnMute) {
     btnMute.addEventListener("click", () => {
       audio.muted = !audio.muted;
+      if (_ytPlayer && typeof _ytPlayer.isMuted === "function") {
+        if (_ytPlayer.isMuted()) _ytPlayer.unMute(); else _ytPlayer.mute();
+      }
       btnMute.innerHTML = audio.muted ? "&#x1F507;" : "&#x1F509;";
     });
   }
@@ -3388,6 +3396,27 @@
           }
           await preloadChordInfo(chordData.chords);
           buildChordDOM();
+
+          // Load favorites for hash mode
+          try {
+            const favData = await API.getFavorites();
+            favTracks = (favData.favorites || []).map(f => f.path);
+            isFavorite = favTracks.includes(_favPath);
+            updateFavButton();
+          } catch {}
+
+          // Load melody for waterfall (try hash, then path from chord data)
+          try {
+            const melPath = chordData.path || "";
+            const melUrl = melPath
+              ? `/api/ai/melody?path=${encodeURIComponent(melPath)}`
+              : `/api/ai/melody?hash=${encodeURIComponent(hashMode)}`;
+            const melRes = await fetch(melUrl);
+            const melData = await melRes.json();
+            if (melData.melody && melData.melody.length > 0) {
+              melodyData = melData.melody;
+            }
+          } catch {}
 
           // Try to auto-load audio from IndexedDB (uploaded file pass-through)
           let audioLoaded = false;

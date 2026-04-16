@@ -108,8 +108,9 @@ def evaluate():
 
 
 @router.get("/melody")
-async def get_melody(
-    path: str = Query(..., description="歌曲路徑"),
+def get_melody(
+    path: str = Query(default="", description="歌曲路徑"),
+    hash: str = Query(default="", description="直接用 hash 查詢"),
 ):
     """取得旋律資料（快取或即時提取）"""
     import json as _json
@@ -117,6 +118,29 @@ async def get_melody(
 
     MELODY_DIR = DATA_DIR / "melodies"
     MELODY_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Hash mode: direct lookup (for process results)
+    if hash and not path:
+        cache_file = MELODY_DIR / f"{hash}.json"
+        if cache_file.is_file():
+            return _json.loads(cache_file.read_text(encoding="utf-8"))
+        # Try to find path from chord data and derive melody hash
+        chords_file = DATA_DIR / "chords" / f"{hash}.json"
+        if chords_file.is_file():
+            try:
+                cd = _json.loads(chords_file.read_text(encoding="utf-8"))
+                if cd.get("path"):
+                    from chord_cache import song_hash as get_song_hash
+                    melody_hash = get_song_hash(cd["path"])
+                    alt_file = MELODY_DIR / f"{melody_hash}.json"
+                    if alt_file.is_file():
+                        return _json.loads(alt_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        return {"melody": []}
+
+    if not path:
+        return {"melody": []}
 
     from chord_cache import song_hash as get_song_hash
     h = get_song_hash(path)
