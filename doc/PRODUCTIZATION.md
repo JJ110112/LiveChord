@@ -469,7 +469,15 @@ Week 2:
   ├── ✅ 每日額度限制 (10 首/天, in-memory)
   ├── ✅ 音檔自動清理 (即時刪除 + 5分鐘掃描) + audit log (data/audit.db)
   ├── ✅ Player ?hash= mode (分析結果直接進播放器)
-  └── ✅ XSS sanitization + admin IP restriction + beta mode gating
+  ├── ✅ XSS sanitization + admin IP restriction + beta mode gating
+  ├── ✅ IndexedDB 上傳即播放 (blob 跨頁傳遞, auto-play)
+  ├── ✅ YouTube IFrame 嵌入同步 (currentTime 驅動和弦)
+  ├── ✅ YouTube 自動搜尋 (資料庫歌曲 → yt-dlp ytsearch → 嵌入)
+  ├── ✅ Beta 首頁重設計 (大上傳區 + YouTube + 分析記錄)
+  ├── ✅ NAS 隱私保護 (非 admin 看不到 NAS 路徑, browse 403)
+  ├── ✅ 封面圖片 (上傳: mutagen 擷取, YouTube: 縮圖)
+  ├── ✅ 200MB 上傳限制 (FLAC 友善)
+  └── ✅ 分析記錄持久化 (audit DB + my-history endpoint)
 
 待完成:
   ├── 壓力測試（多人同時上傳）

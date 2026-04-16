@@ -46,8 +46,14 @@ Any change to frontend files requires Playwright verification before claiming do
 - **Phase 2 modules**: `process_queue.py` (job queue + worker + audit), `process_api.py` (upload/YouTube endpoints)
 - **Invite code system**: multi-code with expiry, managed via Admin page → "Beta 回饋" card
 - **Security**: rate limiting on auth endpoints, password ≥8 chars, token 30-day expiry, XSS sanitization on all user inputs, admin IP restriction (LAN-only in beta mode)
+- **NAS privacy**: non-admin beta users cannot browse NAS; search results use hashed paths; `/api/browse` returns 403
 - **TOS**: `/tos` page, consent required before using process features
-- **Process flow**: upload audio or YouTube URL → queue → BTC GPU detection → chord JSON → player `?hash=`
+- **Process flow**: upload audio (200MB max) or YouTube URL → queue → BTC GPU detection → chord JSON → player `?hash=`
+- **Upload-to-play**: IndexedDB passes audio blob from process/homepage to player for instant auto-play
+- **YouTube embed sync**: player embeds YouTube IFrame, uses `getCurrentTime()` for real-time chord sync
+- **YouTube auto-search**: for database songs, `/api/process/youtube-search` finds matching YouTube video via yt-dlp
+- **Cover art**: uploaded files have covers extracted via mutagen; YouTube uses `img.youtube.com` thumbnails
+- **Beta homepage**: non-admin sees upload zone + YouTube input + analysis history grid (replaces music library)
 - **Prerequisites for YouTube**: `yt-dlp` + `ffmpeg` must be on NUC system PATH
 - Productization roadmap: [doc/PRODUCTIZATION.md](doc/PRODUCTIZATION.md)
 
