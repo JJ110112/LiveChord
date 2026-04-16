@@ -2493,7 +2493,14 @@
   // Playing: ◀ = rewind to start, ▶ = pause
   // Stopped: ◀ = prev song, ▶ = play
   btnPlay.addEventListener("click", () => {
-    // Hash mode without audio loaded: open file picker instead of playing silence
+    // YouTube embed mode: control YouTube player
+    if (_ytPlayer && typeof _ytPlayer.getPlayerState === "function") {
+      const state = _ytPlayer.getPlayerState();
+      if (state === 1) { _ytPlayer.pauseVideo(); btnPlay.innerHTML = "&#x25B6;"; }
+      else { _ytPlayer.playVideo(); btnPlay.innerHTML = "&#x23F8;"; }
+      return;
+    }
+    // Hash mode without audio loaded: open file picker
     if (hashMode && !_usingLocalFile && (!audio.src || audio.src === location.href)) {
       if (localFileInput) localFileInput.click();
       return;
@@ -3484,7 +3491,13 @@
       events: {
         onReady: () => {
           showToast("YouTube 播放器就緒", 2000);
+          btnPlay.innerHTML = "&#x23F8;";
           _startYTSync();
+        },
+        onStateChange: (e) => {
+          // 1=playing, 2=paused
+          if (e.data === 1) btnPlay.innerHTML = "&#x23F8;";
+          else if (e.data === 2) btnPlay.innerHTML = "&#x25B6;";
         },
         onError: (e) => {
           const container = document.getElementById("ytEmbedContainer");
@@ -3499,20 +3512,33 @@
     _ytSyncTimer = setInterval(() => {
       if (!_ytPlayer || typeof _ytPlayer.getCurrentTime !== "function") return;
       try {
+        const state = _ytPlayer.getPlayerState();
+        if (state !== 1) return; // only sync while playing (state 1)
         const t = _ytPlayer.getCurrentTime();
         if (t > 0) {
+          // Drive the same animation pipeline as tickSync()
           updateActiveChord(t);
-          // Update time display
+          _updateBeatDots(t);
+          _updateKeyDisplay(t);
+          if (activeTab === "piano") {
+            update88Piano(t);
+            drawWaterfall(t);
+          } else {
+            const _inst = InstrumentRegistry.get(activeTab);
+            if (_inst) _inst.update(t);
+          }
+          // Update time display + progress bar
           timeCurrent.textContent = formatTime(t);
           const dur = _ytPlayer.getDuration();
           if (dur > 0) {
             timeDuration.textContent = formatTime(dur);
             const pct = (t / dur) * 100;
             seekBar.value = pct;
+            if (topProgressFill) topProgressFill.style.width = pct + "%";
           }
         }
       } catch (e) {}
-    }, 100); // 10 fps sync
+    }, 50); // 20 fps for smooth animation
   }
 
   // --- AI Auditing Synthesizer (Salamander Grand Piano Sampler) ---
