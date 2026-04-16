@@ -270,6 +270,56 @@
     </div>
   </div>
 
+  <!-- ======== Card 6: Beta 回饋儀表板（收摺）======== -->
+  <div class="card" id="betaCard" style="display:none">
+    <h2 class="collapse-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">🧪 Beta 回饋</h2>
+    <div class="collapse-content show">
+
+      <!-- Stats row -->
+      <div class="stat-row" id="betaStats">
+        <div class="stat-box"><div class="num" id="betaTotalRatings">—</div><div class="label">評價數</div></div>
+        <div class="stat-box"><div class="num" id="betaAvgRating">—</div><div class="label">平均評分</div></div>
+        <div class="stat-box"><div class="num" id="betaOpenBugs">—</div><div class="label">待處理 Bug</div></div>
+        <div class="stat-box"><div class="num" id="betaActiveUsers">—</div><div class="label">活躍使用者 (7d)</div></div>
+      </div>
+
+      <!-- Rating distribution -->
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">評分分布</div>
+        <div id="betaRatingDist" style="display:flex;gap:4px;align-items:end;height:40px"></div>
+      </div>
+
+      <!-- Worst-rated songs -->
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">最低評分歌曲（優先修正）</div>
+        <div id="betaWorstSongs" style="font-size:12px"></div>
+      </div>
+
+      <!-- Recent bug reports -->
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">最近 Bug 回報</div>
+        <div id="betaBugList" style="font-size:12px;max-height:200px;overflow-y:auto"></div>
+      </div>
+
+      <!-- Invite code management -->
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">邀請碼管理</div>
+        <div class="actions" style="margin-bottom:8px">
+          <button onclick="createInvite()">+ 產生邀請碼</button>
+          <button onclick="createInvite(5)">+ 5 次用邀請碼</button>
+        </div>
+        <div id="betaInviteList" style="font-size:12px"></div>
+      </div>
+
+      <!-- User list -->
+      <div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">已註冊使用者</div>
+        <div id="betaUserList" style="font-size:12px"></div>
+      </div>
+
+    </div>
+  </div>
+
 </div>
 
 <div id="toast" class="toast"></div>
@@ -290,7 +340,7 @@
     return originalFetch(resource, config);
   };
 </script>
-<script src="/js/api.js?v=2"></script>
+<script src="/js/api.js?v=56"></script>
 <script>
 (function() {
   const $ = s => document.querySelector(s);
@@ -927,6 +977,115 @@
   function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 
   pollStatus();
+
+  // ============================================================
+  // Beta Dashboard (only shown when deployment_mode === "beta")
+  // ============================================================
+  async function initBetaDashboard() {
+    try {
+      const cfg = await API.get("/api/config/public");
+      if (cfg.deployment_mode !== "beta") return;
+    } catch { return; }
+
+    const card = document.getElementById("betaCard");
+    if (card) card.style.display = "";
+
+    async function loadBetaData() {
+      try {
+        const [stats, bugs, analytics, invites, users] = await Promise.all([
+          API.get("/api/feedback/admin/ratings/stats"),
+          API.get("/api/feedback/admin/bugs?status=open&limit=20"),
+          API.get("/api/analytics/admin/summary?days=7"),
+          API.get("/api/auth/admin/invites"),
+          API.get("/api/auth/admin/users"),
+        ]);
+
+        // Stats
+        document.getElementById("betaTotalRatings").textContent = stats.total_ratings || 0;
+        document.getElementById("betaAvgRating").textContent = stats.overall_avg ? stats.overall_avg.toFixed(1) : "—";
+        document.getElementById("betaOpenBugs").textContent = bugs.total || 0;
+        document.getElementById("betaActiveUsers").textContent = analytics.active_users || 0;
+
+        // Rating distribution bar
+        const dist = stats.distribution || {};
+        const maxCnt = Math.max(1, ...Object.values(dist));
+        const distEl = document.getElementById("betaRatingDist");
+        distEl.innerHTML = [1,2,3,4,5].map(v => {
+          const cnt = dist[v] || 0;
+          const h = Math.max(4, (cnt / maxCnt) * 36);
+          const color = v >= 4 ? "#4caf50" : v === 3 ? "#ff9800" : "#f44336";
+          return `<div style="flex:1;text-align:center"><div style="height:${h}px;background:${color};border-radius:2px;margin:0 2px"></div><div style="font-size:10px;color:#888;margin-top:2px">${v}★ (${cnt})</div></div>`;
+        }).join("");
+
+        // Worst songs
+        const worstEl = document.getElementById("betaWorstSongs");
+        if (stats.worst_songs && stats.worst_songs.length) {
+          worstEl.innerHTML = stats.worst_songs.slice(0, 8).map(s =>
+            `<div style="padding:2px 0;display:flex;gap:8px"><span style="color:#f44336">${(s.avg||0).toFixed(1)}★</span> <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.song_title || s.song_hash)}</span> <span style="color:#555">(${s.cnt}票)</span></div>`
+          ).join("");
+        } else {
+          worstEl.innerHTML = '<span style="color:#555">尚無評價</span>';
+        }
+
+        // Bug list
+        const bugEl = document.getElementById("betaBugList");
+        if (bugs.bugs && bugs.bugs.length) {
+          bugEl.innerHTML = bugs.bugs.map(b =>
+            `<div style="padding:4px 0;border-bottom:1px solid #1a1a1a;display:flex;gap:8px"><span class="badge" style="background:rgba(244,67,54,.15);color:#f44">${esc(b.category)}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.description)}</span><span style="color:#555;white-space:nowrap">${esc(b.username)} ${b.created_at.slice(5,16)}</span></div>`
+          ).join("");
+        } else {
+          bugEl.innerHTML = '<span style="color:#555">無待處理 Bug</span>';
+        }
+
+        // Invites
+        const invEl = document.getElementById("betaInviteList");
+        if (invites.invites && invites.invites.length) {
+          invEl.innerHTML = invites.invites.map(i => {
+            const expired = i.expires_at && i.expires_at < new Date().toISOString().slice(0,19);
+            const status = i.revoked ? "已撤銷" : expired ? "已過期" : i.use_count >= i.max_uses ? "已用完" : "有效";
+            const color = status === "有效" ? "#4caf50" : "#555";
+            return `<div style="padding:3px 0;display:flex;gap:8px;align-items:center;font-family:Consolas,monospace"><code style="color:${color}">${i.code}</code><span style="color:#555">${i.use_count}/${i.max_uses}</span><span style="color:#555;font-size:10px">${status}</span>${status === "有效" ? `<button style="font-size:10px;padding:1px 6px;border:1px solid #f44;color:#f44;background:transparent;border-radius:3px;cursor:pointer" onclick="revokeInvite('${i.code}')">撤銷</button>` : ""}</div>`;
+          }).join("");
+        } else {
+          invEl.innerHTML = '<span style="color:#555">無邀請碼</span>';
+        }
+
+        // Users
+        const usrEl = document.getElementById("betaUserList");
+        if (users.users && users.users.length) {
+          usrEl.innerHTML = users.users.map(u =>
+            `<div style="padding:2px 0;display:flex;gap:8px"><span style="font-weight:600">${esc(u.username)}</span>${u.is_admin ? '<span class="badge" style="background:rgba(233,69,96,.15);color:var(--accent)">admin</span>' : ""}<span style="color:#555;margin-left:auto;font-size:11px">${u.last_login ? u.last_login.slice(0,16) : "—"}</span></div>`
+          ).join("");
+        }
+      } catch (e) {
+        console.warn("Beta dashboard error:", e);
+      }
+    }
+
+    loadBetaData();
+    setInterval(loadBetaData, 30000);
+  }
+
+  window.createInvite = async function(maxUses = 1) {
+    try {
+      const res = await API.post("/api/auth/admin/invite", { max_uses: maxUses, expires_days: 30 });
+      if (res.code) {
+        showToast("邀請碼: " + res.code);
+        await navigator.clipboard.writeText(res.code).catch(() => {});
+        initBetaDashboard();
+      }
+    } catch (e) { showToast("建立失敗: " + e.message); }
+  };
+
+  window.revokeInvite = async function(code) {
+    try {
+      await fetch(`/api/auth/admin/invite/${encodeURIComponent(code)}`, { method: "DELETE" });
+      showToast("已撤銷");
+      initBetaDashboard();
+    } catch (e) { showToast("撤銷失敗: " + e.message); }
+  };
+
+  initBetaDashboard();
 })();
 </script>
 </body>

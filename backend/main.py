@@ -16,6 +16,8 @@ from ai_api import router as ai_router
 from extraction_api import router as extraction_router
 from jam_tracks_api import router as jam_tracks_router
 from auth_api import router as auth_router
+from feedback_api import router as feedback_router
+from analytics_api import router as analytics_router
 import auth_api
 from fastapi import Depends
 import auto_worker
@@ -51,6 +53,8 @@ app.include_router(ai_router)
 app.include_router(extraction_router)
 app.include_router(jam_tracks_router)
 app.include_router(auth_router)
+app.include_router(feedback_router)
+app.include_router(analytics_router)
 
 # 前端靜態檔案
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
@@ -164,6 +168,17 @@ def library_genres_list(admin: str = Depends(auth_api.get_admin_user)):
         if g:
             counter[g] += 1
     return {"genres": [{"name": k, "count": v} for k, v in counter.most_common()]}
+
+
+# ---------------------------------------------------------------------------
+# 公開設定 (前端需要的 deployment_mode 等)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/config/public")
+async def public_config():
+    """回傳前端需要的非機密設定"""
+    from config import get_deployment_mode
+    return {"deployment_mode": get_deployment_mode()}
 
 
 # ---------------------------------------------------------------------------

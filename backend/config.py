@@ -88,6 +88,15 @@ def set_midi_root(new_path: str):
     _save_setting("midi_root", os.path.normpath(new_path))
 
 
+def get_deployment_mode() -> str:
+    """回傳部署模式: 'personal' (預設) 或 'beta'"""
+    return _load_settings().get("deployment_mode", "personal")
+
+
+def is_beta_mode() -> bool:
+    return get_deployment_mode() == "beta"
+
+
 def _save_setting(key: str, value):
     settings = _load_settings()
     settings[key] = value

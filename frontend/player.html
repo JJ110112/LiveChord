@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=2">
-  <link rel="stylesheet" href="/css/player.css?v=6">
+  <link rel="stylesheet" href="/css/player.css?v=7">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       window.location.href = "/login";
@@ -237,6 +237,45 @@
     <button id="btnRlhfBad" class="rate-bad" title="有外星人指法/伴奏">&#x1F44E; 糟糕</button>
   </div>
 
+  <!-- Beta: 5-star rating + comment popup -->
+  <div id="betaRatePopup" class="beta-rate-popup" style="display:none">
+    <div class="beta-rate-header">和弦品質評價</div>
+    <div id="betaStars" class="beta-stars">
+      <span class="beta-star" data-v="1">&#x2606;</span>
+      <span class="beta-star" data-v="2">&#x2606;</span>
+      <span class="beta-star" data-v="3">&#x2606;</span>
+      <span class="beta-star" data-v="4">&#x2606;</span>
+      <span class="beta-star" data-v="5">&#x2606;</span>
+    </div>
+    <textarea id="betaRateComment" class="beta-rate-comment" rows="2" placeholder="留言（選填）"></textarea>
+    <div class="beta-rate-actions">
+      <button id="btnBetaRateSubmit" class="beta-rate-submit">送出</button>
+      <button id="btnBetaRateCancel" class="beta-rate-cancel">取消</button>
+    </div>
+  </div>
+
+  <!-- Beta: Bug report button (floating) -->
+  <button id="btnBugReport" class="bug-report-fab" style="display:none" title="回報問題">&#x1F41B;</button>
+
+  <!-- Beta: Bug report dialog -->
+  <div id="bugReportDialog" class="bug-report-dialog" style="display:none">
+    <div class="bug-report-box">
+      <div class="bug-report-title">回報問題</div>
+      <select id="bugCategory" class="bug-input">
+        <option value="accuracy">和弦準確度</option>
+        <option value="ui">介面問題</option>
+        <option value="performance">效能問題</option>
+        <option value="feature_request">功能建議</option>
+        <option value="other">其他</option>
+      </select>
+      <textarea id="bugDescription" class="bug-input" rows="4" placeholder="請描述問題或建議…"></textarea>
+      <div class="beta-rate-actions">
+        <button id="btnBugSubmit" class="beta-rate-submit">送出</button>
+        <button id="btnBugCancel" class="beta-rate-cancel">取消</button>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /chordDisplay -->
 
 <!-- ===== Progress Bar (between content and toolbar) ===== -->
@@ -355,7 +394,12 @@
     </div>
   </div>
 
-  <!-- 10. Tools -->
+  <!-- 10. Local File -->
+  <div class="tb-item" id="tbLocalFile" style="display:none">
+    <button id="btnLocalFile" class="tb-trigger" title="載入本地音檔">&#x1F4C2;</button>
+  </div>
+
+  <!-- 11. Tools -->
   <div class="tb-item" id="tbTools">
     <button class="tb-trigger" title="工具">&#x1F527;</button>
     <div class="tb-popup">
@@ -376,9 +420,20 @@
 
 <div id="toast" class="toast"></div>
 <audio id="audio" preload="metadata"></audio>
+<input type="file" id="localFileInput" accept="audio/*" style="display:none">
+
+<!-- Audio error overlay: shown when NAS stream fails -->
+<div id="localAudioPrompt" class="local-audio-prompt" style="display:none">
+  <div class="local-audio-box">
+    <div style="font-size:28px;margin-bottom:8px">&#x1F3B5;</div>
+    <div style="font-size:14px;font-weight:bold;margin-bottom:4px">無法串流音訊</div>
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">伺服器音樂庫不可用，請載入本地音檔播放</div>
+    <button id="btnLocalFilePrompt" class="local-audio-btn">&#x1F4C2; 選擇本地音檔</button>
+  </div>
+</div>
 
 <script src="/js/utils.js?v=2"></script>
-<script src="/js/api.js?v=55"></script>
+<script src="/js/api.js?v=56"></script>
 <script src="/js/chord-render.js?v=53"></script>
 <script src="/js/arpeggio-patterns.js?v=1"></script>
 <script src="/js/string-instrument.js?v=1"></script>
@@ -401,6 +456,6 @@
     return originalFetch(resource, config);
   };
 </script>
-<script src="/js/player.js?v=75"></script>
+<script src="/js/player.js?v=76"></script>
 </body>
 </html>

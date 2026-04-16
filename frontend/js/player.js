@@ -71,6 +71,65 @@
   const detectDetail = $("#detectDetail");
   const capoGroup = $("#capoGroup");
   const chordRibbonPanel = $("#chordRibbonPanel");
+
+  // ---- Local audio file support (beta / remote tester) ----
+  const localFileInput = $("#localFileInput");
+  const localAudioPrompt = $("#localAudioPrompt");
+  const btnLocalFilePrompt = $("#btnLocalFilePrompt");
+  const btnLocalFile = $("#btnLocalFile");
+  const tbLocalFile = $("#tbLocalFile");
+  let _localFileObjectUrl = null;
+  let _usingLocalFile = false;
+
+  function _triggerLocalFilePicker() {
+    if (localFileInput) localFileInput.click();
+  }
+  if (btnLocalFilePrompt) btnLocalFilePrompt.addEventListener("click", _triggerLocalFilePicker);
+  if (btnLocalFile) btnLocalFile.addEventListener("click", _triggerLocalFilePicker);
+
+  if (localFileInput) {
+    localFileInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      // Revoke previous object URL to prevent memory leak
+      if (_localFileObjectUrl) URL.revokeObjectURL(_localFileObjectUrl);
+      _localFileObjectUrl = URL.createObjectURL(file);
+      _usingLocalFile = true;
+      audio.src = _localFileObjectUrl;
+      audio.load();
+      // Hide the prompt overlay
+      if (localAudioPrompt) localAudioPrompt.style.display = "none";
+      // Show badge in title to indicate local file
+      const badge = songTitle.querySelector(".local-file-badge");
+      if (!badge) {
+        const b = document.createElement("span");
+        b.className = "local-file-badge";
+        b.textContent = "LOCAL";
+        songTitle.appendChild(b);
+      }
+      // Auto-play
+      audio.play().catch(() => {});
+    });
+  }
+
+  // Show local-file toolbar button: fetch deployment mode at startup
+  (async () => {
+    try {
+      const cfg = await fetch("/api/config/public").then(r => r.json());
+      if (cfg.deployment_mode === "beta" && tbLocalFile) {
+        tbLocalFile.style.display = "";
+      }
+    } catch {}
+  })();
+
+  // When audio stream fails (NAS not reachable), show the prompt
+  if (audio) {
+    audio.addEventListener("error", () => {
+      if (_usingLocalFile) return; // don't show prompt for local file errors
+      if (localAudioPrompt) localAudioPrompt.style.display = "flex";
+      if (tbLocalFile) tbLocalFile.style.display = "";
+    });
+  }
   const unifiedRibbonTrack = $("#unifiedRibbonTrack");
   const resizeHandle = $("#resizeHandle");
   const instrumentPanel = $("#instrumentPanel");
@@ -4028,6 +4087,136 @@
     },
   };
   InstrumentRegistry.register("arranger", new ArrangerInstrument(ARRANGER_CONFIG, _playerBridge));
+
+  // ===========================================================================
+  // Beta Feedback: 5-star rating + comment, bug report
+  // ===========================================================================
+  (function initBetaFeedback() {
+    const betaPopup = $("#betaRatePopup");
+    const betaStars = document.querySelectorAll("#betaStars .beta-star");
+    const betaComment = $("#betaRateComment");
+    const btnSubmit = $("#btnBetaRateSubmit");
+    const btnCancel = $("#btnBetaRateCancel");
+    const btnBug = $("#btnBugReport");
+    const bugDialog = $("#bugReportDialog");
+    const bugDesc = $("#bugDescription");
+    const bugCat = $("#bugCategory");
+    const btnBugSubmit = $("#btnBugSubmit");
+    const btnBugCancel = $("#btnBugCancel");
+
+    let _betaRating = 0;
+    let _betaMode = false;
+
+    // Check deployment mode and wire up beta UI
+    fetch("/api/config/public").then(r => r.json()).then(cfg => {
+      if (cfg.deployment_mode !== "beta") return;
+      _betaMode = true;
+
+      // Analytics: track page view
+      API.trackEvent("page_view", { page: "player", song_hash: trackPath });
+
+      // Analytics: track song play
+      audio.addEventListener("play", () => {
+        const title = songTitle ? songTitle.textContent : "";
+        API.trackEvent("song_play", { song_hash: trackPath, song_title: title });
+      }, { once: true }); // only first play per session
+
+      // Show bug report FAB
+      if (btnBug) btnBug.style.display = "";
+      // Override star button to open beta popup instead of RLHF popup
+      const btnRate = document.getElementById("btnRateAiTop");
+      if (btnRate && betaPopup) {
+        // Remove old listener by cloning
+        const clone = btnRate.cloneNode(true);
+        btnRate.parentNode.replaceChild(clone, btnRate);
+        clone.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const rp = document.getElementById("ratePopup");
+          if (rp) rp.style.display = "none"; // hide old popup
+          betaPopup.style.display = betaPopup.style.display === "none" ? "block" : "none";
+          // Load existing rating for this song
+          if (trackPath && betaPopup.style.display !== "none") {
+            API.getMyRating(trackPath).then(d => {
+              if (d.rating) { _betaRating = d.rating; _renderStars(); }
+              if (d.comment) betaComment.value = d.comment;
+            }).catch(() => {});
+          }
+        });
+        document.addEventListener("click", (e) => {
+          if (!clone.contains(e.target) && !betaPopup.contains(e.target)) {
+            betaPopup.style.display = "none";
+          }
+        });
+      }
+    }).catch(() => {});
+
+    // Star hover + click
+    betaStars.forEach(s => {
+      s.addEventListener("mouseenter", () => {
+        const v = +s.dataset.v;
+        betaStars.forEach(x => x.classList.toggle("hover", +x.dataset.v <= v));
+      });
+      s.addEventListener("mouseleave", () => {
+        betaStars.forEach(x => x.classList.remove("hover"));
+      });
+      s.addEventListener("click", () => {
+        _betaRating = +s.dataset.v;
+        _renderStars();
+      });
+    });
+
+    function _renderStars() {
+      betaStars.forEach(x => {
+        const v = +x.dataset.v;
+        x.classList.toggle("active", v <= _betaRating);
+        x.innerHTML = v <= _betaRating ? "&#x2605;" : "&#x2606;";
+      });
+    }
+
+    // Submit rating
+    if (btnSubmit) {
+      btnSubmit.addEventListener("click", async () => {
+        if (!_betaRating) { showToast("請先選擇星等"); return; }
+        try {
+          const title = songTitle ? songTitle.textContent : "";
+          await API.submitRating(trackPath, _betaRating, betaComment.value.trim(), title);
+          showToast(`已評價 ${"★".repeat(_betaRating)}${"☆".repeat(5 - _betaRating)}`);
+          if (betaPopup) betaPopup.style.display = "none";
+        } catch (e) { showToast("評價送出失敗: " + e.message); }
+      });
+    }
+    if (btnCancel) {
+      btnCancel.addEventListener("click", () => {
+        if (betaPopup) betaPopup.style.display = "none";
+      });
+    }
+
+    // Bug report
+    if (btnBug) {
+      btnBug.addEventListener("click", () => {
+        if (bugDialog) bugDialog.style.display = "flex";
+      });
+    }
+    if (btnBugSubmit) {
+      btnBugSubmit.addEventListener("click", async () => {
+        const desc = bugDesc ? bugDesc.value.trim() : "";
+        if (!desc) { showToast("請描述問題"); return; }
+        try {
+          const cat = bugCat ? bugCat.value : "other";
+          const info = navigator.userAgent;
+          await API.submitBug(cat, desc, window.location.href, info);
+          showToast("感謝回報！");
+          if (bugDialog) bugDialog.style.display = "none";
+          if (bugDesc) bugDesc.value = "";
+        } catch (e) { showToast("回報送出失敗: " + e.message); }
+      });
+    }
+    if (btnBugCancel) {
+      btnBugCancel.addEventListener("click", () => {
+        if (bugDialog) bugDialog.style.display = "none";
+      });
+    }
+  })();
 
 })();
 

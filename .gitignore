@@ -31,6 +31,8 @@ data/users.db
 data/users/
 data/human_sections/
 data/human_feedback/
+data/feedback.db
+data/analytics.db
 
 # 評估/測試產出
 backend/eval_results.json

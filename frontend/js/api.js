@@ -69,6 +69,16 @@ const API = {
   jamTracksList: (style, limit = 100, offset = 0) =>
     API.get(`/api/jam_tracks?style=${encodeURIComponent(style)}&limit=${limit}&offset=${offset}`),
 
+  // 回饋 (Beta)
+  submitRating: (song_hash, rating, comment = "", song_title = "") =>
+    API.post("/api/feedback/rating", { song_hash, song_title, rating, comment }),
+  getMyRating: (song_hash) => API.get(`/api/feedback/rating?song_hash=${encodeURIComponent(song_hash)}`),
+  getRatingSummary: (song_hash) => API.get(`/api/feedback/ratings/summary?song_hash=${encodeURIComponent(song_hash)}`),
+  submitBug: (category, description, page_url = "", browser_info = "") =>
+    API.post("/api/feedback/bug", { category, description, page_url, browser_info }),
+  trackEvent: (event_type, payload = {}) =>
+    API.post("/api/analytics/event", { event_type, payload }).catch(() => {}),
+
   // 使用者
   getFavorites: () => API.get("/api/favorites"),
   addFavorite: (path) => API.post("/api/favorites", { path }),

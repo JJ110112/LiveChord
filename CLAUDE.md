@@ -36,7 +36,18 @@ Any change to frontend files requires Playwright verification before claiming do
 - **Cache-busting**: bump `?v=N` on `<script>`/`<link>` tags when editing JS/CSS (QA UI rule 6)
 - **BTC chord detection** runs in a `ProcessPoolExecutor` to isolate from the event loop GIL
 
+## Beta Productization
+
+- **Deployment mode**: `data/settings.json` → `"deployment_mode": "personal"` (default) or `"beta"`
+- In beta mode: feedback UI, bug report FAB, analytics tracking, local audio playback are enabled
+- In personal mode: all beta features hidden, zero impact on existing usage
+- **New backend modules**: `feedback_api.py` (ratings + bugs), `analytics_api.py` (usage tracking)
+- **Invite code system**: multi-code with expiry, managed via Admin page → "Beta 回饋" card
+- **Security**: rate limiting on auth endpoints, password ≥8 chars, token 30-day expiry
+- Productization roadmap: [doc/PRODUCTIZATION.md](doc/PRODUCTIZATION.md)
+
 ## Reference
 
 - QA protocol, test matrix, UI architecture rules: [doc/QA.md](doc/QA.md)
 - Battle stories / past incidents: [doc/QA_BATTLE_STORY.md](doc/QA_BATTLE_STORY.md)
+- Productization roadmap: [doc/PRODUCTIZATION.md](doc/PRODUCTIZATION.md)
