@@ -3398,7 +3398,13 @@
           if (!audioLoaded && ytVideoId) {
             _initYouTubeEmbed(ytVideoId);
           } else if (!audioLoaded) {
-            showToast("按 ▶ 播放鍵載入本地音檔", 8000);
+            // No audio blob and no youtube_url — try searching YouTube by title
+            const searchTitle = chordData.title || "";
+            if (searchTitle) {
+              _searchAndEmbedYouTube(searchTitle);
+            } else {
+              showToast("按 ▶ 播放鍵載入本地音檔", 8000);
+            }
           }
         } else {
           songTitle.textContent = "分析結果";
@@ -3424,6 +3430,22 @@
   // --- YouTube IFrame embed for chord sync ---
   let _ytPlayer = null;
   let _ytSyncTimer = null;
+
+  async function _searchAndEmbedYouTube(title) {
+    try {
+      showToast("搜尋 YouTube 對應曲目...", 3000);
+      const res = await fetch(`/api/process/youtube-search?q=${encodeURIComponent(title)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.video_id) {
+        _initYouTubeEmbed(data.video_id);
+      } else {
+        showToast("按 ▶ 播放鍵載入本地音檔", 5000);
+      }
+    } catch (e) {
+      showToast("按 ▶ 播放鍵載入本地音檔", 5000);
+    }
+  }
 
   function _initYouTubeEmbed(videoId) {
     const container = document.getElementById("ytEmbedContainer");

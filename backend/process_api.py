@@ -184,6 +184,45 @@ def get_cover(hash: str):
 
 
 # ---------------------------------------------------------------------------
+# YouTube search (find matching video for a song title)
+# ---------------------------------------------------------------------------
+
+import subprocess
+from process_queue import YTDLP_BIN
+
+# Simple in-memory cache for YouTube search results
+_yt_search_cache: dict[str, str] = {}
+
+
+@router.get("/youtube-search")
+def youtube_search(q: str, username: str = Depends(get_current_user)):
+    """Search YouTube for a song and return the best match video ID."""
+    q = q.strip()[:120]
+    if not q:
+        raise HTTPException(status_code=400, detail="Empty query")
+
+    # Check cache
+    cache_key = q.lower()
+    if cache_key in _yt_search_cache:
+        vid = _yt_search_cache[cache_key]
+        return {"video_id": vid, "url": f"https://www.youtube.com/watch?v={vid}"}
+
+    try:
+        result = subprocess.run(
+            [YTDLP_BIN, "--get-id", "--no-download", "--no-playlist",
+             f"ytsearch1:{q}"],
+            capture_output=True, text=True, timeout=15
+        )
+        vid = result.stdout.strip()
+        if result.returncode != 0 or not vid or len(vid) != 11:
+            return {"video_id": None, "url": None}
+        _yt_search_cache[cache_key] = vid
+        return {"video_id": vid, "url": f"https://www.youtube.com/watch?v={vid}"}
+    except Exception as e:
+        return {"video_id": None, "url": None, "error": str(e)[:100]}
+
+
+# ---------------------------------------------------------------------------
 # User history (non-admin)
 # ---------------------------------------------------------------------------
 
