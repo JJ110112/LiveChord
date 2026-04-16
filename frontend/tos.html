@@ -5,30 +5,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LiveChord - 使用條款</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/css/index.css">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/base.css?v=2">
   <style>
     body {
       display: flex;
       justify-content: center;
       align-items: center;
       min-height: 100vh;
-      background: linear-gradient(135deg, #0f172a, #1e1b4b);
+      background: var(--bg);
       margin: 0;
-      color: var(--text-color);
-      font-family: 'Inter', sans-serif;
+      color: var(--text);
+      font-family: "Segoe UI", "Noto Sans TC", sans-serif;
     }
 
     .tos-container {
-      background: rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 1.5rem;
+      background: var(--bg-card);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
       padding: 2.5rem;
       width: 100%;
       max-width: 560px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      box-shadow: var(--shadow);
       position: relative;
       overflow: hidden;
     }
@@ -41,26 +40,29 @@
       width: 100px;
       height: 100px;
       background: var(--accent);
-      filter: blur(50px);
+      filter: blur(60px);
       border-radius: 50%;
-      opacity: 0.5;
+      opacity: 0.35;
     }
 
     h1 {
       text-align: center;
       font-size: 1.5rem;
       margin-bottom: 1.5rem;
+      color: var(--accent);
     }
 
     .tos-content {
-      background: rgba(0, 0, 0, 0.2);
-      border-radius: 0.75rem;
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--border);
+      border-radius: 10px;
       padding: 1.5rem;
       max-height: 400px;
       overflow-y: auto;
       margin-bottom: 1.5rem;
       line-height: 1.7;
       font-size: 0.9rem;
+      color: var(--text-dim);
     }
 
     .tos-content h3 {
@@ -71,39 +73,51 @@
 
     .tos-content h3:first-child { margin-top: 0; }
 
+    .tos-content p { color: var(--text); }
+
     .tos-content ul {
       padding-left: 1.2rem;
       margin: 0.5rem 0;
     }
 
-    .tos-content li { margin-bottom: 0.3rem; }
+    .tos-content li {
+      margin-bottom: 0.3rem;
+      color: var(--text-dim);
+    }
+
+    .tos-content strong { color: var(--text); }
 
     .btn-accept {
       width: 100%;
       padding: 0.9rem;
       border: none;
-      border-radius: 0.75rem;
+      border-radius: 8px;
       background: var(--accent);
       color: #fff;
       font-size: 1rem;
       font-weight: 600;
       cursor: pointer;
-      transition: opacity 0.2s;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
     }
 
-    .btn-accept:hover { opacity: 0.85; }
-    .btn-accept:disabled { opacity: 0.4; cursor: default; }
+    .btn-accept:hover {
+      background: var(--accent-dim);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(33, 150, 243, 0.4);
+    }
+    .btn-accept:disabled { opacity: 0.4; cursor: default; transform: none; }
 
     .back-link {
       display: block;
       text-align: center;
       margin-top: 1rem;
-      color: rgba(255, 255, 255, 0.5);
+      color: var(--text-dim);
       text-decoration: none;
       font-size: 0.85rem;
     }
 
-    .back-link:hover { color: rgba(255, 255, 255, 0.8); }
+    .back-link:hover { color: var(--text); }
   </style>
 </head>
 <body>
