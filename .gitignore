@@ -98,3 +98,4 @@ transcribed_midi/
 .playwright-mcp/
 ghost-keys-qa-*.png
 qa-*.png
+editor-*.png
