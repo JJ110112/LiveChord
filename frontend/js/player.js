@@ -3394,7 +3394,9 @@
 
           // YouTube embed mode
           const ytUrl = chordData.youtube_url || "";
-          const ytVideoId = extractYouTubeId(ytUrl);
+          const _extractId = typeof extractYouTubeId === "function" ? extractYouTubeId
+            : (u) => { const m = (u||"").match(/(?:v=|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})/); return m ? m[1] : null; };
+          const ytVideoId = _extractId(ytUrl);
           if (!audioLoaded && ytVideoId) {
             _initYouTubeEmbed(ytVideoId);
           } else if (!audioLoaded) {

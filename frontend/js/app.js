@@ -43,6 +43,7 @@
 
   // ---- beta mode: hide NAS-dependent sections for non-admin ----
   let _isBetaNonAdmin = false;
+  let _isBetaMode = false;
 
   async function _checkBetaAccess() {
     try {
@@ -50,7 +51,8 @@
         fetch("/api/config/public").then(r => r.json()),
         fetch("/api/auth/is_admin").then(r => r.json()),
       ]);
-      if (cfgRes.deployment_mode === "beta" && !adminRes.is_admin) {
+      _isBetaMode = cfgRes.deployment_mode === "beta";
+      if (_isBetaMode && !adminRes.is_admin) {
         _isBetaNonAdmin = true;
         // Hide NAS-dependent sections
         const secBrowse = $("#secBrowse");
@@ -63,6 +65,10 @@
         const secUpload = $("#secUpload");
         const secHistory = $("#secHistory");
         if (secUpload) secUpload.style.display = "";
+        if (secHistory) secHistory.style.display = "";
+      } else if (_isBetaMode) {
+        // Admin in beta mode: show history section alongside regular sections
+        const secHistory = $("#secHistory");
         if (secHistory) secHistory.style.display = "";
       }
     } catch {}
@@ -175,13 +181,15 @@
   };
 
   function _betaPollJob(jobId, fill, statusText, pctText) {
+    let maxProgress = 0;
     const timer = setInterval(async () => {
       try {
         const res = await fetch(`/api/process/status/${jobId}`);
         if (!res.ok) { clearInterval(timer); return; }
         const d = await res.json();
-        if (fill) fill.style.width = d.progress + "%";
-        if (pctText) pctText.textContent = d.progress + "%";
+        maxProgress = Math.max(maxProgress, d.progress);
+        if (fill) fill.style.width = maxProgress + "%";
+        if (pctText) pctText.textContent = maxProgress + "%";
         const labels = { queued: "排隊中", processing: "分析中", done: "完成！", error: "失敗" };
         if (statusText) statusText.textContent = labels[d.status] || d.status;
 
@@ -257,6 +265,7 @@
         tasks.push(_loadBetaHistory());
       } else {
         tasks.push(loadRecent(), loadFavorites(), browse(currentPath));
+        if (_isBetaMode) tasks.push(_loadBetaHistory());
       }
       await Promise.allSettled(tasks);
     } finally {

@@ -421,6 +421,7 @@
   /* ── Poll job status ── */
   function trackJob(jobId, title, fill, statusText, pctText) {
     const entry = { job_id: jobId, title, status: 'queued', progress: 0, result_hash: null, error: '' };
+    let maxProgress = 0;
     jobs.unshift(entry);
     renderJobs();
 
@@ -430,15 +431,16 @@
         if (!res.ok) { clearInterval(timer); return; }
         const d = await res.json();
         entry.status = d.status;
-        entry.progress = d.progress;
+        maxProgress = Math.max(maxProgress, d.progress);
+        entry.progress = maxProgress;
         entry.result_hash = d.result_hash;
         entry.error = d.error;
         entry.source_type = d.source_type || entry.source_type;
         entry.youtube_url = d.youtube_url || entry.youtube_url;
         if (d.title) entry.title = d.title;
 
-        if (fill) { fill.style.width = d.progress + '%'; }
-        if (pctText) { pctText.textContent = d.progress + '%'; }
+        if (fill) { fill.style.width = maxProgress + '%'; }
+        if (pctText) { pctText.textContent = maxProgress + '%'; }
         if (statusText) {
           const labels = { queued: '排隊中', processing: '分析中', done: '完成', error: '失敗' };
           statusText.textContent = labels[d.status] || d.status;
