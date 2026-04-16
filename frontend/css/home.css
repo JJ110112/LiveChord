@@ -267,31 +267,33 @@
   margin-top: 4px;
 }
 
-/* ========== [COMPONENT: BETA UPLOAD] ========== */
+/* ========== [COMPONENT: BETA UPLOAD (COMPACT)] ========== */
 
-.beta-upload-card, .beta-yt-card {
+.beta-upload-compact {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 20px;
-  backdrop-filter: var(--glass-blur);
+  padding: 16px;
 }
 
-.upload-drop-zone {
+.upload-drop-zone-compact {
   border: 2px dashed var(--border);
-  border-radius: 10px;
-  padding: 40px 20px;
+  border-radius: 8px;
+  padding: 16px 20px;
   text-align: center;
   cursor: pointer;
   transition: border-color 0.2s, background 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+  color: var(--text-dim);
 }
-.upload-drop-zone:hover, .upload-drop-zone.dragover {
+.upload-drop-zone-compact:hover, .upload-drop-zone-compact.dragover {
   border-color: var(--accent);
   background: rgba(33, 150, 243, 0.05);
 }
-.upload-icon { font-size: 2.5rem; margin-bottom: 8px; }
-.upload-text { font-size: 1rem; color: var(--text-dim); }
-.upload-hint { font-size: 0.8rem; color: var(--text-dim); opacity: 0.6; margin-top: 6px; }
+.upload-hint { font-size: 0.75rem; color: var(--text-dim); opacity: 0.5; }
 
 .beta-file-info {
   margin-top: 12px;
@@ -341,9 +343,9 @@
   color: var(--text-dim);
 }
 
-/* History grid cards for beta — inherits .grid-item styles */
+/* History cards for beta — same style as horizontal-scroll */
 #historyGrid .grid-item .title {
-  font-size: 0.85rem;
+  font-size: 13px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;

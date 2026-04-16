@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=1">
-  <link rel="stylesheet" href="/css/home.css?v=3">
+  <link rel="stylesheet" href="/css/home.css?v=4">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -59,13 +59,25 @@
     <div id="favList" class="horizontal-scroll"></div>
   </section>
 
-  <!-- beta upload section (hidden by default, shown for beta non-admin) -->
+  <!-- beta recent plays (hidden by default) -->
+  <section id="secBetaRecent" class="dash-section" style="display:none">
+    <h2 class="dash-title">最近播放</h2>
+    <div id="betaRecentList" class="horizontal-scroll"></div>
+  </section>
+
+  <!-- beta library = analysis history as grid (hidden by default) -->
+  <section id="secHistory" class="dash-section" style="display:none">
+    <h2 class="dash-title">音樂庫</h2>
+    <div id="historyGrid" class="horizontal-scroll" style="margin-top:12px"></div>
+  </section>
+
+  <!-- beta upload section — compact, at the bottom (hidden by default) -->
   <section id="secUpload" class="dash-section" style="display:none">
-    <div class="beta-upload-card">
-      <div class="upload-drop-zone" id="betaDropZone">
-        <div class="upload-icon">&#x1F3B5;</div>
-        <div class="upload-text">拖曳音檔至此，或點擊選取</div>
-        <div class="upload-hint">支援 MP3, FLAC, WAV, M4A, OGG (上限 200 MB)</div>
+    <h2 class="dash-title">新增歌曲</h2>
+    <div class="beta-upload-compact">
+      <div class="upload-drop-zone-compact" id="betaDropZone">
+        <span>&#x1F3B5; 拖曳音檔至此，或點擊選取</span>
+        <span class="upload-hint">MP3, FLAC, WAV, M4A, OGG (上限 200 MB)</span>
         <input type="file" id="betaFileInput" accept="audio/*" style="display:none">
       </div>
       <div class="beta-file-info" id="betaFileInfo" style="display:none">
@@ -80,33 +92,21 @@
           <span id="betaProgressPct">0%</span>
         </div>
       </div>
-    </div>
-    <div class="beta-yt-card" style="margin-top:12px">
-      <div style="display:flex;gap:10px;align-items:center">
-        <span style="font-size:1.2rem">&#x1F3AC;</span>
-        <input type="text" id="betaYtUrl" placeholder="貼上 YouTube URL..." style="flex:1;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.95rem">
-        <button class="btn-small btn-accent" id="betaYtBtn" onclick="window._betaStartYoutube()">分析</button>
-      </div>
-      <div class="beta-progress" id="betaYtProgress" style="display:none;margin-top:10px">
-        <div class="progress-bar"><div class="progress-fill" id="betaYtFill"></div></div>
-        <div class="progress-info">
-          <span id="betaYtText">處理中...</span>
-          <span id="betaYtPct">0%</span>
+      <div class="beta-yt-row" style="margin-top:10px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <span>&#x1F3AC;</span>
+          <input type="text" id="betaYtUrl" placeholder="貼上 YouTube URL..." style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.85rem">
+          <button class="btn-small btn-accent" id="betaYtBtn" onclick="window._betaStartYoutube()">分析</button>
+        </div>
+        <div class="beta-progress" id="betaYtProgress" style="display:none;margin-top:8px">
+          <div class="progress-bar"><div class="progress-fill" id="betaYtFill"></div></div>
+          <div class="progress-info">
+            <span id="betaYtText">處理中...</span>
+            <span id="betaYtPct">0%</span>
+          </div>
         </div>
       </div>
     </div>
-  </section>
-
-  <!-- beta recent plays (hidden by default) -->
-  <section id="secBetaRecent" class="dash-section" style="display:none">
-    <h2 class="dash-title">最近播放</h2>
-    <div id="betaRecentList" class="horizontal-scroll"></div>
-  </section>
-
-  <!-- beta library = analysis history as grid (hidden by default) -->
-  <section id="secHistory" class="dash-section" style="display:none">
-    <h2 class="dash-title">音樂庫</h2>
-    <div id="historyGrid" class="grid" style="margin-top:12px"></div>
   </section>
 
   <!-- browse section -->
@@ -221,6 +221,6 @@
       }
   }
 </script>
-<script src="/js/app.js?v=43"></script>
+<script src="/js/app.js?v=44"></script>
 </body>
 </html>
