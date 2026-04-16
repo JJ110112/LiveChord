@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import queue
+import shutil
 import sqlite3
 import subprocess
 import threading
@@ -30,6 +31,19 @@ AUDIT_DB_PATH = DATA_DIR / "audit.db"
 # Ensure directories exist
 TMP_DIR.mkdir(parents=True, exist_ok=True)
 CHORDS_DIR.mkdir(parents=True, exist_ok=True)
+
+def _find_ytdlp() -> str:
+    """Resolve yt-dlp executable path, falling back to known pip Scripts dir."""
+    found = shutil.which("yt-dlp")
+    if found:
+        return found
+    # pip install puts it here on Windows
+    fallback = Path.home() / "AppData/Local/Python/pythoncore-3.14-64/Scripts/yt-dlp.exe"
+    if fallback.is_file():
+        return str(fallback)
+    raise FileNotFoundError("yt-dlp not found on PATH or in known locations")
+
+YTDLP_BIN = _find_ytdlp()
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +171,7 @@ def _save_chord_json(job: ProcessJob, chords: list, key: str) -> str:
 def _download_youtube(url: str, output_path: str) -> str:
     """Download audio from YouTube URL using yt-dlp. Returns path to wav file."""
     result = subprocess.run(
-        ["yt-dlp", "-x", "--audio-format", "wav", "--audio-quality", "0",
+        [YTDLP_BIN, "-x", "--audio-format", "wav", "--audio-quality", "0",
          "--max-filesize", "50m", "--no-playlist",
          "-o", output_path, url],
         capture_output=True, text=True, timeout=180
