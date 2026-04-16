@@ -104,7 +104,7 @@ def _optional_user(authorization: str = Header(None)) -> Optional[str]:
 
 def _is_admin(username: str) -> bool:
     try:
-        with sqlite3.connect(AUTH_DB_PATH) as conn:
+        with sqlite3.connect(AUTH_DB_PATH, timeout=10) as conn:
             row = conn.execute("SELECT is_admin FROM users WHERE username=?", (username,)).fetchone()
             return bool(row and row[0] == 1)
     except Exception:

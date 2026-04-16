@@ -39,7 +39,8 @@ def _check_rate_limit(ip: str):
 # Initialization
 def init_db():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 username TEXT PRIMARY KEY,
@@ -76,7 +77,7 @@ init_db()
 # ---------------------------------------------------------------------------
 
 def init_invite_db():
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS invite_codes (
                 code TEXT PRIMARY KEY,
@@ -106,7 +107,7 @@ def hash_password(password: str, salt: str = "LiveChordSalt2026") -> str:
 def _validate_invite_code(code: str) -> bool:
     """Check invite code against multi-code table, then legacy config fallback."""
     now_str = time.strftime("%Y-%m-%dT%H:%M:%S")
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
         row = conn.execute(
             "SELECT code, max_uses, use_count, expires_at, revoked FROM invite_codes WHERE code=?",
             (code,)
@@ -159,7 +160,7 @@ async def register(req: RegisterRequest, request: Request):
     now = time.time()
 
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
             cursor = conn.execute("SELECT COUNT(*) FROM users")
             count = cursor.fetchone()[0]
             is_admin = 1 if count == 0 else 0
@@ -184,7 +185,7 @@ async def login(req: LoginRequest, request: Request):
     _check_rate_limit(client_ip)
 
     pw_hash = hash_password(req.password)
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
         cursor = conn.execute("SELECT token FROM users WHERE username=? AND password_hash=?", (req.username.strip(), pw_hash))
         row = cursor.fetchone()
         if not row:
@@ -215,7 +216,7 @@ def get_current_user(request: Request, authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="未授權 (Unauthorized)")
 
     token = authorization.replace("Bearer ", "")
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
         cursor = conn.execute("SELECT username, token_created_at FROM users WHERE token=?", (token,))
         row = cursor.fetchone()
         if not row:
@@ -242,7 +243,7 @@ def get_admin_user(request: Request, authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="未授權 (Unauthorized)")
 
     token = authorization.replace("Bearer ", "")
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
         cursor = conn.execute("SELECT username, is_admin, token_created_at FROM users WHERE token=?", (token,))
         row = cursor.fetchone()
         if not row:
@@ -255,8 +256,17 @@ def get_admin_user(request: Request, authorization: str = Header(None)):
         return row[0]
 
 @router.get("/is_admin")
-async def check_is_admin(username: str = Depends(get_current_user)):
-    with sqlite3.connect(DB_PATH) as conn:
+async def check_is_admin(request: Request, username: str = Depends(get_current_user)):
+    from config import is_beta_mode, is_lan_ip
+    if not is_beta_mode():
+        client_ip = (
+            request.headers.get("cf-connecting-ip")
+            or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+            or (request.client.host if request.client else "")
+        )
+        if is_lan_ip(client_ip):
+            return {"ok": True, "is_admin": True}
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
         cursor = conn.execute("SELECT is_admin FROM users WHERE username=?", (username,))
         row = cursor.fetchone()
         return {"ok": True, "is_admin": bool(row and row[0] == 1)}
@@ -279,7 +289,7 @@ def create_invite(req: CreateInviteRequest, admin: str = Depends(get_admin_user)
     if req.expires_days > 0:
         expires = time.strftime("%Y-%m-%dT%H:%M:%S",
                                 time.localtime(time.time() + req.expires_days * 86400))
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
         conn.execute(
             "INSERT INTO invite_codes (code, created_by, created_at, max_uses, expires_at) VALUES (?,?,?,?,?)",
             (code, admin, now, req.max_uses, expires)
@@ -290,7 +300,7 @@ def create_invite(req: CreateInviteRequest, admin: str = Depends(get_admin_user)
 
 @router.get("/admin/invites")
 def list_invites(admin: str = Depends(get_admin_user)):
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT code, created_by, created_at, max_uses, use_count, expires_at, revoked FROM invite_codes ORDER BY created_at DESC"
@@ -300,7 +310,7 @@ def list_invites(admin: str = Depends(get_admin_user)):
 
 @router.delete("/admin/invite/{code}")
 def revoke_invite(code: str, admin: str = Depends(get_admin_user)):
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
         conn.execute("UPDATE invite_codes SET revoked=1 WHERE code=?", (code,))
         conn.commit()
     return {"ok": True}
@@ -308,7 +318,7 @@ def revoke_invite(code: str, admin: str = Depends(get_admin_user)):
 
 @router.get("/admin/users")
 def list_users(admin: str = Depends(get_admin_user)):
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute("SELECT username, is_admin, token_created_at FROM users").fetchall()
     return {"users": [{"username": r["username"], "is_admin": bool(r["is_admin"]),
@@ -323,7 +333,7 @@ def list_users(admin: str = Depends(get_admin_user)):
 
 @router.get("/tos-status")
 def tos_status(username: str = Depends(get_current_user)):
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
         row = conn.execute(
             "SELECT tos_accepted FROM users WHERE username=?", (username,)
         ).fetchone()
@@ -333,7 +343,7 @@ def tos_status(username: str = Depends(get_current_user)):
 @router.post("/accept-tos")
 def accept_tos(username: str = Depends(get_current_user)):
     now = time.strftime("%Y-%m-%dT%H:%M:%S")
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
         conn.execute(
             "UPDATE users SET tos_accepted=1, tos_accepted_at=? WHERE username=?",
             (now, username)

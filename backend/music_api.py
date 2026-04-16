@@ -122,7 +122,7 @@ def _check_browse_access(authorization: str = Header(None)):
     token = authorization.replace("Bearer ", "")
     import sqlite3
     db = Path(__file__).parent.parent / "data" / "users.db"
-    with sqlite3.connect(db) as conn:
+    with sqlite3.connect(db, timeout=10) as conn:
         row = conn.execute("SELECT is_admin FROM users WHERE token=?", (token,)).fetchone()
         if not row or row[0] != 1:
             raise HTTPException(status_code=403, detail="Browse not available for beta users")
@@ -227,7 +227,7 @@ def _is_admin_request(authorization: str) -> bool:
     import sqlite3
     db = Path(__file__).parent.parent / "data" / "users.db"
     try:
-        with sqlite3.connect(db) as conn:
+        with sqlite3.connect(db, timeout=10) as conn:
             row = conn.execute("SELECT is_admin FROM users WHERE token=?", (token,)).fetchone()
             return bool(row and row[0] == 1)
     except Exception:

@@ -245,7 +245,8 @@ COVERS_DIR.mkdir(parents=True, exist_ok=True)
 
 def _init_audit_db():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(AUDIT_DB_PATH) as conn:
+    with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS process_audit (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -274,7 +275,7 @@ _init_audit_db()
 
 def _write_audit(job: ProcessJob, chord_count: int = 0):
     try:
-        with sqlite3.connect(AUDIT_DB_PATH) as conn:
+        with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
             conn.execute(
                 """INSERT INTO process_audit
                    (job_id, username, source_type, file_hash, youtube_url, title, status, chord_count, created_at, completed_at, result_hash)
@@ -291,7 +292,7 @@ def _write_audit(job: ProcessJob, chord_count: int = 0):
 
 
 def get_audit_log(limit: int = 50, offset: int = 0) -> list[dict]:
-    with sqlite3.connect(AUDIT_DB_PATH) as conn:
+    with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT * FROM process_audit ORDER BY id DESC LIMIT ? OFFSET ?",
@@ -302,7 +303,7 @@ def get_audit_log(limit: int = 50, offset: int = 0) -> list[dict]:
 
 def get_user_audit_log(username: str, limit: int = 20) -> list[dict]:
     """Get a specific user's process history, deduplicated by title (latest only)."""
-    with sqlite3.connect(AUDIT_DB_PATH) as conn:
+    with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT * FROM process_audit WHERE username=? ORDER BY id DESC",

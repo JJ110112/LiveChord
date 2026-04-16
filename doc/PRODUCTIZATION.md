@@ -158,12 +158,12 @@ Storage:
 cloudflared tunnel create livechord
 cloudflared tunnel route dns livechord livechord.yourdomain.com
 
-# config.yml
+# config.yml (指向 Beta instance Port 8801)
 tunnel: <tunnel-id>
 credentials-file: ~/.cloudflared/<tunnel-id>.json
 ingress:
-  - hostname: livechord.yourdomain.com
-    service: http://localhost:8800
+  - hostname: livechord.org
+    service: http://localhost:8801
   - service: http_status:404
 ```
 
@@ -385,38 +385,44 @@ Admin 在 /admin 頁面查看:
 
 ## 7. 部署架構演進
 
-### 7.1 Phase 1 — 現有 NUC + Cloudflare Tunnel
+### 7.1 Phase 1-2 — 雙開架構 (NUC Dual Instance) ✅ 已實作
+
+NUC 同時跑兩個 uvicorn，透過環境變數 `LIVECHORD_MODE` 切換模式：
 
 ```
-Internet
-    ↓ HTTPS
-Cloudflare Tunnel (livechord.yourdomain.com)
-    ↓
-NUC (192.168.50.6:8800)
-├── FastAPI backend
+start_dual.bat 一鍵啟動:
+
+┌─────────────────────────────────────────┐
+│  Personal Instance (Port 8800)          │
+│  LIVECHORD_MODE=personal                │
+│  ├── LAN bypass (192.168.x.x → admin)  │
+│  ├── 完整 NAS 路徑，FLAC 串流          │
+│  ├── 無需登入                           │
+│  └── 私人使用 (Roon 替代)              │
+└─────────────────────────────────────────┘
+
+┌─────────────────────────────────────────┐
+│  Beta Instance (Port 8801)              │
+│  LIVECHORD_MODE=beta                    │
+│  ├── Cloudflare Tunnel → livechord.org  │
+│  ├── 強制登入 + invite code             │
+│  ├── NAS 路徑 hash 隱藏                │
+│  ├── Admin 路徑限 LAN IP               │
+│  ├── Process Queue (upload/YouTube)     │
+│  └── 對外 SaaS                         │
+└─────────────────────────────────────────┘
+
+共用:
+├── data/ (SQLite WAL mode, timeout=10s)
 ├── data/chords/ (54k JSON)
-├── data/users.db
-└── data/feedback.db (新增)
-
-注意: 音樂 FLAC 不經過外網，tester 自備音檔在瀏覽器播放
+└── NUC RTX 5080 (GPU processing)
 ```
 
-### 7.2 Phase 2 — NUC + GPU Processing
-
-```
-Internet
-    ↓ HTTPS
-Cloudflare Tunnel
-    ↓
-NUC (RTX 5080)
-├── FastAPI backend
-├── Process Queue (新增)
-│   ├── Upload handler → /tmp/
-│   ├── yt-dlp worker → /tmp/
-│   └── BTC detector (GPU)
-├── data/chords/
-└── Cleanup cron (刪除 /tmp 暫存)
-```
+**關鍵設計:**
+- 環境變數優先於 `settings.json`，避免雙開搶設定檔
+- SQLite 全面啟用 WAL mode + busy_timeout，支援雙 process 並發
+- LAN bypass 在 `config.is_lan_ip()` 判斷 (RFC1918 + loopback)
+- 前端透過 `/api/config/public` 取得模式，動態調整 UI
 
 ### 7.3 Phase 3 — Hybrid (Server + Desktop)
 
@@ -482,7 +488,8 @@ Week 2:
 待完成:
   ├── 壓力測試（多人同時上傳）
   ├── 錯誤處理強化
-  └── Beta tester 回饋修正
+  ├── Beta tester 回饋修正
+  └── Cloudflare Tunnel 確認指向 Port 8801 (Beta instance)
 ```
 
 ---
