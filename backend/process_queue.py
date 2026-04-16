@@ -168,6 +168,20 @@ def _save_chord_json(job: ProcessJob, chords: list, key: str) -> str:
 # YouTube download
 # ---------------------------------------------------------------------------
 
+def _get_youtube_title(url: str) -> str:
+    """Extract video title from YouTube URL using yt-dlp."""
+    try:
+        result = subprocess.run(
+            [YTDLP_BIN, "--get-title", "--no-download", url],
+            capture_output=True, text=True, timeout=30
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return ""
+
+
 def _download_youtube(url: str, output_path: str) -> str:
     """Download audio from YouTube URL using yt-dlp. Returns path to wav file."""
     result = subprocess.run(
@@ -272,6 +286,12 @@ def _worker_loop():
             # Step 1: If YouTube, download first
             if job.source_type == "youtube" and job.youtube_url:
                 job.progress = 5
+                # Extract title before download
+                title = _get_youtube_title(job.youtube_url)
+                if title:
+                    import html as html_mod
+                    job.title = html_mod.escape(title)
+                job.progress = 10
                 out_path = str(TMP_DIR / f"{job.job_id}.wav")
                 audio_path = _download_youtube(job.youtube_url, out_path)
                 job.audio_path = audio_path

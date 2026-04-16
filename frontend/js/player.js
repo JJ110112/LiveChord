@@ -2493,6 +2493,11 @@
   // Playing: ◀ = rewind to start, ▶ = pause
   // Stopped: ◀ = prev song, ▶ = play
   btnPlay.addEventListener("click", () => {
+    // Hash mode without audio loaded: open file picker instead of playing silence
+    if (hashMode && !_usingLocalFile && (!audio.src || audio.src === location.href)) {
+      if (localFileInput) localFileInput.click();
+      return;
+    }
     if (audio.paused) audio.play();
     else audio.pause();
   });
@@ -2547,9 +2552,9 @@
   }
 
   audio.addEventListener("play", () => {
-    btnPlay.innerHTML = "&#x23F8;"; 
+    btnPlay.innerHTML = "&#x23F8;";
     _setSmartView(true);
-    _startStreamWatcher();
+    if (!hashMode || _usingLocalFile) _startStreamWatcher();
   });
   
   audio.addEventListener("pause", () => {
@@ -3372,8 +3377,8 @@
           }
           await preloadChordInfo(chordData.chords);
           buildChordDOM();
-          // Show hint to load local audio
-          showToast("此為新歌分析結果 — 請載入本地音檔以播放", 5000);
+          // Show prominent prompt to load local audio — play button will open file picker
+          showToast("按 ▶ 播放鍵載入本地音檔", 8000);
         } else {
           songTitle.textContent = "分析結果";
           showToast("和弦資料為空", 3000);
