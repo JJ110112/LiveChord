@@ -221,9 +221,11 @@
     const _extId = typeof extractYouTubeId === "function" ? extractYouTubeId
       : (u) => { const m = (u||"").match(/(?:v=|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})/); return m ? m[1] : null; };
     const videoId = isYT ? _extId(h.youtube_url || "") : null;
-    return videoId
-      ? `<img class="cover-bg" src="https://img.youtube.com/vi/${videoId}/mqdefault.jpg" onerror="this.outerHTML='<div class=\\'cover-placeholder\\'>&#x1F3AC;</div>'" loading="lazy">`
-      : `<img class="cover-bg" src="/api/process/cover/${escapeHtml(h.result_hash)}" onerror="this.outerHTML='<div class=\\'cover-placeholder\\'>&#x1F3B5;</div>'" loading="lazy">`;
+    const imgSrc = videoId
+      ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
+      : `/api/process/cover/${escapeHtml(h.result_hash)}`;
+    return `<img class="cover" src="${imgSrc}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
+      <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>`;
   }
 
   async function _loadBetaHistory() {
@@ -240,9 +242,12 @@
       if (recentContainer && items.length > 0 && (_isBetaNonAdmin || items.length > 8)) {
         recentContainer.innerHTML = items.slice(0, 8).map(h => {
           const title = h.title || "分析結果";
-          return `<div class="grid-item" data-hash="${escapeHtml(h.result_hash)}" style="cursor:pointer;min-width:140px">
+          return `<div class="grid-item" data-hash="${escapeHtml(h.result_hash)}" style="cursor:pointer">
             ${_buildCoverHtml(h)}
-            <div class="info"><div class="title">${escapeHtml(title)}</div></div>
+            <div class="info">
+              <div class="title">${escapeHtml(title)}</div>
+              ${getDifficultyHtml(h)}
+            </div>
           </div>`;
         }).join("");
         recentContainer.querySelectorAll(".grid-item").forEach(el => {
@@ -259,10 +264,12 @@
         }
         grid.innerHTML = items.map(h => {
           const title = h.title || "分析結果";
-          const date = (h.completed_at || "").slice(0, 10);
           return `<div class="grid-item" data-hash="${escapeHtml(h.result_hash)}" style="cursor:pointer">
             ${_buildCoverHtml(h)}
-            <div class="info"><div class="title">${escapeHtml(title)}</div><div class="subtitle">${date}</div></div>
+            <div class="info">
+              <div class="title">${escapeHtml(title)}</div>
+              ${getDifficultyHtml(h)}
+            </div>
           </div>`;
         }).join("");
         grid.querySelectorAll(".grid-item").forEach(el => {

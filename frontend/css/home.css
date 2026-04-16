@@ -341,30 +341,7 @@
   color: var(--text-dim);
 }
 
-/* History grid cards for beta */
-#historyGrid .grid-item {
-  position: relative;
-  min-height: 100px;
-}
-#historyGrid .grid-item .cover-bg {
-  width: 100%;
-  height: 120px;
-  object-fit: cover;
-  border-radius: var(--radius) var(--radius) 0 0;
-  background: var(--bg-hover);
-}
-#historyGrid .grid-item .cover-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 120px;
-  font-size: 2.5rem;
-  background: var(--bg-hover);
-  border-radius: var(--radius) var(--radius) 0 0;
-}
-#historyGrid .grid-item .info {
-  padding: 10px 12px;
-}
+/* History grid cards for beta — inherits .grid-item styles */
 #historyGrid .grid-item .title {
   font-size: 0.85rem;
   font-weight: 600;

@@ -338,6 +338,20 @@ def get_user_audit_log(username: str, limit: int = 20) -> list[dict]:
             continue
         if title_key:
             seen_titles.add(title_key)
+        # Enrich with chord stats if available
+        rh2 = d.get("result_hash") or ""
+        if rh2:
+            chords_file = CHORDS_DIR / f"{rh2}.json"
+            if chords_file.is_file():
+                try:
+                    import json as _json
+                    cd = _json.loads(chords_file.read_text(encoding="utf-8"))
+                    chords_list = cd.get("chords") or []
+                    unique = set(c.get("chord", "") for c in chords_list if c.get("chord"))
+                    d["unique_chords"] = len(unique)
+                    d["chord_key"] = cd.get("key", "")
+                except Exception:
+                    pass
         results.append(d)
         if len(results) >= limit:
             break
