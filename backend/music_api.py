@@ -7,12 +7,12 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Query
 from fastapi.responses import FileResponse, StreamingResponse, Response
 
 from mutagen.flac import FLAC
 
-from config import get_music_root, get_music_roots, set_music_roots, resolve_path
+from config import get_music_root, get_music_roots, set_music_roots, resolve_path, is_beta_mode
 from batch_state import BatchState
 from task_lock import get_task_lock
 
@@ -103,8 +103,23 @@ from chord_cache import get_chord_summary as _get_chord_summary, song_hash
 # browse
 # ---------------------------------------------------------------------------
 
+def _check_browse_access(authorization: str = Header(None)):
+    """In beta mode, only admin can browse the NAS file tree."""
+    if not is_beta_mode():
+        return
+    if not authorization:
+        raise HTTPException(status_code=403, detail="Browse not available for beta users")
+    token = authorization.replace("Bearer ", "")
+    import sqlite3
+    db = Path(__file__).parent.parent / "data" / "users.db"
+    with sqlite3.connect(db) as conn:
+        row = conn.execute("SELECT is_admin FROM users WHERE token=?", (token,)).fetchone()
+        if not row or row[0] != 1:
+            raise HTTPException(status_code=403, detail="Browse not available for beta users")
+
+
 @router.get("/browse")
-def browse(path: str = Query(default="")):
+def browse(path: str = Query(default=""), _=Depends(_check_browse_access)):
     """瀏覽目錄（支援多音樂庫）"""
     roots = get_music_roots()
 
@@ -195,8 +210,22 @@ def browse(path: str = Query(default="")):
 # search
 # ---------------------------------------------------------------------------
 
+def _is_admin_request(authorization: str) -> bool:
+    if not authorization:
+        return False
+    token = authorization.replace("Bearer ", "")
+    import sqlite3
+    db = Path(__file__).parent.parent / "data" / "users.db"
+    try:
+        with sqlite3.connect(db) as conn:
+            row = conn.execute("SELECT is_admin FROM users WHERE token=?", (token,)).fetchone()
+            return bool(row and row[0] == 1)
+    except Exception:
+        return False
+
+
 @router.get("/search")
-def search(q: str = Query(default="")):
+def search(q: str = Query(default=""), authorization: str = Header(None)):
     """搜尋音樂庫（從快取索引）"""
     if not q or len(q.strip()) < 1:
         return {"results": []}
@@ -207,6 +236,9 @@ def search(q: str = Query(default="")):
         if _scan_state["running"]:
             return {"results": [], "error": f"掃描進行中（{_scan_state['progress']} 首），請稍候…"}
         return {"results": [], "error": "索引尚未建立，請點右上角「掃描」或到管理頁面執行"}
+
+    # Beta non-admin: hide NAS paths, use chord hash instead
+    hide_paths = is_beta_mode() and not _is_admin_request(authorization)
 
     cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
     tracks = cache.get("tracks", [])
@@ -219,6 +251,8 @@ def search(q: str = Query(default="")):
             if "unique_chords" not in t:
                 summary = _get_chord_summary(t.get("path", ""))
                 t.update(summary)
+            if hide_paths:
+                t = {**t, "path": f"__hash/{song_hash(t['path'])}", "hash": song_hash(t["path"])}
             results.append(t)
             if len(results) >= 50:
                 break

@@ -22,8 +22,12 @@
     loading.style.display = show ? "" : "none";
   }
 
-  function goPlayer(path) {
-    window.location.href = `/player?path=${encodeURIComponent(path)}&autoplay=1`;
+  function goPlayer(path, hash) {
+    if (hash) {
+      window.location.href = `/player?hash=${encodeURIComponent(hash)}`;
+    } else {
+      window.location.href = `/player?path=${encodeURIComponent(path)}&autoplay=1`;
+    }
   }
 
   function getDifficultyHtml(item) {
@@ -37,17 +41,42 @@
     return ` <span class="difficulty" style="font-size:0.8em;opacity:0.6;margin-left:6px">${"⭐".repeat(stars)}${key ? " " + key : ""}</span>`;
   }
 
+  // ---- beta mode: hide NAS-dependent sections for non-admin ----
+  let _isBetaNonAdmin = false;
+
+  async function _checkBetaAccess() {
+    try {
+      const [cfgRes, adminRes] = await Promise.all([
+        fetch("/api/config/public").then(r => r.json()),
+        fetch("/api/auth/is_admin").then(r => r.json()),
+      ]);
+      if (cfgRes.deployment_mode === "beta" && !adminRes.is_admin) {
+        _isBetaNonAdmin = true;
+        // Hide NAS-dependent sections
+        const secBrowse = $("#secBrowse");
+        const secRecent = $("#secRecent");
+        const secFavorites = $("#secFavorites");
+        if (secBrowse) secBrowse.style.display = "none";
+        if (secRecent) secRecent.style.display = "none";
+        if (secFavorites) secFavorites.style.display = "none";
+      }
+    } catch {}
+  }
+
   // ---- dashboard init ----
 
   async function initDashboard() {
+    // Check beta access first
+    await _checkBetaAccess();
+
     // Parallel loading avoids blocking the UI
     try {
       showLoading(true);
-      await Promise.allSettled([
-        loadRecent(),
-        loadFavorites(),
-        browse(currentPath)
-      ]);
+      const tasks = [];
+      if (!_isBetaNonAdmin) {
+        tasks.push(loadRecent(), loadFavorites(), browse(currentPath));
+      }
+      await Promise.allSettled(tasks);
     } finally {
       showLoading(false);
     }
@@ -212,10 +241,11 @@
       }
       let html = "";
       for (const r of data.results) {
-        const coverUrl = API.trackCoverUrl(r.path);
+        const hasHash = r.hash || r.path.startsWith("__hash/");
+        const coverUrl = hasHash ? "" : API.trackCoverUrl(r.path);
         html += `
-          <div class="result-item" data-path="${escapeHtml(r.path)}">
-            <img class="r-cover" src="${coverUrl}" onerror="this.style.display='none'" loading="lazy" alt="">
+          <div class="result-item" data-path="${escapeHtml(r.path)}" ${r.hash ? `data-hash="${escapeHtml(r.hash)}"` : ""}>
+            ${coverUrl ? `<img class="r-cover" src="${coverUrl}" onerror="this.style.display='none'" loading="lazy" alt="">` : ""}
             <div class="r-info">
               <div class="r-title">${escapeHtml(r.title || r.path.split("/").pop())}${getDifficultyHtml(r)}</div>
               <div class="r-artist">${escapeHtml(r.artist || "")} ${r.album ? "— " + escapeHtml(r.album) : ""}</div>
@@ -227,7 +257,7 @@
       searchResults.querySelectorAll(".result-item").forEach((el) => {
         el.addEventListener("click", () => {
           searchResults.classList.remove("show");
-          goPlayer(el.dataset.path);
+          goPlayer(el.dataset.path, el.dataset.hash || "");
         });
       });
     } catch (err) {
