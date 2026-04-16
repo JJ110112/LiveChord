@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiveChord - 新歌分析</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/base.css?v=1">
+  <script>
+    if (!localStorage.getItem("livechord_token")) {
+      fetch('/api/auth/is_admin').then(r => {
+        if (!r.ok) window.location.href = "/login";
+      }).catch(() => {
+        window.location.href = "/login";
+      });
+    }
+  </script>
+  <style>
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-card);
+      backdrop-filter: var(--glass-blur);
+    }
+    .page-header h1 { font-size: 1.3rem; }
+    .page-header nav { display: flex; gap: 12px; }
+    .page-header nav a {
+      padding: 6px 14px;
+      border-radius: 8px;
+      background: var(--bg-hover);
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      text-decoration: none;
+    }
+    .page-header nav a:hover { background: var(--accent); color: #fff; text-decoration: none; }
+
+    .container {
+      max-width: 720px;
+      margin: 32px auto;
+      padding: 0 20px;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+      backdrop-filter: var(--glass-blur);
+    }
+    .card h2 {
+      font-size: 1.1rem;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card h2 .icon { font-size: 1.3rem; }
+
+    /* Upload drop zone */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      color: var(--text-dim);
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(33, 150, 243, 0.05);
+    }
+    .drop-zone input[type="file"] { display: none; }
+    .drop-zone .hint { font-size: 0.85rem; margin-top: 8px; color: var(--text-dim); opacity: 0.7; }
+    .file-info {
+      display: none;
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: var(--bg-hover);
+      border-radius: 8px;
+      font-size: 0.9rem;
+    }
+    .file-info .name { font-weight: 600; }
+    .file-info .size { color: var(--text-dim); margin-left: 8px; }
+
+    /* YouTube input */
+    .yt-row {
+      display: flex;
+      gap: 10px;
+    }
+    .yt-row input {
+      flex: 1;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+    .yt-row input::placeholder { color: var(--text-dim); opacity: 0.6; }
+    .yt-row input:focus { outline: none; border-color: var(--accent); }
+
+    /* Buttons */
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover:not(:disabled) { opacity: 0.85; }
+
+    /* Progress bar */
+    .progress-wrap {
+      display: none;
+      margin-top: 16px;
+    }
+    .progress-bar {
+      height: 8px;
+      background: var(--bg-hover);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .progress-bar .fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 4px;
+      transition: width 0.3s;
+      width: 0%;
+    }
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 6px;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+
+    /* Job cards */
+    .jobs-list { display: flex; flex-direction: column; gap: 10px; }
+    .job-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 16px;
+      background: var(--bg-hover);
+      border-radius: 10px;
+    }
+    .job-card .status-badge {
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .badge-queued { background: rgba(255,193,7,0.2); color: #ffc107; }
+    .badge-processing { background: rgba(33,150,243,0.2); color: #2196F3; }
+    .badge-done { background: rgba(76,175,80,0.2); color: #4CAF50; }
+    .badge-error { background: rgba(244,67,54,0.2); color: #f44336; }
+    .job-card .title { flex: 1; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .job-card .action-link {
+      font-size: 0.85rem;
+      color: var(--accent);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .job-card .action-link:hover { text-decoration: underline; }
+    .empty-msg { color: var(--text-dim); font-size: 0.85rem; text-align: center; padding: 20px; }
+
+    .quota-info {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      text-align: right;
+      margin-top: -8px;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>LiveChord &mdash; 新歌分析</h1>
+  <nav>
+    <a href="/">首頁</a>
+    <a href="/player">播放器</a>
+  </nav>
+</div>
+
+<div class="container">
+
+  <div class="quota-info" id="quotaInfo"></div>
+
+  <!-- Upload card -->
+  <div class="card">
+    <h2><span class="icon">&#x1F4E4;</span> 上傳音檔分析</h2>
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <div>將音檔拖曳至此處，或點擊選取</div>
+      <div class="hint">支援 MP3, FLAC, WAV, M4A, OGG (上限 200 MB)</div>
+      <input type="file" id="fileInput" accept="audio/*">
+    </div>
+    <div class="file-info" id="fileInfo">
+      <span class="name" id="fileName"></span>
+      <span class="size" id="fileSize"></span>
+    </div>
+    <div style="margin-top: 14px; text-align: right;">
+      <button class="btn btn-primary" id="btnUpload" disabled onclick="startUpload()">開始分析</button>
+    </div>
+    <div class="progress-wrap" id="uploadProgress">
+      <div class="progress-bar"><div class="fill" id="uploadFill"></div></div>
+      <div class="progress-label">
+        <span id="uploadStatusText">上傳中...</span>
+        <span id="uploadPct">0%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- YouTube card -->
+  <div class="card">
+    <h2><span class="icon">&#x1F3AC;</span> YouTube URL 分析</h2>
+    <div class="yt-row">
+      <input type="text" id="ytUrl" placeholder="https://www.youtube.com/watch?v=...">
+      <button class="btn btn-primary" id="btnYoutube" onclick="startYoutube()">分析</button>
+    </div>
+    <div class="progress-wrap" id="ytProgress">
+      <div class="progress-bar"><div class="fill" id="ytFill"></div></div>
+      <div class="progress-label">
+        <span id="ytStatusText">處理中...</span>
+        <span id="ytPct">0%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Jobs list -->
+  <div class="card">
+    <h2><span class="icon">&#x1F4CB;</span> 分析記錄</h2>
+    <div class="jobs-list" id="jobsList">
+      <div class="empty-msg">尚無分析記錄</div>
+    </div>
+  </div>
+
+</div>
+
+<script src="/js/utils.js?v=2"></script>
+<script src="/js/api.js?v=5"></script>
+<script>
+  /* ── Fetch interceptor (inject auth token) ── */
+  const originalFetch = window.fetch;
+  window.fetch = function() {
+    let [resource, config] = arguments;
+    if (config == null) config = {};
+    const url = typeof resource === 'string' ? resource : (resource instanceof Request ? resource.url : '');
+    if (url.startsWith('/') || url.includes(window.location.host)) {
+      if (config.headers == null) config.headers = {};
+      /* Don't overwrite Content-Type for FormData (multipart) */
+      if (config.body instanceof FormData && config.headers['Content-Type']) {
+        delete config.headers['Content-Type'];
+      }
+      const token = localStorage.getItem("livechord_token");
+      if (token) config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return originalFetch(resource, config);
+  };
+
+  /* ── State ── */
+  let selectedFile = null;
+  const pendingFiles = {};   // job_id → File (for IndexedDB pass-through)
+  const jobs = [];           // { job_id, title, status, progress, result_hash, error, source_type, youtube_url }
+  const POLL_MS = 2000;
+
+  /* ── TOS guard ── */
+  (async () => {
+    try {
+      const res = await fetch('/api/auth/tos-status');
+      const data = await res.json();
+      if (!data.accepted) {
+        location.href = '/tos?next=/process';
+        return;
+      }
+    } catch (e) {}
+    loadQuota();
+    loadHistory();
+  })();
+
+  async function loadQuota() {
+    document.getElementById('quotaInfo').textContent = '每日額度：10 首';
+  }
+
+  async function loadHistory() {
+    try {
+      const res = await fetch('/api/process/my-history?limit=20');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.history || data.history.length === 0) return;
+      for (const h of data.history) {
+        if (jobs.some(j => j.job_id === h.job_id)) continue;
+        jobs.push({
+          job_id: h.job_id,
+          title: h.title || 'Unknown',
+          status: h.status,
+          progress: h.status === 'done' ? 100 : 0,
+          result_hash: h.result_hash || null,
+          error: h.status === 'error' ? 'Failed' : '',
+          source_type: h.source_type || '',
+          youtube_url: h.youtube_url || '',
+        });
+      }
+      renderJobs();
+    } catch (e) {}
+  }
+
+  /* ── File picker / drag-drop ── */
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) pickFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) pickFile(fileInput.files[0]);
+  });
+
+  function pickFile(file) {
+    if (file.size > 200 * 1024 * 1024) {
+      alert('檔案超過 200 MB 上限');
+      return;
+    }
+    selectedFile = file;
+    document.getElementById('fileName').textContent = file.name;
+    document.getElementById('fileSize').textContent = `(${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+    document.getElementById('fileInfo').style.display = 'block';
+    document.getElementById('btnUpload').disabled = false;
+  }
+
+  /* ── Upload ── */
+  async function startUpload() {
+    if (!selectedFile) return;
+    const btn = document.getElementById('btnUpload');
+    btn.disabled = true;
+    const prog = document.getElementById('uploadProgress');
+    const fill = document.getElementById('uploadFill');
+    const text = document.getElementById('uploadStatusText');
+    const pct = document.getElementById('uploadPct');
+    prog.style.display = 'block';
+    fill.style.width = '10%';
+    text.textContent = '上傳中...';
+    pct.textContent = '10%';
+
+    try {
+      const form = new FormData();
+      form.append('file', selectedFile);
+      const res = await fetch('/api/process/upload', { method: 'POST', body: form });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || res.statusText);
+      }
+      const data = await res.json();
+      pendingFiles[data.job_id] = selectedFile;
+      fill.style.width = '30%';
+      text.textContent = '已排入佇列';
+      pct.textContent = '30%';
+      trackJob(data.job_id, selectedFile.name.replace(/\.[^.]+$/, ''), fill, text, pct);
+    } catch (e) {
+      text.textContent = '失敗: ' + e.message;
+      fill.style.width = '0%';
+      pct.textContent = '';
+      btn.disabled = false;
+    }
+    selectedFile = null;
+    document.getElementById('fileInfo').style.display = 'none';
+    fileInput.value = '';
+  }
+
+  /* ── YouTube ── */
+  async function startYoutube() {
+    const input = document.getElementById('ytUrl');
+    const url = input.value.trim();
+    if (!url) return;
+    const btn = document.getElementById('btnYoutube');
+    btn.disabled = true;
+    const prog = document.getElementById('ytProgress');
+    const fill = document.getElementById('ytFill');
+    const text = document.getElementById('ytStatusText');
+    const pct = document.getElementById('ytPct');
+    prog.style.display = 'block';
+    fill.style.width = '10%';
+    text.textContent = '提交中...';
+    pct.textContent = '10%';
+
+    try {
+      const res = await fetch('/api/process/youtube', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || res.statusText);
+      }
+      const data = await res.json();
+      fill.style.width = '20%';
+      text.textContent = '已排入佇列';
+      pct.textContent = '20%';
+      trackJob(data.job_id, 'YouTube: ' + url.slice(-15), fill, text, pct);
+      input.value = '';
+    } catch (e) {
+      text.textContent = '失敗: ' + e.message;
+      fill.style.width = '0%';
+      pct.textContent = '';
+    }
+    btn.disabled = false;
+  }
+
+  /* ── Poll job status ── */
+  function trackJob(jobId, title, fill, statusText, pctText) {
+    const entry = { job_id: jobId, title, status: 'queued', progress: 0, result_hash: null, error: '' };
+    let maxProgress = 0;
+    jobs.unshift(entry);
+    renderJobs();
+
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/process/status/${jobId}`);
+        if (!res.ok) { clearInterval(timer); return; }
+        const d = await res.json();
+        entry.status = d.status;
+        maxProgress = Math.max(maxProgress, d.progress);
+        entry.progress = maxProgress;
+        entry.result_hash = d.result_hash;
+        entry.error = d.error;
+        entry.source_type = d.source_type || entry.source_type;
+        entry.youtube_url = d.youtube_url || entry.youtube_url;
+        if (d.title) entry.title = d.title;
+
+        if (fill) { fill.style.width = maxProgress + '%'; }
+        if (pctText) { pctText.textContent = maxProgress + '%'; }
+        if (statusText) {
+          const labels = { queued: '排隊中', processing: '分析中', done: '完成', error: '失敗' };
+          statusText.textContent = labels[d.status] || d.status;
+        }
+
+        if (d.status === 'done' || d.status === 'error') {
+          clearInterval(timer);
+          if (d.status === 'done') {
+            // Store audio blob in IndexedDB for auto-play in player
+            const pf = pendingFiles[jobId];
+            if (pf && d.result_hash) {
+              try { await audioDBStore(d.result_hash, pf); } catch (e) {}
+              delete pendingFiles[jobId];
+            }
+            if (statusText) statusText.textContent = '完成！';
+          }
+          if (d.status === 'error' && statusText) statusText.textContent = '失敗: ' + (d.error || 'Unknown');
+          document.getElementById('btnUpload').disabled = !selectedFile;
+          document.getElementById('btnYoutube').disabled = false;
+        }
+        renderJobs();
+      } catch (e) {
+        /* network error — keep polling */
+      }
+    }, POLL_MS);
+  }
+
+  /* ── Render jobs list ── */
+  function renderJobs() {
+    const el = document.getElementById('jobsList');
+    if (!jobs.length) {
+      el.innerHTML = '<div class="empty-msg">尚無分析記錄</div>';
+      return;
+    }
+    el.innerHTML = jobs.map(j => {
+      const badge = `<span class="status-badge badge-${j.status}">${
+        { queued: '排隊', processing: '分析中', done: '完成', error: '失敗' }[j.status] || j.status
+      }${j.status === 'processing' ? ' ' + j.progress + '%' : ''}</span>`;
+      let action = '';
+      if (j.status === 'done' && j.result_hash) {
+        action = `<a class="action-link" href="/player?hash=${j.result_hash}">查看和弦</a>`;
+        if (j.source_type === 'youtube' && j.youtube_url) {
+          action = `<a class="action-link" href="${esc(j.youtube_url)}" target="_blank" style="margin-right:8px">YouTube</a>` + action;
+        }
+      } else if (j.status === 'error' && j.error) {
+        action = `<span style="font-size:0.8rem;color:#f44336">${esc(j.error.slice(0, 60))}</span>`;
+      }
+      return `<div class="job-card">${badge}<span class="title">${esc(j.title)}</span>${action}</div>`;
+    }).join('');
+  }
+
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+</script>
+</body>
+</html>

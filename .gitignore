@@ -29,12 +29,14 @@ data/chord_index.json
 data/ratings.json
 data/style_map.json
 data/users/
+data/.queue_cursor.json
 
 # 評估/測試產出
 backend/eval_results.json
 backend/batch_failures.txt
 backend/test_e2e.py
 backend/test_viterbi.py
+backend/test_a.py
 
 # Windows 自動啟動腳本（由 install-service.bat 產生）
 start-hidden.vbs
