@@ -12,10 +12,23 @@ data/chords/
 data/settings.json
 data/activity.log
 data/server.log
+data/server.log.*
 data/chord_queue.json
 data/melodies/
 data/models/
 data/.local_music_root
+data/*.db
+data/covers/
+data/accompaniments/
+data/human_feedback/
+data/human_sections/
+data/separated/
+data/tmp/
+data/jam_tracks.json
+data/chord_index.json
+data/ratings.json
+data/style_map.json
+data/users/
 
 # 評估/測試產出
 backend/eval_results.json

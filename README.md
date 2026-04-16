@@ -46,27 +46,50 @@ cd LiveChord/backend
 pip install -r requirements.txt
 ```
 
-## 部署
+## 部署模式
 
-### 開發機（本機）
+同一套程式碼透過環境變數 `LIVECHORD_MODE` 決定行為，NUC 上同時執行兩個實例：
+
+### Personal (Port 8800)
+- `LIVECHORD_MODE=personal`
+- 僅允許 LAN (192.168.x.x / 10.x.x.x) 存取
+- 不強制登入 — LAN 自動授權為 Admin
+- 顯示完整 NAS 路徑
+- FLAC 串流播放
+
+### Beta / Public SaaS (Port 8801)
+- `LIVECHORD_MODE=beta`
+- 透過 Cloudflare Tunnel 對外 → `https://livechord.org`
+- 強制登入（未登入導向 `/login`）
+- 隱藏 NAS 路徑（搜尋結果回傳 hash）
+- 封鎖 `/api/track/stream`（不提供 FLAC 串流）
+- 封鎖 `/api/diag/paths`（不暴露本機路徑）
+- Admin 頁面僅限 LAN 存取
+
+### 快速啟動
 ```bash
-start.bat                    # NAS 模式（Y:\）
-start_local.bat              # 本機資料夾模式
+start_dual.bat               # 同時啟動 Personal + Beta
+start.bat                    # 單一實例（依 settings.json 的 deployment_mode）
+start_local.bat              # 本機資料夾模式 (personal)
 ```
-
-### NAS 部署（W:\）
-將 backend/、frontend/、tools/、data/、start.bat 複製到 W:\，雙擊 start.bat 啟動。
 
 ### 平板使用
 1. 連上同一區網
 2. 瀏覽器開啟 `http://NUC_IP:8800`
 3. 點頁面右上角 ⛶ 進入全螢幕
 
+### Cloudflare Tunnel
+- 域名：`livechord.org`
+- Tunnel 指向 `localhost:8801`（Beta 實例）
+- 設定檔：`%USERPROFILE%\.cloudflared\config.yml`
+- 開機自動啟動：Windows Startup 資料夾（VBS 腳本）
+
 ### 批次檔
 
 | 檔案 | 用途 |
 |------|------|
-| `start.bat` | 啟動伺服器（透過 run.py） |
+| `start_dual.bat` | 同時啟動 Personal (8800) + Beta (8801) |
+| `start.bat` | 啟動單一實例（透過 run.py） |
 | `start_local.bat` | 啟動伺服器（本機資料夾模式） |
 | `restart.bat` | 重啟伺服器 |
 | `scan.bat` | 命令列掃描音樂庫 |
@@ -85,8 +108,18 @@ start_local.bat              # 本機資料夾模式
 ## 技術架構
 
 ```
-PC / 平板 ──HTTP──▶ FastAPI (port 8800)
-                      │
+                        ┌─────────────────────────────────┐
+LAN 平板/PC ──────────▶ │ Personal  (port 8800)           │
+                        │ LIVECHORD_MODE=personal         │
+                        │ LAN only / 免登入 / FLAC 串流    │
+                        └─────────────────────────────────┘
+
+                        ┌─────────────────────────────────┐
+Cloudflare Tunnel ────▶ │ Beta SaaS (port 8801)           │
+(livechord.org)         │ LIVECHORD_MODE=beta             │
+                        │ 強制登入 / 隱藏路徑 / 封鎖串流    │
+                        └─────────────────────────────────┘
+
 Backend               │  Frontend (vanilla JS)
 ├── run.py            │  ├── player.html/js    播放 + 即時和弦
 ├── main.py           │  ├── chord-render.js   鋼琴/吉他/烏克麗麗渲染

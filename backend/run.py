@@ -37,5 +37,8 @@ logging.getLogger("asyncio").setLevel(logging.CRITICAL)
 import uvicorn
 
 if __name__ == "__main__":
-    logging.info(f"LiveChord starting — log: {LOG_FILE} (7-day rotation)")
-    uvicorn.run("main:app", host="0.0.0.0", port=8800, log_config=None)
+    from config import get_port, get_deployment_mode
+    port = get_port()
+    mode = get_deployment_mode()
+    logging.info(f"LiveChord starting — mode={mode} port={port} log={LOG_FILE}")
+    uvicorn.run("main:app", host="0.0.0.0", port=port, log_config=None)

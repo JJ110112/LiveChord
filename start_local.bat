@@ -48,8 +48,9 @@ echo Target Folder: %LOCAL_MUSIC_ROOT%
 echo ==========================================
 
 set LIVECHORD_MUSIC_ROOT=%LOCAL_MUSIC_ROOT%
+set LIVECHORD_MODE=personal
 
 cd /d "%~dp0backend"
-echo Starting LiveChord...
+echo Starting LiveChord (personal mode)...
 python -m uvicorn main:app --host 0.0.0.0 --port 8800 --reload
 pause

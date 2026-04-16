@@ -1,6 +1,23 @@
 import os
 import json
 from pathlib import Path
+import ipaddress
+
+_LAN_NETWORKS = [
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("127.0.0.0/8"),
+]
+
+def is_lan_ip(ip_str: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(ip_str)
+        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+            addr = addr.ipv4_mapped
+        return any(addr in net for net in _LAN_NETWORKS)
+    except ValueError:
+        return False
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 SETTINGS_FILE = DATA_DIR / "settings.json"
@@ -86,6 +103,23 @@ def get_midi_root() -> str:
 
 def set_midi_root(new_path: str):
     _save_setting("midi_root", os.path.normpath(new_path))
+
+
+def get_deployment_mode() -> str:
+    """回傳部署模式: 優先讀取環境變數 LIVECHORD_MODE，其次 fallback settings.json: 'personal' (預設) 或 'beta'"""
+    env_mode = os.environ.get("LIVECHORD_MODE")
+    if env_mode in ["personal", "beta"]:
+        return env_mode
+    return _load_settings().get("deployment_mode", "personal")
+
+
+def is_beta_mode() -> bool:
+    return get_deployment_mode() == "beta"
+
+
+def get_port() -> int:
+    """回傳該模式對應的 port: personal=8800, beta=8801"""
+    return 8801 if is_beta_mode() else 8800
 
 
 def _save_setting(key: str, value):
