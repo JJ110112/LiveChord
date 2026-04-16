@@ -4,8 +4,11 @@ __pycache__/
 *.egg-info/
 
 # 運行時資料（不進版控）
+songs/
 data/library_cache.json
 data/library_cache.tmp
+data/chord_index.json
+data/chord_index.tmp
 data/recent.json
 data/favorites.json
 data/chords/
@@ -14,29 +17,31 @@ data/activity.log
 data/server.log
 data/server.log.*
 data/chord_queue.json
+data/.queue_cursor.json
 data/melodies/
 data/models/
-data/.local_music_root
-data/*.db
-data/covers/
 data/accompaniments/
-data/human_feedback/
-data/human_sections/
-data/separated/
-data/tmp/
+data/auth.db
 data/jam_tracks.json
-data/chord_index.json
 data/ratings.json
 data/style_map.json
+data/.local_music_root
+data/config.json
+data/users.db
 data/users/
-data/.queue_cursor.json
+data/human_sections/
+data/human_feedback/
+data/feedback.db
+data/analytics.db
+data/audit.db
+data/tmp/
+data/covers/
 
 # 評估/測試產出
 backend/eval_results.json
 backend/batch_failures.txt
 backend/test_e2e.py
 backend/test_viterbi.py
-backend/test_a.py
 
 # Windows 自動啟動腳本（由 install-service.bat 產生）
 start-hidden.vbs
@@ -93,3 +98,9 @@ data/hybrid_bass/
 data/hybrid_melody/
 separated/
 transcribed_midi/
+
+# Playwright MCP artifacts (QA screenshots, snapshots, console logs)
+.playwright-mcp/
+ghost-keys-qa-*.png
+qa-*.png
+editor-*.png

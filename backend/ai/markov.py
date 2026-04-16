@@ -7,7 +7,10 @@ import json
 from collections import defaultdict, Counter
 from pathlib import Path
 
-from .preprocess import build_training_data, SEMI_TO_NOTE, NOTE_TO_SEMI, DEGREE_NAMES
+try:
+    from .preprocess import build_training_data, SEMI_TO_NOTE, NOTE_TO_SEMI, DEGREE_NAMES
+except ImportError:
+    from preprocess import build_training_data, SEMI_TO_NOTE, NOTE_TO_SEMI, DEGREE_NAMES
 
 
 class ChordPredictor:
@@ -254,7 +257,7 @@ if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding="utf-8")
 
-    data_dir = "W:/data/chords"
+    data_dir = "V:/data/chords"
     print(f"Training from: {data_dir}")
 
     predictor = ChordPredictor()

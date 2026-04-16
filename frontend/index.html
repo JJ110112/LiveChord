@@ -8,9 +8,19 @@
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#e94560">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=1">
-  <link rel="stylesheet" href="/css/home.css?v=1">
+  <link rel="stylesheet" href="/css/home.css?v=2">
+  <script>
+    if (!localStorage.getItem("livechord_token")) {
+      fetch('/api/auth/is_admin').then(r => {
+        if (!r.ok) window.location.href = "/login";
+      }).catch(() => {
+        window.location.href = "/login";
+      });
+    }
+  </script>
 </head>
 <body>
 
@@ -21,7 +31,13 @@
     <input id="searchInput" type="text" placeholder="搜尋歌曲、演出者、專輯…" autocomplete="off">
     <div id="searchResults" class="search-results"></div>
   </div>
-  <nav></nav>
+  <nav style="margin-right: 32px;">
+    <div style="display:flex; align-items:center; gap: 10px;">
+      <span id="userGreeting" style="font-size: 0.85em; color: var(--text-muted);"></span>
+      <button onclick="exportData()">匯出資料</button>
+      <button onclick="logout()">登出</button>
+    </div>
+  </nav>
   <button class="header-fs-btn" title="全螢幕" onclick="
     if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{})}
     else{document.exitFullscreen()}
@@ -43,14 +59,67 @@
     <div id="favList" class="horizontal-scroll"></div>
   </section>
 
+  <!-- beta upload section (hidden by default, shown for beta non-admin) -->
+  <section id="secUpload" class="dash-section" style="display:none">
+    <div class="beta-upload-card">
+      <div class="upload-drop-zone" id="betaDropZone">
+        <div class="upload-icon">&#x1F3B5;</div>
+        <div class="upload-text">拖曳音檔至此，或點擊選取</div>
+        <div class="upload-hint">支援 MP3, FLAC, WAV, M4A, OGG (上限 200 MB)</div>
+        <input type="file" id="betaFileInput" accept="audio/*" style="display:none">
+      </div>
+      <div class="beta-file-info" id="betaFileInfo" style="display:none">
+        <span id="betaFileName"></span>
+        <span id="betaFileSize" style="color:var(--text-dim);margin-left:8px"></span>
+        <button class="btn-small btn-accent" id="betaUploadBtn" onclick="window._betaStartUpload()">開始分析</button>
+      </div>
+      <div class="beta-progress" id="betaUploadProgress" style="display:none">
+        <div class="progress-bar"><div class="progress-fill" id="betaProgressFill"></div></div>
+        <div class="progress-info">
+          <span id="betaProgressText">分析中...</span>
+          <span id="betaProgressPct">0%</span>
+        </div>
+      </div>
+    </div>
+    <div class="beta-yt-card" style="margin-top:12px">
+      <div style="display:flex;gap:10px;align-items:center">
+        <span style="font-size:1.2rem">&#x1F3AC;</span>
+        <input type="text" id="betaYtUrl" placeholder="貼上 YouTube URL..." style="flex:1;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.95rem">
+        <button class="btn-small btn-accent" id="betaYtBtn" onclick="window._betaStartYoutube()">分析</button>
+      </div>
+      <div class="beta-progress" id="betaYtProgress" style="display:none;margin-top:10px">
+        <div class="progress-bar"><div class="progress-fill" id="betaYtFill"></div></div>
+        <div class="progress-info">
+          <span id="betaYtText">處理中...</span>
+          <span id="betaYtPct">0%</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- beta recent plays (hidden by default) -->
+  <section id="secBetaRecent" class="dash-section" style="display:none">
+    <h2 class="dash-title">最近播放</h2>
+    <div id="betaRecentList" class="horizontal-scroll"></div>
+  </section>
+
+  <!-- beta library = analysis history as grid (hidden by default) -->
+  <section id="secHistory" class="dash-section" style="display:none">
+    <h2 class="dash-title">音樂庫</h2>
+    <div id="historyGrid" class="grid" style="margin-top:12px"></div>
+  </section>
+
   <!-- browse section -->
   <section id="secBrowse" class="dash-section">
-    <h2 class="dash-title" style="display:flex; align-items:center;">
-      音樂庫 
-      <span id="breadcrumb" class="breadcrumb" style="font-size:0.65em; opacity:0.7; font-weight:normal; margin-left:12px; margin-bottom:0;"></span>
-    </h2>
-    <div id="browseGrid" class="grid"></div>
-    <ul id="trackList" class="track-list" style="display:none"></ul>
+    <div class="browse-header" style="position: sticky; top: 56px; z-index: 10; background: var(--bg); padding: 10px 0; display: flex; align-items: center; justify-content: space-between;">
+      <h2 class="dash-title" style="display:flex; align-items:center; margin-bottom: 0;">
+        音樂庫 
+        <span id="breadcrumb" class="breadcrumb" style="font-size:0.65em; opacity:0.7; font-weight:normal; margin-left:12px; margin-bottom:0;"></span>
+      </h2>
+      <input type="text" id="dirFilter" placeholder="過濾曲目..." autocomplete="off" style="display:none; padding: 4px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); font-size: 12px; width: 140px;">
+    </div>
+    <div id="browseGrid" class="grid" style="margin-top: 16px;"></div>
+    <ul id="trackList" class="track-list" style="display:none; margin-top: 16px;"></ul>
   </section>
 
   <!-- loading -->
@@ -62,8 +131,95 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/js/utils.js?v=1"></script>
-<script src="/js/api.js?v=36"></script>
-<script src="/js/app.js?v=36"></script>
+<script src="/js/utils.js?v=2"></script>
+<script src="/js/api.js?v=57"></script>
+<script>
+  // Insert auth token into all fetch requests in api.js globally!
+  const originalFetch = window.fetch;
+  window.fetch = function() {
+    let [resource, config] = arguments;
+    if(config == null) config = {};
+    const url = typeof resource === 'string' ? resource : (resource instanceof Request ? resource.url : '');
+    if (url.startsWith('/') || url.includes(window.location.host)) {
+        if(config.headers == null) config.headers = {};
+        const token = localStorage.getItem("livechord_token");
+        if(token) config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return originalFetch(resource, config);
+  };
+  
+  let username = localStorage.getItem("livechord_username");
+  
+  // Check admin status anyway to handle LAN bypass
+  fetch("/api/auth/is_admin")
+    .then(res => res.json())
+    .then(data => {
+        if (data.is_admin) {
+            if (!username) {
+                username = "Admin (LAN)";
+            }
+            const greeting = document.getElementById("userGreeting");
+            if (greeting) greeting.textContent = `Hello, ${username}`;
+
+            const navDiv = document.querySelector("nav div");
+            // Only add button if it's not already there
+            if (!navDiv.querySelector("button.admin-btn")) {
+                const adminBtn = document.createElement("button");
+                adminBtn.className = "admin-btn";
+                adminBtn.textContent = "管理後台";
+                adminBtn.onclick = () => window.location.href = "/admin";
+                navDiv.insertBefore(adminBtn, navDiv.querySelector("button"));
+                
+                // For Beta mode admin "新歌分析" button
+                fetch("/api/config/public").then(r => r.json()).then(cfg => {
+                    if (cfg.deployment_mode === "beta") {
+                        const processBtn = document.createElement("button");
+                        processBtn.textContent = "新歌分析";
+                        processBtn.onclick = () => window.location.href = "/process";
+                        navDiv.insertBefore(processBtn, navDiv.querySelector("button"));
+                    }
+                }).catch(() => {});
+            }
+        } else if (username) {
+            const greeting = document.getElementById("userGreeting");
+            if (greeting) greeting.textContent = `Hello, ${username}`;
+        }
+    }).catch(err => {
+        if (username) {
+            const greeting = document.getElementById("userGreeting");
+            if (greeting) greeting.textContent = `Hello, ${username}`;
+        }
+    });
+
+  function logout() {
+      localStorage.removeItem("livechord_token");
+      localStorage.removeItem("livechord_username");
+      window.location.href = "/login";
+  }
+
+  async function exportData() {
+      const token = localStorage.getItem("livechord_token");
+      if (!token) return;
+      try {
+          const res = await fetch("/api/export-data");
+          if (!res.ok) {
+              alert("無資料可匯出");
+              return;
+          }
+          const blob = await res.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.style.display = "none";
+          a.href = url;
+          a.download = `${localStorage.getItem("livechord_username")}_backup.zip`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+      } catch (e) {
+          alert("網路錯誤");
+      }
+  }
+</script>
+<script src="/js/app.js?v=40"></script>
 </body>
 </html>

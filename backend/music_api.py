@@ -7,13 +7,14 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Query
 from fastapi.responses import FileResponse, StreamingResponse, Response
 
 from mutagen.flac import FLAC
 
-from config import get_music_root, get_music_roots, set_music_roots, resolve_path
+from config import get_music_root, get_music_roots, set_music_roots, resolve_path, is_beta_mode
 from batch_state import BatchState
+from task_lock import get_task_lock
 
 router = APIRouter(prefix="/api", tags=["music"])
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -34,13 +35,30 @@ _scan_state = BatchState(
 
 def _safe_path(path: str) -> str:
     """驗證路徑在任一 MUSIC_ROOT 內，防止路徑穿越"""
-    resolved = os.path.normpath(path)
-    if ".." in resolved:
-        raise HTTPException(status_code=403, detail="路徑不允許")
+    resolved = os.path.realpath(path)
+    c_clean_resolved = resolved.rstrip("/\\").lower()
+    
     for root in get_music_roots():
-        if resolved.lower().startswith(root.lower()):
+        root_real = os.path.realpath(root)
+        c_clean_root = root_real.rstrip("/\\").lower()
+        
+        # 1. 寬鬆比對 (prefix match)
+        if c_clean_resolved.startswith(c_clean_root + os.sep) or c_clean_resolved == c_clean_root:
             return resolved
-    raise HTTPException(status_code=403, detail="路徑不允許")
+            
+        # 2. 嚴格比對 (commonpath) 作為 fallback
+        try:
+            common = os.path.commonpath([resolved, root_real])
+            if common.rstrip("/\\").lower() == c_clean_root:
+                return resolved
+        except ValueError:
+            pass
+            
+    # 若失敗，印出詳細日誌以供除錯
+    print(f"[DEBUG] _safe_path REJECTED: path='{path}'")
+    print(f"        resolved: '{resolved}'")
+    print(f"        roots: {get_music_roots()}")
+    raise HTTPException(status_code=403, detail="路徑不允許 (SafePath check failed)")
 
 
 def _read_flac_meta(filepath: str) -> dict:
@@ -95,8 +113,23 @@ from chord_cache import get_chord_summary as _get_chord_summary, song_hash
 # browse
 # ---------------------------------------------------------------------------
 
+def _check_browse_access(authorization: str = Header(None)):
+    """In beta mode, only admin can browse the NAS file tree."""
+    if not is_beta_mode():
+        return
+    if not authorization:
+        raise HTTPException(status_code=403, detail="Browse not available for beta users")
+    token = authorization.replace("Bearer ", "")
+    import sqlite3
+    db = Path(__file__).parent.parent / "data" / "users.db"
+    with sqlite3.connect(db, timeout=10) as conn:
+        row = conn.execute("SELECT is_admin FROM users WHERE token=?", (token,)).fetchone()
+        if not row or row[0] != 1:
+            raise HTTPException(status_code=403, detail="Browse not available for beta users")
+
+
 @router.get("/browse")
-def browse(path: str = Query(default="")):
+def browse(path: str = Query(default=""), _=Depends(_check_browse_access)):
     """瀏覽目錄（支援多音樂庫）"""
     roots = get_music_roots()
 
@@ -187,8 +220,22 @@ def browse(path: str = Query(default="")):
 # search
 # ---------------------------------------------------------------------------
 
+def _is_admin_request(authorization: str) -> bool:
+    if not authorization:
+        return False
+    token = authorization.replace("Bearer ", "")
+    import sqlite3
+    db = Path(__file__).parent.parent / "data" / "users.db"
+    try:
+        with sqlite3.connect(db, timeout=10) as conn:
+            row = conn.execute("SELECT is_admin FROM users WHERE token=?", (token,)).fetchone()
+            return bool(row and row[0] == 1)
+    except Exception:
+        return False
+
+
 @router.get("/search")
-def search(q: str = Query(default="")):
+def search(q: str = Query(default=""), authorization: str = Header(None)):
     """搜尋音樂庫（從快取索引）"""
     if not q or len(q.strip()) < 1:
         return {"results": []}
@@ -199,6 +246,9 @@ def search(q: str = Query(default="")):
         if _scan_state["running"]:
             return {"results": [], "error": f"掃描進行中（{_scan_state['progress']} 首），請稍候…"}
         return {"results": [], "error": "索引尚未建立，請點右上角「掃描」或到管理頁面執行"}
+
+    # Beta non-admin: hide NAS paths, use chord hash instead
+    hide_paths = is_beta_mode() and not _is_admin_request(authorization)
 
     cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
     tracks = cache.get("tracks", [])
@@ -211,6 +261,8 @@ def search(q: str = Query(default="")):
             if "unique_chords" not in t:
                 summary = _get_chord_summary(t.get("path", ""))
                 t.update(summary)
+            if hide_paths:
+                t = {**t, "path": f"__hash/{song_hash(t['path'])}", "hash": song_hash(t["path"])}
             results.append(t)
             if len(results) >= 50:
                 break
@@ -314,7 +366,7 @@ async def track_stream(request: Request, path: str = Query(...)):
 
 
 @router.get("/track/cover")
-async def track_cover(path: str = Query(...)):
+def track_cover(path: str = Query(...)):
     """取得專輯封面（優先同目錄 cover.jpg，fallback FLAC 內嵌圖片）"""
     full = _safe_path(resolve_path(path))
 
@@ -380,6 +432,7 @@ def _scan_worker(mode: str = "incremental"):
     """背景掃描執行緒（節流 I/O，可中斷）"""
     global _scan_cancel
     _scan_cancel = False
+    lock = get_task_lock()
     _scan_state.update(
         running=True, progress=0, total_dirs=0,
         new_tracks=0, updated_tracks=0, deleted_tracks=0, mode=mode,
@@ -391,6 +444,15 @@ def _scan_worker(mode: str = "incremental"):
         roots = get_music_roots()
         DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+        # 讀取啟用群組（active_groups）— 若有設定，掃描只會走訪這些頂層資料夾
+        # 已快取但屬於未啟用群組的條目會被「保留」(不會誤刪也不會重掃)
+        try:
+            from auto_worker import load_settings
+            _settings = load_settings()
+            active_groups = set(_settings.get("auto_chord_active_groups", []) or [])
+        except Exception:
+            active_groups = set()
+
         # 載入現有快取（增量模式用）
         existing = {}
         if mode == "incremental" and CACHE_FILE.is_file():
@@ -400,38 +462,79 @@ def _scan_worker(mode: str = "incremental"):
         # 保存現有路徑集合，用於偵測刪除
         old_paths = set(existing.keys())
 
+        # 一次 listdir 取代每檔一次的 is_file()（43k+ 檔時省下整輪 stat syscall）
+        chords_dir = DATA_DIR / "chords"
+        chord_hashes = set()
+        if chords_dir.is_dir():
+            try:
+                chord_hashes = {n[:-5] for n in os.listdir(chords_dir) if n.endswith(".json")}
+            except OSError:
+                pass
+
         tracks = []
         seen_paths = set()
+        # scandir() 失敗（SMB 斷線、權限錯誤等）的相對路徑前綴集合。
+        # 最終 save 時，此前綴之下的舊條目會被保留，避免被當成「已刪除」誤清。
+        errored_prefixes: set = set()
         _new_meta_count = 0   # 本輪讀取 metadata 的次數（用於節流）
 
-        for root_idx, root in enumerate(roots):
+        def _scan_dir(current_dir: str, current_rel_prefix: str, root_prefix: str):
+            nonlocal _new_meta_count
             if _scan_cancel:
-                break
-            prefix = f"@{root_idx}/" if root_idx > 0 else ""
-            if not os.path.isdir(root):
-                continue
+                return
+            _scan_state["total_dirs"] += 1
 
-            for dirpath, dirnames, filenames in os.walk(root):
+            try:
+                entries = list(os.scandir(current_dir))
+            except OSError:
+                errored_prefixes.add(current_rel_prefix)
+                return
+
+            # 是否在 music_root 第一層（用來套 active_groups 過濾）
+            is_at_root = (current_rel_prefix == root_prefix)
+            try:
+                root_idx = int(root_prefix[1:-1]) if root_prefix.startswith("@") else 0
+            except ValueError:
+                root_idx = 0
+
+            dirs = []
+            for entry in entries:
                 if _scan_cancel:
-                    break
-                dirnames[:] = [d for d in dirnames
-                               if not d.startswith(".") and d not in
-                               ("#recycle", "@eaDir", "@tmp", "#snapshot")]
-                _scan_state["total_dirs"] += 1
+                    return
+                if entry.name.startswith("."):
+                    continue
 
-                for fname in filenames:
-                    if not fname.lower().endswith(".flac"):
+                if entry.is_dir():
+                    # 只排除系統 / 同步 / 回收筒等技術目錄。
+                    exclude_dirs = {"#recycle", "@eaDir", "@tmp", "#snapshot"}
+                    if entry.name in exclude_dirs:
                         continue
-
-                    full = os.path.join(dirpath, fname)
-                    inner_rel = os.path.relpath(full, root).replace("\\", "/")
-                    rel = prefix + inner_rel
+                    # 在 music_root 第一層套 active_groups 過濾：
+                    # 只有勾選的子資料夾會被走訪，其他直接跳過（節省 SMB I/O）
+                    if is_at_root and active_groups:
+                        gid = f"@{root_idx}/{entry.name}"
+                        if gid not in active_groups:
+                            continue
+                    dirs.append(entry)
+                elif entry.is_file() and entry.name.lower().endswith(".flac"):
+                    # 在 music_root 第一層的 .flac 檔，若 active_groups 有設定且未涵蓋
+                    # 「未分類」群組，則跳過（這些檔案歸屬 @{idx}/未分類）
+                    if is_at_root and active_groups:
+                        gid_uncategorized = f"@{root_idx}/未分類"
+                        if gid_uncategorized not in active_groups:
+                            continue
+                    full = entry.path
+                    rel = current_rel_prefix + entry.name
                     seen_paths.add(rel)
                     _scan_state["progress"] += 1
+                    
+                    # 節流：即使是快速的增量掃描，也定期釋放 GIL 以免卡住前端請求 (FastAPI)
+                    if _scan_state["progress"] % 250 == 0:
+                        time.sleep(0.01)
 
                     if mode == "incremental" and rel in existing:
                         try:
-                            mtime = os.path.getmtime(full)
+                            mtime = entry.stat().st_mtime
                             old_mtime = existing[rel].get("mtime", 0)
                             if mtime == old_mtime:
                                 tracks.append(existing[rel])
@@ -446,16 +549,16 @@ def _scan_worker(mode: str = "incremental"):
                     meta["path"] = rel
 
                     try:
-                        meta["mtime"] = os.path.getmtime(full)
+                        meta["mtime"] = entry.stat().st_mtime
                     except OSError:
                         meta["mtime"] = 0
 
                     # 從目錄結構推斷 genre（去掉 @N/ 前綴）
+                    inner_rel = rel[len(root_prefix):] if root_prefix and rel.startswith(root_prefix) else rel
                     genre_parts = inner_rel.split("/")
                     meta["genre"] = meta["genre"] or (genre_parts[0] if len(genre_parts) > 1 else "")
 
-                    chords_file = DATA_DIR / "chords" / f"{song_hash(rel)}.json"
-                    meta["has_chords"] = chords_file.is_file()
+                    meta["has_chords"] = song_hash(rel) in chord_hashes
 
                     tracks.append(meta)
 
@@ -463,15 +566,80 @@ def _scan_worker(mode: str = "incremental"):
                     _new_meta_count += 1
                     if _new_meta_count % 50 == 0:
                         time.sleep(0.05)
+                        lock.update_progress(current_item=rel, done=_scan_state["progress"])
 
-                    if len(tracks) % 3000 == 0:
-                        _save_cache(tracks)
+                    # 週期存檔：incremental 模式下若還沒遇到新/更新，跳過（純拷貝 7MB 無意義）
+                    if len(tracks) % 3000 == 0 and (
+                        mode != "incremental"
+                        or _scan_state["new_tracks"] + _scan_state["updated_tracks"] > 0
+                    ):
+                        merged = list(tracks)
+                        for old_rel, old_t in existing.items():
+                            if old_rel not in seen_paths:
+                                merged.append(old_t)
+                        _save_cache(merged)
+
+            for d in dirs:
+                _scan_dir(d.path, current_rel_prefix + d.name + "/", root_prefix)
+
+        for root_idx, root in enumerate(roots):
+            if _scan_cancel:
+                break
+            prefix = f"@{root_idx}/" if root_idx > 0 else ""
+            if not os.path.isdir(root):
+                continue
+
+            _scan_dir(root, prefix, prefix)
+
+        # 保留：
+        # (1) 未啟用群組的既有條目 — 本輪不會走訪，完整保留避免誤刪
+        # (2) 啟用群組但所屬目錄 scandir 失敗 — SMB 斷線/權限錯誤時，
+        #     不能把整個目錄視為「已刪除」而清掉；保留舊條目等下次掃描
+        if active_groups or errored_prefixes:
+            try:
+                from library_groups import _split_group
+                preserved = 0
+                preserved_errored = 0
+                for old_rel, old_t in existing.items():
+                    if old_rel in seen_paths:
+                        continue
+                    r_idx, label, _ = _split_group(old_rel)
+                    gid = f"@{r_idx}/{label}"
+                    keep = False
+                    if active_groups and gid not in active_groups:
+                        keep = True
+                    elif errored_prefixes and any(
+                        old_rel.startswith(p) for p in errored_prefixes
+                    ):
+                        keep = True
+                        preserved_errored += 1
+                    if keep:
+                        tracks.append(old_t)
+                        seen_paths.add(old_rel)
+                        preserved += 1
+                if preserved:
+                    _scan_state["preserved_tracks"] = preserved
+                if preserved_errored:
+                    _scan_state["preserved_errored"] = preserved_errored
+            except Exception:
+                pass
 
         # 計算刪除的曲目數
         deleted = old_paths - seen_paths
 
-        # 最終存檔
-        _save_cache(tracks)
+        # 只在實際有變動時才重寫 cache 檔。沒變動就保持 mtime 不變，
+        # 讓 data_cache.get_library_cache 的 mtime 比對命中，避免下次 admin
+        # 載入時白白重 parse 50MB JSON。
+        changed = (_scan_state["new_tracks"] > 0
+                   or _scan_state["updated_tracks"] > 0
+                   or len(deleted) > 0)
+        if changed or not CACHE_FILE.is_file():
+            _save_cache(tracks)
+            try:
+                from data_cache import invalidate_library_cache
+                invalidate_library_cache()
+            except Exception:
+                pass
 
         _scan_state["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
         _scan_state["deleted_tracks"] = len(deleted)
@@ -482,6 +650,32 @@ def _scan_worker(mode: str = "incremental"):
         _scan_state["running"] = False
 
 
+def _scan_thread_entry(mode: str):
+    """執行緒進入點：跑 worker 完成後釋放 task_lock。"""
+    try:
+        _scan_worker(mode)
+    finally:
+        get_task_lock().release()
+
+
+def _start_scan(mode: str) -> dict:
+    if mode not in ("full", "incremental"):
+        mode = "incremental"
+
+    lock = get_task_lock()
+    if not lock.try_acquire("SCAN", "ALL"):
+        cur = lock.status() or {}
+        return {
+            "ok": False,
+            "message": f"後台正在處理 {cur.get('kind', '')} ({cur.get('scope', '')})，請稍候",
+            "progress": _scan_state["progress"],
+        }
+
+    t = threading.Thread(target=_scan_thread_entry, args=(mode,), daemon=True)
+    t.start()
+    return {"ok": True, "message": f"背景掃描已啟動（{mode}模式）"}
+
+
 @router.post("/library/scan")
 async def library_scan(mode: str = Query(default="incremental")):
     """
@@ -489,39 +683,13 @@ async def library_scan(mode: str = Query(default="incremental")):
     mode=full: 全部重新掃描（忽略快取）
     mode=incremental: 增量掃描（只讀取新增/修改的檔案）
     """
-    if _scan_state["running"]:
-        return {
-            "ok": False,
-            "message": "掃描進行中，請稍候",
-            "progress": _scan_state["progress"],
-        }
-
-    if mode not in ("full", "incremental"):
-        mode = "incremental"
-
-    t = threading.Thread(target=_scan_worker, args=(mode,), daemon=True)
-    t.start()
-
-    return {"ok": True, "message": f"背景掃描已啟動（{mode}模式）"}
+    return _start_scan(mode)
 
 
 @router.get("/library/scan")
 async def library_scan_get(mode: str = Query(default="incremental")):
     """GET 相容：同 POST（方便瀏覽器/批次檔呼叫）"""
-    if _scan_state["running"]:
-        return {
-            "ok": False,
-            "message": "掃描進行中，請稍候",
-            "progress": _scan_state["progress"],
-        }
-
-    if mode not in ("full", "incremental"):
-        mode = "incremental"
-
-    t = threading.Thread(target=_scan_worker, args=(mode,), daemon=True)
-    t.start()
-
-    return {"ok": True, "message": f"背景掃描已啟動（{mode}模式）"}
+    return _start_scan(mode)
 
 
 @router.get("/library/scan/status")

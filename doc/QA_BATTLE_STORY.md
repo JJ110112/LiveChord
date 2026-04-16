@@ -70,3 +70,150 @@ AI 的恐怖之處就在於：當你滿足了現狀，他們的要求會跟著�
 我們負責寫程式，而多智能體負責扮演「最挑剔的奧客」與「最毒舌的專家」。他們不斷試圖突破現有的防線，而我們則將他們的攻擊一一轉化為固若金湯的規則引擎。
 
 **三位專家應該暫時滿意了...至少在他們看到下一個可以挑剔的地方之前 😄。** 而 LiveChord 已經準備好，在下一個版本裡，讓所有的吉他、貝斯與鋼琴手，在彈奏第一聲和弦時，為之驚豔。
+
+---
+
+## 🔥 番外篇：AI 品管員的意外獵物（2026-04-16）
+
+一次例行性的 QA 測試，AI 代理用 curl 掃過 `/api/ai/*` 的全部端點，準備交回一份安靜的「全綠」報告。直到呼叫打進 `/api/ai/evaluate` 那一刻——
+
+整台 uvicorn **瞬間凍結**。TCP 還會三向交握，但 HTTP 再也不吐半個 byte。累積的 CLOSE_WAIT socket 一行一行堆在 netstat 裡，server.log 停在最後一筆 ERROR 之後再無動靜。長達 4 分鐘的沉默後，AI 代理終於忍不住翻開原始碼：
+
+```python
+@router.get("/evaluate")
+async def evaluate():
+    from ai.evaluate import full_evaluation
+    return full_evaluation(str(CHORDS_DIR))  # ← 同步版！跑 296 首歌！
+```
+
+`async def` + 同步重度計算 = 事件迴圈被單一請求獨佔。這違反了 repo 的 `feedback_async_def` 鐵律：**檔案 I/O 與 CPU 密集端點必須用普通 `def`**，讓 FastAPI 自動丟進 threadpool。
+
+同一趟還挖出 `/api/ai/stats` 與 `/api/ai/similar` 互相關聯的暗坑：
+- `ai_api.py` import 了 `ai.chord2vec` 模組裡**從未存在**的 `get_chord2vec` 函式
+- `ai/chord2vec.py` 在模組 top-level 就 `from scipy.sparse import lil_matrix`，遇上 numpy 2.x + scipy 1.17 組合會先 raise `_no_nep50_warning` AttributeError
+- 這道雙重地雷讓兩個端點預設 500
+
+### 修復
+
+| 檔案 | 動作 |
+| :--- | :--- |
+| `backend/ai_api.py` | `/evaluate` 與 `/stats` 改 `async def` → `def`；`/similar` 改用 `get_similar_chords` + `try/except ImportError` 優雅降級；`/stats` 改為直接讀 `chord_embeddings.npy` + `vocab.json`，跳過 chord2vec 模組 |
+| `backend/ai/chord2vec.py` | `from scipy.sparse import lil_matrix` 與 `from scipy.sparse.linalg import svds` 都從 top-level 搬進實際使用的函式內部（lazy import），這樣即使 scipy 相依出問題，推論路徑（只用 numpy）仍可正常運作 |
+
+### 驗證
+
+重啟後再次打 `/api/ai/evaluate`，84 秒返回 `{"markov_model":{"perplexity":17.31,...}}`。關鍵是——**在這 84 秒期間，其他 API 仍然即時響應**。threadpool 隔離生效，事件迴圈不再被單一請求綁架。
+
+### 教訓
+
+1. **鐵律是給人遵守的，不是寫完就忘的**：`feedback_async_def` 明確說了「不要用 `async def` 包同步計算」，但 `ai_api.py` 幾乎全檔都犯。這次只修了 3 個引爆的端點，其他 `async def` 仍待後續一致化。
+2. **AI 的品管迴圈能抓到人工掃不到的 hang**：傳統 pytest 跑 unit test 永遠不會觸發這種「端點能回但整個事件迴圈死掉」的狀態，必須真的打出請求並觀察鄰近請求的可用性。
+3. **lazy import 是相依地雷的最佳緩衝墊**：把危險 import 搬進函式內，可以讓模組 load 階段保持乾淨，只有真正踩到該路徑才會爆——而且還能 `try/except` 兜底。
+
+AI 代理原本以為只是要跑個標準 QA checklist，結果順手救了一個 P0。這大概就是 `Agentic QA` 的真正價值：**它不只是逐項打勾，還會在每個打勾之前問一句「這樣真的 OK 嗎？」**
+
+---
+
+## 🎯 番外篇 II：三個點、一個 fingered-chord 烏龍、與一個被閒置的音樂庫（2026-04-16）
+
+清晨 05:50，使用者用 Playwright MCP 對 `http://localhost:8800/` 跑了一輪畫面巡檢，留下 6 張截圖：`qa-player-initial.png`、`qa-player-guitar.png`、`qa-player-accordion.png`、`qa-player-arranger.png`、`qa-admin.png`、`qa-benchmark.png`，外加一份 60 行的 console log。沒有文字報告。
+
+AI 代理打開截圖，第一眼覺得「看起來都正常」——直到它把 console log 的三行 ERROR 一個一個讀進去：
+
+```
+404 /api/track/cover?path=@0/test_songs/Lv1/Dancing Queen - ABBA.flac
+404 /api/track/cover?path=AINI-Official-MV-HD.flac
+403 /api/track/cover?path=Michael Bolton - Said I Loved You...But I Lied.flac
+```
+
+最詭異的是那個 403。`Said I Loved You...But I Lied.flac` 是一首真實存在於 `songs/` 的 Michael Bolton 抒情曲。為什麼 cover 端點會吐 403 「路徑不允許」？
+
+### 第一個地雷：三個點誤殺省略號
+
+代理翻開 [music_api.py:36](backend/music_api.py#L36) 的 `_safe_path`：
+
+```python
+resolved = os.path.normpath(path)
+if ".." in resolved:
+    raise HTTPException(status_code=403, detail="路徑不允許")
+```
+
+問題就在那個 `".." in resolved`——這是 Python **子字串**比對。`"...But I Lied"` 裡的 `...` 子字串包含 `..`，於是合法的英文省略號被誤判為 path traversal 攻擊。任何檔名含三個以上連續點的曲目（包括電影原聲帶、樂手暱稱裡的 `...`）通通中招。
+
+修法是放棄字串級的判斷，改用 `commonpath` 的 segment-level 比較：
+
+```python
+resolved = os.path.realpath(path)
+for root in get_music_roots():
+    root_real = os.path.realpath(root)
+    common = os.path.commonpath([resolved, root_real])
+    if common.lower() == root_real.lower():
+        return resolved
+```
+
+`realpath` 會把 `..` 真的展開掉，`commonpath` 用路徑段比對而不是字串比對，安全性更高、誤殺更少。修完後 curl 那個 Michael Bolton 連結，401 → **200 OK**。
+
+### 順手揪出鐵律的第二個違反者
+
+修 `_safe_path` 的時候，代理瞄了一眼上方的 `track_cover`：
+
+```python
+@router.get("/track/cover")
+async def track_cover(path: str = Query(...)):
+    ...
+    if os.path.isfile(full):  # 同步檔案 I/O
+        ...
+    audio = FLAC(full)        # 同步 FLAC 解碼
+```
+
+又是 `async def` 包同步檔案 I/O——番外篇 I 修的同一道地雷的兄弟。一個字的修改：`async def` → `def`，FastAPI 自動丟進 thread pool。
+
+### 第三個地雷：被閒置的 296 首音樂庫
+
+接著是 benchmark 截圖：5 個等級的 tab，每個底下都是「此等級無測試曲目」。代理發現 [benchmark_api.py:13](backend/benchmark_api.py#L13) 把 `TEST_SONGS_DIR` 寫死成 `data/test_songs/`，dev 機這個資料夾裡只有一個 `eval_output.mid`。
+
+但同一個 dev 機的 `data/library_cache.json` 已經完整掃描了 296 首 (`10cc - I'm Not In Love`、`Faith Hill - There You'll Be`、整個 80s pop 黃金歌單...)，`data/chords/` 下躺著 53951 個和弦快取 JSON。整個 benchmark 工具看著一個空目錄哭，旁邊就是已經磨好的 296 顆鑽石——這完全是設計上的脫節。
+
+使用者一句話定調：「**轉接到本機已掃描的 songs 庫，這樣 QA 才有東西用**。」
+
+代理在 `benchmark_api.py` 加了一個 `LIBRARY_LEVEL = "library"` 的虛擬等級，並用 `song_hash(path)` 當 key 把所有現有 endpoint 橋接到既有資料：
+
+| 動作 | 原 `Lv*` 行為 | 新 `library` 行為 |
+|------|---------------|-------------------|
+| 列表 | 掃 `data/test_songs/Lv*/*.flac` | 讀 `library_cache.json` 的 296 首 |
+| 偵測 | 跑 BTC 寫 `.det.lab` | **直接讀** `data/chords/{hash}.json`，不重跑 |
+| GT 寫入 | `data/test_songs/Lv*/{name}.lab` | `data/test_songs/library/{hash}.lab` |
+| 評分 | `.lab` vs `.det.lab` | `library/{hash}.lab` vs chord cache |
+
+關鍵是「偵測」這個動作——以前 QA 點下去要等 BTC Transformer 在 CPU 上磨幾秒，現在從 chord cache 讀，**從點擊到顯示和弦列表 < 100ms**。整個 benchmark 工具從「dev 上完全不能用」變成「想對哪首歌打分就點哪首」。
+
+前端 [benchmark.html](frontend/benchmark.html) 加了第六個 tab「📚 主音樂庫」，dev 進頁時若 `library` 非空就預設停在這裡（prod 上有 Lv1 種子時會自動切回 Lv1）。
+
+順帶一提，順著 `feedback_async_def` 鐵律，benchmark_api.py 全檔的 `async def` 也一併改成 `def`——這次學乖了，相關檔案的同類問題一次清乾淨。
+
+### 第四個——其實是個美麗的誤會
+
+`qa-player-arranger.png` 截圖裡，編曲鍵盤的瀑布流只有**一根孤伶伶的音符**從畫面中央緩緩下降。代理一開始以為是 Rule 11 (Canvas Buffer ↔ Flex Sync) 的繪製 bug，丟了個 Explore agent 去查。Explore agent 翻到 [accompaniment_generator.py:441-442](backend/accompaniment_generator.py#L441-L442)：
+
+```python
+if level == "L1":
+    pattern = [(0.0, [0], 1.0)]  # 整個和弦只在 t=0 觸發一次
+```
+
+一根音符，一秒一個和弦，這就是 PSR-SX900 fingered chord 模式的設計——彈一次、按住、等下一個和弦。截圖完全正確，是代理腦補的 bug。**這個案子不是修了什麼，是學會了不要修**：在動手之前先問「這真的是 bug，還是設計如此？」省下一場無謂的重構。
+
+### 端到端驗證
+
+修完後 Playwright 走一輪：
+- 首頁 console：**0 errors / 0 warnings**（原本 1 個 403 + 1 個 deprecation）
+- benchmark 頁：6 個 tab，預設停在「📚 主音樂庫」，**296 張卡片**全部就位，detect API 從 cache 即時回應 (62 chords, key=A, `from_cache=true`)
+- player 頁：piano/guitar/accordion/arranger 四個 tab 全綠，無 console 噪音
+
+### 教訓
+
+1. **「字串包含 `..` 就拒絕」是個常見但根本錯誤的安全寫法**。Path traversal 防護應該在「路徑解析後」做 segment 比對，不是在輸入字串上做暴力 substring match。任何含省略號 / 三個以上連續點的合法檔案都會中招。
+2. **修一處同類問題時，順手把同檔/同類的兄弟一起清掉**。番外篇 I 修了 `ai_api.py` 三個 endpoint 但留下其他 `async def`；這次 benchmark_api.py 直接全檔換清。鐵律不能只在踩到時才執行。
+3. **被閒置的資料是更大的 bug**。dev 機跑著 296 首掃完的曲目、5 萬個 chord cache，benchmark 工具卻盯著一個空目錄。問題不是「沒有測試資料」，而是「工具沒有看向資料所在的地方」。修法是讓工具找到資料，不是塞種子資料。
+4. **不是每個視覺異常都是 bug**。看到 arranger 瀑布流只有一根音符就懷疑 canvas 渲染壞了，最後翻到 `accompaniment_generator.py` 才發現是設計如此。**先讀資料來源，再懷疑渲染層**——代理省下了一場不必要的 Rule 11 大追查。
+
+四個訊號，三個真 bug、一個美麗的誤會、一個被閒置的音樂庫被接回 QA 工具。截圖沒有開口說話，但 console log 和源碼會。

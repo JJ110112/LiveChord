@@ -6,6 +6,8 @@ import re
 import time
 import asyncio
 from pathlib import Path
+from threading import Lock
+from typing import Optional
 
 
 def _normalize_name(name: str) -> str:
@@ -42,12 +44,15 @@ def _midi_matches(song_name: str, midi_fname: str) -> bool:
     min_len = min(len(sk), len(mk))
     return overlap >= max(2, min_len * 0.6)
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends, Header
 from pydantic import BaseModel
 
-from chord_table import get_chord_info, get_chord_jianpu
-from chord_diagrams import get_chord_diagram
-from chord_cache import song_hash
+from auth_api import get_current_user, DB_PATH as AUTH_DB_PATH
+import sqlite3
+from chord_table import get_chord_info, get_chord_jianpu, analyze_chord_in_key
+from chord_diagrams import get_chord_diagram, get_chord_voicings
+from chord_cache import song_hash, update_entry_from_file as cache_update_entry
+from instrument_registry import get_instrument, list_instruments, INSTRUMENTS
 
 from config import resolve_path
 
@@ -56,8 +61,66 @@ router = APIRouter(prefix="/api", tags=["chord"])
 DATA_DIR = Path(__file__).parent.parent / "data"
 CHORDS_DIR = DATA_DIR / "chords"
 CACHE_FILE = DATA_DIR / "library_cache.json"
+RATINGS_FILE = DATA_DIR / "ratings.json"
+
+_ratings_lock = Lock()
 
 
+def _load_ratings() -> dict:
+    if not RATINGS_FILE.is_file():
+        return {}
+    try:
+        return json.loads(RATINGS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_ratings(data: dict) -> None:
+    RATINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = RATINGS_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(RATINGS_FILE)
+
+
+def _version_rating(votes: dict) -> tuple:
+    """Return (avg, count) from a {username: score} dict."""
+    if not votes:
+        return (0.0, 0)
+    vals = [v for v in votes.values() if isinstance(v, (int, float))]
+    if not vals:
+        return (0.0, 0)
+    return (round(sum(vals) / len(vals), 1), len(vals))
+
+
+def _optional_user(authorization: str = Header(None)) -> Optional[str]:
+    """Return username if Authorization header is valid, else None (no error)."""
+    if not authorization:
+        return None
+    try:
+        return get_current_user(authorization)
+    except HTTPException:
+        return None
+
+
+def _is_admin(username: str) -> bool:
+    try:
+        with sqlite3.connect(AUTH_DB_PATH, timeout=10) as conn:
+            row = conn.execute("SELECT is_admin FROM users WHERE username=?", (username,)).fetchone()
+            return bool(row and row[0] == 1)
+    except Exception:
+        return False
+
+
+
+
+# ---------------------------------------------------------------------------
+# instrument registry
+# ---------------------------------------------------------------------------
+
+@router.get("/instruments")
+def instruments_api():
+    """回傳所有已註冊樂器及其 metadata"""
+    return {name: meta for name, meta in INSTRUMENTS.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -74,14 +137,42 @@ async def chord_info(name: str):
 
 
 @router.get("/chord/diagram/{instrument}/{name:path}")
-async def chord_diagram(instrument: str, name: str):
-    """取得和弦圖（吉他/烏克麗麗）"""
-    if instrument not in ("guitar", "ukulele"):
-        raise HTTPException(status_code=400, detail="instrument 須為 guitar 或 ukulele")
-    diagram = get_chord_diagram(name, instrument=instrument)
+async def chord_diagram(instrument: str, name: str, split: int = Query(None)):
+    """取得和弦圖（吉他/烏克麗麗/...）"""
+    if instrument not in list_instruments():
+        raise HTTPException(status_code=400, detail=f"instrument 須為 {', '.join(list_instruments())}")
+    if instrument == "arranger" and split is not None:
+        from chord_diagrams import _arranger_resolve
+        diagram = _arranger_resolve(name, split_point=split)
+        if diagram:
+            diagram["name"] = name
+    else:
+        diagram = get_chord_diagram(name, instrument=instrument)
     if not diagram:
         raise HTTPException(status_code=404, detail=f"無 {instrument} 和弦圖: {name}")
     return diagram
+
+
+@router.get("/chord/voicings/{instrument}/{name:path}")
+def chord_voicings_api(instrument: str, name: str):
+    """取得和弦所有把位指法"""
+    if instrument not in list_instruments():
+        raise HTTPException(status_code=400, detail=f"instrument 須為 {', '.join(list_instruments())}")
+    voicings = get_chord_voicings(name, instrument=instrument)
+    inst_meta = get_instrument(instrument)
+    if instrument == "accordion":
+        return {"name": name, "type": "accordion", "voicings": voicings}
+    if instrument == "arranger":
+        return {"name": name, "type": "arranger", "voicings": voicings}
+    num_strings = inst_meta.get("num_strings", 6) if inst_meta else 6
+    return {"name": name, "numStrings": num_strings, "voicings": voicings}
+
+
+@router.get("/chord/analysis/{key}/{name:path}")
+def chord_analysis_api(key: str, name: str):
+    """回傳和弦在調性中的級數分析"""
+    result = analyze_chord_in_key(key, name)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -92,31 +183,145 @@ class ChordSheet(BaseModel):
     path: str
     key: str = ""
     capo: int = 0
+    bpm: float = 0
     chords: list = []
 
 
 @router.get("/chords")
-async def get_chords(path: str = Query(...)):
+async def get_chords(path: str = Query(...), version: str = Query(None),
+                     username: Optional[str] = Depends(_optional_user)):
     """取得某首歌的和弦譜"""
-    chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+    is_fallback = False
+    if not version and username:
+        user_file = DATA_DIR / "users" / username / "chords" / f"{song_hash(path)}.json"
+        if user_file.is_file():
+            version = username
+    if version and version != "official":
+        chords_file = DATA_DIR / "users" / version / "chords" / f"{song_hash(path)}.json"
+        if not chords_file.is_file():
+            chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+            is_fallback = True
+    else:
+        chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+
     if not chords_file.is_file():
         return {"path": path, "key": "", "capo": 0, "chords": [], "exists": False}
 
+    data = json.loads(chords_file.read_text(encoding="utf-8"))
+    data["exists"] = True
+    data["current_version"] = "official" if is_fallback or not version else version
+    return data
+
+
+@router.get("/chords/by-hash")
+async def get_chords_by_hash(hash: str = Query(..., min_length=8, max_length=16)):
+    """直接用 hash 取得和弦譜（給 process 結果用）"""
+    chords_file = CHORDS_DIR / f"{hash}.json"
+    if not chords_file.is_file():
+        return {"hash": hash, "key": "", "capo": 0, "chords": [], "exists": False}
     data = json.loads(chords_file.read_text(encoding="utf-8"))
     data["exists"] = True
     return data
 
 
 @router.post("/chords")
-async def save_chords(sheet: ChordSheet):
-    """儲存和弦譜"""
-    CHORDS_DIR.mkdir(parents=True, exist_ok=True)
-    chords_file = CHORDS_DIR / f"{song_hash(sheet.path)}.json"
+async def save_chords(sheet: ChordSheet, username: str = Depends(get_current_user)):
+    """儲存和弦譜至個人專屬空間"""
+    user_chords_dir = DATA_DIR / "users" / username / "chords"
+    user_chords_dir.mkdir(parents=True, exist_ok=True)
+    chords_file = user_chords_dir / f"{song_hash(sheet.path)}.json"
+    
     chords_file.write_text(
         json.dumps(sheet.model_dump(), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    return {"ok": True, "path": sheet.path}
+    return {"ok": True, "path": sheet.path, "version": username}
+
+
+@router.get("/chords/versions")
+def get_chord_versions(path: str = Query(...), username: Optional[str] = Depends(_optional_user)):
+    """取得這首歌的所有和弦版本清單，含真實平均評分與目前使用者自己的評分"""
+    target_hash = song_hash(path)
+    versions = []
+
+    all_ratings = _load_ratings().get(target_hash, {})
+    is_admin = _is_admin(username) if username else False
+
+    def _build(version_id: str, name: str):
+        votes = all_ratings.get(version_id, {})
+        avg, count = _version_rating(votes)
+        is_self = bool(username) and version_id == username
+        return {
+            "id": version_id,
+            "name": name,
+            "rating": avg,
+            "count": count,
+            "my_rating": votes.get(username, 0) if username else 0,
+            "can_rate": bool(username) and (not is_self or is_admin),
+            "is_self": is_self,
+        }
+
+    # 1. 官方版
+    official_file = CHORDS_DIR / f"{target_hash}.json"
+    if official_file.is_file():
+        versions.append(_build("official", "官方 AI 版"))
+
+    # 2. 社群版 (掃描所有使用者的 chords 目錄)
+    users_dir = DATA_DIR / "users"
+    if users_dir.is_dir():
+        for user_folder in users_dir.iterdir():
+            if user_folder.is_dir():
+                user_file = user_folder / "chords" / f"{target_hash}.json"
+                if user_file.is_file():
+                    versions.append(_build(user_folder.name, user_folder.name))
+
+    # Sort versions: official first, then highest rating, then most votes
+    versions.sort(key=lambda x: (x["id"] != "official", -x["rating"], -x["count"]))
+
+    return {"ok": True, "versions": versions, "current_user": username}
+
+
+class RatingRequest(BaseModel):
+    path: str
+    version: str
+    score: int  # 1..5, or 0 to remove existing vote
+
+
+@router.post("/chords/rate")
+def rate_chord_version(req: RatingRequest, username: str = Depends(get_current_user)):
+    """對某個和弦版本評分。score=0 代表收回先前的評分。
+    一般使用者不能評自己上傳的版本（防刷分）；管理員不在此限。"""
+    if not (0 <= req.score <= 5):
+        raise HTTPException(status_code=400, detail="score must be between 0 and 5")
+
+    if req.version == username and not _is_admin(username):
+        raise HTTPException(status_code=403, detail="不能對自己的版本評分 (Cannot rate your own version)")
+
+    target_hash = song_hash(req.path)
+
+    with _ratings_lock:
+        data = _load_ratings()
+        song_votes = data.setdefault(target_hash, {})
+        version_votes = song_votes.setdefault(req.version, {})
+
+        if req.score == 0:
+            version_votes.pop(username, None)
+            if not version_votes:
+                song_votes.pop(req.version, None)
+            if not song_votes:
+                data.pop(target_hash, None)
+        else:
+            version_votes[username] = int(req.score)
+
+        _save_ratings(data)
+
+    avg, count = _version_rating(data.get(target_hash, {}).get(req.version, {}))
+    return {
+        "ok": True,
+        "rating": avg,
+        "count": count,
+        "my_rating": int(req.score),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +406,7 @@ async def detect_chords_api(path: str = Query(...)):
         json.dumps(sheet, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    cache_update_entry(path)
 
     return {
         "ok": True,
@@ -297,6 +503,7 @@ def midi_import(path: str = Query(...), midi_path: str = Query(...)):
         CHORDS_DIR.mkdir(parents=True, exist_ok=True)
         chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
         chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
+        cache_update_entry(path)
         return {
             "ok": True, "path": path, "key": audio_key,
             "chord_count": len(btc_chords), "source": "btc",
@@ -311,6 +518,7 @@ def midi_import(path: str = Query(...), midi_path: str = Query(...)):
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
     chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
     chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
+    cache_update_entry(path)
 
     return {
         "ok": True, "path": path, "key": key,
@@ -361,6 +569,7 @@ async def midi_upload(path: str = Query(...), file: UploadFile = File(...)):
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
     chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
     chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
+    cache_update_entry(path)
 
     return {
         "ok": True, "path": path, "key": key,

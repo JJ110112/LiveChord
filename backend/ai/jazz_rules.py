@@ -8,7 +8,10 @@ Rule 5: Secondary dominants
 """
 
 import re
-from .preprocess import NOTE_TO_SEMI, SEMI_TO_NOTE
+try:
+    from .preprocess import NOTE_TO_SEMI, SEMI_TO_NOTE
+except ImportError:
+    from preprocess import NOTE_TO_SEMI, SEMI_TO_NOTE
 
 # ---------------------------------------------------------------------------
 # 和弦功能分類

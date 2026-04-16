@@ -13,7 +13,7 @@ echo Press Ctrl+C to cancel.
 echo.
 timeout /t 3
 
-cd /d W:\
+cd /d V:\
 python backend\batch_accompaniment_worker.py --workers 12 --levels L1,L2 --styles Arpeggio,Block
 
 echo.

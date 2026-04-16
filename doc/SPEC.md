@@ -137,7 +137,7 @@
 |----|------|------|
 | P-04 | 簡譜顯示 | C-relative 簡譜（1-7），上標升降記號 |
 | P-05 | 和弦圖 | 吉他 / 烏克麗麗 / 鋼琴鍵盤 三種顯示 |
-| P-06 | 樂器模式切換 | Piano / Guitar / Ukulele（Overview & Diagrams 分頁）|
+| P-06 | 樂器模式切換 | Piano / Guitar / Ukulele / Accordion / Arranger（底部工具列）|
 | P-08 | 移調 | Transpose ±11 半音，即時更新和弦與簡譜 |
 | P-09 | Capo 設定 | Capo 0-7，僅吉他/烏克麗麗模式顯示 |
 | P-22 | 和弦來源標記 | MIDI / BTC badge 標示和弦資料來源 |
@@ -152,6 +152,44 @@
 | P-16 | 旋律即時標示 | 綠色菱形標記當前旋律音 + 簡譜顯示 |
 | — | Sustain 視覺化 | 前一和弦音符灰色漸出（~0.5s）|
 | — | Ribbon 軌道 | 鍵盤上方水平和弦方塊列，含和弦名/簡譜/旋律簡譜，點擊跳轉 |
+
+#### 編曲鍵盤模式 (Arranger — Yamaha PSR-SX900)
+
+| ID | 功能 | 說明 |
+|----|------|------|
+| A-01 | 統一瀑布流 | 全寬 88 鍵鍵盤 + 瀑布流，LH 和弦藍色 / RH 旋律橘色 |
+| A-02 | 分割點設定 | 預設 F#2 (MIDI 54, Yamaha 八度)，下拉選單 C2~C3 |
+| A-03 | Fingered 和弦輸入 | 左手按住 3-4 鍵輸入和弦 (最低音=根音，音程決定品質) |
+| A-04 | 分割點標記 | 鍵盤 + 瀑布流上紅色虛線標示分割位置 |
+| A-05 | 和弦持續條 | LH 和弦音以藍色長條顯示，持續整個和弦時間 |
+| A-06 | 指法顯示 | LH/RH 均在鍵盤底部顯示圓圈指法數字 (與鋼琴模式共用) |
+| A-07 | 和弦品質模板 | 30+ 和弦品質 (Major/Minor/7th/maj7/m7/dim/aug/sus...) |
+| A-08 | 分割點持久化 | localStorage 記憶使用者分割點選擇 |
+
+#### 樂器架構共用原則
+
+> **⚠️ 重要設計原則：同質樂器必須共享邏輯與 UI**
+
+| 類別 | 共用範圍 | 說明 |
+|------|---------|------|
+| 鍵盤樂器 (Piano, Arranger) | `draw88Piano()` | 3-pass 鍵盤渲染 (白鍵高亮→黑鍵重繪→黑鍵高亮) |
+| 鍵盤樂器 | `initRangePianoCache()` | 可參數化 MIDI 範圍的鍵盤靜態快取 |
+| 鍵盤樂器 | 配色 | LH=cyan `rgba(41,182,246)` / RH=orange `rgba(255,152,0)` |
+| 鍵盤樂器 | `fingeringMap` | 鍵盤底部圓圈指法數字，支援 upcoming 脈動預覽 |
+| 鍵盤樂器 | 瀑布流 | velocity-responsive 配色、contact flash、articulation 標記 |
+| 鍵盤樂器 | `_drawAITeacherHUD()` | 即時教學提示 (力度/和弦切換/黑鍵群/踏板)，透過 bridge 共用 |
+| 弦樂器 (Guitar, Ukulele) | `StringInstrument` | 共用指板 + 右手瀑布流基底類別 |
+| 弦樂器 | `arpeggio-patterns.js` | 共用右手撥弦/刷弦模式庫 |
+| 所有樂器 | `InstrumentRegistry` | register/get/list 統一管理，`needsDiagram()` |
+| 所有樂器 | `_playerBridge` | 共用狀態存取介面 (chordData, audio, cache...) |
+| 所有樂器 | Tab 切換 | `_switchTab()` + `_setAllTabsInactive()` 統一流程 |
+
+**開發注意事項：**
+1. 新增鍵盤樂器時，必須使用 `draw88Piano()` 渲染鍵盤，不可自行實作
+2. 新增弦樂器時，必須繼承 `StringInstrument` 基底類別
+3. 配色方案 (LH/RH) 跨所有樂器一致，不可個別定義
+4. 指法顯示統一使用 `fingeringMap` 傳入 `draw88Piano()`
+5. 新增樂器必須在 `instrument_registry.py` + `InstrumentRegistry` 兩端同時註冊
 
 #### AI 互動功能
 
@@ -201,7 +239,7 @@
 |----|------|------|
 | A-01 | 音樂庫路徑設定 | 多磁碟路徑管理 |
 | A-02 | 掃描控制 | 觸發全量/增量掃描，查看進度 |
-| A-03 | 自動工作排程 | 啟動/停止/手動觸發，調整設定（間隔/每週期數/跳過曲風）|
+| A-03 | 自動工作排程 | 啟動/停止/手動觸發，調整設定（間隔/每週期數/跳過曲風 — UI 依 `genre_taxonomy.js` 將子類聚合成 12 個大分類 checkbox）|
 | A-04 | 覆蓋率統計 | 全庫和弦偵測覆蓋率 + 批次狀態 |
 
 ### 4.7 鋼琴教學模式（Phase 10, 開發中）

@@ -11,7 +11,7 @@ echo Press Ctrl+C to cancel.
 echo.
 timeout /t 3
 
-cd /d W:\backend
+cd /d V:\backend
 python -c "import requests; r = requests.post('http://localhost:8800/api/ai/retrain'); print(r.json())"
 
 echo.

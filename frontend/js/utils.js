@@ -73,3 +73,59 @@ function chordToJianpu(chord, key) {
   const interval = ((noteToSemitone(root) - keySemi) % 12 + 12) % 12;
   return useFlat ? JIANPU_FLAT[interval] : JIANPU_NAMES[interval];
 }
+
+// ---- IndexedDB 音檔暫存 (跨頁傳遞) ----
+
+const _AUDIO_DB_NAME = "LiveChordAudio";
+const _AUDIO_DB_STORE = "blobs";
+
+function _openAudioDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(_AUDIO_DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(_AUDIO_DB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function audioDBStore(hash, blob) {
+  try {
+    const db = await _openAudioDB();
+    const tx = db.transaction(_AUDIO_DB_STORE, "readwrite");
+    tx.objectStore(_AUDIO_DB_STORE).put({ blob, storedAt: Date.now() }, hash);
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+    db.close();
+  } catch (e) {
+    console.warn("audioDBStore failed:", e);
+  }
+}
+
+async function audioDBLoad(hash) {
+  try {
+    const db = await _openAudioDB();
+    const tx = db.transaction(_AUDIO_DB_STORE, "readonly");
+    const req = tx.objectStore(_AUDIO_DB_STORE).get(hash);
+    const result = await new Promise((res, rej) => { req.onsuccess = () => res(req.result); req.onerror = rej; });
+    db.close();
+    return result ? result.blob : null;
+  } catch (e) {
+    console.warn("audioDBLoad failed:", e);
+    return null;
+  }
+}
+
+async function audioDBDelete(hash) {
+  try {
+    const db = await _openAudioDB();
+    const tx = db.transaction(_AUDIO_DB_STORE, "readwrite");
+    tx.objectStore(_AUDIO_DB_STORE).delete(hash);
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+    db.close();
+  } catch (e) {}
+}
+
+function extractYouTubeId(url) {
+  if (!url) return null;
+  const m = url.match(/(?:v=|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}

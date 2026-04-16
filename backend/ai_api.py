@@ -56,6 +56,7 @@ class JazzifyRequest(BaseModel):
     chords: list
     key: str = "C"
     level: int = 1
+    mode: str = "rule-based"
 
 
 @router.post("/jazzify")
@@ -64,21 +65,22 @@ async def jazzify(body: JazzifyRequest):
     from ai.reharmonizer import Reharmonizer
 
     rh = Reharmonizer(level=body.level)
-    result = rh.jazzify(body.chords, key=body.key)
+    result = rh.jazzify(body.chords, key=body.key, mode=body.mode)
     return result
 
 
 @router.get("/similar")
-async def similar(
+def similar(
     chord: str = Query(..., description="和弦級數，如 IIm7"),
     top_k: int = Query(default=5),
 ):
     """Chord2Vec: 找相似和弦"""
-    from ai.chord2vec import get_chord2vec
-
-    model = get_chord2vec(str(CHORDS_DIR))
-    results = model.similar(chord, top_k=top_k)
-    return {"chord": chord, "similar": [{"degree": d, "similarity": round(s, 3)} for d, s in results]}
+    try:
+        from ai.chord2vec import get_similar_chords
+    except ImportError as e:
+        return {"chord": chord, "similar": [], "error": f"chord2vec unavailable: {e}"}
+    results = get_similar_chords(chord, top_n=top_k)
+    return {"chord": chord, "similar": [{"degree": d, "similarity": round(float(s), 3)} for d, s in results]}
 
 
 @router.get("/groove")
@@ -98,7 +100,7 @@ async def groove(
 
 
 @router.get("/evaluate")
-async def evaluate():
+def evaluate():
     """模型評測：perplexity, accuracy"""
     from ai.evaluate import full_evaluation
 
@@ -116,7 +118,8 @@ async def get_melody(
     MELODY_DIR = DATA_DIR / "melodies"
     MELODY_DIR.mkdir(parents=True, exist_ok=True)
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
     cache_file = MELODY_DIR / f"{h}.json"
 
     # 有快取直接回傳
@@ -159,6 +162,16 @@ class ViterbiRequest(BaseModel):
     key: str = "C"
     top_k: int = 10
 
+class EvaluateFeedbackRequest(BaseModel):
+    path: str
+    action: str  # "good" or "bad"
+    context: dict = {}
+
+class SectionsFeedbackRequest(BaseModel):
+    path: str
+    sections: list
+    
+
 
 @router.post("/viterbi")
 async def viterbi_decode(body: ViterbiRequest):
@@ -183,22 +196,102 @@ async def viterbi_decode(body: ViterbiRequest):
     }
 
 
+from auth_api import get_current_user
+from fastapi import Depends
+
 @router.get("/sections")
 async def detect_sections_api(
     path: str = Query(..., description="歌曲路徑"),
+    author: str = Query(None, description="要載入哪個使用者的標註 (可選)"),
+    username: str = Depends(get_current_user)
 ):
     """偵測段落結構（Intro/Verse/Chorus/Bridge/Outro）"""
     import json as _json
     from ai.section_detect import detect_sections
 
-    chords_file = CHORDS_DIR / f"{__import__('hashlib').md5(path.encode()).hexdigest()[:12]}.json"
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
+    chords_file = CHORDS_DIR / f"{h}.json"
     if not chords_file.is_file():
         return {"error": "no chord data"}
 
     data = _json.loads(chords_file.read_text(encoding="utf-8"))
-    result = detect_sections(data.get("chords", []), data.get("key", "C"))
+    
+    # 決定要讀取的 Ground Truth (標註) 來源，優先讀取 author，否則讀自己的
+    target_user = author if author else username
+    user_data_dir = DATA_DIR / "users" / target_user
+    
+    result = detect_sections(data.get("chords", []), data.get("key", "C"), song_hash=h, data_dir=str(user_data_dir), fallback_data_dir=str(DATA_DIR))
     result["path"] = path
+    result["author"] = target_user
     return result
+
+@router.post("/evaluate-feedback")
+async def evaluate_feedback_api(body: EvaluateFeedbackRequest, username: str = Depends(get_current_user)):
+    """(RLHF) 接收和弦星星評分並附加至紀錄檔"""
+    import json as _json
+    from datetime import datetime
+    
+    user_dir = DATA_DIR / "users" / username / "human_feedback"
+    user_dir.mkdir(parents=True, exist_ok=True)
+    file_path = user_dir / "chord_eval.jsonl"
+    
+    import hashlib
+    from chord_cache import song_hash as get_song_hash
+    song_hash = get_song_hash(body.path)
+    
+    record = {
+        "timestamp": datetime.now().isoformat(),
+        "path": body.path,
+        "song_hash": song_hash,
+        "action": body.action,
+        "context": body.context
+    }
+    with open(file_path, "a", encoding="utf-8") as f:
+        f.write(_json.dumps(record, ensure_ascii=False) + "\n")
+    return {"status": "success", "message": "Feedback recorded"}
+
+@router.post("/sections/feedback")
+async def sections_feedback_api(body: SectionsFeedbackRequest, username: str = Depends(get_current_user)):
+    """(RLHF) 接收使用者人工修正的樂句並作為 Ground Truth 保存"""
+    import json as _json
+    import hashlib
+    from chord_cache import song_hash as get_song_hash
+    song_hash = get_song_hash(body.path)
+    
+    user_dir = DATA_DIR / "users" / username / "human_sections"
+    user_dir.mkdir(parents=True, exist_ok=True)
+    file_path = user_dir / f"{song_hash}.json"
+    
+    data = {
+        "path": body.path,
+        "song_hash": song_hash,
+        "human_labeled": True,
+        "sections": body.sections
+    }
+    with open(file_path, "w", encoding="utf-8") as f:
+        _json.dump(data, f, ensure_ascii=False, indent=2)
+    return {"status": "success", "message": f"Sections for {song_hash} saved"}
+
+@router.get("/human_sections/authors")
+async def get_human_section_authors(path: str = Query(..., description="歌曲路徑")):
+    """List all users who have created a ground truth entry for this song."""
+    import hashlib
+    from chord_cache import song_hash as get_song_hash
+    song_hash = get_song_hash(path)
+    
+    users_dir = DATA_DIR / "users"
+    if not users_dir.exists():
+        return {"authors": []}
+        
+    authors = []
+    for user_folder in users_dir.iterdir():
+        if user_folder.is_dir():
+            target_file = user_folder / "human_sections" / f"{song_hash}.json"
+            if target_file.exists():
+                authors.append(user_folder.name)
+                
+    return {"authors": authors}
 
 
 @router.get("/patterns")
@@ -280,7 +373,8 @@ def get_accompaniment(
     ACC_DIR = DATA_DIR / "accompaniments"
     ACC_DIR.mkdir(parents=True, exist_ok=True)
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
     cache_file = ACC_DIR / f"{h}_{style}_{level}_{section_type}.json"
 
     # nocache: 清除此歌所有伴奏快取
@@ -341,7 +435,7 @@ def get_accompaniment(
     if style == "Auto":
         try:
             from ai.section_detect import detect_sections
-            sec_result = detect_sections(chords, chord_data.get("key", "C"))
+            sec_result = detect_sections(chords, chord_data.get("key", "C"), song_hash=h)
             sections = sec_result.get("sections", [])
         except Exception:
             pass
@@ -396,7 +490,8 @@ def suggest_style_api(
     import json as _json
     import hashlib
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
 
     bpm = 120.0
     genre = ""
@@ -437,17 +532,30 @@ def suggest_style_api(
 
 
 @router.get("/stats")
-async def stats():
+def stats():
     """所有模型統計"""
     from ai.markov import get_predictor
-    from ai.chord2vec import get_chord2vec
     from ai.groove_dict import get_groove_dict
 
-    return {
+    result = {
         "markov": get_predictor(str(CHORDS_DIR)).get_stats(),
-        "chord2vec": get_chord2vec(str(CHORDS_DIR)).get_stats(),
         "groove": get_groove_dict(str(CHORDS_DIR)).get_stats(),
     }
+    try:
+        from pathlib import Path as _P
+        models_dir = _P(CHORDS_DIR).parent / "models"
+        emb = models_dir / "chord_embeddings.npy"
+        vocab = models_dir / "vocab.json"
+        if emb.exists() and vocab.exists():
+            import json as _json, numpy as _np
+            v = _json.loads(vocab.read_text(encoding="utf-8"))
+            arr = _np.load(emb, mmap_mode="r")
+            result["chord2vec"] = {"vocab_size": len(v), "embedding_dim": int(arr.shape[1])}
+        else:
+            result["chord2vec"] = {"status": "not_trained"}
+    except Exception as e:
+        result["chord2vec"] = {"error": str(e)}
+    return result
 
 
 # ==============================================================================
@@ -462,7 +570,8 @@ def evaluate_melody_api(
     """旋律品質評測（音域/跳進比/樂句弧/節奏/置信度）"""
     import json as _json, hashlib
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
     melody_file = DATA_DIR / "melodies" / f"{h}.json"
     if not melody_file.is_file():
         return {"error": "no melody data", "overall_score": 0}
@@ -487,7 +596,8 @@ def evaluate_accompaniment_api(
     """伴奏品質評測（碰撞/voice leading/音域/密度/和聲）"""
     import json as _json, hashlib
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
 
     # 載入伴奏快取
     acc_file = DATA_DIR / "accompaniments" / f"{h}_{style}_{level}_default.json"
@@ -532,7 +642,8 @@ def pedal_api(
     """AI 踏板建議"""
     import json as _json, hashlib
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
     chords_file = CHORDS_DIR / f"{h}.json"
     if not chords_file.is_file():
         return {"error": "no chord data", "pedal": []}
@@ -563,7 +674,8 @@ def dynamics_api(
     """AI 力度表情（velocity + articulation）"""
     import json as _json, hashlib
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
 
     # 載入伴奏快取
     for suffix in [f"{style}_{level}_{section_type}", f"{style}_{level}_default", f"{style}_{level}"]:
@@ -598,7 +710,8 @@ def qa_battle_api(
     """QA Battle: 綜合品質評測 (所有 evaluator 對抗)"""
     import json as _json, hashlib
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
 
     # 載入和弦
     chords_file = CHORDS_DIR / f"{h}.json"
@@ -643,7 +756,8 @@ def section_context_api(
     """取得歌曲的段落結構 + 各段落的 AI 建議參數"""
     import json as _json, hashlib
 
-    h = hashlib.md5(path.encode()).hexdigest()[:12]
+    from chord_cache import song_hash as get_song_hash
+    h = get_song_hash(path)
     chords_file = CHORDS_DIR / f"{h}.json"
     if not chords_file.is_file():
         return {"error": "no chord data"}
@@ -652,7 +766,7 @@ def section_context_api(
     chords = chord_data.get("chords", [])
 
     from ai.section_detect import detect_sections
-    sections_result = detect_sections(chords, chord_data.get("key", "C"))
+    sections_result = detect_sections(chords, chord_data.get("key", "C"), song_hash=h)
     sections = sections_result.get("sections", [])
 
     from ai.section_context import build_section_timeline

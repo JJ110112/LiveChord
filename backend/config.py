@@ -117,11 +117,6 @@ def is_beta_mode() -> bool:
     return get_deployment_mode() == "beta"
 
 
-def get_port() -> int:
-    """回傳該模式對應的 port: personal=8800, beta=8801"""
-    return 8801 if is_beta_mode() else 8800
-
-
 def _save_setting(key: str, value):
     settings = _load_settings()
     settings[key] = value

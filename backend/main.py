@@ -60,58 +60,28 @@ app.include_router(analytics_router)
 app.include_router(process_router)
 
 # ---------------------------------------------------------------------------
-# 雙模式存取控制 middleware
+# Admin IP 限制 (beta mode 時只允許 LAN 存取 /admin 相關路徑)
 # ---------------------------------------------------------------------------
 
 
-def _get_client_ip(request: Request) -> str:
-    return (
-        request.headers.get("cf-connecting-ip")
-        or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
-        or (request.client.host if request.client else "")
-    )
-
-
-# Beta mode 限制: 封鎖串流 & 診斷路徑、強制登入
-_BETA_BLOCKED = ("/api/track/stream", "/api/diag/paths")
-_BETA_PUBLIC = (
-    "/login", "/login.html", "/tos", "/tos.html",
-    "/api/auth/", "/api/config/public",
-    "/css/", "/js/", "/img/", "/favicon", "/manifest.json",
-)
 
 @app.middleware("http")
-async def mode_restriction(request: Request, call_next):
+async def admin_lan_restriction(request: Request, call_next):
     from config import is_beta_mode, is_lan_ip
     path = request.url.path
-
-    if is_beta_mode():
-        # --- Beta mode ---
-        # 1) 封鎖串流 & 診斷 (絕對不允許)
-        if any(path.startswith(p) for p in _BETA_BLOCKED):
-            return JSONResponse(status_code=403, content={"detail": "此功能在公開版不可用"})
-
-        # 2) Admin 路徑僅限 LAN
-        _ADMIN_PREFIXES = ("/admin", "/api/auto/", "/api/tasks/", "/api/library/")
-        if any(path.startswith(p) for p in _ADMIN_PREFIXES):
-            if not is_lan_ip(_get_client_ip(request)):
-                return JSONResponse(status_code=403, content={"detail": "Admin access restricted to LAN"})
-
-        # 3) 非公開路徑強制登入
-        if not any(path.startswith(p) for p in _BETA_PUBLIC):
-            auth_header = request.headers.get("authorization")
-            if not auth_header:
-                # 頁面請求 (非 API) → 導向登入頁
-                if not path.startswith("/api/"):
-                    from starlette.responses import RedirectResponse
-                    return RedirectResponse(url="/login")
-                return JSONResponse(status_code=401, content={"detail": "請先登入"})
-
-    else:
-        # --- Personal mode: 僅允許 LAN ---
-        if not is_lan_ip(_get_client_ip(request)):
-            return JSONResponse(status_code=403, content={"detail": "Personal mode: LAN access only"})
-
+    
+    # We still keep _ADMIN_PREFIXES definition here for local use
+    _ADMIN_PREFIXES = ("/admin", "/api/auto/", "/api/tasks/", "/api/library/")
+    
+    if is_beta_mode() and any(path.startswith(p) for p in _ADMIN_PREFIXES):
+        # Check real client IP: CF-Connecting-IP (Cloudflare), X-Forwarded-For, or direct
+        client_ip = (
+            request.headers.get("cf-connecting-ip")
+            or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+            or (request.client.host if request.client else "")
+        )
+        if not is_lan_ip(client_ip):
+            return JSONResponse(status_code=403, content={"detail": "Admin access restricted to LAN"})
     return await call_next(request)
 
 
@@ -317,5 +287,4 @@ if __name__ == "__main__":
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
     import uvicorn
-    from config import get_port
-    uvicorn.run("main:app", host="0.0.0.0", port=get_port(), reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8800, reload=True)

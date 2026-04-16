@@ -10,7 +10,7 @@ echo ==================================================
 echo.
 timeout /t 3
 
-cd /d W:\backend
+cd /d V:\backend
 
 echo ==================================================
 echo [Step 1/2] Scanning Y drive

@@ -2,7 +2,7 @@
 
 import pytest
 
-BASE_URL = "http://localhost:8800"
+BASE_URL = "http://192.168.50.6:8800"
 
 # 測試用已知 track
 TEST_TRACK = "Jazz/Bob James/Bob James - Jazz Hands/Beerbohm.flac"

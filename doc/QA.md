@@ -1,6 +1,6 @@
 # LiveChord 品管文件
 
-> 版本: 3.6 | 日期: 2026-04-05
+> 版本: 3.8 | 日期: 2026-04-08
 > 和弦引擎: BTC Transformer (ISMIR 2019)
 > 對應規格書: SPEC.md v2.0
 
@@ -316,7 +316,7 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 | CS-02 | 鋼琴和弦圖 | Canvas 鍵盤，core=紅點，ext=藍點 | ☐ |
 | CS-03 | 吉他和弦圖 | 顯示指法、barre、baseFret | ☐ |
 | CS-04 | 烏克麗麗和弦圖 | 4 弦和弦圖 | ☐ |
-| CS-05 | 樂器模式切換 | Piano/Guitar/Ukulele 切換正常 | ☐ |
+| CS-05 | 樂器模式切換 | Piano/Guitar/Ukulele/Accordion 切換正常 | ☐ |
 | CS-06 | 即時高亮 | 播放時當前和弦高亮 + 自動捲動 | ☐ |
 | CS-07 | 時間軸連動 | seek 後高亮更新到正確和弦 | ☐ |
 | CS-08 | 移調 +/- | 所有和弦正確移調，Key 顯示更新 | ☐ |
@@ -342,7 +342,59 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 | K-11 | 琴鍵底部發光 | 按下琴鍵底部呈現光暈（Synthesia 風格） | ☐ |
 | K-12 | 擬真鍵盤渲染 | 深色間隙陰影、暖象牙漸層、左右邊緣陰影、立體 bevel、黑鍵頂部反光帶 | ☐ |
 
-### 4.6 播放頁 — 縮放與全螢幕
+### 4.6 播放頁 — 手風琴模式 (Accordion)
+
+| # | 測試項目 | 預期結果 | 通過 |
+|---|----------|----------|------|
+| AC-01 | 手風琴分頁切換 | 工具列點擊🪗切換至手風琴面板 | ☐ |
+| AC-02 | 低音格子渲染 | 3×7 Stradella 按鈕網格正確繪製 (Bass/Major/Minor × 7 五度圈) | ☐ |
+| AC-03 | 當前和弦高亮 | 播放時 Bass + Chord 按鈕亮色顯示 | ☐ |
+| AC-04 | 幽靈和弦預覽 | 下一和弦切換前 2 秒漸入顯示 | ☐ |
+| AC-05 | C 按鈕凹痕 | C bass 按鈕有同心圓觸覺標記 | ☐ |
+| AC-06 | 低音模式瀑布流 | Bass-Chord/Alternating/Waltz/March 四種模式切換 | ☐ |
+| AC-07 | 模式選擇持久化 | 重載後記住低音模式 (localStorage) | ☐ |
+| AC-08 | 左手提示 | 顯示「低音: X  和弦: Y  交替: Z」 | ☐ |
+| AC-09 | 21鍵限制警告 | B/Eb/Ab/Db/F# 等根音顯示紅色警告文字 | ☐ |
+| AC-10 | 記憶分頁恢復 | 上次使用手風琴→回首頁→開新歌→手風琴面板正常顯示 (非空白) | ☐ |
+| AC-11 | Canvas DPI 適配 | 高 DPI 螢幕格子與瀑布流不模糊 | ☐ |
+| AC-12 | 響應式佈局 | 視窗縮放後格子與瀑布流重新計算尺寸 | ☐ |
+
+### 4.7 播放頁 — 編曲鍵盤模式 (Arranger)
+
+| # | 測試項目 | 預期結果 | 通過 |
+|---|----------|----------|------|
+| AR-01 | 編曲琴分頁切換 | 工具列點擊🎹編曲琴切換至統一瀑布流面板 | ☐ |
+| AR-02 | 88 鍵鍵盤渲染 | 全寬鍵盤 (A0-C8) 與鋼琴 tab 比例一致 | ☐ |
+| AR-03 | LH 藍色和弦條 | 左手和弦音以藍色長條顯示，持續整個和弦時間 | ☐ |
+| AR-04 | RH 橘色旋律條 | 右手旋律音以橘色條狀顯示，velocity 影響明暗 | ☐ |
+| AR-05 | 分割點紅線 | 瀑布流 + 鍵盤上可見紅色虛線 + SPLIT 文字標記 | ☐ |
+| AR-06 | 分割點下拉選單 | C2~C3 (MIDI 48~60)，預設 F#2 (MIDI 54) | ☐ |
+| AR-07 | 分割點即時切換 | 變更分割點後瀑布流 + 鍵盤立即重新渲染 | ☐ |
+| AR-08 | 分割點持久化 | 重載後記住分割點 (localStorage) | ☐ |
+| AR-09 | LH 鍵盤指法 | 左手按鍵在鍵盤底部顯示圓圈指法數字 (⑤③①) | ☐ |
+| AR-10 | RH 鍵盤指法 | 右手旋律音在鍵盤底部顯示橘色圓圈指法數字 | ☐ |
+| AR-11 | 鍵盤高亮品質 | cyan/orange 3-pass 渲染 (黑鍵正確覆蓋白鍵溢出) | ☐ |
+| AR-12 | 記憶分頁恢復 | 上次使用編曲琴→回首頁→開新歌→面板正常顯示 | ☐ |
+| AR-13 | Canvas DPI 適配 | 高 DPI 螢幕瀑布流與鍵盤不模糊 | ☐ |
+| AR-14 | 響應式佈局 | 視窗縮放後瀑布流與鍵盤重新計算尺寸，比例正確 | ☐ |
+| AR-15 | AI 教學提示 | 瀑布流右下角顯示 AI Teacher HUD (力度/和弦/黑鍵提示)，與鋼琴 tab 共用 | ☐ |
+
+### 4.8 樂器一致性測試 (Instrument Consistency)
+
+> **⚠️ 本節驗證同質樂器間的 UI 一致性與邏輯共用，任何新增樂器必須通過**
+
+| # | 測試項目 | 預期結果 | 通過 |
+|---|----------|----------|------|
+| IC-01 | 鍵盤配色一致 | Piano 與 Arranger 的 LH cyan / RH orange 色值完全相同 | ☐ |
+| IC-02 | 鍵盤渲染共用 | Piano 與 Arranger 均使用 `draw88Piano()` 3-pass 渲染 | ☐ |
+| IC-03 | 指法顯示一致 | 所有鍵盤樂器使用相同 `fingeringMap` 圓圈數字格式 | ☐ |
+| IC-04 | 瀑布流配色一致 | velocity-responsive 色階公式 (pp→ff) 跨樂器相同 | ☐ |
+| IC-05 | 鍵盤比例一致 | 88 鍵鍵盤在不同 tab 間高度比例相同 (flex:4 waterfall) | ☐ |
+| IC-06 | 弦樂器基底共用 | Guitar 與 Ukulele 均繼承 `StringInstrument` | ☐ |
+| IC-07 | Registry 雙端一致 | 後端 `INSTRUMENTS` 與前端 `InstrumentRegistry` 樂器清單一致 | ☐ |
+| IC-08 | Tab 切換無殘影 | 快速在 5 個樂器 tab 間切換不留下前一個樂器的畫面 | ☐ |
+
+### 4.9 播放頁 — 縮放與全螢幕
 
 | # | 測試項目 | 預期結果 | 通過 |
 |---|----------|----------|------|
@@ -354,7 +406,7 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 | Z-06 | 全螢幕縮放獨立 | 全螢幕 zoom 與一般模式分開記憶 | ☐ |
 | Z-07 | 退出全螢幕 | 恢復原縮放等級 | ☐ |
 
-### 4.7 播放頁 — AI 互動功能
+### 4.10 播放頁 — AI 互動功能
 
 | # | 測試項目 | 預期結果 | 通過 |
 |---|----------|----------|------|
@@ -364,16 +416,18 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 | AI-U04 | BTC fallback | 無 MIDI 時使用 BTC 偵測 | ☐ |
 | AI-U05 | Viterbi fallback | BTC 偵測 0 和弦時自動 Viterbi fallback | ☐ |
 | AI-U06 | 偵測失敗 | 錯誤訊息 + 重試選項 | ☐ |
-| AI-U07 | Jazzify OFF→L1 | 點擊切換，和弦更新，顯示變更數量 | ☐ |
-| AI-U08 | Jazzify L1→L2→L3 | 逐級切換，和弦複雜度遞增 | ☐ |
-| AI-U09 | Jazzify L3→OFF | 還原原始和弦 | ☐ |
-| AI-U10 | Jazzify 橘色指示 | 啟用時工具列背景橘色 | ☐ |
-| AI-U11 | AI 和弦建議 | 點擊按鈕，Toast 顯示 Top 5 候選 + 機率 + degree | ☐ |
-| AI-U12 | 段落標記顯示 | 段落色彩標記在和弦方塊上方 | ☐ |
-| AI-U13 | 段落標籤 | 第一個和弦顯示段落名稱（前奏/主歌/副歌...） | ☐ |
-| AI-U14 | 難度星級 | 根據和弦數量顯示 1-4 星 | ☐ |
+| AI-U07 | Jazzify OFF→L1 | 點擊切換，規則引擎 L1 擴展音，和弦更新 | ☐ |
+| AI-U08 | Jazzify L1→L2→L3 | 逐級切換，和弦數與複雜度遞增 (L2 ii-V, L3 tritone/sec dom) | ☐ |
+| AI-U09 | Jazzify L3→✨AI | 切到 Transformer 神經網路模式，標籤變紫色 ✨AI | ☐ |
+| AI-U10 | Jazzify ✨AI→OFF | 完成循環，還原原始和弦 | ☐ |
+| AI-U11 | Jazzify 色彩指示 | L1/L2/L3 橘色背景，✨AI 紫色背景，OFF 無背景 | ☐ |
+| AI-U12 | Jazzify 快速點擊 | 連點 5 下最終狀態正確（世代計數器抑制 stale callback） | ☐ |
+| AI-U13 | AI 和弦建議 | 點擊按鈕，Toast 顯示 Top 5 候選 + 機率 + degree | ☐ |
+| AI-U14 | 段落標記顯示 | 段落色彩標記在和弦方塊上方 | ☐ |
+| AI-U15 | 段落標籤 | 第一個和弦顯示段落名稱（前奏/主歌/副歌...） | ☐ |
+| AI-U16 | 難度星級 | 根據和弦數量顯示 1-4 星 | ☐ |
 
-### 4.8 和弦編輯器
+### 4.11 和弦編輯器
 
 | # | 測試項目 | 預期結果 | 通過 |
 |---|----------|----------|------|
@@ -383,8 +437,34 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 | E-04 | 拖曳調整時間 | 拖曳和弦標記調整 time/end | ☐ |
 | E-05 | 刪除和弦 | 選取後刪除 | ☐ |
 | E-06 | 儲存 | 儲存後播放頁可讀取 | ☐ |
+| E-S01 | 儲存持久性 | 編輯→儲存→返回播放→再進編輯器→編輯保留 | ☐ |
+| E-S02 | 無編輯回退 | 無使用者編輯時載入官方版本 | ☐ |
+| E-S03 | URL 版本參數 | 儲存後 URL 含 `?version={username}` | ☐ |
+| E-R01 | 全域取代 | 多個 Am→Bm 全部替換成功 | ☐ |
+| E-R02 | 取代無匹配 | 取代不存在的和弦→顯示「找不到」 | ☐ |
+| E-R03 | Ctrl+H 快捷鍵 | 按 Ctrl+H 開啟取代對話框 | ☐ |
+| E-SP01 | 分割 4 拍和弦 | 選取→分割 2/2→產生兩個同名和弦 | ☐ |
+| E-SP02 | 分割 8 拍和弦 | 選取→分割 6/2→驗證時長 | ☐ |
+| E-SP03 | 自訂比例分割 | 使用自訂輸入框→任意比例 | ☐ |
+| E-SP04 | 分割彈窗關閉 | 點擊外部→彈窗關閉 | ☐ |
+| E-SP05 | 多選防護 | 選取 2 個和弦→分割→提示「選取恰好 1 個」 | ☐ |
+| E-T01 | 打拍節奏 | 按 T 鍵 8 次 ~120 BPM→顯示約 120 | ☐ |
+| E-T02 | 套用 BPM | 打拍→套用→和弦方塊拍數更新 | ☐ |
+| E-T03 | 打拍重置 | 打拍→等 4 秒→重新打拍→計數器重置 | ☐ |
+| E-T04 | BPM 持久化 | 打拍→儲存→重載→BPM 保留 | ☐ |
+| E-LI01 | 即時輸入模式 | 按 R→浮動輸入框 + REC 指示燈出現 | ☐ |
+| E-LI02 | 打字放置和弦 | 錄音模式輸入 Am + Enter→和弦放在播放頭 | ☐ |
+| E-LI03 | 替換現有和弦 | 在已有和弦附近放置→替換而非重複 | ☐ |
+| E-LI04 | Escape 退出 | 錄音模式按 Escape→模式退出 | ☐ |
+| E-MI01 | MIDI 連接 | 點擊 MIDI 按鈕→成功/錯誤提示 | ☐ |
+| E-MI02 | MIDI 和弦偵測 | (手動) MIDI 控制器彈奏→和弦自動放置 | ☐ |
+| E-HK01 | ? 快捷鍵說明 | 按 ? 顯示快捷鍵一覽面板 | ☐ |
+| E-REG01 | 既有功能回歸 | 選取、拖曳、縮放、複製貼上、刪除、正規化、匯入 | ☐ |
+| E-REG02 | 播放頁回歸 | 播放頁和弦顯示、版本切換、瀑布流正常 | ☐ |
 
-### 4.9 Admin 管理頁
+### 4.12 Admin 管理頁
+
+> **預設測試帳號**：本地端測試與管理頁登入請使用帳號 `admin`，密碼 `admin`。
 
 | # | 測試項目 | 預期結果 | 通過 |
 |---|----------|----------|------|
@@ -395,9 +475,13 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 | A-05 | 自動排程設定 | 調整間隔/每週期數/跳過曲風 | ☐ |
 | A-06 | 工作器啟停 | 啟動/停止/立即觸發 | ☐ |
 | A-07 | 活動紀錄 | 顯示最近操作 log | ☐ |
-| A-08 | 覆蓋率統計 | 顯示總曲數、已偵測、覆蓋率 % | ☐ |
+| A-08 | 覆蓋率統計 | 顯示總曲數、已偵測、覆蓋率 %（**只計入 `auto_chord_active_groups` 的群組**） | ☐ |
+| A-09 | 掃描中視覺提示 | SCAN 任務運行時，Core 卡片上方出現黃色「掃描中 · 數字將持續變動」banner，且 stat-row 半透明；掃描結束自動還原 | ☐ |
+| A-10 | 設定區塊合併 | 「⚙️ 設定」摺疊區塊位於 LiveChord Core 卡片內；「停止 Core」按鈕位於「💾 套用設定並啟動」右側 | ☐ |
 
-### 4.10 Benchmark 評測頁
+> **統計語意**：`/api/chords/stats` 回傳的 `total_tracks / tracks_with_chords / coverage` 只累計 `auto_chord_active_groups` 勾選的群組；非啟用群組的曲目與和弦檔仍保留在磁碟，但不會出現在儀表板數字中。API 另回傳 `scan_running` 與 `batch_running` 兩個狀態旗標供前端切換 UX。
+
+### 4.13 Benchmark 評測頁
 
 | # | 測試項目 | 預期結果 | 通過 |
 |---|----------|----------|------|
@@ -493,16 +577,16 @@ python chord_detect.py "Z:/POP/E-POP/ABBA/ABBA - ABBA Gold/Dancing Queen.flac"
 1. 將測試曲目 FLAC 放入 data/test_songs/Lv1~Lv5/
 2. 啟動伺服器: start.bat
 3. 執行 API 測試: cd tests && pytest
-4. 執行和弦準確度: cd data/test_songs && python run_test.py all
-5. 執行 Playwright UI 測試: npx playwright test
-6. 手動 UI 測試: 開啟 http://localhost:8800 逐項驗收
+4. 執行和弦準確度: cd songs && python run_test.py all
+5. 執行 Playwright UI 測試: 利用已註冊的 Playwright MCP 與 IDE Live Server 進行本地端 AI 輔助測試。
+6. UI 測試: 開啟 http://localhost:8800 逐項驗收
    - Dashboard: 搜尋、最愛、最近播放、難度星級
    - 播放頁: 三分頁切換、88 鍵、Jazzify、段落標記
    - 管理頁: 掃描、批次偵測、自動排程
    - Benchmark: 執行偵測、對比評分
-7. 佈署同步: AI agent 負責將變更的 backend/frontend 檔案複製到 W:\ 供人類驗證品質
-8. 重啟生產伺服器，確認 W:\ 上運行正常
-9. 記錄結果: 勾選上方清單，未通過項開 issue
+7. 佈署同步: AI agent 負責將變更的 backend/frontend 檔案複製到 V:\ 供人類驗證品質
+8. 重啟生產伺服器，確認 V:\ 上運行正常
+9. 記錄QA結果到 \doc: 勾選上方清單，未通過項開 issue
 10. 全部 P0/P1 修復後 → 版本通過
 ```
 
@@ -536,9 +620,9 @@ AI 的每次提交必須附上兩種清單：
 > **駁回權力**：當人類開發者回復「退回！你沒有跑測試就說寫完了，自己檢查 Script Error。」時，AI 必須重新啟動偵錯迴圈，執行自我測試。
 
 ### 防線 5：佈署同步 (Deploy Sync)
-程式碼提交後，**必須同步至生產伺服器 W:\**。開發環境 (`C:\Users\hitea\Claude\LiveChord`) 與生產環境 (`W:\`) 是分離的，伺服器從 `W:\backend` 和 `W:\frontend` 執行。
-- **後端變更**：將修改的 `.py` 檔案複製到 `W:\backend\` 對應路徑。
-- **前端變更**：將修改的 `.html`、`.js`、`.css` 檔案複製到 `W:\frontend\` 對應路徑。
+程式碼提交後，**必須同步至生產伺服器 V:\**（NUC 上的 `C:\LiveChord`，從 PC 端以 V:\ 掛載）。開發環境 (`C:\Users\hitea\Claude\LiveChord`) 與生產環境 (`V:\`) 是分離的，伺服器從 `V:\backend` 和 `V:\frontend` 執行。
+- **後端變更**：將修改的 `.py` 檔案複製到 `V:\backend\` 對應路徑。
+- **前端變更**：將修改的 `.html`、`.js`、`.css` 檔案複製到 `V:\frontend\` 對應路徑。
 - **新增檔案**：確認目標目錄存在，必要時建立子目錄。
 - **驗證**：同步後用 `ls -la` 確認檔案大小與時間戳正確。
 - **不同步的項目**：`data/`（生產環境有自己的資料）、`doc/`、`tests/`、`.git/`。
@@ -581,7 +665,7 @@ AI 的每次提交必須附上兩種清單：
 為了解決 NAS NAS/伺服器 CPU 效能不足以應付數萬首曲目的 BTC 和弦推論與 pYIN 旋律擷取之問題，系統導入了高階 PC 作為「超級運算節點 (Super Worker)」的分散式處理策略：
 - **CPU/GPU 雙重引擎**：透過 `batch_super_worker.py` 在配備了旗艦級 CPU (如 i9) 與 GPU (如 RTX 5080) 的 PC 上運行，使用 `ThreadPoolExecutor` 提供 12~24 執行緒全速處理 CPU 密集的旋律擷取。
 - **Semaphore 保護機制**：利用 `threading.Semaphore(2)` 限制進入 PyTorch 的並發數，維持 GPU 滿載同時杜絕 VRAM OOM 崩潰。
-- **資料庫無縫連接**：運算結果直接透過網路磁碟寫入 NAS 共用目錄 (`W:\data`)，Server 徹底轉型為輕量級 Web 與 API 提供者，達成 **Zero-CPU Server** 目標。
+- **資料庫無縫連接**：運算結果直接透過網路磁碟寫入 NAS 共用目錄 (`V:\data`)，Server 徹底轉型為輕量級 Web 與 API 提供者，達成 **Zero-CPU Server** 目標。
 
 ---
 
@@ -652,12 +736,34 @@ AI 的每次提交必須附上兩種清單：
 - 目前設定：`flex: 0 0 120px`，**不可低於 100px**
 - Active chord 使用 `transform-origin: top center` 確保向下擴展、色條對齊
 
-### 規則 9：W:\ 與 Git 雙向同步 (Dual Sync)
+### 規則 9：V:\ 與 Git 雙向同步 (Dual Sync)
 
-- 修改 W:\（生產）→ 立刻同步到 git repo
-- 修改 git repo → 立刻同步到 W:\
+- 修改 V:\（生產，NUC 的 C:\LiveChord）→ 立刻同步到 git repo
+- 修改 git repo → 立刻同步到 V:\
 - **兩邊必須是同一份檔案**，不可各自維護不同版本
+- 注意：W:\（NAS \\LOVE\LiveChordServer）為 PC 端批次 worker 用的另一份共用副本，與 V:\ 是兩個獨立目錄，不要混淆
 - `cp` 整份檔案比 `Edit` 兩邊更安全
+
+### 規則 10.5：library_cache 掃描保留既有條目 (Scan Preservation)
+
+- **問題根源**：`_scan_worker` 若遇到 `os.scandir` 失敗（SMB 斷線、權限錯誤等），原本會直接 `return` 並把該目錄下的舊條目當成「已刪除」從 library_cache 移除，造成大量曲目憑空消失。非 active 群組雖有 preservation loop 保護，**active 群組的 I/O 錯誤目錄沒有被保護**。
+- **解決方案**：`_scan_worker` 維護一個 `errored_prefixes: set[str]`，在 `_scan_dir` 的 `except OSError` 分支 `errored_prefixes.add(current_rel_prefix)`；最終 preservation loop 除了保留非 active 群組，也保留 `old_rel.startswith(prefix)` 的條目。
+- **不要做**：把 scandir 錯誤當成空目錄處理；這會讓暫時的網路抖動變成永久資料流失。
+- **驗證**：scan 結束後 `_scan_state["preserved_errored"]` 若 > 0 表示有觸發保留機制，應留意 NAS 連線狀況。
+- **來源**：2026-04-15 使用者看到 admin 總曲目從 45955 下降到 27000 — 實際上是 full scan 從 0 爬升中的正常現象，但同時發現 active 群組 I/O 錯誤會導致真正的資料丟失，順手補上保護。
+
+### 規則 11：Canvas 尺寸必須跟隨佈局 (Canvas Buffer ↔ Flex Sync)
+
+- **問題根源**：`requestAnimationFrame` 動畫迴圈只在播放中運行（`!audio.paused`），暫停時 Canvas buffer 不會自動更新。若 flex 佈局在初始化後改變（例如鍵盤 canvas 設定高度導致瀑布流 canvas 縮小），buffer 尺寸與顯示尺寸不一致 → 文字/音符放大或壓縮。
+- **解決方案**：對需要動態調整的 canvas 使用 `ResizeObserver`，在尺寸改變時觸發重繪
+  ```javascript
+  // 範例：arranger 瀑布流 canvas
+  const ro = new ResizeObserver(() => this.update(audio.currentTime || 0));
+  ro.observe(waterfallCanvas);
+  ```
+- **禁止**依賴 `canvas.style.width/height` 控制 flex 子元素尺寸 — 讓 CSS `flex` 規則控制顯示大小，JS 只設 `canvas.width/height`（buffer 像素數）
+- **範例**：鋼琴瀑布流 `_resizeWaterfall()` 只設 `canvas.width = w * dpr`，不設 `canvas.style.height`
+- **來源**：2026-04-08 arranger 編曲鍵盤初次載入文字放大 bug — `update()` 只在 `init()` 時執行一次，後續 flex 重排未觸發重繪
 
 ---
 
@@ -672,6 +778,10 @@ AI 的每次提交必須附上兩種清單：
 | 3.1 | 2026-04-04 | 新增第 12 節：提案 AI 指法生成與驗證雙軌架構 (Generator-Evaluator Architecture) |
 | 3.2 | 2026-04-04 | 新增第 13 節：邊緣運算與雙引擎批次處理架構 (Super Worker Edge Architecture) |
 | 3.3 | 2026-04-04 | 修復沉浸模式 UI：toolbar grid 佈局、縮放捲動抖動、scrollbar 隱藏、zoom/close 按鈕重疊、select option 深色主題 |
+| 3.4 | 2026-04-15 | Admin Core 卡片合併設定區塊；掃描中新增黃色 banner 與半透明 stat-row；`/api/chords/stats` 新增 `scan_running` 旗標；`_scan_worker` 新增 `errored_prefixes` 保留 I/O 失敗目錄下的舊條目（規則 10.5） |
 | 3.4 | 2026-04-05 | 新增第 14 節：前端 UI 架構鐵律（9 條規則），源自 AI 鋼琴老師開發的 10+ 次 UI 迴歸修復經驗 |
 | 3.5 | 2026-04-05 | 新增 K-09~K-11：瀑布流白/黑鍵色階、琴鍵高亮清晰度、底部發光效果測試項目 |
 | 3.6 | 2026-04-05 | 新增 K-12 擬真鍵盤渲染、CS-12 升降號和弦圖完整性；補齊烏克麗麗 C#/Db/D#/G#/A# 和弦 |
+| 3.7 | 2026-04-08 | 新增手風琴 (Accordion) 樂器：21鍵 Stradella 低音教學面板 + 瀑布流；新增 §4.6 AC-01~AC-12 測試項目；修復樂器記憶分頁恢復空白面板 bug（初始化順序問題） |
+| 3.8 | 2026-04-08 | 新增編曲鍵盤 (Arranger) 樂器：PSR-SX900 Fingered 和弦教學 + 統一瀑布流；新增 §4.7 AR-01~AR-14 測試項目；新增 §4.8 IC-01~IC-08 樂器一致性測試；SPEC.md 新增樂器架構共用原則 |
+| 3.9 | 2026-04-08 | 修復 arranger 瀑布流文字放大 bug：ResizeObserver 同步 canvas buffer 與 flex 佈局；修復分割點拖拽（window 事件監聽）；修復 DPI 縮放；新增規則 10 Canvas Buffer ↔ Flex Sync |
