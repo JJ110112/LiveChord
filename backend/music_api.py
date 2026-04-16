@@ -34,21 +34,31 @@ _scan_state = BatchState(
 # ---------------------------------------------------------------------------
 
 def _safe_path(path: str) -> str:
-    """驗證路徑在任一 MUSIC_ROOT 內，防止路徑穿越
-
-    用 commonpath 做 segment-level 檢查，避免子字串誤判（例如檔名含 `...` 省略號）。
-    realpath 已展開符號連結與相對段，所以 `..` 攻擊會被 commonpath 自動排除。
-    """
+    """驗證路徑在任一 MUSIC_ROOT 內，防止路徑穿越"""
     resolved = os.path.realpath(path)
+    c_clean_resolved = resolved.rstrip("/\\").lower()
+    
     for root in get_music_roots():
         root_real = os.path.realpath(root)
+        c_clean_root = root_real.rstrip("/\\").lower()
+        
+        # 1. 寬鬆比對 (prefix match)
+        if c_clean_resolved.startswith(c_clean_root + os.sep) or c_clean_resolved == c_clean_root:
+            return resolved
+            
+        # 2. 嚴格比對 (commonpath) 作為 fallback
         try:
             common = os.path.commonpath([resolved, root_real])
+            if common.rstrip("/\\").lower() == c_clean_root:
+                return resolved
         except ValueError:
-            continue  # 不同 drive
-        if common.lower() == root_real.lower():
-            return resolved
-    raise HTTPException(status_code=403, detail="路徑不允許")
+            pass
+            
+    # 若失敗，印出詳細日誌以供除錯
+    print(f"[DEBUG] _safe_path REJECTED: path='{path}'")
+    print(f"        resolved: '{resolved}'")
+    print(f"        roots: {get_music_roots()}")
+    raise HTTPException(status_code=403, detail="路徑不允許 (SafePath check failed)")
 
 
 def _read_flac_meta(filepath: str) -> dict:
