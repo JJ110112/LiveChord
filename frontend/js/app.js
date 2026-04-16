@@ -54,13 +54,11 @@
       _isBetaMode = cfgRes.deployment_mode === "beta";
       if (_isBetaMode && !adminRes.is_admin) {
         _isBetaNonAdmin = true;
-        // Hide NAS-dependent sections
+        // Hide NAS-dependent sections (but keep favorites — works with __hash/ paths)
         const secBrowse = $("#secBrowse");
         const secRecent = $("#secRecent");
-        const secFavorites = $("#secFavorites");
         if (secBrowse) secBrowse.style.display = "none";
         if (secRecent) secRecent.style.display = "none";
-        if (secFavorites) secFavorites.style.display = "none";
         // Show beta sections
         const secUpload = $("#secUpload");
         const secBetaRecent = $("#secBetaRecent");
@@ -288,7 +286,7 @@
       const tasks = [];
       if (_isBetaNonAdmin) {
         _initBetaUpload();
-        tasks.push(_loadBetaHistory());
+        tasks.push(_loadBetaHistory(), loadFavorites());
       } else {
         tasks.push(loadRecent(), loadFavorites(), browse(currentPath));
         if (_isBetaMode) tasks.push(_loadBetaHistory());
@@ -493,24 +491,56 @@
         return;
       }
       section.style.display = "";
-      
+
+      // For hash-based favorites, fetch chord titles
+      const hashFavs = data.favorites.filter(f => f.path.startsWith("__hash/"));
+      const hashTitles = {};
+      for (const f of hashFavs) {
+        const hash = f.path.replace("__hash/", "");
+        try {
+          const cd = await fetch(`/api/chords/by-hash?hash=${hash}`).then(r => r.json());
+          if (cd.exists) hashTitles[hash] = { title: cd.title || hash, youtube_url: cd.youtube_url || "" };
+        } catch {}
+      }
+
       let html = '';
-      data.favorites.forEach((f, i) => {
-        const name = f.path.split("/").pop().replace(/\.flac$/i, "");
-        const coverUrl = API.trackCoverUrl(f.path);
-        html += `
-          <div class="grid-item" data-path="${escapeHtml(f.path)}">
-            <img class="cover" src="${coverUrl}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
-            <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
-            <div class="info">
-              <div class="title">${escapeHtml(name)}</div>
-              ${getDifficultyHtml(f)}
-            </div>
-          </div>`;
+      data.favorites.forEach((f) => {
+        const isHash = f.path.startsWith("__hash/");
+        const hash = isHash ? f.path.replace("__hash/", "") : "";
+        if (isHash) {
+          const info = hashTitles[hash] || { title: hash, youtube_url: "" };
+          const _extId = typeof extractYouTubeId === "function" ? extractYouTubeId
+            : (u) => { const m = (u||"").match(/(?:v=|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})/); return m ? m[1] : null; };
+          const vid = _extId(info.youtube_url);
+          const coverHtml = vid
+            ? `<img class="cover" src="https://img.youtube.com/vi/${vid}/mqdefault.jpg" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">`
+            : `<img class="cover" src="/api/process/cover/${escapeHtml(hash)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">`;
+          html += `
+            <div class="grid-item" data-hash="${escapeHtml(hash)}">
+              ${coverHtml}
+              <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
+              <div class="info"><div class="title">${escapeHtml(info.title)}</div></div>
+            </div>`;
+        } else {
+          const name = f.path.split("/").pop().replace(/\.flac$/i, "");
+          const coverUrl = API.trackCoverUrl(f.path);
+          html += `
+            <div class="grid-item" data-path="${escapeHtml(f.path)}">
+              <img class="cover" src="${coverUrl}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
+              <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
+              <div class="info">
+                <div class="title">${escapeHtml(name)}</div>
+                ${getDifficultyHtml(f)}
+              </div>
+            </div>`;
+        }
       });
       container.innerHTML = html;
       container.querySelectorAll(".grid-item").forEach((el) => {
-        el.addEventListener("click", () => goPlayer(el.dataset.path));
+        el.addEventListener("click", () => {
+          if (el.dataset.hash) goPlayer("", el.dataset.hash);
+          else goPlayer(el.dataset.path);
+        });
       });
     } catch (err) {
       section.style.display = "none";

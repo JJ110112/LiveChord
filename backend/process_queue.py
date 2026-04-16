@@ -301,13 +301,14 @@ def get_audit_log(limit: int = 50, offset: int = 0) -> list[dict]:
 
 
 def get_user_audit_log(username: str, limit: int = 20) -> list[dict]:
-    """Get a specific user's process history."""
+    """Get a specific user's process history, deduplicated by title (latest only)."""
     with sqlite3.connect(AUDIT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            "SELECT * FROM process_audit WHERE username=? ORDER BY id DESC LIMIT ?",
-            (username, limit)
+            "SELECT * FROM process_audit WHERE username=? ORDER BY id DESC",
+            (username,)
         ).fetchall()
+    seen_titles = set()
     results = []
     for r in rows:
         d = dict(r)
@@ -316,7 +317,15 @@ def get_user_audit_log(username: str, limit: int = 20) -> list[dict]:
             d["result_hash"] = hashlib.md5(
                 f"__upload/{d['job_id']}".encode("utf-8")
             ).hexdigest()[:12]
+        # Deduplicate by title (keep most recent)
+        title_key = (d.get("title") or "").strip().lower()
+        if title_key and title_key in seen_titles:
+            continue
+        if title_key:
+            seen_titles.add(title_key)
         results.append(d)
+        if len(results) >= limit:
+            break
     return results
 
 
