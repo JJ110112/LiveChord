@@ -113,13 +113,19 @@ def process_youtube(req: YouTubeRequest, username: str = Depends(get_current_use
     if not _YOUTUBE_RE.match(url):
         raise HTTPException(status_code=400, detail="請提供有效的 YouTube URL")
 
+    # Extract video ID and normalize URL (strip playlist/radio params)
+    vid_m = re.search(r"(?:v=|youtu\.be/|/shorts/)([A-Za-z0-9_-]{11})", url)
+    vid = vid_m.group(1) if vid_m else ""
+    if vid:
+        url = f"https://www.youtube.com/watch?v={vid}"
+
     job_id = generate_job_id()
     job = ProcessJob(
         job_id=job_id,
         username=username,
         source_type="youtube",
         youtube_url=url,
-        title=f"YouTube: {url[-11:]}",
+        title=f"YouTube: {vid or url[-11:]}",
     )
 
     try:
