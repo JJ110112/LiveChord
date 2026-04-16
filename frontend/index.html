@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=1">
-  <link rel="stylesheet" href="/css/home.css?v=4">
+  <link rel="stylesheet" href="/css/home.css?v=5">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -53,16 +53,16 @@
     <div id="recentList" class="horizontal-scroll"></div>
   </section>
 
-  <!-- favorites section -->
-  <section id="secFavorites" class="dash-section" style="display:none">
-    <h2 class="dash-title">我的最愛</h2>
-    <div id="favList" class="horizontal-scroll"></div>
-  </section>
-
   <!-- beta recent plays (hidden by default) -->
   <section id="secBetaRecent" class="dash-section" style="display:none">
     <h2 class="dash-title">最近播放</h2>
     <div id="betaRecentList" class="horizontal-scroll"></div>
+  </section>
+
+  <!-- favorites section -->
+  <section id="secFavorites" class="dash-section" style="display:none">
+    <h2 class="dash-title">我的最愛</h2>
+    <div id="favList" class="horizontal-scroll"></div>
   </section>
 
   <!-- beta library = analysis history as grid (hidden by default) -->
@@ -221,6 +221,6 @@
       }
   }
 </script>
-<script src="/js/app.js?v=44"></script>
+<script src="/js/app.js?v=45"></script>
 </body>
 </html>

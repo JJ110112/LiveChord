@@ -3384,7 +3384,9 @@
         chordData = await res.json();
         if (chordData.exists && chordData.chords && chordData.chords.length > 0) {
           hasChords = true;
-          const title = chordData.title || "分析結果";
+          const title = chordData.title
+            || (chordData.path ? chordData.path.split("/").pop().replace(/\.\w+$/i, "") : "")
+            || "分析結果";
           songTitle.textContent = title;
           document.title = `${title} — LiveChord`;
           if (chordData.key) {
