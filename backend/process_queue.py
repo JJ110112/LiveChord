@@ -25,12 +25,14 @@ logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 CHORDS_DIR = DATA_DIR / "chords"
+MELODIES_DIR = DATA_DIR / "melodies"
 TMP_DIR = DATA_DIR / "tmp"
 AUDIT_DB_PATH = DATA_DIR / "audit.db"
 
 # Ensure directories exist
 TMP_DIR.mkdir(parents=True, exist_ok=True)
 CHORDS_DIR.mkdir(parents=True, exist_ok=True)
+MELODIES_DIR.mkdir(parents=True, exist_ok=True)
 
 def _find_ytdlp() -> str:
     """Resolve yt-dlp executable path, falling back to known pip Scripts dir."""
@@ -399,6 +401,16 @@ def _worker_loop():
             job.progress = 40
             from chord_detect import detect_chords_and_key_isolated
             chords, key = detect_chords_and_key_isolated(audio_path)
+            job.progress = 80
+
+            # Step 2.5: Melody extraction (while audio file still exists)
+            melody_data = None
+            try:
+                from ai.melody_extractor import MelodyExtractor
+                ext = MelodyExtractor()
+                melody_data = ext.extract_melody(audio_path)
+            except Exception as mel_err:
+                logger.warning("Melody extraction failed for %s: %s", job_id, mel_err)
             job.progress = 90
 
             # Step 3: Extract cover art (before audio is deleted)
@@ -415,6 +427,17 @@ def _worker_loop():
                 pending_cover = COVERS_DIR / "pending.jpg"
                 if pending_cover.is_file():
                     pending_cover.rename(COVERS_DIR / f"{result_hash}.jpg")
+
+            # Step 4.5: Save melody JSON
+            if melody_data:
+                try:
+                    mel_file = MELODIES_DIR / f"{result_hash}.json"
+                    mel_file.write_text(
+                        json.dumps({"path": f"__upload/{job.job_id}", "melody": melody_data}, ensure_ascii=False),
+                        encoding="utf-8"
+                    )
+                except Exception as mel_save_err:
+                    logger.warning("Melody save failed: %s", mel_save_err)
 
             job.status = JobStatus.DONE
             job.progress = 100
