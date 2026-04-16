@@ -5,34 +5,33 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LiveChord - 登入</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/css/index.css">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/base.css?v=2">
   <style>
     body {
       display: flex;
       justify-content: center;
       align-items: center;
       min-height: 100vh;
-      background: linear-gradient(135deg, #0f172a, #1e1b4b);
+      background: var(--bg);
       margin: 0;
-      color: var(--text-color);
-      font-family: 'Inter', sans-serif;
+      color: var(--text);
+      font-family: "Segoe UI", "Noto Sans TC", sans-serif;
     }
-    
+
     .auth-container {
-      background: rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 1.5rem;
+      background: var(--bg-card);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
       padding: 3rem;
       width: 100%;
       max-width: 400px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      box-shadow: var(--shadow);
       position: relative;
       overflow: hidden;
     }
-    
+
     .auth-container::before {
       content: '';
       position: absolute;
@@ -41,9 +40,9 @@
       width: 100px;
       height: 100px;
       background: var(--accent);
-      filter: blur(50px);
+      filter: blur(60px);
       border-radius: 50%;
-      opacity: 0.5;
+      opacity: 0.35;
     }
 
     h1 {
@@ -53,30 +52,30 @@
       font-size: 2rem;
       letter-spacing: -0.5px;
     }
-    
+
     .tabs {
       display: flex;
       gap: 1rem;
       margin-bottom: 2rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      border-bottom: 1px solid var(--border);
       padding-bottom: 0.5rem;
     }
-    
+
     .tab {
       flex: 1;
       text-align: center;
       cursor: pointer;
       padding: 0.5rem;
       font-weight: 500;
-      color: var(--text-muted);
+      color: var(--text-dim);
       transition: all 0.3s ease;
       position: relative;
     }
-    
+
     .tab.active {
       color: var(--accent);
     }
-    
+
     .tab.active::after {
       content: '';
       position: absolute;
@@ -95,17 +94,17 @@
     .form-group label {
       display: block;
       margin-bottom: 0.5rem;
-      color: var(--text-muted);
+      color: var(--text-dim);
       font-size: 0.875rem;
     }
 
     .form-group input {
       width: 100%;
       padding: 0.75rem 1rem;
-      background: rgba(0, 0, 0, 0.2);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 0.5rem;
-      color: var(--text-color);
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
       font-size: 1rem;
       transition: all 0.3s ease;
       box-sizing: border-box;
@@ -114,7 +113,7 @@
     .form-group input:focus {
       outline: none;
       border-color: var(--accent);
-      box-shadow: 0 0 0 2px rgba(119, 90, 246, 0.2);
+      box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
     }
 
     .btn {
@@ -123,20 +122,20 @@
       background: var(--accent);
       color: white;
       border: none;
-      border-radius: 0.5rem;
+      border-radius: 8px;
       font-size: 1rem;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.3s ease;
-      box-shadow: 0 4px 6px rgba(119, 90, 246, 0.3);
+      box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
     }
 
     .btn:hover {
-      background: var(--accent-hover);
+      background: var(--accent-dim);
       transform: translateY(-1px);
-      box-shadow: 0 6px 12px rgba(119, 90, 246, 0.4);
+      box-shadow: 0 6px 16px rgba(33, 150, 243, 0.4);
     }
-    
+
     .error-msg {
       color: #ff5252;
       font-size: 0.875rem;
