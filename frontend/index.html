@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=1">
-  <link rel="stylesheet" href="/css/home.css?v=6">
+  <link rel="stylesheet" href="/css/home.css?v=7">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -68,7 +68,7 @@
   <!-- beta library = analysis history as grid (hidden by default) -->
   <section id="secHistory" class="dash-section" style="display:none">
     <h2 class="dash-title">音樂庫</h2>
-    <div id="historyGrid" class="horizontal-scroll" style="margin-top:12px"></div>
+    <div id="historyGrid" class="library-grid" style="margin-top:12px"></div>
   </section>
 
   <!-- beta FAB + popup (hidden by default) -->
@@ -109,7 +109,7 @@
       </h2>
       <input type="text" id="dirFilter" placeholder="過濾曲目..." autocomplete="off" style="display:none; padding: 4px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); font-size: 12px; width: 140px;">
     </div>
-    <div id="browseGrid" class="grid" style="margin-top: 16px;"></div>
+    <div id="browseGrid" class="library-grid" style="margin-top: 16px;"></div>
     <ul id="trackList" class="track-list" style="display:none; margin-top: 16px;"></ul>
   </section>
 

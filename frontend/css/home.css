@@ -6,6 +6,20 @@
   gap: 12px;
 }
 
+/* Library grid — wrapping grid with scroll for large collections */
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 150px);
+  gap: 12px;
+  max-height: 70vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.08) transparent;
+  padding-right: 4px;
+}
+.library-grid::-webkit-scrollbar { width: 4px; }
+.library-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
 .grid-item {
   background: var(--bg-card);
   border-radius: var(--radius);
