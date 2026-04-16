@@ -223,6 +223,10 @@ async def favicon():
 async def manifest():
     return FileResponse(FRONTEND_DIR / "manifest.json", media_type="application/manifest+json")
 
+@app.get("/robots.txt")
+async def robots():
+    return FileResponse(FRONTEND_DIR / "robots.txt", media_type="text/plain")
+
 
 NO_CACHE_HEADERS = {
     "Cache-Control": "no-cache, no-store, must-revalidate",
