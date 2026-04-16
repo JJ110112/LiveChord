@@ -275,7 +275,7 @@ def search(q: str = Query(default=""), authorization: str = Header(None)):
 # ---------------------------------------------------------------------------
 
 @router.get("/track/info")
-async def track_info(path: str = Query(...)):
+def track_info(path: str = Query(...)):
     """取得單曲 metadata"""
     full = _safe_path(resolve_path(path))
     if not os.path.isfile(full):
@@ -296,7 +296,7 @@ async def track_info(path: str = Query(...)):
 
 
 @router.get("/track/stream")
-async def track_stream(request: Request, path: str = Query(...)):
+def track_stream(request: Request, path: str = Query(...)):
     """串流 FLAC 音訊（支援 HTTP Range — 相容平板瀏覽器）"""
     full = _safe_path(resolve_path(path))
     if not os.path.isfile(full):

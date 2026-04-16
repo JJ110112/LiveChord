@@ -2536,16 +2536,18 @@
   function _startStreamWatcher() {
     _stopStreamWatcher();
     _streamLastTime = audio.currentTime;
-    _setAudioLoadingState(true);
-    
+    let _stallTicks = 0;
+
     _streamWatcherTimer = setInterval(() => {
       if (audio.paused) {
         _stopStreamWatcher();
         return;
       }
       if (audio.currentTime === _streamLastTime) {
-        _setAudioLoadingState(true);
+        _stallTicks++;
+        if (_stallTicks >= 4) _setAudioLoadingState(true);
       } else {
+        _stallTicks = 0;
         _setAudioLoadingState(false);
         _streamLastTime = audio.currentTime;
       }

@@ -155,31 +155,32 @@
     .then(res => res.json())
     .then(data => {
         if (data.is_admin) {
-            if (!username) {
-                username = "Admin (LAN)";
-            }
-            const greeting = document.getElementById("userGreeting");
-            if (greeting) greeting.textContent = `Hello, ${username}`;
+            fetch("/api/config/public").then(r => r.json()).then(cfg => {
+                if (cfg.deployment_mode === "beta") {
+                    // Beta mode: show admin UI
+                    if (!username) username = "Admin (LAN)";
+                    const greeting = document.getElementById("userGreeting");
+                    if (greeting) greeting.textContent = `Hello, ${username}`;
 
-            const navDiv = document.querySelector("nav div");
-            // Only add button if it's not already there
-            if (!navDiv.querySelector("button.admin-btn")) {
-                const adminBtn = document.createElement("button");
-                adminBtn.className = "admin-btn";
-                adminBtn.textContent = "管理後台";
-                adminBtn.onclick = () => window.location.href = "/admin";
-                navDiv.insertBefore(adminBtn, navDiv.querySelector("button"));
-                
-                // For Beta mode admin "新歌分析" button
-                fetch("/api/config/public").then(r => r.json()).then(cfg => {
-                    if (cfg.deployment_mode === "beta") {
+                    const navDiv = document.querySelector("nav div");
+                    if (!navDiv.querySelector("button.admin-btn")) {
+                        const adminBtn = document.createElement("button");
+                        adminBtn.className = "admin-btn";
+                        adminBtn.textContent = "管理後台";
+                        adminBtn.onclick = () => window.location.href = "/admin";
+                        navDiv.insertBefore(adminBtn, navDiv.querySelector("button"));
+
                         const processBtn = document.createElement("button");
                         processBtn.textContent = "新歌分析";
                         processBtn.onclick = () => window.location.href = "/process";
                         navDiv.insertBefore(processBtn, navDiv.querySelector("button"));
                     }
-                }).catch(() => {});
-            }
+                } else {
+                    // Personal mode: hide nav entirely
+                    const nav = document.querySelector("header nav");
+                    if (nav) nav.style.display = "none";
+                }
+            }).catch(() => {});
         } else if (username) {
             const greeting = document.getElementById("userGreeting");
             if (greeting) greeting.textContent = `Hello, ${username}`;
