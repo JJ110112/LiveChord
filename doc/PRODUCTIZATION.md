@@ -1,6 +1,6 @@
 # LiveChord 產品化規劃書
 
-> 版本: 1.0 | 日期: 2026-04-16
+> 版本: 1.1 | 日期: 2026-04-17
 > 目標: Beta tester 能夠進行測試並回饋問題
 
 ---
@@ -485,10 +485,22 @@ Week 2:
   ├── ✅ 200MB 上傳限制 (FLAC 友善)
   └── ✅ 分析記錄持久化 (audit DB + my-history endpoint)
 
+2026-04-17 後續迭代:
+  ├── ✅ 旋律萃取整合進 process queue (process_queue.py)
+  ├── ✅ 結果重用偵測 (find_existing_result / write_reuse_audit)
+  │     同 YouTube URL / 檔案 hash 命中既有結果時直接重用，省 GPU
+  ├── ✅ YouTube URL 正規化 (strip &list=, &start_radio= 等播放清單參數)
+  ├── ✅ Beta 首頁 UI 重構：上傳浮動按鈕 (FAB) + 響應式 grid + 垂直滾動
+  ├── ✅ 搜尋→播放 標題流向、卡片大小、區段順序統一
+  ├── ✅ Hash-mode 完整功能 (volume / favorites / melody / recent)
+  ├── ✅ Ribbon 縮放 +/- 同步調整寬高
+  ├── ✅ 串流卡頓修復 + Personal mode 隱藏 admin nav
+  ├── ✅ robots.txt (停止爬蟲 404 噪音)
+  ├── ✅ restart_dual.bat (雙開重啟腳本，取代手動 kill+start)
+  └── ✅ Admin 頁面新增 audit 紀錄管理 UI
+
 待完成:
   ├── 壓力測試（多人同時上傳）
-  ├── 錯誤處理強化
-  ├── Beta tester 回饋修正
   └── Cloudflare Tunnel 確認指向 Port 8801 (Beta instance)
 ```
 

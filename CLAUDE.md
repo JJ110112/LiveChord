@@ -7,7 +7,7 @@ Project-specific guidance for Claude Code working in this repo. Also see [doc/QA
 - **Dev repo**: `c:\Users\hitea\Claude\LiveChord` (git, source of truth)
 - **Local testing**: IDE Live Server is installed, Playwright MCP is registered for AI-driven local QA.
 - **Prod runtime** (NUC, mounted as `V:\` from PC): backend runs from `V:\backend`, frontend from `V:\frontend`
-- **Backend server**: FastAPI/uvicorn, `main:app` — dual instance on NUC (see [start_dual.bat](start_dual.bat))
+- **Backend server**: FastAPI/uvicorn, `main:app` — dual instance on NUC (start: [start_dual.bat](start_dual.bat) · restart: [restart_dual.bat](restart_dual.bat))
   - **Personal (Port 8800)**: `LIVECHORD_MODE=personal` — LAN bypass, full NAS access, no login required on LAN
   - **Beta (Port 8801)**: `LIVECHORD_MODE=beta` — Cloudflare Tunnel, forced login, NAS paths hashed
 - **Production QA Server**: `http://192.168.50.6:8800/` (LAN Personal) / `https://livechord.org` (public Beta, Port 8801)
@@ -48,7 +48,7 @@ Any change to frontend files requires Playwright verification before claiming do
 - In beta mode: feedback UI, bug report FAB, analytics tracking, local audio playback, process page are enabled; admin paths restricted to LAN
 - In personal mode: all beta features hidden, full NAS path visibility, zero login friction on LAN
 - **Phase 1 modules**: `feedback_api.py` (ratings + bugs), `analytics_api.py` (usage tracking)
-- **Phase 2 modules**: `process_queue.py` (job queue + worker + audit), `process_api.py` (upload/YouTube endpoints)
+- **Phase 2 modules**: `process_queue.py` (job queue + worker + audit + melody extraction + result reuse via `find_existing_result`/`write_reuse_audit`), `process_api.py` (upload/YouTube endpoints, URL normalization)
 - **Invite code system**: multi-code with expiry, managed via Admin page → "Beta 回饋" card
 - **Security**: rate limiting on auth endpoints, password ≥8 chars, token 30-day expiry, XSS sanitization on all user inputs, admin IP restriction (LAN-only in beta mode)
 - **NAS privacy**: non-admin beta users cannot browse NAS; search results use hashed paths; `/api/browse` returns 403
@@ -58,7 +58,7 @@ Any change to frontend files requires Playwright verification before claiming do
 - **YouTube embed sync**: player embeds YouTube IFrame, uses `getCurrentTime()` for real-time chord sync
 - **YouTube auto-search**: for database songs, `/api/process/youtube-search` finds matching YouTube video via yt-dlp
 - **Cover art**: uploaded files have covers extracted via mutagen; YouTube uses `img.youtube.com` thumbnails
-- **Beta homepage**: non-admin sees upload zone + YouTube input + analysis history grid (replaces music library)
+- **Beta homepage**: non-admin sees floating action button (FAB) for upload/YouTube + wrapping grid library with vertical scroll + analysis history (replaces music library)
 - **Prerequisites for YouTube**: `yt-dlp` + `ffmpeg` must be on NUC system PATH
 - Productization roadmap: [doc/PRODUCTIZATION.md](doc/PRODUCTIZATION.md)
 
