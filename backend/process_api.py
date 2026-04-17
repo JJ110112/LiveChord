@@ -31,7 +31,7 @@ ALLOWED_MIME_TYPES = {
 }
 
 _YOUTUBE_RE = re.compile(
-    r"^https?://(www\.)?(youtube\.com/(watch|shorts)|youtu\.be/|music\.youtube\.com/watch)"
+    r"^https?://((www|m)\.)?(youtube\.com/(watch|shorts)|youtu\.be/|music\.youtube\.com/watch)"
 )
 
 

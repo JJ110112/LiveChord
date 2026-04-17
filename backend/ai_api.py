@@ -382,6 +382,51 @@ async def retrain():
     }
 
 
+def _dedupe_hand_collisions(left_hand, right_hand, melody=None, tol=0.05):
+    """Remove LH pitches that collide in time+pitch with RH or the song's melody.
+
+    LH must not double a note that is already sounding in RH or in the melody
+    (which is rendered as orange in the waterfall and is in the actual audio).
+    Tolerance `tol` in seconds lets near-simultaneous onsets count as a collision.
+    """
+    blocker_index = {}
+    for e in right_hand or []:
+        pitches = e.get("pitches") or ([e["pitch"]] if "pitch" in e else [])
+        start = float(e.get("time", 0.0))
+        end = start + float(e.get("duration", 0.5))
+        for p in pitches:
+            blocker_index.setdefault(p, []).append((start, end))
+    for e in melody or []:
+        p = e.get("midi") if "midi" in e else e.get("pitch")
+        if p is None:
+            continue
+        start = float(e.get("start", e.get("time", 0.0)))
+        end = float(e.get("end", start + float(e.get("duration", 0.5))))
+        blocker_index.setdefault(p, []).append((start, end))
+
+    cleaned = []
+    for e in left_hand:
+        pitches = e.get("pitches") or ([e["pitch"]] if "pitch" in e else [])
+        start = float(e.get("time", 0.0))
+        end = start + float(e.get("duration", 0.5))
+        kept = [
+            p for p in pitches
+            if not any(a - tol < end and b + tol > start for (a, b) in blocker_index.get(p, ()))
+        ]
+        if not kept:
+            continue
+        ev = dict(e)
+        if "pitches" in e:
+            ev["pitches"] = kept
+        elif len(kept) == 1:
+            ev["pitch"] = kept[0]
+        else:
+            ev.pop("pitch", None)
+            ev["pitches"] = kept
+        cleaned.append(ev)
+    return cleaned
+
+
 @router.get("/accompaniment")
 def get_accompaniment(
     path: str = Query(..., description="歌曲路徑"),
@@ -410,9 +455,20 @@ def get_accompaniment(
             except Exception:
                 pass
 
+    # 載入旋律快取（供去重使用）
+    melody = []
+    melody_file = DATA_DIR / "melodies" / f"{h}.json"
+    if melody_file.is_file():
+        mel_data = _json.loads(melody_file.read_text(encoding="utf-8"))
+        melody = mel_data.get("melody", mel_data if isinstance(mel_data, list) else [])
+
     # 快取命中
     if cache_file.is_file():
-        return _json.loads(cache_file.read_text(encoding="utf-8"))
+        cached = _json.loads(cache_file.read_text(encoding="utf-8"))
+        cached["left_hand"] = _dedupe_hand_collisions(
+            cached.get("left_hand", []), cached.get("right_hand", []), melody
+        )
+        return cached
 
     # 載入和弦資料
     chords_file = CHORDS_DIR / f"{h}.json"
@@ -423,13 +479,6 @@ def get_accompaniment(
     chords = chord_data.get("chords", [])
     if not chords:
         return {"error": "empty chords", "left_hand": [], "right_hand": []}
-
-    # 載入旋律快取
-    melody = []
-    melody_file = DATA_DIR / "melodies" / f"{h}.json"
-    if melody_file.is_file():
-        mel_data = _json.loads(melody_file.read_text(encoding="utf-8"))
-        melody = mel_data.get("melody", mel_data if isinstance(mel_data, list) else [])
 
     # 取得 BPM 與 genre (從 library_cache)
     bpm = 120.0
@@ -493,6 +542,11 @@ def get_accompaniment(
         generate_dynamics(result["right_hand"], bpm=int(bpm), section_type=section_type)
     except Exception:
         pass
+
+    # 消除左手與右手／旋律同時落在同一音高的碰撞（人手無法彈；與原曲 melody 雙擊也會糊）
+    result["left_hand"] = _dedupe_hand_collisions(
+        result.get("left_hand", []), result.get("right_hand", []), melody
+    )
 
     # 寫入快取
     try:

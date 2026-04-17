@@ -217,3 +217,163 @@ if level == "L1":
 4. **不是每個視覺異常都是 bug**。看到 arranger 瀑布流只有一根音符就懷疑 canvas 渲染壞了，最後翻到 `accompaniment_generator.py` 才發現是設計如此。**先讀資料來源，再懷疑渲染層**——代理省下了一場不必要的 Rule 11 大追查。
 
 四個訊號，三個真 bug、一個美麗的誤會、一個被閒置的音樂庫被接回 QA 工具。截圖沒有開口說話，但 console log 和源碼會。
+
+---
+
+## 🎹 番外篇 III：三張截圖、一層被遺忘的資料、與一個被跳過的 `except`（2026-04-17）
+
+下午，使用者把一張 Playwright 截圖丟進來：手機鋼琴瀑布流，藍色左手塊和橘色右手塊在同一個鍵上同時砸下。一句話：「**多首曲目左右手伴奏重疊，不是合理的**。」
+
+AI 代理看了一眼，心裡覺得好辦——`_dedupe_hand_collisions(lh, rh)` 寫進 `backend/ai_api.py`，cache 命中與新生成兩條路徑都套；再對 6 首歌做 `(pitch, time)` 50ms 容差比對，回報 `LH↔RH collisions: 0`。乾淨俐落。
+
+使用者又丟了一張圖：一模一樣的問題。「**B3 blue (LH) and orange (RH) play same key on the same time**」。
+
+API 很誠實地回說「沒有碰撞啊？」——但使用者看到的是畫面。代理翻開 `player.js:1464`，讀到一行註解：
+
+```js
+// Always merge melody: activeRh unconditionally adds _getMelodyMidi (see line ~1081),
+// so the waterfall must match or the melody lights keys without a falling bar (ghost keys).
+if (typeof melodyData !== 'undefined' && melodyData) {
+  const melEvents = melodyData.map(m => ({
+    time: m.start, duration: m.end - m.start, pitch: m.midi, finger: null
+  }));
+  rhEvents = [...rhEvents, ...melEvents];
+}
+```
+
+好——原來「橘色」不只是 RH 伴奏，**melody 也會被接進去一起畫**。左手碰的其實不是 RH，是 melody。代理的第一版 dedupe 只看 RH，完全沒攔到這條支線。
+
+### 第一個地雷：兩層視覺化需要兩層去重
+
+修法是把 `_dedupe_hand_collisions(lh, rh)` 擴成 `(lh, rh, melody)`，把 melody 也灌進 blocker index：
+
+```python
+for e in melody or []:
+    p = e.get("midi") if "midi" in e else e.get("pitch")
+    start = float(e.get("start", e.get("time", 0.0)))
+    end = float(e.get("end", start + float(e.get("duration", 0.5))))
+    blocker_index.setdefault(p, []).append((start, end))
+```
+
+cache 命中路徑還得額外把 `data/melodies/{hash}.json` 讀進來——之前只在新生成路徑載入 melody。再跑一輪 6 首歌的驗證：`LH↔Melody collisions: 0`，`LH↔RH collisions: 0`。使用者回報「修好了」。
+
+代理以為可以收工了。
+
+### 第二張截圖：低音鍵上的幽靈橘塊
+
+使用者又丟了一張圖，鋼琴顯示 5 根橘色柱子跨了從 C2 到 D4 的範圍。一句話：「**no one can play this with right hand. low=C#2, height=A4**」。
+
+打 `/api/ai/accompaniment` 看 RH 的音域，`49–59`——C#3 到 B3，一隻手綽綽有餘。API 沒問題。
+
+那橘色的 C#2、D2 從哪來的？代理打開 `/api/ai/melody?path=…`，9 個 MIDI < 48 的「旋律音」浮在時間軸上：
+
+```
+t=2.88  midi=38 (D2)   conf=0.012
+t=7.78  midi=36 (C2)   conf=0.010
+t=7.87  midi=37 (C♯2)  conf=0.010
+t=10.40 midi=38 (D2)   conf=0.013
+...
+```
+
+信心值 **0.010–0.013**。對照一下真旋律音的信心是 0.04–0.19。典型的 pitch-tracking 八度誤判——pop 女聲不會在 C#2 附近徘徊，這些幾乎都是 bass bleed 或低音倍頻抓錯。
+
+### 修法：信心+音域雙條件過濾
+
+在 frontend 加一個極小的守門員：
+
+```js
+function _filterMelody(notes) {
+  return notes.filter(n => {
+    const midi = n && n.midi;
+    const conf = n && typeof n.confidence === "number" ? n.confidence : 1;
+    if (midi == null) return false;
+    if (midi < 48 && conf < 0.03) return false; // 低於 C3 + 低信心 = 丟
+    return true;
+  });
+}
+```
+
+`midi < 48 AND confidence < 0.03`——兩個條件同時成立才丟。**合法的男低音旋律**（罕見但存在）信心值通常夠高，不會被誤殺；**spurious 的低音抓錯**信心值本來就低，兩條件一對就定性。
+
+`_loadMelody()` 與 hash-mode 兩條載入路徑都套上 `_filterMelody`，一次統一。使用者重整頁面：「**右手跨度過大已修復**。」
+
+### 側線故事：一個 `except` 少接了一個例外
+
+中間 QA 卡了一下：Playwright 點進 player 頁，和弦 ribbon 一直是空的。原因是 `/api/chords?path=…` **吐 500**。同一個端點 curl 回 200。差在哪？
+
+差在 **cookie**。用 XMLHttpRequest `withCredentials=false` 送請求——200。帶 cookie 的 fetch——500。
+
+但 `_optional_user` 只讀 Authorization header、不碰 cookie 啊？翻開 `chord_api.py:95`：
+
+```python
+def _optional_user(authorization: str = Header(None)) -> Optional[str]:
+    if not authorization:
+        return None
+    try:
+        return get_current_user(authorization)   # ← 一個位置參數
+    except HTTPException:
+        return None
+```
+
+再翻 `auth_api.py:203`：
+
+```python
+def get_current_user(request: Request, authorization: str = Header(None)):
+    ...
+    client_ip = (
+        request.headers.get("cf-connecting-ip")   # ← 需要 request
+        ...
+    )
+```
+
+`get_current_user` 需要 `(request, authorization)` 兩個參數。`_optional_user` 只餵一個 positional——字串 `"Bearer xyz"` 就掉進 `request` 欄位。下一行 `request.headers.get(...)` 對字串呼叫 `.headers.get(...)`，直接 `AttributeError`。
+
+而那個 `except HTTPException` **只攔 HTTPException**。`AttributeError` 不是 `HTTPException`，穿過去變成 FastAPI 的 500。
+
+修法兩行：
+
+```python
+def _optional_user(request: Request, authorization: str = Header(None)) -> Optional[str]:
+    if not authorization:
+        return None
+    try:
+        return get_current_user(request, authorization)
+    except Exception:   # 擴大到 Exception——契約是「出錯回 None」，不是「只吞 HTTPException」
+        return None
+```
+
+FastAPI 的 DI 層看到多了 `Request` 參數會自動注入，兩處 `Depends(_optional_user)` 的呼叫端完全不用動。
+
+### 第四個——行動版 YouTube URL 的 substring 邊界
+
+使用者還順手報了一個：手機版 `https://m.youtube.com/watch?v=...&list=RD...&start_radio=1` 被後端拒絕，說「請提供有效的 YouTube URL」。
+
+翻 `process_api.py:34` 的正規表達式：
+
+```python
+_YOUTUBE_RE = re.compile(
+    r"^https?://(www\.)?(youtube\.com/(watch|shorts)|youtu\.be/|music\.youtube\.com/watch)"
+)
+```
+
+只收 `(www.)?youtube.com` 和 `music.youtube.com`。`m.youtube.com` 被排除在外。放寬子網域白名單：
+
+```python
+r"^https?://((www|m)\.)?(youtube\.com/(watch|shorts)|youtu\.be/|music\.youtube\.com/watch)"
+```
+
+跑 6 個測試案例——`m.youtube.com`、`youtu.be`、`music.youtube.com`、`youtube.com/shorts`、`www.youtube.com`、`vimeo.com/123`（應該被拒）——通通符合預期。
+
+### 教訓
+
+1. **視覺化的每一層都要獨立去重**。第一版 `_dedupe_hand_collisions(lh, rh)` 看起來很對，但 waterfall 把 melody 接進了 RH 的顯示層——使用者看到的是「三手交疊」而不是「兩手交疊」。去重的範圍要看渲染管線的終點，不是資料來源的起點。
+
+2. **信心值分佈是 pitch-tracking 誤判的免費訊號**。這首歌的低音雜訊集中在信心 0.010–0.013，正常旋律音在 0.04–0.19——bimodal 分佈一畫出來就知道從哪刀下去。雙條件（`pitch < threshold AND confidence < threshold`）比單條件更精準，也不會誤殺合理的低音男聲旋律。
+
+3. **`except HTTPException` 是一個語義錯誤**。`_optional_user` 的契約是「有效就回 username，無效就回 None，永遠不要拋例外」。但寫 `except HTTPException: return None` 等於聲明「只有 HTTPException 會出現」——一旦上游的 `get_current_user` 簽名改了、型別錯了、任何 runtime error，全部會炸回 500。契約要和 except 的寬度一致：說「不會拋」就寫 `except Exception`。
+
+4. **子網域白名單要包含行動版**。桌面優先的設計常忘了 `m.youtube.com` 這種一級公民。修正則表達式的時候順便檢查所有常見分支，不要只修眼前那一個。
+
+三張截圖，四個 bug。其中兩個（melody 污染、低信心雜音）只有在**看完整個視覺管線**才會找到——API 清乾淨並不代表使用者看到的東西也乾淨。剩下兩個（except 太窄、regex 太嚴）是**介面契約**的縫隙，不是邏輯本身。
+
+代理學到的最大一條：**當使用者說「還是壞的」，先去看他「看到什麼」，不要急著證明 API 是對的**。

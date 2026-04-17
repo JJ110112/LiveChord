@@ -44,7 +44,7 @@ def _midi_matches(song_name: str, midi_fname: str) -> bool:
     min_len = min(len(sk), len(mk))
     return overlap >= max(2, min_len * 0.6)
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends, Header
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends, Header, Request
 from pydantic import BaseModel
 
 from auth_api import get_current_user, DB_PATH as AUTH_DB_PATH
@@ -92,13 +92,13 @@ def _version_rating(votes: dict) -> tuple:
     return (round(sum(vals) / len(vals), 1), len(vals))
 
 
-def _optional_user(authorization: str = Header(None)) -> Optional[str]:
+def _optional_user(request: Request, authorization: str = Header(None)) -> Optional[str]:
     """Return username if Authorization header is valid, else None (no error)."""
     if not authorization:
         return None
     try:
-        return get_current_user(authorization)
-    except HTTPException:
+        return get_current_user(request, authorization)
+    except Exception:
         return None
 
 

@@ -9,7 +9,15 @@
   <meta name="theme-color" content="#2196F3">
   <link rel="stylesheet" href="/css/base.css?v=1">
   <link rel="stylesheet" href="/css/home.css?v=1">
-  <script>if (!localStorage.getItem("livechord_token")) window.location.href = "/login";</script>
+  <script>
+    if (!localStorage.getItem("livechord_token")) {
+      fetch('/api/auth/is_admin').then(r => {
+        if (!r.ok) window.location.href = "/login";
+      }).catch(() => {
+        window.location.href = "/login";
+      });
+    }
+  </script>
   <style>
     .admin-page { max-width: 960px; margin: 0 auto; padding: 20px 24px; }
     .card { background: var(--bg-card); border-radius: var(--radius); padding: 20px; margin-bottom: 14px; }

@@ -504,8 +504,12 @@
       });
       
       item.addEventListener("click", () => {
-        audio.currentTime = c.time;
-        updateActiveChord(c.time);
+        if (_ytPlayer && typeof _ytPlayer.seekTo === "function") {
+          _ytPlayer.seekTo(c.time, true);
+        } else {
+          audio.currentTime = c.time;
+        }
+        updateActiveChord(c.time, true);
       });
 
       const nameEl = document.createElement("div");
@@ -656,13 +660,13 @@
     if (scaleLabel) scaleLabel.textContent = ribbonScale.toFixed(1);
   }
   function _changeRibbonScale(delta) {
-    ribbonScale = Math.round(Math.max(1, Math.min(3, ribbonScale + delta)) * 10) / 10;
+    ribbonScale = Math.round(Math.max(0.5, Math.min(3, ribbonScale + delta)) * 10) / 10;
     _ribbonScales[activeTab] = ribbonScale;
     localStorage.setItem(`livechord_ribbon_scale_${activeTab}`, ribbonScale);
     _updateScaleLabel();
     if (chordRibbonPanel) chordRibbonPanel.style.setProperty("--ribbon-scale", ribbonScale);
     _buildUnifiedRibbon();
-    updateActiveChord(audio.currentTime || 0);
+    updateActiveChord(audio.currentTime || 0, true);
   }
   const btnScaleUp = $("#btnScaleUp");
   const btnScaleDown = $("#btnScaleDown");
@@ -692,8 +696,17 @@
       isOverviewMode = !isOverviewMode;
       localStorage.setItem("livechord_overview_mode", isOverviewMode);
       _applyOverviewMode();
-      // Scroll to current chord immediately on toggle
-      updateActiveChord(audio.currentTime || 0, true);
+      // .rv-item has a 0.2s CSS transition; wait past that before scrolling
+      // so the active card's final position is measurable.
+      setTimeout(() => {
+        if (activeChordIdx >= 0 && activeChordIdx < ribbonElements.length && chordRibbonPanel) {
+          const el = ribbonElements[activeChordIdx];
+          // Manual scroll (instant) — scrollIntoView smooth tends to fight the CSS
+          // transition and land wrong when the layout changes between row/grid.
+          const target = el.offsetTop - (chordRibbonPanel.clientHeight - el.offsetHeight) / 2;
+          chordRibbonPanel.scrollTop = Math.max(0, target);
+        }
+      }, 240);
     });
   }
 
@@ -913,13 +926,28 @@
   let melodyData = null;
   let _melodyPendingPlay = false;
 
+  // Drop spurious melody notes: very-low-pitch + very-low-confidence detections are
+  // almost always pitch-tracking errors (octave drops, bass bleed) and make the
+  // waterfall look like RH must span 4+ octaves. Legit low-vocal melody keeps its
+  // higher confidence and survives.
+  function _filterMelody(notes) {
+    if (!Array.isArray(notes)) return notes;
+    return notes.filter(n => {
+      const midi = n && n.midi;
+      const conf = n && typeof n.confidence === "number" ? n.confidence : 1;
+      if (midi == null) return false;
+      if (midi < 48 && conf < 0.03) return false; // below C3 + low confidence
+      return true;
+    });
+  }
+
   async function _loadMelody(path) {
     try {
       _setLoadingState(true, "AI 旋律擷取中...", "不會影響音樂播放，請稍候...");
       const res = await fetch(`/api/ai/melody?path=${encodeURIComponent(path)}`);
       const data = await res.json();
       if (data.melody && data.melody.length > 0) {
-        melodyData = data.melody;
+        melodyData = _filterMelody(data.melody);
       }
     } catch {} finally {
       _setLoadingState(false);
@@ -2463,7 +2491,10 @@
       }
     }
 
-    if (newIdx === activeChordIdx) return;
+    // Fast-path early-return only when nothing needs doing AND no scroll is demanded.
+    // forceScroll=true callers (zoom, overview toggle, section jump, tab switch) may
+    // have rebuilt the ribbon, so we must re-apply `.active` and scroll regardless.
+    if (newIdx === activeChordIdx && !forceScroll) return;
 
     // Remove old highlight
     if (activeChordIdx >= 0 && activeChordIdx < ribbonElements.length) {
@@ -2765,6 +2796,9 @@
     speedIdx = (speedIdx + 1) % SPEEDS.length;
     const s = SPEEDS[speedIdx];
     audio.playbackRate = s;
+    if (_ytPlayer && typeof _ytPlayer.setPlaybackRate === "function") {
+      try { _ytPlayer.setPlaybackRate(s); } catch (e) {}
+    }
     _syncSpeedUI();
     localStorage.setItem("livechord_speed", s);
   }
@@ -3418,7 +3452,7 @@
             const melRes = await fetch(melUrl);
             const melData = await melRes.json();
             if (melData.melody && melData.melody.length > 0) {
-              melodyData = melData.melody;
+              melodyData = _filterMelody(melData.melody);
             }
           } catch {}
 
@@ -3527,12 +3561,28 @@
         onReady: () => {
           showToast("YouTube 播放器就緒", 2000);
           btnPlay.innerHTML = "&#x23F8;";
+          try {
+            const v = (volumeSlider && volumeSlider.value != null) ? parseFloat(volumeSlider.value) : audio.volume;
+            _ytPlayer.setVolume(Math.max(0, Math.min(1, v)) * 100);
+            if (audio.muted) _ytPlayer.mute(); else _ytPlayer.unMute();
+            const s = SPEEDS[speedIdx];
+            if (s !== 1 && typeof _ytPlayer.setPlaybackRate === "function") _ytPlayer.setPlaybackRate(s);
+          } catch (e) {}
           _startYTSync();
         },
         onStateChange: (e) => {
-          // 1=playing, 2=paused
+          // 0=ended, 1=playing, 2=paused
           if (e.data === 1) btnPlay.innerHTML = "&#x23F8;";
           else if (e.data === 2) btnPlay.innerHTML = "&#x25B6;";
+          else if (e.data === 0) {
+            if (loopMode === "single") {
+              try { _ytPlayer.seekTo(0, true); _ytPlayer.playVideo(); } catch (err) {}
+            } else if (loopMode === "favorites" && favTracks.length > 0) {
+              _navNext();
+            } else {
+              btnPlay.innerHTML = "&#x25B6;";
+            }
+          }
         },
         onError: (e) => {
           _ytPlayer = null;
@@ -3551,7 +3601,11 @@
       try {
         const state = _ytPlayer.getPlayerState();
         if (state !== 1) return; // only sync while playing (state 1)
-        const t = _ytPlayer.getCurrentTime();
+        let t = _ytPlayer.getCurrentTime();
+        if (abState === "active" && abA != null && abB != null && t >= abB) {
+          _ytPlayer.seekTo(abA, true);
+          t = abA;
+        }
         if (t > 0) {
           // Drive the same animation pipeline as tickSync()
           updateActiveChord(t);
@@ -4348,8 +4402,9 @@
         API.trackEvent("song_play", { song_hash: trackPath, song_title: title });
       }, { once: true }); // only first play per session
 
-      // Show bug report FAB
-      if (btnBug) btnBug.style.display = "";
+      // Show bug report button in toolbar
+      const tbBug = document.getElementById("tbBugReport");
+      if (tbBug) tbBug.style.display = "";
       // Override star button to open beta popup instead of RLHF popup
       const btnRate = document.getElementById("btnRateAiTop");
       if (btnRate && betaPopup) {

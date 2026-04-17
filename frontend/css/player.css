@@ -1286,11 +1286,42 @@
   .bottom-toolbar {
     gap: 0;
     padding: 0 4px;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
   }
+  .bottom-toolbar::-webkit-scrollbar { display: none; }
   .tb-trigger {
     padding: 6px 5px;
     font-size: 14px;
+    flex-shrink: 0;
   }
+  .tb-item { flex-shrink: 0; }
+  /* Header: let title stretch + ellipsize, BPM hidden to free space for ❤ + title */
+  .topbar-center {
+    position: static;
+    transform: none;
+    max-width: none;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .topbar-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #chordBpm { display: none; }
+}
+
+/* Phone landscape: BPM stays visible (wider room) but shrink it + ❤ so they don't collide */
+@media (max-width: 900px) and (orientation: landscape) {
+  .topbar-center { max-width: 60%; gap: 6px; }
+  .topbar-key { font-size: 10px; flex-shrink: 1; }
+  .topbar-btn.btn-fav { font-size: 14px; padding: 2px 4px; }
 }
 
 /* ========== [END: RESPONSIVE] ========== */
@@ -1714,43 +1745,7 @@
 }
 
 
-/* ========== [COMPONENT: BUG REPORT FAB] ========== */
-
-.bug-report-fab {
-  position: fixed;
-  bottom: 60px;
-  right: 16px;
-  z-index: 8500;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: none;
-  background: #f44336;
-  color: #fff;
-  font-size: 18px;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(244,67,54,0.4);
-  transition: transform 0.2s;
-}
-.bug-report-fab:hover {
-  transform: scale(1.1);
-}
-
-/* Mobile + landscape phones: bug FAB to bottom-left, clear of piano keys / YT / topbar */
-@media (max-width: 900px) {
-  .bug-report-fab {
-    bottom: 52px;
-    left: 6px;
-    right: auto;
-    top: auto;
-    width: 28px;
-    height: 28px;
-    font-size: 14px;
-    z-index: 9100;
-    box-shadow: 0 1px 4px rgba(244,67,54,0.5);
-    opacity: 0.75;
-  }
-}
+/* ========== [COMPONENT: BUG REPORT DIALOG] ========== */
 
 .bug-report-dialog {
   position: fixed;

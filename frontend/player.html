@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=2">
-  <link rel="stylesheet" href="/css/player.css?v=12">
+  <link rel="stylesheet" href="/css/player.css?v=13">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -264,9 +264,6 @@
     </div>
   </div>
 
-  <!-- Beta: Bug report button (floating) -->
-  <button id="btnBugReport" class="bug-report-fab" style="display:none" title="回報問題">&#x1F41B;</button>
-
   <!-- Beta: Bug report dialog -->
   <div id="bugReportDialog" class="bug-report-dialog" style="display:none">
     <div class="bug-report-box">
@@ -409,6 +406,11 @@
     <button id="btnLocalFile" class="tb-trigger" title="載入本地音檔">&#x1F4C2;</button>
   </div>
 
+  <!-- 10b. Beta: Bug report -->
+  <div class="tb-item" id="tbBugReport" style="display:none">
+    <button id="btnBugReport" class="tb-trigger" title="回報問題">&#x1F41B;</button>
+  </div>
+
   <!-- 11. Tools -->
   <div class="tb-item" id="tbTools">
     <button class="tb-trigger" title="工具">&#x1F527;</button>
@@ -466,6 +468,6 @@
     return originalFetch(resource, config);
   };
 </script>
-<script src="/js/player.js?v=86"></script>
+<script src="/js/player.js?v=94"></script>
 </body>
 </html>

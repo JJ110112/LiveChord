@@ -19,30 +19,15 @@
     }
 
     .auth-container {
-      background: var(--bg-card);
-      backdrop-filter: var(--glass-blur);
-      -webkit-backdrop-filter: var(--glass-blur);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 3rem;
+      background: transparent;
+      padding: 1.5rem 1rem;
       width: 100%;
       max-width: 400px;
-      box-shadow: var(--shadow);
       position: relative;
-      overflow: hidden;
     }
 
     .auth-container::before {
-      content: '';
-      position: absolute;
-      top: -50px;
-      left: -50px;
-      width: 100px;
-      height: 100px;
-      background: var(--accent);
-      filter: blur(60px);
-      border-radius: 50%;
-      opacity: 0.35;
+      display: none;
     }
 
     h1 {
