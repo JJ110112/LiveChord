@@ -338,6 +338,39 @@ def write_reuse_audit(username: str, youtube_url: str, title: str,
         logger.error("Reuse audit write failed: %s", e)
 
 
+def _purge_recent_entries(hashes: set[str]) -> None:
+    """Remove __hash/<h> entries from every user's recent.json when the backing
+    audit row + chord data are being deleted. Prevents dangling cards on the
+    home page that would navigate to a 404 player."""
+    if not hashes:
+        return
+    targets = {f"__hash/{h}" for h in hashes}
+    users_root = DATA_DIR / "users"
+    if not users_root.is_dir():
+        return
+    for user_dir in users_root.iterdir():
+        if not user_dir.is_dir():
+            continue
+        f = user_dir / "recent.json"
+        if not f.is_file():
+            continue
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        orig = data.get("recent", [])
+        cleaned = [r for r in orig if r.get("path") not in targets]
+        if len(cleaned) != len(orig):
+            data["recent"] = cleaned
+            try:
+                f.write_text(
+                    json.dumps(data, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+            except OSError:
+                pass
+
+
 def delete_audit_entries(ids: list[int]) -> int:
     """Delete audit entries by ID and clean up associated chord/cover files."""
     if not ids:
@@ -349,10 +382,12 @@ def delete_audit_entries(ids: list[int]) -> int:
             f"SELECT id, result_hash FROM process_audit WHERE id IN ({placeholders})",
             ids,
         ).fetchall()
+        deleted_hashes: set[str] = set()
         # Delete associated files
         for r in rows:
             rh = r["result_hash"] or ""
             if rh:
+                deleted_hashes.add(rh)
                 for path in [
                     CHORDS_DIR / f"{rh}.json",
                     COVERS_DIR / f"{rh}.jpg",
@@ -365,6 +400,8 @@ def delete_audit_entries(ids: list[int]) -> int:
             ids,
         )
         conn.commit()
+    # Cascade: prune dangling __hash/<h> entries from every user's recent.json
+    _purge_recent_entries(deleted_hashes)
     return len(rows)
 
 

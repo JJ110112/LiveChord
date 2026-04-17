@@ -94,10 +94,26 @@ async def remove_favorite(path: str = Query(...), username: str = Depends(get_cu
 async def get_recent(username: str = Depends(get_current_user)):
     recent_file = _get_user_file(username, "recent.json")
     data = _read_json(recent_file, {"recent": []})
+    # Import here to avoid top-of-module circular imports with process_queue.
+    from process_queue import CHORDS_DIR as _CHORDS_DIR
+    cleaned = []
+    changed = False
     for r in data.get("recent", []):
-        # __hash/ 項目不是 NAS 路徑，跳過 chord_summary 查詢（會噴錯）
-        if not str(r.get("path", "")).startswith("__hash/"):
-            r.update(_get_chord_summary(r["path"]))
+        p = str(r.get("path", ""))
+        if p.startswith("__hash/"):
+            # Self-heal: drop hash entries whose chord data was deleted by an admin
+            # purge or failed write. Without this, the home page would render cards
+            # that navigate to a 404 player.
+            h = p[7:]
+            if not (_CHORDS_DIR / f"{h}.json").is_file():
+                changed = True
+                continue
+        else:
+            r.update(_get_chord_summary(p))
+        cleaned.append(r)
+    if changed:
+        data["recent"] = cleaned
+        _write_json(recent_file, data)
     return data
 
 
