@@ -130,7 +130,7 @@
 <script>
   // Insert auth token into all fetch requests in api.js globally!
   const originalFetch = window.fetch;
-  window.fetch = function() {
+  window.fetch = async function() {
     let [resource, config] = arguments;
     if(config == null) config = {};
     const url = typeof resource === 'string' ? resource : (resource instanceof Request ? resource.url : '');
@@ -139,7 +139,15 @@
         const token = localStorage.getItem("livechord_token");
         if(token) config.headers['Authorization'] = `Bearer ${token}`;
     }
-    return originalFetch(resource, config);
+    const res = await originalFetch(resource, config);
+    // Stale / revoked token — clear and bounce to login so the user isn't stuck with
+    // silent "無效憑證" failures on every API call (e.g. after logging in from another device).
+    if (res.status === 401 && url.includes("/api/") && !url.includes("/api/auth/login")) {
+      localStorage.removeItem("livechord_token");
+      localStorage.removeItem("livechord_username");
+      window.location.href = "/login";
+    }
+    return res;
   };
   
   let username = localStorage.getItem("livechord_username");

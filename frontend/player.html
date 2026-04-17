@@ -464,7 +464,7 @@
 <script src="/js/chord-correction.js?v=1"></script>
 <script>
   const originalFetch = window.fetch;
-  window.fetch = function() {
+  window.fetch = async function() {
     let [resource, config] = arguments;
     if(config == null) config = {};
     const url = typeof resource === 'string' ? resource : (resource instanceof Request ? resource.url : '');
@@ -473,7 +473,15 @@
         const token = localStorage.getItem("livechord_token");
         if(token) config.headers['Authorization'] = `Bearer ${token}`;
     }
-    return originalFetch(resource, config);
+    const res = await originalFetch(resource, config);
+    // Stale / revoked token — same handling as index.html so player-page API calls
+    // (e.g. POST /api/recent from hash-mode) don't fail silently forever.
+    if (res.status === 401 && url.includes("/api/") && !url.includes("/api/auth/login")) {
+      localStorage.removeItem("livechord_token");
+      localStorage.removeItem("livechord_username");
+      window.location.href = "/login";
+    }
+    return res;
   };
 </script>
 <script src="/js/player.js?v=98"></script>
