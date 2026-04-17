@@ -71,6 +71,7 @@ class ProcessJob:
     created_at: float = field(default_factory=time.time)
     status: JobStatus = JobStatus.QUEUED
     progress: int = 0
+    stage: str = ""           # Human-readable current step (e.g. "旋律擷取中…")
     result_hash: Optional[str] = None
     error_msg: str = ""
 
@@ -456,6 +457,7 @@ def _worker_loop():
 
         job.status = JobStatus.PROCESSING
         job.progress = 10
+        job.stage = "準備中…"
         audio_path = job.audio_path
         chord_count = 0
 
@@ -463,11 +465,13 @@ def _worker_loop():
             # Step 1: If YouTube, download first
             if job.source_type == "youtube" and job.youtube_url:
                 job.progress = 5
+                job.stage = "讀取 YouTube 標題…"
                 # Extract title before download
                 title = _get_youtube_title(job.youtube_url)
                 if title:
                     job.title = title
                 job.progress = 10
+                job.stage = "下載 YouTube 音訊…"
                 out_path = str(TMP_DIR / f"{job.job_id}.wav")
                 audio_path = _download_youtube(job.youtube_url, out_path)
                 job.audio_path = audio_path
@@ -476,9 +480,11 @@ def _worker_loop():
 
             # Step 2: BTC chord detection
             job.progress = 40
+            job.stage = "分析和弦中（BTC）…"
             from chord_detect import detect_chords_and_key_isolated
             chords, key = detect_chords_and_key_isolated(audio_path)
             job.progress = 80
+            job.stage = "擷取旋律中…"
 
             # Step 2.5: Melody extraction (while audio file still exists)
             melody_data = None
@@ -489,6 +495,7 @@ def _worker_loop():
             except Exception as mel_err:
                 logger.warning("Melody extraction failed for %s: %s", job_id, mel_err)
             job.progress = 90
+            job.stage = "儲存和弦與旋律資料…"
 
             # Step 3: Extract cover art (before audio is deleted)
             if job.source_type == "upload" and audio_path:
@@ -517,10 +524,13 @@ def _worker_loop():
                     logger.warning("Melody save failed: %s", mel_save_err)
 
             # Write audit BEFORE marking done — so history exists when frontend sees "done"
+            job.progress = 98
+            job.stage = "寫入紀錄…"
             _write_audit(job, chord_count)
 
             job.status = JobStatus.DONE
             job.progress = 100
+            job.stage = "完成"
             logger.info("Job %s done: %s chords, key=%s", job_id, chord_count, key)
 
         except Exception as e:

@@ -3496,6 +3496,17 @@
             updateFavButton();
           } catch {}
 
+          // Track hash-mode play in recent.json so processed songs show on home page
+          fetch("/api/recent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              path: `__hash/${hashMode}`,
+              title: chordData.title || title || "",
+              youtube_url: chordData.youtube_url || "",
+            }),
+          }).catch(() => {});
+
           // Load melody for waterfall (try hash, then path from chord data)
           try {
             const melPath = chordData.path || "";
@@ -3597,6 +3608,9 @@
       };
     }
 
+    // Show a loading overlay until onReady clears it — iframe_api + player boot can take 5–15s
+    _setLoadingState(true, "載入 YouTube 播放器…", "首次載入約 5–15 秒");
+
     // Load YouTube IFrame API
     if (!window.YT) {
       const tag = document.createElement("script");
@@ -3614,6 +3628,7 @@
       playerVars: { autoplay: 1, modestbranding: 1, rel: 0 },
       events: {
         onReady: () => {
+          _setLoadingState(false);
           showToast("YouTube 播放器就緒", 2000);
           btnPlay.innerHTML = "&#x23F8;&#xFE0E;";
           try {

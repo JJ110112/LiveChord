@@ -3,6 +3,7 @@
 import json
 import time
 from pathlib import Path
+from typing import Optional
 
 from auth_api import get_current_user
 from fastapi import APIRouter, HTTPException, Query, Depends
@@ -39,6 +40,15 @@ def _write_json(path: Path, data: dict):
 
 class FavoriteItem(BaseModel):
     path: str
+
+
+class RecentItem(BaseModel):
+    path: str
+    # 當 path 以 "__hash/" 開頭（處理過的 YouTube / 上傳結果）時額外記錄的 metadata，
+    # 讓首頁最近播放能直接顯示標題與封面而不必再拉一次 /api/chords/by-hash
+    title: Optional[str] = ""
+    cover_url: Optional[str] = ""
+    youtube_url: Optional[str] = ""
 
 
 from chord_cache import get_chord_summary as _get_chord_summary
@@ -85,19 +95,27 @@ async def get_recent(username: str = Depends(get_current_user)):
     recent_file = _get_user_file(username, "recent.json")
     data = _read_json(recent_file, {"recent": []})
     for r in data.get("recent", []):
-        r.update(_get_chord_summary(r["path"]))
+        # __hash/ 項目不是 NAS 路徑，跳過 chord_summary 查詢（會噴錯）
+        if not str(r.get("path", "")).startswith("__hash/"):
+            r.update(_get_chord_summary(r["path"]))
     return data
 
 
 @router.post("/recent")
-async def add_recent(item: FavoriteItem, username: str = Depends(get_current_user)):
+async def add_recent(item: RecentItem, username: str = Depends(get_current_user)):
     recent_file = _get_user_file(username, "recent.json")
     data = _read_json(recent_file, {"recent": []})
-    data["recent"] = [r for r in data["recent"] if r["path"] != item.path]
-    data["recent"].insert(0, {
+    data["recent"] = [r for r in data["recent"] if r.get("path") != item.path]
+    entry: dict = {
         "path": item.path,
         "played_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-    })
+    }
+    # 只在是 hash 項目時保留 metadata（path-mode 的資訊仍從 library_cache 拉）
+    if item.path.startswith("__hash/"):
+        if item.title: entry["title"] = item.title
+        if item.cover_url: entry["cover_url"] = item.cover_url
+        if item.youtube_url: entry["youtube_url"] = item.youtube_url
+    data["recent"].insert(0, entry)
     data["recent"] = data["recent"][:MAX_RECENT]
     _write_json(recent_file, data)
     return {"ok": True}

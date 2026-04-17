@@ -209,8 +209,12 @@
         maxProgress = Math.max(maxProgress, d.progress);
         if (fill) fill.style.width = maxProgress + "%";
         if (pctText) pctText.textContent = maxProgress + "%";
+        // 細分狀態標籤：有 stage 時以 stage 為準，否則 fallback 到 status
         const labels = { queued: "排隊中", processing: "分析中", done: "完成！", error: "失敗" };
-        if (statusText) statusText.textContent = labels[d.status] || d.status;
+        if (statusText) {
+          const txt = (d.stage && d.status === "processing") ? d.stage : (labels[d.status] || d.status);
+          statusText.textContent = txt;
+        }
 
         if (d.status === "done" && d.result_hash) {
           clearInterval(timer);
@@ -261,12 +265,24 @@
       let recentItems = [];
       try {
         const recentData = await API.getRecent();
-        recentItems = (recentData.recent || []).map(r => ({
-          _isLibrary: true,
-          path: r.path,
-          title: (r.title || r.path.split("/").pop()).replace(/\.flac$/i, ""),
-          result_hash: r.hash || "",
-        }));
+        recentItems = (recentData.recent || []).map(r => {
+          // __hash/ 項目是處理結果（YouTube / 上傳分析），當成 hash-card 處理，不走 library path
+          if (typeof r.path === "string" && r.path.startsWith("__hash/")) {
+            return {
+              _isLibrary: false,
+              result_hash: r.path.slice(7),
+              title: (r.title || "分析結果"),
+              youtube_url: r.youtube_url || "",
+              source_type: r.youtube_url ? "youtube" : "upload",
+            };
+          }
+          return {
+            _isLibrary: true,
+            path: r.path,
+            title: (r.title || r.path.split("/").pop()).replace(/\.flac$/i, ""),
+            result_hash: r.hash || "",
+          };
+        });
       } catch {}
 
       // Merge: process history first, then NAS library (deduplicate by title)
@@ -649,9 +665,29 @@
         return;
       }
       section.style.display = "";
-      
+
+      const _extId = (u) => { const m = (u||"").match(/(?:v=|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})/); return m ? m[1] : null; };
+
       let html = '';
-      data.recent.forEach((r, i) => {
+      data.recent.forEach((r) => {
+        const isHash = typeof r.path === "string" && r.path.startsWith("__hash/");
+        if (isHash) {
+          const hash = r.path.slice(7);
+          const vid = _extId(r.youtube_url || "");
+          const coverUrl = vid
+            ? `https://img.youtube.com/vi/${vid}/mqdefault.jpg`
+            : `/api/process/cover/${encodeURIComponent(hash)}`;
+          const title = r.title || "分析結果";
+          html += `
+            <div class="grid-item" data-hash="${escapeHtml(hash)}">
+              <img class="cover" src="${coverUrl}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
+              <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
+              <div class="info">
+                <div class="title">${escapeHtml(title)}</div>
+              </div>
+            </div>`;
+          return;
+        }
         const name = r.path.split("/").pop().replace(/\.flac$/i, "");
         const coverUrl = API.trackCoverUrl(r.path);
         html += `
@@ -666,7 +702,8 @@
       });
       container.innerHTML = html;
       container.querySelectorAll(".grid-item").forEach((el) => {
-        el.addEventListener("click", () => goPlayer(el.dataset.path));
+        if (el.dataset.hash) el.addEventListener("click", () => goPlayer("", el.dataset.hash));
+        else el.addEventListener("click", () => goPlayer(el.dataset.path));
       });
     } catch (err) {
       section.style.display = "none";

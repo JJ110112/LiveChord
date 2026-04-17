@@ -158,6 +158,7 @@ def job_status(job_id: str, username: str = Depends(get_current_user)):
         "job_id": job.job_id,
         "status": job.status.value,
         "progress": job.progress,
+        "stage": job.stage,
         "title": job.title,
         "error": job.error_msg if job.status == JobStatus.ERROR else "",
         "result_hash": job.result_hash if job.status == JobStatus.DONE else None,

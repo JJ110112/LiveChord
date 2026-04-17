@@ -499,6 +499,15 @@ Week 2:
   ├── ✅ restart_dual.bat (雙開重啟腳本，取代手動 kill+start)
   └── ✅ Admin 頁面新增 audit 紀錄管理 UI
 
+2026-04-18 QA batch 3 (80% 停留 + 最近播放漏記):
+  ├── ✅ Hash-mode 播放寫入 recent.json — 處理過的 YouTube/上傳結果會出現在首頁最近播放 (player.js)
+  ├── ✅ /api/recent 接受 title/cover_url/youtube_url 附帶欄位 — 無須再查 /by-hash (user_api.py RecentItem)
+  ├── ✅ 首頁最近播放渲染 __hash/ 項目 — 使用 YouTube 縮圖 + 點擊回到 /player?hash= (app.js loadRecent + _loadBetaHistory)
+  ├── ✅ 進度條 80% 停留細分 stage — 下載/分析/擷取旋律/儲存/寫入紀錄每階段獨立標示 (process_queue.py + process_api.py)
+  ├── ✅ 上傳進度 UI 顯示 stage 取代 "分析中" — 使用者知道系統正在做什麼 (app.js _betaPollJob)
+  ├── ✅ YouTube iframe 載入遮罩 — "載入 YouTube 播放器… 約 5–15 秒" 直到 onReady (player.js _initYouTubeEmbed)
+  └── ✅ index.html preconnect youtube.com — CDN 連線提早暖身，省下 YT boot 的握手時間
+
 2026-04-17 QA batch 2 (Shakatak 測試):
   ├── ✅ 搜尋 tokenization — "Artist - Title" 帶連字號查詢可匹配 (music_api.py)
   ├── ✅ YouTube iframe DB-path mode 對等 — 非 hash mode 也會自動搜尋嵌入 (player.js loadChords)
