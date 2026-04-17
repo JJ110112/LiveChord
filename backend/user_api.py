@@ -57,8 +57,24 @@ from chord_cache import get_chord_summary as _get_chord_summary
 async def get_favorites(username: str = Depends(get_current_user)):
     fav_file = _get_user_file(username, "favorites.json")
     data = _read_json(fav_file, {"favorites": []})
+    # Import here to avoid top-of-module circular imports with process_queue.
+    from process_queue import CHORDS_DIR as _CHORDS_DIR
+    cleaned = []
+    changed = False
     for f in data.get("favorites", []):
-        f.update(_get_chord_summary(f["path"]))
+        p = str(f.get("path", ""))
+        if p.startswith("__hash/"):
+            # Self-heal: drop favorites whose processed-result chord file was purged.
+            h = p[7:]
+            if not (_CHORDS_DIR / f"{h}.json").is_file():
+                changed = True
+                continue
+        else:
+            f.update(_get_chord_summary(p))
+        cleaned.append(f)
+    if changed:
+        data["favorites"] = cleaned
+        _write_json(fav_file, data)
     return data
 
 

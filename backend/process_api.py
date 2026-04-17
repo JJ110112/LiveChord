@@ -3,11 +3,14 @@
 import os
 import re
 import queue
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 from auth_api import get_current_user, get_admin_user
 from config import is_beta_mode
@@ -109,24 +112,28 @@ def process_youtube(req: YouTubeRequest, username: str = Depends(get_current_use
             detail=f"每日額度已用完 ({get_user_daily_count(username)}/10)"
         )
 
-    url = req.url.strip()
-    if not _YOUTUBE_RE.match(url):
+    raw_url = req.url.strip()
+    if not _YOUTUBE_RE.match(raw_url):
         raise HTTPException(status_code=400, detail="請提供有效的 YouTube URL")
 
     # Extract video ID and normalize URL (strip playlist/radio params)
-    vid_m = re.search(r"(?:v=|youtu\.be/|/shorts/)([A-Za-z0-9_-]{11})", url)
+    vid_m = re.search(r"(?:v=|youtu\.be/|/shorts/)([A-Za-z0-9_-]{11})", raw_url)
     vid = vid_m.group(1) if vid_m else ""
-    if vid:
-        url = f"https://www.youtube.com/watch?v={vid}"
+    url = f"https://www.youtube.com/watch?v={vid}" if vid else raw_url
+    logger.info("process_youtube: user=%s raw=%r normalized=%r vid=%r",
+                username, raw_url, url, vid)
 
     # Reuse existing result if same URL was already processed
     existing = find_existing_result(url)
     if existing:
+        logger.info("process_youtube: REUSE hit url=%r → result_hash=%r title=%r",
+                    url, existing.get("result_hash"), existing.get("title"))
         write_reuse_audit(username, url, existing["title"],
                           existing["result_hash"], existing["chord_count"])
         return {"job_id": None, "status": "done",
                 "result_hash": existing["result_hash"],
                 "title": existing["title"]}
+    logger.info("process_youtube: no reuse, queueing new job for url=%r", url)
 
     job_id = generate_job_id()
     job = ProcessJob(

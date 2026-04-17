@@ -338,37 +338,43 @@ def write_reuse_audit(username: str, youtube_url: str, title: str,
         logger.error("Reuse audit write failed: %s", e)
 
 
-def _purge_recent_entries(hashes: set[str]) -> None:
-    """Remove __hash/<h> entries from every user's recent.json when the backing
-    audit row + chord data are being deleted. Prevents dangling cards on the
-    home page that would navigate to a 404 player."""
+def _purge_user_hash_refs(hashes: set[str]) -> None:
+    """Remove __hash/<h> entries from every user's recent.json AND favorites.json
+    when the backing audit row + chord data are being deleted. Prevents dangling
+    cards on the home page / favorites list that would navigate to a 404 player."""
     if not hashes:
         return
     targets = {f"__hash/{h}" for h in hashes}
     users_root = DATA_DIR / "users"
     if not users_root.is_dir():
         return
-    for user_dir in users_root.iterdir():
-        if not user_dir.is_dir():
-            continue
-        f = user_dir / "recent.json"
-        if not f.is_file():
-            continue
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        orig = data.get("recent", [])
-        cleaned = [r for r in orig if r.get("path") not in targets]
-        if len(cleaned) != len(orig):
-            data["recent"] = cleaned
+    # (filename, top-level key) — both follow the same shape {key: [{path, ...}, ...]}
+    for fname, list_key in (("recent.json", "recent"), ("favorites.json", "favorites")):
+        for user_dir in users_root.iterdir():
+            if not user_dir.is_dir():
+                continue
+            f = user_dir / fname
+            if not f.is_file():
+                continue
             try:
-                f.write_text(
-                    json.dumps(data, ensure_ascii=False, indent=2),
-                    encoding="utf-8",
-                )
-            except OSError:
-                pass
+                data = json.loads(f.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            orig = data.get(list_key, [])
+            cleaned = [r for r in orig if r.get("path") not in targets]
+            if len(cleaned) != len(orig):
+                data[list_key] = cleaned
+                try:
+                    f.write_text(
+                        json.dumps(data, ensure_ascii=False, indent=2),
+                        encoding="utf-8",
+                    )
+                except OSError:
+                    pass
+
+
+# Backward-compat shim: some older imports may still reach for the old name
+_purge_recent_entries = _purge_user_hash_refs
 
 
 def delete_audit_entries(ids: list[int]) -> int:
@@ -400,8 +406,8 @@ def delete_audit_entries(ids: list[int]) -> int:
             ids,
         )
         conn.commit()
-    # Cascade: prune dangling __hash/<h> entries from every user's recent.json
-    _purge_recent_entries(deleted_hashes)
+    # Cascade: prune dangling __hash/<h> entries from every user's recent.json + favorites.json
+    _purge_user_hash_refs(deleted_hashes)
     return len(rows)
 
 
