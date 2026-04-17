@@ -14,9 +14,12 @@ if %errorlevel% equ 0 (
 )
 
 echo [2/4] Stopping LiveChord services by window title...
-taskkill /F /FI "WINDOWTITLE eq LiveChord Personal (8800)" >nul 2>&1
-taskkill /F /FI "WINDOWTITLE eq LiveChord Beta (8801)" >nul 2>&1
-taskkill /F /FI "WINDOWTITLE eq LiveChord Server" >nul 2>&1
+taskkill /F /FI "WINDOWTITLE eq LiveChord Personal (8800)*" /FI "IMAGENAME eq cmd.exe" >nul 2>&1
+taskkill /F /FI "WINDOWTITLE eq LiveChord Beta (8801)*" /FI "IMAGENAME eq cmd.exe" >nul 2>&1
+taskkill /F /FI "WINDOWTITLE eq LiveChord Server*" /FI "IMAGENAME eq cmd.exe" >nul 2>&1
+taskkill /F /FI "WINDOWTITLE eq Cloudflare Tunnel*" /FI "IMAGENAME eq cmd.exe" >nul 2>&1
+REM Fallback sweep — catch any remaining LiveChord-* cmd windows
+taskkill /F /FI "WINDOWTITLE eq LiveChord*" /FI "IMAGENAME eq cmd.exe" >nul 2>&1
 
 echo [3/4] Killing any process on port 8800 and 8801...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr /R "LISTENING" ^| findstr /R ":8800[^0-9]"') do (
@@ -67,20 +70,20 @@ echo.
 echo Starting LiveChord Personal (8800)...
 setlocal
 set LIVECHORD_MODE=personal
-start "LiveChord Personal (8800)" cmd /c "cd /d %~dp0backend && python -m uvicorn main:app --host 0.0.0.0 --port 8800 & pause"
+start "LiveChord Personal (8800)" cmd /c "cd /d %~dp0backend && python -m uvicorn main:app --host 0.0.0.0 --port 8800 || pause"
 endlocal
 
 echo Starting LiveChord Beta (8801)...
 setlocal
 set LIVECHORD_MODE=beta
-start "LiveChord Beta (8801)" cmd /c "cd /d %~dp0backend && python -m uvicorn main:app --host 0.0.0.0 --port 8801 & pause"
+start "LiveChord Beta (8801)" cmd /c "cd /d %~dp0backend && python -m uvicorn main:app --host 0.0.0.0 --port 8801 || pause"
 endlocal
 
 REM Wait for uvicorn to bind before starting tunnel
 timeout /t 3 /nobreak >nul
 
 echo Starting Cloudflare Tunnel...
-start "Cloudflare Tunnel" cmd /c "cloudflared tunnel run livechord & pause"
+start "Cloudflare Tunnel" cmd /c "cloudflared tunnel run livechord || pause"
 
 echo.
 echo ==========================================

@@ -32,6 +32,7 @@ Any change to frontend files requires Playwright verification before claiming do
 - Cover edge cases (hard reload, no cache)
 - Watch for regressions in unrelated features
 - If the server isn't running and live QA is impossible, **say so explicitly** instead of claiming success
+- **QA artifacts are git-ignored**: screenshots named `mobile-*.png`, `qa-*.png`, `editor-*.png`, `page-*.png`, `screenshot-*.png`, and the `.playwright-mcp/` directory are ignored — save QA captures with one of those prefixes so they don't leak into commits
 
 ## Coding Rules
 

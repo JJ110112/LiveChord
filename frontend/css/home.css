@@ -416,3 +416,21 @@
 }
 
 /* ========== [END: DASHBOARD] ========== */
+
+/* ========== [COMPONENT: MOBILE RESPONSIVE] ========== */
+
+@media (max-width: 640px) {
+  .beta-fab-panel {
+    width: auto;
+    max-width: calc(100vw - 24px);
+    right: 12px;
+    padding: 12px;
+  }
+  .fab-panel-title { font-size: 0.85rem; margin-bottom: 8px; }
+  .fab-section { padding: 10px; font-size: 0.8rem; }
+  .upload-hint { font-size: 0.7rem; }
+  .progress-info { font-size: 0.7rem; line-height: 1.3; }
+  .beta-file-info { font-size: 0.8rem; padding: 6px 10px; }
+}
+
+/* ========== [END: MOBILE RESPONSIVE] ========== */

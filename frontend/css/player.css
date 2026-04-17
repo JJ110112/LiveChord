@@ -1188,6 +1188,24 @@
 
 /* ========== [COMPONENT: RESPONSIVE] ========== */
 
+/* YouTube embed — desktop default, responsive on mobile */
+.yt-embed-container {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 20;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  resize: both;
+  width: 320px;
+  height: 180px;
+  min-width: 200px;
+  min-height: 112px;
+  max-width: 640px;
+  max-height: 360px;
+}
+
 @media (max-width: 900px) {
   .chord-ribbon-panel {
     min-width: 140px;
@@ -1197,13 +1215,66 @@
   }
 }
 
+@media (max-width: 900px) and (orientation: landscape) {
+  .yt-embed-container {
+    width: min(28vw, 220px);
+    height: auto;
+    aspect-ratio: 16 / 9;
+    min-width: 0;
+    min-height: 0;
+    resize: none;
+  }
+}
+
 @media (max-width: 640px) {
+  .yt-embed-container {
+    width: min(45vw, 180px);
+    height: auto;
+    aspect-ratio: 16 / 9;
+    min-width: 0;
+    min-height: 0;
+    resize: none;
+  }
+  /* Chord ribbon → horizontal strip above instrument panel */
   .chord-ribbon-panel {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 80px;
+    min-width: 0;
+    max-width: none;
+    z-index: 15;
+    background: rgba(26,26,46,0.85);
+    backdrop-filter: blur(4px);
+  }
+  .ribbon-v-track {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 6px;
+    padding: 4px 6px;
+    height: 100%;
+  }
+  .ribbon-v-track > * {
+    flex: 0 0 auto;
+    transform: scale(0.55);
+    transform-origin: top left;
+  }
+  .ribbon-scale-bar {
     display: none;
+  }
+  .middle-split {
+    padding-top: 84px;
   }
   .resize-handle {
     display: none;
   }
+  /* (bug-report-fab mobile override lives after the base rule below) */
   .player-topbar {
     gap: 8px;
     padding: 0 8px;
@@ -1663,6 +1734,22 @@
 }
 .bug-report-fab:hover {
   transform: scale(1.1);
+}
+
+/* Mobile + landscape phones: bug FAB to bottom-left, clear of piano keys / YT / topbar */
+@media (max-width: 900px) {
+  .bug-report-fab {
+    bottom: 52px;
+    left: 6px;
+    right: auto;
+    top: auto;
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+    z-index: 9100;
+    box-shadow: 0 1px 4px rgba(244,67,54,0.5);
+    opacity: 0.75;
+  }
 }
 
 .bug-report-dialog {
