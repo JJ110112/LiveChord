@@ -210,7 +210,16 @@
   }
   function _playerSeek(t) {
     if (_ytActive() && typeof _ytPlayer.seekTo === "function") {
-      try { _ytPlayer.seekTo(t, true); return; } catch {}
+      try {
+        _ytPlayer.seekTo(t, true);
+        // Reflect the seek on the UI immediately — don't wait for the 50ms sync interval
+        try {
+          const dur = _ytPlayer.getDuration() || 0;
+          if (timeCurrent) timeCurrent.textContent = formatTime(t);
+          if (dur > 0 && topProgressFill) topProgressFill.style.width = ((t / dur) * 100) + "%";
+        } catch {}
+        return;
+      } catch {}
     }
     audio.currentTime = t;
   }
@@ -3670,14 +3679,30 @@
       if (!_ytPlayer || typeof _ytPlayer.getCurrentTime !== "function") return;
       try {
         const state = _ytPlayer.getPlayerState();
-        if (state !== 1) return; // only sync while playing (state 1)
+        // -1=unstarted, 0=ended, 1=playing, 2=paused, 3=buffering, 5=cued
+        // Always refresh time/progress UI for states 1/2/3 so paused + buffering show the real position;
+        // skip heavy chord/instrument animation unless actually playing.
+        if (state === -1) return;
         let t = _ytPlayer.getCurrentTime();
         if (abState === "active" && abA != null && abB != null && t >= abB) {
           _ytPlayer.seekTo(abA, true);
           t = abA;
         }
+
+        // Always keep the time display + progress bar in sync with the real YT currentTime,
+        // including when paused / buffering, so a seek while paused visibly lands.
+        const dur = _ytPlayer.getDuration();
+        timeCurrent.textContent = formatTime(t);
+        if (dur > 0) {
+          timeDuration.textContent = formatTime(dur);
+          const pct = (t / dur) * 100;
+          if (seekBar) seekBar.value = pct;
+          if (topProgressFill) topProgressFill.style.width = pct + "%";
+        }
+
+        // Chord/instrument animation only while playing (state 1) to avoid burning cycles when paused
+        if (state !== 1) return;
         if (t > 0) {
-          // Drive the same animation pipeline as tickSync()
           updateActiveChord(t);
           _updateBeatDots(t);
           _updateKeyDisplay(t);
@@ -3687,15 +3712,6 @@
           } else {
             const _inst = InstrumentRegistry.get(activeTab);
             if (_inst) _inst.update(t);
-          }
-          // Update time display + progress bar
-          timeCurrent.textContent = formatTime(t);
-          const dur = _ytPlayer.getDuration();
-          if (dur > 0) {
-            timeDuration.textContent = formatTime(dur);
-            const pct = (t / dur) * 100;
-            seekBar.value = pct;
-            if (topProgressFill) topProgressFill.style.width = pct + "%";
           }
         }
       } catch (e) {}
