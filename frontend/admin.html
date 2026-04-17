@@ -324,7 +324,10 @@
       <!-- Process audit log -->
       <div>
         <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">偵測紀錄</div>
-        <div class="actions" style="margin-bottom:8px">
+        <div class="actions" style="margin-bottom:8px;display:flex;align-items:center;gap:12px">
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;user-select:none">
+            <input type="checkbox" id="auditSelectAll" style="cursor:pointer"> 全選
+          </label>
           <button id="btnDeleteSelected" onclick="deleteSelectedAudit()" style="display:none">🗑 刪除勾選</button>
         </div>
         <div id="betaAuditList" style="font-size:12px;max-height:300px;overflow-y:auto"></div>
@@ -1109,6 +1112,7 @@
         // Audit log
         const auditEl = document.getElementById("betaAuditList");
         const btnDel = document.getElementById("btnDeleteSelected");
+        const selectAll = document.getElementById("auditSelectAll");
         if (audit.audit && audit.audit.length) {
           const statusColor = s => s === "done" ? "#4caf50" : s === "error" ? "#f44336" : "#ff9800";
           auditEl.innerHTML = audit.audit.map(a =>
@@ -1120,13 +1124,32 @@
             `<span style="color:#555;font-size:10px;white-space:nowrap">${(a.created_at || "").slice(5,16)}</span>` +
             `</div>`
           ).join("");
-          auditEl.addEventListener("change", () => {
+          function _refreshAuditSelection() {
+            const total = auditEl.querySelectorAll(".audit-cb").length;
             const checked = auditEl.querySelectorAll(".audit-cb:checked").length;
             btnDel.style.display = checked ? "" : "none";
             btnDel.textContent = `🗑 刪除勾選 (${checked})`;
-          });
+            if (selectAll) {
+              selectAll.checked = checked > 0 && checked === total;
+              selectAll.indeterminate = checked > 0 && checked < total;
+            }
+          }
+          auditEl.addEventListener("change", _refreshAuditSelection);
+          if (selectAll) {
+            // Replace with clone to drop any listeners from previous render
+            const fresh = selectAll.cloneNode(true);
+            selectAll.parentNode.replaceChild(fresh, selectAll);
+            fresh.checked = false;
+            fresh.indeterminate = false;
+            fresh.addEventListener("change", () => {
+              auditEl.querySelectorAll(".audit-cb").forEach(cb => { cb.checked = fresh.checked; });
+              _refreshAuditSelection();
+            });
+          }
+          _refreshAuditSelection();
         } else {
           auditEl.innerHTML = '<span style="color:#555">無偵測紀錄</span>';
+          if (selectAll) { selectAll.checked = false; selectAll.indeterminate = false; }
         }
       } catch (e) {
         console.warn("Beta dashboard error:", e);
