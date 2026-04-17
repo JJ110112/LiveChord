@@ -34,6 +34,10 @@ data/human_feedback/
 data/feedback.db
 data/analytics.db
 data/audit.db
+data/process_audit.db
+# SQLite WAL-mode sidecar files (auto-generated at runtime)
+data/*.db-shm
+data/*.db-wal
 data/tmp/
 data/covers/
 
