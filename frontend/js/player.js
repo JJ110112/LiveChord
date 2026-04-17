@@ -3650,8 +3650,12 @@
           _startYTSync();
         },
         onStateChange: (e) => {
-          // 0=ended, 1=playing, 2=paused
-          if (e.data === 1) btnPlay.innerHTML = "&#x23F8;&#xFE0E;";
+          // 0=ended, 1=playing, 2=paused, 3=buffering, 5=cued
+          if (e.data === 1) {
+            btnPlay.innerHTML = "&#x23F8;&#xFE0E;";
+            // Re-arm the sync timer in case it was cleared (close-button, destroy, etc.)
+            _startYTSync();
+          }
           else if (e.data === 2) btnPlay.innerHTML = "&#x25B6;&#xFE0E;";
           else if (e.data === 0) {
             if (loopMode === "single") {
@@ -3714,8 +3718,26 @@
             if (_inst) _inst.update(t);
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Expose for post-mortem debugging: open DevTools on the player page,
+        // check window.__lcYtError for the last exception.
+        window.__lcYtError = { msg: e && e.message, when: Date.now() };
+      }
     }, 50); // 20 fps for smooth animation
+    // Expose the live player + current state for diagnosis via DevTools
+    window.__lcYtDebug = () => {
+      try {
+        return {
+          hasPlayer: !!_ytPlayer,
+          state: _ytPlayer && _ytPlayer.getPlayerState && _ytPlayer.getPlayerState(),
+          currentTime: _ytPlayer && _ytPlayer.getCurrentTime && _ytPlayer.getCurrentTime(),
+          duration: _ytPlayer && _ytPlayer.getDuration && _ytPlayer.getDuration(),
+          fillWidth: topProgressFill && topProgressFill.style.width,
+          timerAlive: !!_ytSyncTimer,
+          lastError: window.__lcYtError,
+        };
+      } catch (e) { return { err: e && e.message }; }
+    };
   }
 
   // --- AI Auditing Synthesizer (Salamander Grand Piano Sampler) ---
