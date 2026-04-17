@@ -247,12 +247,16 @@ def _get_unanalyzed_tracks(settings: dict, midi_index: list = None) -> tuple:
     result = []
     test_tracks = []  # 優先處理的測試歌曲
     stats = {"new": 0, "upgrade": 0}
+    skipped = 0  # 已有和弦（或 BTC 無 MIDI 升級機會）的曲數
     relevant_total = len(relevant)
-    _worker_state["current_task"] = f"建立佇列 0/{relevant_total}"
+    _worker_state["current_task"] = f"建立佇列 0/{relevant_total} · 已完成 0 · 待偵測 0"
 
     for i, t in enumerate(relevant):
         if i % 1000 == 0 and i > 0:
-            _worker_state["current_task"] = f"建立佇列 {i}/{relevant_total}"
+            pending = len(test_tracks) + len(result)
+            _worker_state["current_task"] = (
+                f"建立佇列 {i}/{relevant_total} · 已完成 {skipped} · 待偵測 {pending}"
+            )
 
         track_path = t.get("path", "")  # 已在 Pass 1 驗證
         track_hash = song_hash(track_path)
@@ -279,6 +283,8 @@ def _get_unanalyzed_tracks(settings: dict, midi_index: list = None) -> tuple:
                 test_tracks.append(track_path)
             else:
                 result.append(track_path)
+        else:
+            skipped += 1
 
     # 儲存 cursor — 下輪同樣狀態下可走快路徑
     _save_queue_cursor({

@@ -185,6 +185,36 @@
   const pxPerSec = 100;
   const chordDisplay88 = pianoWaterfallView;
 
+  // ---- YouTube embed state (hoisted so helpers below can reference) ----
+  let _ytPlayer = null;
+  let _ytSyncTimer = null;
+
+  // ---- Unified playback accessors (YouTube iframe takes precedence over audio element) ----
+  function _ytActive() {
+    return !!(_ytPlayer && typeof _ytPlayer.getCurrentTime === "function");
+  }
+  function _playerCurrentTime() {
+    if (_ytActive()) {
+      try { return _ytPlayer.getCurrentTime() || 0; } catch { return 0; }
+    }
+    return audio.currentTime || 0;
+  }
+  function _playerDuration() {
+    if (_ytActive()) {
+      try {
+        const d = _ytPlayer.getDuration();
+        if (d && !isNaN(d)) return d;
+      } catch {}
+    }
+    return audio.duration || 0;
+  }
+  function _playerSeek(t) {
+    if (_ytActive() && typeof _ytPlayer.seekTo === "function") {
+      try { _ytPlayer.seekTo(t, true); return; } catch {}
+    }
+    audio.currentTime = t;
+  }
+
   // ---- A-B Repeat state ----
   const btnABRepeat = $("#btnABRepeat");
   let abState = "idle";  // idle → a_set → active
@@ -192,7 +222,7 @@
   let abB = null;        // end time (seconds)
 
   function _updateABRangeUI() {
-    const d = audio.duration || 1;
+    const d = _playerDuration() || 1;
     if (abState === "active" && abA != null && abB != null) {
       const left = (abA / d * 100) + "%";
       const width = ((abB - abA) / d * 100) + "%";
@@ -226,7 +256,7 @@
 
   if (btnABRepeat) {
     btnABRepeat.addEventListener("click", () => {
-      const t = audio.currentTime;
+      const t = _playerCurrentTime();
       if (abState === "idle") {
         abA = t;
         abState = "a_set";
@@ -243,7 +273,7 @@
         btnABRepeat.classList.remove("a-set");
         btnABRepeat.classList.add("ab-active");
         btnABRepeat.textContent = "A-B ✓";
-        audio.currentTime = abA;
+        _playerSeek(abA);
         showToast("A-B 循環: " + formatTime(abA) + " → " + formatTime(abB), 2000);
       } else {
         _clearABRepeat();
@@ -328,7 +358,8 @@
 
   // ---- rewind to start (or A-B loop start) ----
   function _rewindToStart() {
-    audio.currentTime = (abState === "active" && abA != null) ? abA : 0;
+    const t = (abState === "active" && abA != null) ? abA : 0;
+    _playerSeek(t);
   }
 
   // ---- Unified Ribbon Builder (vertical, piano-style, replaces overview) ----
@@ -738,7 +769,8 @@
     function _seekFromTopProgress(e) {
       const rect = topProgressBar.getBoundingClientRect();
       const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      audio.currentTime = pct * (audio.duration || 0);
+      const dur = _playerDuration();
+      if (dur > 0) _playerSeek(pct * dur);
     }
     topProgressBar.addEventListener("pointerdown", (e) => {
       _draggingTop = true;
@@ -2357,6 +2389,11 @@
           const _extractId = typeof extractYouTubeId === "function" ? extractYouTubeId
             : (u) => { const m = (u||"").match(/(?:v=|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})/); return m ? m[1] : null; };
           const ytVideoId = _extractId(ytUrl);
+          const willEmbed = ytVideoId || (chordData.title || songTitle?.textContent || "").trim();
+          if (willEmbed) {
+            // Pause NAS audio so it doesn't play alongside YouTube (if YT fails, user can hit ▶ to resume)
+            try { audio.pause(); } catch {}
+          }
           if (ytVideoId) {
             _initYouTubeEmbed(ytVideoId);
           } else {
@@ -3514,8 +3551,11 @@
       }
     })();
   } else {
-    loadTrack(trackPath).then(() => {
-      if (autoplay) audio.play().catch(() => {});
+    loadTrack(trackPath).then(async () => {
+      // In beta the YouTube iframe is the primary playback surface and autoplays itself;
+      // only kick the NAS audio element for personal mode.
+      const isBeta = await _isBetaModeAsync.catch(() => false);
+      if (autoplay && !isBeta) audio.play().catch(() => {});
       if (restoreFs) {
         document.documentElement.requestFullscreen().catch(() => {});
         if (btnPageFs) btnPageFs.innerHTML = "&#x2716;";
@@ -3524,8 +3564,7 @@
   }
 
   // --- YouTube IFrame embed for chord sync ---
-  let _ytPlayer = null;
-  let _ytSyncTimer = null;
+  // (_ytPlayer / _ytSyncTimer declared near top of IIFE so playback helpers can reference them)
 
   async function _searchAndEmbedYouTube(title) {
     try {
