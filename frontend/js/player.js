@@ -3535,8 +3535,10 @@
           else if (e.data === 2) btnPlay.innerHTML = "&#x25B6;";
         },
         onError: (e) => {
+          _ytPlayer = null;
           const container = document.getElementById("ytEmbedContainer");
           if (container) container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px">此影片無法嵌入播放<br>請在 YouTube 開啟播放</div>';
+          showToast("按 ▶ 播放鍵載入本地音檔", 8000);
         }
       }
     });

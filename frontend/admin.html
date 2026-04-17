@@ -316,9 +316,18 @@
       </div>
 
       <!-- User list -->
-      <div>
+      <div style="margin-bottom:12px">
         <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">已註冊使用者</div>
         <div id="betaUserList" style="font-size:12px"></div>
+      </div>
+
+      <!-- Process audit log -->
+      <div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">偵測紀錄</div>
+        <div class="actions" style="margin-bottom:8px">
+          <button id="btnDeleteSelected" onclick="deleteSelectedAudit()" style="display:none">🗑 刪除勾選</button>
+        </div>
+        <div id="betaAuditList" style="font-size:12px;max-height:300px;overflow-y:auto"></div>
       </div>
 
     </div>
@@ -734,14 +743,23 @@
   }
 
   let _groupsLoadedOnce = false;
+  // Restore cached groups immediately on reload
+  try {
+    const cachedGroups = JSON.parse(sessionStorage.getItem("_adminGroups") || "null");
+    if (cachedGroups && cachedGroups.length) {
+      lastGroups = cachedGroups;
+      renderGroups(lastGroups, "");
+    }
+  } catch {}
   async function loadGroups() {
     try {
       const data = await API.libraryGroups();
       lastGroups = data.groups || [];
+      try { sessionStorage.setItem("_adminGroups", JSON.stringify(lastGroups)); } catch {}
       const ts = await API.tasksStatus().catch(() => ({ current: null }));
       renderGroups(lastGroups, ts.current ? ts.current.kind : "");
     } catch (e) {
-      groupsHost.innerHTML = `<span style="color:#f66;font-size:12px">載入群組失敗：${esc(e.message)}</span>`;
+      if (!lastGroups.length) groupsHost.innerHTML = `<span style="color:#f66;font-size:12px">載入群組失敗：${esc(e.message)}</span>`;
     } finally {
       if (!_groupsLoadedOnce) { _groupsLoadedOnce = true; bumpInitProgress(); }
     }
@@ -859,6 +877,16 @@
   let lastLockKind = "";
   let _statusLoadedOnce = false;
 
+  // Restore last-known stats from sessionStorage on reload (prevents "reset" flash)
+  try {
+    const prev = JSON.parse(sessionStorage.getItem("_adminStats") || "null");
+    if (prev) {
+      if (prev.total) $("#sTotalTracks").textContent = prev.total;
+      if (prev.done) $("#sWithChords").textContent = prev.done;
+      if (prev.pct) $("#sCoverage").textContent = prev.pct;
+    }
+  } catch {}
+
   async function pollStatus() {
     try {
       const [core, chords, taskSt] = await Promise.all([
@@ -889,6 +917,7 @@
       $("#sTotalTracks").textContent = scanTotal || 0;
       $("#sWithChords").textContent = chords.tracks_with_chords || 0;
       $("#sCoverage").textContent = coveragePct + "%";
+      try { sessionStorage.setItem("_adminStats", JSON.stringify({total: scanTotal, done: chords.tracks_with_chords, pct: coveragePct + "%"})); } catch {}
       $("#sQueueSize").textContent = core.detect_queue_size || 0;
 
       // 掃描中視覺提示：stat-row 半透明 + 黃色 banner
@@ -996,12 +1025,13 @@
 
     async function loadBetaData() {
       try {
-        const [stats, bugs, analytics, invites, users] = await Promise.all([
+        const [stats, bugs, analytics, invites, users, audit] = await Promise.all([
           API.get("/api/feedback/admin/ratings/stats"),
           API.get("/api/feedback/admin/bugs?status=open&limit=20"),
           API.get("/api/analytics/admin/summary?days=7"),
           API.get("/api/auth/admin/invites"),
           API.get("/api/auth/admin/users"),
+          API.get("/api/process/admin/audit?limit=50"),
         ]);
 
         // Stats
@@ -1061,6 +1091,29 @@
             `<div style="padding:2px 0;display:flex;gap:8px"><span style="font-weight:600">${esc(u.username)}</span>${u.is_admin ? '<span class="badge" style="background:rgba(233,69,96,.15);color:var(--accent)">admin</span>' : ""}<span style="color:#555;margin-left:auto;font-size:11px">${u.last_login ? u.last_login.slice(0,16) : "—"}</span></div>`
           ).join("");
         }
+
+        // Audit log
+        const auditEl = document.getElementById("betaAuditList");
+        const btnDel = document.getElementById("btnDeleteSelected");
+        if (audit.audit && audit.audit.length) {
+          const statusColor = s => s === "done" ? "#4caf50" : s === "error" ? "#f44336" : "#ff9800";
+          auditEl.innerHTML = audit.audit.map(a =>
+            `<div style="padding:4px 0;border-bottom:1px solid #1a1a1a;display:flex;gap:6px;align-items:center">` +
+            `<input type="checkbox" class="audit-cb" value="${a.id}">` +
+            `<span style="color:${statusColor(a.status)};width:36px;font-size:10px">${esc(a.status)}</span>` +
+            `<span style="width:50px;font-size:11px">${esc(a.username || "")}</span>` +
+            `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.title || "—")}</span>` +
+            `<span style="color:#555;font-size:10px;white-space:nowrap">${(a.created_at || "").slice(5,16)}</span>` +
+            `</div>`
+          ).join("");
+          auditEl.addEventListener("change", () => {
+            const checked = auditEl.querySelectorAll(".audit-cb:checked").length;
+            btnDel.style.display = checked ? "" : "none";
+            btnDel.textContent = `🗑 刪除勾選 (${checked})`;
+          });
+        } else {
+          auditEl.innerHTML = '<span style="color:#555">無偵測紀錄</span>';
+        }
       } catch (e) {
         console.warn("Beta dashboard error:", e);
       }
@@ -1079,6 +1132,19 @@
         initBetaDashboard();
       }
     } catch (e) { showToast("建立失敗: " + e.message); }
+  };
+
+  window.deleteSelectedAudit = async function() {
+    const cbs = document.querySelectorAll("#betaAuditList .audit-cb:checked");
+    if (!cbs.length) return;
+    const ids = Array.from(cbs).map(cb => parseInt(cb.value));
+    if (!confirm(`確定刪除 ${ids.length} 筆偵測紀錄？（含和弦/封面檔案）`)) return;
+    try {
+      const res = await API.post("/api/process/admin/audit/delete", { ids });
+      showToast(`已刪除 ${res.deleted} 筆`);
+      document.getElementById("btnDeleteSelected").style.display = "none";
+      initBetaDashboard();
+    } catch (e) { showToast("刪除失敗: " + e.message); }
   };
 
   window.revokeInvite = async function(code) {

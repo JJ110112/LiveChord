@@ -293,6 +293,73 @@ def _write_audit(job: ProcessJob, chord_count: int = 0):
         logger.error("Audit write failed: %s", e)
 
 
+def find_existing_result(youtube_url: str) -> dict | None:
+    """Check if a YouTube URL was already processed successfully."""
+    with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT result_hash, title, chord_count FROM process_audit "
+            "WHERE youtube_url=? AND status='done' AND result_hash!='' "
+            "ORDER BY id DESC LIMIT 1",
+            (youtube_url,)
+        ).fetchone()
+    if not row:
+        return None
+    # Verify chord file still exists
+    rh = row["result_hash"]
+    if not (CHORDS_DIR / f"{rh}.json").is_file():
+        return None
+    return dict(row)
+
+
+def write_reuse_audit(username: str, youtube_url: str, title: str,
+                      result_hash: str, chord_count: int):
+    """Write audit entry for a reused result (no actual processing)."""
+    try:
+        now = time.strftime("%Y-%m-%dT%H:%M:%S")
+        with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
+            conn.execute(
+                """INSERT INTO process_audit
+                   (job_id, username, source_type, file_hash, youtube_url, title, status, chord_count, created_at, completed_at, result_hash)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (f"reuse_{int(time.time())}", username, "youtube", "",
+                 youtube_url, title, "done", chord_count, now, now, result_hash)
+            )
+            conn.commit()
+    except Exception as e:
+        logger.error("Reuse audit write failed: %s", e)
+
+
+def delete_audit_entries(ids: list[int]) -> int:
+    """Delete audit entries by ID and clean up associated chord/cover files."""
+    if not ids:
+        return 0
+    with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
+        conn.row_factory = sqlite3.Row
+        placeholders = ",".join("?" for _ in ids)
+        rows = conn.execute(
+            f"SELECT id, result_hash FROM process_audit WHERE id IN ({placeholders})",
+            ids,
+        ).fetchall()
+        # Delete associated files
+        for r in rows:
+            rh = r["result_hash"] or ""
+            if rh:
+                for path in [
+                    CHORDS_DIR / f"{rh}.json",
+                    COVERS_DIR / f"{rh}.jpg",
+                    MELODIES_DIR / f"{rh}.json",
+                ]:
+                    if path.is_file():
+                        path.unlink(missing_ok=True)
+        conn.execute(
+            f"DELETE FROM process_audit WHERE id IN ({placeholders})",
+            ids,
+        )
+        conn.commit()
+    return len(rows)
+
+
 def get_audit_log(limit: int = 50, offset: int = 0) -> list[dict]:
     with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
         conn.row_factory = sqlite3.Row
@@ -300,7 +367,14 @@ def get_audit_log(limit: int = 50, offset: int = 0) -> list[dict]:
             "SELECT * FROM process_audit ORDER BY id DESC LIMIT ? OFFSET ?",
             (limit, offset)
         ).fetchall()
-    return [dict(r) for r in rows]
+    import html as _html_mod
+    result = []
+    for r in rows:
+        d = dict(r)
+        if d.get("title"):
+            d["title"] = _html_mod.unescape(d["title"])
+        result.append(d)
+    return result
 
 
 def get_user_audit_log(username: str, limit: int = 20) -> list[dict]:
@@ -315,8 +389,12 @@ def get_user_audit_log(username: str, limit: int = 20) -> list[dict]:
     seen_hashes = set()
     seen_urls = set()
     results = []
+    import html as _html_mod
     for r in rows:
         d = dict(r)
+        # Unescape old rows that were stored with html.escape()
+        if d.get("title"):
+            d["title"] = _html_mod.unescape(d["title"])
         # Reconstruct result_hash for old rows that don't have it
         if not d.get("result_hash") and d["status"] == "done":
             d["result_hash"] = hashlib.md5(
@@ -388,8 +466,7 @@ def _worker_loop():
                 # Extract title before download
                 title = _get_youtube_title(job.youtube_url)
                 if title:
-                    import html as html_mod
-                    job.title = html_mod.escape(title)
+                    job.title = title
                 job.progress = 10
                 out_path = str(TMP_DIR / f"{job.job_id}.wav")
                 audio_path = _download_youtube(job.youtube_url, out_path)
@@ -439,6 +516,9 @@ def _worker_loop():
                 except Exception as mel_save_err:
                     logger.warning("Melody save failed: %s", mel_save_err)
 
+            # Write audit BEFORE marking done — so history exists when frontend sees "done"
+            _write_audit(job, chord_count)
+
             job.status = JobStatus.DONE
             job.progress = 100
             logger.info("Job %s done: %s chords, key=%s", job_id, chord_count, key)
@@ -447,6 +527,7 @@ def _worker_loop():
             job.status = JobStatus.ERROR
             job.error_msg = str(e)[:500]
             logger.error("Job %s failed: %s", job_id, e)
+            _write_audit(job, chord_count)
 
         finally:
             # Always clean up audio file
@@ -455,8 +536,6 @@ def _worker_loop():
                     os.remove(audio_path)
                 except OSError:
                     pass
-            # Write audit log
-            _write_audit(job, chord_count)
 
 
 # ---------------------------------------------------------------------------

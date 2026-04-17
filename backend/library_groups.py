@@ -9,6 +9,7 @@
 
 import json
 import os
+import time
 from pathlib import Path
 
 from chord_cache import song_hash
@@ -18,6 +19,9 @@ from data_cache import get_library_cache, get_chord_hash_set
 DATA_DIR = Path(__file__).parent.parent / "data"
 CACHE_FILE = DATA_DIR / "library_cache.json"
 CHORDS_DIR = DATA_DIR / "chords"
+
+# list_groups() cache — invalidates when library mtime or chord hash set changes
+_groups_cache = {"data": None, "lib_mtime": 0.0, "chord_ts": 0.0}
 
 UNCATEGORIZED = "未分類"
 
@@ -66,7 +70,16 @@ def list_groups() -> list[dict]:
     """從 library_cache 計算所有群組與覆蓋率。
     每個已設定的 music_root 至少會回傳一筆 placeholder（即使尚無曲目），
     讓使用者在 admin 介面可以看到所有掛載的音樂庫。
+    結果依 library mtime + chord_hash_set 時戳快取，避免重複迴圈 45k 曲目。
     """
+    from data_cache import _lib_cache, _chord_hash_cache
+    lib_mt = _lib_cache["mtime"]
+    ch_ts = _chord_hash_cache["ts"]
+    if (_groups_cache["data"] is not None
+            and _groups_cache["lib_mtime"] == lib_mt
+            and _groups_cache["chord_ts"] == ch_ts):
+        return _groups_cache["data"]
+
     cache = get_library_cache()
     chord_hashes = get_chord_hash_set()
     groups: dict[tuple[int, str], dict] = {}
@@ -115,7 +128,15 @@ def list_groups() -> list[dict]:
         g["chords_pending"] = g["track_count"] - g["chords_done"]
         g["coverage"] = round(g["chords_done"] / g["track_count"] * 100, 1) if g["track_count"] else 0
     result.sort(key=lambda x: (x["root_idx"], x["label"]))
+    _groups_cache["data"] = result
+    _groups_cache["lib_mtime"] = _lib_cache["mtime"]
+    _groups_cache["chord_ts"] = _chord_hash_cache["ts"]
     return result
+
+
+def invalidate_groups_cache():
+    """強制下次 list_groups() 重新計算。"""
+    _groups_cache["data"] = None
 
 
 def filter_tracks_by_group(tracks: list, group_id: str) -> list:

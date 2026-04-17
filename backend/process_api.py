@@ -1,6 +1,5 @@
 """Process API — 上傳音檔 / YouTube URL 和弦偵測"""
 
-import html
 import os
 import re
 import queue
@@ -16,6 +15,7 @@ from process_queue import (
     ProcessJob, JobStatus, TMP_DIR, COVERS_DIR,
     submit_job, get_job, generate_job_id, compute_file_hash,
     check_quota, get_user_daily_count, get_audit_log, get_user_audit_log,
+    delete_audit_entries, find_existing_result, write_reuse_audit,
     CHORDS_DIR,
 )
 
@@ -73,7 +73,7 @@ def upload_audio(file: UploadFile = File(...),
     # Compute file hash for audit
     file_hash = compute_file_hash(str(tmp_path))
 
-    title = html.escape(os.path.splitext(file.filename or "")[0].strip()) or "Uploaded"
+    title = os.path.splitext(file.filename or "")[0].strip() or "Uploaded"
 
     job = ProcessJob(
         job_id=job_id,
@@ -118,6 +118,15 @@ def process_youtube(req: YouTubeRequest, username: str = Depends(get_current_use
     vid = vid_m.group(1) if vid_m else ""
     if vid:
         url = f"https://www.youtube.com/watch?v={vid}"
+
+    # Reuse existing result if same URL was already processed
+    existing = find_existing_result(url)
+    if existing:
+        write_reuse_audit(username, url, existing["title"],
+                          existing["result_hash"], existing["chord_count"])
+        return {"job_id": None, "status": "done",
+                "result_hash": existing["result_hash"],
+                "title": existing["title"]}
 
     job_id = generate_job_id()
     job = ProcessJob(
@@ -246,3 +255,15 @@ def my_history(limit: int = 20, username: str = Depends(get_current_user)):
 def admin_audit(limit: int = 50, offset: int = 0,
                 admin: str = Depends(get_admin_user)):
     return {"audit": get_audit_log(limit, offset)}
+
+
+class DeleteAuditRequest(BaseModel):
+    ids: list[int] = Field(..., min_length=1, max_length=100)
+
+
+@router.post("/admin/audit/delete")
+def admin_audit_delete(req: DeleteAuditRequest,
+                       admin: str = Depends(get_admin_user)):
+    """Delete audit entries and associated chord/cover/melody files."""
+    deleted = delete_audit_entries(req.ids)
+    return {"deleted": deleted}

@@ -316,7 +316,8 @@
   bottom: 88px;
   right: 24px;
   width: 340px;
-  background: var(--bg-card);
+  max-width: calc(100vw - 48px);
+  background: rgb(22, 27, 34);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;

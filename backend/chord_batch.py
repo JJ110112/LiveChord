@@ -410,7 +410,7 @@ def chords_tracks(
 
 
 _stats_cache = {"data": None, "ts": 0}
-_STATS_CACHE_TTL = 10
+_STATS_CACHE_TTL = 30
 
 
 @router.get("/chords/stats")

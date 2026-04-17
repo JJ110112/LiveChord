@@ -176,6 +176,17 @@
         throw new Error(err.detail || res.statusText);
       }
       const data = await res.json();
+      if (data.status === "done" && data.result_hash) {
+        // Already analyzed — go straight to player
+        fill.style.width = "100%";
+        text.textContent = "已有分析結果，直接開啟...";
+        pct.textContent = "100%";
+        input.value = "";
+        setTimeout(() => {
+          window.location.href = `/player?hash=${encodeURIComponent(data.result_hash)}`;
+        }, 500);
+        return;
+      }
       fill.style.width = "20%";
       text.textContent = "已排入佇列，分析中...";
       pct.textContent = "20%";
@@ -246,9 +257,42 @@
       const data = await res.json();
       const items = (data.history || []).filter(h => h.status === "done" && h.result_hash);
 
+      // Also fetch NAS library recent plays and merge into the recent section
+      let recentItems = [];
+      try {
+        const recentData = await API.getRecent();
+        recentItems = (recentData.recent || []).map(r => ({
+          _isLibrary: true,
+          path: r.path,
+          title: (r.title || r.path.split("/").pop()).replace(/\.flac$/i, ""),
+          result_hash: r.hash || "",
+        }));
+      } catch {}
+
+      // Merge: process history first, then NAS library (deduplicate by title)
+      const seenTitles = new Set(items.map(h => (h.title || "").toLowerCase()));
+      const mergedRecent = [...items];
+      for (const r of recentItems) {
+        if (!seenTitles.has(r.title.toLowerCase())) {
+          mergedRecent.push(r);
+          seenTitles.add(r.title.toLowerCase());
+        }
+      }
+
       // Recent plays — show for non-admin (their only recent section), or when many items
-      if (recentContainer && items.length > 0 && (_isBetaNonAdmin || items.length > 8)) {
-        recentContainer.innerHTML = items.slice(0, 8).map(h => {
+      if (recentContainer && mergedRecent.length > 0 && (_isBetaNonAdmin || mergedRecent.length > 8)) {
+        recentContainer.innerHTML = mergedRecent.slice(0, 8).map(h => {
+          if (h._isLibrary) {
+            const coverUrl = API.trackCoverUrl(h.path);
+            return `<div class="grid-item" data-path="${escapeHtml(h.path)}" style="cursor:pointer">
+              <img class="cover" src="${coverUrl}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
+              <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
+              <div class="info">
+                <div class="title">${escapeHtml(h.title)}</div>
+                ${getDifficultyHtml(h)}
+              </div>
+            </div>`;
+          }
           const title = h.title || "分析結果";
           return `<div class="grid-item" data-hash="${escapeHtml(h.result_hash)}" style="cursor:pointer">
             ${_buildCoverHtml(h)}
@@ -259,7 +303,8 @@
           </div>`;
         }).join("");
         recentContainer.querySelectorAll(".grid-item").forEach(el => {
-          el.addEventListener("click", () => goPlayer("", el.dataset.hash));
+          if (el.dataset.path) el.addEventListener("click", () => goPlayer(el.dataset.path));
+          else el.addEventListener("click", () => goPlayer("", el.dataset.hash));
         });
         if (recentSection) recentSection.style.display = "";
       }

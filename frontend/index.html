@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=1">
-  <link rel="stylesheet" href="/css/home.css?v=8">
+  <link rel="stylesheet" href="/css/home.css?v=10">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -91,8 +91,8 @@
     </div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
       <span>&#x1F3AC;</span>
-      <input type="text" id="betaYtUrl" placeholder="YouTube URL..." style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.85rem">
-      <button class="btn-small btn-accent" id="betaYtBtn" onclick="window._betaStartYoutube()">分析</button>
+      <input type="text" id="betaYtUrl" placeholder="YouTube URL..." style="flex:1;min-width:0;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.85rem">
+      <button class="btn-small btn-accent" id="betaYtBtn" style="flex-shrink:0" onclick="window._betaStartYoutube()">分析</button>
     </div>
     <div class="beta-progress" id="betaYtProgress" style="display:none;margin-top:8px">
       <div class="progress-bar"><div class="progress-fill" id="betaYtFill"></div></div>
@@ -212,6 +212,6 @@
       }
   }
 </script>
-<script src="/js/app.js?v=46"></script>
+<script src="/js/app.js?v=47"></script>
 </body>
 </html>
