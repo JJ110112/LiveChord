@@ -127,6 +127,7 @@ def _load_model():
     _idx_to_chord = idx2voca_chord()
 
     os.chdir(old_cwd)
+    print(f"🎸 BTC device: {_device}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -429,7 +430,12 @@ def detect_chords_and_key_isolated(audio_path: str, min_dur: float = 0.5) -> tup
     global _btc_pool
     if _btc_pool is None:
         from concurrent.futures import ProcessPoolExecutor
-        _btc_pool = ProcessPoolExecutor(max_workers=1)
+        try:
+            workers = max(1, int(os.environ.get("LIVECHORD_BTC_WORKERS", "1")))
+        except ValueError:
+            workers = 1
+        print(f"🎸 BTC ProcessPool max_workers={workers}", flush=True)
+        _btc_pool = ProcessPoolExecutor(max_workers=workers)
     future = _btc_pool.submit(_subprocess_detect, audio_path, min_dur)
     return future.result(timeout=600)
 
