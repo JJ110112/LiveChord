@@ -355,6 +355,36 @@
     } finally {
       showLoading(false);
     }
+
+    // Handle ?youtube=<url> (from Web Share Target / bookmark): open FAB + prefill + submit
+    if (_isBetaMode) {
+      const params = new URLSearchParams(window.location.search);
+      const ytParam = params.get("youtube");
+      if (ytParam) {
+        _autoStartYoutubeFromParam(ytParam);
+      }
+    }
+  }
+
+  function _autoStartYoutubeFromParam(url) {
+    const tryOpen = () => {
+      const panel = $("#betaFabPanel");
+      const input = $("#betaYtUrl");
+      if (!input) return false;
+      if (panel) panel.classList.add("open");
+      input.value = url;
+      if (typeof window._betaStartYoutube === "function") {
+        window._betaStartYoutube();
+      }
+      // Strip the param so reload doesn't re-trigger
+      const clean = window.location.pathname;
+      window.history.replaceState({}, "", clean);
+      return true;
+    };
+    if (!tryOpen()) {
+      // Panel may not be wired yet (admin path) — retry once after a tick
+      setTimeout(tryOpen, 300);
+    }
   }
 
   // ---- browse ----

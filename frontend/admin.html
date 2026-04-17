@@ -950,7 +950,21 @@
         coreBar.style.width = "100%";
         const item = (cur.current_item || "").split("/").slice(-1)[0];
         const label = taskLabelMap[lockKind] || lockKind;
-        $("#currentTask").textContent = `${label}（${cur.scope}）· 已處理 ${cur.done || 0} · ${item || "…"}`;
+        // 掃描時額外抓 new/updated，避免誤以為每首都在重新分析
+        if (isScan) {
+          try {
+            const s = await API.libraryScanStatus();
+            const done = cur.done || 0;
+            const added = s.new_tracks || 0;
+            const changed = s.updated_tracks || 0;
+            const skipped = Math.max(0, done - added - changed);
+            $("#currentTask").textContent = `${label}（${cur.scope}）· 走訪 ${done} · 新增 ${added} · 變更 ${changed} · 略過 ${skipped}${item ? " · " + item : ""}`;
+          } catch {
+            $("#currentTask").textContent = `${label}（${cur.scope}）· 已處理 ${cur.done || 0} · ${item || "…"}`;
+          }
+        } else {
+          $("#currentTask").textContent = `${label}（${cur.scope}）· 已處理 ${cur.done || 0} · ${item || "…"}`;
+        }
       } else if (scanTotal > 0) {
         coreBar.classList.remove("indeterminate");
         coreBar.style.width = Math.round(chords.tracks_with_chords / scanTotal * 100) + "%";

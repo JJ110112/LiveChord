@@ -285,6 +285,12 @@ async def tos_page():
     return FileResponse(FRONTEND_DIR / "tos.html", headers=NO_CACHE_HEADERS)
 
 
+@app.get("/share")
+async def share_target():
+    """Web Share Target 著陸頁：接住手機分享來的 YouTube 連結"""
+    return FileResponse(FRONTEND_DIR / "share.html", headers=NO_CACHE_HEADERS)
+
+
 if __name__ == "__main__":
     import sys, asyncio
     # Python 3.14+ Windows: ProactorEventLoop 避免 SelectorEventLoop 的 assert 'Data should not be empty' bug

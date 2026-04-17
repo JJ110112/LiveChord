@@ -891,6 +891,9 @@
   white-space: nowrap;
   min-width: 32px;
   height: 32px;
+  /* 強制控制符號以文字樣式渲染，避免 Android/iOS 將 ▶⏸⏮🔁 顯示為彩色 emoji */
+  font-variant-emoji: text;
+  font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols2", "Noto Sans Symbols", system-ui, sans-serif;
 }
 .tb-trigger:hover {
   color: var(--text);
@@ -1284,20 +1287,29 @@
     max-width: 200px;
   }
   .bottom-toolbar {
-    gap: 0;
-    padding: 0 4px;
+    gap: 2px;
+    padding: 0 2px;
+    /* 保留水平捲動作備援，但優先讓元素收斂在一列內 */
     overflow-x: auto;
     flex-wrap: nowrap;
+    justify-content: space-around;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
   }
   .bottom-toolbar::-webkit-scrollbar { display: none; }
   .tb-trigger {
-    padding: 6px 5px;
-    font-size: 14px;
-    flex-shrink: 0;
+    padding: 4px 3px;
+    font-size: 13px;
+    min-width: 0;
+    flex-shrink: 1;
   }
-  .tb-item { flex-shrink: 0; }
+  .tb-item { flex-shrink: 1; min-width: 0; }
+  /* 進度條：加大 hit target 讓手機點擊可 seek（桌面 hover 時 8px，手機固定 10px） */
+  .progress-bar-mid {
+    height: 10px;
+    bottom: 44px;
+  }
+  .progress-bar-mid:hover { height: 10px; }
   /* Header: let title stretch + ellipsize, BPM hidden to free space for ❤ + title */
   .topbar-center {
     position: static;
@@ -1319,9 +1331,29 @@
 
 /* Phone landscape: BPM stays visible (wider room) but shrink it + ❤ so they don't collide */
 @media (max-width: 900px) and (orientation: landscape) {
-  .topbar-center { max-width: 60%; gap: 6px; }
-  .topbar-key { font-size: 10px; flex-shrink: 1; }
-  .topbar-btn.btn-fav { font-size: 14px; padding: 2px 4px; }
+  .topbar-center {
+    position: static;
+    transform: none;
+    max-width: none;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 6px;
+    overflow: hidden;
+  }
+  .topbar-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .topbar-key { font-size: 10px; flex-shrink: 0; }
+  .topbar-btn.btn-fav {
+    font-size: 14px;
+    padding: 2px 4px;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
 }
 
 /* ========== [END: RESPONSIVE] ========== */

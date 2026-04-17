@@ -499,6 +499,21 @@ Week 2:
   ├── ✅ restart_dual.bat (雙開重啟腳本，取代手動 kill+start)
   └── ✅ Admin 頁面新增 audit 紀錄管理 UI
 
+2026-04-17 QA batch 2 (Shakatak 測試):
+  ├── ✅ 搜尋 tokenization — "Artist - Title" 帶連字號查詢可匹配 (music_api.py)
+  ├── ✅ YouTube iframe DB-path mode 對等 — 非 hash mode 也會自動搜尋嵌入 (player.js loadChords)
+  ├── ✅ 手機進度條 tap-seek — 高度 5px→10px，pointerdown preventDefault 讓單擊可 seek (player.css + player.js)
+  ├── ✅ 手機直向底部工具列 — flex-wrap + shrink，375px 一列可容所有按鈕
+  ├── ✅ 手機橫向 BPM/❤ 重疊修復 — margin-left:auto + flex-shrink:0
+  ├── ✅ Emoji 文字化 — FE0E 變體選擇符 + font-variant-emoji:text，控制鈕不再被 Android 彩色 emoji 覆蓋
+  ├── ✅ Overview 圖示 🗐→☰ — 舊 codepoint 在 Android 顯示成 tofu
+  ├── ✅ Ribbon 縮放圖示改為 inline SVG (放大鏡+) — 跨裝置一致
+  ├── ✅ Bug report 按鈕移至 Tools 右側 (player.html 工具列順序)
+  ├── ✅ Web Share Target — manifest.json share_target + /share 路由 + share.html
+  │     Android PWA 安裝後，YouTube App 分享選單可選 LiveChord → 自動套入 URL → 啟動分析
+  ├── ✅ 首頁 ?youtube= 自動處理 — 開啟 FAB panel + 填入 URL + 送出 (app.js)
+  └── ✅ Admin 掃描計數分離 — 走訪 / 新增 / 變更 / 略過，不再誤以為每次重新分析 (admin.html)
+
 待完成:
   ├── 壓力測試（多人同時上傳）
   └── Cloudflare Tunnel 確認指向 Port 8801 (Beta instance)

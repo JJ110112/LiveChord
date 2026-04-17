@@ -57,7 +57,8 @@ Any change to frontend files requires Playwright verification before claiming do
 - **Process flow**: upload audio (200MB max) or YouTube URL → queue → BTC GPU detection → chord JSON → player `?hash=`
 - **Upload-to-play**: IndexedDB passes audio blob from process/homepage to player for instant auto-play
 - **YouTube embed sync**: player embeds YouTube IFrame, uses `getCurrentTime()` for real-time chord sync
-- **YouTube auto-search**: for database songs, `/api/process/youtube-search` finds matching YouTube video via yt-dlp
+- **YouTube auto-search**: for database songs, `/api/process/youtube-search` finds matching YouTube video via yt-dlp. Triggered in both hash mode AND DB-path mode when running in beta
+- **Web Share Target (Android PWA)**: `manifest.json` declares `share_target` → `/share` → `share.html` parses YouTube URL from share intent → redirects to `/?youtube=<url>`; homepage auto-opens YouTube FAB + prefills + submits. iOS Safari does not support Web Share Target (known limitation)
 - **Cover art**: uploaded files have covers extracted via mutagen; YouTube uses `img.youtube.com` thumbnails
 - **Beta homepage**: non-admin sees floating action button (FAB) for upload/YouTube + wrapping grid library with vertical scroll + analysis history (replaces music library)
 - **Prerequisites for YouTube**: `yt-dlp` + `ffmpeg` must be on NUC system PATH

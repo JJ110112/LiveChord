@@ -1,6 +1,7 @@
 """音樂庫 API — 瀏覽、搜尋、串流、metadata"""
 
 import os
+import re
 import json
 import time
 import threading
@@ -241,6 +242,8 @@ def search(q: str = Query(default=""), authorization: str = Header(None)):
         return {"results": []}
 
     q_lower = q.strip().lower()
+    # 將查詢字串依非字元切成 token，容忍 "Artist - Title" / 大小寫 / 標點變化
+    q_tokens = [tok for tok in re.split(r"\W+", q_lower, flags=re.UNICODE) if tok]
 
     if not CACHE_FILE.is_file():
         if _scan_state["running"]:
@@ -257,7 +260,7 @@ def search(q: str = Query(default=""), authorization: str = Header(None)):
     for t in tracks:
         fname = os.path.splitext(os.path.basename(t.get('path','')))[0]
         searchable = f"{t.get('title','')} {t.get('artist','')} {t.get('album','')} {fname}".lower()
-        if q_lower in searchable:
+        if q_tokens and all(tok in searchable for tok in q_tokens):
             if "unique_chords" not in t:
                 summary = _get_chord_summary(t.get("path", ""))
                 t.update(summary)

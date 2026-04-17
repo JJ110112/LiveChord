@@ -113,18 +113,17 @@
     });
   }
 
+  // Fetch public config once and share the promise across the module
+  const _configPromise = fetch("/api/config/public").then(r => r.json()).catch(() => ({}));
+  const _isBetaModeAsync = _configPromise.then(cfg => cfg.deployment_mode === "beta");
+
   // Show local-file toolbar button: always in hash mode, otherwise beta mode only
   if (hashMode && tbLocalFile) {
     tbLocalFile.style.display = "";
   } else {
-    (async () => {
-      try {
-        const cfg = await fetch("/api/config/public").then(r => r.json());
-        if (cfg.deployment_mode === "beta" && tbLocalFile) {
-          tbLocalFile.style.display = "";
-        }
-      } catch {}
-    })();
+    _isBetaModeAsync.then(isBeta => {
+      if (isBeta && tbLocalFile) tbLocalFile.style.display = "";
+    });
   }
 
   // When audio stream fails (NAS not reachable), show the prompt
@@ -743,8 +742,9 @@
     }
     topProgressBar.addEventListener("pointerdown", (e) => {
       _draggingTop = true;
-      topProgressBar.setPointerCapture(e.pointerId);
+      try { topProgressBar.setPointerCapture(e.pointerId); } catch {}
       _seekFromTopProgress(e);
+      e.preventDefault();
     });
     topProgressBar.addEventListener("pointermove", (e) => {
       if (_draggingTop) _seekFromTopProgress(e);
@@ -2350,6 +2350,22 @@
         // 載入段落 + 旋律資訊
         _loadSections(path);
         _loadMelody(path);
+        // Beta: attach YouTube iframe for video sync (DB-path mode parity with hash mode)
+        _isBetaModeAsync.then(isBeta => {
+          if (!isBeta || _usingLocalFile) return;
+          const ytUrl = chordData.youtube_url || "";
+          const _extractId = typeof extractYouTubeId === "function" ? extractYouTubeId
+            : (u) => { const m = (u||"").match(/(?:v=|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})/); return m ? m[1] : null; };
+          const ytVideoId = _extractId(ytUrl);
+          if (ytVideoId) {
+            _initYouTubeEmbed(ytVideoId);
+          } else {
+            const t = chordData.title || (songTitle && songTitle.textContent) || "";
+            const a = chordData.artist || "";
+            const q = (a ? `${a} ${t}` : t).trim();
+            if (q) _searchAndEmbedYouTube(q);
+          }
+        });
         return;
       }
     } catch (err) {
@@ -2529,8 +2545,8 @@
     // YouTube embed mode: control YouTube player
     if (_ytPlayer && typeof _ytPlayer.getPlayerState === "function") {
       const state = _ytPlayer.getPlayerState();
-      if (state === 1) { _ytPlayer.pauseVideo(); btnPlay.innerHTML = "&#x25B6;"; }
-      else { _ytPlayer.playVideo(); btnPlay.innerHTML = "&#x23F8;"; }
+      if (state === 1) { _ytPlayer.pauseVideo(); btnPlay.innerHTML = "&#x25B6;&#xFE0E;"; }
+      else { _ytPlayer.playVideo(); btnPlay.innerHTML = "&#x23F8;&#xFE0E;"; }
       return;
     }
     // Hash mode without audio loaded: open file picker
@@ -2594,13 +2610,13 @@
   }
 
   audio.addEventListener("play", () => {
-    btnPlay.innerHTML = "&#x23F8;";
+    btnPlay.innerHTML = "&#x23F8;&#xFE0E;";
     _setSmartView(true);
     if (!hashMode || _usingLocalFile) _startStreamWatcher();
   });
   
   audio.addEventListener("pause", () => {
-    btnPlay.innerHTML = "&#x25B6;"; 
+    btnPlay.innerHTML = "&#x25B6;&#xFE0E;"; 
     _setSmartView(false);
     _stopStreamWatcher();
   });
@@ -2721,7 +2737,7 @@
     }
 
     // off — stop
-    btnPlay.innerHTML = "&#x25B6;";
+    btnPlay.innerHTML = "&#x25B6;&#xFE0E;";
     if (topProgressFill) topProgressFill.style.width = "0%";
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     if (activeChordIdx >= 0 && activeChordIdx < ribbonElements.length) {
@@ -3560,7 +3576,7 @@
       events: {
         onReady: () => {
           showToast("YouTube 播放器就緒", 2000);
-          btnPlay.innerHTML = "&#x23F8;";
+          btnPlay.innerHTML = "&#x23F8;&#xFE0E;";
           try {
             const v = (volumeSlider && volumeSlider.value != null) ? parseFloat(volumeSlider.value) : audio.volume;
             _ytPlayer.setVolume(Math.max(0, Math.min(1, v)) * 100);
@@ -3572,15 +3588,15 @@
         },
         onStateChange: (e) => {
           // 0=ended, 1=playing, 2=paused
-          if (e.data === 1) btnPlay.innerHTML = "&#x23F8;";
-          else if (e.data === 2) btnPlay.innerHTML = "&#x25B6;";
+          if (e.data === 1) btnPlay.innerHTML = "&#x23F8;&#xFE0E;";
+          else if (e.data === 2) btnPlay.innerHTML = "&#x25B6;&#xFE0E;";
           else if (e.data === 0) {
             if (loopMode === "single") {
               try { _ytPlayer.seekTo(0, true); _ytPlayer.playVideo(); } catch (err) {}
             } else if (loopMode === "favorites" && favTracks.length > 0) {
               _navNext();
             } else {
-              btnPlay.innerHTML = "&#x25B6;";
+              btnPlay.innerHTML = "&#x25B6;&#xFE0E;";
             }
           }
         },
