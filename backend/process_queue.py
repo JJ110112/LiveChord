@@ -276,7 +276,14 @@ def _init_audit_db():
 _init_audit_db()
 
 
-def _write_audit(job: ProcessJob, chord_count: int = 0):
+def _write_audit(job: ProcessJob, chord_count: int = 0, status: Optional[str] = None):
+    """Persist the job outcome to audit DB.
+
+    ``status`` overrides ``job.status.value`` — used by the success branch
+    to record "done" before flipping the in-memory job status, avoiding a
+    race where my-history queries hit before the status change.
+    """
+    final_status = status if status is not None else job.status.value
     try:
         with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
             conn.execute(
@@ -284,7 +291,7 @@ def _write_audit(job: ProcessJob, chord_count: int = 0):
                    (job_id, username, source_type, file_hash, youtube_url, title, status, chord_count, created_at, completed_at, result_hash)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (job.job_id, job.username, job.source_type, job.file_hash,
-                 job.youtube_url, job.title, job.status.value, chord_count,
+                 job.youtube_url, job.title, final_status, chord_count,
                  time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(job.created_at)),
                  time.strftime("%Y-%m-%dT%H:%M:%S"),
                  job.result_hash or "")
@@ -523,10 +530,11 @@ def _worker_loop():
                 except Exception as mel_save_err:
                     logger.warning("Melody save failed: %s", mel_save_err)
 
-            # Write audit BEFORE marking done — so history exists when frontend sees "done"
+            # Write audit BEFORE flipping job.status so history exists when frontend sees "done".
+            # Explicitly record status="done" even though job.status is still PROCESSING at this line.
             job.progress = 98
             job.stage = "寫入紀錄…"
-            _write_audit(job, chord_count)
+            _write_audit(job, chord_count, status="done")
 
             job.status = JobStatus.DONE
             job.progress = 100
