@@ -1237,8 +1237,8 @@
 .yt-pip-dragzone:active { cursor: grabbing; }
 .yt-pip-close-float {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  bottom: 4px;
+  left: 4px;
   z-index: 6;
   width: 22px;
   height: 22px;
@@ -1261,8 +1261,9 @@
    fullscreen natively; lock button flips to 🔓 visual. */
 .yt-pip-lock-float {
   position: absolute;
-  top: 4px;
-  right: 32px;                /* next to .yt-pip-close-float (right:4, width:22 → 26px left) */
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);   /* centered on the bottom band so it doesn't cover video */
   z-index: 6;
   width: 22px;
   height: 22px;

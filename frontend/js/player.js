@@ -1700,13 +1700,22 @@
     }
   }
 
+  // Helper: the path used to derive song_hash on the backend. Hash mode has
+  // trackPath="" but chordData.path = "__upload/<job_id>" works equally since
+  // /api/ai/accompaniment only uses path to compute song_hash → reads the same
+  // chord JSON at data/chords/<h>.json.
+  function _accPath() {
+    return trackPath || (chordData && chordData.path) || "";
+  }
+
   function _loadAccompaniment(forceRefresh) {
-    if (!trackPath || accLoading) return;
+    const p = _accPath();
+    if (!p || accLoading) return;
     if (!forceRefresh && accData && accData._style === teachStyle && accData._level === teachLevel) return;
     accLoading = true;
     _setLoadingState(true, forceRefresh ? "AI 伴奏重新生成中..." : "AI 伴奏提取中...",
                      forceRefresh ? "清除快取並重新演算（含踏板/力度）..." : "首次播放需要進行即時演算...");
-    let url = `/api/ai/accompaniment?path=${encodeURIComponent(trackPath)}&style=${teachStyle}&level=${teachLevel}`;
+    let url = `/api/ai/accompaniment?path=${encodeURIComponent(p)}&style=${teachStyle}&level=${teachLevel}`;
     if (forceRefresh) url += "&nocache=1";
     fetch(url).then(r => r.json()).then(data => {
       if (data.error) {
@@ -3902,6 +3911,12 @@
           }
           await preloadChordInfo(chordData.chords);
           buildChordDOM();
+
+          // Hash mode parity with DB-path mode: kick off AI accompaniment fetch
+          // so LH/RH bars + fingering come from the real algorithm instead of
+          // the chord-voicing fallback (which looks flat & desynced next to
+          // per-onset events).
+          if (waterfallActive) _loadAccompaniment();
 
           // Load favorites for hash mode
           try {
