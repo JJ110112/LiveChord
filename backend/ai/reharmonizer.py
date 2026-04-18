@@ -396,6 +396,25 @@ class Reharmonizer:
                         
                     i += 1
                     
+                # Transformer decoder sequence length is bounded by max_len +
+                # model-learned EOS; accumulated `current_time += dur_val` is
+                # almost always SHORTER than the original song. Rescale the
+                # time axis so the jazzified progression spans the full song
+                # (otherwise the back half has no chord to follow).
+                if new_chords and original_chords:
+                    orig_start = original_chords[0].get("time", 0.0)
+                    orig_end = max(c.get("end", c.get("time", 0.0)) for c in original_chords)
+                    trans_start = new_chords[0].get("time", 0.0)
+                    trans_end = new_chords[-1].get("end", new_chords[-1].get("time", 0.0))
+                    orig_span = orig_end - orig_start
+                    trans_span = trans_end - trans_start
+                    if trans_span > 0 and orig_span > 0 and abs(orig_span - trans_span) > 1.0:
+                        scale = orig_span / trans_span
+                        for c in new_chords:
+                            c["time"] = orig_start + (c.get("time", 0.0) - trans_start) * scale
+                            if "end" in c:
+                                c["end"] = orig_start + (c["end"] - trans_start) * scale
+
                 if new_chords:
                     result_chords = new_chords
                     changes.append({

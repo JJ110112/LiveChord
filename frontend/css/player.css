@@ -1237,49 +1237,53 @@
 .yt-pip-dragzone:active { cursor: grabbing; }
 .yt-pip-close-float {
   position: absolute;
-  bottom: 4px;
-  left: 4px;
+  bottom: 2px;
+  left: 2px;
   z-index: 6;
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: rgba(0,0,0,0.7);
+  background: rgba(0,0,0,0.55);
   color: #fff;
   border: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 12px;
   line-height: 1;
   padding: 0;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s;
 }
-.yt-pip-close-float:hover { background: rgba(0,0,0,0.9); }
+.yt-pip-close-float:hover { background: rgba(0,0,0,0.9); opacity: 1; }
 
 /* Lock toggle — sits next to × close. When the PiP has .unlocked class, the
    dragzone goes pointer-events:none so user can tap YT captions / settings /
    fullscreen natively; lock button flips to 🔓 visual. */
 .yt-pip-lock-float {
   position: absolute;
-  bottom: 4px;
+  bottom: 2px;
   left: 50%;
   transform: translateX(-50%);   /* centered on the bottom band so it doesn't cover video */
   z-index: 6;
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: rgba(0,0,0,0.7);
+  background: rgba(0,0,0,0.55);
   color: #fff;
   border: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 9px;
   line-height: 1;
   padding: 0;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s;
 }
-.yt-pip-lock-float:hover { background: rgba(0,0,0,0.9); }
+.yt-pip-lock-float:hover { background: rgba(0,0,0,0.9); opacity: 1; }
 .yt-embed-container.unlocked .yt-pip-dragzone {
   pointer-events: none;
 }
@@ -1443,9 +1447,13 @@
   }
   .bottom-toolbar::-webkit-scrollbar { display: none; }
   .tb-trigger {
-    padding: 4px 3px;
+    padding: 4px 6px;
     font-size: 13px;
-    min-width: 0;
+    /* Keep a finger-friendly hit target even when the trigger is pure text
+       (e.g. Jazzify states "1/2/3/✨AI", Speed "1x", A-B) — without this the
+       button shrinks to ~24px wide and users keep missing it. */
+    min-width: 36px;
+    min-height: 32px;
     flex-shrink: 1;
   }
   .tb-item { flex-shrink: 1; min-width: 0; }

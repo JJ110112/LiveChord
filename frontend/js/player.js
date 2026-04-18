@@ -38,6 +38,20 @@
   let waterfallCtx = null;
   let waterfallActive = true;
   let show88ChordTones = localStorage.getItem("livechord_show_chord_tones") === "true";
+  // RH waterfall/keyboard content: "acc" = accompaniment only, "mel" = vocal
+  // melody only, "both" = merge. Learner can flip to practice either line;
+  // "both" is the power-user overlay view. Default to "acc" (what the hand
+  // actually plays if following the arrangement).
+  const _RH_MODES = ["acc", "mel", "both"];
+  const _RH_LABELS = { acc: "伴", mel: "旋", both: "全" };
+  let rhContentMode = localStorage.getItem("livechord_rh_mode") || "acc";
+  if (!_RH_MODES.includes(rhContentMode)) rhContentMode = "acc";
+  function _syncRhContentBtn() {
+    const lab = document.getElementById("btnRhContentLabel");
+    if (lab) lab.textContent = _RH_LABELS[rhContentMode] || "伴";
+    const btn = document.getElementById("btnRhContent");
+    if (btn) btn.title = `右手內容：${rhContentMode === "acc" ? "伴奏" : rhContentMode === "mel" ? "旋律" : "全部"}（點擊切換）`;
+  }
   let showFingering = localStorage.getItem("livechord_show_fingering") !== "false"; // 預設開啟
   let teachStyle = localStorage.getItem("livechord_teach_style") || "Auto";
   let teachLevel = localStorage.getItem("livechord_teach_level") || "L1";
@@ -1562,7 +1576,12 @@
     }
     
     const mel = _getMelodyMidi(currentTime);
-    if (mel >= 0 && !activeRh.includes(mel)) activeRh.push(mel);
+    // Mirror the waterfall rhContentMode gate so keyboard highlight matches
+    // which bar type the user chose to show (avoids ghost keys / doubled
+    // highlight mismatches).
+    const _rhHasAcc = !!(accData && (accData.right_hand || []).length);
+    const _wantMelKey = rhContentMode === "mel" || rhContentMode === "both" || !_rhHasAcc;
+    if (mel >= 0 && _wantMelKey && !activeRh.includes(mel)) activeRh.push(mel);
 
     if (activeHand === "left") activeRh = [];
     if (activeHand === "right") activeLh = [];
@@ -1872,10 +1891,15 @@
         allEvents.push(...(accData.left_hand || []).map(e => ({...e, _hand: "left"})));
       }
       if (activeHand === "both" || activeHand === "right") {
-        let rhEvents = accData.right_hand || [];
-        // Always merge melody: activeRh unconditionally adds _getMelodyMidi (see line ~1081),
-        // so the waterfall must match or the melody lights keys without a falling bar (ghost keys).
-        if (typeof melodyData !== 'undefined' && melodyData) {
+        const accRh = accData.right_hand || [];
+        const hasAcc = accRh.length > 0;
+        // rhContentMode drives what shows: "acc" (伴奏), "mel" (主唱旋律),
+        // "both" (疊加). Falls through to melody if the user picked acc but
+        // accData has no right_hand — so "acc" mode isn't accidentally empty.
+        const wantAcc = rhContentMode !== "mel" && hasAcc;
+        const wantMel = rhContentMode === "mel" || rhContentMode === "both" || !hasAcc;
+        let rhEvents = wantAcc ? accRh.slice() : [];
+        if (wantMel && typeof melodyData !== 'undefined' && melodyData) {
           const melEvents = melodyData.map(m => ({
             time: m.start,
             duration: m.end - m.start,
@@ -2433,6 +2457,21 @@
     };
 
     if (btnShowChordTonesTB) btnShowChordTonesTB.addEventListener("click", handleChordTonesToggle);
+
+    // RH content mode cycle: 伴 → 旋 → 全 → 伴
+    const btnRhContent = $("#btnRhContent");
+    if (btnRhContent) {
+      _syncRhContentBtn();
+      btnRhContent.addEventListener("click", () => {
+        const i = _RH_MODES.indexOf(rhContentMode);
+        rhContentMode = _RH_MODES[(i + 1) % _RH_MODES.length];
+        try { localStorage.setItem("livechord_rh_mode", rhContentMode); } catch {}
+        _syncRhContentBtn();
+        const names = { acc: "伴奏", mel: "旋律", both: "全部（伴奏+旋律）" };
+        showToast(`右手：${names[rhContentMode]}`, 1500);
+        update88Piano(audio.currentTime || 0);
+      });
+    }
     if (btnBottomShowChordTones) btnBottomShowChordTones.addEventListener("click", handleChordTonesToggle);
 
     // Phase 11: Fingering toggle
@@ -3438,7 +3477,13 @@
 
   if (btnJazzify) {
     btnJazzify.addEventListener("click", async () => {
-      if (!chordData || !chordData.chords || chordData.chords.length === 0) {
+      // Allow the cycle to advance even if current chords went empty — so long
+      // as we have an `originalChords` backup to restore to. Without this, a
+      // degenerate API response after AI (empty res.chords) would pin the
+      // button on AI state forever: next click hits this guard and aborts
+      // before `jazzifyLevel` advances.
+      const chordsEmpty = !chordData || !chordData.chords || chordData.chords.length === 0;
+      if (chordsEmpty && !originalChords) {
         showToast("尚無和弦資料", 2000);
         return;
       }
@@ -3478,6 +3523,9 @@
         const res = await API.jazzify(originalChords, chordData.key || "C", apiLevel, mode);
         if (myGen !== jazzifyReqGen) return;
         if (res.error) throw new Error(res.error);
+        if (!Array.isArray(res.chords) || res.chords.length === 0) {
+          throw new Error("伺服器未回傳和弦");
+        }
         chordData.chords = res.chords;
 
         if (isAI) {
