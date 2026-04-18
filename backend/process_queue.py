@@ -81,6 +81,10 @@ class ProcessJob:
 # ---------------------------------------------------------------------------
 
 _job_queue: queue.Queue = queue.Queue(maxsize=20)
+# Separate queue for post-DONE melody extraction. Decouples ~40s CPU work from the
+# chord worker so the next queued job starts immediately after chord save.
+# Items: (job_id, audio_path, result_hash). Melody worker owns audio file cleanup.
+_melody_queue: queue.Queue = queue.Queue(maxsize=40)
 _jobs: dict[str, ProcessJob] = {}
 _jobs_lock = threading.Lock()
 
@@ -270,6 +274,19 @@ def _init_audit_db():
             conn.execute("ALTER TABLE process_audit ADD COLUMN result_hash TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass
+        # Task 2: YouTube URL → library hash map. Lets beta users reuse NAS-analyzed
+        # chords when they drop the same song's YouTube URL into process, instead of
+        # re-downloading and re-analyzing. Populated by front-end auto-learn after
+        # strict duration match (Δ/D < 5%) or manually by admin.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS youtube_library_map (
+                youtube_url TEXT PRIMARY KEY,
+                library_hash TEXT NOT NULL,
+                mapped_by TEXT NOT NULL,
+                ts DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ylm_hash ON youtube_library_map(library_hash)")
         conn.commit()
 
 
@@ -318,6 +335,51 @@ def find_existing_result(youtube_url: str) -> dict | None:
     if not (CHORDS_DIR / f"{rh}.json").is_file():
         return None
     return dict(row)
+
+
+def find_library_mapping(youtube_url: str) -> dict | None:
+    """Task 2: look up a YouTube URL → NAS-library hash mapping.
+
+    Self-heals stale rows: if the mapped chord JSON no longer exists (admin
+    deleted it), the map entry is removed and None is returned.
+    """
+    if not youtube_url:
+        return None
+    with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT library_hash, mapped_by, ts FROM youtube_library_map WHERE youtube_url=?",
+            (youtube_url,),
+        ).fetchone()
+        if not row:
+            return None
+        lh = row["library_hash"]
+        if not (CHORDS_DIR / f"{lh}.json").is_file():
+            # Stale — auto-purge.
+            conn.execute("DELETE FROM youtube_library_map WHERE youtube_url=?", (youtube_url,))
+            conn.commit()
+            return None
+        return dict(row)
+
+
+def upsert_library_mapping(youtube_url: str, library_hash: str, mapped_by: str) -> bool:
+    """Task 2: record a YT URL → library hash mapping. Returns True if newly inserted."""
+    if not youtube_url or not library_hash:
+        return False
+    if not (CHORDS_DIR / f"{library_hash}.json").is_file():
+        return False
+    try:
+        with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO youtube_library_map(youtube_url, library_hash, mapped_by) "
+                "VALUES (?,?,?)",
+                (youtube_url, library_hash, mapped_by or "auto"),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+    except Exception as e:
+        logger.error("upsert_library_mapping failed: %s", e)
+        return False
 
 
 def write_reuse_audit(username: str, youtube_url: str, title: str,
@@ -512,46 +574,37 @@ def _worker_loop():
         chord_count = 0
 
         try:
-            # Step 1: If YouTube, download first
+            # Step 1: If YouTube, download first. Progress must be monotonic so the
+            # UI bar never goes backwards (frontend uses Math.max clamp but initial
+            # value there starts at 0).
             if job.source_type == "youtube" and job.youtube_url:
-                job.progress = 5
+                job.progress = 15
                 job.stage = "讀取 YouTube 標題…"
                 # Extract title before download
                 title = _get_youtube_title(job.youtube_url)
                 if title:
                     job.title = title
-                job.progress = 10
+                job.progress = 20
                 job.stage = "下載 YouTube 音訊…"
                 out_path = str(TMP_DIR / f"{job.job_id}.wav")
                 audio_path = _download_youtube(job.youtube_url, out_path)
                 job.audio_path = audio_path
                 job.file_hash = compute_file_hash(audio_path)
-                job.progress = 30
+                job.progress = 35
 
             # Step 2: BTC chord detection
             job.progress = 40
             job.stage = "分析和弦中（BTC）…"
             from chord_detect import detect_chords_and_key_isolated
             chords, key = detect_chords_and_key_isolated(audio_path)
-            job.progress = 80
-            job.stage = "擷取旋律中…"
-
-            # Step 2.5: Melody extraction (while audio file still exists)
-            melody_data = None
-            try:
-                from ai.melody_extractor import MelodyExtractor
-                ext = MelodyExtractor()
-                melody_data = ext.extract_melody(audio_path)
-            except Exception as mel_err:
-                logger.warning("Melody extraction failed for %s: %s", job_id, mel_err)
-            job.progress = 90
-            job.stage = "儲存和弦與旋律資料…"
+            job.progress = 75
+            job.stage = "儲存和弦資料…"
 
             # Step 3: Extract cover art (before audio is deleted)
             if job.source_type == "upload" and audio_path:
                 _extract_cover(audio_path, "pending")  # placeholder, real hash below
 
-            # Step 4: Save chord JSON
+            # Step 4: Save chord JSON → result_hash available for reuse lookups
             result_hash = _save_chord_json(job, chords, key)
             chord_count = len(chords)
             job.result_hash = result_hash
@@ -562,36 +615,79 @@ def _worker_loop():
                 if pending_cover.is_file():
                     pending_cover.rename(COVERS_DIR / f"{result_hash}.jpg")
 
-            # Step 4.5: Save melody JSON
-            if melody_data:
-                try:
-                    mel_file = MELODIES_DIR / f"{result_hash}.json"
-                    mel_file.write_text(
-                        json.dumps({"path": f"__upload/{job.job_id}", "melody": melody_data}, ensure_ascii=False),
-                        encoding="utf-8"
-                    )
-                except Exception as mel_save_err:
-                    logger.warning("Melody save failed: %s", mel_save_err)
-
-            # Write audit BEFORE flipping job.status so history exists when frontend sees "done".
-            # Explicitly record status="done" even though job.status is still PROCESSING at this line.
-            job.progress = 98
+            # Write audit + flip status to DONE NOW so the frontend can navigate to
+            # the player page immediately. Melody extraction runs afterwards below
+            # (takes ~40s on CPU) — user reads chords while melody renders in the
+            # background. Once melody JSON lands, a page reload picks it up for the
+            # waterfall view. We accept that the worker thread stays busy past DONE;
+            # subsequent queued jobs wait, which is fine for beta-scale load.
+            job.progress = 90
             job.stage = "寫入紀錄…"
             _write_audit(job, chord_count, status="done")
 
             job.status = JobStatus.DONE
             job.progress = 100
             job.stage = "完成"
-            logger.info("Job %s done: %s chords, key=%s", job_id, chord_count, key)
+            logger.info("Job %s done (chords): %s chords, key=%s", job_id, chord_count, key)
+
+            # Step 5: Hand off melody extraction to the separate melody worker so
+            # this chord worker can immediately start on the next queued job.
+            # Melody worker owns the audio file lifecycle from here.
+            try:
+                _melody_queue.put((job_id, audio_path, result_hash), block=False)
+                handed_off_to_melody = True
+            except queue.Full:
+                logger.warning("Melody queue full, skipping melody for %s", job_id)
+                handed_off_to_melody = False
 
         except Exception as e:
             job.status = JobStatus.ERROR
             job.error_msg = str(e)[:500]
             logger.error("Job %s failed: %s", job_id, e)
             _write_audit(job, chord_count)
+            handed_off_to_melody = False
 
         finally:
-            # Always clean up audio file
+            # Only delete the audio file if we did NOT hand it off to melody worker.
+            if not locals().get("handed_off_to_melody", False):
+                if audio_path and os.path.isfile(audio_path):
+                    try:
+                        os.remove(audio_path)
+                    except OSError:
+                        pass
+
+
+def _melody_worker_loop():
+    """Background melody-extraction worker. Runs after chord worker has already
+    flipped job.status to DONE, so failures here never surface to the user —
+    they just leave the song without a waterfall melody."""
+    while True:
+        try:
+            item = _melody_queue.get(timeout=5)
+        except queue.Empty:
+            continue
+        if item is None:
+            continue
+        job_id, audio_path, result_hash = item
+        try:
+            if not audio_path or not os.path.isfile(audio_path):
+                logger.warning("Melody worker: audio missing for %s (%s)", job_id, audio_path)
+                continue
+            try:
+                from ai.melody_extractor import MelodyExtractor
+                ext = MelodyExtractor()
+                melody_data = ext.extract_melody(audio_path)
+                if melody_data:
+                    mel_file = MELODIES_DIR / f"{result_hash}.json"
+                    mel_file.write_text(
+                        json.dumps({"path": f"__upload/{job_id}", "melody": melody_data}, ensure_ascii=False),
+                        encoding="utf-8"
+                    )
+                    logger.info("Job %s melody saved (bg worker)", job_id)
+            except Exception as mel_err:
+                logger.warning("Melody extraction failed for %s: %s", job_id, mel_err)
+        finally:
+            # Melody worker owns cleanup now.
             if audio_path and os.path.isfile(audio_path):
                 try:
                     os.remove(audio_path)
@@ -650,9 +746,11 @@ def _evict_loop():
 # ---------------------------------------------------------------------------
 
 _worker_thread = threading.Thread(target=_worker_loop, daemon=True, name="process-worker")
+_melody_thread = threading.Thread(target=_melody_worker_loop, daemon=True, name="melody-worker")
 _cleanup_thread = threading.Thread(target=_cleanup_loop, daemon=True, name="tmp-cleanup")
 _evict_thread = threading.Thread(target=_evict_loop, daemon=True, name="job-evict")
 
 _worker_thread.start()
+_melody_thread.start()
 _cleanup_thread.start()
 _evict_thread.start()

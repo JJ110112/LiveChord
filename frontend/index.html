@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=1">
-  <link rel="stylesheet" href="/css/home.css?v=11">
+  <link rel="stylesheet" href="/css/home.css?v=12">
   <!-- Warm the CDN so the player page's YouTube IFrame bootstraps faster -->
   <link rel="preconnect" href="https://www.youtube.com">
   <link rel="dns-prefetch" href="https://www.youtube.com">
@@ -74,9 +74,10 @@
     <div id="historyGrid" class="library-grid" style="margin-top:12px"></div>
   </section>
 
-  <!-- beta FAB + popup (hidden by default) -->
-  <div id="betaFab" class="beta-fab" style="display:none" onclick="document.getElementById('betaFabPanel').classList.toggle('open')">+</div>
-  <div id="betaFabPanel" class="beta-fab-panel">
+  <!-- beta add-song modal (opened from search empty-state CTA; no standalone FAB button) -->
+  <div id="betaFabBackdrop" class="add-song-backdrop"></div>
+  <div id="betaFabPanel" class="beta-fab-panel add-song-modal">
+    <button class="add-song-close" id="betaFabClose" aria-label="關閉">&times;</button>
     <div class="fab-panel-title">新增歌曲</div>
     <div class="fab-section" id="betaDropZone">
       <span>&#x1F3B5; 拖曳音檔或點擊選取</span>
@@ -223,6 +224,6 @@
       }
   }
 </script>
-<script src="/js/app.js?v=49"></script>
+<script src="/js/app.js?v=52"></script>
 </body>
 </html>

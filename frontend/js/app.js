@@ -59,21 +59,21 @@
         const secRecent = $("#secRecent");
         if (secBrowse) secBrowse.style.display = "none";
         if (secRecent) secRecent.style.display = "none";
-        // Show beta sections
-        const betaFab = $("#betaFab");
+        // Show beta sections (no standalone FAB — modal opens from search empty state)
         const secBetaRecent = $("#secBetaRecent");
         const secHistory = $("#secHistory");
-        if (betaFab) betaFab.style.display = "flex";
         if (secBetaRecent) secBetaRecent.style.display = "";
         if (secHistory) secHistory.style.display = "";
-        // Close FAB panel on outside click
-        document.addEventListener("click", (e) => {
-          const panel = $("#betaFabPanel");
-          const fab = $("#betaFab");
-          if (panel && fab && !panel.contains(e.target) && !fab.contains(e.target)) {
-            panel.classList.remove("open");
-          }
-        });
+        // Modal close via × button or backdrop click
+        const closeBtn = $("#betaFabClose");
+        const backdrop = $("#betaFabBackdrop");
+        const closeAddSongModal = () => {
+          const p = $("#betaFabPanel");
+          if (p) p.classList.remove("open");
+          if (backdrop) backdrop.classList.remove("open");
+        };
+        if (closeBtn) closeBtn.addEventListener("click", closeAddSongModal);
+        if (backdrop) backdrop.addEventListener("click", closeAddSongModal);
       } else if (_isBetaMode) {
         // Admin in beta mode: show history section alongside regular sections
         const secHistory = $("#secHistory");
@@ -200,7 +200,9 @@
   };
 
   function _betaPollJob(jobId, fill, statusText, pctText) {
-    let maxProgress = 0;
+    // Seed with the current visual width (already set by caller to 20–30%) so the
+    // bar never jumps backwards when the first poll returns a lower backend value.
+    let maxProgress = fill ? parseInt((fill.style.width || "0").replace("%", "")) || 0 : 0;
     const timer = setInterval(async () => {
       try {
         const res = await fetch(`/api/process/status/${jobId}`);
@@ -543,6 +545,33 @@
     if (searchResults.children.length > 0) searchResults.classList.add("show");
   });
 
+  // Enter on the search box. Two paths for beta non-admin:
+  //   (a) value is a YouTube URL → open modal, pre-fill URL, auto-click 分析
+  //   (b) anything else → open modal empty, focus URL input for manual paste/upload
+  // Personal/admin get standard browser form submit (no-op here).
+  const _YT_URL_RE = /^https?:\/\/((www|m)\.)?(youtube\.com\/(watch|shorts)|youtu\.be\/|music\.youtube\.com\/watch)/i;
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    if (!_isBetaNonAdmin) return;
+    e.preventDefault();
+    searchResults.classList.remove("show");
+
+    const raw = searchInput.value.trim();
+    const panel = $("#betaFabPanel");
+    const backdrop = $("#betaFabBackdrop");
+    const urlInput = $("#betaYtUrl");
+    if (panel) panel.classList.add("open");
+    if (backdrop) backdrop.classList.add("open");
+
+    if (_YT_URL_RE.test(raw) && urlInput) {
+      urlInput.value = raw;
+      searchInput.value = "";
+      if (typeof window._betaStartYoutube === "function") window._betaStartYoutube();
+    } else if (urlInput) {
+      setTimeout(() => urlInput.focus(), 50);
+    }
+  });
+
   document.addEventListener("click", (e) => {
     if (!e.target.closest(".search-box")) searchResults.classList.remove("show");
   });
@@ -556,8 +585,30 @@
         return;
       }
       if (data.results.length === 0) {
-        searchResults.innerHTML = `<div style="padding:12px;color:var(--text-dim)">找不到結果</div>`;
-        searchResults.classList.add("show");
+        // Beta non-admin: offer add-song CTA so the only entry point (search)
+        // handles both "found" and "not found" cases.
+        if (_isBetaNonAdmin) {
+          searchResults.innerHTML = `
+            <div class="search-empty">
+              <div class="search-empty-msg">找不到「${escapeHtml(q)}」</div>
+              <button id="searchAddSongBtn" class="search-empty-btn">+ 新增此曲：貼 YT URL 或上傳音檔</button>
+            </div>`;
+          searchResults.classList.add("show");
+          const btn = document.getElementById("searchAddSongBtn");
+          if (btn) btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            searchResults.classList.remove("show");
+            const panel = $("#betaFabPanel");
+            const backdrop = $("#betaFabBackdrop");
+            if (panel) panel.classList.add("open");
+            if (backdrop) backdrop.classList.add("open");
+            const urlInput = $("#betaYtUrl");
+            if (urlInput) setTimeout(() => urlInput.focus(), 50);
+          });
+        } else {
+          searchResults.innerHTML = `<div style="padding:12px;color:var(--text-dim)">找不到結果</div>`;
+          searchResults.classList.add("show");
+        }
         return;
       }
       let html = "";

@@ -188,6 +188,26 @@
   // ---- YouTube embed state (hoisted so helpers below can reference) ----
   let _ytPlayer = null;
   let _ytSyncTimer = null;
+  // Duration desync state: set when chord data loads (Task 1).
+  // _chordDuration: song length from chord JSON (seconds). 0 = unknown/skip check.
+  // _ytSyncDisabled: true → YT timer skips chord/piano/key updates (time+progress still update).
+  // _ytVerifiedOk: true → duration Δ < 5%, safe to auto-learn YT→library mapping (Task 2 gate).
+  let _chordDuration = 0;
+  let _ytSyncDisabled = false;
+  let _ytVerifiedOk = false;
+  // Compute album-track duration from chord JSON. Prefer explicit .duration;
+  // fall back to last chord's end time (or time+duration), or 0 if unknowable.
+  function _computeChordDuration(c) {
+    if (!c) return 0;
+    if (typeof c.duration === "number" && c.duration > 0) return c.duration;
+    const arr = c.chords || [];
+    if (!arr.length) return 0;
+    const last = arr[arr.length - 1];
+    if (!last) return 0;
+    if (typeof last.end === "number") return last.end;
+    if (typeof last.time === "number") return last.time + (last.duration || 2);
+    return 0;
+  }
 
   // Always-available debug hook — safe to call from DevTools Console at any point
   // in the page lifecycle, whether YT has booted or not.
@@ -209,6 +229,9 @@
         timerAlive: !!_ytSyncTimer,
         lastError: window.__lcYtError || null,
         ytApiLoaded: !!window.YT,
+        chordDuration: _chordDuration,
+        syncDisabled: _ytSyncDisabled,
+        verifiedOk: _ytVerifiedOk,
       };
     } catch (e) { return { err: e && e.message, stack: e && e.stack }; }
   };
@@ -2374,6 +2397,10 @@
       chordData = await API.getChords(path, version);
       if (chordData.exists && chordData.chords && chordData.chords.length > 0) {
         hasChords = true;
+        // Task 1: record album-track duration for YT desync detection; reset gates.
+        _chordDuration = _computeChordDuration(chordData);
+        _ytSyncDisabled = false;
+        _ytVerifiedOk = false;
         // 和弦品質燈號
         const srcBadge = $("#chordSource");
         if (srcBadge) {
@@ -2443,7 +2470,20 @@
     }
 
     hasChords = false;
-    if (unifiedRibbonTrack) unifiedRibbonTrack.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px">尚無和弦譜 — 請按「偵測」按鈕</div>';
+    // Task 6: empty state. Personal mode → auto-run detection (user is alone, GPU is theirs,
+    // zero friction for "I just added this song"). Beta admin → show hero button so they
+    // decide when to spend GPU. Beta non-admin never reaches this branch (hash mode).
+    if (unifiedRibbonTrack) {
+      unifiedRibbonTrack.innerHTML = `
+        <div class="chord-empty-state">
+          <div class="chord-empty-msg">尚無和弦譜</div>
+          <button id="btnDetectHero" class="chord-empty-btn">一鍵偵測和弦</button>
+          <div class="chord-empty-hint">首次分析約 30 秒 ~ 1 分鐘</div>
+        </div>`;
+    }
+    _isBetaModeAsync.then(isBeta => {
+      if (!isBeta && trackPath) runChordDetection();
+    }).catch(() => {});
   }
 
   /** 播放時自動偵測（顯示 overlay） */
@@ -2597,8 +2637,13 @@
       el.classList.remove("played");
       el.classList.add("active");
 
-      // Auto-scroll ribbon to keep active chord visible
-      if (chordRibbonPanel && (!audio.paused || forceScroll)) {
+      // Auto-scroll ribbon to keep active chord visible. Gate must cover both
+      // NAS audio playback (8800) and YT embed playback (8801 hash mode) —
+      // audio.paused is always true in hash mode because <audio> never starts.
+      const _isAnyPlaying = _ytActive()
+        ? (_ytPlayer.getPlayerState && _ytPlayer.getPlayerState() === 1)
+        : !audio.paused;
+      if (chordRibbonPanel && (_isAnyPlaying || forceScroll)) {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
       }
     }
@@ -2615,8 +2660,8 @@
     // YouTube embed mode: control YouTube player
     if (_ytPlayer && typeof _ytPlayer.getPlayerState === "function") {
       const state = _ytPlayer.getPlayerState();
-      if (state === 1) { _ytPlayer.pauseVideo(); btnPlay.innerHTML = "&#x25B6;&#xFE0E;"; }
-      else { _ytPlayer.playVideo(); btnPlay.innerHTML = "&#x23F8;&#xFE0E;"; }
+      if (state === 1) { _ytPlayer.pauseVideo(); btnPlay.classList.remove("is-playing"); }
+      else { _ytPlayer.playVideo(); btnPlay.classList.add("is-playing"); }
       return;
     }
     // Hash mode without audio loaded: open file picker
@@ -2680,13 +2725,13 @@
   }
 
   audio.addEventListener("play", () => {
-    btnPlay.innerHTML = "&#x23F8;&#xFE0E;";
+    btnPlay.classList.add("is-playing");
     _setSmartView(true);
     if (!hashMode || _usingLocalFile) _startStreamWatcher();
   });
   
   audio.addEventListener("pause", () => {
-    btnPlay.innerHTML = "&#x25B6;&#xFE0E;"; 
+    btnPlay.classList.remove("is-playing");
     _setSmartView(false);
     _stopStreamWatcher();
   });
@@ -2774,15 +2819,21 @@
   const btnLoop = $("#btnLoop");
   const LOOP_MODES = ["off", "single", "favorites"];
   const LOOP_LABELS = { off: "循環 OFF", single: "單曲循環", favorites: "最愛循環" };
-  const LOOP_ICONS = { off: "\u{1F501}", single: "\u{1F502}", favorites: "fav" };
+  // Lucide SVG variants — keep in sync with the inline SVG baseline in player.html so
+  // the whole toolbar renders identically across Android/iOS/desktop.
+  const _LUCIDE_REPEAT = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>';
+  const _LUCIDE_REPEAT_1 = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/><path d="M11 10h1v4"/></svg>';
+  const _LUCIDE_FAV_BADGE = '<svg class="loop-fav-badge" viewBox="0 0 24 24" fill="#ff4757" aria-hidden="true"><path d="M12 21s-7-4.5-9.5-9.5C.5 7 3.5 3 7.5 3c2 0 3 1 4.5 2.5C13.5 4 14.5 3 16.5 3c4 0 7 4 5 8.5C19 16.5 12 21 12 21z"/></svg>';
   let loopMode = localStorage.getItem("livechord_loop_mode") || "off";
 
   function _updateLoopUI() {
     audio.loop = (loopMode === "single");
     if (loopMode === "favorites") {
-      btnLoop.innerHTML = '<span style="position:relative">\u{1F501}<span style="position:absolute;top:-5px;right:-6px;font-size:8px">\u2764\uFE0F</span></span>';
+      btnLoop.innerHTML = `<span class="loop-icon-wrap">${_LUCIDE_REPEAT}${_LUCIDE_FAV_BADGE}</span>`;
+    } else if (loopMode === "single") {
+      btnLoop.innerHTML = _LUCIDE_REPEAT_1;
     } else {
-      btnLoop.textContent = LOOP_ICONS[loopMode];
+      btnLoop.innerHTML = _LUCIDE_REPEAT;
     }
     btnLoop.classList.toggle("modified", loopMode !== "off");
   }
@@ -2807,7 +2858,7 @@
     }
 
     // off — stop
-    btnPlay.innerHTML = "&#x25B6;&#xFE0E;";
+    btnPlay.classList.remove("is-playing");
     if (topProgressFill) topProgressFill.style.width = "0%";
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     if (activeChordIdx >= 0 && activeChordIdx < ribbonElements.length) {
@@ -2843,7 +2894,7 @@
       _ytPlayer.unMute();
     }
     localStorage.setItem("livechord_volume", volumeSlider.value);
-    if (btnMute) btnMute.innerHTML = v === 0 ? "&#x1F507;" : "&#x1F509;";
+    if (btnMute) btnMute.classList.toggle("is-muted", v === 0);
   });
 
   // Mute toggle
@@ -2855,7 +2906,7 @@
       if (_ytPlayer && typeof _ytPlayer.isMuted === "function") {
         if (_ytPlayer.isMuted()) _ytPlayer.unMute(); else _ytPlayer.mute();
       }
-      btnMute.innerHTML = audio.muted ? "&#x1F507;" : "&#x1F509;";
+      btnMute.classList.toggle("is-muted", audio.muted);
     });
   }
 
@@ -3127,61 +3178,66 @@
     });
   }
 
-  // ---- manual detect button ----
-  const btnDetect = $("#btnDetect");
-  if (btnDetect) {
-    btnDetect.addEventListener("click", async () => {
-      detectOverlay.style.display = "";
-      detectMsg.textContent = "搜尋 MIDI…";
-      detectDetail.textContent = "";
+  // ---- manual detect: shared by Tools popup button + hero empty-state button (Task 6) ----
+  async function runChordDetection() {
+    if (!trackPath) { showToast("無法偵測：此頁為 hash 模式", 3000); return; }
+    detectOverlay.style.display = "";
+    detectMsg.textContent = "搜尋 MIDI…";
+    detectDetail.textContent = "";
 
-      try {
-        const midiResult = await API.midiSearch(trackPath);
+    try {
+      const midiResult = await API.midiSearch(trackPath);
 
-        if (midiResult.results && midiResult.results.length > 0) {
-          // 找同名 MIDI（檔名去副檔名 = FLAC 檔名去副檔名）
-          const flacName = trackPath.split("/").pop().replace(/\.flac$/i, "");
-          const exactMatch = midiResult.results.find(m =>
-            m.name.replace(/\.(mid|midi)$/i, "") === flacName
-          );
+      if (midiResult.results && midiResult.results.length > 0) {
+        // 找同名 MIDI（檔名去副檔名 = FLAC 檔名去副檔名）
+        const flacName = trackPath.split("/").pop().replace(/\.flac$/i, "");
+        const exactMatch = midiResult.results.find(m =>
+          m.name.replace(/\.(mid|midi)$/i, "") === flacName
+        );
 
-          if (exactMatch) {
-            detectMsg.textContent = "MIDI 匯入中…";
-            detectDetail.textContent = exactMatch.name;
-            const result = await API.midiImport(trackPath, exactMatch.path);
-            if (result.warning) {
-              showToast(`⚠️ ${result.warning}`, 6000);
-            } else {
-              showToast(`MIDI 匯入！${result.chord_count} 和弦，Key: ${result.key}`, 3000);
-            }
-            chordCache = {};
-            await loadChords(trackPath);
-            updateActiveChord(audio.currentTime || -1);
-            detectOverlay.style.display = "none";
-            return;
+        if (exactMatch) {
+          detectMsg.textContent = "MIDI 匯入中…";
+          detectDetail.textContent = exactMatch.name;
+          const result = await API.midiImport(trackPath, exactMatch.path);
+          if (result.warning) {
+            showToast(`⚠️ ${result.warning}`, 6000);
+          } else {
+            showToast(`MIDI 匯入！${result.chord_count} 和弦，Key: ${result.key}`, 3000);
           }
-          // 無精確匹配 → 不自動匯入模糊結果，改用 BTC 偵測
+          chordCache = {};
+          await loadChords(trackPath);
+          updateActiveChord(audio.currentTime || -1);
+          detectOverlay.style.display = "none";
+          return;
         }
-
-        // 無 MIDI → BTC 偵測
-        detectMsg.textContent = "AI 偵測和弦中…";
-        detectDetail.textContent = "分析音訊中，請稍候";
-        const result = await API.detectChords(trackPath);
-        if (result.chord_count === 0) {
-          showToast("⚠️ AI 無法辨識此音檔的和弦（可能是合成音色或非常規音源）", 5000);
-        } else {
-          showToast(`偵測完成！${result.chord_count} 和弦，Key: ${result.key}`, 3000);
-        }
-        chordCache = {};
-        await loadChords(trackPath);
-        updateActiveChord(audio.currentTime || -1);
-      } catch (err) {
-        showToast("偵測失敗: " + err.message, 4000);
-      } finally {
-        detectOverlay.style.display = "none";
+        // 無精確匹配 → 不自動匯入模糊結果，改用 BTC 偵測
       }
-    });
+
+      // 無 MIDI → BTC 偵測
+      detectMsg.textContent = "AI 偵測和弦中…";
+      detectDetail.textContent = "分析音訊中，請稍候";
+      const result = await API.detectChords(trackPath);
+      if (result.chord_count === 0) {
+        showToast("⚠️ AI 無法辨識此音檔的和弦（可能是合成音色或非常規音源）", 5000);
+      } else {
+        showToast(`偵測完成！${result.chord_count} 和弦，Key: ${result.key}`, 3000);
+      }
+      chordCache = {};
+      await loadChords(trackPath);
+      updateActiveChord(audio.currentTime || -1);
+    } catch (err) {
+      showToast("偵測失敗: " + err.message, 4000);
+    } finally {
+      detectOverlay.style.display = "none";
+    }
   }
+
+  const btnDetect = $("#btnDetect");
+  if (btnDetect) btnDetect.addEventListener("click", () => runChordDetection());
+  // Hero detect button (Task 6) is injected into empty chord state; bind via delegation.
+  document.addEventListener("click", (e) => {
+    if (e.target && e.target.id === "btnDetectHero") runChordDetection();
+  });
 
   // ---- favorite ----
   const _favPath = trackPath || (hashMode ? `__hash/${hashMode}` : "");
@@ -3504,6 +3560,10 @@
         chordData = await res.json();
         if (chordData.exists && chordData.chords && chordData.chords.length > 0) {
           hasChords = true;
+          // Task 1: record album-track duration for YT desync detection; reset gates.
+          _chordDuration = _computeChordDuration(chordData);
+          _ytSyncDisabled = false;
+          _ytVerifiedOk = false;
           const title = chordData.title
             || (chordData.path ? chordData.path.split("/").pop().replace(/\.\w+$/i, "") : "")
             || "分析結果";
@@ -3575,17 +3635,36 @@
           if (!audioLoaded && ytVideoId) {
             _initYouTubeEmbed(ytVideoId);
           } else if (!audioLoaded) {
-            // No audio blob and no youtube_url — try searching YouTube by title
+            // No audio blob and no youtube_url — try searching YouTube by title.
+            // If we can't even search (no title), surface the fallback panel so
+            // the user can paste a URL or load a local file instead of being
+            // stranded with just a toast.
             const searchTitle = chordData.title || "";
             if (searchTitle) {
               _searchAndEmbedYouTube(searchTitle);
             } else {
-              showToast("按 ▶ 播放鍵載入本地音檔", 8000);
+              _showYtFallbackPanel();
             }
           }
         } else {
-          songTitle.textContent = "分析結果";
-          showToast("和弦資料為空", 3000);
+          // Hash mode, but no chord data (song exists in library metadata but not yet analyzed,
+          // or the chord JSON was wiped). Give the user an out: clear empty state in the chord
+          // area, plus a fallback panel so they can paste a YT URL or load a local audio file
+          // and at least audition the track while analysis is pending.
+          const fallbackTitle = chordData.title
+            || (chordData.path ? chordData.path.split("/").pop().replace(/\.\w+$/i, "") : "")
+            || "尚未分析";
+          songTitle.textContent = fallbackTitle;
+          document.title = `${fallbackTitle} — LiveChord`;
+          if (unifiedRibbonTrack) {
+            unifiedRibbonTrack.innerHTML = `
+              <div class="chord-empty-state">
+                <div class="chord-empty-msg">此曲尚未分析</div>
+                <div class="chord-empty-hint">先載入音源試聽，等分析完成後即可顯示和弦</div>
+              </div>`;
+          }
+          showToast("此曲尚未分析 — 可貼 YouTube URL 或上傳音檔試聽", 5000);
+          _showYtFallbackPanel();
         }
       } catch (e) {
         songTitle.textContent = "載入失敗";
@@ -3614,16 +3693,191 @@
     try {
       showToast("搜尋 YouTube 對應曲目...", 3000);
       const res = await fetch(`/api/process/youtube-search?q=${encodeURIComponent(title)}`);
-      if (!res.ok) return;
+      if (!res.ok) { _showYtFallbackPanel(); return; }
       const data = await res.json();
       if (data.video_id) {
         _initYouTubeEmbed(data.video_id);
       } else {
-        showToast("按 ▶ 播放鍵載入本地音檔", 5000);
+        // Task 7: no YT match found — let user paste URL or load local file.
+        _showYtFallbackPanel();
       }
     } catch (e) {
-      showToast("按 ▶ 播放鍵載入本地音檔", 5000);
+      _showYtFallbackPanel();
     }
+  }
+
+  // Task 7: fallback panel — user pastes correct YT URL or uploads a local audio file
+  // when auto-search fails or desync banner indicates wrong version.
+  function _showYtFallbackPanel() {
+    const old = document.getElementById("ytFallbackPanel");
+    if (old) { old.remove(); }
+    const panel = document.createElement("div");
+    panel.id = "ytFallbackPanel";
+    panel.className = "yt-fallback-panel";
+    panel.innerHTML = `
+      <button class="yt-fb-close" aria-label="關閉">&times;</button>
+      <h3>選擇正確的音源</h3>
+      <div class="yt-fb-hint">自動搜尋找不到對應版本，或版本長度不符和弦。你可以：</div>
+      <div class="yt-fb-row">
+        <input id="ytFbUrl" type="text" placeholder="貼上 YouTube URL" />
+        <button id="ytFbUrlSubmit">使用</button>
+      </div>
+      <div class="yt-fb-sep"><span>或</span></div>
+      <div class="yt-fb-row">
+        <input id="ytFbFile" type="file" accept="audio/*" />
+        <button id="ytFbFileSubmit" class="secondary">載入本地檔</button>
+      </div>
+    `;
+    document.body.appendChild(panel);
+    panel.querySelector(".yt-fb-close")?.addEventListener("click", () => panel.remove());
+    panel.querySelector("#ytFbUrlSubmit")?.addEventListener("click", () => _onYtFbUrlSubmit(panel));
+    panel.querySelector("#ytFbUrl")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") _onYtFbUrlSubmit(panel);
+    });
+    panel.querySelector("#ytFbFileSubmit")?.addEventListener("click", () => _onYtFbFileSubmit(panel));
+  }
+
+  function _onYtFbUrlSubmit(panel) {
+    const input = panel.querySelector("#ytFbUrl");
+    const raw = (input && input.value || "").trim();
+    const m = raw.match(/(?:v=|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
+    const vid = m ? m[1] : "";
+    if (!vid) { showToast("無法識別 YouTube URL", 3000); return; }
+    // Tear down existing YT player so _initYouTubeEmbed can rebuild cleanly
+    if (_ytPlayer) { try { _ytPlayer.destroy(); } catch {} _ytPlayer = null; }
+    if (_ytSyncTimer) { clearInterval(_ytSyncTimer); _ytSyncTimer = null; }
+    _ytSyncDisabled = false; _ytVerifiedOk = false;
+    // Clear guard so re-learn can fire after new duration check
+    try {
+      for (const k of Object.keys(sessionStorage)) {
+        if (k.startsWith("ytlib:")) sessionStorage.removeItem(k);
+      }
+    } catch {}
+    panel.remove();
+    _initYouTubeEmbed(vid);
+    // User manually picked a URL — strong "this is the version I want" signal.
+    // Always kick off analysis so chord data matches their chosen version.
+    // Backend reuses existing result if URL was already processed (library map
+    // or prior YT job), so the cost is zero when nothing new needs analyzing.
+    if (hashMode) {
+      _startAnalysisForUrl(raw || `https://www.youtube.com/watch?v=${vid}`);
+    }
+  }
+
+  function _startAnalysisForUrl(url) {
+    _showAnalysisBanner("提交分析中…", 0);
+    fetch("/api/process/youtube", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    }).then(r => r.json().then(d => ({ ok: r.ok, d }))).then(({ ok, d }) => {
+      if (!ok) {
+        _showAnalysisBanner(`提交失敗：${(d && d.detail) || "未知錯誤"}`, null, /*error=*/true);
+        return;
+      }
+      if (d.status === "done" && d.result_hash) {
+        _showAnalysisBanner("已有現成分析結果，切換中…", 100);
+        setTimeout(() => {
+          window.location.href = `/player?hash=${encodeURIComponent(d.result_hash)}`;
+        }, 600);
+        return;
+      }
+      if (d.job_id) _pollAnalysisJob(d.job_id);
+    }).catch(e => {
+      _showAnalysisBanner(`提交失敗：${e.message}`, null, true);
+    });
+  }
+
+  function _pollAnalysisJob(jobId) {
+    let maxProgress = 0;
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/process/status/${jobId}`);
+        if (!res.ok) { clearInterval(timer); return; }
+        const d = await res.json();
+        maxProgress = Math.max(maxProgress, d.progress || 0);
+        const stage = (d.stage && d.status === "processing") ? d.stage : (d.status || "");
+        _showAnalysisBanner(stage, maxProgress);
+        if (d.status === "done" && d.result_hash) {
+          clearInterval(timer);
+          _showAnalysisBannerDone(d.result_hash);
+        } else if (d.status === "error") {
+          clearInterval(timer);
+          _showAnalysisBanner(`分析失敗：${d.error || "未知錯誤"}`, null, true);
+        }
+      } catch {}
+    }, 2000);
+  }
+
+  function _showAnalysisBanner(text, pct, isError = false) {
+    let el = document.getElementById("ytAnalysisBanner");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "ytAnalysisBanner";
+      el.className = "yt-analysis-banner";
+      el.innerHTML = `
+        <div class="yt-ab-row">
+          <span class="yt-ab-text"></span>
+          <span class="yt-ab-pct"></span>
+          <button class="yt-ab-close" aria-label="關閉">&times;</button>
+        </div>
+        <div class="yt-ab-bar"><div class="yt-ab-fill"></div></div>
+      `;
+      document.body.appendChild(el);
+      el.querySelector(".yt-ab-close").addEventListener("click", () => el.remove());
+    }
+    el.classList.toggle("is-error", !!isError);
+    el.querySelector(".yt-ab-text").textContent = text || "";
+    el.querySelector(".yt-ab-pct").textContent = pct == null ? "" : `${pct}%`;
+    const fill = el.querySelector(".yt-ab-fill");
+    if (pct != null) fill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+  }
+
+  function _showAnalysisBannerDone(resultHash) {
+    const el = document.getElementById("ytAnalysisBanner");
+    if (!el) return;
+    el.querySelector(".yt-ab-text").textContent = "分析完成！";
+    el.querySelector(".yt-ab-pct").textContent = "100%";
+    el.querySelector(".yt-ab-fill").style.width = "100%";
+    // Replace close with a "view chords" CTA
+    const row = el.querySelector(".yt-ab-row");
+    row.querySelector(".yt-ab-close")?.remove();
+    const btn = document.createElement("button");
+    btn.className = "yt-ab-cta";
+    btn.textContent = "看和弦";
+    btn.addEventListener("click", () => {
+      window.location.href = `/player?hash=${encodeURIComponent(resultHash)}`;
+    });
+    row.appendChild(btn);
+  }
+
+  function _onYtFbFileSubmit(panel) {
+    const input = panel.querySelector("#ytFbFile");
+    const file = input && input.files && input.files[0];
+    if (!file) { showToast("請先選擇音檔", 3000); return; }
+    // Tear down YT so the audio element takes over playback
+    if (_ytPlayer) { try { _ytPlayer.destroy(); } catch {} _ytPlayer = null; }
+    if (_ytSyncTimer) { clearInterval(_ytSyncTimer); _ytSyncTimer = null; }
+    const ytContainer = document.getElementById("ytEmbedContainer");
+    if (ytContainer) ytContainer.style.display = "none";
+    _ytSyncDisabled = false;
+    const objUrl = URL.createObjectURL(file);
+    audio.src = objUrl;
+    _usingLocalFile = true;
+    audio.play().catch(() => {});
+    panel.remove();
+    showToast(`已載入本地音檔：${file.name}`, 3000);
+    // Verify audio duration vs chord duration — same 10% gate as YT.
+    audio.addEventListener("loadedmetadata", function onMeta() {
+      audio.removeEventListener("loadedmetadata", onMeta);
+      if (!_chordDuration || _chordDuration < 30) return;
+      const d = audio.duration;
+      if (!d || isNaN(d)) return;
+      const ratio = Math.abs(d - _chordDuration) / _chordDuration;
+      if (ratio > 0.10) {
+        showToast(`本地檔長度與和弦差 ${Math.round(ratio*100)}%，播放可能不同步`, 6000);
+      }
+    });
   }
 
   function _initYouTubeEmbed(videoId) {
@@ -3655,6 +3909,72 @@
     }
   }
 
+  // Task 1: compare YT video length against chord JSON length; show banner + gate sync on mismatch.
+  // Retries up to 3× because getDuration() may return 0 during buffering.
+  function _checkYtDuration(attempt = 0) {
+    if (!_ytPlayer || typeof _ytPlayer.getDuration !== "function") return;
+    if (!_chordDuration || _chordDuration < 30) return;  // skip check if unknown or too short
+    let dYt = 0;
+    try { dYt = _ytPlayer.getDuration() || 0; } catch { dYt = 0; }
+    if (!dYt || isNaN(dYt)) {
+      if (attempt < 3) setTimeout(() => _checkYtDuration(attempt + 1), 500);
+      return;
+    }
+    const ratio = Math.abs(dYt - _chordDuration) / _chordDuration;
+    if (ratio > 0.10) {
+      _ytSyncDisabled = true;
+      _ytVerifiedOk = false;
+      _showDesyncBanner(dYt, _chordDuration, ratio);
+    } else if (ratio <= 0.05) {
+      _ytVerifiedOk = true;
+      _maybeLearnLibraryMapping();
+    }
+  }
+
+  // Task 2: auto-learn YT URL → library hash mapping when duration matches tightly.
+  // Single-shot per (hash, videoId) pair, guarded in sessionStorage.
+  function _maybeLearnLibraryMapping() {
+    if (!hashMode || !_ytVerifiedOk || !_ytPlayer) return;
+    let videoUrl = "";
+    try { videoUrl = _ytPlayer.getVideoUrl ? _ytPlayer.getVideoUrl() : ""; } catch { videoUrl = ""; }
+    const m = videoUrl.match(/(?:v=|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
+    const vid = m ? m[1] : "";
+    if (!vid) return;
+    const canonical = `https://www.youtube.com/watch?v=${vid}`;
+    const guardKey = `ytlib:${hashMode}:${vid}`;
+    try { if (sessionStorage.getItem(guardKey)) return; } catch {}
+    fetch("/api/process/yt-library-learn", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ youtube_url: canonical, library_hash: hashMode }),
+    }).then(r => {
+      if (r.ok) {
+        try { sessionStorage.setItem(guardKey, "1"); } catch {}
+      }
+    }).catch(() => {});
+  }
+
+  function _showDesyncBanner(dYt, dChord, ratio) {
+    // Remove any existing banner first
+    const old = document.getElementById("ytDesyncBanner");
+    if (old) old.remove();
+    const pct = Math.round(ratio * 100);
+    const el = document.createElement("div");
+    el.id = "ytDesyncBanner";
+    el.className = "yt-desync-banner";
+    el.innerHTML = `
+      <span>⚠ YouTube 版本長度 ${formatTime(dYt)} 與和弦 ${formatTime(dChord)} 差 ${pct}%，同步已停用</span>
+      <button id="ytDesyncFallback" class="yt-desync-btn">換版本/上傳音檔</button>
+      <button id="ytDesyncClose" class="yt-desync-close" aria-label="關閉">&times;</button>
+    `;
+    document.body.appendChild(el);
+    document.getElementById("ytDesyncClose")?.addEventListener("click", () => el.remove());
+    document.getElementById("ytDesyncFallback")?.addEventListener("click", () => {
+      el.remove();
+      if (typeof _showYtFallbackPanel === "function") _showYtFallbackPanel();
+    });
+  }
+
   function _createYTPlayer(videoId) {
     _ytPlayer = new YT.Player("ytEmbed", {
       videoId: videoId,
@@ -3663,7 +3983,7 @@
         onReady: () => {
           _setLoadingState(false);
           showToast("YouTube 播放器就緒", 2000);
-          btnPlay.innerHTML = "&#x23F8;&#xFE0E;";
+          btnPlay.classList.add("is-playing");
           try {
             const v = (volumeSlider && volumeSlider.value != null) ? parseFloat(volumeSlider.value) : audio.volume;
             _ytPlayer.setVolume(Math.max(0, Math.min(1, v)) * 100);
@@ -3672,22 +3992,24 @@
             if (s !== 1 && typeof _ytPlayer.setPlaybackRate === "function") _ytPlayer.setPlaybackRate(s);
           } catch (e) {}
           _startYTSync();
+          // Task 1: verify YT length matches chord length (with retry for buffering).
+          setTimeout(() => _checkYtDuration(0), 600);
         },
         onStateChange: (e) => {
           // 0=ended, 1=playing, 2=paused, 3=buffering, 5=cued
           if (e.data === 1) {
-            btnPlay.innerHTML = "&#x23F8;&#xFE0E;";
+            btnPlay.classList.add("is-playing");
             // Re-arm the sync timer in case it was cleared (close-button, destroy, etc.)
             _startYTSync();
           }
-          else if (e.data === 2) btnPlay.innerHTML = "&#x25B6;&#xFE0E;";
+          else if (e.data === 2) btnPlay.classList.remove("is-playing");
           else if (e.data === 0) {
             if (loopMode === "single") {
               try { _ytPlayer.seekTo(0, true); _ytPlayer.playVideo(); } catch (err) {}
             } else if (loopMode === "favorites" && favTracks.length > 0) {
               _navNext();
             } else {
-              btnPlay.innerHTML = "&#x25B6;&#xFE0E;";
+              btnPlay.classList.remove("is-playing");
             }
           }
         },
@@ -3729,6 +4051,8 @@
 
         // Chord/instrument animation only while playing (state 1) to avoid burning cycles when paused
         if (state !== 1) return;
+        // Task 1: gate chord/instrument updates when YT length ≠ chord length (time/progress still update above).
+        if (_ytSyncDisabled) return;
         if (t > 0) {
           updateActiveChord(t);
           _updateBeatDots(t);

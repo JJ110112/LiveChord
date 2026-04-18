@@ -19,6 +19,7 @@ from process_queue import (
     submit_job, get_job, generate_job_id, compute_file_hash,
     check_quota, get_user_daily_count, get_audit_log, get_user_audit_log,
     delete_audit_entries, find_existing_result, write_reuse_audit,
+    find_library_mapping, upsert_library_mapping,
     CHORDS_DIR,
 )
 
@@ -36,6 +37,19 @@ ALLOWED_MIME_TYPES = {
 _YOUTUBE_RE = re.compile(
     r"^https?://((www|m)\.)?(youtube\.com/(watch|shorts)|youtu\.be/|music\.youtube\.com/watch)"
 )
+
+
+def _normalize_youtube_url(raw_url: str) -> tuple[str, str]:
+    """Extract 11-char video ID and build canonical URL.
+
+    Returns (canonical_url, video_id). Empty video_id if extraction fails;
+    caller decides whether to reject or pass through.
+    """
+    m = re.search(r"(?:v=|youtu\.be/|/shorts/)([A-Za-z0-9_-]{11})", raw_url or "")
+    vid = m.group(1) if m else ""
+    if vid:
+        return f"https://www.youtube.com/watch?v={vid}", vid
+    return raw_url, ""
 
 
 def _require_beta():
@@ -116,14 +130,28 @@ def process_youtube(req: YouTubeRequest, username: str = Depends(get_current_use
     if not _YOUTUBE_RE.match(raw_url):
         raise HTTPException(status_code=400, detail="請提供有效的 YouTube URL")
 
-    # Extract video ID and normalize URL (strip playlist/radio params)
-    vid_m = re.search(r"(?:v=|youtu\.be/|/shorts/)([A-Za-z0-9_-]{11})", raw_url)
-    vid = vid_m.group(1) if vid_m else ""
-    url = f"https://www.youtube.com/watch?v={vid}" if vid else raw_url
+    url, vid = _normalize_youtube_url(raw_url)
     logger.info("process_youtube: user=%s raw=%r normalized=%r vid=%r",
                 username, raw_url, url, vid)
 
-    # Reuse existing result if same URL was already processed
+    # Task 2: cross-mode reuse — check YT URL → NAS library hash map first.
+    libmap = find_library_mapping(url)
+    if libmap:
+        lh = libmap["library_hash"]
+        logger.info("process_youtube: LIBRARY MAP hit url=%r → library_hash=%r", url, lh)
+        # Count chords for audit accuracy
+        try:
+            import json as _json
+            _cd = _json.loads((CHORDS_DIR / f"{lh}.json").read_text(encoding="utf-8"))
+            _cc = len(_cd.get("chords", []))
+            _title = _cd.get("title", "")
+        except Exception:
+            _cc, _title = 0, ""
+        write_reuse_audit(username, url, _title, lh, _cc)
+        return {"job_id": None, "status": "done",
+                "result_hash": lh, "title": _title, "source": "library"}
+
+    # Reuse existing result if same URL was already processed via upload/YT
     existing = find_existing_result(url)
     if existing:
         logger.info("process_youtube: REUSE hit url=%r → result_hash=%r title=%r",
@@ -215,6 +243,32 @@ from process_queue import YTDLP_BIN
 
 # Simple in-memory cache for YouTube search results
 _yt_search_cache: dict[str, str] = {}
+
+
+class LibraryLearnRequest(BaseModel):
+    youtube_url: str = Field(min_length=10, max_length=500)
+    library_hash: str = Field(min_length=8, max_length=32, pattern=r"^[a-f0-9]+$")
+
+
+@router.post("/yt-library-learn", dependencies=[Depends(_require_beta)])
+def yt_library_learn(req: LibraryLearnRequest,
+                     username: str = Depends(get_current_user)):
+    """Task 2: auto-learn YT URL → library hash mapping.
+
+    Called by the player front-end after it confirms (a) the NAS chord JSON
+    exists at this hash and (b) the embedded YT video length matches the
+    chord length within 5%. Strict gate on the front-end keeps wrong
+    mappings out.
+    """
+    if not _YOUTUBE_RE.match(req.youtube_url.strip()):
+        raise HTTPException(status_code=400, detail="Invalid YouTube URL")
+    url, vid = _normalize_youtube_url(req.youtube_url.strip())
+    if not vid:
+        raise HTTPException(status_code=400, detail="Cannot extract video ID")
+    inserted = upsert_library_mapping(url, req.library_hash, mapped_by=f"auto:{username}")
+    logger.info("yt_library_learn: user=%s url=%r lib=%r new=%s",
+                username, url, req.library_hash, inserted)
+    return {"ok": True, "new": inserted}
 
 
 @router.get("/youtube-search")

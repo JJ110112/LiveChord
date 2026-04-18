@@ -1,6 +1,6 @@
 # LiveChord 品管文件
 
-> 版本: 3.8 | 日期: 2026-04-08
+> 版本: 3.9 | 日期: 2026-04-18
 > 和弦引擎: BTC Transformer (ISMIR 2019)
 > 對應規格書: SPEC.md v2.0
 
@@ -15,6 +15,22 @@
 | 和弦準確度 | 偵測 vs 參考答案 | run_test.py (Lv1-Lv5) | 每次演算法修改 |
 | 效能測試 | 回應時間、記憶體、GPU | DevTools + 伺服器 log | 重大變更 |
 | 迴歸測試 | 全量測試 | pytest (66+ cases) | 上線前 |
+
+### 1.1 YouTube embed 測試限制
+
+Playwright headless (Chromium) 無法播放 YouTube IFrame 嵌入：
+
+- YT IFrame API 會因 cookie/origin/autoplay policy 被 block，`onReady` 不一定會 fire。
+- 即使 iframe 載入，`player.getCurrentTime()` 恆為 0；duration sync、chord 高亮、desync banner 均無法驗證。
+
+**可自動化測試範圍**：UI 控件、toolbar、popup、seek bar、非 YT 功能、REST endpoint。
+**必須人工驗證**：YT 同步準確度、duration desync banner、YT→library auto-learn、A-B 循環在 YT 模式下的精度。
+
+**人工 debug 流程**：
+1. 桌面 Chrome/Edge 開 `/player?hash=<h>`（不要用 headless）
+2. DevTools Console 執行 `window.__lcYtDebug()` 取快照（`hasPlayer / state / currentTime / duration / fillWidth / timerAlive / lastError`）
+3. 若 desync banner 出現，檢 Network tab 確認 `/api/process/yt-library-learn` 未被誤觸發（嚴格 5% gate 應擋掉）
+4. `window.__lcYtError` 保存最近一次 sync-tick 例外，供抓取異常
 
 ---
 

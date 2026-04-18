@@ -287,45 +287,74 @@
   margin-top: 4px;
 }
 
-/* ========== [COMPONENT: BETA FAB] ========== */
+/* ========== [COMPONENT: ADD-SONG MODAL] ========== */
+/* Was the beta FAB panel — now a centered modal opened from the search
+   empty-state CTA. Separate #betaFabBackdrop element handles dimming + click
+   to dismiss; panel itself is just the card. */
 
-.beta-fab {
+.add-song-backdrop {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  font-size: 28px;
-  font-weight: 300;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-  z-index: 1000;
-  transition: transform 0.2s;
-  user-select: none;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 2000;
+  display: none;
 }
-.beta-fab:hover { transform: scale(1.1); }
+.add-song-backdrop.open { display: block; }
 
-.beta-fab-panel {
+.beta-fab-panel.add-song-modal {
   position: fixed;
-  bottom: 88px;
-  right: 24px;
-  width: 340px;
-  max-width: calc(100vw - 48px);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
   background: rgb(22, 27, 34);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-  z-index: 1000;
+  padding: 20px 18px 16px;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.6);
+  z-index: 2001;
   display: none;
 }
-.beta-fab-panel.open { display: block; }
+.beta-fab-panel.add-song-modal.open { display: block; }
+
+.add-song-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 22px;
+  cursor: pointer;
+  padding: 2px 8px;
+  line-height: 1;
+}
+.add-song-close:hover { color: var(--text); }
+
+/* Search empty-state CTA (beta non-admin) */
+.search-empty {
+  padding: 14px 12px;
+  text-align: center;
+}
+.search-empty-msg {
+  color: var(--text-dim);
+  font-size: 0.88rem;
+  margin-bottom: 10px;
+}
+.search-empty-btn {
+  background: var(--accent, #4caf50);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.search-empty-btn:hover { filter: brightness(1.1); }
 
 .fab-panel-title {
   font-size: 0.9rem;
@@ -420,11 +449,10 @@
 /* ========== [COMPONENT: MOBILE RESPONSIVE] ========== */
 
 @media (max-width: 640px) {
-  .beta-fab-panel {
+  .beta-fab-panel.add-song-modal {
     width: auto;
     max-width: calc(100vw - 24px);
-    right: 12px;
-    padding: 12px;
+    padding: 14px 12px 12px;
   }
   .fab-panel-title { font-size: 0.85rem; margin-bottom: 8px; }
   .fab-section { padding: 10px; font-size: 0.8rem; }

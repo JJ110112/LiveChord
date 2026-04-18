@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=2">
-  <link rel="stylesheet" href="/css/player.css?v=14">
+  <link rel="stylesheet" href="/css/player.css?v=18">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -75,7 +75,6 @@
   <!-- YouTube embed (hidden by default, shown in YouTube mode) -->
   <div id="ytEmbedContainer" class="yt-embed-container" style="display:none">
     <div id="ytEmbed" style="width:100%;height:100%"></div>
-    <button id="ytEmbedClose" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.6);color:#fff;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:14px;line-height:24px;text-align:center" title="關閉 YouTube">&#x2715;</button>
   </div>
 
   <!-- Split layout: Chord Ribbon | Resize Handle | Instrument View -->
@@ -304,7 +303,9 @@
 
   <!-- 1. Instrument select -->
   <div class="tb-item" id="tbInstrument">
-    <button class="tb-trigger" id="btnInstrument" title="樂器選擇">&#x1F3B9;</button>
+    <button class="tb-trigger" id="btnInstrument" title="樂器選擇" aria-label="樂器選擇">
+      <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/><path d="M18 8h.01"/><path d="M2 12h20"/><path d="M6 12v4"/><path d="M10 12v4"/><path d="M14 12v4"/><path d="M18 12v4"/></svg>
+    </button>
     <div class="tb-popup">
       <button class="tb-popup-btn" data-tab="piano" title="Piano 鋼琴">&#x1F3B9; 鋼琴</button>
       <button class="tb-popup-btn" data-tab="guitar" title="Guitar 吉他">&#x1F3B8; 吉他</button>
@@ -316,15 +317,23 @@
 
   <!-- 2. Playback -->
   <div class="tb-item tb-playback" id="tbPlayback">
-    <button id="btnPrev" class="tb-trigger" title="上一首 / 回到開頭">&#x23EE;&#xFE0E;</button>
+    <button id="btnPrev" class="tb-trigger" title="上一首 / 回到開頭" aria-label="上一首">
+      <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
+    </button>
     <span id="timeCurrent" class="tb-time">0:00</span>
-    <button id="btnPlay" class="tb-trigger tb-play-btn" title="播放">&#x25B6;&#xFE0E;</button>
+    <button id="btnPlay" class="tb-trigger tb-play-btn" title="播放" aria-label="播放">
+      <svg class="tb-icon ico-play" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+      <svg class="tb-icon ico-pause" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+    </button>
     <span id="timeDuration" class="tb-time">0:00</span>
   </div>
 
   <!-- 3. Volume -->
   <div class="tb-item" id="tbVolume">
-    <button id="btnMute" class="tb-trigger" title="音量">&#x1F509;</button>
+    <button id="btnMute" class="tb-trigger" title="音量" aria-label="音量">
+      <svg class="tb-icon ico-vol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+      <svg class="tb-icon ico-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>
+    </button>
     <div class="tb-popup tb-popup-volume">
       <input id="volumeSlider" type="range" min="0" max="1" step="0.05" value="1">
     </div>
@@ -337,7 +346,9 @@
 
   <!-- 5. Loop -->
   <div class="tb-item">
-    <button id="btnLoop" class="tb-trigger" title="循環模式">&#x1F501;&#xFE0E;</button>
+    <button id="btnLoop" class="tb-trigger" title="循環模式" aria-label="循環模式">
+      <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+    </button>
   </div>
 
   <!-- 6. A-B -->
@@ -347,7 +358,9 @@
 
   <!-- 7. Transpose -->
   <div class="tb-item" id="tbTranspose">
-    <button class="tb-trigger" title="移調工具">&#x2195;</button>
+    <button class="tb-trigger" title="移調工具" aria-label="移調">
+      <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg>
+    </button>
     <div class="tb-popup tb-popup-transpose">
       <button id="btnTransposeDown" class="tb-popup-btn">−</button>
       <span id="transposeValue" class="tb-transpose-val">0</span>
@@ -370,12 +383,16 @@
 
   <!-- 8. Jazzify: L1 → L2 → L3 → ✨AI -->
   <div class="tb-item">
-    <button id="btnJazzify" class="tb-trigger" title="Jazzify: L1 → L2 → L3 → ✨AI Transformer">&#x1F3B7;</button>
+    <button id="btnJazzify" class="tb-trigger" title="Jazzify: L1 → L2 → L3 → ✨AI Transformer" aria-label="Jazzify">
+      <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>
+    </button>
   </div>
 
   <!-- 9. AI Teaching -->
   <div class="tb-item" id="tbTeaching">
-    <button class="tb-trigger" title="AI 伴奏教學">&#x1F916;</button>
+    <button class="tb-trigger" title="AI 伴奏教學" aria-label="AI 伴奏教學">
+      <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+    </button>
     <div class="tb-popup tb-popup-wide">
       <button id="btnTeachAI" class="tb-popup-btn" title="AI 推薦風格">AI</button>
       <select id="guitarStyleSelect" class="tb-select" title="吉他右手風格" style="display:none">
@@ -395,12 +412,23 @@
         <img src="/img/left-hand.png" class="hand-icon hand-left active" alt="L">
         <img src="/img/right-hand.png" class="hand-icon hand-right active" alt="R">
       </button>
-      <button id="btnShowChordTonesTB" class="tb-popup-btn" style="color:#9c27b0" title="顯示和弦組成音">&#x1F3B5;</button>
-      <button id="btnFingering" class="tb-popup-btn" style="color:#4caf50" title="鋼琴鍵指法">&#x270B;</button>
-      <button id="btnRefreshAcc" class="tb-popup-btn" style="color:#4caf50" title="強制重新生成伴奏">&#x1F504;</button>
-      <button id="btnDownloadMidi" class="tb-popup-btn" style="color:#2196f3" title="下載 MIDI">&#x1F4BE;</button>
+      <button id="btnShowChordTonesTB" class="tb-popup-btn" style="color:#9c27b0" title="顯示和弦組成音" aria-label="顯示和弦組成音">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+      </button>
+      <button id="btnFingering" class="tb-popup-btn" style="color:#4caf50" title="鋼琴鍵指法" aria-label="鋼琴鍵指法">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
+      </button>
+      <button id="btnRefreshAcc" class="tb-popup-btn" style="color:#4caf50" title="強制重新生成伴奏" aria-label="重新生成伴奏">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+      </button>
+      <button id="btnDownloadMidi" class="tb-popup-btn" style="color:#2196f3" title="下載 MIDI" aria-label="下載 MIDI">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </button>
       <div class="tb-separator"></div>
-      <button id="btnAudioMode" class="tb-popup-btn" style="color:#03a9f4" title="切換音軌">&#x1F3B5; Music</button>
+      <button id="btnAudioMode" class="tb-popup-btn" style="color:#03a9f4" title="切換音軌" aria-label="切換音軌">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        <span>Music</span>
+      </button>
       <div id="crossfaderContainer" style="display:none; align-items:center; gap:4px;">
         <span style="font-size:10px; color:#aaa;">Music</span>
         <input id="crossfaderVol" type="range" min="0" max="1" step="0.05" value="0.5" style="width:60px;">
@@ -411,29 +439,59 @@
 
   <!-- 10. Local File -->
   <div class="tb-item" id="tbLocalFile" style="display:none">
-    <button id="btnLocalFile" class="tb-trigger" title="載入本地音檔">&#x1F4C2;</button>
+    <button id="btnLocalFile" class="tb-trigger" title="載入本地音檔" aria-label="載入本地音檔">
+      <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
+    </button>
   </div>
 
   <!-- 11. Tools -->
   <div class="tb-item" id="tbTools">
-    <button class="tb-trigger" title="工具">&#x1F527;</button>
+    <button class="tb-trigger" title="工具" aria-label="工具">
+      <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+    </button>
     <div class="tb-popup">
-      <button id="btnBeatTap" class="tb-popup-btn" title="打拍校正節拍">&#x1F941; 節拍</button>
-      <button id="btnChordAlign" class="tb-popup-btn" title="對齊和弦時間">&#x23F1; 對齊</button>
-      <button id="btnAutoSplit" class="tb-popup-btn" title="自動切分長和弦 (&#x2265;8拍)">&#x2702; 自動切分</button>
+      <button id="btnBeatTap" class="tb-popup-btn" title="打拍校正節拍" aria-label="節拍">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <span>節拍</span>
+      </button>
+      <button id="btnChordAlign" class="tb-popup-btn" title="對齊和弦時間" aria-label="對齊">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="10" y1="2" x2="14" y2="2"/><line x1="12" y1="14" x2="15" y2="11"/><circle cx="12" cy="14" r="8"/></svg>
+        <span>對齊</span>
+      </button>
+      <button id="btnAutoSplit" class="tb-popup-btn" title="自動切分長和弦 (&#x2265;8拍)" aria-label="自動切分">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/></svg>
+        <span>自動切分</span>
+      </button>
       <div class="tb-separator"></div>
-      <button id="btnSaveCorrected" class="tb-popup-btn" style="display:none;color:#4caf50" title="儲存校正後的和弦">&#x1F4BE; 儲存校正</button>
-      <button id="btnRevertCorrection" class="tb-popup-btn" style="display:none;color:#f44336" title="還原至校正前">&#x21A9; 還原</button>
+      <button id="btnSaveCorrected" class="tb-popup-btn" style="display:none;color:#4caf50" title="儲存校正後的和弦" aria-label="儲存校正">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        <span>儲存校正</span>
+      </button>
+      <button id="btnRevertCorrection" class="tb-popup-btn" style="display:none;color:#f44336" title="還原至校正前" aria-label="還原">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
+        <span>還原</span>
+      </button>
       <div class="tb-separator"></div>
-      <button id="btnDetect" class="tb-popup-btn" title="偵測和弦">&#x1F50D; 偵測</button>
-      <a id="btnEdit" class="tb-popup-btn" style="text-decoration:none" title="編輯和弦譜">&#x270F; 編輯</a>
-      <button id="btnAiSuggest" class="tb-popup-btn" style="color:#4caf50" title="AI 建議下一個和弦">&#x1F4A1; AI建議</button>
+      <button id="btnDetect" class="tb-popup-btn" title="偵測和弦" aria-label="偵測">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <span>偵測</span>
+      </button>
+      <a id="btnEdit" class="tb-popup-btn" style="text-decoration:none" title="編輯和弦譜" aria-label="編輯">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+        <span>編輯</span>
+      </a>
+      <button id="btnAiSuggest" class="tb-popup-btn" style="color:#4caf50" title="AI 建議下一個和弦" aria-label="AI 建議">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
+        <span>AI 建議</span>
+      </button>
     </div>
   </div>
 
   <!-- 12. Beta: Bug report (to the right of Tools) -->
   <div class="tb-item" id="tbBugReport" style="display:none">
-    <button id="btnBugReport" class="tb-trigger" title="回報問題">&#x1F41B;</button>
+    <button id="btnBugReport" class="tb-trigger" title="回報問題" aria-label="回報問題">
+      <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3 3 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M6 13H2"/><path d="M3 21c0-2.1 1.7-3.9 3.8-4"/><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/><path d="M22 13h-4"/><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg>
+    </button>
   </div>
 
 </div><!-- /bottom-toolbar -->
@@ -484,6 +542,6 @@
     return res;
   };
 </script>
-<script src="/js/player.js?v=101"></script>
+<script src="/js/player.js?v=110"></script>
 </body>
 </html>
