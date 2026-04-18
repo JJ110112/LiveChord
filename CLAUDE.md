@@ -49,9 +49,10 @@ Any change to frontend files requires Playwright verification before claiming do
 - In beta mode: feedback UI, bug report FAB, analytics tracking, local audio playback, process page are enabled; admin paths restricted to LAN
 - In personal mode: all beta features hidden, full NAS path visibility, zero login friction on LAN
 - **Phase 1 modules**: `feedback_api.py` (ratings + bugs), `analytics_api.py` (usage tracking)
-- **Phase 2 modules**: `process_queue.py` (job queue + worker + audit + melody extraction + result reuse via `find_existing_result`/`write_reuse_audit`), `process_api.py` (upload/YouTube endpoints, URL normalization)
+- **Phase 2 modules**: `process_queue.py` (job queue + worker + audit + melody extraction + result reuse via `find_existing_result`/`write_reuse_audit` + `_purge_user_hash_refs` cascade), `process_api.py` (upload/YouTube endpoints, URL normalization, reuse logger)
 - **Invite code system**: multi-code with expiry, managed via Admin page → "Beta 回饋" card
-- **Security**: rate limiting on auth endpoints, password ≥8 chars, token 30-day expiry, XSS sanitization on all user inputs, admin IP restriction (LAN-only in beta mode)
+- **Security**: rate limiting on auth endpoints, password ≥8 chars, token 30-day expiry (login regenerates token — old tabs invalidated), XSS sanitization on all user inputs, admin IP restriction (LAN-only in beta mode). Frontend fetch wrapper auto-redirects to `/login` on 401 from `/api/*`
+- **Audit cascade**: `delete_audit_entries` collects `result_hash`es, deletes chord/cover/melody JSONs, then calls `_purge_user_hash_refs` to strip matching `__hash/<h>` entries from every user's `recent.json` + `favorites.json`. `get_recent` / `get_favorites` also self-heal orphans at serve time
 - **NAS privacy**: non-admin beta users cannot browse NAS; search results use hashed paths; `/api/browse` returns 403
 - **TOS**: `/tos` page, consent required before using process features
 - **Process flow**: upload audio (200MB max) or YouTube URL → queue → BTC GPU detection → chord JSON → player `?hash=`
@@ -62,6 +63,7 @@ Any change to frontend files requires Playwright verification before claiming do
 - **Cover art**: uploaded files have covers extracted via mutagen; YouTube uses `img.youtube.com` thumbnails
 - **Beta homepage**: non-admin sees floating action button (FAB) for upload/YouTube + wrapping grid library with vertical scroll + analysis history (replaces music library)
 - **Prerequisites for YouTube**: `yt-dlp` + `ffmpeg` must be on NUC system PATH
+- **YT debug hook**: `window.__lcYtDebug()` in player page DevTools returns live `{hasPlayer, state, currentTime, duration, fillWidth, timeText, timerAlive, lastError}` snapshot; `window.__lcYtError` holds the most recent sync-tick exception. Use for diagnosing YT-mode UI desyncs.
 - Productization roadmap: [doc/PRODUCTIZATION.md](doc/PRODUCTIZATION.md)
 
 ## Reference

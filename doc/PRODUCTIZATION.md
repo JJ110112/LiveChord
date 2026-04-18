@@ -508,6 +508,22 @@ Week 2:
   ├── ✅ YouTube iframe 載入遮罩 — "載入 YouTube 播放器… 約 5–15 秒" 直到 onReady (player.js _initYouTubeEmbed)
   └── ✅ index.html preconnect youtube.com — CDN 連線提早暖身，省下 YT boot 的握手時間
 
+2026-04-18 QA batch 4 (admin 刪除連鎖 + YT 控制路由修正):
+  ├── ✅ Admin 偵測紀錄「全選」checkbox — 勾選/不定/全不選三態同步 (admin.html)
+  ├── ✅ Audit 寫入狀態正確化 — _write_audit 接受 status 覆寫，成功路徑明確傳 "done"
+  │     （舊 bug：在 job.status 仍是 PROCESSING 時寫 audit，導致所有 done 任務都卡 "processing"）
+  ├── ✅ YouTube 模式 UI 時間 + 進度條同步 — _startYTSync 在 state ≠ -1 都刷新顯示（不再只靠 state=1）
+  ├── ✅ _playerSeek 立即回寫 timeCurrent / topProgressFill — 不必等 50ms tick
+  ├── ✅ 401 Invalid Token 自動導向 /login — index.html + player.html fetch wrapper 攔截
+  ├── ✅ delete_audit_entries 連鎖清理 — 掃所有 users/*/recent.json + favorites.json
+  │     移除指向已刪 __hash/ 的孤兒項目（_purge_user_hash_refs）
+  ├── ✅ get_recent / get_favorites self-heal — 載入時若 chord JSON 不存在即剔除並回寫檔案
+  ├── ✅ process_youtube reuse 偵測加 logger — 記錄 raw → normalized URL 與 result_hash 命中情形
+  ├── ✅ onStateChange=PLAYING 自動重啟 _startYTSync — 防 timer 被其他路徑清掉
+  ├── ✅ window.__lcYtDebug / __lcYtError 診斷 hook — 暴露 YT 播放器狀態 + 最近例外供 DevTools 查看
+  └── ✅ 修掉 _startYTSync 裡的 seekBar ReferenceError — 進度條 + 和弦 highlight 終於跟播放同步
+        （此 bug 靠 __lcYtDebug 回傳的 lastError 定位）
+
 2026-04-17 QA batch 2 (Shakatak 測試):
   ├── ✅ 搜尋 tokenization — "Artist - Title" 帶連字號查詢可匹配 (music_api.py)
   ├── ✅ YouTube iframe DB-path mode 對等 — 非 hash mode 也會自動搜尋嵌入 (player.js loadChords)
