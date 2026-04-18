@@ -2264,11 +2264,14 @@
     if (!_teacherMsgCache) return;
 
     // 繪製底部右側浮動提示框 (靠近右手區域)
-    const padding = 10;
-    ctx.font = "12px 'Segoe UI', sans-serif";
+    // Scale font with canvas width: phones are wide-ish in landscape but the
+    // hint was still dominating the waterfall. Keep it compact.
+    const _hintFont = w < 480 ? 11 : 10;
+    const padding = 8;
+    ctx.font = `${_hintFont}px 'Segoe UI', sans-serif`;
     const metrics = ctx.measureText(_teacherMsgCache);
-    const boxW = Math.min(metrics.width + padding * 2 + 20, w * 0.6);
-    const boxH = 28;
+    const boxW = Math.min(metrics.width + padding * 2 + 18, w * 0.6);
+    const boxH = _hintFont + 12;
     const boxX = w - boxW - 12;
     const boxY = h - 42;
 

@@ -1369,9 +1369,13 @@
   }
   .yt-pip-body { top: 0; }
   /* Chord ribbon — upper ~50% of screen so cards are readable + ratio/overview
-     controls are reachable. Grid layout: 3 cards per row, vertical scroll. */
+     controls are reachable. Grid layout: 3 cards per row, vertical scroll.
+     `!important` on display keeps it visible even if a prior desktop session
+     hid it via the collapse arrow (`#btnToggleRibbon`) — that toggle lives
+     inside `.resize-handle` which is `display:none` on mobile, so without
+     this override the user has no way to re-show the ribbon on a phone. */
   .chord-ribbon-panel {
-    display: flex;
+    display: flex !important;
     flex-direction: column;
     position: absolute;
     top: 0;
