@@ -633,6 +633,18 @@
     }
   }
 
+  function _updateABPopup() {
+    const el = document.getElementById("abStatus");
+    if (!el) return;
+    if (abState === "active" && abA != null && abB != null) {
+      el.textContent = `A ${formatTime(abA)} → B ${formatTime(abB)}`;
+    } else if (abState === "a_set" && abA != null) {
+      el.textContent = `A ${formatTime(abA)}（待設 B）`;
+    } else {
+      el.textContent = "未設定";
+    }
+  }
+
   function _clearABRepeat() {
     abState = "idle";
     abA = null;
@@ -642,36 +654,85 @@
       btnABRepeat.textContent = "A-B";
     }
     _updateABRangeUI();
+    _updateABPopup();
+  }
+
+  function _handleAB(action) {
+    const t = _playerCurrentTime();
+    if (action === "clear") {
+      _clearABRepeat();
+      showToast("A-B 循環已取消", 1500);
+      return;
+    }
+    if (action === "A") {
+      abA = t;
+      if (abB != null && t >= abB) abB = null;  // invalidate B if new A is past it
+      abState = (abB != null) ? "active" : "a_set";
+      if (btnABRepeat) {
+        btnABRepeat.classList.remove("a-set", "ab-active");
+        if (abState === "active") {
+          btnABRepeat.classList.add("ab-active");
+          btnABRepeat.textContent = "A-B \u2713";
+        } else {
+          btnABRepeat.classList.add("a-set");
+          btnABRepeat.textContent = "A-\u23F8";
+        }
+      }
+      showToast("A \u9EDE: " + formatTime(t), 1500);
+      _updateABRangeUI();
+      _updateABPopup();
+      return;
+    }
+    if (action === "B") {
+      if (abA == null) {
+        showToast("\u8ACB\u5148\u8A2D\u5B9A A \u9EDE", 1500);
+        return;
+      }
+      if (t <= abA) {
+        showToast("B \u9EDE\u5FC5\u9808\u5728 A \u9EDE\u4E4B\u5F8C", 1500);
+        return;
+      }
+      abB = t;
+      abState = "active";
+      if (btnABRepeat) {
+        btnABRepeat.classList.remove("a-set");
+        btnABRepeat.classList.add("ab-active");
+        btnABRepeat.textContent = "A-B \u2713";
+      }
+      _playerSeek(abA);
+      showToast("A-B \u5FAA\u74B0: " + formatTime(abA) + " \u2192 " + formatTime(abB), 2000);
+      _updateABRangeUI();
+      _updateABPopup();
+      return;
+    }
   }
 
   if (btnABRepeat) {
     btnABRepeat.addEventListener("click", () => {
+      if (_isTouchLike) return;  // touch devices use the popup (see .ab-opt handlers)
+      // Desktop fast cycle: idle → A → B → clear
       const t = _playerCurrentTime();
       if (abState === "idle") {
-        abA = t;
-        abState = "a_set";
-        btnABRepeat.classList.add("a-set");
-        btnABRepeat.textContent = "A-⏸";
-        showToast("A 點: " + formatTime(t), 1500);
+        _handleAB("A");
       } else if (abState === "a_set") {
         if (t <= abA) {
-          showToast("B 點必須在 A 點之後", 1500);
+          showToast("B \u9EDE\u5FC5\u9808\u5728 A \u9EDE\u4E4B\u5F8C", 1500);
           return;
         }
-        abB = t;
-        abState = "active";
-        btnABRepeat.classList.remove("a-set");
-        btnABRepeat.classList.add("ab-active");
-        btnABRepeat.textContent = "A-B ✓";
-        _playerSeek(abA);
-        showToast("A-B 循環: " + formatTime(abA) + " → " + formatTime(abB), 2000);
+        _handleAB("B");
       } else {
-        _clearABRepeat();
-        showToast("A-B 循環已取消", 1500);
+        _handleAB("clear");
       }
-      _updateABRangeUI();
     });
   }
+  document.querySelectorAll(".ab-opt").forEach(b => {
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      _handleAB(b.dataset.ab);
+      const item = b.closest(".tb-item");
+      if (item) item.classList.remove("open");
+    });
+  });
 
   function _updateHandSwitchVisibility() {
     const topHs = document.querySelector("#btnTopHandSwitch");
@@ -1211,9 +1272,10 @@
     (typeof matchMedia === "function" && matchMedia('(pointer:coarse)').matches);
   if (_isTouchLike) {
     document.querySelectorAll(".tb-item").forEach(item => {
-      if (!item.querySelector(".tb-popup")) return;
-      const trigger = item.querySelector(".tb-trigger");
-      if (trigger) {
+      const trigger = item.querySelector(".tb-trigger, a.tb-trigger");
+      if (!trigger) return;
+      const hasPopup = !!item.querySelector(".tb-popup");
+      if (hasPopup) {
         trigger.addEventListener("click", (e) => {
           // Close other open popups
           document.querySelectorAll(".tb-item.open").forEach(other => {
@@ -1223,6 +1285,16 @@
           e.stopPropagation();
         });
       }
+      // Click delegation: if the tap lands on the tb-item's own padding/gap
+      // (not on the trigger or its children), synthesize a click on the trigger.
+      // Catches dead-zone taps where CSS `pointer-events: none` on SVG isn't
+      // enough (e.g. overlay or gesture quirks on Android).
+      item.addEventListener("click", (e) => {
+        if (e.target === item && trigger && !trigger.disabled) {
+          e.stopPropagation();
+          trigger.click();
+        }
+      });
     });
     document.addEventListener("click", () => {
       document.querySelectorAll(".tb-item.open").forEach(i => i.classList.remove("open"));
@@ -3095,6 +3167,12 @@
       _rewindToStart();
     });
   }
+  const btnNext = $("#btnNext");
+  if (btnNext) {
+    btnNext.addEventListener("click", () => {
+      _navNext();
+    });
+  }
 
   function _setSmartView(playing) {
     // No-op: overview removed, ribbon always scrolls
@@ -3252,17 +3330,33 @@
       btnLoop.innerHTML = _LUCIDE_REPEAT;
     }
     btnLoop.classList.toggle("modified", loopMode !== "off");
+    document.querySelectorAll(".loop-opt").forEach(b => {
+      b.classList.toggle("active", b.dataset.loop === loopMode);
+    });
   }
   _updateLoopUI();
 
   // favTracks 在 loadTrack() 中載入，與 isFavorite 同步
 
-  btnLoop.addEventListener("click", () => {
-    const idx = (LOOP_MODES.indexOf(loopMode) + 1) % LOOP_MODES.length;
-    loopMode = LOOP_MODES[idx];
+  function _setLoopMode(mode) {
+    if (LOOP_MODES.indexOf(mode) < 0) return;
+    loopMode = mode;
     localStorage.setItem("livechord_loop_mode", loopMode);
     _updateLoopUI();
     showToast(LOOP_LABELS[loopMode], 1500);
+  }
+  btnLoop.addEventListener("click", () => {
+    if (_isTouchLike) return;  // touch devices use the popup (see .loop-opt handlers)
+    const idx = (LOOP_MODES.indexOf(loopMode) + 1) % LOOP_MODES.length;
+    _setLoopMode(LOOP_MODES[idx]);
+  });
+  document.querySelectorAll(".loop-opt").forEach(b => {
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      _setLoopMode(b.dataset.loop);
+      const item = b.closest(".tb-item");
+      if (item) item.classList.remove("open");
+    });
   });
 
   audio.addEventListener("ended", () => {
@@ -3337,6 +3431,9 @@
     const s = SPEEDS[speedIdx];
     const label = s + "x";
     if (btnSpeed) { btnSpeed.textContent = label; btnSpeed.classList.toggle("modified", s !== 1); }
+    document.querySelectorAll(".speed-opt").forEach(b => {
+      b.classList.toggle("active", parseFloat(b.dataset.speed) === s);
+    });
   }
 
   const savedSpeed = localStorage.getItem("livechord_speed");
@@ -3347,9 +3444,10 @@
   }
   _syncSpeedUI();
 
-  function _cycleSpeed() {
-    speedIdx = (speedIdx + 1) % SPEEDS.length;
-    const s = SPEEDS[speedIdx];
+  function _setSpeed(s) {
+    const i = SPEEDS.indexOf(s);
+    if (i < 0) return;
+    speedIdx = i;
     audio.playbackRate = s;
     if (_ytPlayer && typeof _ytPlayer.setPlaybackRate === "function") {
       try { _ytPlayer.setPlaybackRate(s); } catch (e) {}
@@ -3357,7 +3455,20 @@
     _syncSpeedUI();
     localStorage.setItem("livechord_speed", s);
   }
+  function _cycleSpeed() {
+    if (_isTouchLike) return;  // touch devices use the popup (see .speed-opt handlers)
+    const i = (speedIdx + 1) % SPEEDS.length;
+    _setSpeed(SPEEDS[i]);
+  }
   if (btnSpeed) btnSpeed.addEventListener("click", _cycleSpeed);
+  document.querySelectorAll(".speed-opt").forEach(b => {
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      _setSpeed(parseFloat(b.dataset.speed));
+      const item = b.closest(".tb-item");
+      if (item) item.classList.remove("open");
+    });
+  });
 
   // ---- edit link ----
   const btnEdit = $("#btnEdit");
@@ -3545,87 +3656,109 @@
   let originalChords = null;
   let jazzifyReqGen = 0;  // generation counter — stale async callbacks check this
 
-  if (btnJazzify) {
-    btnJazzify.addEventListener("click", async () => {
-      // Allow the cycle to advance even if current chords went empty — so long
-      // as we have an `originalChords` backup to restore to. Without this, a
-      // degenerate API response after AI (empty res.chords) would pin the
-      // button on AI state forever: next click hits this guard and aborts
-      // before `jazzifyLevel` advances.
-      const chordsEmpty = !chordData || !chordData.chords || chordData.chords.length === 0;
-      if (chordsEmpty && !originalChords) {
-        showToast("尚無和弦資料", 2000);
-        return;
-      }
-
-      jazzifyLevel = (jazzifyLevel + 1) % 5;
-      const myGen = ++jazzifyReqGen;
-
-      if (jazzifyLevel === 0) {
-        if (originalChords) {
-          chordData.chords = originalChords;
-          originalChords = null;
-        }
-        btnJazzify.textContent = "\u{1F3B7}";
-        btnJazzify.style.background = "";
-        btnJazzify.style.color = "";
-        chordCache = {};
-        await preloadChordInfo(chordData.chords);
-        if (myGen !== jazzifyReqGen) return;
-        buildChordDOM();
-        activeChordIdx = -1;
-        requestAnimationFrame(() => updateActiveChord(audio.currentTime || -1, true));
-        showToast("已還原原始和弦", 1500);
-        return;
-      }
-
-      if (!originalChords) {
-        originalChords = [...chordData.chords];
-      }
-
-      btnJazzify.textContent = "\u23F3";
-
-      const isAI = (jazzifyLevel === 4);
-      const apiLevel = isAI ? 3 : jazzifyLevel;
-      const mode = isAI ? "transformer" : "rule-based";
-
-      try {
-        const res = await API.jazzify(originalChords, chordData.key || "C", apiLevel, mode);
-        if (myGen !== jazzifyReqGen) return;
-        if (res.error) throw new Error(res.error);
-        if (!Array.isArray(res.chords) || res.chords.length === 0) {
-          throw new Error("伺服器未回傳和弦");
-        }
-        chordData.chords = res.chords;
-
-        if (isAI) {
-          btnJazzify.textContent = "\u2728AI";
-          btnJazzify.style.background = "rgba(156,39,176,.3)";
-          btnJazzify.style.color = "#9c27b0";
-        } else {
-          btnJazzify.textContent = `${jazzifyLevel}`;
-          btnJazzify.style.background = "rgba(255,152,0,.3)";
-          btnJazzify.style.color = "#ff9800";
-        }
-
-        chordCache = {};
-        await preloadChordInfo(chordData.chords);
-        if (myGen !== jazzifyReqGen) return;
-        buildChordDOM();
-        activeChordIdx = -1;
-        requestAnimationFrame(() => updateActiveChord(audio.currentTime || -1, true));
-        const label = isAI ? "AI Transformer" : `Jazzify L${jazzifyLevel}`;
-        showToast(`${label}: ${res.original_count}→${res.jazzified_count} 和弦, ${res.changes.length} 變更`, 3000);
-      } catch (err) {
-        if (myGen !== jazzifyReqGen) return;
-        showToast("Jazzify 失敗: " + err.message, 3000);
-        jazzifyLevel = 0;
-        btnJazzify.textContent = "\u{1F3B7}";
-        btnJazzify.style.background = "";
-        btnJazzify.style.color = "";
-      }
+  function _syncJazzifyPopup() {
+    document.querySelectorAll(".jazz-opt").forEach(b => {
+      b.classList.toggle("active", parseInt(b.dataset.jazz, 10) === jazzifyLevel);
     });
   }
+  _syncJazzifyPopup();
+
+  async function _setJazzifyLevel(lvl) {
+    // Allow the call to proceed even if current chords went empty — so long
+    // as we have an `originalChords` backup to restore to. Without this, a
+    // degenerate API response (empty res.chords) would pin the button on AI
+    // state forever.
+    const chordsEmpty = !chordData || !chordData.chords || chordData.chords.length === 0;
+    if (chordsEmpty && !originalChords) {
+      showToast("\u5C1A\u7121\u548C\u5F26\u8CC7\u6599", 2000);
+      return;
+    }
+    if (lvl === jazzifyLevel && lvl !== 0) return;  // no-op: already at level
+
+    jazzifyLevel = lvl;
+    _syncJazzifyPopup();
+    const myGen = ++jazzifyReqGen;
+
+    if (jazzifyLevel === 0) {
+      if (originalChords) {
+        chordData.chords = originalChords;
+        originalChords = null;
+      }
+      btnJazzify.textContent = "\u{1F3B7}";
+      btnJazzify.style.background = "";
+      btnJazzify.style.color = "";
+      chordCache = {};
+      await preloadChordInfo(chordData.chords);
+      if (myGen !== jazzifyReqGen) return;
+      buildChordDOM();
+      activeChordIdx = -1;
+      requestAnimationFrame(() => updateActiveChord(audio.currentTime || -1, true));
+      showToast("\u5DF2\u9084\u539F\u539F\u59CB\u548C\u5F26", 1500);
+      return;
+    }
+
+    if (!originalChords) {
+      originalChords = [...chordData.chords];
+    }
+
+    btnJazzify.textContent = "\u23F3";
+
+    const isAI = (jazzifyLevel === 4);
+    const apiLevel = isAI ? 3 : jazzifyLevel;
+    const mode = isAI ? "transformer" : "rule-based";
+
+    try {
+      const res = await API.jazzify(originalChords, chordData.key || "C", apiLevel, mode);
+      if (myGen !== jazzifyReqGen) return;
+      if (res.error) throw new Error(res.error);
+      if (!Array.isArray(res.chords) || res.chords.length === 0) {
+        throw new Error("\u4F3A\u670D\u5668\u672A\u56DE\u50B3\u548C\u5F26");
+      }
+      chordData.chords = res.chords;
+
+      if (isAI) {
+        btnJazzify.textContent = "\u2728AI";
+        btnJazzify.style.background = "rgba(156,39,176,.3)";
+        btnJazzify.style.color = "#9c27b0";
+      } else {
+        btnJazzify.textContent = `${jazzifyLevel}`;
+        btnJazzify.style.background = "rgba(255,152,0,.3)";
+        btnJazzify.style.color = "#ff9800";
+      }
+
+      chordCache = {};
+      await preloadChordInfo(chordData.chords);
+      if (myGen !== jazzifyReqGen) return;
+      buildChordDOM();
+      activeChordIdx = -1;
+      requestAnimationFrame(() => updateActiveChord(audio.currentTime || -1, true));
+      const label = isAI ? "AI Transformer" : `Jazzify L${jazzifyLevel}`;
+      showToast(`${label}: ${res.original_count}\u2192${res.jazzified_count} \u548C\u5F26, ${res.changes.length} \u8B8A\u66F4`, 3000);
+    } catch (err) {
+      if (myGen !== jazzifyReqGen) return;
+      showToast("Jazzify \u5931\u6557: " + err.message, 3000);
+      jazzifyLevel = 0;
+      _syncJazzifyPopup();
+      btnJazzify.textContent = "\u{1F3B7}";
+      btnJazzify.style.background = "";
+      btnJazzify.style.color = "";
+    }
+  }
+
+  if (btnJazzify) {
+    btnJazzify.addEventListener("click", () => {
+      if (_isTouchLike) return;  // touch devices use the popup (see .jazz-opt handlers)
+      _setJazzifyLevel((jazzifyLevel + 1) % 5);
+    });
+  }
+  document.querySelectorAll(".jazz-opt").forEach(b => {
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      _setJazzifyLevel(parseInt(b.dataset.jazz, 10));
+      const item = b.closest(".tb-item");
+      if (item) item.classList.remove("open");
+    });
+  });
 
   // ---- manual detect: shared by Tools popup button + hero empty-state button (Task 6) ----
   async function runChordDetection() {

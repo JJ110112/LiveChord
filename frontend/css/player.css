@@ -878,7 +878,20 @@
   border-top: 1px solid var(--border);
   z-index: 9000;
   padding: 0 8px;
+  /* Lift content above Android gesture-nav zone (~16-24px on Samsung S22).
+     Falls back to 0 when safe-area is unknown; the extra 4px gives breathing
+     room so tap hit-area doesn't overlap the system gesture strip. */
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
 }
+
+/* Toolbar rows — desktop: three rows flow inline as one logical row. Mobile
+   (max-width:640px) switches to column layout (see @media block further down). */
+.tb-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.tb-row-tx { gap: 4px; }
 
 /* Toolbar item container */
 .tb-item {
@@ -907,6 +920,18 @@
   /* 強制控制符號以文字樣式渲染，避免 Android/iOS 將 ▶⏸⏮🔁 顯示為彩色 emoji */
   font-variant-emoji: text;
   font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols2", "Noto Sans Symbols", system-ui, sans-serif;
+  /* Bypass Android Chrome's 300ms touch delay + ghost-click quirk; otherwise
+     tapping button center (where SVG paths sit) may hit the SVG and fail to
+     bubble when the popup opens right under the finger. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(0,0,0,0);
+}
+/* Route all tap events through the button itself, never SVG children — fixes
+   "tap center of Teaching/Tools/Bug button doesn't open popup" on Android. */
+.tb-trigger .tb-icon,
+.tb-trigger svg,
+.tb-trigger > span {
+  pointer-events: none;
 }
 .tb-trigger:hover {
   color: var(--text);
@@ -1055,6 +1080,34 @@
 
 .tb-popup-wide {
   flex-wrap: nowrap;
+}
+
+/* Speed / Loop / A-B / Jazzify popups: absolute-value pill lists.
+   Desktop keeps them in a row; mobile @media (pointer:coarse) wraps already. */
+.tb-popup-speed,
+.tb-popup-loop,
+.tb-popup-jazzify,
+.tb-popup-ab {
+  gap: 4px;
+}
+.tb-popup-speed .tb-popup-btn,
+.tb-popup-loop .tb-popup-btn,
+.tb-popup-jazzify .tb-popup-btn,
+.tb-popup-ab .tb-popup-btn {
+  font-weight: 600;
+  min-width: 48px;
+  justify-content: center;
+}
+
+/* A-B status header sits at top of the A-B popup, reports current A/B points */
+.tb-ab-status {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 0 4px 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
 }
 
 .tb-separator {
@@ -1446,40 +1499,48 @@
     font-size: 13px;
     max-width: 200px;
   }
+  /* Three-tier stacked mobile toolbar — replaces the old single-row overflow-x
+     scrollable toolbar. T1 pills (speed/loop/transpose/volume) on top, transport
+     row (prev/play/next) in the middle, T2 icons (instrument/jazzify/AB/teaching/
+     tools/bug) on the bottom. Each row is full-width and evenly spaced.
+     Constrained to portrait: landscape on narrow phones keeps the single-row
+     layout so short viewport height isn't eaten by three stacked rows. */
   .bottom-toolbar {
-    gap: 2px;
-    padding: 0 2px;
-    /* 保留水平捲動作備援，但優先讓元素收斂在一列內 */
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    justify-content: space-around;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
+    overflow: visible;
   }
-  .bottom-toolbar::-webkit-scrollbar { display: none; }
+  .tb-row {
+    width: 100%;
+    justify-content: space-around;
+    gap: 4px;
+  }
+  .tb-row-tx {
+    justify-content: center;
+    gap: 12px;
+  }
+  /* T2 bug report: the hidden bug-report div can create an uneven gap; compensate */
+  .tb-row-t2 { flex-wrap: wrap; }
   .tb-trigger {
     padding: 4px 6px;
     font-size: 13px;
     /* Keep a finger-friendly hit target even when the trigger is pure text
-       (e.g. Jazzify states "1/2/3/✨AI", Speed "1x", A-B) — without this the
-       button shrinks to ~24px wide and users keep missing it. */
-    min-width: 36px;
-    min-height: 32px;
+       (e.g. Speed "1x", A-B) — without this the button shrinks to ~24px wide
+       and users keep missing it. */
+    min-width: 40px;
+    min-height: 36px;
     flex-shrink: 1;
   }
   .tb-item { flex-shrink: 1; min-width: 0; }
   /* Play button stays a perfect circle on mobile — otherwise the toolbar's
      flex-shrink narrows the 34x34 box into an ellipse. */
   .tb-play-btn {
-    flex: 0 0 34px !important;
-    width: 34px !important;
-    height: 34px !important;
+    flex: 0 0 40px !important;
+    width: 40px !important;
+    height: 40px !important;
     padding: 0 !important;
     display: flex;
     align-items: center;
     justify-content: center;
   }
-  /* 進度條：加大 hit target 讓手機點擊可 seek（桌面 hover 時 8px，手機固定 10px） */
   .progress-bar-mid {
     height: 10px;
     bottom: 44px;
@@ -1504,6 +1565,28 @@
   #chordBpm { display: none; }
 }
 
+/* Three-tier stacked mobile toolbar — PORTRAIT only. Landscape stays single-row. */
+@media (max-width: 640px) and (orientation: portrait) {
+  .bottom-toolbar {
+    flex-direction: column;
+    height: auto;
+    gap: 4px;
+    padding: 4px 6px 6px;
+  }
+  .tb-row {
+    width: 100%;
+    justify-content: space-around;
+    gap: 4px;
+  }
+  .tb-row-tx {
+    justify-content: center;
+    gap: 12px;
+  }
+  .tb-row-t2 { flex-wrap: wrap; }
+  /* 進度條上移，避開三列工具列：T1 (~36) + Tx (~44) + T2 (~36) + gaps/padding ≈ 132px */
+  .progress-bar-mid { bottom: 132px; }
+}
+
 /* Touch-device popup fix: viewport-anchored bottom sheet. Covers both portrait
    (where parent .bottom-toolbar has overflow-x:auto clipping absolute popups)
    and landscape phones (width >640px but short height, where absolute popups
@@ -1512,7 +1595,7 @@
 @media (pointer: coarse) {
   .tb-popup {
     position: fixed !important;
-    bottom: 52px !important;           /* toolbar height 44 + 8px gap */
+    bottom: 52px !important;           /* default: single-row toolbar (44px + 8px gap) */
     left: 8px !important;
     right: 8px !important;
     top: auto !important;
@@ -1529,6 +1612,119 @@
   .tb-popup-wide { flex-wrap: wrap !important; }   /* AI teaching popup row-wrap on narrow */
   .tb-popup::after { display: none; }  /* hover-bridge not needed on touch */
   .tb-popup-btn { font-size: 13px; padding: 8px 12px; }
+}
+/* Portrait narrow phones: toolbar is three rows ≈ 132px tall; lift popup above it */
+@media (pointer: coarse) and (max-width: 640px) and (orientation: portrait) {
+  .tb-popup {
+    bottom: 140px !important;
+  }
+}
+
+/* Five-option popups (Instrument, Jazzify) — force 2-on-top + 3-on-bottom
+   layout on touch devices in portrait. Landscape has enough horizontal room
+   that the stretched 50%/33% rule makes buttons absurdly wide (see landscape
+   override below) — so the rule is portrait-scoped. */
+@media (pointer: coarse) and (orientation: portrait) {
+  .tb-popup-5 .tb-popup-btn {
+    flex-grow: 0;
+    flex-shrink: 0;
+  }
+  .tb-popup-5 .tb-popup-btn:nth-child(-n+2) {
+    flex-basis: calc(50% - 6px);
+    justify-content: center;
+  }
+  .tb-popup-5 .tb-popup-btn:nth-child(n+3) {
+    flex-basis: calc(33.333% - 8px);
+    justify-content: center;
+  }
+}
+
+/* AI Teaching + Tools popups: many items (7–9), enforce a balanced 3-column
+   grid on touch devices in portrait so rows are even instead of wrap-breaking
+   unevenly by content width. Separators get a full-row so they split groups. */
+@media (pointer: coarse) and (orientation: portrait) {
+  .tb-popup-wide .tb-popup-btn,
+  #tbTools .tb-popup .tb-popup-btn {
+    flex: 0 0 calc(33.333% - 8px);
+    justify-content: center;
+  }
+  .tb-popup-wide .tb-separator,
+  #tbTools .tb-popup .tb-separator {
+    flex-basis: 100%;
+    height: 1px;
+    width: auto;
+    background: var(--border);
+    margin: 2px 0;
+  }
+  /* Teaching's inline selects should also respect the grid cadence */
+  .tb-popup-wide .tb-select {
+    flex: 0 0 calc(33.333% - 8px);
+  }
+  /* AudioMode crossfader stays full-width when revealed */
+  .tb-popup-wide #crossfaderContainer[style*="flex"] {
+    flex-basis: 100%;
+    justify-content: center;
+  }
+}
+
+/* Landscape (pointer:coarse) — popups centered + width-capped so buttons
+   don't stretch across the full 900+px viewport. Anchors above transport row. */
+@media (pointer: coarse) and (orientation: landscape) {
+  .tb-popup {
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    width: auto !important;
+    max-width: min(90vw, 520px);
+    bottom: 60px !important;           /* matches taller touch toolbar */
+  }
+  .tb-popup-5 .tb-popup-btn,
+  .tb-popup-wide .tb-popup-btn,
+  #tbTools .tb-popup .tb-popup-btn {
+    flex: 0 1 auto;          /* natural width — no stretching */
+    min-width: 64px;
+  }
+}
+
+/* Touch-device hit-target polish — fixes "bottom 4/5 of Tools/Bug button
+   doesn't respond" reports on Samsung S22. Root causes: (1) 32px tall button
+   sits too close to Android's bottom gesture zone, (2) progress-bar-mid at
+   bottom:44px touches the top of the toolbar so stray taps land on it. */
+@media (pointer: coarse) {
+  .bottom-toolbar {
+    /* 10px breathing room above the gesture strip on phones where env()
+       returns 0 (Chrome on Android doesn't expose gesture insets). */
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 10px);
+    height: auto;
+    min-height: 54px;
+  }
+  .tb-trigger {
+    min-height: 44px;                  /* Android/iOS HIG minimum tap target */
+    padding: 8px 10px;
+  }
+  .tb-play-btn {
+    width: 44px !important;
+    height: 44px !important;
+  }
+  .progress-bar-mid {
+    /* Sit 16px above the toolbar so aiming at Tools/Bug near the top edge
+       doesn't overshoot onto the seek bar. */
+    bottom: calc(54px + max(env(safe-area-inset-bottom, 0px), 10px) + 10px) !important;
+    height: 4px;
+  }
+  .progress-bar-mid:hover { height: 6px; }
+}
+/* Portrait three-row toolbar is taller — progress bar + popup lift to match */
+@media (pointer: coarse) and (max-width: 640px) and (orientation: portrait) {
+  .bottom-toolbar {
+    min-height: 148px;                 /* three rows × 44 + gaps/padding */
+  }
+  .progress-bar-mid {
+    bottom: calc(148px + max(env(safe-area-inset-bottom, 0px), 10px)) !important;
+  }
+  .tb-popup {
+    bottom: calc(148px + max(env(safe-area-inset-bottom, 0px), 10px) + 8px) !important;
+  }
 }
 
 /* Phone landscape: BPM stays visible (wider room) but shrink it + ❤ so they don't collide */
