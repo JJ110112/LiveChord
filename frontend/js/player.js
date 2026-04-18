@@ -189,6 +189,30 @@
   let _ytPlayer = null;
   let _ytSyncTimer = null;
 
+  // Always-available debug hook — safe to call from DevTools Console at any point
+  // in the page lifecycle, whether YT has booted or not.
+  window.__lcYtDebug = () => {
+    try {
+      const fill = document.querySelector("#topProgressFill");
+      const tc = document.querySelector("#timeCurrent");
+      const td = document.querySelector("#timeDuration");
+      return {
+        hasPlayer: !!_ytPlayer,
+        playerIsObj: typeof _ytPlayer === "object",
+        state: _ytPlayer && _ytPlayer.getPlayerState ? _ytPlayer.getPlayerState() : "(no getPlayerState)",
+        currentTime: _ytPlayer && _ytPlayer.getCurrentTime ? _ytPlayer.getCurrentTime() : "(no getCurrentTime)",
+        duration: _ytPlayer && _ytPlayer.getDuration ? _ytPlayer.getDuration() : "(no getDuration)",
+        fillWidth: fill ? fill.style.width : "(no el)",
+        fillComputedWidth: fill ? getComputedStyle(fill).width : "(no el)",
+        timeText: tc ? tc.textContent : "(no el)",
+        durationText: td ? td.textContent : "(no el)",
+        timerAlive: !!_ytSyncTimer,
+        lastError: window.__lcYtError || null,
+        ytApiLoaded: !!window.YT,
+      };
+    } catch (e) { return { err: e && e.message, stack: e && e.stack }; }
+  };
+
   // ---- Unified playback accessors (YouTube iframe takes precedence over audio element) ----
   function _ytActive() {
     return !!(_ytPlayer && typeof _ytPlayer.getCurrentTime === "function");
@@ -3724,20 +3748,6 @@
         window.__lcYtError = { msg: e && e.message, when: Date.now() };
       }
     }, 50); // 20 fps for smooth animation
-    // Expose the live player + current state for diagnosis via DevTools
-    window.__lcYtDebug = () => {
-      try {
-        return {
-          hasPlayer: !!_ytPlayer,
-          state: _ytPlayer && _ytPlayer.getPlayerState && _ytPlayer.getPlayerState(),
-          currentTime: _ytPlayer && _ytPlayer.getCurrentTime && _ytPlayer.getCurrentTime(),
-          duration: _ytPlayer && _ytPlayer.getDuration && _ytPlayer.getDuration(),
-          fillWidth: topProgressFill && topProgressFill.style.width,
-          timerAlive: !!_ytSyncTimer,
-          lastError: window.__lcYtError,
-        };
-      } catch (e) { return { err: e && e.message }; }
-    };
   }
 
   // --- AI Auditing Synthesizer (Salamander Grand Piano Sampler) ---
