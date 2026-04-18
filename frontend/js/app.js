@@ -163,35 +163,65 @@
 
   function _renderLocalTracks() {
     const section = $("#secBetaLocalTracks");
-    const container = $("#betaLocalTrackList");
-    if (!section || !container) return;
+    const analyzedRow = $("#betaLocalAnalyzedRow");
+    const pendingList = $("#betaLocalTrackList");
+    if (!section || !analyzedRow || !pendingList) return;
     const tracks = _getLocalTracks();
-    if (tracks.length === 0) {
-      container.innerHTML = `<div style="color:var(--text-dim); font-size:13px; padding:8px 0">
+    const analyzed = tracks.filter(t => t.analyzedHash);
+    const pending = tracks.filter(t => !t.analyzedHash);
+
+    // Analyzed: horizontal grid-item cards (like 最近播放)
+    analyzedRow.innerHTML = analyzed.map(t => {
+      const safeName = escapeHtml(t.name.replace(/\.[^.]+$/, ""));
+      return `
+        <div class="grid-item local-analyzed-card" data-id="${escapeHtml(t.id)}" style="cursor:pointer; position:relative">
+          <div class="cover-placeholder" style="display:flex">&#x1F3B5;</div>
+          <div class="info">
+            <div class="title" title="${safeName}">${safeName}</div>
+          </div>
+          <button class="la-remove" data-action="la-remove" data-id="${escapeHtml(t.id)}" title="移除" aria-label="移除">&times;</button>
+        </div>`;
+    }).join("");
+    analyzedRow.style.display = analyzed.length ? "" : "none";
+    analyzedRow.querySelectorAll(".grid-item").forEach(el => {
+      el.addEventListener("click", (e) => {
+        if (e.target.closest("[data-action='la-remove']")) return;
+        _onLocalTrackAction(el.dataset.id);
+      });
+    });
+    analyzedRow.querySelectorAll("[data-action='la-remove']").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (!confirm("移除此本機曲目？（不會刪掉已分析的和弦）")) return;
+        await _removeLocalTrack(btn.dataset.id);
+        _renderLocalTracks();
+      });
+    });
+
+    // Pending: current vertical list layout
+    if (pending.length === 0 && analyzed.length === 0) {
+      pendingList.innerHTML = `<div style="color:var(--text-dim); font-size:13px; padding:8px 0">
         還沒有本機音樂。點右上角「+ 選取本機音檔」一次挑一個或多個。
       </div>`;
       return;
     }
-    container.innerHTML = tracks.map(t => {
+    pendingList.innerHTML = pending.map(t => {
       const sizeMb = (t.size / 1048576).toFixed(1);
-      const state = t.analyzedHash ? "已分析" : "未分析";
-      const stateClass = t.analyzedHash ? "lt-done" : "lt-pending";
-      const actionLabel = t.analyzedHash ? "▶ 播放" : "分析";
       const safeName = escapeHtml(t.name);
       return `
         <div class="local-track-item" data-id="${escapeHtml(t.id)}">
           <div class="lt-info">
             <div class="lt-name" title="${safeName}">${safeName}</div>
-            <div class="lt-meta"><span class="lt-state ${stateClass}">${state}</span> · ${sizeMb} MB</div>
+            <div class="lt-meta"><span class="lt-state lt-pending">未分析</span> · ${sizeMb} MB</div>
           </div>
-          <button class="lt-action btn-small btn-accent" data-action="play-or-analyze" data-id="${escapeHtml(t.id)}">${actionLabel}</button>
+          <button class="lt-action btn-small btn-accent" data-action="play-or-analyze" data-id="${escapeHtml(t.id)}">分析</button>
           <button class="lt-remove" data-action="remove" data-id="${escapeHtml(t.id)}" title="移除" aria-label="移除">&times;</button>
         </div>`;
     }).join("");
-    container.querySelectorAll("[data-action='play-or-analyze']").forEach(btn => {
+    pendingList.querySelectorAll("[data-action='play-or-analyze']").forEach(btn => {
       btn.addEventListener("click", () => _onLocalTrackAction(btn.dataset.id));
     });
-    container.querySelectorAll("[data-action='remove']").forEach(btn => {
+    pendingList.querySelectorAll("[data-action='remove']").forEach(btn => {
       btn.addEventListener("click", async () => {
         if (!confirm("移除此本機曲目？（不會刪掉已分析的和弦）")) return;
         await _removeLocalTrack(btn.dataset.id);

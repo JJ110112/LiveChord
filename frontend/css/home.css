@@ -271,6 +271,28 @@
 }
 .local-track-item .lt-remove:hover { color: #f44336; }
 
+/* Analyzed-local-track cards: small × overlay (match grid-item layout) */
+.grid-item.local-analyzed-card .la-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  border: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+}
+.grid-item.local-analyzed-card:hover .la-remove { opacity: 1; }
+.grid-item.local-analyzed-card .la-remove:hover { background: #f44336; }
+
 /* YouTube playlist cards (beta homepage) */
 .yt-playlist-list { display: flex; flex-direction: column; gap: 10px; }
 .yt-pl-card {

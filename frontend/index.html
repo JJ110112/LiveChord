@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=1">
-  <link rel="stylesheet" href="/css/home.css?v=15">
+  <link rel="stylesheet" href="/css/home.css?v=16">
   <!-- Warm the CDN so the player page's YouTube IFrame bootstraps faster -->
   <link rel="preconnect" href="https://www.youtube.com">
   <link rel="dns-prefetch" href="https://www.youtube.com">
@@ -74,6 +74,9 @@
       <span>本機音樂</span>
       <button id="betaBrowseLocalBtn" class="btn-small" style="font-size:0.75rem; padding:4px 10px">+ 選取本機音檔</button>
     </h2>
+    <!-- Analyzed: horizontal scroll of cover-card grid-items (like 最近播放) -->
+    <div id="betaLocalAnalyzedRow" class="horizontal-scroll" style="margin-top:8px"></div>
+    <!-- Pending (not yet analyzed): vertical list with 分析 button -->
     <div id="betaLocalTrackList" class="local-track-list" style="margin-top:8px"></div>
     <input type="file" id="betaLocalAudioInput" accept="audio/*" multiple style="display:none">
   </section>
@@ -234,6 +237,6 @@
       }
   }
 </script>
-<script src="/js/app.js?v=59"></script>
+<script src="/js/app.js?v=60"></script>
 </body>
 </html>
