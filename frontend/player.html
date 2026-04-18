@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=2">
-  <link rel="stylesheet" href="/css/player.css?v=18">
+  <link rel="stylesheet" href="/css/player.css?v=22">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -72,9 +72,14 @@
     </div>
   </div>
 
-  <!-- YouTube embed (hidden by default, shown in YouTube mode) -->
+  <!-- YouTube embed — floating PiP widget (drag via header, resize via bottom-right handle, close button) -->
   <div id="ytEmbedContainer" class="yt-embed-container" style="display:none">
-    <div id="ytEmbed" style="width:100%;height:100%"></div>
+    <div class="yt-pip-header" id="ytPipHeader">
+      <div class="yt-pip-grip" id="ytPipGrip" aria-hidden="true"></div>
+      <button id="ytEmbedClose" class="yt-pip-close" aria-label="隱藏 YouTube" title="隱藏 YouTube">&times;</button>
+    </div>
+    <div id="ytEmbed" class="yt-pip-body"></div>
+    <div id="ytPipResize" class="yt-pip-resize" aria-label="調整大小" title="拖曳調整大小"></div>
   </div>
 
   <!-- Split layout: Chord Ribbon | Resize Handle | Instrument View -->
@@ -497,6 +502,13 @@
 </div><!-- /bottom-toolbar -->
 
 <div id="toast" class="toast"></div>
+
+<!-- Floating FAB to re-open the YT PiP when hidden (mimics old bug-report FAB style) -->
+<button id="ytFloatBtn" class="yt-float-btn" aria-label="顯示 YouTube" title="顯示 YouTube" style="display:none">
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <polygon points="7 4 20 12 7 20 7 4"/>
+  </svg>
+</button>
 <audio id="audio" preload="metadata"></audio>
 <input type="file" id="localFileInput" accept="audio/*" style="display:none">
 
@@ -542,6 +554,6 @@
     return res;
   };
 </script>
-<script src="/js/player.js?v=110"></script>
+<script src="/js/player.js?v=118"></script>
 </body>
 </html>

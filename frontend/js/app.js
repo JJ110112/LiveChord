@@ -226,6 +226,9 @@
             await audioDBStore(d.result_hash, pendingFile);
             delete _betaPendingFiles[jobId];
           }
+          // Flag this hash as freshly-analyzed so the player can show a
+          // "旋律擷取中" banner while the melody worker finishes in the background.
+          try { sessionStorage.setItem("livechord_fresh_hash", `${d.result_hash}|${Date.now()}`); } catch {}
           // Navigate to player
           setTimeout(() => {
             window.location.href = `/player?hash=${encodeURIComponent(d.result_hash)}`;
@@ -531,11 +534,43 @@
 
   // ---- search ----
 
+  // Shared between input (URL preview) and keydown (Enter fast path).
+  const _YT_URL_RE = /^https?:\/\/((www|m)\.)?(youtube\.com\/(watch|shorts)|youtu\.be\/|music\.youtube\.com\/watch)/i;
+  function _searchTriggerUrlAnalyze(url) {
+    searchResults.classList.remove("show");
+    const panel = $("#betaFabPanel");
+    const backdrop = $("#betaFabBackdrop");
+    const urlInput = $("#betaYtUrl");
+    if (panel) panel.classList.add("open");
+    if (backdrop) backdrop.classList.add("open");
+    if (urlInput) {
+      urlInput.value = url;
+      searchInput.value = "";
+      if (typeof window._betaStartYoutube === "function") window._betaStartYoutube();
+    }
+  }
+
   searchInput.addEventListener("input", () => {
     clearTimeout(searchTimer);
     const q = searchInput.value.trim();
     if (q.length < 1) {
       searchResults.classList.remove("show");
+      return;
+    }
+    // Paste of a YouTube URL — don't hit /api/search (it would return "找不到結果"
+    // and confuse the user). Show a clear "Enter 分析" hint instead.
+    if (_isBetaMode && _YT_URL_RE.test(q)) {
+      searchResults.innerHTML = `
+        <div class="search-empty">
+          <div class="search-empty-msg">偵測到 YouTube 網址</div>
+          <button id="searchAnalyzeUrlBtn" class="search-empty-btn">按 Enter 或點此分析</button>
+        </div>`;
+      searchResults.classList.add("show");
+      const btn = document.getElementById("searchAnalyzeUrlBtn");
+      if (btn) btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        _searchTriggerUrlAnalyze(q);
+      });
       return;
     }
     searchTimer = setTimeout(() => doSearch(q), 300);
@@ -545,31 +580,27 @@
     if (searchResults.children.length > 0) searchResults.classList.add("show");
   });
 
-  // Enter on the search box. Two paths for beta non-admin:
-  //   (a) value is a YouTube URL → open modal, pre-fill URL, auto-click 分析
-  //   (b) anything else → open modal empty, focus URL input for manual paste/upload
-  // Personal/admin get standard browser form submit (no-op here).
-  const _YT_URL_RE = /^https?:\/\/((www|m)\.)?(youtube\.com\/(watch|shorts)|youtu\.be\/|music\.youtube\.com\/watch)/i;
+  // Enter on the search box. Paths:
+  //   (a) value is a YouTube URL → analyze immediately (beta admin + non-admin)
+  //   (b) beta non-admin text with no match → open add-song modal empty
+  //   (c) otherwise → standard browser form submit (no-op)
   searchInput.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
+    const raw = searchInput.value.trim();
+    if (_isBetaMode && _YT_URL_RE.test(raw)) {
+      e.preventDefault();
+      _searchTriggerUrlAnalyze(raw);
+      return;
+    }
     if (!_isBetaNonAdmin) return;
     e.preventDefault();
     searchResults.classList.remove("show");
-
-    const raw = searchInput.value.trim();
     const panel = $("#betaFabPanel");
     const backdrop = $("#betaFabBackdrop");
     const urlInput = $("#betaYtUrl");
     if (panel) panel.classList.add("open");
     if (backdrop) backdrop.classList.add("open");
-
-    if (_YT_URL_RE.test(raw) && urlInput) {
-      urlInput.value = raw;
-      searchInput.value = "";
-      if (typeof window._betaStartYoutube === "function") window._betaStartYoutube();
-    } else if (urlInput) {
-      setTimeout(() => urlInput.focus(), 50);
-    }
+    if (urlInput) setTimeout(() => urlInput.focus(), 50);
   });
 
   document.addEventListener("click", (e) => {

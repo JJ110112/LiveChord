@@ -195,17 +195,200 @@
   let _chordDuration = 0;
   let _ytSyncDisabled = false;
   let _ytVerifiedOk = false;
-  // Compute album-track duration from chord JSON. Prefer explicit .duration;
-  // fall back to last chord's end time (or time+duration), or 0 if unknowable.
+  // YT PiP widget (drag + resize + show/hide + localStorage persist).
+  const _YT_PIP_KEY = "livechord_yt_pip";
+  function _loadYtPipState() {
+    try { return JSON.parse(localStorage.getItem(_YT_PIP_KEY) || "{}") || {}; }
+    catch { return {}; }
+  }
+  function _saveYtPipState(partial) {
+    try {
+      localStorage.setItem(_YT_PIP_KEY, JSON.stringify({ ..._loadYtPipState(), ...partial }));
+    } catch {}
+  }
+  function _applyYtPipState() {
+    const container = document.getElementById("ytEmbedContainer");
+    if (!container) return;
+    const s = _loadYtPipState();
+    if (typeof s.x === "number") { container.style.left = s.x + "px"; container.style.right = "auto"; }
+    if (typeof s.y === "number") { container.style.top = s.y + "px"; container.style.bottom = "auto"; }
+    if (typeof s.width === "number") container.style.width = s.width + "px";
+    if (typeof s.height === "number") container.style.height = s.height + "px";
+  }
+  function _updateYtReopenBtn() {
+    const btn = document.getElementById("ytFloatBtn");
+    if (!btn) return;
+    const hidden = !!_loadYtPipState().hidden;
+    const show = hidden && !!_ytPlayer;
+    btn.style.display = show ? "flex" : "none";
+  }
+  function _showYtPip() {
+    const container = document.getElementById("ytEmbedContainer");
+    if (!container) return;
+    container.style.display = "";
+    _saveYtPipState({ hidden: false });
+    _updateYtReopenBtn();
+  }
+  function _initYtPipControls() {
+    const container = document.getElementById("ytEmbedContainer");
+    const header = document.getElementById("ytPipHeader");
+    const handle = document.getElementById("ytPipResize");
+    const closeBtn = document.getElementById("ytEmbedClose");
+    const reopenFab = document.getElementById("ytFloatBtn");
+    if (!container) return;
+    _applyYtPipState();
+
+    // Drag by header (not the close button)
+    if (header) header.addEventListener("pointerdown", (e) => {
+      if (e.target.closest(".yt-pip-close")) return;
+      e.preventDefault();
+      header.setPointerCapture?.(e.pointerId);
+      const rect = container.getBoundingClientRect();
+      const startX = e.clientX, startY = e.clientY;
+      const startL = rect.left, startT = rect.top;
+      const move = (ev) => {
+        const w = container.offsetWidth, h = container.offsetHeight;
+        const nx = Math.max(0, Math.min(window.innerWidth - w, startL + ev.clientX - startX));
+        const ny = Math.max(0, Math.min(window.innerHeight - h, startT + ev.clientY - startY));
+        container.style.left = nx + "px";
+        container.style.top = ny + "px";
+        container.style.right = "auto";
+        container.style.bottom = "auto";
+      };
+      const up = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        window.removeEventListener("pointercancel", up);
+        const r = container.getBoundingClientRect();
+        _saveYtPipState({ x: r.left, y: r.top });
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", up);
+    });
+
+    // Resize via bottom-right handle. Maintains 16:9 aspect ratio on the
+    // video body (container height = width * 9/16 + header 20px) so the iframe
+    // fills cleanly without letterbox bars.
+    const HEADER_H = 20;
+    const BODY_ASPECT = 16 / 9;
+    if (handle) handle.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handle.setPointerCapture?.(e.pointerId);
+      const rect = container.getBoundingClientRect();
+      const startX = e.clientX, startY = e.clientY;
+      const startW = rect.width;
+      const move = (ev) => {
+        const maxW = window.innerWidth - rect.left - 4;
+        const maxH = window.innerHeight - rect.top - 4;
+        // Drive resize off whichever axis moved more so diagonal drag feels
+        // natural; derive the other axis from the 16:9 body + header rule.
+        const dX = ev.clientX - startX;
+        const dY = ev.clientY - startY;
+        let nw;
+        if (Math.abs(dY) > Math.abs(dX)) {
+          const nh0 = Math.max(100, Math.min(maxH, (startW / BODY_ASPECT + HEADER_H) + dY));
+          nw = (nh0 - HEADER_H) * BODY_ASPECT;
+        } else {
+          nw = Math.max(140, Math.min(maxW, startW + dX));
+        }
+        nw = Math.max(140, Math.min(maxW, nw));
+        let nh = nw / BODY_ASPECT + HEADER_H;
+        if (nh > maxH) { nh = maxH; nw = (nh - HEADER_H) * BODY_ASPECT; }
+        container.style.width = Math.round(nw) + "px";
+        container.style.height = Math.round(nh) + "px";
+        // Nudge YT API so the player UI inside the iframe re-lays out to the
+        // new size — CSS alone scales the iframe box, but YT's internal player
+        // only re-rules on an explicit setSize call.
+        if (_ytPlayer && typeof _ytPlayer.setSize === "function") {
+          try { _ytPlayer.setSize(Math.round(nw), Math.round(nh - HEADER_H)); } catch {}
+        }
+      };
+      const up = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        window.removeEventListener("pointercancel", up);
+        const r = container.getBoundingClientRect();
+        _saveYtPipState({ width: r.width, height: r.height });
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", up);
+    });
+
+    // Close = hide the PiP (YT keeps playing audio; toolbar btn reopens it)
+    if (closeBtn) closeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      container.style.display = "none";
+      _saveYtPipState({ hidden: true });
+      _updateYtReopenBtn();
+    });
+
+    // Floating FAB re-shows the PiP (replaces old toolbar button)
+    if (reopenFab) reopenFab.addEventListener("click", _showYtPip);
+  }
+  // Clear the "hidden" flag on every page load so new navigation shows the PiP
+  // by default (user can still close per-visit). Keep x/y/width/height persisted.
+  _saveYtPipState({ hidden: false });
+
+  // Wire up immediately — DOM is already present in the IIFE scope
+  _initYtPipControls();
+
+  // Melody-pending banner: when the user lands on a freshly-analyzed hash,
+  // the melody worker is still running in the background (~40–60s). Show a
+  // small spinner + poll /api/ai/melody until it lands, then swap into
+  // melodyData so the waterfall picks it up on the next drawWaterfall tick.
+  function _showMelodyStatusBanner(text) {
+    let el = document.getElementById("ytMelodyBanner");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "ytMelodyBanner";
+      el.className = "yt-melody-banner";
+      el.innerHTML = '<span class="yt-mel-spinner"></span><span class="yt-mel-text"></span>';
+      document.body.appendChild(el);
+    }
+    el.querySelector(".yt-mel-text").textContent = text || "";
+  }
+  function _hideMelodyStatusBanner() {
+    const el = document.getElementById("ytMelodyBanner");
+    if (el) el.remove();
+  }
+  function _maybeStartMelodyPolling() {
+    if (!hashMode) return;
+    const raw = sessionStorage.getItem("livechord_fresh_hash") || "";
+    const [h, tsStr] = raw.split("|");
+    const ts = parseInt(tsStr || "0", 10);
+    if (h !== hashMode || !ts || Date.now() - ts > 10 * 60000) return;
+
+    _showMelodyStatusBanner("旋律擷取中，稍後將有伴奏旋律");
+    const deadline = Date.now() + 5 * 60000;
+    const tick = async () => {
+      if (Date.now() > deadline) { _hideMelodyStatusBanner(); return; }
+      try {
+        const r = await fetch(`/api/ai/melody?hash=${encodeURIComponent(hashMode)}`);
+        const d = await r.json();
+        if (d.melody && d.melody.length > 0) {
+          melodyData = _filterMelody(d.melody);
+          _hideMelodyStatusBanner();
+          showToast("旋律擷取完成，伴奏瀑布已啟用", 3000);
+          return;
+        }
+      } catch {}
+      setTimeout(tick, 5000);
+    };
+    setTimeout(tick, 8000);  // 8s head start for the melody worker
+  }
+
+  // Compute trusted album-track duration from chord JSON. Only returns a value
+  // when the JSON has an explicit .duration (saved by the process worker via
+  // mutagen audio.info.length, or backfilled by chord_batch). Last-chord-end
+  // was a false-positive trap — an outro with no detected chord made a 2:34
+  // song look 1:39 long, triggering a bogus desync banner. Returning 0 here
+  // lets the desync check short-circuit via its `< 30` gate.
   function _computeChordDuration(c) {
     if (!c) return 0;
     if (typeof c.duration === "number" && c.duration > 0) return c.duration;
-    const arr = c.chords || [];
-    if (!arr.length) return 0;
-    const last = arr[arr.length - 1];
-    if (!last) return 0;
-    if (typeof last.end === "number") return last.end;
-    if (typeof last.time === "number") return last.time + (last.duration || 2);
     return 0;
   }
 
@@ -1014,31 +1197,53 @@
   let melodyData = null;
   let _melodyPendingPlay = false;
 
-  // Drop spurious melody notes: very-low-pitch + very-low-confidence detections are
-  // almost always pitch-tracking errors (octave drops, bass bleed) and make the
-  // waterfall look like RH must span 4+ octaves. Legit low-vocal melody keeps its
-  // higher confidence and survives.
+  // Cleanse spurious melody notes + fold octave-drop errors.
+  // Two-pass:
+  //  1) Drop very-low-pitch + very-low-confidence (pitch tracker noise).
+  //  2) Octave-fold: compute median MIDI and any note > 12 semitones away from it
+  //     gets shifted by whole octaves until it's within ±1 octave. This fixes both
+  //     (a) wide-range RH that's unplayable (Biol-101) and (b) octave-dropped vocal
+  //     that collides with LH accompaniment (Taylor Swift — Fate of Ophelia).
   function _filterMelody(notes) {
-    if (!Array.isArray(notes)) return notes;
-    return notes.filter(n => {
+    if (!Array.isArray(notes) || !notes.length) return notes;
+    // Pass 1: confidence filter
+    let kept = notes.filter(n => {
       const midi = n && n.midi;
       const conf = n && typeof n.confidence === "number" ? n.confidence : 1;
       if (midi == null) return false;
-      if (midi < 48 && conf < 0.03) return false; // below C3 + low confidence
+      if (midi < 48 && conf < 0.03) return false;
       return true;
+    });
+    if (!kept.length) return kept;
+    // Pass 2: octave-fold around median
+    const pitches = kept.map(n => n.midi).slice().sort((a, b) => a - b);
+    const median = pitches[Math.floor(pitches.length / 2)];
+    return kept.map(n => {
+      let m = n.midi;
+      while (m < median - 12) m += 12;
+      while (m > median + 12) m -= 12;
+      return m === n.midi ? n : { ...n, midi: m };
     });
   }
 
   async function _loadMelody(path) {
+    // Show a small bottom-left banner instead of a centered overlay: the melody
+    // endpoint may extract on-the-fly (~1 min uncached) but the waterfall +
+    // chord + audio should stay interactive. Banner auto-hides once data lands.
+    let showedBanner = false;
+    const bannerTimer = setTimeout(() => {
+      _showMelodyStatusBanner("AI 旋律擷取中，完成後自動顯示");
+      showedBanner = true;
+    }, 600);  // don't flash for instant cached reads
     try {
-      _setLoadingState(true, "AI 旋律擷取中...", "不會影響音樂播放，請稍候...");
       const res = await fetch(`/api/ai/melody?path=${encodeURIComponent(path)}`);
       const data = await res.json();
       if (data.melody && data.melody.length > 0) {
         melodyData = _filterMelody(data.melody);
       }
     } catch {} finally {
-      _setLoadingState(false);
+      clearTimeout(bannerTimer);
+      if (showedBanner) _hideMelodyStatusBanner();
     }
   }
 
@@ -3610,6 +3815,9 @@
             const melData = await melRes.json();
             if (melData.melody && melData.melody.length > 0) {
               melodyData = _filterMelody(melData.melody);
+            } else {
+              // Freshly-analyzed hash → melody worker is still running; poll + banner.
+              _maybeStartMelodyPolling();
             }
           } catch {}
 
@@ -3846,6 +4054,8 @@
     btn.className = "yt-ab-cta";
     btn.textContent = "看和弦";
     btn.addEventListener("click", () => {
+      // Flag fresh so the destination player shows the "旋律擷取中" banner.
+      try { sessionStorage.setItem("livechord_fresh_hash", `${resultHash}|${Date.now()}`); } catch {}
       window.location.href = `/player?hash=${encodeURIComponent(resultHash)}`;
     });
     row.appendChild(btn);
@@ -3882,18 +4092,13 @@
 
   function _initYouTubeEmbed(videoId) {
     const container = document.getElementById("ytEmbedContainer");
-    const closeBtn = document.getElementById("ytEmbedClose");
     if (!container) return;
-    container.style.display = "";
-
-    // Close button
-    if (closeBtn) {
-      closeBtn.onclick = () => {
-        container.style.display = "none";
-        if (_ytSyncTimer) { clearInterval(_ytSyncTimer); _ytSyncTimer = null; }
-        if (_ytPlayer) { try { _ytPlayer.destroy(); } catch (e) {} _ytPlayer = null; }
-      };
-    }
+    // Respect persisted hidden state (user closed the PiP last time) — YT still boots
+    // and plays audio; toolbar shows "重新顯示 YouTube" button so they can re-open.
+    const pipState = _loadYtPipState();
+    container.style.display = pipState.hidden ? "none" : "";
+    _applyYtPipState();
+    _updateYtReopenBtn();
 
     // Show a loading overlay until onReady clears it — iframe_api + player boot can take 5–15s
     _setLoadingState(true, "載入 YouTube 播放器…", "首次載入約 5–15 秒");
@@ -3994,6 +4199,17 @@
           _startYTSync();
           // Task 1: verify YT length matches chord length (with retry for buffering).
           setTimeout(() => _checkYtDuration(0), 600);
+          // PiP toolbar button reflects current player existence.
+          _updateYtReopenBtn();
+          // Sync YT internal layout to the persisted PiP size (setSize triggers
+          // re-layout that CSS %-sizing alone doesn't always flow through).
+          try {
+            const c = document.getElementById("ytEmbedContainer");
+            if (c && _ytPlayer && typeof _ytPlayer.setSize === "function") {
+              const r = c.getBoundingClientRect();
+              _ytPlayer.setSize(Math.round(r.width), Math.round(r.height - 20));
+            }
+          } catch {}
         },
         onStateChange: (e) => {
           // 0=ended, 1=playing, 2=paused, 3=buffering, 5=cued
@@ -4018,6 +4234,7 @@
           const container = document.getElementById("ytEmbedContainer");
           if (container) container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px">此影片無法嵌入播放<br>請在 YouTube 開啟播放</div>';
           showToast("按 ▶ 播放鍵載入本地音檔", 8000);
+          _updateYtReopenBtn();
         }
       }
     });

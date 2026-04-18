@@ -152,7 +152,25 @@ def compute_file_hash(filepath: str) -> str:
 # Chord JSON saving (matches existing format)
 # ---------------------------------------------------------------------------
 
-def _save_chord_json(job: ProcessJob, chords: list, key: str) -> str:
+def _probe_audio_duration(audio_path: str) -> float:
+    """Return the audio file's total duration in seconds, or 0 on failure.
+
+    Used to populate the chord JSON's `duration` field so the player's
+    YT-desync check has a trustworthy reference (last-chord-end is a bad
+    proxy — outros with no detected chord make the song look shorter).
+    """
+    try:
+        from mutagen import File as MutagenFile
+        af = MutagenFile(audio_path)
+        if af is not None and hasattr(af, "info") and hasattr(af.info, "length"):
+            return float(af.info.length or 0)
+    except Exception as e:
+        logger.debug("Duration probe failed for %s: %s", audio_path, e)
+    return 0.0
+
+
+def _save_chord_json(job: ProcessJob, chords: list, key: str,
+                     audio_path: str = "") -> str:
     """Save chord JSON in the same format as chord_batch.py. Returns song hash."""
     virtual_path = f"__upload/{job.job_id}"
     hash_val = hashlib.md5(virtual_path.encode("utf-8")).hexdigest()[:12]
@@ -167,6 +185,13 @@ def _save_chord_json(job: ProcessJob, chords: list, key: str) -> str:
     }
     if job.youtube_url:
         sheet["youtube_url"] = job.youtube_url
+    # Embed true audio duration when we still have the file on disk — the
+    # player's desync check reads this, and falling back to last-chord-end
+    # was triggering false positives on songs with outro silence.
+    if audio_path:
+        d = _probe_audio_duration(audio_path)
+        if d > 0:
+            sheet["duration"] = round(d, 3)
     out_file = CHORDS_DIR / f"{hash_val}.json"
     out_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
     return hash_val
@@ -604,8 +629,9 @@ def _worker_loop():
             if job.source_type == "upload" and audio_path:
                 _extract_cover(audio_path, "pending")  # placeholder, real hash below
 
-            # Step 4: Save chord JSON → result_hash available for reuse lookups
-            result_hash = _save_chord_json(job, chords, key)
+            # Step 4: Save chord JSON (+ real audio duration so YT desync check
+            # has a trustworthy reference) → result_hash available for reuse lookups
+            result_hash = _save_chord_json(job, chords, key, audio_path)
             chord_count = len(chords)
             job.result_hash = result_hash
 

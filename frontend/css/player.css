@@ -1191,23 +1191,118 @@
 
 /* ========== [COMPONENT: RESPONSIVE] ========== */
 
-/* YouTube embed — desktop default, responsive on mobile */
+/* YouTube embed — floating PiP: fixed positioning, drag via header, resize via handle, persisted */
 .yt-embed-container {
-  position: absolute;
-  top: 8px;
+  position: fixed;
+  top: 60px;
   right: 8px;
   z-index: 20;
   border-radius: 10px;
   overflow: hidden;
   box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-  resize: both;
+  background: #000;
   width: 320px;
-  height: 180px;
-  min-width: 200px;
-  min-height: 112px;
-  max-width: 640px;
-  max-height: 360px;
+  height: 200px;               /* body 180 (16:9 of 320) + header 20 */
+  min-width: 180px;
+  min-height: 120px;
+  max-width: 95vw;
+  max-height: 70vh;
+  touch-action: none;          /* prevent browser pan/zoom while dragging */
 }
+.yt-pip-header {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0,0,0,0.85);
+  padding: 0 6px;
+  cursor: grab;
+  user-select: none;
+  z-index: 2;
+}
+.yt-pip-header:active { cursor: grabbing; }
+.yt-pip-grip {
+  flex: 1;
+  height: 12px;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(255,255,255,0.45) 0 3px,
+    transparent 3px 6px
+  );
+  background-size: 24px 2px;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+.yt-pip-close {
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 6px;
+  line-height: 1;
+  border-radius: 4px;
+  margin-left: 6px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.yt-pip-close:hover { background: rgba(255,255,255,0.25); }
+.yt-pip-body {
+  position: absolute;
+  top: 20px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+/* YT IFrame API injects an <iframe> inside #ytEmbed with its own width/height
+   attributes — force it to fill the PiP body so resize actually scales the
+   video (not just the surrounding black box). */
+.yt-pip-body iframe {
+  width: 100% !important;
+  height: 100% !important;
+  border: 0;
+  display: block;
+}
+.yt-pip-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  cursor: se-resize;
+  touch-action: none;
+  background:
+    linear-gradient(135deg, transparent 55%, rgba(255,255,255,0.5) 55%, rgba(255,255,255,0.5) 62%, transparent 62%, transparent 72%, rgba(255,255,255,0.5) 72%, rgba(255,255,255,0.5) 79%, transparent 79%);
+  z-index: 2;
+}
+
+/* Floating FAB for re-opening the YT PiP when hidden (red circle, white play triangle) */
+.yt-float-btn {
+  position: fixed;
+  bottom: 56px;
+  right: 16px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #e53935;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+  z-index: 9500;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: transform 0.15s;
+}
+.yt-float-btn:hover { transform: scale(1.08); }
+.yt-float-btn:active { transform: scale(0.95); }
+.yt-float-btn svg { width: 22px; height: 22px; margin-left: 2px; }
+.yt-float-btn.show { display: flex !important; }
 
 @media (max-width: 900px) {
   .chord-ribbon-panel {
@@ -1218,26 +1313,16 @@
   }
 }
 
-@media (max-width: 900px) and (orientation: landscape) {
-  .yt-embed-container {
-    width: min(28vw, 220px);
-    height: auto;
-    aspect-ratio: 16 / 9;
-    min-width: 0;
-    min-height: 0;
-    resize: none;
-  }
-}
-
 @media (max-width: 640px) {
   .yt-embed-container {
-    width: min(45vw, 180px);
+    width: min(55vw, 220px);
     height: auto;
     aspect-ratio: 16 / 9;
-    min-width: 0;
+    min-width: 140px;
     min-height: 0;
-    resize: none;
   }
+  /* Include header height when using aspect-ratio */
+  .yt-pip-body { top: 20px; }
   /* Chord ribbon → horizontal strip above instrument panel */
   .chord-ribbon-panel {
     display: flex;
@@ -2071,6 +2156,36 @@
   width: 0;
   transition: width 0.3s ease;
 }
+
+/* Melody-pending banner — shown on freshly-analyzed hashes while melody worker is still running */
+.yt-melody-banner {
+  position: fixed;
+  bottom: 60px;             /* above bottom toolbar */
+  left: 12px;
+  background: rgba(33, 82, 165, 0.95);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  z-index: 10001;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 24px);
+}
+.yt-mel-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: yt-mel-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes yt-mel-spin { to { transform: rotate(360deg); } }
 
 /* Empty-chord hero detect button (Task 6) */
 .chord-empty-state {
