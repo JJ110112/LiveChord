@@ -3387,13 +3387,35 @@
   Object.defineProperty(window, '_playerActiveChordIdx', { get: () => activeChordIdx });
   Object.defineProperty(window, '_playerSecPerBeat', { get: () => currentSecPerBeat });
 
+  // Wrapper that exposes playback state transparently for YT mode too.
+  // chord-correction.js only reads `.paused`, `.currentTime`, `.duration` —
+  // delegate those to the YT player when it's active (beta hash mode), else
+  // forward to the raw HTMLAudioElement (8800 path mode).
+  const _audioForCorrection = new Proxy(audio, {
+    get(target, prop) {
+      if (_ytActive()) {
+        if (prop === "paused") {
+          try { return _ytPlayer.getPlayerState() !== 1; } catch { return true; }
+        }
+        if (prop === "currentTime") {
+          try { return _ytPlayer.getCurrentTime() || 0; } catch { return 0; }
+        }
+        if (prop === "duration") {
+          try { return _ytPlayer.getDuration() || 0; } catch { return 0; }
+        }
+      }
+      const v = target[prop];
+      return typeof v === "function" ? v.bind(target) : v;
+    },
+  });
+
   const btnBeatTap = $("#btnBeatTap");
   if (btnBeatTap) {
     btnBeatTap.addEventListener("click", () => {
       if (!chordData || !chordData.chords || chordData.chords.length === 0) {
         showToast("尚無和弦資料", 2000); return;
       }
-      window.ChordCorrection.enterBeatTap(chordData, audio, _corrRebuild);
+      window.ChordCorrection.enterBeatTap(chordData, _audioForCorrection, _corrRebuild);
     });
   }
 
@@ -3404,7 +3426,7 @@
         showToast("尚無和弦資料", 2000); return;
       }
       window.ChordCorrection.enterChordAlign(
-        chordData, audio, () => activeChordIdx, _corrRebuild
+        chordData, _audioForCorrection, () => activeChordIdx, _corrRebuild
       );
     });
   }
@@ -3660,7 +3682,15 @@
   }
 
   const btnDetect = $("#btnDetect");
-  if (btnDetect) btnDetect.addEventListener("click", () => runChordDetection());
+  if (btnDetect) {
+    btnDetect.addEventListener("click", () => runChordDetection());
+    // In beta mode the detect / MIDI-import path requires trackPath (NAS), which
+    // beta non-admin users don't have — hide the button rather than let them
+    // tap it and get "此頁為 hash 模式" toast.
+    _isBetaModeAsync.then(isBeta => {
+      if (isBeta) btnDetect.style.display = "none";
+    }).catch(() => {});
+  }
   // Hero detect button (Task 6) is injected into empty chord state; bind via delegation.
   document.addEventListener("click", (e) => {
     if (e.target && e.target.id === "btnDetectHero") runChordDetection();
@@ -4674,10 +4704,25 @@
       if (aiSynth.ctx) aiSynth.ctx.resume();
   });
 
+  // Beta YT mode never fires `audio` play events — hook note scheduling to
+  // whatever surface is actually playing. scheduleNotes also lazy-inits
+  // aiSynth so MIDI / Mix modes work without having to have hit ▶ on <audio>.
   setInterval(() => {
-      if (!audio.paused) {
-          scheduleNotes(audio.currentTime);
+      const ytMode = _ytActive();
+      const playing = ytMode
+          ? (_ytPlayer.getPlayerState && _ytPlayer.getPlayerState() === 1)
+          : !audio.paused;
+      if (!playing) return;
+      if (!aiSynth.ctx) {
+          try { aiSynth.init(); } catch {}
       }
+      if (aiSynth.ctx && aiSynth.ctx.state === "suspended") {
+          try { aiSynth.ctx.resume(); } catch {}
+      }
+      const t = ytMode
+          ? (_ytPlayer.getCurrentTime ? _ytPlayer.getCurrentTime() : 0)
+          : audio.currentTime;
+      scheduleNotes(t);
   }, 50);
 
   // Audio Mode UI Bindings (Music -> MIDI -> Mix)
@@ -4687,18 +4732,26 @@
   
   let audioMode = 0; // 0: Music, 1: MIDI, 2: Mix
 
+  // Route source-audio volume to whichever surface is actually playing:
+  // YT iframe in beta hash mode, HTMLAudioElement in 8800 path mode.
+  function _setSourceVolume(vol01) {
+      if (_ytActive() && typeof _ytPlayer.setVolume === "function") {
+          try { _ytPlayer.setVolume(Math.max(0, Math.min(1, vol01)) * 100); } catch {}
+      }
+      audio.volume = Math.max(0, Math.min(1, vol01));
+  }
+
   function applyAudioMode() {
       if (!btnAudioMode) return;
-      
-      // Get base volume from normal player slider
+
       const volumeSlider = document.getElementById("volumeSlider");
       const baseVol = volumeSlider ? parseFloat(volumeSlider.value) : 1.0;
-      
+
       if (audioMode === 0) {
           btnAudioMode.innerHTML = "🎵 Music";
           btnAudioMode.style.color = "#03a9f4";
           btnAudioMode.style.borderColor = "#03a9f4";
-          audio.volume = baseVol;
+          _setSourceVolume(baseVol);
           aiSynth.volLeft = 0;
           aiSynth.volRight = 0;
           if (crossfaderContainer) crossfaderContainer.style.display = "none";
@@ -4706,7 +4759,7 @@
           btnAudioMode.innerHTML = "🎹 MIDI";
           btnAudioMode.style.color = "#ff9800";
           btnAudioMode.style.borderColor = "#ff9800";
-          audio.volume = 0;
+          _setSourceVolume(0);
           aiSynth.volLeft = 1.0;
           aiSynth.volRight = 1.0;
           if (crossfaderContainer) crossfaderContainer.style.display = "none";
@@ -4715,13 +4768,13 @@
           btnAudioMode.style.color = "#4caf50";
           btnAudioMode.style.borderColor = "#4caf50";
           if (crossfaderContainer) crossfaderContainer.style.display = "flex";
-          
+
           const mixVal = crossfaderVol ? parseFloat(crossfaderVol.value) : 0.5;
-          audio.volume = baseVol * (1 - mixVal);
+          _setSourceVolume(baseVol * (1 - mixVal));
           aiSynth.volLeft = mixVal;
           aiSynth.volRight = mixVal;
       }
-      
+
       // The hand mute filtering is still robustly done in aiSynth.playNote
   }
 

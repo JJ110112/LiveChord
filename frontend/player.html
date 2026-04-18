@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=2">
-  <link rel="stylesheet" href="/css/player.css?v=33">
+  <link rel="stylesheet" href="/css/player.css?v=34">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -404,23 +404,23 @@
         <img src="/img/left-hand.png" class="hand-icon hand-left active" alt="L">
         <img src="/img/right-hand.png" class="hand-icon hand-right active" alt="R">
       </button>
-      <button id="btnShowChordTonesTB" class="tb-popup-btn" style="color:#9c27b0" title="顯示和弦組成音" aria-label="顯示和弦組成音">
+      <button id="btnShowChordTonesTB" class="tb-popup-btn" title="顯示和弦組成音" aria-label="顯示和弦組成音">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
       </button>
-      <button id="btnRhContent" class="tb-popup-btn" style="color:#ff9800" title="右手內容：伴奏／旋律／全部" aria-label="右手內容切換">
+      <button id="btnRhContent" class="tb-popup-btn" title="右手內容：伴奏／旋律／全部" aria-label="右手內容切換">
         <span id="btnRhContentLabel" style="font-weight:700; font-size:12px">伴</span>
       </button>
-      <button id="btnFingering" class="tb-popup-btn" style="color:#4caf50" title="鋼琴鍵指法" aria-label="鋼琴鍵指法">
+      <button id="btnFingering" class="tb-popup-btn" title="鋼琴鍵指法" aria-label="鋼琴鍵指法">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
       </button>
-      <button id="btnRefreshAcc" class="tb-popup-btn" style="color:#4caf50" title="強制重新生成伴奏" aria-label="重新生成伴奏">
+      <button id="btnRefreshAcc" class="tb-popup-btn" title="強制重新生成伴奏" aria-label="重新生成伴奏">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
       </button>
-      <button id="btnDownloadMidi" class="tb-popup-btn" style="color:#2196f3" title="下載 MIDI" aria-label="下載 MIDI">
+      <button id="btnDownloadMidi" class="tb-popup-btn" title="下載 MIDI" aria-label="下載 MIDI">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       </button>
       <div class="tb-separator"></div>
-      <button id="btnAudioMode" class="tb-popup-btn" style="color:#03a9f4" title="切換音軌" aria-label="切換音軌">
+      <button id="btnAudioMode" class="tb-popup-btn" title="切換音軌" aria-label="切換音軌">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
         <span>Music</span>
       </button>
@@ -537,6 +537,6 @@
     return res;
   };
 </script>
-<script src="/js/player.js?v=132"></script>
+<script src="/js/player.js?v=136"></script>
 </body>
 </html>

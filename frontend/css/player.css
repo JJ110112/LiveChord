@@ -1609,7 +1609,8 @@
 .correction-panel {
   position: fixed;
   bottom: 80px;
-  left: 20px;
+  right: 20px;       /* right of the ribbon/waterfall divider so it doesn't cover chord cards */
+  left: auto;
   background: var(--bg-hover, #2d3036);
   border: 1px solid var(--border, #444);
   border-radius: 12px;
