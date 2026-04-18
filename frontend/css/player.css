@@ -1135,6 +1135,13 @@
 .chord-source-badge.src-midi::before { background: #4caf50; }
 .chord-source-badge.src-btc { background: rgba(255,152,0,.12); color: #ff9800; }
 .chord-source-badge.src-btc::before { background: #ff9800; }
+/* User-rating-driven states (overlay source fallback when ≥3 ratings) */
+.chord-source-badge.src-good { background: rgba(76,175,80,.18); color: #4caf50; }
+.chord-source-badge.src-good::before { background: #4caf50; }
+.chord-source-badge.src-mid { background: rgba(255,193,7,.18); color: #ffc107; }
+.chord-source-badge.src-mid::before { background: #ffc107; }
+.chord-source-badge.src-bad { background: rgba(244,67,54,.18); color: #f44336; }
+.chord-source-badge.src-bad::before { background: #f44336; }
 
 /* ========== [END: CHORD SOURCE BADGE] ========== */
 

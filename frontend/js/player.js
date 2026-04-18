@@ -473,6 +473,64 @@
     setTimeout(tick, 8000);  // 8s head start for the melody worker
   }
 
+  // Chord-quality LED: combines data-source hint with user rating summary.
+  // Plain-Chinese labels so users don't need to know "BTC" / "MIDI":
+  //   來源：AI 偵測 (btc*) · 人工校對 (midi) · 人工匯入 (chordify)
+  // Color priority:
+  //   - count ≥ 3: rating-driven (avg ≥4 綠, ≥3 黃, <3 紅)
+  //   - count <  3: source-driven fallback (midi 綠, btc 黃)
+  const _SOURCE_LABEL = {
+    midi: "人工校對",
+    btc: "AI 偵測",
+    btc_upload: "AI 偵測（上傳）",
+    btc_batch: "AI 偵測",
+    chordy: "AI 偵測",
+    chordify: "人工匯入",
+  };
+  async function _updateChordQualityBadge(cd, ratingKey) {
+    const srcBadge = document.getElementById("chordSource");
+    if (!srcBadge) return;
+    const rawSrc = (cd && cd.source) || "btc";
+    const srcLabel = _SOURCE_LABEL[rawSrc] || "未知來源";
+    const srcShort = rawSrc.startsWith("btc") ? "AI"
+                    : rawSrc === "midi" ? "校"
+                    : rawSrc === "chordify" ? "校" : "?";
+    // Paint immediately with source-based fallback
+    const sourceCssClass =
+      rawSrc === "midi" ? "src-midi"
+      : rawSrc === "chordify" ? "src-midi"
+      : "src-btc";
+    srcBadge.className = `chord-source-badge ${sourceCssClass}`;
+    srcBadge.textContent = srcShort;
+    srcBadge.title = `來源：${srcLabel}`;
+
+    // Fetch user rating summary. The rating table's song_hash column just
+    // stores whatever the UI submitted — trackPath in DB-path mode, the md5
+    // hash in hash mode — so we pass through whichever is active.
+    const key = ratingKey || "";
+    if (!key) return;
+    try {
+      const r = await fetch(`/api/feedback/ratings/summary?song_hash=${encodeURIComponent(key)}`);
+      if (!r.ok) return;
+      const { average, count } = await r.json();
+      const MIN_COUNT = 3;
+      if (average && count >= MIN_COUNT) {
+        const avg = Number(average);
+        const ratingClass =
+          avg >= 4 ? "src-good"
+          : avg >= 3 ? "src-mid"
+          : "src-bad";
+        srcBadge.className = `chord-source-badge ${ratingClass}`;
+        srcBadge.textContent = `${avg.toFixed(1)}★`;
+        srcBadge.title = `${avg.toFixed(1)}★ × ${count} 人評分　·　來源：${srcLabel}`;
+      } else if (count > 0) {
+        srcBadge.title = `尚未累積足夠評分（${count} 人）　·　來源：${srcLabel}`;
+      } else {
+        srcBadge.title = `尚無評分　·　來源：${srcLabel}`;
+      }
+    } catch {}
+  }
+
   // Compute trusted album-track duration from chord JSON. Only returns a value
   // when the JSON has an explicit .duration (saved by the process worker via
   // mutagen audio.info.length, or backfilled by chord_batch). Last-chord-end
@@ -2769,21 +2827,8 @@
         _chordDuration = _computeChordDuration(chordData);
         _ytSyncDisabled = false;
         _ytVerifiedOk = false;
-        // 和弦品質燈號
-        const srcBadge = $("#chordSource");
-        if (srcBadge) {
-          let rawSrc = chordData.source || "btc";
-          if (rawSrc === "btc_batch" || rawSrc === "chordy") rawSrc = "btc"; // map variants to btc
-          const src = rawSrc === "chordify" ? "midi" : rawSrc;
-          const labels = { midi: "MIDI", btc: "BTC" };
-          srcBadge.className = `chord-source-badge src-${src}`;
-          srcBadge.textContent = labels[src] || src.toUpperCase();
-          if (chordData.quality_score) {
-            srcBadge.title = `AI 信心評分: ${chordData.quality_score}`;
-          } else {
-            srcBadge.title = `和弦來源: ${labels[src] || src}`;
-          }
-        }
+        // 和弦品質燈號（helper handles both source + user rating summary）
+        _updateChordQualityBadge(chordData, /*key*/ trackPath);
         if (chordData.key) {
           const keyInfo = $("#chordKey");
           const _ma = { Mixolydian:"Mix", Dorian:"Dor", Lydian:"Lyd", Aeolian:"Aeo", Blues:"Blues" };
@@ -3952,11 +3997,7 @@
             const keyInfo = $("#chordKey");
             if (keyInfo) keyInfo.textContent = `Key: ${chordData.key}`;
           }
-          const srcBadge = $("#chordSource");
-          if (srcBadge) {
-            srcBadge.className = "chord-source-badge src-btc";
-            srcBadge.textContent = "BTC";
-          }
+          _updateChordQualityBadge(chordData, hashMode);
           await preloadChordInfo(chordData.chords);
           buildChordDOM();
 
