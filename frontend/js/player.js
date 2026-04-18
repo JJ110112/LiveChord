@@ -3724,7 +3724,6 @@
         if (dur > 0) {
           timeDuration.textContent = formatTime(dur);
           const pct = (t / dur) * 100;
-          if (seekBar) seekBar.value = pct;
           if (topProgressFill) topProgressFill.style.width = pct + "%";
         }
 
