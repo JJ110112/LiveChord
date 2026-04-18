@@ -191,6 +191,150 @@
   color: var(--text-dim);
 }
 
+/* User's own uploaded analyses — green "本機" tag + subtle tint so they're
+   unmistakable at the top of the results. */
+.search-results .result-item.is-upload {
+  background: rgba(45, 125, 70, 0.08);
+}
+.search-results .result-item.is-upload:hover {
+  background: rgba(45, 125, 70, 0.16);
+}
+.r-upload-badge {
+  display: inline-block;
+  background: #2d7d46;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* Modal variant: when user triggered from local-track list, hide YT URL row
+   + drop zone so there's only the "selected file + 分析" path (avoids two
+   duplicate 分析 buttons). */
+.beta-fab-panel.add-song-modal.file-only #betaDropZone,
+.beta-fab-panel.add-song-modal.file-only .add-song-yt-row {
+  display: none !important;
+}
+
+/* Local tracks list (beta homepage — user-picked audio files, persisted) */
+.local-track-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.local-track-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-card, rgba(255,255,255,0.03));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.local-track-item .lt-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.local-track-item .lt-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.local-track-item .lt-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.local-track-item .lt-state { font-weight: 600; }
+.local-track-item .lt-state.lt-done { color: #4caf50; }
+.local-track-item .lt-state.lt-pending { color: #ff9800; }
+.local-track-item .lt-action {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+.local-track-item .lt-remove {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 6px;
+  line-height: 1;
+}
+.local-track-item .lt-remove:hover { color: #f44336; }
+
+/* YouTube playlist cards (beta homepage) */
+.yt-playlist-list { display: flex; flex-direction: column; gap: 10px; }
+.yt-pl-card {
+  background: var(--bg-card, rgba(255,255,255,0.03));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.yt-pl-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: default;
+}
+.yt-pl-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.yt-pl-meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.yt-pl-refresh, .yt-pl-remove, .yt-pl-toggle {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 8px;
+  line-height: 1;
+}
+.yt-pl-refresh:hover, .yt-pl-remove:hover, .yt-pl-toggle:hover { color: var(--text); }
+.yt-pl-remove:hover { color: #f44336; }
+.yt-pl-videos { display: none; border-top: 1px solid var(--border); }
+.yt-pl-card.open .yt-pl-videos { display: block; }
+.yt-pl-video {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+.yt-pl-video:first-child { border-top: none; }
+.yt-pl-video.is-done { background: rgba(45, 125, 70, 0.06); }
+.yt-pl-video .ytv-info { flex: 1 1 auto; min-width: 0; }
+.yt-pl-video .ytv-title {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.yt-pl-video .ytv-meta { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.yt-pl-video .ytv-action { flex-shrink: 0; font-size: 12px; padding: 4px 10px; }
+
 /* ========== [END: SEARCH RESULTS] ========== */
 
 

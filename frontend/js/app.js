@@ -69,7 +69,7 @@
         const backdrop = $("#betaFabBackdrop");
         const closeAddSongModal = () => {
           const p = $("#betaFabPanel");
-          if (p) p.classList.remove("open");
+          if (p) { p.classList.remove("open"); p.classList.remove("file-only"); }
           if (backdrop) backdrop.classList.remove("open");
         };
         if (closeBtn) closeBtn.addEventListener("click", closeAddSongModal);
@@ -111,6 +111,327 @@
     $("#betaFileName").textContent = file.name;
     $("#betaFileSize").textContent = `(${(file.size / 1024 / 1024).toFixed(1)} MB)`;
     $("#betaFileInfo").style.display = "flex";
+  }
+
+  // ─── Local tracks registry (multi-select + IndexedDB persist) ───
+  // Persistent list of user-picked local audio files. Metadata in localStorage
+  // (small, fast to read every render), blobs in IndexedDB keyed by track id
+  // (blobs are MB-scale, don't fit in localStorage). Registry survives page
+  // reloads, so "pick folder once → play many" UX without re-picking each time.
+  const LOCAL_TRACKS_KEY = "livechord_local_tracks";
+  let _currentAnalyzingLocalId = null;  // set before _betaStartUpload; read after done
+
+  function _getLocalTracks() {
+    try { return JSON.parse(localStorage.getItem(LOCAL_TRACKS_KEY) || "[]"); }
+    catch { return []; }
+  }
+  function _saveLocalTracks(arr) {
+    try { localStorage.setItem(LOCAL_TRACKS_KEY, JSON.stringify(arr)); } catch {}
+  }
+  async function _addLocalTrackEntry(file) {
+    const tracks = _getLocalTracks();
+    const dup = tracks.find(t =>
+      t.name === file.name && t.size === file.size && t.lastModified === file.lastModified);
+    if (dup) return dup;
+    const id = `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    try { await audioDBStore(id, file); } catch {}
+    const entry = {
+      id,
+      name: file.name,
+      size: file.size,
+      lastModified: file.lastModified || 0,
+      analyzedHash: null,
+      addedAt: Date.now(),
+    };
+    tracks.unshift(entry);
+    _saveLocalTracks(tracks);
+    return entry;
+  }
+  function _markLocalTrackAnalyzed(id, resultHash) {
+    if (!id || !resultHash) return;
+    const tracks = _getLocalTracks();
+    const t = tracks.find(x => x.id === id);
+    if (t) {
+      t.analyzedHash = resultHash;
+      _saveLocalTracks(tracks);
+    }
+  }
+  async function _removeLocalTrack(id) {
+    try { await audioDBDelete(id); } catch {}
+    _saveLocalTracks(_getLocalTracks().filter(t => t.id !== id));
+  }
+
+  function _renderLocalTracks() {
+    const section = $("#secBetaLocalTracks");
+    const container = $("#betaLocalTrackList");
+    if (!section || !container) return;
+    const tracks = _getLocalTracks();
+    if (tracks.length === 0) {
+      container.innerHTML = `<div style="color:var(--text-dim); font-size:13px; padding:8px 0">
+        還沒有本機音樂。點右上角「+ 選取本機音檔」一次挑一個或多個。
+      </div>`;
+      return;
+    }
+    container.innerHTML = tracks.map(t => {
+      const sizeMb = (t.size / 1048576).toFixed(1);
+      const state = t.analyzedHash ? "已分析" : "未分析";
+      const stateClass = t.analyzedHash ? "lt-done" : "lt-pending";
+      const actionLabel = t.analyzedHash ? "▶ 播放" : "分析";
+      const safeName = escapeHtml(t.name);
+      return `
+        <div class="local-track-item" data-id="${escapeHtml(t.id)}">
+          <div class="lt-info">
+            <div class="lt-name" title="${safeName}">${safeName}</div>
+            <div class="lt-meta"><span class="lt-state ${stateClass}">${state}</span> · ${sizeMb} MB</div>
+          </div>
+          <button class="lt-action btn-small btn-accent" data-action="play-or-analyze" data-id="${escapeHtml(t.id)}">${actionLabel}</button>
+          <button class="lt-remove" data-action="remove" data-id="${escapeHtml(t.id)}" title="移除" aria-label="移除">&times;</button>
+        </div>`;
+    }).join("");
+    container.querySelectorAll("[data-action='play-or-analyze']").forEach(btn => {
+      btn.addEventListener("click", () => _onLocalTrackAction(btn.dataset.id));
+    });
+    container.querySelectorAll("[data-action='remove']").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("移除此本機曲目？（不會刪掉已分析的和弦）")) return;
+        await _removeLocalTrack(btn.dataset.id);
+        _renderLocalTracks();
+      });
+    });
+  }
+
+  async function _onLocalTrackAction(id) {
+    const t = _getLocalTracks().find(x => x.id === id);
+    if (!t) return;
+    if (t.analyzedHash) {
+      // Copy local blob under the analyzed hash key so player's audioDBLoad
+      // finds it (player reads by hash, not by local id).
+      try {
+        const blob = await audioDBLoad(id);
+        if (blob) await audioDBStore(t.analyzedHash, blob);
+      } catch {}
+      window.location.href = `/player?hash=${encodeURIComponent(t.analyzedHash)}`;
+      return;
+    }
+    // Not yet analyzed → hand off to existing upload modal flow.
+    let blob;
+    try { blob = await audioDBLoad(id); } catch {}
+    if (!blob) {
+      alert("本機檔案暫存遺失，請重新選取。");
+      return;
+    }
+    const file = new File([blob], t.name, {
+      type: blob.type || "audio/mpeg",
+      lastModified: t.lastModified || Date.now(),
+    });
+    _betaPickFile(file);
+    _currentAnalyzingLocalId = id;
+    const panel = $("#betaFabPanel");
+    const backdrop = $("#betaFabBackdrop");
+    if (panel) { panel.classList.add("open"); panel.classList.add("file-only"); }
+    if (backdrop) backdrop.classList.add("open");
+  }
+
+  // ─── YT playlists registry ───
+  // Persist user-added playlists + their video lists with existing_hash info.
+  // Same UX concept as local tracks: one-at-a-time analyze, click ▶ to play
+  // videos that are already analyzed anywhere (user's own OR library map).
+  const YT_PLAYLISTS_KEY = "livechord_yt_playlists";
+  let _currentAnalyzingPlaylistVid = null;   // "<list_id>|<video_id>" stamp for on-done marking
+
+  function _getPlaylists() {
+    try { return JSON.parse(localStorage.getItem(YT_PLAYLISTS_KEY) || "[]"); }
+    catch { return []; }
+  }
+  function _savePlaylists(arr) {
+    try { localStorage.setItem(YT_PLAYLISTS_KEY, JSON.stringify(arr)); } catch {}
+  }
+  async function _addPlaylist(url) {
+    const listMatch = url.match(_YT_PLAYLIST_RE);
+    const listId = listMatch ? listMatch[1] : "";
+    if (!listId) { alert("URL 中找不到 playlist (list=...) 參數"); return null; }
+    const existing = _getPlaylists().find(p => p.list_id === listId);
+    if (existing) {
+      alert("此播放清單已存在，展開查看。");
+      _renderPlaylists(true, listId);
+      return existing;
+    }
+    try {
+      const res = await fetch(`/api/process/playlist-info?url=${encodeURIComponent(url)}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert("讀取清單失敗：" + (err.detail || res.statusText));
+        return null;
+      }
+      const data = await res.json();
+      if (!data.videos || data.videos.length === 0) {
+        alert("清單為空或無法解析。");
+        return null;
+      }
+      const entry = {
+        list_id: listId,
+        title: data.playlist_title || `Playlist ${listId.slice(0, 10)}`,
+        videos: data.videos,       // [{video_id, title, duration, existing_hash}]
+        url,
+        addedAt: Date.now(),
+      };
+      const arr = _getPlaylists();
+      arr.unshift(entry);
+      _savePlaylists(arr);
+      _renderPlaylists(true, listId);
+      return entry;
+    } catch (e) {
+      alert("讀取清單失敗：" + e.message);
+      return null;
+    }
+  }
+  function _removePlaylist(listId) {
+    _savePlaylists(_getPlaylists().filter(p => p.list_id !== listId));
+    _renderPlaylists();
+  }
+  function _markPlaylistVideoAnalyzed(listId, videoId, resultHash) {
+    const arr = _getPlaylists();
+    const p = arr.find(x => x.list_id === listId);
+    if (!p) return;
+    const v = p.videos.find(x => x.video_id === videoId);
+    if (v) {
+      v.existing_hash = resultHash;
+      _savePlaylists(arr);
+    }
+  }
+  async function _refreshPlaylist(listId) {
+    const p = _getPlaylists().find(x => x.list_id === listId);
+    if (!p) return;
+    try {
+      const res = await fetch(`/api/process/playlist-info?url=${encodeURIComponent(p.url)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.videos) {
+        p.videos = data.videos;
+        p.title = data.playlist_title || p.title;
+        _savePlaylists(_getPlaylists().map(x => x.list_id === listId ? p : x));
+        _renderPlaylists(true, listId);
+      }
+    } catch {}
+  }
+
+  function _fmtDuration(sec) {
+    sec = Math.max(0, Math.round(sec || 0));
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  }
+
+  function _renderPlaylists(forceShow, openListId) {
+    const section = $("#secBetaPlaylists");
+    const container = $("#betaPlaylistList");
+    if (!section || !container) return;
+    const playlists = _getPlaylists();
+    if (playlists.length === 0) {
+      section.style.display = "none";
+      return;
+    }
+    section.style.display = "";
+    container.innerHTML = playlists.map(p => {
+      const total = p.videos.length;
+      const analyzed = p.videos.filter(v => v.existing_hash).length;
+      const open = (forceShow && openListId === p.list_id);
+      return `
+        <div class="yt-pl-card${open ? " open" : ""}" data-id="${escapeHtml(p.list_id)}">
+          <div class="yt-pl-header">
+            <div class="yt-pl-title">${escapeHtml(p.title)}</div>
+            <div class="yt-pl-meta">${analyzed}/${total} 已分析</div>
+            <button class="yt-pl-refresh" data-action="refresh" data-id="${escapeHtml(p.list_id)}" title="重新讀取">↻</button>
+            <button class="yt-pl-remove" data-action="remove" data-id="${escapeHtml(p.list_id)}" title="移除清單">&times;</button>
+            <button class="yt-pl-toggle" data-action="toggle" data-id="${escapeHtml(p.list_id)}" aria-label="展開">${open ? "▲" : "▼"}</button>
+          </div>
+          <div class="yt-pl-videos">
+            ${p.videos.map(v => {
+              const isDone = !!v.existing_hash;
+              const action = isDone ? "play" : "analyze";
+              const label = isDone ? "▶ 播放" : "分析";
+              return `
+                <div class="yt-pl-video${isDone ? " is-done" : ""}" data-list="${escapeHtml(p.list_id)}" data-vid="${escapeHtml(v.video_id)}">
+                  <div class="ytv-info">
+                    <div class="ytv-title" title="${escapeHtml(v.title)}">${escapeHtml(v.title)}</div>
+                    <div class="ytv-meta">${_fmtDuration(v.duration)}${isDone ? " · 已分析" : ""}</div>
+                  </div>
+                  <button class="ytv-action btn-small ${isDone ? "btn-accent" : ""}" data-action="${action}" data-list="${escapeHtml(p.list_id)}" data-vid="${escapeHtml(v.video_id)}">${label}</button>
+                </div>`;
+            }).join("")}
+          </div>
+        </div>`;
+    }).join("");
+
+    container.querySelectorAll("[data-action='toggle']").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const card = btn.closest(".yt-pl-card");
+        if (card) card.classList.toggle("open");
+        btn.textContent = card.classList.contains("open") ? "▲" : "▼";
+      });
+    });
+    container.querySelectorAll("[data-action='refresh']").forEach(btn => {
+      btn.addEventListener("click", () => _refreshPlaylist(btn.dataset.id));
+    });
+    container.querySelectorAll("[data-action='remove']").forEach(btn => {
+      btn.addEventListener("click", () => {
+        if (confirm("移除此播放清單？（不會刪除已分析的和弦資料）"))
+          _removePlaylist(btn.dataset.id);
+      });
+    });
+    container.querySelectorAll("[data-action='play'],[data-action='analyze']").forEach(btn => {
+      btn.addEventListener("click", () => _onPlaylistVideoAction(btn));
+    });
+  }
+
+  function _onPlaylistVideoAction(btn) {
+    const listId = btn.dataset.list;
+    const videoId = btn.dataset.vid;
+    const action = btn.dataset.action;
+    const pl = _getPlaylists().find(p => p.list_id === listId);
+    if (!pl) return;
+    const v = pl.videos.find(x => x.video_id === videoId);
+    if (!v) return;
+    if (action === "play" && v.existing_hash) {
+      window.location.href = `/player?hash=${encodeURIComponent(v.existing_hash)}`;
+      return;
+    }
+    // Analyze — reuse _betaStartYoutube flow with the video's canonical URL.
+    const canonical = `https://www.youtube.com/watch?v=${videoId}`;
+    const urlInput = $("#betaYtUrl");
+    const panel = $("#betaFabPanel");
+    const backdrop = $("#betaFabBackdrop");
+    if (!urlInput) return;
+    urlInput.value = canonical;
+    if (panel) { panel.classList.add("open"); panel.classList.remove("file-only"); }
+    if (backdrop) backdrop.classList.add("open");
+    _currentAnalyzingPlaylistVid = `${listId}|${videoId}`;
+    if (typeof window._betaStartYoutube === "function") window._betaStartYoutube();
+  }
+
+  function _initBetaPlaylists() {
+    _renderPlaylists();
+  }
+
+  // Homepage "+ 選取本機音檔" — multi-select; each file goes into the local
+  // tracks list. List item click decides analyze vs play.
+  function _initBetaLocalAudio() {
+    const btn = $("#betaBrowseLocalBtn");
+    const input = $("#betaLocalAudioInput");
+    const section = $("#secBetaLocalTracks");
+    if (!btn || !input || !section) return;
+    section.style.display = "";
+    _renderLocalTracks();
+    btn.addEventListener("click", () => input.click());
+    input.addEventListener("change", async () => {
+      const files = Array.from(input.files || []);
+      if (!files.length) return;
+      for (const file of files) {
+        if (file.size > 200 * 1024 * 1024) continue;
+        await _addLocalTrackEntry(file);
+      }
+      _renderLocalTracks();
+      input.value = "";  // re-pick same files allowed
+    });
   }
 
   window._betaStartUpload = async function() {
@@ -229,6 +550,19 @@
           // Flag this hash as freshly-analyzed so the player can show a
           // "旋律擷取中" banner while the melody worker finishes in the background.
           try { sessionStorage.setItem("livechord_fresh_hash", `${d.result_hash}|${Date.now()}`); } catch {}
+          // If this job came from a local-tracks-list entry, stamp the
+          // analyzedHash back onto it so next click goes straight to play.
+          if (_currentAnalyzingLocalId) {
+            _markLocalTrackAnalyzed(_currentAnalyzingLocalId, d.result_hash);
+            _currentAnalyzingLocalId = null;
+          }
+          // Same for playlist videos — mark existing_hash so the card's list
+          // shows ▶ 播放 next time user opens it.
+          if (_currentAnalyzingPlaylistVid) {
+            const [lid, vid] = _currentAnalyzingPlaylistVid.split("|");
+            _markPlaylistVideoAnalyzed(lid, vid, d.result_hash);
+            _currentAnalyzingPlaylistVid = null;
+          }
           // Navigate to player
           setTimeout(() => {
             window.location.href = `/player?hash=${encodeURIComponent(d.result_hash)}`;
@@ -367,6 +701,10 @@
       const tasks = [];
       if (_isBetaNonAdmin) {
         _initBetaUpload();
+        _initBetaLocalAudio();
+        _initBetaPlaylists();
+        // _loadBetaHistory fills both #historyGrid (now null, guarded) AND
+        // #betaRecentList (最近播放) — must keep it for the recent list.
         tasks.push(_loadBetaHistory(), loadFavorites());
       } else {
         tasks.push(loadRecent(), loadFavorites(), browse(currentPath));
@@ -392,7 +730,7 @@
       const panel = $("#betaFabPanel");
       const input = $("#betaYtUrl");
       if (!input) return false;
-      if (panel) panel.classList.add("open");
+      if (panel) { panel.classList.add("open"); panel.classList.remove("file-only"); }
       input.value = url;
       if (typeof window._betaStartYoutube === "function") {
         window._betaStartYoutube();
@@ -536,12 +874,16 @@
 
   // Shared between input (URL preview) and keydown (Enter fast path).
   const _YT_URL_RE = /^https?:\/\/((www|m)\.)?(youtube\.com\/(watch|shorts)|youtu\.be\/|music\.youtube\.com\/watch)/i;
+  const _YT_PLAYLIST_RE = /[?&]list=([A-Za-z0-9_-]+)/;
+  function _isYtPlaylistUrl(s) {
+    return _YT_URL_RE.test(s) && _YT_PLAYLIST_RE.test(s);
+  }
   function _searchTriggerUrlAnalyze(url) {
     searchResults.classList.remove("show");
     const panel = $("#betaFabPanel");
     const backdrop = $("#betaFabBackdrop");
     const urlInput = $("#betaYtUrl");
-    if (panel) panel.classList.add("open");
+    if (panel) { panel.classList.add("open"); panel.classList.remove("file-only"); }
     if (backdrop) backdrop.classList.add("open");
     if (urlInput) {
       urlInput.value = url;
@@ -558,23 +900,33 @@
       return;
     }
     // Paste of a YouTube URL — don't hit /api/search (it would return "找不到結果"
-    // and confuse the user). Show a clear "Enter 分析" hint instead.
+    // and confuse the user). Distinguish single-video vs playlist URL.
     if (_isBetaMode && _YT_URL_RE.test(q)) {
+      const isPlaylist = _isYtPlaylistUrl(q);
+      const msg = isPlaylist ? "偵測到 YouTube 播放清單" : "偵測到 YouTube 網址";
+      const btnLabel = isPlaylist ? "按 Enter 或點此加入清單" : "按 Enter 或點此分析";
       searchResults.innerHTML = `
         <div class="search-empty">
-          <div class="search-empty-msg">偵測到 YouTube 網址</div>
-          <button id="searchAnalyzeUrlBtn" class="search-empty-btn">按 Enter 或點此分析</button>
+          <div class="search-empty-msg">${msg}</div>
+          <button id="searchAnalyzeUrlBtn" class="search-empty-btn">${btnLabel}</button>
         </div>`;
       searchResults.classList.add("show");
       const btn = document.getElementById("searchAnalyzeUrlBtn");
       if (btn) btn.addEventListener("click", (e) => {
         e.stopPropagation();
-        _searchTriggerUrlAnalyze(q);
+        if (isPlaylist) _onAddPlaylistFromSearch(q);
+        else _searchTriggerUrlAnalyze(q);
       });
       return;
     }
     searchTimer = setTimeout(() => doSearch(q), 300);
   });
+
+  async function _onAddPlaylistFromSearch(url) {
+    searchResults.classList.remove("show");
+    searchInput.value = "";
+    await _addPlaylist(url);
+  }
 
   searchInput.addEventListener("focus", () => {
     if (searchResults.children.length > 0) searchResults.classList.add("show");
@@ -589,7 +941,8 @@
     const raw = searchInput.value.trim();
     if (_isBetaMode && _YT_URL_RE.test(raw)) {
       e.preventDefault();
-      _searchTriggerUrlAnalyze(raw);
+      if (_isYtPlaylistUrl(raw)) _onAddPlaylistFromSearch(raw);
+      else _searchTriggerUrlAnalyze(raw);
       return;
     }
     if (!_isBetaNonAdmin) return;
@@ -598,7 +951,7 @@
     const panel = $("#betaFabPanel");
     const backdrop = $("#betaFabBackdrop");
     const urlInput = $("#betaYtUrl");
-    if (panel) panel.classList.add("open");
+    if (panel) { panel.classList.add("open"); panel.classList.remove("file-only"); }
     if (backdrop) backdrop.classList.add("open");
     if (urlInput) setTimeout(() => urlInput.focus(), 50);
   });
@@ -631,7 +984,7 @@
             searchResults.classList.remove("show");
             const panel = $("#betaFabPanel");
             const backdrop = $("#betaFabBackdrop");
-            if (panel) panel.classList.add("open");
+            if (panel) { panel.classList.add("open"); panel.classList.remove("file-only"); }
             if (backdrop) backdrop.classList.add("open");
             const urlInput = $("#betaYtUrl");
             if (urlInput) setTimeout(() => urlInput.focus(), 50);
@@ -646,11 +999,14 @@
       for (const r of data.results) {
         const hasHash = r.hash || r.path.startsWith("__hash/");
         const coverUrl = hasHash ? "" : API.trackCoverUrl(r.path);
+        const uploadBadge = r.is_user_upload
+          ? `<span class="r-upload-badge">本機</span>`
+          : "";
         html += `
-          <div class="result-item" data-path="${escapeHtml(r.path)}" ${r.hash ? `data-hash="${escapeHtml(r.hash)}"` : ""}>
+          <div class="result-item${r.is_user_upload ? " is-upload" : ""}" data-path="${escapeHtml(r.path)}" ${r.hash ? `data-hash="${escapeHtml(r.hash)}"` : ""}>
             ${coverUrl ? `<img class="r-cover" src="${coverUrl}" onerror="this.style.display='none'" loading="lazy" alt="">` : ""}
             <div class="r-info">
-              <div class="r-title">${escapeHtml(r.title || r.path.split("/").pop())}${getDifficultyHtml(r)}</div>
+              <div class="r-title">${escapeHtml(r.title || r.path.split("/").pop())}${uploadBadge}${getDifficultyHtml(r)}</div>
               <div class="r-artist">${escapeHtml(r.artist || "")} ${r.album ? "— " + escapeHtml(r.album) : ""}</div>
             </div>
           </div>`;

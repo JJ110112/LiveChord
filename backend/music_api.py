@@ -235,9 +235,26 @@ def _is_admin_request(authorization: str) -> bool:
         return False
 
 
+def _resolve_username_soft(authorization: Optional[str]) -> Optional[str]:
+    """Best-effort token → username; returns None instead of raising when the
+    token is missing/invalid. Used by search so unauthenticated personal-mode
+    requests just skip the user-uploads branch instead of 401'ing."""
+    if not authorization:
+        return None
+    try:
+        import sqlite3
+        from auth_api import DB_PATH
+        token = authorization.replace("Bearer ", "")
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
+            row = conn.execute("SELECT username FROM users WHERE token=?", (token,)).fetchone()
+            return row[0] if row else None
+    except Exception:
+        return None
+
+
 @router.get("/search")
 def search(q: str = Query(default=""), authorization: str = Header(None)):
-    """搜尋音樂庫（從快取索引）"""
+    """搜尋音樂庫（從快取索引）+ 使用者自己的上傳分析結果（優先）"""
     if not q or len(q.strip()) < 1:
         return {"results": []}
 
@@ -245,9 +262,57 @@ def search(q: str = Query(default=""), authorization: str = Header(None)):
     # 將查詢字串依非字元切成 token，容忍 "Artist - Title" / 大小寫 / 標點變化
     q_tokens = [tok for tok in re.split(r"\W+", q_lower, flags=re.UNICODE) if tok]
 
+    # ─── User's own uploads / YT analyses come FIRST ────────────────────────
+    user_uploads = []
+    username = _resolve_username_soft(authorization)
+    if username and q_tokens:
+        try:
+            import sqlite3
+            from process_queue import AUDIT_DB_PATH, CHORDS_DIR
+            with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    "SELECT result_hash, title, chord_count FROM process_audit "
+                    "WHERE username=? AND status='done' AND result_hash!='' "
+                    "ORDER BY id DESC LIMIT 50",
+                    (username,),
+                ).fetchall()
+            seen_hashes = set()
+            for r in rows:
+                rh = r["result_hash"]
+                if rh in seen_hashes:
+                    continue
+                title = (r["title"] or "").lower()
+                if not title:
+                    continue
+                if not all(tok in title for tok in q_tokens):
+                    continue
+                # Self-heal: skip audit rows whose chord JSON was deleted.
+                if not (CHORDS_DIR / f"{rh}.json").is_file():
+                    continue
+                seen_hashes.add(rh)
+                user_uploads.append({
+                    "path": f"__hash/{rh}",
+                    "hash": rh,
+                    "title": r["title"],
+                    "artist": "",
+                    "album": "本機上傳",
+                    "is_user_upload": True,
+                    "has_chords": True,
+                    "unique_chords": r["chord_count"] or 0,
+                })
+                if len(user_uploads) >= 20:
+                    break
+        except Exception:
+            pass  # never fail the whole search over a user-uploads lookup error
+
+    # ─── Library results ────────────────────────────────────────────────────
     if not CACHE_FILE.is_file():
         if _scan_state["running"]:
-            return {"results": [], "error": f"掃描進行中（{_scan_state['progress']} 首），請稍候…"}
+            return {"results": user_uploads,
+                    "error": f"掃描進行中（{_scan_state['progress']} 首），請稍候…"}
+        if user_uploads:
+            return {"results": user_uploads}
         return {"results": [], "error": "索引尚未建立，請點右上角「掃描」或到管理頁面執行"}
 
     # Beta non-admin: hide NAS paths, use chord hash instead
@@ -256,7 +321,8 @@ def search(q: str = Query(default=""), authorization: str = Header(None)):
     cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
     tracks = cache.get("tracks", [])
 
-    results = []
+    library_results = []
+    library_cap = max(0, 50 - len(user_uploads))
     for t in tracks:
         fname = os.path.splitext(os.path.basename(t.get('path','')))[0]
         searchable = f"{t.get('title','')} {t.get('artist','')} {t.get('album','')} {fname}".lower()
@@ -266,11 +332,11 @@ def search(q: str = Query(default=""), authorization: str = Header(None)):
                 t.update(summary)
             if hide_paths:
                 t = {**t, "path": f"__hash/{song_hash(t['path'])}", "hash": song_hash(t["path"])}
-            results.append(t)
-            if len(results) >= 50:
+            library_results.append(t)
+            if len(library_results) >= library_cap:
                 break
 
-    return {"results": results}
+    return {"results": user_uploads + library_results}
 
 
 # ---------------------------------------------------------------------------

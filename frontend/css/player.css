@@ -390,6 +390,19 @@
   font-weight: 600;
 }
 .scale-btn:hover { color: var(--text); border-color: var(--text-dim); }
+.scale-btn.overview-btn {
+  font-size: 12px;
+  color: #4fc3f7;
+  padding: 2px 10px;
+}
+.ribbon-scale-bar { gap: 4px; align-items: center; }
+.scale-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  line-height: 1;
+}
 .scale-label {
   font-size: 11px;
   color: var(--text-dim);
@@ -1209,51 +1222,72 @@
   max-height: 70vh;
   touch-action: none;          /* prevent browser pan/zoom while dragging */
 }
-.yt-pip-header {
+/* Dragzone overlay covers the iframe — captures all pointer events so the whole
+   PiP body is draggable. A short tap (<6px movement) is re-routed to the YT API
+   as play/pause, replacing the iframe's native click. The close × and resize
+   corner sit above the dragzone via higher z-index so they stay interactive. */
+.yt-pip-dragzone {
   position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: rgba(0,0,0,0.85);
-  padding: 0 6px;
+  inset: 0;
+  z-index: 3;
+  background: transparent;
   cursor: grab;
-  user-select: none;
-  z-index: 2;
+  touch-action: none;
 }
-.yt-pip-header:active { cursor: grabbing; }
-.yt-pip-grip {
-  flex: 1;
-  height: 12px;
-  background: repeating-linear-gradient(
-    90deg,
-    rgba(255,255,255,0.45) 0 3px,
-    transparent 3px 6px
-  );
-  background-size: 24px 2px;
-  background-repeat: no-repeat;
-  background-position: center;
-}
-.yt-pip-close {
-  background: rgba(255,255,255,0.1);
-  border: none;
+.yt-pip-dragzone:active { cursor: grabbing; }
+.yt-pip-close-float {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 6;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.7);
   color: #fff;
+  border: none;
   cursor: pointer;
-  font-size: 16px;
-  padding: 0 6px;
-  line-height: 1;
-  border-radius: 4px;
-  margin-left: 6px;
-  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
 }
-.yt-pip-close:hover { background: rgba(255,255,255,0.25); }
+.yt-pip-close-float:hover { background: rgba(0,0,0,0.9); }
+
+/* Lock toggle — sits next to × close. When the PiP has .unlocked class, the
+   dragzone goes pointer-events:none so user can tap YT captions / settings /
+   fullscreen natively; lock button flips to 🔓 visual. */
+.yt-pip-lock-float {
+  position: absolute;
+  top: 4px;
+  right: 32px;                /* next to .yt-pip-close-float (right:4, width:22 → 26px left) */
+  z-index: 6;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  padding: 0;
+}
+.yt-pip-lock-float:hover { background: rgba(0,0,0,0.9); }
+.yt-embed-container.unlocked .yt-pip-dragzone {
+  pointer-events: none;
+}
+.yt-embed-container.unlocked {
+  outline: 2px dashed rgba(76, 175, 80, 0.7);   /* visual cue: YT native mode */
+}
 .yt-pip-body {
   position: absolute;
-  top: 20px;
+  top: 0;
   left: 0;
   right: 0;
   bottom: 0;
@@ -1277,7 +1311,7 @@
   touch-action: none;
   background:
     linear-gradient(135deg, transparent 55%, rgba(255,255,255,0.5) 55%, rgba(255,255,255,0.5) 62%, transparent 62%, transparent 72%, rgba(255,255,255,0.5) 72%, rgba(255,255,255,0.5) 79%, transparent 79%);
-  z-index: 2;
+  z-index: 5;      /* above dragzone (3) so it stays grabbable */
 }
 
 /* Floating FAB for re-opening the YT PiP when hidden (red circle, white play triangle) */
@@ -1321,9 +1355,9 @@
     min-width: 140px;
     min-height: 0;
   }
-  /* Include header height when using aspect-ratio */
-  .yt-pip-body { top: 20px; }
-  /* Chord ribbon → horizontal strip above instrument panel */
+  .yt-pip-body { top: 0; }
+  /* Chord ribbon — upper ~50% of screen so cards are readable + ratio/overview
+     controls are reachable. Grid layout: 3 cards per row, vertical scroll. */
   .chord-ribbon-panel {
     display: flex;
     flex-direction: column;
@@ -1332,7 +1366,7 @@
     left: 0;
     right: 0;
     width: 100%;
-    height: 80px;
+    height: 50vh;
     min-width: 0;
     max-width: none;
     z-index: 15;
@@ -1340,24 +1374,49 @@
     backdrop-filter: blur(4px);
   }
   .ribbon-v-track {
-    display: flex;
-    flex-direction: row;
-    overflow-x: auto;
-    overflow-y: hidden;
+    display: grid;
+    /* Column width tracks --ribbon-scale so + / - scales cards in BOTH
+       dimensions (was height-only because grid cols were fixed repeat(2,1fr)). */
+    grid-template-columns: repeat(auto-fit, minmax(calc(140px * var(--ribbon-scale, 1)), 1fr));
+    overflow-x: hidden;
+    overflow-y: auto;
     gap: 6px;
-    padding: 4px 6px;
-    height: 100%;
+    padding: 6px;
+    flex: 1 1 auto;
+    min-height: 0;
   }
   .ribbon-v-track > * {
-    flex: 0 0 auto;
-    transform: scale(0.55);
-    transform-origin: top left;
+    transform: none;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  /* Overview mode (total view toggle) on mobile portrait: keep it full-width
+     and laid out LTR without flex-order override (grid auto-flow handles it).
+     Default overview rule sets width:50% + order:var(--chord-idx) which on a
+     narrow phone looks shifted/reversed. */
+  .chord-ribbon-panel.overview-mode {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .chord-ribbon-panel.overview-mode .ribbon-v-track {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-auto-flow: row;
+    direction: ltr;
+  }
+  .chord-ribbon-panel.overview-mode .rv-item {
+    order: unset;
+    width: 100%;
+    min-width: 0;
   }
   .ribbon-scale-bar {
-    display: none;
+    display: flex;
+    flex: 0 0 auto;
   }
   .middle-split {
-    padding-top: 84px;
+    padding-top: calc(50vh + 4px);
   }
   .resize-handle {
     display: none;
@@ -1389,6 +1448,17 @@
     flex-shrink: 1;
   }
   .tb-item { flex-shrink: 1; min-width: 0; }
+  /* Play button stays a perfect circle on mobile — otherwise the toolbar's
+     flex-shrink narrows the 34x34 box into an ellipse. */
+  .tb-play-btn {
+    flex: 0 0 34px !important;
+    width: 34px !important;
+    height: 34px !important;
+    padding: 0 !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
   /* 進度條：加大 hit target 讓手機點擊可 seek（桌面 hover 時 8px，手機固定 10px） */
   .progress-bar-mid {
     height: 10px;
@@ -1421,18 +1491,22 @@
    devices regardless of orientation. */
 @media (pointer: coarse) {
   .tb-popup {
-    position: fixed;
-    bottom: 52px;                      /* toolbar height 44 + 8px gap */
-    left: 8px;
-    right: 8px;
-    transform: none;
-    max-width: none;
-    width: auto;
+    position: fixed !important;
+    bottom: 52px !important;           /* toolbar height 44 + 8px gap */
+    left: 8px !important;
+    right: 8px !important;
+    top: auto !important;
+    transform: none !important;
+    max-width: none !important;
+    width: auto !important;
     white-space: normal;
     flex-wrap: wrap;
     justify-content: center;
     gap: 8px;
+    z-index: 10500 !important;         /* above chord-ribbon-panel (15) and FAB (9500) */
   }
+  .tb-item.open > .tb-popup { display: flex !important; }
+  .tb-popup-wide { flex-wrap: wrap !important; }   /* AI teaching popup row-wrap on narrow */
   .tb-popup::after { display: none; }  /* hover-bridge not needed on touch */
   .tb-popup-btn { font-size: 13px; padding: 8px 12px; }
 }

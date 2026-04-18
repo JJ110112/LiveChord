@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=2">
-  <link rel="stylesheet" href="/css/player.css?v=22">
+  <link rel="stylesheet" href="/css/player.css?v=28">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -72,13 +72,15 @@
     </div>
   </div>
 
-  <!-- YouTube embed — floating PiP widget (drag via header, resize via bottom-right handle, close button) -->
+  <!-- YouTube embed — floating PiP widget. Default: dragzone overlay catches
+       all pointer events (drag anywhere to move, tap = play/pause). Toggle
+       lock button (🔓) hides the overlay so you can reach YT's native captions
+       / settings / fullscreen — click again (🔒) to return to drag mode. -->
   <div id="ytEmbedContainer" class="yt-embed-container" style="display:none">
-    <div class="yt-pip-header" id="ytPipHeader">
-      <div class="yt-pip-grip" id="ytPipGrip" aria-hidden="true"></div>
-      <button id="ytEmbedClose" class="yt-pip-close" aria-label="隱藏 YouTube" title="隱藏 YouTube">&times;</button>
-    </div>
     <div id="ytEmbed" class="yt-pip-body"></div>
+    <div id="ytPipDragzone" class="yt-pip-dragzone" aria-label="拖曳移動（點擊切換播放）"></div>
+    <button id="ytPipLock" class="yt-pip-lock-float" aria-label="解鎖 YouTube 原生控件" title="解鎖以使用字幕/設定">&#x1F512;</button>
+    <button id="ytEmbedClose" class="yt-pip-close-float" aria-label="隱藏 YouTube" title="隱藏 YouTube">&times;</button>
     <div id="ytPipResize" class="yt-pip-resize" aria-label="調整大小" title="拖曳調整大小"></div>
   </div>
 
@@ -89,26 +91,11 @@
     <div id="chordRibbonPanel" class="chord-ribbon-panel">
       <div id="unifiedRibbonTrack" class="ribbon-v-track"></div>
       <div class="ribbon-scale-bar">
-        <div class="tb-item" id="tbRibbonScale">
-          <button class="tb-trigger" title="和弦圖大小" style="font-size:13px; line-height:1; padding:2px 6px">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="none"
-                 stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="7" cy="7" r="5"/>
-              <line x1="7" y1="4.5" x2="7" y2="9.5"/>
-              <line x1="4.5" y1="7" x2="9.5" y2="7"/>
-              <line x1="10.6" y1="10.6" x2="14" y2="14"/>
-            </svg>
-          </button>
-          <div class="tb-popup" style="bottom:calc(100% + 4px)">
-            <button id="btnScaleDown" class="scale-btn" title="縮小">−</button>
-            <span id="scaleLabel" class="scale-label">0.6</span>
-            <button id="btnScaleUp" class="scale-btn" title="放大">+</button>
-          </div>
-        </div>
-        <!-- 獨立的 Overview Toggle Button 放在放大鏡外側更顯眼 -->
-        <div class="tb-item" style="margin-left: 4px;">
-          <button id="btnToggleOverview" class="tb-trigger" title="切換總覽模式" style="font-size:14px; border:1px solid rgba(255,255,255,0.1); border-radius:4px; padding:2px 8px; color:#4fc3f7;">&#x2630;&#xFE0E; 總覽</button>
-        </div>
+        <!-- Inline scale controls: [−] [value] [+] [☰ 總覽] — no popup, always visible -->
+        <button id="btnScaleDown" class="scale-btn" title="縮小">−</button>
+        <span id="scaleLabel" class="scale-label">0.6</span>
+        <button id="btnScaleUp" class="scale-btn" title="放大">+</button>
+        <button id="btnToggleOverview" class="scale-btn overview-btn" title="切換總覽模式" style="margin-left:8px">&#x2630;&#xFE0E; 總覽</button>
       </div>
     </div>
 
@@ -442,13 +429,6 @@
     </div>
   </div>
 
-  <!-- 10. Local File -->
-  <div class="tb-item" id="tbLocalFile" style="display:none">
-    <button id="btnLocalFile" class="tb-trigger" title="載入本地音檔" aria-label="載入本地音檔">
-      <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
-    </button>
-  </div>
-
   <!-- 11. Tools -->
   <div class="tb-item" id="tbTools">
     <button class="tb-trigger" title="工具" aria-label="工具">
@@ -554,6 +534,6 @@
     return res;
   };
 </script>
-<script src="/js/player.js?v=118"></script>
+<script src="/js/player.js?v=125"></script>
 </body>
 </html>

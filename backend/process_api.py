@@ -271,6 +271,69 @@ def yt_library_learn(req: LibraryLearnRequest,
     return {"ok": True, "new": inserted}
 
 
+@router.get("/playlist-info", dependencies=[Depends(_require_beta)])
+def playlist_info(url: str, username: str = Depends(get_current_user)):
+    """Extract video list from a YouTube playlist URL via yt-dlp --flat-playlist.
+
+    Returns {playlist_title, videos:[{video_id, title, duration, existing_hash}]}
+    where existing_hash is set if this video was already analyzed (library map
+    hit or prior process_audit 'done' row). UI renders 分析 or ▶ 播放 accordingly.
+    """
+    url = (url or "").strip()
+    if "list=" not in url:
+        raise HTTPException(status_code=400, detail="URL 不含 playlist (list=)")
+    try:
+        result = subprocess.run(
+            [YTDLP_BIN, "--flat-playlist", "--dump-json", "--no-warnings",
+             "--playlist-end", "50",   # cap to avoid huge playlists flooding
+             url],
+            capture_output=True, text=True, timeout=45
+        )
+        if result.returncode != 0:
+            raise HTTPException(status_code=500,
+                                detail=f"yt-dlp failed: {(result.stderr or '')[:200]}")
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="yt-dlp 逾時（清單太大？）")
+
+    import json as _json
+    videos = []
+    playlist_title = ""
+    for line in (result.stdout or "").splitlines():
+        if not line.strip():
+            continue
+        try:
+            entry = _json.loads(line)
+        except Exception:
+            continue
+        vid = entry.get("id") or ""
+        if len(vid) != 11:
+            continue
+        if not playlist_title:
+            playlist_title = entry.get("playlist_title") or entry.get("playlist") or ""
+        canonical = f"https://www.youtube.com/watch?v={vid}"
+        # Was this video already analyzed? Check library map → process_audit.
+        existing_hash = None
+        try:
+            m = find_library_mapping(canonical)
+            if m:
+                existing_hash = m["library_hash"]
+            else:
+                e = find_existing_result(canonical)
+                if e:
+                    existing_hash = e["result_hash"]
+        except Exception:
+            pass
+        videos.append({
+            "video_id": vid,
+            "title": entry.get("title") or vid,
+            "duration": entry.get("duration") or 0,
+            "existing_hash": existing_hash,
+        })
+    logger.info("playlist_info: user=%s url=%r videos=%d title=%r",
+                username, url, len(videos), playlist_title)
+    return {"playlist_title": playlist_title, "videos": videos}
+
+
 @router.get("/youtube-search")
 def youtube_search(q: str, username: str = Depends(get_current_user)):
     """Search YouTube for a song and return the best match video ID."""

@@ -196,20 +196,51 @@
   let _ytSyncDisabled = false;
   let _ytVerifiedOk = false;
   // YT PiP widget (drag + resize + show/hide + localStorage persist).
+  // Position/size are persisted PER ORIENTATION so rotating the device
+  // restores the size the user chose for that orientation.
   const _YT_PIP_KEY = "livechord_yt_pip";
-  function _loadYtPipState() {
+  function _getYtOrient() {
+    return (window.innerHeight > window.innerWidth) ? "p" : "l";
+  }
+  function _loadYtPipRoot() {
     try { return JSON.parse(localStorage.getItem(_YT_PIP_KEY) || "{}") || {}; }
     catch { return {}; }
   }
+  function _loadYtPipState() {
+    // Flat shape {hidden, x, y, width, height} with per-orientation overrides
+    // under .p / .l — callers read the merged view for the current orientation.
+    const root = _loadYtPipRoot();
+    const orient = _getYtOrient();
+    const per = (root[orient] && typeof root[orient] === "object") ? root[orient] : {};
+    return {
+      hidden: !!root.hidden,
+      x: typeof per.x === "number" ? per.x : undefined,
+      y: typeof per.y === "number" ? per.y : undefined,
+      width: typeof per.width === "number" ? per.width : undefined,
+      height: typeof per.height === "number" ? per.height : undefined,
+    };
+  }
   function _saveYtPipState(partial) {
     try {
-      localStorage.setItem(_YT_PIP_KEY, JSON.stringify({ ..._loadYtPipState(), ...partial }));
+      const root = _loadYtPipRoot();
+      const orient = _getYtOrient();
+      if (!root[orient] || typeof root[orient] !== "object") root[orient] = {};
+      if (typeof partial.hidden === "boolean") root.hidden = partial.hidden;
+      for (const k of ["x", "y", "width", "height"]) {
+        if (typeof partial[k] === "number") root[orient][k] = partial[k];
+      }
+      localStorage.setItem(_YT_PIP_KEY, JSON.stringify(root));
     } catch {}
   }
   function _applyYtPipState() {
     const container = document.getElementById("ytEmbedContainer");
     if (!container) return;
     const s = _loadYtPipState();
+    // Clear stale inline sizing first so a smaller orientation doesn't inherit
+    // larger values from the previous one.
+    container.style.left = ""; container.style.top = "";
+    container.style.right = ""; container.style.bottom = "";
+    container.style.width = ""; container.style.height = "";
     if (typeof s.x === "number") { container.style.left = s.x + "px"; container.style.right = "auto"; }
     if (typeof s.y === "number") { container.style.top = s.y + "px"; container.style.bottom = "auto"; }
     if (typeof s.width === "number") container.style.width = s.width + "px";
@@ -231,25 +262,34 @@
   }
   function _initYtPipControls() {
     const container = document.getElementById("ytEmbedContainer");
-    const header = document.getElementById("ytPipHeader");
+    const dragzone = document.getElementById("ytPipDragzone");
     const handle = document.getElementById("ytPipResize");
     const closeBtn = document.getElementById("ytEmbedClose");
     const reopenFab = document.getElementById("ytFloatBtn");
     if (!container) return;
     _applyYtPipState();
 
-    // Drag by header (not the close button)
-    if (header) header.addEventListener("pointerdown", (e) => {
-      if (e.target.closest(".yt-pip-close")) return;
+    // Drag anywhere on the PiP body (overlay). Distinguishes tap vs drag by
+    // movement threshold: pure tap (<6px) is re-routed to YT API as play/pause
+    // (replacing the native iframe click the overlay swallows); drag moves
+    // the PiP. Top clamp = 44 so the PiP never hides behind the player-topbar.
+    if (dragzone) dragzone.addEventListener("pointerdown", (e) => {
       e.preventDefault();
-      header.setPointerCapture?.(e.pointerId);
+      dragzone.setPointerCapture?.(e.pointerId);
       const rect = container.getBoundingClientRect();
       const startX = e.clientX, startY = e.clientY;
       const startL = rect.left, startT = rect.top;
+      let moved = false;
+      const THRESH = 6;
+      const TOPBAR_H = 44;
       const move = (ev) => {
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        if (!moved && Math.hypot(dx, dy) > THRESH) moved = true;
+        if (!moved) return;
         const w = container.offsetWidth, h = container.offsetHeight;
-        const nx = Math.max(0, Math.min(window.innerWidth - w, startL + ev.clientX - startX));
-        const ny = Math.max(0, Math.min(window.innerHeight - h, startT + ev.clientY - startY));
+        const nx = Math.max(0, Math.min(window.innerWidth - w, startL + dx));
+        const ny = Math.max(TOPBAR_H, Math.min(window.innerHeight - h, startT + dy));
         container.style.left = nx + "px";
         container.style.top = ny + "px";
         container.style.right = "auto";
@@ -259,8 +299,19 @@
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
         window.removeEventListener("pointercancel", up);
-        const r = container.getBoundingClientRect();
-        _saveYtPipState({ x: r.left, y: r.top });
+        if (!moved) {
+          // Pure tap — toggle YT play/pause via API (iframe never saw the click)
+          if (_ytPlayer && typeof _ytPlayer.getPlayerState === "function") {
+            try {
+              const s = _ytPlayer.getPlayerState();
+              if (s === 1) _ytPlayer.pauseVideo();
+              else if (typeof _ytPlayer.playVideo === "function") _ytPlayer.playVideo();
+            } catch {}
+          }
+        } else {
+          const r = container.getBoundingClientRect();
+          _saveYtPipState({ x: r.left, y: r.top });
+        }
       };
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
@@ -327,6 +378,16 @@
 
     // Floating FAB re-shows the PiP (replaces old toolbar button)
     if (reopenFab) reopenFab.addEventListener("click", _showYtPip);
+
+    // Lock toggle — flips .unlocked class so dragzone goes pointer-events:none
+    // and user can tap YT's native captions / settings / fullscreen.
+    const lockBtn = document.getElementById("ytPipLock");
+    if (lockBtn) lockBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const unlocked = container.classList.toggle("unlocked");
+      lockBtn.innerHTML = unlocked ? "&#x1F513;" : "&#x1F512;";   // 🔓 : 🔒
+      lockBtn.title = unlocked ? "鎖回拖曳模式" : "解鎖以使用字幕/設定";
+    });
   }
   // Clear the "hidden" flag on every page load so new navigation shows the PiP
   // by default (user can still close per-visit). Keep x/y/width/height persisted.
@@ -334,6 +395,24 @@
 
   // Wire up immediately — DOM is already present in the IIFE scope
   _initYtPipControls();
+
+  // On rotate / viewport resize → re-apply the orientation-specific PiP state
+  // so the widget snaps back to the size the user chose for that orientation.
+  let _ytOrientLast = _getYtOrient();
+  window.addEventListener("resize", () => {
+    const now = _getYtOrient();
+    if (now !== _ytOrientLast) {
+      _ytOrientLast = now;
+      _applyYtPipState();
+      if (_ytPlayer && typeof _ytPlayer.setSize === "function") {
+        const c = document.getElementById("ytEmbedContainer");
+        if (c) {
+          const r = c.getBoundingClientRect();
+          try { _ytPlayer.setSize(Math.round(r.width), Math.round(r.height - 20)); } catch {}
+        }
+      }
+    }
+  });
 
   // Melody-pending banner: when the user lands on a freshly-analyzed hash,
   // the melody worker is still running in the background (~40–60s). Show a
@@ -1052,7 +1131,13 @@
   }
 
   // ---- Touch fallback for hover popups ----
-  if ('ontouchstart' in window) {
+  // `ontouchstart in window` alone misses Chromium DevTools mobile emulation AND
+  // some real devices — widen detection via matchMedia(pointer:coarse) so popups
+  // actually toggle on tap.
+  const _isTouchLike =
+    ('ontouchstart' in window) ||
+    (typeof matchMedia === "function" && matchMedia('(pointer:coarse)').matches);
+  if (_isTouchLike) {
     document.querySelectorAll(".tb-item").forEach(item => {
       if (!item.querySelector(".tb-popup")) return;
       const trigger = item.querySelector(".tb-trigger");
@@ -1462,6 +1547,18 @@
        }
     } else {
        activeLh = [...piano88ChordMidis];
+       // No accData (e.g. hash mode / not-yet-AI'd song) — synth a simple
+       // LH fingering (5-3-1 etc.) so the keyboard still shows numbers when
+       // showFingering is ON. Sort low→high, assign descending fingers.
+       if (activeLh.length) {
+         const sortedLh = [...activeLh].sort((a, b) => a - b);
+         const LH_FMAP = { 1: [5], 2: [5, 1], 3: [5, 3, 1], 4: [5, 3, 2, 1], 5: [5, 4, 3, 2, 1] };
+         const fingers = LH_FMAP[sortedLh.length] || [];
+         for (let i = 0; i < sortedLh.length; i++) {
+           if (!fingers[i]) continue;
+           fingeringMap[sortedLh[i]] = { finger: fingers[i], hand: "left", upcoming: false };
+         }
+       }
     }
     
     const mel = _getMelodyMidi(currentTime);
@@ -1791,12 +1888,26 @@
                 const cache = chordCache[gc.chord] || {};
                 const notes = cache.notes || [];
                 const midis = ChordRender.voiceChordForLeftHand(notes, null);
-                for (const m of midis) {
+                // Sort low→high, then assign LH fingers 5-3-1 (pinky-middle-thumb)
+                // or 5-3-2-1 for 4-note voicings — a simple default so fingering
+                // toggle (showFingering) has something to render without waiting
+                // for the AI accompaniment endpoint (which doesn't exist for
+                // hash-mode beta songs anyway).
+                const sorted = [...midis].sort((a, b) => a - b);
+                const LH_FINGER_MAP = {
+                  2: [5, 1],
+                  3: [5, 3, 1],
+                  4: [5, 3, 2, 1],
+                  5: [5, 4, 3, 2, 1],
+                };
+                const fingers = LH_FINGER_MAP[sorted.length] || [];
+                for (let idx = 0; idx < sorted.length; idx++) {
+                    const m = sorted[idx];
                     allEvents.push({
                         time: gc.time,
                         duration: gcEnd - gc.time,
                         pitch: m,
-                        finger: null,
+                        finger: fingers[idx] || null,
                         _hand: "left",
                         velocity: 70
                     });
@@ -1960,7 +2071,11 @@
 
       // Show finger numbers for all mapped notes
       if (evt.finger) {
-        let showF = false; // 先擱置指法，不要顯示
+        // Waterfall intentionally does NOT render finger numbers — the falling
+        // bars get cluttered fast. Fingering is reserved for the 88-key piano
+        // area below (see `fingeringMap` at ~line 1504), where 1-2 numbers at
+        // the active moment are readable.
+        let showF = false;
         const lastF = isLeft ? lhLastF : rhLastF;
         
         if (showF) {
@@ -3116,7 +3231,9 @@
   }
 
   // ---- 播放速度 ----
-  const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+  // Music students typically want to slow down first, not speed up — cycle
+  // 1× → 0.75× → 0.5× → 1.25× → 1.5× → 2× → back to 1×.
+  const SPEEDS = [1, 0.75, 0.5, 1.25, 1.5, 2];
   const btnSpeed = $("#btnSpeed");
   let speedIdx = SPEEDS.indexOf(1);
 

@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=1">
-  <link rel="stylesheet" href="/css/home.css?v=12">
+  <link rel="stylesheet" href="/css/home.css?v=15">
   <!-- Warm the CDN so the player page's YouTube IFrame bootstraps faster -->
   <link rel="preconnect" href="https://www.youtube.com">
   <link rel="dns-prefetch" href="https://www.youtube.com">
@@ -68,10 +68,20 @@
     <div id="favList" class="horizontal-scroll"></div>
   </section>
 
-  <!-- beta library = analysis history as grid (hidden by default) -->
-  <section id="secHistory" class="dash-section" style="display:none">
-    <h2 class="dash-title">音樂庫</h2>
-    <div id="historyGrid" class="library-grid" style="margin-top:12px"></div>
+  <!-- beta local music — user-picked files, persisted via IndexedDB + localStorage metadata -->
+  <section id="secBetaLocalTracks" class="dash-section" style="display:none">
+    <h2 class="dash-title" style="display:flex; align-items:center; gap:12px">
+      <span>本機音樂</span>
+      <button id="betaBrowseLocalBtn" class="btn-small" style="font-size:0.75rem; padding:4px 10px">+ 選取本機音檔</button>
+    </h2>
+    <div id="betaLocalTrackList" class="local-track-list" style="margin-top:8px"></div>
+    <input type="file" id="betaLocalAudioInput" accept="audio/*" multiple style="display:none">
+  </section>
+
+  <!-- YouTube 播放清單 — user-subscribed playlists, analyze one-at-a-time -->
+  <section id="secBetaPlaylists" class="dash-section" style="display:none">
+    <h2 class="dash-title">YouTube 播放清單</h2>
+    <div id="betaPlaylistList" class="yt-playlist-list" style="margin-top:8px"></div>
   </section>
 
   <!-- beta add-song modal (opened from search empty-state CTA; no standalone FAB button) -->
@@ -93,7 +103,7 @@
       <div class="progress-bar"><div class="progress-fill" id="betaProgressFill"></div></div>
       <div class="progress-info"><span id="betaProgressText">分析中...</span><span id="betaProgressPct">0%</span></div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+    <div id="betaYtRow" class="add-song-yt-row" style="display:flex;gap:8px;align-items:center;margin-top:10px">
       <span>&#x1F3AC;</span>
       <input type="text" id="betaYtUrl" placeholder="YouTube URL..." style="flex:1;min-width:0;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.85rem">
       <button class="btn-small btn-accent" id="betaYtBtn" style="flex-shrink:0" onclick="window._betaStartYoutube()">分析</button>
@@ -224,6 +234,6 @@
       }
   }
 </script>
-<script src="/js/app.js?v=54"></script>
+<script src="/js/app.js?v=59"></script>
 </body>
 </html>
