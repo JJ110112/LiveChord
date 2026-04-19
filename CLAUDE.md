@@ -142,6 +142,26 @@ LiveChord runs two uvicorn processes on the same NUC. They share code + music fi
 - **`list_groups` listdir placeholder**: `library_groups.list_groups` follows up `library_cache.tracks` with a shallow `os.listdir` of each music_root so admin UI shows every folder even before scan reaches it. Users can prep their group selection while scan runs
 - **Frontend beta detection**: `window._lcIsBeta` is set synchronously from `window.location.port === "8801" || hostname.endsWith("livechord.org")` at top of `admin.html`. Used to hide personal-only cards (`coreCard`, `activityCard`, `chordMgmtCard`, `extractionCard`, `backupCard`) and skip `pollStatus` / `loadSettings` / `loadGroups` etc. Sync check avoids the first-paint race that async `/api/config/public` can't
 
+### What's SHARED across the two instances (important for beta contributions)
+
+Only settings are split. **Everything else is one shared pool** because both uvicorn processes point at the same `V:\data\` filesystem. Important to know when deciding whether a beta user's action should influence personal's models — today, it will:
+
+| Kind | Path / DB | Written by | Side effect |
+|---|---|---|---|
+| Chord JSONs | `data/chords/*.json` | Both (BTC detect, 人工校對) | chord2vec retrain co-occurrence corpus, jazzify rule stats |
+| Human corrections | `data/human_feedback/*`, `feedback.db` | Both | Chord rating summary drives `#chordSource` LED in player |
+| Section labels | `data/human_sections/*` | Mostly personal admin (beta UI minimal) | `section_detect` DL retrain input |
+| Process audit | `audit.db` `process_audit` | Beta-dominant (personal rarely uploads) | `/api/search` user_uploads priority, reuse lookup |
+| YT ↔ library map | `youtube_library_map` | Both (auto-learn on ≤5% duration match) | Cross-instance analysis reuse, player desync check |
+| AI models | `data/models/*` (chord2vec, section_detect, reharmonizer, …) | `auto_worker` retrain — **personal only** (hard-gated) | Beta 8801 ingests the new weights on next request |
+| Audio blobs | `data/uploads/` (job tmp), IndexedDB (client) | Beta users | Storage growth; currently no TTL cleanup |
+| Cover art | `data/covers/*` | Both | Used by both homepages |
+
+Operational implications:
+- A beta user giving a song ★1 immediately drops that song's LED on personal's player too (same `feedback.db`)
+- If future chord2vec retrain pulls from `data/chords/`, beta-user-analyzed YT MVs will become training signal unless explicitly filtered. See [doc/SCALING.md](doc/SCALING.md) §2 for the "when to isolate" decision tree
+- `process_audit` grows unbounded with beta users — no TTL yet. Watch disk when row count passes ~1M
+
 ## Data backup (tiered)
 
 [backend/backup_core.py](backend/backup_core.py) + [backend/backup_scheduler.py](backend/backup_scheduler.py). Admin UI: single「📦 備份」card with two collapsible subsections (⚙️ 設定快照 + 🗄️ 資料備份).
@@ -179,7 +199,8 @@ LiveChord runs two uvicorn processes on the same NUC. They share code + music fi
 
 - QA protocol, test matrix, UI architecture rules: [doc/QA.md](doc/QA.md)
 - Battle stories / past incidents: [doc/QA_BATTLE_STORY.md](doc/QA_BATTLE_STORY.md)
-- Productization roadmap: [doc/PRODUCTIZATION.md](doc/PRODUCTIZATION.md)
+- Productization roadmap (Beta 能跑起來): [doc/PRODUCTIZATION.md](doc/PRODUCTIZATION.md)
+- Scaling roadmap (Beta 成功之後 — 個人/公眾分割、GPU、雲端部署、DB 擴展、i18n): [doc/SCALING.md](doc/SCALING.md)
 - NotebookLM hand-off (accompaniment knowledge doc for AI-coding): [doc/for-notebooklm/](doc/for-notebooklm/)
 - Implementation plans (historical): [doc/plans/](doc/plans/)
 
