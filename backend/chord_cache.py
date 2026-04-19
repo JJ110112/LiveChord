@@ -13,6 +13,7 @@
   - mtime:         產生此條目時的 chord JSON mtime（用於失效判定）
 """
 
+import atexit
 import json
 import os
 import re
@@ -31,6 +32,12 @@ _chord_index_cache: dict | None = None
 # 本身就要好幾秒，每次 admin 列表請求都掃描會把回應時間拉到 7 秒以上。
 _sync_state = {"last_sync_ts": 0.0}
 _SYNC_TTL = 30.0
+
+# Index-save 節流：chord_index.json 可能達 10+ MB，每次 cache-miss 都寫整份
+# 會把 /api/recent / /api/favorites 的延遲拉到秒級（壓測時平均 5 秒）。
+# 改成 30 秒內最多寫一次；行程結束前 atexit 強制 flush 保證不遺失。
+_save_state = {"last_save_ts": 0.0, "dirty": False}
+_SAVE_TTL = 30.0
 
 
 def song_hash(path: str) -> str:
@@ -53,13 +60,24 @@ def _load_chord_index():
             _chord_index_cache = {}
 
 
-def _save_chord_index():
-    """將快取寫回硬碟"""
-    if _chord_index_cache is not None:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = INDEX_FILE.with_suffix(".tmp")
-        tmp.write_text(json.dumps(_chord_index_cache, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(INDEX_FILE)
+def _save_chord_index(force: bool = False):
+    """將快取寫回硬碟。預設 30 秒最多寫一次；force=True 無條件寫（行程退出時用）。"""
+    if _chord_index_cache is None:
+        return
+    now = time.time()
+    if not force and (now - _save_state["last_save_ts"] < _SAVE_TTL):
+        _save_state["dirty"] = True
+        return
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = INDEX_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(_chord_index_cache, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(INDEX_FILE)
+    _save_state["last_save_ts"] = now
+    _save_state["dirty"] = False
+
+
+# Flush pending updates on process exit so we don't lose the last <30s of changes.
+atexit.register(lambda: _save_chord_index(force=True) if _save_state.get("dirty") else None)
 
 
 def _build_entry_from_file(h: str, mtime: float) -> dict | None:

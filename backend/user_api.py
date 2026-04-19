@@ -1,6 +1,7 @@
 """使用者資料 API — 最愛、最近播放"""
 
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Optional
@@ -10,9 +11,12 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api", tags=["user"])
+logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 MAX_RECENT = 50
+# Log when a list-fetch takes >500ms so we can spot contention regressions.
+_SLOW_THRESHOLD_S = 0.5
 
 def _get_user_file(username: str, filename: str) -> Path:
     p = DATA_DIR / "users" / username / filename
@@ -55,6 +59,7 @@ from chord_cache import get_chord_summary as _get_chord_summary
 
 @router.get("/favorites")
 async def get_favorites(username: str = Depends(get_current_user)):
+    t0 = time.time()
     fav_file = _get_user_file(username, "favorites.json")
     data = _read_json(fav_file, {"favorites": []})
     # Import here to avoid top-of-module circular imports with process_queue.
@@ -75,6 +80,9 @@ async def get_favorites(username: str = Depends(get_current_user)):
     if changed:
         data["favorites"] = cleaned
         _write_json(fav_file, data)
+    dt = time.time() - t0
+    if dt > _SLOW_THRESHOLD_S:
+        logger.warning(f"/api/favorites slow: {dt:.2f}s user={username} n={len(cleaned)}")
     return data
 
 
@@ -108,6 +116,7 @@ async def remove_favorite(path: str = Query(...), username: str = Depends(get_cu
 
 @router.get("/recent")
 async def get_recent(username: str = Depends(get_current_user)):
+    t0 = time.time()
     recent_file = _get_user_file(username, "recent.json")
     data = _read_json(recent_file, {"recent": []})
     # Import here to avoid top-of-module circular imports with process_queue.
@@ -130,6 +139,9 @@ async def get_recent(username: str = Depends(get_current_user)):
     if changed:
         data["recent"] = cleaned
         _write_json(recent_file, data)
+    dt = time.time() - t0
+    if dt > _SLOW_THRESHOLD_S:
+        logger.warning(f"/api/recent slow: {dt:.2f}s user={username} n={len(cleaned)}")
     return data
 
 

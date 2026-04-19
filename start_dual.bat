@@ -5,14 +5,14 @@ REM === Personal Mode (Port 8800) ===
 setlocal
 set LIVECHORD_MODE=personal
 set LIVECHORD_BTC_WORKERS=2
-start "LiveChord Personal (8800)" cmd /c "cd /d %~dp0backend && python -m uvicorn main:app --host 0.0.0.0 --port 8800 || pause"
+start "LiveChord Personal (8800)" cmd /c "cd /d %~dp0backend && python -m uvicorn main:app --host 0.0.0.0 --port 8800 --proxy-headers --forwarded-allow-ips=127.0.0.1 || pause"
 endlocal
 
 REM === Beta Mode (Port 8801) ===
 setlocal
 set LIVECHORD_MODE=beta
 set LIVECHORD_BTC_WORKERS=2
-start "LiveChord Beta (8801)" cmd /c "cd /d %~dp0backend && python -m uvicorn main:app --host 0.0.0.0 --port 8801 || pause"
+start "LiveChord Beta (8801)" cmd /c "cd /d %~dp0backend && python -m uvicorn main:app --host 0.0.0.0 --port 8801 --proxy-headers --forwarded-allow-ips=127.0.0.1 || pause"
 endlocal
 
 echo Both modes started.

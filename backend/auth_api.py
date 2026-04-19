@@ -115,29 +115,30 @@ def hash_password(password: str, salt: str = "LiveChordSalt2026") -> str:
     return hashlib.sha256((password + salt).encode('utf-8')).hexdigest()
 
 
-def _validate_invite_code(code: str) -> bool:
-    """Check invite code against multi-code table, then legacy config fallback."""
+def _invite_lookup(conn, code: str) -> dict | None:
+    """Return invite-info dict if valid, None otherwise. Read-only — does NOT
+    increment use_count. Consumption happens atomically with the user INSERT
+    in register() so failed registrations (duplicate username etc.) don't burn
+    an invite use. See stress-test-2026-04-19.md bug #2."""
     now_str = time.strftime("%Y-%m-%dT%H:%M:%S")
-    with sqlite3.connect(DB_PATH, timeout=10) as conn:
-        row = conn.execute(
-            "SELECT code, max_uses, use_count, expires_at, revoked FROM invite_codes WHERE code=?",
-            (code,)
-        ).fetchone()
-        if row:
-            _, max_uses, use_count, expires_at, revoked = row
-            if revoked:
-                return False
-            if expires_at and expires_at < now_str:
-                return False
-            if use_count >= max_uses:
-                return False
-            # Valid — increment usage
-            conn.execute("UPDATE invite_codes SET use_count = use_count + 1 WHERE code=?", (code,))
-            conn.commit()
-            return True
-    # Fallback: legacy single invite code from config.json
+    row = conn.execute(
+        "SELECT code, max_uses, use_count, expires_at, revoked FROM invite_codes WHERE code=?",
+        (code,)
+    ).fetchone()
+    if row:
+        _, max_uses, use_count, expires_at, revoked = row
+        if revoked:
+            return None
+        if expires_at and expires_at < now_str:
+            return None
+        if use_count >= max_uses:
+            return None
+        return {"type": "db", "max_uses": max_uses, "use_count": use_count}
+    # Legacy single invite code from config.json (no counter)
     cfg = get_config()
-    return code == cfg.get("invite_code")
+    if code == cfg.get("invite_code"):
+        return {"type": "legacy"}
+    return None
 
 
 from pydantic import BaseModel
@@ -155,22 +156,32 @@ class LoginRequest(BaseModel):
 async def register(req: RegisterRequest, request: Request):
     _check_rate_limit(_real_client_ip(request))
 
-    # Validate invite code: check multi-code table first, fallback to legacy config
-    if not _validate_invite_code(req.invite_code):
-        raise HTTPException(status_code=403, detail="邀請碼錯誤 (Invalid Invite Code)")
-
+    # Cheap pre-checks before opening DB
     if len(req.password) < 8:
         raise HTTPException(status_code=400, detail="密碼至少 8 個字元 (Password must be at least 8 characters)")
-
     username = html_mod.escape(req.username.strip())
     if len(username) < 3:
         raise HTTPException(status_code=400, detail="使用者名稱太短 (Username too short)")
+
     pw_hash = hash_password(req.password)
     token = secrets.token_hex(32)
     now = time.time()
 
+    # Atomic: invite validation → consume → user INSERT all in one transaction.
+    # If INSERT fails (duplicate username), sqlite3's connection context manager
+    # rolls back the entire transaction, so use_count is NOT incremented.
     try:
         with sqlite3.connect(DB_PATH, timeout=10) as conn:
+            invite = _invite_lookup(conn, req.invite_code)
+            if not invite:
+                raise HTTPException(status_code=403, detail="邀請碼錯誤 (Invalid Invite Code)")
+
+            if invite["type"] == "db":
+                conn.execute(
+                    "UPDATE invite_codes SET use_count = use_count + 1 WHERE code=?",
+                    (req.invite_code,)
+                )
+
             cursor = conn.execute("SELECT COUNT(*) FROM users")
             count = cursor.fetchone()[0]
             is_admin = 1 if count == 0 else 0
@@ -179,13 +190,15 @@ async def register(req: RegisterRequest, request: Request):
                 "INSERT INTO users (username, password_hash, token, is_admin, token_created_at) VALUES (?, ?, ?, ?, ?)",
                 (username, pw_hash, token, is_admin, now)
             )
-            conn.commit()
+            # with-block commit happens on successful exit
 
-            # Create user data directory
-            user_dir = DATA_DIR / "users" / username / "human_sections"
-            user_dir.mkdir(parents=True, exist_ok=True)
+        # Directory creation outside the DB transaction (file I/O).
+        user_dir = DATA_DIR / "users" / username / "human_sections"
+        user_dir.mkdir(parents=True, exist_ok=True)
 
-            return {"ok": True, "token": token, "username": username}
+        return {"ok": True, "token": token, "username": username}
+    except HTTPException:
+        raise
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=400, detail="帳號已被註冊 (Username already exists)")
 

@@ -1,12 +1,40 @@
 """LiveChord — 即時音樂和弦+簡譜顯示網站"""
 
 import ipaddress
+import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
+
+# ---------------------------------------------------------------------------
+# Logging: rotate to data/server.log (10 MB × 5 backups) + keep stdout so
+# the uvicorn cmd windows still show live output. Before this, closing the
+# stdout window meant no post-hoc debugging trail — see stress-test report.
+# ---------------------------------------------------------------------------
+_LOG_DIR = Path(__file__).parent.parent / "data"
+_LOG_DIR.mkdir(exist_ok=True)
+_log_formatter = logging.Formatter(
+    "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+_file_h = RotatingFileHandler(
+    _LOG_DIR / "server.log", maxBytes=10_000_000, backupCount=5, encoding="utf-8"
+)
+_file_h.setFormatter(_log_formatter)
+_stream_h = logging.StreamHandler()
+_stream_h.setFormatter(_log_formatter)
+
+logging.basicConfig(level=logging.INFO, handlers=[_file_h, _stream_h], force=True)
+
+# Route uvicorn's own loggers through these handlers too
+for _name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+    _lg = logging.getLogger(_name)
+    _lg.handlers = [_file_h, _stream_h]
+    _lg.propagate = False
+    _lg.setLevel(logging.INFO)
 
 from music_api import router as music_router
 from chord_api import router as chord_router
