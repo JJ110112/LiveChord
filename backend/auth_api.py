@@ -26,6 +26,17 @@ _RATE_WINDOW = 300   # 5 minutes
 _RATE_MAX_AUTH = 10   # max login/register attempts per window
 
 
+def _real_client_ip(request) -> str:
+    # Behind Cloudflare Tunnel, request.client.host is 127.0.0.1 for all public
+    # traffic — the real client IP is in CF-Connecting-IP (Cloudflare) or
+    # X-Forwarded-For. Same precedence used by get_current_user / get_admin_user.
+    return (
+        request.headers.get("cf-connecting-ip")
+        or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+        or (request.client.host if request.client else "unknown")
+    )
+
+
 def _check_rate_limit(ip: str):
     now = time.time()
     attempts = _rate_store[ip]
@@ -142,8 +153,7 @@ class LoginRequest(BaseModel):
 
 @router.post("/register")
 async def register(req: RegisterRequest, request: Request):
-    client_ip = request.client.host if request.client else "unknown"
-    _check_rate_limit(client_ip)
+    _check_rate_limit(_real_client_ip(request))
 
     # Validate invite code: check multi-code table first, fallback to legacy config
     if not _validate_invite_code(req.invite_code):
@@ -181,8 +191,7 @@ async def register(req: RegisterRequest, request: Request):
 
 @router.post("/login")
 async def login(req: LoginRequest, request: Request):
-    client_ip = request.client.host if request.client else "unknown"
-    _check_rate_limit(client_ip)
+    _check_rate_limit(_real_client_ip(request))
 
     pw_hash = hash_password(req.password)
     with sqlite3.connect(DB_PATH, timeout=10) as conn:

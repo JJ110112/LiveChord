@@ -343,6 +343,7 @@
         <div class="actions" style="margin-bottom:8px">
           <button onclick="createInvite()">+ 產生邀請碼</button>
           <button onclick="createInvite(5)">+ 5 次用邀請碼</button>
+          <button onclick="createInviteCustom()">+ 自訂次數</button>
         </div>
         <div id="betaInviteList" style="font-size:12px"></div>
       </div>
@@ -1295,11 +1296,24 @@ window._lcIsBeta = (function() {
     try {
       const res = await API.post("/api/auth/admin/invite", { max_uses: maxUses, expires_days: 30 });
       if (res.code) {
-        showToast("邀請碼: " + res.code);
-        await navigator.clipboard.writeText(res.code).catch(() => {});
+        showToast(`邀請碼 (${maxUses} 次): ${res.code}`);
+        // navigator.clipboard is undefined on HTTP (non-secure contexts).
+        // Guard before calling; clipboard copy is best-effort, the code is
+        // also visible in the toast and the refreshed list below.
+        if (navigator.clipboard && window.isSecureContext) {
+          try { await navigator.clipboard.writeText(res.code); } catch (_) {}
+        }
         initBetaDashboard();
       }
     } catch (e) { showToast("建立失敗: " + e.message); }
+  };
+
+  window.createInviteCustom = async function() {
+    const raw = prompt("邀請碼最大使用次數？", "50");
+    if (raw === null) return;
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n) || n < 1) { showToast("請輸入 ≥1 的整數"); return; }
+    await window.createInvite(n);
   };
 
   window.deleteSelectedAudit = async function() {

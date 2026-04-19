@@ -64,6 +64,7 @@ start-hidden.vbs
 .vscode/
 .idea/
 .claude/
+scratch/
 
 # Doc 參考用原始專案（太大不進版控）
 doc/SheetMusicChord/
