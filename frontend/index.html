@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="/css/base.css?v=3">
+  <link rel="stylesheet" href="/css/base.css?v=8">
   <link rel="stylesheet" href="/css/home.css?v=16">
   <!-- Warm the CDN so the player page's YouTube IFrame bootstraps faster -->
   <link rel="preconnect" href="https://www.youtube.com">
@@ -31,7 +31,8 @@
 <header class="header">
   <h1>LiveChord</h1>
   <div class="search-box">
-    <input id="searchInput" type="text" placeholder="搜尋歌曲、演出者、專輯…" autocomplete="off">
+    <input id="searchInput" type="text" placeholder="請輸入歌曲、演出者、專輯、YouTube URL..." autocomplete="off">
+    <div class="search-marquee" aria-hidden="true"><span class="search-marquee-text">請輸入歌曲、演出者、專輯、YouTube URL...</span></div>
     <div id="searchResults" class="search-results"></div>
   </div>
   <nav style="margin-right: 32px;">
@@ -145,7 +146,7 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/js/utils.js?v=2"></script>
+<script src="/js/utils.js?v=5"></script>
 <script src="/js/api.js?v=57"></script>
 <script>
   // Insert auth token into all fetch requests in api.js globally!
