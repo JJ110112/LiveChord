@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="/css/base.css?v=1">
+  <link rel="stylesheet" href="/css/base.css?v=3">
   <link rel="stylesheet" href="/css/home.css?v=16">
   <!-- Warm the CDN so the player page's YouTube IFrame bootstraps faster -->
   <link rel="preconnect" href="https://www.youtube.com">
@@ -38,8 +38,13 @@
     <div style="display:flex; align-items:center; gap: 10px;">
       <span id="userGreeting" style="font-size: 0.85em; color: var(--text-muted);"></span>
       <button id="btnInstallApp" style="display:none" title="安裝為 App">📱 安裝</button>
-      <button onclick="exportData()">匯出資料</button>
       <button onclick="logout()">登出</button>
+      <div class="header-menu">
+        <button id="btnHeaderMenu" title="更多工具" aria-haspopup="true" aria-expanded="false">⋯</button>
+        <div id="headerMenuPopup" class="header-menu-popup" role="menu">
+          <button onclick="exportData(); _closeHeaderMenu();">匯出資料</button>
+        </div>
+      </div>
     </div>
   </nav>
   <button class="header-fs-btn" title="全螢幕" onclick="
@@ -214,6 +219,29 @@
       localStorage.removeItem("livechord_username");
       window.location.href = "/login";
   }
+
+  // Header ⋯ overflow menu — hosts 匯出資料 + future utilities.
+  function _closeHeaderMenu() {
+    const p = document.getElementById("headerMenuPopup");
+    const b = document.getElementById("btnHeaderMenu");
+    if (p) p.classList.remove("open");
+    if (b) b.setAttribute("aria-expanded", "false");
+  }
+  document.addEventListener("DOMContentLoaded", () => {
+    const btn = document.getElementById("btnHeaderMenu");
+    const popup = document.getElementById("headerMenuPopup");
+    if (!btn || !popup) return;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isOpen = popup.classList.toggle("open");
+      btn.setAttribute("aria-expanded", String(isOpen));
+    });
+    document.addEventListener("click", (e) => {
+      if (!popup.classList.contains("open")) return;
+      if (e.target === popup || popup.contains(e.target)) return;
+      _closeHeaderMenu();
+    });
+  });
 
   async function exportData() {
       const token = localStorage.getItem("livechord_token");

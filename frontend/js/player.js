@@ -43,12 +43,12 @@
   // "both" is the power-user overlay view. Default to "acc" (what the hand
   // actually plays if following the arrangement).
   const _RH_MODES = ["acc", "mel", "both"];
-  const _RH_LABELS = { acc: "伴", mel: "旋", both: "全" };
+  const _RH_LABELS = { acc: "伴奏", mel: "旋律", both: "伴奏加旋律" };
   let rhContentMode = localStorage.getItem("livechord_rh_mode") || "acc";
   if (!_RH_MODES.includes(rhContentMode)) rhContentMode = "acc";
   function _syncRhContentBtn() {
     const lab = document.getElementById("btnRhContentLabel");
-    if (lab) lab.textContent = _RH_LABELS[rhContentMode] || "伴";
+    if (lab) lab.textContent = _RH_LABELS[rhContentMode] || "伴奏";
     const btn = document.getElementById("btnRhContent");
     if (btn) btn.title = `右手內容：${rhContentMode === "acc" ? "伴奏" : rhContentMode === "mel" ? "旋律" : "全部"}（點擊切換）`;
   }
@@ -667,7 +667,10 @@
     _updateABPopup();
   }
 
-  // User-facing "clear": resets state AND forgets persisted choice.
+  // User-facing "clear": resets state AND forgets persisted choice for
+  // THIS song only. Called when user toggles off the last phrase pill OR
+  // clicks the 🗑 in manual A/B mode. Per-song scope — other songs keep
+  // their own A-B persistence.
   function _forgetABChoice() {
     _clearABRepeat();
     try {
@@ -866,8 +869,10 @@
     else _abSelectedSet.add(idx);
 
     if (_abSelectedSet.size === 0) {
-      // No selection → clear loop but don't nuke persist (user might toggle back)
-      _clearABLoopOnly();
+      // No selection → user deactivated the loop. Forget persistence so
+      // navigating back doesn't auto-restore the just-unchecked phrase
+      // (user feedback 2026-04-19: "deactivating = disable auto-restore").
+      _forgetABChoice();
       _paintPills();
       return;
     }
@@ -1210,8 +1215,11 @@
         };
     }
 
-    // Build in reverse order: last chord at top, first chord at bottom
-    // This matches the waterfall direction (time flows top→bottom)
+    // Build in time-ascending order: earliest chord top, latest bottom.
+    // Active chord therefore moves top→bottom as the song plays — matches
+    // the "reading a score" direction (past above, future below).
+    // Previously rendered reverse; user feedback 2026-04-19 said vertical
+    // mode felt backwards because active drifted upward over time.
     let lastSectionSec = null;
     let _prevMidi = null;
 
@@ -1389,13 +1397,15 @@
       items.push({ item, sectionHdr, idx: i });
     }
 
-    // Append in reverse: last chord first (top), first chord last (bottom)
-    for (let j = items.length - 1; j >= 0; j--) {
+    // Append in time-ascending order (earliest first → top).
+    for (let j = 0; j < items.length; j++) {
       const { item, sectionHdr } = items[j];
       if (sectionHdr) {
         const hdr = document.createElement("div");
         hdr.className = "rv-section-header";
-        
+        // Drive the colored border/text via the same var used on chord cards
+        hdr.style.setProperty('--phrase-color', sectionHdr.color);
+
         const curLang = window.liveChordPhraseLang || 'zh';
         const txt = curLang === 'zh' ? sectionHdr.labelZh : sectionHdr.labelEn;
         hdr.innerHTML = `<span class="rv-section-dot" style="background:${sectionHdr.color}"></span><span class="rv-section-text" data-zh="${sectionHdr.labelZh}" data-en="${sectionHdr.labelEn}">${txt}</span>`;
@@ -1423,18 +1433,14 @@
     // ribbonElements keeps normal index order for updateActiveChord
     ribbonElements = items.map(it => it.item);
 
-    // Scroll to bottom only on fresh load (first chord = song start).
-    // When rebuilding mid-song (e.g. AI Transformer toggle, transpose change),
-    // leave positioning to the caller via updateActiveChord(..., forceScroll=true).
+    // Scroll to top on fresh load — DOM is now time-ascending (earliest first)
+    // so chord 0 lives at the top of the scroll area. Previously scrolled to
+    // bottom when DOM was reversed.
     if (chordRibbonPanel) {
       const isFreshLoad = activeChordIdx < 0 && (!audio || !audio.currentTime || audio.currentTime < 0.1);
       if (isFreshLoad) {
         requestAnimationFrame(() => {
-          if (chordRibbonPanel.classList.contains("overview-mode")) {
-            chordRibbonPanel.scrollTop = 0;
-          } else {
-            chordRibbonPanel.scrollTop = chordRibbonPanel.scrollHeight;
-          }
+          chordRibbonPanel.scrollTop = 0;
         });
       }
     }
@@ -1472,16 +1478,26 @@
   }
 
   // ---- Ribbon diagram scale (+/−) ----
-  const _ribbonScales = {};
-  for (const t of ["piano", "guitar", "ukulele"]) {
-    const v = parseFloat(localStorage.getItem(`livechord_ribbon_scale_${t}`));
-    _ribbonScales[t] = (v >= 1) ? v : 1.0;
+  // Scale persists per layout combo: portrait/landscape × normal/overview.
+  // Four keys total (v_normal / v_overview / h_normal / h_overview). Was
+  // per-instrument; user asked for per-layout because zoom preference
+  // changes dramatically between phone-portrait and desktop-landscape,
+  // and between compact vs overview grids.
+  function _ribbonLayoutKey() {
+    const o = window.matchMedia("(orientation: portrait)").matches ? "v" : "h";
+    const m = (chordRibbonPanel && chordRibbonPanel.classList.contains("overview-mode"))
+      ? "overview" : "normal";
+    return `${o}_${m}`;
   }
-  let ribbonScale = _ribbonScales[activeTab] || 1.0;
+  function _readRibbonScale(key) {
+    const v = parseFloat(localStorage.getItem(`livechord_ribbon_scale_${key}`));
+    return (v >= 0.5 && v <= 3) ? v : 1.0;
+  }
+  let ribbonScale = _readRibbonScale(_ribbonLayoutKey());
   const scaleLabel = $("#scaleLabel");
 
   function _loadRibbonScale() {
-    ribbonScale = _ribbonScales[activeTab] || 1.0;
+    ribbonScale = _readRibbonScale(_ribbonLayoutKey());
     _updateScaleLabel();
     if (chordRibbonPanel) chordRibbonPanel.style.setProperty("--ribbon-scale", ribbonScale);
   }
@@ -1490,8 +1506,7 @@
   }
   function _changeRibbonScale(delta) {
     ribbonScale = Math.round(Math.max(0.5, Math.min(3, ribbonScale + delta)) * 10) / 10;
-    _ribbonScales[activeTab] = ribbonScale;
-    localStorage.setItem(`livechord_ribbon_scale_${activeTab}`, ribbonScale);
+    localStorage.setItem(`livechord_ribbon_scale_${_ribbonLayoutKey()}`, ribbonScale);
     _updateScaleLabel();
     if (chordRibbonPanel) chordRibbonPanel.style.setProperty("--ribbon-scale", ribbonScale);
     _buildUnifiedRibbon();
@@ -1502,6 +1517,17 @@
   if (btnScaleUp) btnScaleUp.addEventListener("click", () => _changeRibbonScale(0.1));
   if (btnScaleDown) btnScaleDown.addEventListener("click", () => _changeRibbonScale(-0.1));
   _updateScaleLabel();
+
+  // Reapply scale on orientation flip (portrait ↔ landscape). Safari iOS
+  // doesn't always emit matchMedia change; resize covers both.
+  let _ribbonLastKey = _ribbonLayoutKey();
+  window.addEventListener("resize", () => {
+    const newKey = _ribbonLayoutKey();
+    if (newKey !== _ribbonLastKey) {
+      _ribbonLastKey = newKey;
+      _loadRibbonScale();
+    }
+  });
 
   // ---- Overview Mode Toggle ----
   const btnToggleOverview = $("#btnToggleOverview");
@@ -1525,6 +1551,10 @@
       isOverviewMode = !isOverviewMode;
       localStorage.setItem("livechord_overview_mode", isOverviewMode);
       _applyOverviewMode();
+      // Layout flipped normal↔overview — reload the scale stored for the
+      // new layout combo so users keep distinct zoom preferences.
+      _ribbonLastKey = _ribbonLayoutKey();
+      _loadRibbonScale();
       // .rv-item has a 0.2s CSS transition; wait past that before scrolling
       // so the active card's final position is measurable.
       setTimeout(() => {
@@ -2904,8 +2934,16 @@
 
     if (aiBtn) {
       aiBtn.addEventListener("click", () => {
-        if (!trackPath) return;
-        fetch(`/api/ai/suggest-style?path=${encodeURIComponent(trackPath)}`)
+        // Use _accPath so hash-mode (8801 beta) songs also get AI suggestions —
+        // `trackPath` is empty in hash mode but chordData.path carries the same
+        // canonical path that song_hash() will resolve server-side.
+        const p = _accPath();
+        if (!p) {
+          showToast("尚未載入歌曲");
+          return;
+        }
+        showToast("AI 分析曲風中...");
+        fetch(`/api/ai/suggest-style?path=${encodeURIComponent(p)}`)
           .then(r => r.json())
           .then(data => {
             if (data.suggested_styles && data.suggested_styles.length > 0) {
@@ -2915,9 +2953,11 @@
               localStorage.setItem("livechord_teach_style", best);
               accData = null;
               if (waterfallActive) _loadAccompaniment();
-              showToast("AI: " + data.suggested_styles.join(", "));
+              showToast("AI 推薦風格：" + data.suggested_styles.join(", "));
+            } else {
+              showToast("AI 無法分析（資料不足）");
             }
-          }).catch(() => {});
+          }).catch(() => showToast("AI 推薦失敗"));
       });
     }
 
@@ -3778,6 +3818,10 @@
   let _preMuteVol = 1;
   if (btnMute) {
     btnMute.addEventListener("click", () => {
+      // Touch devices: let the click open the popup only. Users complained
+      // that tapping the speaker silenced audio when they just wanted the
+      // volume slider (field feedback 2026-04-19).
+      if (_isTouchLike) return;
       audio.muted = !audio.muted;
       if (_ytPlayer && typeof _ytPlayer.isMuted === "function") {
         if (_ytPlayer.isMuted()) _ytPlayer.unMute(); else _ytPlayer.mute();

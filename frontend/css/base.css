@@ -117,14 +117,25 @@ a:hover { text-decoration: underline; }
 }
 
 .header nav button {
-  padding: 6px 16px;
+  padding: 6px 14px;
   border: 1px solid var(--border);
   border-radius: 20px;
   background: transparent;
   color: var(--text-dim);
   cursor: pointer;
   font-size: 13px;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: all .2s;
+}
+/* User greeting (Hello, name) shrinks first when viewport is tight so the
+   button labels keep their natural width and never wrap. */
+.header nav #userGreeting {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .header nav button.active,
@@ -132,6 +143,47 @@ a:hover { text-decoration: underline; }
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
+}
+
+/* Header overflow menu — houses 匯出資料 + future admin utilities so the
+   visible header row stays compact on mobile. */
+.header-menu {
+  position: relative;
+}
+.header-menu-popup {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 140px;
+  padding: 6px;
+  background: rgba(22,27,34,0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  z-index: 10000;
+}
+.header-menu-popup.open { display: flex; }
+.header-menu-popup button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.header-menu-popup button:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: var(--border);
 }
 
 /* ========== [END: HEADER] ========== */

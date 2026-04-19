@@ -258,6 +258,7 @@
    vertical ribbon. */
 .rv-item[data-phrase-start="true"] {
   border-top: 3px solid var(--phrase-color, var(--accent));
+  padding-top: 22px;  /* make room for the absolute .rv-grid-phrase label */
 }
 
 .rv-item .rv-chord-name {
@@ -306,12 +307,14 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 12px 4px;
-  font-size: 10px;
+  padding: 8px 12px 6px;
+  margin-top: 4px;
+  font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
   letter-spacing: 0.5px;
-  opacity: 0.8;
+  color: var(--phrase-color, var(--text));
+  border-bottom: 2px solid var(--phrase-color, var(--border));
+  opacity: 0.95;
 }
 .rv-section-dot {
   width: 7px;
@@ -436,8 +439,12 @@
   padding: 16px;
   gap: 12px;
 }
+.chord-ribbon-panel.overview-mode .ribbon-v-track > .rv-section-header {
+  flex-basis: 100%;
+  width: 100%;
+}
 .chord-ribbon-panel.overview-mode .rv-item {
-  order: var(--chord-idx, 0); /* Flex order override for correct visual direction */
+  /* DOM is time-ascending after 2026-04-19 flip; no `order:` override needed. */
   width: calc(140px * var(--ribbon-scale, 1));
   border-left: none;
   border-top: 4px solid var(--phrase-color, #888);
@@ -453,25 +460,29 @@
   transform: scale(1.05);
   z-index: 2;
 }
+/* In-card phrase label (shown on first-of-section cards) — unified across
+   normal and overview modes so the section boundary sits *on* the chord
+   card, not as a separate row above it (user feedback 2026-04-19). */
 .rv-grid-phrase {
-  display: none;
-}
-.chord-ribbon-panel.overview-mode .rv-grid-phrase {
   display: block;
   position: absolute;
   top: 4px;
   left: 8px;
-  font-size: 12px;
-  font-weight: bold;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--phrase-color, var(--text));
   cursor: pointer;
   z-index: 10;
+  pointer-events: auto;
 }
-.chord-ribbon-panel.overview-mode .rv-grid-phrase:hover {
+.rv-grid-phrase:hover {
   text-decoration: underline;
   opacity: 0.8;
 }
-.chord-ribbon-panel.overview-mode .rv-section-header {
-  display: none;
+/* Section-header row hidden in both modes — the in-card label + colored
+   border-top already convey section boundaries. */
+.rv-section-header {
+  display: none !important;
 }
 /* ========== [END: OVERVIEW MODE] ========== */
 
@@ -990,6 +1001,11 @@
   transform: translateX(-50%);
   display: none;
   align-items: center;
+  /* Desktop: nowrap so popup grows wide enough for all buttons on one row.
+     Without this, the popup inherits tb-item's tiny shrink-to-fit width
+     (~40px) and buttons stack vertically. Touch override in the
+     `@media (pointer: coarse)` block below switches to wrap. */
+  flex-wrap: nowrap;
   gap: 6px;
   background: rgba(22,27,34,0.96);
   backdrop-filter: blur(12px);
@@ -1000,6 +1016,31 @@
   box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
   white-space: nowrap;
   z-index: 10000;
+}
+
+/* Popup header title — absolutely positioned so the popup's flex layout
+   computes width from the buttons alone. When title used flex-basis:100%,
+   popup shrink-to-fit width collapsed to max(item widths) = the title
+   itself, forcing buttons to wrap vertically on PC. */
+.tb-popup-title {
+  position: absolute;
+  top: 0;
+  left: 8px;
+  right: 8px;
+  padding: 5px 0 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+/* Popups with a title need top padding to clear the absolute-positioned
+   title strip. Exactly one rule via :has() — all supported modern browsers. */
+.tb-popup:has(> .tb-popup-title) {
+  padding-top: 30px;
 }
 
 /* Invisible bridge to keep popup open when moving mouse */
@@ -1065,14 +1106,15 @@
 }
 
 .tb-popup-transpose {
-  gap: 4px;
+  gap: 6px;
+  justify-content: center;
 }
 .tb-transpose-val {
-  font-size: 13px;
-  font-weight: 600;
-  min-width: 20px;
+  font-size: 16px;
+  font-weight: 700;
+  min-width: 40px;
   text-align: center;
-  color: var(--text-dim);
+  color: var(--text);
 }
 .tb-capo-group {
   display: flex;
@@ -1088,7 +1130,11 @@
 }
 
 .tb-popup-wide {
+  /* Desktop: nowrap so all 10+ teaching buttons fit in a single row —
+     matches every other popup. Touch override (line ~1863) flips back to
+     wrap because viewport-anchored popups need to break lines. */
   flex-wrap: nowrap;
+  justify-content: center;
 }
 
 /* Speed / Loop / A-B / Jazzify popups: absolute-value pill lists.
@@ -1110,6 +1156,21 @@
   font-weight: 600;
   min-width: 48px;
   justify-content: center;
+}
+
+/* Speed popup: keep single-row on desktop (6 buttons fit easily), force
+   3×2 grid only on touch portrait where horizontal space is limited.
+   User feedback 2026-04-19: PC showed Speed as vertical-ish 3×2 while
+   Loop was single-row — inconsistent. */
+@media (pointer: coarse) and (orientation: portrait) {
+  .tb-popup-speed {
+    width: min(240px, 80vw);
+    justify-content: center;
+  }
+  .tb-popup-speed .speed-opt {
+    flex: 0 0 calc(33.333% - 6px);
+    min-width: 0;
+  }
 }
 
 /* A-B popup: lifted higher than default so the progress bar underneath
@@ -1180,6 +1241,19 @@
     justify-content: flex-end;
     align-items: center;
     padding-top: 0;
+  }
+}
+
+/* Touch devices — hide the scrollbar on the phrase strip. Swipe-to-scroll
+   stays enabled (touch-action: pan-x + -webkit-overflow-scrolling: touch),
+   but the visible bar was overlaying the pills and hiding labels. */
+@media (pointer: coarse) {
+  .ab-phrase-strip {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .ab-phrase-strip::-webkit-scrollbar {
+    display: none;
   }
 }
 .ab-phrase-pill {
@@ -1638,6 +1712,13 @@
     max-width: 100%;
     box-sizing: border-box;
   }
+  /* Section header spans the full row so chord cards below start on a fresh
+     line — otherwise the header occupies 1 grid cell and the first chord
+     sits beside it, which looks like a layout glitch (user report
+     2026-04-19). */
+  .ribbon-v-track > .rv-section-header {
+    grid-column: 1 / -1;
+  }
   /* Overview mode (total view toggle) on mobile portrait: keep it full-width
      and laid out LTR without flex-order override (grid auto-flow handles it).
      Default overview rule sets width:50% + order:var(--chord-idx) which on a
@@ -1762,6 +1843,13 @@
   .tb-row-t2 { flex-wrap: wrap; }
   /* 進度條上移，避開三列工具列：T1 (~36) + Tx (~44) + T2 (~36) + gaps/padding ≈ 132px */
   .progress-bar-mid { bottom: 132px; }
+  /* Play button becomes a pill (horizontal oval) on portrait phones — it's the
+     primary transport control and should stand out from the row of circles. */
+  .tb-play-btn {
+    width: 72px !important;
+    flex: 0 0 72px !important;
+    border-radius: 22px !important;
+  }
 }
 
 /* Touch-device popup fix: viewport-anchored bottom sheet. Covers both portrait
@@ -1797,21 +1885,32 @@
   }
 }
 
-/* Five-option popups (Instrument, Jazzify) — force 2-on-top + 3-on-bottom
-   layout on touch devices in portrait. Landscape has enough horizontal room
-   that the stretched 50%/33% rule makes buttons absurdly wide (see landscape
-   override below) — so the rule is portrait-scoped. */
+/* Five-option popups (Instrument, Jazzify) — equal-width grid on touch
+   portrait. Row 1 = 3 buttons (2-col spans), Row 2 = 2 buttons offset by
+   1 cell so they're centered. Title + buttons are children 1..6 of the
+   popup (title inserted as first child), so `.tb-popup-btn:nth-child(N)`
+   selectors count from the first button (child 2) onward. */
 @media (pointer: coarse) and (orientation: portrait) {
+  /* Scope `display: grid` to the open state only — otherwise it overrides
+     the base `.tb-popup { display: none }` and the popup sits visible all
+     the time. User report 2026-04-19: Jazzify popup auto-showed on player
+     load because `.tb-popup-5 { display:grid }` ran unconditionally. */
+  .tb-item.open > .tb-popup-5 {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+  }
+  .tb-popup-5 .tb-popup-title { grid-column: 1 / -1; }
+  .tb-popup-5 .tb-popup-btn:nth-child(2) { grid-column: 1 / span 2; }
+  .tb-popup-5 .tb-popup-btn:nth-child(3) { grid-column: 3 / span 2; }
+  .tb-popup-5 .tb-popup-btn:nth-child(4) { grid-column: 5 / span 2; }
+  .tb-popup-5 .tb-popup-btn:nth-child(5) { grid-column: 2 / span 2; }
+  .tb-popup-5 .tb-popup-btn:nth-child(6) { grid-column: 4 / span 2; }
   .tb-popup-5 .tb-popup-btn {
-    flex-grow: 0;
-    flex-shrink: 0;
-  }
-  .tb-popup-5 .tb-popup-btn:nth-child(-n+2) {
-    flex-basis: calc(50% - 6px);
-    justify-content: center;
-  }
-  .tb-popup-5 .tb-popup-btn:nth-child(n+3) {
-    flex-basis: calc(33.333% - 8px);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     justify-content: center;
   }
 }
