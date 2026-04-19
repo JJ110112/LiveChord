@@ -150,13 +150,38 @@ class Chord2VecModel:
         }
 
 
+def _train_via_subprocess(models_dir: Path) -> bool:
+    """Spawn `python chord2vec.py` to run training in a fresh interpreter.
+
+    The co-occurrence build is a pure-Python nested loop over ~50k sequences
+    that holds the GIL tightly; running it inline (even on a worker thread)
+    starves every other request thread. A subprocess gets its own GIL so the
+    parent server stays responsive while training runs.
+
+    Returns True on success (emb file present after the run).
+    """
+    import subprocess, sys
+    script = Path(__file__).resolve()
+    emb_file = models_dir / "chord_embeddings.npy"
+    try:
+        subprocess.run(
+            [sys.executable, str(script)],
+            capture_output=True, timeout=1800,
+            encoding="utf-8", errors="replace",
+        )
+    except Exception as e:
+        print(f"chord2vec subprocess training failed: {e}")
+    return emb_file.exists()
+
+
 def get_chord2vec(chords_dir=None):
     """Singleton loader: train (or load cached) chord2vec embeddings."""
     global _model
     if _model is None:
-        train_chord2vec(_MODELS_DIR)
         emb_file = _MODELS_DIR / "chord_embeddings.npy"
         vocab_file = _MODELS_DIR / "vocab.json"
+        if not emb_file.exists():
+            _train_via_subprocess(_MODELS_DIR)
         if emb_file.exists() and vocab_file.exists():
             with open(vocab_file, "r", encoding="utf-8") as f:
                 vocab = json.load(f)

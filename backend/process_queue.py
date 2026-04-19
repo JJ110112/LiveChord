@@ -230,14 +230,20 @@ def _extract_cover(audio_path: str, result_hash: str):
 # ---------------------------------------------------------------------------
 
 def _get_youtube_title(url: str) -> str:
-    """Extract video title from YouTube URL using yt-dlp."""
+    """Extract video title from YouTube URL using yt-dlp.
+
+    Uses --dump-json + explicit UTF-8 decoding so CJK titles survive on
+    Windows NUCs whose console code page is not UTF-8 (cp950/cp932 etc.).
+    """
     try:
         result = subprocess.run(
-            [YTDLP_BIN, "--get-title", "--no-download", url],
-            capture_output=True, text=True, timeout=30
+            [YTDLP_BIN, "--dump-json", "--no-download", "--no-playlist", url],
+            capture_output=True, timeout=30,
+            encoding="utf-8", errors="replace",
         )
         if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
+            first = result.stdout.strip().splitlines()[0]
+            return (json.loads(first).get("title") or "").strip()
     except Exception:
         pass
     return ""

@@ -345,8 +345,13 @@ async def detect_patterns(
 
 
 @router.post("/retrain")
-async def retrain():
-    """重新訓練所有模型（含儲存快取）"""
+def retrain():
+    """重新訓練所有模型（含儲存快取）。
+
+    Plain def (not async) so FastAPI dispatches to the worker thread pool —
+    training is CPU-bound + file-I/O-heavy and would freeze the event loop
+    otherwise (see feedback_async_def rule and commit 2b503b4).
+    """
     from ai.markov import retrain as do_retrain
     from ai.chord2vec import get_chord2vec
     from ai.groove_dict import get_groove_dict

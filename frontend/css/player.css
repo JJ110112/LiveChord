@@ -1526,9 +1526,9 @@
   box-shadow: 0 4px 20px rgba(0,0,0,0.5);
   background: #000;
   width: 320px;
-  height: 200px;               /* body 180 (16:9 of 320) + header 20 */
+  height: 180px;               /* 16:9 of 320, no header */
   min-width: 180px;
-  min-height: 120px;
+  min-height: 101px;           /* 16:9 of 180 */
   max-width: 95vw;
   max-height: 70vh;
   touch-action: none;          /* prevent browser pan/zoom while dragging */
@@ -1569,14 +1569,14 @@
 }
 .yt-pip-close-float:hover { background: rgba(0,0,0,0.9); opacity: 1; }
 
-/* Lock toggle — sits next to × close. When the PiP has .unlocked class, the
-   dragzone goes pointer-events:none so user can tap YT captions / settings /
-   fullscreen natively; lock button flips to 🔓 visual. */
+/* Lock toggle — sits immediately right of × close so it stays out of the
+   bottom-center region where YouTube renders CC subtitles. When the PiP has
+   .unlocked class, the dragzone goes pointer-events:none so user can tap YT
+   captions / settings / fullscreen natively; lock button flips to 🔓. */
 .yt-pip-lock-float {
   position: absolute;
   bottom: 2px;
-  left: 50%;
-  transform: translateX(-50%);   /* centered on the bottom band so it doesn't cover video */
+  left: 22px;                    /* 2px (close left) + 16 (close width) + 4 gap */
   z-index: 6;
   width: 16px;
   height: 16px;
@@ -1601,17 +1601,18 @@
 .yt-embed-container.unlocked {
   outline: 2px dashed rgba(76, 175, 80, 0.7);   /* visual cue: YT native mode */
 }
+/* #ytEmbed is the YT API target. Pre-init it's a <div class="yt-pip-body">,
+   post-init YT REPLACES it with an <iframe id="ytEmbed"> that LOSES the
+   custom class — so selector .yt-pip-body iframe never matched the live
+   iframe. Target #ytEmbed directly so both states fill the container and
+   the video never letterboxes against container black. */
+#ytEmbed,
 .yt-pip-body {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-}
-/* YT IFrame API injects an <iframe> inside #ytEmbed with its own width/height
-   attributes — force it to fill the PiP body so resize actually scales the
-   video (not just the surrounding black box). */
-.yt-pip-body iframe {
   width: 100% !important;
   height: 100% !important;
   border: 0;

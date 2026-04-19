@@ -272,7 +272,7 @@ def search(q: str = Query(default=""), authorization: str = Header(None)):
             with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
                 conn.row_factory = sqlite3.Row
                 rows = conn.execute(
-                    "SELECT result_hash, title, chord_count FROM process_audit "
+                    "SELECT result_hash, title, chord_count, source_type FROM process_audit "
                     "WHERE username=? AND status='done' AND result_hash!='' "
                     "ORDER BY id DESC LIMIT 50",
                     (username,),
@@ -291,13 +291,16 @@ def search(q: str = Query(default=""), authorization: str = Header(None)):
                 if not (CHORDS_DIR / f"{rh}.json").is_file():
                     continue
                 seen_hashes.add(rh)
+                src = (r["source_type"] or "upload").strip()
+                album_label = "YouTube 分析" if src == "youtube" else "本機上傳"
                 user_uploads.append({
                     "path": f"__hash/{rh}",
                     "hash": rh,
                     "title": r["title"],
                     "artist": "",
-                    "album": "本機上傳",
+                    "album": album_label,
                     "is_user_upload": True,
+                    "source_type": src,
                     "has_chords": True,
                     "unique_chords": r["chord_count"] or 0,
                 })

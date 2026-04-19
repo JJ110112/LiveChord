@@ -284,6 +284,7 @@
     if (existing) {
       alert("此播放清單已存在，展開查看。");
       _renderPlaylists(true, listId);
+      _scrollToPlaylistSection(listId);
       return existing;
     }
     try {
@@ -309,6 +310,7 @@
       arr.unshift(entry);
       _savePlaylists(arr);
       _renderPlaylists(true, listId);
+      _scrollToPlaylistSection(listId);
       return entry;
     } catch (e) {
       alert("讀取清單失敗：" + e.message);
@@ -349,6 +351,16 @@
     sec = Math.max(0, Math.round(sec || 0));
     const m = Math.floor(sec / 60), s = sec % 60;
     return `${m}:${s.toString().padStart(2, "0")}`;
+  }
+
+  function _scrollToPlaylistSection(listId) {
+    // Defer one frame so the newly-rendered card is in the DOM before we scroll.
+    requestAnimationFrame(() => {
+      const section = $("#secBetaPlaylists");
+      if (!section || section.style.display === "none") return;
+      const card = listId ? section.querySelector(`.yt-pl-card[data-id="${CSS.escape(listId)}"]`) : null;
+      (card || section).scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   function _renderPlaylists(forceShow, openListId) {

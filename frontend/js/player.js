@@ -255,10 +255,27 @@
     container.style.left = ""; container.style.top = "";
     container.style.right = ""; container.style.bottom = "";
     container.style.width = ""; container.style.height = "";
-    if (typeof s.x === "number") { container.style.left = s.x + "px"; container.style.right = "auto"; }
-    if (typeof s.y === "number") { container.style.top = s.y + "px"; container.style.bottom = "auto"; }
-    if (typeof s.width === "number") container.style.width = s.width + "px";
-    if (typeof s.height === "number") container.style.height = s.height + "px";
+    // Clamp size to viewport so saved width/height from a larger window
+    // don't cause the PiP to overflow here.
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let w = typeof s.width === "number" ? s.width : 320;
+    let h = typeof s.height === "number" ? s.height : 200;
+    w = Math.max(180, Math.min(vw - 16, w));
+    h = Math.max(120, Math.min(Math.round(vh * 0.7), h));
+    if (typeof s.width === "number") container.style.width = w + "px";
+    if (typeof s.height === "number") container.style.height = h + "px";
+    // Clamp position to viewport — a saved x/y from a larger window (or after
+    // a window resize/rotate) can park the PiP off-screen. Top clamp matches
+    // drag handler (44 = topbar height) so PiP never hides behind it.
+    const TOPBAR_H = 44;
+    if (typeof s.x === "number") {
+      const x = Math.max(0, Math.min(vw - w, s.x));
+      container.style.left = x + "px"; container.style.right = "auto";
+    }
+    if (typeof s.y === "number") {
+      const y = Math.max(TOPBAR_H, Math.min(vh - h, s.y));
+      container.style.top = y + "px"; container.style.bottom = "auto";
+    }
   }
   function _updateYtReopenBtn() {
     const btn = document.getElementById("ytFloatBtn");
@@ -332,10 +349,9 @@
       window.addEventListener("pointercancel", up);
     });
 
-    // Resize via bottom-right handle. Maintains 16:9 aspect ratio on the
-    // video body (container height = width * 9/16 + header 20px) so the iframe
-    // fills cleanly without letterbox bars.
-    const HEADER_H = 20;
+    // Resize via bottom-right handle. Container IS the body now (no header
+    // element), so maintain 16:9 across the whole container — keeps iframe
+    // exactly video-aspect so there are no residual black bars.
     const BODY_ASPECT = 16 / 9;
     if (handle) handle.addEventListener("pointerdown", (e) => {
       e.preventDefault();
@@ -348,26 +364,26 @@
         const maxW = window.innerWidth - rect.left - 4;
         const maxH = window.innerHeight - rect.top - 4;
         // Drive resize off whichever axis moved more so diagonal drag feels
-        // natural; derive the other axis from the 16:9 body + header rule.
+        // natural; derive the other axis from the 16:9 rule.
         const dX = ev.clientX - startX;
         const dY = ev.clientY - startY;
         let nw;
         if (Math.abs(dY) > Math.abs(dX)) {
-          const nh0 = Math.max(100, Math.min(maxH, (startW / BODY_ASPECT + HEADER_H) + dY));
-          nw = (nh0 - HEADER_H) * BODY_ASPECT;
+          const nh0 = Math.max(100, Math.min(maxH, (startW / BODY_ASPECT) + dY));
+          nw = nh0 * BODY_ASPECT;
         } else {
           nw = Math.max(140, Math.min(maxW, startW + dX));
         }
         nw = Math.max(140, Math.min(maxW, nw));
-        let nh = nw / BODY_ASPECT + HEADER_H;
-        if (nh > maxH) { nh = maxH; nw = (nh - HEADER_H) * BODY_ASPECT; }
+        let nh = nw / BODY_ASPECT;
+        if (nh > maxH) { nh = maxH; nw = nh * BODY_ASPECT; }
         container.style.width = Math.round(nw) + "px";
         container.style.height = Math.round(nh) + "px";
         // Nudge YT API so the player UI inside the iframe re-lays out to the
         // new size — CSS alone scales the iframe box, but YT's internal player
         // only re-rules on an explicit setSize call.
         if (_ytPlayer && typeof _ytPlayer.setSize === "function") {
-          try { _ytPlayer.setSize(Math.round(nw), Math.round(nh - HEADER_H)); } catch {}
+          try { _ytPlayer.setSize(Math.round(nw), Math.round(nh)); } catch {}
         }
       };
       const up = () => {
@@ -422,7 +438,7 @@
         const c = document.getElementById("ytEmbedContainer");
         if (c) {
           const r = c.getBoundingClientRect();
-          try { _ytPlayer.setSize(Math.round(r.width), Math.round(r.height - 20)); } catch {}
+          try { _ytPlayer.setSize(Math.round(r.width), Math.round(r.height)); } catch {}
         }
       }
     }
@@ -4425,7 +4441,7 @@
               }
               
               html += `
-                <div class="result-item" data-path="${escapeHtml(r.path)}">
+                <div class="result-item" data-path="${escapeHtml(r.path)}" data-hash="${escapeHtml(r.hash || "")}">
                   <img class="r-cover" src="${coverUrl}" onerror="this.style.display='none'" loading="lazy" alt="">
                   <div class="r-info">
                     <div class="r-title">${escapeHtml(r.title || r.path.split("/").pop())}${diffHtml}</div>
@@ -4436,11 +4452,14 @@
             searchResults.innerHTML = html;
           }
           searchResults.classList.add("show");
-          
+
           searchResults.querySelectorAll(".result-item").forEach((el) => {
             el.addEventListener("click", () => {
               searchResults.classList.remove("show");
-              window.location.href = `/player?path=${encodeURIComponent(el.dataset.path)}`;
+              const h = el.dataset.hash;
+              window.location.href = h
+                ? `/player?hash=${encodeURIComponent(h)}`
+                : `/player?path=${encodeURIComponent(el.dataset.path)}`;
             });
           });
         } catch {}
@@ -5008,7 +5027,7 @@
             const c = document.getElementById("ytEmbedContainer");
             if (c && _ytPlayer && typeof _ytPlayer.setSize === "function") {
               const r = c.getBoundingClientRect();
-              _ytPlayer.setSize(Math.round(r.width), Math.round(r.height - 20));
+              _ytPlayer.setSize(Math.round(r.width), Math.round(r.height));
             }
           } catch {}
         },
