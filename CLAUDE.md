@@ -91,11 +91,64 @@ Any change to frontend files requires Playwright verification before claiming do
 - **YT debug hook**: `window.__lcYtDebug()` in player page DevTools returns live `{hasPlayer, state, currentTime, duration, fillWidth, timeText, timerAlive, lastError, chordDuration, syncDisabled, verifiedOk}` snapshot; `window.__lcYtError` holds the most recent sync-tick exception. Playwright headless cannot play YT IFrame — human-verify with desktop Chrome/Edge; see [doc/QA.md §1.1](doc/QA.md)
 - Productization roadmap: [doc/PRODUCTIZATION.md](doc/PRODUCTIZATION.md)
 
+## Dual-instance isolation (Personal 8800 vs Beta 8801)
+
+LiveChord runs two uvicorn processes on the same NUC. They share code + music files but NOT configuration. Design after the "one `settings.json` overwrite wiped out the beta groups" incident (see [doc/QA_BATTLE_STORY.md](doc/QA_BATTLE_STORY.md) 番外篇 IV):
+
+- **Split settings files**: `data/settings_personal.json` + `data/settings_beta.json` + `data/settings_shared.json`
+  - `SHARED_KEYS` (in [backend/auto_worker.py](backend/auto_worker.py)) marks keys shared across instances: `accompaniment_v2_enabled`, `settings_backup_targets`, `data_backup_root`, `backup_schedule`
+  - Legacy `data/settings.json` is archival-only after the one-shot migration in `_migrate_legacy_settings_if_needed`
+  - `load_settings()` returns `DEFAULT ∪ shared ∪ own-mode` (own-mode wins)
+  - `save_settings()` splits incoming dict by key → shared vs mode-specific files
+  - **Never overwrite `V:\data\settings_*.json` wholesale** — only increment
+- **Per-instance mode detection**: `_current_mode()` reads `LIVECHORD_MODE` env var (`personal` | `beta`)
+- **Backend hard gates** ([backend/personal_mode.py](backend/personal_mode.py)): `require_personal_mode` FastAPI dependency on 13 endpoints (`/api/auto/*` except settings/backups, `/api/extraction/*`, `/api/chords/stats`, `/api/tasks/status`, `/api/library/*`, `/api/settings`). Beta instance returns 404 — even if front-end cache is stale or an attacker curls the endpoint
+- **Core worker hard gate**: `auto_worker.start_worker()` refuses to start when `_current_mode() == "beta"` regardless of settings
+- **Settings snapshot auto-backup**: every `save_settings()` call first copies the previous mode-file to `data/backups/settings/settings_<mode>_<ts>.json` (rolling 30 per mode per target). Multi-target: `settings_backup_targets` in shared settings lets users write snapshots to local + NAS + USB simultaneously. Cross-lane restore is forbidden (`_mode_of_filename` check in [backend/auto_worker.py](backend/auto_worker.py))
+- **Scan filter placement (critical)**: `active_groups` filter lives in `auto_worker._get_unanalyzed_tracks` (detection), NOT in `music_api._scan_dir` (scan). Previously scan also filtered → `library_cache.json` never saw unselected groups → admin UI couldn't show them. Filter belongs at the expensive stage (BTC detection), not the cheap index stage (listdir + metadata)
+- **`list_groups` listdir placeholder**: `library_groups.list_groups` follows up `library_cache.tracks` with a shallow `os.listdir` of each music_root so admin UI shows every folder even before scan reaches it. Users can prep their group selection while scan runs
+- **Frontend beta detection**: `window._lcIsBeta` is set synchronously from `window.location.port === "8801" || hostname.endsWith("livechord.org")` at top of `admin.html`. Used to hide personal-only cards (`coreCard`, `activityCard`, `chordMgmtCard`, `extractionCard`, `backupCard`) and skip `pollStatus` / `loadSettings` / `loadGroups` etc. Sync check avoids the first-paint race that async `/api/config/public` can't
+
+## Data backup (tiered)
+
+[backend/backup_core.py](backend/backup_core.py) + [backend/backup_scheduler.py](backend/backup_scheduler.py). Admin UI: single「📦 備份」card with two collapsible subsections (⚙️ 設定快照 + 🗄️ 資料備份).
+
+- **Three tiers by recreate-cost**:
+  - **tier1** — unrecreatable user/feedback/auth/human-correction data (~MB, seconds)
+  - **tier2** — chord/melody/hybrid/models (~3 GB, minutes)
+  - **tier3** — accompaniment cache (~15 GB, 10-20 min)
+- **Target**: env `LIVECHORD_BACKUP_ROOT` > `settings_shared.data_backup_root` > default `W:\LiveChord\backup`. Each run drops timestamped `<root>/<tier>/YYYYMMDD_HHMMSS/<item>`. **NUC requires `W:\` mounted** (or UNC path in settings)
+- **tier_info 60s cache**: `get_tier_info()` recursively walks ~260k files on first call (~15s on local SSD, longer on SMB). Cached — subsequent calls < 1ms. Invalidated after each backup completes. Admin UI uses **lazy-load on card expand** so first admin paint isn't blocked by the initial walk
+- **Scheduler thread** (`backup_scheduler.py`): daemon, personal-only, wakes every 5 min. Reads `settings_shared.backup_schedule` = `{tierN: {interval: "daily"|"weekly"|"monthly"|"off", hour, day_of_week?, day_of_month?}}`. Triggers `run_backup_async` when `_should_run` matches now AND `_MIN_GAP_S[interval]` has elapsed since last success. No race with manual trigger (RuntimeError handled)
+- **History**: `data/backup_history.json` rolling 100. UI shows last 20 + explicit per-row error (not just count)
+
+## PWA install
+
+[frontend/sw.js](frontend/sw.js) + [backend/main.py](backend/main.py) `/sw.js` route + [frontend/index.html](frontend/index.html) install flow:
+
+- Minimal service worker (fetch pass-through) exists **only to satisfy Chrome/Edge installability** — without it the browser never fires `beforeinstallprompt`
+- Header `📱 安裝` button: hidden by default, `beforeinstallprompt` listener stores event to `_lcInstallPrompt` + shows button. Click → `prompt()`. `appinstalled` hides button. Standalone mode also hides button
+- iOS Safari fallback: no `beforeinstallprompt` support, click shows `alert("分享 → 加到主畫面")`
+- Without this: browser only auto-prompts once per origin (ever). User who uninstalled had no path back to install — manual button + SW fixes that
+
+## A-B phrase picker
+
+[frontend/js/player.js](frontend/js/player.js) + [frontend/css/player.css](frontend/css/player.css):
+
+- Horizontal scrollable **pill strip** of phrase labels + right-side column with「手動設定」pill + trash/A/B buttons
+- **Toggle multi-select**: tap pill adds/removes from `_abSelectedSet`. Effective loop range = `[min(set), max(set)]` — intermediate pills display `.in-range` to show they'll play (multi-segment jump not supported yet)
+- **Phrase boundaries use chord grid**: `_phraseStartOf` / `_phraseEndOf` snap to the first chord whose time ≥ next-section.start (section-detector precision is coarse, chord data is the ground truth)
+- **Persist by LABEL not index** (in localStorage `livechord_ab_phrase:<path>`): `{"selected": ["Verse 1", "Chorus 1"]}` — section splits/inserts/renames don't break user's saved selection. Fallback to "manual" if all labels vanish
+- **Hash mode parity**: `_loadSections` supports `?hash=` param (backend [ai_api.py](backend/ai_api.py) `/api/ai/sections` accepts both path/hash). Previously hash-mode player never fetched sections → beta strip was always empty
+- **Section detection fallback for zero-MIDI songs**: `ai/section_detect.py` `_classify_dl` returns False when `sum(melody_density + bass_density) == 0` → rule-based path runs instead. Many library songs (~82%) never had hybrid extraction; previously they received all-zero features and got labeled single "verse"
+
 ## Reference
 
 - QA protocol, test matrix, UI architecture rules: [doc/QA.md](doc/QA.md)
 - Battle stories / past incidents: [doc/QA_BATTLE_STORY.md](doc/QA_BATTLE_STORY.md)
 - Productization roadmap: [doc/PRODUCTIZATION.md](doc/PRODUCTIZATION.md)
+- NotebookLM hand-off (accompaniment knowledge doc for AI-coding): [doc/for-notebooklm/](doc/for-notebooklm/)
+- Implementation plans (historical): [doc/plans/](doc/plans/)
 
 ## NotebookLM hand-off
 

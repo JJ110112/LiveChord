@@ -645,6 +645,9 @@
     }
   }
 
+  // Reset the in-memory A-B state + UI. Does NOT touch localStorage — that's
+  // only cleared on explicit user action (the "清除" button), so page reloads
+  // and track switches keep the persisted phrase choice alive.
   function _clearABRepeat() {
     abState = "idle";
     abA = null;
@@ -653,18 +656,347 @@
       btnABRepeat.classList.remove("a-set", "ab-active");
       btnABRepeat.textContent = "A-B";
     }
+    // Reset strip selection + highlights; default to manual mode
+    _abSelectedSet.clear();
+    _paintPills();
+    const manualRow = document.getElementById("abManualRow");
+    if (manualRow) manualRow.style.display = "flex";
+    const _popup = document.querySelector(".tb-popup-ab");
+    if (_popup) _popup.classList.remove("ab-semi-set");
     _updateABRangeUI();
     _updateABPopup();
   }
 
+  // User-facing "clear": resets state AND forgets persisted choice.
+  function _forgetABChoice() {
+    _clearABRepeat();
+    try {
+      const k = _abStorageKey();
+      if (k) localStorage.removeItem(k);
+    } catch {}
+  }
+
+  // Snap a phrase boundary (start or end) to the chord grid — both A and B
+  // should align to real chord changes, not section-detector approximations.
+  // sections[].start/end from section detection can be several seconds off.
+  function _phraseStartOf(secs, idx) {
+    const sectionStart = secs[idx].start;
+    if (chordData && Array.isArray(chordData.chords)) {
+      for (const c of chordData.chords) {
+        if (c.time >= sectionStart) return c.time;
+      }
+    }
+    return sectionStart;
+  }
+
+  // Compute the true end boundary of a phrase. Same snap strategy as start:
+  // find the first chord whose time is >= next-section.start — that chord's
+  // time is the actual start of the next phrase, hence this phrase's end.
+  function _phraseEndOf(secs, idx) {
+    // Non-last section: snap to next phrase's first chord start
+    if (idx + 1 < secs.length) {
+      const nextSectionStart = secs[idx + 1].start;
+      if (chordData && Array.isArray(chordData.chords)) {
+        for (const c of chordData.chords) {
+          if (c.time >= nextSectionStart) return c.time;
+        }
+      }
+      return nextSectionStart;
+    }
+    // Last section: use full duration or last chord's end
+    if (chordData && chordData.duration) return chordData.duration;
+    if (chordData && Array.isArray(chordData.chords) && chordData.chords.length) {
+      const last = chordData.chords[chordData.chords.length - 1];
+      return (last.end != null) ? last.end : last.time;
+    }
+    return secs[idx].end;
+  }
+
+  // Chord-level snap for manual A/B: users clicking "設定 A" mean "include
+  // the chord currently playing from its start"; clicking "設定 B" mean
+  // "include that chord through its end". Snap accordingly.
+  function _snapForABPoint(t, which) {
+    if (chordData && Array.isArray(chordData.chords) && chordData.chords.length) {
+      const chords = chordData.chords;
+      for (let i = 0; i < chords.length; i++) {
+        const c = chords[i];
+        const start = c.time;
+        const end = (c.end != null) ? c.end :
+                    (i + 1 < chords.length ? chords[i + 1].time : start + 4);
+        if (t >= start && t < end) {
+          return which === "B" ? end : start;
+        }
+      }
+      // After last chord: B -> last chord's end; A -> last chord's start
+      const last = chords[chords.length - 1];
+      if (t >= last.time) {
+        return which === "B" ? ((last.end != null) ? last.end : last.time) : last.time;
+      }
+    }
+    return t;
+  }
+
+  // Phrase practice via `< [select] >` picker. Persists the user's last choice
+  // per song so reopening the same track restores where they were practising.
+  const _AB_STORAGE_KEY_PREFIX = "livechord_ab_phrase:";
+
+  function _abStorageKey() {
+    const path = (typeof trackPath !== "undefined" && trackPath) ? trackPath :
+                 (typeof hashMode !== "undefined" && hashMode) ? `__hash/${hashMode}` : "";
+    return path ? (_AB_STORAGE_KEY_PREFIX + path) : "";
+  }
+  function _saveABChoice(value) {
+    try {
+      const k = _abStorageKey();
+      if (k) localStorage.setItem(k, value);
+    } catch {}
+  }
+  function _loadABChoice() {
+    try {
+      const k = _abStorageKey();
+      return k ? localStorage.getItem(k) : null;
+    } catch { return null; }
+  }
+
+  // Build the phrase label the same way the chord ribbon does so the two UIs
+  // stay consistent: types appearing more than once are numbered (Verse 1,
+  // Verse 2, Chorus 1, ...); intro/outro/dialogue stay unnumbered.
+  function _buildPhraseLabels(secs) {
+    const NO_NUMBER = ["intro", "outro", "dialogue"];
+    const totals = {};
+    secs.forEach(s => {
+      const t = s.type || s.label || "";
+      totals[t] = (totals[t] || 0) + 1;
+    });
+    const occur = {};
+    return secs.map((s, i) => {
+      const t = s.type || s.label || "";
+      occur[t] = (occur[t] || 0) + 1;
+      const base = s.label || s.type || `Phrase ${i + 1}`;
+      if (totals[t] > 1 && !NO_NUMBER.includes((t || "").toLowerCase())) {
+        return `${base} ${occur[t]}`;
+      }
+      return base;
+    });
+  }
+
+  // Toggle-based multi-select: any pill tap flips its on/off state. The loop
+  // window is the continuous [min, max] span of all selected indices — pills
+  // between selected endpoints display `.in-range` to show they're included
+  // in the loop (multi-segment loop not yet implemented).
+  const _abSelectedSet = new Set();
+
+  function _escHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function _paintPills() {
+    const wrap = document.querySelector(".ab-strip-wrap");
+    if (!wrap) return;
+    const pills = wrap.querySelectorAll(".ab-phrase-pill");
+    const sorted = Array.from(_abSelectedSet).sort((a, b) => a - b);
+    const lo = sorted.length ? sorted[0] : null;
+    const hi = sorted.length ? sorted[sorted.length - 1] : null;
+    pills.forEach(p => {
+      p.classList.remove("endpoint", "in-range", "active");
+      const idxAttr = p.getAttribute("data-idx");
+      if (idxAttr === "manual") return;
+      const i = parseInt(idxAttr, 10);
+      if (_abSelectedSet.has(i)) p.classList.add("endpoint");
+      else if (lo != null && hi != null && i > lo && i < hi) p.classList.add("in-range");
+    });
+  }
+
+  function _markManualPillActive() {
+    const wrap = document.querySelector(".ab-strip-wrap");
+    if (!wrap) return;
+    wrap.querySelectorAll(".ab-phrase-pill").forEach(p => p.classList.remove("endpoint", "in-range", "active"));
+    const manualPill = wrap.querySelector('.ab-phrase-pill[data-idx="manual"]');
+    if (manualPill) manualPill.classList.add("active");
+  }
+
+  function _buildPhraseStrip() {
+    const strip = document.getElementById("abPhraseStrip");
+    if (!strip) return;
+    const secs = (sectionData && Array.isArray(sectionData.sections)) ? sectionData.sections : [];
+    const labels = _buildPhraseLabels(secs);
+    const html = labels.map((label, i) =>
+      `<button class="ab-phrase-pill" data-idx="${i}" role="option">${_escHtml(label)}</button>`
+    );
+    strip.innerHTML = html.join("");
+
+    // Bind once via event delegation on .ab-strip-wrap. Manual pill is static
+    // HTML (lives in .ab-manual-col sibling) so plain addEventListener on it
+    // would accumulate across _buildPhraseStrip() re-runs. Delegation avoids it.
+    const wrap = document.querySelector(".ab-strip-wrap");
+    if (wrap && !wrap._lcPillHandlerBound) {
+      wrap.addEventListener("click", (e) => {
+        const pill = e.target.closest(".ab-phrase-pill");
+        if (!pill || !wrap.contains(pill)) return;
+        e.stopPropagation();
+        _onPhrasePillTap(pill.getAttribute("data-idx"));
+      });
+      wrap._lcPillHandlerBound = true;
+    }
+
+    _restoreABFromPersist();
+
+    // Fallback for songs without section detection (e.g. many 8801 tracks):
+    // if the strip is empty AND nothing was restored from persist, drop into
+    // manual mode so the user immediately sees the A/B buttons.
+    if (labels.length === 0 && _abSelectedSet.size === 0) {
+      _applyManualMode({silent: true});
+    }
+  }
+
+  // Keep old export name so _loadSections still wires through correctly
+  window._lcPopulatePhraseSelect = _buildPhraseStrip;
+
+  function _onPhrasePillTap(value) {
+    if (value === "manual") {
+      _applyManualMode();
+      return;
+    }
+    const idx = parseInt(value, 10);
+    const secs = (sectionData && Array.isArray(sectionData.sections)) ? sectionData.sections : [];
+    if (!(idx >= 0 && idx < secs.length)) return;
+
+    // Toggle: add if not present, remove if already selected
+    if (_abSelectedSet.has(idx)) _abSelectedSet.delete(idx);
+    else _abSelectedSet.add(idx);
+
+    if (_abSelectedSet.size === 0) {
+      // No selection → clear loop but don't nuke persist (user might toggle back)
+      _clearABLoopOnly();
+      _paintPills();
+      return;
+    }
+    _applyFromSelectedSet();
+  }
+
+  function _clearABLoopOnly() {
+    abState = "idle";
+    abA = null;
+    abB = null;
+    if (btnABRepeat) {
+      btnABRepeat.classList.remove("a-set", "ab-active");
+      btnABRepeat.textContent = "A-B";
+    }
+    const _popup = document.querySelector(".tb-popup-ab");
+    if (_popup) _popup.classList.remove("ab-semi-set");
+    _updateABRangeUI();
+    _updateABPopup();
+  }
+
+  function _applyFromSelectedSet(opts = {}) {
+    const secs = (sectionData && Array.isArray(sectionData.sections)) ? sectionData.sections : [];
+    if (!secs.length || _abSelectedSet.size === 0) return;
+    const sorted = Array.from(_abSelectedSet).sort((a, b) => a - b);
+    const lo = sorted[0];
+    const hi = sorted[sorted.length - 1];
+    abA = _phraseStartOf(secs, lo);
+    abB = _phraseEndOf(secs, hi);
+    abState = "active";
+    if (btnABRepeat) {
+      btnABRepeat.classList.remove("a-set");
+      btnABRepeat.classList.add("ab-active");
+      btnABRepeat.textContent = "A-B \u2713";
+    }
+    const _popup = document.querySelector(".tb-popup-ab");
+    if (_popup) _popup.classList.remove("ab-semi-set");
+    const manualRow = document.getElementById("abManualRow");
+    if (manualRow) manualRow.style.display = "none";
+
+    _paintPills();
+
+    const labels = _buildPhraseLabels(secs);
+    const selectedLabels = sorted.map(i => labels[i]);
+    const name = (sorted.length === 1)
+      ? labels[lo]
+      : `${labels[lo]} – ${labels[hi]}`;
+
+    if (!opts.silent) {
+      _playerSeek(abA);
+      showToast(`循環：${name}（${formatTime(abA)} → ${formatTime(abB)}）`, 2000);
+      // Persist as either single label or JSON array of selected labels
+      if (sorted.length === 1) {
+        _saveABChoice(labels[lo]);
+      } else {
+        _saveABChoice(JSON.stringify({selected: selectedLabels}));
+      }
+      if (typeof updateActiveChord === "function") updateActiveChord(abA, true);
+      // Scroll strip so the most recently-affected endpoint stays visible
+      const strip = document.getElementById("abPhraseStrip");
+      if (strip) {
+        const pill = strip.querySelector(`.ab-phrase-pill[data-idx="${hi}"]`);
+        if (pill) pill.scrollIntoView({inline: "center", block: "nearest", behavior: "smooth"});
+      }
+    }
+    _updateABRangeUI();
+    _updateABPopup();
+  }
+
+  function _applyManualMode(opts = {}) {
+    _abSelectedSet.clear();
+    _markManualPillActive();
+    const manualRow = document.getElementById("abManualRow");
+    if (manualRow) manualRow.style.display = "flex";
+    // Manual mode keeps any user-set A/B untouched
+    if (!opts.silent) _saveABChoice("manual");
+    _updateABPopup();
+  }
+
+  function _restoreABFromPersist() {
+    const secs = (sectionData && Array.isArray(sectionData.sections)) ? sectionData.sections : [];
+    const saved = _loadABChoice();
+    _abSelectedSet.clear();
+    if (!saved) return;
+    if (saved === "manual") {
+      _applyManualMode({silent: true});
+      return;
+    }
+    const labels = _buildPhraseLabels(secs);
+    // Format: {"selected": ["Verse 1", "Chorus 1"]} (new toggle-based)
+    //         {"start": "...", "end": "..."} (legacy 3-tap range)
+    //         plain label string (single phrase)
+    try {
+      const obj = JSON.parse(saved);
+      if (obj && Array.isArray(obj.selected)) {
+        obj.selected.forEach(lbl => {
+          const idx = labels.indexOf(lbl);
+          if (idx >= 0) _abSelectedSet.add(idx);
+        });
+        if (_abSelectedSet.size > 0) { _applyFromSelectedSet({silent: true}); return; }
+      } else if (obj && obj.start && obj.end) {
+        const si = labels.indexOf(obj.start);
+        const ei = labels.indexOf(obj.end);
+        if (si >= 0 && ei >= 0) {
+          // Legacy range: select both endpoints (in-range auto-shown)
+          _abSelectedSet.add(si);
+          if (si !== ei) _abSelectedSet.add(ei);
+          _applyFromSelectedSet({silent: true});
+          return;
+        }
+      }
+    } catch {}
+    // Plain label — single selection
+    const matchIdx = labels.indexOf(saved);
+    if (matchIdx >= 0) {
+      _abSelectedSet.add(matchIdx);
+      _applyFromSelectedSet({silent: true});
+    } else {
+      _applyManualMode({silent: true});  // label vanished after section edit
+    }
+  }
+
   function _handleAB(action) {
-    const t = _playerCurrentTime();
     if (action === "clear") {
-      _clearABRepeat();
+      _forgetABChoice();
       showToast("A-B 循環已取消", 1500);
       return;
     }
     if (action === "A") {
+      const t = _snapForABPoint(_playerCurrentTime(), "A");
       abA = t;
       if (abB != null && t >= abB) abB = null;  // invalidate B if new A is past it
       abState = (abB != null) ? "active" : "a_set";
@@ -678,6 +1010,13 @@
           btnABRepeat.textContent = "A-\u23F8";
         }
       }
+      // Semi-set: keep popup open AND let clicks pass through empty areas so
+      // the user can seek via progress bar without first dismissing the popup.
+      const _popup = document.querySelector(".tb-popup-ab");
+      if (_popup) {
+        if (abState === "a_set") _popup.classList.add("ab-semi-set");
+        else _popup.classList.remove("ab-semi-set");
+      }
       showToast("A \u9EDE: " + formatTime(t), 1500);
       _updateABRangeUI();
       _updateABPopup();
@@ -688,6 +1027,7 @@
         showToast("\u8ACB\u5148\u8A2D\u5B9A A \u9EDE", 1500);
         return;
       }
+      const t = _snapForABPoint(_playerCurrentTime(), "B");
       if (t <= abA) {
         showToast("B \u9EDE\u5FC5\u9808\u5728 A \u9EDE\u4E4B\u5F8C", 1500);
         return;
@@ -699,6 +1039,10 @@
         btnABRepeat.classList.add("ab-active");
         btnABRepeat.textContent = "A-B \u2713";
       }
+      // Leave semi-set mode — popup is pointer-events:auto again and will
+      // dismiss normally on outside click.
+      const _popup = document.querySelector(".tb-popup-ab");
+      if (_popup) _popup.classList.remove("ab-semi-set");
       _playerSeek(abA);
       showToast("A-B \u5FAA\u74B0: " + formatTime(abA) + " \u2192 " + formatTime(abB), 2000);
       _updateABRangeUI();
@@ -733,6 +1077,10 @@
       if (item) item.classList.remove("open");
     });
   });
+  // Build the phrase strip now. sectionData may still be null (first paint);
+  // _loadSections will call _lcPopulatePhraseSelect -> _buildPhraseStrip again
+  // after the /api/ai/sections response arrives.
+  _buildPhraseStrip();
 
   function _updateHandSwitchVisibility() {
     const topHs = document.querySelector("#btnTopHandSwitch");
@@ -1267,39 +1615,49 @@
   // `ontouchstart in window` alone misses Chromium DevTools mobile emulation AND
   // some real devices — widen detection via matchMedia(pointer:coarse) so popups
   // actually toggle on tap.
-  const _isTouchLike =
-    ('ontouchstart' in window) ||
-    (typeof matchMedia === "function" && matchMedia('(pointer:coarse)').matches);
-  if (_isTouchLike) {
-    document.querySelectorAll(".tb-item").forEach(item => {
-      const trigger = item.querySelector(".tb-trigger, a.tb-trigger");
-      if (!trigger) return;
-      const hasPopup = !!item.querySelector(".tb-popup");
-      if (hasPopup) {
-        trigger.addEventListener("click", (e) => {
-          // Close other open popups
-          document.querySelectorAll(".tb-item.open").forEach(other => {
-            if (other !== item) other.classList.remove("open");
-          });
-          item.classList.toggle("open");
-          e.stopPropagation();
+  // Toolbar popup: always use click-to-pin pattern (no hover-dismiss).
+  // Previously this was touch-only; PC hover-dismiss was annoying so everyone
+  // now opens via click and stays open until an outside click.
+  document.querySelectorAll(".tb-item").forEach(item => {
+    const trigger = item.querySelector(".tb-trigger, a.tb-trigger");
+    if (!trigger) return;
+    const hasPopup = !!item.querySelector(".tb-popup");
+    if (hasPopup) {
+      trigger.addEventListener("click", (e) => {
+        // Close other open popups
+        document.querySelectorAll(".tb-item.open").forEach(other => {
+          if (other !== item) other.classList.remove("open");
         });
-      }
-      // Click delegation: if the tap lands on the tb-item's own padding/gap
-      // (not on the trigger or its children), synthesize a click on the trigger.
-      // Catches dead-zone taps where CSS `pointer-events: none` on SVG isn't
-      // enough (e.g. overlay or gesture quirks on Android).
-      item.addEventListener("click", (e) => {
-        if (e.target === item && trigger && !trigger.disabled) {
-          e.stopPropagation();
-          trigger.click();
-        }
+        // Also dismiss the bug-report modal if it's open — same "only one
+        // floating layer" rule as between toolbar popups.
+        const _bugDlg = document.getElementById("bugReportDialog");
+        if (_bugDlg && _bugDlg.style.display !== "none") _bugDlg.style.display = "none";
+        item.classList.toggle("open");
+        e.stopPropagation();
       });
+    }
+    // Click delegation: if the tap lands on the tb-item's own padding/gap
+    // (not on the trigger or its children), synthesize a click on the trigger.
+    item.addEventListener("click", (e) => {
+      if (e.target === item && trigger && !trigger.disabled) {
+        e.stopPropagation();
+        trigger.click();
+      }
     });
-    document.addEventListener("click", () => {
-      document.querySelectorAll(".tb-item.open").forEach(i => i.classList.remove("open"));
+  });
+  // Clicks inside an open popup shouldn't close it (buttons inside work normally
+  // via their own handlers but the popup container click bubbles up).
+  document.querySelectorAll(".tb-popup").forEach(popup => {
+    popup.addEventListener("click", e => e.stopPropagation());
+  });
+  document.addEventListener("click", () => {
+    document.querySelectorAll(".tb-item.open").forEach(i => {
+      // Keep A-B popup open while user is in the middle of setting A→B manually
+      // (so they can tap the progress bar to seek, then tap "設定 B").
+      if (i.id === "tbAB" && abState === "a_set") return;
+      i.classList.remove("open");
     });
-  }
+  });
   function _navUrl(path) {
     const fs = document.fullscreenElement ? "&fs=1" : "";
     return `/player?path=${encodeURIComponent(path)}&autoplay=1${fs}`;
@@ -2731,10 +3089,18 @@
 
   async function _loadSections(path) {
     try {
-      const res = await fetch(`/api/ai/sections?path=${encodeURIComponent(path)}`);
+      // Hash mode: backend supports ?hash=... directly (avoids path-hash mismatch).
+      const url = hashMode
+        ? `/api/ai/sections?hash=${encodeURIComponent(hashMode)}`
+        : `/api/ai/sections?path=${encodeURIComponent(path || "")}`;
+      const res = await fetch(url);
       sectionData = await res.json();
       if (sectionData.sections && sectionData.sections.length > 0) {
         _renderSectionMarkers();
+      }
+      // Refresh A-B phrase picker now that section labels are known
+      if (typeof window._lcPopulatePhraseSelect === "function") {
+        window._lcPopulatePhraseSelect();
       }
     } catch {}
   }
@@ -4173,6 +4539,10 @@
           // per-onset events).
           if (waterfallActive) _loadAccompaniment();
 
+          // Hash mode parity: load section data so the A-B phrase picker works
+          // (previously skipped, leaving beta player strip empty).
+          _loadSections(chordData.path || "");
+
           // Load favorites for hash mode
           try {
             const favData = await API.getFavorites();
@@ -4863,7 +5233,12 @@
   const crossfaderContainer = document.getElementById("crossfaderContainer");
   const crossfaderVol = document.getElementById("crossfaderVol");
   
+  // Persisted across page loads so user's choice sticks.
   let audioMode = 0; // 0: Music, 1: MIDI, 2: Mix
+  try {
+    const _saved = parseInt(localStorage.getItem("livechord_audio_mode"), 10);
+    if ([0, 1, 2].includes(_saved)) audioMode = _saved;
+  } catch {}
 
   // Route source-audio volume to whichever surface is actually playing:
   // YT iframe in beta hash mode, HTMLAudioElement in 8800 path mode.
@@ -4914,6 +5289,7 @@
   if (btnAudioMode) {
       btnAudioMode.addEventListener("click", () => {
           audioMode = (audioMode + 1) % 3;
+          try { localStorage.setItem("livechord_audio_mode", String(audioMode)); } catch {}
           applyAudioMode();
           const modeNames = ["Music (原曲)", "MIDI (純AI伴奏)", "Mix (原曲+AI伴奏)"];
           showToast(`已切換至 ${modeNames[audioMode]} 模式`);
@@ -5541,9 +5917,11 @@
       });
     }
 
-    // Bug report
+    // Bug report — close any open toolbar popup first so the bug modal isn't
+    // sandwiched under a leftover Tools / AI teaching popup.
     if (btnBug) {
       btnBug.addEventListener("click", () => {
+        document.querySelectorAll(".tb-item.open").forEach(i => i.classList.remove("open"));
         if (bugDialog) bugDialog.style.display = "flex";
       });
     }

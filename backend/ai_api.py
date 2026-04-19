@@ -225,7 +225,8 @@ from fastapi import Depends
 
 @router.get("/sections")
 async def detect_sections_api(
-    path: str = Query(..., description="歌曲路徑"),
+    path: str = Query(None, description="歌曲路徑 (可選，與 hash 二擇一)"),
+    hash: str = Query(None, description="歌曲 hash (可選，與 path 二擇一；hash mode 專用)"),
     author: str = Query(None, description="要載入哪個使用者的標註 (可選)"),
     username: str = Depends(get_current_user)
 ):
@@ -233,20 +234,31 @@ async def detect_sections_api(
     import json as _json
     from ai.section_detect import detect_sections
 
-    from chord_cache import song_hash as get_song_hash
-    h = get_song_hash(path)
+    if hash:
+        h = hash
+    elif path:
+        from chord_cache import song_hash as get_song_hash
+        h = get_song_hash(path)
+    else:
+        return {"error": "missing path or hash"}
     chords_file = CHORDS_DIR / f"{h}.json"
     if not chords_file.is_file():
         return {"error": "no chord data"}
 
     data = _json.loads(chords_file.read_text(encoding="utf-8"))
     
-    # 決定要讀取的 Ground Truth (標註) 來源，優先讀取 author，否則讀自己的
+    # 決定要讀取的 Ground Truth (標註) 來源，優先讀取 author，否則讀自己的。
+    # Fallback：如果該使用者沒有針對這首歌的 human_sections 標註，就用 root DATA_DIR
+    # （讓 beta 使用者拿到跟 personal 相同的演算法偵測結果，不會因為 per-user dir
+    #  沒 MIDI feature / annotations 就退化成單一 verse）。
     target_user = author if author else username
     user_data_dir = DATA_DIR / "users" / target_user
-    
-    result = detect_sections(data.get("chords", []), data.get("key", "C"), song_hash=h, data_dir=str(user_data_dir), fallback_data_dir=str(DATA_DIR))
+    user_human_sections = user_data_dir / "human_sections" / f"{h}.json"
+    effective_data_dir = str(user_data_dir) if user_human_sections.is_file() else str(DATA_DIR)
+
+    result = detect_sections(data.get("chords", []), data.get("key", "C"), song_hash=h, data_dir=effective_data_dir, fallback_data_dir=str(DATA_DIR))
     result["path"] = path
+    result["hash"] = h
     result["author"] = target_user
     return result
 
@@ -443,8 +455,9 @@ def get_accompaniment(
     ACC_DIR.mkdir(parents=True, exist_ok=True)
 
     from chord_cache import song_hash as get_song_hash
+    from ai.accompaniment_generator import ACC_ENGINE_VERSION
     h = get_song_hash(path)
-    cache_file = ACC_DIR / f"{h}_{style}_{level}_{section_type}.json"
+    cache_file = ACC_DIR / f"{h}_{style}_{level}_{section_type}_{ACC_ENGINE_VERSION}.json"
 
     # nocache: 清除此歌所有伴奏快取
     if nocache:

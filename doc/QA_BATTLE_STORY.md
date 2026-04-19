@@ -377,3 +377,227 @@ r"^https?://((www|m)\.)?(youtube\.com/(watch|shorts)|youtu\.be/|music\.youtube\.
 三張截圖，四個 bug。其中兩個（melody 污染、低信心雜音）只有在**看完整個視覺管線**才會找到——API 清乾淨並不代表使用者看到的東西也乾淨。剩下兩個（except 太窄、regex 太嚴）是**介面契約**的縫隙，不是邏輯本身。
 
 代理學到的最大一條：**當使用者說「還是壞的」，先去看他「看到什麼」，不要急著證明 API 是對的**。
+
+---
+
+## 💥 番外篇 IV：一份 settings.json、四重路徑反斜線、與被逼出來的 dual-instance 架構（2026-04-19）
+
+代理這天只是想「把 Phase 1 v2 AI 伴奏引擎同步到 V:\ 生產」。`.py` 檔逐一複製、`robocopy` 173,716 個 accompaniment JSON 全部就位、restart 之後 Playwright 驗證 8800 上線完美。代理得意地回報「Phase 1 v2 已在 NUC 8800 上線」。
+
+然後使用者傳來一張截圖：**8801 admin 顯示「LiveChord Core 已停止、總曲目 0、和弦譜 0、覆蓋率 0%」、`\\LOVE\FavoriteSongs` / `\\LOVE\music` 兩個根目錄變空殼、啟用群組整排消失。**
+
+代理腦中瞬間閃過一個詞：**是我幹的。**
+
+### 🔍 一份檔的連環爆炸
+
+追查幾秒就找到元兇：同步 `.py` 時，代理順手把 **`data/settings.json` 也整份複製** 過去。問題是——PC 本機那份 `settings.json` 其實**早就是壞的**：
+
+```json
+"music_roots": [
+  "\\\\\\\\LOVE\\FavoriteSongs",
+  "\\\\\\\\LOVE\\music"
+]
+```
+
+JSON 解碼後變成 `\\\\LOVE\FavoriteSongs`（**四個反斜線開頭**），不是標準 UNC 的兩個 `\\`。PC 本機從來沒跑過 Core（runtime 是 NUC），所以這個壞格式**躺了不知多久沒人發現**。代理一把它覆蓋到 V:\，NUC 繼承了壞路徑 + 一併丟失使用者精心勾選的 8 個群組清單（未分類 / Christmas / Jam / Jazz / POP / Relax / EDM / Other）。NUC 重啟後想 scan，掃到個鬼。`library_cache.json` 被重建成 `{"total_tracks": 0, "tracks": []}`，43,482 首歌從 admin UI 上**憑空蒸發**。
+
+### 🛡️ 第一層補救：不要再讓這件事發生
+
+表面修復只花五分鐘：改回 2-backslash、補回 8 個群組。但根本問題還在——這種「整份檔案覆蓋」哪天還會發生（來自代理、來自使用者、來自某個我們不知道的腳本）。
+
+於是寫了一個 **save-time auto-snapshot**：每次 `save_settings()` 前，把舊版複製到 `data/backups/settings/settings_<ts>.json`；rolling 保留 30 份；`restore` 前再快照一次，連回滾後的版本都救得回。
+
+### 🪓 使用者一句話點破更深的瘡疤
+
+修好剛要收工，使用者說：
+
+> 「**8800 admin 是個人版，目前正常。8801 admin 不需要個人版的功能 - Core、和弦管理、萃取叢集、活動紀錄。然後各自有不同的備份功能。**」
+
+代理愣住。一直以來 8800 和 8801 讀**同一個** `V:\data\settings.json`，只靠環境變數 `LIVECHORD_MODE` 區分。在這個設計下「各自有不同的備份」根本實作不出來——backup 恢復哪一份，兩邊都會跟著變。
+
+代理先用 `backup filename prefix`（`settings_personal_*` vs `settings_beta_*`）做淺層隔離，但發現這只是「看起來分開、其實還是同一檔」的假象。跨 lane restore 會把整份覆蓋掉，連對方專有的欄位也會被抹掉。
+
+於是使用者選了真正的分離方案 **B**——三檔結構：
+
+| 檔案 | 誰寫 | 誰讀 | 典型欄位 |
+|---|---|---|---|
+| `settings_personal.json` | 只有 8800 | 只有 8800 | `music_roots`, `auto_chord_active_groups`, Core flags |
+| `settings_beta.json` | 只有 8801 | 只有 8801 | 保留擴充（未來 beta-only flags） |
+| `settings_shared.json` | 兩邊都可寫 | 兩邊都讀 | `accompaniment_v2_enabled`, `settings_backup_targets` |
+
+搭配 `SHARED_KEYS` 明確標記、`_migrate_legacy_settings_if_needed()` 一次性從 legacy `settings.json` 拆分（舊檔保留當 archival reference，再也不寫入）。
+
+### 🔒 深度防禦：前端藏了不夠，後端也要擋
+
+前端隱藏 beta 不需要的 card 很快就做了。但沒多久使用者又送來 log：
+
+```
+INFO:     192.168.50.43:... - "GET /api/auto/status HTTP/1.1" 200 OK
+INFO:     192.168.50.43:... - "GET /api/chords/stats HTTP/1.1" 200 OK
+INFO:     192.168.50.43:... - "GET /api/extraction/status HTTP/1.1" 200 OK
+...（每 2–3 秒一輪）
+```
+
+**8801 還在呼叫 Core polling endpoint！** 不但如此，它還在和 8800 的 Core 搶 CPU / SMB I/O。原因：`pollStatus()` 是個 `setTimeout` 遞迴 loop，admin.html 裡 6 個 personal-only function 都會在頁面打開後自動觸發；browser 吃 cache 載舊版 HTML，`applyDeploymentModeUI` 的 async fetch 還沒回來之前第一輪已經打出去了。
+
+修法堆起來：
+1. **Synchronous URL detection**：HTML 頂部 `<script>` 直接用 `window.location.port === "8801"` 設 `window._lcIsBeta` — 這是同步的，沒 race condition
+2. **6 個 function 頭部 early-return**：`loadSettings` / `loadGenres` / `loadMusicRootSettings` / `loadGroups` / `loadTrackList` / `pollStatus` 全部開頭 `if (window._lcIsBeta) return;`
+3. **`extraction.html` redirect**：beta 一進 `/extraction` 直接跳 `/admin`
+4. **後端 `require_personal_mode()` 深度防禦**：13 個 personal-only endpoint 加 FastAPI dependency，beta 打進來直接 404。即使未來前端 cache 壞、第三方 JS 亂打、外人 curl 8801 的 /api/auto/start，都打不到。
+5. **`start_worker()` 硬閘**：`if _current_mode() == "beta": return False` — 連從後端邏輯誤觸發都擋。
+
+### 🐔🥚 再一個連環錯設計：scan filter 放錯層
+
+使用者繼續發現問題：「掃完 `\\LOVE\FavoriteSongs` 就停了，music 底下其他資料夾呢？」
+
+代理追進 `_scan_dir`：原本設計把 `active_groups` filter 套在第一層 dir（為了「節省 SMB I/O」）。聽起來合理，但結果是：
+
+> **未啟用群組的 track 永遠不會進 library_cache → admin UI 永遠看不到這些 group → 使用者永遠無法勾選它們。**
+
+這是經典的雞生蛋蛋生雞。想勾的看不到，看得到的只有勾過的。
+
+修法很直覺一旦看清楚：**filter 放錯層了**。
+- **Scan**（便宜：只是 listdir + 讀 metadata）→ **不 filter**，永遠走訪全部建完整 cache
+- **Detection**（貴：跑 BTC / MIDI 匹配）→ **filter**，只對 active_groups 的曲目偵測
+
+`_scan_dir` 第一層的 filter 移除；`_get_unanalyzed_tracks` 繼續套 active_groups（它本來就有做）。Classical / Sleep 留在 cache 裡但不被 detect，完美符合使用者的意圖：「我就是要它們在 UI 上看得到但不要跑和弦偵測」。
+
+### 🎯 最後一哩：別讓使用者等你掃完
+
+以為大功告成。使用者再傳截圖：「Scan 已經跑到 17846 首了，但 admin UI 啟用群組還是只顯示 3 個（Christmas、Classics、和 FavoriteSongs/未分類），為什麼要等 scan 完才看到類別？」
+
+追查 `list_groups()`：它從 `library_cache.tracks` 累算 group label，scan 沒走到的 subfolder 就沒 track，沒 track 就沒 group 顯示。
+
+修法簡單粗暴：`list_groups()` 回傳前多跑一次 **listdir 每個 music_root 第一層**，對每個實際存在於磁碟但 cache 還沒 track 的 folder 產生一個 `track_count=0` 的 placeholder。這樣 admin UI 第一次載入就看到**所有** 10+ 個類別，能立刻勾選管理，根本不用等 scan 跑完。
+
+成本？每個 root 一次淺層 listdir，SMB 下幾十毫秒。和整個 scan 比起來微不足道。
+
+### 🌅 破壞換來的新生
+
+使用者結案時說了一句：「**有時就是得破壞才有新生啊。**」
+
+這次災難的一份 settings.json 污染，最後逼出來這些東西：
+
+| 原本的狀態 | 現在的狀態 |
+|---|---|
+| 單檔 `settings.json`、兩 instance 共用 | 三檔分離 `personal` / `beta` / `shared` + 明確 `SHARED_KEYS` |
+| 沒有自動備份，誤覆蓋無法回滾 | 每次 save 自動 snapshot，多 target 寫入（local + NAS 等）、rolling 30 份 |
+| 前端隱藏就算了，後端無防線 | `require_personal_mode()` 13 個 endpoint + `start_worker()` beta 硬閘 |
+| `_lcIsBeta` 靠 async fetch，有 race condition | 同步 URL detection，first paint 就有正確值 |
+| Scan filter 硬塞在錯誤的層 | Filter 正確分層：scan 建 index、detection 才做重工過濾 |
+| UI 要等 scan 跑完才看到類別 | `list_groups` 加 listdir placeholder，邊掃邊勾選 |
+| Admin UI 沒說明，使用者直覺錯誤 | 「啟用群組」「跳過類別」加 inline help 講清楚語義 |
+| 活動記錄只寫「開始自動增量掃描」 | 印出 N 個音樂庫、每條路徑、per-root 進度（走訪 XX 首） |
+
+### 🎓 這次最痛也最值的五條
+
+1. **絕對不要整份覆蓋 `V:\data\settings.json`**，只能增量修改。Settings 檔應該 git-ignored 但 schema 要清楚、migration 要 robust。
+2. **Filter 要放在對的層**。Index 建立階段（scan、cache）永遠該做完整，重工階段（detection、inference）才 filter。在 index 階段 filter 會製造 chicken-and-egg UI bug。
+3. **深度防禦不可省**。前端隱藏是為了 UX，後端 guard 是為了安全；兩者獨立存在，缺一不可。
+4. **破壞沒你想像中糟**。如果不是這次 settings.json 污染，代理永遠不會去做 B 方案、深度防禦、scan filter 分層。單檔共享 + 前端 hide + scan filter 湊合著能跑，但只有災難才會揭露它們每個都是地雷。
+5. **使用者一句話常常比代理的架構感更準**。「各自有不同的備份」這句話拆穿了 settings 共用的假象。「為什麼要等 scan 完才看到類別」這句話暴露了 `list_groups` 的 cache-only 邏輯錯誤。代理寫了幾千行沒察覺的問題，使用者一句話就看穿——因為他們是從**使用**角度看，不是從**實作**角度看。
+
+**最後一條**：災難發生時不要怕。認下來、追根因、重構到對。下次就沒有這條地雷了。
+
+---
+
+## 🔍 番外篇 V：一個「空 phrase strip」追出三層兇手、一個 Service Worker、和使用者耐心耗盡的 UX 拉鋸（2026-04-19 晚間）
+
+番外篇 IV 剛打完第一個回合，使用者的 8801 Beta 又傳來新 bug：打開 player 頁面，**A-B popup 裡的 phrase strip 空蕩蕩**。明明 8800 Personal 看得到一排 Intro / Verse 1 / Chorus 1 pills，8801 卻是什麼都沒有，只剩「手動設定」一張 pill 孤單地躺在那。代理以為三分鐘能修，結果挖到第三層才找到真兇。
+
+### 🪃 第一層：「User-specific data dir 斷了 fallback」
+
+Explore agent 花三分鐘追出來：`/api/ai/sections` endpoint 會把 `data_dir=DATA_DIR/users/<username>/` 塞給 `detect_sections()`。Beta 使用者的個人目錄裡既沒 `human_sections/` 也沒 `hybrid_melody/` cache → `_extract_midi_features()` 傳出空的 list → BiLSTM 拿到全 0 features → 預測全部退化成單一 "verse"。
+
+修法簡單：user-specific dir 若沒這首歌的標註檔，就 fallback 到 root `DATA_DIR`。beta 使用者從此能拿到 personal 偵測過的歌結果。
+
+代理以為大功告成、NUC restart、使用者再試——
+
+**「還是沒有。」**
+
+### 🔬 第二層：「82% 的歌根本沒 hybrid MIDI」
+
+掃 V:\data/：`chord_index.json` 有 43k+ 首歌的 hash，但 `hybrid_melody/` 裡只有 **7,926** 個檔。**82% 的歌從沒跑過 hybrid extraction**。
+
+所以即使 data_dir fallback 到 root，`actual_data_dir / "hybrid_melody" / <hash>.json` 仍然不存在，features 依然全 0。BiLSTM 被餵垃圾、吐垃圾。
+
+代理打開 `section_detect.py` 的 `_classify_dl()`，加了一行：如果 `sum(melody_density + bass_density) == 0`，直接 `return False` 觸發 rule-based fallback。沒 MIDI 至少還能靠 chord progression 切粗段落（Intro / Verse / Chorus）。
+
+再 restart、再試——
+
+**「還是沒有。」**
+
+### 💀 第三層：「前端根本沒打那個 endpoint」
+
+代理的疑心病終於發作。這時候才 grep 前端怎麼 call `_loadSections`：
+
+```
+/api/ai/sections?path=...  — DB-path mode 有
+```
+
+然後盯著 hash-mode 那一大塊分支（`player.js:4501+`），預期看到 `_loadSections(hashMode)` 或 `_loadSections(chordData.path)`——
+
+**沒有。完全沒有。**
+
+Beta 使用者開 `?hash=077e...` 這條路徑從頭到尾**沒人 fetch sections**。前面兩層 fix 全白費，因為請求從來沒送出去。`sectionData` 一直是 null、phrase strip 一直是空。使用者講「沒有」講到第三次，代理才意識到自己一直在修一條沒人走的路。
+
+修法：
+1. 後端 `/api/ai/sections` 加 `hash` 參數（與 `path` 二擇一），hash mode 跳過 `song_hash(path)` 直接用傳進來的 hash
+2. 前端 `_loadSections` 偵測 `hashMode` → 組 `?hash=...` URL
+3. Hash-mode 分支補上 `_loadSections(chordData.path || "")` 呼叫
+
+三層 fix 套下去、NUC restart、使用者硬重整——
+
+**「ok 1、ok 3。」**（意思：1 和 3 好了）
+
+前兩層 fix 也不白做——`_classify_dl` 的零 feature 短路以後成為 82% 歌的 section 偵測主要依靠；user-specific dir fallback 讓使用者自己的標註能 override shared 結果。
+
+### 🎨 同場加映：A-B popup UX 的 N 輪 iteration
+
+修 bug 的同一場對話裡，使用者還在迭代 A-B popup 的 UX。代理一路從 dropdown → `‹ select ›` 箭頭 → toggle multi-select pill strip。每換一版都被使用者用一句話戳穿：
+
+> 「< > should scroll to active chord」
+> 「Chord card show "Chorus 1", but A-B show "Chorus"? inconsist」
+> 「what happen if user set a-b to one of phrase then change the phrases」
+> 「remove manual set button / move manual set to the last of drop box」
+> 「move recycle bin to the horizontal middle of popup」
+> 「red color icon inconsist」
+> 「click bug report, click any button has popup, show two popups」
+> 「can not scroll phrases in 8801 mobile vertical mode」
+
+每一輪代理做完、使用者反饋、再做。這不是需求不清晰——是真實 UX 就是這樣淬鍊出來的。每一次微調都讓下一版更貼近使用者心智模型：
+- Phrase label 要用 `Verse 1`、不是 `Verse`（跟 chord card 一致）
+- Persist 要存 label 不是 index（section edit 也能 rebind）
+- Popup 跟 bug modal 要**互斥**（只能一個浮層）
+- Mobile portrait 的 flex column 才能讓 strip scroll（桌機 row 不夠空間）
+- Trash icon 要中性灰不是紅（跟其他 toolbar icon 一致）
+
+### 📱 順便：PWA 安裝 App — 「為什麼移除 app 後不會再跳安裝提示？」
+
+使用者手機之前第一次進 livechord.org 會跳 PWA 安裝提示，最近他移除 app 後再進站，沒有再跳。代理第一反應「Chrome 擋住 repeat prompt 的正常行為」——但再一查 Chromium 安裝條件：
+
+> HTTPS ✓ · manifest ✓ · **必須有 service worker 且 handle fetch event** ✗
+
+LiveChord 根本沒 service worker。使用者第一次看到的安裝提示大概是 Chrome 在 SW requirement 放寬之前抓到的殘餘行為，Chrome 政策收緊後就再也不觸發。
+
+修法：
+1. 加極簡 `frontend/sw.js`（只做 fetch pass-through，不做 cache），滿足 installability
+2. 後端 `/sw.js` route 送 `Service-Worker-Allowed: /` header
+3. 首頁 header 加「📱 安裝」按鈕，捕捉 `beforeinstallprompt` → 存事件、按鈕顯現；點擊 → 呼叫 `prompt()`
+4. iOS Safari 沒 `beforeinstallprompt`，fallback 顯示「分享 → 加到主畫面」提示
+
+PWA 安裝從此變成**持久可用**的操作，不靠瀏覽器心情。
+
+### 🧠 這次的三條
+
+1. **在找 bug 之前先確認執行路徑真的會跑到**。代理修了兩層後端才發現前端沒送請求——如果第一步就 grep「哪裡 call `_loadSections`」，30 秒就能找到 hash-mode 漏了。診斷順序應該是「從使用者觀察到的現象**反向**沿 call stack 往回追」，不是「我猜是哪個模組有問題就去改哪裡」。
+2. **PWA 安裝不是 nice-to-have，是留不住使用者的關鍵**。使用者移除 app 後找不到回頭路就是真實流失。Service worker 30 行程式碼換 installability，CP 值極高。
+3. **UX 的 N 輪 iteration 是正常的，不是使用者難搞**。每輪微調都在把心智模型拉近，代理要做的是**快速 ship 每一輪、不辯論**。每一個「這不對」背後都是真實使用場景代理沒想到的。使用者不是 QA，他是第一個真用戶。
+
+這次使用者也親口說了一句話值得記下：
+
+> 「有時就是得破壞才有新生啊」
+
+番外篇 IV 的災難催生了 dual-instance 架構、番外篇 V 的「空 strip」催生了 hash-mode parity + SW + PWA install button。如果一切都順利，LiveChord 會停在「剛剛好能 work」的狀態，走不到現在這個成熟度。
+

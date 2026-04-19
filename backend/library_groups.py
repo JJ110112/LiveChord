@@ -123,6 +123,36 @@ def list_groups() -> list[dict]:
                 "chords_done": 0,
             }
 
+    # 額外：即使 scan 尚未走到某個子資料夾，只要它實際存在於磁碟上，
+    # 就在 admin UI 顯示 placeholder（track_count=0），讓使用者「邊掃邊勾選」
+    # 而不用等完整 scan 結束。成本：每個 root 一次淺層 listdir（十幾個項目）。
+    EXCLUDE_DIRS = {"#recycle", "@eaDir", "@tmp", "#snapshot"}
+    for idx, root in enumerate(roots):
+        if not os.path.isdir(root):
+            continue
+        try:
+            entries = os.listdir(root)
+        except OSError:
+            continue
+        for name in entries:
+            if name.startswith(".") or name in EXCLUDE_DIRS:
+                continue
+            if not os.path.isdir(os.path.join(root, name)):
+                continue
+            key = (idx, name)
+            if key in groups:
+                continue  # cache 已有 tracks，維持計算結果
+            prefix = (f"@{idx}/" if idx > 0 else "") + name + "/"
+            groups[key] = {
+                "group_id": f"@{idx}/{name}",
+                "root_idx": idx,
+                "root_label": _root_label(idx),
+                "label": name,
+                "path_prefix": prefix,
+                "track_count": 0,
+                "chords_done": 0,
+            }
+
     result = list(groups.values())
     for g in result:
         g["chords_pending"] = g["track_count"] - g["chords_done"]

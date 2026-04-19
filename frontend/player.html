@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=2">
-  <link rel="stylesheet" href="/css/player.css?v=38">
+  <link rel="stylesheet" href="/css/player.css?v=47">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -412,10 +412,30 @@
     <div class="tb-item" id="tbAB">
       <button id="btnABRepeat" class="tb-trigger ab-repeat-btn" title="A-B 區段循環" aria-haspopup="true">A-B</button>
       <div class="tb-popup tb-popup-ab">
-        <div class="tb-ab-status" id="abStatus">未設定</div>
-        <button class="tb-popup-btn ab-opt" data-ab="A">設定 A</button>
-        <button class="tb-popup-btn ab-opt" data-ab="B">設定 B</button>
-        <button class="tb-popup-btn ab-opt" data-ab="clear">清除</button>
+        <div class="ab-header">
+          <div class="tb-ab-status" id="abStatus">未設定</div>
+        </div>
+        <div class="ab-strip-wrap">
+          <div class="ab-phrase-strip" id="abPhraseStrip" role="listbox" aria-label="段落選擇">
+            <!-- phrase pills populated by _buildPhraseStrip() -->
+          </div>
+          <div class="ab-manual-col">
+            <button class="ab-phrase-pill manual" data-idx="manual" role="option">手動設定</button>
+            <div class="ab-manual-row" id="abManualRow" style="display:none">
+              <button class="ab-opt ab-clear-btn" data-ab="clear" title="清除 A-B 循環" aria-label="清除 A-B 循環">
+                <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 6h18"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  <line x1="10" x2="10" y1="11" y2="17"/>
+                  <line x1="14" x2="14" y1="11" y2="17"/>
+                </svg>
+              </button>
+              <button class="tb-popup-btn ab-opt" data-ab="A" title="設定 A 點">A</button>
+              <button class="tb-popup-btn ab-opt" data-ab="B" title="設定 B 點">B</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -578,6 +598,6 @@
     return res;
   };
 </script>
-<script src="/js/player.js?v=138"></script>
+<script src="/js/player.js?v=154"></script>
 </body>
 </html>

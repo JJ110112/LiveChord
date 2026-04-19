@@ -7,7 +7,8 @@ import threading
 from pathlib import Path
 from collections import Counter
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
+from personal_mode import require_personal_mode
 
 from chord_cache import (
     song_hash,
@@ -413,7 +414,7 @@ _stats_cache = {"data": None, "ts": 0}
 _STATS_CACHE_TTL = 30
 
 
-@router.get("/chords/stats")
+@router.get("/chords/stats", dependencies=[Depends(require_personal_mode)])
 def chords_stats():
     """和弦譜統計 — 只計算 auto_chord_active_groups 啟用的群組，
     讓上方統計（總曲目 / 和弦譜 / 覆蓋率）反映使用者實際關注的範圍。

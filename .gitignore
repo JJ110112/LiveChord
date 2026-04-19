@@ -29,6 +29,16 @@ data/.local_music_root
 data/config.json
 data/users.db
 data/users/
+# Split settings (Phase: dual-instance isolation) + snapshot history
+data/settings_personal.json
+data/settings_beta.json
+data/settings_shared.json
+data/backups/
+data/backup_history.json
+# Local helper scripts (machine-specific paths, not part of repo)
+_sync_acc_to_v.bat
+_sync_acc_v3_to_v.bat
+run_accompaniment_local.bat
 data/human_sections/
 data/human_feedback/
 data/feedback.db

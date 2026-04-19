@@ -252,6 +252,14 @@
 }
 .rv-item.played { opacity: 0.3; }
 
+/* Phrase-start chord card: thin color bar across the top marks where a new
+   section (Intro / Verse 1 / Chorus 1 / ...) begins. JS sets data-phrase-start
+   and --phrase-color on the item. Works in both overview mode and the default
+   vertical ribbon. */
+.rv-item[data-phrase-start="true"] {
+  border-top: 3px solid var(--phrase-color, var(--accent));
+}
+
 .rv-item .rv-chord-name {
   font-size: 16px;
   font-weight: 700;
@@ -1004,8 +1012,9 @@
   height: 12px;
 }
 
-/* Show popup on hover or touch-open */
-.tb-item:hover > .tb-popup,
+/* Show popup only on explicit click (stay-open pattern — no hover trigger).
+   Unintentional hover-out dismissal was annoying; popup now stays pinned
+   until user clicks outside. */
 .tb-item.open > .tb-popup {
   display: flex;
 }
@@ -1083,12 +1092,16 @@
 }
 
 /* Speed / Loop / A-B / Jazzify popups: absolute-value pill lists.
-   Desktop keeps them in a row; mobile @media (pointer:coarse) wraps already. */
+   Desktop keeps them in a row; mobile @media (pointer:coarse) wraps already.
+   A-B specifically allows wrap even on desktop because we have 4+ buttons. */
 .tb-popup-speed,
 .tb-popup-loop,
 .tb-popup-jazzify,
 .tb-popup-ab {
   gap: 4px;
+}
+.tb-popup-ab {
+  flex-wrap: wrap;
 }
 .tb-popup-speed .tb-popup-btn,
 .tb-popup-loop .tb-popup-btn,
@@ -1097,6 +1110,170 @@
   font-weight: 600;
   min-width: 48px;
   justify-content: center;
+}
+
+/* A-B popup: lifted higher than default so the progress bar underneath
+   remains visible / clickable. Progress bar sits just above the toolbar
+   row; extra clearance keeps it usable during A-B setup. */
+.tb-popup-ab {
+  bottom: calc(100% + 40px);
+}
+
+/* Strip wrap: horizontal strip of phrase pills (flex:1 scrollable) +
+   right-side column for "手動設定" pill and A/B buttons below it. */
+.ab-strip-wrap {
+  display: flex;
+  flex-basis: 100%;
+  gap: 8px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.ab-manual-col {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+}
+.ab-manual-col .ab-manual-row {
+  display: flex;
+  flex-basis: auto !important;
+  flex-direction: row;
+  gap: 4px;
+}
+.ab-manual-col .ab-manual-row .tb-popup-btn {
+  min-width: 32px !important;
+  padding: 4px 8px;
+}
+
+/* Phrase pills: toggle on/off. Multiple pills can be active at once;
+   pills between two selected endpoints auto-display .in-range (same
+   continuous loop window — multi-segment jump is not supported yet). */
+.ab-phrase-strip {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 2px;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+}
+
+/* Mobile portrait: ab-strip-wrap stacks vertically so the phrase strip
+   occupies full popup width (horizontal scroll works) and the manual
+   column sits below it. Without this stack the strip sometimes can't
+   overflow-scroll because flex row layout on a narrow viewport squeezes
+   it to zero width. */
+@media (pointer: coarse) and (orientation: portrait) {
+  .ab-strip-wrap {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ab-phrase-strip {
+    width: 100%;
+    max-width: 100%;
+  }
+  .ab-manual-col {
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: center;
+    padding-top: 0;
+  }
+}
+.ab-phrase-pill {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-dim);
+  white-space: nowrap;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.ab-phrase-pill:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+.ab-phrase-pill.in-range {
+  color: var(--text);
+  background: rgba(74, 144, 226, 0.15);
+  border-color: rgba(74, 144, 226, 0.4);
+}
+.ab-phrase-pill.endpoint {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.ab-phrase-pill.manual {
+  border-style: dashed;
+  color: var(--text-dim);
+}
+.ab-phrase-pill.manual.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  border-style: solid;
+  background: rgba(74, 144, 226, 0.08);
+}
+/* Manual A/B button row only shown when the manual pill is selected */
+.ab-manual-row {
+  display: flex;
+  flex-basis: 100%;
+  gap: 4px;
+}
+/* Header row: status text takes the space, trash icon pinned right */
+.ab-header {
+  display: flex;
+  flex-basis: 100%;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.ab-header .tb-ab-status {
+  flex: 1;
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+/* Trash icon in the header: neutral tone, subtle hover */
+.ab-clear-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ab-clear-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+.ab-clear-btn .tb-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* When the user has set A but not B yet, make the popup body click-through so
+   they can still tap the progress bar / waterfall to seek to their desired
+   B position. Interactive children (buttons, select, clear) re-enable
+   pointer-events so they remain clickable. */
+.tb-popup-ab.ab-semi-set {
+  pointer-events: none;
+}
+.tb-popup-ab.ab-semi-set .ab-opt,
+.tb-popup-ab.ab-semi-set .ab-phrase-nav,
+.tb-popup-ab.ab-semi-set .ab-phrase-select,
+.tb-popup-ab.ab-semi-set .ab-clear-btn,
+.tb-popup-ab.ab-semi-set .tb-ab-status {
+  pointer-events: auto;
 }
 
 /* A-B status header sits at top of the A-B popup, reports current A/B points */

@@ -37,6 +37,7 @@
   <nav style="margin-right: 32px;">
     <div style="display:flex; align-items:center; gap: 10px;">
       <span id="userGreeting" style="font-size: 0.85em; color: var(--text-muted);"></span>
+      <button id="btnInstallApp" style="display:none" title="安裝為 App">📱 安裝</button>
       <button onclick="exportData()">匯出資料</button>
       <button onclick="logout()">登出</button>
     </div>
@@ -237,6 +238,52 @@
       }
   }
 </script>
+
+<script>
+// ─── PWA install flow ─────────────────────────────────────────────────────
+// Register service worker (required for installability on Chrome/Edge),
+// then capture beforeinstallprompt so the user can trigger install from
+// the header button any time — not just the browser's first-visit prompt.
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
+let _lcInstallPrompt = null;
+const _btnInstall = document.getElementById("btnInstallApp");
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  _lcInstallPrompt = e;
+  if (_btnInstall) _btnInstall.style.display = "inline-block";
+});
+
+window.addEventListener("appinstalled", () => {
+  if (_btnInstall) _btnInstall.style.display = "none";
+  _lcInstallPrompt = null;
+});
+
+if (_btnInstall) {
+  _btnInstall.addEventListener("click", async () => {
+    if (matchMedia("(display-mode: standalone)").matches) return;
+    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
+    if (isIOS || !_lcInstallPrompt) {
+      alert("請點擊瀏覽器的「分享」按鈕 → 選擇「加到主畫面」。");
+      return;
+    }
+    _lcInstallPrompt.prompt();
+    const { outcome } = await _lcInstallPrompt.userChoice;
+    _lcInstallPrompt = null;
+    if (outcome === "accepted") _btnInstall.style.display = "none";
+  });
+}
+
+// If already launched as standalone PWA, hide the install button outright
+if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
+  _btnInstall.style.display = "none";
+}
+</script>
+
 <script src="/js/app.js?v=60"></script>
 </body>
 </html>

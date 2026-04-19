@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from ai.accompaniment_generator import generate_accompaniment
+from ai.accompaniment_generator import generate_accompaniment, ACC_ENGINE_VERSION
 
 CHORDS_DIR = Path(__file__).parent.parent / "data" / "chords"
 MELODIES_DIR = Path(__file__).parent.parent / "data" / "melodies"
@@ -81,7 +81,7 @@ def process_track(song_hash: str, levels: list, styles: list,
         results = []
         for level in levels:
             for style in styles:
-                out_name = f"{song_hash}_{style}_{level}_default.json"
+                out_name = f"{song_hash}_{style}_{level}_default_{ACC_ENGINE_VERSION}.json"
                 out_path = ACCOMP_DIR / out_name
 
                 if out_path.exists():

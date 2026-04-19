@@ -7,10 +7,16 @@ LiveChord Extraction Manager API
 - status/logs: 讀取 PC 端寫入的進度檔
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from extraction_manager import extraction_manager
+from personal_mode import require_personal_mode
 
-router = APIRouter(prefix="/api/extraction", tags=["extraction"])
+# Entire extraction cluster API is personal-only (PC batch-job monitoring).
+router = APIRouter(
+    prefix="/api/extraction",
+    tags=["extraction"],
+    dependencies=[Depends(require_personal_mode)],
+)
 
 
 @router.post("/stop")

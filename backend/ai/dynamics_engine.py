@@ -484,10 +484,27 @@ HUMANIZE_TIMING = {
 # velocity 隨機抖動範圍
 HUMANIZE_VEL_JITTER = 5
 
+# Phase 1 v2: style-aware humanize profiles
+# key: style name, value: (timing_offsets_4_4 in sec, timing_sigma in sec, vel_jitter)
+# NOTE: non-swing styles keep the legacy "always-anticipate" feel (-25~-30ms on downbeats)
+# — previous v2 values were too conservative (−8~−12ms) and produced an audible lag
+# relative to the legacy HUMANIZE_TIMING table.
+STYLE_HUMANIZE = {
+    "Block":     ([-0.028, -0.005, -0.018, -0.006], 0.003, 4),
+    "Arpeggio":  ([-0.028, -0.005, -0.018, -0.006], 0.003, 4),
+    "Rhythm":    ([-0.030, -0.005, -0.020, -0.008], 0.004, 5),
+    "Alberti":   ([-0.025, -0.005, -0.018, -0.006], 0.003, 4),
+    "1+3":       ([-0.028, -0.005, -0.020, -0.006], 0.004, 5),
+    # swing/jazz: backbeat intentionally pushed later (laid-back) — this is the feel
+    "Shell":     ([-0.030, +0.012, -0.020, +0.012], 0.006, 5),
+    "Walking":   ([-0.025, +0.015, -0.018, +0.015], 0.007, 5),
+    "Stride":    ([-0.030, +0.010, -0.022, +0.010], 0.006, 6),
+}
+
 
 def humanize(events: List[Dict], bpm: float = 120,
              time_sig: str = "4/4", amount: float = 1.0,
-             seed: int = None) -> List[Dict]:
+             seed: int = None, style: str = None) -> List[Dict]:
     """
     為 MIDI 事件加入人性化的 timing 與 velocity 微調。
 
@@ -497,6 +514,7 @@ def humanize(events: List[Dict], bpm: float = 120,
         time_sig: 拍號
         amount:   強度 0.0 (無) ~ 1.0 (正常) ~ 2.0 (誇張)
         seed:     隨機種子 (可重現)
+        style:    伴奏風格 (v2)，命中 STYLE_HUMANIZE 時覆蓋既有 timing 表
 
     Returns:
         events (原地修改)
@@ -506,7 +524,14 @@ def humanize(events: List[Dict], bpm: float = 120,
 
     rng = random.Random(seed)
     beat_dur = 60.0 / bpm
-    timing_offsets = HUMANIZE_TIMING.get(time_sig, HUMANIZE_TIMING["4/4"])
+
+    # v2: style override (fallback to legacy HUMANIZE_TIMING)
+    sigma = 0.005
+    vel_jitter_range = HUMANIZE_VEL_JITTER
+    if style and style in STYLE_HUMANIZE and time_sig == "4/4":
+        timing_offsets, sigma, vel_jitter_range = STYLE_HUMANIZE[style]
+    else:
+        timing_offsets = HUMANIZE_TIMING.get(time_sig, HUMANIZE_TIMING["4/4"])
     n_beats = len(timing_offsets)
 
     for evt in events:
@@ -518,7 +543,7 @@ def humanize(events: List[Dict], bpm: float = 120,
 
         # Timing 偏移: 基準 + 小量隨機
         base_offset = timing_offsets[beat_idx] * amount
-        jitter = rng.gauss(0, 0.005) * amount  # σ=5ms
+        jitter = rng.gauss(0, sigma) * amount
         time_shift = base_offset + jitter
 
         new_time = t + time_shift
@@ -528,7 +553,7 @@ def humanize(events: List[Dict], bpm: float = 120,
 
         # Velocity 抖動
         if "velocity" in evt:
-            vel_jitter = rng.randint(-HUMANIZE_VEL_JITTER, HUMANIZE_VEL_JITTER)
+            vel_jitter = rng.randint(-vel_jitter_range, vel_jitter_range)
             vel_jitter = int(vel_jitter * amount)
             new_vel = max(VELOCITY_MIN, min(VELOCITY_MAX, evt["velocity"] + vel_jitter))
             evt["velocity"] = new_vel

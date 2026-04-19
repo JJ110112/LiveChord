@@ -12,6 +12,8 @@ Pipeline:
 import sys
 import os
 import math
+import json
+import random
 import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -27,6 +29,29 @@ OCTAVE = 12
 LH_LOW, LH_HIGH = 36, 59
 # Right hand range: C4 (60) ~ C6 (84)
 RH_LOW, RH_HIGH = 60, 84
+
+# Phase 1 engine: cache-busting + feature flag
+# v3 (2026-04-19): STYLE_HUMANIZE timing offsets re-tuned to match legacy
+# anticipation feel (-25~-30ms on downbeats). Previous v2 values were too
+# conservative (-8~-12ms) and produced an audible MIDI lag.
+ACC_ENGINE_VERSION = "v3"
+_V2_FLAG_CACHE: Optional[bool] = None
+
+
+def _load_v2_flag() -> bool:
+    """Read accompaniment_v2_enabled from data/settings.json (cached per-process)."""
+    global _V2_FLAG_CACHE
+    if _V2_FLAG_CACHE is None:
+        try:
+            settings_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "settings.json"
+            )
+            with open(settings_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            _V2_FLAG_CACHE = bool(cfg.get("accompaniment_v2_enabled", True))
+        except Exception:
+            _V2_FLAG_CACHE = True
+    return _V2_FLAG_CACHE
 
 # ==============================================================================
 # 貳、Pattern Dictionary (樣式字典)
@@ -151,6 +176,39 @@ SECTION_PARAMS = {
     "outro":      (0.4, 0.5),
     "default":    (0.8, 0.8),
 }
+
+# Phase 1 v2 helpers: phrase arc velocity + per-beat weight
+_BACKBEAT_STYLES = frozenset({"Rhythm", "Block", "1+3"})
+_DOWNBEAT_STYLES = frozenset({"Arpeggio", "Alberti", "Shell", "Walking", "Stride"})
+
+
+def _phrase_arc_scale(chord_idx: int, n_chords: int, section_type: str) -> float:
+    """4-bar phrase arc velocity multiplier (0.83–1.13)."""
+    if n_chords <= 1:
+        return 1.0
+    phrase_pos = (chord_idx % 4) / 3.0
+    base_arc = 0.93 + 0.12 * math.sin(phrase_pos * math.pi)
+    if section_type == "chorus":
+        return base_arc * 1.03
+    if section_type in ("intro", "outro"):
+        return base_arc * 0.92
+    if section_type == "bridge":
+        return base_arc * 0.96
+    return base_arc
+
+
+def _beat_weight(frac: float, style: str) -> float:
+    """Per-beat velocity multiplier. frac is position within chord duration (0.0–1.0)."""
+    eps = 0.06
+    if abs(frac - 0.0) < eps:
+        return 1.10 if style in _DOWNBEAT_STYLES else 1.06
+    if abs(frac - 0.25) < eps:
+        return 1.08 if style in _BACKBEAT_STYLES else 0.96
+    if abs(frac - 0.5) < eps:
+        return 1.06 if style in _DOWNBEAT_STYLES else 1.02
+    if abs(frac - 0.75) < eps:
+        return 1.08 if style in _BACKBEAT_STYLES else 0.94
+    return 0.92
 
 # ── Section → LH Pattern 自動切換 (style="Auto" 時啟用) ──
 # 參考 Ron Drotos Pop Ballad Accompaniment 各 Lesson 的段落編排
@@ -384,7 +442,8 @@ def suggest_style(genre: str = "", bpm: float = 120.0) -> List[str]:
 def _build_left_hand(chord_name: str, start_time: float, duration: float,
                      style: str, level: str, prev_lh: List[int],
                      next_root_midi: Optional[int],
-                     melody: List[Dict], base_velocity: int = 70) -> Tuple[List[Dict], List[int]]:
+                     melody: List[Dict], base_velocity: int = 70,
+                     density_mult: float = 1.0) -> Tuple[List[Dict], List[int]]:
     """生成單一和弦的左手伴奏事件。"""
     notes = get_chord_notes(chord_name)
     if not notes:
@@ -446,7 +505,13 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
     voicing = expand_voicing(pitches, max(max_idx, len(pitches)))
 
     events = []
+    v2 = _load_v2_flag()
+    rng = random.Random(hash((chord_name, round(start_time, 3), "lh")) & 0xFFFFFFFF) if v2 else None
     for pi, (frac, indices, vel_ratio) in enumerate(pattern):
+        # Density drop (v2): beat 1 必留，其他 frac 機率 drop
+        if v2 and density_mult < 1.0 and frac > 0.001:
+            if rng.random() > density_mult:
+                continue
         event_time = start_time + frac * duration
         # Gap-based duration: 音符持續到下一個 pattern 位置 (×0.9 留呼吸空間)
         next_frac = pattern[pi + 1][0] if pi + 1 < len(pattern) else 1.0
@@ -479,7 +544,10 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
                 if pitch - 12 >= LH_LOW:
                     pitch -= 12
 
-            velocity = int(base_velocity * vel_ratio)
+            vel_f = base_velocity * vel_ratio
+            if v2:
+                vel_f *= _beat_weight(frac, style)
+            velocity = int(vel_f)
             events.append({
                 "time": round(event_time, 3),
                 "duration": round(event_dur, 3),
@@ -618,7 +686,9 @@ def _build_fill_notes(chord_notes: List[str], gap_start: float, gap_dur: float,
 def _build_rh_1plus3(chord_name: str, start_time: float, duration: float,
                      bpm: float, prev_rh_pitches: List[int],
                      base_velocity: int = 85,
-                     once: bool = False) -> Tuple[List[Dict], List[int]]:
+                     once: bool = False,
+                     density_mult: float = 1.0,
+                     style: str = "1+3") -> Tuple[List[Dict], List[int]]:
     """
     1+3 配置: 右手每拍彈三個和弦音 block chord (C4 附近)。
 
@@ -659,12 +729,23 @@ def _build_rh_1plus3(chord_name: str, start_time: float, duration: float,
     n_beats = 1 if once else max(1, int(round(duration / beat_dur)))
 
     events = []
+    v2 = _load_v2_flag()
+    rng = random.Random(hash((chord_name, round(start_time, 3), "rh")) & 0xFFFFFFFF) if v2 else None
+    denom = max(1, n_beats)
     for b in range(n_beats):
         beat_time = start_time + b * beat_dur
         if beat_time >= start_time + duration - 0.05:
             break
+        # Density drop (v2): beat 1 必留
+        if v2 and density_mult < 1.0 and b > 0:
+            if rng.random() > density_mult:
+                continue
         note_dur = (duration * 0.9 if once else beat_dur * 0.85)  # once: 持續整個和弦
         vel_ratio = 1.0 if b == 0 else 0.75  # 第一拍稍重
+        # Beat weight (v2): backbeat emphasis for pop/rock
+        if v2:
+            frac = b / denom
+            vel_ratio *= _beat_weight(frac, style)
         for p in pitches:
             events.append({
                 "time": round(beat_time, 3),
@@ -873,6 +954,8 @@ def generate_accompaniment(chords: List[Dict],
     right_events = []
     prev_lh: List[int] = []
     prev_rh_1plus3: List[int] = []
+    v2 = _load_v2_flag()
+    dominant_style = style if not auto_mode else "Arpeggio"
 
     for i, chord_evt in enumerate(chords):
         start = chord_evt.get("time", 0)
@@ -908,8 +991,13 @@ def generate_accompaniment(chords: List[Dict],
         density_mult, velocity_mult = SECTION_PARAMS.get(
             chord_section, SECTION_PARAMS["default"]
         )
-        lh_velocity = int(base_lh_vel * velocity_mult)
-        rh_velocity = int(base_rh_vel * velocity_mult)
+        # v2: phrase-arc velocity multiplier
+        arc = _phrase_arc_scale(i, len(chords), chord_section) if v2 else 1.0
+        lh_velocity = int(base_lh_vel * velocity_mult * arc)
+        rh_velocity = int(base_rh_vel * velocity_mult * arc)
+        # v2: dominant style tracker (last non-empty section wins for humanize)
+        if v2:
+            dominant_style = current_style
 
         # 計算下一和弦根音 (Walking Bass approach note)
         next_root_midi = None
@@ -921,7 +1009,8 @@ def generate_accompaniment(chords: List[Dict],
         # 左手
         lh, prev_lh = _build_left_hand(
             chord_name, start, duration, current_style, lh_level,
-            prev_lh, next_root_midi, melody, lh_velocity
+            prev_lh, next_root_midi, melody, lh_velocity,
+            density_mult=(density_mult if v2 else 1.0),
         )
         left_events.extend(lh)
 
@@ -931,6 +1020,8 @@ def generate_accompaniment(chords: List[Dict],
                 chord_name, start, duration, bpm,
                 prev_rh_1plus3, rh_velocity,
                 once=(rh_mode == "1+3_once"),
+                density_mult=(density_mult if v2 else 1.0),
+                style=current_style,
             )
             right_events.extend(rh)
         else:
@@ -957,8 +1048,9 @@ def generate_accompaniment(chords: List[Dict],
     # Humanization: timing 微偏移 + velocity 抖動
     if humanize > 0:
         from .dynamics_engine import humanize as _humanize
-        _humanize(left_events, bpm=bpm, amount=humanize, seed=42)
-        _humanize(right_events, bpm=bpm, amount=humanize, seed=123)
+        hstyle = dominant_style if v2 else None
+        _humanize(left_events, bpm=bpm, amount=humanize, seed=42, style=hstyle)
+        _humanize(right_events, bpm=bpm, amount=humanize, seed=123, style=hstyle)
 
     return {
         "left_hand": left_events,

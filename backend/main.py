@@ -25,6 +25,7 @@ from fastapi import Depends
 import auto_worker
 from task_lock import get_task_lock
 import library_groups
+from personal_mode import require_personal_mode
 
 
 
@@ -39,8 +40,22 @@ async def lifespan(app):
     # 預設關閉，使用者需手動點 ▶ 啟動 Core，避免在還沒設定群組時就開始擷取
     if settings.get("auto_start_on_boot", False):
         auto_worker.start_worker()
+    # Personal-only: tiered data backup scheduler (beta doesn't manage infra)
+    try:
+        from config import is_beta_mode
+        if not is_beta_mode():
+            import backup_scheduler
+            backup_scheduler.start()
+    except Exception as e:
+        import logging
+        logging.getLogger("livechord").warning(f"backup_scheduler start failed: {e}")
     yield
     auto_worker.stop_worker()
+    try:
+        import backup_scheduler
+        backup_scheduler.stop()
+    except Exception:
+        pass
 
 
 app = FastAPI(title="LiveChord", version="1.0.0", lifespan=lifespan)
@@ -96,22 +111,22 @@ app.mount("/img", StaticFiles(directory=FRONTEND_DIR / "img"), name="img")
 # 自動工作器 API
 # ---------------------------------------------------------------------------
 
-@app.get("/api/auto/status")
+@app.get("/api/auto/status", dependencies=[Depends(require_personal_mode)])
 async def auto_status(admin: str = Depends(auth_api.get_admin_user)):
     return auto_worker.get_worker_state()
 
 
-@app.get("/api/auto/log")
+@app.get("/api/auto/log", dependencies=[Depends(require_personal_mode)])
 async def auto_log(limit: int = 50, admin: str = Depends(auth_api.get_admin_user)):
     return {"log": auto_worker.get_log(limit)}
 
 
-@app.get("/api/auto/settings")
+@app.get("/api/auto/settings", dependencies=[Depends(require_personal_mode)])
 async def auto_settings_get(admin: str = Depends(auth_api.get_admin_user)):
     return auto_worker.load_settings()
 
 
-@app.post("/api/auto/settings")
+@app.post("/api/auto/settings", dependencies=[Depends(require_personal_mode)])
 async def auto_settings_save(body: dict, admin: str = Depends(auth_api.get_admin_user)):
     settings = auto_worker.load_settings()
     settings.update(body)
@@ -119,35 +134,118 @@ async def auto_settings_save(body: dict, admin: str = Depends(auth_api.get_admin
     return {"ok": True}
 
 
-@app.post("/api/auto/start")
+@app.get("/api/auto/settings/backups")
+async def auto_settings_backups(admin: str = Depends(auth_api.get_admin_user)):
+    return {
+        "backups": auto_worker.list_settings_backups(),
+        "targets": auto_worker.list_backup_targets(),
+    }
+
+
+@app.post("/api/auto/settings/backups/restore")
+async def auto_settings_backup_restore(body: dict, admin: str = Depends(auth_api.get_admin_user)):
+    filename = (body or {}).get("filename", "")
+    target = (body or {}).get("target") or "local"
+    try:
+        restored = auto_worker.restore_settings_backup(filename, target)
+        return {"ok": True, "restored": restored, "target": target}
+    except PermissionError as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail=str(e))
+    except (ValueError, FileNotFoundError) as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/auto/settings/backups/download")
+async def auto_settings_backup_download(
+    filename: str,
+    target: str = "local",
+    admin: str = Depends(auth_api.get_admin_user),
+):
+    try:
+        data = auto_worker.read_settings_backup(filename, target)
+    except PermissionError as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail=str(e))
+    except (ValueError, FileNotFoundError) as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=str(e))
+    from fastapi.responses import Response
+    return Response(
+        content=data,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/auto/start", dependencies=[Depends(require_personal_mode)])
 async def auto_start(admin: str = Depends(auth_api.get_admin_user)):
     ok = auto_worker.start_worker()
     return {"ok": ok, "message": "已啟動" if ok else "已在運行中"}
 
 
-@app.post("/api/auto/stop")
+@app.post("/api/auto/stop", dependencies=[Depends(require_personal_mode)])
 async def auto_stop(admin: str = Depends(auth_api.get_admin_user)):
     ok = auto_worker.stop_worker()
     return {"ok": ok, "message": "正在停止" if ok else "未在運行"}
 
 
-@app.post("/api/auto/trigger")
+@app.post("/api/auto/trigger", dependencies=[Depends(require_personal_mode)])
 async def auto_trigger(admin: str = Depends(auth_api.get_admin_user)):
     ok = auto_worker.trigger_now()
     return {"ok": ok, "message": "已觸發" if ok else "工作器非等待狀態"}
 
 
 # ---------------------------------------------------------------------------
+# Data backup (tiered): Tier1 small irreplaceable data, Tier2 heavy-to-recompute,
+# Tier3 bulk derived. Runs in a background thread; admin UI polls /status.
+# ---------------------------------------------------------------------------
+
+@app.get("/api/admin/backup/info", dependencies=[Depends(require_personal_mode)])
+async def backup_info(admin: str = Depends(auth_api.get_admin_user)):
+    import backup_core
+    settings = auto_worker.load_settings() or {}
+    return {
+        "target": str(backup_core.get_backup_target()),
+        "tiers": backup_core.get_tier_info(),
+        "snapshots": backup_core.list_backups(),
+        "history": backup_core.get_history(limit=20),
+        "state": backup_core.get_state(),
+        "schedule": settings.get("backup_schedule") or {},
+    }
+
+
+@app.get("/api/admin/backup/status", dependencies=[Depends(require_personal_mode)])
+async def backup_status(admin: str = Depends(auth_api.get_admin_user)):
+    import backup_core
+    return backup_core.get_state()
+
+
+@app.post("/api/admin/backup/run", dependencies=[Depends(require_personal_mode)])
+async def backup_run(body: dict, admin: str = Depends(auth_api.get_admin_user)):
+    import backup_core
+    from fastapi import HTTPException
+    tier = (body or {}).get("tier", "")
+    if tier not in backup_core.TIERS:
+        raise HTTPException(status_code=400, detail=f"invalid tier: {tier}")
+    try:
+        return backup_core.run_backup_async(tier)
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
 # 中央任務鎖 + 群組 API
 # ---------------------------------------------------------------------------
 
-@app.get("/api/tasks/status")
+@app.get("/api/tasks/status", dependencies=[Depends(require_personal_mode)])
 async def tasks_status(admin: str = Depends(auth_api.get_admin_user)):
     """目前佔用 task_lock 的任務（scan / chord_batch / ...）"""
     return {"current": get_task_lock().status()}
 
 
-@app.get("/api/library/groups")
+@app.get("/api/library/groups", dependencies=[Depends(require_personal_mode)])
 async def library_groups_list(admin: str = Depends(auth_api.get_admin_user)):
     """依「root 第一層資料夾」回傳曲目群組與和弦覆蓋率"""
     return {"groups": library_groups.list_groups()}
@@ -186,7 +284,7 @@ def diag_paths():
     return result
 
 
-@app.get("/api/library/genres")
+@app.get("/api/library/genres", dependencies=[Depends(require_personal_mode)])
 def library_genres_list(admin: str = Depends(auth_api.get_admin_user)):
     """從 library_cache 計算所有 distinct genre（取第一層）與計數，依數量遞減排序。"""
     from collections import Counter
@@ -222,6 +320,21 @@ async def favicon():
 @app.get("/manifest.json")
 async def manifest():
     return FileResponse(FRONTEND_DIR / "manifest.json", media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+async def service_worker():
+    # PWA service worker served from root scope. Service-Worker-Allowed header
+    # + no-cache keeps the browser from ever pinning an old SW revision.
+    return FileResponse(
+        FRONTEND_DIR / "sw.js",
+        media_type="application/javascript",
+        headers={
+            "Service-Worker-Allowed": "/",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+        },
+    )
+
 
 @app.get("/robots.txt")
 async def robots():

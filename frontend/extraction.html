@@ -17,6 +17,16 @@
         window.location.href = "/login";
       });
     }
+    // Extraction cluster is a personal-only feature. Beta instance (8801)
+    // must never poll /api/extraction/status — redirect to admin which
+    // will render without the extraction card anyway.
+    (function() {
+      var port = window.location.port;
+      var host = window.location.hostname;
+      if (port === "8801" || host === "livechord.org" || host.endsWith(".livechord.org")) {
+        window.location.replace("/admin");
+      }
+    })();
   </script>
   <style>
     .admin-page { max-width: 960px; margin: 0 auto; padding: 20px 24px; }

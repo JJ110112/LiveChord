@@ -559,13 +559,11 @@ def _scan_worker(mode: str = "incremental"):
                 errored_prefixes.add(current_rel_prefix)
                 return
 
-            # 是否在 music_root 第一層（用來套 active_groups 過濾）
-            is_at_root = (current_rel_prefix == root_prefix)
-            try:
-                root_idx = int(root_prefix[1:-1]) if root_prefix.startswith("@") else 0
-            except ValueError:
-                root_idx = 0
-
+            # NOTE: 先前會在 music_root 第一層套 active_groups 過濾來節省 SMB I/O，
+            # 但這造成「未啟用群組的 track 永遠不會進 library_cache」→ admin UI
+            # 看不到未啟用的群組 → 使用者無法勾選/管理。修正後 scan 永遠走訪
+            # 所有子資料夾、建立完整 cache；active_groups 過濾改到 detection 端
+            # （auto_worker._get_unanalyzed_tracks）套用，確保和弦偵測仍只跑啟用群組。
             dirs = []
             for entry in entries:
                 if _scan_cancel:
@@ -578,20 +576,8 @@ def _scan_worker(mode: str = "incremental"):
                     exclude_dirs = {"#recycle", "@eaDir", "@tmp", "#snapshot"}
                     if entry.name in exclude_dirs:
                         continue
-                    # 在 music_root 第一層套 active_groups 過濾：
-                    # 只有勾選的子資料夾會被走訪，其他直接跳過（節省 SMB I/O）
-                    if is_at_root and active_groups:
-                        gid = f"@{root_idx}/{entry.name}"
-                        if gid not in active_groups:
-                            continue
                     dirs.append(entry)
                 elif entry.is_file() and entry.name.lower().endswith(".flac"):
-                    # 在 music_root 第一層的 .flac 檔，若 active_groups 有設定且未涵蓋
-                    # 「未分類」群組，則跳過（這些檔案歸屬 @{idx}/未分類）
-                    if is_at_root and active_groups:
-                        gid_uncategorized = f"@{root_idx}/未分類"
-                        if gid_uncategorized not in active_groups:
-                            continue
                     full = entry.path
                     rel = current_rel_prefix + entry.name
                     seen_paths.add(rel)
@@ -656,9 +642,26 @@ def _scan_worker(mode: str = "incremental"):
                 break
             prefix = f"@{root_idx}/" if root_idx > 0 else ""
             if not os.path.isdir(root):
+                try:
+                    from auto_worker import add_log
+                    add_log("INFO", f"  跳過 [{root_idx+1}/{len(roots)}]（路徑無法存取）：{root}")
+                except Exception:
+                    pass
                 continue
 
+            try:
+                from auto_worker import add_log
+                add_log("INFO", f"  → 開始掃描 [{root_idx+1}/{len(roots)}]：{root}")
+            except Exception:
+                pass
+            before_progress = _scan_state.get("progress", 0)
             _scan_dir(root, prefix, prefix)
+            try:
+                from auto_worker import add_log
+                scanned = _scan_state.get("progress", 0) - before_progress
+                add_log("INFO", f"  ← 完成 [{root_idx+1}/{len(roots)}]：{root}（走訪 {scanned} 首）")
+            except Exception:
+                pass
 
         # 保留：
         # (1) 未啟用群組的既有條目 — 本輪不會走訪，完整保留避免誤刪
@@ -778,11 +781,14 @@ async def library_scan_status():
     }
 
 
-@router.get("/settings")
+from personal_mode import require_personal_mode
+
+
+@router.get("/settings", dependencies=[Depends(require_personal_mode)])
 def get_settings():
     return {"music_roots": get_music_roots()}
 
-@router.post("/settings")
+@router.post("/settings", dependencies=[Depends(require_personal_mode)])
 async def update_settings(request: Request):
     payload = await request.json()
     # 新格式：music_roots 列表

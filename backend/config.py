@@ -20,15 +20,31 @@ def is_lan_ip(ip_str: str) -> bool:
         return False
 
 DATA_DIR = Path(__file__).parent.parent / "data"
-SETTINGS_FILE = DATA_DIR / "settings.json"
+SETTINGS_FILE = DATA_DIR / "settings.json"  # legacy, archival only
+PERSONAL_SETTINGS_FILE = DATA_DIR / "settings_personal.json"
+SHARED_SETTINGS_FILE = DATA_DIR / "settings_shared.json"
+
+
+def _read_json_dict(p: Path) -> dict:
+    if not p.is_file():
+        return {}
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
 
 def _load_settings() -> dict:
-    if SETTINGS_FILE.is_file():
-        try:
-            return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {}
+    """Merged view: legacy + shared + personal (personal wins).
+    Kept so existing callers keep working during migration."""
+    # Prefer split files; fall back to legacy if split doesn't exist yet.
+    if PERSONAL_SETTINGS_FILE.is_file() or SHARED_SETTINGS_FILE.is_file():
+        merged = {}
+        merged.update(_read_json_dict(SHARED_SETTINGS_FILE))
+        merged.update(_read_json_dict(PERSONAL_SETTINGS_FILE))
+        return merged
+    return _read_json_dict(SETTINGS_FILE)
 
 
 def get_music_roots() -> list[str]:
@@ -50,15 +66,17 @@ def get_music_root() -> str:
 
 
 def set_music_roots(roots: list[str]):
-    """儲存多音樂庫路徑"""
+    """儲存多音樂庫路徑（寫入 settings_personal.json，music_roots 為 personal 專有）"""
     normed = [os.path.normpath(p) for p in roots if p and p.strip()]
     if not normed:
         raise ValueError("至少需要一個音樂庫路徑")
-    settings = _load_settings()
+    settings = _read_json_dict(PERSONAL_SETTINGS_FILE)
     settings["music_roots"] = normed
     settings.pop("music_root", None)  # 移除舊格式
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    SETTINGS_FILE.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
+    PERSONAL_SETTINGS_FILE.write_text(
+        json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
 
 
 def set_music_root(new_path: str):
@@ -118,7 +136,10 @@ def is_beta_mode() -> bool:
 
 
 def _save_setting(key: str, value):
-    settings = _load_settings()
+    """Write a personal-owned key into settings_personal.json (e.g. midi_root)."""
+    settings = _read_json_dict(PERSONAL_SETTINGS_FILE)
     settings[key] = value
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    SETTINGS_FILE.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
+    PERSONAL_SETTINGS_FILE.write_text(
+        json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8"
+    )

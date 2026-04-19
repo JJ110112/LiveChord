@@ -412,7 +412,16 @@ def _classify_dl(windows_data, data_dir):
     """使用 PyTorch BiLSTM 模型預測段落標籤。若模型尚未訓練則回傳 False 觸發 Fallback"""
     if not windows_data:
         return False
-        
+
+    # Features 全零 → hybrid MIDI extraction 沒跑（只 18% 的歌有）。這時 BiLSTM
+    # 的 melody/bass 輸入全為 0，預測會退化成單一 "verse"，還不如走 rule-based。
+    midi_signal = sum(
+        float(w.get("melody_density", 0)) + float(w.get("bass_density", 0))
+        for w in windows_data
+    )
+    if midi_signal == 0:
+        return False
+
     try:
         import torch
         from pathlib import Path
