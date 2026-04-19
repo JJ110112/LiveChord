@@ -15,6 +15,35 @@ Project-specific guidance for Claude Code working in this repo. Also see [doc/QA
 - **Beta (8801) QA Account** (non-admin, for Playwright QA where login is required): `qatest` / `qatest1234`
 - **Admin page**: `http://localhost:8800/admin`
 
+## Beta Testing Active (invites sent — tread carefully)
+
+livechord.org is live, invitation codes have been distributed, real users are analyzing songs on 8801. Default to **cautious** workflow — the NUC runtime is production for these users, not a scratchpad.
+
+**Default workflow for any change**:
+
+1. **Edit only in the dev repo** (`c:\Users\hitea\Claude\LiveChord`). Never edit `V:\` directly — commits won't pick it up and rollbacks are harder
+2. **QA on PC localhost 8802 first** via [start_beta_local.bat](start_beta_local.bat) (same `LIVECHORD_MODE=beta` semantics as 8801, but isolated `data/` folder so your experiments can't corrupt user auth/audit/ratings)
+   - Local QA account: `qatest` / `qatest1234` + invite `LiveChordAlpha` (first register auto-promotes to admin only if auth.db is empty; qatest on the dev box is non-admin by default)
+3. **Ship to V:\ only after local QA passes**. Copy via `cp` + verify with `diff -q`
+4. **Announce restarts**: backend `.py` changes don't auto-reload on NUC (uvicorn has no `--reload` in prod) — the user must run [restart_dual.bat](restart_dual.bat) before changes take effect on 8801. Surface this in your summary so it isn't forgotten
+
+**When stopping to ask before acting**:
+- Any backend change that touches `process_audit`, `feedback.db`, `auth.db`, `settings_beta.json`, `youtube_library_map`, or user-facing state — these have live data from real users
+- Batch file renames / deletions under `V:\`
+- Anything that invalidates outstanding auth tokens (schema change, secret rotation)
+- Destructive sqlite operations on any DB path under `V:\data\`
+- "Let me clean up this old file" instincts — check `git log` first; old-looking files may be live-referenced
+
+**Safe to just do** (after local QA):
+- Frontend CSS/JS/HTML edits with proper `?v=N` bump (users hard-reload to pick up)
+- New read-only endpoints
+- Log-only or telemetry-only changes
+- New columns with default values (backward-compatible migrations)
+
+**Cache-bust discipline — easy to forget**: if you change `.js`/`.css`, bump the corresponding `?v=N` in the referencing HTML. Miss the bump → users see stale JS from browser cache → your "fix" looks broken to them even though V:\ is correct. Rule of thumb: edit a `.js` → bump its `?v=` in the same commit.
+
+**Reverts**: if you need to roll back, `git restore <file>` in the dev repo then re-sync to V:\. Don't try to reverse-edit V:\ in place — you'll diverge.
+
 ## Deploy Sync (QA §590 防線5)
 
 After any code change:
@@ -69,7 +98,8 @@ Any change to frontend files requires Playwright verification before claiming do
   - **Single-video URL** → "偵測到 YouTube 網址" CTA → `_searchTriggerUrlAnalyze(url)` opens the add-song modal with URL prefilled + auto-fires 分析
   - **Playlist URL** (`&list=PL...` via `_YT_PLAYLIST_RE`) → "偵測到 YouTube 播放清單" CTA → `_addPlaylist(url)` fetches `/api/process/playlist-info`, persists `{list_id, title, videos:[{video_id, title, duration, existing_hash}]}` in `localStorage.livechord_yt_playlists`, renders in homepage section `#secBetaPlaylists` as expandable cards. Each video: ▶ 播放 if `existing_hash` known (library_map hit OR prior audit), 分析 otherwise (one-at-a-time via existing YT upload flow; `_currentAnalyzingPlaylistVid` stamps `existing_hash` back on done)
   - **Plain text + Enter** → empty add-song modal opens
-  - **Plain text typed** → hits `/api/search` which **prioritizes user's own uploads** (scans `process_audit` where `username=? AND status='done'`, merges matches at top with `is_user_upload:true` + "本機" green badge); user_uploads album label routes off `source_type`: `"upload"` → `"本機上傳"`, `"youtube"` → `"YouTube 分析"` (don't mislabel YT analyses as local uploads). Then NAS library results
+  - **Plain text typed** → hits `/api/search`. In **beta non-admin** the endpoint short-circuits to return **only the user's own analyzed songs** (scans `process_audit` where `username=? AND status='done'`) — NAS library results are intentionally hidden because library tracks were chord-analyzed from album masters while beta users are almost always looking for YouTube MV versions; surfacing the library match caused "same title, wrong audio length" confusion. Personal (8800) and beta admin still get the merged result: user_uploads on top, then library. `user_uploads` album label routes off `source_type`: `"upload"` → `"本機上傳"`, `"youtube"` → `"YouTube 分析"` (don't mislabel YT analyses as local uploads)
+- **Search placeholder marquee — dynamic text** ([frontend/js/utils.js](frontend/js/utils.js) `updateSearchMarqueeText`): runs on DOMContentLoaded for both homepage + player topbar. Personal/admin gets the long copy immediately ("請輸入歌曲、專輯、藝人或YouTube URL...", synchronous — no flash). Beta user defaults to short copy ("請輸入 YouTube URL...", matches HTML default) and only upgrades to long after `/api/process/my-history?limit=1` returns non-empty. Rationale: fresh beta users have nothing to search *within* until they've analyzed at least one song, so prompting them with "歌曲、專輯、藝人" when the backend has zero results for those tokens is misleading
 - **Search-result routing — beta hash vs personal path**: on 8801 `/api/search` rewrites `path` to `__hash/<hash>` and emits an extra `hash` field (NAS privacy); on 8800 `path` is the real NAS path and `hash` is absent. Frontend click handler (`.result-item` in [frontend/js/player.js](frontend/js/player.js)) must stamp `data-hash` and route `?hash=<h>` when present, else `?path=<p>`. Naively passing `__hash/<hash>` as `?path=` lands in NAS-stream mode with a pseudo-path that 404s → "請選擇本地音檔" prompt appears, even though the song has a known YT URL
 - Homepage sections shown to non-admin: 最近播放 (filled by `_loadBetaHistory`, merges `/api/process/my-history` + `/api/recent` deduped by title) · **本機音樂** (`#secBetaLocalTracks`, `<input type=file multiple>` persistent registry: metadata in `localStorage.livechord_local_tracks`, blobs in IndexedDB keyed by local_id; click unanalyzed → upload modal, click ▶ analyzed → `/player?hash=...`; dedup by name+size+lastModified) · **YouTube 播放清單** (`#secBetaPlaylists`) · 我的最愛. `#secHistory` "音樂庫" grid removed (redundant vs the three above)
 - **Add-song modal file-only mode**: `.beta-fab-panel.file-only` class hides `#betaDropZone` + `.add-song-yt-row` so opening the modal from a local-track analyze button doesn't show two "分析" buttons (file + URL row). Class added only by `_onLocalTrackAction`; every other modal open explicitly removes it

@@ -3,6 +3,49 @@
  * 所有頁面共享的 helper — 在各頁面 IIFE 之前載入
  */
 
+// ---- Search marquee placeholder ----
+// Beta-only search scope is "user's own uploads + YT analyses" (NAS library
+// results are skipped in beta non-admin to avoid album-vs-MV duration
+// mismatch). The marquee copy shifts to match:
+//   • Fresh beta user (no history yet) → "請輸入 YouTube URL..."
+//   • User has at least one analyzed song → "請輸入歌曲、專輯、藝人或YouTube URL..."
+//   • Personal / admin → same long copy (they still get full library search)
+function _applySearchMarqueeText(text) {
+  document.querySelectorAll("#searchInput").forEach((el) => { el.placeholder = text; });
+  document.querySelectorAll(".search-marquee-text").forEach((el) => { el.textContent = text; });
+}
+
+async function updateSearchMarqueeText() {
+  const short = "請輸入 YouTube URL...";
+  const long  = "請輸入歌曲、專輯、藝人或YouTube URL...";
+  const isBeta = location.port === "8801" || location.hostname.endsWith("livechord.org");
+
+  // Personal/admin: flip to long text immediately (no async fetch needed),
+  // avoids flashing the short beta copy.
+  if (!isBeta) {
+    _applySearchMarqueeText(long);
+    return;
+  }
+  // Beta: short is the default (HTML already has it) — only upgrade to long
+  // when the user has at least one analyzed song in their history.
+  try {
+    const r = await fetch("/api/process/my-history?limit=1");
+    if (!r.ok) return;
+    const d = await r.json();
+    if (Array.isArray(d.history) && d.history.length > 0) {
+      _applySearchMarqueeText(long);
+    }
+  } catch {}
+}
+
+// Auto-run once DOM is ready — both homepage and player-topbar search boxes
+// pick up the right copy without each page having to opt in.
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", updateSearchMarqueeText);
+} else {
+  updateSearchMarqueeText();
+}
+
 // ---- DOM helpers ----
 
 function showToast(msg, ms = 2000) {

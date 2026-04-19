@@ -309,6 +309,15 @@ def search(q: str = Query(default=""), authorization: str = Header(None)):
         except Exception:
             pass  # never fail the whole search over a user-uploads lookup error
 
+    # Beta non-admin: restrict search to user's own uploads / YT analyses.
+    # NAS library tracks were chord-analyzed from album masters while users
+    # searching on beta are almost always looking for YouTube MV versions;
+    # surfacing the library match leads to a "same title, wrong audio
+    # length" mismatch that confuses the chord player. Personal (8800) and
+    # admins still get full library search.
+    if is_beta_mode() and not _is_admin_request(authorization):
+        return {"results": user_uploads}
+
     # ─── Library results ────────────────────────────────────────────────────
     if not CACHE_FILE.is_file():
         if _scan_state["running"]:
@@ -318,7 +327,9 @@ def search(q: str = Query(default=""), authorization: str = Header(None)):
             return {"results": user_uploads}
         return {"results": [], "error": "索引尚未建立，請點右上角「掃描」或到管理頁面執行"}
 
-    # Beta non-admin: hide NAS paths, use chord hash instead
+    # (Library search below is admin-only in beta — non-admin beta returned
+    # above. `hide_paths` remains for safety in case future routing lands
+    # a non-admin beta call here.)
     hide_paths = is_beta_mode() and not _is_admin_request(authorization)
 
     cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
