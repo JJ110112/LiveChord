@@ -69,8 +69,16 @@
         const backdrop = $("#betaFabBackdrop");
         const closeAddSongModal = () => {
           const p = $("#betaFabPanel");
-          if (p) { p.classList.remove("open"); p.classList.remove("file-only"); }
+          if (p) {
+            p.classList.remove("open");
+            p.classList.remove("file-only");
+            p.classList.remove("analyzing");
+          }
           if (backdrop) backdrop.classList.remove("open");
+          // Reset progress rows so the next open starts clean (otherwise a
+          // stale "讀取 YouTube 標題... 100%" bar would still be visible).
+          const up = $("#betaUploadProgress"); if (up) up.style.display = "none";
+          const yt = $("#betaYtProgress"); if (yt) yt.style.display = "none";
         };
         if (closeBtn) closeBtn.addEventListener("click", closeAddSongModal);
         if (backdrop) backdrop.addEventListener("click", closeAddSongModal);
@@ -485,6 +493,9 @@
     const text = $("#betaProgressText");
     const pct = $("#betaProgressPct");
     prog.style.display = "";
+    // Hide drop-zone + YT URL row while analyzing — reduces modal clutter
+    // and prevents a second concurrent submit mid-run.
+    $("#betaFabPanel")?.classList.add("analyzing");
     fill.style.width = "10%";
     text.textContent = "上傳中...";
     pct.textContent = "10%";
@@ -507,6 +518,8 @@
       text.textContent = "失敗: " + e.message;
       fill.style.width = "0%";
       btn.disabled = false;
+      // Unhide inputs so the user can retry with a different file/URL.
+      $("#betaFabPanel")?.classList.remove("analyzing");
     }
     _betaSelectedFile = null;
     $("#betaFileInfo").style.display = "none";
@@ -524,6 +537,9 @@
     const text = $("#betaYtText");
     const pct = $("#betaYtPct");
     prog.style.display = "";
+    // Hide drop-zone + YT URL row while analyzing — reduces modal clutter
+    // and prevents a second concurrent submit mid-run.
+    $("#betaFabPanel")?.classList.add("analyzing");
     fill.style.width = "10%";
     text.textContent = "提交中...";
     pct.textContent = "10%";
@@ -558,6 +574,8 @@
     } catch (e) {
       text.textContent = "失敗: " + e.message;
       fill.style.width = "0%";
+      // Unhide inputs so the user can retry with a different URL.
+      $("#betaFabPanel")?.classList.remove("analyzing");
     }
     btn.disabled = false;
   };
@@ -614,6 +632,8 @@
           if (statusText) statusText.textContent = "失敗: " + (d.error || "Unknown");
           $("#betaUploadBtn") && ($("#betaUploadBtn").disabled = false);
           $("#betaYtBtn") && ($("#betaYtBtn").disabled = false);
+          // Unhide inputs so the user can retry.
+          $("#betaFabPanel")?.classList.remove("analyzing");
         }
       } catch (e) {}
     }, POLL_MS);

@@ -219,6 +219,15 @@
   display: none !important;
 }
 
+/* `analyzing` — hide inputs while the progress row is active, so the user
+   isn't tempted to start a second upload or paste another URL mid-analysis
+   (and so the modal isn't cluttered with duplicate 分析 buttons). */
+.beta-fab-panel.add-song-modal.analyzing #betaDropZone,
+.beta-fab-panel.add-song-modal.analyzing .add-song-yt-row,
+.beta-fab-panel.add-song-modal.analyzing .beta-file-info {
+  display: none !important;
+}
+
 /* Local tracks list (beta homepage — user-picked audio files, persisted) */
 .local-track-list {
   display: flex;
