@@ -16,9 +16,11 @@
 | 速度提升 | **11× – 23×**（穩定區間，10 首壓測均值 10.92×） |
 | 硬體偵測 | OpenVINO EP 真正接上（Phase 1.5 修復） |
 | 佈署模式 | Shadow Mode（V1 仍 primary） |
-| 用戶看到的改動 | 0（ENABLE_NN_MELODY=False） |
-| **品質驗證**（Phase 2.5） | ⚠️ V2 notes 密度 4.3× V1、V1 coverage 64.8%、V2 extras 85%（見 §8） |
-| **Phase 3 方向**（依 §8 修訂） | ❌ ~~直接切 V2 primary~~ → ✓ 先做 demucs vocal stem 預分離 |
+| 用戶看到的改動 | 0（`ENABLE_NN_MELODY=False`） |
+| **Phase 2.5 品質驗證** | ⚠️ V2 notes 密度 4.3× V1、V1 coverage 64.8%、V2 extras 85%（§8） |
+| **Phase 3a — demucs 實驗** | ❌ **No-Go** — V1 coverage 反降、extras 只減 5.5 pts（§9） |
+| **Phase 4 — Hybrid 3-tier** | ✓ **POC 驗證**：MIDI DTW alignment 可達錄音室級品質（§10）|
+| **Phase 4 架構** | PC = ML 工廠、NUC = 薄服務。見 [PHASE_4_HYBRID_MELODY.md](PHASE_4_HYBRID_MELODY.md) |
 
 ---
 
@@ -322,34 +324,105 @@ audio.wav → demucs (vocals stem 分離) → V2 melody_extractor → melody JSO
 
 ---
 
-## 9. 下一步（Phase 3+）
+## 9. Phase 3a — demucs vocal stem 離線實驗（NO-GO）
 
-按優先順序（Phase 3 已依 8.6 修訂）：
+§8.6 建議「demucs + V2」做為 Phase 3 新計畫。本階段跑 offline 驗證看是否先接線，結論 **No-Go**：
 
-### Phase 3 — demucs vocal stem → V2（取代「直接切 primary」）
+| 指標 | V2 baseline | V3 stemmed | Go/No-Go 門檻 | 結果 |
+|---|---:|---:|---:|---|
+| 密度 vs V1 | 4.3× | 2.5× | — | 改善 |
+| V1 coverage | 64.8% | **51.7%** | ≥ 60% | ❌ 下滑 13 pts |
+| V2 extras% | 85.0% | **79.5%** | ≤ 40% | ❌ 遠未達 |
+| 平均耗時 | 5.5s | 62s | < 120s | ✓ |
 
-- 寫 `backend/ai/melody_extractor_v2_stemmed.py` 包裝：先檢查 `data/hybrid_melody/<hash>/vocals.wav` 是否存在；有就直接用，沒有就跑一次 demucs 到該路徑
-- 與 `melody_extractor_v2` 共用主體邏輯，只差輸入音檔
-- Shadow 再跑一輪（可叫「shadow v3」）收集 overlap 指標
-- 目標：V2_stemmed 對 V1 的 coverage ≥ 80% 且 extras% ≤ 40%
-- 達標後才考慮 `ENABLE_NN_MELODY=True`
+### 為什麼 demucs 沒救 extras
 
-### Phase 4 — 模型升級候選
+- **V1 coverage 反而下降** — demucs 的 vocals.wav 把 V1 原本在 full audio 抓到的器樂旋律（piano intro、guitar riff）整體剔除
+- **extras 仍 79.5%** — basic-pitch 從 vocal stem 中仍找出和聲 / 顫音 / ornament 作為獨立 notes
+- **最糟案例**："All by Myself" V1 coverage 從 59.4% 崩到 **22.4%**（鋼琴前奏被完全消失）
 
-- **RMVPE**（vocal-specialized pitch tracker）：F0 精度顯著優於 basic-pitch；但需手動下載 ~50MB ONNX、自行實作 inference pipeline
-- **CREPE**：老牌單音 pitch tracker，穩定但慢
+**結論：polyphonic → monophonic 的本質問題不是 vocal separation 能解決的**，需要換 tracker（RMVPE 專治 vocal F0）或改走 MIDI 人工轉譜。
 
-### Phase 5 — 基礎設施簡化（beta 穩定後）
-
-- uvicorn 整體遷進 venv_ai（Python 3.11），melody_shadow 改直接 import 而非 subprocess
-- 移除 shadow 雙軌機制，V2 成為唯一路徑
+**產出**：`data/tmp/melodies_v3_stemmed/*.json`、`data/tmp/batch_v3_stemmed.py`（git-ignored）
 
 ---
 
-## 10. Commit History
+## 10. Phase 4 — Hybrid Architecture（POC 完成）
+
+既然單演算法打不過，轉走**依歌曲類型路由三種演算法**。詳細企劃見 [PHASE_4_HYBRID_MELODY.md](PHASE_4_HYBRID_MELODY.md)。
+
+### 10.1 核心構想
 
 ```
-(待補) Phase 2.5 分析寫入本報告
+T1：經典 + 有 MIDI  → DTW-align MIDI to audio    → 錄音室級
+T2：新歌 + 無 MIDI  → PC 批次 demucs+RMVPE       → 優良
+T3：都沒有          → NUC 即時 V1 pYIN + PC 排隊 → 堪用，下次變 T2
+```
+
+### 10.2 PC/NUC 工廠—門市分工
+
+| 機器 | GPU | 職責 |
+|---|---|---|
+| **PC**（off-peak）| RTX 5080 | 批次 demucs + RMVPE 78K 首、MIDI alignment 策展庫 |
+| **NUC**（24/7）| — | 讀 precomputed JSON、即時 MV 5.5s DTW、V1 fallback |
+
+SMB via `V:\` 做同步通道，檔案系統即介面。
+
+### 10.3 Tier 1 POC 驗證
+
+8 首 E-POP MIDI + Z:\ FLAC 配對測試：
+
+| Confidence | 歌數 | 代表 |
+|---|---:|---|
+| ✓ high（warp ≤ 3s） | 2 | MJ - Remember The Time (2.4s)、Europe - The Final Countdown (0.9s) |
+| ~ medium（3-10s） | 2 | Imagine (3.2s)、Ebony & Ivory (4.4s) |
+| ✗ low（> 10s, rejected） | 3 | 2× LIVE 版、Guru Josh Infinity |
+| ❌ corrupt MIDI | 1 | MJ - You Are Not Alone |
+
+**可用率 4/8 = 50%**，對 admin-curated library 而言合理（每 2 首選 1）。
+
+### 10.4 Phase 4.0 工程修復全部落地
+
+- ✅ **Melody picker 排除 bass**：Europe 從 DISTORTION → 正確選 SYNBRASS 1
+- ✅ **Pad heuristic 擴充**：`(density > 2 AND span > 24) OR (span > 36)` — SLOWSTRING 正確標 pad
+- ✅ **DTW NaN 防護**：零能量 frame 補 uniform pitch-class + Gaussian smoothing — Ebony & Ivory 從 DTW NaN fail → 可用
+- ✅ **結構差異 gate**：warp_mean > 10s 自動降級 `alignment_confidence: low`，LIVE 版被拒
+- ✅ **`simplify_to_playable_rh(window_s=0.25, max_voices_below=3)`**：Europe 命中 2.39 notes/s 目標
+
+**POC 產出**：`data/tmp/midi_align_multitrack.py`、`data/tmp/midi_aligned/*.json`（git-ignored）
+
+### 10.5 Phase 4 後續階段（待啟動）
+
+- **4.1**：`data/midi_catalog.json` + curate 10 首 + PC batch worker — PC 端工作
+- **4.2**：`melody_shadow_v3.py` 接入 `process_queue._melody_worker_loop`，T1 > T2 > T3 路由
+- **4.3**：RMVPE 取代 basic-pitch for T2；PC 批次跑 78K 首
+- **4.4**：`backend/ai/mv_sync.py` — YouTube MV 即時 5.5s DTW
+
+---
+
+## 11. 下一步（修訂版）
+
+按優先順序：
+
+| 階段 | 狀態 | 執行者 | 動作 |
+|---|---|---|---|
+| Phase 4.1 | 待啟動 | PC Claude | 寫 `midi_catalog.json` + curate 10 首 + PC batch worker |
+| Phase 4.2 | 規劃中 | NUC Claude | `melody_shadow_v3.py` 接 process_queue；需要 Phase 4.1 catalog 先有結果 |
+| Phase 4.3 | 規劃中 | PC Claude | RMVPE 整合 + 78K 首批次 |
+| Phase 4.4 | 規劃中 | NUC Claude | MV DTW 5.5s sync |
+| Phase 5 | 後續 | — | uvicorn 整體遷 venv_ai、移除 shadow 雙軌 |
+
+---
+
+## 12. Commit History
+
+```
+45e7afe docs: Phase 4 hybrid melody architecture + MIDI-align POC results
+023264d fix(beta): audit.db connection leak + silent audit-write loss under burst
+c33e3c3 docs: Phase 2.5 — V2 quality overlap analysis (threshold tuning dead-end)
+683bc6a docs(shadow-test): 回報 #1 — 10-song stress test results (PC Claude)
+de0fe9f docs: shadow-test task file for cross-machine Claude handoff
+af103c1 docs: AI migration report — Phase 1/1.5/2 results
 9a8a286 feat(ai): Phase 2 Shadow Mode — V2 runs in background alongside V1
 3d4de5f fix(ai): V2 ONNX providers actually wired + polyphonic→melody filter
 6233163 build: add environment specific requirements files
@@ -358,4 +431,4 @@ audio.wav → demucs (vocals stem 分離) → V2 melody_extractor → melody JSO
 ```
 
 分支：`feature/beta-productization`
-遠端：`origin/feature/beta-productization`（待同步 Phase 2.5 更新）
+遠端：`origin/feature/beta-productization`（已同步）
