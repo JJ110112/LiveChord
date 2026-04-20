@@ -1687,7 +1687,13 @@
     left: 0;
     right: 0;
     width: 100%;
-    height: 50vh;
+    /* 50vh used to crowd the instrument panel below the 3-row toolbar on
+       portrait (waterfall was clipped by up to ~99px under the toolbar).
+       40vh gives the waterfall ~66px more visible space; paired with the
+       chord-display-area portrait override that stops at toolbar top
+       (search "148px + env(safe-area-inset-bottom)" below) this removes
+       clipping entirely. */
+    height: 40vh;
     min-width: 0;
     max-width: none;
     z-index: 15;
@@ -1744,7 +1750,10 @@
     flex: 0 0 auto;
   }
   .middle-split {
-    padding-top: calc(50vh + 4px);
+    /* Must match .chord-ribbon-panel height above (40vh) — ribbon is
+       absolutely positioned at top:0, so padding-top here pushes the
+       instrument panel below it. */
+    padding-top: calc(40vh + 4px);
   }
   .resize-handle {
     display: none;
@@ -1995,6 +2004,14 @@
 @media (pointer: coarse) and (max-width: 640px) and (orientation: portrait) {
   .bottom-toolbar {
     min-height: 148px;                 /* three rows × 44 + gaps/padding */
+  }
+  /* Base rule has bottom:49px which assumes a single-row 54px toolbar; on
+     3-row portrait the toolbar is 148px, so without this override the
+     instrument panel + waterfall canvas extend ~99px BEHIND the toolbar and
+     are invisibly clipped. Align the region's bottom with the toolbar's
+     visible top edge. */
+  .chord-display-area {
+    bottom: calc(148px + env(safe-area-inset-bottom, 0px));
   }
   .progress-bar-mid {
     bottom: calc(148px + max(env(safe-area-inset-bottom, 0px), 10px)) !important;

@@ -5902,6 +5902,17 @@
   };
   InstrumentRegistry.register("arranger", new ArrangerInstrument(ARRANGER_CONFIG, _playerBridge));
 
+  // Re-apply the restored tab now that guitar/ukulele/accordion/arranger are
+  // registered. The earlier `_switchTab(activeTab)` (near line 1589) ran
+  // BEFORE this block — for non-piano tabs it hit the else branch with
+  // `InstrumentRegistry.get(tab) === undefined`, so the `if (inst)` guard
+  // fell through and the instrument container stayed at display:none from
+  // `_setAllTabsInactive()`. Users saw an empty panel on first load and
+  // could only "wake it up" by picking an instrument from the Tools popup —
+  // which re-ran `_switchTab`, this time with a populated registry. Piano
+  // never hit this because its code path doesn't consult the registry.
+  if (activeTab !== "piano") _switchTab(activeTab);
+
   // ===========================================================================
   // Beta Feedback: 5-star rating + comment, bug report
   // ===========================================================================
