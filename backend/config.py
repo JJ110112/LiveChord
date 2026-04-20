@@ -143,3 +143,15 @@ def _save_setting(key: str, value):
     PERSONAL_SETTINGS_FILE.write_text(
         json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8"
     )
+
+def get_env_mode() -> str:
+    """自動偵測目前是在開發機(PC)還是邊緣伺服器(NUC)上執行"""
+    current_path = os.path.abspath(os.getcwd()).lower()
+    if r"c:\users\hitea" in current_path:
+        return "PC"
+    elif r"c:\livechord" in current_path:
+        return "NUC"
+    return os.environ.get("LIVECHORD_ENV", "PC")
+
+# Feature Flag: 預設關閉，等您測試沒問題再改為 True，全面啟用 Neural Pitch Tracker
+ENABLE_NN_MELODY = False
