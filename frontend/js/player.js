@@ -463,6 +463,20 @@
     const el = document.getElementById("ytMelodyBanner");
     if (el) el.remove();
   }
+  // Polling lifecycle handles: AbortController cancels in-flight fetch and
+  // the timeout keeps the retry chain alive. Both are torn down on `pagehide`
+  // so hitting browser-back during extraction doesn't leave a 5-minute retry
+  // chain chained to an orphaned fetch — that was making the previous page
+  // feel unresponsive for ~1 minute while the browser waited for the fetch
+  // to settle (melody endpoint can take ~1 minute uncached).
+  let _melodyPollAbort = null;
+  let _melodyPollTimeout = null;
+  function _stopMelodyPolling() {
+    if (_melodyPollAbort) { try { _melodyPollAbort.abort(); } catch {} _melodyPollAbort = null; }
+    if (_melodyPollTimeout) { clearTimeout(_melodyPollTimeout); _melodyPollTimeout = null; }
+    _hideMelodyStatusBanner();
+  }
+  window.addEventListener("pagehide", _stopMelodyPolling);
   function _maybeStartMelodyPolling() {
     if (!hashMode) return;
     const raw = sessionStorage.getItem("livechord_fresh_hash") || "";
@@ -470,23 +484,39 @@
     const ts = parseInt(tsStr || "0", 10);
     if (h !== hashMode || !ts || Date.now() - ts > 10 * 60000) return;
 
-    _showMelodyStatusBanner("旋律擷取中，稍後將有伴奏旋律");
+    // Banner only when the user actually intends to see melody. In the
+    // default `acc` mode the melody data arrives silently into `melodyData`
+    // so if they later toggle to `mel`/`both` it's already populated; a
+    // 1-minute "擷取中" banner over a page where chords+audio play fine is
+    // just confusing noise.
+    const showUi = rhContentMode !== "acc";
+    if (showUi) _showMelodyStatusBanner("旋律擷取中，完成後可從 AI 教學 切換右手顯示");
+
+    _melodyPollAbort = new AbortController();
+    const signal = _melodyPollAbort.signal;
     const deadline = Date.now() + 5 * 60000;
     const tick = async () => {
-      if (Date.now() > deadline) { _hideMelodyStatusBanner(); return; }
+      if (signal.aborted) return;
+      if (Date.now() > deadline) { _stopMelodyPolling(); return; }
       try {
-        const r = await fetch(`/api/ai/melody?hash=${encodeURIComponent(hashMode)}`);
+        const r = await fetch(`/api/ai/melody?hash=${encodeURIComponent(hashMode)}`, { signal });
+        if (signal.aborted) return;
         const d = await r.json();
         if (d.melody && d.melody.length > 0) {
           melodyData = _filterMelody(d.melody);
-          _hideMelodyStatusBanner();
-          showToast("旋律擷取完成，伴奏瀑布已啟用", 3000);
+          _stopMelodyPolling();
+          // Only toast when the user was seeing the banner — acc-mode users
+          // didn't ask about melody, don't surprise them.
+          if (showUi) showToast("旋律擷取完成 ✓", 3000);
           return;
         }
-      } catch {}
-      setTimeout(tick, 5000);
+      } catch (e) {
+        if (e && e.name === "AbortError") return;
+      }
+      if (signal.aborted) return;
+      _melodyPollTimeout = setTimeout(tick, 5000);
     };
-    setTimeout(tick, 8000);  // 8s head start for the melody worker
+    _melodyPollTimeout = setTimeout(tick, 8000);  // 8s head start for the melody worker
   }
 
   // Chord-quality LED: combines data-source hint with user rating summary.
@@ -1859,24 +1889,38 @@
     });
   }
 
+  // Path-mode melody load lifecycle — same pagehide-cancel discipline as the
+  // hash-mode poller so browser-back during a ~1min uncached extraction
+  // doesn't leave the previous page waiting on a zombie fetch.
+  let _melodyLoadAbort = null;
+  function _stopMelodyLoad() {
+    if (_melodyLoadAbort) { try { _melodyLoadAbort.abort(); } catch {} _melodyLoadAbort = null; }
+    _hideMelodyStatusBanner();
+  }
+  window.addEventListener("pagehide", _stopMelodyLoad);
   async function _loadMelody(path) {
-    // Show a small bottom-left banner instead of a centered overlay: the melody
-    // endpoint may extract on-the-fly (~1 min uncached) but the waterfall +
-    // chord + audio should stay interactive. Banner auto-hides once data lands.
+    // Bottom-left banner instead of a centered overlay so chord + audio stay
+    // interactive. Banner auto-hides once data lands. Only shown when the
+    // user is actually going to look at melody — in `acc` mode the data
+    // silently lands in `melodyData` for a later mode-toggle.
+    const showUi = rhContentMode !== "acc";
     let showedBanner = false;
-    const bannerTimer = setTimeout(() => {
-      _showMelodyStatusBanner("AI 旋律擷取中，完成後自動顯示");
+    const bannerTimer = showUi ? setTimeout(() => {
+      _showMelodyStatusBanner("AI 旋律擷取中，完成後可從 AI 教學 切換右手顯示");
       showedBanner = true;
-    }, 600);  // don't flash for instant cached reads
+    }, 600) : null;  // don't flash for instant cached reads
+    _melodyLoadAbort = new AbortController();
     try {
-      const res = await fetch(`/api/ai/melody?path=${encodeURIComponent(path)}`);
+      const res = await fetch(`/api/ai/melody?path=${encodeURIComponent(path)}`,
+                              { signal: _melodyLoadAbort.signal });
       const data = await res.json();
       if (data.melody && data.melody.length > 0) {
         melodyData = _filterMelody(data.melody);
       }
     } catch {} finally {
-      clearTimeout(bannerTimer);
+      if (bannerTimer) clearTimeout(bannerTimer);
       if (showedBanner) _hideMelodyStatusBanner();
+      _melodyLoadAbort = null;
     }
   }
 
@@ -4613,6 +4657,8 @@
             || (chordData.path ? chordData.path.split("/").pop().replace(/\.\w+$/i, "") : "")
             || "分析結果";
           songTitle.textContent = title;
+          songTitle.title = title;
+          _checkMarquee(songTitle);
           document.title = `${title} — LiveChord`;
           if (chordData.key) {
             const keyInfo = $("#chordKey");
@@ -4640,10 +4686,14 @@
             updateFavButton();
           } catch {}
 
-          // Track hash-mode play in recent.json so processed songs show on home page
+          // Track hash-mode play in recent.json so processed songs show on home page.
+          // `keepalive: true` lets the POST complete even if the user navigates
+          // back within a second — default fetch would get cancelled on unload
+          // and the song would be missing from 最近播放 until bfcache eventually refreshes.
           fetch("/api/recent", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            keepalive: true,
             body: JSON.stringify({
               path: `__hash/${hashMode}`,
               title: chordData.title || title || "",
@@ -4709,6 +4759,8 @@
             || (chordData.path ? chordData.path.split("/").pop().replace(/\.\w+$/i, "") : "")
             || "尚未分析";
           songTitle.textContent = fallbackTitle;
+          songTitle.title = fallbackTitle;
+          _checkMarquee(songTitle);
           document.title = `${fallbackTitle} — LiveChord`;
           if (unifiedRibbonTrack) {
             unifiedRibbonTrack.innerHTML = `

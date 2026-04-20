@@ -1178,6 +1178,10 @@
    row; extra clearance keeps it usable during A-B setup. */
 .tb-popup-ab {
   bottom: calc(100% + 40px);
+  /* Cap popup width so the inner .ab-phrase-strip (overflow-x:auto) actually
+     scrolls when songs have many sections. Without a cap, the popup grew to
+     fit every pill and overflowed past the viewport with no scrollbar. */
+  max-width: min(90vw, 720px);
 }
 
 /* Strip wrap: horizontal strip of phrase pills (flex:1 scrollable) +

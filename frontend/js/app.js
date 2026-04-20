@@ -785,6 +785,17 @@
         _autoStartYoutubeFromParam(ytParam);
       }
     }
+
+    // bfcache refresh — mobile browsers snapshot this page when the user
+    // navigates into the player; pressing Back restores the snapshot instantly
+    // (no init re-run), so a song the user just analyzed+played would NOT
+    // show up in 最近播放 until some other trigger reflowed the list. Rerun
+    // the beta history fetch whenever we're restored from bfcache.
+    window.addEventListener("pageshow", (ev) => {
+      if (!ev.persisted) return;  // normal reload/forward — init already ran
+      if (_isBetaMode) _loadBetaHistory();
+      else if (typeof loadRecent === "function") loadRecent();
+    });
   }
 
   function _autoStartYoutubeFromParam(url) {
