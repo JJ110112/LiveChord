@@ -24,6 +24,8 @@ data/server.log.*
 data/chord_queue.json
 data/.queue_cursor.json
 data/melodies/
+data/melodies_v2/
+data/shadow_v2.log
 data/models/
 data/accompaniments/
 data/auth.db

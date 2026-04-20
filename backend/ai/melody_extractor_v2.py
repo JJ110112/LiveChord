@@ -254,6 +254,22 @@ class MelodyExtractorV2:
 # ----------------------------------------------------------------------
 # CLI
 # ----------------------------------------------------------------------
+def _parse_cli_args(argv):
+    """Tiny argparse-free parser so the shadow runner has a stable contract."""
+    args = {"audio": None, "json_out": None, "quiet": False, "raw": False}
+    it = iter(argv)
+    for a in it:
+        if a == "--json-out":
+            args["json_out"] = next(it, None)
+        elif a == "--quiet":
+            args["quiet"] = True
+        elif a == "--raw":
+            args["raw"] = True
+        elif not a.startswith("--") and args["audio"] is None:
+            args["audio"] = a
+    return args
+
+
 if __name__ == "__main__":
     import json
 
@@ -262,15 +278,34 @@ if __name__ == "__main__":
     except Exception:
         pass
 
-    if len(sys.argv) <= 1:
-        print("Usage: python -m backend.ai.melody_extractor_v2 <audio_file> [--raw]")
-        sys.exit(0)
+    opts = _parse_cli_args(sys.argv[1:])
+    if not opts["audio"]:
+        print("Usage: python -m backend.ai.melody_extractor_v2 <audio_file> "
+              "[--json-out <path>] [--quiet] [--raw]")
+        sys.exit(2)
 
-    test_file = sys.argv[1]
-    filter_on = "--raw" not in sys.argv[2:]
+    if opts["quiet"]:
+        # Silence basic-pitch / tensorflow chatter on stdout/stderr
+        import logging as _logging
+        _logging.getLogger().setLevel(_logging.ERROR)
+        # Redirect builtins print to devnull only for our own chatter
+        _orig_print = print
+        def print(*a, **kw):  # noqa: A001
+            pass
+
     extractor = MelodyExtractorV2()
     try:
-        results = extractor.extract_melody(test_file, filter_melody=filter_on)
+        results = extractor.extract_melody(
+            opts["audio"], filter_melody=not opts["raw"]
+        )
+        if opts["json_out"]:
+            out_path = os.path.abspath(opts["json_out"])
+            os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(results, f, ensure_ascii=False)
+            # Exit quietly after write; caller reads the file
+            sys.exit(0)
+
         print(f"Total segments: {len(results)}")
         if results:
             midis = [e["midi"] for e in results]
@@ -282,6 +317,7 @@ if __name__ == "__main__":
             )
         print(json.dumps(results[:10], indent=2, ensure_ascii=False))
     except Exception as e:
-        print(f"Error: {e}")
+        sys.stderr.write(f"V2 Error: {e}\n")
         import traceback
-        traceback.print_exc()
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)

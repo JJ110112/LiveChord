@@ -155,3 +155,7 @@ def get_env_mode() -> str:
 
 # Feature Flag: 預設關閉，等您測試沒問題再改為 True，全面啟用 Neural Pitch Tracker
 ENABLE_NN_MELODY = False
+
+# Shadow Mode: V1 primary + V2 背景平行跑收集資料。需 venv_ai 存在才生效。
+# 開著不影響用戶（V1 仍回傳給用戶），只是多一份 V2 輸出 + shadow_v2.log
+SHADOW_V2_ENABLED = True

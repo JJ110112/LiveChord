@@ -705,11 +705,16 @@ def _melody_worker_loop():
             if not audio_path or not os.path.isfile(audio_path):
                 logger.warning("Melody worker: audio missing for %s (%s)", job_id, audio_path)
                 continue
+            v1_time_s = None
+            v1_notes_count = None
             try:
                 from ai.melody_extractor import MelodyExtractor
                 ext = MelodyExtractor()
+                _v1_t0 = time.time()
                 melody_data = ext.extract_melody(audio_path)
+                v1_time_s = round(time.time() - _v1_t0, 2)
                 if melody_data:
+                    v1_notes_count = len(melody_data)
                     mel_file = MELODIES_DIR / f"{result_hash}.json"
                     mel_file.write_text(
                         json.dumps({"path": f"__upload/{job_id}", "melody": melody_data}, ensure_ascii=False),
@@ -718,6 +723,17 @@ def _melody_worker_loop():
                     logger.info("Job %s melody saved (bg worker)", job_id)
             except Exception as mel_err:
                 logger.warning("Melody extraction failed for %s: %s", job_id, mel_err)
+
+            # V2 Shadow Mode — fire-and-forget, never blocks user flow.
+            # Copies audio first so the finally-block delete below is safe.
+            try:
+                from ai.melody_shadow import run_shadow_async
+                run_shadow_async(
+                    audio_path, result_hash,
+                    v1_time_s=v1_time_s, v1_notes=v1_notes_count,
+                )
+            except Exception as shadow_err:
+                logger.debug("Shadow V2 dispatch failed for %s: %s", job_id, shadow_err)
         finally:
             # Melody worker owns cleanup now.
             if audio_path and os.path.isfile(audio_path):
