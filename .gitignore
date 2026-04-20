@@ -8,6 +8,9 @@ venv_ai/
 venv/
 .venv/
 
+# MIDI test library (user-provided, Phase 4 POC; possibly licensed content)
+E-POP/
+
 # 運行時資料（不進版控）
 songs/
 data/library_cache.json
