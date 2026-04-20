@@ -3,6 +3,11 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 
+# Python virtual envs (AI-specific venv for basic-pitch + onnxruntime-openvino)
+venv_ai/
+venv/
+.venv/
+
 # 運行時資料（不進版控）
 songs/
 data/library_cache.json

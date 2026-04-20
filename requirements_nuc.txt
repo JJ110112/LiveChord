@@ -1,4 +1,7 @@
 # NUC Server Requirements (Intel AI Boost NPU & Arc GPU)
+# Version pinning rationale: onnxruntime-openvino's wheel has strict ABI
+# against openvino.dll. 1.24.1 + any pip openvino = error 127. Tested
+# working combo: ORT 1.22.0 + openvino 2025.2.0 (all 3 EP devices work).
 -r backend/requirements.txt
-onnxruntime-openvino>=1.16.0
-openvino>=2023.2.0
+onnxruntime-openvino==1.22.0
+openvino==2025.2.0
