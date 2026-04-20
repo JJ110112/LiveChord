@@ -16,12 +16,35 @@ import threading
 import time
 import uuid
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _audit_conn():
+    """SQLite connection with guaranteed close + auto-commit/rollback.
+
+    ``with sqlite3.connect(...) as conn:`` only manages the transaction —
+    the connection itself stays open until GC reclaims it. Under burst
+    load (e.g. 10-song stress test on 2026-04-20) one of those connections
+    went stale while holding a WAL write-lock, freezing every subsequent
+    reader for 35+ minutes until uvicorn was restarted. This helper closes
+    the connection deterministically on block exit.
+    """
+    conn = sqlite3.connect(AUDIT_DB_PATH, timeout=10)
+    try:
+        yield conn
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 CHORDS_DIR = DATA_DIR / "chords"
@@ -283,7 +306,7 @@ COVERS_DIR.mkdir(parents=True, exist_ok=True)
 
 def _init_audit_db():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
+    with _audit_conn() as conn:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS process_audit (
@@ -332,26 +355,45 @@ def _write_audit(job: ProcessJob, chord_count: int = 0, status: Optional[str] = 
     race where my-history queries hit before the status change.
     """
     final_status = status if status is not None else job.status.value
-    try:
-        with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
-            conn.execute(
-                """INSERT INTO process_audit
-                   (job_id, username, source_type, file_hash, youtube_url, title, status, chord_count, created_at, completed_at, result_hash)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                (job.job_id, job.username, job.source_type, job.file_hash,
-                 job.youtube_url, job.title, final_status, chord_count,
-                 time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(job.created_at)),
-                 time.strftime("%Y-%m-%dT%H:%M:%S"),
-                 job.result_hash or "")
+    # Retry loop: under burst load a single attempt can race with other writers.
+    # Was previously swallowing all exceptions silently with just logger.error —
+    # during the 2026-04-20 stress test 6/10 audit rows were silently lost
+    # (chord/melody JSONs saved OK, but the user had no history entry).
+    last_exc: Optional[BaseException] = None
+    for attempt in range(3):
+        try:
+            with _audit_conn() as conn:
+                conn.execute(
+                    """INSERT INTO process_audit
+                       (job_id, username, source_type, file_hash, youtube_url, title, status, chord_count, created_at, completed_at, result_hash)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                    (job.job_id, job.username, job.source_type, job.file_hash,
+                     job.youtube_url, job.title, final_status, chord_count,
+                     time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(job.created_at)),
+                     time.strftime("%Y-%m-%dT%H:%M:%S"),
+                     job.result_hash or "")
+                )
+            return  # success
+        except sqlite3.OperationalError as e:
+            last_exc = e
+            logger.warning(
+                "Audit write attempt %d/3 failed for job %s: %s",
+                attempt + 1, job.job_id, e,
             )
-            conn.commit()
-    except Exception as e:
-        logger.error("Audit write failed: %s", e)
+            time.sleep(0.5 * (attempt + 1))
+        except Exception as e:
+            last_exc = e
+            break
+    logger.error(
+        "Audit write PERMANENTLY FAILED for job %s (user=%s, title=%r, hash=%s): %s. "
+        "Chord/melody files may exist on disk but will not appear in user history.",
+        job.job_id, job.username, job.title, job.result_hash, last_exc,
+    )
 
 
 def find_existing_result(youtube_url: str) -> dict | None:
     """Check if a YouTube URL was already processed successfully."""
-    with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
+    with _audit_conn() as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
             "SELECT result_hash, title, chord_count FROM process_audit "
@@ -376,7 +418,7 @@ def find_library_mapping(youtube_url: str) -> dict | None:
     """
     if not youtube_url:
         return None
-    with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
+    with _audit_conn() as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
             "SELECT library_hash, mapped_by, ts FROM youtube_library_map WHERE youtube_url=?",
@@ -400,7 +442,7 @@ def upsert_library_mapping(youtube_url: str, library_hash: str, mapped_by: str) 
     if not (CHORDS_DIR / f"{library_hash}.json").is_file():
         return False
     try:
-        with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
+        with _audit_conn() as conn:
             cur = conn.execute(
                 "INSERT OR IGNORE INTO youtube_library_map(youtube_url, library_hash, mapped_by) "
                 "VALUES (?,?,?)",
@@ -418,7 +460,7 @@ def write_reuse_audit(username: str, youtube_url: str, title: str,
     """Write audit entry for a reused result (no actual processing)."""
     try:
         now = time.strftime("%Y-%m-%dT%H:%M:%S")
-        with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
+        with _audit_conn() as conn:
             conn.execute(
                 """INSERT INTO process_audit
                    (job_id, username, source_type, file_hash, youtube_url, title, status, chord_count, created_at, completed_at, result_hash)
@@ -474,7 +516,7 @@ def delete_audit_entries(ids: list[int]) -> int:
     """Delete audit entries by ID and clean up associated chord/cover files."""
     if not ids:
         return 0
-    with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
+    with _audit_conn() as conn:
         conn.row_factory = sqlite3.Row
         placeholders = ",".join("?" for _ in ids)
         rows = conn.execute(
@@ -505,7 +547,7 @@ def delete_audit_entries(ids: list[int]) -> int:
 
 
 def get_audit_log(limit: int = 50, offset: int = 0) -> list[dict]:
-    with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
+    with _audit_conn() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT * FROM process_audit ORDER BY id DESC LIMIT ? OFFSET ?",
@@ -523,7 +565,7 @@ def get_audit_log(limit: int = 50, offset: int = 0) -> list[dict]:
 
 def get_user_audit_log(username: str, limit: int = 20) -> list[dict]:
     """Get a specific user's process history, deduplicated by title (latest only)."""
-    with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
+    with _audit_conn() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT * FROM process_audit WHERE username=? ORDER BY id DESC",
