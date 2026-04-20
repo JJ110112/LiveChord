@@ -2725,10 +2725,14 @@
   transition: width 0.3s ease;
 }
 
-/* Melody-pending banner — shown on freshly-analyzed hashes while melody worker is still running */
+/* Melody-pending banner — shown on freshly-analyzed hashes while melody worker is still running.
+   Sits above the chord-ribbon scale bar (which is sticky at the bottom of the
+   ribbon column): previously `bottom:60px` collided with the ribbon's −/+/總覽
+   buttons on desktop. Mobile portrait uses the 3-row toolbar (~148px tall) so
+   needs extra lift there. */
 .yt-melody-banner {
   position: fixed;
-  bottom: 60px;             /* above bottom toolbar */
+  bottom: 100px;
   left: 12px;
   background: rgba(33, 82, 165, 0.95);
   backdrop-filter: blur(8px);
@@ -2742,6 +2746,9 @@
   align-items: center;
   gap: 8px;
   max-width: calc(100vw - 24px);
+}
+@media (max-width: 640px) and (orientation: portrait) {
+  .yt-melody-banner { bottom: 180px; }
 }
 .yt-mel-spinner {
   display: inline-block;

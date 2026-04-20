@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=8">
-  <link rel="stylesheet" href="/css/player.css?v=55">
+  <link rel="stylesheet" href="/css/player.css?v=56">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -550,6 +550,11 @@
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
         <span>AI 建議</span>
       </button>
+      <div class="tb-separator"></div>
+      <button id="btnExportData" class="tb-popup-btn" title="匯出我的資料為 ZIP" aria-label="匯出資料">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>匯出資料</span>
+      </button>
     </div>
   </div>
 
@@ -617,6 +622,6 @@
     return res;
   };
 </script>
-<script src="/js/player.js?v=164"></script>
+<script src="/js/player.js?v=165"></script>
 </body>
 </html>

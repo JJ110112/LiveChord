@@ -144,6 +144,41 @@
     .gt-cat.empty input { cursor: not-allowed; }
     .gt-cat-label { color: var(--text); font-weight: 600; }
     .gt-cat-stat { margin-left: auto; color: var(--text-dim); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+    /* Registered-users table (beta card) */
+    #betaUserList .user-row {
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr) 70px 40px 100px;
+      gap: 8px;
+      padding: 4px 6px;
+      align-items: center;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    #betaUserList .user-row:not(.user-row-hdr):nth-child(even) {
+      background: rgba(255,255,255,0.02);
+    }
+    #betaUserList .user-row.user-active {
+      background: rgba(76,175,80,0.06);
+    }
+    #betaUserList .user-row-hdr {
+      color: var(--text-dim);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      margin-bottom: 2px;
+      padding-bottom: 6px;
+    }
+    #betaUserList .u-col-num { color: var(--text-dim); font-variant-numeric: tabular-nums; text-align: right; }
+    #betaUserList .u-col-name { overflow: hidden; }
+    #betaUserList .u-name-text { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; max-width: 100%; vertical-align: middle; }
+    #betaUserList .u-col-cnt { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 11px; }
+    #betaUserList .u-cnt-recent.hot { color: #4caf50; font-weight: 600; }
+    #betaUserList .u-cnt-sep { margin: 0 3px; opacity: 0.5; }
+    #betaUserList .u-col-rat { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 11px; text-align: right; }
+    #betaUserList .u-col-last { font-size: 10px; color: #555; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    #betaUserList .u-col-last.recent { color: var(--text-dim); }
   </style>
 </head>
 <body>
@@ -1211,12 +1246,40 @@ window._lcIsBeta = (function() {
           invEl.innerHTML = '<span style="color:#555">無邀請碼</span>';
         }
 
-        // Users
+        // Users — sorted newest-first (backend returns DESC by rowid), with
+        // usage counters so admin can spot active vs dormant testers.
         const usrEl = document.getElementById("betaUserList");
         if (users.users && users.users.length) {
-          usrEl.innerHTML = users.users.map(u =>
-            `<div style="padding:2px 0;display:flex;gap:8px"><span style="font-weight:600">${esc(u.username)}</span>${u.is_admin ? '<span class="badge" style="background:rgba(233,69,96,.15);color:var(--accent)">admin</span>' : ""}<span style="color:#555;margin-left:auto;font-size:11px">${u.last_login ? u.last_login.slice(0,16) : "—"}</span></div>`
-          ).join("");
+          const header = `
+            <div class="user-row user-row-hdr">
+              <span class="u-col-num">#</span>
+              <span class="u-col-name">帳號</span>
+              <span class="u-col-cnt" title="最近 7 天 / 累計 分析次數">7d / 累計</span>
+              <span class="u-col-rat" title="累計評分數">評分</span>
+              <span class="u-col-last">最近登入</span>
+            </div>`;
+          const rows = users.users.map((u, idx) => {
+            const isRecent = u.last_login && (Date.now() - new Date(u.last_login).getTime() < 7 * 86400000);
+            const active = u.analyses_7d > 0;
+            return `
+              <div class="user-row${active ? ' user-active' : ''}">
+                <span class="u-col-num">${users.users.length - idx}</span>
+                <span class="u-col-name">
+                  <span class="u-name-text">${esc(u.username)}</span>
+                  ${u.is_admin ? '<span class="badge" style="background:rgba(233,69,96,.15);color:var(--accent);margin-left:6px">admin</span>' : ''}
+                </span>
+                <span class="u-col-cnt">
+                  <span class="u-cnt-recent${u.analyses_7d > 0 ? ' hot' : ''}">${u.analyses_7d || 0}</span>
+                  <span class="u-cnt-sep">/</span>
+                  <span class="u-cnt-total">${u.analyses_total || 0}</span>
+                </span>
+                <span class="u-col-rat">${u.ratings_total || 0}</span>
+                <span class="u-col-last${isRecent ? ' recent' : ''}">${u.last_login ? u.last_login.slice(5, 16).replace('T', ' ') : '—'}</span>
+              </div>`;
+          }).join("");
+          usrEl.innerHTML = header + rows;
+        } else {
+          usrEl.innerHTML = '<span style="color:#555">無使用者</span>';
         }
 
         // Audit log

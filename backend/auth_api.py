@@ -340,13 +340,78 @@ def revoke_invite(code: str, admin: str = Depends(get_admin_user)):
 
 @router.get("/admin/users")
 def list_users(admin: str = Depends(get_admin_user)):
+    """Users sorted newest-registered first (rowid DESC) with usage counters
+    joined in from process_audit (analyses) and feedback.db (ratings)."""
+    # Users table (auth.db): registration order = rowid, last login =
+    # token_created_at (regenerated on every login).
     with sqlite3.connect(DB_PATH, timeout=10) as conn:
         conn.row_factory = sqlite3.Row
-        rows = conn.execute("SELECT username, is_admin, token_created_at FROM users").fetchall()
-    return {"users": [{"username": r["username"], "is_admin": bool(r["is_admin"]),
-                        "last_login": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(r["token_created_at"]))
-                        if r["token_created_at"] else None}
-                       for r in rows]}
+        rows = conn.execute(
+            "SELECT rowid, username, is_admin, token_created_at "
+            "FROM users ORDER BY rowid DESC"
+        ).fetchall()
+    users = [
+        {
+            "rowid": r["rowid"],
+            "username": r["username"],
+            "is_admin": bool(r["is_admin"]),
+            "last_login": time.strftime(
+                "%Y-%m-%dT%H:%M:%S", time.localtime(r["token_created_at"])
+            ) if r["token_created_at"] else None,
+            "analyses_total": 0,
+            "analyses_7d": 0,
+            "ratings_total": 0,
+        }
+        for r in rows
+    ]
+    if not users:
+        return {"users": []}
+
+    usernames = [u["username"] for u in users]
+    qmarks = ",".join("?" * len(usernames))
+
+    # process_audit lives in audit.db — separate file, can't JOIN with
+    # users.db. Query it independently then merge.
+    try:
+        from process_queue import AUDIT_DB_PATH
+        seven_days_ago = time.time() - 7 * 86400
+        # process_audit stores `created_at` as ISO string; compare as string
+        # works because the format is fixed width.
+        cutoff_iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(seven_days_ago))
+        with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
+            totals = dict(conn.execute(
+                f"SELECT username, COUNT(*) FROM process_audit "
+                f"WHERE status='done' AND username IN ({qmarks}) "
+                f"GROUP BY username",
+                usernames,
+            ).fetchall())
+            recent = dict(conn.execute(
+                f"SELECT username, COUNT(*) FROM process_audit "
+                f"WHERE status='done' AND created_at >= ? "
+                f"AND username IN ({qmarks}) GROUP BY username",
+                [cutoff_iso, *usernames],
+            ).fetchall())
+        for u in users:
+            u["analyses_total"] = totals.get(u["username"], 0)
+            u["analyses_7d"] = recent.get(u["username"], 0)
+    except Exception:
+        pass  # never fail the whole list over audit-count lookup
+
+    # feedback.db ratings count (best-effort, tolerate missing schema)
+    try:
+        from feedback_api import DB_PATH as FEEDBACK_DB_PATH
+        with sqlite3.connect(FEEDBACK_DB_PATH, timeout=10) as conn:
+            rat = dict(conn.execute(
+                f"SELECT username, COUNT(*) FROM ratings "
+                f"WHERE username IN ({qmarks}) GROUP BY username",
+                usernames,
+            ).fetchall())
+        for u in users:
+            u["ratings_total"] = rat.get(u["username"], 0)
+    except Exception:
+        pass
+
+    return {"users": users}
 
 
 # ---------------------------------------------------------------------------

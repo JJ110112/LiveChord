@@ -3956,6 +3956,32 @@
     });
   }
 
+  // Export-data lives inside the toolbar Tools popup (moved from homepage
+  // header menu) so the user reaches it mid-practice, where they're most
+  // likely to want a backup of their ratings/recents/favorites.
+  const btnExportData = $("#btnExportData");
+  if (btnExportData) {
+    btnExportData.addEventListener("click", async () => {
+      try {
+        showToast("匯出中…", 2000);
+        const res = await fetch("/api/export-data");
+        if (!res.ok) { showToast("無資料可匯出", 3000); return; }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.style.display = "none";
+        a.href = url;
+        a.download = `${localStorage.getItem("livechord_username") || "livechord"}_backup.zip`;
+        document.body.appendChild(a);
+        a.click();
+        URL.revokeObjectURL(url);
+        a.remove();
+      } catch (e) {
+        showToast("匯出失敗：" + (e.message || "網路錯誤"), 3000);
+      }
+    });
+  }
+
   const btnChordAlign = $("#btnChordAlign");
   if (btnChordAlign) {
     btnChordAlign.addEventListener("click", () => {
