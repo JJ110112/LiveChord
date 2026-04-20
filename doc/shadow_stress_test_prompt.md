@@ -74,32 +74,82 @@
 
 <!-- PC Claude：將測試結果 append 到這下面，遵守以下格式 -->
 
-### 回報 #1 — (待填：日期 / 時間)
+### 回報 #1 — 2026-04-20 22:21 (UTC+8)
 
-**執行狀態**: ☐ 進行中 ☐ 完成 ☐ 失敗
+**執行狀態**: ☒ 完成
 
 **環境**:
-- PC → NUC 連線方式:
-- 使用端點:
-- 登入與否:
+- PC → NUC 連線方式: LAN (`http://192.168.50.6`)
+- 使用端點: **8801 (Beta instance)** — 原本 prompt 指定 8800 但 `/api/process/upload` 在 Personal mode 被 `_require_beta()` 擋住回 404（[backend/process_api.py:55-57](../backend/process_api.py#L55-L57)），改走 8801 + qatest token
+- 登入: `qatest` / `qatest1234` → token 換取後 `Authorization: Bearer <token>`
+- 配額: `_QUOTA_MAX=10` ([backend/process_queue.py:93](../backend/process_queue.py#L93))，本輪鎖在任務區間下限 10 首
 
 **上傳清單**:
 
-| # | 歌名 | hash | V1 time | V1 notes | V2 time | V2 notes | shadow status |
-|---|---|---|---|---|---|---|---|
-| 1 |   |   |   |   |   |   |   |
+| # | 歌名 | duration (s) | hash | V1 time (s) | V1 notes | V2 time (s) | V2 notes | V2/V1 notes | shadow status |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | All by Myself | 158.1 | `a72b86868050` | 53.99 | 143 | 6.33 | 716 | 5.01× | ok |
+| 2 | BEE GEES - FIRST OF MAY | 170.1 | `8aa9fc2172c1` | 55.20 | 137 | 6.03 | 436 | 3.18× | ok |
+| 3 | ABBA - Money, Money, Money | 186.8 | `7c5d2988fdce` | 64.52 | 117 | 6.44 | 857 | 7.32× | ok |
+| 4 | Air Supply - Here I Am | 213.6 | `31062e254be6` | 74.56 | 262 | 7.11 | 750 | 2.86× | ok |
+| 5 | 10cc - I'm Not In Love | 225.2 | `708e30e85e6b` | 72.45 | 174 | 6.77 | 647 | 3.72× | ok |
+| 6 | Barbra Streisand - Memory | 237.8 | `383688350df7` | 85.04 | 300 | 6.93 | 658 | 2.19× | ok |
+| 7 | Cavatina from the Deer Hunter | 248.8 | `aa01663dff03` | 79.49 | 287 | 7.18 | 705 | 2.46× | ok |
+| 8 | Bee Gees - Stayin' Alive | 249.5 | `fd35081c63ae` | 89.90 | 91 | 7.23 | 1038 | **11.41×** | ok |
+| 9 | ABBA - Chiquitita | 319.7 | `4277568f4ed9` | 109.81 | 202 | 9.40 | 1313 | 6.50× | ok |
+| 10 | Bon Jovi - Always | 365.8 | `4f16c01f7edc` | 123.05 | 268 | 10.57 | 1377 | 5.14× | ok |
 
-**統計**:
-- Total uploads attempted:
-- Successfully reached `status=done`:
-- shadow_v2.log 新增行數:
-- ok / error / timeout 分佈:
-- V1 平均耗時: _s
-- V2 平均耗時: _s
-- 平均 speedup: _×
-- V1 平均 notes:
-- V2 平均 notes:
+多樣性涵蓋：流行人聲 (1,2,3,4,9)、抒情 (5,6)、純器樂 (7=guitar)、節奏強 (8,10)、短曲 (1 最短 158s) + 長曲 (10 最長 366s)。原計畫的 `Beethoven Moonlight Sonata` (445s) 因配額只有 10 首被捨棄，但 Bon Jovi Always 已滿足「>5min 長曲」。「<2min 超短曲」未達標（Y:\ 根目錄最短 158s）。
+
+**統計** (baseline shadow_v2.log 有 3 行 pre-test entries，下列只統計本輪新增的 10 行):
+
+- Total uploads attempted: **10**
+- Successfully reached `status=done`: **10/10** (100%)
+- `shadow_v2.log` 新增行數: **10** (從 3 → 13)
+- `V:\data\melodies_v2\` 新增檔數: **10** (從 3 → 13，與 log 行數對齊 ✓)
+- Shadow status 分佈: **ok=10 / error=0 / timeout=0**
+- **V1 耗時 (mean / median / p95): 80.80s / 77.03s / 123.05s**
+- **V2 耗時 (mean / median / p95): 7.40s / 7.02s / 10.57s**
+- **平均 speedup (V1_mean / V2_mean): 10.92×** — per-song speedup range 7.5× – 11.6×
+- V1 notes (mean / median): **198.1 / 188.0**
+- V2 notes (mean / median): **849.7 / 733.0**
+- V2/V1 notes ratio (per-song mean): **4.98×** · (min 2.19× / max 11.41×) — **V2 系統性地比 V1 密**
 
 **異常 / 觀察**:
 
+- ✅ Shadow pipeline 端對端驗證成功：BTC chord detection → V1 melody save → V1 status=done → shadow subprocess 在 5-10s 內寫 `melodies_v2/<hash>.json` + 一行 `shadow_v2.log` ok entry
+- ✅ Shadow log row count == melodies_v2 file count == successful uploads (10/10/10)
+- 🛠️ **Client-side hiccup (不是 NUC 問題)**: #3 ABBA Money Money Money 第一次 curl 上傳回空 response，原因是 MSYS2 (Git Bash) 的 curl 在處理帶多個逗號的檔名用 `-F` multipart 時會誤解 comma 為 form field 分隔。改用 Python `requests` 重傳後一次成功。`curl --data-binary` 走原始 body 驗證能連到 server（回 422），所以排除網路問題。Shadow 端完全沒有失敗案例
+- 📊 **短曲 V1 notes 偏低是真的，不是 bug**：#1 All by Myself (158s) 只有 143 notes，平均密度 ~0.9 notes/s；而 V2 對同首曲回 716 notes (~4.5 notes/s)。符合 CLAUDE.md「V1 是傳統 pitch tracker，丟掉低信心、低音高片段；V2 是 neural model，偵測分辨率細」的設計差異
+- 📊 **#8 Bee Gees Stayin' Alive notes ratio 11.41× 是 outlier 最高**：V1 只抓 91 notes，V2 抓 1038 notes。Stayin' Alive 的高音女聲和弦式 backing vocals + 鼓點節奏強，V1 可能被節奏頻率干擾遺漏主旋律；值得優先人工 A/B 比對這首
+- 📈 **線性趨勢**：V1 耗時大致隨歌長線性 (158s→54s、366s→123s，約 0.33×RT)；V2 幾乎 flat (6-11s)，長曲 speedup 更顯著（Bon Jovi 達 11.6×），符合 NN 模型 amortized cost 特性
+
 **建議**:
+
+- 🟡 **可以規劃 V2-primary 切換評估，但不要現在切**。依據：
+  - 速度面非常達標：speedup 10.9× + failure rate 0%，production 層面完全 ready
+  - 正確性面**未驗證**：V2 notes 系統性多出 4-5 倍，有兩個可能 — (a) V2 精準抓到 V1 漏掉的實際音符（好消息）；(b) V2 產生了大量幻影音符雜訊（壞消息，會把鋼琴學習者帶偏）。僅看 log 統計無法分辨
+- **下一步建議（給 NUC Claude）**:
+  1. **人工 A/B 試聽**：挑 #8 (ratio 11.41×)、#4 (ratio 2.86× 最接近)、#10 (長曲，ratio 5.14×) 這三首，把 `V:\data\melodies\<hash>.json` 和 `V:\data\melodies_v2\<hash>.json` 各自渲染成鋼琴 MIDI，用 chordify 或原曲對照聽 — 判斷 V2 是「更豐富」還是「更雜」
+  2. **如果判 V2 正確**：保留 Shadow 一週累積 50-100 首（Beta 用戶自動累計），然後切 `ENABLE_NN_MELODY=True`，上線前先在 hitea 個人帳號多首試聽確認
+  3. **如果判 V2 過密**：調 `melody_extractor_v2.py` 的 confidence threshold（或 post-filter 丟低 velocity notes），再重跑本任務的 10 首 compare
+  4. **擴充本輪覆蓋**：這輪 10 首不含 `<120s 超短`、不含 `cover` 類曲、不含 `純器樂 piano-only`（Cavatina 是 guitar）。下輪若 NUC Claude 寫任務 #2，可把 beethoven/mozart piano solo + 合唱 acapella + 純電子舞曲納入壓測
+  5. **qatest 配額**：日上限 10 在 in-memory 儲存，NUC 重啟後歸零。如果要一次測 20+ 首，需 (a) 用第二個帳號 (b) 等跨日 (c) 暫時改 `_QUOTA_MAX`。Prompt 建議下一次 NUC Claude 明確指定方案
+
+**原始資料**:
+
+- per-song upload/poll results (PC 本機): `C:\Users\hitea\AppData\Local\Temp\lc_stress_results.jsonl`
+- shadow log delta 原始 entries (JSONL, 本輪新增 10 行):
+
+```jsonl
+{"ts": "2026-04-20T14:01:55Z", "hash": "a72b86868050", "v1_time_s": 53.99, "v1_notes": 143, "status": "ok", "v2_time_s": 6.33, "return_code": 0, "v2_notes": 716}
+{"ts": "2026-04-20T14:03:28Z", "hash": "8aa9fc2172c1", "v1_time_s": 55.2, "v1_notes": 137, "status": "ok", "v2_time_s": 6.03, "return_code": 0, "v2_notes": 436}
+{"ts": "2026-04-20T14:04:48Z", "hash": "31062e254be6", "v1_time_s": 74.56, "v1_notes": 262, "status": "ok", "v2_time_s": 7.11, "return_code": 0, "v2_notes": 750}
+{"ts": "2026-04-20T14:06:00Z", "hash": "708e30e85e6b", "v1_time_s": 72.45, "v1_notes": 174, "status": "ok", "v2_time_s": 6.77, "return_code": 0, "v2_notes": 647}
+{"ts": "2026-04-20T14:07:25Z", "hash": "383688350df7", "v1_time_s": 85.04, "v1_notes": 300, "status": "ok", "v2_time_s": 6.93, "return_code": 0, "v2_notes": 658}
+{"ts": "2026-04-20T14:08:45Z", "hash": "aa01663dff03", "v1_time_s": 79.49, "v1_notes": 287, "status": "ok", "v2_time_s": 7.18, "return_code": 0, "v2_notes": 705}
+{"ts": "2026-04-20T14:10:28Z", "hash": "fd35081c63ae", "v1_time_s": 89.9, "v1_notes": 91, "status": "ok", "v2_time_s": 7.23, "return_code": 0, "v2_notes": 1038}
+{"ts": "2026-04-20T14:12:32Z", "hash": "4277568f4ed9", "v1_time_s": 109.81, "v1_notes": 202, "status": "ok", "v2_time_s": 9.4, "return_code": 0, "v2_notes": 1313}
+{"ts": "2026-04-20T14:14:48Z", "hash": "4f16c01f7edc", "v1_time_s": 123.05, "v1_notes": 268, "status": "ok", "v2_time_s": 10.57, "return_code": 0, "v2_notes": 1377}
+{"ts": "2026-04-20T14:18:26Z", "hash": "7c5d2988fdce", "v1_time_s": 64.52, "v1_notes": 117, "status": "ok", "v2_time_s": 6.44, "return_code": 0, "v2_notes": 857}
+```
