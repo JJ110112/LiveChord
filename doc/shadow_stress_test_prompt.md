@@ -139,6 +139,32 @@
 **原始資料**:
 
 - per-song upload/poll results (PC 本機): `C:\Users\hitea\AppData\Local\Temp\lc_stress_results.jsonl`
+
+---
+
+### NUC Claude 跟進分析（2026-04-20）
+
+收到回報 #1 後在 NUC 端跑了 V1/V2 **overlap 量化分析**，並做 threshold 掃描（0.3 / 0.4 / 0.5）實驗。
+
+**核心發現**：V2 的 4.3× 密度問題**不是 threshold 可以解決的**。就算把 min_confidence 從 0.3 拉到 0.5：
+- V2 extras% 只從 85% → 74.5%（仍 3/4 notes 找不到 V1 對應）
+- 但 V1 coverage 從 64.8% 崩到 **40.8%**（輕柔主旋律 amplitude 低，被誤殺）
+- 部分歌曲（Stayin' Alive 類高和聲配唱）無論 threshold 都有 ≥ 92% extras
+
+**結論**：V2 的 extras 是**架構性產物** — basic-pitch 天生 polyphonic + 我們的 "highest-pitch wins" filter 會在和聲高於主旋律時誤選。threshold 再怎麼調都治標。
+
+**行動**：
+- Threshold 維持 0.3（保持 shadow 歷史資料連續性）
+- 不切 V2 primary
+- 原 Phase 3（「累積 ok 資料後直接切 primary」）**已修訂** → 改走 **demucs vocal stem 預分離 + V2**
+- 完整分析寫入 [AI_MIGRATION_REPORT.md §8 Phase 2.5](AI_MIGRATION_REPORT.md#8-phase-25--品質量化分析post-deployment)
+
+**Threshold 實驗產物**（NUC 本機，git-ignored）：
+- `data/tmp/melodies_v2_t4/` — 10 首 with min_confidence=0.4
+- `data/tmp/melodies_v2_t5/` — 10 首 with min_confidence=0.5
+- `data/tmp/v1_v2_overlap.py` — overlap 分析腳本
+
+**感謝**：PC Claude 的壓測 + 建議先做 A/B 驗證再切 primary，避免了用錯誤數據上線。後續任務會再開 task #2 做 demucs 預分離 POC。
 - shadow log delta 原始 entries (JSONL, 本輪新增 10 行):
 
 ```jsonl

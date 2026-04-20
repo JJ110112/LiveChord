@@ -13,10 +13,12 @@
 |---|---|
 | V1 pYIN（3-4 分鐘歌） | 38-128 秒 / 200-300 notes |
 | V2 basic-pitch + melody filter | **3-8 秒 / 600-1300 notes** |
-| 速度提升 | **11× – 23×**（穩定區間） |
+| 速度提升 | **11× – 23×**（穩定區間，10 首壓測均值 10.92×） |
 | 硬體偵測 | OpenVINO EP 真正接上（Phase 1.5 修復） |
 | 佈署模式 | Shadow Mode（V1 仍 primary） |
 | 用戶看到的改動 | 0（ENABLE_NN_MELODY=False） |
+| **品質驗證**（Phase 2.5） | ⚠️ V2 notes 密度 4.3× V1、V1 coverage 64.8%、V2 extras 85%（見 §8） |
+| **Phase 3 方向**（依 §8 修訂） | ❌ ~~直接切 V2 primary~~ → ✓ 先做 demucs vocal stem 預分離 |
 
 ---
 
@@ -236,18 +238,101 @@ c:/LiveChord/venv_ai/Scripts/pip.exe install -r c:/LiveChord/requirements_nuc.tx
 
 ---
 
-## 8. 下一步（Phase 3+）
+## 8. Phase 2.5 — 品質量化分析（post-deployment）
 
-按優先順序：
+**觸發**：Shadow 部署後 PC Claude 跑了 10 首歌的壓測（見 [shadow_stress_test_prompt.md](shadow_stress_test_prompt.md) 回報 #1）。結果速度面 A+（10.92× speedup，100% success rate），但**V2 notes 數量系統性為 V1 的 4-5 倍**。單看 log 無法分辨 V2 是「更豐富的正確輸出」還是「多了幻影音符」，因此做量化 overlap 分析。
 
-### Phase 3 — 切 V2 為 primary（用戶看到的就是 V2）
+### 8.1 Overlap metric 定義
 
-- 條件：`data/shadow_v2.log` 累積 N 首歌後，V2 `status=ok` 比例 ≥ 99%、且 timing 穩定
-- 執行：`ENABLE_NN_MELODY=True` + 修改 `_melody_worker_loop`：
-  1. 優先跑 V2（subprocess）
-  2. V2 timeout / error 時退回 V1
-  3. V2 輸出直接寫 `data/melodies/<hash>.json` 給前端
-- 風險：V2 音符密度 2-6× 高於 V1，前端 waterfall UI 可能顯示過滿 → 需再調 melody filter 參數或前端稀疏化
+對每首歌：
+- 對每個 V1 note，在 V2 裡找有沒有**同時間 (±250ms) 且同 pitch class**（octave-invariant）的 note
+- 匹配成功 → 計入「V1 coverage」
+- 反向：V2 note 沒匹配到任何 V1 note → 計入「V2 extras」
+- 計算 extras 的 confidence 分佈看是不是 polyphonic 噪音
+
+Pitch class 而非 exact MIDI 是為了容忍 V1/V2 的八度選擇差異（兩者都可能把同一音高標到不同八度）。
+
+### 8.2 初始結果（default threshold 0.3）
+
+| 指標 | 10 首合計 | 解讀 |
+|---|---:|---|
+| V1 notes total | 1,981 | — |
+| V2 notes total | 8,497 | 4.3× V1 |
+| **V1 notes 被 V2 抓到** | **64.8%** | V2 **漏掉 35% V1 notes**（V2 不是 superset）|
+| **V2 notes 對到 V1** | 15.0% | 大多數 V2 notes 在 V1 看不到 |
+| **V2 extras 占 V2 總量** | **85.0%**（7,223 個）| 關鍵：這堆是什麼？|
+| V2 extras 的 confidence 中位數 | 0.408 | 剛好在過濾門檻 0.3 上方一點 |
+| V2 extras conf < 0.4 比例 | **46.4%** | 近一半是邊緣品質 |
+
+Outlier：Bee Gees "Stayin' Alive" V2/V1 = **11.4×**（V1=91 notes、V2=1038）— 高音女聲 backing vocals + 節奏強；V1 被節奏干擾漏抓，V2 抓到但大部分是和聲聲部不是主旋律。
+
+### 8.3 Threshold 掃描
+
+嘗試把 min_confidence 從 0.3 抬高砍掉低品質 extras：
+
+| Threshold | V2 total | 密度 vs V1 | V1 coverage | V2 extras% | extras conf 中位數 |
+|---|---:|---:|---:|---:|---:|
+| **0.3**（原值） | 8,497 | 4.3× | **64.8%** | 85.0% | 0.408 |
+| **0.4** | 5,558 | 2.8× | 54.0% | 81.0% | 0.478 |
+| **0.5** | 3,137 | **1.6×** | **40.8%** ⚠️ | 74.5% | 0.567 |
+
+### 8.4 Threshold tuning 撞牆的證據
+
+1. **extras% 只從 85% 降到 74.5%** — 就算把門檻拉到 0.5（砍掉所有 conf < 0.5 的 notes），V2 仍有 **3/4** 的 notes 找不到 V1 對應。不是噪音問題是**架構問題**
+2. **V1 coverage 反向掉更快** — 拉到 0.5 時，10cc "I'm Not In Love" coverage 從 62.1% 崩到 **17.8%**（-44 點）。原因：basic-pitch 的 "confidence" 實際上是 note amplitude，輕柔主旋律（quiet vocal）amplitude 低 → 被高門檻誤殺
+3. **Stayin' Alive 不論 threshold extras 都 ≥ 92.6%** — 證明某些歌曲的 V2 extras 是 architectural 必然產物（高音 backing vocals 被 "highest-pitch wins" filter 當主旋律）
+
+### 8.5 結論
+
+**Threshold tuning 不是正解**。V2 的 extras 主要來自 basic-pitch 的 polyphonic 本質與我們 "highest-pitch wins" filter 的交互作用：
+
+- basic-pitch 原生偵測**所有聲部 onset**（主旋律 + 和聲 + 高音伴奏）
+- 我們的 filter 在每個 time slice 選最高音 → 當伴奏/合唱高於主旋律時，它們被當主旋律保留
+- 這是**設計選擇導致的 trade-off**，不是 bug
+
+### 8.6 建議下一步（取代 Phase 3 原計畫）
+
+**原 Phase 3 計畫**（「Shadow 跑幾週後累積 99% ok 就切 V2 primary」）**需要修改** — 因為「status=ok」只代表執行成功，不代表輸出品質達標。
+
+**建議的 Phase 3 新計畫 = demucs 預分離 + V2**：
+
+```
+audio.wav → demucs (vocals stem 分離) → V2 melody_extractor → melody JSON
+                                      ↘ accompaniment stem → （既有伴奏 pipeline）
+```
+
+理由：
+- LiveChord 已在用 demucs 做 accompaniment v2，模型 + CPU inference 都部署好
+- Vocal-only 輸入會大幅降低 basic-pitch 的 polyphonic 干擾（和弦 / 節奏 / 合聲聲部都被 stripped 掉）
+- 預期 extras% 可壓到 30-40%（剩下的 extras 是真正的 vocal ornament / 和聲）
+- V1 pYIN 本來就對 vocal-only 表現最好，V2 + demucs 可雙贏
+
+成本：
+- 每首歌多 ~5-15 秒 demucs inference（已在 accompaniment 路徑付過這個代價）
+- 若 accompaniment 已完成，可**重用 vocal stem**（`data/hybrid_melody/<hash>/`）→ 零新增成本
+- 若沒跑過 accompaniment，需額外跑 demucs 一次
+
+### 8.7 暫時決策
+
+**不切 V2 primary、保持 Shadow Mode、threshold 維持 0.3**（避免對現有 shadow 數據 breaking change；反正用戶沒看到）。
+
+等 Phase 3（demucs 預分離）實作完成後再重新評估切換時機。
+
+**Threshold 實驗產物保留**：`c:/LiveChord/data/tmp/melodies_v2_t4/`、`melodies_v2_t5/`（git-ignored）以便回溯比對。
+
+---
+
+## 9. 下一步（Phase 3+）
+
+按優先順序（Phase 3 已依 8.6 修訂）：
+
+### Phase 3 — demucs vocal stem → V2（取代「直接切 primary」）
+
+- 寫 `backend/ai/melody_extractor_v2_stemmed.py` 包裝：先檢查 `data/hybrid_melody/<hash>/vocals.wav` 是否存在；有就直接用，沒有就跑一次 demucs 到該路徑
+- 與 `melody_extractor_v2` 共用主體邏輯，只差輸入音檔
+- Shadow 再跑一輪（可叫「shadow v3」）收集 overlap 指標
+- 目標：V2_stemmed 對 V1 的 coverage ≥ 80% 且 extras% ≤ 40%
+- 達標後才考慮 `ENABLE_NN_MELODY=True`
 
 ### Phase 4 — 模型升級候選
 
@@ -261,9 +346,10 @@ c:/LiveChord/venv_ai/Scripts/pip.exe install -r c:/LiveChord/requirements_nuc.tx
 
 ---
 
-## 9. Commit History
+## 10. Commit History
 
 ```
+(待補) Phase 2.5 分析寫入本報告
 9a8a286 feat(ai): Phase 2 Shadow Mode — V2 runs in background alongside V1
 3d4de5f fix(ai): V2 ONNX providers actually wired + polyphonic→melody filter
 6233163 build: add environment specific requirements files
@@ -272,4 +358,4 @@ c:/LiveChord/venv_ai/Scripts/pip.exe install -r c:/LiveChord/requirements_nuc.tx
 ```
 
 分支：`feature/beta-productization`
-遠端：`origin/feature/beta-productization`（已同步）
+遠端：`origin/feature/beta-productization`（待同步 Phase 2.5 更新）

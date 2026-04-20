@@ -134,7 +134,12 @@ class MelodyExtractorV2:
 
         filter_melody: True → 套 polyphonic→monophonic 主旋律過濾（預設開）
                        False → 回傳 basic-pitch 原始 polyphonic 結果（偵錯用）
-        min_confidence: 過濾門檻（basic-pitch 的 amplitude 做 confidence 使用）
+        min_confidence: 過濾門檻（basic-pitch 的 amplitude 做 confidence 使用）。
+                        Phase 2.5 掃描結論：0.3 最佳（V1 coverage 64.8%）；0.5 時
+                        V1 coverage 崩到 40.8%（輕柔主旋律被 amplitude 門檻誤殺）。
+                        extras 問題是架構性（polyphonic+highest-pitch filter）不是
+                        threshold 問題，需 demucs 預分離才能根治。詳見
+                        doc/AI_MIGRATION_REPORT.md §8
 
         回傳格式:
         [{"start": 1.2, "end": 2.5, "note": "G4", "midi": 67, "confidence": 0.85}, ...]
