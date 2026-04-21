@@ -60,6 +60,53 @@
     return splitTime; // caller may use for section boundary
   }
 
+  // Set a chord's beat count (duration). Cascades subsequent chords by the
+  // delta so the timeline stays coherent — shortening leaves no gap, growing
+  // creates no overlap. Caller handles backup/rebuild.
+  function setBeats(chordData, chordIdx, newBeats, secPerBeat) {
+    const chords = chordData.chords;
+    const chord = chords[chordIdx];
+    const oldEnd = chord.end || (chordIdx < chords.length - 1 ? chords[chordIdx + 1].time : chord.time + 2);
+    const newEnd = round2(chord.time + newBeats * secPerBeat);
+    const delta = newEnd - oldEnd;
+    chord.end = newEnd;
+    if (Math.abs(delta) > 0.001) {
+      for (let j = chordIdx + 1; j < chords.length; j++) {
+        chords[j].time = round2(chords[j].time + delta);
+        if (chords[j].end) chords[j].end = round2(chords[j].end + delta);
+      }
+    }
+    return { delta, newEnd };
+  }
+
+  // Merge two adjacent chords. The `dissolve` param names which one vanishes
+  // — "prev" means the chord AT chordIdx-1 vanishes and this chord extends
+  // back to absorb it; "next" means the chord AT chordIdx+1 vanishes and
+  // this chord extends forward. Returns true on success, false at song
+  // boundaries. Caller handles backup + rebuild.
+  function mergeChord(chordData, chordIdx, dissolve /* "prev" | "next" */) {
+    const chords = chordData.chords;
+    if (chordIdx < 0 || chordIdx >= chords.length) return false;
+    if (dissolve === "prev") {
+      if (chordIdx === 0) return false;
+      const prev = chords[chordIdx - 1];
+      const curr = chords[chordIdx];
+      // prev absorbs curr: prev's name stays, prev.end becomes curr.end
+      prev.end = curr.end || prev.end;
+      chords.splice(chordIdx, 1);
+    } else if (dissolve === "next") {
+      if (chordIdx >= chords.length - 1) return false;
+      const curr = chords[chordIdx];
+      const next = chords[chordIdx + 1];
+      // curr absorbs next: curr's name stays, curr.end becomes next.end
+      curr.end = next.end || curr.end;
+      chords.splice(chordIdx + 1, 1);
+    } else {
+      return false;
+    }
+    return true;
+  }
+
   /* ========== Feature 2: Chord Align ========== */
 
   let _alignState = null; // { chordData, audio, getActiveIdxFn, rebuildFn, marks[], panelEl, keyHandler }
@@ -302,6 +349,267 @@
     _beatState = null;
   }
 
+  /* ========== Feature 5: Chord Calibrate (1/2/3/4 tap) ========== */
+
+  let _calibrateState = null;
+
+  function enterChordCalibrate(chordData, audio, rebuildFn, options) {
+    options = options || {};
+    const startChordIdx = Math.max(0, Math.min(options.startChordIdx || 0, (chordData?.chords?.length || 1) - 1));
+
+    if (_activeMode) { showToast("請先結束目前的修正模式", 2000); return; }
+    if (!chordData || !chordData.chords || chordData.chords.length === 0) {
+      showToast("尚無和弦資料", 2000); return;
+    }
+    _activeMode = "chord-calibrate";
+
+    const taps = []; // { time, isChordStart }
+
+    // Load keybinds (persisted). Defaults: `0` = chord start, `.` = next beat
+    // — both on the numpad / right-hand home position so one hand can operate
+    // without looking.
+    const savedBinds = (() => {
+      try { return JSON.parse(localStorage.getItem("livechord_calibrate_keys") || "{}"); }
+      catch { return {}; }
+    })();
+    let chordStartKey = savedBinds.chordStartKey || "0";
+    let nextBeatKey = savedBinds.nextBeatKey || ".";
+
+    function saveKeybinds() {
+      try {
+        localStorage.setItem("livechord_calibrate_keys",
+          JSON.stringify({ chordStartKey, nextBeatKey }));
+      } catch {}
+    }
+
+    const title = startChordIdx > 0
+      ? `\u{1F3AF} 從第 ${startChordIdx + 1} 個和絃開始校正`
+      : `\u{1F3AF} 和弦與節拍校正 (Chord + Beat Calibrate)`;
+    const panel = _createPanel(title, "");  // instruction set below
+
+    const countEl = panel.querySelector(".cc-count");
+    const resultEl = panel.querySelector(".correction-result");
+    const applyBtn = panel.querySelector(".correction-apply");
+    const cancelBtn = panel.querySelector(".correction-cancel");
+    const instructionEl = panel.querySelector(".correction-instructions");
+
+    function refreshInstruction() {
+      // Clickable <kbd> labels — click to rebind. No modal, inline capture.
+      instructionEl.innerHTML =
+        `播放音樂，按 <kbd class="cc-bind" data-role="start">${chordStartKey}</kbd> = 換和弦；` +
+        `<kbd class="cc-bind" data-role="next">${nextBeatKey}</kbd> = 同和弦下一拍` +
+        `<br><span style="opacity:0.6; font-size:11px;">(點擊按鍵可自訂；手機請用下方 <b>新和弦</b> / <b>下一拍</b> 按鈕)</span>`;
+      instructionEl.querySelectorAll(".cc-bind").forEach(kbd => {
+        kbd.style.cssText = "cursor:pointer; padding:2px 8px; background:rgba(33,150,243,0.2); border-radius:3px; min-width:20px; display:inline-block; text-align:center;";
+        kbd.addEventListener("click", () => _rebindOne(kbd));
+      });
+    }
+
+    function _rebindOne(kbdEl) {
+      const role = kbdEl.dataset.role; // "start" or "next"
+      const oldText = kbdEl.textContent;
+      kbdEl.textContent = "按任意鍵...";
+      kbdEl.style.background = "rgba(255,152,0,0.4)";
+      rebindingActive = true;
+      const oneshot = (e) => {
+        if (["Shift", "Control", "Alt", "Meta", "Tab"].includes(e.key)) return;
+        document.removeEventListener("keydown", oneshot, { capture: true });
+        rebindingActive = false;
+        if (e.key === "Escape") {
+          kbdEl.textContent = oldText;
+          kbdEl.style.background = "";
+          return;
+        }
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const other = role === "start" ? nextBeatKey : chordStartKey;
+        if (e.key === other) {
+          showToast("兩個按鍵不能相同", 1800);
+          kbdEl.textContent = oldText;
+          kbdEl.style.background = "";
+          return;
+        }
+        if (role === "start") chordStartKey = e.key;
+        else nextBeatKey = e.key;
+        saveKeybinds();
+        refreshInstruction();
+      };
+      document.addEventListener("keydown", oneshot, { capture: true });
+    }
+
+    // Inject large touch-friendly tap buttons just before the Apply/Cancel row
+    const actionsRow = panel.querySelector(".correction-actions");
+    const tapRow = document.createElement("div");
+    tapRow.className = "correction-tap-row";
+    tapRow.style.cssText = "display:flex; gap:8px; margin-bottom:8px;";
+    tapRow.innerHTML = `
+      <button type="button" class="correction-btn cc-tap-start" style="flex:1; min-height:44px; font-size:15px; background:rgba(33,150,243,0.3); border-color:#2196F3;">▶ 新和弦</button>
+      <button type="button" class="correction-btn cc-tap-beat" style="flex:1; min-height:44px; font-size:15px;">· 下一拍</button>
+    `;
+    actionsRow.parentNode.insertBefore(tapRow, actionsRow);
+
+    refreshInstruction();
+
+    let rebindingActive = false;
+
+    function recordTap(isChordStart) {
+      if (audio.paused) { showToast("請先播放音樂", 1200); return; }
+      taps.push({ time: audio.currentTime, isChordStart });
+      countEl.style.color = "#2196F3";
+      setTimeout(() => { countEl.style.color = ""; }, 150);
+      updateUI();
+    }
+    tapRow.querySelector(".cc-tap-start").addEventListener("click", () => recordTap(true));
+    tapRow.querySelector(".cc-tap-beat").addEventListener("click", () => recordTap(false));
+
+    function groupsFromTaps() {
+      const groups = [];
+      for (const t of taps) {
+        if (t.isChordStart || groups.length === 0) groups.push([t]);
+        else groups[groups.length - 1].push(t);
+      }
+      return groups;
+    }
+
+    function updateUI() {
+      const groups = groupsFromTaps();
+      countEl.textContent = `${groups.length} 個和絃，${taps.length} 拍`;
+      if (taps.length >= 4) {
+        const intervals = [];
+        for (let i = 1; i < taps.length; i++) intervals.push(taps[i].time - taps[i - 1].time);
+        const med = median(intervals);
+        if (med > 0) {
+          const bpm = Math.round(60 / med);
+          resultEl.style.display = "";
+          resultEl.textContent = `BPM: ${bpm}`;
+        }
+      }
+      applyBtn.disabled = groups.length < 2;
+    }
+
+    function keyHandler(e) {
+      // Rebind capture runs via its own listener; stay out of its way.
+      if (rebindingActive) return;
+      if (e.key !== chordStartKey && e.key !== nextBeatKey) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      recordTap(e.key === chordStartKey);
+    }
+    document.addEventListener("keydown", keyHandler, { capture: true });
+
+    applyBtn.onclick = () => {
+      const groups = groupsFromTaps();
+      if (groups.length < 2) { showToast("至少敲 2 個和絃才能校正", 2000); return; }
+
+      // 1. Derive secPerBeat (filtered median of all inter-tap intervals)
+      const intervals = [];
+      for (let i = 1; i < taps.length; i++) intervals.push(taps[i].time - taps[i - 1].time);
+      const rawMed = median(intervals);
+      const filtered = intervals.filter(v => v > rawMed * 0.5 && v < rawMed * 2);
+      const secPerBeat = (filtered.length > 0 ? median(filtered) : rawMed) || 0.5;
+
+      // 2. Lag compensation ("由後面校正回去") — use the middle groups to
+      // measure the user's consistent reaction delay, then shift every tap
+      // earlier by that amount. Skips group 0 which is typically late.
+      const residuals = [];
+      for (let i = 1; i < groups.length; i++) {
+        const expected = groups[i - 1][0].time + groups[i - 1].length * secPerBeat;
+        residuals.push(groups[i][0].time - expected);
+      }
+      const lag = residuals.length > 0 ? median(residuals) : 0;
+
+      // 3. Apply segmented-safe to chordData
+      backup(chordData);
+      const chords = chordData.chords;
+      const offset = startChordIdx;
+      const N = Math.min(groups.length, chords.length - offset);
+
+      // Left boundary fix — prior chord's end aligns with first new time
+      if (offset > 0) {
+        const firstNewTime = Math.max(0, groups[0][0].time - lag);
+        chords[offset - 1].end = round2(firstNewTime);
+      }
+
+      // Rewrite segment
+      for (let g = 0; g < N; g++) {
+        const newTime = Math.max(0, groups[g][0].time - lag);
+        chords[offset + g].time = round2(newTime);
+        if (g > 0) chords[offset + g - 1].end = chords[offset + g].time;
+      }
+
+      // Right boundary fix
+      const lastIdx = offset + N - 1;
+      if (offset + N < chords.length) {
+        // Un-recalibrated neighbor exists — line up with its unchanged time
+        chords[lastIdx].end = chords[offset + N].time;
+      } else {
+        // Last chord of the song — derive end from the tap count
+        const lastGroup = groups[N - 1];
+        chords[lastIdx].end = round2(chords[lastIdx].time + lastGroup.length * secPerBeat);
+      }
+
+      // GLOBAL sort + dedupe across the whole chord array. Segment-local
+      // sort was a bug: if the user tapped at an audio time that didn't
+      // match the right-clicked chord's original position (e.g., audio was
+      // still in the chorus when they right-clicked a verse chord), the
+      // rewritten segment's times end up *outside* the surrounding chords'
+      // ranges, producing a time-regression across the whole array. The
+      // admin "過完冬季" file had chord[20].time=183 → chord[21].time=66,
+      // exactly this failure mode. A global resort restores the invariant.
+      chords.sort((a, b) => (a.time || 0) - (b.time || 0));
+      const MIN_GAP = 0.2;
+      for (let i = chords.length - 1; i > 0; i--) {
+        if ((chords[i].time || 0) - (chords[i - 1].time || 0) < MIN_GAP) {
+          chords.splice(i - 1, 1);  // drop the earlier of the pair;
+                                    // the later one carries the fresher edit
+        }
+      }
+      // Re-align ends so ribbon doesn't paint gaps
+      for (let i = 0; i < chords.length - 1; i++) {
+        chords[i].end = chords[i + 1].time;
+      }
+
+      // Overwrite the song's saved BPM with the tap-derived tempo. Without
+      // this, the player reads the stale chordData.bpm (Phase C) and rounds
+      // chord durations against the wrong secPerBeat — so a chord the user
+      // tapped as 4 beats would display as 3 dots when the real tempo is
+      // faster than the saved BPM. Writing `bpm` here makes the dot count
+      // always reflect what the user tapped, regardless of the pre-calibration
+      // value.
+      const newBpm = Math.max(30, Math.min(300, Math.round(60 / secPerBeat)));
+      chordData.bpm = newBpm;
+
+      // Toasts
+      let summary;
+      if (groups.length > chords.length - offset) {
+        summary = `敲了 ${groups.length} 組但只剩 ${chords.length - offset} 個和絃，多的已忽略 (BPM=${newBpm})`;
+      } else if (groups.length < chords.length - offset) {
+        summary = `已校正 ${N} 個，${chords.length - offset - N} 個未動 (BPM=${newBpm}，右鍵下一個可續)`;
+      } else {
+        summary = `已校正全部 ${N} 個和絃 (BPM=${newBpm})`;
+      }
+
+      exitChordCalibrate();
+      rebuildFn();
+      showToast(summary, 2800);
+    };
+
+    cancelBtn.onclick = () => { exitChordCalibrate(); };
+
+    _calibrateState = { chordData, audio, rebuildFn, taps, panelEl: panel, keyHandler };
+    updateUI();
+  }
+
+  function exitChordCalibrate() {
+    _activeMode = null;
+    if (!_calibrateState) return;
+    document.removeEventListener("keydown", _calibrateState.keyHandler, { capture: true });
+    if (_calibrateState.panelEl && _calibrateState.panelEl.parentNode) {
+      _calibrateState.panelEl.remove();
+    }
+    _calibrateState = null;
+  }
+
   /* ========== Backup / Revert ========== */
 
   function backup(chordData) {
@@ -330,6 +638,13 @@
     // Feature 3: Split
     splitChord,
     generateSplitOptions,
+    // Feature 4: Beat adjust
+    setBeats,
+    // Feature 5: Chord Calibrate (1234 tap)
+    enterChordCalibrate,
+    exitChordCalibrate,
+    // Feature 6: Merge adjacent chords
+    mergeChord,
     // Shared
     backup,
     revert,

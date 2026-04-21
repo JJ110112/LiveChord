@@ -913,12 +913,28 @@ def _auto_chord_detect_loop(settings: dict, batch: list, unanalyzed: list, lock,
         try:
             from chord_detect import detect_chords_and_key_isolated
             chords, key = detect_chords_and_key_isolated(full)
+            # Post-process: run librosa beat tracking and snap chord boundaries
+            # to the beat grid + write bpm. Without this the front-end sees
+            # fractional beat counts ("3.3 beats") and the ribbon dot count
+            # disagrees between views. Failure here is non-fatal — save raw
+            # BTC output and move on.
+            bpm_val = None
+            n_snap = 0
+            try:
+                from beat_snap import analyze_and_snap
+                bpm_val, n_snap = analyze_and_snap(full, chords)
+            except Exception as _snap_err:
+                add_log("WARN", f"beat_snap 失敗: {name} — {type(_snap_err).__name__}")
             sheet = {"path": track_path, "key": key, "capo": 0,
                      "source": "btc", "chords": chords}
+            if bpm_val:
+                sheet["bpm"] = round(bpm_val, 1)
             chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
             cache_update_entry(track_path)
             _worker_state["detect_count"] += 1
-            add_log("OK", f"BTC 偵測: {name} (Key: {key}, {len(chords)} chords)")
+            bpm_tag = f", BPM {bpm_val:.0f}" if bpm_val else ""
+            snap_tag = f", snap {n_snap}" if n_snap else ""
+            add_log("OK", f"BTC 偵測: {name} (Key: {key}, {len(chords)} chords{bpm_tag}{snap_tag})")
         except Exception as e:
             reason = _classify_detect_error(e, full)
             add_log("ERROR", f"偵測失敗: {name} — {reason}")

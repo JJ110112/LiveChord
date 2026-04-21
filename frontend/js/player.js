@@ -46,6 +46,47 @@
   const _RH_LABELS = { acc: "伴奏", mel: "旋律", both: "伴奏加旋律" };
   let rhContentMode = localStorage.getItem("livechord_rh_mode") || "acc";
   if (!_RH_MODES.includes(rhContentMode)) rhContentMode = "acc";
+
+  // Resolve right-hand events according to rhContentMode. Single source of truth
+  // consumed by waterfall rendering, audio scheduler, and MIDI export so the
+  // three paths never disagree.
+  function _resolveRhEvents() {
+    if (typeof accData === 'undefined' || !accData) {
+      if (typeof melodyData !== 'undefined' && melodyData && rhContentMode !== "acc") {
+        return melodyData.map(m => ({ time: m.start, duration: m.end - m.start, pitch: m.midi, finger: null }));
+      }
+      return [];
+    }
+    const accRh = accData.right_hand || [];
+    const hasAcc = accRh.length > 0;
+    const wantAcc = rhContentMode !== "mel" && hasAcc;
+    const wantMel = rhContentMode === "mel" || rhContentMode === "both" || !hasAcc;
+    let out = wantAcc ? accRh.slice() : [];
+    if (wantMel && typeof melodyData !== 'undefined' && melodyData) {
+      out = out.concat(melodyData.map(m => ({
+        time: m.start,
+        duration: m.end - m.start,
+        pitch: m.midi,
+        finger: null,
+      })));
+    }
+    return out;
+  }
+
+  // Practice-mode suffix for downloaded MIDI filenames.
+  function _practiceModeSuffix() {
+    if (typeof activeHand === 'undefined') return "";
+    if (activeHand === "left") return "L";
+    if (activeHand === "right") {
+      if (rhContentMode === "mel") return "Rmel";
+      if (rhContentMode === "both") return "Rfull";
+      return "R";
+    }
+    // both hands
+    if (rhContentMode === "mel") return "mel";
+    if (rhContentMode === "both") return "full";
+    return "";
+  }
   function _syncRhContentBtn() {
     const lab = document.getElementById("btnRhContentLabel");
     if (lab) lab.textContent = _RH_LABELS[rhContentMode] || "伴奏";
@@ -1221,9 +1262,15 @@
     const chords = _displayChords();
     if (!chords || chords.length === 0) return;
 
-    // 估算 BPM 與每拍秒數
-    let estimatedBpm = 100;
-    if (chords.length >= 4) {
+    // Prefer the BPM persisted by the editor / BTC pipeline; fall back to
+    // the chord-spacing heuristic only when the JSON has no stored value.
+    // Without this the player re-estimates every render — so editor splits
+    // (which halve the median inter-chord diff) look like "BPM 跑掉" even
+    // though the editor's songBPM and the saved JSON both agree.
+    let estimatedBpm = 0;
+    if (chordData && typeof chordData.bpm === "number" && chordData.bpm > 0) {
+      estimatedBpm = chordData.bpm;
+    } else if (chords.length >= 4) {
       let diffs = [];
       for(let i=0; i<chords.length-1; i++) {
         let d = chords[i+1].time - chords[i].time;
@@ -1238,6 +1285,7 @@
         estimatedBpm = 60 / beatSec;
       }
     }
+    if (estimatedBpm <= 0) estimatedBpm = 100;
     
     const urlParamsBpm = new URLSearchParams(window.location.search);
     const bpmPath = urlParamsBpm.get("path") || "default";
@@ -1423,9 +1471,17 @@
       item.appendChild(timeEl);
 
       // 動態節拍指示器 (Dynamic Beat Indicator)
-      let durSec = 2.0; // 預設最後一拍長度
-      if (i < chords.length - 1) {
+      // Prefer the chord's explicit `end` so the player agrees with the
+      // editor (which renders block width + dot count from `end`). Falls
+      // back to next-chord-start for legacy JSONs without `end`; if both
+      // missing, 2s default.
+      let durSec;
+      if (c.end) {
+          durSec = c.end - c.time;
+      } else if (i < chords.length - 1) {
           durSec = chords[i+1].time - c.time;
+      } else {
+          durSec = 2.0;
       }
       let beats = Math.round(durSec / secPerBeat);
       if (beats < 1) beats = 1;
@@ -2101,68 +2157,80 @@
 
     // determine actual played notes + fingering from accData
     // fingeringMap includes lookahead: current + next 1s of notes
+    // Gates (must match waterfall + audio scheduler — see §3 UX_CONVENTION.md):
+    //   - activeHand gates which hand is scanned at all
+    //   - RH events come from _resolveRhEvents() which respects rhContentMode
+    //     (acc vs mel vs both) so keyboard highlight + finger numbers match
+    //     what the user sees in the waterfall and hears in the audio.
     let activeLh = [];
     let activeRh = [];
     let fingeringMap = {};  // midi -> {finger, hand, upcoming}
     const FINGER_LOOKAHEAD = 1.0; // show fingering 1s ahead
+    const _wantLh = (typeof activeHand === 'undefined') || activeHand === "both" || activeHand === "left";
+    const _wantRh = (typeof activeHand === 'undefined') || activeHand === "both" || activeHand === "right";
+
     if (waterfallActive && accData) {
-       for (const e of (accData.left_hand||[])) {
-           const playing = e.time <= currentTime && e.time + e.duration >= currentTime;
-           const upcoming = !playing && e.time > currentTime && e.time <= currentTime + FINGER_LOOKAHEAD;
-           if (playing) activeLh.push(e.pitch);
-           if ((playing || upcoming) && e.finger) {
-               // Don't overwrite a currently-playing finger with an upcoming one
-               if (!fingeringMap[e.pitch] || playing) {
-                   fingeringMap[e.pitch] = { 
-                       finger: e.finger, 
-                       hand: "left", 
-                       upcoming: !playing,
-                       crossFromPitch: e.crossFromPitch
-                   };
-               }
-           }
-       }
-       for (const e of (accData.right_hand||[])) {
-           const playing = e.time <= currentTime && e.time + e.duration >= currentTime;
-           const upcoming = !playing && e.time > currentTime && e.time <= currentTime + FINGER_LOOKAHEAD;
-           if (playing) activeRh.push(e.pitch);
-           if ((playing || upcoming) && e.finger) {
-               if (!fingeringMap[e.pitch] || playing) {
-                   fingeringMap[e.pitch] = { 
-                       finger: e.finger, 
-                       hand: "right", 
-                       upcoming: !playing,
-                       crossFromPitch: e.crossFromPitch
-                   };
-               }
-           }
-       }
-    } else {
-       activeLh = [...piano88ChordMidis];
-       // No accData (e.g. hash mode / not-yet-AI'd song) — synth a simple
-       // LH fingering (5-3-1 etc.) so the keyboard still shows numbers when
-       // showFingering is ON. Sort low→high, assign descending fingers.
-       if (activeLh.length) {
-         const sortedLh = [...activeLh].sort((a, b) => a - b);
-         const LH_FMAP = { 1: [5], 2: [5, 1], 3: [5, 3, 1], 4: [5, 3, 2, 1], 5: [5, 4, 3, 2, 1] };
-         const fingers = LH_FMAP[sortedLh.length] || [];
-         for (let i = 0; i < sortedLh.length; i++) {
-           if (!fingers[i]) continue;
-           fingeringMap[sortedLh[i]] = { finger: fingers[i], hand: "left", upcoming: false };
+       if (_wantLh) {
+         for (const e of (accData.left_hand||[])) {
+             const playing = e.time <= currentTime && e.time + e.duration >= currentTime;
+             const upcoming = !playing && e.time > currentTime && e.time <= currentTime + FINGER_LOOKAHEAD;
+             if (playing) activeLh.push(e.pitch);
+             if ((playing || upcoming) && e.finger) {
+                 if (!fingeringMap[e.pitch] || playing) {
+                     fingeringMap[e.pitch] = {
+                         finger: e.finger,
+                         hand: "left",
+                         upcoming: !playing,
+                         crossFromPitch: e.crossFromPitch
+                     };
+                 }
+             }
          }
        }
+       if (_wantRh) {
+         // Use _resolveRhEvents() so mel / acc / both choice is respected here
+         // just like the waterfall and scheduler do.
+         for (const e of _resolveRhEvents()) {
+             const playing = e.time <= currentTime && e.time + e.duration >= currentTime;
+             const upcoming = !playing && e.time > currentTime && e.time <= currentTime + FINGER_LOOKAHEAD;
+             if (playing) activeRh.push(e.pitch);
+             if ((playing || upcoming) && e.finger) {
+                 if (!fingeringMap[e.pitch] || playing) {
+                     fingeringMap[e.pitch] = {
+                         finger: e.finger,
+                         hand: "right",
+                         upcoming: !playing,
+                         crossFromPitch: e.crossFromPitch
+                     };
+                 }
+             }
+         }
+       }
+    } else {
+       // No accData (e.g. hash mode / not-yet-AI'd song) — synth a simple
+       // LH fingering (5-3-1 etc.) so the keyboard still shows numbers when
+       // showFingering is ON. Also honor _wantLh so R-only practice doesn't
+       // leak LH chord highlight into the keyboard.
+       if (_wantLh) {
+         activeLh = [...piano88ChordMidis];
+         if (activeLh.length) {
+           const sortedLh = [...activeLh].sort((a, b) => a - b);
+           const LH_FMAP = { 1: [5], 2: [5, 1], 3: [5, 3, 1], 4: [5, 3, 2, 1], 5: [5, 4, 3, 2, 1] };
+           const fingers = LH_FMAP[sortedLh.length] || [];
+           for (let i = 0; i < sortedLh.length; i++) {
+             if (!fingers[i]) continue;
+             fingeringMap[sortedLh[i]] = { finger: fingers[i], hand: "left", upcoming: false };
+           }
+         }
+       }
+       // Hash-mode melody-only fallback: if waterfallActive=false (no accData)
+       // but user wants RH melody and we have melodyData, surface the current
+       // melody pitch on the keyboard.
+       if (_wantRh && typeof melodyData !== 'undefined' && melodyData) {
+         const melNow = _getMelodyMidi(currentTime);
+         if (melNow >= 0) activeRh.push(melNow);
+       }
     }
-    
-    const mel = _getMelodyMidi(currentTime);
-    // Mirror the waterfall rhContentMode gate so keyboard highlight matches
-    // which bar type the user chose to show (avoids ghost keys / doubled
-    // highlight mismatches).
-    const _rhHasAcc = !!(accData && (accData.right_hand || []).length);
-    const _wantMelKey = rhContentMode === "mel" || rhContentMode === "both" || !_rhHasAcc;
-    if (mel >= 0 && _wantMelKey && !activeRh.includes(mel)) activeRh.push(mel);
-
-    if (activeHand === "left") activeRh = [];
-    if (activeHand === "right") activeLh = [];
 
     let chordTones = [];
     const isChordTonesActive = show88ChordTones && piano88ChordMidis && piano88ChordMidis.length > 0;
@@ -2469,23 +2537,7 @@
         allEvents.push(...(accData.left_hand || []).map(e => ({...e, _hand: "left"})));
       }
       if (activeHand === "both" || activeHand === "right") {
-        const accRh = accData.right_hand || [];
-        const hasAcc = accRh.length > 0;
-        // rhContentMode drives what shows: "acc" (伴奏), "mel" (主唱旋律),
-        // "both" (疊加). Falls through to melody if the user picked acc but
-        // accData has no right_hand — so "acc" mode isn't accidentally empty.
-        const wantAcc = rhContentMode !== "mel" && hasAcc;
-        const wantMel = rhContentMode === "mel" || rhContentMode === "both" || !hasAcc;
-        let rhEvents = wantAcc ? accRh.slice() : [];
-        if (wantMel && typeof melodyData !== 'undefined' && melodyData) {
-          const melEvents = melodyData.map(m => ({
-            time: m.start,
-            duration: m.end - m.start,
-            pitch: m.midi,
-            finger: null
-          }));
-          rhEvents = [...rhEvents, ...melEvents];
-        }
+        const rhEvents = _resolveRhEvents();
         allEvents.push(...rhEvents.map(e => ({...e, _hand: "right"})));
       }
     } else {
@@ -2988,9 +3040,57 @@
           }
           localStorage.setItem("livechord_active_hand", activeHand);
           updateHandToggleUI();
+          if (typeof _syncPracticeModeUI === 'function') _syncPracticeModeUI();
         });
       });
     }
+
+    // Practice-mode picker: 6 presets that set activeHand + rhContentMode together.
+    // Encoding: L | R-acc | R-mel | R-both | LR-acc | LR-mel | LR-both.
+    function _currentPracticeCode() {
+      if (activeHand === "left") return "L";
+      if (activeHand === "right") return `R-${rhContentMode}`;
+      return `LR-${rhContentMode}`;
+    }
+    function _syncPracticeModeUI() {
+      const code = _currentPracticeCode();
+      document.querySelectorAll(".practice-opt").forEach(b => {
+        b.classList.toggle("active", b.getAttribute("data-practice") === code);
+      });
+    }
+    function _setPracticeMode(code) {
+      const parts = code.split("-");
+      const hand = parts[0];  // L | R | LR
+      const rh = parts[1];    // acc | mel | both (or undefined for L)
+      if (hand === "L") {
+        activeHand = "left";
+      } else if (hand === "R") {
+        activeHand = "right";
+        if (rh) rhContentMode = rh;
+      } else {
+        activeHand = "both";
+        if (rh) rhContentMode = rh;
+      }
+      try { localStorage.setItem("livechord_active_hand", activeHand); } catch {}
+      try { localStorage.setItem("livechord_rh_mode", rhContentMode); } catch {}
+      // Mirror existing updaters so all 3 UIs (hand toggle, RH content label, practice picker) stay in sync.
+      if (typeof updateHandToggleUI === 'function') updateHandToggleUI();
+      if (typeof _syncRhContentBtn === 'function') _syncRhContentBtn();
+      _syncPracticeModeUI();
+      if (typeof update88Piano === 'function' && typeof audio !== 'undefined') {
+        try { update88Piano(audio.currentTime || 0); } catch {}
+      }
+    }
+    document.querySelectorAll(".practice-opt").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const code = btn.getAttribute("data-practice");
+        if (!code) return;
+        _setPracticeMode(code);
+        const label = btn.textContent.trim();
+        showToast(`練習模式：${label}`, 1400);
+      });
+    });
+    _syncPracticeModeUI();
 
     if (aiBtn) {
       aiBtn.addEventListener("click", () => {
@@ -3061,6 +3161,7 @@
         const names = { acc: "伴奏", mel: "旋律", both: "全部（伴奏+旋律）" };
         showToast(`右手：${names[rhContentMode]}`, 1500);
         update88Piano(audio.currentTime || 0);
+        if (typeof _syncPracticeModeUI === 'function') _syncPracticeModeUI();
       });
     }
     if (btnBottomShowChordTones) btnBottomShowChordTones.addEventListener("click", handleChordTonesToggle);
@@ -3439,6 +3540,18 @@
       if (!isBeta && trackPath) runChordDetection();
     }).catch(() => {});
   }
+
+  // bfcache refresh — user edits chords in /editor then presses the browser
+  // Back button; Chrome/Safari restore this page from memory without re-running
+  // init, so chordData is stale (the canonical case: last chord still shows
+  // the pre-edit name). Re-fetch when restored from bfcache.
+  window.addEventListener("pageshow", (ev) => {
+    if (!ev.persisted) return;
+    if (trackPath) {
+      loadVersions(trackPath).catch(() => {});
+      loadChords(trackPath, currentChordVersion).catch(() => {});
+    }
+  });
 
   /** 播放時自動偵測（顯示 overlay） */
   async function autoDetectAndPlay() {
@@ -3950,9 +4063,77 @@
     }
     _updateEditLink();
     window._updateEditLink = _updateEditLink;
+    // Stamp the current playhead time just before navigating so the editor
+    // can scroll/seek to the same spot — saves the user from scrolling from
+    // the start of the song every time.
+    btnEdit.addEventListener("click", () => {
+      const t = Math.max(0, _playerCurrentTime() || 0);
+      try {
+        const url = new URL(btnEdit.href, window.location.origin);
+        url.searchParams.set("t", t.toFixed(2));
+        btnEdit.href = url.toString();
+      } catch {}
+    });
   }
 
   // ---- Chord Correction buttons ----
+  // Auto-save to user version — user asked for parity with phrase/section
+  // edits which save without a manual button. Debounced 800ms so a burst of
+  // corrections (e.g., a multi-chord quantize) POSTs once instead of once
+  // per tap. Revert is still a local-only UI action.
+  let _autoSaveTimer = null;
+  // Defensive: sort chord array by time and drop near-duplicates before
+  // POSTing. Past bug: a series of segmented calibrations + edits left the
+  // admin file with two out-of-order runs glued together (chord[20].time=183
+  // → chord[21].time=66 regression), which showed up as overlapping blocks
+  // in the editor. Frontend should never persist an out-of-order array.
+  function _cleanChordsForSave(chords) {
+    const sorted = [...chords].sort((a, b) => (a.time || 0) - (b.time || 0));
+    const MIN_GAP = 0.2;
+    const cleaned = [];
+    for (const c of sorted) {
+      if (cleaned.length && (c.time || 0) - (cleaned[cleaned.length - 1].time || 0) < MIN_GAP) {
+        cleaned[cleaned.length - 1] = c;  // prefer later-indexed (newer edit)
+      } else {
+        cleaned.push(c);
+      }
+    }
+    for (let i = 0; i < cleaned.length - 1; i++) {
+      cleaned[i].end = cleaned[i + 1].time;
+    }
+    return cleaned;
+  }
+
+  function _autoSaveCorrection() {
+    if (!chordData || !trackPath) return;
+    if (!window.ChordCorrection || !window.ChordCorrection.hasBackup()) return;
+    clearTimeout(_autoSaveTimer);
+    _autoSaveTimer = setTimeout(async () => {
+      try {
+        const cleanChords = _cleanChordsForSave(chordData.chords);
+        // Write back in-memory too so the ribbon stays consistent with disk
+        chordData.chords = cleanChords;
+        const result = await API.saveChords({
+          path: trackPath,
+          key: chordData.key || "",
+          capo: capo,
+          bpm: chordData.bpm || 0,
+          chords: cleanChords,
+        });
+        if (result && result.version) {
+          currentChordVersion = result.version;
+          const url = new URL(window.location);
+          url.searchParams.set("version", result.version);
+          window.history.replaceState({}, "", url);
+          if (window._updateEditLink) window._updateEditLink();
+        }
+        showToast("已自動儲存校正版本", 1500);
+      } catch (err) {
+        showToast("自動儲存失敗: " + err.message, 3000);
+      }
+    }, 800);
+  }
+
   const _corrRebuild = () => {
     chordCache = {};
     buildChordDOM();
@@ -3960,8 +4141,11 @@
     requestAnimationFrame(() => updateActiveChord(audio.currentTime || -1, true));
     const btnSave = $("#btnSaveCorrected"), btnRevert = $("#btnRevertCorrection");
     if (window.ChordCorrection && window.ChordCorrection.hasBackup()) {
-      if (btnSave) btnSave.style.display = "";
+      // Save button hidden — auto-save handles it. Keep Revert visible so
+      // the user can undo the whole backup in one click.
+      if (btnSave) btnSave.style.display = "none";
       if (btnRevert) btnRevert.style.display = "";
+      _autoSaveCorrection();
     }
   };
   // Expose state for chord-correction.js
@@ -3997,6 +4181,16 @@
         showToast("尚無和弦資料", 2000); return;
       }
       window.ChordCorrection.enterBeatTap(chordData, _audioForCorrection, _corrRebuild);
+    });
+  }
+
+  const btnChordCalibrate = $("#btnChordCalibrate");
+  if (btnChordCalibrate) {
+    btnChordCalibrate.addEventListener("click", () => {
+      if (!chordData || !chordData.chords || chordData.chords.length === 0) {
+        showToast("尚無和弦資料", 2000); return;
+      }
+      window.ChordCorrection.enterChordCalibrate(chordData, _audioForCorrection, _corrRebuild);
     });
   }
 
@@ -4044,22 +4238,155 @@
       if (!chordData || !chordData.chords || chordData.chords.length === 0) {
         showToast("尚無和弦資料", 2000); return;
       }
+      _showAutoSplitPanel();
+    });
+  }
+
+  function _showAutoSplitPanel() {
+    // Remove any existing panel first
+    document.querySelectorAll(".auto-split-panel, .auto-split-backdrop").forEach(el => el.remove());
+
+    // Load saved preferences — let the user's last choice stick across songs
+    let threshold = 8;
+    let ratio = "1:1";
+    try {
+      const s = JSON.parse(localStorage.getItem("livechord_auto_split") || "{}");
+      if (s.threshold) threshold = s.threshold;
+      if (s.ratio) ratio = s.ratio;
+    } catch {}
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "auto-split-backdrop";
+    backdrop.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:299;";
+
+    const panel = document.createElement("div");
+    panel.className = "auto-split-panel";
+    panel.style.cssText = `
+      position:fixed; top:50%; left:50%; transform:translate(-50%, -50%);
+      background:var(--bg-card); border:1px solid var(--border); border-radius:8px;
+      padding:18px 20px; z-index:300; min-width:340px; max-width:90vw;
+      box-shadow:0 8px 24px rgba(0,0,0,0.5); color:var(--text);
+    `;
+    panel.innerHTML = `
+      <div style="font-size:15px; font-weight:600; margin-bottom:14px;">✂ 自動切分長和弦</div>
+      <div style="margin-bottom:14px;">
+        <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">最短拍數 (大於等於此值才切分)</div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <button class="as-dec" style="padding:4px 12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer;">−</button>
+          <input class="as-thresh" type="number" min="2" max="32" value="${threshold}" style="width:64px; padding:4px 6px; text-align:center; background:var(--bg); border:1px solid var(--border); border-radius:4px; color:var(--text); font-size:14px;">
+          <button class="as-inc" style="padding:4px 12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer;">+</button>
+          <span style="color:var(--text-dim); font-size:12px;">拍</span>
+        </div>
+      </div>
+      <div style="margin-bottom:14px;">
+        <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">切分比例 (依和弦拍數等比例縮放)</div>
+        <div class="as-ratios" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+        <div style="font-size:11px; color:var(--text-dim); margin-top:6px;">例: 8 拍 + 1:3 → 2+6；8 拍 + 1:1:1 → 3+2+3</div>
+      </div>
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button class="as-cancel" style="padding:7px 18px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer;">取消</button>
+        <button class="as-apply" style="padding:7px 18px; background:#2196F3; border:1px solid #2196F3; color:white; border-radius:4px; cursor:pointer; font-weight:600;">套用</button>
+      </div>
+    `;
+
+    const RATIOS = ["1:1", "1:2", "2:1", "1:3", "3:1", "2:3", "3:2", "1:1:1", "1:2:1"];
+    const ratiosDiv = panel.querySelector(".as-ratios");
+    RATIOS.forEach(r => {
+      const btn = document.createElement("button");
+      btn.textContent = r;
+      btn.dataset.ratio = r;
+      btn.style.cssText = "padding:6px 14px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer; font-size:13px; font-family:monospace;";
+      if (r === ratio) {
+        btn.style.background = "rgba(33,150,243,0.35)";
+        btn.style.borderColor = "#2196F3";
+      }
+      btn.addEventListener("click", () => {
+        ratio = r;
+        ratiosDiv.querySelectorAll("button").forEach(b => {
+          b.style.background = "var(--bg)";
+          b.style.borderColor = "var(--border)";
+        });
+        btn.style.background = "rgba(33,150,243,0.35)";
+        btn.style.borderColor = "#2196F3";
+      });
+      ratiosDiv.appendChild(btn);
+    });
+
+    panel.querySelector(".as-dec").addEventListener("click", () => {
+      const inp = panel.querySelector(".as-thresh");
+      inp.value = Math.max(2, (parseInt(inp.value) || 8) - 1);
+    });
+    panel.querySelector(".as-inc").addEventListener("click", () => {
+      const inp = panel.querySelector(".as-thresh");
+      inp.value = Math.min(32, (parseInt(inp.value) || 8) + 1);
+    });
+
+    const close = () => { panel.remove(); backdrop.remove(); document.removeEventListener("keydown", keyHandler); };
+    const keyHandler = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", keyHandler);
+    backdrop.addEventListener("click", close);
+    panel.querySelector(".as-cancel").addEventListener("click", close);
+
+    panel.querySelector(".as-apply").addEventListener("click", () => {
+      threshold = Math.max(2, Math.min(32, parseInt(panel.querySelector(".as-thresh").value) || 8));
+      try { localStorage.setItem("livechord_auto_split", JSON.stringify({ threshold, ratio })); } catch {}
+
+      const parts = ratio.split(":").map(Number);
+      const partSum = parts.reduce((a, b) => a + b, 0);
       const CC = window.ChordCorrection;
       CC.backup(chordData);
       let count = 0;
+
+      // Reverse iteration so inserted chords (from splits) don't disturb
+      // our walk. Each split inserts at idx+1, left-side indices unaffected.
       for (let i = chordData.chords.length - 1; i >= 0; i--) {
-        const dur = (i < chordData.chords.length - 1)
-          ? chordData.chords[i + 1].time - chordData.chords[i].time : 2.0;
+        const c = chordData.chords[i];
+        const dur = c.end
+          ? c.end - c.time
+          : (i < chordData.chords.length - 1 ? chordData.chords[i + 1].time - c.time : 2.0);
         const beats = Math.round(dur / currentSecPerBeat);
-        if (beats >= 8) {
-          const half = Math.floor(beats / 2);
-          CC.splitChord(chordData, i, half, beats - half, currentSecPerBeat);
-          count++;
+        if (beats < threshold) continue;
+
+        // Proportional split — each part scales to the chord's own beats.
+        // Guarantee each part >= 1 beat; rounding residue absorbed by the
+        // middle part (for N-way) or the larger part (for 2-way).
+        const raw = parts.map(p => Math.max(1, Math.round(beats * p / partSum)));
+        let allocated = raw.reduce((a, b) => a + b, 0);
+        const diff = beats - allocated;
+        if (diff !== 0) {
+          // Give the residual to the largest part so the ratio stays closest
+          const maxIdx = raw.indexOf(Math.max(...raw));
+          raw[maxIdx] += diff;
         }
+        if (raw.some(v => v < 1) || raw.reduce((a, b) => a + b, 0) !== beats) continue;
+
+        // Apply successive 2-way splits from the right — splitChord inserts
+        // new chord at idx+1 with the original chord's name, so repeated
+        // splits at idx produce [part0 | remainder], then split remainder at
+        // idx+1 into [part1 | part2], etc.
+        let cursor = i;
+        let remaining = beats;
+        for (let p = 0; p < raw.length - 1; p++) {
+          CC.splitChord(chordData, cursor, raw[p], remaining - raw[p], currentSecPerBeat);
+          remaining -= raw[p];
+          cursor++;
+        }
+        count++;
       }
-      if (count > 0) { _corrRebuild(); showToast(`已切分 ${count} 個長和弦`, 2500); }
-      else showToast("沒有需要切分的長和弦 (≥8拍)", 2000);
+
+      close();
+      if (count > 0) {
+        _corrRebuild();
+        showToast(`已切分 ${count} 個和弦 (≥${threshold} 拍, ${ratio})`, 2500);
+      } else {
+        showToast(`沒有符合條件的和弦 (≥${threshold} 拍)`, 2000);
+      }
     });
+
+    document.body.appendChild(backdrop);
+    document.body.appendChild(panel);
+    panel.querySelector(".as-thresh").focus();
+    panel.querySelector(".as-thresh").select();
   }
 
   const btnSaveCorrected = $("#btnSaveCorrected");
@@ -4091,12 +4418,33 @@
 
   const btnRevertCorrection = $("#btnRevertCorrection");
   if (btnRevertCorrection) {
-    btnRevertCorrection.addEventListener("click", () => {
+    btnRevertCorrection.addEventListener("click", async () => {
       if (window.ChordCorrection && window.ChordCorrection.hasBackup()) {
         window.ChordCorrection.revert(chordData, _corrRebuild);
         btnSaveCorrected.style.display = "none";
         btnRevertCorrection.style.display = "none";
-        showToast("已還原至校正前", 2000);
+        // Persist the reverted (original) state so disk matches what the
+        // user now sees. Without this, next page-load would re-serve the
+        // corrected version from the user file.
+        if (trackPath) {
+          try {
+            const cleanChords = _cleanChordsForSave(chordData.chords);
+            chordData.chords = cleanChords;
+            const result = await API.saveChords({
+              path: trackPath,
+              key: chordData.key || "",
+              capo: capo,
+              bpm: chordData.bpm || 0,
+              chords: cleanChords,
+            });
+            if (result && result.version) currentChordVersion = result.version;
+            showToast("已還原並儲存", 1800);
+          } catch (err) {
+            showToast("已還原（儲存失敗：" + err.message + "）", 2500);
+          }
+        } else {
+          showToast("已還原至校正前", 2000);
+        }
       }
     });
   }
@@ -5130,8 +5478,24 @@
         onError: (e) => {
           _ytPlayer = null;
           const container = document.getElementById("ytEmbedContainer");
-          if (container) container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px">此影片無法嵌入播放<br>請在 YouTube 開啟播放</div>';
-          showToast("按 ▶ 播放鍵載入本地音檔", 8000);
+          // YT error codes: 101/150 = embed disabled by uploader on desktop web;
+          // mobile native app has different permissions so users often see this
+          // on PC but not on phone. Offer a direct link + local-file fallback.
+          const ytUrl = videoId ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}` : null;
+          if (container) {
+            const ytBtn = ytUrl ? `<a href="${ytUrl}" target="_blank" rel="noopener" style="display:inline-block;margin:6px 4px;padding:8px 14px;background:#ff0000;color:#fff;text-decoration:none;border-radius:4px;font-size:13px;font-weight:600">▶ 在 YouTube 開啟</a>` : '';
+            const fallbackBtn = `<button id="ytErrLoadLocal" style="display:inline-block;margin:6px 4px;padding:8px 14px;background:var(--accent,#5a9af2);color:#fff;border:none;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer">📁 載入本地音檔</button>`;
+            container.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px">
+              此影片無法在此嵌入<br>
+              <span style="font-size:11px;opacity:.75">（YouTube 擁有者限制桌面嵌入，手機通常可正常播放）</span>
+              <div style="margin-top:12px">${ytBtn}${fallbackBtn}</div>
+            </div>`;
+            const localBtn = document.getElementById('ytErrLoadLocal');
+            if (localBtn && typeof _showYtFallbackPanel === 'function') {
+              localBtn.addEventListener('click', () => _showYtFallbackPanel());
+            }
+          }
+          showToast("影片無法嵌入 — 可在 YouTube 開啟或載入本地音檔", 6000);
           _updateYtReopenBtn();
         }
       }
@@ -5256,12 +5620,25 @@
       }
     }
 
-    playNote(pitch, duration, hand, startTime) {
+    playNote(pitch, duration, hand, startTime, velocity) {
       if (!this.ctx) return;
       if (typeof activeHand !== 'undefined' && activeHand !== "both" && activeHand !== hand) return;
 
       const vol = hand === 'left' ? this.volLeft : this.volRight;
       if (vol <= 0) return;
+
+      // Velocity-sensitive gain. Backend accompaniment JSON emits MIDI velocity
+      // (0-127) per note — typically LH=30-40 (soft comping), RH=40-60 (melody).
+      // Before this change velocity was ignored and every note played at vol*0.4,
+      // which combined with LH chord voicings (3+ simultaneous notes) made LH
+      // perceptually ~6x louder than RH. Now velocity drives amplitude linearly.
+      // Curve: vel 30 -> 0.3x, vel 64 -> 0.64x, vel 100+ -> 1.0x.
+      const velGain = Math.max(0.15, Math.min(1.0, (velocity || 64) / 100));
+      // Pedagogical bias: real piano accompaniment is played with less force
+      // than melody. LH 0.55 pushes LH further down after user field-test said
+      // 0.7 still felt loud. RH 1.1 gives melody a bit of presence boost.
+      const handBias = hand === 'left' ? 0.55 : 1.1;
+      const peakGain = vol * 0.75 * velGain * handBias;  // 0.75 = global headroom (user field-tested: 0.5→0.6→0.75)
 
       // Sampler mode (preferred)
       if (this.loaded && Object.keys(this.samples).length > 0) {
@@ -5271,16 +5648,14 @@
 
         const source = this.ctx.createBufferSource();
         source.buffer = buffer;
-        // Pitch-shift by adjusting playback rate
         source.playbackRate.value = Math.pow(2, (pitch - sampleNote) / 12);
 
         const gain = this.ctx.createGain();
         source.connect(gain);
         gain.connect(this.masterGain);
 
-        // Natural piano envelope with release
-        gain.gain.setValueAtTime(vol * 0.4, startTime);
-        gain.gain.setValueAtTime(vol * 0.4, startTime + Math.max(0, duration - 0.08));
+        gain.gain.setValueAtTime(peakGain, startTime);
+        gain.gain.setValueAtTime(peakGain, startTime + Math.max(0, duration - 0.08));
         gain.gain.linearRampToValueAtTime(0, startTime + duration + 0.1);
 
         source.start(startTime);
@@ -5295,9 +5670,10 @@
       osc.frequency.value = 440 * Math.pow(2, (pitch - 69) / 12);
       osc.connect(gain);
       gain.connect(this.masterGain);
+      const oscPeak = peakGain * 0.75;  // osc fallback is harsher; pull it down
       gain.gain.setValueAtTime(0, startTime);
-      gain.gain.linearRampToValueAtTime(vol * 0.3, startTime + 0.02);
-      gain.gain.exponentialRampToValueAtTime(vol * 0.1, Math.max(startTime + 0.02, startTime + duration - 0.05));
+      gain.gain.linearRampToValueAtTime(oscPeak, startTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(Math.max(oscPeak * 0.25, 0.001), Math.max(startTime + 0.02, startTime + duration - 0.05));
       gain.gain.linearRampToValueAtTime(0, startTime + duration);
       osc.start(startTime);
       osc.stop(startTime + duration);
@@ -5320,19 +5696,23 @@
               if (e.time >= lastScheduledTime && e.time < currentTime + lookahead) {
                   const delay = e.time - currentTime;
                   const targetTime = aiSynth.ctx.currentTime + delay;
+                  // e.velocity is MIDI 0-127 from backend; undefined falls back to 64 in playNote.
+                  const vel = e.velocity;
                   if (e.pitches) {
                       for (const p of e.pitches) {
-                          aiSynth.playNote(p, e.duration || 0.5, hand, targetTime);
+                          aiSynth.playNote(p, e.duration || 0.5, hand, targetTime, vel);
                       }
                   } else if (e.pitch) {
-                      aiSynth.playNote(e.pitch, e.duration || 0.5, hand, targetTime);
+                      aiSynth.playNote(e.pitch, e.duration || 0.5, hand, targetTime, vel);
                   }
               }
           }
       };
       
       scheduleHand(accData.left_hand || [], 'left');
-      scheduleHand(accData.right_hand || [], 'right');
+      // Right-hand scheduling mirrors the waterfall — _resolveRhEvents()
+      // respects rhContentMode so audio plays what the user sees.
+      scheduleHand(_resolveRhEvents(), 'right');
       
       lastScheduledTime = currentTime + lookahead;
   }
@@ -5373,6 +5753,14 @@
   const btnAudioMode = document.getElementById("btnAudioMode");
   const crossfaderContainer = document.getElementById("crossfaderContainer");
   const crossfaderVol = document.getElementById("crossfaderVol");
+  // Restore persisted crossfader value BEFORE applyAudioMode() init so the first
+  // render uses the saved value instead of HTML-default 0.5.
+  if (crossfaderVol) {
+    try {
+      const saved = localStorage.getItem("livechord_mix_val");
+      if (saved !== null && !isNaN(parseFloat(saved))) crossfaderVol.value = saved;
+    } catch {}
+  }
   
   // Persisted across page loads so user's choice sticks.
   let audioMode = 0; // 0: Music, 1: MIDI, 2: Mix
@@ -5440,6 +5828,7 @@
 
   if (crossfaderVol) {
       crossfaderVol.addEventListener("input", () => {
+          try { localStorage.setItem("livechord_mix_val", crossfaderVol.value); } catch {}
           applyAudioMode();
       });
   }
@@ -5450,8 +5839,16 @@
       btnDownloadMidi.addEventListener("click", () => {
           if (window.MidiExporter && accData) {
               const rTitle = document.title.replace(/ — LiveChord$/, "") || trackPath.split("/").pop().replace(/\.\w+$/, "") || "Track";
+              // Export matches what the user is practicing: gate left by activeHand,
+              // right by activeHand AND rhContentMode (via _resolveRhEvents()).
+              const isLeftActive = (typeof activeHand === 'undefined') || activeHand === "both" || activeHand === "left";
+              const isRightActive = (typeof activeHand === 'undefined') || activeHand === "both" || activeHand === "right";
+              const leftEvents = isLeftActive ? (accData.left_hand || []) : [];
+              const rightEvents = isRightActive ? _resolveRhEvents() : [];
               try {
-                  window.MidiExporter.exportMidi(accData, rTitle, teachStyle, teachLevel);
+                  window.MidiExporter.exportMidi(accData, rTitle, teachStyle, teachLevel, {
+                      leftEvents, rightEvents, modeSuffix: _practiceModeSuffix(),
+                  });
                   showToast("✅ MIDI 已下載至預設下載目錄");
               } catch (err) {
                   console.error("MIDI export error:", err);
@@ -5641,6 +6038,47 @@
           _adjustBounds();
       }
 
+      // ---- Beat-count adjust sub-menu ----
+      function renderBeatAdjustOptions(chordIdx, chordName, currentBeats) {
+          const CC = window.ChordCorrection;
+          if (!CC || typeof CC.setBeats !== "function") return;
+          menu.innerHTML = "";
+          const t = document.createElement("div");
+          t.className = "title";
+          t.innerHTML = `<span>\u{1F941} ${chordName} 拍數 (目前 ${currentBeats})</span><span style="opacity:0.6;float:right;cursor:pointer">🔙 回上層</span>`;
+          t.querySelector("span:last-child").onclick = (ev) => { ev.stopPropagation(); renderMain(); };
+          menu.appendChild(t);
+
+          const hint = document.createElement("div");
+          hint.className = "rv-section-menu-label";
+          hint.style.fontSize = "11px";
+          hint.textContent = "改拍數後，後續和弦會自動平移保持間隔";
+          menu.appendChild(hint);
+
+          const choices = [1, 2, 3, 4, 5, 6, 8, 12, 16];
+          for (const beats of choices) {
+              const item = document.createElement("div");
+              item.className = "rv-section-menu-item";
+              if (beats === currentBeats) {
+                  item.style.fontWeight = "bold";
+                  item.style.color = "#4caf50";
+              }
+              item.innerHTML = `<span style="flex:1">${beats} 拍${beats === currentBeats ? " ✓" : ""}</span>`;
+              item.onclick = (ev) => {
+                  ev.stopPropagation();
+                  menu.remove();
+                  if (beats === currentBeats) return;
+                  CC.backup(chordData);
+                  CC.setBeats(chordData, chordIdx, beats, currentSecPerBeat);
+                  if (typeof _corrRebuild === "function") _corrRebuild();
+                  else if (typeof window._chordRebuild === "function") window._chordRebuild();
+                  showToast(`${chordName} 改為 ${beats} 拍，後續和弦已平移`, 2000);
+              };
+              menu.appendChild(item);
+          }
+          _adjustBounds();
+      }
+
       function renderMain() {
           menu.innerHTML = "";
           const t1 = document.createElement("div");
@@ -5678,9 +6116,36 @@
               const chords = chordData ? chordData.chords : [];
               const ci = chords.findIndex(c => Math.abs(c.time - chordTime) < 0.15);
               if (ci >= 0) {
-                  const durSec = ci < chords.length - 1
-                      ? chords[ci + 1].time - chords[ci].time
-                      : (chords[ci].end ? chords[ci].end - chords[ci].time : 2.0);
+                  // Rename chord — text input via prompt(), one-shot rename.
+                  // Positioned first so it's the fastest-reach item on the
+                  // menu (most-used chord correction: "wrong chord name").
+                  const renameItem = document.createElement("div");
+                  renameItem.className = "rv-section-menu-item";
+                  renameItem.innerHTML = `<span style="flex:1">\u{1F3B9} 更換和弦 (目前 ${chords[ci].chord})...</span>`;
+                  renameItem.onclick = (ev) => {
+                      ev.stopPropagation();
+                      menu.remove();
+                      const newName = prompt(`輸入新和弦名稱 (例: Am, Cmaj7, F#m7b5):`, chords[ci].chord);
+                      if (!newName) return;
+                      const trimmed = newName.trim();
+                      if (!trimmed || trimmed === chords[ci].chord) return;
+                      const CC = window.ChordCorrection;
+                      CC.backup(chordData);
+                      const oldName = chords[ci].chord;
+                      chords[ci].chord = trimmed;
+                      if (typeof _corrRebuild === "function") _corrRebuild();
+                      else if (typeof window._chordRebuild === "function") window._chordRebuild();
+                      showToast(`${oldName} → ${trimmed}`, 1800);
+                  };
+                  menu.appendChild(renameItem);
+
+                  // Match the ribbon's dot calculation: prefer c.end so the
+                  // menu's "(N 拍)" label agrees with the card's dot count.
+                  const durSec = chords[ci].end
+                      ? chords[ci].end - chords[ci].time
+                      : (ci < chords.length - 1
+                          ? chords[ci + 1].time - chords[ci].time
+                          : 2.0);
                   const beats = Math.round(durSec / currentSecPerBeat);
                   if (beats >= 4) {
                       const csItem = document.createElement("div");
@@ -5692,6 +6157,80 @@
                           renderSplitOptions(ci, chords[ci].chord, beats);
                       };
                       menu.appendChild(csItem);
+                  }
+
+                  // Quick beat-count adjust — user spots "this chord should
+                  // be 4 not 3" and fixes it in one tap without leaving the
+                  // player. Available for every chord, not gated on >= 4.
+                  // No inline color — inline style would survive the hover
+                  // rule (specificity) and the text becomes invisible when
+                  // the hover background matches the inline color.
+                  const baItem = document.createElement("div");
+                  baItem.className = "rv-section-menu-item";
+                  baItem.innerHTML = `<span style="flex:1">\u{1F941} 調整拍數 (目前 ${beats})...</span>`;
+                  baItem.onclick = (ev) => {
+                      ev.stopPropagation();
+                      renderBeatAdjustOptions(ci, chords[ci].chord, beats);
+                  };
+                  menu.appendChild(baItem);
+
+                  // Tap-calibrate starting from this chord — user calibrates
+                  // a segment via 1/2/3/4 keys, chords before this one stay
+                  // untouched. Supports iterative "do a few, resume later".
+                  const ccItem = document.createElement("div");
+                  ccItem.className = "rv-section-menu-item";
+                  ccItem.innerHTML = `<span style="flex:1">\u{1F3AF} 由此和弦開始校正...</span>`;
+                  ccItem.onclick = (ev) => {
+                      ev.stopPropagation();
+                      menu.remove();
+                      window.ChordCorrection.enterChordCalibrate(
+                          chordData, _audioForCorrection, _corrRebuild,
+                          { startChordIdx: ci }
+                      );
+                  };
+                  menu.appendChild(ccItem);
+
+                  // Merge adjacent chords — BTC sometimes splits a single
+                  // 8-beat chord into "1-beat + 7-beat" fragments; merging
+                  // lets the user fix that in one click. Show both
+                  // directions when both neighbors exist so the user picks
+                  // which name survives.
+                  if (ci > 0) {
+                      const mPrevItem = document.createElement("div");
+                      mPrevItem.className = "rv-section-menu-item";
+                      const prevName = chords[ci - 1].chord;
+                      mPrevItem.innerHTML = `<span style="flex:1">\u{1F517} 合併至前一個 (併入 ${prevName})</span>`;
+                      mPrevItem.onclick = (ev) => {
+                          ev.stopPropagation();
+                          menu.remove();
+                          const CC = window.ChordCorrection;
+                          CC.backup(chordData);
+                          if (CC.mergeChord(chordData, ci, "prev")) {
+                              if (typeof _corrRebuild === "function") _corrRebuild();
+                              else if (typeof window._chordRebuild === "function") window._chordRebuild();
+                              showToast(`已併入 ${prevName}`, 1800);
+                          }
+                      };
+                      menu.appendChild(mPrevItem);
+                  }
+                  if (ci < chords.length - 1) {
+                      const mNextItem = document.createElement("div");
+                      mNextItem.className = "rv-section-menu-item";
+                      const nextName = chords[ci + 1].chord;
+                      const currName = chords[ci].chord;
+                      mNextItem.innerHTML = `<span style="flex:1">\u{1F517} 合併下一個 (${nextName} 併入 ${currName})</span>`;
+                      mNextItem.onclick = (ev) => {
+                          ev.stopPropagation();
+                          menu.remove();
+                          const CC = window.ChordCorrection;
+                          CC.backup(chordData);
+                          if (CC.mergeChord(chordData, ci, "next")) {
+                              if (typeof _corrRebuild === "function") _corrRebuild();
+                              else if (typeof window._chordRebuild === "function") window._chordRebuild();
+                              showToast(`${nextName} 已併入 ${currName}`, 1800);
+                          }
+                      };
+                      menu.appendChild(mNextItem);
                   }
               }
           }
@@ -5713,48 +6252,14 @@
       
       document.body.appendChild(menu);
 
-      if (isBoundary) {
-          // Fast-path: directly show the 8 types + 1 delete button
-          menu.innerHTML = "";
-          const t1 = document.createElement("div");
-          t1.className = "title";
-          t1.textContent = activeSec ? `📝 修改目前段落 (${activeSec.type})` : `修改樂句標籤`;
-          menu.appendChild(t1);
-          
-          let originalType = activeSec ? activeSec.type : null;
-          types.forEach(tObj => {
-              const item = document.createElement("div");
-              item.className = "rv-section-menu-item";
-              if (originalType === tObj.type) {
-                  item.style.fontWeight = "bold";
-                  item.style.color = "#4caf50";
-              }
-              item.innerHTML = `<span style="flex:1">${tObj.label}</span>${originalType === tObj.type ? "✓" : ""}`;
-              item.onclick = async (ev) => {
-                  ev.stopPropagation();
-                  menu.remove();
-                  let exactTime = activeSec ? activeSec.start : chordTime;
-                  await window.saveSectionFeedback(exactTime, tObj.type);
-              };
-              menu.appendChild(item);
-          });
-          
-          if (activeSec) {
-              const delItem = document.createElement("div");
-              delItem.className = "rv-section-menu-item";
-              delItem.style.color = "#f44";
-              delItem.innerHTML = `<span style="flex:1">❌ 移除分界點 (向上合併)</span>`;
-              delItem.onclick = async (ev) => {
-                  ev.stopPropagation();
-                  menu.remove();
-                  await window.deleteSectionBoundary(activeSec.start);
-              };
-              menu.appendChild(delItem);
-          }
-          _adjustBounds();
-      } else {
-          renderMain();
-      }
+      // Previously a "fast-path" rendered an abbreviated section-only menu
+      // when the clicked chord was at a section boundary — that stripped out
+      // 切分 / 調整拍數 / 和弦校正 / 合併和弦, so user couldn't reach those on
+      // a phrase's first chord. renderMain shows everything and handles the
+      // boundary case internally (e.g. hides "從此和弦切出新段" when already
+      // on a boundary). One extra click for "rename section" is a fair price
+      // for chord ops always being reachable.
+      renderMain();
       
       const closeMenu = () => { menu.remove(); document.removeEventListener("click", closeMenu); };
       setTimeout(() => document.addEventListener("click", closeMenu), 0);

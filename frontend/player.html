@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=8">
-  <link rel="stylesheet" href="/css/player.css?v=58">
+  <link rel="stylesheet" href="/css/player.css?v=62">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -454,57 +454,107 @@
     </button>
     <div class="tb-popup tb-popup-wide">
       <div class="tb-popup-title">AI 伴奏教學</div>
-      <button id="btnTeachAI" class="tb-popup-btn" title="AI 推薦風格">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>
-        <span>AI</span>
-      </button>
-      <select id="guitarStyleSelect" class="tb-select" title="吉他右手風格" style="display:none">
-        <option value="arpeggio" selected>Arpeggio</option>
-        <option value="pattern">Rhythm</option>
-        <option value="block">Block</option>
-      </select>
-      <select id="teachStyle" class="tb-select" title="伴奏風格">
-        <option value="Auto" selected>Auto</option>
-        <option value="Block">Block</option>
-        <option value="Arpeggio">Flow</option>
-        <option value="Rhythm">Ballad</option>
-        <option value="Walking">Walking</option>
-        <option value="Stride">Stride</option>
-      </select>
-      <button id="btnTopHandSwitch" class="tb-popup-btn hand-toggle-btn" title="切換教學手勢">
-        <img src="/img/left-hand.png" class="hand-icon hand-left active" alt="L">
-        <img src="/img/right-hand.png" class="hand-icon hand-right active" alt="R">
-        <span>左右手</span>
-      </button>
-      <button id="btnShowChordTonesTB" class="tb-popup-btn" title="顯示和弦組成音" aria-label="顯示和弦組成音">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-        <span>組成音</span>
-      </button>
-      <button id="btnRhContent" class="tb-popup-btn" title="右手內容：伴奏／旋律／伴奏加旋律" aria-label="右手內容切換">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/><path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/></svg>
-        <span id="btnRhContentLabel" style="font-weight:700; font-size:12px">伴奏</span>
-      </button>
-      <button id="btnFingering" class="tb-popup-btn" title="鋼琴鍵指法" aria-label="鋼琴鍵指法">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
-        <span>指法</span>
-      </button>
-      <button id="btnRefreshAcc" class="tb-popup-btn" title="強制重新生成伴奏" aria-label="重新生成伴奏">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
-        <span>伴奏重生</span>
-      </button>
-      <button id="btnDownloadMidi" class="tb-popup-btn" title="下載 MIDI" aria-label="下載 MIDI">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        <span>下載 MIDI</span>
-      </button>
-      <div class="tb-separator"></div>
-      <button id="btnAudioMode" class="tb-popup-btn" title="切換音軌" aria-label="切換音軌">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-        <span>Music</span>
-      </button>
-      <div id="crossfaderContainer" style="display:none; align-items:center; gap:4px;">
-        <span style="font-size:10px; color:#aaa;">Music</span>
-        <input id="crossfaderVol" type="range" min="0" max="1" step="0.05" value="0.5" style="width:60px;">
-        <span style="font-size:10px; color:#ff9800;">MIDI</span>
+
+      <!-- Group 1: 練習 (learner-facing, primary) -->
+      <div class="tb-subgroup">
+        <div class="tb-subgroup-label">練習 — 由易到難（同步影響顯示、聲音、下載）</div>
+        <!-- Pyramid 3-2-1 with explicit row divs (guaranteed line breaks regardless of flex math) -->
+        <div class="tb-subgroup-row practice-row practice-row-solo">
+          <button class="tb-popup-btn practice-opt" data-practice="L" title="最簡單：只練左手伴奏">
+            <span class="pp-icons" aria-hidden="true"><svg class="pp-hand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg></span>
+            <span class="pp-label">左手</span>
+          </button>
+          <button class="tb-popup-btn practice-opt" data-practice="R-acc" title="簡單：只練右手伴奏（和弦）">
+            <span class="pp-icons" aria-hidden="true"><svg class="pp-hand pp-flip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="pp-mark" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="6" width="16" height="3" rx="0.5"/><rect x="4" y="11" width="16" height="3" rx="0.5"/><rect x="4" y="16" width="16" height="3" rx="0.5"/></svg></span>
+            <span class="pp-label">右手伴奏</span>
+          </button>
+          <button class="tb-popup-btn practice-opt" data-practice="R-mel" title="中等：只練右手主旋律">
+            <span class="pp-icons" aria-hidden="true"><svg class="pp-hand pp-flip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="pp-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3" fill="currentColor"/><circle cx="18" cy="16" r="3" fill="currentColor"/></svg></span>
+            <span class="pp-label">右手旋律</span>
+          </button>
+        </div>
+        <div class="tb-subgroup-row practice-row practice-row-combo">
+          <button class="tb-popup-btn practice-opt" data-practice="LR-acc" title="標準：雙手 + 右手伴奏">
+            <span class="pp-icons" aria-hidden="true"><svg class="pp-hand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="pp-hand pp-flip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="pp-mark" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="6" width="16" height="3" rx="0.5"/><rect x="4" y="11" width="16" height="3" rx="0.5"/><rect x="4" y="16" width="16" height="3" rx="0.5"/></svg></span>
+            <span class="pp-label">左手+右手伴奏</span>
+          </button>
+          <button class="tb-popup-btn practice-opt" data-practice="LR-mel" title="進階：雙手 + 右手主旋律">
+            <span class="pp-icons" aria-hidden="true"><svg class="pp-hand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="pp-hand pp-flip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="pp-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3" fill="currentColor"/><circle cx="18" cy="16" r="3" fill="currentColor"/></svg></span>
+            <span class="pp-label">左手+右手旋律</span>
+          </button>
+        </div>
+        <div class="tb-subgroup-row practice-row practice-row-full">
+          <button class="tb-popup-btn practice-opt" data-practice="LR-both" title="最難：雙手 + 右手伴奏+旋律疊加">
+            <span class="pp-icons" aria-hidden="true"><svg class="pp-hand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="pp-hand pp-flip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="pp-mark" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="6" width="16" height="3" rx="0.5"/><rect x="4" y="11" width="16" height="3" rx="0.5"/><rect x="4" y="16" width="16" height="3" rx="0.5"/></svg><svg class="pp-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3" fill="currentColor"/><circle cx="18" cy="16" r="3" fill="currentColor"/></svg></span>
+            <span class="pp-label">左手+右手伴奏+右手旋律</span>
+          </button>
+        </div>
+        <!-- Utility row: 指法 -> 組成音 -> 下載 MIDI -->
+        <div class="tb-subgroup-row">
+          <button id="btnFingering" class="tb-popup-btn" title="鋼琴鍵指法" aria-label="鋼琴鍵指法">
+            <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
+            <span>指法</span>
+          </button>
+          <button id="btnShowChordTonesTB" class="tb-popup-btn" title="顯示和弦組成音" aria-label="顯示和弦組成音">
+            <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            <span>組成音</span>
+          </button>
+          <button id="btnDownloadMidi" class="tb-popup-btn" title="下載 MIDI（依目前練習模式產生）" aria-label="下載 MIDI">
+            <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>MIDI</span>
+          </button>
+        </div>
+        <!-- Mix row: Mix toggle + crossfader slider on same line when visible -->
+        <div class="tb-subgroup-row mix-row">
+          <button id="btnAudioMode" class="tb-popup-btn" title="切換音軌（原曲/AI 伴奏混音）" aria-label="切換音軌">
+            <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            <span>Mix</span>
+          </button>
+          <div id="crossfaderContainer" class="crossfader-inline" style="display:none;">
+            <span class="cf-label cf-music">Music</span>
+            <input id="crossfaderVol" type="range" min="0" max="1" step="0.05" value="0.5" class="cf-slider">
+            <span class="cf-label cf-midi">MIDI</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Group 2: 伴奏模式 (what the RH accompaniment plays) -->
+      <div class="tb-subgroup">
+        <div class="tb-subgroup-label">伴奏模式 — 右手伴奏的風格</div>
+        <div class="tb-subgroup-row">
+          <button id="btnTeachAI" class="tb-popup-btn" title="AI 推薦風格">
+            <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>
+            <span>AI</span>
+          </button>
+          <select id="teachStyle" class="tb-select" title="伴奏風格">
+            <option value="Auto" selected>Auto</option>
+            <option value="Block">Block</option>
+            <option value="Arpeggio">Flow</option>
+            <option value="Rhythm">Ballad</option>
+            <option value="Walking">Walking</option>
+            <option value="Stride">Stride</option>
+          </select>
+          <select id="guitarStyleSelect" class="tb-select" title="吉他右手風格" style="display:none">
+            <option value="arpeggio" selected>Arpeggio</option>
+            <option value="pattern">Rhythm</option>
+            <option value="block">Block</option>
+          </select>
+          <button id="btnRefreshAcc" class="tb-popup-btn" title="強制重新生成伴奏" aria-label="重新生成伴奏">
+            <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+            <span>伴奏重生</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Hidden shells: btnTopHandSwitch + btnRhContent are no longer visible (練習 group
+           already covers their function) but the JS handlers + _syncPracticeModeUI()
+           reverse-sync still reference them. Keep hidden so no breaking change. -->
+      <div hidden aria-hidden="true">
+        <button id="btnTopHandSwitch" class="hand-toggle-btn">
+          <img src="/img/left-hand.png" class="hand-icon hand-left active" alt="">
+          <img src="/img/right-hand.png" class="hand-icon hand-right active" alt="">
+        </button>
+        <button id="btnRhContent"><span id="btnRhContentLabel">伴奏</span></button>
       </div>
     </div>
   </div>
@@ -516,15 +566,11 @@
     </button>
     <div class="tb-popup">
       <div class="tb-popup-title">工具</div>
-      <button id="btnBeatTap" class="tb-popup-btn" title="打拍校正節拍" aria-label="節拍">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-        <span>節拍</span>
+      <button id="btnChordCalibrate" class="tb-popup-btn" title="鍵盤 1/2/3/4 打拍校正和弦拍數、起點與 BPM" aria-label="和弦與節拍校正">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        <span>和弦與節拍校正</span>
       </button>
-      <button id="btnChordAlign" class="tb-popup-btn" title="對齊和弦時間" aria-label="對齊">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="10" y1="2" x2="14" y2="2"/><line x1="12" y1="14" x2="15" y2="11"/><circle cx="12" cy="14" r="8"/></svg>
-        <span>對齊</span>
-      </button>
-      <button id="btnAutoSplit" class="tb-popup-btn" title="自動切分長和弦 (&#x2265;8拍)" aria-label="自動切分">
+      <button id="btnAutoSplit" class="tb-popup-btn" title="自動切分長和弦 (可自訂拍數門檻與比例)" aria-label="自動切分">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/></svg>
         <span>自動切分</span>
       </button>
@@ -598,8 +644,8 @@
 <script src="/js/instrument-registry.js?v=1"></script>
 <script src="/js/accordion-instrument.js?v=1"></script>
 <script src="/js/arranger-instrument.js?v=2"></script>
-<script src="/js/midi-exporter.js?v=1"></script>
-<script src="/js/chord-correction.js?v=1"></script>
+<script src="/js/midi-exporter.js?v=2"></script>
+<script src="/js/chord-correction.js?v=8"></script>
 <script>
   const originalFetch = window.fetch;
   window.fetch = async function() {
@@ -622,6 +668,6 @@
     return res;
   };
 </script>
-<script src="/js/player.js?v=170"></script>
+<script src="/js/player.js?v=191"></script>
 </body>
 </html>

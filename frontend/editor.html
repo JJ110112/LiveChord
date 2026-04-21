@@ -59,9 +59,29 @@
       z-index: 10;
       pointer-events: none;
     }
+    .section-bands {
+      position: absolute;
+      top: 22px; left: 0; right: 0;
+      height: 18px;
+      pointer-events: none;
+    }
+    .section-band {
+      position: absolute;
+      top: 0; bottom: 0;
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #fff;
+      border-radius: 3px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    }
     .timeline .chord-block {
       position: absolute;
-      top: 24px;
+      top: 44px;
       height: 60px;
       background: rgba(233, 69, 96, 0.3);
       border: 1px solid var(--accent);
@@ -90,6 +110,19 @@
       background: transparent;
     }
     .chord-block .resize-handle:hover { background: rgba(255,255,255,.2); }
+    .chord-block-beats {
+      position: absolute;
+      bottom: 4px; left: 4px; right: 22px;
+      height: 6px;
+      display: flex; flex-wrap: wrap;
+      gap: 4px; justify-content: center; align-items: center;
+      pointer-events: none;
+    }
+    .chord-block .beat-dot {
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      background-color: rgba(255,255,255,0.45);
+    }
 
     /* 和弦面板 */
     .chord-palette {
@@ -234,9 +267,12 @@
     <div class="sep"></div>
     <button id="btnSplit" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#4caf50" title="分割選中的和弦為兩段 (S)">✂ 分割 <kbd>S</kbd></button>
     <button id="btnQuantize" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#2196F3" title="將所選連續和弦的長度修整至最佳拍數 (消除零碎拍子)">🌟 正規化</button>
+    <button id="btnQuantizeAll" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#2196F3" title="將全部和弦的長度修整至最近半拍格 (以第一個和弦為錨點)">🔧 全部整拍</button>
     <div class="sep"></div>
     <label style="display:flex; align-items:center; cursor:pointer;" id="lblSnap"><input type="checkbox" id="chkSnap" checked style="margin-right:4px">貼齊 (BPM)</label>
     <div class="sep"></div>
+    <span style="font-size:12px;color:var(--text-dim)">BPM:</span>
+    <span id="bpmDisplay" style="font-size:13px;font-weight:600;color:var(--accent);min-width:34px" title="目前使用的 BPM (來自歌曲資料 × 播放器倍率)">120</span>
     <button id="btnTapTempo" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#ff5722" title="打拍子修正 BPM (T)">🥁 打拍 <kbd>T</kbd></button>
     <span id="tapBpmDisplay" style="font-size:12px;color:var(--text-dim);min-width:50px"></span>
     <button id="btnApplyTapBpm" class="toolbar-btn" style="display:none;width:auto;padding:2px 10px;font-size:12px;color:#4caf50">套用 BPM</button>
@@ -253,6 +289,7 @@
   <div class="timeline-container">
     <div id="timeline" class="timeline">
       <div id="ruler" class="ruler"></div>
+      <div id="sectionBands" class="section-bands"></div>
       <div id="playhead" class="playhead" style="left:0"></div>
     </div>
   </div>
@@ -298,6 +335,11 @@
     <button id="splitCustomBtn" class="toolbar-btn" style="width:auto;padding:2px 8px;font-size:11px">套用</button>
   </div>
 </div>
+<div id="beatAdjustPopup" style="display:none;position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;z-index:200;min-width:220px;box-shadow:0 8px 24px rgba(0,0,0,.4);">
+  <div style="font-size:12px;margin-bottom:6px;color:var(--text-dim)">調整拍數 <span id="beatAdjustCurrent" style="color:var(--accent);font-weight:600"></span>：</div>
+  <div id="beatAdjustOptions" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
+  <div style="margin-top:8px;font-size:11px;color:var(--text-dim);line-height:1.4">⓵ 點數字改變此和弦的拍數；後續和弦時間會自動平移。</div>
+</div>
 <div id="toast" class="toast"></div>
 <audio id="audio" preload="auto"></audio>
 
@@ -317,6 +359,6 @@
   };
 </script>
 <script src="/js/api.js"></script>
-<script src="/js/editor.js"></script>
+<script src="/js/editor.js?v=4"></script>
 </body>
 </html>

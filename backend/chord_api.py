@@ -93,9 +93,13 @@ def _version_rating(votes: dict) -> tuple:
 
 
 def _optional_user(request: Request, authorization: str = Header(None)) -> Optional[str]:
-    """Return username if Authorization header is valid, else None (no error)."""
-    if not authorization:
-        return None
+    """Return username if caller is identifiable, else None.
+
+    Delegates to ``get_current_user`` so LAN bypass (personal-mode auto-admin)
+    applies even when the browser has no Authorization header — without this,
+    GET /chords falls through to the official version while POST /chords saves
+    to data/users/admin/, making the admin's edits invisible on the next load.
+    """
     try:
         return get_current_user(request, authorization)
     except Exception:
@@ -226,13 +230,35 @@ async def get_chords_by_hash(hash: str = Query(..., min_length=8, max_length=16)
 
 @router.post("/chords")
 async def save_chords(sheet: ChordSheet, username: str = Depends(get_current_user)):
-    """儲存和弦譜至個人專屬空間"""
+    """儲存和弦譜至個人專屬空間。
+
+    Belt-and-suspenders: sort the chord array by time and drop near-duplicate
+    consecutive entries (within 0.2s) before writing. The frontend already
+    does this in _cleanChordsForSave, but we repeat it server-side because a
+    corrupted-but-unsorted payload here was how the previous overlap bug
+    ("C Bb 重疊" at 2:39) got persisted.
+    """
     user_chords_dir = DATA_DIR / "users" / username / "chords"
     user_chords_dir.mkdir(parents=True, exist_ok=True)
     chords_file = user_chords_dir / f"{song_hash(sheet.path)}.json"
-    
+
+    payload = sheet.model_dump()
+    chords = sorted(payload.get("chords") or [],
+                    key=lambda c: c.get("time", 0.0))
+    MIN_GAP = 0.2
+    cleaned = []
+    for c in chords:
+        if cleaned and (c.get("time", 0.0) - cleaned[-1].get("time", 0.0)) < MIN_GAP:
+            cleaned[-1] = c  # later-indexed wins (matches frontend policy)
+        else:
+            cleaned.append(c)
+    # Ensure end == next.time so ribbon doesn't show gaps
+    for i in range(len(cleaned) - 1):
+        cleaned[i]["end"] = cleaned[i + 1].get("time", cleaned[i].get("end"))
+    payload["chords"] = cleaned
+
     chords_file.write_text(
-        json.dumps(sheet.model_dump(), ensure_ascii=False, indent=2),
+        json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     return {"ok": True, "path": sheet.path, "version": username}

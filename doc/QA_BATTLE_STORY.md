@@ -601,3 +601,155 @@ PWA 安裝從此變成**持久可用**的操作，不靠瀏覽器心情。
 
 番外篇 IV 的災難催生了 dual-instance 架構、番外篇 V 的「空 strip」催生了 hash-mode parity + SW + PWA install button。如果一切都順利，LiveChord 會停在「剛剛好能 work」的狀態，走不到現在這個成熟度。
 
+---
+
+## 🎯 番外篇 VI：從「個別點數不一致」一路追到「chord array 被撕裂」（2026-04-21）
+
+這篇是一個完整的長日：從「editor 每顆和弦下面的 0.1 拍數字不好看」這個微小的 UX 抱怨開始，一路追蹤到 BTC 偵測的系統性節拍誤差、寫 librosa migration 補齊 4500+ 首老歌、做完整的右鍵 chord-ops 選單、蓋了一套 tap-based chord calibration、然後在最後發現自己前面蓋的 segmented calibrate 會把 chord array 撕裂成兩半——並用三層防線縫合回去。
+
+### 🪜 第一步：點數從看不見到看得到、再到兩邊看不一樣
+
+使用者說「editor 每個和弦下面會顯示數字拍數，可以再和弦下面加上像 player chord card 下面點點的節拍」。一個很直接的視覺補強——把 player ribbon 已經有的 `.beat-dot` 樣式 port 到 editor 的 `.chord-block` 裡面。
+
+10 分鐘搞定、部署、使用者回來：
+
+> 「beat of first 4 chords, player: 4 3 3 4, editor: 3 4 3 4, inconsist」
+
+同一首歌、同一個時間點、同一顆和弦，player 顯示 4 點、editor 顯示 3 點。這才發現兩邊的 **durSec 計算方式根本不一樣**：
+
+- editor（`editor.js render()`）：`durSec = chord.end - chord.time` — 用顯式 `end`
+- player（`player.js _buildUnifiedRibbon`）：`durSec = chords[i+1].time - chord.time` — 用下一顆起點
+
+當 BTC 偵測的 `chord.end` 和下一顆 `chord.time` 有 ±0.2s 的 gap/overlap（BTC 的邊界不確定）、加上 BPM 60 讓 0.5 beat 的誤差足以翻轉 rounding，就會一顆顯示 3、一顆顯示 4。
+
+**修法**：player 也改用 `chord.end`，fallback 才用 `chords[i+1].time`。兩邊從此吃同一份 truth。
+
+### 🎛️ 第二步：player 根本沒讀存下來的 BPM
+
+追前一步的時候順便讀了 `_buildUnifiedRibbon` 的 BPM 來源——**居然是從 median inter-chord interval 啟發式猜的**，完全忽略 chord JSON 裡的 `bpm` 欄位。後果：使用者在 editor tap-tempo 存 BPM=70、進 player 發現 BPM 跑掉、editor 切分一顆和弦、進 player BPM 又不一樣——因為每次 player render 都重跑啟發式，chord 切分會改變 median。
+
+**Phase C**：讓 player 優先讀 `chordData.bpm`（>0 時），啟發式只當 legacy fallback。
+
+使用者測完一句話確認：「切割和弦會讓 BPM 跑掉——bpm 有 persist 或存在歌曲資料?」問題即答案。編輯器的 save 路徑早就在寫 `bpm`，只是 player 從來沒吃。
+
+### ✂️ 第三步：右鍵 ribbon 變「全家桶」
+
+一旦點數和 BPM 都對齊了，使用者開始把所有 chord 修改需求都集中到 player ribbon 的右鍵選單：
+- 🥁 **調整拍數**（2/3/4/5/6/8/12/16 快速選）→ 呼叫 `ChordCorrection.setBeats(chordIdx, newBeats)`，cascade 後續和弦平移保持間隔
+- 🎯 **由此和弦開始校正**（進入 chord calibrate 面板）
+- 🔗 **合併至前一個** / **合併下一個**（修 BTC 把一顆 8 拍切成「1 拍 Bb + 7 拍 Bbsus2」的常見錯誤）
+- 🎹 **更換和弦**（`prompt()` 直接改名）
+
+每個操作都走 `ChordCorrection.backup()` 做 undo snapshot，操作完 `_corrRebuild()` 重繪 ribbon。
+
+**小地雷**：「調整拍數」這一項原本 inline 寫了 `style.color = "#2196F3"`，hover 時背景也是 `--accent` 藍，結果 **inline style 壓過 `:hover` 的白字規則，整列文字隱形**。修法：拔掉 inline color，讓 hover 的 CSS 規則接手。又一條「別在有 :hover 的 class 上用 inline color」。
+
+**更大的地雷**：boundary chord 走 fast-path。`showSectionMenu` 對 section 第一個和弦（`isBoundary`）會跳過 `renderMain`，直接顯示段落類型列表+刪除鈕——把我新加的 5 個 chord ops 全吃掉。修法：砍掉 fast-path 一律走 `renderMain`。使用者換一次 section name 多一次 click，但每個和弦都能做切分/調拍/校正。
+
+### 🥁 第四步：和弦與節拍校正（tap-based calibration）
+
+這是這天最大的一塊。使用者發現即便改了點數 bug，很多老歌的 BTC 節拍還是有 ±0.3s 的系統性偏移，手動一顆一顆調很累。**需要一個「跟著歌打拍、系統吸齊」的工具**。
+
+現有的 `ChordCorrection.enterBeatTap` 只吸 `chord.time` 到拍格，不改拍數、不重寫起點。使用者要的是更激烈的：
+
+> 「使用者可以輸入來 `1234 1234 1234 12 12 1234` 校正和弦拍數與起始點，使用者輸入 1 就是那個和弦的開始」
+
+於是做了 `enterChordCalibrate`：
+1. 鍵盤 `0` = 換和弦第 1 拍、`.` = 同和弦下一拍（0/.  比 1/2/3/4 更直覺，右手不離小鍵盤）
+2. 面板上的 `<kbd>` 可點擊 inline rebind（自訂按鍵、存 localStorage）
+3. 兩個大觸控按鈕「新和弦」/「下一拍」給手機用
+4. Apply：
+   - `secPerBeat` = 所有 tap 間隔的 filtered median
+   - **Lag compensation**：從 group 2+ 算 residual，median 當使用者 reaction lag，全部 tap 往前平移——第一組「起手反應慢」由後面校正回去
+   - 每個 group 的第一拍時間寫入對應 chord 的 `time`，`end` 接下一 group 開始
+   - 把 `secPerBeat` 換算回 BPM 寫進 `chordData.bpm`——不然 player 讀舊 BPM，改完拍還是顯示錯的點數
+
+**支援 segmented**：右鍵任意 chord → 只校正那顆開始的區段，chord[0..N-1] 保持原貌。使用者自述「一段一段來，打錯比較不會爆炸」。
+
+還加了 auto-save（debounced 800ms，模仿 section/phrase 編輯的 UX），把躲在工具 popup 裡的「儲存和弦」按鈕淘汰掉。
+
+### 💥 第五步：segmented calibrate 把 chord array 撕成兩半
+
+ship 完一切使用者回來：
+
+> 「調整完節拍，進 editor, 2:39 左右邊的和弦重疊一起」
+
+打開磁碟上的 admin chord JSON 看——**crime scene**：
+
+```
+[  0] time=118.160  chord=F
+[ 20] time=183.300  chord=Bbm7
+[ 21] time= 66.670  chord=F        ← 時間倒退！
+[ 56] time=152.220  chord=F
+[ 57] time=155.740  chord=Dm7
+```
+
+123 顆 chord 的陣列裡，索引 0-20 佔 118-183s、索引 21-56 佔 66-155s、索引 57+ 繼續往前——**array 被撕成兩段、後段被塞回前段中間**。editor render 以為陣列是時間有序的、就把兩組錯開的 chord 疊在同一塊螢幕空間上，做成使用者看到的「C Bb 重疊」。
+
+使用者親口點破：
+
+> 「那就是改完儲存的程式有 bug，剛剛我是按照樂句為單位一段一段校正的」
+
+對。segmented calibrate 的 Apply 裡只有 **segment-local sort**：
+
+```js
+const seg = chords.slice(offset, offset + N).sort((a, b) => a.time - b.time);
+chords.splice(offset, N, ...seg);
+```
+
+但當使用者右鍵副歌第一個 chord、此時音訊還停在主歌某處（currentTime=80s）、開始打 tap，chord[offset].time 就被寫成 80s——跟陣列前面原本 time=155s 的鄰居對不上。segment 內部順序 OK，**段與段之間的全域順序爆了**。
+
+### 🛡️ 三層防線
+
+1. **根因修復**：`enterChordCalibrate` apply 尾段改成 **global sort + dedupe**（相鄰 <0.2s 吃掉較早 index 的）+ 重算 `end`。陣列永遠 time-ordered，不管使用者在哪個音訊位置右鍵、連續做幾次 segmented。
+
+2. **前端 save 保險**：`_autoSaveCorrection` 呼叫 `_cleanChordsForSave()`，POST 前再做一次 sort + dedupe + end realign。即便 apply 路徑還有漏網 bug，落到磁碟前再攔截一次。
+
+3. **後端 save 保險**：`chord_api.save_chords` 的 POST handler 也跑同一套排序+dedupe。前端送什麼亂序資料進來都擋。
+
+### 🩹 資料復原
+
+使用者那首「過完冬季」的 admin JSON 已經壞掉，裡面混了兩批 chord。寫一個 `_repair_chords.py` one-off：
+- 全陣列 time-sort、tie-break 保留較晚 index
+- 0.3s 內相鄰視為重複、drop 其一
+- `.bak` 備份原始、atomic `.tmp + os.replace` 寫回
+
+跑完 123→113 顆、時間範圍從 `[撕裂混亂]` 變回 `[66.67s → 322.58s]`——但發現前 66 秒 intro 在更早的 buggy save 裡就被吃掉了。既然 admin 版已殘、乾脆 rename 成 `.moved`、讓 player fallback 回 official 版（103 顆、完整從 1.48s 起）——使用者一個硬重載就看到乾淨的 intro。
+
+### 🎵 順手把源頭的節拍偵測也補了
+
+一路追到這裡，使用者的一句話切中根本：
+
+> 「就是節拍偵測有誤差，造成拍數顯示誤差，可從源頭修正？」
+
+可以。BTC pipeline（`chord_detect.detect_chords_and_key_isolated`）只輸出 chord 序列 + key，**從來沒做 beat tracking 也沒寫 bpm**。chord 時間是 BTC 每幀輸出的結果、落在哪算哪。
+
+新建 `backend/beat_snap.py`：
+- `librosa.load(audio, sr=22050)` + `librosa.beat.beat_track` 抓出 BPM + 拍點陣列
+- 把每顆 chord 的 `time`/`end` 吸到最近拍點（tolerance 0.25s——避免拉壞 syncopated 邊界）
+- BPM 超出 40–240 範圍就放棄（halftime/doubletime 誤判不能相信）
+- 吸完 realign `chord[i].end = chord[i+1].time`
+
+兩個整合點：
+1. **新歌**：`auto_worker._auto_detect_loop` 在 BTC detect 後呼叫 `analyze_and_snap`，bpm 寫進 JSON。之後所有新分析的歌都自動帶節拍資訊。
+2. **舊歌**：寫 `backend/migrate_add_beat_info.py` 巡 `data/chords/*.json`、跳過已有 bpm 的、吸拍、atomic 寫回。支援 `--workers N` 平行、`--limit`、`--dry-run`。
+
+NUC 實跑：78062 首、8 workers、~2.2 songs/s（NAS I/O bound）、ETA ~10 小時。
+
+使用者發現斷線 resume 機制：*不需要記檔名*，直接再跑同指令，`SKIP_HAS_BPM` 自動快轉過已完成的檔。比 `--start-from` 直覺太多。
+
+### 🎓 這次的五條
+
+1. **兩個 view 顯示同一個數字、算法卻不同 = 一定會對不起來**。editor 用 `chord.end`、player 用 `next.time`，在沒有誤差時看不出差別、有誤差時瞬間翻臉。同一類資料只能有一個 source of truth 的算法。
+
+2. **啟發式估 vs 存下來 = 必選存下來**。player 的 BPM 啟發式在當年（chord JSON 沒 bpm 欄位）是合理 fallback，但「存了 bpm 卻不讀」就是技術債。Phase C 這個改動 7 行，但解開了使用者三天累積的困惑。
+
+3. **segment-local 的任何操作都要補 global 收尾**。segmented calibrate 的 segment-local sort 是好意：希望最小化影響範圍。但只要 segment 的輸出值可能和 segment 外的鄰居衝突，就必須 global resort/dedupe。防線要蓋在「最後一站」而不是「操作當下」。
+
+4. **defense-in-depth 值得做三層**。前端 apply 修、前端 save 再修、後端 save 再修一次。每層都只多 15 行程式碼，但其中任何一層掛了其他兩層還能擋。使用者不需要知道哪層在擋、只需要「存進去的永遠是排序好的」。
+
+5. **源頭修正比工具修正更省事、但不是互斥**。`beat_snap` 補了 BTC 的節拍盲區、大部分歌從此不需要手動校正；但手動的 `enterChordCalibrate` 還是要存在——有的歌 beat_track 會抓錯、有的歌使用者就是想把 syncopated 邊界對齊整拍。工具箱裡兩種都有、讓使用者挑。
+
+這天開始時 editor 只是缺幾顆點，結束時整個 chord 編輯流程從 BTC 到 save 都被縫過一遍。破壞才有新生——第二次驗證這件事。
+
+

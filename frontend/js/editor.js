@@ -61,10 +61,44 @@
       }
     } catch {}
 
+    // Mirror the player's BPM-multiplier so what the user sees in the editor
+    // matches what they were looking at in the player. Without this, a user
+    // who tapped the player's BPM badge down to 68 lands on an editor still
+    // using the raw 136 from the JSON — every chord's dot count doubles and
+    // "the BPM seems wrong" is the first thing they hit.
+    try {
+      const mult = parseFloat(localStorage.getItem(`bpm_mult_${trackPath}`));
+      if (mult > 0 && mult !== 1) songBPM = songBPM * mult;
+    } catch {}
+
+    // Section bands (phrase overlay above chord blocks). Non-blocking —
+    // bands render when the fetch resolves; editor stays usable meanwhile.
+    _loadSections().catch(() => {});
+
     $("#zoomSlider").value = pixelsPerSec;
+    _updateBpmDisplay();
 
     buildPalette();
     render();
+  }
+
+  // Seek to the playhead time the user was at in the player (URL param `t`).
+  // Timeline auto-scrolls to follow the playhead via `updatePlayheadUI`.
+  const seekParam = parseFloat(params.get("t") || "");
+  if (seekParam > 0 && isFinite(seekParam)) {
+    const applySeek = () => {
+      try {
+        audio.currentTime = Math.min(audio.duration || seekParam, seekParam);
+        // updatePlayheadUI's scroll branch only fires while playing; force
+        // an initial centered scroll so the relevant chords are on-screen.
+        requestAnimationFrame(() => {
+          const container = timeline.parentElement;
+          const px = seekParam * pixelsPerSec;
+          container.scrollLeft = Math.max(0, px - container.clientWidth * 0.3);
+        });
+      } catch {}
+    };
+    audio.addEventListener("loadedmetadata", applySeek, { once: true });
   }
 
   // ---- audio ----
@@ -149,6 +183,56 @@
       tick.textContent = formatTime(t);
       ruler.appendChild(tick);
     }
+    // Sections reflow on zoom because px/sec changes
+    _renderSectionBands();
+  }
+
+  // ---- section (phrase) bands ----
+
+  let _sectionData = null;
+
+  async function _loadSections() {
+    try {
+      const r = await fetch(`/api/ai/sections?path=${encodeURIComponent(trackPath)}`);
+      if (!r.ok) return;
+      const data = await r.json();
+      _sectionData = (data && Array.isArray(data.sections)) ? data.sections : [];
+      _renderSectionBands();
+    } catch {}
+  }
+
+  function _renderSectionBands() {
+    const bands = $("#sectionBands");
+    if (!bands) return;
+    bands.innerHTML = "";
+    if (!_sectionData || _sectionData.length === 0) return;
+    // Type counts for numbering (e.g., Verse 1 / Verse 2)
+    const typeCounts = {};
+    _sectionData.forEach(s => { typeCounts[s.type] = (typeCounts[s.type] || 0) + 1; });
+    const noNumberTypes = ["intro", "outro", "dialogue"];
+    const typeSeen = {};
+    for (const s of _sectionData) {
+      const left = s.start * pixelsPerSec;
+      const width = Math.max(2, (s.end - s.start) * pixelsPerSec);
+      typeSeen[s.type] = (typeSeen[s.type] || 0) + 1;
+      const total = typeCounts[s.type] || 1;
+      const numStr = (total > 1 && !noNumberTypes.includes(s.type)) ? ` ${typeSeen[s.type]}` : "";
+      const label = (s.label || s.type || "") + numStr;
+      const color = s.color || "#888";
+      const band = document.createElement("div");
+      band.className = "section-band";
+      band.style.left = left + "px";
+      band.style.width = width + "px";
+      band.style.background = color;
+      band.textContent = label;
+      band.title = `${label} — ${formatTime(s.start)} ~ ${formatTime(s.end)}`;
+      bands.appendChild(band);
+    }
+  }
+
+  function _updateBpmDisplay() {
+    const el = $("#bpmDisplay");
+    if (el) el.textContent = Math.round(songBPM);
   }
 
   // ---- render chord blocks ----
@@ -169,10 +253,14 @@
       const beatSec = 60 / songBPM;
       const durSec = (c.end || c.time + 2) - c.time;
       const beats = Math.round((durSec / beatSec) * 10) / 10;
-      
-      // 始終在方塊內顯示拍時長度，位於右下角
+      const dotCount = Math.max(1, Math.min(16, Math.round(durSec / beatSec)));
+      let dotsHtml = "";
+      for (let d = 0; d < dotCount; d++) dotsHtml += '<span class="beat-dot"></span>';
+
+      // 方塊內：和弦名（置中）、節拍點（底部中央）、拍數 0.1 精度（右下角）
       block.innerHTML = `
           <div style="pointer-events:none;">${c.chord}</div>
+          <div class="chord-block-beats">${dotsHtml}</div>
           <div style="position:absolute; bottom:2px; right:8px; font-size:10px; opacity:0.5; pointer-events:none;">${beats}</div>
       `;
 
@@ -180,6 +268,14 @@
       const handle = document.createElement("div");
       handle.className = "resize-handle";
       block.appendChild(handle);
+
+      // Right-click → quick beat-count adjust (cascades subsequent chords
+      // so the downstream timing stays coherent with the music).
+      block.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        _showBeatAdjustPopup(c, block, e);
+      });
 
       // click to select
       block.addEventListener("mousedown", (e) => {
@@ -190,6 +286,19 @@
           return;
         }
         e.stopPropagation();
+
+        // Palette-armed replace: if a palette chord is selected, tapping an
+        // existing block rewrites its name in place. Skips drag/multi-select
+        // so the user can chain-tap multiple blocks with the same palette pick.
+        if (paletteChord && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          c.chord = paletteChord;
+          selectedChords.clear();
+          selectedChords.add(c);
+          lastSelectedChord = c;
+          selectChord(c);
+          showToast(`已替換為 ${paletteChord}`);
+          return;
+        }
 
         let shouldSelectRange = false;
         if (e.shiftKey && lastSelectedChord != null) {
@@ -443,6 +552,76 @@
     splitTarget = null;
   }
 
+  // ---- right-click: adjust beat count of a single chord ----
+
+  let _beatAdjustTarget = null;
+
+  function _showBeatAdjustPopup(chord, anchorEl, ev) {
+    _beatAdjustTarget = chord;
+    const popup = $("#beatAdjustPopup");
+    if (!popup) return;
+    const beatSec = 60 / songBPM;
+    const currentDur = (chord.end || chord.time + 2) - chord.time;
+    const currentBeats = Math.round((currentDur / beatSec) * 10) / 10;
+    $("#beatAdjustCurrent").textContent = `(目前 ${currentBeats} 拍)`;
+    const opts = $("#beatAdjustOptions");
+    opts.innerHTML = "";
+    // Common beat counts + .5 options for syncopation
+    const choices = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 12, 16];
+    for (const beats of choices) {
+      const btn = document.createElement("button");
+      btn.className = "toolbar-btn";
+      btn.style.cssText = "padding:3px 10px;font-size:12px;min-width:36px";
+      btn.textContent = String(beats);
+      if (Math.abs(beats - currentBeats) < 0.05) {
+        btn.style.outline = "2px solid var(--accent)";
+      }
+      btn.addEventListener("click", () => _applyBeatAdjust(beats));
+      opts.appendChild(btn);
+    }
+    popup.style.display = "block";
+    // Position near the right-click
+    const x = ev && typeof ev.clientX === "number" ? ev.clientX : (anchorEl?.getBoundingClientRect().left || 0);
+    const y = ev && typeof ev.clientY === "number" ? ev.clientY : (anchorEl?.getBoundingClientRect().bottom || 0);
+    popup.style.left = Math.min(x, window.innerWidth - 240) + "px";
+    popup.style.top = Math.min(y + 4, window.innerHeight - 150) + "px";
+  }
+
+  function _hideBeatAdjustPopup() {
+    $("#beatAdjustPopup").style.display = "none";
+    _beatAdjustTarget = null;
+  }
+
+  function _applyBeatAdjust(newBeats) {
+    if (!_beatAdjustTarget) return;
+    const chord = _beatAdjustTarget;
+    const beatSec = 60 / songBPM;
+    const oldEnd = chord.end || chord.time + 2;
+    const newEnd = chord.time + newBeats * beatSec;
+    const delta = newEnd - oldEnd;
+    const idx = chords.indexOf(chord);
+    chord.end = newEnd;
+    // Cascade: shift every subsequent chord by `delta` so their relative
+    // placement is preserved. Without this, shortening this chord leaves
+    // a gap and growing it overlaps the next one.
+    if (idx >= 0 && Math.abs(delta) > 0.001) {
+      for (let j = idx + 1; j < chords.length; j++) {
+        chords[j].time += delta;
+        if (chords[j].end) chords[j].end += delta;
+      }
+    }
+    sortChords();
+    render();
+    _hideBeatAdjustPopup();
+    showToast(`此和弦改為 ${newBeats} 拍，後續 ${chords.length - idx - 1} 個和弦已平移`);
+  }
+
+  document.addEventListener("click", (e) => {
+    if ($("#beatAdjustPopup").style.display !== "none" && !e.target.closest("#beatAdjustPopup")) {
+      _hideBeatAdjustPopup();
+    }
+  });
+
   function doSplit(leftBeats, rightBeats) {
     if (!splitTarget) return;
     const chord = splitTarget;
@@ -566,6 +745,33 @@
       });
   }
 
+  if ($("#btnQuantizeAll")) {
+      $("#btnQuantizeAll").addEventListener("click", () => {
+          if (chords.length < 2) { showToast("至少要 2 個和弦才能正規化"); return; }
+          if (!confirm(`將對全部 ${chords.length} 個和弦套用拍數正規化 (基準：第一個和弦)。繼續？`)) return;
+          const beatSec = 60 / songBPM;
+          const resolution = beatSec / 2;
+          let currAnchorTime = chords[0].time;
+          for (let i = 0; i < chords.length - 1; i++) {
+              const cCurr = chords[i], cNext = chords[i + 1];
+              const diff = cNext.time - cCurr.time;
+              let quantizedDiff = Math.abs(diff) < 0.02 ? 0 : Math.round(diff / resolution) * resolution;
+              if (quantizedDiff <= 0) quantizedDiff = resolution;
+              cNext.time = currAnchorTime + quantizedDiff;
+              cCurr.end = cNext.time;
+              currAnchorTime = cNext.time;
+          }
+          const cLast = chords[chords.length - 1];
+          const lastDur = (cLast.end || cLast.time + 2) - cLast.time;
+          let lastQ = Math.round(lastDur / resolution) * resolution;
+          if (lastQ <= 0) lastQ = resolution;
+          cLast.end = cLast.time + lastQ;
+          sortChords();
+          render();
+          showToast(`已對 ${chords.length} 個和弦套用拍數正規化`);
+      });
+  }
+
   let clipboardChords = [];
 
   // keyboard shortcuts
@@ -642,6 +848,7 @@
         return;
       }
       if ($("#splitPopup").style.display !== "none") { hideSplitPopup(); return; }
+      if ($("#beatAdjustPopup").style.display !== "none") { _hideBeatAdjustPopup(); return; }
       deselectAll();
     }
     if (e.key.toLowerCase() === "r" && !e.ctrlKey && !e.metaKey) {
@@ -825,6 +1032,11 @@
     const bpm = parseInt($("#btnApplyTapBpm").dataset.bpm);
     if (bpm > 0) {
       songBPM = bpm;
+      // User explicitly re-derived BPM here — clear any player-side
+      // multiplier so the next /player load sees this raw value (otherwise
+      // the mult is silently applied on top, doubling/halving again).
+      try { localStorage.removeItem(`bpm_mult_${trackPath}`); } catch {}
+      _updateBpmDisplay();
       render();
       showToast(`BPM 已更新為 ${bpm}`);
     }
