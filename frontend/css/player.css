@@ -1130,11 +1130,108 @@
 }
 
 .tb-popup-wide {
-  /* Desktop: nowrap so all 10+ teaching buttons fit in a single row —
-     matches every other popup. Touch override (line ~1863) flips back to
-     wrap because viewport-anchored popups need to break lines. */
-  flex-wrap: nowrap;
+  /* Wrap enabled so the 3 subgroups (練習/伴奏模式/其他) stack vertically
+     — each subgroup owns its own row inside. Max-width clamps so the popup
+     doesn't overflow on wide monitors. */
+  flex-wrap: wrap;
   justify-content: center;
+  max-width: min(720px, 92vw);
+}
+
+/* Subgroup: forces its own row; contents wrap within */
+.tb-subgroup {
+  flex-basis: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.tb-subgroup:last-child { border-bottom: none; margin-bottom: 0; }
+.tb-subgroup-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 0 4px;
+  font-weight: 600;
+}
+.tb-subgroup-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.tb-subgroup-row .tb-popup-btn {
+  flex: 0 1 auto;
+}
+.tb-subgroup-row .tb-popup-btn.practice-opt {
+  flex: 1 1 calc(33.333% - 4px);
+  min-width: 80px;
+  font-size: 12px;
+  padding: 6px 6px;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.tb-subgroup-row .tb-popup-btn.practice-opt.active {
+  background: var(--accent, #5a9af2);
+  color: #fff;
+  border-color: var(--accent, #5a9af2);
+}
+/* Pyramid 3-2-1 via explicit rows. Each row = its own .tb-subgroup-row,
+   flex: 1 1 0 so children share width equally within that row. Rigid layout
+   regardless of viewport or flex math quirks. */
+.practice-row { flex-wrap: nowrap; }
+.practice-row .practice-opt {
+  flex: 1 1 0;
+  min-width: 0;
+}
+/* Icon badges inside preset buttons */
+.practice-opt .pp-icons {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+}
+.practice-opt .pp-hand,
+.practice-opt .pp-mark {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+}
+.practice-opt .pp-flip {
+  transform: scaleX(-1);
+}
+.practice-opt .pp-label {
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+}
+/* Mix row: Mix button + crossfader slider share a line */
+.tb-subgroup-row.mix-row {
+  align-items: center;
+  gap: 8px;
+}
+.crossfader-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+}
+.crossfader-inline .cf-slider {
+  flex: 1 1 auto;
+  min-width: 80px;
+  max-width: 180px;
+}
+.crossfader-inline .cf-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.crossfader-inline .cf-label.cf-midi {
+  color: var(--accent, #ff9800);
 }
 
 /* Speed / Loop / A-B / Jazzify popups: absolute-value pill lists.
