@@ -1591,9 +1591,15 @@
   // and between compact vs overview grids.
   function _ribbonLayoutKey() {
     const o = window.matchMedia("(orientation: portrait)").matches ? "v" : "h";
-    const m = (chordRibbonPanel && chordRibbonPanel.classList.contains("overview-mode"))
-      ? "overview" : "normal";
-    return `${o}_${m}`;
+    // `.ribbon-wide` (waterfall-hidden, ribbon-100%) uses the SAME grid
+    // layout as `.overview-mode`, just at full width. User thinks of the
+    // two as one "grid mode" and expects a single scale preference to
+    // apply to both. Treating them as a shared key satisfies that.
+    const isGrid = chordRibbonPanel && (
+      chordRibbonPanel.classList.contains("overview-mode") ||
+      chordRibbonPanel.classList.contains("ribbon-wide")
+    );
+    return `${o}_${isGrid ? "overview" : "normal"}`;
   }
   function _readRibbonScale(key) {
     const v = parseFloat(localStorage.getItem(`livechord_ribbon_scale_${key}`));
@@ -1736,6 +1742,17 @@
         btnCollapseWaterfall.innerHTML = "&#x276F;";  // ▶ hide (push to the right)
         btnCollapseWaterfall.title = "按一下：收合鋼琴視窗 (和弦列表擴大至全版)";
       }
+    }
+
+    // Layout key depends on `.ribbon-wide` (which we just toggled); reload
+    // the scale for the new key so the user's saved zoom for this mode is
+    // applied. Without this, flipping to ribbon-wide kept the normal-mode
+    // scale (usually 1.0) and cards stayed tiny in the grid view.
+    if (typeof _loadRibbonScale === "function") {
+      try { _loadRibbonScale(); } catch {}
+    }
+    if (typeof _ribbonLastKey !== "undefined") {
+      _ribbonLastKey = _ribbonLayoutKey();
     }
   }
 
