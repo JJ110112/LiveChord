@@ -52,26 +52,44 @@ from 3.0x to 1.6x despite the duplicate events. Good enough until root fix.
 
 ---
 
-## Dev Environment — Windows Storage Sense file reaping
+## Dev Environment — `data/tmp/` is backend-owned scratch, not user-writable
 
-**Symptom**: Scripts and test files written under `c:\Users\hitea\Claude\LiveChord\data\tmp\` silently vanished multiple times during 2026-04-21 session. `__pycache__/*.pyc` survived but sibling `.py` and `.txt` files disappeared within 30-60 min. Procmon captured zero `SetDispositionInformationFile` events at userspace VFS level.
+**Symptom**: Scripts and test files written under `c:\Users\hitea\Claude\LiveChord\data\tmp\` (or `V:\data\tmp\` on NUC) silently vanish within 10-15 minutes. `__pycache__/` (a directory, not a file) survives. Procmon at userspace VFS level captures nothing useful.
 
-**Diagnosed**: **Windows 11 Storage Sense** (`HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy\01 = 1`) was enabled. Task `\Microsoft\Windows\DiskFootprint\StorageSense` last ran 2026-04-20 23:28 with `LastResult 0x80040154` (COM class not registered — partial/error run). Despite docs saying SS only cleans `%TEMP%` / `%WINDIR%\Temp`, Win11 SS has undocumented heuristic that touches user-profile folders with name `tmp` / `temp` inside paths it classifies as "project cache".
+**Root cause** (FOUND 2026-04-21 22:30): Backend itself. [`backend/process_queue.py:796-805`](../backend/process_queue.py#L796-L805) runs a `tmp-cleanup` daemon thread that every **5 minutes** scans `data/tmp/` and `unlink()`s any **file** older than **10 minutes**:
 
-**Invisibility to procmon**: SS cleanup goes through kernel minifilter `WdFilter` / `FLTMGR` below `IRP_MJ_SET_INFORMATION`, so standard procmon trace doesn't catch it.
+```python
+TMP_DIR = DATA_DIR / "tmp"
+_CLEANUP_INTERVAL = 300   # 5 min
+_MAX_TMP_AGE = 600        # 10 min
 
-**Mitigation shipped (2026-04-21 19:59)**:
-1. Disabled Storage Sense: `Set-ItemProperty HKCU:\...\StoragePolicy -Name 01 -Value 0`
-2. Moved Phase 4 POC scripts from `data/tmp/` → `c:/Users/hitea/AppData/Local/Temp/midi_reorg/` (stable)
-3. **Rule**: avoid writing important data to `%USERPROFILE%\...\tmp\` or `%USERPROFILE%\...\temp\`. If you must use a project-local scratch dir, prefer **non-tmp names** like `data/scratch/`, `data/poc/`, `workbench/` — SS heuristic doesn't trigger on those.
-
-**Verify it's still disabled**:
-```powershell
-(Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy" -Name "01").'01'
-# should return 0
+def _cleanup_loop():
+    while True:
+        time.sleep(300)
+        for f in TMP_DIR.iterdir():
+            if f.is_file() and (now - f.stat().st_mtime) > 600:
+                f.unlink()
 ```
 
-**Blocker / future verification**: 24h+ bake test with baits in 3 project locations (scheduled wakeup 21:00). If baits survive → confirmed SS was the reaper. If files still vanish → re-open investigation with Sysmon (kernel-level event log) or USN journal analysis.
+Purpose: clean up uploaded audio intermediates after process-worker finishes. Thread starts automatically when uvicorn loads `process_queue` (which is always, in any LiveChord backend run — personal 8800, beta 8801, local dev 8802).
+
+**Why this masquerades as mystery**:
+- `__pycache__` survives because `.is_file()` returns False on directories
+- Procmon does see the `unlink()` but on the Claude Code / bash session we were filtering against "SetDispositionInformationFile" — Python's `os.unlink` translates differently
+- Storage Sense was a red herring; we disabled it but the reaper was still a running backend thread
+
+**Bake test proof (2026-04-21 19:25 → 22:30)**:
+- `c:\Users\hitea\Claude\LiveChord\tmp\bait_root.py` → **survived 3+ hours** ✓ (not in TMP_DIR scope)
+- `c:\Users\hitea\Claude\LiveChord\scripts_test\bait_scripts_dir.py` → **survived** ✓
+- `c:\Users\hitea\Claude\LiveChord\data\tmp\bait_post_ss_disable.py` → **deleted at 20:12** (13 min after drop, despite SS disabled)
+
+**Rule for AI agents + future contributors**:
+1. **Never write scripts, plans, or long-lived data into `data/tmp/`** — it's backend-owned scratch with a 10-min TTL. Python bytecode survives (protected by `is_file()` check) but source files don't.
+2. **Project-local scratch dirs that survive**: `c:/Users/hitea/Claude/LiveChord/tmp/`, `c:/Users/hitea/Claude/LiveChord/scripts_test/`, `c:/Users/hitea/Claude/LiveChord/data/scratch/` (anything NOT matching `data/tmp`)
+3. **If you need OS-level temp**: `c:/Users/hitea/AppData/Local/Temp/midi_reorg/` is stable (OS won't touch, backend won't touch).
+4. **Phase 4 POC convention update**: earlier CLAUDE.md noted `data/tmp/midi_align_multitrack.py` as Phase 4 POC location — **update that doc**. The file was almost certainly eaten by this cleanup thread, explaining why it "disappeared" across sessions. See [doc/PHASE_4_HYBRID_MELODY.md](PHASE_4_HYBRID_MELODY.md) line 281 reference.
+
+**Side note — Storage Sense was disabled during diagnosis but is unrelated**. User may re-enable at will (`HKCU:\...\StoragePolicy\01 = 1`). It was never the culprit.
 
 ---
 
