@@ -1674,23 +1674,51 @@
   // Restore last tab (deferred here so _ribbonScales is initialized)
   _switchTab(activeTab);
 
-  // ---- Toggle chord ribbon visibility ----
+  // ---- Toggle ribbon / waterfall visibility (3-state cycle) ----
+  // 0 = both visible (default)
+  // 1 = ribbon hidden, waterfall full-width (focus piano practice)
+  // 2 = waterfall hidden, ribbon full-width (focus chord editing / phrase work)
   const btnToggleRibbon = $("#btnToggleRibbon");
-  let ribbonVisible = localStorage.getItem("livechord_ribbon_visible") !== "false";
-
-  function _applyRibbonVisibility() {
-    if (chordRibbonPanel) chordRibbonPanel.style.display = ribbonVisible ? "" : "none";
-    if (resizeHandle) resizeHandle.style.width = ribbonVisible ? "" : "22px";
-    if (btnToggleRibbon) btnToggleRibbon.innerHTML = ribbonVisible ? "&#x276E;" : "&#x276F;";
+  // instrumentPanel is already declared at the top of the IIFE (line 194)
+  // Migrate the old boolean key if it's still around
+  let ribbonLayout = 0;
+  const legacyVisible = localStorage.getItem("livechord_ribbon_visible");
+  const savedLayout = localStorage.getItem("livechord_ribbon_layout");
+  if (savedLayout !== null) {
+    ribbonLayout = parseInt(savedLayout) || 0;
+    if (ribbonLayout < 0 || ribbonLayout > 2) ribbonLayout = 0;
+  } else if (legacyVisible === "false") {
+    ribbonLayout = 1;  // old "hidden" meant ribbon-hidden waterfall-only
   }
-  _applyRibbonVisibility();
+
+  function _applyRibbonLayout() {
+    const ribbonOn = ribbonLayout !== 1;
+    const waterfallOn = ribbonLayout !== 2;
+    if (chordRibbonPanel) chordRibbonPanel.style.display = ribbonOn ? "" : "none";
+    if (instrumentPanel) instrumentPanel.style.display = waterfallOn ? "" : "none";
+    if (resizeHandle) resizeHandle.style.width = ribbonOn ? "" : "22px";
+    if (btnToggleRibbon) {
+      // Glyph + tooltip describe the NEXT state, not the current one
+      if (ribbonLayout === 0) {
+        btnToggleRibbon.innerHTML = "&#x276E;";  // ❮  — next click hides ribbon
+        btnToggleRibbon.title = "按一下：收合和弦列表 (擴大鋼琴視窗)";
+      } else if (ribbonLayout === 1) {
+        btnToggleRibbon.innerHTML = "&#x276F;";  // ❯  — next click flips to "hide waterfall"
+        btnToggleRibbon.title = "按一下：換成擴大和弦列表 (收合鋼琴)";
+      } else {
+        btnToggleRibbon.innerHTML = "&#x21C4;";  // ⇄  — next click restores both
+        btnToggleRibbon.title = "按一下：還原雙側顯示";
+      }
+    }
+  }
+  _applyRibbonLayout();
 
   if (btnToggleRibbon) {
     btnToggleRibbon.addEventListener("click", (e) => {
       e.stopPropagation();
-      ribbonVisible = !ribbonVisible;
-      localStorage.setItem("livechord_ribbon_visible", ribbonVisible);
-      _applyRibbonVisibility();
+      ribbonLayout = (ribbonLayout + 1) % 3;
+      localStorage.setItem("livechord_ribbon_layout", ribbonLayout);
+      _applyRibbonLayout();
     });
   }
 
