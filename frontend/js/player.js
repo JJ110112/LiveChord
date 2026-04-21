@@ -1556,6 +1556,10 @@
 
     resizeHandle.addEventListener("pointerdown", (e) => {
       if (e.target.closest(".ribbon-toggle-btn")) return; // let button handle it
+      // No-op drag when either side is fully collapsed — there's no
+      // split to resize. The `.has-hidden-side` class is the single
+      // source of truth for this state (set by _applyRibbonLayout).
+      if (resizeHandle.classList.contains("has-hidden-side")) return;
       _resizing = true;
       _startX = e.clientX;
       _startW = chordRibbonPanel.offsetWidth;
@@ -1674,57 +1678,102 @@
   // Restore last tab (deferred here so _ribbonScales is initialized)
   _switchTab(activeTab);
 
-  // ---- Toggle ribbon / waterfall visibility (3-state cycle) ----
-  // 0 = both visible (default)
-  // 1 = ribbon hidden, waterfall full-width (focus piano practice)
-  // 2 = waterfall hidden, ribbon full-width (focus chord editing / phrase work)
-  const btnToggleRibbon = $("#btnToggleRibbon");
+  // ---- Two independent collapse toggles (one per side) ----
+  // Mental model: the user has two "hide me" buttons on the divider. Each
+  // collapses its own side and expands the other to full width. Invariant:
+  // at most one side hidden at a time. Click "hide X" while Y is hidden
+  // → auto-swap (Y restores, X hides) in a single click.
+  const btnCollapseRibbon = $("#btnCollapseRibbon");
+  const btnCollapseWaterfall = $("#btnCollapseWaterfall");
   // instrumentPanel is already declared at the top of the IIFE (line 194)
-  // Migrate the old boolean key if it's still around
-  let ribbonLayout = 0;
+
+  let ribbonHidden = false;
+  let waterfallHidden = false;
+
+  // Migrate earlier state-cycle key + legacy boolean key, then clear them.
+  // Reading both once; writing only the new per-side keys going forward.
+  const legacyLayout = localStorage.getItem("livechord_ribbon_layout");
   const legacyVisible = localStorage.getItem("livechord_ribbon_visible");
-  const savedLayout = localStorage.getItem("livechord_ribbon_layout");
-  if (savedLayout !== null) {
-    ribbonLayout = parseInt(savedLayout) || 0;
-    if (ribbonLayout < 0 || ribbonLayout > 2) ribbonLayout = 0;
-  } else if (legacyVisible === "false") {
-    ribbonLayout = 1;  // old "hidden" meant ribbon-hidden waterfall-only
+  if (legacyLayout !== null) {
+    const n = parseInt(legacyLayout);
+    if (n === 1) ribbonHidden = true;
+    else if (n === 2) waterfallHidden = true;
+    localStorage.removeItem("livechord_ribbon_layout");
+  } else {
+    if (localStorage.getItem("livechord_ribbon_hidden") === "true") ribbonHidden = true;
+    if (localStorage.getItem("livechord_waterfall_hidden") === "true") waterfallHidden = true;
+    // Very-old pre-cycle key: treat as "ribbon hidden"
+    if (!ribbonHidden && !waterfallHidden && legacyVisible === "false") ribbonHidden = true;
   }
 
   function _applyRibbonLayout() {
-    const ribbonOn = ribbonLayout !== 1;
-    const waterfallOn = ribbonLayout !== 2;
     if (chordRibbonPanel) {
-      chordRibbonPanel.style.display = ribbonOn ? "" : "none";
-      // State 2 — ribbon takes the full row AND reflows into a wrap-grid
-      // like overview-mode. Without the grid reflow, the ribbon would be
-      // 100% wide but still 1 card per row (flex-direction:column), which
-      // wastes all the new horizontal space.
-      chordRibbonPanel.classList.toggle("ribbon-wide", ribbonLayout === 2);
+      chordRibbonPanel.style.display = ribbonHidden ? "none" : "";
+      // When waterfall is hidden, ribbon takes the full row with a
+      // wrap-grid reflow (same visual as overview-mode but at 100% width).
+      chordRibbonPanel.classList.toggle("ribbon-wide", waterfallHidden);
     }
-    if (instrumentPanel) instrumentPanel.style.display = waterfallOn ? "" : "none";
-    if (resizeHandle) resizeHandle.style.width = ribbonOn ? "" : "22px";
-    if (btnToggleRibbon) {
-      // Glyph + tooltip describe the NEXT state, not the current one
-      if (ribbonLayout === 0) {
-        btnToggleRibbon.innerHTML = "&#x276E;";  // ❮  — next click hides ribbon
-        btnToggleRibbon.title = "按一下：收合和弦列表 (擴大鋼琴視窗)";
-      } else if (ribbonLayout === 1) {
-        btnToggleRibbon.innerHTML = "&#x276F;";  // ❯  — next click flips to "hide waterfall"
-        btnToggleRibbon.title = "按一下：換成擴大和弦列表 (收合鋼琴)";
+    if (instrumentPanel) instrumentPanel.style.display = waterfallHidden ? "none" : "";
+    if (resizeHandle) resizeHandle.classList.toggle("has-hidden-side", ribbonHidden || waterfallHidden);
+
+    // Each button always shows what the next click will do on its own side.
+    // btnCollapseRibbon: ◀ to hide, ▶ to show.
+    if (btnCollapseRibbon) {
+      if (ribbonHidden) {
+        btnCollapseRibbon.innerHTML = "&#x276F;";  // ▶ show (bring back from left)
+        btnCollapseRibbon.title = "按一下：顯示和弦列表";
       } else {
-        btnToggleRibbon.innerHTML = "&#x21C4;";  // ⇄  — next click restores both
-        btnToggleRibbon.title = "按一下：還原雙側顯示";
+        btnCollapseRibbon.innerHTML = "&#x276E;";  // ◀ hide (push to the left)
+        btnCollapseRibbon.title = "按一下：收合和弦列表 (鋼琴擴大至全版)";
+      }
+    }
+    // btnCollapseWaterfall: ▶ to hide, ◀ to show.
+    if (btnCollapseWaterfall) {
+      if (waterfallHidden) {
+        btnCollapseWaterfall.innerHTML = "&#x276E;";  // ◀ show (bring back from right)
+        btnCollapseWaterfall.title = "按一下：顯示鋼琴視窗";
+      } else {
+        btnCollapseWaterfall.innerHTML = "&#x276F;";  // ▶ hide (push to the right)
+        btnCollapseWaterfall.title = "按一下：收合鋼琴視窗 (和弦列表擴大至全版)";
       }
     }
   }
-  _applyRibbonLayout();
 
-  if (btnToggleRibbon) {
-    btnToggleRibbon.addEventListener("click", (e) => {
+  function _persistRibbonLayout() {
+    if (ribbonHidden) localStorage.setItem("livechord_ribbon_hidden", "true");
+    else localStorage.removeItem("livechord_ribbon_hidden");
+    if (waterfallHidden) localStorage.setItem("livechord_waterfall_hidden", "true");
+    else localStorage.removeItem("livechord_waterfall_hidden");
+  }
+
+  _applyRibbonLayout();
+  _persistRibbonLayout();  // writes migrated state, clears legacy keys' effect
+
+  if (btnCollapseRibbon) {
+    btnCollapseRibbon.addEventListener("click", (e) => {
       e.stopPropagation();
-      ribbonLayout = (ribbonLayout + 1) % 3;
-      localStorage.setItem("livechord_ribbon_layout", ribbonLayout);
+      if (ribbonHidden) {
+        // Currently hidden → restore
+        ribbonHidden = false;
+      } else {
+        // Hiding ribbon now → auto-restore waterfall if it was hidden
+        ribbonHidden = true;
+        waterfallHidden = false;
+      }
+      _persistRibbonLayout();
+      _applyRibbonLayout();
+    });
+  }
+  if (btnCollapseWaterfall) {
+    btnCollapseWaterfall.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (waterfallHidden) {
+        waterfallHidden = false;
+      } else {
+        waterfallHidden = true;
+        ribbonHidden = false;
+      }
+      _persistRibbonLayout();
       _applyRibbonLayout();
     });
   }

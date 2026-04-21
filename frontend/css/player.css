@@ -342,7 +342,6 @@
 }
 .ribbon-toggle-btn {
   position: absolute;
-  top: 50%;
   left: 0;
   transform: translateY(-50%);
   width: 20px;
@@ -360,13 +359,22 @@
   align-items: center;
   justify-content: center;
 }
+/* Two buttons stacked on the same resize handle; each controls one side. */
+.ribbon-toggle-btn.ribbon-toggle-top    { top: 30%; }
+.ribbon-toggle-btn.ribbon-toggle-bottom { top: 70%; }
 .ribbon-toggle-btn:hover {
   color: var(--text);
   background: var(--bg-hover);
   border-color: var(--accent);
 }
-.ribbon-toggle-btn.collapsed {
-  /* Arrow points right when ribbon is hidden */
+/* When either side is collapsed, the resize handle must widen so the 20px
+   button stays inside the visible layout (otherwise the button overhangs
+   into the hidden side and becomes unreachable). Also disable the drag
+   cursor — there's nothing to resize when one side is gone. */
+.resize-handle.has-hidden-side {
+  min-width: 24px;
+  background: transparent;
+  cursor: default;
 }
 
 /* --- Right: Instrument Panel --- */

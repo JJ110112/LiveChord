@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=8">
-  <link rel="stylesheet" href="/css/player.css?v=63">
+  <link rel="stylesheet" href="/css/player.css?v=64">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -100,9 +100,10 @@
       </div>
     </div>
 
-    <!-- RESIZE HANDLE with toggle button -->
+    <!-- RESIZE HANDLE with two independent collapse toggles -->
     <div id="resizeHandle" class="resize-handle">
-      <button id="btnToggleRibbon" class="ribbon-toggle-btn" title="顯示/隱藏和弦列表">&#x276E;</button>
+      <button id="btnCollapseRibbon" class="ribbon-toggle-btn ribbon-toggle-top" title="收合和弦列表 (鋼琴擴大至全版)">&#x276E;</button>
+      <button id="btnCollapseWaterfall" class="ribbon-toggle-btn ribbon-toggle-bottom" title="收合鋼琴視窗 (和弦列表擴大至全版)">&#x276F;</button>
     </div>
 
     <!-- RIGHT: Instrument Panel -->
@@ -668,6 +669,6 @@
     return res;
   };
 </script>
-<script src="/js/player.js?v=195"></script>
+<script src="/js/player.js?v=196"></script>
 </body>
 </html>
