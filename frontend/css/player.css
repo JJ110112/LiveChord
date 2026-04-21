@@ -342,8 +342,11 @@
 }
 .ribbon-toggle-btn {
   position: absolute;
-  left: 0;
-  transform: translateY(-50%);
+  top: 50%;
+  left: 50%;
+  /* Default: center on the resize handle. This positioning is used when
+     only one button is visible (the other side is collapsed). */
+  transform: translate(-50%, -50%);
   width: 20px;
   height: 40px;
   background: rgba(22,27,34,0.9);
@@ -359,9 +362,15 @@
   align-items: center;
   justify-content: center;
 }
-/* Two buttons stacked on the same resize handle; each controls one side. */
-.ribbon-toggle-btn.ribbon-toggle-top    { top: 30%; }
-.ribbon-toggle-btn.ribbon-toggle-bottom { top: 70%; }
+/* When both panels visible (no .has-hidden-side), shift the two buttons
+   horizontally so they sit side-by-side as `< >` straddling the handle's
+   vertical centerline, each with its own arrow direction. */
+.resize-handle:not(.has-hidden-side) #btnCollapseRibbon {
+  transform: translate(calc(-100% - 1px), -50%);
+}
+.resize-handle:not(.has-hidden-side) #btnCollapseWaterfall {
+  transform: translate(1px, -50%);
+}
 .ribbon-toggle-btn:hover {
   color: var(--text);
   background: var(--bg-hover);
