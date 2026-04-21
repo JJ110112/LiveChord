@@ -1694,7 +1694,14 @@
   function _applyRibbonLayout() {
     const ribbonOn = ribbonLayout !== 1;
     const waterfallOn = ribbonLayout !== 2;
-    if (chordRibbonPanel) chordRibbonPanel.style.display = ribbonOn ? "" : "none";
+    if (chordRibbonPanel) {
+      chordRibbonPanel.style.display = ribbonOn ? "" : "none";
+      // State 2 — ribbon takes the full row AND reflows into a wrap-grid
+      // like overview-mode. Without the grid reflow, the ribbon would be
+      // 100% wide but still 1 card per row (flex-direction:column), which
+      // wastes all the new horizontal space.
+      chordRibbonPanel.classList.toggle("ribbon-wide", ribbonLayout === 2);
+    }
     if (instrumentPanel) instrumentPanel.style.display = waterfallOn ? "" : "none";
     if (resizeHandle) resizeHandle.style.width = ribbonOn ? "" : "22px";
     if (btnToggleRibbon) {

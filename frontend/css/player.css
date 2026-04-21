@@ -431,6 +431,46 @@
   max-width: 50% !important;
   border-right: 2px solid var(--border);
 }
+
+/* .ribbon-wide — state 2 of the ribbon toggle: waterfall is hidden so the
+   ribbon expands to the full row AND reflows into a wrap-grid (overview-
+   like) so the extra horizontal space shows more chord cards side-by-side
+   instead of leaving whitespace. Used primarily for phrase / chord-name
+   editing where the user wants to click through many cards quickly. */
+.chord-ribbon-panel.ribbon-wide {
+  width: 100% !important;
+  max-width: none !important;
+  flex: 1 1 auto;
+  border-right: none;
+}
+.chord-ribbon-panel.ribbon-wide .ribbon-v-track {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-content: flex-start;
+  padding: 16px;
+  gap: 12px;
+}
+.chord-ribbon-panel.ribbon-wide .ribbon-v-track > .rv-section-header {
+  flex-basis: 100%;
+  width: 100%;
+}
+.chord-ribbon-panel.ribbon-wide .rv-item {
+  width: calc(140px * var(--ribbon-scale, 1));
+  border-left: none;
+  border-top: 4px solid var(--phrase-color, #888);
+  background: rgba(0,0,0,0.4);
+  border-radius: 6px;
+  position: relative;
+  padding-top: 24px;
+}
+.chord-ribbon-panel.ribbon-wide .rv-item.active {
+  background: rgba(139, 92, 246, 0.2);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+  border-top-color: var(--phrase-color, var(--accent));
+  transform: scale(1.05);
+  z-index: 2;
+}
 .chord-ribbon-panel.overview-mode .ribbon-v-track {
   flex-direction: row;
   flex-wrap: wrap;
