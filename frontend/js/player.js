@@ -4255,16 +4255,18 @@
       if (s.ratio) ratio = s.ratio;
     } catch {}
 
+    // z-index must exceed .chord-display-area (z:500) or the panel renders
+    // behind the waterfall canvas and looks like nothing happened.
     const backdrop = document.createElement("div");
     backdrop.className = "auto-split-backdrop";
-    backdrop.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:299;";
+    backdrop.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:999;";
 
     const panel = document.createElement("div");
     panel.className = "auto-split-panel";
     panel.style.cssText = `
       position:fixed; top:50%; left:50%; transform:translate(-50%, -50%);
       background:var(--bg-card); border:1px solid var(--border); border-radius:8px;
-      padding:18px 20px; z-index:300; min-width:340px; max-width:90vw;
+      padding:18px 20px; z-index:1000; min-width:340px; max-width:90vw;
       box-shadow:0 8px 24px rgba(0,0,0,0.5); color:var(--text);
     `;
     panel.innerHTML = `
