@@ -4272,7 +4272,7 @@
     panel.innerHTML = `
       <div style="font-size:15px; font-weight:600; margin-bottom:14px;">✂ 自動切分長和弦</div>
       <div style="margin-bottom:14px;">
-        <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">最短拍數 (大於等於此值才切分)</div>
+        <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">拍數門檻 (大於此值才切分)</div>
         <div style="display:flex; gap:6px; align-items:center;">
           <button class="as-dec" style="padding:4px 12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer;">−</button>
           <input class="as-thresh" type="number" min="2" max="32" value="${threshold}" style="width:64px; padding:4px 6px; text-align:center; background:var(--bg); border:1px solid var(--border); border-radius:4px; color:var(--text); font-size:14px;">
@@ -4347,7 +4347,10 @@
           ? c.end - c.time
           : (i < chordData.chords.length - 1 ? chordData.chords[i + 1].time - c.time : 2.0);
         const beats = Math.round(dur / currentSecPerBeat);
-        if (beats < threshold) continue;
+        // Strict > threshold — 8-beat chord with threshold=8 stays intact.
+        // Semantic: "keep chord at exactly threshold beats; only split when
+        // it's visibly longer than the user's unit-of-interest."
+        if (beats <= threshold) continue;
 
         // Proportional split — each part scales to the chord's own beats.
         // Guarantee each part >= 1 beat; rounding residue absorbed by the
@@ -4379,9 +4382,9 @@
       close();
       if (count > 0) {
         _corrRebuild();
-        showToast(`已切分 ${count} 個和弦 (≥${threshold} 拍, ${ratio})`, 2500);
+        showToast(`已切分 ${count} 個和弦 (>${threshold} 拍, ${ratio})`, 2500);
       } else {
-        showToast(`沒有符合條件的和弦 (≥${threshold} 拍)`, 2000);
+        showToast(`沒有大於 ${threshold} 拍的和弦`, 2000);
       }
     });
 

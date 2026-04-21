@@ -4,7 +4,7 @@ Canonical UX rules for LiveChord. **All UI changes MUST follow this document.** 
 a new pattern emerges that isn't covered here, update this file in the same PR that
 introduces it — the doc is the reference, not a historical log.
 
-Last updated: 2026-04-21 (live)
+Last updated: 2026-04-21 (live; added §11 z-index tier map)
 Audience: anyone editing `frontend/*.html`, `frontend/js/*.js`, `frontend/css/*.css`
 — including future-Claude.
 
@@ -267,9 +267,79 @@ responds, I don't know which to press). Fix: hidden-shell approach.
 
 ---
 
-## §11  When these rules conflict with urgency
+## §11  z-index tier map (DO NOT invent new numbers)
 
-If a hotfix needs to ship in 5 minutes and following §1-10 would take 20, **fix
+The player page has grown ~50 stacking contexts. Picking a z-index "that seems
+big enough" silently breaks when a later feature lands a bigger number or when
+an ancestor creates a new stacking context (`transform`, `filter`, `position:fixed`
+with z-index). Use the tier below; if your new overlay doesn't fit, **grow the
+tier, not your local value**.
+
+Past incident (2026-04-21): auto-split settings panel used `z-index: 300`.
+`.chord-display-area` is `position:fixed; z-index:500` — so the panel rendered
+*behind* the waterfall canvas. From the user's POV, clicking 工具 → 自動切分
+did nothing. Fix was z-index: 1000 + a matching backdrop at 999.
+
+### Tier map (player + editor combined)
+
+| Tier | Range | What lives here | Example selectors |
+|---|---|---|---|
+| **0 Inline** | 0–10 | In-flow stacking within a component. No cross-component reach. | `.chord-block.selected` (5), `.rv-grid-phrase` (10), `.playhead` (10) |
+| **1 Component chrome** | 10–100 | Sticky headers inside a panel, inline tooltips scoped to one card. | `.browse-header` (10), `.toast` (100 via base.css) |
+| **2 Panel overlays** | 100–999 | Per-page overlays that must sit above normal content but below the toolbar. Tooltips, inline dropdowns, in-panel context menus. | `.topbar-search .search-results` (200), editor `#splitPopup` / `#beatAdjustPopup` (200), editor `.help-overlay` (300/299) |
+| **3 Page-fixed chrome** | 500–999 | `position:fixed` chrome that defines the page layout: player's chord display area, progress bars that overlay content. **THIS TIER IS A PAINT TRAP** — anything below 500 that floats over the player ribbon will be hidden by the waterfall canvas. | `.chord-display-area` (500), `.progress-bar-mid` (8000) |
+| **4 Modal dialogs** | 1000–8999 | Full-page modals, settings panels, correction panels. MUST have a backdrop one tier below. | Auto-split panel (1000), backdrop (999). `.correction-panel` (was 1000; check current) |
+| **5 Toolbar chrome** | 9000–9499 | The persistent bottom toolbar and top bar. Always visible, always above modals-in-progress so user can escape. | `.player-topbar` (9000), bottom-toolbar popups (9000–9200) |
+| **6 Floating widgets** | 9500–9999 | YouTube PiP, FABs, transient hints that must sit above even modals. | `.yt-embed-container` (9500), `.chord-ribbon-panel` overlay (9500), bug-report FAB (9600) |
+| **7 Critical overlays** | 10000+ | Loading splash, fatal-error toast, auth-expired redirect banner — things that *must* block interaction. | `#initLoader` (9999–10000), loader bar (15000 in base.css) |
+
+### Rules
+
+1. **Never use numbers outside these ranges.** If a tier feels wrong, revisit
+   the design rather than jumping tiers. A new modal is tier 4, never tier 7.
+
+2. **Stacking context traps**. `transform`, `filter`, `perspective`, `clip-path`,
+   `position:fixed with z-index`, `opacity < 1` on a parent all create a new
+   stacking context. Your child's `z-index: 9999` is scoped to that context.
+   Before picking a z-index, walk up the ancestor chain and check the tree.
+
+3. **Every modal needs a backdrop**. Backdrop at `tier - 1` (e.g. modal=1000
+   → backdrop=999). Clicking the backdrop closes the modal. Without a backdrop
+   the user can click toolbar buttons behind the modal without closing it.
+
+4. **!important is a red flag, not a feature**. Two uses of `!important` on
+   z-index (`.chord-ribbon-panel` line 1985) are grandfathered past-incident
+   workarounds — **do not add new ones**. If you need `!important` to win,
+   your ancestor chain is fighting you; fix that instead.
+
+5. **Dev tool: find what covers your element**. In DevTools console:
+   ```js
+   const el = document.querySelector(".my-panel");
+   const r = el.getBoundingClientRect();
+   document.elementFromPoint(r.x + r.width/2, r.y + r.height/2)
+   ```
+   If that returns anything other than your panel (or a descendant), something
+   is painting on top — check the returned element's ancestor chain for a
+   stacking context you didn't account for.
+
+### Quick reference
+
+```
+   Tier 7:  loader / fatal toast                         10000+
+   Tier 6:  FAB / PiP / floating hints                   9500–9999
+   Tier 5:  toolbar + topbar                             9000–9499
+   Tier 4:  modals + correction panels                   1000–8999
+   Tier 3:  page-fixed chrome (chord-display-area=500)   500–999
+   Tier 2:  panel overlays                               100–499
+   Tier 1:  component chrome                             10–99
+   Tier 0:  inline stacking                              0–10
+```
+
+---
+
+## §12  When these rules conflict with urgency
+
+If a hotfix needs to ship in 5 minutes and following §1-11 would take 20, **fix
 first, refactor within 24h**. Leave a TODO comment in the code:
 
 ```html
