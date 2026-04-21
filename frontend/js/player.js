@@ -1722,24 +1722,29 @@
     if (instrumentPanel) instrumentPanel.style.display = waterfallHidden ? "none" : "";
     if (resizeHandle) resizeHandle.classList.toggle("has-hidden-side", ribbonHidden || waterfallHidden);
 
-    // Each button always shows what the next click will do on its own side.
-    // btnCollapseRibbon: ◀ to hide, ▶ to show.
+    // Button visibility + glyph. Rule: when a side is hidden, the OTHER
+    // side's "hide me" button disappears (otherwise clicking it would
+    // leave both sides hidden). Only the restore-direction button stays
+    // visible in collapsed states. This keeps restore a pure undo —
+    // click `>` from (0/100) goes back to the previous split (50/50 if
+    // overview was on), NOT auto-swap to (100/0).
     if (btnCollapseRibbon) {
+      btnCollapseRibbon.style.display = waterfallHidden ? "none" : "";
       if (ribbonHidden) {
-        btnCollapseRibbon.innerHTML = "&#x276F;";  // ▶ show (bring back from left)
+        btnCollapseRibbon.innerHTML = "&#x276F;";  // ▶ restore ribbon
         btnCollapseRibbon.title = "按一下：顯示和弦列表";
       } else {
-        btnCollapseRibbon.innerHTML = "&#x276E;";  // ◀ hide (push to the left)
+        btnCollapseRibbon.innerHTML = "&#x276E;";  // ◀ hide ribbon
         btnCollapseRibbon.title = "按一下：收合和弦列表 (鋼琴擴大至全版)";
       }
     }
-    // btnCollapseWaterfall: ▶ to hide, ◀ to show.
     if (btnCollapseWaterfall) {
+      btnCollapseWaterfall.style.display = ribbonHidden ? "none" : "";
       if (waterfallHidden) {
-        btnCollapseWaterfall.innerHTML = "&#x276E;";  // ◀ show (bring back from right)
+        btnCollapseWaterfall.innerHTML = "&#x276E;";  // ◀ restore waterfall
         btnCollapseWaterfall.title = "按一下：顯示鋼琴視窗";
       } else {
-        btnCollapseWaterfall.innerHTML = "&#x276F;";  // ▶ hide (push to the right)
+        btnCollapseWaterfall.innerHTML = "&#x276F;";  // ▶ hide waterfall
         btnCollapseWaterfall.title = "按一下：收合鋼琴視窗 (和弦列表擴大至全版)";
       }
     }
@@ -1766,17 +1771,13 @@
   _applyRibbonLayout();
   _persistRibbonLayout();  // writes migrated state, clears legacy keys' effect
 
+  // Pure 2-state toggles — no auto-swap. The "other side is hidden"
+  // case is handled by hiding the conflicting button in _applyRibbonLayout,
+  // so these handlers only ever see the case where flipping is valid.
   if (btnCollapseRibbon) {
     btnCollapseRibbon.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (ribbonHidden) {
-        // Currently hidden → restore
-        ribbonHidden = false;
-      } else {
-        // Hiding ribbon now → auto-restore waterfall if it was hidden
-        ribbonHidden = true;
-        waterfallHidden = false;
-      }
+      ribbonHidden = !ribbonHidden;
       _persistRibbonLayout();
       _applyRibbonLayout();
     });
@@ -1784,12 +1785,7 @@
   if (btnCollapseWaterfall) {
     btnCollapseWaterfall.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (waterfallHidden) {
-        waterfallHidden = false;
-      } else {
-        waterfallHidden = true;
-        ribbonHidden = false;
-      }
+      waterfallHidden = !waterfallHidden;
       _persistRibbonLayout();
       _applyRibbonLayout();
     });
