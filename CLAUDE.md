@@ -65,6 +65,14 @@ Any change to frontend files requires Playwright verification before claiming do
 
 ## Coding Rules
 
+- **Long-running operations (>5s) MUST be loosely coupled from the client** — never make the user's browser sit on a synchronous request waiting for a backend job that takes tens of seconds. The pattern (canonical example: [backend/beat_upgrade_queue.py](backend/beat_upgrade_queue.py) + `POST /api/process/upgrade-beats` + `GET /api/process/upgrade-beats/status`):
+  1. **Pre-flight validation synchronously** in the POST/PUT endpoint (auth, file existence, missing prereqs) so 4xx/5xx surface immediately
+  2. **Enqueue + return** with a job identifier (or song hash) — request closes in <100ms
+  3. **Daemon worker thread** processes the job (fresh in-memory queue per concern; reuse `process_queue` only when the work IS audio-ingest)
+  4. **Status endpoint** returns the in-memory record (`queued / running / done / error` + result/error details)
+  5. **Frontend polls every 3-5s** in a non-blocking interval; on completion fires a toast that works whether the user stayed on the page or navigated within the SPA
+  6. **No partial commits**: status flips from `running` → `done` only after atomic file write completes (use `.tmp` + `os.replace`)
+  - Counter-examples to avoid: melody extraction was once a 40s blocking call → fixed by handing off to a separate worker queue with status polling. Beat upgrade was first written as synchronous → user feedback "client 綁住無回應" → refactored to this pattern. Treat **any** new feature that takes >5s as a candidate for this discipline before writing the endpoint.
 - **No `async def` for file I/O endpoints** — use plain `def` so FastAPI dispatches to the thread pool (see `feedback_async_def`). Applies to retrain/training endpoints too: `/api/ai/retrain` was `async def` and froze the event loop during chord2vec SVD — flipped to `def`
 - **Cache-busting**: bump `?v=N` on `<script>`/`<link>` tags when editing JS/CSS (QA UI rule 6)
 - **BTC chord detection** runs in a `ProcessPoolExecutor` to isolate from the event loop GIL
