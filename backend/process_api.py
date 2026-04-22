@@ -235,6 +235,108 @@ def get_cover(hash: str):
 
 
 # ---------------------------------------------------------------------------
+# On-demand beat upgrade — runs the slow madmom path against an existing
+# chord JSON. Default ingest uses librosa (fast); users opt into rubato
+# tracking from the player Tools popup. See doc/QA_BATTLE_STORY.md 番外篇 VII.
+# ---------------------------------------------------------------------------
+
+def upgrade_beats(hash: str, username: str = Depends(get_current_user)):
+    """Re-run beat detection with madmom (rubato/live tracking).
+
+    Synchronous; takes ~30s for a 4-min song. Saves a `.bak.beats` copy
+    of the chord JSON before overwriting. Bumps `beat_version` so the
+    player's stale-acc gate fires for cached accompaniments.
+
+    Refuses upload-mode chord JSONs (`__upload/<job_id>` paths) because
+    process_queue cleans up the audio file once melody extraction is
+    done — there's no source to re-analyze.
+    """
+    import json as _json
+    from beat_snap import analyze_and_snap_dynamic, HAS_MADMOM
+    from config import resolve_path
+
+    if not HAS_MADMOM:
+        raise HTTPException(status_code=503,
+                            detail="madmom not installed on this server")
+
+    chord_file = CHORDS_DIR / f"{hash}.json"
+    if not chord_file.is_file():
+        raise HTTPException(status_code=404, detail="chord JSON not found")
+
+    sheet = _json.loads(chord_file.read_text(encoding="utf-8"))
+    track_path = sheet.get("path", "")
+    if track_path.startswith("__upload/"):
+        raise HTTPException(
+            status_code=410,
+            detail="此曲為上傳/YT 分析，原始音檔已清除，無法重新偵測節拍",
+        )
+
+    audio_path = resolve_path(track_path) if track_path else ""
+    if not audio_path or not os.path.isfile(audio_path):
+        raise HTTPException(status_code=404, detail="audio file not found")
+
+    chords = sheet.get("chords") or []
+    if not chords:
+        raise HTTPException(status_code=400, detail="chord JSON has no chords")
+
+    # Save .bak.beats before overwrite (single backup; first call wins)
+    bak = chord_file.with_suffix(chord_file.suffix + ".bak.beats")
+    if not bak.exists():
+        try:
+            bak.write_text(_json.dumps(sheet, ensure_ascii=False, indent=2),
+                           encoding="utf-8")
+        except Exception as e:
+            logger.warning("upgrade_beats: backup failed for %s: %s", hash, e)
+
+    # Run dynamic analysis (madmom path)
+    chords_copy = [dict(c) for c in chords]
+    try:
+        info = analyze_and_snap_dynamic(audio_path, chords_copy,
+                                        prefer_madmom=True)
+    except Exception as e:
+        logger.error("upgrade_beats: madmom failed for %s: %s", hash, e)
+        raise HTTPException(status_code=500,
+                            detail=f"beat tracking failed: {type(e).__name__}")
+
+    if not info.get("beats_source"):
+        raise HTTPException(status_code=500, detail="no beats detected")
+
+    sheet["chords"] = chords_copy
+    if info.get("bpm"):
+        sheet["bpm"] = round(info["bpm"], 1)
+    sheet["beats"] = info.get("beats", [])
+    sheet["downbeats"] = info.get("downbeats", [])
+    sheet["tempo_curve"] = info.get("tempo_curve", [])
+    sheet["beats_source"] = info["beats_source"]
+    # Bump beat_version so player's stale-acc gate fires for cached acc
+    sheet["beat_version"] = int(sheet.get("beat_version", 0)) + 1
+
+    tmp = chord_file.with_suffix(chord_file.suffix + ".tmp")
+    tmp.write_text(_json.dumps(sheet, ensure_ascii=False, indent=2),
+                   encoding="utf-8")
+    os.replace(tmp, chord_file)
+
+    tc = info.get("tempo_curve") or []
+    rng = (max(p["bpm"] for p in tc) - min(p["bpm"] for p in tc)) if tc else 0
+    logger.info("upgrade_beats by %s: hash=%s src=%s bpm=%s range=%.1f",
+                username, hash, info["beats_source"], sheet.get("bpm"), rng)
+
+    return {
+        "ok": True,
+        "hash": hash,
+        "bpm": sheet.get("bpm"),
+        "beats_source": sheet["beats_source"],
+        "beat_version": sheet["beat_version"],
+        "n_beats": len(sheet.get("beats", [])),
+        "n_downbeats": len(sheet.get("downbeats", [])),
+        "tempo_range": round(rng, 1),
+    }
+
+
+router.add_api_route("/upgrade-beats", upgrade_beats, methods=["POST"])
+
+
+# ---------------------------------------------------------------------------
 # YouTube search (find matching video for a song title)
 # ---------------------------------------------------------------------------
 

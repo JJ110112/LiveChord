@@ -691,11 +691,8 @@ def _worker_loop():
             job.stage = "分析和弦中（BTC）…"
             from chord_detect import detect_chords_and_key_isolated
             chords, key = detect_chords_and_key_isolated(audio_path)
-            # Beat tracking + chord JSON save happen inside _save_chord_json;
-            # madmom adds ~30s on a 4-min song so the user sees a stage
-            # change rather than a frozen "BTC" bar.
             job.progress = 75
-            job.stage = "節拍分析 + 儲存…"
+            job.stage = "儲存和弦資料…"
 
             # Step 3: Extract cover art (before audio is deleted)
             if job.source_type == "upload" and audio_path:

@@ -96,7 +96,10 @@ def _process_one(json_path: Path, force: bool, dry_run: bool, regen_acc: bool) -
 
     # Work on a copy so a mid-run exception doesn't corrupt in-memory state
     chords_copy = [dict(c) for c in chords]
-    info = analyze_and_snap_dynamic(audio_path, chords_copy)
+    # Migration is the slow-but-accurate path — explicitly opt into madmom
+    # (analyze_and_snap_dynamic defaults to prefer_madmom=False so the ingest
+    # paths stay fast).
+    info = analyze_and_snap_dynamic(audio_path, chords_copy, prefer_madmom=True)
 
     if not info.get("beats_source"):
         return "FAIL_NO_BEATS"

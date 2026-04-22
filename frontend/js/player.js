@@ -4847,6 +4847,60 @@
     if (e.target && e.target.id === "btnDetectHero") runChordDetection();
   });
 
+  // ---- 升級節拍 (rubato 動態追蹤) ----
+  // Default ingest uses librosa (fast); this opt-in re-runs the chord JSON
+  // through madmom DBN tracker for live/rubato songs. Synchronous ~30s.
+  const btnUpgradeBeats = $("#btnUpgradeBeats");
+  if (btnUpgradeBeats) {
+    btnUpgradeBeats.addEventListener("click", async () => {
+      const h = (typeof hashMode === "string" && hashMode) ? hashMode :
+                (chordData && chordData.path && chordData.path.startsWith("__hash/")
+                 ? chordData.path.slice(7) : null);
+      // Personal mode (path-based) needs a different lookup; for now this
+      // tool is hash-mode-friendly only (covers all beta + path→hash players).
+      let targetHash = h;
+      if (!targetHash && chordData && chordData.path) {
+        // Personal mode: derive hash via /api/songs/hash if needed. Skipped
+        // for Phase 5 minimum — show a soft warning.
+        showToast("此頁未提供 hash，請改用 hash 模式或在管理頁批次升級", 3000);
+        return;
+      }
+      if (!targetHash) {
+        showToast("找不到歌曲 hash", 2500);
+        return;
+      }
+      if (!confirm("重新偵測節拍以追蹤 Live/老錄音的速度漂移。\n\n約需 30 秒處理音檔，期間頁面會停留在進度提示。\n\n繼續嗎？")) return;
+
+      // Disable button to prevent double-click
+      btnUpgradeBeats.disabled = true;
+      const banner = document.createElement("div");
+      banner.style.cssText = "position:fixed;left:50%;top:20%;transform:translateX(-50%);background:rgba(33,150,243,0.95);color:#fff;padding:16px 28px;border-radius:8px;font-size:15px;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,0.4);";
+      banner.textContent = "節拍升級中… (madmom RNN+DBN，約 30 秒)";
+      document.body.appendChild(banner);
+
+      try {
+        const res = await fetch(`/api/process/upgrade-beats?hash=${encodeURIComponent(targetHash)}`,
+                                { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const detail = data.detail || `HTTP ${res.status}`;
+          showToast(`升級失敗：${detail}`, 4000);
+          btnUpgradeBeats.disabled = false;
+          banner.remove();
+          return;
+        }
+        banner.style.background = "rgba(76,175,80,0.95)";
+        banner.textContent = `升級完成 — BPM ${data.bpm}, ${data.n_beats} beats, range ${data.tempo_range} BPM。即將重新整理…`;
+        setTimeout(() => window.location.reload(), 1500);
+      } catch (e) {
+        console.error("upgrade-beats failed:", e);
+        showToast(`升級失敗：${e.message || e}`, 4000);
+        btnUpgradeBeats.disabled = false;
+        banner.remove();
+      }
+    });
+  }
+
   // ---- favorite ----
   const _favPath = trackPath || (hashMode ? `__hash/${hashMode}` : "");
   btnFav.addEventListener("click", async () => {

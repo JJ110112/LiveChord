@@ -177,12 +177,19 @@ def _madmom_extract(audio_path: str) -> Optional[dict]:
         return None
 
 
-def analyze_and_snap_dynamic(audio_path: str, chords: list) -> dict:
-    """Dynamic beat tracking via madmom (falls back to librosa).
+def analyze_and_snap_dynamic(audio_path: str, chords: list, *,
+                             prefer_madmom: bool = False) -> dict:
+    """Beat tracking + chord-boundary snap, returning a uniform dict shape.
 
     Args:
         audio_path: absolute or resolvable path to the audio file.
         chords: list of ``{time, end, chord}`` dicts. Mutated in place.
+        prefer_madmom: when True, run madmom RNN+DBN to capture rubato
+            (~30s/song) — used by the on-demand /api/process/upgrade-beats
+            endpoint and the migration script. Default False = ingest path
+            stays fast (librosa, ~1-2s) so uploads/YT analyses don't add
+            half a minute of wait. Players show a "升級節拍" tool button
+            for users who want the rubato treatment after the fact.
 
     Returns a dict with all fields needed to enrich chord JSON. On total
     failure (audio unreadable, too few beats), returns the same dict shape
@@ -200,7 +207,7 @@ def analyze_and_snap_dynamic(audio_path: str, chords: list) -> dict:
     if not chords:
         return out
 
-    mad = _madmom_extract(audio_path)
+    mad = _madmom_extract(audio_path) if prefer_madmom else None
     if mad is not None:
         beats = mad["beats"]
         downbeats = mad["downbeats"]
