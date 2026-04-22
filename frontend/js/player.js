@@ -4436,6 +4436,27 @@
       CC.backup(chordData);
       let count = 0;
 
+      // COMMIT the currently-displayed BPM into chordData.bpm before
+      // splitting. Two reasons:
+      //  1. After split, _buildUnifiedRibbon recomputes estimatedBpm. If
+      //     chordData.bpm is missing (e.g., BTC-fresh song where librosa
+      //     judged tempo < 40 and beat_snap rejected it) the heuristic
+      //     kicks in and DOUBLES after split (median inter-chord diff
+      //     halves), giving user a shocking jump from "98" → "195".
+      //  2. Clear bpm_mult_* so the committed value doesn't get re-
+      //     multiplied on top, producing yet another wrong reading.
+      // After this, Phase C (player.js line ~1266) reads chordData.bpm
+      // directly and the display stays at the user's chosen value.
+      const committedBpm = Math.max(30, Math.min(300,
+        Math.round(60 / currentSecPerBeat)));
+      if (committedBpm > 0) {
+        chordData.bpm = committedBpm;
+        try {
+          const bpmPath = new URLSearchParams(window.location.search).get("path") || "default";
+          localStorage.removeItem(`bpm_mult_${bpmPath}`);
+        } catch {}
+      }
+
       // Reverse iteration so inserted chords (from splits) don't disturb
       // our walk. Each split inserts at idx+1, left-side indices unaffected.
       for (let i = chordData.chords.length - 1; i >= 0; i--) {
