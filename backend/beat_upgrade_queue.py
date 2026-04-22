@@ -36,6 +36,8 @@ logger = logging.getLogger(__name__)
 # Status values surfaced to the frontend
 QUEUED = "queued"
 RUNNING = "running"
+RUNNING_DOWNLOADING = "running:downloading"  # YT re-download phase (8801 upload-mode)
+RUNNING_ANALYZING = "running:analyzing"      # madmom phase
 DONE = "done"
 ERROR = "error"
 
@@ -49,6 +51,7 @@ class _Record:
     audio_path: str
     sheet_path: str
     title: str = ""
+    youtube_url: str = ""  # For YT re-download fallback when audio_path missing
     status: str = QUEUED
     started_at: float = 0.0
     completed_at: float = 0.0
@@ -79,20 +82,28 @@ def _evict_old_records():
 
 
 def enqueue(hash: str, audio_path: str, sheet_path: str,
-            title: str = "", requested_by: str = "") -> str:
+            title: str = "", requested_by: str = "",
+            youtube_url: str = "") -> str:
     """Add an upgrade job for ``hash``. Returns the new status string.
 
     If a job for this hash is already queued/running, returns "duplicate"
     without re-queueing. If a previous job finished (DONE/ERROR), the
     record is replaced with a fresh QUEUED record and re-queued.
+
+    ``youtube_url`` (optional): when ``audio_path`` is missing on disk
+    (8801 upload-mode chord JSONs whose source audio was cleaned up by
+    process_queue), the worker will re-download via yt-dlp before running
+    madmom. Pass empty string for library-mode songs where audio_path is
+    a real NAS file.
     """
     with _lock:
         existing = _jobs.get(hash)
-        if existing and existing.status in (QUEUED, RUNNING):
+        if existing and existing.status in (QUEUED, RUNNING,
+                                            RUNNING_DOWNLOADING, RUNNING_ANALYZING):
             return "duplicate"
         _jobs[hash] = _Record(
             hash=hash, audio_path=audio_path, sheet_path=sheet_path,
-            title=title, requested_by=requested_by,
+            title=title, requested_by=requested_by, youtube_url=youtube_url,
         )
         _evict_old_records()
     _queue.put(hash)
@@ -114,7 +125,12 @@ def get_status(hash: str) -> Optional[dict]:
 
 
 def _process_one(hash: str):
-    """Worker handler: run madmom on the queued hash and write the result."""
+    """Worker handler: run madmom on the queued hash and write the result.
+
+    For 8801 upload-mode (audio cleaned up by process_queue), re-downloads
+    via yt-dlp using the stored ``youtube_url`` first. Temp file is removed
+    in a finally clause so it doesn't accumulate on disk.
+    """
     from beat_snap import analyze_and_snap_dynamic, HAS_MADMOM, MADMOM_IMPORT_ERROR
 
     with _lock:
@@ -125,6 +141,7 @@ def _process_one(hash: str):
         rec.started_at = time.time()
         audio_path = rec.audio_path
         sheet_path = rec.sheet_path
+        youtube_url = rec.youtube_url
 
     if not HAS_MADMOM:
         with _lock:
@@ -134,94 +151,126 @@ def _process_one(hash: str):
         logger.warning("upgrade-beats %s: madmom missing", hash)
         return
 
+    # YT re-download fallback when audio is missing on disk
+    temp_audio_to_cleanup = None
     if not audio_path or not os.path.isfile(audio_path):
-        with _lock:
-            rec.status = ERROR
-            rec.completed_at = time.time()
-            rec.error = "audio file not found"
-        return
+        if youtube_url:
+            with _lock:
+                rec.status = RUNNING_DOWNLOADING
+            try:
+                from process_queue import _download_youtube, TMP_DIR
+                temp_path = str(TMP_DIR / f"beat_upgrade_{hash}.wav")
+                logger.info("upgrade-beats %s: re-downloading from %s", hash, youtube_url)
+                audio_path = _download_youtube(youtube_url, temp_path)
+                temp_audio_to_cleanup = audio_path
+            except Exception as e:
+                with _lock:
+                    rec.status = ERROR
+                    rec.completed_at = time.time()
+                    rec.error = f"YT re-download failed: {type(e).__name__}: {str(e)[:200]}"
+                logger.error("upgrade-beats %s: download failed: %s", hash, e)
+                return
+        else:
+            with _lock:
+                rec.status = ERROR
+                rec.completed_at = time.time()
+                rec.error = "audio file not found and no youtube_url for re-download"
+            return
 
     try:
-        sheet = json.loads(open(sheet_path, encoding="utf-8").read())
-    except Exception as e:
-        with _lock:
-            rec.status = ERROR
-            rec.completed_at = time.time()
-            rec.error = f"chord JSON read failed: {type(e).__name__}: {e}"
-        return
-
-    chords = sheet.get("chords") or []
-    if not chords:
-        with _lock:
-            rec.status = ERROR
-            rec.completed_at = time.time()
-            rec.error = "chord JSON has no chords"
-        return
-
-    # Backup .bak.beats (first call wins)
-    bak = sheet_path + ".bak.beats"
-    if not os.path.exists(bak):
         try:
-            with open(bak, "w", encoding="utf-8") as f:
-                json.dump(sheet, f, ensure_ascii=False, indent=2)
+            sheet = json.loads(open(sheet_path, encoding="utf-8").read())
         except Exception as e:
-            logger.warning("upgrade-beats %s: backup failed: %s", hash, e)
+            with _lock:
+                rec.status = ERROR
+                rec.completed_at = time.time()
+                rec.error = f"chord JSON read failed: {type(e).__name__}: {e}"
+            return
 
-    # Run madmom
-    chords_copy = [dict(c) for c in chords]
-    try:
-        info = analyze_and_snap_dynamic(audio_path, chords_copy, prefer_madmom=True)
-    except Exception as e:
+        chords = sheet.get("chords") or []
+        if not chords:
+            with _lock:
+                rec.status = ERROR
+                rec.completed_at = time.time()
+                rec.error = "chord JSON has no chords"
+            return
+
+        # Backup .bak.beats (first call wins)
+        bak = sheet_path + ".bak.beats"
+        if not os.path.exists(bak):
+            try:
+                with open(bak, "w", encoding="utf-8") as f:
+                    json.dump(sheet, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                logger.warning("upgrade-beats %s: backup failed: %s", hash, e)
+
+        # Flip to analyzing phase so the polling client can update its toast
         with _lock:
-            rec.status = ERROR
-            rec.completed_at = time.time()
-            rec.error = f"madmom failed: {type(e).__name__}: {e}"
-        logger.error("upgrade-beats %s: madmom error: %s", hash, e)
-        return
+            rec.status = RUNNING_ANALYZING
 
-    if not info.get("beats_source"):
+        # Run madmom
+        chords_copy = [dict(c) for c in chords]
+        try:
+            info = analyze_and_snap_dynamic(audio_path, chords_copy, prefer_madmom=True)
+        except Exception as e:
+            with _lock:
+                rec.status = ERROR
+                rec.completed_at = time.time()
+                rec.error = f"madmom failed: {type(e).__name__}: {e}"
+            logger.error("upgrade-beats %s: madmom error: %s", hash, e)
+            return
+
+        if not info.get("beats_source"):
+            with _lock:
+                rec.status = ERROR
+                rec.completed_at = time.time()
+                rec.error = "no beats detected"
+            return
+
+        sheet["chords"] = chords_copy
+        if info.get("bpm"):
+            sheet["bpm"] = round(info["bpm"], 1)
+        sheet["beats"] = info.get("beats", [])
+        sheet["downbeats"] = info.get("downbeats", [])
+        sheet["tempo_curve"] = info.get("tempo_curve", [])
+        sheet["beats_source"] = info["beats_source"]
+        sheet["beat_version"] = int(sheet.get("beat_version", 0)) + 1
+
+        tmp = sheet_path + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(sheet, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, sheet_path)
+        except Exception as e:
+            with _lock:
+                rec.status = ERROR
+                rec.completed_at = time.time()
+                rec.error = f"write failed: {type(e).__name__}: {e}"
+            return
+
+        tc = info.get("tempo_curve") or []
+        rng = (max(p["bpm"] for p in tc) - min(p["bpm"] for p in tc)) if tc else 0
         with _lock:
-            rec.status = ERROR
+            rec.status = DONE
             rec.completed_at = time.time()
-            rec.error = "no beats detected"
-        return
-
-    sheet["chords"] = chords_copy
-    if info.get("bpm"):
-        sheet["bpm"] = round(info["bpm"], 1)
-    sheet["beats"] = info.get("beats", [])
-    sheet["downbeats"] = info.get("downbeats", [])
-    sheet["tempo_curve"] = info.get("tempo_curve", [])
-    sheet["beats_source"] = info["beats_source"]
-    sheet["beat_version"] = int(sheet.get("beat_version", 0)) + 1
-
-    tmp = sheet_path + ".tmp"
-    try:
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(sheet, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, sheet_path)
-    except Exception as e:
-        with _lock:
-            rec.status = ERROR
-            rec.completed_at = time.time()
-            rec.error = f"write failed: {type(e).__name__}: {e}"
-        return
-
-    tc = info.get("tempo_curve") or []
-    rng = (max(p["bpm"] for p in tc) - min(p["bpm"] for p in tc)) if tc else 0
-    with _lock:
-        rec.status = DONE
-        rec.completed_at = time.time()
-        rec.result = {
-            "bpm": sheet.get("bpm"),
-            "beats_source": sheet["beats_source"],
-            "beat_version": sheet["beat_version"],
-            "n_beats": len(sheet.get("beats", [])),
-            "n_downbeats": len(sheet.get("downbeats", [])),
-            "tempo_range": round(rng, 1),
-        }
-    logger.info("upgrade-beats %s done in %.1fs (bpm=%s range=%.1f)",
-                hash, rec.completed_at - rec.started_at, sheet.get("bpm"), rng)
+            rec.result = {
+                "bpm": sheet.get("bpm"),
+                "beats_source": sheet["beats_source"],
+                "beat_version": sheet["beat_version"],
+                "n_beats": len(sheet.get("beats", [])),
+                "n_downbeats": len(sheet.get("downbeats", [])),
+                "tempo_range": round(rng, 1),
+            }
+        logger.info("upgrade-beats %s done in %.1fs (bpm=%s range=%.1f)",
+                    hash, rec.completed_at - rec.started_at, sheet.get("bpm"), rng)
+    finally:
+        # Cleanup temp YT-downloaded audio regardless of success/failure
+        if temp_audio_to_cleanup and os.path.isfile(temp_audio_to_cleanup):
+            try:
+                os.remove(temp_audio_to_cleanup)
+            except Exception as e:
+                logger.warning("upgrade-beats %s: cleanup failed for %s: %s",
+                               hash, temp_audio_to_cleanup, e)
 
 
 def _worker_loop():

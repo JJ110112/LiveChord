@@ -269,15 +269,24 @@ def upgrade_beats(hash: str, username: str = Depends(get_current_user)):
 
     sheet = _json.loads(chord_file.read_text(encoding="utf-8"))
     track_path = sheet.get("path", "")
-    if track_path.startswith("__upload/"):
+    youtube_url = sheet.get("youtube_url", "")
+
+    # Upload-mode (process_queue cleaned up the audio after melody extraction).
+    # YT-mode upload (chord JSON has youtube_url): worker can re-download.
+    # Pure file upload (no youtube_url): no recovery path → 410 with prompt.
+    if track_path.startswith("__upload/") and not youtube_url:
         raise HTTPException(
             status_code=410,
-            detail="此曲為上傳/YT 分析，原始音檔已清除，無法重新偵測節拍",
+            detail="此曲為直接上傳音檔，原始檔已清除；請從首頁重新上傳此曲以重新偵測節拍",
         )
 
-    audio_path = resolve_path(track_path) if track_path else ""
-    if not audio_path or not os.path.isfile(audio_path):
-        raise HTTPException(status_code=404, detail="audio file not found")
+    # For library-mode (NAS path) songs, audio must exist on disk now.
+    # For YT upload-mode, skip the existence check — worker will re-download.
+    audio_path = ""
+    if track_path and not track_path.startswith("__upload/"):
+        audio_path = resolve_path(track_path)
+        if not audio_path or not os.path.isfile(audio_path):
+            raise HTTPException(status_code=404, detail="audio file not found")
 
     chords = sheet.get("chords") or []
     if not chords:
@@ -285,7 +294,8 @@ def upgrade_beats(hash: str, username: str = Depends(get_current_user)):
 
     title = sheet.get("title") or os.path.basename(track_path) or hash
     queued_status = _enqueue(hash, audio_path, str(chord_file),
-                             title=title, requested_by=username)
+                             title=title, requested_by=username,
+                             youtube_url=youtube_url)
     snapshot = _get_status(hash) or {}
 
     logger.info("upgrade_beats enqueued by %s: hash=%s status=%s",

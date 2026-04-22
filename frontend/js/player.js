@@ -526,6 +526,11 @@
     const ts = parseInt(tsStr || "0", 10);
     if (h !== hashMode || !ts || Date.now() - ts > 10 * 60000) return;
 
+    // Toast on every fresh-analysis arrival — even acc-mode users should know
+    // a background job started, per loose-coupling rule (see CLAUDE.md
+    // "Long-running operations" — start/done notifications mandatory).
+    showToast("已開始擷取旋律，背景處理中…完成會通知", 5000);
+
     // Banner only when the user actually intends to see melody. In the
     // default `acc` mode the melody data arrives silently into `melodyData`
     // so if they later toggle to `mel`/`both` it's already populated; a
@@ -539,7 +544,13 @@
     const deadline = Date.now() + 5 * 60000;
     const tick = async () => {
       if (signal.aborted) return;
-      if (Date.now() > deadline) { _stopMelodyPolling(); return; }
+      if (Date.now() > deadline) {
+        _stopMelodyPolling();
+        // Loose-coupling rule: surface timeouts so users don't wonder why
+        // their melody silently never showed up.
+        showToast("旋律擷取超時，請稍後重新整理頁面查看", 5000);
+        return;
+      }
       try {
         const r = await fetch(`/api/ai/melody?hash=${encodeURIComponent(hashMode)}`, { signal });
         if (signal.aborted) return;
@@ -547,9 +558,9 @@
         if (d.melody && d.melody.length > 0) {
           melodyData = _filterMelody(d.melody);
           _stopMelodyPolling();
-          // Only toast when the user was seeing the banner — acc-mode users
-          // didn't ask about melody, don't surprise them.
-          if (showUi) showToast("旋律擷取完成 ✓", 3000);
+          // Always toast completion (loose-coupling rule). The phrasing
+          // tells the user where to find the result, not just "done".
+          showToast("旋律擷取完成 — 可從 AI 教學切換右手顯示", 5000);
           return;
         }
       } catch (e) {
@@ -4895,7 +4906,11 @@
         } else {
           showToast(`已開始動態節拍偵測「${songTitle}」，背景處理約 30 秒，完成會通知`, 4500);
         }
-        // Start polling — non-blocking, user free to navigate
+        // Start polling — non-blocking, user free to navigate.
+        // Sub-status (running:downloading / running:analyzing) updates the
+        // toast wording so YT-mode users see "重新下載音檔中…" before the
+        // ~30s madmom phase kicks in.
+        let _lastSubStatus = "";
         _upgradePoll = setInterval(async () => {
           try {
             const sres = await fetch(
@@ -4919,6 +4934,12 @@
                 `「${sdata.title || songTitle}」動態節拍偵測失敗：${sdata.error || "unknown"}`,
                 6000
               );
+            } else if (st === "running:downloading" && _lastSubStatus !== "running:downloading") {
+              _lastSubStatus = "running:downloading";
+              showToast(`「${sdata.title || songTitle}」重新下載音檔中…`, 4500);
+            } else if (st === "running:analyzing" && _lastSubStatus !== "running:analyzing") {
+              _lastSubStatus = "running:analyzing";
+              showToast(`「${sdata.title || songTitle}」節拍分析中…（madmom，約 30 秒）`, 4500);
             } else if (st === "not_found") {
               // Worker may not have picked it up yet; keep polling a few more rounds
             }
