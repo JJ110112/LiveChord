@@ -909,7 +909,11 @@ chord JSON 多 5 個欄位（`beats / downbeats / tempo_curve / beats_source / b
 
 ### 🧵 這天的 commit 序列
 
-（等 push 後補上）
+```
+a9b2867  feat(beats): dynamic rubato tracking — madmom + AI acc + frontend
+```
+
+一個 commit、18 個檔（13 modified + 5 new）、1480 insertions / 65 deletions、覆蓋 4 個 phase。能合成單一 commit 是因為四個 phase 共享一個語意（「讓拍子跟著音樂呼吸」）且 PC localhost 端到端 QA 已驗過——不像番外篇 IV 的 settings 災難要分多個保命修。
 
 ---
 
