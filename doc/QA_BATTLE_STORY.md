@@ -919,4 +919,116 @@ a9b2867  feat(beats): dynamic rubato tracking — madmom + AI acc + frontend
 
 > **後記**：這天解的不是 bug，是**架構債**。LiveChord 從 day 1 就用 librosa.beat_track 抓全局 BPM——對 Pop / Studio 量化曲非常夠用，但對使用者收藏的 Live 版 / 老抒情 / Solo Piano（這些是學鋼琴的人最想練的曲目），這個「全局單一 BPM」假設一直是隱性 UX 缺陷。今天用 madmom 動態追蹤 + tempo_curve 持久化把它解開。下一個對應的架構債候選：accompaniment 的 source-stem 預分離（番外篇 VI 提過的 demucs vocal stem 路線），等 Phase 4 跑完看效果再決定。
 
+---
+
+## ⚙️ 番外篇 VIII：把「同步 30s」一路退回到「toast 通知，背景跑」——順手立了一條 CLAUDE.md 規則（2026-04-22 後半天 + 04-23）
+
+番外篇 VII 寫完隔天，使用者把 Phase 4 的兩個未決選項（B sync 到 V:\、C 全量批次重跑）擱著，開始試實際的 ingest 體驗。第一發砲彈隨之而來：
+
+> 新版動態和絃與節拍偵測的速度慢很多，有沒有辦法先用舊版的偵測，然後使用者覺得不 ok，可以到工具用新版偵測？
+
+代理才意識到 Phase 1 把 `analyze_and_snap_dynamic` 接進每首歌的 ingest path 是過度承諾——對 80% 的量化 Pop 曲，madmom 那 30 秒 vs librosa 1 秒**毫無感知差異**，純粹拖慢。架構錯了。
+
+### 🪃 Phase 5：default 翻轉，按需升級
+
+最小手術：`analyze_and_snap_dynamic` 加一個 keyword-only 參數 `prefer_madmom: bool = False`（**default 翻轉**）。Ingest path（auto_worker、process_queue）不傳 kwarg → 自動吃新 default → 走 librosa fast path。Migration script 顯式傳 `True` 維持批次 madmom 行為。
+
+新增同步 endpoint `POST /api/process/upgrade-beats?hash=<h>` 處理「使用者覺得不 ok 想升級」的情境，前端在 player Tools popup 加按鈕「升級節拍（rubato）」。Phase 5 commit `fe68c15`，6 檔、176 行。
+
+部署到 V:\ 後 user 自己測，回報：
+
+> 工具 升級節拍(改為"動態節拍偵測") 顯示需 30 秒處理 確定 madmom not installed... **鬆耦合，backend 背景處理，不要讓 client 綁住無回應**，完成了再 toast 某某歌曲動態節拍完成即可
+
+兩件事一起來：
+1. 按鈕改名（「升級」太抽象，「動態節拍偵測」直接說功能）
+2. 30s 同步阻塞 client 不行
+
+### 🧵 Phase 5.1：背景隊列 + 診斷訊息
+
+代理新建 [backend/beat_upgrade_queue.py](../backend/beat_upgrade_queue.py)：in-memory queue + daemon worker（lazy start on first enqueue）+ status dict keyed by hash。endpoint 改成 enqueue + 立即回；新 `GET /api/process/upgrade-beats/status?hash=<h>` 回 `queued / running / done / error`。前端用 setInterval 每 4 秒 poll，完成跳 toast「『xxx』動態節拍偵測完成 — BPM x, beats y, range z BPM。重新載入頁面以套用。」
+
+順手把 madmom import 失敗的訊息抓住，包進 503 回應：`MADMOM_IMPORT_ERROR = "ImportError: ... | python=C:\... | prefix=..."`。後續驗證時果然救命——使用者的 `madmom not installed` 是因為 8801 的 uvicorn 跑在另一個 Python 路徑上。
+
+Phase 5.1 commit `7d5bfa3`，5 檔、361 / 85 增刪。
+
+### 📜 Phase 5.2：把規則寫進 CLAUDE.md
+
+被同一個錯誤打兩次（先寫成 sync、再改 background）後，代理覺得這不該等下次再被打。立規則：
+
+> **Long-running operations (>5s) MUST be loosely coupled from the client** — never make the user's browser sit on a synchronous request waiting for a backend job that takes tens of seconds. The pattern (canonical example: backend/beat_upgrade_queue.py + POST /api/process/upgrade-beats + GET /api/process/upgrade-beats/status):
+> 1. Pre-flight validation synchronously...
+> 2. Enqueue + return with a job identifier...
+> 3. Daemon worker thread...
+> 4. Status endpoint...
+> 5. Frontend polls every 3-5s...
+> 6. No partial commits...
+
+寫進 [CLAUDE.md](../CLAUDE.md) 「Coding Rules」首條，commit `1711f8c`。從此「>5s → 一律鬆耦合」變成 LiveChord 的硬規範，將來代理或 user 加新功能時不需要重學一次。
+
+### 🪤 Phase 6：8801 那個按鈕其實永遠按不動
+
+部署 Phase 5.1 + 立完規則後，使用者測上去：
+
+> 8801 是否無法動態節拍偵測？因為偵測完和弦後，音檔就刪除了
+
+一句話戳破整個機制。代理跑 grep + 讀 process_queue 確認：8801（beta）上每首歌都是 `path: __upload/<job_id>` 路徑，process_queue 在和弦+旋律完成後確實會 cleanup 原始音檔。my upgrade-beats endpoint 對 `__upload/*` 一律 410。**整個按鈕在 8801 永遠按不動**。
+
+但 chord JSON 還留著 `youtube_url`（[process_queue.py `_save_chord_json`](../backend/process_queue.py#L209-L210)）——所以 YT-mode 可以**重新下載**。純檔案上傳沒救，要請使用者重新上傳。
+
+順帶使用者點出第二個鬆耦合 UX 缺口：8801 melody 擷取 backend 早就鬆耦合（`_melody_queue` worker thread）但前端只有 banner 沒有 toast，使用者剛分析完跳到 player 看不到任何「進度通知」。
+
+[Phase 6 設計成兩部分一起做](../C:/Users/hitea/.claude/plans/bmp-live-rubato-bpm-real-time-tracking-curious-beacon.md)：
+
+**Part A — YT 重下載**：
+- worker `_process_one` 偵測 `audio_path` 不存在 + `youtube_url` 存在 → status `RUNNING_DOWNLOADING` → `_download_youtube` 到 `TMP_DIR` → status `RUNNING_ANALYZING` → madmom → `try / finally` cleanup 暫存音檔
+- pre-flight 改寫：`__upload/*` + 有 YT URL 放行；`__upload/*` + 無 URL 回 410「請從首頁重新上傳」
+- 前端 polling 看到 sub-status 變化會 toast 進度提示（「重新下載音檔中…」→「節拍分析中…」）
+
+**Part B — Melody 三件 toast**：
+- 新分析跳到 player → toast「**已開始擷取旋律，背景處理中…完成會通知**」（acc-mode 也通知）
+- 完成 toast 改文字「**旋律擷取完成 — 可從 AI 教學切換右手顯示**」
+- Timeout（5 分鐘）原本靜默 → toast「**旋律擷取超時，請稍後重新整理頁面查看**」
+
+Phase 6 commit `bf38929`，4 檔、170 / 90 增刪。
+
+最後使用者貼了一張截圖：toast 上方還有一條藍色 banner「旋律擷取中，完成後可從 AI 教學 切換右手顯示」。
+
+> 圖片中的顯示請取消，因為有 toast 了
+
+那條 banner 是 Phase 6 之前就有的（pre-toast 時代的解法），現在跟 toast 重複。代理刪掉 hash-mode banner（保留 path-mode banner，那條沒對應的 toast）。Commit `194f276`，UX 收尾。
+
+### 🎓 這次的五條
+
+1. **default 翻轉的成本，遠低於「先發優勢」的迷思**。Phase 1 預設 madmom-on，看似「給使用者最好的東西」，其實多出 30 秒等待。Phase 5 加一個 keyword-only 參數翻轉預設，**ingest path 一行不改**就回到 librosa fast 行為。可逆翻轉的設計值得多花 5 分鐘思考一下「default 該往哪邊倒」。
+
+2. **CLAUDE.md 規則的價值在「下次寫類似東西時被擋下」**。loose-coupling rule 不是事後總結（「我們學到了…」），而是事前防線（「下次代理寫新 endpoint 看到這條會自動套」）。被同一個錯誤打兩次（sync → 抱怨 → background）後，代理立規則成本是 8 行 markdown，未來 ROI 是無限。
+
+3. **使用者的「鬆耦合」三個字，比代理寫 200 字理由還精準**。代理可能會解釋「同步阻塞影響 UX、應該用 queue + polling…」；使用者一句「鬆耦合，backend 背景處理，不要讓 client 綁住無回應」——三個概念定位完成。**user 知道 user 自己要什麼**，代理的工作是把那三個字翻譯成技術實作，而不是再寫一遍三個字。
+
+4. **「死按鈕」是更隱性的 bug**。Phase 5/5.1 裝了「升級節拍」按鈕，端到端 QA 在 8802 庫曲過了——但實際 8801 上**所有歌都是 upload-mode**，按鈕等於 100% 失效。代理在規劃時沒意識到 ingest 來源差異，因為兩個環境的 chord JSON schema 是一樣的，差別在 path 字串前綴。**單元測試 / 端到端 QA 過得了不代表 production 適配**——production 的資料分佈才是真相。
+
+5. **diagnostic 訊息要「告訴我為什麼」不要「告訴我有錯」**。`MADMOM_IMPORT_ERROR` 這個簡單的 capture 救了 30 分鐘的猜謎遊戲。沒它的話代理跟 user 會花更久討論「明明 NUC Claude 裝過了為什麼 8801 還在喊 not installed」；有了它，503 訊息直接帶 `python=C:\... | prefix=...`，user 就知道要去 8801 那個 Python 環境裝 madmom。**所有可能會被 user 看到的錯誤，都該帶夠 diagnose 的訊息**——少寫五個字省不了多少程式碼，多花一小時排錯就賠回來。
+
+### 🧵 commit 序列（4-22 + 4-23 兩天）
+
+```
+fe68c15  feat(beats): fast librosa default + on-demand madmom upgrade        (Phase 5)
+7d5bfa3  feat(beats): non-blocking upgrade + madmom diagnostic + rename      (Phase 5.1)
+1711f8c  docs(CLAUDE): require loose-coupling for >5s operations             (Phase 5.2)
+bf38929  feat(beats+melody): YT re-download fallback + start/done toasts    (Phase 6)
+194f276  fix(player): remove hash-mode melody banner — toast covers it      (UX 收尾)
+```
+
+5 個 commit、覆蓋一個架構回退（sync → fast default）+ 一個機制升級（同步 → background queue + polling）+ 一條跨專案規則 + 一個跨機制 UX bug fix（YT re-download）+ 一個視覺收斂（banner 拿掉）。
+
+### 📌 Phase 6 之後的待辦
+
+- Phase 4 的「全量批次重跑 ~78k chord JSONs」**還沒做**——使用者刻意推遲到 production 行為穩定 1-2 天後再說
+- 8801 上的「動態節拍偵測」功能**只能跑 YT-mode 上傳**；純檔案上傳要使用者主動重上傳。可以加一個前端預檢（讀 chord JSON 看 youtube_url 有沒有）灰掉按鈕，避免使用者誤點，**不在 Phase 6 minimum**
+- Path-mode 的 `_loadMelody` banner 還在（8800 personal NAS 路徑時 600ms 延遲後出現）。要不要改 toast 還沒徵求使用者意見
+
+---
+
+> **後記**：番外篇 VII 解架構債（靜態 BPM 假設）；番外篇 VIII 解 UX 債（同步阻塞、死按鈕、視覺重複）。架構債要一次性大手術，UX 債要小步快跑。但兩種都有同樣的反思：**「先做出來再優化」是 polite fiction**。Phase 1 那個版本如果用單元測試嚴格驗過、文件全寫好，照樣會在使用者第一次按到的瞬間翻車——因為 production 的 latency / 來源分佈 / 心理期待，跟 PC localhost 的 happy path 是兩個世界。CLAUDE.md 那條 loose-coupling 規則，是這天最大的產出——比所有 commit 加起來都重要。
+
 
