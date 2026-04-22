@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=8">
-  <link rel="stylesheet" href="/css/player.css?v=65">
+  <link rel="stylesheet" href="/css/player.css?v=66">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -106,8 +106,8 @@
          is collapsed, only the remaining (restore) button stays visible,
          centered on the widened handle at the viewport edge. -->
     <div id="resizeHandle" class="resize-handle">
-      <button id="btnCollapseRibbon" class="ribbon-toggle-btn" title="收合和弦列表 (鋼琴擴大至全版)">&#x276E;</button>
-      <button id="btnCollapseWaterfall" class="ribbon-toggle-btn" title="收合鋼琴視窗 (和弦列表擴大至全版)">&#x276F;</button>
+      <button id="btnCollapseRibbon" class="ribbon-toggle-btn" title="收合和弦列表 (鋼琴擴大至全版)">&#x276F;</button>
+      <button id="btnCollapseWaterfall" class="ribbon-toggle-btn" title="收合鋼琴視窗 (和弦列表擴大至全版)">&#x276E;</button>
     </div>
 
     <!-- RIGHT: Instrument Panel -->
@@ -650,7 +650,7 @@
 <script src="/js/accordion-instrument.js?v=1"></script>
 <script src="/js/arranger-instrument.js?v=2"></script>
 <script src="/js/midi-exporter.js?v=2"></script>
-<script src="/js/chord-correction.js?v=8"></script>
+<script src="/js/chord-correction.js?v=10"></script>
 <script>
   const originalFetch = window.fetch;
   window.fetch = async function() {
@@ -673,6 +673,6 @@
     return res;
   };
 </script>
-<script src="/js/player.js?v=200"></script>
+<script src="/js/player.js?v=203"></script>
 </body>
 </html>

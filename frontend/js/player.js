@@ -1728,25 +1728,28 @@
     // visible in collapsed states. This keeps restore a pure undo —
     // click `>` from (0/100) goes back to the previous split (50/50 if
     // overview was on), NOT auto-swap to (100/0).
+    //
+    // Glyphs are fixed per-button regardless of state (user request): the
+    // ribbon toggle is always `▶` and the waterfall toggle is always `◀`.
+    // Only the tooltip reflects the next action.
+    // Tooltip model: arrow direction = direction the adjacent panel will
+    // expand. In both-visible state, `>` (left, adjacent to ribbon) makes
+    // chords 100 % and `<` (right, adjacent to waterfall) makes waterfall
+    // 100 %. In hidden state, the single remaining arrow points in the
+    // direction the hidden panel will re-expand.
     if (btnCollapseRibbon) {
       btnCollapseRibbon.style.display = waterfallHidden ? "none" : "";
-      if (ribbonHidden) {
-        btnCollapseRibbon.innerHTML = "&#x276F;";  // ▶ restore ribbon
-        btnCollapseRibbon.title = "按一下：顯示和弦列表";
-      } else {
-        btnCollapseRibbon.innerHTML = "&#x276E;";  // ◀ hide ribbon
-        btnCollapseRibbon.title = "按一下：收合和弦列表 (鋼琴擴大至全版)";
-      }
+      btnCollapseRibbon.innerHTML = "&#x276F;";  // ▶
+      btnCollapseRibbon.title = ribbonHidden
+        ? "按一下：顯示和弦列表"
+        : "按一下：收合鋼琴視窗 (和弦列表擴大至全版)";
     }
     if (btnCollapseWaterfall) {
       btnCollapseWaterfall.style.display = ribbonHidden ? "none" : "";
-      if (waterfallHidden) {
-        btnCollapseWaterfall.innerHTML = "&#x276E;";  // ◀ restore waterfall
-        btnCollapseWaterfall.title = "按一下：顯示鋼琴視窗";
-      } else {
-        btnCollapseWaterfall.innerHTML = "&#x276F;";  // ▶ hide waterfall
-        btnCollapseWaterfall.title = "按一下：收合鋼琴視窗 (和弦列表擴大至全版)";
-      }
+      btnCollapseWaterfall.innerHTML = "&#x276E;";  // ◀
+      btnCollapseWaterfall.title = waterfallHidden
+        ? "按一下：顯示鋼琴視窗"
+        : "按一下：收合和弦列表 (鋼琴擴大至全版)";
     }
 
     // Layout key depends on `.ribbon-wide` (which we just toggled); reload
@@ -1774,10 +1777,19 @@
   // Pure 2-state toggles — no auto-swap. The "other side is hidden"
   // case is handled by hiding the conflicting button in _applyRibbonLayout,
   // so these handlers only ever see the case where flipping is valid.
+  // The two click handlers below are intentionally asymmetric between the
+  // both-visible and hidden states, and each button's ID is a misnomer in
+  // the both-visible branch (kept as-is to limit blast radius). Mental
+  // model: the arrow points in the direction the adjacent visible panel
+  // will expand, so `>` (left button, #btnCollapseRibbon) grows the ribbon
+  // rightward → hide waterfall, and `<` (right, #btnCollapseWaterfall)
+  // grows the waterfall leftward → hide ribbon. In the hidden state each
+  // button acts as the restore for its own panel (unchanged).
   if (btnCollapseRibbon) {
     btnCollapseRibbon.addEventListener("click", (e) => {
       e.stopPropagation();
-      ribbonHidden = !ribbonHidden;
+      if (ribbonHidden) ribbonHidden = false;          // restore ribbon
+      else waterfallHidden = true;                      // both → chords 100 %
       _persistRibbonLayout();
       _applyRibbonLayout();
     });
@@ -1785,7 +1797,8 @@
   if (btnCollapseWaterfall) {
     btnCollapseWaterfall.addEventListener("click", (e) => {
       e.stopPropagation();
-      waterfallHidden = !waterfallHidden;
+      if (waterfallHidden) waterfallHidden = false;    // restore waterfall
+      else ribbonHidden = true;                         // both → waterfall 100 %
       _persistRibbonLayout();
       _applyRibbonLayout();
     });
@@ -4287,7 +4300,9 @@
       if (!chordData || !chordData.chords || chordData.chords.length === 0) {
         showToast("尚無和弦資料", 2000); return;
       }
-      window.ChordCorrection.enterChordCalibrate(chordData, _audioForCorrection, _corrRebuild);
+      window.ChordCorrection.enterChordCalibrate(chordData, _audioForCorrection, _corrRebuild, {
+        sections: (sectionData && Array.isArray(sectionData.sections)) ? sectionData.sections : null,
+      });
     });
   }
 
@@ -6308,10 +6323,36 @@
                       menu.remove();
                       window.ChordCorrection.enterChordCalibrate(
                           chordData, _audioForCorrection, _corrRebuild,
-                          { startChordIdx: ci }
+                          {
+                              startChordIdx: ci,
+                              sections: (sectionData && Array.isArray(sectionData.sections)) ? sectionData.sections : null,
+                          }
                       );
                   };
                   menu.appendChild(ccItem);
+
+                  // "延伸至此和弦" — apply the most recent calibrate session's
+                  // transform onto [lastEnd+1..ci]. Only shown when a recent
+                  // (<5min) calibration exists AND the right-clicked chord is
+                  // strictly past the calibrated segment. Intended for the
+                  // 均速/變速/均速 workflow where the user calibrates one
+                  // constant region, then marks where it should end by
+                  // right-clicking the boundary chord.
+                  try {
+                      const lastCal = (window.ChordCorrection && typeof window.ChordCorrection.getLastCalibration === "function")
+                          ? window.ChordCorrection.getLastCalibration() : null;
+                      if (lastCal && ci > lastCal.endIdx && (Date.now() - lastCal.ts) < 5 * 60 * 1000) {
+                          const extItem = document.createElement("div");
+                          extItem.className = "rv-section-menu-item";
+                          extItem.innerHTML = `<span style="flex:1">\u{1F680} 以前段校正延伸至此和弦</span>`;
+                          extItem.onclick = (ev) => {
+                              ev.stopPropagation();
+                              menu.remove();
+                              window.ChordCorrection.applyLastCalibrateToIdx(chordData, ci, _corrRebuild);
+                          };
+                          menu.appendChild(extItem);
+                      }
+                  } catch (e) { /* ignore — menu entry is purely additive */ }
 
                   // Merge adjacent chords — BTC sometimes splits a single
                   // 8-beat chord into "1-beat + 7-beat" fragments; merging

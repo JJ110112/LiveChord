@@ -31,9 +31,145 @@
     el._tid = setTimeout(() => el.classList.remove("show"), ms || 2000);
   }
 
+  /* ---------- Transform helpers (calibrate extrapolation) ---------- */
+
+  // Fit an affine transform newTime = a·origTime + b over the calibrated
+  // chord pairs. Residual + slope gates decide if affine is accepted;
+  // otherwise we fall back to a median-shift (constant offset). This powers
+  // the post-calibrate "apply this timing fix to the rest of the song" step.
+  function fitTransform(origTimes, newTimes) {
+    const n = Math.min(origTimes.length, newTimes.length);
+    // Always compute the deltas for the shift fallback.
+    const deltas = [];
+    for (let i = 0; i < n; i++) deltas.push(newTimes[i] - origTimes[i]);
+    const deltaT = n > 0 ? median(deltas) : 0;
+
+    if (n >= 3) {
+      let sx = 0, sy = 0, sxx = 0, sxy = 0;
+      for (let i = 0; i < n; i++) {
+        sx += origTimes[i];
+        sy += newTimes[i];
+        sxx += origTimes[i] * origTimes[i];
+        sxy += origTimes[i] * newTimes[i];
+      }
+      const denom = n * sxx - sx * sx;
+      if (denom > 1e-9) {
+        const a = (n * sxy - sx * sy) / denom;
+        const b = (sy - a * sx) / n;
+        if (Number.isFinite(a) && Number.isFinite(b)) {
+          let maxAbsResidual = 0;
+          for (let i = 0; i < n; i++) {
+            const r = Math.abs(newTimes[i] - (a * origTimes[i] + b));
+            if (r > maxAbsResidual) maxAbsResidual = r;
+          }
+          // Accept affine only when the fit is tight AND the slope is
+          // close to 1 — a runaway slope compounds rate errors over the
+          // tail of the song and is almost never what the user wants.
+          if (maxAbsResidual <= 0.10 && Math.abs(a - 1) <= 0.10) {
+            return { mode: "affine", a, b, deltaT, maxResidual: maxAbsResidual };
+          }
+        }
+      }
+    }
+    return { mode: "shift", a: 1, b: deltaT, deltaT, maxResidual: 0 };
+  }
+
+  function applyTransform(t, transform) {
+    if (transform.mode === "affine") return transform.a * t + transform.b;
+    return t + transform.deltaT;
+  }
+
+  // Walk [fromIdx..toIdx] inclusive and rewrite time/end through the
+  // transform. Reconcile the seam with chords[fromIdx-1].end so the ribbon
+  // doesn't paint a visual gap or overlap at the boundary between the
+  // calibrated segment and the extrapolated tail.
+  function applyTransformToRange(chordData, fromIdx, toIdx, transform) {
+    const chords = chordData.chords;
+    if (!chords || fromIdx > toIdx || fromIdx >= chords.length) return 0;
+    const last = Math.min(toIdx, chords.length - 1);
+    let count = 0;
+    for (let j = fromIdx; j <= last; j++) {
+      const c = chords[j];
+      if (typeof c.time === "number") c.time = round2(applyTransform(c.time, transform));
+      if (typeof c.end === "number") c.end = round2(applyTransform(c.end, transform));
+      count++;
+    }
+    if (fromIdx > 0) {
+      chords[fromIdx - 1].end = chords[fromIdx].time;
+    }
+    return count;
+  }
+
+  // Step 1 auto-sync: after chord times shift, mutate every accompaniment /
+  // melody event whose ORIGINAL time falls inside [rangeStart, rangeEnd) so
+  // the piano waterfall stays aligned without a server-side regen. The
+  // waterfall/scheduleHand read accData + melodyData on every RAF frame, so
+  // in-place mutation is enough — no explicit redraw trigger needed.
+  //
+  // Accuracy caveats (documented in plan):
+  //   • Pure shift (constant offset): exact.
+  //   • Affine with residual ≤ 0.1s: events warp with chords, audibly fine.
+  //   • User changed a chord's beat count: notes-per-chord stays wrong
+  //     (shift can't synthesize missing beats). Escape hatch = 伴奏重生.
+  function _applyTransformToTimelines(transform, rangeStart, rangeEnd) {
+    const EPS = 1e-6;
+    const inRange = (t) => typeof t === "number"
+      && t >= rangeStart - EPS
+      && t < rangeEnd - EPS;
+
+    const shift = (events) => {
+      if (!Array.isArray(events)) return 0;
+      let n = 0;
+      for (const e of events) {
+        if (!e || !inRange(e.time)) continue;
+        const newT = applyTransform(e.time, transform);
+        const dur = (typeof e.end === "number") ? e.end - e.time : null;
+        e.time = round2(newT);
+        if (dur !== null) e.end = round2(newT + dur);
+        else if (typeof e.duration === "number") {
+          // duration is time-invariant for shift, scales by slope for affine
+          if (transform.mode === "affine") {
+            e.duration = round2(e.duration * transform.a);
+          }
+        }
+        n++;
+      }
+      return n;
+    };
+
+    let total = 0;
+    const acc = (typeof window !== "undefined") ? window.accData : null;
+    if (acc) {
+      total += shift(acc.left_hand);
+      total += shift(acc.right_hand);
+    }
+    const mel = (typeof window !== "undefined") ? window.melodyData : null;
+    if (Array.isArray(mel)) total += shift(mel);
+    return total;
+  }
+
+  // Global sort + MIN_GAP dedupe + end-alignment pass. Cheap and idempotent;
+  // safe to call after every mutation as a three-layer defense (calibrate
+  // apply → frontend save → backend save) against time-regression bugs.
+  function normalizeChords(chordData) {
+    const chords = chordData.chords;
+    if (!chords || chords.length === 0) return;
+    chords.sort((a, b) => (a.time || 0) - (b.time || 0));
+    const MIN_GAP = 0.2;
+    for (let i = chords.length - 1; i > 0; i--) {
+      if ((chords[i].time || 0) - (chords[i - 1].time || 0) < MIN_GAP) {
+        chords.splice(i - 1, 1);
+      }
+    }
+    for (let i = 0; i < chords.length - 1; i++) {
+      chords[i].end = chords[i + 1].time;
+    }
+  }
+
   /* ========== Shared State ========== */
   let _originalChords = null;   // backup before first correction
   let _activeMode = null;       // null | "beat-tap" | "chord-align"
+  let _lastCalibration = null;  // {endIdx, mode, a, b, deltaT, bpm, ts}
 
   /* ========== Feature 3: Chord Split ========== */
 
@@ -353,6 +489,255 @@
 
   let _calibrateState = null;
 
+  // Helper — turn the post-tap panel into a range-selector. Hides the live
+  // tap controls, injects a radio list with live blast-radius counts, and
+  // wires Back/Apply buttons. Commit fires through onCommit(rangeEndIdx).
+  function _showRangeSelectorStep(panel, opts) {
+    const { chordData, offset, N, transform, newBpm, tapsCount, sections, onBack, onCommit } = opts;
+    const total = chordData.chords.length;
+    const lastCalibratedIdx = offset + N - 1;
+
+    // Hide the live tap UI bits — we're past the tapping phase now.
+    const instructionEl = panel.querySelector(".correction-instructions");
+    const tapRow = panel.querySelector(".correction-tap-row");
+    const statusEl = panel.querySelector(".correction-status");
+    const resultEl = panel.querySelector(".correction-result");
+    const actionsRow = panel.querySelector(".correction-actions");
+    if (instructionEl) instructionEl.style.display = "none";
+    if (tapRow) tapRow.style.display = "none";
+    if (statusEl) statusEl.style.display = "none";
+    if (resultEl) resultEl.style.display = "none";
+    if (actionsRow) actionsRow.style.display = "none";
+
+    // Resolve the phrase-boundary chord index (first chord at or after the
+    // next section start that sits past the calibrated segment). null when
+    // there is no usable section.
+    let phraseEndIdx = null;
+    let phraseLabel = "";
+    if (Array.isArray(sections) && sections.length > 0 && lastCalibratedIdx < total - 1) {
+      const segLastTime = chordData.chords[lastCalibratedIdx].time || 0;
+      const nextSec = sections
+        .filter(s => typeof s.start === "number" && s.start > segLastTime + 0.05)
+        .sort((a, b) => a.start - b.start)[0];
+      if (nextSec) {
+        for (let j = lastCalibratedIdx + 1; j < total; j++) {
+          if ((chordData.chords[j].time || 0) >= nextSec.start - 0.05) {
+            phraseEndIdx = j - 1;  // last chord BEFORE the next section
+            phraseLabel = nextSec.label || nextSec.type || "下個段落";
+            break;
+          }
+        }
+        // If loop fell through, the section boundary is past all chords.
+        if (phraseEndIdx === null) phraseEndIdx = total - 1;
+      }
+    }
+
+    // Human-readable transform-confidence line so the user can sanity-check
+    // before committing.
+    let confidence;
+    if (transform.mode === "affine") {
+      const slope = transform.a.toFixed(3);
+      const offsetStr = (transform.b >= 0 ? "+" : "") + transform.b.toFixed(2) + " s";
+      const nearPure = Math.abs(transform.a - 1) < 0.005;
+      confidence = `線性延伸：×${slope} 倍 ${offsetStr} (最大殘差 ${transform.maxResidual.toFixed(2)} s)` +
+                   (nearPure ? "（≈ 純位移）" : "");
+    } else {
+      const dt = transform.deltaT;
+      const sign = dt >= 0 ? "+" : "";
+      confidence = `位移模式：${sign}${dt.toFixed(2)} s`;
+    }
+
+    // Build the range-selector block.
+    const block = document.createElement("div");
+    block.className = "cc-range-selector";
+    const segmentCount = N;
+    const endCount = total - 1 - lastCalibratedIdx;
+    const phraseCount = phraseEndIdx !== null ? phraseEndIdx - lastCalibratedIdx : 0;
+    block.innerHTML = `
+      <div class="cc-range-summary">
+        已輕敲 ${tapsCount} 個節拍點 (${N} 個和絃)，BPM ${newBpm}
+        <br><span class="cc-range-confidence">${confidence}</span>
+      </div>
+      <div class="cc-range-prompt">將此校正套用到 (請選擇)：</div>
+      <label class="cc-range-opt"><input type="radio" name="cc-range" value="segment">
+        <span>只校正這 ${segmentCount} 個和絃</span></label>
+      <label class="cc-range-opt ${phraseEndIdx === null ? "cc-range-disabled" : ""}">
+        <input type="radio" name="cc-range" value="phrase" ${phraseEndIdx === null ? "disabled" : ""}>
+        <span>${phraseEndIdx === null
+          ? "延伸到下個樂句邊界（沒有下個樂句）"
+          : `延伸到下個樂句邊界 — ${_escape(phraseLabel)} 起 (+${phraseCount} 個)`}</span></label>
+      <label class="cc-range-opt ${endCount <= 0 ? "cc-range-disabled" : ""}">
+        <input type="radio" name="cc-range" value="end" ${endCount <= 0 ? "disabled" : ""}>
+        <span>${endCount <= 0
+          ? "延伸到結尾（此段已是最後一段）"
+          : `延伸到結尾 (+${endCount} 個)`}</span></label>
+      <div class="cc-range-actions">
+        <button type="button" class="correction-btn cc-range-back">&#x2039; 回上一步</button>
+        <button type="button" class="correction-btn correction-apply cc-range-apply" disabled>&#x2713; 套用</button>
+      </div>
+    `;
+    panel.appendChild(block);
+
+    const applyBtn = block.querySelector(".cc-range-apply");
+    const backBtn = block.querySelector(".cc-range-back");
+    block.querySelectorAll('input[name="cc-range"]').forEach(r => {
+      r.addEventListener("change", () => { if (!r.disabled) applyBtn.disabled = false; });
+    });
+
+    applyBtn.onclick = () => {
+      const chosen = block.querySelector('input[name="cc-range"]:checked');
+      if (!chosen) return;
+      let rangeEndIdx = lastCalibratedIdx;
+      if (chosen.value === "phrase" && phraseEndIdx !== null) rangeEndIdx = phraseEndIdx;
+      else if (chosen.value === "end") rangeEndIdx = total - 1;
+      block.remove();
+      onCommit(rangeEndIdx);
+    };
+
+    backBtn.onclick = () => {
+      block.remove();
+      if (instructionEl) instructionEl.style.display = "";
+      if (tapRow) tapRow.style.display = "";
+      if (statusEl) statusEl.style.display = "";
+      if (resultEl && resultEl.textContent) resultEl.style.display = "";
+      if (actionsRow) actionsRow.style.display = "";
+      if (typeof onBack === "function") onBack();
+    };
+  }
+
+  function _escape(s) {
+    return String(s || "").replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    })[c]);
+  }
+
+  function _restorePanelFromRangeSelector(panel /*, applyBtn, cancelBtn, tapRow, instructionEl */) {
+    // Intentional no-op today: the Back handler inside _showRangeSelectorStep
+    // already re-shows the live tap UI. Placeholder kept so the call-site in
+    // enterChordCalibrate remains explicit about the restore path.
+  }
+
+  function _commitCalibrate(chordData, ctx, rangeEndIdx, rebuildFn) {
+    const { groups, N, offset, secPerBeat, transform, newBpm, segOrigTimes, segNewTimes } = ctx;
+    backup(chordData);
+    const chords = chordData.chords;
+
+    // Capture the timeline window BEFORE any chord mutation so we know which
+    // accData / melodyData events to shift. rangeStart = the first calibrated
+    // chord's original time; rangeEnd = the original time of the first chord
+    // past our touch range (or +Infinity if we're going to song end).
+    const waterfallRangeStart = segOrigTimes.length > 0 ? segOrigTimes[0] : 0;
+    const boundaryIdx = rangeEndIdx + 1;
+    const waterfallRangeEnd = (boundaryIdx < chords.length)
+      ? (chords[boundaryIdx].time || Number.POSITIVE_INFINITY)
+      : Number.POSITIVE_INFINITY;
+
+    // Left boundary fix — prior chord's end aligns with first new time
+    if (offset > 0) {
+      chords[offset - 1].end = round2(segNewTimes[0]);
+    }
+    // Rewrite the calibrated segment in place
+    for (let g = 0; g < N; g++) {
+      chords[offset + g].time = round2(segNewTimes[g]);
+      if (g > 0) chords[offset + g - 1].end = chords[offset + g].time;
+    }
+    // Right boundary of the segment (set before extrapolation overwrites it)
+    const lastIdx = offset + N - 1;
+    if (offset + N < chords.length) {
+      chords[lastIdx].end = chords[offset + N].time;
+    } else {
+      const lastGroup = groups[N - 1];
+      chords[lastIdx].end = round2(chords[lastIdx].time + lastGroup.length * secPerBeat);
+    }
+
+    // Extrapolate the transform onto [offset+N .. rangeEndIdx] if the user
+    // picked a range past the segment.
+    const extraFrom = offset + N;
+    const extraTo = Math.min(rangeEndIdx, chords.length - 1);
+    const extrapolated = (extraTo >= extraFrom)
+      ? applyTransformToRange(chordData, extraFrom, extraTo, transform)
+      : 0;
+
+    // Three-layer defense: global sort + dedupe + end-alignment.
+    normalizeChords(chordData);
+
+    // Step 1 waterfall auto-sync — shift accData / melodyData events that
+    // lived under the calibrated/extrapolated chord range. Uses the ORIGINAL
+    // chord-time window we captured before mutation.
+    const waterfallShifted = _applyTransformToTimelines(
+      transform, waterfallRangeStart, waterfallRangeEnd
+    );
+
+    // Authoritative BPM for dot-grid rendering.
+    chordData.bpm = newBpm;
+
+    // Stash for the right-click "延伸至此和弦" entry.
+    _lastCalibration = {
+      endIdx: lastIdx,
+      mode: transform.mode,
+      a: transform.a,
+      b: transform.b,
+      deltaT: transform.deltaT,
+      bpm: newBpm,
+      ts: Date.now(),
+    };
+
+    let summary = `已校正 ${N} 個和絃`;
+    if (extrapolated > 0) summary += ` + 延伸 ${extrapolated} 個`;
+    summary += ` (BPM=${newBpm})`;
+    if (waterfallShifted > 0) summary += `｜瀑布流 ${waterfallShifted} 筆已同步`;
+
+    exitChordCalibrate();
+    rebuildFn();
+    showToast(summary, 2800);
+  }
+
+  // Right-click reuse path. Applies the last-stored calibration transform
+  // onto [_lastCalibration.endIdx+1 .. targetIdx]. Clears _lastCalibration
+  // after success so the entry disappears from the menu until the next
+  // calibrate session seeds it again.
+  function applyLastCalibrateToIdx(chordData, targetIdx, rebuildFn) {
+    if (!_lastCalibration) { showToast("尚無可延伸的校正結果", 1800); return false; }
+    const { endIdx, mode, a, b, deltaT, bpm } = _lastCalibration;
+    const chords = chordData?.chords;
+    if (!chords || targetIdx <= endIdx || endIdx >= chords.length - 1) {
+      showToast("無法延伸到此和弦", 1800); return false;
+    }
+    backup(chordData);
+    const transform = { mode, a, b, deltaT };
+    const fromIdx = endIdx + 1;
+    const toIdx = Math.min(targetIdx, chords.length - 1);
+
+    // Capture the waterfall window BEFORE applyTransformToRange mutates
+    // chord times. rangeStart = first untouched chord's original time;
+    // rangeEnd = first chord past the extension (or +Infinity if targetIdx
+    // is the final chord).
+    const waterfallRangeStart = chords[fromIdx].time || 0;
+    const boundaryIdx = toIdx + 1;
+    const waterfallRangeEnd = (boundaryIdx < chords.length)
+      ? (chords[boundaryIdx].time || Number.POSITIVE_INFINITY)
+      : Number.POSITIVE_INFINITY;
+
+    const count = applyTransformToRange(chordData, fromIdx, toIdx, transform);
+    normalizeChords(chordData);
+    const waterfallShifted = _applyTransformToTimelines(
+      transform, waterfallRangeStart, waterfallRangeEnd
+    );
+    if (typeof bpm === "number") chordData.bpm = bpm;
+    // Roll the stash forward so a second right-click can continue from the
+    // new boundary; but if the user hit song-end, clear it.
+    if (targetIdx >= chords.length - 1) {
+      _lastCalibration = null;
+    } else {
+      _lastCalibration = { ..._lastCalibration, endIdx: targetIdx, ts: Date.now() };
+    }
+    if (typeof rebuildFn === "function") rebuildFn();
+    let msg = `已延伸 ${count} 個和絃`;
+    if (waterfallShifted > 0) msg += `｜瀑布流 ${waterfallShifted} 筆已同步`;
+    showToast(msg, 2000);
+    return true;
+  }
+
   function enterChordCalibrate(chordData, audio, rebuildFn, options) {
     options = options || {};
     const startChordIdx = Math.max(0, Math.min(options.startChordIdx || 0, (chordData?.chords?.length || 1) - 1));
@@ -518,80 +903,43 @@
       }
       const lag = residuals.length > 0 ? median(residuals) : 0;
 
-      // 3. Apply segmented-safe to chordData
-      backup(chordData);
+      // 3. Compute (not commit) segment edits so we can fit the transform
+      // against the pre-edit vs post-edit chord times.
       const chords = chordData.chords;
       const offset = startChordIdx;
       const N = Math.min(groups.length, chords.length - offset);
 
-      // Left boundary fix — prior chord's end aligns with first new time
-      if (offset > 0) {
-        const firstNewTime = Math.max(0, groups[0][0].time - lag);
-        chords[offset - 1].end = round2(firstNewTime);
-      }
-
-      // Rewrite segment
+      const segOrigTimes = [];
+      const segNewTimes = [];
       for (let g = 0; g < N; g++) {
-        const newTime = Math.max(0, groups[g][0].time - lag);
-        chords[offset + g].time = round2(newTime);
-        if (g > 0) chords[offset + g - 1].end = chords[offset + g].time;
+        segOrigTimes.push(chords[offset + g].time || 0);
+        segNewTimes.push(Math.max(0, groups[g][0].time - lag));
       }
 
-      // Right boundary fix
-      const lastIdx = offset + N - 1;
-      if (offset + N < chords.length) {
-        // Un-recalibrated neighbor exists — line up with its unchanged time
-        chords[lastIdx].end = chords[offset + N].time;
-      } else {
-        // Last chord of the song — derive end from the tap count
-        const lastGroup = groups[N - 1];
-        chords[lastIdx].end = round2(chords[lastIdx].time + lastGroup.length * secPerBeat);
-      }
-
-      // GLOBAL sort + dedupe across the whole chord array. Segment-local
-      // sort was a bug: if the user tapped at an audio time that didn't
-      // match the right-clicked chord's original position (e.g., audio was
-      // still in the chorus when they right-clicked a verse chord), the
-      // rewritten segment's times end up *outside* the surrounding chords'
-      // ranges, producing a time-regression across the whole array. The
-      // admin "過完冬季" file had chord[20].time=183 → chord[21].time=66,
-      // exactly this failure mode. A global resort restores the invariant.
-      chords.sort((a, b) => (a.time || 0) - (b.time || 0));
-      const MIN_GAP = 0.2;
-      for (let i = chords.length - 1; i > 0; i--) {
-        if ((chords[i].time || 0) - (chords[i - 1].time || 0) < MIN_GAP) {
-          chords.splice(i - 1, 1);  // drop the earlier of the pair;
-                                    // the later one carries the fresher edit
-        }
-      }
-      // Re-align ends so ribbon doesn't paint gaps
-      for (let i = 0; i < chords.length - 1; i++) {
-        chords[i].end = chords[i + 1].time;
-      }
-
-      // Overwrite the song's saved BPM with the tap-derived tempo. Without
-      // this, the player reads the stale chordData.bpm (Phase C) and rounds
-      // chord durations against the wrong secPerBeat — so a chord the user
-      // tapped as 4 beats would display as 3 dots when the real tempo is
-      // faster than the saved BPM. Writing `bpm` here makes the dot count
-      // always reflect what the user tapped, regardless of the pre-calibration
-      // value.
+      const transform = fitTransform(segOrigTimes, segNewTimes);
       const newBpm = Math.max(30, Math.min(300, Math.round(60 / secPerBeat)));
-      chordData.bpm = newBpm;
 
-      // Toasts
-      let summary;
-      if (groups.length > chords.length - offset) {
-        summary = `敲了 ${groups.length} 組但只剩 ${chords.length - offset} 個和絃，多的已忽略 (BPM=${newBpm})`;
-      } else if (groups.length < chords.length - offset) {
-        summary = `已校正 ${N} 個，${chords.length - offset - N} 個未動 (BPM=${newBpm}，右鍵下一個可續)`;
-      } else {
-        summary = `已校正全部 ${N} 個和絃 (BPM=${newBpm})`;
-      }
-
-      exitChordCalibrate();
-      rebuildFn();
-      showToast(summary, 2800);
+      // 4. Swap the panel into range-selector mode. Commit only fires when
+      // the user explicitly picks a range and clicks 套用.
+      const commitCtx = {
+        groups, N, offset, secPerBeat, transform, newBpm,
+        segOrigTimes, segNewTimes,
+      };
+      _showRangeSelectorStep(panel, {
+        chordData,
+        offset,
+        N,
+        transform,
+        newBpm,
+        tapsCount: taps.length,
+        sections: options.sections || null,
+        onBack: () => {
+          _restorePanelFromRangeSelector(panel, applyBtn, cancelBtn, tapRow, instructionEl);
+        },
+        onCommit: (rangeEndIdx) => {
+          _commitCalibrate(chordData, commitCtx, rangeEndIdx, rebuildFn);
+        },
+      });
     };
 
     cancelBtn.onclick = () => { exitChordCalibrate(); };
@@ -643,6 +991,9 @@
     // Feature 5: Chord Calibrate (1234 tap)
     enterChordCalibrate,
     exitChordCalibrate,
+    applyLastCalibrateToIdx,
+    getLastCalibration() { return _lastCalibration ? { ..._lastCalibration } : null; },
+    clearLastCalibration() { _lastCalibration = null; },
     // Feature 6: Merge adjacent chords
     mergeChord,
     // Shared
