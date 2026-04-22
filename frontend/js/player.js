@@ -4847,21 +4847,19 @@
     if (e.target && e.target.id === "btnDetectHero") runChordDetection();
   });
 
-  // ---- 升級節拍 (rubato 動態追蹤) ----
-  // Default ingest uses librosa (fast); this opt-in re-runs the chord JSON
-  // through madmom DBN tracker for live/rubato songs. Synchronous ~30s.
+  // ---- 動態節拍偵測 (背景處理) ----
+  // Default ingest uses librosa (fast); this opt-in enqueues a madmom job
+  // on the backend and polls for completion. Client is non-blocking — user
+  // can navigate around while the ~30s job runs. Toast on done/error.
   const btnUpgradeBeats = $("#btnUpgradeBeats");
   if (btnUpgradeBeats) {
+    let _upgradePoll = null;  // setInterval handle for the active poll
     btnUpgradeBeats.addEventListener("click", async () => {
       const h = (typeof hashMode === "string" && hashMode) ? hashMode :
                 (chordData && chordData.path && chordData.path.startsWith("__hash/")
                  ? chordData.path.slice(7) : null);
-      // Personal mode (path-based) needs a different lookup; for now this
-      // tool is hash-mode-friendly only (covers all beta + path→hash players).
       let targetHash = h;
       if (!targetHash && chordData && chordData.path) {
-        // Personal mode: derive hash via /api/songs/hash if needed. Skipped
-        // for Phase 5 minimum — show a soft warning.
         showToast("此頁未提供 hash，請改用 hash 模式或在管理頁批次升級", 3000);
         return;
       }
@@ -4869,34 +4867,70 @@
         showToast("找不到歌曲 hash", 2500);
         return;
       }
-      if (!confirm("重新偵測節拍以追蹤 Live/老錄音的速度漂移。\n\n約需 30 秒處理音檔，期間頁面會停留在進度提示。\n\n繼續嗎？")) return;
+      if (_upgradePoll) {
+        showToast("此曲動態節拍偵測進行中…", 2500);
+        return;
+      }
+      const ok = confirm(
+        "動態節拍偵測（rubato 追蹤，適合 Live / 老錄音）\n\n" +
+        "後端背景處理約 30 秒，期間可繼續使用其他功能。\n" +
+        "完成時會跳出通知。\n\n繼續嗎？"
+      );
+      if (!ok) return;
 
-      // Disable button to prevent double-click
       btnUpgradeBeats.disabled = true;
-      const banner = document.createElement("div");
-      banner.style.cssText = "position:fixed;left:50%;top:20%;transform:translateX(-50%);background:rgba(33,150,243,0.95);color:#fff;padding:16px 28px;border-radius:8px;font-size:15px;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,0.4);";
-      banner.textContent = "節拍升級中… (madmom RNN+DBN，約 30 秒)";
-      document.body.appendChild(banner);
-
       try {
         const res = await fetch(`/api/process/upgrade-beats?hash=${encodeURIComponent(targetHash)}`,
                                 { method: "POST" });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           const detail = data.detail || `HTTP ${res.status}`;
-          showToast(`升級失敗：${detail}`, 4000);
+          showToast(`動態節拍偵測無法啟動：${detail}`, 5000);
           btnUpgradeBeats.disabled = false;
-          banner.remove();
           return;
         }
-        banner.style.background = "rgba(76,175,80,0.95)";
-        banner.textContent = `升級完成 — BPM ${data.bpm}, ${data.n_beats} beats, range ${data.tempo_range} BPM。即將重新整理…`;
-        setTimeout(() => window.location.reload(), 1500);
+        const songTitle = data.title || "歌曲";
+        if (data.duplicate) {
+          showToast(`「${songTitle}」已在偵測中，完成會通知`, 3500);
+        } else {
+          showToast(`已開始動態節拍偵測「${songTitle}」，背景處理約 30 秒，完成會通知`, 4500);
+        }
+        // Start polling — non-blocking, user free to navigate
+        _upgradePoll = setInterval(async () => {
+          try {
+            const sres = await fetch(
+              `/api/process/upgrade-beats/status?hash=${encodeURIComponent(targetHash)}`
+            );
+            if (!sres.ok) return;
+            const sdata = await sres.json();
+            const st = sdata.status;
+            if (st === "done") {
+              clearInterval(_upgradePoll); _upgradePoll = null;
+              btnUpgradeBeats.disabled = false;
+              const r = sdata.result || {};
+              showToast(
+                `「${sdata.title || songTitle}」動態節拍偵測完成 — BPM ${r.bpm}, ${r.n_beats} beats, range ${r.tempo_range} BPM。重新載入頁面以套用。`,
+                7000
+              );
+            } else if (st === "error") {
+              clearInterval(_upgradePoll); _upgradePoll = null;
+              btnUpgradeBeats.disabled = false;
+              showToast(
+                `「${sdata.title || songTitle}」動態節拍偵測失敗：${sdata.error || "unknown"}`,
+                6000
+              );
+            } else if (st === "not_found") {
+              // Worker may not have picked it up yet; keep polling a few more rounds
+            }
+          } catch (e) {
+            // Network blip — keep polling
+            console.warn("upgrade-beats poll error:", e);
+          }
+        }, 4000);
       } catch (e) {
-        console.error("upgrade-beats failed:", e);
-        showToast(`升級失敗：${e.message || e}`, 4000);
+        console.error("upgrade-beats POST failed:", e);
+        showToast(`動態節拍偵測無法啟動：${e.message || e}`, 5000);
         btnUpgradeBeats.disabled = false;
-        banner.remove();
       }
     });
   }

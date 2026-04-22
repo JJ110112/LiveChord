@@ -241,23 +241,27 @@ def get_cover(hash: str):
 # ---------------------------------------------------------------------------
 
 def upgrade_beats(hash: str, username: str = Depends(get_current_user)):
-    """Re-run beat detection with madmom (rubato/live tracking).
+    """Enqueue an on-demand madmom beat-detection job.
 
-    Synchronous; takes ~30s for a 4-min song. Saves a `.bak.beats` copy
-    of the chord JSON before overwriting. Bumps `beat_version` so the
-    player's stale-acc gate fires for cached accompaniments.
-
-    Refuses upload-mode chord JSONs (`__upload/<job_id>` paths) because
-    process_queue cleans up the audio file once melody extraction is
-    done — there's no source to re-analyze.
+    Returns immediately with ``{status: queued|duplicate, hash, ...}``.
+    The actual madmom run (~30s) happens in beat_upgrade_queue's daemon
+    worker thread; client polls ``GET /api/process/upgrade-beats/status``
+    for completion. Pre-flight rejects (early validation):
+      - madmom missing → 503 with diagnostic
+      - upload-mode path (audio cleaned up) → 410
+      - chord JSON / audio missing → 404
+      - chord array empty → 400
     """
     import json as _json
-    from beat_snap import analyze_and_snap_dynamic, HAS_MADMOM
+    from beat_snap import HAS_MADMOM, MADMOM_IMPORT_ERROR
+    from beat_upgrade_queue import enqueue as _enqueue, get_status as _get_status
     from config import resolve_path
 
     if not HAS_MADMOM:
-        raise HTTPException(status_code=503,
-                            detail="madmom not installed on this server")
+        raise HTTPException(
+            status_code=503,
+            detail=f"madmom not installed: {MADMOM_IMPORT_ERROR or 'unknown'}",
+        )
 
     chord_file = CHORDS_DIR / f"{hash}.json"
     if not chord_file.is_file():
@@ -279,61 +283,40 @@ def upgrade_beats(hash: str, username: str = Depends(get_current_user)):
     if not chords:
         raise HTTPException(status_code=400, detail="chord JSON has no chords")
 
-    # Save .bak.beats before overwrite (single backup; first call wins)
-    bak = chord_file.with_suffix(chord_file.suffix + ".bak.beats")
-    if not bak.exists():
-        try:
-            bak.write_text(_json.dumps(sheet, ensure_ascii=False, indent=2),
-                           encoding="utf-8")
-        except Exception as e:
-            logger.warning("upgrade_beats: backup failed for %s: %s", hash, e)
+    title = sheet.get("title") or os.path.basename(track_path) or hash
+    queued_status = _enqueue(hash, audio_path, str(chord_file),
+                             title=title, requested_by=username)
+    snapshot = _get_status(hash) or {}
 
-    # Run dynamic analysis (madmom path)
-    chords_copy = [dict(c) for c in chords]
-    try:
-        info = analyze_and_snap_dynamic(audio_path, chords_copy,
-                                        prefer_madmom=True)
-    except Exception as e:
-        logger.error("upgrade_beats: madmom failed for %s: %s", hash, e)
-        raise HTTPException(status_code=500,
-                            detail=f"beat tracking failed: {type(e).__name__}")
-
-    if not info.get("beats_source"):
-        raise HTTPException(status_code=500, detail="no beats detected")
-
-    sheet["chords"] = chords_copy
-    if info.get("bpm"):
-        sheet["bpm"] = round(info["bpm"], 1)
-    sheet["beats"] = info.get("beats", [])
-    sheet["downbeats"] = info.get("downbeats", [])
-    sheet["tempo_curve"] = info.get("tempo_curve", [])
-    sheet["beats_source"] = info["beats_source"]
-    # Bump beat_version so player's stale-acc gate fires for cached acc
-    sheet["beat_version"] = int(sheet.get("beat_version", 0)) + 1
-
-    tmp = chord_file.with_suffix(chord_file.suffix + ".tmp")
-    tmp.write_text(_json.dumps(sheet, ensure_ascii=False, indent=2),
-                   encoding="utf-8")
-    os.replace(tmp, chord_file)
-
-    tc = info.get("tempo_curve") or []
-    rng = (max(p["bpm"] for p in tc) - min(p["bpm"] for p in tc)) if tc else 0
-    logger.info("upgrade_beats by %s: hash=%s src=%s bpm=%s range=%.1f",
-                username, hash, info["beats_source"], sheet.get("bpm"), rng)
+    logger.info("upgrade_beats enqueued by %s: hash=%s status=%s",
+                username, hash, queued_status)
 
     return {
         "ok": True,
         "hash": hash,
-        "bpm": sheet.get("bpm"),
-        "beats_source": sheet["beats_source"],
-        "beat_version": sheet["beat_version"],
-        "n_beats": len(sheet.get("beats", [])),
-        "n_downbeats": len(sheet.get("downbeats", [])),
-        "tempo_range": round(rng, 1),
+        "title": title,
+        "status": snapshot.get("status", queued_status),
+        "queued": queued_status == "queued",
+        "duplicate": queued_status == "duplicate",
     }
 
 
+def upgrade_beats_status(hash: str, username: str = Depends(get_current_user)):
+    """Return current status of a beat-upgrade job for ``hash``.
+
+    Status values: queued / running / done / error / not_found.
+    Frontend polls this to decide when to fire the completion toast.
+    """
+    from beat_upgrade_queue import get_status as _get_status
+    snap = _get_status(hash)
+    if snap is None:
+        return {"status": "not_found", "hash": hash}
+    return {"hash": hash, **snap}
+
+
 router.add_api_route("/upgrade-beats", upgrade_beats, methods=["POST"])
+router.add_api_route("/upgrade-beats/status", upgrade_beats_status,
+                     methods=["GET"])
 
 
 # ---------------------------------------------------------------------------

@@ -28,6 +28,8 @@ import librosa
 import numpy as np
 
 # Optional madmom — install procedure documented in backend/requirements.txt.
+HAS_MADMOM = False
+MADMOM_IMPORT_ERROR = None  # captured for /api/process/upgrade-beats 503 diagnostic
 try:  # pragma: no cover — environmental
     from madmom.audio.signal import Signal as _MmSignal
     from madmom.features.beats import (
@@ -40,8 +42,12 @@ try:  # pragma: no cover — environmental
     )
 
     HAS_MADMOM = True
-except Exception:  # ImportError or any madmom init failure
-    HAS_MADMOM = False
+except Exception as _mm_err:  # ImportError or any madmom init failure
+    import sys as _sys
+    MADMOM_IMPORT_ERROR = (
+        f"{type(_mm_err).__name__}: {_mm_err} | "
+        f"python={_sys.executable} | prefix={_sys.prefix}"
+    )
 
 
 # Max distance a chord boundary may be from the nearest detected beat before
