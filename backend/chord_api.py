@@ -47,7 +47,7 @@ def _midi_matches(song_name: str, midi_fname: str) -> bool:
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends, Header, Request
 from pydantic import BaseModel
 
-from auth_api import get_current_user, DB_PATH as AUTH_DB_PATH
+from auth_api import get_current_user, get_admin_user, DB_PATH as AUTH_DB_PATH
 import sqlite3
 from chord_table import get_chord_info, get_chord_jianpu, analyze_chord_in_key
 from chord_diagrams import get_chord_diagram, get_chord_voicings
@@ -361,7 +361,7 @@ class BpmRecomputeRequest(BaseModel):
 
 
 @router.post("/admin/bpm/recompute")
-def admin_bpm_recompute(req: BpmRecomputeRequest, username: str = Depends(get_current_user)):
+def admin_bpm_recompute(req: BpmRecomputeRequest, username: str = Depends(get_admin_user)):
     """Manually re-decide BPM for a single song.
 
     mode=auto  → re-run bpm_sanity.ballad_halving_check against the current
@@ -370,11 +370,8 @@ def admin_bpm_recompute(req: BpmRecomputeRequest, username: str = Depends(get_cu
     mode=halve → force bpm /= 2, halve tempo_curve, thin downbeats.
     mode=double → inverse of halve (for undo).
 
-    Admin-only. Personal mode LAN bypass still works via get_current_user.
+    Admin-only via get_admin_user (handles LAN bypass + token auth uniformly).
     """
-    if not _is_admin(username):
-        raise HTTPException(status_code=403, detail="admin only")
-
     if req.hash:
         h = req.hash
     elif req.path:
