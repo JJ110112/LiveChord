@@ -1027,11 +1027,20 @@ window._lcIsBeta = (function() {
     const body = /^[a-f0-9]{8,16}$/i.test(raw) ? { hash: raw, mode } : { path: raw, mode };
     status.textContent = "處理中…";
     try {
-      const r = await API.post("/api/admin/bpm/recompute", body);
-      if (r.applied) {
-        status.textContent = `${r.original_bpm} → ${r.corrected_bpm} BPM (${r.reason})`;
+      const res = await fetch("/api/admin/bpm/recompute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        status.textContent = `失敗 ${res.status}: ${data.detail || res.statusText}`;
+        return;
+      }
+      if (data.applied) {
+        status.textContent = `${data.original_bpm} → ${data.corrected_bpm} BPM (${data.reason})`;
       } else {
-        status.textContent = `未調整（${r.reason || "不符合條件"}）`;
+        status.textContent = `未調整（${data.reason || "不符合條件"}）`;
       }
     } catch (e) {
       status.textContent = "失敗: " + (e.message || e);
