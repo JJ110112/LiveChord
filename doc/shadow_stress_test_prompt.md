@@ -340,3 +340,91 @@ python migrate_add_dynamic_beats.py --only "Clayderman" --workers 2
 - [../tmp/beat_spike/](../tmp/beat_spike/) — 10 樣本 spike PNG + JSON（PC 端的，未 push）
 
 分支: `feature/beta-productization`
+
+---
+
+### NUC 部署回報 — 任務 #2 — 2026-04-22 18:20 (UTC+8)
+
+**執行狀態**: ☒ 完成（含 MSVC Build Tools 安裝，batch 尚未執行）
+
+**1. madmom 安裝**
+
+首次 `pip install --no-build-isolation git+https://github.com/CPJKU/madmom.git` 失敗：
+```
+error: Microsoft Visual C++ 14.0 or greater is required.
+```
+NUC 無 MSVC 工具鏈，Cython 擴充（`madmom.audio.comb_filters` 等）編不起來。
+
+解法：下載 `https://aka.ms/vs/17/release/vs_BuildTools.exe`（4.25 MB bootstrapper），`--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended` 安裝。安裝後 `vswhere` 確認 `VC.Tools.x86.x64` 已到位（`C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools`，MSVC 14.44.35207）。
+
+重跑 `pip install` 直接成功，madmom-0.17.dev0 compile wheel（24 MB）無錯。
+
+驗證：
+```
+>>> from madmom.features.beats import RNNBeatProcessor, DBNBeatTrackingProcessor
+>>> from backend.beat_snap import HAS_MADMOM
+>>> print(HAS_MADMOM)
+True
+```
+
+**2. 13 檔 sync / `diff -q`**
+
+NUC 的 `V:\ == C:\LiveChord`（runtime 就是 git checkout），`git pull --ff-only origin feature/beta-productization` 一步到位（`a35fb04..f9ea6e3`）。無 copy 步驟、自動等價於 silent diff。
+
+Pre-pull 本地有 WIP（9 modified + 2 untracked）但內容是遠端同 feature 的舊草稿 —— 已 `git stash -u`、確認為遠端的子集後 `stash drop`。
+
+**3. `restart_dual.bat` 後健檢**
+
+- 8800 Personal: PID 5296 → 4064，`HTTP 200`（1.18s，首請求 lazy-load）
+- 8801 Beta: PID 8828 → 10712，`HTTP 200`（0.25s）
+- `GET /api/config/public` 回 `{"deployment_mode":"personal"}` ✓
+- 重啟於 18:14，影響 8801 瞬間斷線 < 10s
+
+**4. 單曲 Lettre migration**
+
+```
+cd C:\LiveChord\backend
+python migrate_add_dynamic_beats.py --only "Lettre" --limit 1
+```
+
+結果（`0c87e8f000f5.json`，即 "Carta a mi madre / Lettre a ma mère" 的另一版）：
+```
+[1/1] 0c87e8f000f5.json: OK src=madmom bpm=135.34 snap=68 range=78.8  (0.03/s)
+Elapsed: 29.0s
+```
+
+Chord JSON 驗證（讀檔 + `/api/chords/by-hash`）：
+| 欄位 | 值 |
+|---|---|
+| bpm | 135.3 |
+| beats_source | `madmom` |
+| beat_version | 1 |
+| beats | 332 筆（t=0.75..164.5） |
+| downbeats | 43 筆 |
+| tempo_curve | 329 筆 |
+| tempo range | 65.2 – 144.0 BPM（spread 78.8，強 rubato）|
+
+**5. 舊歌 API regression（無 beats 欄位）**
+
+挑 `0000d0e0e8e4`（pre-madmom chord JSON），透過 `/api/chords/by-hash?hash=...`：
+- `HTTP 200`，`exists=True`
+- top keys = `['bpm', 'capo', 'chords', 'exists', 'key', 'path', 'source']`（舊 schema 原封不動）
+- chords count 100, has_beats=False, beats_source=`<none>`
+
+→ 新 code 對舊 chord JSON 完全向下相容，player/editor 前端（已 cache-bust）應仍能正常載入。
+
+**6. 驚喜 / 卡點**
+
+- 🛠️ **最大卡點**：MSVC Build Tools 缺失讓 madmom wheel compile 崩掉。這是 Windows Python 3.11 首次安裝 madmom 的常見陷阱；task prompt 未列入 prereq。PC 端裝得起來是因為它本來就有 VS / VS Code 系列工具鏈；NUC 是純 runtime 機，沒開發工具。**建議 task #2 prompt 加一行「NUC 若無 MSVC，先 `vs_BuildTools.exe --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended` 約 2-3 GB」**。
+- 📌 **migration `--only "Lettre"` 撞到 9 個檔**，`--limit 1` 抓到 `0c87e8f000f5.json` 而不是 PC 的 `c2203eefeac9.json`，兩者是同首曲的不同版本（French Favourites vs 別張專輯）。rubato 特徵一致（range ~78 vs PC ~77），驗證有效。
+- 🕒 **Lib 掃 78062 chord JSONs 耗 ~5 分鐘** — migration 的 `Found ... files in ...` 階段是 pure listdir + json.load，不碰 madmom。真正 madmom beat tracking 只占 29s（單曲）。Batch 要估 78062 × ~30s ÷ workers ≈ 10–15 小時（有 80% CPU）符合 prompt 預期。
+- ✅ **沒動到**：`data/settings_*.json`、`data/feedback.db`、`data/auth.db`、`data/process_audit.db`、`youtube_library_map`。
+
+**Optional Step 5（批次）狀態**: ⏸️ **尚未執行**。單曲 pass，但 batch 預計 10–15h + 會吃滿 CPU，已回壓力測試 issue 給 PC Claude，待指示再跑。建議先跑子集（`--only "Live"` / `--only "Clayderman"`）確認 rubato 偵測對 stage 錄音有意義後再全量。
+
+**下一步建議**
+
+1. 觀察 1-2 天 beta 使用者使用（8801）的 chord waterfall / editor 是否有異狀（console error、節拍偏掉、stale-acc toast 誤觸發）
+2. 如果 baseline 穩，再跑 `python migrate_add_dynamic_beats.py --workers 2`（NUC 上 ~10-15h）全量升級 ~78k 舊檔
+3. 或更保守：先跑 `--only "Live"` + `--only "Clayderman"` + `--only "Bocelli"`（rubato 最明顯的三類），~200 首，驗證升級後 player 表現是否如預期
+
