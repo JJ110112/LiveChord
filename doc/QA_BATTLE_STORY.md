@@ -752,4 +752,36 @@ NUC 實跑：78062 首、8 workers、~2.2 songs/s（NAS I/O bound）、ETA ~10 �
 
 這天開始時 editor 只是缺幾顆點，結束時整個 chord 編輯流程從 BTC 到 save 都被縫過一遍。破壞才有新生——第二次驗證這件事。
 
+### 📊 Migration 終場數字（NUC 8 workers，跑完 10.46 小時）
+
+```
+Total:               78062
+OK:                  74336  (95.2%)  ← 成功補上 bpm + 拍格吸合
+SKIP_AUDIO_MISSING:   2596  (3.3%)   ← chord JSON 在、音檔已失聯
+SKIP_HAS_BPM:          592           ← 續跑的 fast-forward (SKIP 路徑 0.025s/首)
+SKIP_NO_CHORDS:        496           ← chord 陣列空（BTC 失敗留下的殘檔）
+FAIL_NO_BEATS:          42  (0.054%) ← librosa 抓不到拍 (極端 tempo / 純人聲 / 環境音)
+Elapsed: 37664s
+```
+
+95.2% 的 library 從此「chord JSON 自帶 bpm」——player 讀 `chordData.bpm` 的 Phase C 改動對這批歌全部生效，下次打開任何一首老歌的 player ribbon，dot 數都會是乾乾淨淨的整數。
+
+SKIP_AUDIO_MISSING 的 2596 首是另一個題目的開頭——chord JSON 指向的路徑已經失聯（音檔被改名/移動/刪除）。可以寫個 cleanup script 列出這些 orphan JSON 交叉比對音樂庫、由 user 決定重建路徑或刪除。不急，等下次整理 NAS 時再處理。
+
+### 🧵 這天的 commit 序列（feature/beta-productization）
+
+```
+12f7b85  feat: chord calibration + beat-dot alignment + source-level beat_snap
+2eba27a  fix: auto-split panel hidden behind waterfall canvas (z-index bump)
+492f2dd  fix: auto-split threshold 大於等於 → 大於 + doc z-index tiers (UX §11)
+60d9eaa  feat: 3-state ribbon/waterfall toggle  (first-cut, later revised)
+2eac11a  fix: ribbon state 2 now actually takes full width (grid reflow)
+1d92145  fix: independent ribbon/waterfall collapse toggles (replace broken cycle)
+c964f07  fix: ribbon-wide shares scale preference with overview-mode
+2621f1e  fix: ribbon toggle — no auto-swap, restore goes back to previous split
+e443511  fix: ribbon toggles vertically centered + side-by-side when both visible
+```
+
+9 個 commit、一個 UX 元件（ribbon 分隔線的兩顆 toggle）被**迭代了 5 次**才定型：cycle → bad → independent + auto-swap → auto-swap bad → pure toggles + hide conflicting button → position 30/70 → position side-by-side centered。每一輪使用者都當場試 + 指出問題，代理快速改 → 再試。這是標準的「使用者當 UX designer、代理當雙手」的協作節奏——論文裡叫 tight feedback loop，實務上就是一句「好了，推吧」。
+
 
