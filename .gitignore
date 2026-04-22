@@ -49,6 +49,11 @@ data/backup_history.json
 _sync_acc_to_v.bat
 _sync_acc_v3_to_v.bat
 run_accompaniment_local.bat
+run_chroma_batch.ps1
+
+# Project-local scratch + test zones (survive data/tmp reaper; not for version control)
+/tmp/
+/scripts_test/
 data/human_sections/
 data/human_feedback/
 data/feedback.db
