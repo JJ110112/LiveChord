@@ -529,15 +529,9 @@
     // Toast on every fresh-analysis arrival — even acc-mode users should know
     // a background job started, per loose-coupling rule (see CLAUDE.md
     // "Long-running operations" — start/done notifications mandatory).
+    // Toast replaces the previous bottom-left status banner (the start/done
+    // toast pair already covers the same information, banner was redundant).
     showToast("已開始擷取旋律，背景處理中…完成會通知", 5000);
-
-    // Banner only when the user actually intends to see melody. In the
-    // default `acc` mode the melody data arrives silently into `melodyData`
-    // so if they later toggle to `mel`/`both` it's already populated; a
-    // 1-minute "擷取中" banner over a page where chords+audio play fine is
-    // just confusing noise.
-    const showUi = rhContentMode !== "acc";
-    if (showUi) _showMelodyStatusBanner("旋律擷取中，完成後可從 AI 教學 切換右手顯示");
 
     _melodyPollAbort = new AbortController();
     const signal = _melodyPollAbort.signal;
