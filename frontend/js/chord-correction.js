@@ -985,6 +985,32 @@
 
   function hasBackup() { return !!_originalChords; }
 
+  /* ---------- Bar-aware helpers (used by auto-split) ---------- */
+
+  // Infer beats-per-bar from chordData.downbeats[]. Returns 3 / 4 / null.
+  // madmom's DBN downbeat tracker (beat_snap.py) was trained with
+  // beats_per_bar=[3, 4], so the median inter-downbeat distance in beats
+  // collapses to one of those two.
+  function inferBeatsPerBar(chordData, secPerBeat) {
+    const db = chordData && chordData.downbeats;
+    if (!Array.isArray(db) || db.length < 3 || !(secPerBeat > 0)) return null;
+    const diffs = [];
+    for (let i = 1; i < db.length; i++) diffs.push(db[i] - db[i - 1]);
+    if (!diffs.length) return null;
+    const med = median(diffs);
+    const beats = Math.round(med / secPerBeat);
+    return (beats === 3 || beats === 4) ? beats : null;
+  }
+
+  // Return the next downbeat time strictly greater than t, or null if the
+  // chord JSON has no usable downbeats[] (librosa-fallback songs). Callers
+  // that need a fallback anchor should compute one from secPerBeat+phase.
+  function nextDownbeatAfter(chordData, t) {
+    const db = (chordData && chordData.downbeats) || [];
+    for (const d of db) if (d > t + 1e-3) return d;
+    return null;
+  }
+
   /* ========== Public API ========== */
 
   window.ChordCorrection = {
@@ -1007,6 +1033,9 @@
     clearLastCalibration() { _lastCalibration = null; },
     // Feature 6: Merge adjacent chords
     mergeChord,
+    // Feature 7: Bar-aware helpers (for auto-split)
+    inferBeatsPerBar,
+    nextDownbeatAfter,
     // Shared
     backup,
     revert,

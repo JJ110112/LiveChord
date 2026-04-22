@@ -4405,13 +4405,25 @@
     document.querySelectorAll(".auto-split-panel, .auto-split-backdrop").forEach(el => el.remove());
 
     // Load saved preferences — let the user's last choice stick across songs
+    let mode = "bar";               // "bar" | "barsnap" | "ratio"
+    let tsOverride = "auto";         // "auto" | "3" | "4" | "6"
     let threshold = 8;
     let ratio = "1:1";
     try {
       const s = JSON.parse(localStorage.getItem("livechord_auto_split") || "{}");
+      if (s.mode === "bar" || s.mode === "barsnap" || s.mode === "ratio") mode = s.mode;
+      if (s.tsOverride) tsOverride = String(s.tsOverride);
       if (s.threshold) threshold = s.threshold;
       if (s.ratio) ratio = s.ratio;
     } catch {}
+
+    const CC = window.ChordCorrection;
+    const inferred = CC.inferBeatsPerBar(chordData, currentSecPerBeat);
+    // Drop "(預設)" when we're already inside "自動 (…)" — nested parens read awkwardly.
+    const inferredLabel = inferred ? `${inferred}` : "4";
+    const inferredHint = inferred
+      ? `偵測到：每小節 ${inferred} 拍。`
+      : `無法從 downbeats 自動偵測，預設每小節 4 拍。`;
 
     // z-index must exceed .chord-display-area (z:500) or the panel renders
     // behind the waterfall canvas and looks like nothing happened.
@@ -4428,27 +4440,105 @@
       box-shadow:0 8px 24px rgba(0,0,0,0.5); color:var(--text);
     `;
     panel.innerHTML = `
-      <div style="font-size:15px; font-weight:600; margin-bottom:14px;">✂ 自動切分長和弦</div>
-      <div style="margin-bottom:14px;">
-        <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">拍數門檻 (大於此值才切分)</div>
-        <div style="display:flex; gap:6px; align-items:center;">
-          <button class="as-dec" style="padding:4px 12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer;">−</button>
-          <input class="as-thresh" type="number" min="2" max="32" value="${threshold}" style="width:64px; padding:4px 6px; text-align:center; background:var(--bg); border:1px solid var(--border); border-radius:4px; color:var(--text); font-size:14px;">
-          <button class="as-inc" style="padding:4px 12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer;">+</button>
-          <span style="color:var(--text-dim); font-size:12px;">拍</span>
+      <div style="font-size:15px; font-weight:600; margin-bottom:12px;">✂ 自動切分長和弦</div>
+      <div style="display:flex; gap:6px; margin-bottom:14px;">
+        <button class="as-mode as-mode-bar" data-mode="bar"
+          style="flex:1; padding:7px 10px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer; font-size:12px;">
+          依小節切分
+        </button>
+        <button class="as-mode as-mode-barsnap" data-mode="barsnap"
+          style="flex:1; padding:7px 10px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer; font-size:12px;">
+          對齊小節線
+        </button>
+        <button class="as-mode as-mode-ratio" data-mode="ratio"
+          style="flex:1; padding:7px 10px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer; font-size:12px;">
+          依比例切分
+        </button>
+      </div>
+
+      <div class="as-bar-section" style="margin-bottom:14px;">
+        <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">拍號（每小節幾拍）</div>
+        <div class="as-ts-row" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+        <div class="as-bar-hint" style="font-size:11px; color:var(--text-dim); margin-top:6px;">
+          ${inferredHint}超過一小節的和弦會沿小節線切，起點未對齊時先補齊當前小節。
+        </div>
+        <div class="as-snap-hint" style="display:none; font-size:11px; color:#ff9800; margin-top:8px; padding:8px 10px; background:rgba(255,152,0,0.08); border:1px solid rgba(255,152,0,0.3); border-radius:4px; line-height:1.5;">
+          ⚠ 會把相鄰和弦之間的交界線移到最近的小節線 (±半小節容差)，可能改變某個時間點的「目前和弦」。若 BTC 的切點是刻意放在反拍/切分音上，套用後會變成方正節奏。可用「還原」退回。
         </div>
       </div>
-      <div style="margin-bottom:14px;">
-        <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">切分比例 (依和弦拍數等比例縮放)</div>
-        <div class="as-ratios" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
-        <div style="font-size:11px; color:var(--text-dim); margin-top:6px;">例: 8 拍 + 1:3 → 2+6；8 拍 + 1:1:1 → 3+2+3</div>
+
+      <div class="as-ratio-section" style="margin-bottom:14px;">
+        <div style="margin-bottom:10px;">
+          <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">拍數門檻 (大於此值才切分)</div>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button class="as-dec" style="padding:4px 12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer;">−</button>
+            <input class="as-thresh" type="number" min="2" max="32" value="${threshold}" style="width:64px; padding:4px 6px; text-align:center; background:var(--bg); border:1px solid var(--border); border-radius:4px; color:var(--text); font-size:14px;">
+            <button class="as-inc" style="padding:4px 12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer;">+</button>
+            <span style="color:var(--text-dim); font-size:12px;">拍</span>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">切分比例 (依和弦拍數等比例縮放)</div>
+          <div class="as-ratios" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+          <div style="font-size:11px; color:var(--text-dim); margin-top:6px;">例: 8 拍 + 1:3 → 2+6；8 拍 + 1:1:1 → 3+2+3</div>
+        </div>
       </div>
+
       <div style="display:flex; gap:8px; justify-content:flex-end;">
         <button class="as-cancel" style="padding:7px 18px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer;">取消</button>
         <button class="as-apply" style="padding:7px 18px; background:#2196F3; border:1px solid #2196F3; color:white; border-radius:4px; cursor:pointer; font-weight:600;">套用</button>
       </div>
     `;
 
+    // --- Mode toggle ---
+    const barSection = panel.querySelector(".as-bar-section");
+    const ratioSection = panel.querySelector(".as-ratio-section");
+    const barHint = panel.querySelector(".as-bar-hint");
+    const snapHint = panel.querySelector(".as-snap-hint");
+    const modeBtns = panel.querySelectorAll(".as-mode");
+    function syncModeUI() {
+      modeBtns.forEach(b => {
+        const active = b.dataset.mode === mode;
+        b.style.background = active ? "rgba(33,150,243,0.35)" : "var(--bg)";
+        b.style.borderColor = active ? "#2196F3" : "var(--border)";
+        b.style.fontWeight = active ? "600" : "400";
+      });
+      // bar + barsnap share the meter section (TS chips); ratio hides it.
+      barSection.style.display = (mode === "bar" || mode === "barsnap") ? "" : "none";
+      ratioSection.style.display = mode === "ratio" ? "" : "none";
+      barHint.style.display = mode === "bar" ? "" : "none";
+      snapHint.style.display = mode === "barsnap" ? "" : "none";
+    }
+    modeBtns.forEach(b => b.addEventListener("click", () => { mode = b.dataset.mode; syncModeUI(); }));
+    syncModeUI();
+
+    // --- Time-signature override chips ---
+    const TS_OPTS = [
+      { v: "auto", label: `自動 (${inferredLabel})` },
+      { v: "3",    label: "3/4" },
+      { v: "4",    label: "4/4" },
+      { v: "6",    label: "6/8 → 6" },
+    ];
+    const tsRow = panel.querySelector(".as-ts-row");
+    TS_OPTS.forEach(o => {
+      const btn = document.createElement("button");
+      btn.textContent = o.label;
+      btn.dataset.ts = o.v;
+      btn.style.cssText = "padding:6px 12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer; font-size:13px;";
+      btn.addEventListener("click", () => {
+        tsOverride = o.v;
+        tsRow.querySelectorAll("button").forEach(b => {
+          b.style.background = "var(--bg)"; b.style.borderColor = "var(--border)";
+        });
+        btn.style.background = "rgba(33,150,243,0.35)"; btn.style.borderColor = "#2196F3";
+      });
+      tsRow.appendChild(btn);
+      if (o.v === tsOverride) {
+        btn.style.background = "rgba(33,150,243,0.35)"; btn.style.borderColor = "#2196F3";
+      }
+    });
+
+    // --- Ratio chips (legacy mode) ---
     const RATIOS = ["1:1", "1:2", "2:1", "1:3", "3:1", "2:3", "3:2", "1:1:1", "1:2:1"];
     const ratiosDiv = panel.querySelector(".as-ratios");
     RATIOS.forEach(r => {
@@ -4489,13 +4579,12 @@
 
     panel.querySelector(".as-apply").addEventListener("click", () => {
       threshold = Math.max(2, Math.min(32, parseInt(panel.querySelector(".as-thresh").value) || 8));
-      try { localStorage.setItem("livechord_auto_split", JSON.stringify({ threshold, ratio })); } catch {}
+      try {
+        localStorage.setItem("livechord_auto_split",
+          JSON.stringify({ mode, tsOverride, threshold, ratio }));
+      } catch {}
 
-      const parts = ratio.split(":").map(Number);
-      const partSum = parts.reduce((a, b) => a + b, 0);
-      const CC = window.ChordCorrection;
       CC.backup(chordData);
-      let count = 0;
 
       // COMMIT the currently-displayed BPM into chordData.bpm before
       // splitting. Two reasons:
@@ -4506,8 +4595,6 @@
       //     halves), giving user a shocking jump from "98" → "195".
       //  2. Clear bpm_mult_* so the committed value doesn't get re-
       //     multiplied on top, producing yet another wrong reading.
-      // After this, Phase C (player.js line ~1266) reads chordData.bpm
-      // directly and the display stays at the user's chosen value.
       const committedBpm = Math.max(30, Math.min(300,
         Math.round(60 / currentSecPerBeat)));
       if (committedBpm > 0) {
@@ -4518,36 +4605,174 @@
         } catch {}
       }
 
-      // Reverse iteration so inserted chords (from splits) don't disturb
-      // our walk. Each split inserts at idx+1, left-side indices unaffected.
+      let count = 0;
+      let alignFills = 0;
+      let snapCount = 0;
+
+      // --- Shared: nearest-bar-line resolver for bar + barsnap modes ---
+      // Uses real downbeats[] when present; falls back to a synthetic grid
+      // anchored on the first detected downbeat/beat, else the first chord.
+      const resolvedBeatsPerBar =
+        tsOverride !== "auto" ? parseInt(tsOverride, 10) : (inferred || 4);
+      const phase = (chordData.downbeats && chordData.downbeats[0])
+        || (Array.isArray(chordData.beats) && chordData.beats[0])
+        || (chordData.chords && chordData.chords[0] && chordData.chords[0].time)
+        || 0;
+      const barDur = resolvedBeatsPerBar * currentSecPerBeat;
+      const nearestBarLine = (t) => {
+        // Prefer real downbeats (madmom-detected)
+        const dbs = chordData.downbeats || [];
+        if (dbs.length >= 2) {
+          // Binary search would be faster, but chord counts are small.
+          let best = dbs[0], bestD = Math.abs(t - dbs[0]);
+          for (let j = 1; j < dbs.length; j++) {
+            const d = Math.abs(t - dbs[j]);
+            if (d < bestD) { best = dbs[j]; bestD = d; }
+          }
+          // Extrapolate beyond last downbeat if t is way past it
+          const last = dbs[dbs.length - 1];
+          if (t > last) {
+            const k = Math.round((t - last) / barDur);
+            const extrapolated = last + k * barDur;
+            if (Math.abs(t - extrapolated) < bestD) return extrapolated;
+          }
+          return best;
+        }
+        // Fallback: synthetic grid
+        const k = Math.round((t - phase) / barDur);
+        return phase + k * barDur;
+      };
+
+      if (mode === "barsnap") {
+        // --- Boundary relocation: snap inner boundaries to nearest bar line ---
+        // Tolerance = half a bar; outside that, leave alone (probably intentional
+        // off-grid placement). Forward pass — first chord's start and last chord's
+        // end are preserved (song endpoints don't move).
+        const tol = barDur / 2;
+        const chords = chordData.chords;
+        for (let i = 0; i < chords.length - 1; i++) {
+          const t = chords[i].end;
+          if (t == null) continue;
+          const bl = nearestBarLine(t);
+          const dist = Math.abs(bl - t);
+          if (dist > tol || dist < 1e-3) continue;
+          // Don't collapse a chord to zero or near-zero, and don't overlap previous end.
+          const minGap = currentSecPerBeat * 0.5;
+          if (bl - chords[i].time < minGap) continue;
+          if (i + 1 < chords.length && chords[i + 1].end != null && chords[i + 1].end - bl < minGap) continue;
+          chords[i].end = Math.round(bl * 100) / 100;
+          chords[i + 1].time = chords[i].end;
+          snapCount++;
+        }
+        // After snap, fall through into the bar-split loop to slice any chord
+        // still longer than one bar (e.g. a 2-bar chord snapped cleanly remains
+        // 8 beats and the user still wants per-bar cards).
+        // (No 'return' here — continue into the bar-mode loop below.)
+      }
+
+      if (mode === "bar" || mode === "barsnap") {
+        // --- Bar-aligned split (runs for both bar and barsnap; barsnap already
+        // relocated boundaries above, this pass slices any chord still >1 bar) ---
+        const beatsPerBar = resolvedBeatsPerBar;
+
+        const nextBarAnchor = (t) => {
+          const db = CC.nextDownbeatAfter(chordData, t);
+          if (db != null) return db;
+          // Fallback: grid derived from shared phase + beatsPerBar.
+          const k = Math.ceil((t - phase - 1e-6) / barDur);
+          return phase + k * barDur;
+        };
+
+        // Reverse iteration so inserted chords (from splits) don't disturb
+        // our walk. Each split inserts at idx+1, left-side indices unaffected.
+        for (let i = chordData.chords.length - 1; i >= 0; i--) {
+          const c = chordData.chords[i];
+          const dur = c.end
+            ? c.end - c.time
+            : (i < chordData.chords.length - 1 ? chordData.chords[i + 1].time - c.time : 2.0);
+          const beats = Math.round(dur / currentSecPerBeat);
+          if (beats <= beatsPerBar) continue;
+
+          // First cut: fill the remainder of the current bar if not aligned.
+          const anchor = nextBarAnchor(c.time);
+          let firstSplitBeats;
+          if (anchor > c.time + 1e-3 && anchor < c.time + dur - 1e-3) {
+            firstSplitBeats = Math.round((anchor - c.time) / currentSecPerBeat);
+            // Guard against rounding that would produce a whole-bar or
+            // zero-beat first slice — fall back to a clean bar-sized cut.
+            if (firstSplitBeats < 1 || firstSplitBeats >= beats) {
+              firstSplitBeats = beatsPerBar;
+            }
+          } else {
+            firstSplitBeats = beatsPerBar;
+          }
+
+          let cursor = i;
+          let remaining = beats;
+          let didSplit = false;
+
+          if (firstSplitBeats < beats && firstSplitBeats !== beatsPerBar) {
+            CC.splitChord(chordData, cursor, firstSplitBeats, remaining - firstSplitBeats, currentSecPerBeat);
+            remaining -= firstSplitBeats;
+            cursor++;
+            alignFills++;
+            didSplit = true;
+          }
+
+          while (remaining > beatsPerBar) {
+            CC.splitChord(chordData, cursor, beatsPerBar, remaining - beatsPerBar, currentSecPerBeat);
+            remaining -= beatsPerBar;
+            cursor++;
+            didSplit = true;
+          }
+
+          if (didSplit) count++;
+        }
+
+        close();
+        if (mode === "barsnap") {
+          if (snapCount > 0 || count > 0) {
+            _corrRebuild();
+            const parts = [];
+            if (snapCount > 0) parts.push(`對齊 ${snapCount} 個邊界`);
+            if (count > 0) parts.push(`切分 ${count} 個長和弦`);
+            showToast(`已${parts.join("、")} (每小節 ${beatsPerBar} 拍)`, 2500);
+          } else {
+            showToast(`沒有需要對齊或切分的和弦 (${beatsPerBar} 拍/小節)`, 2000);
+          }
+        } else {
+          if (count > 0) {
+            _corrRebuild();
+            const tail = alignFills > 0 ? `，含補齊 ${alignFills} 個` : "";
+            showToast(`已切分 ${count} 個和弦 (每小節 ${beatsPerBar} 拍${tail})`, 2500);
+          } else {
+            showToast(`沒有超過一小節的和弦 (${beatsPerBar} 拍/小節)`, 2000);
+          }
+        }
+        return;
+      }
+
+      // --- Legacy ratio split ---
+      const parts = ratio.split(":").map(Number);
+      const partSum = parts.reduce((a, b) => a + b, 0);
+
       for (let i = chordData.chords.length - 1; i >= 0; i--) {
         const c = chordData.chords[i];
         const dur = c.end
           ? c.end - c.time
           : (i < chordData.chords.length - 1 ? chordData.chords[i + 1].time - c.time : 2.0);
         const beats = Math.round(dur / currentSecPerBeat);
-        // Strict > threshold — 8-beat chord with threshold=8 stays intact.
-        // Semantic: "keep chord at exactly threshold beats; only split when
-        // it's visibly longer than the user's unit-of-interest."
         if (beats <= threshold) continue;
 
-        // Proportional split — each part scales to the chord's own beats.
-        // Guarantee each part >= 1 beat; rounding residue absorbed by the
-        // middle part (for N-way) or the larger part (for 2-way).
         const raw = parts.map(p => Math.max(1, Math.round(beats * p / partSum)));
-        let allocated = raw.reduce((a, b) => a + b, 0);
+        const allocated = raw.reduce((a, b) => a + b, 0);
         const diff = beats - allocated;
         if (diff !== 0) {
-          // Give the residual to the largest part so the ratio stays closest
           const maxIdx = raw.indexOf(Math.max(...raw));
           raw[maxIdx] += diff;
         }
         if (raw.some(v => v < 1) || raw.reduce((a, b) => a + b, 0) !== beats) continue;
 
-        // Apply successive 2-way splits from the right — splitChord inserts
-        // new chord at idx+1 with the original chord's name, so repeated
-        // splits at idx produce [part0 | remainder], then split remainder at
-        // idx+1 into [part1 | part2], etc.
         let cursor = i;
         let remaining = beats;
         for (let p = 0; p < raw.length - 1; p++) {
@@ -4569,8 +4794,6 @@
 
     document.body.appendChild(backdrop);
     document.body.appendChild(panel);
-    panel.querySelector(".as-thresh").focus();
-    panel.querySelector(".as-thresh").select();
   }
 
   const btnSaveCorrected = $("#btnSaveCorrected");
