@@ -504,17 +504,21 @@ STYLE_HUMANIZE = {
 
 def humanize(events: List[Dict], bpm: float = 120,
              time_sig: str = "4/4", amount: float = 1.0,
-             seed: int = None, style: str = None) -> List[Dict]:
+             seed: int = None, style: str = None,
+             tempo_curve=None) -> List[Dict]:
     """
     為 MIDI 事件加入人性化的 timing 與 velocity 微調。
 
     Args:
         events:   [{time, pitch, duration, velocity, ...}, ...]
-        bpm:      速度
+        bpm:      速度 (used as fallback when tempo_curve missing)
         time_sig: 拍號
         amount:   強度 0.0 (無) ~ 1.0 (正常) ~ 2.0 (誇張)
         seed:     隨機種子 (可重現)
         style:    伴奏風格 (v2)，命中 STYLE_HUMANIZE 時覆蓋既有 timing 表
+        tempo_curve: optional [{"t": float, "bpm": float}, ...] for rubato
+            songs — beat_dur is recomputed per event from local BPM so the
+            beat-position-modulo math doesn't drift across tempo changes.
 
     Returns:
         events (原地修改)
@@ -523,7 +527,7 @@ def humanize(events: List[Dict], bpm: float = 120,
         return events
 
     rng = random.Random(seed)
-    beat_dur = 60.0 / bpm
+    fallback_beat_dur = 60.0 / bpm
 
     # v2: style override (fallback to legacy HUMANIZE_TIMING)
     sigma = 0.005
@@ -534,8 +538,19 @@ def humanize(events: List[Dict], bpm: float = 120,
         timing_offsets = HUMANIZE_TIMING.get(time_sig, HUMANIZE_TIMING["4/4"])
     n_beats = len(timing_offsets)
 
+    if tempo_curve:
+        from .beat_helpers import beat_duration_at as _bd_at
+    else:
+        _bd_at = None
+
     for evt in events:
         t = evt.get("time", 0)
+
+        # Per-event local beat duration when tempo_curve provided
+        if _bd_at is not None:
+            beat_dur = _bd_at(tempo_curve, t, fallback_bpm=bpm)
+        else:
+            beat_dur = fallback_beat_dur
 
         # 判斷此音落在哪一拍
         beat_in_bar = (t / beat_dur) % n_beats

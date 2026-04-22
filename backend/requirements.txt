@@ -9,3 +9,14 @@ mir_eval>=0.7
 demucs>=4.0
 basic-pitch>=0.3
 torchcodec>=0.1.0
+
+# Optional: madmom (dynamic beat tracking for live/rubato recordings).
+# Released wheel (0.16.1, 2018) breaks on Python 3.10+ because it imports
+# collections.MutableSequence; the unreleased master branch is patched.
+# Cython must exist before the build, and madmom's pyproject doesn't
+# declare it as a build req — so PEP 517 isolation fails. Install with:
+#   pip install Cython numpy
+#   pip install --no-build-isolation git+https://github.com/CPJKU/madmom.git
+# When absent, beat_snap falls back to librosa.beat.beat_track (static BPM
+# only — no rubato tracking). Safe to skip on machines that only serve
+# already-analyzed songs.

@@ -913,22 +913,32 @@ def _auto_chord_detect_loop(settings: dict, batch: list, unanalyzed: list, lock,
         try:
             from chord_detect import detect_chords_and_key_isolated
             chords, key = detect_chords_and_key_isolated(full)
-            # Post-process: run librosa beat tracking and snap chord boundaries
-            # to the beat grid + write bpm. Without this the front-end sees
-            # fractional beat counts ("3.3 beats") and the ribbon dot count
-            # disagrees between views. Failure here is non-fatal — save raw
+            # Post-process: dynamic beat tracking + chord-boundary snap +
+            # tempo_curve persistence. madmom (when installed) follows
+            # rubato/live tempo drift; falls back to librosa static BPM
+            # otherwise. Without this the front-end sees fractional beat
+            # counts ("3.3 beats"). Failure here is non-fatal — save raw
             # BTC output and move on.
-            bpm_val = None
-            n_snap = 0
+            beat_info = {}
             try:
-                from beat_snap import analyze_and_snap
-                bpm_val, n_snap = analyze_and_snap(full, chords)
+                from beat_snap import analyze_and_snap_dynamic
+                beat_info = analyze_and_snap_dynamic(full, chords)
             except Exception as _snap_err:
                 add_log("WARN", f"beat_snap 失敗: {name} — {type(_snap_err).__name__}")
             sheet = {"path": track_path, "key": key, "capo": 0,
                      "source": "btc", "chords": chords}
+            bpm_val = beat_info.get("bpm")
+            n_snap = beat_info.get("n_snapped", 0)
             if bpm_val:
                 sheet["bpm"] = round(bpm_val, 1)
+            # Dynamic beat fields — empty arrays are still useful as
+            # "we tried, no beats" signal vs "field absent (legacy)".
+            if beat_info.get("beats_source"):
+                sheet["beats"] = beat_info.get("beats", [])
+                sheet["downbeats"] = beat_info.get("downbeats", [])
+                sheet["tempo_curve"] = beat_info.get("tempo_curve", [])
+                sheet["beats_source"] = beat_info["beats_source"]
+                sheet["beat_version"] = beat_info.get("beat_version", 0)
             chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
             cache_update_entry(track_path)
             _worker_state["detect_count"] += 1

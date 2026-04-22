@@ -784,4 +784,135 @@ e443511  fix: ribbon toggles vertically centered + side-by-side when both visibl
 
 9 個 commit、一個 UX 元件（ribbon 分隔線的兩顆 toggle）被**迭代了 5 次**才定型：cycle → bad → independent + auto-swap → auto-swap bad → pure toggles + hide conflicting button → position 30/70 → position side-by-side centered。每一輪使用者都當場試 + 指出問題，代理快速改 → 再試。這是標準的「使用者當 UX designer、代理當雙手」的協作節奏——論文裡叫 tight feedback loop，實務上就是一句「好了，推吧」。
 
+---
+
+## 🎻 番外篇 VII：Live 版 Rubato 不再滑拍——從一句使用者觀察到 4500 首歌都能跟著呼吸（2026-04-22）
+
+番外篇 VI 終於修好了 chord array 撕裂的最後一道地雷。理論上「這天的 chord 都對了」。但隔天使用者來了一句：
+
+> 舊的曲目，演唱會版本的 BPM 不是絕對均一的，不同樂段會有不同的偏差，較佳的偵測節拍的方式是…
+
+接下來是一篇精煉的技術 brief，列了四個方案（動態節拍、CNN/RNN onset、Audio-to-MIDI 觸發、貝葉斯追蹤）和三個實作建議（放棄全局 BPM、PLL 鎖相環、多特徵融合）。意思很清楚：**現在的靜態 BPM 對 Live 版和老錄音「中段對得上、副歌漂掉、Bridge 又對回來」的滑拍體驗，是時候動架構而不是調參數了**。
+
+代理花了一個下午把這套完整實作起來。
+
+### 🔍 起手式：Spike 10 首歌證明「值得做」
+
+熟悉的代理本能說「先做 spike」。從 Y:\ 挑 **10 首**覆蓋 4 個情境：
+- 2 首現代量化（ABBA Money、Bee Gees Stayin' Alive）— baseline，新引擎不能讓這類退步
+- 3 首演唱會 Live（Bocelli Besame Mucho 2006、Bee Gees Massachusetts 1989、Eagles Desperado 1976）
+- 3 首老抒情（All by Myself、Air Supply Here I Am、Bee Gees How Deep Is Your Love）
+- 2 首 Solo Piano（Mariage d'Amour、Lettre à Ma Mère）
+
+裝 madmom 是第一個雷。`pip install madmom` 在 Python 3.11 直接掛掉——`Cython` 沒在 pyproject.toml 宣告，build isolation 找不到。再來 wheel 裝起來但 import 又掛掉——`from collections import MutableSequence` 在 3.10 就被搬到 `collections.abc`。最後鎖在 git master（0.17.dev0）+ `--no-build-isolation`，第一個雷拆完。
+
+10 首跑完約 6 分鐘（madmom 每首 ~30 秒）。結果一目了然：
+
+| 類別 | 歌 | librosa BPM | madmom 中位數 | tempo range | 解讀 |
+|---|---|---|---|---|---|
+| modern | Stayin' Alive | 103.36 | 103.45 | **1.19** | 兩引擎完全一致 ✓ baseline 不退步 |
+| modern | ABBA Money | 123.05 | 120.81 | 18.09 | 接近 |
+| live | Bocelli Live | 95.7 | 94.74 | **38.21** | 顯著 rubato——librosa 完全錯過 |
+| live | Massachusetts Live | 103.36 | 101.69 | 17.77 | 偵測到漂移 |
+| live | Desperado Live | 117.45 | **58.63** | 19.07 | half-time 分歧（madmom 音樂上正確） |
+| old | Air Supply | 143.55 | 68.97 | 10.36 | half-time 分歧 |
+| solo | Mariage d'Amour | 161.5 | 163.64 | 44.51 | Clayderman 自由速度 |
+| solo | **Lettre à Ma Mère** | 136.0 | 131.39 | **77.24** | **極端 rubato（63 ↔ 140 BPM）** |
+
+兩條結論：
+1. **量化曲不退步**——Stayin' Alive 的 madmom range 1.19 BPM 等於 0，drum machine 兩個引擎完全同意
+2. **Live / Solo Piano 是大勝**——Bocelli range 38、Lettre range 77，librosa 給單一數字完全錯過了 rubato 結構
+
+視覺證據加碼：Bocelli 的 PNG 底部 BPM 曲線從 70 緩升到 110、結尾加速到極限——librosa 那條水平虛線 95.7 直接穿過中間錯過所有結構。Decision gate **PASS**。
+
+### 🏗️ 四個 Phase 一氣呵成
+
+代理開了 plan mode 寫了完整方案，使用者三題答完（madmom、先 Y:\ 小批次、後端+前端 PLL），全部 ExitPlanMode 一次過。然後是流水線式的實作：
+
+#### Phase 1：後端動態引擎
+
+[backend/beat_snap.py](../backend/beat_snap.py) 加 `analyze_and_snap_dynamic`，做的事：
+1. madmom RNN+DBN 抓 beats[]
+2. RNNDownBeatProcessor + DBN（3/4 + 4/4 雙假設）抓 downbeats
+3. 滑動窗口 `60 × 3 / (b[i+3] - b[i])` 算 tempo_curve
+4. 0.25s tolerance 把 chord 邊界 snap 到動態 beat grid（不是等距）
+
+chord JSON 多 5 個欄位（`beats / downbeats / tempo_curve / beats_source / beat_version`），向下相容（沒 madmom 就 `beats_source: "librosa-fallback"`）。[backend/auto_worker.py](../backend/auto_worker.py) 和 [backend/process_queue.py](../backend/process_queue.py)（beta 上傳路徑）都換成 dynamic 版本。
+
+#### Phase 2：AI 伴奏連動——這是隱藏的最大成本
+
+使用者答 spike 結果時提了一句**「節拍改變，同時會影響 AI 伴奏」**。代理 audit 整個 `backend/ai/` 後發現只有兩個地方靠 scalar bpm 排事件：
+- [accompaniment_generator.py `_build_rh_1plus3`](../backend/ai/accompaniment_generator.py)：1+3 voicing 用 `60.0 / bpm` 算每拍時長
+- [dynamics_engine.py `humanize`](../backend/ai/dynamics_engine.py)：時間微抖動的 beat-mod 也要 beat_dur
+
+新增 [backend/ai/beat_helpers.py](../backend/ai/beat_helpers.py) 共用的 `local_bpm_at(tempo_curve, t)`，兩處都 thread tempo_curve 過去。`generate_accompaniment` 加 `tempo_curve=` 參數，[batch_accompaniment_worker.py](../backend/batch_accompaniment_worker.py) 和 [ai_api.py](../backend/ai_api.py) 兩條 caller 都改讀並透傳。
+
+伴奏 JSON 加 `source_beat_version` 欄位——配對 chord JSON 的 `beat_version`，前端可以偵測「這 acc 是用舊 beats 算的」。
+
+回歸測試：`tempo_curve` 缺 / `None` / `[]` 三情境產生**完全相同**的 acc 事件。舊歌零行為改變，0 風險。
+
+#### Phase 3：前端 PLL（其實 PLL 用不太到）
+
+新檔 [frontend/js/beat-sync.js](../frontend/js/beat-sync.js) 暴露 `window.BeatSync.{localBpmAt, beatDurationAt, nearestBeatIndex, tempoRange, createPLL}`。PLL 完整寫好，rate-cap 20ms/sec、>200ms 視為 seek 直接 re-lock。
+
+但實際 audit player.js 後發現**waterfall 已是純時間驅動**（chord/acc events 帶絕對時間，scroll 不依賴 BPM），PLL 不需介入 scroll velocity。原計畫高估了 PLL 的角色。BPM 真正影響的是 beat dot 燈光——所以代理只改了 [`_updateBeatDots`](../frontend/js/player.js)，加 `_secPerBeatAt(t)` 用 tempo_curve 查局部 BPM。
+
+加 stale-acc toast：載入 acc 時若 `chordData.beat_version > acc.source_beat_version`，跳「節拍已升級，伴奏使用舊版本（背景重生中）」。[chord-correction.js](../frontend/js/chord-correction.js) 校正提交後 bump beat_version，讓 toast 機制感知到「使用者剛剛動過 chord」。
+
+#### Phase 4：Migration + 端到端 QA
+
+寫 [backend/migrate_add_dynamic_beats.py](../backend/migrate_add_dynamic_beats.py)（仿 `migrate_add_beat_info.py` 模板，加 `--only` filter / `--regen-acc` 旗標 / 智慧 beat_version bump）。
+
+挑 **Lettre à Ma Mère**（極端 rubato 樣本）做單曲 migration：
+
+```
+[1/1] c2203eefeac9.json: OK src=madmom bpm=131.39 snap=29 range=77.2  Elapsed: 26.3s
+```
+
+開 PC localhost 8802 用 Playwright MCP 端到端驗證：
+
+| 驗證點 | 結果 |
+|---|---|
+| `BeatSync` 全域載入 | ✅ 5 個 method 全在 |
+| chord JSON 12 欄位完整 | ✅ `beats / downbeats / tempo_curve / beats_source / beat_version` 全到位 |
+| BPM 顯示 131 | ✅ = migrated 131.4 四捨五入 |
+| 33 chord cards / 303 beat dots | ✅ 渲染正常 |
+| **局部 BPM 動態** | ✅ t=0 → 0.91s/beat（66 BPM 慢板），t=90 → 0.44s/beat（135 BPM 快段）— **2 倍速差** |
+| `BeatSync.tempoRange` rubato 偵測 | ✅ `range: 77.24, isRubato: true` |
+| **Stale-acc toast 觸發** | ✅ DOM 內已含「節拍已升級，伴奏使用舊版本（背景重生中）」 |
+| Console clean | ✅ 0 個 Phase 1-3 引入錯誤 |
+
+截圖：[qa-phase1to3-lettre-rubato-loaded.png](../qa-phase1to3-lettre-rubato-loaded.png) — UI 完整、modal「選擇正確的音源」正常彈出（hash mode 缺音檔的預期行為）。
+
+### 🎓 這次的五條
+
+1. **使用者的「技術 brief」要當作 spec 一字一句讀**。使用者列了 4 個方案 + 3 個實作建議，代理的工作是從中挑出**最值得實作的組合**——不是全做，也不是亂選。最後選了方案 1（動態節拍 madmom）+ 方案 4（貝葉斯 = madmom 內建 DBN）+ 實作建議 2（PLL）的綜合體，因為它對 LiveChord 既有架構嵌入點最自然。
+
+2. **Spike 永遠值得**。10 首歌、6 分鐘、一支 PNG。Quantized baseline 過了不退步、Live 大勝、半倍速確認 madmom 偏好慢板（音樂上正確、`bpmMult` 已能覆蓋）。沒有 spike 就無法回答 decision gate「值不值得 madmom 這顆 30s/song 的成本」。
+
+3. **隱藏的相依要在計畫階段問出來**。使用者答 spike 結果時的「節拍改變，同時會影響 AI 伴奏」這句話，是整個 Phase 2 audit 的起點。如果代理沒問就直接開幹，會在 Phase 3 才發現「啊伴奏為什麼還是滑」——回頭重做 Phase 2 加 source_beat_version 多花一倍工。
+
+4. **Audit 結果常常比想像得小**。這次 ai 模組 grep `bpm` 出來 6 個 site，audit 完發現只有 2 個是真的會影響 rubato 體驗的（_build_rh_1plus3 + humanize），另外 4 個是裝飾性 / 評估性、容錯不錯，可以留給後續迭代。**「實作什麼」往往不如「不實作什麼」重要**——尤其在 beta active 的時候。
+
+5. **計畫文件不要怕被現實打臉**。原計畫寫 PLL 要鎖 waterfall scroll velocity；實作時讀 player.js 才發現 waterfall 早就是時間驅動的、PLL 用不到。代理改寫 Phase 3 縮小範圍——只接 beat dot 燈光，加 stale toast、bump beat_version。**3 個檔代替原計畫的 6 個檔**，效果一樣、風險小一半。
+
+### 📊 不是 migration 終場——這次只跑 1 首
+
+跟番外篇 VI 的 78062 首大批次不同，這次刻意只跑 Lettre 一首做端到端驗證。原因：beta 8801 上有真實使用者，全量 migration 會引發大量 stale toast，且 acc cache 重生 ~15GB 不該在沒充分 QA 前就觸發。
+
+**部署計畫由使用者三選一決定**：
+- A) 在 PC 8802 QA（**已執行 ✓**）
+- B) Sync 13 個檔到 V:\ + NUC 裝 madmom + 重啟雙實例
+- C) 全量批次重跑（~10-15 hr）
+
+寫完這篇番外篇時是 A 完成、B/C 等使用者下指令。NUC 端的部署 prompt 已 append 到 [doc/shadow_stress_test_prompt.md 任務 #2](shadow_stress_test_prompt.md)。
+
+### 🧵 這天的 commit 序列
+
+（等 push 後補上）
+
+---
+
+> **後記**：這天解的不是 bug，是**架構債**。LiveChord 從 day 1 就用 librosa.beat_track 抓全局 BPM——對 Pop / Studio 量化曲非常夠用，但對使用者收藏的 Live 版 / 老抒情 / Solo Piano（這些是學鋼琴的人最想練的曲目），這個「全局單一 BPM」假設一直是隱性 UX 缺陷。今天用 madmom 動態追蹤 + tempo_curve 持久化把它解開。下一個對應的架構債候選：accompaniment 的 source-stem 預分離（番外篇 VI 提過的 demucs vocal stem 路線），等 Phase 4 跑完看效果再決定。
+
 

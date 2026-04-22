@@ -498,6 +498,11 @@ def get_accompaniment(
     if not chords:
         return {"error": "empty chords", "left_hand": [], "right_hand": []}
 
+    # Phase 2: dynamic-beat fields. Older chord JSONs (pre Phase 1 deploy)
+    # don't have these — generators fall back to scalar bpm.
+    tempo_curve = chord_data.get("tempo_curve") or None
+    beat_version = chord_data.get("beat_version", 0)
+
     # 取得 BPM 與 genre (從 library_cache)
     bpm = 120.0
     genre = ""
@@ -538,10 +543,14 @@ def get_accompaniment(
         chords=chords, melody=melody,
         bpm=bpm, style=style, level=level, genre=genre,
         section_type=section_type, sections=sections,
+        tempo_curve=tempo_curve,
     )
     result["path"] = path
     result["bpm"] = round(bpm, 1)
     result["genre"] = genre
+    # Phase 2: stamp source beat version so player / downstream can detect
+    # stale acc when the chord JSON's beats[] has been regenerated.
+    result["source_beat_version"] = beat_version
 
     # Phase 11: 踏板建議
     try:

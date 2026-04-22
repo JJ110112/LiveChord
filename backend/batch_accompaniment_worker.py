@@ -73,6 +73,10 @@ def process_track(song_hash: str, levels: list, styles: list,
         key = sheet_data.get("key", "C")
         genre = sheet_data.get("genre", "pop")
         bpm = sheet_data.get("bpm", 120)
+        # Phase 2: dynamic-beat fields. Empty/None when chord JSON predates
+        # beat_snap.analyze_and_snap_dynamic — generators fall back to scalar bpm.
+        tempo_curve = sheet_data.get("tempo_curve") or None
+        beat_version = sheet_data.get("beat_version", 0)
 
         # Phase 11: 段落偵測
         sections = _detect_sections_safe(chords, key, song_hash=song_hash)
@@ -93,9 +97,13 @@ def process_track(song_hash: str, levels: list, styles: list,
                     chords=chords, melody=melody,
                     bpm=bpm, style=style, level=level, genre=genre,
                     section_type=dominant_section,
+                    tempo_curve=tempo_curve,
                 )
                 acc["bpm"] = round(bpm, 1)
                 acc["genre"] = genre
+                # Phase 2: stamp source beat version so player can detect
+                # stale acc when the chord JSON's beats[] has been regenerated.
+                acc["source_beat_version"] = beat_version
 
                 # Phase 11: 踏板
                 if add_pedal:

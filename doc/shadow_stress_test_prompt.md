@@ -179,3 +179,164 @@
 {"ts": "2026-04-20T14:14:48Z", "hash": "4f16c01f7edc", "v1_time_s": 123.05, "v1_notes": 268, "status": "ok", "v2_time_s": 10.57, "return_code": 0, "v2_notes": 1377}
 {"ts": "2026-04-20T14:18:26Z", "hash": "7c5d2988fdce", "v1_time_s": 64.52, "v1_notes": 117, "status": "ok", "v2_time_s": 6.44, "return_code": 0, "v2_notes": 857}
 ```
+
+---
+
+## 任務 #2 — Rubato BPM 動態節拍追蹤上線（2026-04-22，由 PC Claude 寫給 NUC Claude）
+
+### 為什麼要這個
+
+使用者指出舊曲目 / 演唱會 Live 版 / Rubato 段落，靜態 BPM 偵測（librosa）會產生「中段對得上、Verse 2 漂掉、Bridge 又對回來」的滑拍現象。要從「全局平均 BPM」改成「即時追蹤」。
+
+### Context — PC 側已完成（feature/beta-productization 分支，已 push）
+
+完整四階段已在 PC localhost 8802 端到端 QA 通過。實作方案：**madmom DBN tracker + tempo_curve 持久化 + 前端局部 BPM beat-dot**。
+
+**修改 / 新增的檔案（13 個）**：
+- 後端新增（2）：[backend/_beat_track_spike.py](../backend/_beat_track_spike.py)（一次性 spike，可不 sync）、[backend/migrate_add_dynamic_beats.py](../backend/migrate_add_dynamic_beats.py)
+- 後端 helper 新增（1）：[backend/ai/beat_helpers.py](../backend/ai/beat_helpers.py)
+- 後端修改（6）：[backend/beat_snap.py](../backend/beat_snap.py)（加 `analyze_and_snap_dynamic`）、[backend/auto_worker.py](../backend/auto_worker.py)（換用 dynamic 路徑）、[backend/process_queue.py](../backend/process_queue.py)（YT/upload 路徑也跑 madmom）、[backend/ai_api.py](../backend/ai_api.py)（伴奏端點傳 tempo_curve）、[backend/batch_accompaniment_worker.py](../backend/batch_accompaniment_worker.py)（同前）、[backend/_repair_chords.py](../backend/_repair_chords.py)（docstring）
+- 後端 AI 修改（2）：[backend/ai/accompaniment_generator.py](../backend/ai/accompaniment_generator.py)（`_build_rh_1plus3` + `generate_accompaniment` 接 tempo_curve）、[backend/ai/dynamics_engine.py](../backend/ai/dynamics_engine.py)（`humanize` 接 tempo_curve）
+- requirements 註解（1）：[backend/requirements.txt](../backend/requirements.txt)（加 madmom 安裝程序註解，**未列入自動 pip install**）
+- 前端新增（1）：[frontend/js/beat-sync.js](../frontend/js/beat-sync.js)
+- 前端修改（3）：[frontend/js/player.js](../frontend/js/player.js)（`_secPerBeatAt` + stale toast）、[frontend/js/chord-correction.js](../frontend/js/chord-correction.js)（校正後 bump beat_version）、[frontend/player.html](../frontend/player.html)（`?v=` bump：beat-sync v1, chord-correction v11, player v204）
+
+**新增的 chord JSON 欄位**（向下相容，舊歌不影響）：
+```json
+{
+  "beats": [0.42, 1.05, ...],            // madmom RNN+DBN 偵測的拍點時間
+  "downbeats": [0.42, 2.94, ...],        // 強拍 / 小節起點
+  "tempo_curve": [{"t": 0, "bpm": 75}, {"t": 30, "bpm": 110}, ...],
+  "beats_source": "madmom",               // | "librosa-fallback"
+  "beat_version": 1                        // 用來標記 acc cache 是否過時
+}
+```
+
+**新增的 acc JSON 欄位**：`source_beat_version`（player 比對它與 chord JSON 的 beat_version 來決定是否顯示「節拍升級了，伴奏使用舊版本」toast）
+
+### PC localhost 8802 QA 結果（2026-04-22）
+
+| 驗證點 | 結果 |
+|---|---|
+| madmom 在 Y:\ 10 樣本 spike | 量化曲 range 1.19 BPM（基準）；Bocelli Live range 38、Lettre Clayderman range 77 — 全部偵測到 rubato |
+| 單曲 migration: Lettre à Ma Mère (`c2203eefeac9.json`) | bpm 131.4, 278 beats / 43 downbeats / 275 tempo_curve pts, range 63.4-140.6 |
+| Player 開啟 hash mode | 33 chord cards / 303 beat dots，BPM 顯示 131，無 console error |
+| 局部 BPM dynamic | t=0 → 0.91s/beat（66 BPM）；t=90 → 0.44s/beat（135 BPM）— 兩倍速 |
+| Stale-acc toast | 自動觸發（chord beat_version=1 vs cached acc source_beat_version=0），DOM 含「節拍已升級，伴奏使用舊版本（背景重生中）」|
+| 回歸測試 | `tempo_curve` 缺/None/[] 三情境產生完全相同 acc 事件 — 舊歌零行為改變 |
+
+詳見 [doc/QA_BATTLE_STORY.md 番外篇 VII](QA_BATTLE_STORY.md)。
+
+### 你的任務 — 部署到 NUC（4 步）
+
+#### Step 1：在 NUC 裝 madmom
+
+NUC 是 Python 3.11，直接 `pip install madmom` 會失敗（madmom 0.16.1 是 2018 年版，`collections.MutableSequence` 在 3.10+ 已搬走）。改裝 git master：
+
+```bash
+# 在 NUC 對應的 Python 環境（生產 venv，不是 V:\venv_ai 那個 ai-only 的）
+pip install Cython numpy
+pip install --no-build-isolation git+https://github.com/CPJKU/madmom.git
+```
+
+驗證：
+```python
+python -c "from madmom.features.beats import RNNBeatProcessor, DBNBeatTrackingProcessor; print('OK')"
+```
+
+⚠️ 如果裝不起來：跳過這步也可以，code path 會 fallback 到 librosa 給 `beats_source: "librosa-fallback"` 的 chord JSON（沒有 rubato 偵測但能跑）。回報是哪一步卡住。
+
+#### Step 2：Sync 13 個檔到 V:\
+
+PC 上的 dev repo 已 push 到 feature/beta-productization。NUC 端 pull 後：
+
+```bash
+# 在 NUC 上 pull dev repo（路徑你自己知道，可能是 C:\Users\hitea\Claude\LiveChord 或別處）
+cd <your-dev-repo>
+git pull
+
+# Sync 後端到 V:\backend\
+cp backend/beat_snap.py                       V:\backend\
+cp backend/auto_worker.py                     V:\backend\
+cp backend/process_queue.py                   V:\backend\
+cp backend/ai_api.py                          V:\backend\
+cp backend/batch_accompaniment_worker.py      V:\backend\
+cp backend/_repair_chords.py                  V:\backend\
+cp backend/migrate_add_dynamic_beats.py       V:\backend\
+cp backend/requirements.txt                   V:\backend\
+cp backend/ai/beat_helpers.py                 V:\backend\ai\
+cp backend/ai/accompaniment_generator.py      V:\backend\ai\
+cp backend/ai/dynamics_engine.py              V:\backend\ai\
+
+# Sync 前端
+cp frontend/js/beat-sync.js          V:\frontend\js\
+cp frontend/js/player.js             V:\frontend\js\
+cp frontend/js/chord-correction.js   V:\frontend\js\
+cp frontend/player.html              V:\frontend\
+
+# 驗證 13 個 diff -q 全部 silent
+diff -q backend/beat_snap.py V:\backend\beat_snap.py
+# ... 其餘 12 個依此類推
+```
+
+#### Step 3：重啟 NUC 雙實例
+
+```bash
+# 跑 restart_dual.bat — 套用 .py 改動到 8800 + 8801
+```
+
+⚠️ Beta 使用者 (8801) 會在重啟瞬間斷線。如果現在是高峰時段 (晚間)，考慮排在低峰再重啟。
+
+#### Step 4：單曲 NUC 端驗證（先別批次跑全曲）
+
+在 NUC 重啟後挑 **1 首** Y:\ 上的歌跑 migration，確認 NUC 環境的 madmom 能跑：
+
+```bash
+# 在 V:\backend
+python migrate_add_dynamic_beats.py --only "Lettre" --limit 1
+```
+
+預期：~30 秒、回 `OK src=madmom bpm=131.4 snap=29 range=77.2`。
+
+如果 madmom 沒裝起來：會回 `OK src=librosa-fallback ...`（沒 rubato 但能跑）。
+
+### Optional Step 5（可延後）：批次重跑
+
+只在 Step 4 成功之後考慮。預估時間 NUC 上 ~10-15 小時。
+
+```bash
+# 全量 (~78062 chord JSONs，依 NUC CPU 估)
+python migrate_add_dynamic_beats.py --workers 2
+
+# 只跑特定樂手 / 子集（推薦先跑 Bocelli + Live 版）
+python migrate_add_dynamic_beats.py --only "Live" --workers 2
+python migrate_add_dynamic_beats.py --only "Clayderman" --workers 2
+```
+
+⚠️ 不要加 `--regen-acc`（會刪 acc cache 強迫重生 → ~15GB 重算）。Player 的 stale toast 已能讓使用者自然感知「acc 即將升級」，背景慢慢重算就好。
+
+### 驗證清單（執行完請回報）
+
+請在「PC Claude 回報區」 append 一個 `### NUC 部署回報 — 任務 #2 — YYYY-MM-DD HH:MM` 區塊，回填：
+
+1. madmom 安裝是否成功（指令 + 錯誤訊息若有）
+2. `diff -q` 13 個檔是否全 silent
+3. `restart_dual.bat` 後 8800 + 8801 是否能正常 health-check
+4. 單曲 Lettre migration 結果（src=madmom or librosa-fallback、bpm、range）
+5. 隨機挑 1 個 beta 使用者（或自己用 qatest）開 player 看舊歌是否仍正常（無 console error 是 baseline）
+6. 任何驚喜 / 卡點
+
+### 注意事項
+
+- **不要動 `data/settings_*.json`** — 這次改動完全在 chord JSON 層，settings 不變
+- **不要直接 sync `backend/_beat_track_spike.py`** — 那是 spike 一次性檔，不該在生產
+- **不要在 8801 跑 batch migration** — `auto_worker` 的 hard gate 在 personal mode；migration script 也只該在閒時跑
+- 如果發現 acc 大量過時 toast 干擾使用者體驗，臨時修法：把 player.js 的 `_accStaleWarned = false` 預設改 true（暫時噤聲）→ 再用 `--regen-acc` 排程慢慢補
+
+### 上下文文件
+
+- [doc/QA_BATTLE_STORY.md 番外篇 VII](QA_BATTLE_STORY.md) — 本次完整 narrative
+- [C:/Users/hitea/.claude/plans/bmp-live-rubato-bpm-real-time-tracking-curious-beacon.md](../../.claude/plans/) — 原始計畫（Plan Mode 寫的）
+- [../tmp/beat_spike/](../tmp/beat_spike/) — 10 樣本 spike PNG + JSON（PC 端的，未 push）
+
+分支: `feature/beta-productization`

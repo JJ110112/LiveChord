@@ -671,6 +671,13 @@
     // Authoritative BPM for dot-grid rendering.
     chordData.bpm = newBpm;
 
+    // Phase 3: bump beat_version so the player's stale-acc detector fires
+    // on the next reload (chord times moved → existing accompaniment is
+    // off the new grid). Skip if chordData has no beat fields yet (legacy).
+    if (typeof chordData.beat_version === "number") {
+      chordData.beat_version = (chordData.beat_version | 0) + 1;
+    }
+
     // Stash for the right-click "延伸至此和弦" entry.
     _lastCalibration = {
       endIdx: lastIdx,
@@ -724,6 +731,10 @@
       transform, waterfallRangeStart, waterfallRangeEnd
     );
     if (typeof bpm === "number") chordData.bpm = bpm;
+    // Phase 3: bump beat_version so player can detect stale acc cache.
+    if (typeof chordData.beat_version === "number") {
+      chordData.beat_version = (chordData.beat_version | 0) + 1;
+    }
     // Roll the stash forward so a second right-click can continue from the
     // new boundary; but if the user hit song-end, clear it.
     if (targetIdx >= chords.length - 1) {

@@ -688,12 +688,17 @@ def _build_rh_1plus3(chord_name: str, start_time: float, duration: float,
                      base_velocity: int = 85,
                      once: bool = False,
                      density_mult: float = 1.0,
-                     style: str = "1+3") -> Tuple[List[Dict], List[int]]:
+                     style: str = "1+3",
+                     tempo_curve: Optional[List[Dict]] = None) -> Tuple[List[Dict], List[int]]:
     """
     1+3 配置: 右手每拍彈三個和弦音 block chord (C4 附近)。
 
     Voice Leading: 選擇離前一組 voicing 最近的轉位。
     參考: NiceChord 好和弦 https://nicechord.com/post/1-plus-3-voicing/
+
+    tempo_curve (optional): per-time BPM lookup; when provided, beat_dur
+        comes from local_bpm_at(start_time) so rubato songs lay down 1+3
+        at the actual local tempo instead of the song-wide median.
     """
     chord_notes = get_chord_notes(chord_name)
     if not chord_notes:
@@ -725,7 +730,13 @@ def _build_rh_1plus3(chord_name: str, start_time: float, duration: float,
         pitches = expand_voicing(pitches, 3, max_span=12)[:3]
 
     # 計算每拍的時間 (once=True: 只彈一次)
-    beat_dur = 60.0 / bpm
+    # tempo_curve takes priority — for rubato songs, the local BPM at this
+    # chord may differ significantly from the song-wide median.
+    if tempo_curve:
+        from .beat_helpers import beat_duration_at
+        beat_dur = beat_duration_at(tempo_curve, start_time, fallback_bpm=bpm)
+    else:
+        beat_dur = 60.0 / bpm
     n_beats = 1 if once else max(1, int(round(duration / beat_dur)))
 
     events = []
@@ -916,20 +927,24 @@ def generate_accompaniment(chords: List[Dict],
                            genre: str = "",
                            section_type: str = "default",
                            sections: List[Dict] = None,
-                           humanize: float = 1.0) -> Dict[str, Any]:
+                           humanize: float = 1.0,
+                           tempo_curve: Optional[List[Dict]] = None) -> Dict[str, Any]:
     """
     主入口：根據和弦序列、旋律、風格與難度，生成左右手 MIDI 伴奏。
 
     Args:
         chords: [{"time": 0, "end": 4.5, "chord": "Cmaj7"}, ...]
         melody: [{"start": 0.5, "end": 1.0, "midi": 72}, ...]
-        bpm: 歌曲 BPM
+        bpm: 歌曲 BPM (used as fallback when tempo_curve missing)
         style: Block/Arpeggio/Rhythm/Alberti/Shell/Walking/Stride/1+3/Auto
         level: L1(初階)/L2(中階)/L3(進階)
         genre: 曲風字串（用於建議）
         section_type: intro/verse/chorus/bridge/outro/default (legacy)
         sections: [{"type":"verse","start":0,"end":30}, ...] 段落列表
         humanize: 人性化強度 0.0=機械精準, 1.0=正常, 2.0=誇張
+        tempo_curve: optional [{"t": float, "bpm": float}, ...] for rubato
+            songs — beat-fraction calculations look up local BPM at each
+            chord/event time instead of using the scalar bpm.
 
     Returns:
         {
@@ -1022,6 +1037,7 @@ def generate_accompaniment(chords: List[Dict],
                 once=(rh_mode == "1+3_once"),
                 density_mult=(density_mult if v2 else 1.0),
                 style=current_style,
+                tempo_curve=tempo_curve,
             )
             right_events.extend(rh)
         else:
@@ -1049,8 +1065,10 @@ def generate_accompaniment(chords: List[Dict],
     if humanize > 0:
         from .dynamics_engine import humanize as _humanize
         hstyle = dominant_style if v2 else None
-        _humanize(left_events, bpm=bpm, amount=humanize, seed=42, style=hstyle)
-        _humanize(right_events, bpm=bpm, amount=humanize, seed=123, style=hstyle)
+        _humanize(left_events, bpm=bpm, amount=humanize, seed=42, style=hstyle,
+                  tempo_curve=tempo_curve)
+        _humanize(right_events, bpm=bpm, amount=humanize, seed=123, style=hstyle,
+                  tempo_curve=tempo_curve)
 
     return {
         "left_hand": left_events,

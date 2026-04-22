@@ -99,6 +99,7 @@
   if (!["L1", "L2", "L3"].includes(teachLevel)) teachLevel = "L1";
   let accData = null;  // {left_hand:[], right_hand:[]} from API
   let _beatPhase = 0;  // beat grid phase offset (seconds)
+  let _accStaleWarned = false;  // single-shot stale-acc toast guard (Phase 2)
   let currentSecPerBeat = 0.6; // For chord dot lighting
   let accLoading = false;
   let transpose = 0;
@@ -2502,6 +2503,24 @@
         _detectCrossings(data.left_hand, "left");
         _detectCrossings(data.right_hand, "right");
         accData = data;
+        // Phase 2: detect stale accompaniment cache. When the chord JSON
+        // has been re-analyzed with dynamic beats (chordData.beat_version
+        // bumped) but the acc cache was generated before that, LH/RH
+        // event timing is from an older beat grid and won't track rubato.
+        // Only warn once per song-load — toast, no banner — so the user
+        // knows but isn't blocked.
+        try {
+          const cdv = (chordData && Number(chordData.beat_version)) || 0;
+          const adv = Number(data.source_beat_version) || 0;
+          if (cdv > 0 && adv < cdv && !_accStaleWarned) {
+            _accStaleWarned = true;
+            if (typeof showToast === "function") {
+              showToast("節拍已升級，伴奏使用舊版本（背景重生中）", 4000);
+            } else {
+              console.info("[acc] stale: chord beat_version=" + cdv + " > acc source_beat_version=" + adv);
+            }
+          }
+        } catch (_e) { /* non-fatal */ }
         // Compute beat phase offset from first note time
         const _allNotes = [...(data.left_hand || []), ...(data.right_hand || [])];
         if (_allNotes.length > 0) {
@@ -3926,14 +3945,31 @@
   // requestAnimationFrame sync
   let rafId = null;
 
+  // Local sec/beat at audio time `t`. Reads chordData.tempo_curve when
+  // present (rubato songs); falls back to the scalar currentSecPerBeat
+  // (set once at ribbon build from chordData.bpm or median heuristic).
+  function _secPerBeatAt(t) {
+    if (chordData && chordData.tempo_curve && chordData.tempo_curve.length
+        && window.BeatSync) {
+      const fb = (typeof chordData.bpm === "number" && chordData.bpm > 0)
+        ? chordData.bpm : 60.0 / currentSecPerBeat;
+      return window.BeatSync.beatDurationAt(chordData.tempo_curve, t, fb);
+    }
+    return currentSecPerBeat;
+  }
+
   function _updateBeatDots(t) {
     if (activeChordIdx >= 0 && activeChordIdx < ribbonElements.length) {
       const el = ribbonElements[activeChordIdx];
       const startTime = parseFloat(el.dataset.time);
       const elapsed = t - startTime;
-      let beatIdx = Math.floor(elapsed / currentSecPerBeat);
+      // Use local sec/beat at this time so rubato segments illuminate the
+      // correct beat dot. Without this, slow-then-fast chords would light
+      // dots too quickly in the slow half and lag in the fast half.
+      const spb = _secPerBeatAt(startTime);
+      let beatIdx = Math.floor(elapsed / spb);
       if (beatIdx < 0) beatIdx = 0;
-      
+
       const dots = el.querySelectorAll(".beat-dot");
       if (dots.length > 0) {
           if (beatIdx >= dots.length) beatIdx = dots.length - 1; // Clamp to last dot

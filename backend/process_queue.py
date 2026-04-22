@@ -215,6 +215,27 @@ def _save_chord_json(job: ProcessJob, chords: list, key: str,
         d = _probe_audio_duration(audio_path)
         if d > 0:
             sheet["duration"] = round(d, 3)
+
+    # Dynamic beat tracking — extracts rubato-aware beats[]/downbeats[]/
+    # tempo_curve so the player can sync waterfall to actual tempo drift on
+    # live recordings. madmom ≈ 30s on a 4-min song; falls back to librosa
+    # static BPM if madmom isn't installed. Failure here is non-fatal — the
+    # chord JSON is still useful without beat metadata.
+    if audio_path and os.path.isfile(audio_path):
+        try:
+            from beat_snap import analyze_and_snap_dynamic
+            beat_info = analyze_and_snap_dynamic(audio_path, chords)
+            if beat_info.get("bpm"):
+                sheet["bpm"] = round(beat_info["bpm"], 1)
+            if beat_info.get("beats_source"):
+                sheet["beats"] = beat_info.get("beats", [])
+                sheet["downbeats"] = beat_info.get("downbeats", [])
+                sheet["tempo_curve"] = beat_info.get("tempo_curve", [])
+                sheet["beats_source"] = beat_info["beats_source"]
+                sheet["beat_version"] = beat_info.get("beat_version", 0)
+        except Exception as e:
+            logger.warning("beat_snap failed for %s: %s", job.job_id, e)
+
     out_file = CHORDS_DIR / f"{hash_val}.json"
     out_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
     return hash_val
@@ -670,8 +691,11 @@ def _worker_loop():
             job.stage = "分析和弦中（BTC）…"
             from chord_detect import detect_chords_and_key_isolated
             chords, key = detect_chords_and_key_isolated(audio_path)
+            # Beat tracking + chord JSON save happen inside _save_chord_json;
+            # madmom adds ~30s on a 4-min song so the user sees a stage
+            # change rather than a frozen "BTC" bar.
             job.progress = 75
-            job.stage = "儲存和弦資料…"
+            job.stage = "節拍分析 + 儲存…"
 
             # Step 3: Extract cover art (before audio is deleted)
             if job.source_type == "upload" and audio_path:
