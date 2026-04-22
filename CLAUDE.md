@@ -71,6 +71,11 @@ Any change to frontend files requires Playwright verification before claiming do
 - **Pure-Python loops on daemon threads still hold the GIL** — auto_worker runs on a daemon thread but its `build_co_occurrence_matrix` in [backend/ai/chord2vec.py](backend/ai/chord2vec.py) is a nested Python loop over ~50k sequences that starved every request thread. Fix: `_train_via_subprocess` spawns `sys.executable chord2vec.py` so training lives in a fresh interpreter with its own GIL. Apply the same pattern to any future long Python-loop workload even when it's already off the event loop
 - **yt-dlp subprocess calls MUST specify `encoding="utf-8", errors="replace"`** — NUC default code page is cp950; without explicit UTF-8 decode, `_get_youtube_title` drops CJK/Hangul from titles (bug: `FIFTY FIFTY (피프티피프티)` → `FIFTY FIFTY ()`). Prefer `--dump-json` over `--get-title` so output is always UTF-8 JSON regardless of console locale
 - **SQLite concurrency**: all `sqlite3.connect()` calls use `timeout=10`; all DBs init with `PRAGMA journal_mode=WAL` (dual-instance safe)
+- **madmom install on Windows** (rubato beat tracking, see [QA_BATTLE_STORY.md 番外篇 VII](doc/QA_BATTLE_STORY.md)) — three-step gauntlet, all required:
+  1. **MSVC Build Tools** — runtime-only Windows machines (NUC, GH Actions Win runner) lack the C++ toolchain. Get [vs_BuildTools.exe](https://aka.ms/vs/17/release/vs_BuildTools.exe) (4.25 MB), run `--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended` (~2-3 GB). PC dev boxes typically already have it via Visual Studio
+  2. **Cython + numpy first** — `pip install Cython numpy` because madmom 0.16.1's `pyproject.toml` doesn't declare them as build deps, so PEP 517 isolation fails
+  3. **Git master + `--no-build-isolation`** — `pip install --no-build-isolation git+https://github.com/CPJKU/madmom.git`. The released wheel (0.16.1, 2018) imports `collections.MutableSequence` which Python 3.10+ moved to `collections.abc`; only the unreleased master is patched
+  - Fallback when madmom missing: [beat_snap.analyze_and_snap_dynamic](backend/beat_snap.py) auto-degrades to librosa with `beats_source: "librosa-fallback"` — chord JSONs without rubato fields, but everything still runs
 
 ## Beta Productization
 

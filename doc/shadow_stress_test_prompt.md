@@ -239,14 +239,27 @@ pip install Cython numpy
 pip install --no-build-isolation git+https://github.com/CPJKU/madmom.git
 ```
 
+⚠️ **Windows prereq — MSVC Build Tools**：純 runtime 機（無 VS / VS Code）會在第二行 pip 報 `Microsoft Visual C++ 14.0 or greater is required`，因為 madmom 的 Cython 擴充（`madmom.audio.comb_filters` 等）要 compile。先裝：
+
+```bash
+# 4.25 MB bootstrapper，下載自 https://aka.ms/vs/17/release/vs_BuildTools.exe
+vs_BuildTools.exe --quiet --wait --norestart ^
+    --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended
+# 約 ~2-3 GB，幾分鐘。完成後 vswhere 確認 VC.Tools.x86.x64 到位再重跑 pip。
+```
+
+PC 開發機通常自帶 VS 工具鏈所以不會踩到；NUC（task #2 部署實測）/ 雲端 GHA Windows runner / 其他純 runtime 機都會。
+
 驗證：
 ```python
 python -c "from madmom.features.beats import RNNBeatProcessor, DBNBeatTrackingProcessor; print('OK')"
 ```
 
-⚠️ 如果裝不起來：跳過這步也可以，code path 會 fallback 到 librosa 給 `beats_source: "librosa-fallback"` 的 chord JSON（沒有 rubato 偵測但能跑）。回報是哪一步卡住。
+⚠️ 如果裝不起來（MSVC 都裝了還掛）：跳過這步也可以，code path 會 fallback 到 librosa 給 `beats_source: "librosa-fallback"` 的 chord JSON（沒有 rubato 偵測但能跑）。回報是哪一步卡住。
 
 #### Step 2：Sync 13 個檔到 V:\
+
+> **Shortcut**（NUC 實測 task #2 確認）：NUC 的 `V:\` 是 git checkout，`git pull --ff-only origin feature/beta-productization` 一步就把 13 個檔全部到位，自動等價於 silent diff，下面的 cp + diff -q 流程可以省。**只在 V:\ 不是 git checkout 的環境才需要逐檔 cp。**
 
 PC 上的 dev repo 已 push 到 feature/beta-productization。NUC 端 pull 後：
 
