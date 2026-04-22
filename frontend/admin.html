@@ -322,6 +322,17 @@
         <button id="btnBatchMidi" title="掃尋 MIDI 目錄並自動匯入未偵測曲目的和弦">自動配對 MIDI</button>
         <span id="midiStatus" style="font-size:11px;color:var(--text-dim);margin-left:auto"></span>
       </div>
+      <div class="actions" style="margin-bottom:8px; display:flex; gap:6px; align-items:center; padding:6px; border:1px dashed var(--border); border-radius:4px;">
+        <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;">📐 BPM</span>
+        <input type="text" id="bpmRecomputePath" placeholder="歌曲 path 或 hash（8–16 碼）" class="num-input" style="flex:1; max-width:260px; text-align:left;">
+        <select id="bpmRecomputeMode" class="num-input" style="width:auto;">
+          <option value="auto">自動（聽覺判斷）</option>
+          <option value="halve">強制 ÷2</option>
+          <option value="double">強制 ×2</option>
+        </select>
+        <button id="btnBpmRecompute" title="單曲重新偵測 BPM；慢歌被判快歌時可用">重新偵測</button>
+        <span id="bpmRecomputeStatus" style="font-size:11px;color:var(--text-dim);"></span>
+      </div>
       <div id="trackList" style="max-height:50vh;overflow-y:auto; margin-bottom:8px;">
         <span style="color:var(--text-dim);font-size:12px">展開後載入</span>
       </div>
@@ -477,7 +488,7 @@
     return originalFetch(resource, config);
   };
 </script>
-<script src="/js/api.js?v=56"></script>
+<script src="/js/api.js?v=57"></script>
 <script>
 // Synchronous beta-instance detection (URL-based, available before any API call).
 // Beta instance (8801 / Cloudflare tunnel) must skip all personal-only polling
@@ -1006,6 +1017,25 @@ window._lcIsBeta = (function() {
       midiStatus.textContent = `匯入 ${r.imported}，跳過 ${r.skipped}`;
       if (r.imported > 0) loadTrackList();
     } catch (e) { midiStatus.textContent = "失敗: " + e.message; }
+  });
+
+  $("#btnBpmRecompute").addEventListener("click", async () => {
+    const raw = $("#bpmRecomputePath").value.trim();
+    const mode = $("#bpmRecomputeMode").value;
+    const status = $("#bpmRecomputeStatus");
+    if (!raw) { status.textContent = "請輸入 path 或 hash"; return; }
+    const body = /^[a-f0-9]{8,16}$/i.test(raw) ? { hash: raw, mode } : { path: raw, mode };
+    status.textContent = "處理中…";
+    try {
+      const r = await API.post("/api/admin/bpm/recompute", body);
+      if (r.applied) {
+        status.textContent = `${r.original_bpm} → ${r.corrected_bpm} BPM (${r.reason})`;
+      } else {
+        status.textContent = `未調整（${r.reason || "不符合條件"}）`;
+      }
+    } catch (e) {
+      status.textContent = "失敗: " + (e.message || e);
+    }
   });
 
   // ---- 狀態輪詢 ----

@@ -1,9 +1,13 @@
 """AI 和弦預測 + Jazzify + Phase 11 教學引擎 API"""
 
+import logging
+
 from fastapi import APIRouter, Query, Body
 from pydantic import BaseModel
 from pathlib import Path
 from typing import Optional, List
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
@@ -57,6 +61,7 @@ class JazzifyRequest(BaseModel):
     key: str = "C"
     level: int = 1
     mode: str = "rule-based"
+    bpm: Optional[float] = None
 
 
 @router.post("/jazzify")
@@ -65,7 +70,7 @@ async def jazzify(body: JazzifyRequest):
     from ai.reharmonizer import Reharmonizer
 
     rh = Reharmonizer(level=body.level)
-    result = rh.jazzify(body.chords, key=body.key, mode=body.mode)
+    result = rh.jazzify(body.chords, key=body.key, mode=body.mode, bpm=body.bpm)
     return result
 
 
@@ -256,7 +261,12 @@ async def detect_sections_api(
     user_human_sections = user_data_dir / "human_sections" / f"{h}.json"
     effective_data_dir = str(user_data_dir) if user_human_sections.is_file() else str(DATA_DIR)
 
-    result = detect_sections(data.get("chords", []), data.get("key", "C"), song_hash=h, data_dir=effective_data_dir, fallback_data_dir=str(DATA_DIR))
+    result = detect_sections(
+        data.get("chords", []), data.get("key", "C"),
+        song_hash=h, data_dir=effective_data_dir,
+        fallback_data_dir=str(DATA_DIR),
+        hint_bpm=data.get("bpm"),
+    )
     result["path"] = path
     result["hash"] = h
     result["author"] = target_user
@@ -503,8 +513,12 @@ def get_accompaniment(
     tempo_curve = chord_data.get("tempo_curve") or None
     beat_version = chord_data.get("beat_version", 0)
 
-    # 取得 BPM 與 genre (從 library_cache)
-    bpm = 120.0
+    # 取得 BPM 與 genre。優先順序：chord JSON 的 bpm（經 ballad-halving 修正）
+    # → library_cache → 120 預設。BPM_STYLE_MAP 閾值 80/120 決定 Slow Ballad
+    # vs Dance-Pop 風格，所以這裡拿修正後值才會自動切到 Arpeggio/Shell。
+    bpm_persisted = chord_data.get("bpm")
+    bpm_correction = chord_data.get("bpm_correction") or {}
+    bpm = float(bpm_persisted) if bpm_persisted else 120.0
     genre = ""
     cache_path = DATA_DIR / "library_cache.json"
     if cache_path.is_file():
@@ -513,25 +527,36 @@ def get_accompaniment(
             for t in lib.get("tracks", []):
                 if t.get("path", "").replace("\\", "/") == path.replace("\\", "/"):
                     genre = t.get("genre", "")
-                    dur = t.get("duration", 0)
-                    if dur > 0 and chords:
-                        # 估算 BPM: 中位和弦長度
-                        durations = [c.get("end", 0) - c.get("time", 0)
-                                     for c in chords if c.get("end", 0) > c.get("time", 0)]
-                        if durations:
-                            median_dur = sorted(durations)[len(durations) // 2]
-                            if median_dur > 0:
-                                bpm = 60.0 / median_dur
+                    if not bpm_persisted:
+                        dur = t.get("duration", 0)
+                        if dur > 0 and chords:
+                            # 估算 BPM: 中位和弦長度
+                            durations = [c.get("end", 0) - c.get("time", 0)
+                                         for c in chords if c.get("end", 0) > c.get("time", 0)]
+                            if durations:
+                                median_dur = sorted(durations)[len(durations) // 2]
+                                if median_dur > 0:
+                                    bpm = 60.0 / median_dur
                     break
         except Exception:
             pass
+
+    if bpm_correction.get("applied"):
+        logger.info(
+            "[accompaniment] %s using halved BPM %.1f (was %.1f, reason=%s)",
+            h, bpm, bpm_correction.get("original", 0),
+            bpm_correction.get("reason", ""),
+        )
 
     # 載入段落資料 (Auto mode 用)
     sections = []
     if style == "Auto":
         try:
             from ai.section_detect import detect_sections
-            sec_result = detect_sections(chords, chord_data.get("key", "C"), song_hash=h)
+            sec_result = detect_sections(
+                chords, chord_data.get("key", "C"),
+                song_hash=h, hint_bpm=bpm_persisted,
+            )
             sections = sec_result.get("sections", [])
         except Exception:
             pass

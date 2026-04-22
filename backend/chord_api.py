@@ -351,6 +351,99 @@ def rate_chord_version(req: RatingRequest, username: str = Depends(get_current_u
 
 
 # ---------------------------------------------------------------------------
+# admin: BPM recompute (ballad halving heuristic, per-song manual)
+# ---------------------------------------------------------------------------
+
+class BpmRecomputeRequest(BaseModel):
+    path: Optional[str] = None
+    hash: Optional[str] = None
+    mode: str = "auto"  # "auto" | "halve" | "double"
+
+
+@router.post("/admin/bpm/recompute")
+def admin_bpm_recompute(req: BpmRecomputeRequest, username: str = Depends(get_current_user)):
+    """Manually re-decide BPM for a single song.
+
+    mode=auto  → re-run bpm_sanity.ballad_halving_check against the current
+                 stored BPM (no re-running madmom — that's expensive and a
+                 separate concern via /api/process/upgrade-beats).
+    mode=halve → force bpm /= 2, halve tempo_curve, thin downbeats.
+    mode=double → inverse of halve (for undo).
+
+    Admin-only. Personal mode LAN bypass still works via get_current_user.
+    """
+    if not _is_admin(username):
+        raise HTTPException(status_code=403, detail="admin only")
+
+    if req.hash:
+        h = req.hash
+    elif req.path:
+        h = song_hash(req.path)
+    else:
+        raise HTTPException(status_code=400, detail="missing path or hash")
+
+    chords_file = CHORDS_DIR / f"{h}.json"
+    if not chords_file.is_file():
+        raise HTTPException(status_code=404, detail="chord JSON not found")
+
+    data = json.loads(chords_file.read_text(encoding="utf-8"))
+    original_bpm = float(data.get("bpm") or 0)
+    if original_bpm <= 0:
+        raise HTTPException(status_code=400, detail="stored chord JSON has no bpm")
+
+    corrected_bpm = original_bpm
+    meta = {"applied": False, "reason": "", "original": original_bpm}
+
+    if req.mode == "halve":
+        corrected_bpm = original_bpm / 2.0
+        meta = {"applied": True, "reason": "admin-manual-halve", "original": original_bpm}
+    elif req.mode == "double":
+        corrected_bpm = original_bpm * 2.0
+        meta = {"applied": True, "reason": "admin-manual-double", "original": original_bpm}
+    else:  # auto
+        audio_path = data.get("audio_path") or data.get("path") or ""
+        try:
+            resolved = resolve_path(audio_path) if audio_path else ""
+        except Exception:
+            resolved = ""
+        if not resolved or not os.path.isfile(resolved):
+            raise HTTPException(status_code=400, detail="audio file not available; use halve/double")
+        from bpm_sanity import ballad_halving_check
+        corrected_bpm, meta = ballad_halving_check(original_bpm, resolved)
+
+    if meta.get("applied"):
+        # scale tempo_curve + thin downbeats to match new tempo
+        scale = corrected_bpm / original_bpm if original_bpm else 1.0
+        tempo_curve = data.get("tempo_curve") or []
+        data["tempo_curve"] = [
+            {"t": p.get("t", 0.0), "bpm": round(float(p.get("bpm", 0.0)) * scale, 2)}
+            for p in tempo_curve
+        ]
+        downbeats = data.get("downbeats") or []
+        if req.mode == "halve" or (req.mode == "auto" and scale < 1):
+            if len(downbeats) >= 2:
+                data["downbeats"] = downbeats[::2]
+        elif req.mode == "double":
+            # Doubling downbeats correctly would need beat times; we conservatively
+            # leave them — player derives from bpm+beats anyway
+            pass
+        data["bpm"] = round(corrected_bpm, 1)
+        data["bpm_correction"] = meta
+
+    chords_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {
+        "ok": True,
+        "hash": h,
+        "original_bpm": original_bpm,
+        "corrected_bpm": round(corrected_bpm, 1),
+        "applied": meta.get("applied", False),
+        "reason": meta.get("reason", ""),
+        "onset_density": meta.get("onset_density"),
+        "rms_cov": meta.get("rms_cov"),
+    }
+
+
+# ---------------------------------------------------------------------------
 # auto-detect (Phase 4)
 # ---------------------------------------------------------------------------
 

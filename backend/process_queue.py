@@ -225,8 +225,23 @@ def _save_chord_json(job: ProcessJob, chords: list, key: str,
         try:
             from beat_snap import analyze_and_snap_dynamic
             beat_info = analyze_and_snap_dynamic(audio_path, chords)
-            if beat_info.get("bpm"):
-                sheet["bpm"] = round(beat_info["bpm"], 1)
+            raw_bpm = beat_info.get("bpm")
+            if raw_bpm:
+                try:
+                    from bpm_sanity import ballad_halving_check, apply_halving_to_beat_info
+                    corrected_bpm, bpm_meta = ballad_halving_check(float(raw_bpm), audio_path)
+                    if bpm_meta.get("applied"):
+                        apply_halving_to_beat_info(beat_info)
+                        sheet["bpm_correction"] = bpm_meta
+                        logger.info(
+                            "[bpm_sanity] %s halved %.1f -> %.1f (onset=%.2f, rms_cov=%.4f)",
+                            job.job_id, bpm_meta["original"], corrected_bpm,
+                            bpm_meta["onset_density"] or 0, bpm_meta["rms_cov"] or 0,
+                        )
+                    sheet["bpm"] = round(corrected_bpm, 1)
+                except Exception as e:
+                    logger.warning("bpm_sanity failed for %s: %s", job.job_id, e)
+                    sheet["bpm"] = round(raw_bpm, 1)
             if beat_info.get("beats_source"):
                 sheet["beats"] = beat_info.get("beats", [])
                 sheet["downbeats"] = beat_info.get("downbeats", [])

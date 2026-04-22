@@ -1303,9 +1303,14 @@
     
     const bpmEl = document.getElementById("chordBpm");
     if (bpmEl) {
-        bpmEl.textContent = `BPM: ${Math.round(estimatedBpm)}`;
+        const correction = chordData && chordData.bpm_correction;
+        const halved = !!(correction && correction.applied);
+        const label = halved ? `BPM: ${Math.round(estimatedBpm)} ⓘ` : `BPM: ${Math.round(estimatedBpm)}`;
+        bpmEl.textContent = label;
         bpmEl.style.cursor = "pointer";
-        bpmEl.title = "點擊切換 BPM 倍率 (自動儲存)";
+        bpmEl.title = halved
+            ? `已自動修正 (原 ${Math.round(correction.original || 0)} BPM，判為慢歌倍拍)。點擊切換倍率。`
+            : "點擊切換 BPM 倍率 (自動儲存)";
         bpmEl.onclick = () => {
             if (bpmMult === 1.0) bpmMult = 0.5;
             else if (bpmMult === 0.5) bpmMult = 2.0;
@@ -4731,7 +4736,7 @@
     const mode = isAI ? "transformer" : "rule-based";
 
     try {
-      const res = await API.jazzify(originalChords, chordData.key || "C", apiLevel, mode);
+      const res = await API.jazzify(originalChords, chordData.key || "C", apiLevel, mode, chordData && chordData.bpm || null);
       if (myGen !== jazzifyReqGen) return;
       if (res.error) throw new Error(res.error);
       if (!Array.isArray(res.chords) || res.chords.length === 0) {
