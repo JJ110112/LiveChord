@@ -377,6 +377,22 @@ class StringInstrument {
     const STRUM_CLR = "rgb(0,151,167)";
     const PICK_CLR  = "rgb(0,172,193)";
     const STRUM_UP_CLR = "rgb(38,166,154)";
+    // RGB tuples mirror the CSS strings above so spark particles
+    // can take the same color as the event that fired them.
+    const STRUM_RGB = [0, 151, 167];
+    const PICK_RGB  = [0, 172, 193];
+    const STRUM_UP_RGB = [38, 166, 154];
+    function _hex2rgb(hex) {
+      const h = (hex || "").replace("#", "");
+      if (h.length !== 6) return PICK_RGB;
+      return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+    }
+    // Re-arm set for particle spawn idempotency (same time+event = single burst).
+    // Bound size so a long song can't grow it unbounded.
+    if (!this._sparkedKeys) this._sparkedKeys = new Set();
+    if (this._sparkedKeys.size > 2000) this._sparkedKeys.clear();
+    const spawn = this._b.spawnWaterfallParticles;
+    const sparkVelP = 0.6; // strings have no velocity data — mid-range burst
 
     for (const ev of rhEvents) {
       const yBot = h - (ev.time - currentTime) * pxPerSec;
@@ -407,6 +423,17 @@ class StringInstrument {
         ctx.textBaseline = "middle";
         ctx.fillText(ev.dir === "down" ? "▶" : "◀", (minX + maxX) / 2, arrowY);
         ctx.restore();
+
+        // Spawn a spark burst at each string when the strum crosses the bottom.
+        if (cB >= h - 4 && cT <= h && spawn) {
+          const key = `s|${ev.time.toFixed(3)}|${ev.dir}`;
+          if (!this._sparkedKeys.has(key)) {
+            this._sparkedKeys.add(key);
+            const rgb = ev.dir === "up" ? STRUM_UP_RGB : STRUM_RGB;
+            const span = (maxX - minX) / Math.max(xs.length - 1, 1);
+            for (const sx of xs) spawn(sx, h - 2, Math.max(span, 12), rgb[0], rgb[1], rgb[2], sparkVelP);
+          }
+        }
       } else if (ev.type === "pick") {
         const x = strX(ev.string);
         const cy = (cT + cB) / 2;
@@ -443,6 +470,15 @@ class StringInstrument {
           ctx.arc(x, h, r * 0.35, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
+
+          if (spawn) {
+            const key = `p|${ev.time.toFixed(3)}|${ev.string}`;
+            if (!this._sparkedKeys.has(key)) {
+              this._sparkedKeys.add(key);
+              const rgb = ev.finger ? _hex2rgb(FINGER_COLORS[ev.finger]) : PICK_RGB;
+              spawn(x, h - 2, r * 2, rgb[0], rgb[1], rgb[2], sparkVelP);
+            }
+          }
         }
       } else if (ev.type === "pluck") {
         const cy = (cT + cB) / 2;
@@ -480,10 +516,22 @@ class StringInstrument {
             ctx.arc(x, h, r * 0.35, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
+
+            if (spawn) {
+              const key = `pl|${ev.time.toFixed(3)}|${ev.strings[si]}`;
+              if (!this._sparkedKeys.has(key)) {
+                this._sparkedKeys.add(key);
+                const rgb = fg ? _hex2rgb(FINGER_COLORS[fg]) : PICK_RGB;
+                spawn(x, h - 2, r * 2, rgb[0], rgb[1], rgb[2], sparkVelP);
+              }
+            }
           }
         }
       }
     }
+
+    // Firework spark particles (shared via bridge — same effect as piano)
+    if (this._b.drawWaterfallParticles) this._b.drawWaterfallParticles(ctx);
 
     // Now line at bottom
     ctx.strokeStyle = "rgba(0,188,212,0.5)";

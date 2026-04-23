@@ -5,7 +5,13 @@
 
   const params = new URLSearchParams(window.location.search);
   const trackPath = params.get("path");
-  if (!trackPath) { window.location.href = "/"; return; }
+  // `encodeURIComponent(null)` from the player used to land users on
+  // `/editor?path=null` with an empty timeline. Treat the literal "null" /
+  // "undefined" strings as missing too.
+  if (!trackPath || trackPath === "null" || trackPath === "undefined") {
+    window.location.href = "/";
+    return;
+  }
 
   // ---- state ----
   let chords = [];          // [{time, end, chord}]

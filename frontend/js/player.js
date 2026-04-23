@@ -1223,10 +1223,15 @@
     else if (tab === "arranger") displayMode = "arranger";
     else displayMode = "piano";
 
-    // Update instrument trigger icon
-    const iconMap = { piano: "\u{1F3B9}", guitar: "\u{1F3B8}", ukulele: "\u{1FA95}", accordion: "\u{1FA97}", arranger: "\u{1F3B9}" };
+    // Update instrument trigger icon. Accordion uses an inline SVG (matches the
+    // popup button) because the U+1FA97 emoji renders inconsistently across OSes.
+    const ACCORDION_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="4" height="12" rx="1"/><rect x="17" y="6" width="4" height="12" rx="1"/><path d="M7 9 L10 12 L7 15"/><path d="M10 9 L13 12 L10 15"/><path d="M13 9 L16 12 L13 15"/><path d="M16 9 L17 12 L16 15"/></svg>';
+    const iconMap = { piano: "\u{1F3B9}", guitar: "\u{1F3B8}", ukulele: "\u{1FA95}", accordion: ACCORDION_SVG, arranger: "\u{1F3B9}" };
     const btnInstrument = $("#btnInstrument");
-    if (btnInstrument) btnInstrument.textContent = iconMap[tab] || "\u2328";
+    if (btnInstrument) {
+      if (tab === "accordion") btnInstrument.innerHTML = ACCORDION_SVG;
+      else btnInstrument.textContent = iconMap[tab] || "\u2328";
+    }
     // Highlight active in popup
     const activeBtn = document.querySelector(`#tbInstrument .tb-popup-btn[data-tab="${tab}"]`);
     if (activeBtn) activeBtn.classList.add("active");
@@ -4391,6 +4396,15 @@
   const btnEdit = $("#btnEdit");
   if (btnEdit) {
     function _updateEditLink() {
+      // The /editor page is path-based; hash-mode songs (beta users) have no
+      // NAS path and the page can't load their chords. Hide the link rather
+      // than let users land on `/editor?path=null` with an empty timeline.
+      if (!trackPath) {
+        btnEdit.style.display = "none";
+        btnEdit.removeAttribute("href");
+        return;
+      }
+      btnEdit.style.display = "";
       let editUrl = `/editor?path=${encodeURIComponent(trackPath)}`;
       if (currentChordVersion) editUrl += `&version=${encodeURIComponent(currentChordVersion)}`;
       btnEdit.href = editUrl;
@@ -7087,6 +7101,60 @@
   // ===========================================================================
   // STRING INSTRUMENT REGISTRY — 新增樂器只需加 config + register()
   // ===========================================================================
+  // Shared firework-particle helpers so non-piano instruments (accordion,
+  // arranger, guitar, ukulele) render the same contact-burst effect as the
+  // piano waterfall. Piano keeps its inline spawn/draw for historical reasons
+  // (identical params), but these helpers are the canonical entry point.
+  function _spawnWaterfallParticles(cx, baseY, kw, cr, cg, cb, velP) {
+    if (_waterfallParticles.length >= _WF_PARTICLE_CAP) return;
+    const n = 6 + Math.round(velP * 14);
+    for (let i = 0; i < n; i++) {
+      const ang = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.9;
+      const spd = 1.5 + Math.random() * (2 + velP * 4);
+      _waterfallParticles.push({
+        x: cx + (Math.random() - 0.5) * kw * 0.6,
+        y: baseY,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd * 1.3,
+        life: 0,
+        maxLife: 0.4 + Math.random() * 0.35,
+        r: cr, g: cg, b: cb,
+        size: 1.2 + Math.random() * (1.2 + velP * 1.5),
+      });
+    }
+  }
+  function _drawWaterfallParticles(ctx) {
+    if (_waterfallParticles.length === 0) return;
+    const dt = 0.016;
+    ctx.save();
+    for (let i = _waterfallParticles.length - 1; i >= 0; i--) {
+      const p = _waterfallParticles[i];
+      p.life += dt;
+      if (p.life >= p.maxLife) { _waterfallParticles.splice(i, 1); continue; }
+      p.vy += 0.18;
+      p.vx *= 0.985;
+      p.vy *= 0.985;
+      p.x += p.vx;
+      p.y += p.vy;
+      const t = p.life / p.maxLife;
+      const alpha = (1 - t) * (1 - t);
+      const size = p.size * (1 - t * 0.4);
+      ctx.shadowColor = `rgba(${p.r}, ${p.g}, ${p.b}, 0.9)`;
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = `rgba(${p.r}, ${p.g}, ${p.b}, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+      ctx.fill();
+      if (t < 0.5) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.9})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, size * 0.45, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
   const _playerBridge = {
     $,
     getChordData: () => chordData,
@@ -7100,6 +7168,8 @@
     getMelodyData: () => melodyData,
     getActiveTab: () => activeTab,
     drawAITeacherHUD: _drawAITeacherHUD,
+    spawnWaterfallParticles: _spawnWaterfallParticles,
+    drawWaterfallParticles: _drawWaterfallParticles,
     API,
     ChordRender,
   };
