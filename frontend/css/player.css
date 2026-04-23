@@ -2438,13 +2438,29 @@
 }
 
 
+/* Unified purple beat indicator — independent of phrase/section color.
+   Prior design tinted the dot per-phrase (red/orange/green/blue) which
+   flickered distractingly across section boundaries. Dual-ring outer
+   glow + white core makes it read as a luminous gem regardless of the
+   card's background tint. */
 .beat-active {
-  background-color: var(--phrase-color, var(--accent)) !important;
-  width: 6px !important;
-  height: 6px !important;
-  box-shadow: 0 0 8px var(--phrase-color, var(--accent));
-  transform: scale(1.2);
+  background-color: #e9d5ff !important;   /* bright near-white purple core */
+  width: 7px !important;
+  height: 7px !important;
+  box-shadow:
+    0 0 4px rgba(233, 213, 255, 1),
+    0 0 10px rgba(168, 85, 247, 0.95),
+    0 0 22px rgba(168, 85, 247, 0.6) !important;
+  transform: scale(1.25);
   transition: all 0.1s ease-out;
+}
+.beat-dot.is-downbeat.beat-active {
+  /* Downbeat in the active moment — slightly bigger gem, same hue family */
+  background-color: #f3e8ff !important;
+  box-shadow:
+    0 0 5px rgba(243, 232, 255, 1),
+    0 0 14px rgba(168, 85, 247, 1),
+    0 0 28px rgba(168, 85, 247, 0.7) !important;
 }
 
 /* Virtual beat mapping — downbeat accent (bar start) */
@@ -2454,10 +2470,9 @@
   background-color: rgba(0, 255, 204, 0.85);
   box-shadow: 0 0 6px rgba(0, 255, 204, 0.55);
 }
-.beat-dot.is-downbeat.beat-active {
-  background-color: #00ffcc !important;
-  box-shadow: 0 0 12px #00ffcc;
-}
+/* Downbeat + active override handled above in .beat-dot.is-downbeat.beat-active
+   (purple gem style). The legacy teal override is intentionally removed so all
+   beat indicators share one hue family. */
 /* Card whose first beat IS a downbeat → left-edge bar-line marker.
    Base .rv-item already reserves border-left:3px transparent, so this only
    colors the border — no layout shift. .rv-item.active wins via cascade
