@@ -101,6 +101,7 @@
   let _beatPhase = 0;  // beat grid phase offset (seconds)
   let _accStaleWarned = false;  // single-shot stale-acc toast guard (Phase 2)
   let currentSecPerBeat = 0.6; // For chord dot lighting
+  let _currentBpmMult = 1.0;   // Updated by _buildUnifiedRibbon; read by _virtualBeats
   let accLoading = false;
   let transpose = 0;
   let capo = 0;
@@ -692,6 +693,11 @@
           if (timeCurrent) timeCurrent.textContent = formatTime(t);
           if (dur > 0 && topProgressFill) topProgressFill.style.width = ((t / dur) * 100) + "%";
         } catch {}
+        // Force-scroll ribbon to the seeked-to chord. The native YT
+        // sync poller calls updateActiveChord without forceScroll, and
+        // its scroll gate suppresses scrolling when paused — so a
+        // rewind-to-start (or any scrub) wouldn't recenter without this.
+        try { updateActiveChord(t, true); } catch {}
         return;
       } catch {}
     }
@@ -1294,9 +1300,13 @@
     if (estimatedBpm <= 0) estimatedBpm = 100;
     
     const urlParamsBpm = new URLSearchParams(window.location.search);
-    const bpmPath = urlParamsBpm.get("path") || "default";
+    // Hash-mode players (livechord.org) have ?hash= but no ?path=, so the
+    // old `get("path") || "default"` made every hash song share one
+    // bpm_mult_default key — flipping BPM on song A would reappear on song B.
+    const bpmPath = urlParamsBpm.get("path") || urlParamsBpm.get("hash") || "default";
     let bpmMult = parseFloat(localStorage.getItem(`bpm_mult_${bpmPath}`)) || 1.0;
-    
+    _currentBpmMult = bpmMult;
+
     estimatedBpm = estimatedBpm * bpmMult;
     currentSecPerBeat = 60 / estimatedBpm;
     const secPerBeat = currentSecPerBeat;
@@ -1494,18 +1504,21 @@
       } else {
           durSec = 2.0;
       }
-      let beats = Math.round(durSec / secPerBeat);
-      if (beats < 1) beats = 1;
-      if (beats > 16) beats = 16;
-      
+      item.dataset.end = (c.time + durSec).toFixed(4);
+
+      const vb = _virtualBeats(durSec, c.time);
       const beatsEl = document.createElement("div");
       beatsEl.className = "rv-beats";
       let dotHtml = "";
-      for (let b=1; b<=beats; b++) {
-          dotHtml += `<span class="beat-dot"></span>`;
+      for (let b = 0; b < vb.dots.length; b++) {
+          const d = vb.dots[b];
+          const cls = d.isDownbeat ? "beat-dot is-downbeat" : "beat-dot";
+          dotHtml += `<span class="${cls}"></span>`;
       }
       beatsEl.innerHTML = dotHtml;
       item.appendChild(beatsEl);
+      if (vb.short) item.classList.add("chord-short");
+      if (vb.dots.length > 0 && vb.dots[0].isDownbeat) item.classList.add("chord-at-downbeat");
 
       items.push({ item, sectionHdr, idx: i });
     }
@@ -2907,7 +2920,11 @@
     }
 
     // ---- Phase 11: Pedal visualization ----
+    // Design: show pedal as a saturated LEFT-edge gutter stripe so the main
+    // canvas stays clean; keep a *very* faint full-width tint (5% max) so the
+    // zone is still peripherally visible without washing out note bars.
     if (accData && accData.pedal && accData.pedal.length > 0) {
+      const gutterW = 10;
       for (const ped of accData.pedal) {
         const pedStart = ped.start;
         const pedEnd = ped.end;
@@ -2916,15 +2933,20 @@
         const yPedBottom = h - (pedStart - currentTime) * pxPerSec;
         const yPedTop = h - (pedEnd - currentTime) * pxPerSec;
         const depth = ped.depth || 1.0;
-        const alpha = depth * 0.15;
+        const yTop = Math.max(0, yPedTop);
+        const regionH = Math.min(h, yPedBottom) - yTop;
 
-        // Pedal sustain region (subtle green tint across full width)
-        ctx.fillStyle = `rgba(76, 175, 80, ${alpha})`;
-        ctx.fillRect(0, Math.max(0, yPedTop), w, Math.min(h, yPedBottom) - Math.max(0, yPedTop));
+        // Faint full-width wash — peripheral awareness only, does not fight note bars
+        ctx.fillStyle = `rgba(76, 175, 80, ${depth * 0.05})`;
+        ctx.fillRect(0, yTop, w, regionH);
+
+        // Saturated left gutter — the primary pedal signal
+        ctx.fillStyle = `rgba(76, 175, 80, ${0.4 + depth * 0.25})`;
+        ctx.fillRect(0, yTop, gutterW, regionH);
 
         // Pedal change marker (horizontal dashed line at pedal start)
         if (yPedBottom > 0 && yPedBottom < h) {
-          ctx.strokeStyle = depth >= 1.0 ? "rgba(76, 175, 80, 0.5)" : "rgba(76, 175, 80, 0.3)";
+          ctx.strokeStyle = depth >= 1.0 ? "rgba(76, 175, 80, 0.6)" : "rgba(76, 175, 80, 0.35)";
           ctx.lineWidth = 1;
           ctx.setLineDash(depth >= 1.0 ? [] : [3, 3]);
           ctx.beginPath();
@@ -3836,12 +3858,28 @@
       activeDots.forEach(d => d.classList.remove("beat-active"));
     }
 
+    // Clear previous upcoming markers (look-ahead window from old index)
+    if (activeChordIdx >= 0) {
+      for (let k = 1; k <= 4; k++) {
+        const prev = ribbonElements[activeChordIdx + k];
+        if (prev) prev.classList.remove("upcoming", "upcoming-next");
+      }
+    }
+
     activeChordIdx = newIdx;
 
     if (activeChordIdx >= 0 && activeChordIdx < ribbonElements.length) {
       const el = ribbonElements[activeChordIdx];
       el.classList.remove("played");
       el.classList.add("active");
+
+      // Tag the next 3 chords so the user can read ahead without straining
+      for (let k = 1; k <= 3; k++) {
+        const nxt = ribbonElements[activeChordIdx + k];
+        if (!nxt) break;
+        nxt.classList.add("upcoming");
+        if (k === 1) nxt.classList.add("upcoming-next");
+      }
 
       // Auto-scroll ribbon to keep active chord visible. Gate must cover both
       // NAS audio playback (8800) and YT embed playback (8801 hash mode) —
@@ -3968,29 +4006,92 @@
     return currentSecPerBeat;
   }
 
+  // Virtual beat mapping: ignore uneven BTC splits (e.g. 5+3) and render
+  // bar-aligned dot counts based on duration. Short chords keep raw beats +
+  // get a 'chord-short' visual-degrade class. Dots carry absolute time so the
+  // renderer can tag downbeats. Safety flag: localStorage.livechord_virtual_beats="0"
+  // falls back to the legacy floor(durSec/secPerBeat).
+  function _virtualBeats(durSec, cStart) {
+    const off = (typeof localStorage !== "undefined"
+                 && localStorage.getItem("livechord_virtual_beats") === "0");
+    // _secPerBeatAt returns the BASE-rate beat duration (rubato-tracked
+    // against chordData.bpm). The user-facing bpmMult (½× / 2× cycle) is
+    // NOT baked into _secPerBeatAt — apply it here so rawBeats halves when
+    // BPM is halved and doubles when BPM is doubled, otherwise the dot
+    // count would freeze on the original-tempo bar partition.
+    const spb = _secPerBeatAt(cStart) / (_currentBpmMult || 1.0);
+    const rawBeats = durSec / spb;
+    let tsBeats = 4;
+    try {
+      if (window.CC && typeof window.CC.inferBeatsPerBar === "function") {
+        tsBeats = window.CC.inferBeatsPerBar(chordData, spb) || 4;
+      }
+    } catch (e) { /* keep 4 */ }
+
+    // When the user has manually overridden BPM via the click cycle,
+    // bypass bar-snapping. Bar-snap can clamp the dot count so doubling
+    // BPM doesn't double the dots (e.g. 5.4 raw → 1 bar → 4 dots both
+    // before and after a small BPM change), making the highlight visibly
+    // race through fixed dots. Manual override means "interpret the
+    // rhythm at this rate" — honor it with raw proportional dots.
+    if (off || Math.abs(_currentBpmMult - 1.0) > 1e-3) {
+      let n = Math.round(rawBeats);
+      if (n < 1) n = 1; if (n > 16) n = 16;
+      return { count: n, short: false, dots: _buildVirtualDots(n, durSec, cStart) };
+    }
+
+    // Short chord — keep raw (passing-chord / syncopation). Visual degrade.
+    if (rawBeats < tsBeats * 0.75) {
+      const n = Math.max(1, Math.round(rawBeats));
+      return { count: n, short: true, dots: _buildVirtualDots(n, durSec, cStart) };
+    }
+    // Long chord — snap to nearest whole-bar multiple.
+    const bars = Math.max(1, Math.round(rawBeats / tsBeats));
+    const count = Math.min(16, bars * tsBeats);
+    return { count, short: false, dots: _buildVirtualDots(count, durSec, cStart) };
+  }
+
+  function _buildVirtualDots(count, durSec, cStart) {
+    const dbs = (chordData && Array.isArray(chordData.downbeats)) ? chordData.downbeats : [];
+    const step = durSec / count;
+    const tol = Math.min(0.12, step * 0.35);
+    const out = new Array(count);
+    for (let i = 0; i < count; i++) {
+      const t = cStart + i * step;
+      let isDownbeat = false;
+      if (dbs.length > 0) {
+        for (let k = 0; k < dbs.length; k++) {
+          if (Math.abs(dbs[k] - t) < tol) { isDownbeat = true; break; }
+        }
+      }
+      out[i] = { t, isDownbeat };
+    }
+    return out;
+  }
+
   function _updateBeatDots(t) {
     if (activeChordIdx >= 0 && activeChordIdx < ribbonElements.length) {
       const el = ribbonElements[activeChordIdx];
       const startTime = parseFloat(el.dataset.time);
-      const elapsed = t - startTime;
-      // Use local sec/beat at this time so rubato segments illuminate the
-      // correct beat dot. Without this, slow-then-fast chords would light
-      // dots too quickly in the slow half and lag in the fast half.
-      const spb = _secPerBeatAt(startTime);
-      let beatIdx = Math.floor(elapsed / spb);
-      if (beatIdx < 0) beatIdx = 0;
-
       const dots = el.querySelectorAll(".beat-dot");
-      if (dots.length > 0) {
-          if (beatIdx >= dots.length) beatIdx = dots.length - 1; // Clamp to last dot
-          dots.forEach((dot, idx) => {
-              if (idx === beatIdx) {
-                  dot.classList.add("beat-active");
-              } else {
-                  dot.classList.remove("beat-active");
-              }
-          });
-      }
+      if (!dots.length) return;
+
+      // Linear time → beat index. Cards now render a virtual (bar-aligned)
+      // dot count that may not match `elapsed / secPerBeat`; driving from
+      // the elapsed fraction of the card duration keeps the highlight glued
+      // to wall-clock progress regardless of how many dots got drawn.
+      const endTime = parseFloat(el.dataset.end);
+      const cardDur = Math.max(0.001, (isFinite(endTime) ? endTime - startTime : dots.length * _secPerBeatAt(startTime)));
+      let progress = (t - startTime) / cardDur;
+      if (progress < 0) progress = 0;
+      if (progress > 0.9999) progress = 0.9999;
+      let beatIdx = Math.floor(progress * dots.length);
+      if (beatIdx >= dots.length) beatIdx = dots.length - 1;
+
+      dots.forEach((dot, idx) => {
+        if (idx === beatIdx) dot.classList.add("beat-active");
+        else dot.classList.remove("beat-active");
+      });
     }
   }
 
@@ -4040,7 +4141,12 @@
   audio.addEventListener("seeked", () => {
     const t = audio.currentTime;
     _updateProgress(t);
-    updateActiveChord(t);
+    // forceScroll=true so rewind-to-start (and any scrub) re-centers the
+    // ribbon even when paused. The default _isAnyPlaying gate suppresses
+    // scrolling on a paused player which is correct for pause-without-seek
+    // but wrong for seek events — the user just moved the playhead and
+    // expects the chord display to follow.
+    updateActiveChord(t, true);
     if (activeTab === "piano") { piano88LastIdx = -1; update88Piano(t); }
   });
 
@@ -4108,6 +4214,10 @@
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     if (activeChordIdx >= 0 && activeChordIdx < ribbonElements.length) {
       ribbonElements[activeChordIdx].classList.remove("active");
+      for (let k = 1; k <= 4; k++) {
+        const nxt = ribbonElements[activeChordIdx + k];
+        if (nxt) nxt.classList.remove("upcoming", "upcoming-next");
+      }
     }
     activeChordIdx = -1;
   });

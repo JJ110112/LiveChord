@@ -240,15 +240,24 @@
   padding: 10px 8px;
   cursor: pointer;
   transition: all .2s;
+  border: 1px solid rgba(255,255,255,0.06);
   border-left: 3px solid transparent;
-  opacity: 0.5;
+  background: rgba(255,255,255,0.03);
+  opacity: 0.72;
   position: relative;
 }
-.rv-item:hover { opacity: 0.75; background: rgba(255,255,255,0.03); }
+.rv-item:hover { opacity: 0.95; background: rgba(255,255,255,0.06); }
+.rv-item.upcoming { opacity: 0.9; }
+.rv-item.upcoming-next {
+  opacity: 0.95;
+  background: rgba(33,150,243,0.07);
+  border-left-color: rgba(33,150,243,0.5);
+}
 .rv-item.active {
   opacity: 1;
   border-left-color: var(--phrase-color, var(--accent));
-  background: rgba(33,150,243,0.08);
+  border-left-width: 4px;
+  background: rgba(33,150,243,0.18);
 }
 .rv-item.played { opacity: 0.3; }
 
@@ -2427,6 +2436,30 @@
   transform: scale(1.2);
   transition: all 0.1s ease-out;
 }
+
+/* Virtual beat mapping — downbeat accent (bar start) */
+.beat-dot.is-downbeat {
+  width: 6px;
+  height: 6px;
+  background-color: rgba(0, 255, 204, 0.85);
+  box-shadow: 0 0 6px rgba(0, 255, 204, 0.55);
+}
+.beat-dot.is-downbeat.beat-active {
+  background-color: #00ffcc !important;
+  box-shadow: 0 0 12px #00ffcc;
+}
+/* Card whose first beat IS a downbeat → left-edge bar-line marker.
+   Base .rv-item already reserves border-left:3px transparent, so this only
+   colors the border — no layout shift. .rv-item.active wins via cascade
+   order (its rule is earlier but same specificity; we want active to take
+   over so students still see which card is playing). */
+.rv-item.chord-at-downbeat:not(.active) {
+  border-left-color: rgba(0, 255, 204, 0.55);
+}
+/* Short chord — visual degrade (passing chord / syncopation) */
+.rv-item.chord-short:not(.active) { opacity: 0.55; }
+.rv-item.chord-short .rv-chord-name { font-size: 0.9em; }
+.rv-item.chord-short .beat-dot { width: 3px; height: 3px; }
 
 /* Versions Dropdown */
 .versions-dropdown {
