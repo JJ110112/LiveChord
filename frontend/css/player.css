@@ -332,29 +332,28 @@
   flex-shrink: 0;
 }
 
-/* --- Resize Handle --- */
+/* --- Resize Handle ---
+   Low-visual-weight: 2px divider, toggle buttons hidden by default,
+   only surface on hover or focus. Keeps the eye on content, not chrome. */
 .resize-handle {
-  width: 4px;
+  width: 2px;
   cursor: col-resize;
-  background: var(--border);
+  background: rgba(255,255,255,0.05);
   flex-shrink: 0;
-  transition: background .15s;
-}
-.resize-handle:hover, .resize-handle:active {
-  background: var(--accent);
-}
-.resize-handle {
+  transition: background .15s, width .15s;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
 }
+.resize-handle:hover, .resize-handle:active, .resize-handle:focus-within {
+  background: var(--accent);
+  width: 4px;
+}
 .ribbon-toggle-btn {
   position: absolute;
   top: 50%;
   left: 50%;
-  /* Default: center on the resize handle. This positioning is used when
-     only one button is visible (the other side is collapsed). */
   transform: translate(-50%, -50%);
   width: 20px;
   height: 40px;
@@ -366,10 +365,20 @@
   font-size: 11px;
   padding: 0;
   z-index: 5;
-  transition: all .15s;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s, color .15s, background .15s, border-color .15s;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+/* Reveal buttons only when user engages the divider — prevents the
+   two-arrow chrome from competing with the ribbon and waterfall. */
+.resize-handle:hover .ribbon-toggle-btn,
+.resize-handle:focus-within .ribbon-toggle-btn,
+.resize-handle.has-hidden-side .ribbon-toggle-btn {
+  opacity: 1;
+  pointer-events: auto;
 }
 /* When both panels visible (no .has-hidden-side), shift the two buttons
    horizontally so they sit side-by-side as `< >` straddling the handle's

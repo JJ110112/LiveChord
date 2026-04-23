@@ -2605,16 +2605,13 @@
     const lookAhead = 4.0;  // seconds visible above piano
     const pxPerSec = h / lookAhead;
 
-    // Semantic Colors
-    const LH_COLOR = "rgba(33, 150, 243, 0.9)";   // Blue (穩重/左手)
-    const RH_COLOR = "rgba(255, 152, 0, 0.9)";    // Orange (主旋律/右手)
-    const LH_GLOW  = "rgba(33, 150, 243, 0.4)";
-    const RH_GLOW  = "rgba(255, 152, 0, 0.4)";
-    // Per-key-type shades for white/black key visibility
-    const LH_WHITE = "rgba(100, 181, 246, 0.9)";  // lighter blue for white-key notes
-    const LH_BLACK = "rgba(30, 136, 229, 0.9)";   // deeper blue for black-key notes
-    const RH_WHITE = "rgba(255, 183, 77, 0.9)";   // lighter orange for white-key notes
-    const RH_BLACK = "rgba(245, 124, 0, 0.9)";    // deeper orange for black-key notes
+    // Semantic Colors — Synthesia-style bright, fully opaque so bars pop
+    // against the dark backdrop. Lifted hue + alpha 1.0 (prior 0.9 blended
+    // into the #0d1117 page bg and looked muddy, especially for LH blue).
+    const LH_COLOR = "rgba(79, 172, 254, 1)";     // Bright sky blue (左手)
+    const RH_COLOR = "rgba(255, 171, 64, 1)";     // Bright amber (右手)
+    const LH_GLOW  = "rgba(79, 172, 254, 0.55)";
+    const RH_GLOW  = "rgba(255, 171, 64, 0.55)";
 
     // 畫拍線網格 — chord-based grid (aligned to actual note positions)
     const _gridChords = _displayChords();
@@ -2920,11 +2917,12 @@
     }
 
     // ---- Phase 11: Pedal visualization ----
-    // Design: show pedal as a saturated LEFT-edge gutter stripe so the main
-    // canvas stays clean; keep a *very* faint full-width tint (5% max) so the
-    // zone is still peripherally visible without washing out note bars.
+    // Design: saturated RIGHT-edge gutter stripe + near-invisible full-width
+    // wash. Right side chosen so the gutter doesn't collide visually with
+    // the ribbon/waterfall divider on the left.
     if (accData && accData.pedal && accData.pedal.length > 0) {
       const gutterW = 10;
+      const gutterX = w - gutterW;
       for (const ped of accData.pedal) {
         const pedStart = ped.start;
         const pedEnd = ped.end;
@@ -2940,9 +2938,9 @@
         ctx.fillStyle = `rgba(76, 175, 80, ${depth * 0.05})`;
         ctx.fillRect(0, yTop, w, regionH);
 
-        // Saturated left gutter — the primary pedal signal
+        // Saturated right gutter — the primary pedal signal
         ctx.fillStyle = `rgba(76, 175, 80, ${0.4 + depth * 0.25})`;
-        ctx.fillRect(0, yTop, gutterW, regionH);
+        ctx.fillRect(gutterX, yTop, gutterW, regionH);
 
         // Pedal change marker (horizontal dashed line at pedal start)
         if (yPedBottom > 0 && yPedBottom < h) {
