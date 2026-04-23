@@ -2459,7 +2459,8 @@
 /* Short chord — visual degrade (passing chord / syncopation) */
 .rv-item.chord-short:not(.active) { opacity: 0.55; }
 .rv-item.chord-short .rv-chord-name { font-size: 0.9em; }
-.rv-item.chord-short .beat-dot { width: 3px; height: 3px; }
+/* chord-short: keep full-size dots so single-beat count stays readable;
+   the 0.9em chord name + 0.55 opacity already signal "passing chord". */
 
 /* Versions Dropdown */
 .versions-dropdown {
