@@ -6,9 +6,12 @@ mysteriously vanish (likely Windows Defender false-positive on .py in that path)
 Usage:
   python build_chroma_index.py --source Z:/ --index V:/Database/Chroma_Index --resume
 """
-import os, sys, json, hashlib, time, argparse, gc
+import os, sys, json, time, argparse, gc
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from chroma_feat import extract_chroma, file_hash as audio_hash, SR, HOP, DECIMATE
 
 # Force UTF-8 on stdout/stderr — C-POP has Chinese filenames that crash
 # cp1252/cp950 default consoles when the script prints a FAIL line.
@@ -18,25 +21,11 @@ try:
 except (AttributeError, OSError):
     pass
 
-SR = 22050
-HOP = 512
-TIME_TARGET_HZ = 2.0
-FRAMES_PER_SEC_CQT = SR / HOP
-DECIMATE = max(1, int(FRAMES_PER_SEC_CQT / TIME_TARGET_HZ))
 AUDIO_EXTS = (".flac", ".wav", ".mp3", ".m4a", ".aac", ".ogg")
 MAX_AUDIO_SEC = 600          # librosa.load duration cap (intended trim)
 MAX_FILE_DURATION = 1200     # 20 min hard skip — pre-probe header, skip before decode
                               # (libsndfile occasionally over-allocates on long FLACs despite
                               # duration= param, causing 700+ MiB MemoryError in workers)
-
-
-def audio_hash(path, head_bytes=64 * 1024):
-    h = hashlib.md5()
-    size = os.path.getsize(path)
-    with open(path, "rb") as f:
-        h.update(f.read(head_bytes))
-    h.update(str(size).encode())
-    return h.hexdigest()[:16]
 
 
 def process_one(args):
@@ -56,14 +45,7 @@ def process_one(args):
         y, _ = librosa.load(path, sr=SR, mono=True, duration=MAX_AUDIO_SEC)
         if len(y) < SR * 5:
             return {"path": path, "error": f"too_short:{len(y)/SR:.1f}s"}
-        chroma = librosa.feature.chroma_cqt(y=y, sr=SR, hop_length=HOP)
-        if chroma.shape[1] > DECIMATE * 2:
-            trim = (chroma.shape[1] // DECIMATE) * DECIMATE
-            chroma = chroma[:, :trim].reshape(12, -1, DECIMATE).mean(axis=2)
-        chroma = chroma.astype(np.float32)
-        norms = np.linalg.norm(chroma, axis=0, keepdims=True)
-        chroma_n = chroma / np.clip(norms, 1e-6, None)
-        sig = np.concatenate([chroma_n.mean(axis=1), chroma_n.std(axis=1)]).astype(np.float32)
+        chroma_n, sig = extract_chroma(y, sr=SR)
         duration = float(len(y) / SR)
         np.savez_compressed(
             out_npz,
@@ -79,7 +61,7 @@ def process_one(args):
             "duration": duration,
             "frames": int(chroma_n.shape[1]),
         }
-        del y, chroma, chroma_n, norms, sig
+        del y, chroma_n, sig
         gc.collect()
         return result
     except Exception as e:
