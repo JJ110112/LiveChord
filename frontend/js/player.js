@@ -26,6 +26,10 @@
   let piano88Cache = null;
   let piano88ChordMidis = [];
   let piano88SustainNotes = [];
+  // Waterfall hit-spark particles (Sheet Music Boss style).
+  // Array of { x, y, vx, vy, life, maxLife, r, g, b, size }.
+  let _waterfallParticles = [];
+  const _WF_PARTICLE_CAP = 160; // hard cap to keep per-frame cost bounded
   let piano88PrevMidi = null;
   let piano88LastIdx = -1;
   let piano88Hand = localStorage.getItem("livechord_88hand") || "both"; // "both"|"left"|"right"
@@ -2780,6 +2784,9 @@
 
       if (noteEnd < currentTime || noteStart > currentTime + lookAhead) continue;
 
+      // If user seeked backwards past this note, allow it to spark again
+      if (evt._sparked && currentTime < noteStart) evt._sparked = false;
+
       const yBottom = h - (noteStart - currentTime) * pxPerSec;
       const yTop = h - (noteEnd - currentTime) * pxPerSec;
       const noteH = Math.max(yBottom - yTop, 3);
@@ -2798,71 +2805,100 @@
       const velT = Math.min(1.0, Math.max(0.0, (vel - 55) / 40)); // 55→0, 95→1
       // Apply power curve for more dramatic contrast (dim stays dim, bright pops)
       const velP = velT * velT; // quadratic: 0.5→0.25, 0.8→0.64, 1.0→1.0
-      let color, glowColor;
+      // Sheet Music Boss style: neon-saturated base colors; velocity still
+      // modulates brightness but the floor is lifted so even pp notes look
+      // luminous instead of dull grey/brown.
+      let cr, cg, cb, glowColor;
       if (isLeft) {
-        // Blue: pp=very dark navy → ff=electric blue
-        const cr = Math.round(10 + velP * 100);
-        const cg = Math.round(40 + velP * 160);
-        const cb = Math.round(100 + velP * 155);
-        color = `rgba(${cr}, ${cg}, ${cb}, ${isOnBlackKey ? 0.95 : 0.9})`;
-        glowColor = `rgba(${Math.min(255, cr+80)}, ${Math.min(255, cg+60)}, 255, 1)`;
+        // LH: deep cyan (pp) → electric blue (ff)
+        cr = Math.round(40 + velP * 100);
+        cg = Math.round(150 + velP * 85);
+        cb = Math.round(230 + velP * 25);
+        glowColor = `rgba(120, 200, 255, 1)`;
       } else {
-        // Orange: pp=dark brown → ff=blazing orange-yellow
-        const cr = Math.round(100 + velP * 155);
-        const cg = Math.round(40 + velP * 170);
-        const cb = Math.round(0 + velP * 50);
-        color = `rgba(${cr}, ${cg}, ${cb}, ${isOnBlackKey ? 0.95 : 0.9})`;
-        glowColor = `rgba(255, ${Math.min(255, cg+60)}, ${Math.min(255, cb+80)}, 1)`;
+        // RH: hot amber (pp) → blazing orange (ff)
+        cr = Math.round(230 + velP * 25);
+        cg = Math.round(130 + velP * 90);
+        cb = Math.round(40 + velP * 40);
+        glowColor = `rgba(255, 200, 120, 1)`;
       }
-      const glow = isLeft ? LH_GLOW : RH_GLOW;
+      const color = `rgba(${cr}, ${cg}, ${cb}, 1)`;
 
-      // Drop prediction shadow on the keys if it's right about to hit
+      // Landing-pad glow on the keys just before the note hits
       if (yBottom > h - 40 && yBottom < h) {
-        ctx.fillStyle = glow;
+        ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, 0.35)`;
         ctx.fillRect(x, h - 5, kw, -20);
       }
 
-      // Note bar + velocity glow
+      // Main note bar with always-on bloom (150–200% intensity range)
       const rr = Math.min(4, noteH / 2);
       ctx.save();
-      if (velP > 0.15) {
-        // 任何中等以上力度都有光暈
-        ctx.shadowColor = glowColor;
-        ctx.shadowBlur = Math.round(3 + velP * 25); // 3~28px
-      }
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = Math.round(12 + velP * 36); // 12~48px — aggressive bloom
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.roundRect(x + 1, yTop, kw - 2, noteH, rr);
       ctx.fill();
-      // 強音 (velP > 0.5): 再疊一層加強發光
-      if (velP > 0.5) {
-        ctx.shadowBlur = Math.round(velP * 35);
+      // Double-pass bloom for loud notes
+      if (velP > 0.4) {
+        ctx.shadowBlur = Math.round(velP * 55);
         ctx.fill();
       }
       ctx.restore();
 
-      // 弱音: 細邊框讓暗色方塊仍可辨識
-      if (velP < 0.15) {
-        ctx.strokeStyle = "rgba(255,255,255,0.2)";
-        ctx.lineWidth = 1;
+      // Bright top highlight — makes the bar look like an energy column
+      // instead of a flat rect. Semi-transparent white gradient at the head.
+      if (noteH > 4) {
+        const hlH = Math.min(8, noteH * 0.35);
+        const grd = ctx.createLinearGradient(0, yTop, 0, yTop + hlH);
+        grd.addColorStop(0, "rgba(255,255,255,0.55)");
+        grd.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = grd;
         ctx.beginPath();
-        ctx.roundRect(x + 1, yTop, kw - 2, noteH, rr);
-        ctx.stroke();
+        ctx.roundRect(x + 1, yTop, kw - 2, hlH, rr);
+        ctx.fill();
       }
 
-      // Contact glow (觸鍵瞬間) — 強音爆發光
+      // Hot leading edge at the bottom of the bar — sells the "falling energy" feel
+      if (yBottom < h && noteH > 3) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.25 + velP * 0.35})`;
+        ctx.fillRect(x + 2, yBottom - 2, kw - 4, 2);
+      }
+
+      // Contact burst when the note crosses the keyboard line
       if (yBottom >= h && yTop <= h) {
          ctx.save();
          ctx.fillStyle = color;
          ctx.shadowColor = glowColor;
-         ctx.shadowBlur = 8 + velP * 22;
+         ctx.shadowBlur = 14 + velP * 30;
          ctx.fillRect(x + 1, h - 4, kw - 2, 8);
-         // 白光芯
-         ctx.fillStyle = `rgba(255,255,255,${0.3 + velP * 0.6})`;
-         ctx.shadowBlur = velP * 15;
+         // White-hot core
+         ctx.fillStyle = `rgba(255,255,255,${0.5 + velP * 0.5})`;
+         ctx.shadowBlur = 8 + velP * 20;
          ctx.shadowColor = "#fff";
          ctx.fillRect(x + 3, h - 2, kw - 6, 4);
          ctx.restore();
+
+         // Spawn firework-style particle sparks once per note hit
+         if (!evt._sparked && _waterfallParticles.length < _WF_PARTICLE_CAP) {
+           evt._sparked = true;
+           const n = 6 + Math.round(velP * 14); // 6~20 particles by velocity
+           const cx = x + kw / 2;
+           for (let i = 0; i < n; i++) {
+             const ang = -Math.PI/2 + (Math.random() - 0.5) * Math.PI * 0.9;
+             const spd = 1.5 + Math.random() * (2 + velP * 4);
+             _waterfallParticles.push({
+               x: cx + (Math.random() - 0.5) * kw * 0.6,
+               y: h - 2,
+               vx: Math.cos(ang) * spd,
+               vy: Math.sin(ang) * spd * 1.3,
+               life: 0,
+               maxLife: 0.4 + Math.random() * 0.35,
+               r: cr, g: cg, b: cb,
+               size: 1.2 + Math.random() * (1.2 + velP * 1.5)
+             });
+           }
+         }
       }
 
       // Phase 11: Articulation markers
@@ -2956,8 +2992,42 @@
       }
     }
 
-    // ---- Phase 11: Velocity opacity on note blocks ----
-    // (Applied above via evt.velocity — opacity modulation already in color)
+    // ---- Firework spark particles (Sheet Music Boss style) ----
+    // Particles were spawned in the note-hit branch above. Here we
+    // update + render survivors, discard dead ones.
+    if (_waterfallParticles.length > 0) {
+      const dt = 0.016;
+      ctx.save();
+      for (let i = _waterfallParticles.length - 1; i >= 0; i--) {
+        const p = _waterfallParticles[i];
+        p.life += dt;
+        if (p.life >= p.maxLife) { _waterfallParticles.splice(i, 1); continue; }
+        // Physics: initial upward burst, gravity pulls back, slight drag
+        p.vy += 0.18;       // gravity
+        p.vx *= 0.985;
+        p.vy *= 0.985;
+        p.x += p.vx;
+        p.y += p.vy;
+        // Fade with life; keep a bright core that lingers
+        const t = p.life / p.maxLife;
+        const alpha = (1 - t) * (1 - t); // ease-out quad
+        const size = p.size * (1 - t * 0.4);
+        ctx.shadowColor = `rgba(${p.r}, ${p.g}, ${p.b}, 0.9)`;
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = `rgba(${p.r}, ${p.g}, ${p.b}, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+        ctx.fill();
+        // White-hot core
+        if (t < 0.5) {
+          ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.9})`;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, size * 0.45, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
 
     // Landing line
     ctx.strokeStyle = "rgba(255,255,255,0.4)";

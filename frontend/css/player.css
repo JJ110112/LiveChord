@@ -594,6 +594,7 @@
   display: none;
   width: 100%;
   image-rendering: crisp-edges;
+  background: #000;  /* absolute black for max neon contrast (Sheet Music Boss style) */
 }
 .waterfall-canvas.active {
   display: block;
