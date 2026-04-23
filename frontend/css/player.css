@@ -283,7 +283,6 @@
   padding: 2px 10px;
   border-radius: 8px;
   background: var(--chord-gradient);
-  border: 1px solid rgba(255,255,255,0.2);
   box-shadow: var(--chord-glow);
   text-shadow: var(--chord-text-shadow);
 }
