@@ -355,30 +355,30 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 20px;
-  height: 40px;
-  background: rgba(22,27,34,0.9);
-  border: 1px solid var(--border);
+  width: 18px;
+  height: 36px;
+  background: rgba(22,27,34,0.75);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 4px;
-  color: var(--text-dim);
+  color: rgba(255,255,255,0.4);
   cursor: pointer;
   font-size: 11px;
   padding: 0;
   z-index: 5;
-  opacity: 0;
-  pointer-events: none;
   transition: opacity .15s, color .15s, background .15s, border-color .15s;
   display: flex;
   align-items: center;
   justify-content: center;
+  opacity: 0.65;
 }
-/* Reveal buttons only when user engages the divider — prevents the
-   two-arrow chrome from competing with the ribbon and waterfall. */
+/* Full brightness when the divider is engaged or one side is collapsed */
 .resize-handle:hover .ribbon-toggle-btn,
 .resize-handle:focus-within .ribbon-toggle-btn,
 .resize-handle.has-hidden-side .ribbon-toggle-btn {
   opacity: 1;
-  pointer-events: auto;
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--accent);
 }
 /* When both panels visible (no .has-hidden-side), shift the two buttons
    horizontally so they sit side-by-side as `< >` straddling the handle's
@@ -2444,23 +2444,23 @@
    glow + white core makes it read as a luminous gem regardless of the
    card's background tint. */
 .beat-active {
-  background-color: #e9d5ff !important;   /* bright near-white purple core */
+  background-color: #a855f7 !important;   /* rich purple-500 core */
   width: 7px !important;
   height: 7px !important;
   box-shadow:
-    0 0 4px rgba(233, 213, 255, 1),
-    0 0 10px rgba(168, 85, 247, 0.95),
-    0 0 22px rgba(168, 85, 247, 0.6) !important;
+    0 0 3px rgba(216, 180, 254, 0.9),
+    0 0 10px rgba(147, 51, 234, 1),
+    0 0 22px rgba(126, 34, 206, 0.75) !important;
   transform: scale(1.25);
   transition: all 0.1s ease-out;
 }
 .beat-dot.is-downbeat.beat-active {
-  /* Downbeat in the active moment — slightly bigger gem, same hue family */
-  background-color: #f3e8ff !important;
+  /* Downbeat in the active moment — bigger halo, same hue family */
+  background-color: #9333ea !important;
   box-shadow:
-    0 0 5px rgba(243, 232, 255, 1),
-    0 0 14px rgba(168, 85, 247, 1),
-    0 0 28px rgba(168, 85, 247, 0.7) !important;
+    0 0 4px rgba(216, 180, 254, 1),
+    0 0 14px rgba(147, 51, 234, 1),
+    0 0 28px rgba(126, 34, 206, 0.85) !important;
 }
 
 /* Virtual beat mapping — downbeat accent (bar start) */
