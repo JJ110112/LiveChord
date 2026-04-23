@@ -270,19 +270,22 @@
   padding-top: 22px;  /* make room for the absolute .rv-grid-phrase label */
 }
 
+/* Keep the chord-name pill geometry identical across states so becoming
+   active never bounces the layout. Only the fill/glow changes on .active. */
 .rv-item .rv-chord-name {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--text);
-  transition: all .2s;
-}
-.rv-item.active .rv-chord-name {
-  color: #fff;
-  font-size: 18px;
   display: inline-block;
   padding: 2px 10px;
   border-radius: 8px;
+  border: 1px solid transparent;
+  transition: background .2s, box-shadow .2s, color .2s, border-color .2s;
+}
+.rv-item.active .rv-chord-name {
+  color: #fff;
   background: var(--chord-gradient);
+  border-color: rgba(255,255,255,0.2);
   box-shadow: var(--chord-glow);
   text-shadow: var(--chord-text-shadow);
 }
