@@ -165,11 +165,10 @@ const ChordRender = {
       }
     }
 
-    // 和弦名稱
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 10px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(data.name || "", sw / 2, sh - 2);
+    // No chord-name label here — both callers (ribbon cards in
+    // player.js and the chord-picker dialog in chord-render.js) pair
+    // this canvas with a separate HTML chord-name element above it, so
+    // drawing the name inside the canvas just duplicated it.
   },
 
   /**

@@ -11,6 +11,11 @@ venv/
 # MIDI test library (user-provided, Phase 4 POC; possibly licensed content)
 E-POP/
 
+# Soundfonts for pretty_midi.fluidsynth (large SF2/SF3 binaries, user-downloaded)
+soundfonts/
+*.sf2
+*.sf3
+
 # 運行時資料（不進版控）
 songs/
 data/library_cache.json

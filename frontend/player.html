@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=8">
-  <link rel="stylesheet" href="/css/player.css?v=77">
+  <link rel="stylesheet" href="/css/player.css?v=79">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -400,7 +400,7 @@
         <button class="tb-popup-btn" data-tab="piano" title="Piano 鋼琴">&#x1F3B9; 鋼琴</button>
         <button class="tb-popup-btn" data-tab="guitar" title="Guitar 吉他">&#x1F3B8; 吉他</button>
         <button class="tb-popup-btn" data-tab="ukulele" title="Ukulele 烏克麗麗">&#x1FA95; 烏克</button>
-        <button class="tb-popup-btn" data-tab="accordion" title="Accordion 手風琴">&#x1FA97; 手風琴</button>
+        <button class="tb-popup-btn" data-tab="accordion" title="Accordion 手風琴"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:.3em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="4" height="12" rx="1"/><rect x="17" y="6" width="4" height="12" rx="1"/><path d="M7 9 L10 12 L7 15"/><path d="M10 9 L13 12 L10 15"/><path d="M13 9 L16 12 L13 15"/><path d="M16 9 L17 12 L16 15"/></svg>手風琴</button>
         <button class="tb-popup-btn" data-tab="arranger" title="Arranger 編曲鍵盤">&#x1F3B9; 編曲琴</button>
       </div>
     </div>
@@ -647,7 +647,7 @@
 
 <script src="/js/utils.js?v=6"></script>
 <script src="/js/api.js?v=57"></script>
-<script src="/js/chord-render.js?v=53"></script>
+<script src="/js/chord-render.js?v=54"></script>
 <script src="/js/arpeggio-patterns.js?v=1"></script>
 <script src="/js/string-instrument.js?v=1"></script>
 <script src="/js/instrument-registry.js?v=1"></script>

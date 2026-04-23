@@ -243,23 +243,24 @@
   border: 1px solid rgba(255,255,255,0.06);
   border-left: 3px solid transparent;
   background: rgba(255,255,255,0.03);
-  opacity: 0.72;
   position: relative;
+  /* No parent opacity — keeps chord-name text at full brightness on every
+     card. User wants to read the whole song structure at a glance. Active /
+     upcoming-next / played still stand out via background tint + border
+     color + gradient on the active chord name. */
 }
-.rv-item:hover { opacity: 0.95; background: rgba(255,255,255,0.06); }
-.rv-item.upcoming { opacity: 0.9; }
+.rv-item:hover { background: rgba(255,255,255,0.07); }
 .rv-item.upcoming-next {
-  opacity: 0.95;
   background: rgba(33,150,243,0.07);
   border-left-color: rgba(33,150,243,0.5);
 }
 .rv-item.active {
-  opacity: 1;
   border-left-color: var(--phrase-color, var(--accent));
   border-left-width: 4px;
   background: rgba(33,150,243,0.18);
 }
-.rv-item.played { opacity: 0.3; }
+/* Played cards: subtle background dim only, chord-name text stays readable. */
+.rv-item.played { background: rgba(255,255,255,0.015); }
 
 /* Phrase-start chord card: thin color bar across the top marks where a new
    section (Intro / Verse 1 / Chorus 1 / ...) begins. JS sets data-phrase-start
@@ -2484,13 +2485,11 @@
   border-left-color: rgba(0, 255, 204, 0.55);
 }
 /* Short chord — visual degrade (passing chord / syncopation).
-   :not(.upcoming):not(.upcoming-next) so the read-ahead tier wins —
-   otherwise chord-short was overriding .upcoming/.upcoming-next via
-   higher specificity, making i+1/i+2 look DARKER than i+3..i+N. */
-.rv-item.chord-short:not(.active):not(.upcoming):not(.upcoming-next) { opacity: 0.55; }
+   Opacity removed: user wants to read the whole song structure clearly,
+   and parent opacity was cascading to dim the chord name too. The
+   smaller font on the chord-name still signals "this is a short
+   passing chord" without making it hard to read. */
 .rv-item.chord-short .rv-chord-name { font-size: 0.9em; }
-/* chord-short: keep full-size dots so single-beat count stays readable;
-   the 0.9em chord name + 0.55 opacity already signal "passing chord". */
 
 /* Versions Dropdown */
 .versions-dropdown {
