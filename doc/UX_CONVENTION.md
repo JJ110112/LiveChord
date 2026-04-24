@@ -4,7 +4,7 @@ Canonical UX rules for LiveChord. **All UI changes MUST follow this document.** 
 a new pattern emerges that isn't covered here, update this file in the same PR that
 introduces it — the doc is the reference, not a historical log.
 
-Last updated: 2026-04-21 (live; added §11 z-index tier map)
+Last updated: 2026-04-24 (live; added §12 popup taxonomy — shared .lc-* surface for non-toolbar popups)
 Audience: anyone editing `frontend/*.html`, `frontend/js/*.js`, `frontend/css/*.css`
 — including future-Claude.
 
@@ -337,9 +337,142 @@ did nothing. Fix was z-index: 1000 + a matching backdrop at 999.
 
 ---
 
-## §12  When these rules conflict with urgency
+## §12  Popup taxonomy — pick one of four types, never invent a fifth
 
-If a hotfix needs to ship in 5 minutes and following §1-11 would take 20, **fix
+Every popup/panel/overlay in the player (and, progressively, the rest of the app)
+MUST fall into one of these four types. Each has a shared base class that owns
+surface colour, blur, border, radius, shadow, title style, and z-index. Per-popup
+CSS handles **only** content and positional overrides. Do not introduce new base
+surfaces, new shadow presets, or new title styles — if your popup doesn't fit a
+type, fix the type or widen the taxonomy in the same PR.
+
+### The four types
+
+| Type | Anchor | Backdrop | Blocks page | Z-tier (per §11) | Base class |
+|---|---|---|---|---|---|
+| **A — Toolbar popup** | Above a toolbar trigger | no | no | 5 (9000–9499) | `.tb-popup` (see §1) |
+| **B — Modal dialog** | Centered in viewport | yes, dim + click-dismiss | yes | 4 (1000–8999) | `.lc-modal-backdrop` + `.lc-modal` |
+| **C — Floating panel** | Fixed corner | no | no | 6 (9500–9999) | `.lc-panel` |
+| **D — Toast banner** | Top or bottom full-width slim | no | no | 7 (10000+) | `.lc-banner` (+ `--warn` / `--info` / `--success` / `--bottom`) |
+
+Decision flowchart:
+- Is it anchored to a toolbar trigger button? → **A**.
+- Does the user have to deal with it before continuing (a decision or form)? → **B**.
+- Does it live in a corner while the user keeps using the page? → **C**.
+- Is it a slim informational strip? → **D**.
+
+### Shared surface tokens (defined in [frontend/css/player.css](../frontend/css/player.css))
+
+```css
+:root {
+  --lc-popup-bg: rgba(22, 27, 34, 0.96);
+  --lc-popup-blur: blur(12px);
+  --lc-popup-border: 1px solid var(--border);
+  --lc-popup-radius-sm: 10px;   /* panel + banner */
+  --lc-popup-radius-lg: 12px;   /* modal */
+  --lc-popup-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+```
+
+All four types use **the same frosted dark surface** (`--lc-popup-bg` +
+`--lc-popup-blur`). The only visual variation is radius (sm vs lg) and z-tier.
+`.tb-popup` has its own tokens baked in — it predates this section — but matches
+the same rgba + blur values.
+
+### Shared title + close button
+
+- `.lc-title` — 14px / 700 weight / `var(--text)` / sentence-case. Use inside
+  Type B (modal) and Type C (panel). **Do NOT** apply to `.tb-popup` — it has
+  its own 11px uppercase `.tb-popup-title` suited to dense dropdowns.
+- `.lc-subtitle` — 12px / `var(--text-dim)`. One-line hint under the title.
+- `.lc-close` — 28×28 absolute-positioned top-right × button. Mobile hit-target
+  is upsized to 40×40 via a `@media (pointer: coarse)` override.
+- Button rows at the bottom of a dialog use `.lc-modal-actions`
+  (`display: flex; gap: 8px; justify-content: flex-end`).
+- Action buttons inside any popup MUST use `.tb-popup-btn` — no new button
+  class. Semantic colour variants (green apply / red cancel) can add a second
+  class for the colour tint only.
+
+### Type B — Modal dialog scaffold
+
+```html
+<div class="my-modal lc-modal-backdrop">
+  <div class="lc-modal">
+    <button class="lc-close" aria-label="關閉">&times;</button>
+    <div class="lc-title">對話框標題</div>
+    <div class="lc-subtitle">一句話說明（選填）</div>
+    <!-- body -->
+    <div class="lc-modal-actions">
+      <button class="tb-popup-btn">取消</button>
+      <button class="tb-popup-btn active">確認</button>
+    </div>
+  </div>
+</div>
+```
+
+- Backdrop click dismisses (guard: only when `e.target === backdrop`; clicks
+  inside the modal card must not bubble-close).
+- `ESC` dismisses. Add a `keydown` listener that removes itself on close.
+- Dynamically injected: create backdrop + inner card, `appendChild(backdrop)`,
+  only once. Do **not** `appendChild` the card separately.
+
+### Type C — Floating panel scaffold
+
+```html
+<div class="my-panel lc-panel">
+  <div class="lc-title">面板標題</div>
+  <!-- body -->
+</div>
+```
+
+Set position by overriding `top` / `bottom` / `left` / `right` in the per-popup
+CSS block. `.lc-panel` defaults to no positional values so each usage is
+explicit.
+
+### Type D — Toast banner scaffold
+
+```html
+<div class="my-banner lc-banner lc-banner--warn">
+  <span>⚠ 訊息內容</span>
+  <button class="lc-banner-btn">動作</button>
+  <button class="lc-banner-close" aria-label="關閉">&times;</button>
+</div>
+```
+
+- `--warn` adds orange border + warm dark background.
+- `--info` / `--success` add coloured border only (surface stays frosted dark).
+- `--bottom` anchors to the bottom edge with safe-area-aware offset above
+  the toolbar (accounts for 54px toolbar + 80px progress-bar-mid + safe-area).
+
+### Forbidden
+
+- `background: var(--bg-card)` on any popup surface (use `--lc-popup-bg`).
+- Inline `style="..."` attributes on popup content (use named classes — see
+  the auto-split panel for the reference implementation of a fully class-based
+  dynamic popup).
+- Z-indexes outside the §11 tier ranges.
+- New popup surfaces/blurs/radii. If you need a new shade, it belongs in
+  `:root --lc-popup-*` and every type inherits.
+- Re-declaring `.lc-title` or `.lc-close` with different sizes. Size overrides
+  for a specific popup go on the parent selector (e.g.
+  `.my-modal .lc-title { font-size: 16px; }`) and only with cause.
+
+### Past incidents that drove this section
+
+- **2026-04-24**: audit of the player page found 19 popups; 10 had drifted
+  across bg/blur/radius/title/z-index/backdrop. Cause: no taxonomy — each new
+  popup copied the nearest sibling and mutated it. Fix: this §12 plus shared
+  `.lc-*` classes and a one-shot retrofit.
+- Worst-case drift: the auto-split panel carried ~20 inline `style="..."`
+  attributes inside its `innerHTML`, making dark-mode / responsive tuning
+  impossible from CSS. Retrofit moved every inline style to `.as-*` classes in
+  [frontend/css/player.css](../frontend/css/player.css).
+
+---
+
+## §13  When these rules conflict with urgency
+
+If a hotfix needs to ship in 5 minutes and following §1-12 would take 20, **fix
 first, refactor within 24h**. Leave a TODO comment in the code:
 
 ```html
@@ -364,8 +497,10 @@ grep -nE "\\?v=" frontend/*.html
 grep -nE "localStorage\\.(get|set)Item\\('livechord_" frontend/js/*.js
 ```
 
-## Appendix B — Adding a new popup: 10-step checklist
+## Appendix B — Adding a new popup: checklist
 
+0. **Pick a type from §12 (A/B/C/D)**. If none fit, update §12 in the same PR
+   before writing any CSS. Then:
 1. Draft the 3 subgroups on paper first. Can't name one? Merge or drop it.
 2. HTML: `tb-popup tb-popup-wide` + `tb-popup-title` + N `tb-subgroup` blocks.
 3. CSS: no new popup-wide rule; rely on the shared one. Any new button class?

@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=8">
-  <link rel="stylesheet" href="/css/player.css?v=79">
+  <link rel="stylesheet" href="/css/player.css?v=82">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -61,15 +61,15 @@
 <!-- ===== MIDDLE: Main Display Area ===== -->
 <div id="chordDisplay" class="chord-display-area">
 
-  <!-- 偵測中覆蓋層 -->
-  <div id="detectOverlay" class="detect-overlay" style="display:none">
-    <div class="detect-box">
-      <div id="loadingSpinner" class="spinner" style="margin-bottom:12px; margin-left:auto; margin-right:auto;"></div>
+  <!-- 偵測中覆蓋層 — Type B modal (shared .lc-modal-backdrop + .lc-modal) -->
+  <div id="detectOverlay" class="detect-overlay lc-modal-backdrop" style="display:none" role="status" aria-live="polite">
+    <div class="detect-box lc-modal">
+      <div id="loadingSpinner" class="spinner" style="margin:0 auto 12px;"></div>
       <div id="musicBarsAnim" class="music-bars" style="display:none; margin-bottom:16px;">
         <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
       </div>
-      <div id="detectMsg" style="font-size:15px;margin-bottom:8px;font-weight:bold;">正在偵測和弦…</div>
-      <div id="detectDetail" style="font-size:12px;color:var(--text-dim)">首次播放需要分析音訊，請稍候</div>
+      <div id="detectMsg" class="lc-title" style="padding-right:0; text-align:center;">正在偵測和弦…</div>
+      <div id="detectDetail" class="lc-subtitle" style="margin-top:-4px; text-align:center;">首次播放需要分析音訊，請稍候</div>
     </div>
   </div>
 
@@ -246,15 +246,15 @@
     </div><!-- /instrumentPanel -->
   </div><!-- /chordDisplayScaleTarget -->
 
-  <!-- RLHF rate popup (anchored to top-bar star button) -->
-  <div id="ratePopup" class="rate-popup" style="display:none">
+  <!-- RLHF rate popup — Type C panel (.lc-panel), anchored to top-bar star button -->
+  <div id="ratePopup" class="rate-popup lc-panel" style="display:none">
     <button id="btnRlhfGood" class="rate-good" title="聽起來很棒">&#x1F44D; 合理</button>
     <button id="btnRlhfBad" class="rate-bad" title="有外星人指法/伴奏">&#x1F44E; 糟糕</button>
   </div>
 
-  <!-- Beta: 5-star rating + comment popup -->
-  <div id="betaRatePopup" class="beta-rate-popup" style="display:none">
-    <div class="beta-rate-header">和弦品質評價</div>
+  <!-- Beta: 5-star rating + comment popup — Type C panel (.lc-panel) -->
+  <div id="betaRatePopup" class="beta-rate-popup lc-panel" style="display:none">
+    <div class="beta-rate-header lc-title">和弦品質評價</div>
     <div id="betaStars" class="beta-stars">
       <span class="beta-star" data-v="1">&#x2606;</span>
       <span class="beta-star" data-v="2">&#x2606;</span>
@@ -263,16 +263,16 @@
       <span class="beta-star" data-v="5">&#x2606;</span>
     </div>
     <textarea id="betaRateComment" class="beta-rate-comment" rows="2" placeholder="留言（選填）"></textarea>
-    <div class="beta-rate-actions">
+    <div class="beta-rate-actions lc-modal-actions">
       <button id="btnBetaRateSubmit" class="beta-rate-submit">送出</button>
       <button id="btnBetaRateCancel" class="beta-rate-cancel">取消</button>
     </div>
   </div>
 
-  <!-- Beta: Bug report dialog -->
-  <div id="bugReportDialog" class="bug-report-dialog" style="display:none">
-    <div class="bug-report-box">
-      <div class="bug-report-title">回報問題</div>
+  <!-- Beta: Bug report dialog — Type B modal (.lc-modal-backdrop + .lc-modal) -->
+  <div id="bugReportDialog" class="bug-report-dialog lc-modal-backdrop" style="display:none">
+    <div class="bug-report-box lc-modal">
+      <div class="bug-report-title lc-title">回報問題</div>
       <select id="bugCategory" class="bug-input">
         <option value="accuracy">和弦準確度</option>
         <option value="ui">介面問題</option>
@@ -281,7 +281,7 @@
         <option value="other">其他</option>
       </select>
       <textarea id="bugDescription" class="bug-input" rows="4" placeholder="請描述問題或建議…"></textarea>
-      <div class="beta-rate-actions">
+      <div class="beta-rate-actions lc-modal-actions">
         <button id="btnBugSubmit" class="beta-rate-submit">送出</button>
         <button id="btnBugCancel" class="beta-rate-cancel">取消</button>
       </div>
@@ -644,12 +644,12 @@
 <audio id="audio" preload="metadata"></audio>
 <input type="file" id="localFileInput" accept="audio/*" style="display:none">
 
-<!-- Audio error overlay: shown when NAS stream fails -->
-<div id="localAudioPrompt" class="local-audio-prompt" style="display:none">
-  <div class="local-audio-box">
+<!-- Audio error overlay — Type B modal (.lc-modal-backdrop + .lc-modal) -->
+<div id="localAudioPrompt" class="local-audio-prompt lc-modal-backdrop" style="display:none">
+  <div class="local-audio-box lc-modal">
     <div style="font-size:28px;margin-bottom:8px">&#x1F3B5;</div>
-    <div style="font-size:14px;font-weight:bold;margin-bottom:4px">無法串流音訊</div>
-    <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">伺服器音樂庫不可用，請載入本地音檔播放</div>
+    <div class="lc-title" style="padding-right:0; text-align:center;">無法串流音訊</div>
+    <div class="lc-subtitle" style="text-align:center;">伺服器音樂庫不可用，請載入本地音檔播放</div>
     <button id="btnLocalFilePrompt" class="local-audio-btn">&#x1F4C2; 選擇本地音檔</button>
   </div>
 </div>
@@ -664,7 +664,7 @@
 <script src="/js/arranger-instrument.js?v=3"></script>
 <script src="/js/midi-exporter.js?v=2"></script>
 <script src="/js/beat-sync.js?v=1"></script>
-<script src="/js/chord-correction.js?v=12"></script>
+<script src="/js/chord-correction.js?v=13"></script>
 <script>
   const originalFetch = window.fetch;
   window.fetch = async function() {
@@ -687,6 +687,6 @@
     return res;
   };
 </script>
-<script src="/js/player.js?v=223"></script>
+<script src="/js/player.js?v=224"></script>
 </body>
 </html>

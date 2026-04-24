@@ -249,13 +249,13 @@
 
   function _createPanel(title, instruction) {
     const panel = document.createElement("div");
-    panel.className = "correction-panel";
+    panel.className = "correction-panel lc-panel";
     panel.innerHTML = `
-      <div class="correction-title">${title}</div>
+      <div class="correction-title lc-title">${title}</div>
       <div class="correction-instructions">${instruction}</div>
       <div class="correction-status"><span class="cc-count">0</span></div>
       <div class="correction-result" style="display:none"></div>
-      <div class="correction-actions">
+      <div class="correction-actions lc-modal-actions">
         <button class="correction-btn correction-apply" disabled>&#x2713; &#x5957;&#x7528;</button>
         <button class="correction-btn correction-cancel">&#x2717; &#x53D6;&#x6D88;</button>
       </div>`;

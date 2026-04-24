@@ -500,7 +500,7 @@
     if (!el) {
       el = document.createElement("div");
       el.id = "ytMelodyBanner";
-      el.className = "yt-melody-banner";
+      el.className = "yt-melody-banner lc-banner lc-banner--info lc-banner--bottom";
       el.innerHTML = '<span class="yt-mel-spinner"></span><span class="yt-mel-text"></span>';
       document.body.appendChild(el);
     }
@@ -1896,7 +1896,23 @@
   document.querySelectorAll(".tb-item").forEach(item => {
     const trigger = item.querySelector(".tb-trigger, a.tb-trigger");
     if (!trigger) return;
-    const hasPopup = !!item.querySelector(".tb-popup");
+    const popup = item.querySelector(".tb-popup");
+    const hasPopup = !!popup;
+    // Inject a × close button into every toolbar popup so touch users don't
+    // have to reach for an outside-tap to dismiss. Delegated click handler
+    // below closes the nearest .tb-item.
+    if (popup && !popup.querySelector(".tb-popup-close")) {
+      const closeBtn = document.createElement("button");
+      closeBtn.className = "tb-popup-close";
+      closeBtn.setAttribute("aria-label", "關閉");
+      closeBtn.setAttribute("type", "button");
+      closeBtn.innerHTML = "&times;";
+      closeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();  // don't let .tb-popup's stopPropagation race us
+        item.classList.remove("open");
+      });
+      popup.insertBefore(closeBtn, popup.firstChild);
+    }
     if (hasPopup) {
       trigger.addEventListener("click", (e) => {
         // Close other open popups
@@ -4594,7 +4610,7 @@
 
   function _showAutoSplitPanel() {
     // Remove any existing panel first
-    document.querySelectorAll(".auto-split-panel, .auto-split-backdrop").forEach(el => el.remove());
+    document.querySelectorAll(".auto-split-panel").forEach(el => el.remove());
 
     // Load saved preferences — let the user's last choice stick across songs
     let mode = "bar";               // "bar" | "barsnap" | "ratio"
@@ -4617,84 +4633,58 @@
       ? `偵測到：每小節 ${inferred} 拍。`
       : `無法從 downbeats 自動偵測，預設每小節 4 拍。`;
 
-    // z-index must exceed .chord-display-area (z:500) or the panel renders
-    // behind the waterfall canvas and looks like nothing happened.
+    // Type B modal — backdrop + .lc-modal card. All styling via classes in player.css
+    // (shared .lc-modal-backdrop + .lc-modal + auto-split-specific .as-* classes).
     const backdrop = document.createElement("div");
-    backdrop.className = "auto-split-backdrop";
-    backdrop.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:999;";
+    backdrop.className = "auto-split-panel lc-modal-backdrop";
 
     const panel = document.createElement("div");
-    panel.className = "auto-split-panel";
-    panel.style.cssText = `
-      position:fixed; top:50%; left:50%; transform:translate(-50%, -50%);
-      background:var(--bg-card); border:1px solid var(--border); border-radius:8px;
-      padding:18px 20px; z-index:1000; min-width:340px; max-width:90vw;
-      box-shadow:0 8px 24px rgba(0,0,0,0.5); color:var(--text);
-    `;
+    panel.className = "lc-modal";
     panel.innerHTML = `
-      <div style="font-size:15px; font-weight:600; margin-bottom:12px;">✂ 自動切分長和弦</div>
-      <div style="display:flex; gap:6px; margin-bottom:14px;">
-        <button class="as-mode as-mode-bar" data-mode="bar"
-          style="flex:1; padding:7px 10px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer; font-size:12px;">
-          依小節切分
-        </button>
-        <button class="as-mode as-mode-barsnap" data-mode="barsnap"
-          style="flex:1; padding:7px 10px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer; font-size:12px;">
-          對齊小節線
-        </button>
-        <button class="as-mode as-mode-ratio" data-mode="ratio"
-          style="flex:1; padding:7px 10px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer; font-size:12px;">
-          依比例切分
-        </button>
+      <div class="lc-title">✂ 自動切分長和弦</div>
+      <div class="as-mode-row">
+        <button class="as-mode-btn" data-mode="bar">依小節切分</button>
+        <button class="as-mode-btn" data-mode="barsnap">對齊小節線</button>
+        <button class="as-mode-btn" data-mode="ratio">依比例切分</button>
       </div>
 
-      <div class="as-bar-section" style="margin-bottom:14px;">
-        <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">拍號（每小節幾拍）</div>
-        <div class="as-ts-row" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
-        <div class="as-bar-hint" style="font-size:11px; color:var(--text-dim); margin-top:6px;">
-          ${inferredHint}超過一小節的和弦會沿小節線切，起點未對齊時先補齊當前小節。
-        </div>
-        <div class="as-snap-hint" style="display:none; font-size:11px; color:#ff9800; margin-top:8px; padding:8px 10px; background:rgba(255,152,0,0.08); border:1px solid rgba(255,152,0,0.3); border-radius:4px; line-height:1.5;">
+      <div class="as-bar-section as-section">
+        <div class="as-section-label">拍號（每小節幾拍）</div>
+        <div class="as-ts-row"></div>
+        <div class="as-bar-hint">${inferredHint}超過一小節的和弦會沿小節線切，起點未對齊時先補齊當前小節。</div>
+        <div class="as-snap-hint" style="display:none">
           ⚠ 會把相鄰和弦之間的交界線移到最近的小節線 (±半小節容差)，可能改變某個時間點的「目前和弦」。若 BTC 的切點是刻意放在反拍/切分音上，套用後會變成方正節奏。可用「還原」退回。
         </div>
       </div>
 
-      <div class="as-ratio-section" style="margin-bottom:14px;">
-        <div style="margin-bottom:10px;">
-          <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">拍數門檻 (大於此值才切分)</div>
-          <div style="display:flex; gap:6px; align-items:center;">
-            <button class="as-dec" style="padding:4px 12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer;">−</button>
-            <input class="as-thresh" type="number" min="2" max="32" value="${threshold}" style="width:64px; padding:4px 6px; text-align:center; background:var(--bg); border:1px solid var(--border); border-radius:4px; color:var(--text); font-size:14px;">
-            <button class="as-inc" style="padding:4px 12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer;">+</button>
-            <span style="color:var(--text-dim); font-size:12px;">拍</span>
-          </div>
+      <div class="as-ratio-section as-section">
+        <div class="as-section-label">拍數門檻 (大於此值才切分)</div>
+        <div class="as-thresh-row">
+          <button class="as-dec">−</button>
+          <input class="as-thresh" type="number" min="2" max="32" value="${threshold}">
+          <button class="as-inc">+</button>
+          <span style="color:var(--text-dim); font-size:12px;">拍</span>
         </div>
-        <div>
-          <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">切分比例 (依和弦拍數等比例縮放)</div>
-          <div class="as-ratios" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
-          <div style="font-size:11px; color:var(--text-dim); margin-top:6px;">例: 8 拍 + 1:3 → 2+6；8 拍 + 1:1:1 → 3+2+3</div>
-        </div>
+        <div class="as-section-label" style="margin-top:10px;">切分比例 (依和弦拍數等比例縮放)</div>
+        <div class="as-ratios"></div>
+        <div class="as-hint-small">例: 8 拍 + 1:3 → 2+6；8 拍 + 1:1:1 → 3+2+3</div>
       </div>
 
-      <div style="display:flex; gap:8px; justify-content:flex-end;">
-        <button class="as-cancel" style="padding:7px 18px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer;">取消</button>
-        <button class="as-apply" style="padding:7px 18px; background:#2196F3; border:1px solid #2196F3; color:white; border-radius:4px; cursor:pointer; font-weight:600;">套用</button>
+      <div class="lc-modal-actions">
+        <button class="as-cancel">取消</button>
+        <button class="as-apply">套用</button>
       </div>
     `;
+    backdrop.appendChild(panel);
 
     // --- Mode toggle ---
     const barSection = panel.querySelector(".as-bar-section");
     const ratioSection = panel.querySelector(".as-ratio-section");
     const barHint = panel.querySelector(".as-bar-hint");
     const snapHint = panel.querySelector(".as-snap-hint");
-    const modeBtns = panel.querySelectorAll(".as-mode");
+    const modeBtns = panel.querySelectorAll(".as-mode-btn");
     function syncModeUI() {
-      modeBtns.forEach(b => {
-        const active = b.dataset.mode === mode;
-        b.style.background = active ? "rgba(33,150,243,0.35)" : "var(--bg)";
-        b.style.borderColor = active ? "#2196F3" : "var(--border)";
-        b.style.fontWeight = active ? "600" : "400";
-      });
+      modeBtns.forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
       // bar + barsnap share the meter section (TS chips); ratio hides it.
       barSection.style.display = (mode === "bar" || mode === "barsnap") ? "" : "none";
       ratioSection.style.display = mode === "ratio" ? "" : "none";
@@ -4716,18 +4706,14 @@
       const btn = document.createElement("button");
       btn.textContent = o.label;
       btn.dataset.ts = o.v;
-      btn.style.cssText = "padding:6px 12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer; font-size:13px;";
+      btn.className = "as-chip";
+      if (o.v === tsOverride) btn.classList.add("active");
       btn.addEventListener("click", () => {
         tsOverride = o.v;
-        tsRow.querySelectorAll("button").forEach(b => {
-          b.style.background = "var(--bg)"; b.style.borderColor = "var(--border)";
-        });
-        btn.style.background = "rgba(33,150,243,0.35)"; btn.style.borderColor = "#2196F3";
+        tsRow.querySelectorAll(".as-chip").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
       });
       tsRow.appendChild(btn);
-      if (o.v === tsOverride) {
-        btn.style.background = "rgba(33,150,243,0.35)"; btn.style.borderColor = "#2196F3";
-      }
     });
 
     // --- Ratio chips (legacy mode) ---
@@ -4737,19 +4723,12 @@
       const btn = document.createElement("button");
       btn.textContent = r;
       btn.dataset.ratio = r;
-      btn.style.cssText = "padding:6px 14px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:4px; cursor:pointer; font-size:13px; font-family:monospace;";
-      if (r === ratio) {
-        btn.style.background = "rgba(33,150,243,0.35)";
-        btn.style.borderColor = "#2196F3";
-      }
+      btn.className = "as-chip as-ratio-chip";
+      if (r === ratio) btn.classList.add("active");
       btn.addEventListener("click", () => {
         ratio = r;
-        ratiosDiv.querySelectorAll("button").forEach(b => {
-          b.style.background = "var(--bg)";
-          b.style.borderColor = "var(--border)";
-        });
-        btn.style.background = "rgba(33,150,243,0.35)";
-        btn.style.borderColor = "#2196F3";
+        ratiosDiv.querySelectorAll(".as-chip").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
       });
       ratiosDiv.appendChild(btn);
     });
@@ -4763,10 +4742,11 @@
       inp.value = Math.min(32, (parseInt(inp.value) || 8) + 1);
     });
 
-    const close = () => { panel.remove(); backdrop.remove(); document.removeEventListener("keydown", keyHandler); };
+    const close = () => { backdrop.remove(); document.removeEventListener("keydown", keyHandler); };
     const keyHandler = (e) => { if (e.key === "Escape") close(); };
     document.addEventListener("keydown", keyHandler);
-    backdrop.addEventListener("click", close);
+    // Click on backdrop (not on modal card) closes the dialog.
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
     panel.querySelector(".as-cancel").addEventListener("click", close);
 
     panel.querySelector(".as-apply").addEventListener("click", () => {
@@ -4985,7 +4965,6 @@
     });
 
     document.body.appendChild(backdrop);
-    document.body.appendChild(panel);
   }
 
   const btnSaveCorrected = $("#btnSaveCorrected");
@@ -6080,30 +6059,37 @@
   function _showYtFallbackPanel() {
     const old = document.getElementById("ytFallbackPanel");
     if (old) { old.remove(); }
-    const panel = document.createElement("div");
-    panel.id = "ytFallbackPanel";
-    panel.className = "yt-fallback-panel";
-    panel.innerHTML = `
-      <button class="yt-fb-close" aria-label="關閉">&times;</button>
-      <h3>選擇正確的音源</h3>
-      <div class="yt-fb-hint">自動搜尋找不到對應版本，或版本長度不符和弦。你可以：</div>
-      <div class="yt-fb-row">
-        <input id="ytFbUrl" type="text" placeholder="貼上 YouTube URL" />
-        <button id="ytFbUrlSubmit">使用</button>
-      </div>
-      <div class="yt-fb-sep"><span>或</span></div>
-      <div class="yt-fb-row">
-        <input id="ytFbFile" type="file" accept="audio/*" />
-        <button id="ytFbFileSubmit" class="secondary">載入本地檔</button>
+    // Type B modal — backdrop wraps a .lc-modal card. Click backdrop to dismiss.
+    const backdrop = document.createElement("div");
+    backdrop.id = "ytFallbackPanel";
+    backdrop.className = "yt-fallback-panel lc-modal-backdrop";
+    backdrop.innerHTML = `
+      <div class="lc-modal">
+        <button class="lc-close yt-fb-close" aria-label="關閉">&times;</button>
+        <div class="lc-title">選擇正確的音源</div>
+        <div class="yt-fb-hint">自動搜尋找不到對應版本，或版本長度不符和弦。你可以：</div>
+        <div class="yt-fb-row">
+          <input id="ytFbUrl" type="text" placeholder="貼上 YouTube URL" />
+          <button id="ytFbUrlSubmit" class="yt-fb-btn">使用</button>
+        </div>
+        <div class="yt-fb-sep"><span>或</span></div>
+        <div class="yt-fb-row">
+          <input id="ytFbFile" type="file" accept="audio/*" />
+          <button id="ytFbFileSubmit" class="yt-fb-btn secondary">載入本地檔</button>
+        </div>
       </div>
     `;
-    document.body.appendChild(panel);
-    panel.querySelector(".yt-fb-close")?.addEventListener("click", () => panel.remove());
-    panel.querySelector("#ytFbUrlSubmit")?.addEventListener("click", () => _onYtFbUrlSubmit(panel));
-    panel.querySelector("#ytFbUrl")?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") _onYtFbUrlSubmit(panel);
+    document.body.appendChild(backdrop);
+    const close = () => backdrop.remove();
+    backdrop.querySelector(".yt-fb-close")?.addEventListener("click", close);
+    // Backdrop click dismisses; clicks inside the .lc-modal card bubble to backdrop
+    // but target !== backdrop so they don't close. Clicking outside the card does.
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+    backdrop.querySelector("#ytFbUrlSubmit")?.addEventListener("click", () => _onYtFbUrlSubmit(backdrop));
+    backdrop.querySelector("#ytFbUrl")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") _onYtFbUrlSubmit(backdrop);
     });
-    panel.querySelector("#ytFbFileSubmit")?.addEventListener("click", () => _onYtFbFileSubmit(panel));
+    backdrop.querySelector("#ytFbFileSubmit")?.addEventListener("click", () => _onYtFbFileSubmit(backdrop));
   }
 
   function _onYtFbUrlSubmit(panel) {
@@ -6183,7 +6169,7 @@
     if (!el) {
       el = document.createElement("div");
       el.id = "ytAnalysisBanner";
-      el.className = "yt-analysis-banner";
+      el.className = "yt-analysis-banner lc-banner lc-banner--info";
       el.innerHTML = `
         <div class="yt-ab-row">
           <span class="yt-ab-text"></span>
@@ -6327,11 +6313,11 @@
     const pct = Math.round(ratio * 100);
     const el = document.createElement("div");
     el.id = "ytDesyncBanner";
-    el.className = "yt-desync-banner";
+    el.className = "yt-desync-banner lc-banner lc-banner--warn";
     el.innerHTML = `
       <span>⚠ YouTube 版本長度 ${formatTime(dYt)} 與和弦 ${formatTime(dChord)} 差 ${pct}%，同步已停用</span>
-      <button id="ytDesyncFallback" class="yt-desync-btn">換版本/上傳音檔</button>
-      <button id="ytDesyncClose" class="yt-desync-close" aria-label="關閉">&times;</button>
+      <button id="ytDesyncFallback" class="lc-banner-btn">換版本/上傳音檔</button>
+      <button id="ytDesyncClose" class="lc-banner-close" aria-label="關閉">&times;</button>
     `;
     document.body.appendChild(el);
     document.getElementById("ytDesyncClose")?.addEventListener("click", () => el.remove());

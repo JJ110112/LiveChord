@@ -22,8 +22,12 @@ livechord.org is live, invitation codes have been distributed, real users are an
 **Default workflow for any change**:
 
 1. **Edit only in the dev repo** (`c:\Users\hitea\Claude\LiveChord`). Never edit `V:\` directly — commits won't pick it up and rollbacks are harder
-2. **QA on PC localhost 8802 first** via [start_beta_local.bat](start_beta_local.bat) (same `LIVECHORD_MODE=beta` semantics as 8801, but isolated `data/` folder so your experiments can't corrupt user auth/audit/ratings)
-   - Local QA account: `qatest` / `qatest1234` + invite `LiveChordAlpha` (first register auto-promotes to admin only if auth.db is empty; qatest on the dev box is non-admin by default)
+2. **Pick the right QA port for the change, then QA on PC localhost first** — **wrong port = wrong environment = false green**:
+   - **Beta-affecting change** (anything user-facing on livechord.org, `LIVECHORD_MODE=beta` gated code, hashed-path search, invite flows, etc.) → PC **8802** via [start_beta_local.bat](start_beta_local.bat). Same `LIVECHORD_MODE=beta` semantics as 8801 prod, isolated `data/` folder so your experiments can't corrupt user auth/audit/ratings.
+   - **Personal-affecting change** (anything under `personal_mode.require_personal_mode` — `/api/auto/*` except settings/backups, `/api/extraction/*`, `/api/chords/stats`, `/api/tasks/status`, `/api/library/*`, `/api/settings` — auto-worker, admin UI, LAN-bypass code paths, local NAS browsing) → PC **8803** (personal local). 8802 won't exercise these — beta mode returns 404 on the restricted endpoints, so bugs in personal-only code would silently pass 8802 QA.
+   - **Change that touches both** (shared frontend/player.*, shared handlers, CSS, icon systems, toolbar popups, etc.) → **QA both 8803 and 8802**, not just one. One passing doesn't imply the other does (localStorage keys, mode-gated UI branches, LAN-bypass auth all diverge).
+   - Local QA account (8802 beta): `qatest` / `qatest1234` + invite `LiveChordAlpha` (first register auto-promotes to admin only if auth.db is empty; qatest on the dev box is non-admin by default).
+   - If 8803 isn't running and there's no `start_personal_local.bat` yet, ask the user how they want personal local started — don't run `start_local.bat` (it binds 8800 and collides with NUC prod on LAN).
 3. **Ship to V:\ only after local QA passes**. Copy via `cp` + verify with `diff -q`
 4. **Announce restarts**: backend `.py` changes don't auto-reload on NUC (uvicorn has no `--reload` in prod) — the user must run [restart_dual.bat](restart_dual.bat) before changes take effect on 8801. Surface this in your summary so it isn't forgotten
 
