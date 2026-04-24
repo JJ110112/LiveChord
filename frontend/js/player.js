@@ -5380,18 +5380,57 @@
   const _isBetaLane = location.port === "8801"
                       || location.hostname.endsWith("livechord.org");
 
-  function _currentBeatCategory() {
-    const src = (chordData && chordData.beats_source) ? String(chordData.beats_source) : "";
-    return /madmom/i.test(src) ? "madmom" : "librosa";
+  function _categoryOf(src) {
+    return /madmom/i.test(String(src || "")) ? "madmom" : "librosa";
   }
 
-  function _syncBeatSourceToggle() {
+  function _currentBeatCategory() {
+    return _categoryOf(chordData && chordData.beats_source);
+  }
+
+  // Sync toggle active class from an explicit source (authoritative) or from
+  // chordData.beats_source (fallback). Called both on initial load and after
+  // a switch response — the server-returned beats_source is the source of
+  // truth, not the potentially-stale chordData.
+  function _syncBeatSourceToggle(overrideSrc) {
     if (!btnBeatLibrosa || !btnBeatMadmom) return;
-    if (_isBetaLane || !chordData) return;
-    const cat = _currentBeatCategory();
+    if (_isBetaLane) return;
+    const src = (overrideSrc !== undefined)
+      ? overrideSrc
+      : (chordData && chordData.beats_source);
+    const cat = _categoryOf(src);
     btnBeatLibrosa.classList.toggle("active", cat === "librosa");
     btnBeatMadmom.classList.toggle("active", cat === "madmom");
   }
+
+  // Diagnostic hook — call window.__lcBeatDebug() in DevTools to dump the
+  // current toggle vs chordData vs backend view side-by-side.
+  window.__lcBeatDebug = async function () {
+    const info = {
+      chordData_beats_source: chordData && chordData.beats_source,
+      chordData_bpm: chordData && chordData.bpm,
+      n_downbeats: chordData && Array.isArray(chordData.downbeats)
+        ? chordData.downbeats.length : null,
+      libActive: btnBeatLibrosa && btnBeatLibrosa.classList.contains("active"),
+      madActive: btnBeatMadmom  && btnBeatMadmom.classList.contains("active"),
+    };
+    try {
+      const p = new URLSearchParams();
+      if (hashMode) p.set("hash", hashMode);
+      else if (chordData && chordData.path) p.set("path", chordData.path);
+      const r = await fetch(`/api/chords${hashMode
+        ? `/by-hash?${p.toString()}`
+        : `?${p.toString()}`}`);
+      const d = await r.json();
+      info.backend_beats_source = d.beats_source;
+      info.backend_bpm = d.bpm;
+      info.backend_n_downbeats = Array.isArray(d.downbeats)
+        ? d.downbeats.length : null;
+      info.backend_current_version = d.current_version;
+    } catch (e) { info.backend_error = String(e); }
+    console.table(info);
+    return info;
+  };
 
   // Reveal toggle on personal lane; hide the old single-direction button.
   // On beta, keep the old button, hide the toggle (status quo).
@@ -5409,11 +5448,12 @@
       showToast("節拍切換進行中…", 2000);
       return;
     }
-    const cur = _currentBeatCategory();
-    if (cur === mode) {
-      showToast(`已經是 ${mode}`, 1800);
-      return;
-    }
+    // No client-side early-return: client view of chordData.beats_source can
+    // diverge from the server's canonical sheet (ChordSheet Pydantic strips
+    // beat fields from user-version files, browser cache may be stale, etc).
+    // Always let the backend decide — it responds {already: true} with the
+    // authoritative beats_source when no-op, which we use to sync the UI.
+
     // Decide hash vs path routing (same dual-mode logic as upgrade-beats).
     // 8800 path-mode sends path; hash-mode sends hash — backend accepts either.
     const params = new URLSearchParams({ mode });
@@ -5445,11 +5485,15 @@
         return;
       }
       if (data.already) {
+        // Backend says this is already the target mode. Use the backend's
+        // reported beats_source to force-sync the UI (our client state may
+        // have been stale — e.g., user-version chord file lagging behind
+        // the canonical sheet).
+        _syncBeatSourceToggle(data.beats_source || mode);
         showToast(`已經是 ${mode}`, 1800);
         _beatSwitchBusy = false;
         btnBeatLibrosa.disabled = false;
         btnBeatMadmom.disabled = false;
-        _syncBeatSourceToggle();
         return;
       }
       if (data.switched) {
