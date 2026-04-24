@@ -1238,11 +1238,13 @@
   transform: translateX(-50%);
   display: none;
   align-items: center;
-  /* Desktop: nowrap so popup grows wide enough for all buttons on one row.
-     Without this, the popup inherits tb-item's tiny shrink-to-fit width
-     (~40px) and buttons stack vertically. Touch override in the
-     `@media (pointer: coarse)` block below switches to wrap. */
-  flex-wrap: nowrap;
+  /* Wrap by default so no popup can exceed viewport width — even the
+     densest popup (Tools, ~12 buttons) now flows to multiple rows when
+     the trigger is near the viewport edge instead of bleeding off-screen.
+     Popups that must stay single-row (Speed/Loop/Jazzify/A-B, ≤6 buttons)
+     still fit on one line because .tb-popup base max-width >> their
+     natural width. */
+  flex-wrap: wrap;
   gap: 6px;
   background: rgba(22,27,34,0.96);
   backdrop-filter: blur(12px);
@@ -1253,6 +1255,16 @@
   box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
   white-space: nowrap;
   z-index: 10000;
+  /* Clamp every popup to viewport — 720px hard cap on desktop, 16px
+     margin floor on narrow phones. Matches .lc-modal's responsive
+     clamp pattern (see UX_CONVENTION §12). */
+  max-width: min(720px, calc(100vw - 16px));
+  box-sizing: border-box;
+  /* Without width:max-content the absolutely-positioned popup collapses
+     to the narrowest item under flex-wrap:wrap and renders as a single
+     column. max-content makes it grow to its natural width FIRST, then
+     the max-width cap forces the wrap only when content would overflow. */
+  width: max-content;
 }
 
 /* Popup header title — absolutely positioned so the popup's flex layout

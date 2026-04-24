@@ -1893,6 +1893,32 @@
   // Toolbar popup: always use click-to-pin pattern (no hover-dismiss).
   // Previously this was touch-only; PC hover-dismiss was annoying so everyone
   // now opens via click and stays open until an outside click.
+
+  // Horizontal-edge clamp for toolbar popups — CSS handles max-width, this
+  // handles POSITION overflow when the trigger is near the viewport edge.
+  // Called right after .open is added so getBoundingClientRect sees the
+  // actual rendered popup. Reset on close via a complementary reset call.
+  function _clampPopupToViewport(popup) {
+    if (!popup) return;
+    // Clear any prior shift so measurement reflects the default center-on-trigger position.
+    popup.style.transform = "";
+    const rect = popup.getBoundingClientRect();
+    const viewportW = window.innerWidth;
+    const margin = 8;
+    let shift = 0;
+    if (rect.right > viewportW - margin) shift = (viewportW - margin) - rect.right;
+    if (rect.left < margin)               shift = margin - rect.left;
+    if (shift !== 0) {
+      // Preserve the existing translateX(-50%) centering and add our shift.
+      popup.style.transform = `translateX(calc(-50% + ${shift}px))`;
+    }
+  }
+  // Re-clamp on viewport resize/orientation change so rotating a phone
+  // mid-popup-open doesn't leave it clipping off-screen.
+  window.addEventListener("resize", () => {
+    document.querySelectorAll(".tb-item.open > .tb-popup").forEach(_clampPopupToViewport);
+  });
+
   document.querySelectorAll(".tb-item").forEach(item => {
     const trigger = item.querySelector(".tb-trigger, a.tb-trigger");
     if (!trigger) return;
@@ -1924,6 +1950,10 @@
         const _bugDlg = document.getElementById("bugReportDialog");
         if (_bugDlg && _bugDlg.style.display !== "none") _bugDlg.style.display = "none";
         item.classList.toggle("open");
+        // If we just opened, nudge the popup horizontally so it doesn't clip
+        // past the viewport edge when the trigger is near left/right bounds.
+        // CSS max-width caps the width; this handles POSITION overflow.
+        if (item.classList.contains("open")) _clampPopupToViewport(popup);
         e.stopPropagation();
       });
     }

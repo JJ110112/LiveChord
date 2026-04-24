@@ -444,6 +444,49 @@ explicit.
 - `--bottom` anchors to the bottom edge with safe-area-aware offset above
   the toolbar (accounts for 54px toolbar + 80px progress-bar-mid + safe-area).
 
+### Responsive layout — one popup, two devices, zero overflow
+
+Every popup MUST render correctly across **PC desktop ≥ 1920px**, **laptop
+~1280px**, and **Android portrait ~390×844**. "Correctly" means:
+
+1. **Width clamps to viewport**. Base `.tb-popup` now carries
+   `max-width: min(720px, calc(100vw - 16px))` + `flex-wrap: wrap` — no popup,
+   regardless of button count, can bleed past the viewport. When you add a
+   new popup, do **not** override `max-width` upward; if your content doesn't
+   fit, reduce button count or promote to a Type B modal (§12 taxonomy).
+
+2. **Position clamps to viewport**. Even after width is capped, a popup
+   centered on a rightmost toolbar trigger (e.g. Tools, Bug Report) could
+   still render past the right edge. The `_clampPopupToViewport(popup)`
+   helper in [frontend/js/player.js](../frontend/js/player.js) runs on every
+   popup open (and on window resize) to shift the popup back in-bounds via
+   `transform: translateX(calc(-50% + Npx))`. Don't reinvent this logic — if
+   a new popup surface needs the same behaviour, call that helper.
+
+3. **Content reflows, not scrolls**. Popups should wrap their content (via
+   `flex-wrap: wrap` on the base class, or explicit subgroup rows inside
+   `.tb-popup-wide`). Horizontal scrollbars inside a popup are a code smell
+   — they signal the popup is trying to be wider than the viewport allows.
+   The `.ab-phrase-strip` is the one grandfathered exception (tiny label
+   pills, user-scrollable by design).
+
+4. **Single source of truth for viewport-size branches**. Use
+   `@media (pointer: coarse)` for touch-density overrides (bigger hit
+   targets, relaxed wrap rules). Do **not** sniff userAgent for mobile.
+
+5. **Test matrix when you add a popup**:
+   - **1920×1080 desktop**: content fits, no wrap needed for ≤6-button popups.
+   - **1280×720 laptop**: still no horizontal clip; Tools-sized popups may
+     wrap to 2 rows — verify they look intentional, not crammed.
+   - **390×844 Android portrait**: every popup wraps cleanly; no button
+     touches the viewport edge; every tap target ≥ 44×44 px.
+
+Past incident (2026-04-25): Tools popup had no `.tb-popup-wide` class, so it
+used the default `flex-wrap: nowrap` and grew to ~1080px natural width — at
+1280px viewport the popup clipped off the right edge of the screen. Fix was
+to promote `flex-wrap: wrap` + `max-width` clamp to the `.tb-popup` base
+class itself, plus the `_clampPopupToViewport` helper for position overflow.
+
 ### Forbidden
 
 - `background: var(--bg-card)` on any popup surface (use `--lc-popup-bg`).
