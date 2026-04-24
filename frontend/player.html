@@ -597,6 +597,15 @@
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg>
         <span>動態節拍偵測</span>
       </button>
+      <!-- Personal-only (8800): bidirectional beat-source toggle. JS hides on beta. -->
+      <button id="btnBeatLibrosa" class="tb-popup-btn" style="display:none" title="使用 librosa 節拍 (快速，ingest 預設)" aria-label="librosa 節拍">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        <span>節拍:librosa</span>
+      </button>
+      <button id="btnBeatMadmom" class="tb-popup-btn" style="display:none" title="使用 madmom 節拍 (rubato / downbeat，~30 秒)" aria-label="madmom 節拍">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20"/><path d="M5 6l14 12"/><path d="M19 6L5 18"/></svg>
+        <span>節拍:madmom</span>
+      </button>
       <a id="btnEdit" class="tb-popup-btn" style="text-decoration:none" title="編輯和弦譜" aria-label="編輯">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
         <span>編輯</span>
@@ -678,6 +687,6 @@
     return res;
   };
 </script>
-<script src="/js/player.js?v=221"></script>
+<script src="/js/player.js?v=222"></script>
 </body>
 </html>

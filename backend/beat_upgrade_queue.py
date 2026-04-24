@@ -195,14 +195,25 @@ def _process_one(hash: str):
                 rec.error = "chord JSON has no chords"
             return
 
-        # Backup .bak.beats (first call wins)
-        bak = sheet_path + ".bak.beats"
-        if not os.path.exists(bak):
+        # Backup pre-madmom state as .bak.librosa (first call wins).
+        # One-time migration: legacy .bak.beats → .bak.librosa (same semantic —
+        # the pre-madmom snapshot was always the librosa/ingest-default version).
+        # This cache powers bidirectional /api/process/beats/switch on 8800.
+        legacy_bak = sheet_path + ".bak.beats"
+        librosa_bak = sheet_path + ".bak.librosa"
+        if os.path.exists(legacy_bak) and not os.path.exists(librosa_bak):
             try:
-                with open(bak, "w", encoding="utf-8") as f:
+                os.replace(legacy_bak, librosa_bak)
+            except Exception as e:
+                logger.warning("upgrade-beats %s: legacy bak migration failed: %s",
+                               hash, e)
+        if not os.path.exists(librosa_bak):
+            try:
+                with open(librosa_bak, "w", encoding="utf-8") as f:
                     json.dump(sheet, f, ensure_ascii=False, indent=2)
             except Exception as e:
-                logger.warning("upgrade-beats %s: backup failed: %s", hash, e)
+                logger.warning("upgrade-beats %s: librosa backup failed: %s",
+                               hash, e)
 
         # Flip to analyzing phase so the polling client can update its toast
         with _lock:
@@ -247,6 +258,43 @@ def _process_one(hash: str):
                 rec.completed_at = time.time()
                 rec.error = f"write failed: {type(e).__name__}: {e}"
             return
+
+        # Cache madmom result for fast bidirectional toggle via /beats/switch.
+        madmom_bak = sheet_path + ".bak.madmom"
+        try:
+            with open(madmom_bak, "w", encoding="utf-8") as f:
+                json.dump(sheet, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning("upgrade-beats %s: madmom cache write failed: %s",
+                           hash, e)
+
+        # Overlay beat fields onto the requesting user's personal chord version
+        # if one exists. GET /api/chords serves the user version first on
+        # personal-mode LAN, and ChordSheet (Pydantic) strips beat fields on
+        # save — without this overlay, the UI would keep showing the pre-switch
+        # beats_source even though the canonical sheet was updated.
+        if rec.requested_by:
+            try:
+                from pathlib import Path
+                user_path = (Path(__file__).parent.parent / "data" / "users"
+                             / rec.requested_by / "chords" / f"{hash}.json")
+                if user_path.is_file():
+                    user_sheet = json.loads(user_path.read_text(encoding="utf-8"))
+                    for k in ("bpm", "beats", "downbeats", "tempo_curve",
+                              "beats_source", "beat_version", "bpm_correction"):
+                        if k in sheet:
+                            user_sheet[k] = sheet[k]
+                        else:
+                            user_sheet.pop(k, None)
+                    tmp = str(user_path) + ".tmp"
+                    with open(tmp, "w", encoding="utf-8") as f:
+                        json.dump(user_sheet, f, ensure_ascii=False, indent=2)
+                    os.replace(tmp, str(user_path))
+                    logger.info("upgrade-beats %s overlaid to user %s",
+                                hash, rec.requested_by)
+            except Exception as e:
+                logger.warning("upgrade-beats %s: user overlay failed: %s",
+                               hash, e)
 
         tc = info.get("tempo_curve") or []
         rng = (max(p["bpm"] for p in tc) - min(p["bpm"] for p in tc)) if tc else 0

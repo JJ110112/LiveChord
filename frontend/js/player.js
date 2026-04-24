@@ -5370,6 +5370,180 @@
     });
   }
 
+  // ---- 節拍來源切換 (personal 8800 only) ----
+  // Bidirectional librosa ⇄ madmom toggle. Backend endpoint is gated by
+  // require_personal_mode so beta (8801) gets 404; we also hide the UI on beta.
+  // Cached swaps are <1s (reuse .bak.librosa / .bak.madmom); fresh librosa runs
+  // sync (~2s); fresh madmom enqueues (~30s bg) — reuses upgrade-beats poll.
+  const btnBeatLibrosa = $("#btnBeatLibrosa");
+  const btnBeatMadmom  = $("#btnBeatMadmom");
+  const _isBetaLane = location.port === "8801"
+                      || location.hostname.endsWith("livechord.org");
+
+  function _currentBeatCategory() {
+    const src = (chordData && chordData.beats_source) ? String(chordData.beats_source) : "";
+    return /madmom/i.test(src) ? "madmom" : "librosa";
+  }
+
+  function _syncBeatSourceToggle() {
+    if (!btnBeatLibrosa || !btnBeatMadmom) return;
+    if (_isBetaLane || !chordData) return;
+    const cat = _currentBeatCategory();
+    btnBeatLibrosa.classList.toggle("active", cat === "librosa");
+    btnBeatMadmom.classList.toggle("active", cat === "madmom");
+  }
+
+  // Reveal toggle on personal lane; hide the old single-direction button.
+  // On beta, keep the old button, hide the toggle (status quo).
+  if (btnBeatLibrosa && btnBeatMadmom && !_isBetaLane) {
+    btnBeatLibrosa.style.display = "";
+    btnBeatMadmom.style.display = "";
+    if (btnUpgradeBeats) btnUpgradeBeats.style.display = "none";
+  }
+
+  let _beatSwitchPoll = null;
+  let _beatSwitchBusy = false;
+
+  async function _switchBeatsTo(mode) {
+    if (_beatSwitchBusy) {
+      showToast("節拍切換進行中…", 2000);
+      return;
+    }
+    const cur = _currentBeatCategory();
+    if (cur === mode) {
+      showToast(`已經是 ${mode}`, 1800);
+      return;
+    }
+    // Decide hash vs path routing (same dual-mode logic as upgrade-beats).
+    // 8800 path-mode sends path; hash-mode sends hash — backend accepts either.
+    const params = new URLSearchParams({ mode });
+    if (hashMode) {
+      params.set("hash", hashMode);
+    } else if (chordData && chordData.path) {
+      if (chordData.path.startsWith("__hash/")) {
+        params.set("hash", chordData.path.slice(7));
+      } else {
+        params.set("path", chordData.path);
+      }
+    } else {
+      showToast("找不到歌曲識別，無法切換", 2500);
+      return;
+    }
+
+    _beatSwitchBusy = true;
+    btnBeatLibrosa.disabled = true;
+    btnBeatMadmom.disabled = true;
+    try {
+      const res = await fetch(`/api/process/beats/switch?${params.toString()}`,
+                              { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(`切換失敗：${data.detail || `HTTP ${res.status}`}`, 5000);
+        _beatSwitchBusy = false;
+        btnBeatLibrosa.disabled = false;
+        btnBeatMadmom.disabled = false;
+        return;
+      }
+      if (data.already) {
+        showToast(`已經是 ${mode}`, 1800);
+        _beatSwitchBusy = false;
+        btnBeatLibrosa.disabled = false;
+        btnBeatMadmom.disabled = false;
+        _syncBeatSourceToggle();
+        return;
+      }
+      if (data.switched) {
+        const how = data.cached ? "快取命中" : "新計算";
+        showToast(`已切換至 ${mode} (${how})，重新載入中…`, 2000);
+        setTimeout(() => location.reload(), 900);
+        return;
+      }
+      if (data.queued) {
+        if (data.duplicate) {
+          showToast(`「${data.title || "歌曲"}」已在計算中，完成會通知`, 3500);
+        } else {
+          showToast(`已啟動 madmom (~30 秒背景處理)，完成會通知`, 4000);
+        }
+        // Poll the upgrade-beats status endpoint (shared queue).
+        let _lastSub = "";
+        _beatSwitchPoll = setInterval(async () => {
+          try {
+            const targetHash = params.get("hash")
+              || (params.get("path") ? null : null);
+            // When we sent path, compute no status lookup (worker keys by hash
+            // and we don't have it client-side); fall back to a loose check.
+            // In practice path-mode still gets the hash back in response;
+            // but for poll we rely on the fact the server used that hash.
+            // Simplest: also send the same params to /upgrade-beats/status
+            // when we have hash.
+            if (!targetHash) {
+              // Can't poll without hash — just wait. Reload after 45s as fallback.
+              return;
+            }
+            const sres = await fetch(
+              `/api/process/upgrade-beats/status?hash=${encodeURIComponent(targetHash)}`);
+            if (!sres.ok) return;
+            const sd = await sres.json();
+            const st = sd.status;
+            if (st === "done") {
+              clearInterval(_beatSwitchPoll); _beatSwitchPoll = null;
+              _beatSwitchBusy = false;
+              const r = sd.result || {};
+              showToast(`「${sd.title || ""}」madmom 完成 — BPM ${r.bpm}。重新載入中…`, 3500);
+              setTimeout(() => location.reload(), 900);
+            } else if (st === "error") {
+              clearInterval(_beatSwitchPoll); _beatSwitchPoll = null;
+              _beatSwitchBusy = false;
+              btnBeatLibrosa.disabled = false;
+              btnBeatMadmom.disabled = false;
+              showToast(`madmom 失敗：${sd.error || "unknown"}`, 6000);
+            } else if (st === "running:downloading" && _lastSub !== st) {
+              _lastSub = st;
+              showToast("重新下載音檔中…", 3500);
+            } else if (st === "running:analyzing" && _lastSub !== st) {
+              _lastSub = st;
+              showToast("madmom 分析中 (~30 秒)", 3500);
+            }
+          } catch (e) {
+            console.warn("beat switch poll error:", e);
+          }
+        }, 4000);
+        // Fallback reload if poll couldn't use hash
+        if (!params.get("hash")) {
+          setTimeout(() => location.reload(), 45000);
+        }
+      }
+    } catch (e) {
+      console.error("switch beats failed:", e);
+      showToast(`切換失敗：${e.message || e}`, 5000);
+      _beatSwitchBusy = false;
+      btnBeatLibrosa.disabled = false;
+      btnBeatMadmom.disabled = false;
+    }
+  }
+
+  if (btnBeatLibrosa && !_isBetaLane) {
+    btnBeatLibrosa.addEventListener("click", () => _switchBeatsTo("librosa"));
+  }
+  if (btnBeatMadmom && !_isBetaLane) {
+    btnBeatMadmom.addEventListener("click", () => _switchBeatsTo("madmom"));
+  }
+
+  // Sync active state once chordData is available. loadChords / hash-mode both
+  // set chordData; we run periodically for the first second to pick up whichever
+  // path finishes first, then on a custom 'chord:loaded' event if fired elsewhere.
+  // Cheap, runs at most a handful of times.
+  let _syncTries = 0;
+  const _syncTimer = setInterval(() => {
+    _syncTries++;
+    if (chordData && chordData.exists) {
+      _syncBeatSourceToggle();
+      clearInterval(_syncTimer);
+    } else if (_syncTries > 20) {
+      clearInterval(_syncTimer);
+    }
+  }, 300);
+
   // ---- favorite ----
   const _favPath = trackPath || (hashMode ? `__hash/${hashMode}` : "");
   btnFav.addEventListener("click", async () => {

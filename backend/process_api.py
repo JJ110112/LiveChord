@@ -330,6 +330,274 @@ router.add_api_route("/upgrade-beats/status", upgrade_beats_status,
 
 
 # ---------------------------------------------------------------------------
+# Beat source toggle (personal-only, 8800)
+# ---------------------------------------------------------------------------
+# Lets the user flip a song between librosa (fast, ingest default) and madmom
+# (rubato tracking) beat sources, for A/B comparison. Each source's result is
+# cached to disk so subsequent switches are instant (no 30s madmom re-run).
+#
+# Caches:
+#   <hash>.json.bak.librosa  — full sheet snapshot when librosa was source
+#   <hash>.json.bak.madmom   — full sheet snapshot when madmom was source
+# Legacy .bak.beats (written by old upgrade_beats flow) migrates to .bak.librosa
+# on first read — semantically equivalent (pre-madmom == librosa).
+#
+# Swap preserves user edits to chords/sections/etc; only beat-related fields
+# are replaced (see BEAT_FIELDS).
+# ---------------------------------------------------------------------------
+from personal_mode import require_personal_mode
+
+_BEAT_FIELDS = ("bpm", "beats", "downbeats", "tempo_curve",
+                "beats_source", "beat_version", "bpm_correction")
+
+
+def _beat_source_category(src) -> str:
+    if not src:
+        return "librosa"
+    s = str(src).lower()
+    return "madmom" if "madmom" in s else "librosa"
+
+
+def _migrate_legacy_bak(sheet_path: str):
+    legacy = sheet_path + ".bak.beats"
+    lib = sheet_path + ".bak.librosa"
+    if os.path.exists(legacy) and not os.path.exists(lib):
+        try:
+            os.replace(legacy, lib)
+            logger.info("migrated legacy .bak.beats -> .bak.librosa: %s", sheet_path)
+        except Exception as e:
+            logger.warning("bak migration failed %s: %s", sheet_path, e)
+
+
+def _apply_beat_fields_from_snapshot(current: dict, snapshot: dict):
+    """Copy beat fields from snapshot onto current (in-place).
+
+    Keys missing in snapshot get removed from current, so a librosa snapshot
+    predating bpm_correction doesn't leave a stale correction behind.
+    """
+    for k in _BEAT_FIELDS:
+        if k in snapshot:
+            current[k] = snapshot[k]
+        else:
+            current.pop(k, None)
+
+
+def _overlay_beat_fields_to_user_version(hash: str, username: str, sheet: dict):
+    """If the caller has a user-specific chord version saved (which is what
+    GET /api/chords serves them on LAN personal mode), overlay the beat fields
+    from the canonical sheet onto that file so the UI sees the new beats_source.
+
+    The user version was saved via ChordSheet (Pydantic) which only preserves
+    path/key/capo/bpm/chords — beat fields get stripped. Without this overlay,
+    the user continues to see stale/missing beat data after a switch.
+    """
+    import json as _json
+    from pathlib import Path
+    if not username or username == "admin" and False:
+        return  # (no special-case; kept explicit for reviewers)
+    if not username:
+        return
+    user_path = (Path(__file__).parent.parent / "data" / "users"
+                 / username / "chords" / f"{hash}.json")
+    if not user_path.is_file():
+        return
+    try:
+        user_sheet = _json.loads(user_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.warning("overlay %s -> user %s failed to read: %s",
+                       hash, username, e)
+        return
+    # Apply the same beat fields (bpm is in ChordSheet so already tracked;
+    # beats/downbeats/tempo_curve/beats_source/beat_version/bpm_correction
+    # are the ones that normally get stripped).
+    _apply_beat_fields_from_snapshot(user_sheet, sheet)
+    tmp = str(user_path) + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            _json.dump(user_sheet, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, str(user_path))
+        logger.info("overlay beat fields to user version: %s / %s", username, hash)
+    except Exception as e:
+        logger.warning("overlay %s -> user %s write failed: %s",
+                       hash, username, e)
+
+
+@router.post("/beats/switch", dependencies=[Depends(require_personal_mode)])
+def switch_beats(
+    mode: str,
+    hash: str = "",
+    path: str = "",
+    username: str = Depends(get_current_user),
+):
+    """Swap a song's beat source between librosa and madmom.
+
+    - If target cache exists: atomic in-place swap, <1s.
+    - If target == librosa and cache missing: run librosa synchronously (~1-2s).
+    - If target == madmom and cache missing: enqueue madmom job (~30s,
+      background) — client polls /upgrade-beats/status.
+    Accepts ``hash`` OR ``path`` (8800 path-mode sends path; hash-mode sends hash).
+    Personal-mode only; beta instance returns 404.
+    """
+    import json as _json
+    from chord_cache import song_hash
+    from config import resolve_path
+    from beat_snap import (HAS_MADMOM, MADMOM_IMPORT_ERROR,
+                           analyze_and_snap_dynamic)
+
+    if mode not in ("librosa", "madmom"):
+        raise HTTPException(status_code=400,
+                            detail="mode must be 'librosa' or 'madmom'")
+
+    if not hash and path:
+        hash = song_hash(path)
+    if not hash:
+        raise HTTPException(status_code=400, detail="hash or path required")
+
+    chord_file = CHORDS_DIR / f"{hash}.json"
+    if not chord_file.is_file():
+        raise HTTPException(status_code=404, detail="chord JSON not found")
+
+    sheet_path = str(chord_file)
+    sheet = _json.loads(chord_file.read_text(encoding="utf-8"))
+
+    _migrate_legacy_bak(sheet_path)
+
+    current_cat = _beat_source_category(sheet.get("beats_source"))
+    if current_cat == mode:
+        return {
+            "ok": True, "already": True, "hash": hash, "mode": mode,
+            "bpm": sheet.get("bpm"),
+            "beats_source": sheet.get("beats_source"),
+        }
+
+    target_bak = sheet_path + f".bak.{mode}"
+    other_bak = sheet_path + f".bak.{current_cat}"
+
+    # Fast path: target cache hit
+    if os.path.isfile(target_bak):
+        try:
+            target_snapshot = _json.loads(
+                open(target_bak, encoding="utf-8").read())
+        except Exception as e:
+            raise HTTPException(status_code=500,
+                                detail=f"target cache read failed: {e}")
+        # Save current state as the other-mode cache if not already stored
+        if not os.path.exists(other_bak):
+            try:
+                with open(other_bak, "w", encoding="utf-8") as f:
+                    _json.dump(sheet, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                logger.warning("switch %s: %s cache write failed: %s",
+                               hash, current_cat, e)
+        _apply_beat_fields_from_snapshot(sheet, target_snapshot)
+        tmp = sheet_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            _json.dump(sheet, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, sheet_path)
+        _overlay_beat_fields_to_user_version(hash, username, sheet)
+        logger.info("switch_beats %s -> %s (cached, by %s)",
+                    hash, mode, username)
+        return {
+            "ok": True, "switched": True, "cached": True,
+            "hash": hash, "mode": mode,
+            "bpm": sheet.get("bpm"),
+            "beats_source": sheet.get("beats_source"),
+        }
+
+    # Slow path: target cache missing → compute
+    track_path = sheet.get("path", "")
+    youtube_url = sheet.get("youtube_url", "")
+    audio_path = ""
+    if track_path and not track_path.startswith("__upload/"):
+        audio_path = resolve_path(track_path) or ""
+
+    chords = sheet.get("chords") or []
+    if not chords:
+        raise HTTPException(status_code=400, detail="chord JSON has no chords")
+
+    if mode == "librosa":
+        if not audio_path or not os.path.isfile(audio_path):
+            raise HTTPException(status_code=404, detail="audio file not found")
+        # Snapshot current (madmom) as its cache before overwriting
+        if not os.path.exists(other_bak):
+            try:
+                with open(other_bak, "w", encoding="utf-8") as f:
+                    _json.dump(sheet, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                logger.warning("switch %s: %s cache write failed: %s",
+                               hash, current_cat, e)
+        chords_copy = [dict(c) for c in chords]
+        info = analyze_and_snap_dynamic(audio_path, chords_copy,
+                                        prefer_madmom=False)
+        if not info.get("beats_source"):
+            raise HTTPException(status_code=500,
+                                detail="librosa returned no beats")
+        sheet["chords"] = chords_copy
+        if info.get("bpm"):
+            sheet["bpm"] = round(info["bpm"], 1)
+        sheet["beats"] = info.get("beats", [])
+        sheet["downbeats"] = info.get("downbeats", [])
+        sheet["tempo_curve"] = info.get("tempo_curve", [])
+        sheet["beats_source"] = info["beats_source"]
+        sheet["beat_version"] = int(sheet.get("beat_version", 0)) + 1
+        # Write librosa cache
+        try:
+            with open(sheet_path + ".bak.librosa", "w", encoding="utf-8") as f:
+                _json.dump(sheet, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning("switch %s: librosa cache write failed: %s", hash, e)
+        tmp = sheet_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            _json.dump(sheet, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, sheet_path)
+        _overlay_beat_fields_to_user_version(hash, username, sheet)
+        logger.info("switch_beats %s -> librosa (fresh, by %s)", hash, username)
+        return {
+            "ok": True, "switched": True, "cached": False,
+            "hash": hash, "mode": "librosa",
+            "bpm": sheet.get("bpm"),
+            "beats_source": sheet.get("beats_source"),
+        }
+
+    # mode == "madmom" — delegate to background queue
+    if not HAS_MADMOM:
+        raise HTTPException(
+            status_code=503,
+            detail=f"madmom not installed: {MADMOM_IMPORT_ERROR or 'unknown'}",
+        )
+    if track_path.startswith("__upload/") and not youtube_url:
+        raise HTTPException(
+            status_code=410,
+            detail="此曲為直接上傳音檔，原始檔已清除；請從首頁重新上傳此曲以重新偵測節拍",
+        )
+    if track_path and not track_path.startswith("__upload/"):
+        if not audio_path or not os.path.isfile(audio_path):
+            raise HTTPException(status_code=404, detail="audio file not found")
+
+    # Snapshot current (librosa) as its cache before queuing madmom run
+    if not os.path.exists(other_bak):
+        try:
+            with open(other_bak, "w", encoding="utf-8") as f:
+                _json.dump(sheet, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning("switch %s: librosa cache write failed: %s", hash, e)
+
+    from beat_upgrade_queue import enqueue as _enqueue, get_status as _get_status
+    title = sheet.get("title") or os.path.basename(track_path) or hash
+    qs = _enqueue(hash, audio_path, str(chord_file),
+                  title=title, requested_by=username, youtube_url=youtube_url)
+    snap = _get_status(hash) or {}
+    logger.info("switch_beats %s -> madmom queued by %s: %s",
+                hash, username, qs)
+    return {
+        "ok": True, "queued": True, "hash": hash, "mode": "madmom",
+        "title": title,
+        "status": snap.get("status", qs),
+        "duplicate": qs == "duplicate",
+    }
+
+
+# ---------------------------------------------------------------------------
 # YouTube search (find matching video for a song title)
 # ---------------------------------------------------------------------------
 
