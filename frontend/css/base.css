@@ -145,8 +145,12 @@ a:hover { text-decoration: underline; }
 .header-fs-btn {
   position: absolute;
   right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
+  /* Anchor to the top of the header (not vertical-center). On mobile the
+     header wraps to 2 rows (brand + nav, then search bar) — vertical-
+     centering put the button in the middle of that wrap, landing on top
+     of the search input. Top-aligning keeps it in row 1 next to the nav
+     buttons regardless of how many rows the header wraps into. */
+  top: 12px;
   background: none;
   border: none;
   color: rgba(255,255,255,0.3);
