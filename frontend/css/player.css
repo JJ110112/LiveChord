@@ -425,7 +425,7 @@
   padding: 3px 0;
   background: rgba(13,17,23,0.92);
   border-top: 1px solid var(--border);
-  z-index: 5;
+  z-index: 15;
 }
 .scale-btn {
   background: none;
