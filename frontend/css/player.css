@@ -478,8 +478,10 @@
   bottom: 0;
   display: flex;
   justify-content: center;
-  padding: 3px 0;
-  background: rgba(13,17,23,0.92);
+  align-items: center;
+  min-height: 32px;
+  padding: 6px 0;
+  background: #0d1117;
   border-top: 1px solid var(--border);
   z-index: 15;
 }
@@ -1302,13 +1304,11 @@
      natural width. */
   flex-wrap: wrap;
   gap: 6px;
-  /* Frosted-glass background: low-opacity dark base + heavy blur + slight
-     saturation bump so the player content behind shows through softly but
-     popup contents stay legible. The previous 0.96-opaque background made
-     the existing backdrop-filter invisible. */
-  background: rgba(22,27,34,0.55);
-  backdrop-filter: blur(22px) saturate(140%);
-  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  /* Solid background — popup text + buttons must remain unambiguously
+     readable against any backdrop (chord ribbon, waterfall, dialogs).
+     Earlier glass variants made the popup itself look washed out; user
+     prefers a clearly-defined panel over see-through. */
+  background: #161b22;
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 10px;
   padding: 8px 12px;
@@ -2504,6 +2504,18 @@
   .chord-ribbon-panel { display: none !important; }
   #instrumentPanel { width: 100% !important; flex: 1 1 100% !important; }
   .middle-split { padding-top: 0; }
+  /* Base `.chord-display-area { bottom: 49px }` assumes a 44px desktop
+     toolbar. On touch landscape the toolbar grows to ~64px (min-height 54
+     + safe-area/breathing 10) AND the progress-bar-mid floats 10px above
+     the toolbar at bottom:74px. Without raising chord-display-area's
+     bottom, (a) the bottom 15px of the 88-key canvas (incl. C1/C2/.../C7
+     labels) gets hidden behind the toolbar and (b) the progress bar
+     floats on top of the keyboard area instead of sitting in its own
+     reserved strip. Reserve 82px so labels clear the toolbar AND the
+     progress bar sits in the gap, not over the keys. */
+  .chord-display-area {
+    bottom: calc(54px + max(env(safe-area-inset-bottom, 0px), 10px) + 18px) !important;
+  }
   /* (LiveChord brand hidden in all mobile orientations via the rule below.) */
   .tb-popup-5 .tb-popup-btn,
   .tb-popup-wide .tb-popup-btn,
