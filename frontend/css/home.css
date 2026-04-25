@@ -460,6 +460,9 @@
   display: block;
   margin-left: 0 !important;
   margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ========== [COMPONENT: ADD-SONG MODAL] ========== */

@@ -38,7 +38,7 @@
     else if (uc >= 9) stars = 3;
     else if (uc >= 5) stars = 2;
     const key = item.chord_key || "";
-    return ` <span class="difficulty" style="font-size:0.8em;opacity:0.6;margin-left:6px">${"⭐".repeat(stars)}${key ? " " + key : ""}</span>`;
+    return ` <span class="difficulty" style="font-size:0.65em;opacity:0.6;margin-left:6px;white-space:nowrap;letter-spacing:-1px">${"⭐".repeat(stars)}${key ? `<span style="margin-left:4px;letter-spacing:normal">${key}</span>` : ""}</span>`;
   }
 
   // ---- beta mode: hide NAS-dependent sections for non-admin ----
