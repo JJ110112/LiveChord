@@ -640,3 +640,52 @@
 }
 
 /* ========== [END: MOBILE RESPONSIVE] ========== */
+
+
+/* ========== [COMPONENT: THEME OVERRIDES] ==========
+   Dashboard selectors that hardcode #fff or dark hex values, mapped
+   per theme. Section titles flip on light-bg themes (light/sakura);
+   court keeps the white title since its bg is dark forest. Cover
+   placeholders get retinted for each theme's palette. */
+
+/* Section titles ("最近播放", "音樂庫", etc.) — flip on light-bg only */
+[data-theme="light"] .dash-title,
+[data-theme="sakura"] .dash-title,
+[data-theme="sunny"] .dash-title,
+[data-theme="sky"] .dash-title { color: var(--text); }
+
+/* Cover placeholder gradient — per-theme palette */
+[data-theme="light"] .grid-item .cover-placeholder {
+  background: linear-gradient(135deg, #e8eaf0, #d3d9e2);
+  color: #b0b8c5;
+}
+[data-theme="sakura"] .grid-item .cover-placeholder {
+  background: linear-gradient(135deg, #fde2e8, #f9c5d3);
+  color: #d68fa3;
+}
+[data-theme="sunny"] .grid-item .cover-placeholder {
+  background: linear-gradient(135deg, #fff3c4, #ffd97a);
+  color: #c89020;
+}
+[data-theme="sky"] .grid-item .cover-placeholder {
+  background: linear-gradient(135deg, #e0ecff, #b8d4ff);
+  color: #5a85cc;
+}
+[data-theme="forest"] .grid-item .cover-placeholder {
+  background: linear-gradient(135deg, #16331e, #0a2614);
+  color: #4a8462;
+}
+
+[data-theme="light"] .grid-item .cover,
+[data-theme="sakura"] .grid-item .cover,
+[data-theme="sunny"] .grid-item .cover,
+[data-theme="sky"] .grid-item .cover { background: #e8eaed; }
+[data-theme="forest"] .grid-item .cover { background: #0a2614; }
+
+/* Scrollbar track inversion on light-bg themes */
+[data-theme="light"] .horizontal-scroll, [data-theme="light"] .track-list,
+[data-theme="sakura"] .horizontal-scroll, [data-theme="sakura"] .track-list,
+[data-theme="sunny"] .horizontal-scroll, [data-theme="sunny"] .track-list,
+[data-theme="sky"] .horizontal-scroll, [data-theme="sky"] .track-list { scrollbar-color: rgba(0,0,0,0.20) transparent; }
+
+/* ========== [END: THEME OVERRIDES] ========== */

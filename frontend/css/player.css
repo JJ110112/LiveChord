@@ -978,13 +978,14 @@
    for the taxonomy. Type A (toolbar .tb-popup) stays unchanged — it owns its
    own dense-dropdown style and is the reference for button styling. */
 
+/* --lc-popup-bg + --lc-popup-shadow are now defined in base.css :root and
+   per-theme blocks. The player-only popup vars (blur/border/radius) stay
+   here. */
 :root {
-  --lc-popup-bg: rgba(22, 27, 34, 0.96);
   --lc-popup-blur: blur(12px);
   --lc-popup-border: 1px solid var(--border);
   --lc-popup-radius-sm: 10px;
   --lc-popup-radius-lg: 12px;
-  --lc-popup-shadow: 0 8px 24px rgba(0,0,0,0.5);
 }
 
 /* Shared title + close button (used by Type B + Type C).
@@ -1422,6 +1423,20 @@
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
+}
+
+/* Section sub-label inside a Tools popup — small uppercase row separator
+   used by the theme picker (and reusable by future grouped controls). */
+.tb-subtitle {
+  flex-basis: 100%;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  text-align: center;
+  margin: 2px 0 -2px;
+  pointer-events: none;
 }
 
 /* Select in popup */
@@ -3440,3 +3455,205 @@
   font-size: 11px;
   color: var(--text-dim);
 }
+
+
+/* ========== [COMPONENT: THEME OVERRIDES] ==========
+   Per-theme overrides for player selectors that hardcode whites/darks.
+   Two families:
+     light-bg family: light + sakura + sunny + sky (text dark, white-tint surfaces)
+     dark-bg family:  dark (default :root) + forest (text light, dark surfaces)
+   `dark` needs no overrides (matches :root). All light-bg themes share the
+   same override behavior — only the per-theme tint of the topbar/toolbar
+   surface differs (matches each bg). */
+
+/* === Topbar + bottom toolbar bg (per-theme tinted glass) === */
+[data-theme="light"]  .player-topbar { background: rgba(247, 245, 240, 0.92); }
+[data-theme="light"]  .bottom-toolbar { background: rgba(247, 245, 240, 0.95); }
+[data-theme="sakura"] .player-topbar { background: rgba(254, 245, 247, 0.92); }
+[data-theme="sakura"] .bottom-toolbar { background: rgba(254, 245, 247, 0.95); }
+[data-theme="sunny"]  .player-topbar { background: rgba(255, 248, 225, 0.92); }
+[data-theme="sunny"]  .bottom-toolbar { background: rgba(255, 248, 225, 0.95); }
+[data-theme="sky"]    .player-topbar { background: rgba(219, 234, 254, 0.92); }
+[data-theme="sky"]    .bottom-toolbar { background: rgba(219, 234, 254, 0.95); }
+[data-theme="forest"] .player-topbar { background: rgba(13, 40, 24, 0.92); }
+[data-theme="forest"] .bottom-toolbar { background: rgba(13, 40, 24, 0.95); }
+
+/* === Type A toolbar popup — solid panel, themed per-family === */
+[data-theme="light"] .tb-popup,
+[data-theme="sakura"] .tb-popup,
+[data-theme="sunny"] .tb-popup,
+[data-theme="sky"] .tb-popup {
+  background: var(--lc-popup-bg);
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.18);
+}
+[data-theme="forest"] .tb-popup {
+  background: var(--lc-popup-bg);
+  border-color: rgba(255, 107, 53, 0.20);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.6);
+}
+[data-theme="light"] .tb-popup-btn:hover,
+[data-theme="sakura"] .tb-popup-btn:hover,
+[data-theme="sunny"] .tb-popup-btn:hover,
+[data-theme="sky"] .tb-popup-btn:hover { background: rgba(0, 0, 0, 0.06); }
+
+/* === Scale bar + canvas surfaces === */
+/* Chord ribbon scale bar (the [−] [val] [+] [☰ 總覽] strip at the bottom of
+   the ribbon panel) — bg hardcoded as #0d1117, .overview-btn color hardcoded
+   #4fc3f7. Both flip per theme so the strip looks part of the theme. */
+[data-theme="light"]  .ribbon-scale-bar,
+[data-theme="sakura"] .ribbon-scale-bar,
+[data-theme="sunny"]  .ribbon-scale-bar,
+[data-theme="sky"]    .ribbon-scale-bar,
+[data-theme="forest"] .ribbon-scale-bar { background: var(--bg); }
+[data-theme="light"]  .scale-btn.overview-btn,
+[data-theme="sakura"] .scale-btn.overview-btn,
+[data-theme="sunny"]  .scale-btn.overview-btn,
+[data-theme="sky"]    .scale-btn.overview-btn,
+[data-theme="forest"] .scale-btn.overview-btn { color: var(--accent); }
+
+/* Waterfall canvas DOM bg per theme. Note colors come from
+   _THEME_PALETTE in player.js. */
+[data-theme="light"]  .waterfall-canvas { background: #fdfcf7; }
+[data-theme="sakura"] .waterfall-canvas { background: #fff5f8; }
+[data-theme="sunny"]  .waterfall-canvas { background: #fffbed; }
+[data-theme="sky"]    .waterfall-canvas { background: #ecf3ff; }
+[data-theme="forest"] .waterfall-canvas { background: #051a0f; }
+
+/* === Ribbon panel + items — per-theme accent tint, no gray ===
+   Each theme tints the inactive chord cards with its own accent color so
+   the ribbon reads as part of the theme rather than a neutral gray strip.
+   Active cards still get the purple --chord-gradient overlay (in player.js)
+   for the "currently playing" emphasis. */
+[data-theme="light"] .chord-ribbon-panel,
+[data-theme="sakura"] .chord-ribbon-panel,
+[data-theme="sunny"] .chord-ribbon-panel,
+[data-theme="sky"] .chord-ribbon-panel,
+[data-theme="forest"] .chord-ribbon-panel {
+  background: transparent;
+}
+[data-theme="light"] .chord-ribbon-panel,
+[data-theme="sakura"] .chord-ribbon-panel,
+[data-theme="sunny"] .chord-ribbon-panel,
+[data-theme="sky"] .chord-ribbon-panel { scrollbar-color: rgba(0, 0, 0, 0.20) transparent; }
+[data-theme="light"] .chord-ribbon-panel::-webkit-scrollbar-thumb,
+[data-theme="sakura"] .chord-ribbon-panel::-webkit-scrollbar-thumb,
+[data-theme="sunny"] .chord-ribbon-panel::-webkit-scrollbar-thumb,
+[data-theme="sky"] .chord-ribbon-panel::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.20); }
+
+/* Per-theme rv-item tints. Light family uses lower alpha (panel reads soft);
+   forest uses orange tint that pops against deep green. */
+[data-theme="light"]  .rv-item { background: rgba(25, 118, 210, 0.05);  border-color: rgba(25, 118, 210, 0.18); }
+[data-theme="light"]  .rv-item:hover { background: rgba(25, 118, 210, 0.10); }
+[data-theme="light"]  .rv-item.played { background: rgba(25, 118, 210, 0.02); }
+
+[data-theme="sakura"] .rv-item { background: rgba(236, 72, 153, 0.07); border-color: rgba(236, 72, 153, 0.22); }
+[data-theme="sakura"] .rv-item:hover { background: rgba(236, 72, 153, 0.14); }
+[data-theme="sakura"] .rv-item.played { background: rgba(236, 72, 153, 0.025); }
+
+[data-theme="sunny"]  .rv-item { background: rgba(8, 145, 178, 0.07);   border-color: rgba(8, 145, 178, 0.22); }
+[data-theme="sunny"]  .rv-item:hover { background: rgba(8, 145, 178, 0.14); }
+[data-theme="sunny"]  .rv-item.played { background: rgba(8, 145, 178, 0.025); }
+
+[data-theme="sky"]    .rv-item { background: rgba(37, 99, 235, 0.07);   border-color: rgba(37, 99, 235, 0.22); }
+[data-theme="sky"]    .rv-item:hover { background: rgba(37, 99, 235, 0.14); }
+[data-theme="sky"]    .rv-item.played { background: rgba(37, 99, 235, 0.025); }
+
+[data-theme="forest"] .rv-item { background: rgba(255, 107, 53, 0.07);  border-color: rgba(255, 107, 53, 0.22); }
+[data-theme="forest"] .rv-item:hover { background: rgba(255, 107, 53, 0.14); }
+[data-theme="forest"] .rv-item.played { background: rgba(255, 107, 53, 0.025); }
+
+/* Ribbon-wide + overview-mode have their own .rv-item bg rules at lines
+   554+ and 582+ that hardcode rgba(0,0,0,0.4) — solid 40% black gray that
+   wins over the per-theme tints above by specificity (0,3,0 vs 0,2,0).
+   Re-tint per theme at matching specificity (0,4,0) so the chord cards
+   in those modes also pick up the theme accent.
+   .upcoming-next is also rebound per theme since its base rule uses the
+   dark-theme blue rgba(33,150,243,X). .active stays purple (chord-gradient)
+   in all themes so the playing chord is universally recognizable. */
+[data-theme="light"]  .chord-ribbon-panel.ribbon-wide .rv-item,
+[data-theme="light"]  .chord-ribbon-panel.overview-mode .rv-item { background: rgba(25, 118, 210, 0.06); }
+[data-theme="sakura"] .chord-ribbon-panel.ribbon-wide .rv-item,
+[data-theme="sakura"] .chord-ribbon-panel.overview-mode .rv-item { background: rgba(236, 72, 153, 0.08); }
+[data-theme="sunny"]  .chord-ribbon-panel.ribbon-wide .rv-item,
+[data-theme="sunny"]  .chord-ribbon-panel.overview-mode .rv-item { background: rgba(8, 145, 178, 0.08); }
+[data-theme="sky"]    .chord-ribbon-panel.ribbon-wide .rv-item,
+[data-theme="sky"]    .chord-ribbon-panel.overview-mode .rv-item { background: rgba(37, 99, 235, 0.08); }
+[data-theme="forest"] .chord-ribbon-panel.ribbon-wide .rv-item,
+[data-theme="forest"] .chord-ribbon-panel.overview-mode .rv-item { background: rgba(255, 107, 53, 0.10); }
+
+/* upcoming-next (immediate next chord) — slightly stronger tint to draw eye */
+[data-theme="light"]  .rv-item.upcoming-next { background: rgba(25, 118, 210, 0.12); border-left-color: rgba(25, 118, 210, 0.55); }
+[data-theme="sakura"] .rv-item.upcoming-next { background: rgba(236, 72, 153, 0.14); border-left-color: rgba(236, 72, 153, 0.55); }
+[data-theme="sunny"]  .rv-item.upcoming-next { background: rgba(8, 145, 178, 0.14);   border-left-color: rgba(8, 145, 178, 0.55); }
+[data-theme="sky"]    .rv-item.upcoming-next { background: rgba(37, 99, 235, 0.14);   border-left-color: rgba(37, 99, 235, 0.55); }
+[data-theme="forest"] .rv-item.upcoming-next { background: rgba(255, 107, 53, 0.14);  border-left-color: rgba(255, 107, 53, 0.55); }
+
+/* === Topbar fav star — accent-tinted glow on light bg === */
+[data-theme="light"] .topbar-btn.btn-fav.active,
+[data-theme="sakura"] .topbar-btn.btn-fav.active,
+[data-theme="sunny"] .topbar-btn.btn-fav.active,
+[data-theme="sky"] .topbar-btn.btn-fav.active {
+  color: var(--accent);
+  text-shadow: 0 0 6px var(--accent);
+}
+
+/* === Banners (Type D) === */
+[data-theme="light"] .lc-banner .lc-banner-btn,
+[data-theme="sakura"] .lc-banner .lc-banner-btn,
+[data-theme="sunny"] .lc-banner .lc-banner-btn,
+[data-theme="sky"] .lc-banner .lc-banner-btn {
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.20);
+  color: var(--text);
+}
+[data-theme="light"] .lc-banner .lc-banner-btn:hover,
+[data-theme="sakura"] .lc-banner .lc-banner-btn:hover,
+[data-theme="sunny"] .lc-banner .lc-banner-btn:hover,
+[data-theme="sky"] .lc-banner .lc-banner-btn:hover { background: rgba(0, 0, 0, 0.14); }
+
+/* === Form inputs (beta rate) === */
+[data-theme="light"] .beta-rate input,
+[data-theme="light"] .beta-rate textarea,
+[data-theme="light"] .beta-rate select,
+[data-theme="sakura"] .beta-rate input,
+[data-theme="sakura"] .beta-rate textarea,
+[data-theme="sakura"] .beta-rate select,
+[data-theme="sunny"] .beta-rate input,
+[data-theme="sunny"] .beta-rate textarea,
+[data-theme="sunny"] .beta-rate select,
+[data-theme="sky"] .beta-rate input,
+[data-theme="sky"] .beta-rate textarea,
+[data-theme="sky"] .beta-rate select {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: var(--text);
+}
+
+/* === Guitar voicing controls === */
+[data-theme="light"] .gt-voicing-btn,
+[data-theme="sakura"] .gt-voicing-btn,
+[data-theme="sunny"] .gt-voicing-btn,
+[data-theme="sky"] .gt-voicing-btn { background: rgba(0, 0, 0, 0.05); }
+[data-theme="light"] .gt-voicing-btn:hover,
+[data-theme="sakura"] .gt-voicing-btn:hover,
+[data-theme="sunny"] .gt-voicing-btn:hover,
+[data-theme="sky"] .gt-voicing-btn:hover { background: rgba(0, 0, 0, 0.10); }
+[data-theme="light"] .gt-arp-select option,
+[data-theme="sakura"] .gt-arp-select option,
+[data-theme="sunny"] .gt-arp-select option,
+[data-theme="sky"] .gt-arp-select option { background: #ffffff; color: var(--text); }
+
+/* === Loading spinners === */
+[data-theme="light"] .lc-spinner, [data-theme="light"] .as-spinner, [data-theme="light"] [class*="spinner"],
+[data-theme="sakura"] .lc-spinner, [data-theme="sakura"] .as-spinner, [data-theme="sakura"] [class*="spinner"],
+[data-theme="sunny"] .lc-spinner, [data-theme="sunny"] .as-spinner, [data-theme="sunny"] [class*="spinner"],
+[data-theme="sky"] .lc-spinner, [data-theme="sky"] .as-spinner, [data-theme="sky"] [class*="spinner"] {
+  border-color: rgba(0, 0, 0, 0.20);
+  border-top-color: var(--accent);
+}
+
+/* YT PiP control buttons — kept dark across all themes so PiP reads as
+   a distinct surface against any page bg. */
+
+/* ========== [END: THEME OVERRIDES] ========== */

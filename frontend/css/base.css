@@ -25,6 +25,126 @@
     inset 0 1px 2px rgba(255,255,255,0.35),
     inset 0 -1px 2px rgba(0,0,0,0.2);
   --chord-text-shadow: 0 0 14px rgba(255,255,255,0.4), 0 1px 2px rgba(0,0,0,0.3);
+
+  /* Solid popup/toast surface — promoted to base so .toast (in base.css)
+     and Type B/C/D popups (in player.css) can both reference it without
+     player.css being loaded. Each theme overrides this below. */
+  --lc-popup-bg: rgba(22, 27, 34, 0.96);
+  --lc-popup-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* Light theme — warm paper, opt-in via <html data-theme="light">.
+   Toggle from player Tools popup (#btnTheme). Persisted to localStorage
+   key `livechord_theme`. Each page reads the key in an early inline
+   script in <head> so the attribute is set before stylesheets paint. */
+[data-theme="light"] {
+  --bg: #f7f5f0;
+  --bg-card: rgba(255, 255, 255, 0.7);
+  --bg-hover: rgba(0, 0, 0, 0.06);
+  --accent: #1976D2;
+  --accent-dim: #1565C0;
+  --text: #1f2933;
+  --text-dim: #5a6b7a;
+  --border: rgba(0, 0, 0, 0.10);
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
+  /* Chord purple stays — it's the visual anchor in both themes — but the
+     glow is dialed back so it doesn't bleed across the lighter page. */
+  --chord-glow:
+    0 0 18px rgba(147,51,234,0.30),
+    0 0 36px rgba(147,51,234,0.15),
+    inset 0 1px 2px rgba(255,255,255,0.35),
+    inset 0 -1px 2px rgba(0,0,0,0.2);
+}
+
+/* Forest theme — deep forest bg + warning orange accent + cyan highlight.
+   High-contrast outdoor vibe; dark-bg family (text light, surfaces dark). */
+[data-theme="forest"] {
+  --bg: #0d2818;
+  --bg-card: rgba(255, 107, 53, 0.08);
+  --bg-hover: rgba(255, 107, 53, 0.16);
+  --accent: #ff6b35;
+  --accent-dim: #e35420;
+  --text: #d1fae5;
+  --text-dim: #86c5a4;
+  --border: rgba(255, 107, 53, 0.18);
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --chord-gradient:
+    linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 38%, transparent 50%),
+    linear-gradient(180deg, #06b6d4 0%, #0891b2 35%, #0e7490 70%, #155e75 100%);
+  --chord-glow:
+    0 0 24px rgba(6, 182, 212, 0.55),
+    0 0 48px rgba(6, 182, 212, 0.28),
+    inset 0 1px 2px rgba(255,255,255,0.30),
+    inset 0 -1px 2px rgba(0,0,0,0.25);
+}
+
+/* Sakura theme — warm rose-cream bg + rose accent + mint highlight.
+   Soft kawaii vibe; light-bg family (text dark, surfaces light). */
+[data-theme="sakura"] {
+  --bg: #fef5f7;
+  --bg-card: rgba(236, 72, 153, 0.08);
+  --bg-hover: rgba(236, 72, 153, 0.14);
+  --accent: #ec4899;
+  --accent-dim: #be185d;
+  --text: #4a1d3f;
+  --text-dim: #8b5a7a;
+  --border: rgba(236, 72, 153, 0.18);
+  --shadow: 0 4px 16px rgba(236, 72, 153, 0.12);
+  --chord-gradient:
+    linear-gradient(180deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.06) 38%, transparent 50%),
+    linear-gradient(180deg, #f472b6 0%, #ec4899 35%, #db2777 70%, #be185d 100%);
+  --chord-glow:
+    0 0 22px rgba(236, 72, 153, 0.45),
+    0 0 44px rgba(236, 72, 153, 0.20),
+    inset 0 1px 2px rgba(255,255,255,0.40),
+    inset 0 -1px 2px rgba(0,0,0,0.15);
+  --chord-text-shadow: 0 0 14px rgba(255,255,255,0.5), 0 1px 2px rgba(0,0,0,0.2);
+}
+
+/* Sunny theme — warm sand bg + ocean teal accent + sun-yellow highlight.
+   Beach-day vibe; light-bg family. */
+[data-theme="sunny"] {
+  --bg: #fff8e1;
+  --bg-card: rgba(8, 145, 178, 0.08);
+  --bg-hover: rgba(8, 145, 178, 0.14);
+  --accent: #0891b2;
+  --accent-dim: #0e7490;
+  --text: #1e3a4d;
+  --text-dim: #5a7a8c;
+  --border: rgba(8, 145, 178, 0.20);
+  --shadow: 0 4px 16px rgba(251, 191, 36, 0.15);
+  --chord-gradient:
+    linear-gradient(180deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.06) 38%, transparent 50%),
+    linear-gradient(180deg, #06b6d4 0%, #0891b2 35%, #0e7490 70%, #155e75 100%);
+  --chord-glow:
+    0 0 22px rgba(8, 145, 178, 0.42),
+    0 0 44px rgba(251, 191, 36, 0.25),
+    inset 0 1px 2px rgba(255,255,255,0.40),
+    inset 0 -1px 2px rgba(0,0,0,0.15);
+  --chord-text-shadow: 0 0 14px rgba(255,255,255,0.5), 0 1px 2px rgba(0,0,0,0.2);
+}
+
+/* Sky theme — light blue bg + azure accent + sun-yellow highlight.
+   Open-sky vibe; light-bg family. */
+[data-theme="sky"] {
+  --bg: #dbeafe;
+  --bg-card: rgba(37, 99, 235, 0.08);
+  --bg-hover: rgba(37, 99, 235, 0.14);
+  --accent: #2563eb;
+  --accent-dim: #1d4ed8;
+  --text: #1e3a8a;
+  --text-dim: #5a73b0;
+  --border: rgba(37, 99, 235, 0.20);
+  --shadow: 0 4px 16px rgba(37, 99, 235, 0.15);
+  --chord-gradient:
+    linear-gradient(180deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.06) 38%, transparent 50%),
+    linear-gradient(180deg, #60a5fa 0%, #3b82f6 35%, #2563eb 70%, #1d4ed8 100%);
+  --chord-glow:
+    0 0 22px rgba(37, 99, 235, 0.42),
+    0 0 44px rgba(37, 99, 235, 0.20),
+    inset 0 1px 2px rgba(255,255,255,0.40),
+    inset 0 -1px 2px rgba(0,0,0,0.15);
+  --chord-text-shadow: 0 0 14px rgba(255,255,255,0.5), 0 1px 2px rgba(0,0,0,0.2);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -357,12 +477,18 @@ a:hover { text-decoration: underline; }
   position: fixed;
   bottom: 64px;
   right: 24px;
-  background: var(--bg-card);
+  /* Solid popup-surface bg + theme text — keeps the toast readable on top
+     of any backdrop (chord ribbon, waterfall, modals) and visually matches
+     the Tools/Speed/Loop popups in every theme. */
+  background: var(--lc-popup-bg);
+  color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 12px 20px;
   font-size: 14px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--lc-popup-shadow);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   transform: translateY(80px);
   opacity: 0;
   transition: all .3s;
@@ -401,3 +527,70 @@ a:hover { text-decoration: underline; }
 }
 
 /* ========== [END: RESPONSIVE] ========== */
+
+
+/* ========== [COMPONENT: LIGHT THEME OVERRIDES] ==========
+   Spot fixes for selectors above that hardcode rgba(255,255,255,X)
+   or rgba(22,27,34,X) — those don't flip via the :root vars. Kept
+   in one block at the bottom so the original selectors stay intact
+   and the feature is trivially removable. */
+
+[data-theme="light"] body,
+[data-theme="forest"] body,
+[data-theme="sakura"] body,
+[data-theme="sunny"] body,
+[data-theme="sky"] body { background: var(--bg); }
+
+/* Per-theme popup/toast surface. Must contrast with --bg, NOT match it —
+   if popup === bg the panel blends into the page. Light-bg themes elevate
+   to pure white with a per-theme color shadow (so popup reads as a "lifted
+   card"); dark-bg themes use a slightly lifted deep tone. */
+[data-theme="light"]  { --lc-popup-bg: rgba(255, 255, 255, 0.98); --lc-popup-shadow: 0 8px 28px rgba(0, 0, 0, 0.22); }
+[data-theme="sakura"] { --lc-popup-bg: rgba(255, 255, 255, 0.98); --lc-popup-shadow: 0 8px 28px rgba(236, 72, 153, 0.28); }
+[data-theme="sunny"]  { --lc-popup-bg: rgba(255, 255, 255, 0.98); --lc-popup-shadow: 0 8px 28px rgba(251, 191, 36, 0.32); }
+[data-theme="sky"]    { --lc-popup-bg: rgba(255, 255, 255, 0.98); --lc-popup-shadow: 0 8px 28px rgba(37, 99, 235, 0.28); }
+[data-theme="forest"] { --lc-popup-bg: rgba(28, 64, 38, 0.98);    --lc-popup-shadow: 0 8px 28px rgba(0, 0, 0, 0.6); }
+
+/* Spot fixes for selectors that hardcode rgba(255,255,255,X) — these
+   need to flip on light-bg themes (light + sakura + sunny + sky).
+   Forest is dark-bg and inherits the :root behavior so no flip needed. */
+
+[data-theme="light"] .search-marquee,
+[data-theme="sakura"] .search-marquee,
+[data-theme="sunny"] .search-marquee,
+[data-theme="sky"] .search-marquee { color: rgba(0, 0, 0, 0.35); }
+
+[data-theme="light"] .header-fs-btn,
+[data-theme="sakura"] .header-fs-btn,
+[data-theme="sunny"] .header-fs-btn,
+[data-theme="sky"] .header-fs-btn { color: rgba(0, 0, 0, 0.30); }
+[data-theme="light"] .header-fs-btn:hover,
+[data-theme="sakura"] .header-fs-btn:hover,
+[data-theme="sunny"] .header-fs-btn:hover,
+[data-theme="sky"] .header-fs-btn:hover { color: rgba(0, 0, 0, 0.65); }
+
+[data-theme="light"] .header-menu-popup,
+[data-theme="sakura"] .header-menu-popup,
+[data-theme="sunny"] .header-menu-popup,
+[data-theme="sky"] .header-menu-popup {
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+[data-theme="light"] .header-menu-popup button:hover,
+[data-theme="sakura"] .header-menu-popup button:hover,
+[data-theme="sunny"] .header-menu-popup button:hover,
+[data-theme="sky"] .header-menu-popup button:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] .search-results .result-item .r-cover,
+[data-theme="sakura"] .search-results .result-item .r-cover,
+[data-theme="sunny"] .search-results .result-item .r-cover,
+[data-theme="sky"] .search-results .result-item .r-cover { background: #e8eaed; }
+
+[data-theme="light"] .breadcrumb .sep,
+[data-theme="sakura"] .breadcrumb .sep,
+[data-theme="sunny"] .breadcrumb .sep,
+[data-theme="sky"] .breadcrumb .sep { color: #b0b8c0; }
+
+/* ========== [END: LIGHT THEME OVERRIDES] ========== */

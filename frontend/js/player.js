@@ -42,6 +42,132 @@
   let waterfallCtx = null;
   let waterfallActive = true;
   let show88ChordTones = localStorage.getItem("livechord_show_chord_tones") === "true";
+
+  // Theme palette — drives canvas colors that can't go through CSS vars
+  // (waterfall notes, 88-key labels, pedal sustain). Toggled from Tools popup
+  // → #btnTheme; persisted to localStorage `livechord_theme`. The HTML head
+  // inline script sets <html data-theme> early so CSS doesn't FOUC; this JS
+  // mirrors the same key for canvas-side rendering.
+  const _THEME_PALETTE = {
+    dark: {
+      noteRH: "#4fc3f7",
+      noteLH: "#4caf50",
+      pedalRgb: "76, 175, 80",
+      barLineMajor: "rgba(255,255,255,0.25)",
+      barLineMinor: "rgba(255,255,255,0.08)",
+      barLabel: "rgba(255,255,255,0.6)",
+      gridFaint: "rgba(255,255,255,0.05)",
+      activeChordTint: "rgba(33,150,243,0.05)",
+      activeChordEdge: "rgba(33,150,243,0.15)",
+      keyLabelText: "#fff",
+      keyLabelBg: "rgba(0,0,0,0.8)",
+      keyLabelStroke: "rgba(255,255,255,0.3)",
+      panelOverlay: "rgba(0, 0, 0, 0.3)",
+      panelOverlayHeavy: "rgba(10, 10, 10, 0.65)",
+      noteEmphasis: "rgba(255,255,255,0.85)",
+      noteEdge: "rgba(255,255,255,0.4)",
+    },
+    light: {
+      noteRH: "#0277BD",
+      noteLH: "#2E7D32",
+      pedalRgb: "46, 125, 50",
+      barLineMajor: "rgba(0,0,0,0.35)",
+      barLineMinor: "rgba(0,0,0,0.10)",
+      barLabel: "rgba(0,0,0,0.55)",
+      gridFaint: "rgba(0,0,0,0.06)",
+      activeChordTint: "rgba(25,118,210,0.08)",
+      activeChordEdge: "rgba(25,118,210,0.25)",
+      keyLabelText: "#1f2933",
+      keyLabelBg: "rgba(255,255,255,0.92)",
+      keyLabelStroke: "rgba(0,0,0,0.30)",
+      panelOverlay: "rgba(255, 255, 255, 0.55)",
+      panelOverlayHeavy: "rgba(245, 243, 235, 0.85)",
+      noteEmphasis: "rgba(0,0,0,0.78)",
+      noteEdge: "rgba(0,0,0,0.40)",
+    },
+    // Forest — dark-bg family. Cyan + orange accents on deep forest.
+    forest: {
+      noteRH: "#06b6d4",          // cyan highlight
+      noteLH: "#ff6b35",          // orange accent
+      pedalRgb: "6, 182, 212",    // cyan pedal
+      barLineMajor: "rgba(209,250,229,0.28)",
+      barLineMinor: "rgba(209,250,229,0.09)",
+      barLabel: "rgba(209,250,229,0.65)",
+      gridFaint: "rgba(209,250,229,0.06)",
+      activeChordTint: "rgba(255,107,53,0.07)",
+      activeChordEdge: "rgba(255,107,53,0.20)",
+      keyLabelText: "#d1fae5",
+      keyLabelBg: "rgba(5, 26, 15, 0.82)",
+      keyLabelStroke: "rgba(209,250,229,0.30)",
+      panelOverlay: "rgba(5, 26, 15, 0.4)",
+      panelOverlayHeavy: "rgba(5, 26, 15, 0.78)",
+      noteEmphasis: "rgba(209,250,229,0.88)",
+      noteEdge: "rgba(255,107,53,0.50)",
+    },
+    // Sakura — light-bg family. Rose + mint on warm cream.
+    sakura: {
+      noteRH: "#ec4899",          // rose accent
+      noteLH: "#10b981",          // mint highlight
+      pedalRgb: "16, 185, 129",   // mint pedal
+      barLineMajor: "rgba(74,29,63,0.32)",
+      barLineMinor: "rgba(74,29,63,0.10)",
+      barLabel: "rgba(74,29,63,0.55)",
+      gridFaint: "rgba(74,29,63,0.06)",
+      activeChordTint: "rgba(236,72,153,0.10)",
+      activeChordEdge: "rgba(236,72,153,0.28)",
+      keyLabelText: "#4a1d3f",
+      keyLabelBg: "rgba(255,245,247,0.92)",
+      keyLabelStroke: "rgba(74,29,63,0.30)",
+      panelOverlay: "rgba(255, 245, 247, 0.55)",
+      panelOverlayHeavy: "rgba(254, 230, 236, 0.88)",
+      noteEmphasis: "rgba(74,29,63,0.80)",
+      noteEdge: "rgba(236,72,153,0.45)",
+    },
+    // Sunny — light-bg family. Ocean teal + sun yellow on warm sand.
+    sunny: {
+      noteRH: "#0891b2",          // ocean teal
+      noteLH: "#d97706",          // amber sun
+      pedalRgb: "8, 145, 178",    // teal pedal
+      barLineMajor: "rgba(30,58,77,0.30)",
+      barLineMinor: "rgba(30,58,77,0.09)",
+      barLabel: "rgba(30,58,77,0.55)",
+      gridFaint: "rgba(251,191,36,0.10)",
+      activeChordTint: "rgba(8,145,178,0.10)",
+      activeChordEdge: "rgba(8,145,178,0.28)",
+      keyLabelText: "#1e3a4d",
+      keyLabelBg: "rgba(255,248,225,0.92)",
+      keyLabelStroke: "rgba(30,58,77,0.30)",
+      panelOverlay: "rgba(255,248,225,0.55)",
+      panelOverlayHeavy: "rgba(254,240,200,0.88)",
+      noteEmphasis: "rgba(30,58,77,0.80)",
+      noteEdge: "rgba(8,145,178,0.45)",
+    },
+    // Sky — light-bg family. Azure + sun yellow on light blue.
+    sky: {
+      noteRH: "#2563eb",          // azure
+      noteLH: "#f59e0b",          // sun yellow
+      pedalRgb: "37, 99, 235",    // azure pedal
+      barLineMajor: "rgba(30,58,138,0.30)",
+      barLineMinor: "rgba(30,58,138,0.09)",
+      barLabel: "rgba(30,58,138,0.55)",
+      gridFaint: "rgba(255,255,255,0.45)",  // cloud-white grid against sky
+      activeChordTint: "rgba(37,99,235,0.10)",
+      activeChordEdge: "rgba(37,99,235,0.28)",
+      keyLabelText: "#1e3a8a",
+      keyLabelBg: "rgba(219,234,254,0.92)",
+      keyLabelStroke: "rgba(30,58,138,0.30)",
+      panelOverlay: "rgba(219,234,254,0.55)",
+      panelOverlayHeavy: "rgba(198,220,253,0.88)",
+      noteEmphasis: "rgba(30,58,138,0.80)",
+      noteEdge: "rgba(37,99,235,0.45)",
+    },
+  };
+  const _VALID_THEMES = new Set(["dark", "light", "forest", "sakura", "sunny", "sky"]);
+  const _LIGHT_BG_THEMES = new Set(["light", "sakura", "sunny", "sky"]);
+  let _currentTheme = localStorage.getItem("livechord_theme");
+  if (!_VALID_THEMES.has(_currentTheme)) _currentTheme = "dark";
+  function _palette() { return _THEME_PALETTE[_currentTheme] || _THEME_PALETTE.dark; }
+  function _isLightBg() { return _LIGHT_BG_THEMES.has(_currentTheme); }
   // RH waterfall/keyboard content: "acc" = accompaniment only, "mel" = vocal
   // melody only, "both" = merge. Learner can flip to practice either line;
   // "both" is the power-user overlay view. Default to "acc" (what the hand
@@ -2668,7 +2794,7 @@
     ctx.clearRect(0, 0, w, h);
 
     // Draw vertical piano key grid
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+    ctx.strokeStyle = _palette().gridFaint;
     ctx.lineWidth = 1;
     ctx.beginPath();
     let lastKey = null;
@@ -2712,14 +2838,14 @@
           const y = h - (bt - currentTime) * pxPerSec;
           if (y < 0 || y > h) continue;
           const isBarLine = (b === 0);
-          ctx.strokeStyle = isBarLine ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.08)";
+          ctx.strokeStyle = isBarLine ? _palette().barLineMajor : _palette().barLineMinor;
           ctx.lineWidth = isBarLine ? 2 : 1;
           ctx.beginPath();
           ctx.moveTo(0, y);
           ctx.lineTo(w, y);
           ctx.stroke();
           // Beat number at left edge
-          ctx.fillStyle = isBarLine ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.3)";
+          ctx.fillStyle = isBarLine ? _palette().barLabel : _palette().barLineMinor;
           ctx.fillText(b + 1, 8, y - 2);
         }
       }
@@ -2729,12 +2855,12 @@
     if (abState !== "idle" && abA != null) {
       const yA = h - (abA - currentTime) * pxPerSec;
       if (yA >= 0 && yA <= h) {
-        ctx.strokeStyle = "#4fc3f7";
+        ctx.strokeStyle = _palette().noteRH;
         ctx.lineWidth = 2;
         ctx.setLineDash([6, 3]);
         ctx.beginPath(); ctx.moveTo(0, yA); ctx.lineTo(w, yA); ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = "#4fc3f7";
+        ctx.fillStyle = _palette().noteRH;
         ctx.font = "bold 11px sans-serif";
         ctx.textAlign = "right";
         ctx.fillText("A", w - 6, yA - 4);
@@ -2742,12 +2868,12 @@
       if (abState === "active" && abB != null) {
         const yB = h - (abB - currentTime) * pxPerSec;
         if (yB >= 0 && yB <= h) {
-          ctx.strokeStyle = "#4caf50";
+          ctx.strokeStyle = _palette().noteLH;
           ctx.lineWidth = 2;
           ctx.setLineDash([6, 3]);
           ctx.beginPath(); ctx.moveTo(0, yB); ctx.lineTo(w, yB); ctx.stroke();
           ctx.setLineDash([]);
-          ctx.fillStyle = "#4caf50";
+          ctx.fillStyle = _palette().noteLH;
           ctx.font = "bold 11px sans-serif";
           ctx.textAlign = "right";
           ctx.fillText("B", w - 6, yB - 4);
@@ -2756,7 +2882,7 @@
         const yAclamped = Math.max(0, Math.min(h, yA));
         const yBclamped = Math.max(0, Math.min(h, yB));
         if (yBclamped < yAclamped) {
-          ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+          ctx.fillStyle = _palette().panelOverlay;
           if (yBclamped > 0) ctx.fillRect(0, 0, w, yBclamped);
           if (yAclamped < h) ctx.fillRect(0, yAclamped, w, h - yAclamped);
         }
@@ -2846,9 +2972,9 @@
         if (yb > maxY) maxY = yb;
       }
       if (maxX > minX && maxY > minY) {
-        ctx.fillStyle = "rgba(33, 150, 243, 0.05)"; // very faint blue box
+        ctx.fillStyle = _palette().activeChordTint; // very faint accent box
         ctx.fillRect(minX - 4, minY - 4, maxX - minX + 8, maxY - minY + 8);
-        ctx.strokeStyle = "rgba(33, 150, 243, 0.15)";
+        ctx.strokeStyle = _palette().activeChordEdge;
         ctx.lineWidth = 1;
         ctx.strokeRect(minX - 4, minY - 4, maxX - minX + 8, maxY - minY + 8);
       }
@@ -2983,13 +3109,13 @@
       // Phase 11: Articulation markers
       if (evt.articulation === "staccato") {
         // Staccato dot at bottom of note block
-        ctx.fillStyle = "#fff";
+        ctx.fillStyle = _palette().keyLabelText;
         ctx.beginPath();
         ctx.arc(x + kw / 2, yBottom - 4, 2.5, 0, Math.PI * 2);
         ctx.fill();
       } else if (evt.articulation === "legato" && noteH > 12) {
         // Legato curve connecting to next note (subtle arc at top)
-        ctx.strokeStyle = "rgba(255,255,255,0.3)";
+        ctx.strokeStyle = _palette().keyLabelStroke;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(x + kw / 2, yTop, kw * 0.4, Math.PI, 0);
@@ -3021,9 +3147,9 @@
           
           // High contrast text
           ctx.lineWidth = 2.5;
-          ctx.strokeStyle = "rgba(0,0,0,0.8)";
+          ctx.strokeStyle = _palette().keyLabelBg;
           ctx.strokeText(text, x + kw / 2, Math.max(fy, 15));
-          ctx.fillStyle = "#fff";
+          ctx.fillStyle = _palette().keyLabelText;
           ctx.fillText(text, x + kw / 2, Math.max(fy, 15));
         }
         
@@ -3050,16 +3176,16 @@
         const regionH = Math.min(h, yPedBottom) - yTop;
 
         // Faint full-width wash — peripheral awareness only, does not fight note bars
-        ctx.fillStyle = `rgba(76, 175, 80, ${depth * 0.05})`;
+        ctx.fillStyle = `rgba(${_palette().pedalRgb}, ${depth * 0.05})`;
         ctx.fillRect(0, yTop, w, regionH);
 
         // Saturated right gutter — the primary pedal signal
-        ctx.fillStyle = `rgba(76, 175, 80, ${0.4 + depth * 0.25})`;
+        ctx.fillStyle = `rgba(${_palette().pedalRgb}, ${0.4 + depth * 0.25})`;
         ctx.fillRect(gutterX, yTop, gutterW, regionH);
 
         // Pedal change marker (horizontal dashed line at pedal start)
         if (yPedBottom > 0 && yPedBottom < h) {
-          ctx.strokeStyle = depth >= 1.0 ? "rgba(76, 175, 80, 0.6)" : "rgba(76, 175, 80, 0.35)";
+          ctx.strokeStyle = depth >= 1.0 ? `rgba(${_palette().pedalRgb}, 0.6)` : `rgba(${_palette().pedalRgb}, 0.35)`;
           ctx.lineWidth = 1;
           ctx.setLineDash(depth >= 1.0 ? [] : [3, 3]);
           ctx.beginPath();
@@ -3097,9 +3223,12 @@
         ctx.beginPath();
         ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
         ctx.fill();
-        // White-hot core
+        // Hot core — white on dark-bg themes, near-black on light-bg themes
+        // (so the particle tip pops against either page bg).
         if (t < 0.5) {
-          ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.9})`;
+          ctx.fillStyle = _isLightBg()
+            ? `rgba(20, 25, 35, ${alpha * 0.85})`
+            : `rgba(255, 255, 255, ${alpha * 0.9})`;
           ctx.beginPath();
           ctx.arc(p.x, p.y, size * 0.45, 0, Math.PI * 2);
           ctx.fill();
@@ -3109,7 +3238,7 @@
     }
 
     // Landing line
-    ctx.strokeStyle = "rgba(255,255,255,0.4)";
+    ctx.strokeStyle = _palette().noteEdge;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(0, h - 2);
@@ -3155,21 +3284,21 @@
     const boxX = w - boxW - 12;
     const boxY = h - 42;
 
-    // 背景 — 半透明深色 pill
-    ctx.fillStyle = "rgba(10, 10, 10, 0.65)";
+    // 背景 — pill 在深色用半透明黑、淡色用半透明米白
+    ctx.fillStyle = _palette().panelOverlayHeavy;
     ctx.beginPath();
     ctx.roundRect(boxX, boxY, boxW, boxH, 14);
     ctx.fill();
 
     // 右側彩色小圓點 (呼吸動畫)
     const pulse = 0.6 + 0.4 * Math.sin(currentTime * 3);
-    ctx.fillStyle = `rgba(76, 175, 80, ${pulse})`;
+    ctx.fillStyle = `rgba(${_palette().pedalRgb}, ${pulse})`;
     ctx.beginPath();
     ctx.arc(boxX + boxW - 16, boxY + boxH / 2, 4, 0, Math.PI * 2);
     ctx.fill();
 
     // 文字 (右對齊，圓點左邊)
-    ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+    ctx.fillStyle = _palette().noteEmphasis;
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
     ctx.fillText(_teacherMsgCache, boxX + boxW - 26, boxY + boxH / 2);
@@ -4648,6 +4777,50 @@
       });
     });
   }
+
+  // Theme picker — lives in the Tools popup. Four options: dark / light /
+  // court (deep forest + orange) / sakura (warm cream + rose). Flips the
+  // <html data-theme> attribute (CSS reads it), updates localStorage,
+  // mirrors the JS-side _currentTheme so canvas renderers pick the right
+  // palette, then forces a redraw so the change is visible immediately
+  // rather than at the next RAF tick. Inline <head> script in every HTML
+  // restores the attribute on next load to avoid FOUC.
+  // Note: option buttons use `data-pick` (NOT `data-theme`) on purpose. A
+  // `data-theme="light"` on a <button> would itself match the `:root`-level
+  // `[data-theme="light"]` rule and locally re-cascade the light palette into
+  // that one button — making the "淡色" / "櫻夢" labels render in their own
+  // theme's text color (washed-out on the current theme's bg). `data-pick`
+  // sidesteps that collision entirely.
+  const _THEME_META_COLORS = {
+    dark: "#1a1a2e",
+    light: "#f7f5f0",
+    forest: "#0d2818",
+    sakura: "#fef5f7",
+    sunny: "#fff8e1",
+    sky: "#dbeafe",
+  };
+  function _applyTheme(theme) {
+    _currentTheme = _VALID_THEMES.has(theme) ? theme : "dark";
+    document.documentElement.setAttribute("data-theme", _currentTheme);
+    try { localStorage.setItem("livechord_theme", _currentTheme); } catch (_) {}
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", _THEME_META_COLORS[_currentTheme]);
+    // Sync popup .active state
+    document.querySelectorAll(".tb-popup .theme-opt").forEach(b => {
+      b.classList.toggle("active", b.dataset.pick === _currentTheme);
+    });
+    // Force redraw — waterfall and 88-key both read _palette() per frame, but
+    // a paused player won't redraw until next event. Kick both renderers.
+    try { if (typeof drawWaterfall === "function") drawWaterfall(); } catch (_) {}
+    try { if (typeof draw88Keys === "function") draw88Keys(); } catch (_) {}
+  }
+  // Bind every option button in the Theme popup.
+  document.querySelectorAll(".tb-popup .theme-opt").forEach(btn => {
+    btn.addEventListener("click", () => _applyTheme(btn.dataset.pick));
+  });
+  // Initial sync — picks up the value the inline <head> script set so the
+  // label/meta reflect persisted state on first paint.
+  _applyTheme(_currentTheme);
 
   // Export-data lives inside the toolbar Tools popup (moved from homepage
   // header menu) so the user reaches it mid-practice, where they're most
@@ -7456,7 +7629,9 @@
       ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
       ctx.fill();
       if (t < 0.5) {
-        ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.9})`;
+        ctx.fillStyle = _isLightBg()
+          ? `rgba(20, 25, 35, ${alpha * 0.85})`
+          : `rgba(255, 255, 255, ${alpha * 0.9})`;
         ctx.beginPath();
         ctx.arc(p.x, p.y, size * 0.45, 0, Math.PI * 2);
         ctx.fill();
