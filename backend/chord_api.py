@@ -257,10 +257,25 @@ async def save_chords(sheet: ChordSheet, username: str = Depends(get_current_use
         cleaned[i]["end"] = cleaned[i + 1].get("time", cleaned[i].get("end"))
     payload["chords"] = cleaned
 
-    chords_file.write_text(
+    # Merge-on-save: preserve fields the ChordSheet model doesn't know about
+    # (beats, downbeats, tempo_curve, beats_source, beat_version, bpm_correction,
+    # source, etc.) — otherwise upgrade-beats data gets wiped on the next chord
+    # correction save and the ribbon can no longer derive correct dot counts.
+    if chords_file.is_file():
+        try:
+            existing = json.loads(chords_file.read_text(encoding="utf-8"))
+            if isinstance(existing, dict):
+                merged = {**existing, **payload}
+                payload = merged
+        except Exception:
+            pass
+
+    tmp = chords_file.with_suffix(chords_file.suffix + ".tmp")
+    tmp.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    os.replace(tmp, chords_file)
     return {"ok": True, "path": sheet.path, "version": username}
 
 

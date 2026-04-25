@@ -3833,6 +3833,37 @@
     }
   });
 
+  // Re-fetch the chord JSON and rebuild the ribbon in place, without touching
+  // sections/melody/YT embed/PiP state. Used after 升級節拍 so beats/downbeats/
+  // tempo_curve land in `chordData` immediately — avoids the foot-gun where
+  // the user runs 自動切分 next, splits using stale state, and triggers the
+  // pre-merge save path that wiped the new beat fields.
+  async function _refreshChordDataInPlace() {
+    try {
+      let fresh = null;
+      if (hashMode) {
+        const r = await fetch(`/api/chords/by-hash?hash=${encodeURIComponent(hashMode)}`);
+        if (!r.ok) return false;
+        fresh = await r.json();
+      } else if (trackPath) {
+        fresh = await API.getChords(trackPath, currentChordVersion);
+      }
+      if (!fresh || !fresh.exists || !Array.isArray(fresh.chords) || !fresh.chords.length) {
+        return false;
+      }
+      chordData = fresh;
+      _chordDuration = _computeChordDuration(chordData);
+      _updateChordQualityBadge(chordData,
+        hashMode ? hashMode : trackPath);
+      await preloadChordInfo(chordData.chords);
+      buildChordDOM();
+      return true;
+    } catch (e) {
+      console.warn("_refreshChordDataInPlace failed:", e);
+      return false;
+    }
+  }
+
   /** 播放時自動偵測（顯示 overlay） */
   async function autoDetectAndPlay() {
     detectOverlay.style.display = "";
@@ -4662,6 +4693,17 @@
     const inferredHint = inferred
       ? `偵測到：每小節 ${inferred} 拍。`
       : `無法從 downbeats 自動偵測，預設每小節 4 拍。`;
+    // Guardrail: bar / barsnap modes need real downbeats[] to align cuts to
+    // the music. Without them the algorithm falls back to a synthetic grid
+    // anchored on the first chord, which is rarely on a real bar line — so
+    // bars come out shifted, and the resulting card durations don't match
+    // beatsPerBar × secPerBeat (visible as 1-2 dots per card after reload).
+    // Force the user to run 升級節拍 first.
+    const _hasDownbeats = Array.isArray(chordData && chordData.downbeats)
+      && chordData.downbeats.length >= 2;
+    if (!_hasDownbeats && (mode === "bar" || mode === "barsnap")) {
+      mode = "ratio";
+    }
 
     // Type B modal — backdrop + .lc-modal card. All styling via classes in player.css
     // (shared .lc-modal-backdrop + .lc-modal + auto-split-specific .as-* classes).
@@ -4672,9 +4714,13 @@
     panel.className = "lc-modal";
     panel.innerHTML = `
       <div class="lc-title">✂ 自動切分長和弦</div>
+      ${!_hasDownbeats ? `
+      <div class="as-no-downbeats-warn" style="background:rgba(255,193,7,.12); border:1px solid rgba(255,193,7,.4); color:#ffd54f; padding:8px 10px; border-radius:6px; font-size:13px; line-height:1.5; margin-bottom:10px;">
+        ⚠ 此曲尚未擷取小節資訊（downbeats）。「依小節切分」與「對齊小節線」需先到「工具 → 升級節拍」執行 madmom 節拍偵測，否則會用估算 BPM 建立虛擬小節線，位置容易偏掉。目前僅開放「依比例切分」。
+      </div>` : ``}
       <div class="as-mode-row">
-        <button class="as-mode-btn" data-mode="bar">依小節切分</button>
-        <button class="as-mode-btn" data-mode="barsnap">對齊小節線</button>
+        <button class="as-mode-btn" data-mode="bar"${!_hasDownbeats ? ' disabled style="opacity:.4;cursor:not-allowed"' : ""}>依小節切分</button>
+        <button class="as-mode-btn" data-mode="barsnap"${!_hasDownbeats ? ' disabled style="opacity:.4;cursor:not-allowed"' : ""}>對齊小節線</button>
         <button class="as-mode-btn" data-mode="ratio">依比例切分</button>
       </div>
 
@@ -5346,8 +5392,10 @@
               clearInterval(_upgradePoll); _upgradePoll = null;
               btnUpgradeBeats.disabled = false;
               const r = sdata.result || {};
+              const refreshed = await _refreshChordDataInPlace();
+              const tail = refreshed ? "已套用至目前頁面。" : "請重新載入頁面以套用。";
               showToast(
-                `「${sdata.title || songTitle}」動態節拍偵測完成 — BPM ${r.bpm}, ${r.n_beats} beats, range ${r.tempo_range} BPM。重新載入頁面以套用。`,
+                `「${sdata.title || songTitle}」動態節拍偵測完成 — BPM ${r.bpm}, ${r.n_beats} beats, range ${r.tempo_range} BPM。${tail}`,
                 7000
               );
             } else if (st === "error") {
