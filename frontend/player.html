@@ -10,8 +10,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="/css/base.css?v=8">
-  <link rel="stylesheet" href="/css/player.css?v=84">
+  <link rel="stylesheet" href="/css/base.css?v=10">
+  <link rel="stylesheet" href="/css/player.css?v=97">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -26,7 +26,10 @@
 
 <!-- ===== TOP: Top Bar ===== -->
 <header class="player-topbar">
-  <a href="/" class="topbar-logo" title="返回首頁">LiveChord</a>
+  <a href="/" class="topbar-logo" title="返回首頁">
+    <img src="/favicon.svg?v=3" alt="" class="topbar-logo-icon" aria-hidden="true">
+    <span class="topbar-logo-text">LiveChord</span>
+  </a>
   <div class="topbar-center">
     <span id="songTitle" class="topbar-title" title="">—</span>
     <button id="btnFav" class="topbar-btn btn-fav" title="收藏">&#x2661;</button>
@@ -687,6 +690,6 @@
     return res;
   };
 </script>
-<script src="/js/player.js?v=226"></script>
+<script src="/js/player.js?v=229"></script>
 </body>
 </html>

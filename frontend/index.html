@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="/css/base.css?v=8">
+  <link rel="stylesheet" href="/css/base.css?v=10">
   <link rel="stylesheet" href="/css/home.css?v=17">
   <!-- Warm the CDN so the player page's YouTube IFrame bootstraps faster -->
   <link rel="preconnect" href="https://www.youtube.com">
@@ -29,7 +29,10 @@
 
 <!-- header -->
 <header class="header">
-  <h1>LiveChord</h1>
+  <h1 class="header-brand">
+    <img src="/favicon.svg?v=3" alt="" class="header-brand-icon" aria-hidden="true">
+    <span>LiveChord</span>
+  </h1>
   <div class="search-box">
     <input id="searchInput" type="text" placeholder="請輸入 YouTube URL..." autocomplete="off">
     <div class="search-marquee" aria-hidden="true"><span class="search-marquee-text">請輸入 YouTube URL...</span></div>

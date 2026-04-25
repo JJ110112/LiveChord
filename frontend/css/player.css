@@ -68,6 +68,21 @@
   text-decoration: none !important;
   white-space: nowrap;
   padding: 4px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.topbar-logo-icon {
+  width: 26px;
+  height: 26px;
+  display: block;
+  border-radius: 6px;
+}
+/* Player topbar: show only the cyan LC icon — the "LiveChord" wordmark
+   is hidden on every viewport (desktop + mobile). The icon alone carries
+   the brand here; the homepage `.header-brand` keeps the full wordmark. */
+.topbar-logo-text {
+  display: none !important;
 }
 .topbar-logo:hover { opacity: 0.8; }
 
@@ -312,6 +327,47 @@
 }
 .rv-item.active canvas {
   filter: drop-shadow(0 2px 6px rgba(139,92,246,0.4));
+}
+
+/* Card content scales with --ribbon-scale so the chord name, 簡譜, time, and
+   beat dots shrink/grow alongside the card width (which is also driven by
+   --ribbon-scale via grid-template-columns / .ribbon-wide width). Without
+   this, the chord name stayed at 18px while the card narrowed to ~42px at
+   scale 0.3 — the card looked like a tall, awkwardly-empty strip. The mini
+   piano canvas already scales because _buildUnifiedRibbon passes ribbonScale
+   to ChordRender.drawPiano() at draw time. `max(MIN, …)` clamps prevent text
+   from disappearing at scale 0.1. */
+.rv-item {
+  /* Outer padding shrinks with scale so a 42-px-wide card at scale 0.3
+     doesn't burn 16px on horizontal padding alone. */
+  padding: max(2px, calc(10px * var(--ribbon-scale, 1)))
+           max(2px, calc(8px * var(--ribbon-scale, 1)));
+}
+.rv-item[data-phrase-start="true"] {
+  padding-top: max(12px, calc(22px * var(--ribbon-scale, 1)));
+}
+.rv-item .rv-chord-name {
+  font-size: max(9px, calc(18px * var(--ribbon-scale, 1)));
+  padding: max(1px, calc(2px * var(--ribbon-scale, 1)))
+           max(4px, calc(10px * var(--ribbon-scale, 1)));
+}
+.rv-item .rv-jianpu {
+  font-size: max(7px, calc(11px * var(--ribbon-scale, 1)));
+}
+.rv-item .rv-time {
+  font-size: max(7px, calc(10px * var(--ribbon-scale, 1)));
+}
+.rv-item .rv-beats {
+  height: max(3px, calc(6px * var(--ribbon-scale, 1)));
+  gap: max(2px, calc(4px * var(--ribbon-scale, 1)));
+}
+.rv-item .beat-dot {
+  width: max(3px, calc(5px * var(--ribbon-scale, 1)));
+  height: max(3px, calc(5px * var(--ribbon-scale, 1)));
+}
+.rv-item .beat-dot.is-downbeat {
+  width: max(4px, calc(6px * var(--ribbon-scale, 1)));
+  height: max(4px, calc(6px * var(--ribbon-scale, 1)));
 }
 
 /* Section markers in ribbon */
@@ -1246,13 +1302,17 @@
      natural width. */
   flex-wrap: wrap;
   gap: 6px;
-  background: rgba(22,27,34,0.96);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border);
+  /* Frosted-glass background: low-opacity dark base + heavy blur + slight
+     saturation bump so the player content behind shows through softly but
+     popup contents stay legible. The previous 0.96-opaque background made
+     the existing backdrop-filter invisible. */
+  background: rgba(22,27,34,0.55);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  border: 1px solid rgba(255,255,255,0.12);
   border-radius: 10px;
   padding: 8px 12px;
-  box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+  box-shadow: 0 -4px 24px rgba(0,0,0,0.6);
   white-space: nowrap;
   z-index: 10000;
   /* Clamp every popup to viewport — 720px hard cap on desktop, 16px
@@ -2057,20 +2117,22 @@
      inside `.resize-handle` which is `display:none` on mobile, so without
      this override the user has no way to re-show the ribbon on a phone. */
   .chord-ribbon-panel {
+    /* Portrait is chord-only overview — ribbon takes the entire chord-
+       display-area. Waterfall + fold buttons are hidden below. The earlier
+       40vh upper-half design was dropped after user feedback that mobile
+       portrait should focus on a single scrollable chord grid (no
+       split-screen mental model on a small viewport). bottom:24px keeps
+       the inline scale-bar (at the panel's bottom flex edge) from sitting
+       on top of the .progress-bar-mid scrub strip ~10px above the toolbar. */
     display: flex !important;
     flex-direction: column;
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
+    bottom: 24px;
     width: 100%;
-    /* 50vh used to crowd the instrument panel below the 3-row toolbar on
-       portrait (waterfall was clipped by up to ~99px under the toolbar).
-       40vh gives the waterfall ~66px more visible space; paired with the
-       chord-display-area portrait override that stops at toolbar top
-       (search "148px + env(safe-area-inset-bottom)" below) this removes
-       clipping entirely. */
-    height: 40vh;
+    height: auto;
     min-width: 0;
     max-width: none;
     z-index: 15;
@@ -2122,27 +2184,82 @@
     width: 100%;
     min-width: 0;
   }
+  /* Portrait keeps the [−] [val] [+] scale-bar so users can still adjust
+     card ratio (per user request); 總覽 + fold buttons remain hidden because
+     overview mode is forced and there's no waterfall to fold. */
   .ribbon-scale-bar {
     display: flex;
     flex: 0 0 auto;
   }
+  /* 官方AI版 jazzify dropdown + ★ chord-quality star are always hidden in
+     portrait — they're niche desktop affordances that crowd the small
+     topbar and aren't critical to the mobile play-along flow. */
+  #versionsContainer,
+  #btnRateAiTop {
+    display: none !important;
+  }
   .middle-split {
-    /* Must match .chord-ribbon-panel height above (40vh) — ribbon is
-       absolutely positioned at top:0, so padding-top here pushes the
-       instrument panel below it. */
-    padding-top: calc(40vh + 4px);
+    /* Ribbon takes the entire chord-display area (top:0/bottom:0); waterfall
+       is hidden in portrait, so no padding-top reservation is needed. */
+    padding-top: 0;
+  }
+  /* The chord-display-area's `bottom: 49px` assumes a single-row 54px
+     toolbar. Portrait stacks the toolbar into 3 rows (~130-148px tall) so
+     the bottom of the chord ribbon ends up under the toolbar. Push it up
+     unconditionally for any portrait phone (was previously gated on
+     `pointer: coarse`, which excludes DevTools emulation). */
+  .chord-display-area {
+    bottom: calc(148px + env(safe-area-inset-bottom, 0px));
+  }
+  /* Portrait is chord-only overview: hide the waterfall/instrument panel,
+     hide the fold buttons (no layout-change option per user request), and
+     hide the 總覽 toggle (overview is forced regardless of the persisted
+     `livechord_overview_mode` value). The +/- ribbon-scale buttons stay so
+     users can still zoom card content. */
+  #instrumentPanel {
+    display: none !important;
   }
   .resize-handle {
-    display: none;
+    display: none !important;
+  }
+  #btnToggleOverview {
+    display: none !important;
+  }
+  /* Force grid layout regardless of `.overview-mode` class — same shape as
+     the explicit overview rule below, but always-on in portrait so the user
+     gets a consistent scrollable grid. auto-fit + minmax lets the column
+     count adapt to scale: at scale=1 we get ~3 cols on a 360px viewport,
+     at scale=0.3 we get more. */
+  .chord-ribbon-panel .ribbon-v-track {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(calc(110px * var(--ribbon-scale, 1)), 1fr)) !important;
+    grid-auto-flow: row;
+    direction: ltr;
+    overflow-x: hidden;
+    overflow-y: auto;
+    gap: 6px;
+    padding: 6px;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .chord-ribbon-panel .rv-item {
+    order: unset;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
   }
   /* (bug-report-fab mobile override lives after the base rule below) */
   .player-topbar {
     gap: 8px;
     padding: 0 8px;
   }
+  /* font-size only — flex/ellipsis rules live below in the proper
+     .topbar-center / .topbar-title block. The earlier max-width:200px clamp
+     was forcing the title to bleed under the right-side controls on phones
+     when the controls were wider than the freed space. */
   .topbar-title {
     font-size: 13px;
-    max-width: 200px;
   }
   /* Three-tier stacked mobile toolbar — replaces the old single-row overflow-x
      scrollable toolbar. T1 pills (speed/loop/transpose/volume) on top, transport
@@ -2210,6 +2327,21 @@
   #chordBpm { display: none; }
 }
 
+/* Very-narrow phones (≤480px): topbar gets cramped because logo + title +
+   jazzify dropdown + LED + key + ★ + × all compete on one row. Free space
+   by hiding the LED (info is tooltip-only) and shrinking the jazzify pill;
+   keep LiveChord text + full-screen button per user choice. The "LiveChord"
+   wordmark hides too — the cyan LC icon (added 2026-04-25) carries the
+   brand identity at small widths. */
+@media (max-width: 480px) {
+  #chordSource { display: none; }
+  .btn-version {
+    font-size: 11px;
+    padding: 2px 6px;
+  }
+  /* (.topbar-logo-text already hidden universally by base rule.) */
+}
+
 /* Three-tier stacked mobile toolbar — PORTRAIT only. Landscape stays single-row. */
 @media (max-width: 640px) and (orientation: portrait) {
   .bottom-toolbar {
@@ -2265,10 +2397,13 @@
   .tb-popup::after { display: none; }  /* hover-bridge not needed on touch */
   .tb-popup-btn { font-size: 13px; padding: 8px 12px; }
 }
-/* Portrait narrow phones: toolbar is three rows ≈ 132px tall; lift popup above it */
+/* Portrait narrow phones: toolbar is three rows ≈ 132px tall; lift popup above it.
+   Same height cap as landscape so tall popups (AI Teaching) don't overlap the topbar. */
 @media (pointer: coarse) and (max-width: 640px) and (orientation: portrait) {
   .tb-popup {
     bottom: 140px !important;
+    max-height: calc(100vh - 44px - 140px - 8px);
+    overflow-y: auto;
   }
 }
 
@@ -2330,17 +2465,46 @@
   }
 }
 
+/* Touch devices (any orientation): hide the resize-handle fold buttons so
+   the waterfall is always visible alongside the chord ribbon. Mouse-user
+   desktops keep them — drag-resize is useful there but pointless on a
+   phone where the divider isn't draggable anyway. Portrait already hides
+   via @media (max-width:640px) above; this catches landscape phones.
+   (LiveChord brand is hidden universally via the base .topbar-logo rule.) */
+@media (pointer: coarse) {
+  .resize-handle {
+    display: none !important;
+  }
+}
+
 /* Landscape (pointer:coarse) — popups centered + width-capped so buttons
-   don't stretch across the full 900+px viewport. Anchors above transport row. */
+   don't stretch across the full 900+px viewport. Anchors above transport row.
+   Tall popups (e.g. AI Teaching with ~10 rows) are capped at viewport
+   height minus topbar + toolbar so they don't visually cover the song
+   title + × close button up top — overflow scrolls inside the popup. */
 @media (pointer: coarse) and (orientation: landscape) {
   .tb-popup {
     left: 50% !important;
     right: auto !important;
     transform: translateX(-50%) !important;
     width: auto !important;
-    max-width: min(90vw, 520px);
+    /* `!important` because the base touch rule at line ~2363 sets
+       `max-width: none !important` (resetting desktop's caps); without
+       `!important` here the A-B popup's many phrase pills overflow the
+       viewport horizontally instead of scrolling inside .ab-phrase-strip. */
+    max-width: min(90vw, 520px) !important;
     bottom: 60px !important;           /* matches taller touch toolbar */
+    max-height: calc(100vh - 44px - 60px - 8px);  /* topbar 44 + toolbar 60 + 8 gap */
+    overflow-y: auto;
   }
+  /* Touch landscape = waterfall-only. Hide the chord-ribbon-panel and let
+     the instrument panel (piano + falling notes) take the full width.
+     Mirror of the portrait rule that hides #instrumentPanel + shows the
+     chord ribbon — orientation flips which side is hidden. */
+  .chord-ribbon-panel { display: none !important; }
+  #instrumentPanel { width: 100% !important; flex: 1 1 100% !important; }
+  .middle-split { padding-top: 0; }
+  /* (LiveChord brand hidden in all mobile orientations via the rule below.) */
   .tb-popup-5 .tb-popup-btn,
   .tb-popup-wide .tb-popup-btn,
   #tbTools .tb-popup .tb-popup-btn {

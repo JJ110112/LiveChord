@@ -1636,7 +1636,7 @@
   }
   function _readRibbonScale(key) {
     const v = parseFloat(localStorage.getItem(`livechord_ribbon_scale_${key}`));
-    return (v >= 0.5 && v <= 3) ? v : 1.0;
+    return (v >= 0.1 && v <= 3) ? v : 1.0;
   }
   let ribbonScale = _readRibbonScale(_ribbonLayoutKey());
   const scaleLabel = $("#scaleLabel");
@@ -1650,7 +1650,7 @@
     if (scaleLabel) scaleLabel.textContent = ribbonScale.toFixed(1);
   }
   function _changeRibbonScale(delta) {
-    ribbonScale = Math.round(Math.max(0.5, Math.min(3, ribbonScale + delta)) * 10) / 10;
+    ribbonScale = Math.round(Math.max(0.1, Math.min(3, ribbonScale + delta)) * 10) / 10;
     localStorage.setItem(`livechord_ribbon_scale_${_ribbonLayoutKey()}`, ribbonScale);
     _updateScaleLabel();
     if (chordRibbonPanel) chordRibbonPanel.style.setProperty("--ribbon-scale", ribbonScale);
@@ -1746,6 +1746,19 @@
   }
 
   function _applyRibbonLayout() {
+    // Touch devices have orientation-driven single-panel layouts (CSS hides
+    // the other side via !important). Align JS state to match so the
+    // inline `display:` written below doesn't fight the CSS.
+    //   portrait → chord ribbon only (waterfall hidden)
+    //   landscape → waterfall only (chord ribbon hidden)
+    // Stale localStorage from a prior desktop session would otherwise
+    // leave the wrong side hidden after orientation flip.
+    const _isTouch = window.matchMedia("(pointer: coarse)").matches;
+    if (_isTouch) {
+      const _isPortraitTouch = window.matchMedia("(orientation: portrait)").matches;
+      ribbonHidden = !_isPortraitTouch;       // hide ribbon in landscape
+      waterfallHidden = _isPortraitTouch;     // hide waterfall in portrait
+    }
     if (chordRibbonPanel) {
       chordRibbonPanel.style.display = ribbonHidden ? "none" : "";
       // When waterfall is hidden, ribbon takes the full row with a
@@ -1770,16 +1783,26 @@
     // chords 100 % and `<` (right, adjacent to waterfall) makes waterfall
     // 100 %. In hidden state, the single remaining arrow points in the
     // direction the hidden panel will re-expand.
+    // Orientation-aware glyphs: portrait split is vertical (chord on top,
+    // waterfall on bottom) so use ▼/▲ to match the axis the user is folding
+    // along; landscape stays ▶/◀. Re-runs on resize via the listener that
+    // already calls _loadRibbonScale on orientation flip — extended below to
+    // also re-apply this layout.
+    const _isPortrait = window.matchMedia("(orientation: portrait)").matches;
+    const _ribbonGlyph = _isPortrait ? "&#x25BC;" : "&#x276F;";   // ▼ / ▶
+    const _waterfallGlyph = _isPortrait ? "&#x25B2;" : "&#x276E;"; // ▲ / ◀
     if (btnCollapseRibbon) {
       btnCollapseRibbon.style.display = waterfallHidden ? "none" : "";
-      btnCollapseRibbon.innerHTML = "&#x276F;";  // ▶
+      btnCollapseRibbon.innerHTML = _ribbonGlyph;
       btnCollapseRibbon.title = ribbonHidden
         ? "按一下：顯示和弦列表"
-        : "按一下：收合鋼琴視窗 (和弦列表擴大至全版)";
+        : (_isPortrait
+            ? "按一下：收合鋼琴視窗 (和弦列表擴大至全版)"
+            : "按一下：收合鋼琴視窗 (和弦列表擴大至全版)");
     }
     if (btnCollapseWaterfall) {
       btnCollapseWaterfall.style.display = ribbonHidden ? "none" : "";
-      btnCollapseWaterfall.innerHTML = "&#x276E;";  // ◀
+      btnCollapseWaterfall.innerHTML = _waterfallGlyph;
       btnCollapseWaterfall.title = waterfallHidden
         ? "按一下：顯示鋼琴視窗"
         : "按一下：收合和弦列表 (鋼琴擴大至全版)";
@@ -1806,6 +1829,11 @@
 
   _applyRibbonLayout();
   _persistRibbonLayout();  // writes migrated state, clears legacy keys' effect
+
+  // Re-run on orientation flip so fold-button glyphs swap between ▶/◀
+  // (landscape) and ▼/▲ (portrait). Cheap call — just rewrites button HTML
+  // + display flags, no DOM rebuild.
+  window.addEventListener("resize", _applyRibbonLayout);
 
   // Pure 2-state toggles — no auto-swap. The "other side is hidden"
   // case is handled by hiding the conflicting button in _applyRibbonLayout,

@@ -64,6 +64,24 @@ a:hover { text-decoration: underline; }
   color: var(--accent);
   white-space: nowrap;
 }
+.header-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.header-brand-icon {
+  width: 28px;
+  height: 28px;
+  display: block;
+  border-radius: 6px;
+}
+/* Show only the cyan LC icon — hide the "LiveChord" wordmark on every
+   viewport so the brand looks identical on PC and mobile, matching the
+   player topbar. */
+.header-brand > span {
+  display: none;
+}
 
 .header .search-box {
   flex: 1;
