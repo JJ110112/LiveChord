@@ -3512,6 +3512,33 @@
 [data-theme="sky"]    .scale-btn.overview-btn,
 [data-theme="forest"] .scale-btn.overview-btn { color: var(--accent); }
 
+/* Active chord card jianpu (簡譜 numbers row, e.g. "5 7 2") — original
+   rule sets `color: #eee` for dark-bg readability against the active card's
+   light blue tint. On light-bg themes that bg is barely visible and #eee
+   becomes invisible. Flip to --text so jianpu reads on cream/white pages. */
+[data-theme="light"]  .rv-item.active .rv-jianpu,
+[data-theme="sakura"] .rv-item.active .rv-jianpu,
+[data-theme="sunny"]  .rv-item.active .rv-jianpu,
+[data-theme="sky"]    .rv-item.active .rv-jianpu { color: var(--text); }
+
+/* Beat dots at the bottom of each chord card — original is white@0.7 which
+   vanishes on light bg. Flip to a dark gray for non-downbeats and a theme-
+   tinted accent for downbeats. .beat-active (purple gem) and .is-downbeat
+   .beat-active stay untouched — they're the universal "currently playing"
+   marker and read clearly on every theme via the purple glow. */
+[data-theme="light"]  .beat-dot,
+[data-theme="sakura"] .beat-dot,
+[data-theme="sunny"]  .beat-dot,
+[data-theme="sky"]    .beat-dot { background-color: rgba(0, 0, 0, 0.30); }
+
+[data-theme="light"]  .beat-dot.is-downbeat,
+[data-theme="sakura"] .beat-dot.is-downbeat,
+[data-theme="sunny"]  .beat-dot.is-downbeat,
+[data-theme="sky"]    .beat-dot.is-downbeat {
+  background-color: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
 /* Waterfall canvas DOM bg per theme. Note colors come from
    _THEME_PALETTE in player.js. */
 [data-theme="light"]  .waterfall-canvas { background: #fdfcf7; }
