@@ -2,7 +2,7 @@
 REM ============================================================
 REM  Stage step 3/3 — push G:\stage\... -> V:\data\chords
 REM ------------------------------------------------------------
-REM  PRECONDITION: NUC services 8800/8801 stopped — production
+REM  PRECONDITION: NUC service 8800 stopped — production
 REM  must not write new chord JSONs while we mirror. /MIR mirrors
 REM  the source tree exactly: extras on dest are DELETED.
 REM
@@ -22,7 +22,7 @@ echo === stage push starting ===
 echo Source:      %SRC%
 echo Destination: %DST%
 echo.
-echo PRECONDITION: 8801 stopped (otherwise concurrent writes risk).
+echo PRECONDITION: 8800 stopped (otherwise concurrent writes risk).
 echo Running with /MIR — extra files in V:\ NOT also in G:\ will be DELETED.
 echo If you want safer "only update / never delete", edit this batch:
 echo   change /MIR to: /E /XO
@@ -57,9 +57,10 @@ if %RC% GEQ 8 (
 echo.
 echo === push done (robocopy code %RC%) ===
 echo.
-echo Next: restart 8800 + 8801 on NUC via restart_dual.bat, wait ~15s for both to come back.
+echo Next: restart 8800 on NUC via restart.bat, wait ~15s for it to come back.
+echo (No more beta — restart_dual.bat would also bring up 8801, don't use it.)
 echo.
-choice /M "Has restart_dual.bat finished and both ports respond"
+choice /M "Has restart.bat finished and 8800 responds"
 if errorlevel 2 (
     echo Skipping post-migration backup. Re-run backup_after_migration.bat later when ready.
     pause & exit /b 0

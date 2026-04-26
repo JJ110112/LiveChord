@@ -73,8 +73,8 @@ echo  3. If 8803 OK, push to V:\:
 echo     stage_madmom_push.bat  (now syncs sharded layout, then prompts
 echo                              to trigger tier2 backup once NUC is back)
 echo.
-echo  4. Restart NUC services:
-echo     restart_dual.bat   (on NUC console)
+echo  4. Restart NUC service:
+echo     restart.bat   (on NUC console — single 8800, no more beta)
 echo.
 echo  5. (auto, via stage_madmom_push.bat tail) tier2 backup snapshot
 echo     of new bucketed layout — first restore-point for sharded data.
