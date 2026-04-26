@@ -56,6 +56,16 @@ if %RC% GEQ 8 (
 
 echo.
 echo === push done (robocopy code %RC%) ===
-echo Done — restart 8801 (and 8800 if you stopped it) via restart_dual.bat
-pause
+echo.
+echo Next: restart 8800 + 8801 on NUC via restart_dual.bat, wait ~15s for both to come back.
+echo.
+choice /M "Has restart_dual.bat finished and both ports respond"
+if errorlevel 2 (
+    echo Skipping post-migration backup. Re-run backup_after_migration.bat later when ready.
+    pause & exit /b 0
+)
+
+echo.
+echo === Triggering tier2 backup on NUC (bucketed-layout restore point) ===
+call "%~dp0backup_after_migration.bat"
 endlocal

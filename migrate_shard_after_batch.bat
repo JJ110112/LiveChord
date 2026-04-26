@@ -70,10 +70,15 @@ echo     http://localhost:8803/player?path=...
 echo     Verify chord data loads, switch buttons work
 echo.
 echo  3. If 8803 OK, push to V:\:
-echo     stage_madmom_push.bat  (now syncs sharded layout)
+echo     stage_madmom_push.bat  (now syncs sharded layout, then prompts
+echo                              to trigger tier2 backup once NUC is back)
 echo.
 echo  4. Restart NUC services:
 echo     restart_dual.bat   (on NUC console)
+echo.
+echo  5. (auto, via stage_madmom_push.bat tail) tier2 backup snapshot
+echo     of new bucketed layout — first restore-point for sharded data.
+echo     Re-runnable standalone via: backup_after_migration.bat
 echo.
 pause
 endlocal
