@@ -55,7 +55,18 @@ def _get_chord_hashes() -> set:
     hashes = set()
     if CHORDS_DIR.is_dir():
         try:
-            hashes = {n[:-5] for n in os.listdir(CHORDS_DIR) if n.endswith(".json")}
+            with os.scandir(CHORDS_DIR) as buckets:
+                for b in buckets:
+                    if not b.is_dir() or len(b.name) != 2:
+                        continue
+                    try:
+                        with os.scandir(b.path) as it:
+                            for entry in it:
+                                name = entry.name
+                                if name.endswith(".json") and ".json.bak." not in name:
+                                    hashes.add(name[:-5])
+                    except OSError:
+                        continue
         except OSError:
             pass
     _chord_hashes_cache["set"] = hashes
@@ -130,8 +141,21 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
 
     if _batch_state["succeeded"] > 0 and CACHE_FILE.is_file():
         try:
-            # 一次 listdir 取代每檔一次 is_file()（同時捎帶修正其他歷史遺留的 stale 條目）
-            chord_hashes = {n[:-5] for n in os.listdir(CHORDS_DIR) if n.endswith(".json")} if CHORDS_DIR.is_dir() else set()
+            # 一次 walk bucketed layout 取代每檔一次 is_file()（同時捎帶修正其他歷史遺留的 stale 條目）
+            chord_hashes = set()
+            if CHORDS_DIR.is_dir():
+                with os.scandir(CHORDS_DIR) as buckets:
+                    for b in buckets:
+                        if not b.is_dir() or len(b.name) != 2:
+                            continue
+                        try:
+                            with os.scandir(b.path) as it:
+                                for entry in it:
+                                    name = entry.name
+                                    if name.endswith(".json") and ".json.bak." not in name:
+                                        chord_hashes.add(name[:-5])
+                        except OSError:
+                            continue
             cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
             modified = False
             for t in cache.get("tracks", []):

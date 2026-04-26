@@ -61,8 +61,22 @@ def get_chord_hash_set(force: bool = False) -> set:
     if not CHORDS_DIR.is_dir():
         result = set()
     else:
+        # Sharded layout: <CHORDS_DIR>/<bucket>/<hash>.json — walk one level deep,
+        # skip .bak.* sidecars and any stray non-2-char entries.
+        result = set()
         try:
-            result = {n[:-5] for n in os.listdir(CHORDS_DIR) if n.endswith(".json")}
+            with os.scandir(CHORDS_DIR) as buckets:
+                for b in buckets:
+                    if not b.is_dir() or len(b.name) != 2:
+                        continue
+                    try:
+                        with os.scandir(b.path) as it:
+                            for entry in it:
+                                name = entry.name
+                                if name.endswith(".json") and ".json.bak." not in name:
+                                    result.add(name[:-5])
+                    except OSError:
+                        continue
         except OSError:
             result = set()
     _chord_hash_cache["data"] = result
