@@ -142,7 +142,7 @@ def score_song(gt_entries: list, det_entries: list):
     }
 
 
-from chord_cache import song_hash
+from chord_cache import song_hash, chord_file_for
 
 
 def main():
@@ -188,7 +188,7 @@ def main():
         # 找 BTC 偵測結果
         rel_path = audio_file.name
         h = song_hash(rel_path)
-        chord_file = CHORDS_DIR / f"{h}.json"
+        chord_file = chord_file_for(h)
 
         if not chord_file.is_file():
             if not args.detect:

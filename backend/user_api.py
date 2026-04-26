@@ -55,7 +55,7 @@ class RecentItem(BaseModel):
     youtube_url: Optional[str] = ""
 
 
-from chord_cache import get_chord_summary as _get_chord_summary
+from chord_cache import get_chord_summary as _get_chord_summary, chord_file_for
 
 @router.get("/favorites")
 async def get_favorites(username: str = Depends(get_current_user)):
@@ -71,7 +71,7 @@ async def get_favorites(username: str = Depends(get_current_user)):
         if p.startswith("__hash/"):
             # Self-heal: drop favorites whose processed-result chord file was purged.
             h = p[7:]
-            if not (_CHORDS_DIR / f"{h}.json").is_file():
+            if not chord_file_for(h).is_file():
                 changed = True
                 continue
         else:
@@ -130,7 +130,7 @@ async def get_recent(username: str = Depends(get_current_user)):
             # purge or failed write. Without this, the home page would render cards
             # that navigate to a 404 player.
             h = p[7:]
-            if not (_CHORDS_DIR / f"{h}.json").is_file():
+            if not chord_file_for(h).is_file():
                 changed = True
                 continue
         else:

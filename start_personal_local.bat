@@ -23,6 +23,8 @@ REM =====================================================================
 setlocal
 set LIVECHORD_MODE=personal
 set LIVECHORD_BTC_WORKERS=1
+REM Dev box doesn't manage prod backup writes — let NUC 8800 handle the schedule.
+set LIVECHORD_NO_SCHEDULER=1
 
 cd /d "%~dp0backend"
 

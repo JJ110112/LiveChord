@@ -16,6 +16,8 @@ from chord_cache import (
     get_chord_meta,
     update_entry_from_file as cache_update_entry,
     invalidate as cache_invalidate,
+    chord_file_for,
+    ensure_chord_bucket,
 )
 from data_cache import invalidate_chord_hash_set as _invalidate_chord_hash_set
 from config import resolve_path
@@ -91,7 +93,7 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
         _batch_state["current_track"] = track_path
         lock.update_progress(current_item=track_path, done=i + 1)
 
-        chords_file = CHORDS_DIR / f"{song_hash(track_path)}.json"
+        chords_file = chord_file_for(song_hash(track_path))
         if skip_existing and chords_file.is_file():
             _batch_state["skipped"] += 1
             continue
@@ -104,6 +106,7 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
         try:
             chords, key = detect_chords_and_key_isolated(full)
             sheet = {"path": track_path, "key": key, "capo": 0, "source": "btc", "chords": chords}
+            ensure_chord_bucket(song_hash(track_path))
             chords_file.write_text(
                 json.dumps(sheet, ensure_ascii=False, indent=2),
                 encoding="utf-8",
@@ -280,7 +283,7 @@ def batch_midi_import():
 
     for t in cache.get("tracks", []):
         p = t.get("path", "")
-        chord_file = CHORDS_DIR / f"{song_hash(p)}.json"
+        chord_file = chord_file_for(song_hash(p))
         if chord_file.is_file():
             try:
                 existing = json.loads(chord_file.read_text(encoding="utf-8"))
@@ -315,6 +318,7 @@ def batch_midi_import():
                     roots.append(root)
             key = Counter(roots).most_common(1)[0][0] if roots else ""
             sheet = {"path": p, "key": key, "capo": 0, "source": "midi", "chords": entries}
+            ensure_chord_bucket(song_hash(p))
             chord_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
             cache_update_entry(p)
             imported += 1

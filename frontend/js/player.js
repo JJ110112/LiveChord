@@ -617,25 +617,10 @@
     }
   });
 
-  // Melody-pending banner: when the user lands on a freshly-analyzed hash,
-  // the melody worker is still running in the background (~40–60s). Show a
-  // small spinner + poll /api/ai/melody until it lands, then swap into
-  // melodyData so the waterfall picks it up on the next drawWaterfall tick.
-  function _showMelodyStatusBanner(text) {
-    let el = document.getElementById("ytMelodyBanner");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "ytMelodyBanner";
-      el.className = "yt-melody-banner lc-banner lc-banner--info lc-banner--bottom";
-      el.innerHTML = '<span class="yt-mel-spinner"></span><span class="yt-mel-text"></span>';
-      document.body.appendChild(el);
-    }
-    el.querySelector(".yt-mel-text").textContent = text || "";
-  }
-  function _hideMelodyStatusBanner() {
-    const el = document.getElementById("ytMelodyBanner");
-    if (el) el.remove();
-  }
+  // Melody-pending: when the user lands on a freshly-analyzed hash, the
+  // melody worker is still running in the background (~40–60s). Loose
+  // coupling rule (CLAUDE.md): no mid-flight banner — toast on start, toast
+  // on completion. _maybeStartMelodyPolling and _loadMelody both follow this.
   // Polling lifecycle handles: AbortController cancels in-flight fetch and
   // the timeout keeps the retry chain alive. Both are torn down on `pagehide`
   // so hitting browser-back during extraction doesn't leave a 5-minute retry
@@ -647,7 +632,6 @@
   function _stopMelodyPolling() {
     if (_melodyPollAbort) { try { _melodyPollAbort.abort(); } catch {} _melodyPollAbort = null; }
     if (_melodyPollTimeout) { clearTimeout(_melodyPollTimeout); _melodyPollTimeout = null; }
-    _hideMelodyStatusBanner();
   }
   window.addEventListener("pagehide", _stopMelodyPolling);
   function _maybeStartMelodyPolling() {
@@ -2294,20 +2278,16 @@
   let _melodyLoadAbort = null;
   function _stopMelodyLoad() {
     if (_melodyLoadAbort) { try { _melodyLoadAbort.abort(); } catch {} _melodyLoadAbort = null; }
-    _hideMelodyStatusBanner();
   }
   window.addEventListener("pagehide", _stopMelodyLoad);
   async function _loadMelody(path) {
-    // Bottom-left banner instead of a centered overlay so chord + audio stay
-    // interactive. Banner auto-hides once data lands. Only shown when the
-    // user is actually going to look at melody — in `acc` mode the data
-    // silently lands in `melodyData` for a later mode-toggle.
+    // Loose-coupling rule (CLAUDE.md "Long-running operations"): no
+    // mid-flight status banner. Background work runs silently; user gets
+    // a toast on completion only if (a) they would actually look at
+    // melody (rhContentMode != "acc") and (b) the load was non-trivial
+    // (>1s, i.e., uncached extraction — instant cache hits stay silent).
     const showUi = rhContentMode !== "acc";
-    let showedBanner = false;
-    const bannerTimer = showUi ? setTimeout(() => {
-      _showMelodyStatusBanner("AI 旋律擷取中，完成後可從 AI 教學 切換右手顯示");
-      showedBanner = true;
-    }, 600) : null;  // don't flash for instant cached reads
+    const t0 = Date.now();
     _melodyLoadAbort = new AbortController();
     try {
       const res = await fetch(`/api/ai/melody?path=${encodeURIComponent(path)}`,
@@ -2315,10 +2295,11 @@
       const data = await res.json();
       if (data.melody && data.melody.length > 0) {
         melodyData = _filterMelody(data.melody);
+        if (showUi && (Date.now() - t0) > 1000) {
+          showToast("旋律擷取完成 — 可從 AI 教學切換右手顯示", 4000);
+        }
       }
     } catch {} finally {
-      if (bannerTimer) clearTimeout(bannerTimer);
-      if (showedBanner) _hideMelodyStatusBanner();
       _melodyLoadAbort = null;
     }
   }
@@ -5629,17 +5610,23 @@
   }
 
   // ---- 節拍來源切換 (personal 8800 only) ----
-  // Bidirectional librosa ⇄ madmom toggle. Backend endpoint is gated by
+  // 3-way librosa / madmom / beat_this picker. Backend endpoint is gated by
   // require_personal_mode so beta (8801) gets 404; we also hide the UI on beta.
-  // Cached swaps are <1s (reuse .bak.librosa / .bak.madmom); fresh librosa runs
-  // sync (~2s); fresh madmom enqueues (~30s bg) — reuses upgrade-beats poll.
+  // Cached swaps are <1s (reuse .bak.librosa / .bak.madmom / .bak.beat_this);
+  // fresh librosa runs sync (~2s); fresh madmom enqueues (~30s bg) — reuses
+  // upgrade-beats poll. beat_this has no on-demand path on NUC (no CUDA) —
+  // backend returns 503 if .bak.beat_this missing; user must run PC bulk batch.
   const btnBeatLibrosa = $("#btnBeatLibrosa");
   const btnBeatMadmom  = $("#btnBeatMadmom");
+  const btnBeatBeatThis = $("#btnBeatBeatThis");
   const _isBetaLane = location.port === "8801"
                       || location.hostname.endsWith("livechord.org");
 
   function _categoryOf(src) {
-    return /madmom/i.test(String(src || "")) ? "madmom" : "librosa";
+    const s = String(src || "").toLowerCase();
+    if (s.includes("beat_this")) return "beat_this";
+    if (s.includes("madmom")) return "madmom";
+    return "librosa";
   }
 
   function _currentBeatCategory() {
@@ -5659,6 +5646,7 @@
     const cat = _categoryOf(src);
     btnBeatLibrosa.classList.toggle("active", cat === "librosa");
     btnBeatMadmom.classList.toggle("active", cat === "madmom");
+    if (btnBeatBeatThis) btnBeatBeatThis.classList.toggle("active", cat === "beat_this");
   }
 
   // Diagnostic hook — call window.__lcBeatDebug() in DevTools to dump the
@@ -5671,6 +5659,7 @@
         ? chordData.downbeats.length : null,
       libActive: btnBeatLibrosa && btnBeatLibrosa.classList.contains("active"),
       madActive: btnBeatMadmom  && btnBeatMadmom.classList.contains("active"),
+      btActive:  btnBeatBeatThis && btnBeatBeatThis.classList.contains("active"),
     };
     try {
       const p = new URLSearchParams();
@@ -5695,6 +5684,7 @@
   if (btnBeatLibrosa && btnBeatMadmom && !_isBetaLane) {
     btnBeatLibrosa.style.display = "";
     btnBeatMadmom.style.display = "";
+    if (btnBeatBeatThis) btnBeatBeatThis.style.display = "";
     if (btnUpgradeBeats) btnUpgradeBeats.style.display = "none";
   }
 
@@ -5731,6 +5721,7 @@
     _beatSwitchBusy = true;
     btnBeatLibrosa.disabled = true;
     btnBeatMadmom.disabled = true;
+    if (btnBeatBeatThis) btnBeatBeatThis.disabled = true;
     try {
       const res = await fetch(`/api/process/beats/switch?${params.toString()}`,
                               { method: "POST" });
@@ -5740,6 +5731,7 @@
         _beatSwitchBusy = false;
         btnBeatLibrosa.disabled = false;
         btnBeatMadmom.disabled = false;
+        if (btnBeatBeatThis) btnBeatBeatThis.disabled = false;
         return;
       }
       if (data.already) {
@@ -5752,6 +5744,7 @@
         _beatSwitchBusy = false;
         btnBeatLibrosa.disabled = false;
         btnBeatMadmom.disabled = false;
+        if (btnBeatBeatThis) btnBeatBeatThis.disabled = false;
         return;
       }
       if (data.switched) {
@@ -5798,6 +5791,7 @@
               _beatSwitchBusy = false;
               btnBeatLibrosa.disabled = false;
               btnBeatMadmom.disabled = false;
+              if (btnBeatBeatThis) btnBeatBeatThis.disabled = false;
               showToast(`madmom 失敗：${sd.error || "unknown"}`, 6000);
             } else if (st === "running:downloading" && _lastSub !== st) {
               _lastSub = st;
@@ -5821,6 +5815,7 @@
       _beatSwitchBusy = false;
       btnBeatLibrosa.disabled = false;
       btnBeatMadmom.disabled = false;
+      if (btnBeatBeatThis) btnBeatBeatThis.disabled = false;
     }
   }
 
@@ -5829,6 +5824,9 @@
   }
   if (btnBeatMadmom && !_isBetaLane) {
     btnBeatMadmom.addEventListener("click", () => _switchBeatsTo("madmom"));
+  }
+  if (btnBeatBeatThis && !_isBetaLane) {
+    btnBeatBeatThis.addEventListener("click", () => _switchBeatsTo("beat_this"));
   }
 
   // Sync active state once chordData is available. loadChords / hash-mode both

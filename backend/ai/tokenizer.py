@@ -97,12 +97,15 @@ def build_transformer_dataset(chords_dir_path: str, vocab_limit=150) -> tuple:
     import os
     import concurrent.futures
 
-    files = [f for f in os.listdir(chords_path) if f.endswith(".json")]
-    total_files = len(files)
+    # Sharded layout: <chords_path>/<bucket>/<hash>.json. Recurse via Path.glob.
+    file_paths = [p for p in chords_path.glob("*/*.json")]
+    if not file_paths:
+        # Legacy flat fallback
+        file_paths = [chords_path / f for f in os.listdir(chords_path) if f.endswith(".json")]
+    total_files = len(file_paths)
     print(f"Starting threads for {total_files} files...")
 
-    def process_file(fname):
-        f = chords_path / fname
+    def process_file(f):
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
             chords = data.get("chords", [])
@@ -117,7 +120,7 @@ def build_transformer_dataset(chords_dir_path: str, vocab_limit=150) -> tuple:
 
     completed = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
-        futures = [executor.submit(process_file, fname) for fname in files]
+        futures = [executor.submit(process_file, f) for f in file_paths]
         for future in concurrent.futures.as_completed(futures):
             completed += 1
             if completed % 2000 == 0:

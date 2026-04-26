@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ai.accompaniment_generator import generate_accompaniment, ACC_ENGINE_VERSION
 
 CHORDS_DIR = Path(__file__).parent.parent / "data" / "chords"
+from chord_cache import chord_file_for, iter_chord_files  # noqa: E402
 MELODIES_DIR = Path(__file__).parent.parent / "data" / "melodies"
 ACCOMP_DIR = Path(__file__).parent.parent / "data" / "accompaniments"
 
@@ -55,7 +56,7 @@ def _get_dominant_section(sections, chords):
 
 def process_track(song_hash: str, levels: list, styles: list,
                   add_pedal: bool = True, add_dynamics: bool = True):
-    chord_file = CHORDS_DIR / f"{song_hash}.json"
+    chord_file = chord_file_for(song_hash)
     melody_file = MELODIES_DIR / f"{song_hash}.json"
 
     if not chord_file.is_file() or not melody_file.is_file():
@@ -167,7 +168,7 @@ def main():
     print("==================================================")
 
     # 找出同時有 chord + melody 的 hash
-    chord_hashes = {f.stem for f in CHORDS_DIR.glob("*.json")}
+    chord_hashes = {f.stem for f in iter_chord_files()}
     melody_hashes = {f.stem for f in MELODIES_DIR.glob("*.json")}
     hashes = sorted(chord_hashes & melody_hashes)
 

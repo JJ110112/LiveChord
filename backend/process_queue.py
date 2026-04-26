@@ -52,6 +52,9 @@ MELODIES_DIR = DATA_DIR / "melodies"
 TMP_DIR = DATA_DIR / "tmp"
 AUDIT_DB_PATH = DATA_DIR / "audit.db"
 
+# Sharded chord layout helpers — see chord_cache for design
+from chord_cache import chord_file_for, chord_bak_for, ensure_chord_bucket  # noqa: E402
+
 # Ensure directories exist
 TMP_DIR.mkdir(parents=True, exist_ok=True)
 CHORDS_DIR.mkdir(parents=True, exist_ok=True)
@@ -251,7 +254,8 @@ def _save_chord_json(job: ProcessJob, chords: list, key: str,
         except Exception as e:
             logger.warning("beat_snap failed for %s: %s", job.job_id, e)
 
-    out_file = CHORDS_DIR / f"{hash_val}.json"
+    ensure_chord_bucket(hash_val)
+    out_file = chord_file_for(hash_val)
     out_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
     return hash_val
 
@@ -441,7 +445,7 @@ def find_existing_result(youtube_url: str) -> dict | None:
         return None
     # Verify chord file still exists
     rh = row["result_hash"]
-    if not (CHORDS_DIR / f"{rh}.json").is_file():
+    if not chord_file_for(rh).is_file():
         return None
     return dict(row)
 
@@ -463,7 +467,7 @@ def find_library_mapping(youtube_url: str) -> dict | None:
         if not row:
             return None
         lh = row["library_hash"]
-        if not (CHORDS_DIR / f"{lh}.json").is_file():
+        if not chord_file_for(lh).is_file():
             # Stale — auto-purge.
             conn.execute("DELETE FROM youtube_library_map WHERE youtube_url=?", (youtube_url,))
             conn.commit()
@@ -475,7 +479,7 @@ def upsert_library_mapping(youtube_url: str, library_hash: str, mapped_by: str) 
     """Task 2: record a YT URL → library hash mapping. Returns True if newly inserted."""
     if not youtube_url or not library_hash:
         return False
-    if not (CHORDS_DIR / f"{library_hash}.json").is_file():
+    if not chord_file_for(library_hash).is_file():
         return False
     try:
         with _audit_conn() as conn:
@@ -566,12 +570,15 @@ def delete_audit_entries(ids: list[int]) -> int:
             if rh:
                 deleted_hashes.add(rh)
                 for path in [
-                    CHORDS_DIR / f"{rh}.json",
+                    chord_file_for(rh),
                     COVERS_DIR / f"{rh}.jpg",
                     MELODIES_DIR / f"{rh}.json",
                 ]:
                     if path.is_file():
                         path.unlink(missing_ok=True)
+                # Also drop any sidecar .bak.<src> snapshots for this hash
+                for bak in chord_file_for(rh).parent.glob(f"{rh}.json.bak.*"):
+                    bak.unlink(missing_ok=True)
         conn.execute(
             f"DELETE FROM process_audit WHERE id IN ({placeholders})",
             ids,
@@ -643,7 +650,7 @@ def get_user_audit_log(username: str, limit: int = 20) -> list[dict]:
         # Enrich with chord stats if available
         rh2 = d.get("result_hash") or ""
         if rh2:
-            chords_file = CHORDS_DIR / f"{rh2}.json"
+            chords_file = chord_file_for(rh2)
             if chords_file.is_file():
                 try:
                     import json as _json

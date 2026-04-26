@@ -22,6 +22,7 @@ from process_queue import (
     find_library_mapping, upsert_library_mapping,
     CHORDS_DIR,
 )
+from chord_cache import chord_file_for, chord_bak_for, ensure_chord_bucket
 
 router = APIRouter(prefix="/api/process", tags=["process"])
 
@@ -142,7 +143,7 @@ def process_youtube(req: YouTubeRequest, username: str = Depends(get_current_use
         # Count chords for audit accuracy
         try:
             import json as _json
-            _cd = _json.loads((CHORDS_DIR / f"{lh}.json").read_text(encoding="utf-8"))
+            _cd = _json.loads(chord_file_for(lh).read_text(encoding="utf-8"))
             _cc = len(_cd.get("chords", []))
             _title = _cd.get("title", "")
         except Exception:
@@ -212,7 +213,7 @@ def job_result(job_id: str, username: str = Depends(get_current_user)):
     if not job.result_hash:
         raise HTTPException(status_code=500, detail="No result hash")
 
-    chord_file = CHORDS_DIR / f"{job.result_hash}.json"
+    chord_file = chord_file_for(job.result_hash)
     if not chord_file.is_file():
         raise HTTPException(status_code=404, detail="Chord data not found")
 
@@ -263,7 +264,7 @@ def upgrade_beats(hash: str, username: str = Depends(get_current_user)):
             detail=f"madmom not installed: {MADMOM_IMPORT_ERROR or 'unknown'}",
         )
 
-    chord_file = CHORDS_DIR / f"{hash}.json"
+    chord_file = chord_file_for(hash)
     if not chord_file.is_file():
         raise HTTPException(status_code=404, detail="chord JSON not found")
 
@@ -355,7 +356,11 @@ def _beat_source_category(src) -> str:
     if not src:
         return "librosa"
     s = str(src).lower()
-    return "madmom" if "madmom" in s else "librosa"
+    if "beat_this" in s:
+        return "beat_this"
+    if "madmom" in s:
+        return "madmom"
+    return "librosa"
 
 
 def _migrate_legacy_bak(sheet_path: str):
@@ -429,12 +434,15 @@ def switch_beats(
     path: str = "",
     username: str = Depends(get_current_user),
 ):
-    """Swap a song's beat source between librosa and madmom.
+    """Swap a song's beat source between librosa, madmom, and beat_this.
 
     - If target cache exists: atomic in-place swap, <1s.
     - If target == librosa and cache missing: run librosa synchronously (~1-2s).
     - If target == madmom and cache missing: enqueue madmom job (~30s,
       background) — client polls /upgrade-beats/status.
+    - If target == beat_this and cache missing: 503 (this instance has no
+      CUDA / no beat_this installed; bulk-process on PC then push to V:\\).
+
     Accepts ``hash`` OR ``path`` (8800 path-mode sends path; hash-mode sends hash).
     Personal-mode only; beta instance returns 404.
     """
@@ -444,16 +452,18 @@ def switch_beats(
     from beat_snap import (HAS_MADMOM, MADMOM_IMPORT_ERROR,
                            analyze_and_snap_dynamic)
 
-    if mode not in ("librosa", "madmom"):
-        raise HTTPException(status_code=400,
-                            detail="mode must be 'librosa' or 'madmom'")
+    if mode not in ("librosa", "madmom", "beat_this"):
+        raise HTTPException(
+            status_code=400,
+            detail="mode must be 'librosa', 'madmom' or 'beat_this'",
+        )
 
     if not hash and path:
         hash = song_hash(path)
     if not hash:
         raise HTTPException(status_code=400, detail="hash or path required")
 
-    chord_file = CHORDS_DIR / f"{hash}.json"
+    chord_file = chord_file_for(hash)
     if not chord_file.is_file():
         raise HTTPException(status_code=404, detail="chord JSON not found")
 
@@ -558,6 +568,16 @@ def switch_beats(
             "bpm": sheet.get("bpm"),
             "beats_source": sheet.get("beats_source"),
         }
+
+    # mode == "beat_this" — no on-demand path on NUC (no CUDA). The cache
+    # is populated by the PC-side bulk batch (migrate_add_beats_via_beat_this.py).
+    # If the song was never bulk-processed yet, instruct the user to run the
+    # PC batch first; we don't try to fall back to CPU mode here.
+    if mode == "beat_this":
+        raise HTTPException(
+            status_code=503,
+            detail="此曲尚未由 beat_this 分析。請在 PC 端跑批次後再切換。",
+        )
 
     # mode == "madmom" — delegate to background queue
     if not HAS_MADMOM:
@@ -755,3 +775,4 @@ def admin_audit_delete(req: DeleteAuditRequest,
     """Delete audit entries and associated chord/cover/melody files."""
     deleted = delete_audit_entries(req.ids)
     return {"deleted": deleted}
+

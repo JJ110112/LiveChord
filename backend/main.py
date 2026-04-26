@@ -68,10 +68,21 @@ async def lifespan(app):
     # 預設關閉，使用者需手動點 ▶ 啟動 Core，避免在還沒設定群組時就開始擷取
     if settings.get("auto_start_on_boot", False):
         auto_worker.start_worker()
-    # Personal-only: tiered data backup scheduler (beta doesn't manage infra)
+    # Personal-only: tiered data backup scheduler (beta doesn't manage infra).
+    # Dev opt-out: set LIVECHORD_NO_SCHEDULER=1 in start_personal_local.bat to
+    # suppress on the dev box (8803) so it doesn't compete with NUC prod (8800)
+    # for backup writes against the same data root.
     try:
+        import os as _os
         from config import is_beta_mode
-        if not is_beta_mode():
+        if is_beta_mode():
+            pass
+        elif _os.environ.get("LIVECHORD_NO_SCHEDULER", "").strip() in ("1", "true", "yes"):
+            import logging
+            logging.getLogger("livechord").info(
+                "backup_scheduler skipped (LIVECHORD_NO_SCHEDULER=%s)",
+                _os.environ.get("LIVECHORD_NO_SCHEDULER"))
+        else:
             import backup_scheduler
             backup_scheduler.start()
     except Exception as e:

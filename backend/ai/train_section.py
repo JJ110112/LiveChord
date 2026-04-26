@@ -17,7 +17,10 @@ class SectionDataset(Dataset):
     def __init__(self, data_dir="V:/data", max_songs=40000):
         self.data_dir = Path(data_dir)
         self.chords_dir = self.data_dir / "chords"
-        self.files = glob.glob(str(self.chords_dir / "*.json"))[:max_songs]
+        # Sharded layout: <chords_dir>/<bucket>/<hash>.json
+        self.files = glob.glob(str(self.chords_dir / "*" / "*.json"))[:max_songs]
+        if not self.files:
+            self.files = glob.glob(str(self.chords_dir / "*.json"))[:max_songs]
         self.samples = []
         
         print(">> Generating training dataset... (Extracting V4 heuristic features & labels)")

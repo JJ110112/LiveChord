@@ -165,6 +165,10 @@ def main():
                     help="Substring filter on the chord JSON's `path` field. "
                          "Useful for per-song experiments. "
                          "Example: --only 'Besame Mucho'")
+    ap.add_argument("--exclude", type=str, default="",
+                    help="Comma-separated case-insensitive substring blacklist on the "
+                         "chord JSON's `path` field. Skip files whose path contains ANY "
+                         "listed substring. Example: --exclude 'Classics,Sleep'")
     ap.add_argument("--start-from", type=str, default="",
                     help="Debug: skip files whose name sorts before this.")
     ap.add_argument("--workers", type=int, default=1,
@@ -174,34 +178,54 @@ def main():
                     help="Also delete cached accompaniment JSONs for processed "
                          "songs so the next request regenerates them against "
                          "the new tempo_curve.")
+    ap.add_argument("--chords-dir", type=str, default="",
+                    help="Override the chord JSON directory (default: ../data/chords). "
+                         "Use this to run madmom against a local SSD copy of V:\\data\\chords "
+                         "(staging workflow) — much faster than reading/writing over SMB. "
+                         "Example: --chords-dir 'G:\\stage\\livechord\\data\\chords'")
     args = ap.parse_args()
 
     if not HAS_MADMOM:
         print("WARNING: madmom is not installed. Will fall back to librosa "
               "(no dynamic beats). See backend/requirements.txt for install steps.")
 
-    if not CHORDS_DIR.is_dir():
-        print(f"ERROR: {CHORDS_DIR} does not exist", file=sys.stderr)
+    chords_dir = Path(args.chords_dir).resolve() if args.chords_dir else CHORDS_DIR
+    if not chords_dir.is_dir():
+        print(f"ERROR: {chords_dir} does not exist", file=sys.stderr)
         sys.exit(1)
 
-    files = sorted(CHORDS_DIR.glob("*.json"))
+    # Sharded layout: <chords_dir>/<bucket>/<hash>.json (recurse 1 level)
+    files = sorted(chords_dir.glob("*/*.json"))
+    if not files:
+        # Legacy flat fallback (pre-sharding migration)
+        files = sorted(chords_dir.glob("*.json"))
     total = len(files)
-    print(f"Found {total} chord JSON files in {CHORDS_DIR}")
+    print(f"Found {total} chord JSON files in {chords_dir}")
     if args.dry_run:
         print("DRY RUN — nothing will be written")
 
-    if args.only:
-        needle = args.only.lower()
+    if args.only or args.exclude:
+        only_needle = args.only.lower() if args.only else ""
+        exclude_needles = [s.strip().lower() for s in args.exclude.split(",")
+                           if s.strip()] if args.exclude else []
         kept = []
         for f in files:
             try:
-                p = json.loads(f.read_text(encoding="utf-8")).get("path", "")
-                if needle in p.lower():
-                    kept.append(f)
+                p = json.loads(f.read_text(encoding="utf-8")).get("path", "").lower()
             except Exception:
                 continue
+            if only_needle and only_needle not in p:
+                continue
+            if exclude_needles and any(n in p for n in exclude_needles):
+                continue
+            kept.append(f)
         files = kept
-        print(f"After --only={args.only!r}: {len(files)} files")
+        parts = []
+        if args.only:
+            parts.append(f"--only={args.only!r}")
+        if args.exclude:
+            parts.append(f"--exclude={args.exclude!r}")
+        print(f"After {' '.join(parts)}: {len(files)} files")
 
     if args.start_from:
         files = [f for f in files if f.name >= args.start_from]

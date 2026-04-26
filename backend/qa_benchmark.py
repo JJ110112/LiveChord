@@ -18,7 +18,7 @@ print("  LiveChord QA Battle — 3 Song Benchmark")
 print("=" * 70)
 
 for h, label in songs:
-    chord_path = f"V:/data/chords/{h}.json"
+    chord_path = f"V:/data/chords/{h[:2]}/{h}.json"
     melody_path = f"V:/data/melodies/{h}.json"
     if not os.path.isfile(chord_path) or not os.path.isfile(melody_path):
         print(f"  {label:30s} SKIP (missing data)")

@@ -108,7 +108,7 @@ def _has_cover(filepath: str) -> bool:
     return False
 
 
-from chord_cache import get_chord_summary as _get_chord_summary, song_hash
+from chord_cache import get_chord_summary as _get_chord_summary, song_hash, chord_file_for
 
 # ---------------------------------------------------------------------------
 # browse
@@ -288,7 +288,7 @@ def search(q: str = Query(default=""), authorization: str = Header(None)):
                 if not all(tok in title for tok in q_tokens):
                     continue
                 # Self-heal: skip audit rows whose chord JSON was deleted.
-                if not (CHORDS_DIR / f"{rh}.json").is_file():
+                if not chord_file_for(rh).is_file():
                     continue
                 seen_hashes.add(rh)
                 src = (r["source_type"] or "upload").strip()

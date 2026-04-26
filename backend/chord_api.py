@@ -51,7 +51,10 @@ from auth_api import get_current_user, get_admin_user, DB_PATH as AUTH_DB_PATH
 import sqlite3
 from chord_table import get_chord_info, get_chord_jianpu, analyze_chord_in_key
 from chord_diagrams import get_chord_diagram, get_chord_voicings
-from chord_cache import song_hash, update_entry_from_file as cache_update_entry
+from chord_cache import (
+    song_hash, update_entry_from_file as cache_update_entry,
+    chord_file_for, chord_bak_for, ensure_chord_bucket,
+)
 from instrument_registry import get_instrument, list_instruments, INSTRUMENTS
 
 from config import resolve_path
@@ -203,10 +206,10 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
     if version and version != "official":
         chords_file = DATA_DIR / "users" / version / "chords" / f"{song_hash(path)}.json"
         if not chords_file.is_file():
-            chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+            chords_file = chord_file_for(song_hash(path))
             is_fallback = True
     else:
-        chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+        chords_file = chord_file_for(song_hash(path))
 
     if not chords_file.is_file():
         return {"path": path, "key": "", "capo": 0, "chords": [], "exists": False}
@@ -220,7 +223,7 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
 @router.get("/chords/by-hash")
 async def get_chords_by_hash(hash: str = Query(..., min_length=8, max_length=16)):
     """直接用 hash 取得和弦譜（給 process 結果用）"""
-    chords_file = CHORDS_DIR / f"{hash}.json"
+    chords_file = chord_file_for(hash)
     if not chords_file.is_file():
         return {"hash": hash, "key": "", "capo": 0, "chords": [], "exists": False}
     data = json.loads(chords_file.read_text(encoding="utf-8"))
@@ -303,7 +306,7 @@ def get_chord_versions(path: str = Query(...), username: Optional[str] = Depends
         }
 
     # 1. 官方版
-    official_file = CHORDS_DIR / f"{target_hash}.json"
+    official_file = chord_file_for(target_hash)
     if official_file.is_file():
         versions.append(_build("official", "官方 AI 版"))
 
@@ -394,7 +397,7 @@ def admin_bpm_recompute(req: BpmRecomputeRequest, username: str = Depends(get_ad
     else:
         raise HTTPException(status_code=400, detail="missing path or hash")
 
-    chords_file = CHORDS_DIR / f"{h}.json"
+    chords_file = chord_file_for(h)
     if not chords_file.is_file():
         raise HTTPException(status_code=404, detail="chord JSON not found")
 
@@ -467,7 +470,7 @@ async def detect_chords_api(path: str = Query(...)):
         raise HTTPException(status_code=404, detail="檔案不存在")
 
     # 如果已有 chordify 來源的和弦，不要用 BTC 覆蓋
-    chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+    chords_file = chord_file_for(song_hash(path))
     if chords_file.is_file():
         existing = json.loads(chords_file.read_text(encoding="utf-8"))
         if existing.get("source") == "chordify":
@@ -532,7 +535,7 @@ async def detect_chords_api(path: str = Query(...)):
         "chords": chords,
     }
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
-    chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+    chords_file = chord_file_for(song_hash(path))
     chords_file.write_text(
         json.dumps(sheet, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -632,7 +635,7 @@ def midi_import(path: str = Query(...), midi_path: str = Query(...)):
         sheet = {"path": path, "key": audio_key, "capo": 0,
                  "source": "btc", "chords": btc_chords}
         CHORDS_DIR.mkdir(parents=True, exist_ok=True)
-        chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+        chords_file = chord_file_for(song_hash(path))
         chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
         cache_update_entry(path)
         return {
@@ -647,7 +650,7 @@ def midi_import(path: str = Query(...), midi_path: str = Query(...)):
         "source": "midi", "chords": entries,
     }
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
-    chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+    chords_file = chord_file_for(song_hash(path))
     chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
     cache_update_entry(path)
 
@@ -698,7 +701,7 @@ async def midi_upload(path: str = Query(...), file: UploadFile = File(...)):
 
     sheet = {"path": path, "key": key, "capo": 0, "source": "midi", "chords": entries}
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
-    chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+    chords_file = chord_file_for(song_hash(path))
     chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
     cache_update_entry(path)
 

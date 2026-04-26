@@ -64,19 +64,30 @@ def _audio_features(audio_path: str) -> Optional[Tuple[float, float]]:
         return None
 
 
-def ballad_halving_check(bpm: float, audio_path: str) -> Tuple[float, dict]:
+def ballad_halving_check(
+    bpm: float,
+    audio_path: str,
+    bpm_range: Tuple[float, float] = (_HALVE_BPM_LOW, _HALVE_BPM_HIGH),
+) -> Tuple[float, dict]:
     """Decide whether to halve a suspected doubletime ballad BPM.
 
     Returns (corrected_bpm, meta). ``meta["applied"]`` is True only when all
-    three gates fire: BPM in [130,150] AND onset_density < 3.0/s AND RMS CoV
-    < 0.015. The three-gate AND is deliberate — user picked the conservative
+    three gates fire: BPM in ``bpm_range`` AND onset_density < 3.0/s AND RMS
+    CoV < 0.015. The three-gate AND is deliberate — user picked the conservative
     option, favoring false-negatives (miss a true ballad) over false-positives
     (halve a genuine 140 BPM pop track).
+
+    ``bpm_range`` defaults to madmom's typical doubletime band (130-150). Beat
+    trackers that lock onto eighth-note grid (e.g. beat_this on slow piano /
+    classical) need a wider range like (130, 220) to catch the doubled tempo.
+    The other two gates (onset density + RMS CoV) protect against halving
+    genuine fast songs even when the BPM gate widens.
     """
     meta = dict(_DEFAULT_META)
     meta["original"] = bpm
 
-    if not bpm or bpm < _HALVE_BPM_LOW or bpm > _HALVE_BPM_HIGH:
+    low, high = bpm_range
+    if not bpm or bpm < low or bpm > high:
         return bpm, meta
 
     feats = _audio_features(audio_path)

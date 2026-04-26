@@ -683,7 +683,8 @@ def _retrain_ai_models():
     """
     global _last_chord_count
     try:
-        chord_files = list(CHORDS_DIR.glob("*.json")) if CHORDS_DIR.is_dir() else []
+        from chord_cache import iter_chord_files
+        chord_files = list(iter_chord_files()) if CHORDS_DIR.is_dir() else []
         current_count = len(chord_files)
 
         # 首次啟動：記錄目前數量，若有快取就跳過重訓
@@ -864,7 +865,8 @@ def _auto_chord_detect_loop(settings: dict, batch: list, unanalyzed: list, lock,
         lock.update_progress(current_item=track_path, done=i + 1)
 
         # 判斷此 track 是「新檔」還是「BTC 升級」
-        chords_file = CHORDS_DIR / f"{song_hash(track_path)}.json"
+        from chord_cache import chord_file_for
+        chords_file = chord_file_for(song_hash(track_path))
         is_btc_upgrade = False
         if chords_file.is_file():
             try:

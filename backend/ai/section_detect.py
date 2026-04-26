@@ -524,7 +524,8 @@ if __name__ == "__main__":
 
     for song in test_songs:
         h = hashlib.md5(song.encode()).hexdigest()[:12]
-        f = chords_dir / f"{h}.json"
+        # Sharded layout: <chords_dir>/<bucket>/<hash>.json
+        f = chords_dir / h[:2] / f"{h}.json"
         if not f.is_file():
             continue
         data = json.loads(f.read_text(encoding="utf-8"))

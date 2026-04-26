@@ -47,6 +47,61 @@ def song_hash(path: str) -> str:
     return hashlib.md5(path.encode("utf-8")).hexdigest()[:12]
 
 
+# ----------------------------------------------------------------------
+# Sharded chord layout: <root>/<hash[:2]>/<hash>.json
+# ----------------------------------------------------------------------
+# Hash is 12-char hex → first 2 chars give 256 uniform buckets, ~300 files
+# per bucket at 76k songs. NTFS / SMB enumeration scales much better than
+# a single 200k-file flat directory once .bak.<src> sidecars accumulate.
+#
+# All chord JSON path construction across the backend MUST go through these
+# helpers (do not rebuild ``CHORDS_DIR / f"{h}.json"`` directly). Likewise
+# all bulk iteration MUST go through ``iter_chord_files`` so adding/changing
+# the bucket scheme later only touches this module.
+
+def chord_file_for(hash_str: str, root: Path | None = None) -> Path:
+    """Return the sharded chord JSON path for ``hash_str``."""
+    base = root or CHORDS_DIR
+    return base / hash_str[:2] / f"{hash_str}.json"
+
+
+def chord_bak_for(hash_str: str, src: str, root: Path | None = None) -> Path:
+    """Return the sharded ``.bak.<src>`` snapshot path for ``hash_str``.
+
+    ``src`` is the tracker name (``librosa`` / ``madmom`` / ``beat_this``)
+    or any other suffix used by the bidirectional switch / upgrade flows.
+    """
+    base = root or CHORDS_DIR
+    return base / hash_str[:2] / f"{hash_str}.json.bak.{src}"
+
+
+def iter_chord_files(root: Path | None = None):
+    """Yield every sharded chord JSON Path under ``root`` (excludes .bak)."""
+    base = root or CHORDS_DIR
+    if not base.is_dir():
+        return
+    for sub in base.iterdir():
+        if not sub.is_dir() or len(sub.name) != 2:
+            continue
+        for f in sub.glob("*.json"):
+            # Defensive: glob("*.json") matches "<hash>.json" but also any
+            # ".json.bak.X" doesn't end with .json, so we're safe. But pin
+            # down by explicit suffix check in case future bak naming drifts.
+            if f.suffix == ".json":
+                yield f
+
+
+def ensure_chord_bucket(hash_str: str, root: Path | None = None) -> Path:
+    """Make sure the bucket dir exists; return the bucket Path.
+
+    Idempotent. Use before atomic writes to a sharded chord JSON.
+    """
+    base = root or CHORDS_DIR
+    bucket = base / hash_str[:2]
+    bucket.mkdir(parents=True, exist_ok=True)
+    return bucket
+
+
 def _load_chord_index():
     """載入或初始化全域快取"""
     global _chord_index_cache
@@ -82,7 +137,7 @@ atexit.register(lambda: _save_chord_index(force=True) if _save_state.get("dirty"
 
 def _build_entry_from_file(h: str, mtime: float) -> dict | None:
     """從硬碟讀取單一 chord JSON 並建構索引條目"""
-    chords_file = CHORDS_DIR / f"{h}.json"
+    chords_file = chord_file_for(h)
     try:
         cdata = json.loads(chords_file.read_text(encoding="utf-8"))
     except Exception:
@@ -108,7 +163,7 @@ def get_chord_summary(path: str) -> dict:
     """取得和弦摘要：unique count, key, chord list。內建 mtime 驗證的快取機制"""
     _load_chord_index()
     h = song_hash(path)
-    chords_file = CHORDS_DIR / f"{h}.json"
+    chords_file = chord_file_for(h)
 
     if not chords_file.is_file():
         return {"unique_chords": 0, "chord_key": "", "chord_list": []}
@@ -174,17 +229,25 @@ def ensure_synced(force: bool = False, progress_cb=None) -> dict:
         _sync_state["last_sync_ts"] = now
         return {"checked": 0, "added": 0, "updated": 0, "removed": 0, "skipped": False}
 
+    # Walk sharded layout: <CHORDS_DIR>/<bucket>/<hash>.json
     disk: dict[str, float] = {}
     try:
-        with os.scandir(CHORDS_DIR) as it:
-            for entry in it:
-                name = entry.name
-                if not name.endswith(".json"):
+        with os.scandir(CHORDS_DIR) as buckets:
+            for b in buckets:
+                if not b.is_dir() or len(b.name) != 2:
                     continue
                 try:
-                    disk[name[:-5]] = entry.stat().st_mtime
+                    with os.scandir(b.path) as it:
+                        for entry in it:
+                            name = entry.name
+                            if not name.endswith(".json") or ".json.bak." in name:
+                                continue
+                            try:
+                                disk[name[:-5]] = entry.stat().st_mtime
+                            except OSError:
+                                pass
                 except OSError:
-                    pass
+                    continue
     except OSError:
         _sync_state["last_sync_ts"] = now
         return {"checked": 0, "added": 0, "updated": 0, "removed": 0, "skipped": False}
@@ -253,7 +316,7 @@ def update_entry_from_file(path: str):
     """重讀指定路徑的 chord JSON，直接更新快取條目（給 batch worker 寫完後使用）"""
     _load_chord_index()
     h = song_hash(path)
-    chords_file = CHORDS_DIR / f"{h}.json"
+    chords_file = chord_file_for(h)
     if not chords_file.is_file():
         if _chord_index_cache.pop(h, None) is not None:
             _save_chord_index()

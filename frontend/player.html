@@ -16,7 +16,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=14">
-  <link rel="stylesheet" href="/css/player.css?v=108">
+  <link rel="stylesheet" href="/css/player.css?v=109">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -614,6 +614,10 @@
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20"/><path d="M5 6l14 12"/><path d="M19 6L5 18"/></svg>
         <span>節拍:madmom</span>
       </button>
+      <button id="btnBeatBeatThis" class="tb-popup-btn" style="display:none" title="使用 beat_this 節拍 (PyTorch GPU，需 PC 端先批次處理)" aria-label="beat_this 節拍">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m13 2-3 7h6l-3 7"/><circle cx="12" cy="12" r="10"/></svg>
+        <span>節拍:beat_this</span>
+      </button>
       <a id="btnEdit" class="tb-popup-btn" style="text-decoration:none" title="編輯和弦譜" aria-label="編輯">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
         <span>編輯</span>
@@ -702,6 +706,6 @@
     return res;
   };
 </script>
-<script src="/js/player.js?v=232"></script>
+<script src="/js/player.js?v=234"></script>
 </body>
 </html>

@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
+from chord_cache import chord_file_for, chord_bak_for, ensure_chord_bucket
+
 DATA_DIR = Path(__file__).parent.parent / "data"
 CHORDS_DIR = DATA_DIR / "chords"
 
@@ -130,7 +132,7 @@ def get_melody(
         if cache_file.is_file():
             return _json.loads(cache_file.read_text(encoding="utf-8"))
         # Try to find path from chord data and derive melody hash
-        chords_file = DATA_DIR / "chords" / f"{hash}.json"
+        chords_file = chord_file_for(hash)
         if chords_file.is_file():
             try:
                 cd = _json.loads(chords_file.read_text(encoding="utf-8"))
@@ -246,7 +248,7 @@ async def detect_sections_api(
         h = get_song_hash(path)
     else:
         return {"error": "missing path or hash"}
-    chords_file = CHORDS_DIR / f"{h}.json"
+    chords_file = chord_file_for(h)
     if not chords_file.is_file():
         return {"error": "no chord data"}
 
@@ -499,7 +501,7 @@ def get_accompaniment(
         return cached
 
     # 載入和弦資料
-    chords_file = CHORDS_DIR / f"{h}.json"
+    chords_file = chord_file_for(h)
     if not chords_file.is_file():
         return {"error": "no chord data", "left_hand": [], "right_hand": []}
 
@@ -637,7 +639,7 @@ def suggest_style_api(
             pass
 
     # 從和弦估算 BPM
-    chords_file = CHORDS_DIR / f"{h}.json"
+    chords_file = chord_file_for(h)
     if chords_file.is_file():
         try:
             chord_data = _json.loads(chords_file.read_text(encoding="utf-8"))
@@ -749,7 +751,7 @@ def evaluate_accompaniment_api(
 
     # 載入和弦
     chords = []
-    chords_file = CHORDS_DIR / f"{h}.json"
+    chords_file = chord_file_for(h)
     if chords_file.is_file():
         chord_data = _json.loads(chords_file.read_text(encoding="utf-8"))
         chords = chord_data.get("chords", [])
@@ -774,7 +776,7 @@ def pedal_api(
 
     from chord_cache import song_hash as get_song_hash
     h = get_song_hash(path)
-    chords_file = CHORDS_DIR / f"{h}.json"
+    chords_file = chord_file_for(h)
     if not chords_file.is_file():
         return {"error": "no chord data", "pedal": []}
 
@@ -844,7 +846,7 @@ def qa_battle_api(
     h = get_song_hash(path)
 
     # 載入和弦
-    chords_file = CHORDS_DIR / f"{h}.json"
+    chords_file = chord_file_for(h)
     if not chords_file.is_file():
         return {"error": "no chord data", "verdict": "fail"}
     chord_data = _json.loads(chords_file.read_text(encoding="utf-8"))
@@ -888,7 +890,7 @@ def section_context_api(
 
     from chord_cache import song_hash as get_song_hash
     h = get_song_hash(path)
-    chords_file = CHORDS_DIR / f"{h}.json"
+    chords_file = chord_file_for(h)
     if not chords_file.is_file():
         return {"error": "no chord data"}
 

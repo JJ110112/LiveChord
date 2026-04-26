@@ -145,7 +145,10 @@ def main():
         print(f"ERROR: {CHORDS_DIR} does not exist", file=sys.stderr)
         sys.exit(1)
 
-    files = sorted(CHORDS_DIR.glob("*.json"))
+    # Sharded layout: <CHORDS_DIR>/<bucket>/<hash>.json (recurse 1 level)
+    files = sorted(CHORDS_DIR.glob("*/*.json"))
+    if not files:
+        files = sorted(CHORDS_DIR.glob("*.json"))
     total = len(files)
     print(f"Found {total} chord JSON files in {CHORDS_DIR}")
     if args.dry_run:
