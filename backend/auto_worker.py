@@ -37,6 +37,7 @@ DEFAULT_SETTINGS = {
     "auto_chord_delay_seconds": 1.0,    # 每首之間的延遲（秒），避免 CPU 飢餓導致前端無回應
     "auto_chord_skip_genres": [],       # 跳過的 genre（如 Classics）
     "auto_chord_active_groups": [],     # 啟用的曲目群組（空 = 不過濾，附 1 用）
+    "bar_arbitrator_enabled": False,    # personal-only: run bar_arbitrator at ingest after bpm_sanity
 }
 
 # ---------------------------------------------------------------------------

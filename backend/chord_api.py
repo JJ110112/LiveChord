@@ -459,6 +459,131 @@ def admin_bpm_recompute(req: BpmRecomputeRequest, username: str = Depends(get_ad
 
 
 # ---------------------------------------------------------------------------
+# admin: bar/downbeat arbitrator recompute (Phase 2 — bar_arbitrator)
+# ---------------------------------------------------------------------------
+
+class BarRecomputeRequest(BaseModel):
+    path: Optional[str] = None
+    hash: Optional[str] = None
+    force: bool = False  # bypass already-regular gate + low-confidence gate
+
+
+@router.post("/admin/bar/recompute")
+def admin_bar_recompute(req: BarRecomputeRequest, username: str = Depends(get_admin_user)):
+    """Manually re-run bar_arbitrator on a single song.
+
+    Reads the chord JSON, runs ``ai.bar_arbitrator.arbitrate`` (model path
+    if available else rule baseline), writes the result back. Personal-mode
+    only — admin token already restricts to LAN in beta mode.
+
+    ``force=True`` bypasses both gates (raw-already-regular and low model
+    confidence) so admins can override on songs where the auto-judge would
+    keep the (broken) raw downbeats.
+
+    Refuses to act when process_queue has in-flight jobs — avoids two
+    workers writing the same chord JSON race.
+    """
+    # Queue-empty guard — don't race the ingest worker
+    try:
+        from process_queue import process_queue, queue
+        if not isinstance(process_queue, queue.Queue):
+            pass  # imported wrong thing, skip guard
+        elif process_queue.qsize() > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=f"process_queue has {process_queue.qsize()} jobs in flight; retry when idle",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        # If we can't introspect the queue, proceed (single-song manual op
+        # is low-risk vs. blocking admin entirely)
+        pass
+
+    if req.hash:
+        h = req.hash
+    elif req.path:
+        h = song_hash(req.path)
+    else:
+        raise HTTPException(status_code=400, detail="missing path or hash")
+
+    chords_file = chord_file_for(h)
+    if not chords_file.is_file():
+        raise HTTPException(status_code=404, detail="chord JSON not found")
+
+    data = json.loads(chords_file.read_text(encoding="utf-8"))
+
+    from ai.bar_arbitrator import arbitrate, apply_to_chord_json
+    from process_queue import _resolve_bar_model_path
+    model_path = _resolve_bar_model_path()
+    res = arbitrate(data, model_path=model_path, force=req.force)
+    apply_to_chord_json(data, res)
+
+    # Atomic write — same .tmp + os.replace pattern bpm/recompute uses
+    tmp = chords_file.with_suffix(chords_file.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, chords_file)
+
+    return {
+        "ok": True,
+        "hash": h,
+        "applied": res["applied"],
+        "reason": res["reason"],
+        "model_version": res["model_version"],
+        "beats_per_bar": res["beats_per_bar"],
+        "raw_regularity_cv": res["raw_regularity_cv"],
+        "score_after": res["score_after"],
+        "n_downbeats_before": len(res["downbeats_before"]),
+        "n_downbeats_after": len(res["downbeats_after"]),
+    }
+
+
+class BarRestoreRequest(BaseModel):
+    path: Optional[str] = None
+    hash: Optional[str] = None
+
+
+@router.post("/admin/bar/restore")
+def admin_bar_restore(req: BarRestoreRequest, username: str = Depends(get_admin_user)):
+    """Revert downbeats to ``bar_correction.downbeats_original`` snapshot.
+
+    Pairs with /admin/bar/recompute. Snapshot is created on first apply and
+    preserved across apply→restore→apply cycles, so this always returns to
+    the truly-original beat-tracker output.
+
+    Returns 400 with ``no-snapshot`` if the chord JSON has no
+    ``bar_correction.downbeats_original`` (i.e. arbitrator was never run on
+    this song, or it ran via an old version that didn't snapshot).
+    """
+    if req.hash:
+        h = req.hash
+    elif req.path:
+        h = song_hash(req.path)
+    else:
+        raise HTTPException(status_code=400, detail="missing path or hash")
+
+    chords_file = chord_file_for(h)
+    if not chords_file.is_file():
+        raise HTTPException(status_code=404, detail="chord JSON not found")
+
+    data = json.loads(chords_file.read_text(encoding="utf-8"))
+    from ai.bar_arbitrator import restore_from_snapshot
+    ok, reason = restore_from_snapshot(data)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+
+    tmp = chords_file.with_suffix(chords_file.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, chords_file)
+
+    return {
+        "ok": True,
+        "hash": h,
+        "n_downbeats": len(data.get("downbeats") or []),
+    }
+
+
+# ---------------------------------------------------------------------------
 # auto-detect (Phase 4)
 # ---------------------------------------------------------------------------
 

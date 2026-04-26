@@ -254,10 +254,66 @@ def _save_chord_json(job: ProcessJob, chords: list, key: str,
         except Exception as e:
             logger.warning("beat_snap failed for %s: %s", job.job_id, e)
 
+    # Bar arbitrator — Phase 2 personal-mode AI bar/downbeat correction.
+    # Gated by (a) LIVECHORD_MODE != "beta" and (b) settings flag default off.
+    # Runs AFTER bpm_sanity so it sees the corrected bpm/downbeats; mutates
+    # sheet["downbeats"] + writes sheet["bar_correction"] metadata.
+    # Failure non-fatal — chord JSON is still useful without correction.
+    try:
+        from config import is_beta_mode
+        if not is_beta_mode():
+            from auto_worker import load_settings
+            if load_settings().get("bar_arbitrator_enabled", False):
+                _run_bar_arbitrator_into_sheet(sheet, job.job_id)
+    except Exception as e:
+        logger.warning("bar_arbitrator hook failed for %s: %s", job.job_id, e)
+
     ensure_chord_bucket(hash_val)
     out_file = chord_file_for(hash_val)
     out_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
     return hash_val
+
+
+# Resolve once per process — model file is small (~768 KB) but we don't
+# want to pay the disk hit on every job. None until first call.
+_BAR_MODEL_PATH: Optional[str] = None
+
+
+def _resolve_bar_model_path() -> Optional[str]:
+    """Locate bar_arbitrator_v1.onnx under data/models/. Returns the absolute
+    path string when present, None otherwise (caller falls back to rule
+    baseline)."""
+    global _BAR_MODEL_PATH
+    if _BAR_MODEL_PATH is not None:
+        return _BAR_MODEL_PATH or None  # may have been set to "" if missing
+    candidate = DATA_DIR / "models" / "bar_arbitrator_v1.onnx"
+    if candidate.is_file():
+        _BAR_MODEL_PATH = str(candidate)
+    else:
+        _BAR_MODEL_PATH = ""  # cache the negative so we stop probing
+        logger.info("bar_arbitrator model not found at %s — falling back to rule baseline", candidate)
+    return _BAR_MODEL_PATH or None
+
+
+def _run_bar_arbitrator_into_sheet(sheet: dict, job_id: str):
+    """Apply bar_arbitrator to the freshly-built sheet dict.
+
+    Always writes ``sheet["bar_correction"]`` (even when applied=False, so
+    we have an audit trail). Replaces ``sheet["downbeats"]`` only when the
+    arbitrator decided to. Caller wraps in try/except — never propagates.
+    """
+    from ai.bar_arbitrator import arbitrate, apply_to_chord_json
+    model_path = _resolve_bar_model_path()
+    res = arbitrate(sheet, model_path=model_path)
+    apply_to_chord_json(sheet, res)
+    if res["applied"]:
+        logger.info(
+            "[bar_arbitrator] %s replaced downbeats: bpb=%d conf=%.2f model=%s n_db %d->%d",
+            job_id, res["beats_per_bar"], res["score_after"], res["model_version"],
+            len(res["downbeats_before"]), len(res["downbeats_after"]),
+        )
+    else:
+        logger.info("[bar_arbitrator] %s skipped: %s", job_id, res["reason"])
 
 
 def _extract_cover(audio_path: str, result_hash: str):

@@ -1434,12 +1434,25 @@
     if (bpmEl) {
         const correction = chordData && chordData.bpm_correction;
         const halved = !!(correction && correction.applied);
-        const label = halved ? `BPM: ${Math.round(estimatedBpm)} ⓘ` : `BPM: ${Math.round(estimatedBpm)}`;
+        const barCorr = chordData && chordData.bar_correction;
+        const barFixed = !!(barCorr && barCorr.applied);
+        // ⓘ when either correction applied; tooltip composes both messages
+        const showInfo = halved || barFixed;
+        const label = showInfo ? `BPM: ${Math.round(estimatedBpm)} ⓘ` : `BPM: ${Math.round(estimatedBpm)}`;
         bpmEl.textContent = label;
         bpmEl.style.cursor = "pointer";
-        bpmEl.title = halved
-            ? `已自動修正 (原 ${Math.round(correction.original || 0)} BPM，判為慢歌倍拍)。點擊切換倍率。`
-            : "點擊切換 BPM 倍率 (自動儲存)";
+        const lines = [];
+        if (halved) {
+            lines.push(`BPM 已自動修正 (原 ${Math.round(correction.original || 0)} BPM，判為慢歌倍拍)`);
+        }
+        if (barFixed) {
+            const bpb = barCorr.beats_per_bar || 4;
+            const conf = (typeof barCorr.score_after === "number") ? ` 信心 ${barCorr.score_after.toFixed(2)}` : "";
+            const tag = barCorr.model_version === "model_v1" ? "AI" : "規則";
+            lines.push(`節拍相位已 ${tag} 校正 (每小節 ${bpb} 拍${conf})`);
+        }
+        lines.push("點擊切換 BPM 倍率 (自動儲存)");
+        bpmEl.title = lines.join("\n");
         bpmEl.onclick = () => {
             if (bpmMult === 1.0) bpmMult = 0.5;
             else if (bpmMult === 0.5) bpmMult = 2.0;
@@ -3902,6 +3915,7 @@
         }
         await preloadChordInfo(chordData.chords);
         buildChordDOM();
+        try { _updateBarArbitrateLabel && _updateBarArbitrateLabel(); } catch {}
         // Re-init active instrument so it picks up new chord data
         if (activeTab !== "piano") {
           const inst = InstrumentRegistry.get(activeTab);
@@ -3995,6 +4009,7 @@
         hashMode ? hashMode : trackPath);
       await preloadChordInfo(chordData.chords);
       buildChordDOM();
+      try { _updateBarArbitrateLabel && _updateBarArbitrateLabel(); } catch {}
       return true;
     } catch (e) {
       console.warn("_refreshChordDataInPlace failed:", e);
@@ -5608,6 +5623,89 @@
       }
     });
   }
+
+  // ---- 自動節拍調整 (bar arbitrator force / restore toggle) ----
+  // Personal-only test tool. Calls the same admin endpoints as the admin UI,
+  // but scoped to the currently-loaded song and toggles between
+  // apply (force=true) and restore based on chordData.bar_correction.applied.
+  const btnBarArbitrate = $("#btnBarArbitrate");
+  const btnBarArbitrateLabel = $("#btnBarArbitrateLabel");
+
+  function _updateBarArbitrateLabel() {
+    if (!btnBarArbitrate || !btnBarArbitrateLabel) return;
+    const bar = chordData && chordData.bar_correction;
+    const applied = !!(bar && bar.applied);
+    if (applied) {
+      const tag = (bar.model_version === "model_v1") ? "AI" : "規則";
+      const conf = (typeof bar.score_after === "number") ? ` ${bar.score_after.toFixed(2)}` : "";
+      btnBarArbitrateLabel.textContent = `還原節拍 (${tag} bpb=${bar.beats_per_bar}${conf})`;
+    } else {
+      btnBarArbitrateLabel.textContent = "自動節拍調整";
+    }
+  }
+
+  if (btnBarArbitrate) {
+    btnBarArbitrate.addEventListener("click", async () => {
+      if (!chordData) { showToast("和弦資料尚未載入", 3000); return; }
+      const bar = chordData.bar_correction;
+      const isApplied = !!(bar && bar.applied);
+      const hasSnapshot = !!(bar && Array.isArray(bar.downbeats_original));
+      const body = hashMode ? { hash: hashMode } : { path: trackPath };
+      const url = isApplied ? "/api/admin/bar/restore" : "/api/admin/bar/recompute";
+      const payload = isApplied ? body : { ...body, force: true };
+
+      // Restore needs an existing snapshot — early-warn user
+      if (isApplied && !hasSnapshot) {
+        showToast("這首歌沒有原始節拍快照，無法還原（先 sync 新版本後再試）", 5000);
+        return;
+      }
+      btnBarArbitrate.disabled = true;
+      const origLabel = btnBarArbitrateLabel.textContent;
+      btnBarArbitrateLabel.textContent = isApplied ? "還原中…" : "仲裁中…";
+      try {
+        const r = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          showToast(`失敗 ${r.status}: ${data.detail || r.statusText}`, 5000);
+          btnBarArbitrateLabel.textContent = origLabel;
+          return;
+        }
+        // Refresh chord data + tooltip + ribbon. _refreshChordDataInPlace handles
+        // tooltip via the BPM badge code path on rebuild.
+        const refreshed = await _refreshChordDataInPlace();
+        if (refreshed) {
+          _buildUnifiedRibbon();
+          _updateBarArbitrateLabel();
+          if (isApplied) {
+            showToast(`已還原節拍 (${data.n_downbeats || "?"} downbeats)`, 3500);
+          } else {
+            showToast(
+              `已套用 AI 節拍仲裁 (${data.model_version || "model"} bpb=${data.beats_per_bar} ` +
+              `${data.n_downbeats_before}→${data.n_downbeats_after}, conf ${(data.score_after || 0).toFixed(2)})`,
+              5000
+            );
+          }
+        } else {
+          showToast("已套用，但頁面重整失敗 — 請手動重新整理", 4000);
+          btnBarArbitrateLabel.textContent = origLabel;
+        }
+      } catch (e) {
+        console.error("bar arbitrate failed:", e);
+        showToast(`失敗: ${e.message || e}`, 4000);
+        btnBarArbitrateLabel.textContent = origLabel;
+      } finally {
+        btnBarArbitrate.disabled = false;
+      }
+    });
+  }
+  // Refresh label whenever chordData reloads — wire into existing refresh hook
+  // by patching _refreshChordDataInPlace's caller surface lightly: every place
+  // that calls it already builds chord DOM, so we hook off chord-quality badge.
+  // Simpler: also call once at script-init below after chordData is first loaded.
 
   // ---- 節拍來源切換 (personal 8800 only) ----
   // 3-way librosa / madmom / beat_this picker. Backend endpoint is gated by
