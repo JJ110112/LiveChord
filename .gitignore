@@ -124,6 +124,7 @@ agent/.env
 agent/.langgraph_api/
 recent_diff.md
 test_finger.py
+reports/train_v1.log
 
 # MIDI 測試/下載檔
 midi/
@@ -142,3 +143,8 @@ editor-*.png
 mobile-*.png
 page-*.png
 screenshot-*.png
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
