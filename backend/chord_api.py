@@ -55,6 +55,7 @@ from chord_cache import (
     song_hash, update_entry_from_file as cache_update_entry,
     chord_file_for, chord_bak_for, ensure_chord_bucket,
 )
+from chord_splitter import maybe_split_for_serve
 from instrument_registry import get_instrument, list_instruments, INSTRUMENTS
 
 from config import resolve_path
@@ -217,6 +218,7 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
     data = json.loads(chords_file.read_text(encoding="utf-8"))
     data["exists"] = True
     data["current_version"] = "official" if is_fallback or not version else version
+    maybe_split_for_serve(data)
     return data
 
 
@@ -228,6 +230,7 @@ async def get_chords_by_hash(hash: str = Query(..., min_length=8, max_length=16)
         return {"hash": hash, "key": "", "capo": 0, "chords": [], "exists": False}
     data = json.loads(chords_file.read_text(encoding="utf-8"))
     data["exists"] = True
+    maybe_split_for_serve(data)
     return data
 
 

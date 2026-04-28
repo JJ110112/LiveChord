@@ -1638,14 +1638,17 @@
       }
       item.dataset.end = (c.time + durSec).toFixed(4);
 
-      const vb = _virtualBeats(durSec, c.time);
+      const vb = _virtualBeats(durSec, c.time, c.auto_split);
       const beatsEl = document.createElement("div");
       beatsEl.className = "rv-beats";
       let dotHtml = "";
       for (let b = 0; b < vb.dots.length; b++) {
           const d = vb.dots[b];
           const cls = d.isDownbeat ? "beat-dot is-downbeat" : "beat-dot";
-          dotHtml += `<span class="${cls}"></span>`;
+          // data-time lets _updateBeatDots advance the highlight by real beat
+          // times (not cardDur fraction × dotCount), so the dot pulses at the
+          // tracker beat rate even when dot count diverges from elapsed beats.
+          dotHtml += `<span class="${cls}" data-time="${d.t.toFixed(4)}"></span>`;
       }
       beatsEl.innerHTML = dotHtml;
       item.appendChild(beatsEl);
@@ -4314,7 +4317,7 @@
   // get a 'chord-short' visual-degrade class. Dots carry absolute time so the
   // renderer can tag downbeats. Safety flag: localStorage.livechord_virtual_beats="0"
   // falls back to the legacy floor(durSec/secPerBeat).
-  function _virtualBeats(durSec, cStart) {
+  function _virtualBeats(durSec, cStart, autoSplit) {
     const off = (typeof localStorage !== "undefined"
                  && localStorage.getItem("livechord_virtual_beats") === "0");
     // _secPerBeatAt returns the BASE-rate beat duration (rubato-tracked
@@ -4330,6 +4333,49 @@
         tsBeats = window.CC.inferBeatsPerBar(chordData, spb) || 4;
       }
     } catch (e) { /* keep 4 */ }
+
+    // Backend auto_split: this card represents exactly one bar — the splitter
+    // already did the math against arbitrated downbeats. Trust that and force
+    // tsBeats dots, regardless of what spb / beats[] heuristics would compute.
+    // This is the authoritative path: when the player's local BPM estimate is
+    // off by 2× (common on slow songs) we'd otherwise render 8 dots in a 1-bar
+    // card. With auto_split we know better — emit 4 evenly-spaced dots.
+    if (autoSplit && tsBeats >= 1 && tsBeats <= 16) {
+      return {
+        count: tsBeats,
+        short: false,
+        dots: _buildVirtualDots(tsBeats, durSec, cStart),
+      };
+    }
+
+    // Prefer actual beat times from the backend tracker when available —
+    // each dot lands on a real beat, so the playback highlight advances at
+    // the true beat rate regardless of card duration. This is what fixes
+    // the "8-beat chord moves dots at half-beat speed" issue for cards
+    // the backend didn't split (low-confidence downbeats path).
+    if (!off && Array.isArray(chordData && chordData.beats) && chordData.beats.length) {
+      let realBeats = _beatsInRange(chordData.beats, cStart, cStart + durSec);
+      // beat_this/madmom on slow songs sometimes locks onto the sub-beat
+      // pulse (e.g. emits 8 beats per bar at 88 BPM instead of 4). Downsample
+      // when realBeats count is roughly an integer multiple of the bar-snap
+      // count, so we render one dot per *musical* beat instead of one per
+      // tracker tick — otherwise a 1-bar card shows 8 dots and looks 24-beat.
+      const expectedBars = Math.max(1, Math.round(rawBeats / tsBeats));
+      const expectedCount = expectedBars * tsBeats;
+      if (realBeats.length > expectedCount * 1.5) {
+        const stride = Math.max(2, Math.round(realBeats.length / expectedCount));
+        const down = [];
+        for (let i = 0; i < realBeats.length; i += stride) down.push(realBeats[i]);
+        realBeats = down;
+      }
+      if (realBeats.length >= 1 && realBeats.length <= 16) {
+        return {
+          count: realBeats.length,
+          short: realBeats.length < tsBeats * 0.75,
+          dots: _buildVirtualDots(realBeats.length, durSec, cStart, realBeats),
+        };
+      }
+    }
 
     // When the user has manually overridden BPM via the click cycle,
     // bypass bar-snapping. Bar-snap can clamp the dot count so doubling
@@ -4354,13 +4400,32 @@
     return { count, short: false, dots: _buildVirtualDots(count, durSec, cStart) };
   }
 
-  function _buildVirtualDots(count, durSec, cStart) {
+  // Pick beats that fall inside [start, end). Small epsilon so a beat exactly
+  // on the boundary (chord/downbeat snapped to the same grid point) still
+  // counts toward the chord that's about to start.
+  function _beatsInRange(beats, start, end) {
+    const eps = 0.05;
+    const out = [];
+    for (let i = 0; i < beats.length; i++) {
+      const b = beats[i];
+      if (b >= start - eps && b < end - eps) out.push(b);
+      if (b >= end) break;
+    }
+    return out;
+  }
+
+  function _buildVirtualDots(count, durSec, cStart, explicitTimes) {
     const dbs = (chordData && Array.isArray(chordData.downbeats)) ? chordData.downbeats : [];
     const step = durSec / count;
     const tol = Math.min(0.12, step * 0.35);
     const out = new Array(count);
     for (let i = 0; i < count; i++) {
-      const t = cStart + i * step;
+      // explicitTimes (from chordData.beats[]) places the dot on a real
+      // tracker beat; without it, we evenly distribute across the card
+      // (legacy behaviour for songs without trustworthy beats).
+      const t = (explicitTimes && explicitTimes[i] != null)
+        ? explicitTimes[i]
+        : cStart + i * step;
       let isDownbeat = false;
       if (dbs.length > 0) {
         for (let k = 0; k < dbs.length; k++) {
@@ -4379,17 +4444,30 @@
       const dots = el.querySelectorAll(".beat-dot");
       if (!dots.length) return;
 
-      // Linear time → beat index. Cards now render a virtual (bar-aligned)
-      // dot count that may not match `elapsed / secPerBeat`; driving from
-      // the elapsed fraction of the card duration keeps the highlight glued
-      // to wall-clock progress regardless of how many dots got drawn.
-      const endTime = parseFloat(el.dataset.end);
-      const cardDur = Math.max(0.001, (isFinite(endTime) ? endTime - startTime : dots.length * _secPerBeatAt(startTime)));
-      let progress = (t - startTime) / cardDur;
-      if (progress < 0) progress = 0;
-      if (progress > 0.9999) progress = 0.9999;
-      let beatIdx = Math.floor(progress * dots.length);
-      if (beatIdx >= dots.length) beatIdx = dots.length - 1;
+      // Prefer per-dot data-time (set when dots are aligned to real beats):
+      // active = the latest dot whose time has passed. This makes the highlight
+      // tick exactly once per beat, regardless of how many dots fit in the card,
+      // fixing the "8-beat chord moves at half-beat speed" bug.
+      let beatIdx = -1;
+      const firstDotTime = parseFloat(dots[0].dataset.time);
+      if (isFinite(firstDotTime)) {
+        for (let i = 0; i < dots.length; i++) {
+          const dt = parseFloat(dots[i].dataset.time);
+          if (isFinite(dt) && dt <= t + 0.001) beatIdx = i;
+          else break;
+        }
+        if (beatIdx < 0) beatIdx = 0;
+      } else {
+        // Legacy fallback: linear progress mapping (used only if data-time
+        // is missing — older cached renders).
+        const endTime = parseFloat(el.dataset.end);
+        const cardDur = Math.max(0.001, (isFinite(endTime) ? endTime - startTime : dots.length * _secPerBeatAt(startTime)));
+        let progress = (t - startTime) / cardDur;
+        if (progress < 0) progress = 0;
+        if (progress > 0.9999) progress = 0.9999;
+        beatIdx = Math.floor(progress * dots.length);
+        if (beatIdx >= dots.length) beatIdx = dots.length - 1;
+      }
 
       dots.forEach((dot, idx) => {
         if (idx === beatIdx) dot.classList.add("beat-active");
