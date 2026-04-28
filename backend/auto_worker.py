@@ -38,6 +38,10 @@ DEFAULT_SETTINGS = {
     "auto_chord_skip_genres": [],       # 跳過的 genre（如 Classics）
     "auto_chord_active_groups": [],     # 啟用的曲目群組（空 = 不過濾，附 1 用）
     "bar_arbitrator_enabled": False,    # personal-only: run bar_arbitrator at ingest after bpm_sanity
+    "beat_refiner_enabled": False,      # personal-only: audio-level Compact-Transformer beat/downbeat refiner
+                                        # (Phase 1 — runs before bar_arbitrator). Gate inside phase1_refine
+                                        # ensures refinement is only applied when it actually beats input
+                                        # alignment by ≥0.02; otherwise falls back. Safe to flip.
 }
 
 # ---------------------------------------------------------------------------
@@ -942,6 +946,43 @@ def _auto_chord_detect_loop(settings: dict, batch: list, unanalyzed: list, lock,
                 sheet["tempo_curve"] = beat_info.get("tempo_curve", [])
                 sheet["beats_source"] = beat_info["beats_source"]
                 sheet["beat_version"] = beat_info.get("beat_version", 0)
+
+            # Beat refiner — Phase 1 audio-level Compact Transformer.
+            # Same hook as process_queue.py upload path, gated on the same
+            # ``beat_refiner_enabled`` setting. The phase1_refine internal
+            # gate ensures refinement only adopts when alignment improves
+            # by ≥+0.02; otherwise silent no-op. See backend/ai/bar_arbitrator
+            # phase1_refine for the full quality-gate logic.
+            if settings.get("beat_refiner_enabled", False) and sheet.get("beats"):
+                try:
+                    from ai.bar_arbitrator import phase1_refine
+                    res = phase1_refine(sheet, full)
+                    sheet["beat_refiner"] = {
+                        "applied": res["applied"],
+                        "reason": res["reason"],
+                        "model_version": res.get("model_version", "phase1_v1"),
+                        "score_before": res.get("score_before", 0.0),
+                        "score_after": res.get("score_after", 0.0),
+                        "n_beats_before": len(res.get("beats_before") or []),
+                        "n_beats_after": len(res.get("beats_after") or []),
+                        "n_downbeats_before": len(res.get("downbeats_before") or []),
+                        "n_downbeats_after": len(res.get("downbeats_after") or []),
+                    }
+                    if res["applied"]:
+                        sheet["beats"] = res["beats_after"]
+                        sheet["downbeats"] = res["downbeats_after"]
+                        add_log(
+                            "OK",
+                            f"beat_refiner: {name} align "
+                            f"{res.get('score_before', 0):.2f}->{res.get('score_after', 0):.2f} "
+                            f"n_db {len(res['downbeats_before'])}->{len(res['downbeats_after'])}",
+                        )
+                except Exception as _ref_err:
+                    add_log(
+                        "WARN",
+                        f"beat_refiner 失敗: {name} — {type(_ref_err).__name__}",
+                    )
+
             chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
             cache_update_entry(track_path)
             _worker_state["detect_count"] += 1

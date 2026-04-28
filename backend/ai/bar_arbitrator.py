@@ -862,6 +862,219 @@ def apply_to_chord_json(chord_data: Dict, result: ArbitrationResult) -> Dict:
     return chord_data
 
 
+# ---------------------------------------------------------------------------
+# Phase 1 — audio-level beat_refiner integration
+#
+# Different layer from arbitrate_model_based above:
+#   arbitrate_model_based  — 28-feature-per-beat ONNX, picks the downbeat
+#                            phase given a *trusted* beats[] grid.
+#   phase1_refine          — audio-level Compact Transformer that re-emits
+#                            both beats[] AND downbeats[] from CQT/chroma/
+#                            onset/RMS + the initial grid as a hint.
+#
+# Use one or the other depending on whether you trust raw beats[]. For the
+# 3+1 chord-split problem (driven by misaligned beats[] in low-rhythm
+# passages), only phase1_refine can help — the ONNX model treats those
+# beats as ground truth.
+# ---------------------------------------------------------------------------
+
+# Tunables for the phase1 quality gate. The gate exists because the v1
+# refiner over-emits peaks on songs whose input grid is already clean,
+# and we don't want to corrupt good data.
+_PHASE1_INPUT_CLEAN_CV = 0.10        # input cv < this → skip refine
+_PHASE1_INPUT_CLEAN_ALIGN = 0.70     # input alignment > this → skip refine
+_PHASE1_ALIGN_TOL = 0.07             # mir_eval beat tolerance
+_PHASE1_ALIGN_MIN_GAIN = 0.02        # refined align must beat input by ≥ this.
+                                     # v2 testing showed permissive -0.05
+                                     # adopted "no-improvement" outputs that
+                                     # added cv noise; require small positive
+                                     # gain to ensure refinement is worth it.
+_PHASE1_COUNT_RATIO = (0.5, 1.8)     # refined count must stay in this band
+                                     # × input count (avoids drastic over-
+                                     # emission)
+
+
+def _alignment(chord_changes: List[float], downbeats: List[float],
+               tol: float = _PHASE1_ALIGN_TOL) -> float:
+    """Fraction of chord changes within ``tol`` of any downbeat.
+
+    Same metric used by ``scripts/build_training_corpus.py`` to grade
+    silver-tier candidates. Higher = downbeats agree with harmony.
+    """
+    if not chord_changes or not downbeats:
+        return 0.0
+    sorted_db = sorted(downbeats)
+    hits = 0
+    for t in chord_changes:
+        # Inline bisect_left — same hot-loop pattern as elsewhere here
+        lo, hi = 0, len(sorted_db)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if sorted_db[mid] < t:
+                lo = mid + 1
+            else:
+                hi = mid
+        i = lo
+        nearest = float("inf")
+        if i < len(sorted_db):
+            nearest = min(nearest, abs(sorted_db[i] - t))
+        if i > 0:
+            nearest = min(nearest, abs(sorted_db[i - 1] - t))
+        if nearest <= tol:
+            hits += 1
+    return hits / len(chord_changes)
+
+
+def phase1_refine(chord_data: Dict, audio_path: str, *,
+                  force: bool = False,
+                  checkpoint_path: Optional[str] = None
+                  ) -> ArbitrationResult:
+    """Audio-level beat / downbeat refinement via the trained Compact
+    Transformer (``backend/ai/beat_refiner_*``).
+
+    Reads from ``chord_data["beats"]``, ``chord_data["downbeats"]``,
+    ``chord_data["chords"]`` and the audio at ``audio_path``. Does NOT
+    mutate ``chord_data`` — the caller decides whether to write back.
+
+    Quality gate (in order):
+      1. Pre-flight: too few beats/chords → bail (same as rule path).
+      2. Input-already-clean: low cv + high alignment → skip, save GPU.
+      3. Refiner failure: model missing / inference error → bail with
+         the refiner's reason.
+      4. Output-not-better: refined alignment < input - 0.05, OR refined
+         downbeat count is wildly off from input → reject refined.
+
+    ``force=True`` skips gates 2 and 4 (admin recompute).
+
+    Returns an :class:`ArbitrationResult` with both downbeats_before/after
+    and (extended) ``beats_before``/``beats_after`` fields when applied.
+    """
+    chords = chord_data.get("chords") or []
+    beats = chord_data.get("beats") or []
+    raw_downbeats = chord_data.get("downbeats") or []
+
+    result = ArbitrationResult(
+        applied=False,
+        reason="",
+        model_version="phase1_v1",
+        downbeats_before=list(raw_downbeats),
+        downbeats_after=list(raw_downbeats),
+        beats_before=list(beats),
+        beats_after=list(beats),
+        beats_per_bar=4,  # phase1 model doesn't predict bpb
+        phase_offset_sec=0.0,
+        raw_regularity_cv=None,
+        score_before=0.0,
+        score_after=0.0,
+    )
+
+    # ------------------------------------------------------------------
+    # Gate 1 — pre-flight (same as rule path)
+    # ------------------------------------------------------------------
+    if len(chords) < _MIN_CHORDS:
+        result["reason"] = "too-few-chords"
+        return result
+    if len(beats) < _MIN_BEATS:
+        result["reason"] = "too-few-beats"
+        return result
+
+    chord_changes = _chord_change_times(chords)
+    if len(chord_changes) < 4:
+        result["reason"] = "too-few-chord-changes"
+        return result
+
+    in_mean_gap, in_cv = _gap_stats(raw_downbeats)
+    in_align = _alignment(chord_changes, raw_downbeats)
+    result["raw_regularity_cv"] = round(in_cv, 4) if in_cv is not None else None
+    result["score_before"] = round(in_align, 4)
+
+    # ------------------------------------------------------------------
+    # Gate 2 — skip when input is already clean
+    # ------------------------------------------------------------------
+    input_clean = (
+        in_cv is not None and in_cv < _PHASE1_INPUT_CLEAN_CV
+        and in_align > _PHASE1_INPUT_CLEAN_ALIGN
+        and len(raw_downbeats) >= 8
+    )
+    if input_clean and not force:
+        result["reason"] = (
+            f"input-already-clean (cv={in_cv:.3f}, align={in_align:.3f})"
+        )
+        return result
+
+    # ------------------------------------------------------------------
+    # Run refiner — late import keeps this module light when no audio path
+    # ------------------------------------------------------------------
+    try:
+        from .beat_refiner_infer import refine
+    except ImportError:
+        try:
+            from beat_refiner_infer import refine  # script-mode fallback
+        except ImportError as e:
+            result["reason"] = f"refiner-import-failed: {e}"
+            return result
+
+    try:
+        refine_out = refine(
+            audio_path, beats, raw_downbeats,
+            checkpoint_path=checkpoint_path,
+        )
+    except Exception as e:
+        result["reason"] = f"refiner-exception: {type(e).__name__}: {e}"
+        return result
+
+    if not refine_out.get("applied"):
+        result["reason"] = f"refiner-bailed: {refine_out.get('reason', '?')}"
+        return result
+
+    refined_beats = refine_out["refined_beats"]
+    refined_downbeats = refine_out["refined_downbeats"]
+
+    # ------------------------------------------------------------------
+    # Gate 4 — output-not-better quality check
+    # ------------------------------------------------------------------
+    out_align = _alignment(chord_changes, refined_downbeats)
+    out_mean_gap, out_cv = _gap_stats(refined_downbeats)
+    result["score_after"] = round(out_align, 4)
+
+    in_db_count = max(1, len(raw_downbeats))
+    out_db_count = len(refined_downbeats)
+    count_ratio = out_db_count / in_db_count
+
+    align_ok = out_align >= (in_align + _PHASE1_ALIGN_MIN_GAIN)
+    count_ok = (_PHASE1_COUNT_RATIO[0] <= count_ratio <= _PHASE1_COUNT_RATIO[1])
+
+    if not (align_ok and count_ok) and not force:
+        result["reason"] = (
+            f"refiner-not-better: in(align={in_align:.2f},cv="
+            f"{in_cv if in_cv is not None else float('nan'):.2f},"
+            f"n_db={in_db_count}) -> out(align={out_align:.2f},cv="
+            f"{out_cv if out_cv is not None else float('nan'):.2f},"
+            f"n_db={out_db_count})"
+        )
+        return result
+
+    # ------------------------------------------------------------------
+    # Adopt refined output
+    # ------------------------------------------------------------------
+    result["downbeats_after"] = refined_downbeats
+    result["beats_after"] = refined_beats
+    result["phase_offset_sec"] = (
+        round(refined_downbeats[0], 4) if refined_downbeats else 0.0
+    )
+    result["applied"] = True
+    result["reason"] = (
+        f"phase1-applied: align {in_align:.2f}->{out_align:.2f}, "
+        f"cv {in_cv if in_cv is not None else float('nan'):.2f}->"
+        f"{out_cv if out_cv is not None else float('nan'):.2f}, "
+        f"n_beats {len(beats)}->{len(refined_beats)}, "
+        f"n_downbeats {in_db_count}->{out_db_count}, "
+        f"refiner_dt={refine_out.get('elapsed_sec', 0):.2f}s"
+        + (" forced" if force else "")
+    )
+    return result
+
+
 def restore_from_snapshot(chord_data: Dict) -> Tuple[bool, str]:
     """Revert ``chord_data["downbeats"]`` to the original raw beat-tracker
     output snapshotted in ``bar_correction.downbeats_original``.

@@ -254,10 +254,28 @@ def _save_chord_json(job: ProcessJob, chords: list, key: str,
         except Exception as e:
             logger.warning("beat_snap failed for %s: %s", job.job_id, e)
 
+    # Beat refiner — Phase 1 audio-level Compact Transformer that re-emits
+    # beats[] and downbeats[] from CQT/chroma/onset/RMS + the initial grid
+    # as a hint. Runs BEFORE bar_arbitrator so the bar arbitrator's
+    # downbeat-phase recovery sees the refined grid. Gated by
+    # ``beat_refiner_enabled`` (default off). The phase1_refine internal
+    # gate (align_min_gain=+0.02 + count_ratio band) ensures the refined
+    # output only replaces input when it's meaningfully better; otherwise
+    # this is a silent no-op. Failure non-fatal.
+    if audio_path and os.path.isfile(audio_path):
+        try:
+            from config import is_beta_mode
+            if not is_beta_mode():
+                from auto_worker import load_settings
+                if load_settings().get("beat_refiner_enabled", False):
+                    _run_beat_refiner_into_sheet(sheet, audio_path, job.job_id)
+        except Exception as e:
+            logger.warning("beat_refiner hook failed for %s: %s", job.job_id, e)
+
     # Bar arbitrator — Phase 2 personal-mode AI bar/downbeat correction.
     # Gated by (a) LIVECHORD_MODE != "beta" and (b) settings flag default off.
-    # Runs AFTER bpm_sanity so it sees the corrected bpm/downbeats; mutates
-    # sheet["downbeats"] + writes sheet["bar_correction"] metadata.
+    # Runs AFTER bpm_sanity AND beat_refiner so it sees the corrected
+    # bpm/downbeats; mutates sheet["downbeats"] + writes sheet["bar_correction"].
     # Failure non-fatal — chord JSON is still useful without correction.
     try:
         from config import is_beta_mode
@@ -293,6 +311,51 @@ def _resolve_bar_model_path() -> Optional[str]:
         _BAR_MODEL_PATH = ""  # cache the negative so we stop probing
         logger.info("bar_arbitrator model not found at %s — falling back to rule baseline", candidate)
     return _BAR_MODEL_PATH or None
+
+
+def _run_beat_refiner_into_sheet(sheet: dict, audio_path: str, job_id: str):
+    """Apply the audio-level beat_refiner to the freshly-built sheet.
+
+    Always writes ``sheet["beat_refiner"]`` metadata (even when applied=False
+    so we have an audit trail of which songs were considered). When applied,
+    REPLACES ``sheet["beats"]`` and ``sheet["downbeats"]`` with the refined
+    arrays — downstream bar_arbitrator + chord_splitter then see the
+    refined grid.
+
+    The refiner's internal gate (phase1_refine in bar_arbitrator.py)
+    decides whether refinement is worth applying:
+      - input already clean (cv<0.10, align>0.7) -> bypass
+      - refined output not measurably better (align gain <+0.02, or
+        count out of band) -> reject
+      - everything else -> adopt
+
+    Caller wraps in try/except — never propagates.
+    """
+    from ai.bar_arbitrator import phase1_refine
+    res = phase1_refine(sheet, audio_path)
+    sheet["beat_refiner"] = {
+        "applied": res["applied"],
+        "reason": res["reason"],
+        "model_version": res.get("model_version", "phase1_v1"),
+        "score_before": res.get("score_before", 0.0),
+        "score_after": res.get("score_after", 0.0),
+        "n_beats_before": len(res.get("beats_before") or []),
+        "n_beats_after": len(res.get("beats_after") or []),
+        "n_downbeats_before": len(res.get("downbeats_before") or []),
+        "n_downbeats_after": len(res.get("downbeats_after") or []),
+    }
+    if res["applied"]:
+        sheet["beats"] = res["beats_after"]
+        sheet["downbeats"] = res["downbeats_after"]
+        logger.info(
+            "[beat_refiner] %s replaced beats: align %.2f->%.2f, "
+            "n_beats %d->%d, n_downbeats %d->%d",
+            job_id, res.get("score_before", 0.0), res.get("score_after", 0.0),
+            len(res["beats_before"]), len(res["beats_after"]),
+            len(res["downbeats_before"]), len(res["downbeats_after"]),
+        )
+    else:
+        logger.info("[beat_refiner] %s skipped: %s", job_id, res["reason"])
 
 
 def _run_bar_arbitrator_into_sheet(sheet: dict, job_id: str):
