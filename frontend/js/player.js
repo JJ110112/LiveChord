@@ -4340,12 +4340,28 @@
     // This is the authoritative path: when the player's local BPM estimate is
     // off by 2× (common on slow songs) we'd otherwise render 8 dots in a 1-bar
     // card. With auto_split we know better — emit 4 evenly-spaced dots.
+    //
+    // Two escape hatches:
+    //   (a) Manual BPM override (_currentBpmMult != 1.0): user is saying
+    //       "interpret rhythm at this rate" — that intent should win over
+    //       the backend split decision.
+    //   (b) Sanity check: if the card is suspiciously short relative to the
+    //       expected bar duration (tsBeats × spb), the backend over-split
+    //       (e.g. beat_refiner over-densified downbeats, see LiveChord-3kh).
+    //       Falling through to the chordData.beats[] path renders the real
+    //       beats inside the card instead of forcing tsBeats dots in a
+    //       half-bar duration (which looks like 2x/4x dot speed).
     if (autoSplit && tsBeats >= 1 && tsBeats <= 16) {
-      return {
-        count: tsBeats,
-        short: false,
-        dots: _buildVirtualDots(tsBeats, durSec, cStart),
-      };
+      const manualOverride = Math.abs(_currentBpmMult - 1.0) > 1e-3;
+      const expectedBarDur = tsBeats * spb;
+      const tooShort = expectedBarDur > 0 && durSec < expectedBarDur * 0.6;
+      if (!manualOverride && !tooShort) {
+        return {
+          count: tsBeats,
+          short: false,
+          dots: _buildVirtualDots(tsBeats, durSec, cStart),
+        };
+      }
     }
 
     // Prefer actual beat times from the backend tracker when available —

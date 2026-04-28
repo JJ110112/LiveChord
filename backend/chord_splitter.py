@@ -42,15 +42,33 @@ def _is_confident(chord_data: Dict) -> bool:
       - downbeats list has >=2 entries (need at least one bar interval)
       - beats_source is one of the high-quality detectors, OR bar_arbitrator
         ran and applied a correction (= it vetted the grid)
+      - median(downbeat_gap) implies a plausible beats_per_bar (3 to 5) given
+        chord_data["bpm"]. beat_refiner sometimes over-densifies downbeats
+        (e.g. emits one per 2 beats instead of one per 4), which would make
+        the splitter chop bars in half. See LiveChord-3kh.
     """
     downbeats = chord_data.get("downbeats") or []
     if len(downbeats) < 2:
         return False
     source = (chord_data.get("beats_source") or "").lower()
-    if source in {"madmom", "beat_this", "beat-this"}:
-        return True
+    source_ok = source in {"madmom", "beat_this", "beat-this"}
     bar_correction = chord_data.get("bar_correction") or {}
-    return bool(bar_correction.get("applied"))
+    if not (source_ok or bar_correction.get("applied")):
+        return False
+
+    # Bar/BPM sanity gate. Compute median gap; expected beats per bar
+    # = median_gap / (60/bpm). If outside [3, 5], the downbeats are at
+    # the wrong granularity and we should NOT split (player rendering
+    # would show 2x/4x apparent dot speed).
+    bar_gap = _median_bar_gap([float(d) for d in downbeats])
+    bpm = float(chord_data.get("bpm") or 0)
+    if bar_gap and bpm > 0:
+        spb = 60.0 / bpm
+        if spb > 0:
+            bpb = bar_gap / spb
+            if bpb < 3.0 or bpb > 5.0:
+                return False
+    return True
 
 
 def _interior_downbeats(start: float, end: float, downbeats: List[float]) -> List[float]:
@@ -218,9 +236,20 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
         return chord_data
 
     if not _is_confident(chord_data):
+        # Distinguish bpb-rejection from generic low-confidence so the admin
+        # / debug UI can tell whether the song was actually evaluated.
+        downbeats = chord_data.get("downbeats") or []
+        bpm = float(chord_data.get("bpm") or 0)
+        reason = "low-confidence-downbeats"
+        if len(downbeats) >= 2 and bpm > 0:
+            bar_gap = _median_bar_gap([float(d) for d in downbeats])
+            if bar_gap:
+                bpb = bar_gap / (60.0 / bpm)
+                if bpb < 3.0 or bpb > 5.0:
+                    reason = f"implausible-bpb={bpb:.2f}"
         chord_data["auto_split_meta"] = {
             "applied": False,
-            "reason": "low-confidence-downbeats",
+            "reason": reason,
             "before": len(chords),
             "after": len(chords),
         }

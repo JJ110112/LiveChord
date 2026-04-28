@@ -892,6 +892,36 @@ _PHASE1_ALIGN_MIN_GAIN = 0.02        # refined align must beat input by ≥ this
 _PHASE1_COUNT_RATIO = (0.5, 1.8)     # refined count must stay in this band
                                      # × input count (avoids drastic over-
                                      # emission)
+_PHASE1_BPB_MIN = 3.0                # refined median(downbeat_gap)/median(beat_gap)
+_PHASE1_BPB_MAX = 5.0                # must stay in [3, 5] when input is in same band.
+                                     # Catches 4/4 -> 2/4 (downbeat doubling) and
+                                     # 4/4 -> 8/8 (downbeat halving) — both produce
+                                     # apparent meter shift that breaks chord_splitter
+                                     # + player rendering even though raw alignment
+                                     # may improve. See LiveChord-3kh.
+
+
+def _bpb_from_gaps(beats: List[float], downbeats: List[float]) -> Optional[float]:
+    """Estimate beats-per-bar = median(downbeat_gap) / median(beat_gap).
+
+    Returns None when either side has too few entries to estimate. Used by
+    phase1_refine to detect meter shifts (4/4 -> 2/4 etc) caused by the
+    model over-densifying downbeats — those shifts pass alignment but break
+    the chord_splitter + player rendering pipeline downstream.
+    """
+    if len(beats) < 5 or len(downbeats) < 3:
+        return None
+    bgaps = sorted([beats[i + 1] - beats[i] for i in range(len(beats) - 1)])
+    dgaps = sorted([downbeats[i + 1] - downbeats[i] for i in range(len(downbeats) - 1)])
+    bgaps = [g for g in bgaps if g > 0.05]
+    dgaps = [g for g in dgaps if g > 0.1]
+    if not bgaps or not dgaps:
+        return None
+    bmed = bgaps[len(bgaps) // 2]
+    dmed = dgaps[len(dgaps) // 2]
+    if bmed <= 0:
+        return None
+    return dmed / bmed
 
 
 def _alignment(chord_changes: List[float], downbeats: List[float],
@@ -1044,13 +1074,27 @@ def phase1_refine(chord_data: Dict, audio_path: str, *,
     align_ok = out_align >= (in_align + _PHASE1_ALIGN_MIN_GAIN)
     count_ok = (_PHASE1_COUNT_RATIO[0] <= count_ratio <= _PHASE1_COUNT_RATIO[1])
 
-    if not (align_ok and count_ok) and not force:
+    # Meter-shift check: refining is harmful if it changes the apparent
+    # beats_per_bar (e.g. 4/4 -> 2/4 by doubling downbeats, or 4/4 -> 8/8
+    # by halving). chord_splitter trusts downbeats and over-splits, player
+    # forces tsBeats dots evenly across short cards = visible 2x/4x speed.
+    # When BOTH input and output have estimable bpb and input is in the
+    # plausible [3, 5] band, refined bpb must also stay in that band.
+    in_bpb = _bpb_from_gaps(beats, raw_downbeats)
+    out_bpb = _bpb_from_gaps(refined_beats, refined_downbeats)
+    bpb_ok = True
+    if in_bpb is not None and out_bpb is not None:
+        if _PHASE1_BPB_MIN <= in_bpb <= _PHASE1_BPB_MAX:
+            bpb_ok = _PHASE1_BPB_MIN <= out_bpb <= _PHASE1_BPB_MAX
+
+    if not (align_ok and count_ok and bpb_ok) and not force:
         result["reason"] = (
             f"refiner-not-better: in(align={in_align:.2f},cv="
             f"{in_cv if in_cv is not None else float('nan'):.2f},"
-            f"n_db={in_db_count}) -> out(align={out_align:.2f},cv="
+            f"n_db={in_db_count},bpb={in_bpb if in_bpb is not None else float('nan'):.2f})"
+            f" -> out(align={out_align:.2f},cv="
             f"{out_cv if out_cv is not None else float('nan'):.2f},"
-            f"n_db={out_db_count})"
+            f"n_db={out_db_count},bpb={out_bpb if out_bpb is not None else float('nan'):.2f})"
         )
         return result
 
