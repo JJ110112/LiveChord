@@ -148,3 +148,7 @@ screenshot-*.png
 .dolt/
 *.db
 .beads-credential-key
+
+# Beat refiner training corpus (reproducible from scripts/build_training_corpus.py — too large for git)
+backend/ai/splits/
+
