@@ -3,7 +3,7 @@ title Neural Arranger Training
 
 set DATA_DIR=F:\MIDI-Library
 set EPOCHS=50
-set BATCH_SIZE=8
+set BATCH_SIZE=4
 set DEVICE=cuda
 
 echo =======================================================

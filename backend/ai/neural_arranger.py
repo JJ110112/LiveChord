@@ -165,18 +165,34 @@ def train_arranger(data_dir: str, epochs: int = 10, batch_size: int = 4, device:
     dataset = MidiArrangementDataset(data_dir, tokenizer, max_seq_len=1024)
     data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn, num_workers=0)
     
-    model = NeuralArranger(vocab_size=tokenizer.vocab_size, d_model=768, nhead=12, num_layers=12).to(device)
+    save_path = os.path.join("data", "models", "neural_arranger_phase2.pt")
+    start_epoch = 0
+    
+    if os.path.exists(save_path):
+        print(f"Found existing checkpoint at {save_path}, resuming training...")
+        checkpoint = torch.load(save_path, map_location=device, weights_only=False)
+        model = NeuralArranger(vocab_size=tokenizer.vocab_size, d_model=768, nhead=12, num_layers=12).to(device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        if 'epoch' in checkpoint:
+            start_epoch = checkpoint['epoch'] + 1
+    else:
+        model = NeuralArranger(vocab_size=tokenizer.vocab_size, d_model=768, nhead=12, num_layers=12).to(device)
     
     # Ignore [PAD] token (index 0) in loss calculation
     criterion = nn.CrossEntropyLoss(ignore_index=0)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    
+    # Resume optimizer if available
+    if os.path.exists(save_path) and 'optimizer_state_dict' in checkpoint:
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        
     scaler = torch.amp.GradScaler('cuda') if 'cuda' in device else None
     
-    print(f"Starting training on {device} for {epochs} epochs...")
+    print(f"Starting training on {device} from epoch {start_epoch+1} to {epochs}...")
     print(f"Dataset size: {len(dataset)} files. Batches per epoch: {len(data_loader)}")
     model.train()
     
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, epochs):
         total_loss = 0.0
         
         for batch_idx, (src, target) in enumerate(data_loader):
@@ -204,17 +220,20 @@ def train_arranger(data_dir: str, epochs: int = 10, batch_size: int = 4, device:
                 
         avg_loss = total_loss / len(data_loader) if len(data_loader) > 0 else 0
         print(f"=== Epoch {epoch+1}/{epochs} Complete | Average Loss: {avg_loss:.4f} ===")
-    
-    os.makedirs(os.path.join("data", "models"), exist_ok=True)
-    save_path = os.path.join("data", "models", "neural_arranger_phase2.pt")
-    torch.save({
-        'vocab_size': tokenizer.vocab_size,
-        'd_model': 768,
-        'nhead': 12,
-        'num_layers': 12,
-        'model_state_dict': model.state_dict(),
-    }, save_path)
-    print(f"Model saved to {save_path}")
+        
+        # Save model checkpoint after every epoch
+        os.makedirs(os.path.join("data", "models"), exist_ok=True)
+        save_path = os.path.join("data", "models", "neural_arranger_phase2.pt")
+        torch.save({
+            'epoch': epoch,
+            'vocab_size': tokenizer.vocab_size,
+            'd_model': 768,
+            'nhead': 12,
+            'num_layers': 12,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+        }, save_path)
+        print(f"Checkpoint saved to {save_path}")
 
 
 if __name__ == "__main__":

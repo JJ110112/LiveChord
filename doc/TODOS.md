@@ -5,7 +5,43 @@ usually because they're blocked on a larger initiative (Phase 4, MIDI catalog,
 model retrain). Items listed here should have **diagnosis + blocker + expected
 resolution path**, not just a vague wish.
 
-Last updated: 2026-04-21
+Last updated: 2026-04-28
+
+---
+
+## Quality Tracks (active focus, post-beta)
+
+Beta wound down 2026-04-26. Going forward the project's main engineering bandwidth is on the upstream signal that all later layers (player, accompaniment, jazzify, section/phrase tools) feed on. Three tracks, in priority order. Each owns a slice of the AI Quality Pipeline summary in [CLAUDE.md](../CLAUDE.md#ai-quality-pipeline-current-focus).
+
+### Track 1 — Beat stability
+
+**Goal**: percentage of chord-JSONs where the user's 人工校對 queue confirms `downbeats[]` matches musical bars without a manual fix → keep climbing.
+
+**Owners**: `beat_refiner` ([backend/ai/beat_refiner_*.py](../backend/ai/)) + `bar_arbitrator` ([backend/ai/bar_arbitrator.py](../backend/ai/bar_arbitrator.py)).
+
+**Open work**:
+- Quantify post-backfill v2 lift on the existing 13k-song corpus (no shipping eval harness yet — currently only smoke tests).
+- Push `bar_arbitrator` Phase 1 model false-positive rate down. Conservative `_MIN_CANDIDATE_F1` gate is intentional but means many genuinely-broken songs fall through to the rule-based fallback.
+- Edge genres still poor: slow ballads where the BPM ballad-halving heuristic fights the refiner, rubato, intros with long silence, songs with tempo-curve breaks (rallentando endings).
+- `beat_refiner` chunked-overlap inference for >15 min songs (currently truncated at `MAX_FRAMES`).
+
+### Track 2 — Chord accuracy
+
+**Goal**: raise BTC raw-output quality + reduce reliance on the post-correction layer. Beta-era ★ ratings in `feedback.db` are the labeled signal; the chord-quality LED already surfaces them in the player.
+
+**Open work**:
+- Pipe 人工校對 corrections back into a fine-tune corpus for BTC. Today corrections are stored under `data/human_feedback/` + applied at serve time; they don't yet feed model retrain.
+- Decide whether to filter beta-user-analyzed YouTube MV chord JSONs out of the chord2vec retrain corpus (see [doc/SCALING.md](SCALING.md) §2 isolation decision tree). For now both library and beta uploads go in.
+- Address the chord-quality LED's binary-ish ratings: 3-rating threshold for color flip means low-traffic songs never light up, even when one rater gave a strong signal.
+
+### Track 3 — Phrase / section detection
+
+**Goal**: section_detect DL path actually triggers on most library songs (today rule-based fallback covers ~82% because melody/bass densities are zero for unprocessed songs).
+
+**Open work**:
+- Expand hybrid extraction coverage so `melody_density + bass_density > 0` for more of the library — gates the DL classifier in [section_detect._classify_dl](../backend/ai/section_detect.py).
+- Phase 4 MIDI catalog (see [doc/PHASE_4_HYBRID_MELODY.md](PHASE_4_HYBRID_MELODY.md)) gives clean melody ground-truth → feeds both Track 3 and Track 1's downstream metrics.
+- A-B phrase picker UX is healthy; bottleneck is the upstream label quality, not the picker.
 
 ---
 

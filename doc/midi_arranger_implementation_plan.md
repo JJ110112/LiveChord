@@ -70,3 +70,16 @@
 ### Manual Verification
 - 請使用者親自試聽產出的編曲 `.mid` 與渲染後的 `.wav` 檔案，評估副旋律的音樂性與樂器表情 (Bass, Sax 等)。
 - 確認上述執行期間，原有的 NUC 個人版 (8800) 與 Beta 版 (8801) 皆能正常運作且不被 Blocking。
+
+---
+
+## Status (updated 2026-04-28)
+
+Beta phase 已於 2026-04-26 結束，目前 NUC 僅執行 Personal 8800 單實例；本計畫所述 GPU/CPU 高佔用實驗在 PC + NUC 離峰時段持續進行中。
+
+- **Phase 1 (parallel beat tracking)** — `scripts/run_beat_this_parallel.py` + `run_beat_parallel.bat` 已上線，並延伸到 `train_refiner_*` 三段式 pipeline。`beat_refiner` (Compact Transformer, ~3M params) 已完成首版訓練、ONNX 匯出與 backfill v2 (對應 beads 議題 `LiveChord-sjq` 已關閉)。
+- **Phase 2 (neural arranger)** — `backend/ai/neural_arranger.py` 已完成 REMI tokenizer + 768-d/12-head/12-layer decoder Transformer、`scripts/run_training.py` 訓練主迴圈、`run_train.bat` 批次入口。最近一次更新加入 **checkpoint resume + per-epoch save**，避免長訓練中途中斷需從頭重跑；batch_size 由 8 降為 4 以避開 GPU OOM。輸出檔 `data/models/neural_arranger_phase2.pt`。
+- **Phase 3 (rendering)** — `scripts/render_midi_to_wav.py` (FluidSynth + `FluidR3_GM.sf2`) + `run_rendering.bat` 已落地。E2E 串接於 `scripts/generate_and_render.py` + `run_generate.bat`：載入 checkpoint → 以 `[CH_*]` chord constraint 解碼 → 產 `eval_output/*.mid` → 呼叫 renderer 產出 `eval_output/*.wav` 供使用者試聽。
+- **Open questions 之解答**：渲染器先以 FluidSynth 為主，Keyscape 命令列整合仍未實作；輸出落在 `eval_output/`（非 `U:\MIDI-Experiments-Output`）以利 git-ignore。Timbre transfer 仍維持純符號層級。
+
+下一階段重點仍與 [TODOS.md "Quality Tracks"](TODOS.md) 對齊：把 arranger 產出的旋律/低音 feedback 接回主播放管線（hybrid extraction + Phase 4 MIDI catalog），讓 section/phrase 偵測也能受惠於這份高品質訓練語料。

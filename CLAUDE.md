@@ -7,36 +7,33 @@ Project-specific guidance for Claude Code working in this repo. Also see [doc/QA
 - **Dev repo**: `c:\Users\hitea\Claude\LiveChord` (git, source of truth)
 - **Local testing**: IDE Live Server is installed, Playwright MCP is registered for AI-driven local QA.
 - **Prod runtime** (NUC, mounted as `V:\` from PC): backend runs from `V:\backend`, frontend from `V:\frontend`
-- **Backend server**: FastAPI/uvicorn, `main:app` — dual instance on NUC (start: [start_dual.bat](start_dual.bat) · restart: [restart_dual.bat](restart_dual.bat))
-  - **Personal (Port 8800)**: `LIVECHORD_MODE=personal` — LAN bypass, full NAS access, no login required on LAN
-  - **Beta (Port 8801)**: `LIVECHORD_MODE=beta` — Cloudflare Tunnel, forced login, NAS paths hashed
-- **Production QA Server**: `http://192.168.50.6:8800/` (LAN Personal) / `https://livechord.org` (public Beta, Port 8801)
+- **Backend server**: FastAPI/uvicorn, `main:app` — single instance on NUC, port 8800 (start: [start.bat](start.bat) · restart: [restart.bat](restart.bat)). `LIVECHORD_MODE` defaults to `personal`. The dual-instance scripts ([start_dual.bat](start_dual.bat) / [restart_dual.bat](restart_dual.bat)) and beta-only port 8801/8802/8803 are archival — kept on disk for reference but not in the live workflow
+- **Production QA Server**: `http://192.168.50.6:8800/` (LAN). `https://livechord.org` (Cloudflare Tunnel) is currently *off* by default — ask the user before assuming it's reachable
 - **Production Admin Account**: User: `hitea` (password user-managed; first-registered user is auto-promoted to admin by `auth_api.init_db`, no seeded account)
-- **Beta (8801) QA Account** (non-admin, for Playwright QA where login is required): `qatest` / `qatest1234`
 - **Admin page**: `http://localhost:8800/admin`
 
-## Beta Testing Active (invites sent — tread carefully)
+## Post-Beta Status (single-instance personal mode)
 
-livechord.org is live, invitation codes have been distributed, real users are analyzing songs on 8801. Default to **cautious** workflow — the NUC runtime is production for these users, not a scratchpad.
+The 2026-04-16 → 2026-04-26 invite-only beta on `livechord.org:8801` ended on 2026-04-26. Going forward LiveChord runs as a single uvicorn on port 8800 (personal mode) on the NUC. The beta-mode code paths, dual-instance scripts, and `LIVECHORD_MODE=beta` gates are kept inert in the codebase so the deployment can be re-enabled later without re-implementing — but they are *not* exercised in the current workflow and you should not assume they're running.
+
+The user-facing data left over from the beta (`feedback.db`, `auth.db`, `audit.db` `process_audit` rows, `youtube_library_map`, `data/human_feedback/`, `data/human_sections/`) is **kept** — it's training signal for the AI quality pipeline below, and any historical analyses still resolve. Treat these tables as append-only history.
 
 **Default workflow for any change**:
 
 1. **Edit only in the dev repo** (`c:\Users\hitea\Claude\LiveChord`). Never edit `V:\` directly — commits won't pick it up and rollbacks are harder
-2. **Pick the right QA port for the change, then QA on PC localhost first** — **wrong port = wrong environment = false green**:
-   - **Beta-affecting change** (anything user-facing on livechord.org, `LIVECHORD_MODE=beta` gated code, hashed-path search, invite flows, etc.) → PC **8802** via [start_beta_local.bat](start_beta_local.bat). Same `LIVECHORD_MODE=beta` semantics as 8801 prod, isolated `data/` folder so your experiments can't corrupt user auth/audit/ratings.
-   - **Personal-affecting change** (anything under `personal_mode.require_personal_mode` — `/api/auto/*` except settings/backups, `/api/extraction/*`, `/api/chords/stats`, `/api/tasks/status`, `/api/library/*`, `/api/settings` — auto-worker, admin UI, LAN-bypass code paths, local NAS browsing) → PC **8803** (personal local). 8802 won't exercise these — beta mode returns 404 on the restricted endpoints, so bugs in personal-only code would silently pass 8802 QA.
-   - **Change that touches both** (shared frontend/player.*, shared handlers, CSS, icon systems, toolbar popups, etc.) → **QA both 8803 and 8802**, not just one. One passing doesn't imply the other does (localStorage keys, mode-gated UI branches, LAN-bypass auth all diverge).
-   - Local QA account (8802 beta): `qatest` / `qatest1234` + invite `LiveChordAlpha` (first register auto-promotes to admin only if auth.db is empty; qatest on the dev box is non-admin by default).
-   - If 8803 isn't running and there's no `start_personal_local.bat` yet, ask the user how they want personal local started — don't run `start_local.bat` (it binds 8800 and collides with NUC prod on LAN).
+2. **QA on PC localhost first**. Two options:
+   - PC personal local on 8803 via [start_personal_local.bat](start_personal_local.bat) — same `LIVECHORD_MODE=personal` semantics as NUC, isolated `data/` so experiments don't touch the NUC corpus
+   - Direct QA against NUC 8800 over LAN once the change is shipped, since it's the only live target
+   - 8801 / 8802 (beta-mode local) are no longer part of the routine. Only spin them up when explicitly testing `LIVECHORD_MODE=beta`-gated code (forced login, hashed paths, invite flows) before re-enabling beta — if you do, see the "Beta Productization (archival)" section below for the gating details
 3. **Ship to V:\ only after local QA passes**. Copy via `cp` + verify with `diff -q`
-4. **Announce restarts**: backend `.py` changes don't auto-reload on NUC (uvicorn has no `--reload` in prod) — the user must run [restart_dual.bat](restart_dual.bat) before changes take effect on 8801. Surface this in your summary so it isn't forgotten
+4. **Announce restarts**: backend `.py` changes don't auto-reload on NUC (uvicorn has no `--reload` in prod) — the user must run [restart.bat](restart.bat) before changes take effect on 8800. Surface this in your summary so it isn't forgotten
 
 **When stopping to ask before acting**:
-- Any backend change that touches `process_audit`, `feedback.db`, `auth.db`, `settings_beta.json`, `youtube_library_map`, or user-facing state — these have live data from real users
+- Any backend change that touches `process_audit`, `feedback.db`, `auth.db`, `settings_personal.json`, `settings_shared.json`, `youtube_library_map`, or training-corpus state under `data/` — beta-era user data is now AI training input, regressions are silent
 - Batch file renames / deletions under `V:\`
 - Anything that invalidates outstanding auth tokens (schema change, secret rotation)
 - Destructive sqlite operations on any DB path under `V:\data\`
-- "Let me clean up this old file" instincts — check `git log` first; old-looking files may be live-referenced
+- "Let me clean up this old file" instincts — check `git log` first; old-looking files (especially under `backend/` related to `LIVECHORD_MODE=beta`, invites, hashed paths, share-target) may be inert but kept on purpose for re-enabling beta
 
 **Safe to just do** (after local QA):
 - Frontend CSS/JS/HTML edits with proper `?v=N` bump (users hard-reload to pick up)
@@ -99,10 +96,12 @@ Any change to frontend files requires Playwright verification before claiming do
 - **Admin endpoint auth**: use `Depends(get_admin_user)` from [auth_api.py:252](backend/auth_api.py#L252) — NOT `Depends(get_current_user)` + manual `_is_admin(username)` check. Reason: LAN bypass in `get_current_user` returns the literal string `"admin"`, but the seeded admin row has the user's actual username (e.g. `hitea`), so `_is_admin("admin")` queries a non-existent row → False → 403 on personal-mode LAN. `get_admin_user` bakes the LAN bypass → always-admin truth-table in one place; every other `/admin/*` endpoint already uses it (`POST /api/admin/invite`, `GET /api/admin/ratings`, etc). Bit us once on `POST /api/admin/bpm/recompute`
 - **Admin UI error surfacing**: `API.post` in [api.js](frontend/js/api.js) throws with only `${res.status} ${res.statusText}` — it does NOT read the response body's `detail` field. Admin/error UIs that need to show the backend's `HTTPException(..., detail="why")` must use plain `fetch` + `await res.json().catch(() => ({}))` then render `data.detail`. Otherwise users see `失敗: 400 Bad Request` with no hint why. Pattern: see [admin.html `btnBpmRecompute` handler](frontend/admin.html)
 
-## Beta Productization
+## Beta Productization (archival — code paths kept inert)
+
+The beta phase wound down 2026-04-26 (see Post-Beta Status above). The `LIVECHORD_MODE=beta` gates, beta-only endpoints, hashed-path search, invite flow, dual-instance scripts, and beta-only frontend branches are **all still in the codebase** but not exercised by the live deployment. The bullet list below documents how those gates work so you can re-enable them or test changes that touch them.
 
 - **Deployment mode**: env var `LIVECHORD_MODE` (priority) → `data/settings.json` `"deployment_mode"` (fallback) → `"personal"` (default)
-- **Dual-instance**: NUC runs two uvicorn processes via [start_dual.bat](start_dual.bat) — Personal on 8800, Beta on 8801
+- **Dual-instance** (archival): the NUC could run two uvicorn processes via [start_dual.bat](start_dual.bat) — Personal on 8800, Beta on 8801. Currently only the Personal 8800 instance runs
 - **LAN bypass** (personal mode): LAN IPs (`192.168.x.x`, `10.x.x.x`, `127.x.x.x`) auto-authenticated as admin, no login needed
 - In beta mode: feedback UI, bug report FAB, analytics tracking, local audio playback, process page are enabled; admin paths restricted to LAN
 - In personal mode: all beta features hidden, full NAS path visibility, zero login friction on LAN
@@ -140,7 +139,7 @@ Any change to frontend files requires Playwright verification before claiming do
   2. **對齊小節線** — *destructive* boundary relocation. Walks every inner `chord[i].end == chord[i+1].time` and snaps it to the nearest bar line within ±½-bar tolerance, then runs the bar-split sweep for any chord still > 1 bar. Preserves `chord[0].time` and `chord[last].end` (song endpoints don't move); rejects snaps that would collapse a chord to < ½ beat or overlap a neighbour. **Changes which chord is "active" at the snapped moment** — show an orange warning in the panel. Why lossy: BTC sometimes places boundaries off bar lines deliberately (syncopation, anacrusis); user should run 還原 if the snap over-squares a legitimately syncopated part.
   3. **依比例切分** (legacy fallback) — original `threshold + ratio` behaviour, untouched, for users who want proportional splits (1:1, 1:3, 1:1:1 etc) independent of meter.
   - Shared UI: bar+barsnap share the `.as-bar-section` with TS chips (`自動 (N) / 3/4 / 4/4 / 6/8 → 6`); ratio hides it. `localStorage.livechord_auto_split = {mode, tsOverride, threshold, ratio}` persists per-user.
-  - **Doesn't auto-populate downbeats** — librosa-fallback songs (the current 8801 default, because [beat_snap.analyze_and_snap_dynamic(prefer_madmom=False)](backend/beat_snap.py) is the ingest default for speed) have `downbeats=[]` and the tool drops to the synthetic grid. Precise bar alignment requires running 升級節拍 (`POST /api/process/upgrade-beats`) on the song first so madmom populates `downbeats[]`, then re-running the split. Intentional design trade-off — ingest stays ~2s fast, user opts into the 30s madmom run per song when BPM/alignment looks wrong.
+  - **Doesn't auto-populate downbeats** — librosa-fallback songs (the ingest default, because [beat_snap.analyze_and_snap_dynamic(prefer_madmom=False)](backend/beat_snap.py) keeps ingest fast) have `downbeats=[]` and the tool drops to the synthetic grid. Precise bar alignment requires either running 升級節拍 (`POST /api/process/upgrade-beats`) so madmom populates `downbeats[]`, or letting the new `bar_arbitrator` / `beat_refiner` pipeline (see "AI Quality Pipeline" below) re-derive them at ingest. Intentional design trade-off — ingest stays ~2s fast, user opts into the slower run per song when BPM/alignment looks wrong.
 - **Empty chord state**: `loadChords()` renders `chord-empty-state` block with hero "一鍵偵測和弦" button (`#btnDetectHero`, wired via document click delegation to shared `runChordDetection()`). In personal mode, detection auto-fires on chord-empty; in beta admin, hero button waits for click
 - **Fingering display**: waterfall intentionally does NOT render finger numbers (too cluttered) — reserved for the 88-key piano area. `fingeringMap` populates from `accData.left_hand/right_hand` (has `.finger`); for hash-mode songs without accData, the fallback branch synthesizes LH fingering 5-3-1 / 5-3-2-1 / 5-4-3-2-1 from the current chord voicing (sorted low→high) so the keyboard still shows numbers when `showFingering` toggle is ON. RH melody has no reliable fingering (API doesn't return it, no phrase context), so it shows no number
 - **Hash-mode AI accompaniment parity**: `_loadAccompaniment()` used to hard-gate on `trackPath` being non-empty, so 8801 beta hash-mode songs always fell back to chord-voicing blocks (flat LH, no RH beyond melody). `_accPath()` helper (`trackPath || chordData.path`) unlocks the endpoint for hash mode — backend `song_hash(path)` produces the same hash for `__upload/<job_id>` that process-queue used at save time, so the same chord JSON is found. The hash-mode chord-load branch also calls `_loadAccompaniment()` once (DB-path mode already triggers on piano tab activation). Result: 8801 hash-mode now renders per-onset LH/RH bars + velocity + finger + pedal, matching 8800 path-mode
@@ -159,9 +158,9 @@ Any change to frontend files requires Playwright verification before claiming do
 - **YT debug hook**: `window.__lcYtDebug()` in player page DevTools returns live `{hasPlayer, state, currentTime, duration, fillWidth, timeText, timerAlive, lastError, chordDuration, syncDisabled, verifiedOk}` snapshot; `window.__lcYtError` holds the most recent sync-tick exception. Playwright headless cannot play YT IFrame — human-verify with desktop Chrome/Edge; see [doc/QA.md §1.1](doc/QA.md)
 - Productization roadmap: [doc/PRODUCTIZATION.md](doc/PRODUCTIZATION.md)
 
-## Dual-instance isolation (Personal 8800 vs Beta 8801)
+## Dual-instance isolation (archival — Personal 8800 vs Beta 8801)
 
-LiveChord runs two uvicorn processes on the same NUC. They share code + music files but NOT configuration. Design after the "one `settings.json` overwrite wiped out the beta groups" incident (see [doc/QA_BATTLE_STORY.md](doc/QA_BATTLE_STORY.md) 番外篇 IV):
+Documented for completeness; the dual-instance setup is currently *not* running (only Personal 8800 is live post-beta). The split-settings + per-instance hard gates remain in the code so re-enabling beta is a one-batch-file flip. Design after the "one `settings.json` overwrite wiped out the beta groups" incident (see [doc/QA_BATTLE_STORY.md](doc/QA_BATTLE_STORY.md) 番外篇 IV):
 
 - **Split settings files**: `data/settings_personal.json` + `data/settings_beta.json` + `data/settings_shared.json`
   - `SHARED_KEYS` (in [backend/auto_worker.py](backend/auto_worker.py)) marks keys shared across instances: `accompaniment_v2_enabled`, `settings_backup_targets`, `data_backup_root`, `backup_schedule`
@@ -229,6 +228,24 @@ Operational implications:
 - **Persist by LABEL not index** (in localStorage `livechord_ab_phrase:<path>`): `{"selected": ["Verse 1", "Chorus 1"]}` — section splits/inserts/renames don't break user's saved selection. Fallback to "manual" if all labels vanish
 - **Hash mode parity**: `_loadSections` supports `?hash=` param (backend [ai_api.py](backend/ai_api.py) `/api/ai/sections` accepts both path/hash). Previously hash-mode player never fetched sections → beta strip was always empty
 - **Section detection fallback for zero-MIDI songs**: `ai/section_detect.py` `_classify_dl` returns False when `sum(melody_density + bass_density) == 0` → rule-based path runs instead. Many library songs (~82%) never had hybrid extraction; previously they received all-zero features and got labeled single "verse"
+
+## AI Quality Pipeline (current focus)
+
+Post-beta, the active engineering track is **improving the upstream signal that everything else feeds on** — beat stability, chord accuracy, and phrase (section/bar) detection. The modules below are the moving pieces; treat any change to them as a quality-track change and verify against the existing chord-JSON corpus before shipping.
+
+- **`beat_refiner`** ([backend/ai/beat_refiner_model.py](backend/ai/beat_refiner_model.py) · [beat_refiner_features.py](backend/ai/beat_refiner_features.py) · [beat_refiner_infer.py](backend/ai/beat_refiner_infer.py)) — Compact Transformer (≈3M params, 6 encoder layers, d_model 256, sinusoidal pos enc, three sigmoid heads: beat / downbeat / chord-boundary). Runs offline / on-demand on top of beat_this/madmom/librosa output to re-pick beats with full bidirectional context. Trained on the 13,017-song corpus built by [scripts/build_training_corpus.py](scripts/build_training_corpus.py); 3-stage train pipeline ([train_refiner_1_extract.bat](train_refiner_1_extract.bat) → [train_refiner_2_train.bat](train_refiner_2_train.bat) → [train_refiner_3_deploy.bat](train_refiner_3_deploy.bat)). Backfill v2 over the existing chord-JSON library is complete (`LiveChord-sjq` closed). Inference is process-pool isolated (same pattern as BTC) — never call from the FastAPI event loop.
+- **`bar_arbitrator`** ([backend/ai/bar_arbitrator.py](backend/ai/bar_arbitrator.py)) — post-processor that fixes bar/downbeat phase drift, beats-per-bar confusion, and bar-doubling without re-running expensive audio models. Phase 0 is rule-based using existing `chords[] / beats[] / downbeats[] / bpm / tempo_curve`; Phase 1 trained Transformer model is now live with admin & player tools (`bar_arbitrator_v1.pt` + ONNX export at `data/models/bar_arbitrator_v1.onnx`). Conservative by default — only acts when candidate grid scores above `_MIN_CANDIDATE_F1`. Personal-mode-only call site in [process_queue.py](backend/process_queue.py).
+- **Chord-splitter / serve-time bar alignment** — [chord-correction.js](frontend/js/chord-correction.js) `inferBeatsPerBar` / `nextDownbeatAfter` + [player.js](frontend/js/player.js) `_showAutoSplitPanel`. The 自動切分 panel's three modes (依小節切分 / 對齊小節線 / 依比例切分) lean on the upgraded `downbeats[]` from above to slice and snap chord cards to bar lines. Beat-aware dot rendering on the player canvas reads the same upgraded grid.
+- **Chord JSON sharding** — `data/chords/` was rewritten into `<hash[:2]>/` buckets (commit `abe6172`). Filesystem perf — admin coverage queries and migration scripts now scan ~256× fewer files per `listdir`. Tier2 backup auto-fires after sharding pushes (commit `d47747c`); 3-way beat tracker switch (librosa / madmom / beat_this) lives behind the same admin UI.
+- **`neural_arranger` (Phase 2 MIDI arranger, in-progress)** — [backend/ai/neural_arranger.py](backend/ai/neural_arranger.py) + [backend/ai/remi_tokenizer.py](backend/ai/remi_tokenizer.py). Decoder-only Transformer (d_model 768, 12 heads, 12 layers, ≈110M params) trained on `F:\MIDI-Library` to generate per-role MIDI (BASS / MELODY / DRUM / etc) conditioned on chord + role prefix tokens. Training: [run_train.bat](run_train.bat) → [scripts/run_training.py](scripts/run_training.py) (50 epochs, batch_size 4, GradScaler AMP). Recent uncommitted changes add **checkpoint resume** + per-epoch save so long runs can be interrupted; output `data/models/neural_arranger_phase2.pt`. E2E generation: [run_generate.bat](run_generate.bat) → [scripts/generate_and_render.py](scripts/generate_and_render.py) emits `eval_output/*.mid` and pipes through [scripts/render_midi_to_wav.py](scripts/render_midi_to_wav.py) for FluidSynth WAV rendering. Plan/spec: [doc/midi_arranger_implementation_plan.md](doc/midi_arranger_implementation_plan.md), [doc/PHASE2_ARRANGEMENT_PLAN.md](doc/PHASE2_ARRANGEMENT_PLAN.md).
+
+**Forward goals (in priority order)**:
+
+1. **Beat stability** — drive down `bar_arbitrator` false-positives + push `beat_refiner` accuracy on edge genres (slow ballads, rubato, intro silence). Anchor metric: percentage of chord-JSONs where the human correction queue confirms `downbeats[]` matches musical bars.
+2. **Chord accuracy** — both BTC raw output and the post-correction layer. Beta-era ★ ratings in `feedback.db` are the labeled signal; the chord-quality LED already surfaces them in the player. Next step is feeding 人工校對 corrections back into a fine-tune corpus for BTC.
+3. **Phrase / section detection** — `section_detect` DL path improves once melody/bass densities are non-zero across more of the library (currently rule-based fallback covers ~82% per the comment in [backend/ai/section_detect.py](backend/ai/section_detect.py)). Hybrid extraction expansion + the Phase 4 MIDI catalog (see [doc/PHASE_4_HYBRID_MELODY.md](doc/PHASE_4_HYBRID_MELODY.md)) feeds this directly.
+
+Open trade-offs and known issues for the active tracks live in [doc/TODOS.md](doc/TODOS.md) "Quality Tracks (active focus)".
 
 ## Reference
 
