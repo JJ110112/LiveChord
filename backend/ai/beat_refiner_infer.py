@@ -101,6 +101,15 @@ def _get_model(checkpoint_path: Optional[Path] = None):
         # inference fast.
         try:
             import torch  # noqa: F401
+            # Force-register torch._utils into the namespace BEFORE any
+            # torch.load() unpickle. The saved checkpoint references
+            # ``torch._utils._rebuild_tensor_v2`` for tensor reconstruction;
+            # under ProcessPoolExecutor spawn this submodule sometimes
+            # isn't auto-imported in time, producing
+            # ``AttributeError: module 'torch' has no attribute '_utils'``
+            # that BrokenProcessPool's the entire backfill (8 workers, only
+            # 2 win the race). Importing it explicitly here avoids the race.
+            import torch._utils  # noqa: F401
         except ImportError:
             logger.warning("torch unavailable — beat_refiner disabled")
             return None
@@ -116,6 +125,7 @@ def _get_model(checkpoint_path: Optional[Path] = None):
 
         try:
             import torch
+            import torch._utils  # noqa: F401  (see race fix above)
             ckpt = torch.load(str(path), map_location="cpu",
                               weights_only=False)
         except Exception as e:
