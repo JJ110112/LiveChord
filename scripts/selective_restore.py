@@ -17,7 +17,10 @@ _BAK_SUFFIX = ".bak.beat_refiner"
 
 
 def restore(live_path: Path) -> str:
-    bak = Path(str(live_path).replace(".json", f"{_BAK_SUFFIX}.json"))
+    # Snapshot is stored as <live_path>.bak.beat_refiner.json (appended,
+    # NOT a replacement of .json). Match the backfill script's convention:
+    #   bak = json_path + _BAK_SUFFIX + ".json"
+    bak = Path(str(live_path) + _BAK_SUFFIX + ".json")
     if not bak.exists():
         return "no-bak"
     try:
@@ -39,7 +42,7 @@ def main():
     if args.dry_run:
         print("(dry run — no changes)")
         for p in paths[:5]:
-            bak = Path(str(p).replace(".json", f"{_BAK_SUFFIX}.json"))
+            bak = Path(str(p) + _BAK_SUFFIX + ".json")
             print(f"  {p.name}  bak_exists={bak.exists()}")
         return
 
