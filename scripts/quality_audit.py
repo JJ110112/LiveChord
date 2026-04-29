@@ -35,6 +35,39 @@ from typing import Dict, List, Optional, Tuple
 
 # Tunables. Pop-friendly defaults; jazz/classical may legitimately fail
 # some of these without being "broken".
+# Path keywords for non-rhythmic music — songs containing any of these in
+# their path are excluded BEFORE scoring. Identified empirically from user
+# labeling (round 1, Apr 2026): top-200 suspicion list was dominated by
+# choirs, ambient, soundtracks, solo piano — songs where even a human can't
+# reliably mark the beat. Including them in beat_refiner training would
+# teach the model to "find a beat" where there isn't one. Focus on pop
+# and jazz with clear drum rhythms instead.
+_EXCLUDE_PATH_KEYWORDS = [
+    "Relax/", "Therapy/", "Soundtracks/", "Soundtrack/",
+    "Organ Works", "Organ Music",
+    "Solo Piano", "Piano Solo", "Solo Guitar",
+    "Choir", "Cantata", "Mass ", "Requiem",
+    # Specific instrumental/choral artists/composers in this library
+    "Voces8/", "Libera ", "Libera/", "Libera -",
+    "Saint-Preux", "Messiaen", "Beegie Adair", "Christopher Phillips",
+    "John Williams/",  # most JW outputs are orchestral score, not rhythmic
+    "Ennio Morricone",  # ditto
+    # Non-music
+    "Commentary", "Behind The Songs", "(Live Commentary",
+    "8Hz", "Brain Meditation", "Therapy", "Zen ",
+]
+
+# Below this chord-change rate (changes per minute), the track is too
+# harmonically static to be useful for beat learning. Real pop has 5-30
+# chord changes/min; ambient drones have 0-2.
+_MIN_CHORD_CHANGES_PER_MIN = 3.0
+
+# Maximum beat-gap CV. Drums create steady beats — inter-beat-interval CV
+# under 0.05 typically indicates a real drum kit. Solo piano / ambient /
+# orchestral with rubato have CV > 0.10. Reject anything above this so
+# the audit focuses on songs where beat existence is unambiguous.
+_MAX_BEAT_GAP_CV = 0.08
+
 _BPM_LOW = 60.0
 _BPM_HIGH = 180.0
 _CV_THRESH = 0.10
@@ -94,12 +127,36 @@ def _score_one(p: Path) -> Optional[Dict]:
         d = json.loads(p.read_text(encoding="utf-8"))
     except Exception:
         return None
+
+    path_str = d.get("path", "") or ""
+    # Exclude non-rhythmic genre paths early (saves work on ~40% of library).
+    if any(kw in path_str for kw in _EXCLUDE_PATH_KEYWORDS):
+        return None
+
     chords = d.get("chords") or []
     beats = d.get("beats") or []
     dbs = d.get("downbeats") or []
     bpm = float(d.get("bpm") or 0)
     if len(chords) < 4 or len(beats) < 8 or len(dbs) < 4 or bpm <= 0:
         return None  # not enough data to score
+
+    # Reject harmonically-static tracks (drones, pads). Compute chord-change
+    # rate per minute using last chord's end as song duration.
+    last_end = chords[-1].get("end") if chords[-1].get("end") else (
+        beats[-1] if beats else 0
+    )
+    if last_end and last_end > 0:
+        chord_rate = len(chords) / (last_end / 60.0)
+        if chord_rate < _MIN_CHORD_CHANGES_PER_MIN:
+            return None
+
+    # Reject tracks whose beat tracker output is too irregular to imply a
+    # drummed song. beat_gap CV separates drum-driven music (CV < 0.05) from
+    # rubato/solo piano/orchestral (CV often > 0.10). This is a stronger
+    # filter than path keywords because it works on the actual signal.
+    beat_gap, beat_cv = _gap_stats(beats)
+    if beat_cv is None or beat_cv > _MAX_BEAT_GAP_CV:
+        return None
 
     score = 0
     reasons: List[str] = []
@@ -135,8 +192,8 @@ def _score_one(p: Path) -> Optional[Dict]:
     metrics["chord_db_align"] = align
 
     # 4. Beats per bar (4/4 ideal; some songs are legitimately 3/4 or 6/8)
-    beat_gap, _ = _gap_stats(beats)
     bpb = (bar_gap / beat_gap) if (bar_gap and beat_gap) else None
+    metrics["beat_cv"] = beat_cv if beat_cv is not None else -1.0
     if bpb is not None:
         # Allow 3/4 (2.5-3.5) and 4/4 (3.5-4.5)
         if not (2.5 <= bpb <= 4.5 or 5.5 <= bpb <= 6.5 or 7.5 <= bpb <= 8.5):
@@ -268,6 +325,21 @@ def main():
     garbage = len(results) - len(real)
     print(f"\nfiltered {garbage:,} non-music tracks (no pulse / no harmony)", file=sys.stderr)
 
+    # Dedup by file hash. Same song scanned from Y:/ and Z:/ (or rescanned)
+    # produces multiple rows that waste labeling time on the same audio.
+    seen_hashes = set()
+    deduped = []
+    for r in real:
+        h = r.get("hash")
+        if h in seen_hashes:
+            continue
+        seen_hashes.add(h)
+        deduped.append(r)
+    dups_removed = len(real) - len(deduped)
+    if dups_removed:
+        print(f"deduped {dups_removed:,} hash duplicates", file=sys.stderr)
+    real = deduped
+
     # Categorize each suspect by dominant failure mode for diverse labeling.
     def _category(r: Dict) -> str:
         bpm = r.get("m_bpm", 0) or 0
@@ -310,7 +382,7 @@ def main():
     # Write CSV
     args.out.parent.mkdir(parents=True, exist_ok=True)
     keys = ["score", "category", "reasons", "flags", "hash", "path", "player_url",
-            "m_bpm", "m_db_cv", "m_chord_db_align", "m_bpb",
+            "m_bpm", "m_beat_cv", "m_db_cv", "m_chord_db_align", "m_bpb",
             "m_tempo_std", "m_sub_bar_ratio", "m_short_chord_ratio", "m_source"]
     with args.out.open("w", encoding="utf-8-sig", newline="") as f:
         w = csv.writer(f)
