@@ -4369,7 +4369,12 @@
     // the true beat rate regardless of card duration. This is what fixes
     // the "8-beat chord moves dots at half-beat speed" issue for cards
     // the backend didn't split (low-confidence downbeats path).
-    if (!off && Array.isArray(chordData && chordData.beats) && chordData.beats.length) {
+    //
+    // BUT skip when the user has manually overridden BPM via the click
+    // cycle — they're saying "interpret rhythm at this rate", not "trust
+    // the tracker". The override path below honors that intent.
+    const manualOverrideForRealBeats = Math.abs(_currentBpmMult - 1.0) > 1e-3;
+    if (!off && !manualOverrideForRealBeats && Array.isArray(chordData && chordData.beats) && chordData.beats.length) {
       let realBeats = _beatsInRange(chordData.beats, cStart, cStart + durSec);
       // beat_this/madmom on slow songs sometimes locks onto the sub-beat
       // pulse (e.g. emits 8 beats per bar at 88 BPM instead of 4). Downsample
