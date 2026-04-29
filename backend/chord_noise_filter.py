@@ -31,8 +31,12 @@ from typing import Iterable, List, Dict
 
 
 # Below this duration, a chord is candidate for noise absorption.
-# 1.0 × secs-per-beat = no longer than one beat at the song's BPM.
-_NOISE_DUR_BEATS = 1.0
+# 1.2 × secs-per-beat = up to ~1.2 beats. BTC quantization can stretch a
+# 1-beat noise by ~0.02s past the spb boundary; 1.0 was too tight and
+# missed user-reported cases on Bet You Wanna (F at 29.86-30.42 = 0.56s
+# vs spb 0.54s). 1.2 catches the noise, still well below typical 2-beat
+# real passing chords (which also tend to start ON a downbeat anyway).
+_NOISE_DUR_BEATS = 1.2
 
 # Tolerance for "is this time near a downbeat" check.
 _DB_TOL_SEC = 0.10
