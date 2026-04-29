@@ -24,7 +24,15 @@ _BOUNDARY_EPSILON_SEC = 0.05
 # downbeat (common at chord-change boundaries) gets split into "1 bar + tiny
 # sliver" — visually worse than the un-split overflow we're trying to fix.
 # Also collapses splits caused by duplicate/near-duplicate downbeat entries.
-_MIN_SEG_BAR_FRAC = 0.4
+#
+# 0.20 (was 0.40) lets pre-emptive pickup chords (~0.9 beat = 0.4-0.5s in pop
+# at 110-130 BPM) survive as their own segment, instead of being absorbed back
+# into a 1.25-bar 5-dot card with the downbeat on dot 2. Verified on
+# "Give Your Heart a Break" (125 BPM): 0:23 B card was 5 dots, after this
+# becomes 1-dot pickup + 4-dot bar with downbeat on dot 1. Sub-beat artifacts
+# (e.g. 0.05s ghosts at chord boundaries) are still well below the new
+# 0.20×bar = ~0.4s threshold and get dropped.
+_MIN_SEG_BAR_FRAC = 0.20
 
 # Trigger virtual-downbeat interpolation when the gap between two consecutive
 # split boundaries (incl. chord start/end) exceeds this multiple of the median
