@@ -4390,6 +4390,27 @@
         realBeats = down;
       }
       if (realBeats.length >= 1 && realBeats.length <= 16) {
+        // Bar-snap: when the card duration is within ±20% of an integer-bar
+        // multiple, force tsBeats × bars evenly-spaced dots. This corrects
+        // the off-by-one realBeats artefact (5+3 / 3+5 patterns) caused by
+        // _beatsInRange epsilon: when a beat lies near the chord boundary,
+        // it can be assigned to the neighbour, leaving the present chord
+        // with 3 or 5 real beats inside what is musically a 1-bar card.
+        // Cards that are NOT bar-aligned (e.g. 0.73-bar passing chords)
+        // fall through to the realBeats path — those genuinely have an
+        // odd beat count and should render as such.
+        const expectedBeatsForCard = (spb > 0) ? (durSec / spb) : tsBeats;
+        const barsApprox = expectedBeatsForCard / tsBeats;
+        const roundedBars = Math.round(barsApprox);
+        const isBarAligned = roundedBars >= 1 && Math.abs(barsApprox - roundedBars) < 0.20;
+        if (isBarAligned) {
+          const targetBeats = Math.min(16, roundedBars * tsBeats);
+          return {
+            count: targetBeats,
+            short: false,
+            dots: _buildVirtualDots(targetBeats, durSec, cStart),
+          };
+        }
         return {
           count: realBeats.length,
           short: realBeats.length < tsBeats * 0.75,
