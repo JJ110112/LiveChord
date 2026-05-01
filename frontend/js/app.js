@@ -2,7 +2,7 @@
 
 (function () {
   // ---- state ----
-  let currentPath = "";
+  let currentPath = localStorage.getItem("livechord_home_path") || "";
   let currentTab = localStorage.getItem("livechord_home_tab") || "recent";
   let searchTimer = null;
 
@@ -823,6 +823,7 @@
 
   async function browse(path) {
     currentPath = path;
+    try { localStorage.setItem("livechord_home_path", path || ""); } catch {}
     showLoading(true);
     browseGrid.innerHTML = "";
     trackList.innerHTML = "";
@@ -849,6 +850,12 @@
         renderGrid(dirs, files);
       }
     } catch (err) {
+      // Saved path may be stale (folder renamed/deleted) — fall back to root once.
+      if (path) {
+        try { localStorage.removeItem("livechord_home_path"); } catch {}
+        showLoading(false);
+        return browse("");
+      }
       browseGrid.innerHTML = `<div class="empty"><div class="icon">&#x26A0;</div><div class="msg">${escapeHtml(err.message)}</div></div>`;
     } finally {
       showLoading(false);

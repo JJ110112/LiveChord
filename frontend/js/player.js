@@ -6265,8 +6265,8 @@
               searchResults.classList.remove("show");
               const h = el.dataset.hash;
               window.location.href = h
-                ? `/player?hash=${encodeURIComponent(h)}`
-                : `/player?path=${encodeURIComponent(el.dataset.path)}`;
+                ? `/player?hash=${encodeURIComponent(h)}&autoplay=1`
+                : `/player?path=${encodeURIComponent(el.dataset.path)}&autoplay=1`;
             });
           });
         } catch {}
