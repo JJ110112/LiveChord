@@ -180,13 +180,22 @@ def train_arranger(data_dir: str, epochs: int = 10, batch_size: int = 4, device:
     
     # Ignore [PAD] token (index 0) in loss calculation
     criterion = nn.CrossEntropyLoss(ignore_index=0)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.01)
+    
+    total_steps = epochs * len(data_loader)
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer, max_lr=2e-4, total_steps=total_steps, pct_start=0.1
+    )
     
     # Resume optimizer if available
     if os.path.exists(save_path) and 'optimizer_state_dict' in checkpoint:
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        
-    scaler = torch.amp.GradScaler('cuda') if 'cuda' in device else None
+        if 'scheduler_state_dict' in checkpoint:
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+            
+    # bfloat16 does not require a GradScaler, it avoids NaN overflows natively
+    scaler = None
+    use_amp = 'cuda' in device
     
     print(f"Starting training on {device} from epoch {start_epoch+1} to {epochs}...")
     print(f"Dataset size: {len(dataset)} files. Batches per epoch: {len(data_loader)}")
@@ -199,20 +208,16 @@ def train_arranger(data_dir: str, epochs: int = 10, batch_size: int = 4, device:
             src, target = src.to(device), target.to(device)
             optimizer.zero_grad()
             
-            # Using AMP for faster training on modern GPUs
-            with torch.amp.autocast('cuda', enabled=(scaler is not None)):
-                output = model(src)
-                # Reshape for CrossEntropyLoss: [batch_size * seq_len, vocab_size]
-                loss = criterion(output.view(-1, tokenizer.vocab_size), target.reshape(-1))
-            
-            if scaler is not None:
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-            else:
-                loss.backward()
-                optimizer.step()
+            # Using AMP with bfloat16 for faster, stable training on modern GPUs (like RTX 5080)
+            with torch.amp.autocast('cuda', dtype=torch.bfloat16, enabled=use_amp):
+                logits = model(src)
+                loss = criterion(logits.view(-1, tokenizer.vocab_size), target.view(-1))
                 
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+                
+            scheduler.step()
             total_loss += loss.item()
             
             if batch_idx % 10 == 0:
@@ -232,6 +237,7 @@ def train_arranger(data_dir: str, epochs: int = 10, batch_size: int = 4, device:
             'num_layers': 12,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict(),
         }, save_path)
         print(f"Checkpoint saved to {save_path}")
 

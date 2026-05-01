@@ -94,14 +94,16 @@ def main():
         
     model.eval()
     
-    prefix = ["[BOS]", f"[TARGET_{args.role}]", "<GENERATE>"]
+    # We remove [TARGET_ROLE] and <GENERATE> because the model was not trained with them in dataset.py
+    # The dataset simply starts with [BOS]. We can provide a starting chord though!
+    prefix = ["[BOS]", "[BAR]", args.chord]
     print(f"Prefix tokens: {prefix}")
     prefix_ids = tokenizer.encode(prefix)
     
-    print(f"Generating tokens constrained to {args.chord}...")
+    print(f"Generating multi-track arrangement constrained to {args.chord}...")
     generated_ids = model.generate(
         prefix_tokens=prefix_ids,
-        max_len=100, # Generate 100 tokens
+        max_len=500, # Increased from 100 to 500 for a longer piece
         tokenizer=tokenizer,
         current_chord=args.chord,
         temperature=1.0
