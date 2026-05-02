@@ -42,8 +42,14 @@
   }
 
   // ---- beta mode: hide NAS-dependent sections for non-admin ----
+  // Variable name predates Phase B/C; "user-facing" today means beta OR public.
+  // Both modes share the same UI shape (no NAS browse for non-admin, search-bar
+  // is the entry, beta-style add-song modal). _isBetaMode stays the central
+  // "user-facing" flag; _isPublicMode lets callers distinguish when the auth
+  // semantics matter (forced login in beta vs anonymous-allowed in public).
   let _isBetaNonAdmin = false;
   let _isBetaMode = false;
+  let _isPublicMode = false;
 
   async function _checkBetaAccess() {
     try {
@@ -51,7 +57,8 @@
         fetch("/api/config/public").then(r => r.json()),
         fetch("/api/auth/is_admin").then(r => r.json()),
       ]);
-      _isBetaMode = cfgRes.deployment_mode === "beta";
+      _isPublicMode = cfgRes.deployment_mode === "public";
+      _isBetaMode = cfgRes.deployment_mode === "beta" || _isPublicMode;
       if (_isBetaMode && !adminRes.is_admin) {
         _isBetaNonAdmin = true;
         // Hide NAS-dependent sections (but keep favorites — works with __hash/ paths)
