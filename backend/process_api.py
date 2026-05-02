@@ -771,6 +771,105 @@ def youtube_search(q: str, username: str = Depends(get_user_or_anon)):
         return {"video_id": None, "url": None, "error": str(e)[:100]}
 
 
+# Cache (q, n) → list of result dicts for the multi-result list endpoint.
+# yt-dlp search is slow (3-5s) and YouTube doesn't churn fast — caching for
+# the process lifetime is fine. Key includes n so we can grow the list later
+# without serving stale shorter results.
+_yt_search_list_cache: dict[tuple[str, int], list] = {}
+_YT_LIST_CACHE_MAX = 256  # per-process bound; LRU-ish via insertion order
+
+
+def _format_duration(seconds: int | float | None) -> str:
+    if not seconds or seconds <= 0:
+        return ""
+    s = int(seconds)
+    return f"{s // 60}:{s % 60:02d}"
+
+
+@router.get("/youtube-search-list", dependencies=[Depends(_require_user_facing)])
+def youtube_search_list(
+    q: str,
+    n: int = 5,
+    username: str = Depends(get_user_or_anon),
+):
+    """Multi-result YouTube search for the homepage search dropdown.
+
+    Returns up to ``n`` videos with metadata so the frontend can render
+    rich rows (thumbnail, title, channel, duration). Click flow on the
+    frontend reuses the existing pasted-URL analyze path."""
+    q = q.strip()[:120]
+    if not q:
+        raise HTTPException(status_code=400, detail="Empty query")
+    n = max(1, min(10, n))
+
+    cache_key = (q.lower(), n)
+    if cache_key in _yt_search_list_cache:
+        return {"results": _yt_search_list_cache[cache_key], "cached": True}
+
+    try:
+        # ytsearchN:<query> + --dump-json emits one JSON per match (NDJSON).
+        # --flat-playlist keeps the query lightweight (no per-video HTTP).
+        # encoding="utf-8" matters on Windows NUC where cp950 silently drops
+        # CJK title characters — same fix CLAUDE.md documents for
+        # _get_youtube_title.
+        result = subprocess.run(
+            [YTDLP_BIN, "--flat-playlist", "--dump-json", "--no-warnings",
+             "--no-download", f"ytsearch{n}:{q}"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+        )
+        if result.returncode != 0:
+            return {"results": [], "error": (result.stderr or "yt-dlp failed")[:200]}
+
+        out: list[dict] = []
+        import json as _json
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                meta = _json.loads(line)
+            except Exception:
+                continue
+            vid = meta.get("id") or ""
+            if not vid or len(vid) != 11:
+                continue
+            title = (meta.get("title") or "").strip()
+            channel = (meta.get("channel") or meta.get("uploader") or "").strip()
+            duration = meta.get("duration")
+            # Modal/web thumbnail pattern — img.youtube.com is what the player
+            # already uses for embed thumbnails, no extra DNS round trip.
+            thumb = f"https://img.youtube.com/vi/{vid}/mqdefault.jpg"
+            out.append({
+                "video_id": vid,
+                "title": title or vid,
+                "channel": channel,
+                "duration": _format_duration(duration),
+                "thumbnail_url": thumb,
+                "url": f"https://www.youtube.com/watch?v={vid}",
+            })
+            if len(out) >= n:
+                break
+
+        # Trim cache if it grows unbounded
+        if len(_yt_search_list_cache) >= _YT_LIST_CACHE_MAX:
+            try:
+                first = next(iter(_yt_search_list_cache))
+                _yt_search_list_cache.pop(first, None)
+            except StopIteration:
+                pass
+        _yt_search_list_cache[cache_key] = out
+        return {"results": out, "cached": False}
+
+    except subprocess.TimeoutExpired:
+        return {"results": [], "error": "timeout"}
+    except Exception as e:
+        return {"results": [], "error": str(e)[:200]}
+
+
 # ---------------------------------------------------------------------------
 # User history (non-admin)
 # ---------------------------------------------------------------------------

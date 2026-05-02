@@ -601,6 +601,8 @@
   "home.search.add_song_btn": "+ 新增此曲：貼 YT URL 或上傳音檔",
   "home.search.no_songs_empty": "尚無歌曲，上傳音檔或貼上 YouTube URL 開始分析",
   "home.search.upload_badge": "本機",
+  "home.search.yt_section_title": "來自 YouTube",
+  "home.search.yt_searching": "搜尋 YouTube…",
   "home.browse.empty_dir": "空目錄",
   "home.label.analysis_result": "分析結果",
 

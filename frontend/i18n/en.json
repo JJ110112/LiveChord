@@ -601,6 +601,8 @@
   "home.search.add_song_btn": "+ Add this song: paste YT URL or upload audio",
   "home.search.no_songs_empty": "No songs yet — upload audio or paste a YouTube URL to start analyzing",
   "home.search.upload_badge": "Local",
+  "home.search.yt_section_title": "From YouTube",
+  "home.search.yt_searching": "Searching YouTube…",
   "home.browse.empty_dir": "Empty folder",
   "home.label.analysis_result": "Analysis result",
 

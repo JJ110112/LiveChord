@@ -1054,67 +1054,141 @@
     if (!e.target.closest(".search-box")) searchResults.classList.remove("show");
   });
 
-  async function doSearch(q) {
-    try {
-      const data = await API.search(q);
-      if (data.error) {
-        searchResults.innerHTML = `<div style="padding:12px;color:var(--text-dim)">${escapeHtml(data.error)}</div>`;
-        searchResults.classList.add("show");
-        return;
-      }
-      if (data.results.length === 0) {
-        // Beta non-admin: offer add-song CTA so the only entry point (search)
-        // handles both "found" and "not found" cases.
-        if (_isBetaNonAdmin) {
-          searchResults.innerHTML = `
-            <div class="search-empty">
-              <div class="search-empty-msg">${_t("home.search.no_match", {q: escapeHtml(q)})}</div>
-              <button id="searchAddSongBtn" class="search-empty-btn">${_t("home.search.add_song_btn")}</button>
-            </div>`;
-          searchResults.classList.add("show");
-          const btn = document.getElementById("searchAddSongBtn");
-          if (btn) btn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            searchResults.classList.remove("show");
-            const panel = $("#betaFabPanel");
-            const backdrop = $("#betaFabBackdrop");
-            if (panel) { panel.classList.add("open"); panel.classList.remove("file-only"); }
-            if (backdrop) backdrop.classList.add("open");
-            const urlInput = $("#betaYtUrl");
-            if (urlInput) setTimeout(() => urlInput.focus(), 50);
-          });
-        } else {
-          searchResults.innerHTML = `<div style="padding:12px;color:var(--text-dim)">${_t("home.search.no_results")}</div>`;
-          searchResults.classList.add("show");
-        }
-        return;
-      }
-      let html = "";
-      for (const r of data.results) {
-        const hasHash = r.hash || r.path.startsWith("__hash/");
-        const coverUrl = hasHash ? "" : API.trackCoverUrl(r.path);
-        const uploadBadge = r.is_user_upload
-          ? `<span class="r-upload-badge">${_t("home.search.upload_badge")}</span>`
-          : "";
-        html += `
-          <div class="result-item${r.is_user_upload ? " is-upload" : ""}" data-path="${escapeHtml(r.path)}" ${r.hash ? `data-hash="${escapeHtml(r.hash)}"` : ""}>
-            ${coverUrl ? `<img class="r-cover" src="${coverUrl}" onerror="this.style.display='none'" loading="lazy" alt="">` : ""}
-            <div class="r-info">
-              <div class="r-title">${escapeHtml(r.title || r.path.split("/").pop())}${uploadBadge}${getDifficultyHtml(r)}</div>
-              <div class="r-artist">${escapeHtml(r.artist || "")} ${r.album ? "— " + escapeHtml(r.album) : ""}</div>
-            </div>
-          </div>`;
-      }
-      searchResults.innerHTML = html;
-      searchResults.classList.add("show");
-      searchResults.querySelectorAll(".result-item").forEach((el) => {
-        el.addEventListener("click", () => {
-          searchResults.classList.remove("show");
-          goPlayer(el.dataset.path, el.dataset.hash || "");
-        });
+  // Library search renders immediately; YouTube search runs in parallel
+  // and patches its own section in when ready (yt-dlp takes 3-5 s, library
+  // /api/search is sub-200 ms — don't block one on the other).
+  function _renderLibraryHtml(results) {
+    let html = "";
+    for (const r of results) {
+      const hasHash = r.hash || r.path.startsWith("__hash/");
+      const coverUrl = hasHash ? "" : API.trackCoverUrl(r.path);
+      const uploadBadge = r.is_user_upload
+        ? `<span class="r-upload-badge">${_t("home.search.upload_badge")}</span>`
+        : "";
+      html += `
+        <div class="result-item${r.is_user_upload ? " is-upload" : ""}" data-path="${escapeHtml(r.path)}" ${r.hash ? `data-hash="${escapeHtml(r.hash)}"` : ""}>
+          ${coverUrl ? `<img class="r-cover" src="${coverUrl}" onerror="this.style.display='none'" loading="lazy" alt="">` : ""}
+          <div class="r-info">
+            <div class="r-title">${escapeHtml(r.title || r.path.split("/").pop())}${uploadBadge}${getDifficultyHtml(r)}</div>
+            <div class="r-artist">${escapeHtml(r.artist || "")} ${r.album ? "— " + escapeHtml(r.album) : ""}</div>
+          </div>
+        </div>`;
+    }
+    return html;
+  }
+
+  function _renderYtSectionHtml(results) {
+    if (!results || results.length === 0) return "";
+    let html = `<div class="search-section-header">${_t("home.search.yt_section_title")}</div>`;
+    for (const r of results) {
+      const dur = r.duration ? `<span class="yt-r-dur">${escapeHtml(r.duration)}</span>` : "";
+      html += `
+        <div class="result-item yt-result" data-yt-url="${escapeHtml(r.url)}">
+          <img class="r-cover yt-thumb" src="${escapeHtml(r.thumbnail_url)}" onerror="this.style.display='none'" loading="lazy" alt="">
+          <div class="r-info">
+            <div class="r-title">${escapeHtml(r.title)}${dur}</div>
+            <div class="r-artist">${escapeHtml(r.channel || "")} <span class="yt-r-source">YouTube</span></div>
+          </div>
+        </div>`;
+    }
+    return html;
+  }
+
+  function _renderEmptyState(q) {
+    if (_isBetaNonAdmin) {
+      searchResults.innerHTML = `
+        <div class="search-empty">
+          <div class="search-empty-msg">${_t("home.search.no_match", {q: escapeHtml(q)})}</div>
+          <button id="searchAddSongBtn" class="search-empty-btn">${_t("home.search.add_song_btn")}</button>
+        </div>`;
+      const btn = document.getElementById("searchAddSongBtn");
+      if (btn) btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        searchResults.classList.remove("show");
+        const panel = $("#betaFabPanel");
+        const backdrop = $("#betaFabBackdrop");
+        if (panel) { panel.classList.add("open"); panel.classList.remove("file-only"); }
+        if (backdrop) backdrop.classList.add("open");
+        const urlInput = $("#betaYtUrl");
+        if (urlInput) setTimeout(() => urlInput.focus(), 50);
       });
-    } catch (err) {
-      console.error("search error", err);
+    } else {
+      searchResults.innerHTML = `<div style="padding:12px;color:var(--text-dim)">${_t("home.search.no_results")}</div>`;
+    }
+  }
+
+  function _bindYtClicks() {
+    searchResults.querySelectorAll(".result-item.yt-result").forEach((el) => {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const url = el.getAttribute("data-yt-url");
+        searchResults.classList.remove("show");
+        if (url && typeof _searchTriggerUrlAnalyze === "function") {
+          _searchTriggerUrlAnalyze(url);
+        }
+      });
+    });
+  }
+
+  function _bindLibraryClicks() {
+    searchResults.querySelectorAll(".result-item:not(.yt-result)").forEach((el) => {
+      el.addEventListener("click", () => {
+        searchResults.classList.remove("show");
+        goPlayer(el.dataset.path, el.dataset.hash || "");
+      });
+    });
+  }
+
+  // Tracks the currently in-flight query so a stale slow YT response from a
+  // previous keystroke doesn't paint over fresher results.
+  let _searchEpoch = 0;
+
+  async function doSearch(q) {
+    const epoch = ++_searchEpoch;
+
+    // Fire library search and YouTube search in parallel. Library typically
+    // resolves first; we render it immediately + show a YT placeholder. YT
+    // results stream in afterward.
+    const libP = API.search(q).catch(err => ({ error: String(err).slice(0, 200) }));
+    const ytP = API.youtubeSearchList(q, 5).catch(() => ({ results: [] }));
+
+    const lib = await libP;
+    if (epoch !== _searchEpoch) return; // user typed something else; bail
+
+    if (lib && lib.error) {
+      searchResults.innerHTML = `<div style="padding:12px;color:var(--text-dim)">${escapeHtml(lib.error)}</div>`;
+      searchResults.classList.add("show");
+      return;
+    }
+    const libResults = (lib && lib.results) || [];
+
+    let baseHtml = "";
+    if (libResults.length > 0) {
+      baseHtml += _renderLibraryHtml(libResults);
+    }
+    // Always reserve a YT placeholder so users see we're looking
+    baseHtml += `<div class="yt-section-slot"><div class="search-section-header">${_t("home.search.yt_section_title")}</div><div class="yt-loading">${_t("home.search.yt_searching")}</div></div>`;
+    searchResults.innerHTML = baseHtml;
+    searchResults.classList.add("show");
+    _bindLibraryClicks();
+
+    // Wait for YT, then patch the placeholder slot
+    const yt = await ytP;
+    if (epoch !== _searchEpoch) return;
+
+    const ytResults = (yt && yt.results) || [];
+    const slot = searchResults.querySelector(".yt-section-slot");
+    if (!slot) return;
+
+    if (libResults.length === 0 && ytResults.length === 0) {
+      _renderEmptyState(q);
+      return;
+    }
+    if (ytResults.length === 0) {
+      slot.remove();
+    } else {
+      slot.outerHTML = _renderYtSectionHtml(ytResults);
+      _bindYtClicks();
     }
   }
 

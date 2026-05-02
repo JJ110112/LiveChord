@@ -26,6 +26,7 @@ const API = {
   // 音樂庫
   browse: (path = "") => API.get(`/api/browse?path=${encodeURIComponent(path)}`),
   search: (q) => API.get(`/api/search?q=${encodeURIComponent(q)}`),
+  youtubeSearchList: (q, n = 5) => API.get(`/api/process/youtube-search-list?q=${encodeURIComponent(q)}&n=${n}`),
   trackInfo: (path) => API.get(`/api/track/info?path=${encodeURIComponent(path)}`),
   trackStreamUrl: (path) => `/api/track/stream?path=${encodeURIComponent(path)}`,
   trackCoverUrl: (path) => `/api/track/cover?path=${encodeURIComponent(path)}`,
