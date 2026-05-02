@@ -43,9 +43,16 @@ _ALREADY_CLEAN_ALIGN = 0.65  # high align AND regular cv => skip
 # if accidental hits make alignment look OK, the player downbeat-highlight
 # jumps around — that's the user-perceived bug. Replace with regular grid
 # as long as alignment doesn't drop badly.
-_CV_MESSY = 0.20             # current cv above this -> consider regularity path
-_ALIGN_DROP_TOL = 0.05       # allow up to this much align drop for regularity gain
-_MIN_BEST_ALIGN = 0.15       # but new grid must still hit at least this absolute
+#
+# Tightened from 0.20/0.05/0.15 after Brian Culbertson "Twilight" regression:
+# corrector applied bpb=3 phase=2 to a real 4/4 song because (a) jazz intro
+# inflated cv to 0.25, just over old 0.20 threshold, and (b) some 1.6s
+# chord segments accidentally aligned to a 1.62s "bpb=3" grid. Result was
+# a corrupted bar_gap (2.96 spb) that chord_splitter then rejected,
+# leaving the song with neither sensible downbeats nor any splits.
+_CV_MESSY = 0.30             # current cv above this -> consider regularity path
+_ALIGN_DROP_TOL = 0.03       # tighter — barely any alignment loss tolerated
+_MIN_BEST_ALIGN = 0.20       # new grid must hit at least this absolute
 
 # Candidate meters to try. 3 covers 3/4 waltz, 4 covers 4/4 standard pop.
 # 6/8 is rare in pop and BTC's beat tracker usually emits 8th notes anyway,
@@ -105,14 +112,35 @@ def _grid_from_phase(beats: List[float], phase: int, bpb: int) -> List[float]:
 def search_best_phase(
     chord_changes: List[float],
     beats: List[float],
+    bpm: float,
 ) -> Tuple[int, int, float]:
-    """Return (bpb, phase, alignment) of the best grid over bpb 3/4 × phase."""
+    """Return (bpb, phase, alignment) of the best grid over bpb 3/4 × phase.
+
+    Rejects candidate (bpb, phase) where the resulting bar_gap doesn't
+    correspond to an integer-beat-per-bar count at the song's bpm. e.g.
+    if beat tracker emits beats at 1.0s spacing on a 111 BPM song (half-
+    density emission, common with beat_this on slow jazz intros), bpb=3
+    would imply 3.0s bars at 0.54 spb = bpb=5.55, implausible. Same
+    sanity check chord_splitter applies — keeps both layers consistent.
+    """
     best_bpb, best_phase, best_align = 4, 0, -1.0
+    spb = (60.0 / bpm) if bpm > 0 else 0.0
     for bpb in _BPB_CANDIDATES:
         for phase in range(bpb):
             grid = _grid_from_phase(beats, phase, bpb)
             if len(grid) < 4:
-                continue  # too few resulting downbeats to be useful
+                continue
+            # Compute median bar_gap from the candidate grid and check it
+            # corresponds to a plausible beats-per-bar at the song's bpm.
+            gaps = sorted([grid[i + 1] - grid[i] for i in range(len(grid) - 1)])
+            if len(gaps) < 2:
+                continue
+            bar_gap = gaps[len(gaps) // 2]
+            if spb > 0:
+                computed_bpb = bar_gap / spb
+                # Allow 3/4 (2.5-3.5), 4/4 (3.5-4.5), 6/8 (5.5-6.5)
+                if not (2.5 <= computed_bpb <= 4.5 or 5.5 <= computed_bpb <= 6.5):
+                    continue
             align = _alignment(chord_changes, grid)
             if align > best_align:
                 best_bpb = bpb
@@ -172,7 +200,8 @@ def correct_phase(chord_data: Dict) -> Dict:
         result["reason"] = f"already-clean align={current_align:.2f} cv={current_cv if current_cv else 0:.2f}"
         return result
 
-    bpb, phase, best_align = search_best_phase(chord_changes, beats)
+    bpm = float(chord_data.get("bpm") or 0)
+    bpb, phase, best_align = search_best_phase(chord_changes, beats, bpm)
     result["bpb_after"] = bpb
     result["phase_after"] = phase
     result["align_after"] = round(best_align, 4)
