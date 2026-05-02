@@ -54,6 +54,10 @@ if _MODAL_AVAILABLE:
             "PyYAML>=6.0",
             "scipy>=1.10",
             "numba>=0.59",
+            # BTC's btc/utils/mir_eval_modules.py imports the mir_eval
+            # PyPI package; without this the deployed function raises
+            # ImportError on first call (caught by the local fallback).
+            "mir_eval>=0.7",
         )
         # Bundle the entire backend/ tree (chord_detect.py + btc/ submodule
         # + utils/) so the deployed function can `from chord_detect import
