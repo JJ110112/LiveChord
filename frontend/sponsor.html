@@ -9,7 +9,7 @@
   <script src="/js/auth.js?v=4"></script>
   <script src="/js/i18n.js?v=4"></script>
   <link rel="stylesheet" href="/css/base.css?v=5">
-  <link rel="stylesheet" href="/css/help.css?v=1">
+  <link rel="stylesheet" href="/css/help.css?v=2">
 </head>
 <body class="help-body">
 
@@ -35,26 +35,26 @@
 </header>
 
 <main class="help-main">
-  <section class="help-hero sponsor-hero">
+  <section class="help-hero support-hero">
     <h1 data-i18n="sponsor.hero.title">支持 LiveChord</h1>
     <p data-i18n="sponsor.hero.subtitle">這是一個獨立開發的個人專案。如果它對你有幫助，歡迎請我喝杯咖啡。</p>
   </section>
 
-  <section class="sponsor-block">
+  <section class="support-block">
     <p data-i18n="sponsor.intro.body">LiveChord 由一個人在一台 GPU 伺服器上自己寫、自己跑、自己除錯。每一個和弦的偵測精度、每一個小節的對齊、每一個鋼琴指法的視覺化，背後都是無數個夜晚的調參與重寫。它一直是免費使用的。</p>
 
-    <div class="sponsor-cta-wrap" id="sponsorCtaWrap">
-      <a id="sponsorCta" class="sponsor-cta-btn" href="#" target="_blank" rel="noopener" hidden>
+    <div class="tip-wrap" id="tipBtnWrap">
+      <a id="tipBtn" class="tip-btn" href="#" target="_blank" rel="noopener" hidden>
         <span data-i18n="sponsor.cta.bmc">☕ 請我喝杯咖啡</span>
       </a>
-      <p id="sponsorCtaPending" class="sponsor-cta-pending" data-i18n="sponsor.cta.pending">贊助連結設定中。如果你想支持這個專案，請寫信給 hiteacherwu@gmail.com，我會回信給你目前可用的捐款方式。</p>
+      <p id="tipPending" class="tip-pending-msg" data-i18n="sponsor.cta.pending">贊助連結設定中。如果你想支持這個專案，請寫信給 hiteacherwu@gmail.com，我會回信給你目前可用的捐款方式。</p>
     </div>
   </section>
 
-  <section class="sponsor-block">
+  <section class="support-block">
     <h2 data-i18n="sponsor.where.title">錢用在哪裡</h2>
     <p data-i18n="sponsor.where.body">LiveChord 全月固定成本約 <strong>美金 30 元（≈ 新台幣 1,000）</strong>，主要由三個部分組成：</p>
-    <ul class="sponsor-list">
+    <ul class="support-list">
       <li data-i18n-html="sponsor.where.vps">CPU VPS（FastAPI、SQLite、節拍／伴奏 worker）— <strong>€15/月</strong></li>
       <li data-i18n-html="sponsor.where.gpu">Modal serverless GPU（BTC 和弦偵測）— <strong>$3–8/月</strong>，用多少付多少</li>
       <li data-i18n-html="sponsor.where.r2">Cloudflare R2 物件儲存（封面、暫存音檔）— <strong>$1–5/月</strong>，免出口流量費</li>
@@ -62,7 +62,7 @@
     <p data-i18n="sponsor.where.surplus">超出的部分會回到專案本身：更多 GPU 訓練時間、更好的節拍模型、新功能（例如人聲分軌、更精準的爵士再和聲）。所有改進都會以免費更新形式回饋給所有使用者。</p>
   </section>
 
-  <section class="sponsor-block">
+  <section class="support-block">
     <h2 data-i18n="sponsor.faq.title">常見問題</h2>
     <details class="help-q">
       <summary data-i18n="sponsor.faq.q_why">為什麼要捐款？我不是已經能免費使用了嗎？</summary>
@@ -96,8 +96,8 @@
       if (!res.ok) return;
       const cfg = await res.json();
       const url = (cfg && cfg.bmc_url) ? String(cfg.bmc_url).trim() : "";
-      const cta = document.getElementById("sponsorCta");
-      const pending = document.getElementById("sponsorCtaPending");
+      const cta = document.getElementById("tipBtn");
+      const pending = document.getElementById("tipPending");
       if (url && /^https?:\/\//.test(url) && cta && pending) {
         cta.href = url;
         cta.hidden = false;

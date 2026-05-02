@@ -163,9 +163,9 @@
 .help-footer a:hover { text-decoration: underline; }
 
 /* Sponsor specifics */
-.sponsor-hero { padding-bottom: 24px; }
+.support-hero { padding-bottom: 24px; }
 
-.sponsor-block {
+.support-block {
   margin-top: 32px;
   padding: 24px 28px;
   background: var(--bg-card);
@@ -173,23 +173,23 @@
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
-.sponsor-block h2 {
+.support-block h2 {
   margin: 0 0 14px;
   font-size: 1.3rem;
   color: var(--text);
 }
-.sponsor-block p {
+.support-block p {
   margin: 0 0 14px;
   color: var(--text-dim);
   line-height: 1.7;
 }
-.sponsor-block p:last-child { margin-bottom: 0; }
+.support-block p:last-child { margin-bottom: 0; }
 
-.sponsor-cta-wrap {
+.tip-wrap {
   text-align: center;
   margin: 28px 0 8px;
 }
-.sponsor-cta-btn {
+.tip-btn {
   display: inline-block;
   background: #FFDD00;
   color: #000;
@@ -201,24 +201,24 @@
   box-shadow: 0 4px 14px rgba(255, 221, 0, 0.35);
   transition: transform 0.15s, box-shadow 0.15s;
 }
-.sponsor-cta-btn:hover {
+.tip-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 18px rgba(255, 221, 0, 0.45);
 }
-.sponsor-cta-pending {
+.tip-pending-msg {
   text-align: center;
   font-style: italic;
   color: var(--text-dim);
   font-size: 0.95rem;
 }
 
-.sponsor-list {
+.support-list {
   padding-left: 1.2em;
   margin: 0 0 16px;
   color: var(--text-dim);
 }
-.sponsor-list li { padding: 4px 0; line-height: 1.6; }
-.sponsor-list strong { color: var(--text); }
+.support-list li { padding: 4px 0; line-height: 1.6; }
+.support-list strong { color: var(--text); }
 
 /* Responsive — single column on phones */
 @media (max-width: 640px) {
@@ -226,6 +226,6 @@
   .help-main { padding: 16px 14px 64px; }
   .help-card > summary { padding: 14px 16px; font-size: 1.02rem; }
   .help-card-body { padding: 4px 16px 12px; }
-  .sponsor-block { padding: 18px 16px; }
+  .support-block { padding: 18px 16px; }
   .header h1 .header-brand-icon { width: 24px; height: 24px; }
 }
