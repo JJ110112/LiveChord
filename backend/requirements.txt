@@ -28,3 +28,13 @@ itsdangerous>=2.1
 # When absent, beat_snap falls back to librosa.beat.beat_track (static BPM
 # only — no rubato tracking). Safe to skip on machines that only serve
 # already-analyzed songs.
+
+# Optional: modal (serverless GPU dispatch for BTC chord detection on a
+# CPU-only host). Only needed when LIVECHORD_USE_MODAL_BTC=1; the NUC has
+# a local GPU and doesn't need it. On a VPS deploy:
+#   pip install modal
+#   modal token new
+#   modal volume create livechord-btc-model
+#   modal volume put livechord-btc-model backend/btc/btc_model_large_voca.pt /btc.pt
+#   modal deploy backend/modal_btc.py
+# See doc/MODAL_DEPLOY.md for the full runbook.
