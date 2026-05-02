@@ -535,5 +535,25 @@
   "sponsor.faq.q_refund": "Can I get a refund?",
   "sponsor.faq.a_refund": "Buy Me a Coffee treats donations as one-off gifts, so refunds aren't enabled by default. If there's a serious misunderstanding, email hiteacherwu@gmail.com within 7 days and I'll handle it manually.",
   "sponsor.faq.q_tax": "Can you issue a receipt or invoice?",
-  "sponsor.faq.a_tax": "Not currently — this is an individual project, so no formal invoice or tax receipt. Buy Me a Coffee sends an email confirmation that can serve as a personal donation record. For corporate sponsorship, partnerships or commercial licensing, please email me."
+  "sponsor.faq.a_tax": "Not currently — this is an individual project, so no formal invoice or tax receipt. Buy Me a Coffee sends an email confirmation that can serve as a personal donation record. For corporate sponsorship, partnerships or commercial licensing, please email me.",
+
+  "teach.hint.thumb_cross": "Watch the thumb cross-under ↻ keep your wrist relaxed",
+  "teach.hint.large_jump": "Large jump coming — shift your hand position early",
+  "teach.hint.black_keys": "Black-key cluster — fingers near the keylid, fingertip touch",
+  "teach.hint.next_chord": "Prepare chord change → {chord}",
+  "teach.hint.dyn_ff": "ff push with full force!",
+  "teach.hint.dyn_f": "f play strongly",
+  "teach.hint.dyn_pp": "pp gentle touch…",
+  "teach.hint.dyn_p": "p tenderly",
+  "teach.hint.staccato": "Staccato · ",
+  "teach.hint.legato": "Legato ~ ",
+  "teach.hint.pedal": "Pedal sustain 🎹",
+  "teach.hint.style_auto": "Section-aware — verses arpeggiate, choruses dotted, intros block",
+  "teach.hint.style_arpeggio": "Flowing arpeggios — keep an even touch",
+  "teach.hint.style_block": "Block chords — both hands together, balanced dynamics",
+  "teach.hint.style_rhythm": "Ballad dotted rhythm — long-short-long, lyrical sway",
+  "teach.hint.style_walking": "Walking bass — bass line on the move",
+  "teach.hint.style_stride": "Stride — alternating bass and chord leaps",
+  "teach.hint.style_shell": "Shell voicing — 3rd + 7th skeleton harmony",
+  "teach.hint.style_default": "Follow the rhythm blocks and enjoy the music ♪"
 }

@@ -3354,36 +3354,36 @@
 
     // 動態表情提示
     let dynHint = "";
-    if (avgVel > 95) dynHint = "ff 全力推進！";
-    else if (avgVel > 80) dynHint = "f 有力地彈奏";
-    else if (avgVel < 50) dynHint = "pp 輕柔觸鍵...";
-    else if (avgVel < 65) dynHint = "p 溫柔地";
+    if (avgVel > 95) dynHint = _t("teach.hint.dyn_ff");
+    else if (avgVel > 80) dynHint = _t("teach.hint.dyn_f");
+    else if (avgVel < 50) dynHint = _t("teach.hint.dyn_pp");
+    else if (avgVel < 65) dynHint = _t("teach.hint.dyn_p");
 
     // Articulation 提示
     const artTypes = upcoming.map(e => e.articulation).filter(Boolean);
     let artHint = "";
-    if (artTypes.includes("staccato")) artHint = "斷奏 · ";
-    else if (artTypes.includes("legato")) artHint = "連奏 ~ ";
+    if (artTypes.includes("staccato")) artHint = _t("teach.hint.staccato");
+    else if (artTypes.includes("legato")) artHint = _t("teach.hint.legato");
 
     // 組合多樣化的教學訊息 — 根據情境優先級
     const msgs = [];
 
     // 高優先: 技術警告
     if (hasThumbCross) {
-      msgs.push("注意拇指穿越 ↻ 保持手腕放鬆");
+      msgs.push(_t("teach.hint.thumb_cross"));
     }
     if (hasLargeJump) {
-      msgs.push("大跳躍即將到來 — 提前移動手位");
+      msgs.push(_t("teach.hint.large_jump"));
     }
     if (hasBlackKey && upRH.length > 2) {
-      msgs.push("黑鍵群 — 手指靠近琴蓋，指尖觸鍵");
+      msgs.push(_t("teach.hint.black_keys"));
     }
 
     // 中優先: 和弦/換和弦提示
     if (nextChordName && upcoming.length > 0) {
       const timeToNext = upcoming[0].time - t;
       if (timeToNext < 0.3 && nextChordName !== currentChordName) {
-        msgs.push(`準備換和弦 → ${nextChordName}`);
+        msgs.push(_t("teach.hint.next_chord", {chord: nextChordName}));
       }
     }
 
@@ -3392,7 +3392,7 @@
 
     // 踏板提示
     if (pedalActive) {
-      msgs.push("踏板延音中 🎹");
+      msgs.push(_t("teach.hint.pedal"));
     }
 
     // Articulation + 風格
@@ -3400,14 +3400,14 @@
 
     // 低優先: 風格基礎提示
     if (msgs.length === 0) {
-      if (teachStyle === "Auto") msgs.push("段落自適 — 主歌分解、副歌附點、前奏柱狀");
-      else if (teachStyle === "Arpeggio") msgs.push("流動的分解和弦 — 保持均勻觸鍵");
-      else if (teachStyle === "Block") msgs.push("柱狀和弦 — 雙手同步，力度均衡");
-      else if (teachStyle === "Rhythm") msgs.push("Ballad 附點節奏 — 長-短-長，抒情搖擺");
-      else if (teachStyle === "Walking") msgs.push("Walking Bass — 低音線條行走中");
-      else if (teachStyle === "Stride") msgs.push("Stride — 低音與和弦交替跳躍");
-      else if (teachStyle === "Shell") msgs.push("Shell Voicing — 3rd + 7th 骨架和聲");
-      else msgs.push("跟著音塊節奏，享受音樂 ♪");
+      if (teachStyle === "Auto") msgs.push(_t("teach.hint.style_auto"));
+      else if (teachStyle === "Arpeggio") msgs.push(_t("teach.hint.style_arpeggio"));
+      else if (teachStyle === "Block") msgs.push(_t("teach.hint.style_block"));
+      else if (teachStyle === "Rhythm") msgs.push(_t("teach.hint.style_rhythm"));
+      else if (teachStyle === "Walking") msgs.push(_t("teach.hint.style_walking"));
+      else if (teachStyle === "Stride") msgs.push(_t("teach.hint.style_stride"));
+      else if (teachStyle === "Shell") msgs.push(_t("teach.hint.style_shell"));
+      else msgs.push(_t("teach.hint.style_default"));
     }
 
     // 取最高優先的一條
