@@ -908,10 +908,35 @@ def _worker_loop():
                         pass
 
 
+# ---------------------------------------------------------------------------
+# Melody extraction subprocess pool — keeps librosa.pyin's GIL pressure off
+# the FastAPI event loop. Top-level def for picklability under spawn (Windows).
+# Mirrors the chord_detect ProcessPoolExecutor pattern documented in CLAUDE.md
+# under "Pure-Python loops on daemon threads still hold the GIL".
+# ---------------------------------------------------------------------------
+
+_melody_pool = None
+
+
+def _melody_subprocess_extract(audio_path):
+    """Run inside the worker subprocess. Imports lazily so the parent process
+    doesn't pay for melody-extractor deps until we actually need them."""
+    from ai.melody_extractor import MelodyExtractor
+    return MelodyExtractor().extract_melody(audio_path)
+
+
 def _melody_worker_loop():
     """Background melody-extraction worker. Runs after chord worker has already
     flipped job.status to DONE, so failures here never surface to the user —
-    they just leave the song without a waterfall melody."""
+    they just leave the song without a waterfall melody.
+
+    librosa.pyin is partly numpy-vectorized but holds the GIL on its inner
+    Python segments long enough to starve unrelated FastAPI requests if we
+    run it in-process on a daemon thread. We dispatch each job to a long-
+    lived ProcessPoolExecutor so the heavy work runs in a fresh interpreter
+    with its own GIL — same fix the BTC pipeline uses.
+    """
+    global _melody_pool
     while True:
         try:
             item = _melody_queue.get(timeout=5)
@@ -927,10 +952,13 @@ def _melody_worker_loop():
             v1_time_s = None
             v1_notes_count = None
             try:
-                from ai.melody_extractor import MelodyExtractor
-                ext = MelodyExtractor()
+                if _melody_pool is None:
+                    from concurrent.futures import ProcessPoolExecutor
+                    _melody_pool = ProcessPoolExecutor(max_workers=1)
+                    logger.info("Melody ProcessPool created (max_workers=1)")
                 _v1_t0 = time.time()
-                melody_data = ext.extract_melody(audio_path)
+                future = _melody_pool.submit(_melody_subprocess_extract, audio_path)
+                melody_data = future.result(timeout=600)
                 v1_time_s = round(time.time() - _v1_t0, 2)
                 if melody_data:
                     v1_notes_count = len(melody_data)
