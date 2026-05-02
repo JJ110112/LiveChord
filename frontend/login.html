@@ -95,7 +95,6 @@
     .oauth-btn-google:hover { background: #f5f5f5; }
     .oauth-btn-discord { background: #5865F2; color: #fff; border-color: #5865F2; }
     .oauth-btn-discord:hover { background: #4752c4; }
-    .oauth-btn-apple { background: #000; color: #fff; border-color: #000; }
 
     .guest-row {
       text-align: center;
@@ -236,14 +235,6 @@
           </svg>
           <span data-i18n="login.btn_discord">使用 Discord 繼續</span>
         </a>
-        <button type="button" class="oauth-btn oauth-btn-apple disabled" disabled
-                data-i18n-attr="title=login.btn_apple_title"
-                title="尚未啟用 — Apple 開發者方案申請中">
-          <svg class="oauth-icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
-            <path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.23-.02-.3-.03-.01-.07-.04-.22-.04-.39 0-1.13.572-2.26 1.215-2.97.804-.94 2.142-1.65 3.054-1.68.04.16.06.32.06.42 0 .01.005.005.175.005zm4.565 17.13c0 .045-.05.1-.092.15-.413.6-.84 1.2-1.546 2.197-.943 1.32-2.27 2.97-3.92 2.97-1.487 0-1.85-.95-3.85-.95-2.005 0-2.36.95-3.92.95-1.624 0-2.93-1.484-3.871-2.81-2.638-3.7-2.927-8.06-1.293-10.39 1.16-1.65 2.99-2.62 4.71-2.62 1.752 0 2.85.97 4.295.97 1.4 0 2.255-.97 4.275-.97 1.526 0 3.143.83 4.295 2.27-3.78 2.07-3.165 7.49.917 8.232z"/>
-          </svg>
-          <span data-i18n="login.btn_apple_disabled">使用 Apple 繼續（即將推出）</span>
-        </button>
       </div>
       <div class="guest-row">
         <a href="/" id="guest-link" data-i18n="login.guest_link">先以訪客瀏覽 →</a>
@@ -322,7 +313,7 @@
         );
       } else {
         // Public: hide providers without configured credentials by querying
-        // /api/auth/oauth/providers. Apple is disabled in markup regardless.
+        // /api/auth/oauth/providers.
         fetch("/api/auth/oauth/providers")
           .then(r => r.json())
           .then(d => {

@@ -691,3 +691,87 @@
 [data-theme="sky"] .horizontal-scroll, [data-theme="sky"] .track-list { scrollbar-color: rgba(0,0,0,0.20) transparent; }
 
 /* ========== [END: THEME OVERRIDES] ========== */
+
+
+/* ========== [COMPONENT: FIRST-RUN INSTRUMENT PICKER] ========== */
+.instrument-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 9998;
+}
+.instrument-picker-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px 24px 18px;
+  z-index: 9999;
+}
+.ip-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+  text-align: center;
+}
+.ip-subtitle {
+  font-size: 0.88rem;
+  color: var(--text-dim);
+  margin-bottom: 18px;
+  text-align: center;
+  line-height: 1.55;
+}
+.ip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.ip-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 8px;
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s, background 0.12s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-family: inherit;
+  color: var(--text);
+}
+.ip-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  background: rgba(33, 150, 243, 0.06);
+}
+.ip-icon { font-size: 1.85rem; line-height: 1; }
+.ip-name { font-size: 0.85rem; font-weight: 500; }
+.ip-skip {
+  display: block;
+  margin: 4px auto 0;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 6px 12px;
+  font-family: inherit;
+}
+.ip-skip:hover { color: var(--text); text-decoration: underline; }
+
+@media (max-width: 480px) {
+  .ip-grid { grid-template-columns: repeat(3, 1fr); }
+  .instrument-picker-panel { padding: 18px 16px 12px; }
+}

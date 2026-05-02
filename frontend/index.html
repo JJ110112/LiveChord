@@ -12,7 +12,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=15">
-  <link rel="stylesheet" href="/css/home.css?v=22">
+  <link rel="stylesheet" href="/css/home.css?v=23">
   <link rel="stylesheet" href="/css/help.css?v=2">
   <!-- Warm the CDN so the player page's YouTube IFrame bootstraps faster -->
   <link rel="preconnect" href="https://www.youtube.com">
@@ -100,6 +100,38 @@
     <h2 class="dash-title" data-i18n="home.section.playlists">YouTube 播放清單</h2>
     <div id="betaPlaylistList" class="yt-playlist-list" style="margin-top:8px"></div>
   </section>
+
+  <!-- First-run instrument picker — shown once if livechord_tab unset.
+       Writes to localStorage.livechord_tab so /player picks up the choice
+       on next song open. Dismissible (defaults to piano if skipped). -->
+  <div id="instrumentPickerBackdrop" class="instrument-picker-backdrop" style="display:none"></div>
+  <div id="instrumentPickerPanel" class="instrument-picker-panel" style="display:none">
+    <div class="ip-title" data-i18n="home.instrument_picker.title">選擇你的主要樂器</div>
+    <div class="ip-subtitle" data-i18n="home.instrument_picker.subtitle">分析任何歌曲後，播放器會優先以你選的樂器顯示。可隨時在播放器底部工具列切換。</div>
+    <div class="ip-grid">
+      <button class="ip-card" data-pick="piano" type="button">
+        <div class="ip-icon">🎹</div>
+        <div class="ip-name" data-i18n="player.instrument.piano_title">Piano</div>
+      </button>
+      <button class="ip-card" data-pick="guitar" type="button">
+        <div class="ip-icon">🎸</div>
+        <div class="ip-name" data-i18n="player.instrument.guitar_title">Guitar</div>
+      </button>
+      <button class="ip-card" data-pick="ukulele" type="button">
+        <div class="ip-icon">🪕</div>
+        <div class="ip-name" data-i18n="player.instrument.ukulele_title">Ukulele</div>
+      </button>
+      <button class="ip-card" data-pick="accordion" type="button">
+        <div class="ip-icon">🪗</div>
+        <div class="ip-name" data-i18n="player.instrument.accordion_title">Accordion</div>
+      </button>
+      <button class="ip-card" data-pick="arranger" type="button">
+        <div class="ip-icon">🎛️</div>
+        <div class="ip-name" data-i18n="player.instrument.arranger_title">Arranger</div>
+      </button>
+    </div>
+    <button class="ip-skip" id="ipSkip" type="button" data-i18n="home.instrument_picker.skip">先略過 — 之後再選</button>
+  </div>
 
   <!-- add-song modal (opened from search empty-state CTA; no standalone FAB button) -->
   <div id="betaFabBackdrop" class="add-song-backdrop"></div>
@@ -317,6 +349,6 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 }
 </script>
 
-<script src="/js/app.js?v=68"></script>
+<script src="/js/app.js?v=69"></script>
 </body>
 </html>

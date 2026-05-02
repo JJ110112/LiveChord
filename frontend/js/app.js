@@ -1345,6 +1345,41 @@
 
   // ---- init ----
 
+  // First-run instrument picker. Shown once if `livechord_tab` is unset
+  // (which is the same key player.js uses to remember the last chosen
+  // instrument tab — picking here pre-seeds it). Skipping or closing
+  // writes "piano" so the modal doesn't reappear.
+  function _initInstrumentPicker() {
+    const SKIP_KEY = "livechord_tab";
+    let saved;
+    try { saved = localStorage.getItem(SKIP_KEY); } catch { saved = null; }
+    if (saved) return; // user already has a default — never nag
+
+    const backdrop = $("#instrumentPickerBackdrop");
+    const panel = $("#instrumentPickerPanel");
+    if (!backdrop || !panel) return;
+
+    function close(pick) {
+      try { localStorage.setItem(SKIP_KEY, pick); } catch {}
+      backdrop.style.display = "none";
+      panel.style.display = "none";
+    }
+
+    backdrop.style.display = "block";
+    panel.style.display = "block";
+
+    panel.querySelectorAll(".ip-card").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const pick = btn.getAttribute("data-pick") || "piano";
+        close(pick);
+      });
+    });
+    const skip = $("#ipSkip");
+    if (skip) skip.addEventListener("click", () => close("piano"));
+    backdrop.addEventListener("click", () => close("piano"));
+  }
+  _initInstrumentPicker();
+
   // 啟動 Dashboard (Lazy + Parallel)
   initDashboard();
 })();

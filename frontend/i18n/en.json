@@ -17,6 +17,9 @@
   "lang.zh-TW": "繁中",
 
   "home.greeting": "Hello, {name}",
+  "home.instrument_picker.title": "Pick your main instrument",
+  "home.instrument_picker.subtitle": "After analyzing any song, the player will open in this instrument by default. You can switch any time from the bottom toolbar.",
+  "home.instrument_picker.skip": "Skip — I'll pick later",
   "home.section.recent": "Recently played",
   "home.section.favorites": "Favorites",
   "home.section.local_tracks": "Local music",
@@ -232,8 +235,6 @@
   "login.subtitle.personal": "Admin sign-in",
   "login.btn_google": "Continue with Google",
   "login.btn_discord": "Continue with Discord",
-  "login.btn_apple_disabled": "Continue with Apple (coming soon)",
-  "login.btn_apple_title": "Not yet available — Apple Developer enrollment in progress",
   "login.guest_link": "Continue as guest →",
   "login.tab_signin": "Sign in",
   "login.tab_register": "Register",

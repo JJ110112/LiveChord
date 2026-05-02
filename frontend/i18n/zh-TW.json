@@ -17,6 +17,9 @@
   "lang.zh-TW": "繁中",
 
   "home.greeting": "Hello, {name}",
+  "home.instrument_picker.title": "選擇你的主要樂器",
+  "home.instrument_picker.subtitle": "分析任何歌曲後，播放器會優先以你選的樂器顯示。可隨時在播放器底部工具列切換。",
+  "home.instrument_picker.skip": "先略過 — 之後再選",
   "home.section.recent": "最近播放",
   "home.section.favorites": "我的最愛",
   "home.section.local_tracks": "本機音樂",
@@ -232,8 +235,6 @@
   "login.subtitle.personal": "管理員登入",
   "login.btn_google": "使用 Google 繼續",
   "login.btn_discord": "使用 Discord 繼續",
-  "login.btn_apple_disabled": "使用 Apple 繼續（即將推出）",
-  "login.btn_apple_title": "尚未啟用 — Apple 開發者方案申請中",
   "login.guest_link": "先以訪客瀏覽 →",
   "login.tab_signin": "登入",
   "login.tab_register": "註冊",
