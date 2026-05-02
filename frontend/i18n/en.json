@@ -472,7 +472,11 @@
   "help.q.ab_loop": "How does the A-B loop work?",
   "help.a.ab_loop": "Tap the A-B button to open the section list. Click 'Verse 1', 'Chorus 1', etc. to loop that section. You can pick multiple adjacent sections to loop a wider range. 'Manual' mode lets you tap A while playing to set the start, then B for the end.",
   "help.q.instruments": "What's the difference between the instrument views?",
-  "help.a.instruments": "Piano shows chord tones + fingering with separate accompaniment / melody rows. Guitar / ukulele show fretboard diagrams plus right-hand strum / arpeggio. Accordion shows left-hand bass buttons + right-hand keyboard. Arranger keyboard mode bundles backing patterns and chord captions together.",
+  "help.a.instruments": "LiveChord ships five instrument views — each renders the same chord progression from a different angle. Piano shows chord tones + left/right-hand fingering with separate accompaniment and melody rows. Guitar and ukulele show vertical fretboard diagrams plus a right-hand strum / arpeggio pattern. Accordion shows left-hand bass / chord buttons with the right-hand keyboard. Arranger mode bundles backing patterns and chord captions together — close to a Yamaha / Casio arranger workflow.",
+  "help.q.switch_instrument": "How do I switch instruments?",
+  "help.a.switch_instrument": "Tap the Instrument button in the bottom toolbar (Piano / Guitar / Ukulele / Accordion / Arranger — five icons). Switching is instant — no reload, the chord progression and timeline stay put; only the rendering above swaps. Each browser tab remembers the last instrument you used.",
+  "help.q.which_instrument": "Which instrument should I pick?",
+  "help.a.which_instrument": "Depends what you want to practise: practising piano or want to see chord tones clearly → Piano; practising sing-and-strum or memorising chord shapes → Guitar or Ukulele; learning accordion left-hand patterns → Accordion; want arranger-keyboard backing styles (Bossa, Walking, Swing, etc.) → Arranger. You can flip between instruments while the song plays, comparing how each one phrases the same chord change.",
   "help.q.fingering": "Where do the fingerings come from?",
   "help.a.fingering": "Piano left-hand fingering is generated from the chord root + voicing (5-3-1 / 5-3-2-1 / 5-4-3-2-1 templates). Right-hand melody fingering is intentionally not shown — automatic inference is not reliable enough yet. Guitar / ukulele diagrams use ①②③④ for index / middle / ring / pinky.",
 
