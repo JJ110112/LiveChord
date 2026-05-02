@@ -601,5 +601,45 @@
   "home.search.no_songs_empty": "No songs yet — upload audio or paste a YouTube URL to start analyzing",
   "home.search.upload_badge": "Local",
   "home.browse.empty_dir": "Empty folder",
-  "home.label.analysis_result": "Analysis result"
+  "home.label.analysis_result": "Analysis result",
+
+  "loading.song": "Loading track...",
+  "loading.song_detail": "Reading song info and chord arrangement...",
+  "loading.acc_extract": "Extracting AI accompaniment...",
+  "loading.acc_extract_detail": "First playback runs real-time computation...",
+  "loading.acc_regen": "Regenerating AI accompaniment...",
+  "loading.acc_regen_detail": "Clearing cache and recomputing (incl. pedal/velocity)...",
+  "loading.streaming": "Streaming...",
+  "loading.streaming_detail": "Please wait, audio buffering...",
+  "loading.version_switch_title": "Switching version...",
+  "loading.version_switch_detail": "Loading chords for {name}",
+  "loading.chord": "Loading chords...",
+  "loading.chord_detail": "Reading analysis result...",
+  "loading.yt_player": "Loading YouTube player...",
+  "loading.yt_player_detail": "First load takes about 5-15 seconds",
+  "loading.failed": "Load failed",
+
+  "detect.progress.msg": "Detecting chords...",
+  "detect.progress.detail": "First playback analyzes audio, takes about 30s-1min",
+  "detect.progress.done": "Detection done! {count} chords",
+  "detect.progress.done_key": "Key: {key}",
+  "detect.progress.failed": "Detection failed",
+  "detect.progress.midi_search": "Searching MIDI...",
+  "detect.progress.midi_importing": "Importing MIDI...",
+  "detect.progress.ai_analyzing": "AI analyzing chords...",
+  "detect.progress.ai_analyzing_detail": "Analyzing audio, please wait",
+
+  "ab.range": "A {a} → B {b}",
+  "ab.range_pending_b": "A {a} (B pending)",
+  "ab.unset": "Not set",
+
+  "bar.applied": "Revert beats ({tag} bpb={bpb}{conf})",
+  "bar.tag_rule": "Rule",
+
+  "yt.analysis_done": "Analysis done!",
+  "yt.view_chords": "View chords",
+
+  "split.menu.split_only": "Split only:",
+  "split.menu.split_with_section": "Split and add section:",
+  "split.menu.beats_hint": "After changing beats, following chords shift to keep their spacing"
 }

@@ -220,7 +220,7 @@
   }
   function _syncRhContentBtn() {
     const lab = document.getElementById("btnRhContentLabel");
-    if (lab) lab.textContent = _RH_LABELS[rhContentMode] || "伴奏";
+    if (lab) lab.textContent = _t("player.teach.rh_content_" + rhContentMode) || _t("player.teach.rh_content_acc");
     const btn = document.getElementById("btnRhContent");
     if (btn) btn.title = `右手內容：${rhContentMode === "acc" ? "伴奏" : rhContentMode === "mel" ? "旋律" : "全部"}（點擊切換）`;
   }
@@ -851,11 +851,11 @@
     const el = document.getElementById("abStatus");
     if (!el) return;
     if (abState === "active" && abA != null && abB != null) {
-      el.textContent = `A ${formatTime(abA)} → B ${formatTime(abB)}`;
+      el.textContent = _t("ab.range", { a: formatTime(abA), b: formatTime(abB) });
     } else if (abState === "a_set" && abA != null) {
-      el.textContent = `A ${formatTime(abA)}（待設 B）`;
+      el.textContent = _t("ab.range_pending_b", { a: formatTime(abA) });
     } else {
-      el.textContent = "未設定";
+      el.textContent = _t("ab.unset");
     }
   }
 
@@ -2219,7 +2219,7 @@
 
   async function loadTrack(path) {
     _clearABRepeat();
-    _setLoadingState(true, "載入樂曲中...", "正在讀取歌曲資訊與和弦編排...");
+    _setLoadingState(true, _t("loading.song"), _t("loading.song_detail"));
     try {
       audio.src = API.trackStreamUrl(path);
 
@@ -2731,8 +2731,8 @@
     if (!p || accLoading) return;
     if (!forceRefresh && accData && accData._style === teachStyle && accData._level === teachLevel) return;
     accLoading = true;
-    _setLoadingState(true, forceRefresh ? "AI 伴奏重新生成中..." : "AI 伴奏提取中...",
-                     forceRefresh ? "清除快取並重新演算（含踏板/力度）..." : "首次播放需要進行即時演算...");
+    _setLoadingState(true, forceRefresh ? _t("loading.acc_regen") : _t("loading.acc_extract"),
+                     forceRefresh ? _t("loading.acc_regen_detail") : _t("loading.acc_extract_detail"));
     let url = `/api/ai/accompaniment?path=${encodeURIComponent(p)}&style=${teachStyle}&level=${teachLevel}`;
     if (forceRefresh) url += "&nocache=1";
     fetch(url).then(r => r.json()).then(data => {
@@ -3883,7 +3883,7 @@
               item.classList.add("active");
 
               // Reload chords smoothly
-              _setLoadingState(true, "切換版本中...", "載入 " + ver.name + " 的和弦");
+              _setLoadingState(true, _t("loading.version_switch_title"), _t("loading.version_switch_detail", { name: ver.name }));
               try { await loadChords(path, currentChordVersion); }
               finally { _setLoadingState(false); }
               if (window._updateEditLink) window._updateEditLink();
@@ -4036,19 +4036,19 @@
   /** 播放時自動偵測（顯示 overlay） */
   async function autoDetectAndPlay() {
     detectOverlay.style.display = "";
-    detectMsg.textContent = "正在偵測和弦…";
-    detectDetail.textContent = "首次播放需要分析音訊，大約 30 秒~1 分鐘";
+    detectMsg.textContent = _t("detect.progress.msg");
+    detectDetail.textContent = _t("detect.progress.detail");
 
     try {
       const result = await API.detectChords(trackPath);
-      detectMsg.textContent = `偵測完成！${result.chord_count} 個和弦`;
-      detectDetail.textContent = `調性: ${result.key}`;
+      detectMsg.textContent = _t("detect.progress.done", { count: result.chord_count });
+      detectDetail.textContent = _t("detect.progress.done_key", { key: result.key });
 
       chordCache = {};
       await loadVersions(trackPath);
       await loadChords(trackPath);
     } catch (err) {
-      detectMsg.textContent = "偵測失敗";
+      detectMsg.textContent = _t("detect.progress.failed");
       detectDetail.textContent = err.message;
       await new Promise((r) => setTimeout(r, 2000));
     } finally {
@@ -4256,7 +4256,7 @@
   function _setAudioLoadingState(isLoading) {
     if (isLoading && !_audioIsLoading) {
       _audioIsLoading = true;
-      _setLoadingState(true, "正努力串流中...", "請稍後，音訊緩衝中...", "music");
+      _setLoadingState(true, _t("loading.streaming"), _t("loading.streaming_detail"), "music");
     } else if (!isLoading && _audioIsLoading) {
       _audioIsLoading = false;
       _setLoadingState(false);
@@ -5603,7 +5603,7 @@
   async function runChordDetection() {
     if (!trackPath) { showToast(_t("toast.detect.hash_only"), 3000); return; }
     detectOverlay.style.display = "";
-    detectMsg.textContent = "搜尋 MIDI…";
+    detectMsg.textContent = _t("detect.progress.midi_search");
     detectDetail.textContent = "";
 
     try {
@@ -5617,7 +5617,7 @@
         );
 
         if (exactMatch) {
-          detectMsg.textContent = "MIDI 匯入中…";
+          detectMsg.textContent = _t("detect.progress.midi_importing");
           detectDetail.textContent = exactMatch.name;
           const result = await API.midiImport(trackPath, exactMatch.path);
           if (result.warning) {
@@ -5635,8 +5635,8 @@
       }
 
       // 無 MIDI → BTC 偵測
-      detectMsg.textContent = "AI 偵測和弦中…";
-      detectDetail.textContent = "分析音訊中，請稍候";
+      detectMsg.textContent = _t("detect.progress.ai_analyzing");
+      detectDetail.textContent = _t("detect.progress.ai_analyzing_detail");
       const result = await API.detectChords(trackPath);
       if (result.chord_count === 0) {
         showToast(_t("toast.detect.no_chords"), 5000);
@@ -5780,11 +5780,11 @@
     const bar = chordData && chordData.bar_correction;
     const applied = !!(bar && bar.applied);
     if (applied) {
-      const tag = (bar.model_version === "model_v1") ? "AI" : "規則";
+      const tag = (bar.model_version === "model_v1") ? "AI" : _t("bar.tag_rule");
       const conf = (typeof bar.score_after === "number") ? ` ${bar.score_after.toFixed(2)}` : "";
-      btnBarArbitrateLabel.textContent = `還原節拍 (${tag} bpb=${bar.beats_per_bar}${conf})`;
+      btnBarArbitrateLabel.textContent = _t("bar.applied", { tag, bpb: bar.beats_per_bar, conf });
     } else {
-      btnBarArbitrateLabel.textContent = "自動節拍調整";
+      btnBarArbitrateLabel.textContent = _t("player.tools.bar_arbitrate");
     }
   }
 
@@ -6408,7 +6408,7 @@
   if (hashMode) {
     // Hash mode: load chord data directly by hash (from process results)
     (async () => {
-      _setLoadingState(true, "載入和弦中...", "讀取分析結果...");
+      _setLoadingState(true, _t("loading.chord"), _t("loading.chord_detail"));
       try {
         const res = await fetch(`/api/chords/by-hash?hash=${encodeURIComponent(hashMode)}`);
         if (!res.ok) throw new Error("找不到和弦資料");
@@ -6539,7 +6539,7 @@
           _showYtFallbackPanel();
         }
       } catch (e) {
-        songTitle.textContent = "載入失敗";
+        songTitle.textContent = _t("loading.failed");
         showToast(_t("toast.load.failed", { err: e.message }), 4000);
       } finally {
         _setLoadingState(false);
@@ -6715,7 +6715,7 @@
   function _showAnalysisBannerDone(resultHash) {
     const el = document.getElementById("ytAnalysisBanner");
     if (!el) return;
-    el.querySelector(".yt-ab-text").textContent = "分析完成！";
+    el.querySelector(".yt-ab-text").textContent = _t("yt.analysis_done");
     el.querySelector(".yt-ab-pct").textContent = "100%";
     el.querySelector(".yt-ab-fill").style.width = "100%";
     // Replace close with a "view chords" CTA
@@ -6723,7 +6723,7 @@
     row.querySelector(".yt-ab-close")?.remove();
     const btn = document.createElement("button");
     btn.className = "yt-ab-cta";
-    btn.textContent = "看和弦";
+    btn.textContent = _t("yt.view_chords");
     btn.addEventListener("click", () => {
       // Flag fresh so the destination player shows the "旋律擷取中" banner.
       try { sessionStorage.setItem("livechord_fresh_hash", `${resultHash}|${Date.now()}`); } catch {}
@@ -6772,7 +6772,7 @@
     _updateYtReopenBtn();
 
     // Show a loading overlay until onReady clears it — iframe_api + player boot can take 5–15s
-    _setLoadingState(true, "載入 YouTube 播放器…", "首次載入約 5–15 秒");
+    _setLoadingState(true, _t("loading.yt_player"), _t("loading.yt_player_detail"));
 
     // Load YouTube IFrame API
     if (!window.YT) {
@@ -7413,7 +7413,7 @@
           // Group 1: Just split
           const h1 = document.createElement("div");
           h1.className = "rv-section-menu-label";
-          h1.textContent = "僅切割:";
+          h1.textContent = _t("split.menu.split_only");
           menu.appendChild(h1);
 
           options.forEach(([l, r]) => {
@@ -7440,7 +7440,7 @@
           // Group 2: Split + section boundary
           const h2 = document.createElement("div");
           h2.className = "rv-section-menu-label";
-          h2.textContent = "切割並分段:";
+          h2.textContent = _t("split.menu.split_with_section");
           menu.appendChild(h2);
 
           options.forEach(([l, r]) => {
@@ -7477,7 +7477,7 @@
           const hint = document.createElement("div");
           hint.className = "rv-section-menu-label";
           hint.style.fontSize = "11px";
-          hint.textContent = "改拍數後，後續和弦會自動平移保持間隔";
+          hint.textContent = _t("split.menu.beats_hint");
           menu.appendChild(hint);
 
           const choices = [1, 2, 3, 4, 5, 6, 8, 12, 16];

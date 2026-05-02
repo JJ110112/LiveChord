@@ -601,5 +601,45 @@
   "home.search.no_songs_empty": "尚無歌曲，上傳音檔或貼上 YouTube URL 開始分析",
   "home.search.upload_badge": "本機",
   "home.browse.empty_dir": "空目錄",
-  "home.label.analysis_result": "分析結果"
+  "home.label.analysis_result": "分析結果",
+
+  "loading.song": "載入樂曲中...",
+  "loading.song_detail": "正在讀取歌曲資訊與和弦編排...",
+  "loading.acc_extract": "AI 伴奏提取中...",
+  "loading.acc_extract_detail": "首次播放需要進行即時演算...",
+  "loading.acc_regen": "AI 伴奏重新生成中...",
+  "loading.acc_regen_detail": "清除快取並重新演算（含踏板/力度）...",
+  "loading.streaming": "正努力串流中...",
+  "loading.streaming_detail": "請稍後，音訊緩衝中...",
+  "loading.version_switch_title": "切換版本中...",
+  "loading.version_switch_detail": "載入 {name} 的和弦",
+  "loading.chord": "載入和弦中...",
+  "loading.chord_detail": "讀取分析結果...",
+  "loading.yt_player": "載入 YouTube 播放器…",
+  "loading.yt_player_detail": "首次載入約 5–15 秒",
+  "loading.failed": "載入失敗",
+
+  "detect.progress.msg": "正在偵測和弦…",
+  "detect.progress.detail": "首次播放需要分析音訊，大約 30 秒~1 分鐘",
+  "detect.progress.done": "偵測完成！{count} 個和弦",
+  "detect.progress.done_key": "調性: {key}",
+  "detect.progress.failed": "偵測失敗",
+  "detect.progress.midi_search": "搜尋 MIDI…",
+  "detect.progress.midi_importing": "MIDI 匯入中…",
+  "detect.progress.ai_analyzing": "AI 偵測和弦中…",
+  "detect.progress.ai_analyzing_detail": "分析音訊中，請稍候",
+
+  "ab.range": "A {a} → B {b}",
+  "ab.range_pending_b": "A {a}（待設 B）",
+  "ab.unset": "未設定",
+
+  "bar.applied": "還原節拍 ({tag} bpb={bpb}{conf})",
+  "bar.tag_rule": "規則",
+
+  "yt.analysis_done": "分析完成！",
+  "yt.view_chords": "看和弦",
+
+  "split.menu.split_only": "僅切割:",
+  "split.menu.split_with_section": "切割並分段:",
+  "split.menu.beats_hint": "改拍數後，後續和弦會自動平移保持間隔"
 }
