@@ -2,12 +2,12 @@
 
 REM Post-beta deployment mode pin. Without this the process falls through to
 REM data/settings.json which still carries deployment_mode="beta" from the
-REM 2026-04 invite-only beta — that would 404 every personal-mode endpoint
+REM 2026-04 invite-only beta -- that would 404 every personal-mode endpoint
 REM (auto worker, library, backup) and force the front-end into the legacy
 REM Beta login UI on LAN. Env var wins over settings.json in config.py.
 set LIVECHORD_MODE=personal
 
-REM 以管理員權限加入 Windows 防火牆規則（允許 port 8800）
+REM Add Windows firewall rule for port 8800 (needs Admin elevation)
 netsh advfirewall firewall show rule name="LiveChord Server" >nul 2>&1
 if %errorlevel% neq 0 (
     echo Adding firewall rule for port 8800...
