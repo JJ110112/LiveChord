@@ -141,13 +141,15 @@
   top: 100%;
   left: 0;
   right: 0;
-  background: var(--bg-card);
+  background: var(--lc-popup-bg);
+  backdrop-filter: var(--lc-popup-blur);
+  -webkit-backdrop-filter: var(--lc-popup-blur);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   max-height: 400px;
   overflow-y: auto;
   z-index: 200;
-  box-shadow: var(--shadow);
+  box-shadow: var(--lc-popup-shadow);
   display: none;
 }
 

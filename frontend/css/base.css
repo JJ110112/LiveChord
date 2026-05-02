@@ -31,6 +31,7 @@
      player.css being loaded. Each theme overrides this below. */
   --lc-popup-bg: rgba(22, 27, 34, 0.96);
   --lc-popup-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --lc-popup-blur: blur(12px);
 }
 
 /* Light theme — warm paper, opt-in via <html data-theme="light">.
@@ -366,13 +367,15 @@ a:hover { text-decoration: underline; }
   top: 100%;
   left: 0;
   right: 0;
-  background: var(--bg-card);
+  background: var(--lc-popup-bg);
+  backdrop-filter: var(--lc-popup-blur);
+  -webkit-backdrop-filter: var(--lc-popup-blur);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   max-height: 400px;
   overflow-y: auto;
   z-index: 200;
-  box-shadow: var(--shadow);
+  box-shadow: var(--lc-popup-shadow);
   display: none;
 }
 
