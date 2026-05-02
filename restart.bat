@@ -15,10 +15,13 @@ echo ==========================================
 echo   LiveChord - Restarting...
 echo ==========================================
 
-REM 找到並關閉舊的 uvicorn 程序
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8800.*LISTENING"') do (
-    echo Stopping PID %%a ...
-    taskkill /F /PID %%a >nul 2>&1
+REM 找到並關閉舊的 uvicorn 程序。同時掃 8801 / 8802 — 這些是 2026-04 dual-instance
+REM 留下的 beta/8802 leftover；post-beta 期間應該都不在跑，留著保險。
+for %%P in (8800 8801 8802) do (
+    for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":%%P.*LISTENING"') do (
+        echo Stopping PID %%a on port %%P ...
+        taskkill /F /PID %%a >nul 2>&1
+    )
 )
 timeout /t 2 /nobreak >nul
 
