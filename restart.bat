@@ -1,5 +1,9 @@
 @echo off
 
+REM Post-beta deployment mode pin (see start.bat for rationale). The `set`
+REM here propagates into the `start` child process below.
+set LIVECHORD_MODE=personal
+
 REM 確保防火牆允許 port 8800
 netsh advfirewall firewall show rule name="LiveChord Server" >nul 2>&1
 if %errorlevel% neq 0 (
