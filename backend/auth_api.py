@@ -223,9 +223,11 @@ async def login(req: LoginRequest, request: Request):
         return {"ok": True, "token": new_token, "username": req.username}
 
 def get_current_user(request: Request, authorization: str = Header(None)):
-    from config import is_beta_mode, is_lan_ip
-    
-    if not is_beta_mode():
+    from config import is_personal_mode, is_lan_ip
+
+    # LAN bypass is personal-mode only. In public (cloud) the LAN concept
+    # doesn't exist; in beta the front-end forces login.
+    if is_personal_mode():
         client_ip = (
             request.headers.get("cf-connecting-ip")
             or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
@@ -250,9 +252,10 @@ def get_current_user(request: Request, authorization: str = Header(None)):
         return row[0]
 
 def get_admin_user(request: Request, authorization: str = Header(None)):
-    from config import is_beta_mode, is_lan_ip
-    
-    if not is_beta_mode():
+    from config import is_personal_mode, is_lan_ip
+
+    # LAN bypass is personal-mode only (see get_current_user).
+    if is_personal_mode():
         client_ip = (
             request.headers.get("cf-connecting-ip")
             or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
@@ -279,8 +282,8 @@ def get_admin_user(request: Request, authorization: str = Header(None)):
 
 @router.get("/is_admin")
 async def check_is_admin(request: Request, username: str = Depends(get_current_user)):
-    from config import is_beta_mode, is_lan_ip
-    if not is_beta_mode():
+    from config import is_personal_mode, is_lan_ip
+    if is_personal_mode():
         client_ip = (
             request.headers.get("cf-connecting-ip")
             or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()

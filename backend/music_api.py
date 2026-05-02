@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, StreamingResponse, Response
 
 from mutagen.flac import FLAC
 
-from config import get_music_root, get_music_roots, set_music_roots, resolve_path, is_beta_mode
+from config import get_music_root, get_music_roots, set_music_roots, resolve_path, is_beta_mode, is_personal_mode
 from batch_state import BatchState
 from task_lock import get_task_lock
 
@@ -115,18 +115,19 @@ from chord_cache import get_chord_summary as _get_chord_summary, song_hash, chor
 # ---------------------------------------------------------------------------
 
 def _check_browse_access(authorization: str = Header(None)):
-    """In beta mode, only admin can browse the NAS file tree."""
-    if not is_beta_mode():
+    """Only personal-mode (LAN) callers can browse the NAS file tree.
+    In beta or public, NAS path exposure is forbidden — admin must come via token."""
+    if is_personal_mode():
         return
     if not authorization:
-        raise HTTPException(status_code=403, detail="Browse not available for beta users")
+        raise HTTPException(status_code=403, detail="Browse not available")
     token = authorization.replace("Bearer ", "")
     import sqlite3
     db = Path(__file__).parent.parent / "data" / "users.db"
     with sqlite3.connect(db, timeout=10) as conn:
         row = conn.execute("SELECT is_admin FROM users WHERE token=?", (token,)).fetchone()
         if not row or row[0] != 1:
-            raise HTTPException(status_code=403, detail="Browse not available for beta users")
+            raise HTTPException(status_code=403, detail="Browse not available")
 
 
 @router.get("/browse")
@@ -309,13 +310,13 @@ def search(q: str = Query(default=""), authorization: str = Header(None)):
         except Exception:
             pass  # never fail the whole search over a user-uploads lookup error
 
-    # Beta non-admin: restrict search to user's own uploads / YT analyses.
+    # Beta/public non-admin: restrict search to user's own uploads / YT analyses.
     # NAS library tracks were chord-analyzed from album masters while users
-    # searching on beta are almost always looking for YouTube MV versions;
+    # searching on beta/public are almost always looking for YouTube MV versions;
     # surfacing the library match leads to a "same title, wrong audio
-    # length" mismatch that confuses the chord player. Personal (8800) and
+    # length" mismatch that confuses the chord player. Personal (LAN) and
     # admins still get full library search.
-    if is_beta_mode() and not _is_admin_request(authorization):
+    if not is_personal_mode() and not _is_admin_request(authorization):
         return {"results": user_uploads}
 
     # ─── Library results ────────────────────────────────────────────────────
@@ -327,10 +328,10 @@ def search(q: str = Query(default=""), authorization: str = Header(None)):
             return {"results": user_uploads}
         return {"results": [], "error": "索引尚未建立，請點右上角「掃描」或到管理頁面執行"}
 
-    # (Library search below is admin-only in beta — non-admin beta returned
+    # (Library search below is admin-only in beta/public — non-admin returned
     # above. `hide_paths` remains for safety in case future routing lands
-    # a non-admin beta call here.)
-    hide_paths = is_beta_mode() and not _is_admin_request(authorization)
+    # a non-admin call here.)
+    hide_paths = not is_personal_mode() and not _is_admin_request(authorization)
 
     cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
     tracks = cache.get("tracks", [])

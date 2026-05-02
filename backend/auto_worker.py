@@ -37,12 +37,30 @@ DEFAULT_SETTINGS = {
     "auto_chord_delay_seconds": 1.0,    # 每首之間的延遲（秒），避免 CPU 飢餓導致前端無回應
     "auto_chord_skip_genres": [],       # 跳過的 genre（如 Classics）
     "auto_chord_active_groups": [],     # 啟用的曲目群組（空 = 不過濾，附 1 用）
-    "bar_arbitrator_enabled": False,    # personal-only: run bar_arbitrator at ingest after bpm_sanity
-    "beat_refiner_enabled": False,      # personal-only: audio-level Compact-Transformer beat/downbeat refiner
+    "bar_arbitrator_enabled": False,    # run bar_arbitrator at ingest after bpm_sanity
+                                        # (default-on in public mode via _public_mode_overrides)
+    "beat_refiner_enabled": False,      # audio-level Compact-Transformer beat/downbeat refiner
                                         # (Phase 1 — runs before bar_arbitrator). Gate inside phase1_refine
                                         # ensures refinement is only applied when it actually beats input
                                         # alignment by ≥0.02; otherwise falls back. Safe to flip.
+                                        # (default-on in public mode via _public_mode_overrides)
 }
+
+
+def _public_mode_overrides() -> dict:
+    """In public (cloud) mode, override two defaults to True so visitors get
+    auto-bar-split + beat refinement out of the box. Personal/beta defaults
+    are unchanged. User-set values in settings files still win on conflict."""
+    try:
+        from config import is_public_mode
+        if is_public_mode():
+            return {
+                "bar_arbitrator_enabled": True,
+                "beat_refiner_enabled": True,
+            }
+    except Exception:
+        pass
+    return {}
 
 # ---------------------------------------------------------------------------
 # Per-instance settings isolation (Phase: option B)
@@ -69,14 +87,25 @@ BETA_SETTINGS_FILE = DATA_DIR / "settings_beta.json"
 SHARED_SETTINGS_FILE = DATA_DIR / "settings_shared.json"
 
 
+PUBLIC_SETTINGS_FILE = DATA_DIR / "settings_public.json"
+
+
 def _current_mode() -> str:
-    """Return 'personal' or 'beta' based on LIVECHORD_MODE env var."""
+    """Return 'personal', 'beta', or 'public' based on LIVECHORD_MODE env var."""
     m = (os.environ.get("LIVECHORD_MODE") or "").lower().strip()
-    return "beta" if m == "beta" else "personal"
+    if m == "beta":
+        return "beta"
+    if m == "public":
+        return "public"
+    return "personal"
 
 
 def _mode_settings_path(mode: str) -> Path:
-    return BETA_SETTINGS_FILE if mode == "beta" else PERSONAL_SETTINGS_FILE
+    if mode == "beta":
+        return BETA_SETTINGS_FILE
+    if mode == "public":
+        return PUBLIC_SETTINGS_FILE
+    return PERSONAL_SETTINGS_FILE
 
 
 def _read_json_dict(p: Path) -> dict:
@@ -125,18 +154,21 @@ def load_settings() -> dict:
     _migrate_legacy_settings_if_needed()
     # Prefer split files; fall back to legacy for safety before first migration.
     if not (PERSONAL_SETTINGS_FILE.is_file() or BETA_SETTINGS_FILE.is_file()
-            or SHARED_SETTINGS_FILE.is_file()):
+            or PUBLIC_SETTINGS_FILE.is_file() or SHARED_SETTINGS_FILE.is_file()):
         if SETTINGS_FILE.is_file():
             try:
                 return {**DEFAULT_SETTINGS,
+                        **_public_mode_overrides(),
                         **_read_json_dict(SETTINGS_FILE)}
             except Exception:
                 pass
-        return dict(DEFAULT_SETTINGS)
+        return {**DEFAULT_SETTINGS, **_public_mode_overrides()}
     mode = _current_mode()
     shared = _read_json_dict(SHARED_SETTINGS_FILE)
     mine = _read_json_dict(_mode_settings_path(mode))
-    return {**DEFAULT_SETTINGS, **shared, **mine}
+    # Order: base defaults < mode-specific defaults (public flips two flags) <
+    # shared file < mode-specific file. User-set values still win.
+    return {**DEFAULT_SETTINGS, **_public_mode_overrides(), **shared, **mine}
 
 
 # ---------------------------------------------------------------------------
@@ -154,7 +186,7 @@ import re
 SETTINGS_BACKUP_DIR = DATA_DIR / "backups" / "settings"  # legacy default target
 SETTINGS_BACKUP_KEEP = 30  # per-mode per-target
 _BACKUP_FILENAME_RE = re.compile(
-    r"^settings_(?:(?:personal|beta)_)?\d{8}_\d{6}(?:_\d{2})?\.json$"
+    r"^settings_(?:(?:personal|beta|public)_)?\d{8}_\d{6}(?:_\d{2})?\.json$"
 )
 _LABEL_RE = re.compile(r"^[A-Za-z0-9_\-]{1,32}$")  # restore/download accept only these
 
@@ -163,6 +195,8 @@ def _mode_of_filename(filename: str) -> str:
     """Infer owning mode from a backup filename. Legacy files -> 'personal'."""
     if filename.startswith("settings_beta_"):
         return "beta"
+    if filename.startswith("settings_public_"):
+        return "public"
     return "personal"
 
 

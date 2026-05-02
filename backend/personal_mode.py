@@ -1,16 +1,16 @@
-"""Depth-defense guard: endpoints that must not be reachable on the beta instance.
+"""Depth-defense guard: endpoints that only exist on the personal instance.
 
-Mirror of `feedback_api._require_beta` / `analytics_api._require_beta` — these
-endpoints live only on the personal instance (8800). Attach as a FastAPI
-dependency to reject 404 when LIVECHORD_MODE=beta, regardless of front-end
-state or browser cache.
+These endpoints (auto worker controls, library scanning, full backup admin)
+are LAN-self-use only and should not be reachable on either the beta instance
+or the public cloud instance. Attach as a FastAPI dependency to reject 404
+on any non-personal mode, regardless of front-end state or browser cache.
 """
 
 from fastapi import HTTPException
 
-from config import is_beta_mode
+from config import is_personal_mode
 
 
 def require_personal_mode():
-    if is_beta_mode():
+    if not is_personal_mode():
         raise HTTPException(status_code=404, detail="Not available on this instance")

@@ -264,22 +264,23 @@ def _save_chord_json(job: ProcessJob, chords: list, key: str,
     # this is a silent no-op. Failure non-fatal.
     if audio_path and os.path.isfile(audio_path):
         try:
-            from config import is_beta_mode
-            if not is_beta_mode():
+            from config import is_personal_mode, is_public_mode
+            if is_personal_mode() or is_public_mode():
                 from auto_worker import load_settings
                 if load_settings().get("beat_refiner_enabled", False):
                     _run_beat_refiner_into_sheet(sheet, audio_path, job.job_id)
         except Exception as e:
             logger.warning("beat_refiner hook failed for %s: %s", job.job_id, e)
 
-    # Bar arbitrator — Phase 2 personal-mode AI bar/downbeat correction.
-    # Gated by (a) LIVECHORD_MODE != "beta" and (b) settings flag default off.
-    # Runs AFTER bpm_sanity AND beat_refiner so it sees the corrected
-    # bpm/downbeats; mutates sheet["downbeats"] + writes sheet["bar_correction"].
-    # Failure non-fatal — chord JSON is still useful without correction.
+    # Bar arbitrator — AI bar/downbeat correction. Runs in personal AND public
+    # modes (default flag-off in personal, flag-on in public so cloud users
+    # get auto-corrected downbeats and the player auto-bar-split). Beta is
+    # excluded (archival). Runs AFTER bpm_sanity AND beat_refiner so it sees
+    # the corrected bpm/downbeats; mutates sheet["downbeats"] + writes
+    # sheet["bar_correction"]. Failure non-fatal.
     try:
-        from config import is_beta_mode
-        if not is_beta_mode():
+        from config import is_personal_mode, is_public_mode
+        if is_personal_mode() or is_public_mode():
             from auto_worker import load_settings
             if load_settings().get("bar_arbitrator_enabled", False):
                 _run_bar_arbitrator_into_sheet(sheet, job.job_id)

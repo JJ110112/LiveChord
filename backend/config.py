@@ -123,16 +123,32 @@ def set_midi_root(new_path: str):
     _save_setting("midi_root", os.path.normpath(new_path))
 
 
+VALID_MODES = ("personal", "beta", "public")
+
+
 def get_deployment_mode() -> str:
-    """回傳部署模式: 優先讀取環境變數 LIVECHORD_MODE，其次 fallback settings.json: 'personal' (預設) 或 'beta'"""
+    """部署模式: env LIVECHORD_MODE > settings 'deployment_mode' > 'personal'.
+    'public' = 雲端對公眾, 匿名可用, OAuth 登入解鎖收藏/評分.
+    'personal' = NUC LAN 自用, LAN bypass 為 admin.
+    'beta' = 封測 (archival, 目前不啟用).
+    """
     env_mode = os.environ.get("LIVECHORD_MODE")
-    if env_mode in ["personal", "beta"]:
+    if env_mode in VALID_MODES:
         return env_mode
-    return _load_settings().get("deployment_mode", "personal")
+    settings_mode = _load_settings().get("deployment_mode", "personal")
+    return settings_mode if settings_mode in VALID_MODES else "personal"
 
 
 def is_beta_mode() -> bool:
     return get_deployment_mode() == "beta"
+
+
+def is_public_mode() -> bool:
+    return get_deployment_mode() == "public"
+
+
+def is_personal_mode() -> bool:
+    return get_deployment_mode() == "personal"
 
 
 def _save_setting(key: str, value):
