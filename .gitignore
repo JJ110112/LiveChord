@@ -37,6 +37,7 @@ data/shadow_v2.log
 data/models/
 data/accompaniments/
 data/auth.db
+data/oauth_session_key
 data/jam_tracks.json
 data/ratings.json
 data/style_map.json

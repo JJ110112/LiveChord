@@ -78,6 +78,34 @@ def init_db():
             conn.execute("ALTER TABLE users ADD COLUMN tos_accepted_at TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass
+        # Phase B (OAuth): bind external identity to a row in users. We keep
+        # password_hash NOT NULL and store '' for OAuth-only accounts (sentinel
+        # — login() rejects empty hash via mismatch check). New columns are all
+        # nullable / default '' so existing rows survive untouched.
+        for col, decl in (
+            ("email", "TEXT DEFAULT ''"),
+            ("display_name", "TEXT DEFAULT ''"),
+            ("oauth_provider", "TEXT DEFAULT ''"),
+            ("oauth_sub", "TEXT DEFAULT ''"),
+        ):
+            try:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {col} {decl}")
+            except sqlite3.OperationalError:
+                pass
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS oauth_identities (
+                provider TEXT NOT NULL,
+                sub TEXT NOT NULL,
+                username TEXT NOT NULL,
+                email TEXT DEFAULT '',
+                display_name TEXT DEFAULT '',
+                created_at REAL DEFAULT 0,
+                PRIMARY KEY (provider, sub)
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_oauth_identities_user ON oauth_identities(username)"
+        )
         conn.commit()
 
 init_db()
@@ -152,8 +180,18 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+def _block_password_in_public():
+    """Public mode disables username/password sign-up + sign-in. The OAuth
+    flow under /api/auth/oauth/* is the only login path on the cloud
+    instance. Personal/beta keep the password flow as-is."""
+    from config import is_public_mode
+    if is_public_mode():
+        raise HTTPException(status_code=404, detail="Not available")
+
+
 @router.post("/register")
 async def register(req: RegisterRequest, request: Request):
+    _block_password_in_public()
     _check_rate_limit(_real_client_ip(request))
 
     # Cheap pre-checks before opening DB
@@ -204,6 +242,7 @@ async def register(req: RegisterRequest, request: Request):
 
 @router.post("/login")
 async def login(req: LoginRequest, request: Request):
+    _block_password_in_public()
     _check_rate_limit(_real_client_ip(request))
 
     pw_hash = hash_password(req.password)
@@ -327,8 +366,16 @@ def is_anon(username: str) -> bool:
     return bool(username) and username.startswith(_ANON_PREFIX)
 
 
+def _admin_email_allowlist() -> set:
+    """Read LIVECHORD_ADMIN_EMAILS env at call time so adding an email to the
+    .env (and restarting) takes effect without DB writes. Empty/unset → no
+    public-mode admins (only DB-flagged is_admin=1 accounts qualify)."""
+    raw = os.environ.get("LIVECHORD_ADMIN_EMAILS", "") or ""
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
 def get_admin_user(request: Request, authorization: str = Header(None)):
-    from config import is_personal_mode, is_lan_ip
+    from config import is_personal_mode, is_public_mode, is_lan_ip
 
     # LAN bypass is personal-mode only (see get_current_user).
     if is_personal_mode():
@@ -345,16 +392,27 @@ def get_admin_user(request: Request, authorization: str = Header(None)):
 
     token = authorization.replace("Bearer ", "")
     with sqlite3.connect(DB_PATH, timeout=10) as conn:
-        cursor = conn.execute("SELECT username, is_admin, token_created_at FROM users WHERE token=?", (token,))
+        cursor = conn.execute(
+            "SELECT username, is_admin, token_created_at, email FROM users WHERE token=?",
+            (token,),
+        )
         row = cursor.fetchone()
         if not row:
             raise HTTPException(status_code=401, detail="無效憑證 (Invalid Token)")
-        created = row[2] if row[2] else 0
+        username, is_admin_flag, created, email = row
+        created = created or 0
         if created > 0 and (time.time() - created) > TOKEN_EXPIRY_SECONDS:
             raise HTTPException(status_code=401, detail="憑證已過期，請重新登入 (Token expired)")
-        if row[1] != 1:
-            raise HTTPException(status_code=403, detail="需要管理員權限 (Admin Privileges Required)")
-        return row[0]
+        if is_admin_flag == 1:
+            return username
+        # Public-mode override: env-driven email allowlist promotes the caller
+        # without requiring an `is_admin=1` flip in the DB. Convenient for the
+        # cloud deployment where admin identity follows the OAuth email and
+        # may need to change without surgery.
+        if is_public_mode() and email:
+            if email.lower() in _admin_email_allowlist():
+                return username
+        raise HTTPException(status_code=403, detail="需要管理員權限 (Admin Privileges Required)")
 
 @router.get("/is_admin")
 async def check_is_admin(request: Request, username: str = Depends(get_current_user)):

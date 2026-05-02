@@ -6,6 +6,10 @@
   <title>LiveChord - 登入</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+  <!-- Phase A shared fetch wrapper. Loaded BEFORE any /api/ call so anon
+       X-Anon-Id is in place + 401 from password endpoints in public mode
+       doesn't bounce-loop. -->
+  <script src="/js/auth.js?v=2"></script>
   <link rel="stylesheet" href="/css/base.css?v=5">
   <style>
     body {
@@ -27,18 +31,102 @@
       position: relative;
     }
 
-    .auth-container::before {
-      display: none;
-    }
-
     h1 {
       text-align: center;
-      margin-bottom: 2rem;
+      margin-bottom: 0.5rem;
       color: var(--accent);
       font-size: 2rem;
       letter-spacing: -0.5px;
     }
 
+    .subtitle {
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.9rem;
+      margin-bottom: 2rem;
+    }
+
+    /* OAuth buttons (public mode) */
+    .oauth-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .oauth-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      padding: 0.85rem 1rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text);
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.15s;
+      box-sizing: border-box;
+    }
+
+    .oauth-btn:hover {
+      background: rgba(255, 255, 255, 0.07);
+      transform: translateY(-1px);
+    }
+
+    .oauth-btn[disabled],
+    .oauth-btn.disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .oauth-btn .oauth-icon {
+      width: 20px;
+      height: 20px;
+      flex: 0 0 20px;
+    }
+
+    .oauth-btn-google { background: #fff; color: #1f1f1f; border-color: #dadce0; }
+    .oauth-btn-google:hover { background: #f5f5f5; }
+    .oauth-btn-discord { background: #5865F2; color: #fff; border-color: #5865F2; }
+    .oauth-btn-discord:hover { background: #4752c4; }
+    .oauth-btn-apple { background: #000; color: #fff; border-color: #000; }
+
+    .guest-row {
+      text-align: center;
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+
+    .guest-row a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .guest-row a:hover { text-decoration: underline; }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin: 1.5rem 0 1rem;
+      color: var(--text-dim);
+      font-size: 0.8rem;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: "";
+      flex: 1;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Legacy password form (personal/beta) */
     .tabs {
       display: flex;
       gap: 1rem;
@@ -58,10 +146,7 @@
       position: relative;
     }
 
-    .tab.active {
-      color: var(--accent);
-    }
-
+    .tab.active { color: var(--accent); }
     .tab.active::after {
       content: '';
       position: absolute;
@@ -73,17 +158,13 @@
       border-radius: 2px 2px 0 0;
     }
 
-    .form-group {
-      margin-bottom: 1.5rem;
-    }
-
+    .form-group { margin-bottom: 1.5rem; }
     .form-group label {
       display: block;
       margin-bottom: 0.5rem;
       color: var(--text-dim);
       font-size: 0.875rem;
     }
-
     .form-group input {
       width: 100%;
       padding: 0.75rem 1rem;
@@ -95,13 +176,11 @@
       transition: all 0.3s ease;
       box-sizing: border-box;
     }
-
     .form-group input:focus {
       outline: none;
       border-color: var(--accent);
       box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
     }
-
     .btn {
       width: 100%;
       padding: 0.875rem;
@@ -115,7 +194,6 @@
       transition: all 0.3s ease;
       box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
     }
-
     .btn:hover {
       background: var(--accent-dim);
       transform: translateY(-1px);
@@ -127,66 +205,138 @@
       font-size: 0.875rem;
       text-align: center;
       margin-top: 1rem;
-      height: 1.2rem;
+      min-height: 1.2rem;
     }
 
-    .hidden {
-      display: none !important;
-    }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
 
   <div class="auth-container">
     <h1>LiveChord</h1>
-    
-    <div class="tabs">
-      <div class="tab active" id="tab-login" onclick="switchTab('login')">登入</div>
-      <div class="tab" id="tab-register" onclick="switchTab('register')">註冊</div>
+    <div class="subtitle" id="subtitle">登入解鎖收藏與評分</div>
+
+    <!-- ── Public mode: OAuth buttons (default visible; hidden by JS if not public) ── -->
+    <div id="oauth-section">
+      <div class="oauth-list" id="oauth-list">
+        <a class="oauth-btn oauth-btn-google" href="/api/auth/oauth/google/start" data-provider="google">
+          <svg class="oauth-icon" viewBox="0 0 48 48" aria-hidden="true">
+            <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/>
+            <path fill="#FF3D00" d="m6.306 14.691 6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/>
+            <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/>
+            <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/>
+          </svg>
+          <span>使用 Google 繼續</span>
+        </a>
+        <a class="oauth-btn oauth-btn-discord" href="/api/auth/oauth/discord/start" data-provider="discord">
+          <svg class="oauth-icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+            <path d="M20.317 4.369A19.79 19.79 0 0 0 16.558 3.2a.074.074 0 0 0-.079.037 13.7 13.7 0 0 0-.608 1.249 18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.249.077.077 0 0 0-.079-.037A19.74 19.74 0 0 0 5.93 4.369a.07.07 0 0 0-.032.027C2.625 9.046 1.71 13.58 2.157 18.057a.082.082 0 0 0 .031.056 19.91 19.91 0 0 0 5.993 3.03.078.078 0 0 0 .084-.027 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.105 13.13 13.13 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.371-.291a.074.074 0 0 1 .078-.011c3.927 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .079.01c.12.099.245.198.372.292a.077.077 0 0 1-.006.128 12.32 12.32 0 0 1-1.873.891.077.077 0 0 0-.041.106c.36.698.772 1.362 1.225 1.993a.077.077 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.331c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.955 2.418-2.157 2.418zm7.974 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+          </svg>
+          <span>使用 Discord 繼續</span>
+        </a>
+        <button type="button" class="oauth-btn oauth-btn-apple disabled" disabled
+                title="尚未啟用 — Apple 開發者方案申請中">
+          <svg class="oauth-icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+            <path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.23-.02-.3-.03-.01-.07-.04-.22-.04-.39 0-1.13.572-2.26 1.215-2.97.804-.94 2.142-1.65 3.054-1.68.04.16.06.32.06.42 0 .01.005.005.175.005zm4.565 17.13c0 .045-.05.1-.092.15-.413.6-.84 1.2-1.546 2.197-.943 1.32-2.27 2.97-3.92 2.97-1.487 0-1.85-.95-3.85-.95-2.005 0-2.36.95-3.92.95-1.624 0-2.93-1.484-3.871-2.81-2.638-3.7-2.927-8.06-1.293-10.39 1.16-1.65 2.99-2.62 4.71-2.62 1.752 0 2.85.97 4.295.97 1.4 0 2.255-.97 4.275-.97 1.526 0 3.143.83 4.295 2.27-3.78 2.07-3.165 7.49.917 8.232z"/>
+          </svg>
+          <span>使用 Apple 繼續（即將推出）</span>
+        </button>
+      </div>
+      <div class="guest-row">
+        <a href="/" id="guest-link">先以訪客瀏覽 →</a>
+      </div>
     </div>
 
-    <!-- 登入表單 -->
-    <form id="login-form" onsubmit="handleLogin(event)">
-      <div class="form-group">
-        <label>使用者名稱</label>
-        <input type="text" id="login-username" required placeholder="例如: Eric">
+    <!-- ── Personal/Beta mode: legacy password form (hidden by JS in public mode) ── -->
+    <div id="legacy-section" class="hidden">
+      <div class="tabs">
+        <div class="tab active" id="tab-login" onclick="switchTab('login')">登入</div>
+        <div class="tab" id="tab-register" onclick="switchTab('register')">註冊</div>
       </div>
-      <div class="form-group">
-        <label>密碼</label>
-        <input type="password" id="login-password" required placeholder="您的密碼">
-      </div>
-      <button type="submit" class="btn">登入</button>
-    </form>
 
-    <!-- 註冊表單 -->
-    <form id="register-form" class="hidden" onsubmit="handleRegister(event)">
-      <div class="form-group">
-        <label>使用者名稱</label>
-        <input type="text" id="reg-username" required placeholder="想一個響亮的名字" minlength="3">
-      </div>
-      <div class="form-group">
-        <label>密碼</label>
-        <input type="password" id="reg-password" required placeholder="設定密碼（至少 8 字元）" minlength="8">
-      </div>
-      <div class="form-group">
-        <label>邀請碼 (Invite Code)</label>
-        <input type="text" id="reg-invite" required placeholder="站長發放的密碼">
-      </div>
-      <button type="submit" class="btn">建立帳號</button>
-    </form>
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label>使用者名稱</label>
+          <input type="text" id="login-username" required placeholder="例如: Eric">
+        </div>
+        <div class="form-group">
+          <label>密碼</label>
+          <input type="password" id="login-password" required placeholder="您的密碼">
+        </div>
+        <button type="submit" class="btn">登入</button>
+      </form>
+
+      <form id="register-form" class="hidden" onsubmit="handleRegister(event)">
+        <div class="form-group">
+          <label>使用者名稱</label>
+          <input type="text" id="reg-username" required placeholder="想一個響亮的名字" minlength="3">
+        </div>
+        <div class="form-group">
+          <label>密碼</label>
+          <input type="password" id="reg-password" required placeholder="設定密碼（至少 8 字元）" minlength="8">
+        </div>
+        <div class="form-group">
+          <label>邀請碼 (Invite Code)</label>
+          <input type="text" id="reg-invite" required placeholder="站長發放的密碼">
+        </div>
+        <button type="submit" class="btn">建立帳號</button>
+      </form>
+    </div>
 
     <div class="error-msg" id="error-msg"></div>
   </div>
 
   <script>
-    // 若已登入，直接導向首頁
+    // If already signed in, bounce to home.
     if (localStorage.getItem("livechord_token")) {
       window.location.href = "/";
     }
 
+    // Surface OAuth callback errors (`/login?oauth_error=1&p=google`).
+    (function _showOAuthError() {
+      const params = new URLSearchParams(location.search);
+      if (params.get("oauth_error") === "1") {
+        const p = params.get("p") || "";
+        const err = document.getElementById("error-msg");
+        err.textContent = `登入失敗（${p || "OAuth"}），請重試或選擇其他登入方式`;
+      }
+    })();
+
+    // Mode-aware UI swap. Default markup shows OAuth section; hide it for
+    // personal/beta and reveal the legacy password form instead. /api/config/public
+    // is unauthenticated so it works for any caller.
+    fetch("/api/config/public").then(r => r.json()).then(cfg => {
+      const mode = (cfg && cfg.deployment_mode) || "personal";
+      try { localStorage.setItem("livechord_mode_hint", mode); } catch (e) {}
+      if (mode !== "public") {
+        document.getElementById("oauth-section").classList.add("hidden");
+        document.getElementById("legacy-section").classList.remove("hidden");
+        document.getElementById("subtitle").textContent =
+          mode === "beta" ? "Beta 帳號登入" : "管理員登入";
+      } else {
+        // Public: hide providers without configured credentials by querying
+        // /api/auth/oauth/providers. Apple is disabled in markup regardless.
+        fetch("/api/auth/oauth/providers")
+          .then(r => r.json())
+          .then(d => {
+            const enabled = new Set(d.providers || []);
+            document.querySelectorAll("#oauth-list .oauth-btn[data-provider]")
+              .forEach(btn => {
+                const p = btn.getAttribute("data-provider");
+                if (!enabled.has(p)) btn.classList.add("hidden");
+              });
+          })
+          .catch(() => {});
+      }
+    }).catch(() => {
+      // Failed to read mode → show legacy form as the safer default.
+      document.getElementById("oauth-section").classList.add("hidden");
+      document.getElementById("legacy-section").classList.remove("hidden");
+    });
+
     function switchTab(mode) {
       document.getElementById("error-msg").textContent = "";
-      
       const loginTab = document.getElementById("tab-login");
       const regTab = document.getElementById("tab-register");
       const loginForm = document.getElementById("login-form");
@@ -210,7 +360,7 @@
       const u = document.getElementById("login-username").value;
       const p = document.getElementById("login-password").value;
       const err = document.getElementById("error-msg");
-      
+
       try {
         const res = await fetch("/api/auth/login", {
           method: "POST",
@@ -218,7 +368,7 @@
           body: JSON.stringify({ username: u, password: p })
         });
         const data = await res.json();
-        
+
         if (data.ok) {
           localStorage.setItem("livechord_token", data.token);
           localStorage.setItem("livechord_username", data.username);
@@ -237,7 +387,7 @@
       const p = document.getElementById("reg-password").value;
       const inv = document.getElementById("reg-invite").value;
       const err = document.getElementById("error-msg");
-      
+
       try {
         const res = await fetch("/api/auth/register", {
           method: "POST",
@@ -245,7 +395,7 @@
           body: JSON.stringify({ username: u, password: p, invite_code: inv })
         });
         const data = await res.json();
-        
+
         if (data.ok) {
           localStorage.setItem("livechord_token", data.token);
           localStorage.setItem("livechord_username", data.username);

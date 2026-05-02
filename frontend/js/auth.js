@@ -65,6 +65,32 @@
   // Initialise window flag from cache so other scripts can read it synchronously.
   window._lcDeploymentMode = getModeHint();
 
+  // ── OAuth token capture (Phase B) ────────────────────────────────────────
+  // The OAuth callback (backend/oauth_api.py) bounces the browser to
+  // `/?oauth_done=1#token=<t>&username=<u>`. We capture from the URL fragment
+  // (which the backend never sees) and persist into localStorage, then strip
+  // the fragment so the URL is clean and the token doesn't leak via screenshot
+  // or browser history. Runs synchronously before any /api/ call so the very
+  // first request after sign-in carries the new token.
+  (function _captureOAuthFragment() {
+    const h = (window.location.hash || "").replace(/^#/, "");
+    if (!h) return;
+    const params = new URLSearchParams(h);
+    const tk = params.get("token");
+    const un = params.get("username");
+    if (!tk || !un) return;
+    if (!/^[A-Za-z0-9_\-]{16,}$/.test(tk)) return;
+    localStorage.setItem(TOKEN_KEY, tk);
+    localStorage.setItem(USERNAME_KEY, un);
+    // Strip the fragment without reloading.
+    try {
+      const clean = window.location.pathname + window.location.search;
+      history.replaceState(null, "", clean);
+    } catch (e) {
+      window.location.hash = "";
+    }
+  })();
+
   // ── fetch wrapper ────────────────────────────────────────────────────────
   const _origFetch = window.fetch;
   window.fetch = async function (resource, config) {

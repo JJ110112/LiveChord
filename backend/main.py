@@ -1,5 +1,19 @@
 """LiveChord — 即時音樂和弦+簡譜顯示網站"""
 
+# Load .env at the very top so config.get_deployment_mode() and the OAuth
+# providers see env vars when this module is imported (uvicorn workers do a
+# fresh import per process, so this runs in every worker). Looks for .env
+# at the repo root (parent of this backend/ directory) and falls back to
+# CWD-based discovery from python-dotenv defaults.
+import os as _os
+from pathlib import Path as _Path
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    _load_dotenv(dotenv_path=_Path(__file__).parent.parent / ".env", override=False)
+except ImportError:
+    # python-dotenv missing → fine in personal mode, .env was a Phase B add.
+    pass
+
 import ipaddress
 import logging
 from logging.handlers import RotatingFileHandler
@@ -9,6 +23,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.middleware.sessions import SessionMiddleware
 
 # ---------------------------------------------------------------------------
 # Logging: rotate to data/server.log (10 MB × 5 backups) + keep stdout so
@@ -48,6 +63,7 @@ from auth_api import router as auth_router
 from feedback_api import router as feedback_router
 from analytics_api import router as analytics_router
 from process_api import router as process_router
+from oauth_api import router as oauth_router
 import auth_api
 from fastapi import Depends
 import auto_worker
@@ -99,6 +115,44 @@ async def lifespan(app):
 
 app = FastAPI(title="LiveChord", version="1.0.0", lifespan=lifespan)
 
+
+# ---------------------------------------------------------------------------
+# SessionMiddleware (used by Authlib to persist OAuth state across the
+# authorize-redirect → callback hop). Secret is loaded from env in public
+# mode; otherwise generated once and stored at data/oauth_session_key so
+# personal/beta restarts don't invalidate any in-flight OAuth state (mostly
+# moot since those modes don't expose OAuth, but cheap to be consistent).
+# Cookie is HttpOnly + SameSite=lax + Secure when behind HTTPS; max age 5min
+# is enough to complete an OAuth dance and avoids leaving long-lived state
+# cookies on disk.
+# ---------------------------------------------------------------------------
+
+def _resolve_session_secret() -> str:
+    s = _os.environ.get("LIVECHORD_SESSION_SECRET", "").strip()
+    if s:
+        return s
+    p = _Path(__file__).parent.parent / "data" / "oauth_session_key"
+    if p.exists():
+        try:
+            return p.read_text(encoding="utf-8").strip()
+        except Exception:
+            pass
+    p.parent.mkdir(parents=True, exist_ok=True)
+    import secrets as _secrets
+    s = _secrets.token_urlsafe(48)
+    p.write_text(s, encoding="utf-8")
+    return s
+
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=_resolve_session_secret(),
+    same_site="lax",
+    https_only=False,  # Cloudflare Tunnel terminates TLS; uvicorn sees HTTP
+    max_age=300,
+    session_cookie="lc_oauth_state",
+)
+
 # 掛載 API routers
 app.include_router(music_router)
 app.include_router(chord_router)
@@ -109,6 +163,7 @@ app.include_router(ai_router)
 app.include_router(extraction_router)
 app.include_router(jam_tracks_router)
 app.include_router(auth_router)
+app.include_router(oauth_router)
 app.include_router(feedback_router)
 app.include_router(analytics_router)
 app.include_router(process_router)
