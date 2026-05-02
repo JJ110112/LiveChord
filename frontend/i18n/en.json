@@ -523,8 +523,8 @@
   "sponsor.cta.pending": "Tipping setup is in progress. If you'd like to support the project, please email hiteacherwu@gmail.com and I'll reply with the currently available donation methods.",
 
   "sponsor.where.title": "Where the money goes",
-  "sponsor.where.body": "Total fixed monthly cost is around <strong>USD $30 (≈ NTD 1,000)</strong>, split across three line items:",
-  "sponsor.where.vps": "CPU VPS (FastAPI, SQLite, beat / accompaniment workers) — <strong>€15/mo</strong>",
+  "sponsor.where.body": "Total fixed monthly cost is around <strong>USD $30</strong>, split across three line items:",
+  "sponsor.where.vps": "CPU VPS (FastAPI, SQLite, beat / accompaniment workers) — <strong>$17/mo</strong>",
   "sponsor.where.gpu": "Modal serverless GPU (BTC chord detection) — <strong>$3–8/mo</strong>, pay-per-use",
   "sponsor.where.r2": "Cloudflare R2 object storage (covers, temp uploads) — <strong>$1–5/mo</strong>, zero egress fee",
   "sponsor.where.surplus": "Anything beyond costs goes back into the project: more GPU training time, better beat models, new features (vocal stem separation, more accurate jazz reharmonisation). Every improvement ships as a free update for everyone.",

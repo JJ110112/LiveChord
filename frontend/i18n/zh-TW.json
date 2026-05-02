@@ -523,8 +523,8 @@
   "sponsor.cta.pending": "贊助連結設定中。如果你想支持這個專案，請寫信給 hiteacherwu@gmail.com，我會回信給你目前可用的捐款方式。",
 
   "sponsor.where.title": "錢用在哪裡",
-  "sponsor.where.body": "LiveChord 全月固定成本約 <strong>美金 30 元（≈ 新台幣 1,000）</strong>，主要由三個部分組成：",
-  "sponsor.where.vps": "CPU VPS（FastAPI、SQLite、節拍／伴奏 worker）— <strong>€15/月</strong>",
+  "sponsor.where.body": "LiveChord 全月固定成本約 <strong>美金 30 元</strong>，主要由三個部分組成：",
+  "sponsor.where.vps": "CPU VPS（FastAPI、SQLite、節拍／伴奏 worker）— <strong>$17/月</strong>",
   "sponsor.where.gpu": "Modal serverless GPU（BTC 和弦偵測）— <strong>$3–8/月</strong>，用多少付多少",
   "sponsor.where.r2": "Cloudflare R2 物件儲存（封面、暫存音檔）— <strong>$1–5/月</strong>，免出口流量費",
   "sponsor.where.surplus": "超出的部分會回到專案本身：更多 GPU 訓練時間、更好的節拍模型、新功能（例如人聲分軌、更精準的爵士再和聲）。所有改進都會以免費更新形式回饋給所有使用者。",
