@@ -7,7 +7,8 @@ REM 8801/8802 process from before, use restart_dual.bat instead.
 echo Starting LiveChord (post-beta single-instance)...
 
 setlocal
-set LIVECHORD_MODE=personal
+set LIVECHORD_MODE=public
+set LIVECHORD_ADMIN_EMAILS=hiteacherwu@gmail.com
 set LIVECHORD_BTC_WORKERS=2
 start "LiveChord Personal (8800)" cmd /c "cd /d %~dp0backend && python -m uvicorn main:app --host 0.0.0.0 --port 8800 --proxy-headers --forwarded-allow-ips=127.0.0.1 || pause"
 endlocal
