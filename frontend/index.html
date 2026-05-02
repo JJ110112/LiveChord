@@ -13,6 +13,7 @@
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=15">
   <link rel="stylesheet" href="/css/home.css?v=22">
+  <link rel="stylesheet" href="/css/help.css?v=1">
   <!-- Warm the CDN so the player page's YouTube IFrame bootstraps faster -->
   <link rel="preconnect" href="https://www.youtube.com">
   <link rel="dns-prefetch" href="https://www.youtube.com">
@@ -43,6 +44,8 @@
   <nav style="margin-right: 32px;">
     <div style="display:flex; align-items:center; gap: 10px;">
       <span id="userGreeting" style="font-size: 0.85em; color: var(--text-muted);"></span>
+      <a href="/help" class="header-link" data-i18n="help.nav.help">說明</a>
+      <a href="/sponsor" class="header-link" data-i18n="help.nav.sponsor">贊助</a>
       <select id="langPicker" class="lang-picker" data-i18n-attr="title=lang.picker_title" title="語言"
               onchange="if(window.LiveChordI18n) window.LiveChordI18n.setLang(this.value)">
         <option value="en">EN</option>

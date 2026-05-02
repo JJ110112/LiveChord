@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="sponsor.title_tag">LiveChord — Support the project</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+  <script src="/js/auth.js?v=4"></script>
+  <script src="/js/i18n.js?v=4"></script>
+  <link rel="stylesheet" href="/css/base.css?v=5">
+  <link rel="stylesheet" href="/css/help.css?v=1">
+</head>
+<body class="help-body">
+
+<header class="header">
+  <h1 class="header-brand">
+    <a href="/" style="color:inherit; text-decoration:none; display:flex; align-items:center; gap:8px;">
+      <img src="/favicon.svg?v=3" alt="" class="header-brand-icon" aria-hidden="true">
+      <span>LiveChord</span>
+    </a>
+  </h1>
+  <nav style="margin-left:auto; margin-right: 32px;">
+    <div style="display:flex; align-items:center; gap: 14px;">
+      <a href="/" class="header-link" data-i18n="help.nav.home">首頁</a>
+      <a href="/help" class="header-link" data-i18n="help.nav.help">說明</a>
+      <a href="/sponsor" class="header-link is-active" data-i18n="help.nav.sponsor">贊助</a>
+      <select id="langPicker" class="lang-picker" data-i18n-attr="title=lang.picker_title" title="語言"
+              onchange="if(window.LiveChordI18n) window.LiveChordI18n.setLang(this.value)">
+        <option value="en">EN</option>
+        <option value="zh-TW">繁中</option>
+      </select>
+    </div>
+  </nav>
+</header>
+
+<main class="help-main">
+  <section class="help-hero sponsor-hero">
+    <h1 data-i18n="sponsor.hero.title">支持 LiveChord</h1>
+    <p data-i18n="sponsor.hero.subtitle">這是一個獨立開發的個人專案。如果它對你有幫助，歡迎請我喝杯咖啡。</p>
+  </section>
+
+  <section class="sponsor-block">
+    <p data-i18n="sponsor.intro.body">LiveChord 由一個人在一台 GPU 伺服器上自己寫、自己跑、自己除錯。每一個和弦的偵測精度、每一個小節的對齊、每一個鋼琴指法的視覺化，背後都是無數個夜晚的調參與重寫。它一直是免費使用的。</p>
+
+    <div class="sponsor-cta-wrap" id="sponsorCtaWrap">
+      <a id="sponsorCta" class="sponsor-cta-btn" href="#" target="_blank" rel="noopener" hidden>
+        <span data-i18n="sponsor.cta.bmc">☕ 請我喝杯咖啡</span>
+      </a>
+      <p id="sponsorCtaPending" class="sponsor-cta-pending" data-i18n="sponsor.cta.pending">贊助連結設定中。如果你想支持這個專案，請寫信給 hiteacherwu@gmail.com，我會回信給你目前可用的捐款方式。</p>
+    </div>
+  </section>
+
+  <section class="sponsor-block">
+    <h2 data-i18n="sponsor.where.title">錢用在哪裡</h2>
+    <p data-i18n="sponsor.where.body">LiveChord 全月固定成本約 <strong>美金 30 元（≈ 新台幣 1,000）</strong>，主要由三個部分組成：</p>
+    <ul class="sponsor-list">
+      <li data-i18n-html="sponsor.where.vps">CPU VPS（FastAPI、SQLite、節拍／伴奏 worker）— <strong>€15/月</strong></li>
+      <li data-i18n-html="sponsor.where.gpu">Modal serverless GPU（BTC 和弦偵測）— <strong>$3–8/月</strong>，用多少付多少</li>
+      <li data-i18n-html="sponsor.where.r2">Cloudflare R2 物件儲存（封面、暫存音檔）— <strong>$1–5/月</strong>，免出口流量費</li>
+    </ul>
+    <p data-i18n="sponsor.where.surplus">超出的部分會回到專案本身：更多 GPU 訓練時間、更好的節拍模型、新功能（例如人聲分軌、更精準的爵士再和聲）。所有改進都會以免費更新形式回饋給所有使用者。</p>
+  </section>
+
+  <section class="sponsor-block">
+    <h2 data-i18n="sponsor.faq.title">常見問題</h2>
+    <details class="help-q">
+      <summary data-i18n="sponsor.faq.q_why">為什麼要捐款？我不是已經能免費使用了嗎？</summary>
+      <p data-i18n="sponsor.faq.a_why">完全沒錯，免費使用是 LiveChord 的承諾。這個贊助頁是寫給「想表達感謝」或「希望這個專案能繼續活下去」的使用者的。一杯咖啡的金額足以讓 GPU 多跑兩天，意義很大。</p>
+    </details>
+    <details class="help-q">
+      <summary data-i18n="sponsor.faq.q_refund">可以退款嗎？</summary>
+      <p data-i18n="sponsor.faq.a_refund">Buy Me a Coffee 視為一次性禮物贈送，預設不退款。如果有重大誤解，請在 7 天內寫信給 hiteacherwu@gmail.com，我會手動處理。</p>
+    </details>
+    <details class="help-q">
+      <summary data-i18n="sponsor.faq.q_tax">可以開收據／發票嗎？</summary>
+      <p data-i18n="sponsor.faq.a_tax">目前是個人專案，無法開立發票或收據。Buy Me a Coffee 平台會發送 email 確認，可作為個人捐款記錄。如有公司贊助、合作專案或商業授權需求，請來信詢問。</p>
+    </details>
+  </section>
+
+  <footer class="help-footer">
+    <p>
+      <span data-i18n="help.footer.contact">問題沒解決？</span>
+      <a href="mailto:hiteacherwu@gmail.com">hiteacherwu@gmail.com</a>
+    </p>
+  </footer>
+
+</main>
+
+<script>
+  // Pull the BMC URL from /api/config/public — kept off the static HTML so
+  // the handle can be set/changed via env var without redeploying frontend.
+  (async function () {
+    try {
+      const res = await fetch("/api/config/public");
+      if (!res.ok) return;
+      const cfg = await res.json();
+      const url = (cfg && cfg.bmc_url) ? String(cfg.bmc_url).trim() : "";
+      const cta = document.getElementById("sponsorCta");
+      const pending = document.getElementById("sponsorCtaPending");
+      if (url && /^https?:\/\//.test(url) && cta && pending) {
+        cta.href = url;
+        cta.hidden = false;
+        pending.hidden = true;
+      }
+    } catch {}
+  })();
+</script>
+
+</body>
+</html>

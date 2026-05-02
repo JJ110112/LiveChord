@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="help.title_tag">LiveChord — Help Center</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+  <script src="/js/auth.js?v=4"></script>
+  <script src="/js/i18n.js?v=4"></script>
+  <link rel="stylesheet" href="/css/base.css?v=5">
+  <link rel="stylesheet" href="/css/help.css?v=1">
+</head>
+<body class="help-body">
+
+<header class="header">
+  <h1 class="header-brand">
+    <a href="/" style="color:inherit; text-decoration:none; display:flex; align-items:center; gap:8px;">
+      <img src="/favicon.svg?v=3" alt="" class="header-brand-icon" aria-hidden="true">
+      <span>LiveChord</span>
+    </a>
+  </h1>
+  <nav style="margin-left:auto; margin-right: 32px;">
+    <div style="display:flex; align-items:center; gap: 14px;">
+      <a href="/" class="header-link" data-i18n="help.nav.home">首頁</a>
+      <a href="/help" class="header-link is-active" data-i18n="help.nav.help">說明</a>
+      <a href="/sponsor" class="header-link" data-i18n="help.nav.sponsor">贊助</a>
+      <select id="langPicker" class="lang-picker" data-i18n-attr="title=lang.picker_title" title="語言"
+              onchange="if(window.LiveChordI18n) window.LiveChordI18n.setLang(this.value)">
+        <option value="en">EN</option>
+        <option value="zh-TW">繁中</option>
+      </select>
+    </div>
+  </nav>
+</header>
+
+<main class="help-main">
+  <section class="help-hero">
+    <h1 data-i18n="help.hero.title">LiveChord 說明中心</h1>
+    <p data-i18n="help.hero.subtitle">在這裡尋找常見問題的答案。</p>
+    <div class="help-search-wrap">
+      <input id="helpSearch" type="search" class="help-search"
+             data-i18n-attr="placeholder=help.search_placeholder"
+             placeholder="搜尋說明文章…" autocomplete="off">
+    </div>
+  </section>
+
+  <section class="help-sections">
+
+    <details class="help-card" open>
+      <summary><span data-i18n="help.section.getting_started">入門</span></summary>
+      <div class="help-card-body">
+        <details class="help-q">
+          <summary data-i18n="help.q.what_is_lc">LiveChord 是什麼？</summary>
+          <p data-i18n="help.a.what_is_lc">LiveChord 把任何錄音或 YouTube 影片轉換成可演奏的和弦譜。它使用 AI 模型自動偵測和弦進行、節拍與調性，再將結果以可彈奏的鋼琴/吉他/烏克視覺化呈現。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.how_analyze">如何分析一首歌？</summary>
+          <p data-i18n="help.a.how_analyze">在首頁的搜尋列貼上 YouTube 網址、或點選「+ 選取本機音檔」上傳音檔（最大 200 MB，支援 MP3 / FLAC / WAV / M4A / OGG）。分析通常在 30 秒到 2 分鐘內完成，視音檔長度而定。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.upload_vs_yt">上傳檔案與 YouTube 網址哪個比較好？</summary>
+          <p data-i18n="help.a.upload_vs_yt">音質相同的話，YouTube 網址比較方便（不用上傳）；上傳檔案則適用於非公開音檔或自己錄製的內容。Live 版錄音、業餘翻唱建議用「動態節拍偵測」工具，配合 rubato 變速。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.anon_vs_login">需要登入嗎？</summary>
+          <p data-i18n="help.a.anon_vs_login">不用。匿名使用者就能完整使用分析、播放、和弦校對與小節切分功能。登入後（Google / Discord）才能使用收藏、評分、回報問題等需要綁定帳號的功能。</p>
+        </details>
+      </div>
+    </details>
+
+    <details class="help-card">
+      <summary><span data-i18n="help.section.player">播放器基本操作</span></summary>
+      <div class="help-card-body">
+        <details class="help-q">
+          <summary data-i18n="help.q.transpose">如何移調？</summary>
+          <p data-i18n="help.a.transpose">點擊播放器底部工具列的「移調」按鈕（上下箭頭圖示），用 +/- 升降半音，或從清單選擇任意調性。和弦名稱會即時更新；YouTube 嵌入模式不會改變音訊音高，只改顯示。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.speed">如何變速？</summary>
+          <p data-i18n="help.a.speed">點擊「速度」按鈕，可選 0.5×／0.75×／1×／1.25×／1.5×／2×。慢練最常用 0.5×–0.75×，快速複習可用 1.25×–1.5×。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.ab_loop">A-B 循環怎麼用？</summary>
+          <p data-i18n="help.a.ab_loop">點擊「A-B」按鈕展開段落選單，直接點選「主歌 1」「副歌 1」等段落即可循環該段。可同時點多個相連段落，會循環整個範圍。「手動設定」可在播放中按 A 標記起點、按 B 標記終點。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.instruments">樂器顯示有什麼差別？</summary>
+          <p data-i18n="help.a.instruments">鋼琴顯示和弦組成音與指法、伴奏與旋律分行；吉他/烏克顯示按弦圖與右手刷弦/分解；手風琴顯示左手按鈕、右手鍵盤；編曲琴模式則整合伴奏節奏型樣與和弦字幕。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.fingering">指法是怎麼產生的？</summary>
+          <p data-i18n="help.a.fingering">鋼琴的左手指法依和弦根音與排列產生（5-3-1 / 5-3-2-1 / 5-4-3-2-1 三種範本）。右手旋律目前不顯示固定指法，因為自動推斷的可信度不夠。吉他/烏克按弦圖顯示 ①②③④ 食/中/無名/小指。</p>
+        </details>
+      </div>
+    </details>
+
+    <details class="help-card">
+      <summary><span data-i18n="help.section.detection">和弦偵測</span></summary>
+      <div class="help-card-body">
+        <details class="help-q">
+          <summary data-i18n="help.q.why_wrong">為什麼有些和弦看起來不對？</summary>
+          <p data-i18n="help.a.why_wrong">和弦偵測由 AI 模型完成，準確度約 80–90%。模型對主流流行/搖滾/民謠最準；爵士、複雜變化和弦、Live 即興、合成音色、薄混音容易偵錯。可使用工具列的「校正」與「自動切分」修正，並把對的版本儲存。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.fix_chord">如何修正錯誤的和弦？</summary>
+          <p data-i18n="help.a.fix_chord">點擊任何和弦卡會跳出小選單，可改名（如 C → Cmaj7）、刪除、與前/後合併。或從工具列點「編輯」進入完整編輯器。修正後務必點工具列的「儲存校正」，才會持久化。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.beat_upgrade">「動態節拍偵測」是什麼？</summary>
+          <p data-i18n="help.a.beat_upgrade">預設偵測使用快速 librosa 節拍器，對穩定速度的歌曲表現好。Live 版、變速、舊錄音的速度漂移用 madmom 節拍器（需 30 秒背景處理）會更精準，自動把和弦對齊節拍。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.bar_split">「自動切分」做什麼？</summary>
+          <p data-i18n="help.a.bar_split">把跨多小節的長和弦切成一個一個小節大小的卡片，方便練習。可選「依小節切分」「對齊小節線」（會稍微挪動邊界以對齊節奏）「依比例切分」三種策略。</p>
+        </details>
+      </div>
+    </details>
+
+    <details class="help-card">
+      <summary><span data-i18n="help.section.audio">音檔來源</span></summary>
+      <div class="help-card-body">
+        <details class="help-q">
+          <summary data-i18n="help.q.formats">支援哪些音檔格式？</summary>
+          <p data-i18n="help.a.formats">MP3、FLAC、WAV、M4A、OGG。最大檔案 200 MB。檔案內如果包含封面圖會自動取出。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.yt_drm">YouTube 影片無法分析？</summary>
+          <p data-i18n="help.a.yt_drm">部分官方 MV 對 yt-dlp 鎖權限，分析會失敗。可試找同曲的翻唱、現場版、官方 Visualizer 版本；也可下載到本機後用「上傳音檔」分析。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.copyright">版權呢？</summary>
+          <p data-i18n="help.a.copyright">使用者上傳/分析的內容應遵守當地著作權法。LiveChord 不儲存音檔副本（分析完即刪除），只保留分析結果（和弦進行、調性、節拍時間軸）。請僅用於個人音樂學習。</p>
+        </details>
+      </div>
+    </details>
+
+    <details class="help-card">
+      <summary><span data-i18n="help.section.account">帳號</span></summary>
+      <div class="help-card-body">
+        <details class="help-q">
+          <summary data-i18n="help.q.login_providers">支援哪些登入方式？</summary>
+          <p data-i18n="help.a.login_providers">Google 與 Discord（Apple 即將支援）。我們不儲存任何密碼，第三方驗證之後我們只保留你的 email 與顯示名稱。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.what_login_unlocks">登入解鎖什麼？</summary>
+          <p data-i18n="help.a.what_login_unlocks">收藏（⭐ 我的最愛）、最近播放、和弦品質評分、問題回報。匿名使用者仍可分析、播放、校對、切分、變速、循環，所有「練習」相關功能完全不受限。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.delete_data">如何刪除我的資料？</summary>
+          <p data-i18n="help.a.delete_data">寄信給 hiteacherwu@gmail.com 並附上你登入用的 email 與服務代碼，我會在 7 個工作天內把你的所有資料移除。匿名分析的資料會在 24 小時內自動清空。</p>
+        </details>
+      </div>
+    </details>
+
+    <details class="help-card">
+      <summary><span data-i18n="help.section.privacy">隱私</span></summary>
+      <div class="help-card-body">
+        <details class="help-q">
+          <summary data-i18n="help.q.what_we_store">你們儲存什麼？</summary>
+          <p data-i18n="help.a.what_we_store">儲存：分析結果（和弦時間軸、調性、節拍）、上傳檔案的雜湊指紋、登入後的 email 與顯示名稱、收藏／評分／問題回報的紀錄。不儲存：原始音檔（10 分鐘內自動刪除）、密碼、付款資訊、瀏覽紀錄。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.audio_kept">上傳的音檔留多久？</summary>
+          <p data-i18n="help.a.audio_kept">最長 10 分鐘。AI 分析完成後立即刪除，沒有副本、沒有外傳、不參與其他使用者的搜尋結果。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.share_third">會把資料給第三方嗎？</summary>
+          <p data-i18n="help.a.share_third">不會分享個人資料。可能在彙整匿名統計（總分析次數、熱門和弦進行）時引用整體數據，但不包含個別使用者識別資訊。</p>
+        </details>
+      </div>
+    </details>
+
+    <details class="help-card">
+      <summary><span data-i18n="help.section.troubleshooting">疑難排解</span></summary>
+      <div class="help-card-body">
+        <details class="help-q">
+          <summary data-i18n="help.q.mobile_play">手機播放不動？</summary>
+          <p data-i18n="help.a.mobile_play">行動瀏覽器需要使用者點過畫面才能開始播放音訊（自動播放限制）。試著點任意一張和弦卡或大播放鍵；如果用 LINE / Facebook 內建瀏覽器開，部分功能不支援，請改用 Chrome / Safari。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.ios_install">如何安裝為 iOS App？</summary>
+          <p data-i18n="help.a.ios_install">用 Safari 開啟 LiveChord 首頁 → 點底部「分享」鈕 → 選「加到主畫面」→ 「新增」。之後從主畫面開啟會是全螢幕模式。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.yt_iframe">YouTube 影片嵌入有時不能播？</summary>
+          <p data-i18n="help.a.yt_iframe">部分創作者禁止其影片在第三方網站嵌入播放。LiveChord 會自動偵測並提示「載入本機音檔」作為替代方案。</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.report_bug">怎麼回報問題？</summary>
+          <p data-i18n="help.a.report_bug">登入後可以在播放器底部工具列點「🐞 回報問題」按鈕，或直接寄信給 hiteacherwu@gmail.com。請附上歌曲連結與發生的具體狀況。</p>
+        </details>
+      </div>
+    </details>
+
+  </section>
+
+  <section class="help-empty" id="helpEmpty" hidden>
+    <p data-i18n="help.search_empty">沒有符合的結果。可以試試其他關鍵字，或用上方按鈕回到首頁。</p>
+  </section>
+
+  <footer class="help-footer">
+    <p>
+      <span data-i18n="help.footer.contact">問題沒解決？</span>
+      <a href="mailto:hiteacherwu@gmail.com">hiteacherwu@gmail.com</a>
+    </p>
+  </footer>
+
+</main>
+
+<script>
+  // Client-side filter: hide help cards / questions that don't match the
+  // search term. We match on the rendered textContent (which i18n.js has
+  // already populated) so the filter follows the active language.
+  (function () {
+    const input = document.getElementById("helpSearch");
+    const cards = document.querySelectorAll(".help-card");
+    const empty = document.getElementById("helpEmpty");
+    if (!input) return;
+
+    function applyFilter() {
+      const q = (input.value || "").trim().toLowerCase();
+      let anyVisible = false;
+      cards.forEach(card => {
+        if (!q) {
+          card.hidden = false;
+          card.querySelectorAll(".help-q").forEach(qa => qa.hidden = false);
+          anyVisible = true;
+          return;
+        }
+        let cardHasMatch = false;
+        const sectionTitle = card.querySelector("summary")?.textContent.toLowerCase() || "";
+        if (sectionTitle.includes(q)) {
+          card.querySelectorAll(".help-q").forEach(qa => qa.hidden = false);
+          cardHasMatch = true;
+        } else {
+          card.querySelectorAll(".help-q").forEach(qa => {
+            const text = qa.textContent.toLowerCase();
+            const match = text.includes(q);
+            qa.hidden = !match;
+            if (match) cardHasMatch = true;
+          });
+        }
+        card.hidden = !cardHasMatch;
+        if (cardHasMatch) {
+          card.open = true; // expand matched section
+          anyVisible = true;
+        }
+      });
+      if (empty) empty.hidden = anyVisible || !q;
+    }
+
+    input.addEventListener("input", applyFilter);
+    // Re-apply filter when language changes — i18n.js has just rewritten
+    // textContent, so any active query needs to re-match against the new
+    // strings.
+    document.addEventListener("livechord:langchange", applyFilter);
+  })();
+</script>
+
+</body>
+</html>
