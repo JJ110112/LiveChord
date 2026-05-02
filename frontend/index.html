@@ -20,7 +20,10 @@
        Authorization for logged-in users, mode-aware 401 handling. Replaces
        the inline blind-redirect block. Must load synchronously before any
        other /api/ call. -->
-  <script src="/js/auth.js?v=2"></script>
+  <script src="/js/auth.js?v=3"></script>
+  <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
+       patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
+  <script src="/js/i18n.js?v=1"></script>
 </head>
 <body>
 
@@ -31,18 +34,25 @@
     <span>LiveChord</span>
   </h1>
   <div class="search-box">
-    <input id="searchInput" type="text" placeholder="請輸入 YouTube URL..." autocomplete="off">
-    <div class="search-marquee" aria-hidden="true"><span class="search-marquee-text">請輸入 YouTube URL...</span></div>
+    <input id="searchInput" type="text"
+           data-i18n-attr="placeholder=common.search_placeholder_short"
+           placeholder="請輸入 YouTube URL..." autocomplete="off">
+    <div class="search-marquee" aria-hidden="true"><span class="search-marquee-text" data-i18n="common.search_placeholder_short">請輸入 YouTube URL...</span></div>
     <div id="searchResults" class="search-results"></div>
   </div>
   <nav style="margin-right: 32px;">
     <div style="display:flex; align-items:center; gap: 10px;">
       <span id="userGreeting" style="font-size: 0.85em; color: var(--text-muted);"></span>
-      <button id="btnInstallApp" title="安裝為 App">📱 安裝</button>
-      <button onclick="logout()">登出</button>
+      <select id="langPicker" class="lang-picker" data-i18n-attr="title=lang.picker_title" title="語言"
+              onchange="if(window.LiveChordI18n) window.LiveChordI18n.setLang(this.value)">
+        <option value="en">EN</option>
+        <option value="zh-TW">繁中</option>
+      </select>
+      <button id="btnInstallApp" data-i18n-attr="title=common.install_app_title" title="安裝為 App"><span data-i18n="common.install_app_label">📱 安裝</span></button>
+      <button onclick="logout()" data-i18n="common.logout">登出</button>
     </div>
   </nav>
-  <button class="header-fs-btn" title="全螢幕" onclick="
+  <button class="header-fs-btn" data-i18n-attr="title=common.fullscreen" title="全螢幕" onclick="
     if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{})}
     else{document.exitFullscreen()}
   ">&#x26F6;</button>

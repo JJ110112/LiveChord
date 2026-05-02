@@ -128,7 +128,14 @@
         // this (e.g. "Login to rate"); do not auto-redirect.
         return res;
       }
-      // beta / personal: stale token — clear and bounce.
+      // beta / personal: stale token — clear and bounce. BUT not when we're
+      // already on /login: setting `location.href = "/login"` from /login
+      // causes a reload, auth.js re-runs, /api/auth/is_admin returns 401
+      // again → infinite loop manifesting as a "two-page bounce" in the UI.
+      // Login page handles its own auth gating.
+      if (window.location.pathname === "/login") {
+        return res;
+      }
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(USERNAME_KEY);
       window.location.href = "/login";
@@ -146,6 +153,15 @@
 
     // If we have a token, no bootstrap redirect ever.
     if (hasToken) return;
+
+    // We're on the login page itself — never auto-redirect to it (would
+    // ping-pong on a 401). Refresh the mode hint quietly so login.html's
+    // own UI logic (OAuth vs legacy form swap) sees a fresh value.
+    if (window.location.pathname === "/login") {
+      _refreshModeHint();
+      if (cachedMode === "public") getAnonId();
+      return;
+    }
 
     // Fast path: cached mode is public → mint anon and stay.
     if (cachedMode === "public") {

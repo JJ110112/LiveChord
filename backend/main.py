@@ -199,6 +199,10 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 app.mount("/css", StaticFiles(directory=FRONTEND_DIR / "css"), name="css")
 app.mount("/js", StaticFiles(directory=FRONTEND_DIR / "js"), name="js")
 app.mount("/img", StaticFiles(directory=FRONTEND_DIR / "img"), name="img")
+# Phase C — i18n dictionaries served as static JSON. Browsers cache via the
+# `force-cache` hint in i18n.js, so a cache-bust step (rename file) would
+# require a versioning scheme later. For now, ETag from StaticFiles is enough.
+app.mount("/i18n", StaticFiles(directory=FRONTEND_DIR / "i18n"), name="i18n")
 
 
 # ---------------------------------------------------------------------------
