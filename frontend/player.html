@@ -21,7 +21,7 @@
        load before any /api/ call so anon X-Anon-Id is injected from the
        first request. Replaces the inline blind-redirect block. -->
   <script src="/js/auth.js?v=4"></script>
-  <script src="/js/i18n.js?v=3"></script>
+  <script src="/js/i18n.js?v=4"></script>
 </head>
 <body>
 
@@ -169,7 +169,7 @@
           <!-- RIGHT: Right-Hand Waterfall -->
           <div class="gt-right-panel">
             <div class="gt-compact-bar" id="gtArpSelector" style="display:none">
-              <select id="gtArpPattern" class="gt-arp-select" title="琶音指法 Pattern">
+              <select id="gtArpPattern" class="gt-arp-select" title="琶音指法 Pattern" data-i18n-attr="title=player.gt.arp_pattern_title">
                 <optgroup label="Classical">
                   <option value="pima">p-i-m-a</option>
                   <option value="pimami">p-i-m-a-m-i</option>
@@ -235,7 +235,7 @@
           <div class="acc-left-panel">
             <div class="acc-chord-name-row">
               <span id="accChordName" class="acc-main-chord-name">--</span>
-              <select id="accBassPatternSelect" class="acc-pattern-select" title="低音模式">
+              <select id="accBassPatternSelect" class="acc-pattern-select" title="低音模式" data-i18n-attr="title=player.gt.bass_pattern_title">
                 <option value="bass_chord">Bass-Chord</option>
                 <option value="alternating_bass">Alt Bass</option>
                 <option value="waltz">Waltz 3/4</option>
@@ -329,9 +329,9 @@
 
     <!-- Speed -->
     <div class="tb-item" id="tbSpeed">
-      <button id="btnSpeed" class="tb-trigger tb-text-btn" title="播放速度" aria-haspopup="true">1x</button>
+      <button id="btnSpeed" class="tb-trigger tb-text-btn" title="播放速度" data-i18n-attr="title=player.toolbar.speed_title" aria-haspopup="true">1x</button>
       <div class="tb-popup tb-popup-speed">
-        <div class="tb-popup-title">播放速度</div>
+        <div class="tb-popup-title" data-i18n="player.toolbar.speed_title">播放速度</div>
         <button class="tb-popup-btn speed-opt" data-speed="0.5">0.5×</button>
         <button class="tb-popup-btn speed-opt" data-speed="0.75">0.75×</button>
         <button class="tb-popup-btn speed-opt active" data-speed="1">1×</button>
@@ -651,7 +651,7 @@
           <img src="/img/left-hand.png" class="hand-icon hand-left active" alt="">
           <img src="/img/right-hand.png" class="hand-icon hand-right active" alt="">
         </button>
-        <button id="btnRhContent"><span id="btnRhContentLabel">伴奏</span></button>
+        <button id="btnRhContent"><span id="btnRhContentLabel" data-i18n="player.teach.rh_content_acc">伴奏</span></button>
       </div>
     </div>
   </div>

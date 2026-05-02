@@ -38,6 +38,11 @@
   const SUPPORTED = ["en", "zh-TW"];
   const DEFAULT_LANG = "en";
   const STORAGE_KEY = "livechord_lang";
+  // Bump in lockstep with the `?v=` on the <script> tags. Used to cache-bust
+  // the dictionary fetch — without this the browser holds onto a stale
+  // dictionary that's missing freshly added keys, and falls back to the
+  // Chinese fallback text baked into the HTML even when lang===en.
+  const DICT_VERSION = 4;
 
   const _dicts = {}; // { lang: { "key.path": "value" } }
   let _lang = DEFAULT_LANG;
@@ -59,7 +64,7 @@
   async function _loadLang(lang) {
     if (_dicts[lang]) return _dicts[lang];
     try {
-      const resp = await fetch(`/i18n/${lang}.json`, { cache: "force-cache" });
+      const resp = await fetch(`/i18n/${lang}.json?v=${DICT_VERSION}`);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       _dicts[lang] = await resp.json();
     } catch (e) {
@@ -134,6 +139,19 @@
     });
   }
 
+  // Push current language back into any visible <select id="langPicker"> /
+  // .lang-picker dropdowns so the UI affordance matches the stored choice.
+  // Without this, the dropdown's `<option>` order alone determined what users
+  // saw — picking 繁中 then revisiting any page made the picker say "EN"
+  // even though the page rendered in 繁中.
+  function _syncPickers() {
+    try {
+      document.querySelectorAll("#langPicker, .lang-picker").forEach((el) => {
+        if (el.tagName === "SELECT" && el.value !== _lang) el.value = _lang;
+      });
+    } catch (_e) { /* no-op */ }
+  }
+
   async function setLang(lang) {
     if (SUPPORTED.indexOf(lang) < 0) return;
     _lang = lang;
@@ -146,6 +164,7 @@
       _loadLang(DEFAULT_LANG);
     }
     applyDom(document);
+    _syncPickers();
     document.dispatchEvent(
       new CustomEvent("livechord:langchange", { detail: { lang } })
     );
@@ -159,6 +178,7 @@
     await _loadLang(_lang);
     if (_lang !== DEFAULT_LANG) _loadLang(DEFAULT_LANG); // background
     applyDom(document);
+    _syncPickers();
     document.dispatchEvent(
       new CustomEvent("livechord:i18nready", { detail: { lang: _lang } })
     );
