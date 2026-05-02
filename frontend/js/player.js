@@ -1088,7 +1088,7 @@
     // Fallback for songs without section detection (e.g. many 8801 tracks):
     // if the strip is empty AND nothing was restored from persist, drop into
     // manual mode so the user immediately sees the A/B buttons.
-    if (labels.length === 0 && _abSelectedSet.size === 0) {
+    if (pairs.length === 0 && _abSelectedSet.size === 0) {
       _applyManualMode({silent: true});
     }
   }
