@@ -94,3 +94,7 @@ echo   - Service: http://localhost:8800 (personal)
 echo   - Tunnel:  https://livechord.org
 echo   Reminder: CF Tunnel ingress must point at :8800 (was :8801)
 echo ==========================================
+echo.
+echo If the Personal (8800) console did NOT open, scroll up for errors.
+echo Press any key to close this window.
+pause >nul
