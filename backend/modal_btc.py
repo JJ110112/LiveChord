@@ -76,11 +76,17 @@ if _MODAL_AVAILABLE:
         image=image,
         gpu="T4",
         volumes={"/btc_model": volume},
-        # Keep one container warm so first-uploader doesn't pay the 15-20s
-        # cold start. ~$1-3/month at T4 idle pricing per Modal.
-        min_containers=1,
-        # Idle scale-down after 60s — bursts spawn extra containers as needed.
-        scaledown_window=60,
+        # min_containers=0 → scales fully to zero, zero idle cost. The first
+        # analysis of the day pays a ~15-20 s cold start; subsequent calls
+        # within scaledown_window reuse the warm container. Right trade for
+        # the LiveChord traffic profile (handful of analyses per hour) plus
+        # the Starter $1/mo workspace cap. Bump to 1 once payment is added
+        # and you want guaranteed warm response on every first uploader.
+        min_containers=0,
+        # Stay warm for 5 min after a call so consecutive uploads (a user
+        # analyzing 3-4 songs in a session) all hit warm. Outside that
+        # window scales to zero.
+        scaledown_window=300,
         timeout=600,
     )
     def detect_chords_and_key_modal(
