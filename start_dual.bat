@@ -1,20 +1,23 @@
 @echo off
-echo Starting LiveChord Dual Mode...
+REM Post-beta (2026-04-26 onward) the live deployment is single-instance
+REM personal on port 8800. The dual-instance "Personal+Beta" flow is
+REM archival; this script keeps its filename for muscle memory but only
+REM starts 8800 personal + Cloudflare Tunnel. To also kill any leftover
+REM 8801/8802 process from before, use restart_dual.bat instead.
+echo Starting LiveChord (post-beta single-instance)...
 
-REM === Personal Mode (Port 8800) ===
 setlocal
 set LIVECHORD_MODE=personal
 set LIVECHORD_BTC_WORKERS=2
 start "LiveChord Personal (8800)" cmd /c "cd /d %~dp0backend && python -m uvicorn main:app --host 0.0.0.0 --port 8800 --proxy-headers --forwarded-allow-ips=127.0.0.1 || pause"
 endlocal
 
-REM === Beta Mode (Port 8801) ===
-setlocal
-set LIVECHORD_MODE=beta
-set LIVECHORD_BTC_WORKERS=2
-start "LiveChord Beta (8801)" cmd /c "cd /d %~dp0backend && python -m uvicorn main:app --host 0.0.0.0 --port 8801 --proxy-headers --forwarded-allow-ips=127.0.0.1 || pause"
-endlocal
+timeout /t 3 /nobreak >nul
 
-echo Both modes started.
-echo - Personal: http://localhost:8800  (LAN bypass)
-echo - Beta:     http://localhost:8801  (Cloudflare Tunnel)
+echo Starting Cloudflare Tunnel...
+start "Cloudflare Tunnel" cmd /c "cloudflared tunnel run livechord || pause"
+
+echo.
+echo - Service: http://localhost:8800 (personal)
+echo - Tunnel:  https://livechord.org
+echo Reminder: CF Tunnel ingress must point at :8800 (was :8801 in beta).

@@ -67,18 +67,18 @@ if %errorlevel% neq 0 (
 REM === Start services ===
 
 echo.
-echo Starting LiveChord Personal (8800)...
+REM Post-beta (2026-04-26 onward) the deployment is single-instance personal
+REM on port 8800. The 8801 beta uvicorn is intentionally NOT started anymore;
+REM the kill-step above sweeps any leftover. Cloudflare Tunnel still starts
+REM here so livechord.org keeps routing — but the tunnel ingress in the CF
+REM Zero Trust dashboard must point at http://localhost:8800 (was :8801).
+REM Until you update that, livechord.org will 502 after this script runs.
+
+echo Starting LiveChord (8800, personal)...
 setlocal
 set LIVECHORD_MODE=personal
 set LIVECHORD_BTC_WORKERS=2
 start "LiveChord Personal (8800)" cmd /c "cd /d %~dp0backend && python -m uvicorn main:app --host 0.0.0.0 --port 8800 --proxy-headers --forwarded-allow-ips=127.0.0.1 || pause"
-endlocal
-
-echo Starting LiveChord Beta (8801)...
-setlocal
-set LIVECHORD_MODE=beta
-set LIVECHORD_BTC_WORKERS=2
-start "LiveChord Beta (8801)" cmd /c "cd /d %~dp0backend && python -m uvicorn main:app --host 0.0.0.0 --port 8801 --proxy-headers --forwarded-allow-ips=127.0.0.1 || pause"
 endlocal
 
 REM Wait for uvicorn to bind before starting tunnel
@@ -89,8 +89,8 @@ start "Cloudflare Tunnel" cmd /c "cloudflared tunnel run livechord || pause"
 
 echo.
 echo ==========================================
-echo   All services restarted!
-echo   - Personal: http://localhost:8800
-echo   - Beta:     http://localhost:8801
-echo   - Tunnel:   https://livechord.org
+echo   Restart complete
+echo   - Service: http://localhost:8800 (personal)
+echo   - Tunnel:  https://livechord.org
+echo   Reminder: CF Tunnel ingress must point at :8800 (was :8801)
 echo ==========================================
