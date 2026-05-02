@@ -4353,7 +4353,18 @@
     //       half-bar duration (which looks like 2x/4x dot speed).
     if (autoSplit && tsBeats >= 1 && tsBeats <= 16) {
       const manualOverride = Math.abs(_currentBpmMult - 1.0) > 1e-3;
-      const expectedBarDur = tsBeats * spb;
+      // Use SONG-NOMINAL bpm for the bar-duration sanity check, not the
+      // local tempo_curve rate. tempo_curve can reflect transient
+      // beat-tracker lock-on failures (e.g. beat_this emits half-density
+      // beats during a slow jazz intro, so tempo_curve says "55 BPM" when
+      // the real song is still 110). Using local rate here over-rejects
+      // bar-snap on legitimate 1-bar cards in those sections — the chord
+      // ends up showing realBeats=2 instead of musical 4. Song-nominal
+      // bpm is the right reference for "is this card approximately 1 bar".
+      const songBpm = (chordData && typeof chordData.bpm === "number" && chordData.bpm > 0)
+        ? chordData.bpm : (60.0 / Math.max(0.001, currentSecPerBeat));
+      const songSpb = (60.0 / songBpm) / (_currentBpmMult || 1.0);
+      const expectedBarDur = tsBeats * songSpb;
       const tooShort = expectedBarDur > 0 && durSec < expectedBarDur * 0.6;
       if (!manualOverride && !tooShort) {
         return {
