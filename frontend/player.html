@@ -17,15 +17,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=15">
   <link rel="stylesheet" href="/css/player.css?v=110">
-  <script>
-    if (!localStorage.getItem("livechord_token")) {
-      fetch('/api/auth/is_admin').then(r => {
-        if (!r.ok) window.location.href = "/login";
-      }).catch(() => {
-        window.location.href = "/login";
-      });
-    }
-  </script>
+  <!-- Phase A: shared auth + fetch wrapper (see frontend/js/auth.js). Must
+       load before any /api/ call so anon X-Anon-Id is injected from the
+       first request. Replaces the inline blind-redirect block. -->
+  <script src="/js/auth.js?v=1"></script>
 </head>
 <body>
 
@@ -688,28 +683,8 @@
 <script src="/js/midi-exporter.js?v=2"></script>
 <script src="/js/beat-sync.js?v=1"></script>
 <script src="/js/chord-correction.js?v=13"></script>
-<script>
-  const originalFetch = window.fetch;
-  window.fetch = async function() {
-    let [resource, config] = arguments;
-    if(config == null) config = {};
-    const url = typeof resource === 'string' ? resource : (resource instanceof Request ? resource.url : '');
-    if (url.startsWith('/') || url.includes(window.location.host)) {
-        if(config.headers == null) config.headers = {};
-        const token = localStorage.getItem("livechord_token");
-        if(token) config.headers['Authorization'] = `Bearer ${token}`;
-    }
-    const res = await originalFetch(resource, config);
-    // Stale / revoked token — same handling as index.html so player-page API calls
-    // (e.g. POST /api/recent from hash-mode) don't fail silently forever.
-    if (res.status === 401 && url.includes("/api/") && !url.includes("/api/auth/login")) {
-      localStorage.removeItem("livechord_token");
-      localStorage.removeItem("livechord_username");
-      window.location.href = "/login";
-    }
-    return res;
-  };
-</script>
+<!-- Phase A: fetch wrapper installed by /js/auth.js at <head>; the inline
+     duplicate block was removed. -->
 <script src="/js/player.js?v=241"></script>
 </body>
 </html>

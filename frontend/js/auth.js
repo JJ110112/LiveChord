@@ -1,0 +1,175 @@
+/**
+ * LiveChord auth + fetch wrapper (Phase A — public mode anon support)
+ *
+ * Loaded BEFORE any other API calls. Responsibilities:
+ *
+ *   1. Mint / persist a per-browser anonymous identity (X-Anon-Id), used by
+ *      the backend to key audit/quota for not-logged-in callers.
+ *   2. Install a global fetch override that injects either Authorization
+ *      (logged-in user) or X-Anon-Id (anonymous) on every same-origin /api/
+ *      request.
+ *   3. Decide bootstrap behaviour by deployment mode:
+ *        - public: anon OK, NO redirect-to-login on missing token
+ *        - personal / beta: legacy "no token → /login" redirect
+ *      Mode is cached in localStorage (`livechord_mode_hint`) so subsequent
+ *      page loads decide synchronously; refreshed in the background each load.
+ *   4. 401 handling: in public, surface to the caller so the page can render
+ *      "Login to unlock favorites" UI; in beta/personal, evict stale token
+ *      and bounce to /login (legacy behaviour).
+ *
+ * This file replaces the inline <script> blocks at the top of index.html /
+ * player.html that did mode-blind login redirects.
+ */
+(function () {
+  "use strict";
+
+  const ANON_KEY = "livechord_anon_id";
+  const TOKEN_KEY = "livechord_token";
+  const USERNAME_KEY = "livechord_username";
+  const MODE_HINT_KEY = "livechord_mode_hint";
+
+  // Anon ID format must match backend _ANON_ID_RE: 8-32 chars [A-Za-z0-9_-].
+  const ANON_FMT = /^[A-Za-z0-9_-]{8,32}$/;
+
+  function _genAnonId() {
+    if (window.crypto && window.crypto.randomUUID) {
+      return window.crypto.randomUUID().replace(/-/g, "").slice(0, 24);
+    }
+    // Fallback for older browsers — sufficient entropy for our use.
+    return (
+      Math.random().toString(36).slice(2, 14) +
+      Date.now().toString(36)
+    ).slice(0, 24);
+  }
+
+  function getAnonId() {
+    let id = localStorage.getItem(ANON_KEY);
+    if (!id || !ANON_FMT.test(id)) {
+      id = _genAnonId();
+      localStorage.setItem(ANON_KEY, id);
+    }
+    return id;
+  }
+
+  function getModeHint() {
+    return localStorage.getItem(MODE_HINT_KEY) || "unknown";
+  }
+
+  function setModeHint(mode) {
+    if (mode === "personal" || mode === "beta" || mode === "public") {
+      localStorage.setItem(MODE_HINT_KEY, mode);
+      window._lcDeploymentMode = mode;
+    }
+  }
+
+  // Initialise window flag from cache so other scripts can read it synchronously.
+  window._lcDeploymentMode = getModeHint();
+
+  // ── fetch wrapper ────────────────────────────────────────────────────────
+  const _origFetch = window.fetch;
+  window.fetch = async function (resource, config) {
+    if (config == null) config = {};
+    const url =
+      typeof resource === "string"
+        ? resource
+        : resource instanceof Request
+        ? resource.url
+        : "";
+    const sameOrigin =
+      url.startsWith("/") || url.includes(window.location.host);
+    if (sameOrigin) {
+      if (config.headers == null) config.headers = {};
+      const token = localStorage.getItem(TOKEN_KEY);
+      if (token) {
+        config.headers["Authorization"] = "Bearer " + token;
+      } else {
+        // Always send anon id when there's no token. Backend ignores when
+        // a valid token is present, so it's safe to send both — but when
+        // the user is logged in we omit it for cleaner logs.
+        config.headers["X-Anon-Id"] = getAnonId();
+      }
+    }
+    const res = await _origFetch(resource, config);
+    if (
+      res.status === 401 &&
+      url.includes("/api/") &&
+      !url.includes("/api/auth/login") &&
+      !url.includes("/api/auth/oauth")
+    ) {
+      const mode = window._lcDeploymentMode;
+      if (mode === "public") {
+        // Anonymous calling a login-required endpoint. Page-level UI handles
+        // this (e.g. "Login to rate"); do not auto-redirect.
+        return res;
+      }
+      // beta / personal: stale token — clear and bounce.
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(USERNAME_KEY);
+      window.location.href = "/login";
+    }
+    return res;
+  };
+
+  // ── deployment mode probe + bootstrap login redirect ─────────────────────
+  // We always refresh the cached mode in the background. The first decision
+  // (whether to redirect to /login) uses the cached hint synchronously to
+  // avoid a flash; corrected below if the live answer differs.
+  function _bootstrapAuth() {
+    const cachedMode = getModeHint();
+    const hasToken = !!localStorage.getItem(TOKEN_KEY);
+
+    // If we have a token, no bootstrap redirect ever.
+    if (hasToken) return;
+
+    // Fast path: cached mode is public → mint anon and stay.
+    if (cachedMode === "public") {
+      getAnonId();
+      // still refresh the hint async in case backend was reconfigured
+      _refreshModeHint();
+      return;
+    }
+
+    // Cached mode is beta/personal/unknown → legacy: bounce on 401.
+    // First confirm via /api/config/public so we don't bounce a public-mode
+    // visitor whose cache is empty.
+    fetch("/api/config/public")
+      .then((r) => r.json())
+      .then((cfg) => {
+        const mode = (cfg && cfg.deployment_mode) || "personal";
+        setModeHint(mode);
+        if (mode === "public") {
+          getAnonId();
+          return;
+        }
+        // beta / personal: try is_admin (catches LAN bypass on personal),
+        // else send to /login.
+        return fetch("/api/auth/is_admin").then((r) => {
+          if (!r.ok) window.location.href = "/login";
+        });
+      })
+      .catch(() => {
+        // /api/config/public failed — conservative fallback to /login,
+        // preserves legacy behaviour for sites that aren't reachable.
+        window.location.href = "/login";
+      });
+  }
+
+  function _refreshModeHint() {
+    fetch("/api/config/public")
+      .then((r) => r.json())
+      .then((cfg) => {
+        if (cfg && cfg.deployment_mode) setModeHint(cfg.deployment_mode);
+      })
+      .catch(() => {});
+  }
+
+  // Expose for callers (rating prompts, etc.)
+  window.LiveChordAuth = {
+    getAnonId,
+    isAnonymous: () => !localStorage.getItem(TOKEN_KEY),
+    getMode: () => window._lcDeploymentMode || getModeHint(),
+    refreshMode: _refreshModeHint,
+  };
+
+  _bootstrapAuth();
+})();

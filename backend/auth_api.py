@@ -251,6 +251,82 @@ def get_current_user(request: Request, authorization: str = Header(None)):
             raise HTTPException(status_code=401, detail="憑證已過期，請重新登入 (Token expired)")
         return row[0]
 
+import re as _re
+
+# X-Anon-Id format: 8-32 chars of [A-Za-z0-9_-], chosen client-side.
+# Backend prefixes with `anon_` so storage keys are namespaced away from real
+# usernames (real usernames don't start with `anon_`; OAuth ones start with
+# `oauth_<provider>_`; password ones are user-chosen).
+_ANON_ID_RE = _re.compile(r"^[A-Za-z0-9_-]{8,32}$")
+_ANON_PREFIX = "anon_"
+
+
+def get_optional_user(
+    request: Request,
+    authorization: str = Header(None),
+):
+    """Return logged-in username if a valid token is presented, else None.
+    Does NOT raise on missing/invalid auth. Use for endpoints where login is
+    optional (anonymous visitors allowed) — caller decides what to do with None.
+    Personal-mode LAN bypass still applies.
+    """
+    from config import is_personal_mode, is_lan_ip
+
+    if is_personal_mode():
+        client_ip = (
+            request.headers.get("cf-connecting-ip")
+            or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+            or (request.client.host if request.client else "")
+        )
+        if is_lan_ip(client_ip):
+            return "admin"
+
+    if not authorization:
+        return None
+    token = authorization.replace("Bearer ", "")
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+        cursor = conn.execute(
+            "SELECT username, token_created_at FROM users WHERE token=?",
+            (token,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        created = row[1] if row[1] else 0
+        if created > 0 and (time.time() - created) > TOKEN_EXPIRY_SECONDS:
+            return None
+        return row[0]
+
+
+def get_user_or_anon(
+    request: Request,
+    authorization: str = Header(None),
+    x_anon_id: str = Header(None, alias="X-Anon-Id"),
+):
+    """Always returns a string identity. If the caller is logged in, returns
+    their real username. Else they MUST send a well-formed X-Anon-Id header,
+    which is namespaced as ``anon_<id>`` and stored in audit/quota/history.
+
+    Anonymous quota gaming (just regenerate the UUID) is mitigated by IP-level
+    rate limiting elsewhere; this layer only ensures a stable per-browser key.
+    """
+    user = get_optional_user(request, authorization)
+    if user:
+        return user
+    if not x_anon_id or not _ANON_ID_RE.match(x_anon_id):
+        raise HTTPException(
+            status_code=400,
+            detail="匿名身分缺失 (X-Anon-Id header missing or malformed)",
+        )
+    return f"{_ANON_PREFIX}{x_anon_id}"
+
+
+def is_anon(username: str) -> bool:
+    """True if the identity returned by get_user_or_anon represents an
+    anonymous (not-logged-in) caller."""
+    return bool(username) and username.startswith(_ANON_PREFIX)
+
+
 def get_admin_user(request: Request, authorization: str = Header(None)):
     from config import is_personal_mode, is_lan_ip
 

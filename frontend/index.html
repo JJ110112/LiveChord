@@ -16,15 +16,11 @@
   <!-- Warm the CDN so the player page's YouTube IFrame bootstraps faster -->
   <link rel="preconnect" href="https://www.youtube.com">
   <link rel="dns-prefetch" href="https://www.youtube.com">
-  <script>
-    if (!localStorage.getItem("livechord_token")) {
-      fetch('/api/auth/is_admin').then(r => {
-        if (!r.ok) window.location.href = "/login";
-      }).catch(() => {
-        window.location.href = "/login";
-      });
-    }
-  </script>
+  <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
+       Authorization for logged-in users, mode-aware 401 handling. Replaces
+       the inline blind-redirect block. Must load synchronously before any
+       other /api/ call. -->
+  <script src="/js/auth.js?v=1"></script>
 </head>
 <body>
 
@@ -147,28 +143,8 @@
 <script src="/js/utils.js?v=6"></script>
 <script src="/js/api.js?v=57"></script>
 <script>
-  // Insert auth token into all fetch requests in api.js globally!
-  const originalFetch = window.fetch;
-  window.fetch = async function() {
-    let [resource, config] = arguments;
-    if(config == null) config = {};
-    const url = typeof resource === 'string' ? resource : (resource instanceof Request ? resource.url : '');
-    if (url.startsWith('/') || url.includes(window.location.host)) {
-        if(config.headers == null) config.headers = {};
-        const token = localStorage.getItem("livechord_token");
-        if(token) config.headers['Authorization'] = `Bearer ${token}`;
-    }
-    const res = await originalFetch(resource, config);
-    // Stale / revoked token — clear and bounce to login so the user isn't stuck with
-    // silent "無效憑證" failures on every API call (e.g. after logging in from another device).
-    if (res.status === 401 && url.includes("/api/") && !url.includes("/api/auth/login")) {
-      localStorage.removeItem("livechord_token");
-      localStorage.removeItem("livechord_username");
-      window.location.href = "/login";
-    }
-    return res;
-  };
-  
+  // (Fetch wrapper + 401 handler are installed by /js/auth.js — see <head>.)
+
   let username = localStorage.getItem("livechord_username");
   
   // Check admin status anyway to handle LAN bypass

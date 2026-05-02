@@ -12,8 +12,8 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-from auth_api import get_current_user, get_admin_user
-from config import is_beta_mode
+from auth_api import get_current_user, get_admin_user, get_user_or_anon, is_anon
+from config import is_beta_mode, is_public_mode
 from process_queue import (
     ProcessJob, JobStatus, TMP_DIR, COVERS_DIR,
     submit_job, get_job, generate_job_id, compute_file_hash,
@@ -53,18 +53,25 @@ def _normalize_youtube_url(raw_url: str) -> tuple[str, str]:
     return raw_url, ""
 
 
-def _require_beta():
-    if not is_beta_mode():
+def _require_user_facing():
+    """Process API only exists on user-facing instances (beta or public).
+    On personal mode (LAN self-use) these endpoints are 404 — personal users
+    use the library-scan flow, not upload/YouTube ingest."""
+    if not (is_beta_mode() or is_public_mode()):
         raise HTTPException(status_code=404, detail="Not available")
+
+
+# Back-compat alias — old beta-only callers still resolve.
+_require_beta = _require_user_facing
 
 
 # ---------------------------------------------------------------------------
 # Upload
 # ---------------------------------------------------------------------------
 
-@router.post("/upload", dependencies=[Depends(_require_beta)])
+@router.post("/upload", dependencies=[Depends(_require_user_facing)])
 def upload_audio(file: UploadFile = File(...),
-                 username: str = Depends(get_current_user)):
+                 username: str = Depends(get_user_or_anon)):
     # Quota check
     if not check_quota(username):
         raise HTTPException(
@@ -119,8 +126,8 @@ class YouTubeRequest(BaseModel):
     url: str = Field(min_length=10, max_length=500)
 
 
-@router.post("/youtube", dependencies=[Depends(_require_beta)])
-def process_youtube(req: YouTubeRequest, username: str = Depends(get_current_user)):
+@router.post("/youtube", dependencies=[Depends(_require_user_facing)])
+def process_youtube(req: YouTubeRequest, username: str = Depends(get_user_or_anon)):
     if not check_quota(username):
         raise HTTPException(
             status_code=429,
@@ -185,8 +192,8 @@ def process_youtube(req: YouTubeRequest, username: str = Depends(get_current_use
 # Status & Result
 # ---------------------------------------------------------------------------
 
-@router.get("/status/{job_id}", dependencies=[Depends(_require_beta)])
-def job_status(job_id: str, username: str = Depends(get_current_user)):
+@router.get("/status/{job_id}", dependencies=[Depends(_require_user_facing)])
+def job_status(job_id: str, username: str = Depends(get_user_or_anon)):
     job = get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -203,8 +210,8 @@ def job_status(job_id: str, username: str = Depends(get_current_user)):
     }
 
 
-@router.get("/result/{job_id}", dependencies=[Depends(_require_beta)])
-def job_result(job_id: str, username: str = Depends(get_current_user)):
+@router.get("/result/{job_id}", dependencies=[Depends(_require_user_facing)])
+def job_result(job_id: str, username: str = Depends(get_user_or_anon)):
     job = get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -312,7 +319,7 @@ def upgrade_beats(hash: str, username: str = Depends(get_current_user)):
     }
 
 
-def upgrade_beats_status(hash: str, username: str = Depends(get_current_user)):
+def upgrade_beats_status(hash: str, username: str = Depends(get_user_or_anon)):
     """Return current status of a beat-upgrade job for ``hash``.
 
     Status values: queued / running / done / error / not_found.
@@ -633,9 +640,9 @@ class LibraryLearnRequest(BaseModel):
     library_hash: str = Field(min_length=8, max_length=32, pattern=r"^[a-f0-9]+$")
 
 
-@router.post("/yt-library-learn", dependencies=[Depends(_require_beta)])
+@router.post("/yt-library-learn", dependencies=[Depends(_require_user_facing)])
 def yt_library_learn(req: LibraryLearnRequest,
-                     username: str = Depends(get_current_user)):
+                     username: str = Depends(get_user_or_anon)):
     """Task 2: auto-learn YT URL → library hash mapping.
 
     Called by the player front-end after it confirms (a) the NAS chord JSON
@@ -654,8 +661,8 @@ def yt_library_learn(req: LibraryLearnRequest,
     return {"ok": True, "new": inserted}
 
 
-@router.get("/playlist-info", dependencies=[Depends(_require_beta)])
-def playlist_info(url: str, username: str = Depends(get_current_user)):
+@router.get("/playlist-info", dependencies=[Depends(_require_user_facing)])
+def playlist_info(url: str, username: str = Depends(get_user_or_anon)):
     """Extract video list from a YouTube playlist URL via yt-dlp --flat-playlist.
 
     Returns {playlist_title, videos:[{video_id, title, duration, existing_hash}]}
@@ -718,7 +725,7 @@ def playlist_info(url: str, username: str = Depends(get_current_user)):
 
 
 @router.get("/youtube-search")
-def youtube_search(q: str, username: str = Depends(get_current_user)):
+def youtube_search(q: str, username: str = Depends(get_user_or_anon)):
     """Search YouTube for a song and return the best match video ID."""
     q = q.strip()[:120]
     if not q:
@@ -749,7 +756,7 @@ def youtube_search(q: str, username: str = Depends(get_current_user)):
 # User history (non-admin)
 # ---------------------------------------------------------------------------
 
-@router.get("/my-history", dependencies=[Depends(_require_beta)])
+@router.get("/my-history", dependencies=[Depends(_require_user_facing)])
 def my_history(limit: int = 20, username: str = Depends(get_current_user)):
     """Get current user's own process history from audit log."""
     return {"history": get_user_audit_log(username, limit)}
