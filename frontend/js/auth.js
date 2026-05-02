@@ -26,6 +26,7 @@
   const ANON_KEY = "livechord_anon_id";
   const TOKEN_KEY = "livechord_token";
   const USERNAME_KEY = "livechord_username";
+  const DISPLAY_NAME_KEY = "livechord_display_name";
   const MODE_HINT_KEY = "livechord_mode_hint";
 
   // Anon ID format must match backend _ANON_ID_RE: 8-32 chars [A-Za-z0-9_-].
@@ -82,6 +83,8 @@
     if (!/^[A-Za-z0-9_\-]{16,}$/.test(tk)) return;
     localStorage.setItem(TOKEN_KEY, tk);
     localStorage.setItem(USERNAME_KEY, un);
+    const dn = params.get("display");
+    if (dn) localStorage.setItem(DISPLAY_NAME_KEY, dn);
     // Strip the fragment without reloading.
     try {
       const clean = window.location.pathname + window.location.search;
@@ -90,6 +93,26 @@
       window.location.hash = "";
     }
   })();
+
+  // Backfill display_name for users who logged in before the URL fragment
+  // started carrying it (or anyone whose localStorage got cleared). One /me
+  // call per page load when missing.
+  function _backfillDisplayName() {
+    if (!localStorage.getItem(TOKEN_KEY)) return;
+    if (localStorage.getItem(DISPLAY_NAME_KEY)) return;
+    fetch("/api/auth/oauth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && data.display_name) {
+          localStorage.setItem(DISPLAY_NAME_KEY, data.display_name);
+          // Notify any greeting-renderer that an updated name is available.
+          document.dispatchEvent(
+            new CustomEvent("livechord:profile", { detail: data })
+          );
+        }
+      })
+      .catch(() => {});
+  }
 
   // ── fetch wrapper ────────────────────────────────────────────────────────
   const _origFetch = window.fetch;
@@ -211,7 +234,12 @@
     isAnonymous: () => !localStorage.getItem(TOKEN_KEY),
     getMode: () => window._lcDeploymentMode || getModeHint(),
     refreshMode: _refreshModeHint,
+    getDisplayName: () =>
+      localStorage.getItem(DISPLAY_NAME_KEY) ||
+      localStorage.getItem(USERNAME_KEY) ||
+      "",
   };
 
   _bootstrapAuth();
+  _backfillDisplayName();
 })();

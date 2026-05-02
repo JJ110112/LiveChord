@@ -20,7 +20,7 @@
        Authorization for logged-in users, mode-aware 401 handling. Replaces
        the inline blind-redirect block. Must load synchronously before any
        other /api/ call. -->
-  <script src="/js/auth.js?v=3"></script>
+  <script src="/js/auth.js?v=4"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
   <script src="/js/i18n.js?v=1"></script>
@@ -170,6 +170,27 @@
     return window.LiveChordI18n ? window.LiveChordI18n.t(key, vars) : (fb || key);
   }
 
+  // Display name preferred over the opaque OAuth-derived username
+  // ("oauth_google_a1b2c3d4"). Falls back to username if no display_name was
+  // captured (legacy session) until auth.js's /me backfill arrives.
+  function _displayName() {
+    return localStorage.getItem("livechord_display_name") ||
+           localStorage.getItem("livechord_username") || "";
+  }
+
+  function _renderGreeting() {
+    const greeting = document.getElementById("userGreeting");
+    if (!greeting) return;
+    const name = _displayName();
+    if (!name) { greeting.textContent = ""; return; }
+    greeting.textContent = _t("home.greeting", {name}, `Hello, ${name}`);
+  }
+
+  // Re-paint when auth.js backfills display_name from /api/auth/oauth/me.
+  document.addEventListener("livechord:profile", _renderGreeting);
+  // Re-paint on language toggle so the "Hello," prefix flips between locales.
+  document.addEventListener("livechord:langchange", _renderGreeting);
+
   let username = localStorage.getItem("livechord_username");
 
   // Check admin status anyway to handle LAN bypass
@@ -178,11 +199,10 @@
     .then(data => {
         if (data.is_admin) {
             fetch("/api/config/public").then(r => r.json()).then(cfg => {
-                if (cfg.deployment_mode === "beta") {
-                    // Beta mode: show admin UI
+                if (cfg.deployment_mode === "beta" || cfg.deployment_mode === "public") {
+                    // User-facing modes: show admin UI for authenticated admins
                     if (!username) username = "Admin (LAN)";
-                    const greeting = document.getElementById("userGreeting");
-                    if (greeting) greeting.textContent = _t("home.greeting", {name: username}, `Hello, ${username}`);
+                    _renderGreeting();
 
                     const navDiv = document.querySelector("nav div");
                     if (!navDiv.querySelector("button.admin-btn")) {
@@ -204,26 +224,23 @@
                     // language picker + a meaningful logout (real OAuth users
                     // do exist in the post-beta DB), so we no longer blanket-
                     // hide the whole bar like in the beta-era design.
-                    // Greeting fills in if a real user is logged in.
                     if (!username) username = "Admin (LAN)";
-                    const greeting = document.getElementById("userGreeting");
-                    if (greeting) greeting.textContent = _t("home.greeting", {name: username}, `Hello, ${username}`);
+                    _renderGreeting();
                 }
             }).catch(() => {});
         } else if (username) {
-            const greeting = document.getElementById("userGreeting");
-            if (greeting) greeting.textContent = _t("home.greeting", {name: username}, `Hello, ${username}`);
+            _renderGreeting();
         }
     }).catch(err => {
         if (username) {
-            const greeting = document.getElementById("userGreeting");
-            if (greeting) greeting.textContent = _t("home.greeting", {name: username}, `Hello, ${username}`);
+            _renderGreeting();
         }
     });
 
   function logout() {
       localStorage.removeItem("livechord_token");
       localStorage.removeItem("livechord_username");
+      localStorage.removeItem("livechord_display_name");
       // Personal mode falls back to LAN bypass on /, no login page needed.
       // Beta / public still bounce to /login so the user picks an auth path.
       const mode = (window._lcDeploymentMode) ||

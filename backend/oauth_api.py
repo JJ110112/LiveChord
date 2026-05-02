@@ -279,15 +279,16 @@ async def oauth_callback(provider: str, request: Request):
     username = _ensure_user(provider, sub, email, display_name)
     new_token = _mint_token(username)
 
-    # Ship token + username back via URL fragment. The fragment is browser-only
-    # (never sent to the server) so it doesn't appear in access logs / proxies.
-    # Frontend captures it in DOMContentLoaded, persists to localStorage, then
-    # strips the fragment via history.replaceState.
+    # Ship token + username + display_name back via URL fragment. The fragment
+    # is browser-only (never sent to the server) so it doesn't appear in access
+    # logs / proxies. Frontend captures it in DOMContentLoaded, persists to
+    # localStorage, then strips the fragment via history.replaceState.
     from urllib.parse import quote
     return RedirectResponse(
         url=(
             f"/?oauth_done=1#token={quote(new_token)}"
             f"&username={quote(username)}"
+            f"&display={quote(display_name)}"
         ),
         status_code=302,
     )
