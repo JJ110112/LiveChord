@@ -157,12 +157,12 @@
             </div>
             <canvas id="guitarVerticalFretboard"></canvas>
             <div class="gt-finger-legend">
-              <span class="gt-fl" style="color:#ef5350">① 食指</span>
-              <span class="gt-fl" style="color:#ff9800">② 中指</span>
-              <span class="gt-fl" style="color:#ffeb3b">③ 無名指</span>
-              <span class="gt-fl" style="color:#66bb6a">④ 小指</span>
+              <span class="gt-fl" style="color:#ef5350" data-i18n="player.gt.f1">① 食指</span>
+              <span class="gt-fl" style="color:#ff9800" data-i18n="player.gt.f2">② 中指</span>
+              <span class="gt-fl" style="color:#ffeb3b" data-i18n="player.gt.f3">③ 無名指</span>
+              <span class="gt-fl" style="color:#66bb6a" data-i18n="player.gt.f4">④ 小指</span>
             </div>
-            <div id="gtLhHint" class="gt-panel-hint">左手：按住和弦</div>
+            <div id="gtLhHint" class="gt-panel-hint" data-i18n="player.gt.lh_hint">左手：按住和弦</div>
           </div>
           <!-- MIDDLE: Line -->
           <div class="gt-mid-line"></div>
@@ -192,12 +192,12 @@
             <canvas id="guitarRhWaterfall"></canvas>
             <div class="gt-soundhole"></div>
             <div class="gt-finger-legend" id="gtRhFingerLegend" style="display:none">
-              <span class="gt-fl" style="color:#00bcd4">&#x24DF; 拇指</span>
-              <span class="gt-fl" style="color:#ef5350">&#x24D8; 食指</span>
-              <span class="gt-fl" style="color:#ff9800">&#x24DC; 中指</span>
-              <span class="gt-fl" style="color:#ffeb3b">&#x24D0; 無名指</span>
+              <span class="gt-fl" style="color:#00bcd4" data-i18n="player.gt.t_thumb">&#x24DF; 拇指</span>
+              <span class="gt-fl" style="color:#ef5350" data-i18n="player.gt.i_index">&#x24D8; 食指</span>
+              <span class="gt-fl" style="color:#ff9800" data-i18n="player.gt.m_middle">&#x24DC; 中指</span>
+              <span class="gt-fl" style="color:#ffeb3b" data-i18n="player.gt.a_ring">&#x24D0; 無名指</span>
             </div>
-            <div id="gtRhHint" class="gt-panel-hint">右手：刷弦節奏</div>
+            <div id="gtRhHint" class="gt-panel-hint" data-i18n="player.gt.rh_hint">右手：刷弦節奏</div>
           </div>
         </div>
       </div>
@@ -212,18 +212,18 @@
             </div>
             <canvas id="ukuleleVerticalFretboard"></canvas>
             <div class="gt-finger-legend">
-              <span class="gt-fl" style="color:#ef5350">① 食指</span>
-              <span class="gt-fl" style="color:#ff9800">② 中指</span>
-              <span class="gt-fl" style="color:#ffeb3b">③ 無名指</span>
-              <span class="gt-fl" style="color:#66bb6a">④ 小指</span>
+              <span class="gt-fl" style="color:#ef5350" data-i18n="player.gt.f1">① 食指</span>
+              <span class="gt-fl" style="color:#ff9800" data-i18n="player.gt.f2">② 中指</span>
+              <span class="gt-fl" style="color:#ffeb3b" data-i18n="player.gt.f3">③ 無名指</span>
+              <span class="gt-fl" style="color:#66bb6a" data-i18n="player.gt.f4">④ 小指</span>
             </div>
-            <div id="ukLhHint" class="gt-panel-hint">左手：按住和弦</div>
+            <div id="ukLhHint" class="gt-panel-hint" data-i18n="player.gt.lh_hint">左手：按住和弦</div>
           </div>
           <div class="gt-mid-line"></div>
           <div class="gt-right-panel">
             <canvas id="ukuleleRhWaterfall"></canvas>
             <div class="gt-soundhole"></div>
-            <div id="ukRhHint" class="gt-panel-hint">右手：刷弦節奏</div>
+            <div id="ukRhHint" class="gt-panel-hint" data-i18n="player.gt.rh_hint">右手：刷弦節奏</div>
           </div>
         </div>
       </div>
@@ -248,14 +248,14 @@
               <span class="gt-fl" style="color:#ffeb3b">&#9314; Bass</span>
               <span class="gt-fl" style="color:#66bb6a">&#9315; Alt</span>
             </div>
-            <div id="accLhHint" class="gt-panel-hint">左手：低音鈕</div>
+            <div id="accLhHint" class="gt-panel-hint" data-i18n="player.gt.acc_lh_hint">左手：低音鈕</div>
           </div>
           <!-- MIDDLE: Line -->
           <div class="gt-mid-line"></div>
           <!-- RIGHT: Keyboard Waterfall (Right Hand) -->
           <div class="acc-right-panel">
             <canvas id="accordionKeyboardWaterfall"></canvas>
-            <div id="accRhHint" class="gt-panel-hint">右手：鍵盤</div>
+            <div id="accRhHint" class="gt-panel-hint" data-i18n="player.gt.acc_rh_hint">右手：鍵盤</div>
           </div>
         </div>
       </div>
@@ -273,13 +273,13 @@
 
   <!-- RLHF rate popup — Type C panel (.lc-panel), anchored to top-bar star button -->
   <div id="ratePopup" class="rate-popup lc-panel" style="display:none">
-    <button id="btnRlhfGood" class="rate-good" title="聽起來很棒">&#x1F44D; 合理</button>
-    <button id="btnRlhfBad" class="rate-bad" title="有外星人指法/伴奏">&#x1F44E; 糟糕</button>
+    <button id="btnRlhfGood" class="rate-good" title="聽起來很棒" data-i18n="player.rate.good" data-i18n-attr="title=player.rate.good_title">&#x1F44D; 合理</button>
+    <button id="btnRlhfBad" class="rate-bad" title="有外星人指法/伴奏" data-i18n="player.rate.bad" data-i18n-attr="title=player.rate.bad_title">&#x1F44E; 糟糕</button>
   </div>
 
   <!-- Beta: 5-star rating + comment popup — Type C panel (.lc-panel) -->
   <div id="betaRatePopup" class="beta-rate-popup lc-panel" style="display:none">
-    <div class="beta-rate-header lc-title">和弦品質評價</div>
+    <div class="beta-rate-header lc-title" data-i18n="player.rate.dialog_title">和弦品質評價</div>
     <div id="betaStars" class="beta-stars">
       <span class="beta-star" data-v="1">&#x2606;</span>
       <span class="beta-star" data-v="2">&#x2606;</span>
@@ -287,28 +287,28 @@
       <span class="beta-star" data-v="4">&#x2606;</span>
       <span class="beta-star" data-v="5">&#x2606;</span>
     </div>
-    <textarea id="betaRateComment" class="beta-rate-comment" rows="2" placeholder="留言（選填）"></textarea>
+    <textarea id="betaRateComment" class="beta-rate-comment" rows="2" placeholder="留言（選填）" data-i18n-attr="placeholder=player.rate.comment_placeholder"></textarea>
     <div class="beta-rate-actions lc-modal-actions">
-      <button id="btnBetaRateSubmit" class="beta-rate-submit">送出</button>
-      <button id="btnBetaRateCancel" class="beta-rate-cancel">取消</button>
+      <button id="btnBetaRateSubmit" class="beta-rate-submit" data-i18n="player.rate.submit">送出</button>
+      <button id="btnBetaRateCancel" class="beta-rate-cancel" data-i18n="player.rate.cancel">取消</button>
     </div>
   </div>
 
   <!-- Beta: Bug report dialog — Type B modal (.lc-modal-backdrop + .lc-modal) -->
   <div id="bugReportDialog" class="bug-report-dialog lc-modal-backdrop" style="display:none">
     <div class="bug-report-box lc-modal">
-      <div class="bug-report-title lc-title">回報問題</div>
+      <div class="bug-report-title lc-title" data-i18n="player.bug.title">回報問題</div>
       <select id="bugCategory" class="bug-input">
-        <option value="accuracy">和弦準確度</option>
-        <option value="ui">介面問題</option>
-        <option value="performance">效能問題</option>
-        <option value="feature_request">功能建議</option>
-        <option value="other">其他</option>
+        <option value="accuracy" data-i18n="player.bug.category.accuracy">和弦準確度</option>
+        <option value="ui" data-i18n="player.bug.category.ui">介面問題</option>
+        <option value="performance" data-i18n="player.bug.category.performance">效能問題</option>
+        <option value="feature_request" data-i18n="player.bug.category.feature_request">功能建議</option>
+        <option value="other" data-i18n="player.bug.category.other">其他</option>
       </select>
-      <textarea id="bugDescription" class="bug-input" rows="4" placeholder="請描述問題或建議…"></textarea>
+      <textarea id="bugDescription" class="bug-input" rows="4" placeholder="請描述問題或建議…" data-i18n-attr="placeholder=player.bug.description_placeholder"></textarea>
       <div class="beta-rate-actions lc-modal-actions">
-        <button id="btnBugSubmit" class="beta-rate-submit">送出</button>
-        <button id="btnBugCancel" class="beta-rate-cancel">取消</button>
+        <button id="btnBugSubmit" class="beta-rate-submit" data-i18n="player.bug.submit">送出</button>
+        <button id="btnBugCancel" class="beta-rate-cancel" data-i18n="player.bug.cancel">取消</button>
       </div>
     </div>
   </div>
@@ -658,80 +658,80 @@
 
     <!-- Tools -->
     <div class="tb-item" id="tbTools">
-    <button class="tb-trigger" title="工具" aria-label="工具" aria-haspopup="true">
+    <button class="tb-trigger" title="工具" data-i18n-attr="title=player.toolbar.tools,aria-label=player.toolbar.tools" aria-label="工具" aria-haspopup="true">
       <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
     </button>
     <div class="tb-popup">
-      <div class="tb-popup-title">工具</div>
-      <button id="btnChordCalibrate" class="tb-popup-btn" title="鍵盤 1/2/3/4 打拍校正和弦拍數、起點與 BPM" aria-label="和弦與節拍校正">
+      <div class="tb-popup-title" data-i18n="player.tools.title">工具</div>
+      <button id="btnChordCalibrate" class="tb-popup-btn" title="鍵盤 1/2/3/4 打拍校正和弦拍數、起點與 BPM" data-i18n-attr="title=player.tools.calibrate_title,aria-label=player.tools.calibrate" aria-label="和弦與節拍校正">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-        <span>和弦與節拍校正</span>
+        <span data-i18n="player.tools.calibrate">和弦與節拍校正</span>
       </button>
-      <button id="btnAutoSplit" class="tb-popup-btn" title="自動切分長和弦 (可自訂拍數門檻與比例)" aria-label="自動切分">
+      <button id="btnAutoSplit" class="tb-popup-btn" title="自動切分長和弦 (可自訂拍數門檻與比例)" data-i18n-attr="title=player.tools.auto_split_title,aria-label=player.tools.auto_split" aria-label="自動切分">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/></svg>
-        <span>自動切分</span>
+        <span data-i18n="player.tools.auto_split">自動切分</span>
       </button>
       <div class="tb-separator"></div>
-      <button id="btnSaveCorrected" class="tb-popup-btn" style="display:none;color:#4caf50" title="儲存校正後的和弦" aria-label="儲存校正">
+      <button id="btnSaveCorrected" class="tb-popup-btn" style="display:none;color:#4caf50" title="儲存校正後的和弦" data-i18n-attr="title=player.tools.save_corrected_title,aria-label=player.tools.save_corrected" aria-label="儲存校正">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-        <span>儲存校正</span>
+        <span data-i18n="player.tools.save_corrected">儲存校正</span>
       </button>
-      <button id="btnRevertCorrection" class="tb-popup-btn" style="display:none;color:#f44336" title="還原至校正前" aria-label="還原">
+      <button id="btnRevertCorrection" class="tb-popup-btn" style="display:none;color:#f44336" title="還原至校正前" data-i18n-attr="title=player.tools.revert_title,aria-label=player.tools.revert" aria-label="還原">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
-        <span>還原</span>
+        <span data-i18n="player.tools.revert">還原</span>
       </button>
       <div class="tb-separator"></div>
-      <button id="btnDetect" class="tb-popup-btn" title="偵測和弦" aria-label="偵測">
+      <button id="btnDetect" class="tb-popup-btn" title="偵測和弦" data-i18n-attr="title=player.tools.detect_title,aria-label=player.tools.detect" aria-label="偵測">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <span>偵測</span>
+        <span data-i18n="player.tools.detect">偵測</span>
       </button>
-      <button id="btnUpgradeBeats" class="tb-popup-btn" title="重新偵測節拍以追蹤 Live/老錄音的速度漂移（rubato）。背景處理約 30 秒，完成會通知。" aria-label="動態節拍偵測">
+      <button id="btnUpgradeBeats" class="tb-popup-btn" title="重新偵測節拍以追蹤 Live/老錄音的速度漂移（rubato）。背景處理約 30 秒，完成會通知。" data-i18n-attr="title=player.tools.upgrade_beats_title,aria-label=player.tools.upgrade_beats" aria-label="動態節拍偵測">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg>
-        <span>動態節拍偵測</span>
+        <span data-i18n="player.tools.upgrade_beats">動態節拍偵測</span>
       </button>
-      <button id="btnBarArbitrate" class="tb-popup-btn" title="AI 重新仲裁 bar/downbeat 相位（force：跳過 raw-already-regular 與低信心閘）。再次點擊還原。" aria-label="自動節拍調整">
+      <button id="btnBarArbitrate" class="tb-popup-btn" title="AI 重新仲裁 bar/downbeat 相位（force：跳過 raw-already-regular 與低信心閘）。再次點擊還原。" data-i18n-attr="title=player.tools.bar_arbitrate_title,aria-label=player.tools.bar_arbitrate" aria-label="自動節拍調整">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-9 4 18 3-9h4"/></svg>
-        <span id="btnBarArbitrateLabel">自動節拍調整</span>
+        <span id="btnBarArbitrateLabel" data-i18n="player.tools.bar_arbitrate">自動節拍調整</span>
       </button>
       <!-- Personal-only (8800): bidirectional beat-source toggle. JS hides on beta. -->
-      <button id="btnBeatLibrosa" class="tb-popup-btn" style="display:none" title="使用 librosa 節拍 (快速，ingest 預設)" aria-label="librosa 節拍">
+      <button id="btnBeatLibrosa" class="tb-popup-btn" style="display:none" title="使用 librosa 節拍 (快速，ingest 預設)" data-i18n-attr="title=player.tools.beat_librosa_title,aria-label=player.tools.beat_librosa" aria-label="librosa 節拍">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-        <span>節拍:librosa</span>
+        <span data-i18n="player.tools.beat_librosa">節拍:librosa</span>
       </button>
-      <button id="btnBeatMadmom" class="tb-popup-btn" style="display:none" title="使用 madmom 節拍 (rubato / downbeat，~30 秒)" aria-label="madmom 節拍">
+      <button id="btnBeatMadmom" class="tb-popup-btn" style="display:none" title="使用 madmom 節拍 (rubato / downbeat，~30 秒)" data-i18n-attr="title=player.tools.beat_madmom_title,aria-label=player.tools.beat_madmom" aria-label="madmom 節拍">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20"/><path d="M5 6l14 12"/><path d="M19 6L5 18"/></svg>
-        <span>節拍:madmom</span>
+        <span data-i18n="player.tools.beat_madmom">節拍:madmom</span>
       </button>
-      <button id="btnBeatBeatThis" class="tb-popup-btn" style="display:none" title="使用 beat_this 節拍 (PyTorch GPU，需 PC 端先批次處理)" aria-label="beat_this 節拍">
+      <button id="btnBeatBeatThis" class="tb-popup-btn" style="display:none" title="使用 beat_this 節拍 (PyTorch GPU，需 PC 端先批次處理)" data-i18n-attr="title=player.tools.beat_beat_this_title,aria-label=player.tools.beat_beat_this" aria-label="beat_this 節拍">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m13 2-3 7h6l-3 7"/><circle cx="12" cy="12" r="10"/></svg>
-        <span>節拍:beat_this</span>
+        <span data-i18n="player.tools.beat_beat_this">節拍:beat_this</span>
       </button>
-      <a id="btnEdit" class="tb-popup-btn" style="text-decoration:none" title="編輯和弦譜" aria-label="編輯">
+      <a id="btnEdit" class="tb-popup-btn" style="text-decoration:none" title="編輯和弦譜" data-i18n-attr="title=player.tools.edit_title,aria-label=player.tools.edit" aria-label="編輯">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-        <span>編輯</span>
+        <span data-i18n="player.tools.edit">編輯</span>
       </a>
-      <button id="btnAiSuggest" class="tb-popup-btn" style="color:#4caf50" title="AI 建議下一個和弦" aria-label="AI 建議">
+      <button id="btnAiSuggest" class="tb-popup-btn" style="color:#4caf50" title="AI 建議下一個和弦" data-i18n-attr="title=player.tools.ai_suggest_title,aria-label=player.tools.ai_suggest" aria-label="AI 建議">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
-        <span>AI 建議</span>
+        <span data-i18n="player.tools.ai_suggest">AI 建議</span>
       </button>
-      <button id="btnExportData" class="tb-popup-btn" title="匯出我的資料為 ZIP" aria-label="匯出資料">
+      <button id="btnExportData" class="tb-popup-btn" title="匯出我的資料為 ZIP" data-i18n-attr="title=player.tools.export_title,aria-label=player.tools.export" aria-label="匯出資料">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        <span>匯出資料</span>
+        <span data-i18n="player.tools.export">匯出資料</span>
       </button>
       <div class="tb-separator"></div>
-      <div class="tb-subtitle">主題</div>
-      <button class="tb-popup-btn theme-opt" data-pick="dark" title="深色 — 預設" aria-label="深色主題">深色</button>
-      <button class="tb-popup-btn theme-opt" data-pick="light" title="淡色 — 暖白紙" aria-label="淡色主題">淡色</button>
-      <button class="tb-popup-btn theme-opt" data-pick="forest" title="森林 — 深森綠 + 警示橘" aria-label="森林主題">森林</button>
-      <button class="tb-popup-btn theme-opt" data-pick="sakura" title="櫻夢 — 暖米色 + 玫瑰粉" aria-label="櫻夢主題">櫻夢</button>
-      <button class="tb-popup-btn theme-opt" data-pick="sunny" title="陽光沙灘 — 暖砂金 + 海洋藍" aria-label="陽光沙灘主題">沙灘</button>
-      <button class="tb-popup-btn theme-opt" data-pick="sky" title="藍天白雲 — 淺藍 + 陽光黃" aria-label="藍天白雲主題">藍天</button>
+      <div class="tb-subtitle" data-i18n="player.tools.theme_label">主題</div>
+      <button class="tb-popup-btn theme-opt" data-pick="dark" title="深色 — 預設" data-i18n="player.tools.theme.dark" data-i18n-attr="title=player.tools.theme.dark_title" aria-label="深色主題">深色</button>
+      <button class="tb-popup-btn theme-opt" data-pick="light" title="淡色 — 暖白紙" data-i18n="player.tools.theme.light" data-i18n-attr="title=player.tools.theme.light_title" aria-label="淡色主題">淡色</button>
+      <button class="tb-popup-btn theme-opt" data-pick="forest" title="森林 — 深森綠 + 警示橘" data-i18n="player.tools.theme.forest" data-i18n-attr="title=player.tools.theme.forest_title" aria-label="森林主題">森林</button>
+      <button class="tb-popup-btn theme-opt" data-pick="sakura" title="櫻夢 — 暖米色 + 玫瑰粉" data-i18n="player.tools.theme.sakura" data-i18n-attr="title=player.tools.theme.sakura_title" aria-label="櫻夢主題">櫻夢</button>
+      <button class="tb-popup-btn theme-opt" data-pick="sunny" title="陽光沙灘 — 暖砂金 + 海洋藍" data-i18n="player.tools.theme.sunny" data-i18n-attr="title=player.tools.theme.sunny_title" aria-label="陽光沙灘主題">沙灘</button>
+      <button class="tb-popup-btn theme-opt" data-pick="sky" title="藍天白雲 — 淺藍 + 陽光黃" data-i18n="player.tools.theme.sky" data-i18n-attr="title=player.tools.theme.sky_title" aria-label="藍天白雲主題">藍天</button>
     </div>
   </div>
 
     <!-- Beta: Bug report -->
     <div class="tb-item" id="tbBugReport" style="display:none">
-      <button id="btnBugReport" class="tb-trigger" title="回報問題" aria-label="回報問題">
+      <button id="btnBugReport" class="tb-trigger" title="回報問題" data-i18n-attr="title=player.bug.title,aria-label=player.bug.title" aria-label="回報問題">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3 3 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M6 13H2"/><path d="M3 21c0-2.1 1.7-3.9 3.8-4"/><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/><path d="M22 13h-4"/><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg>
       </button>
     </div>
@@ -743,7 +743,7 @@
 <div id="toast" class="toast"></div>
 
 <!-- Floating FAB to re-open the YT PiP when hidden (mimics old bug-report FAB style) -->
-<button id="ytFloatBtn" class="yt-float-btn" aria-label="顯示 YouTube" title="顯示 YouTube" style="display:none">
+<button id="ytFloatBtn" class="yt-float-btn" aria-label="顯示 YouTube" title="顯示 YouTube" data-i18n-attr="title=player.yt_pip.show,aria-label=player.yt_pip.show" style="display:none">
   <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
     <polygon points="7 4 20 12 7 20 7 4"/>
   </svg>
@@ -755,9 +755,9 @@
 <div id="localAudioPrompt" class="local-audio-prompt lc-modal-backdrop" style="display:none">
   <div class="local-audio-box lc-modal">
     <div style="font-size:28px;margin-bottom:8px">&#x1F3B5;</div>
-    <div class="lc-title" style="padding-right:0; text-align:center;">無法串流音訊</div>
-    <div class="lc-subtitle" style="text-align:center;">伺服器音樂庫不可用，請載入本地音檔播放</div>
-    <button id="btnLocalFilePrompt" class="local-audio-btn">&#x1F4C2; 選擇本地音檔</button>
+    <div class="lc-title" style="padding-right:0; text-align:center;" data-i18n="player.no_audio_title">無法串流音訊</div>
+    <div class="lc-subtitle" style="text-align:center;" data-i18n="player.no_audio_detail">伺服器音樂庫不可用，請載入本地音檔播放</div>
+    <button id="btnLocalFilePrompt" class="local-audio-btn" data-i18n="player.no_audio_pick">&#x1F4C2; 選擇本地音檔</button>
   </div>
 </div>
 

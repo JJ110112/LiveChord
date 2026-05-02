@@ -211,8 +211,17 @@
   "player.rate.dialog_title": "和弦品質評價",
   "player.rate.submit": "送出",
   "player.rate.cancel": "取消",
+  "player.rate.comment_placeholder": "留言（選填）",
 
   "player.bug.title": "回報問題",
+  "player.bug.category.accuracy": "和弦準確度",
+  "player.bug.category.ui": "介面問題",
+  "player.bug.category.performance": "效能問題",
+  "player.bug.category.feature_request": "功能建議",
+  "player.bug.category.other": "其他",
+  "player.bug.description_placeholder": "請描述問題或建議…",
+  "player.bug.submit": "送出",
+  "player.bug.cancel": "取消",
 
   "player.no_audio_title": "無法串流音訊",
   "player.no_audio_detail": "伺服器音樂庫不可用，請載入本地音檔播放",

@@ -211,8 +211,17 @@
   "player.rate.dialog_title": "Chord quality rating",
   "player.rate.submit": "Submit",
   "player.rate.cancel": "Cancel",
+  "player.rate.comment_placeholder": "Comment (optional)",
 
   "player.bug.title": "Report a problem",
+  "player.bug.category.accuracy": "Chord accuracy",
+  "player.bug.category.ui": "UI issue",
+  "player.bug.category.performance": "Performance",
+  "player.bug.category.feature_request": "Feature request",
+  "player.bug.category.other": "Other",
+  "player.bug.description_placeholder": "Describe the issue or suggestion…",
+  "player.bug.submit": "Submit",
+  "player.bug.cancel": "Cancel",
 
   "player.no_audio_title": "Cannot stream audio",
   "player.no_audio_detail": "Server library unavailable — please load a local audio file",
