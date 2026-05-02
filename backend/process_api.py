@@ -234,12 +234,31 @@ def job_result(job_id: str, username: str = Depends(get_user_or_anon)):
 
 @router.get("/cover/{hash}")
 def get_cover(hash: str):
-    """Serve cover art for a processed song."""
+    """Serve cover art for a processed song.
+
+    Public mode with LIVECHORD_USE_R2=1 streams from Cloudflare R2; the
+    local-disk path is checked first (so covers extracted before R2 was
+    enabled keep working) and falls through to R2 on miss. Personal/beta
+    deploys never touch R2."""
     cover_path = COVERS_DIR / f"{hash}.jpg"
-    if not cover_path.is_file():
-        raise HTTPException(status_code=404, detail="No cover")
-    return FileResponse(cover_path, media_type="image/jpeg",
-                        headers={"Cache-Control": "public, max-age=86400"})
+    if cover_path.is_file():
+        return FileResponse(
+            cover_path, media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    from r2_storage import is_r2_enabled, download_cover
+    if is_r2_enabled():
+        data = download_cover(hash)
+        if data is not None:
+            from fastapi.responses import Response
+            return Response(
+                content=data,
+                media_type="image/jpeg",
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
+
+    raise HTTPException(status_code=404, detail="No cover")
 
 
 # ---------------------------------------------------------------------------

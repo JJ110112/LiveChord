@@ -401,9 +401,23 @@ def _extract_cover(audio_path: str, result_hash: str):
         elif hasattr(audio, "tags") and audio.tags and "covr" in audio.tags:
             cover_data = bytes(audio.tags["covr"][0])
         if cover_data and len(cover_data) > 100:
-            cover_path = COVERS_DIR / f"{result_hash}.jpg"
-            cover_path.write_bytes(cover_data)
-            logger.info("Cover extracted for %s (%d bytes)", result_hash, len(cover_data))
+            # Mode-aware: public deploys can route cover storage to Cloudflare
+            # R2 by setting LIVECHORD_USE_R2=1 + the R2_* vars. The local-disk
+            # path stays the default for personal/beta and acts as the
+            # fallback when R2 upload fails so we never lose a cover.
+            from r2_storage import is_r2_enabled, upload_cover
+            uploaded_to_r2 = False
+            if is_r2_enabled():
+                try:
+                    upload_cover(result_hash, cover_data)
+                    uploaded_to_r2 = True
+                    logger.info("Cover → R2 for %s (%d bytes)", result_hash, len(cover_data))
+                except Exception as e:
+                    logger.warning("R2 upload failed for %s, falling back to local disk: %s", result_hash, e)
+            if not uploaded_to_r2:
+                cover_path = COVERS_DIR / f"{result_hash}.jpg"
+                cover_path.write_bytes(cover_data)
+                logger.info("Cover → local for %s (%d bytes)", result_hash, len(cover_data))
     except Exception as e:
         logger.debug("Cover extraction failed for %s: %s", result_hash, e)
 

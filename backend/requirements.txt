@@ -38,3 +38,9 @@ itsdangerous>=2.1
 #   modal volume put livechord-btc-model backend/btc/btc_model_large_voca.pt /btc.pt
 #   modal deploy backend/modal_btc.py
 # See doc/MODAL_DEPLOY.md for the full runbook.
+
+# Optional: boto3 (S3-compatible client for Cloudflare R2 cover storage).
+# Only needed when LIVECHORD_USE_R2=1 + the four R2_* env vars are set.
+# Personal/beta and the NUC keep covers on local disk; this is dormant.
+#   pip install boto3
+# See doc/R2_DEPLOY.md for the bucket / token / env wiring.
