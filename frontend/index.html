@@ -200,9 +200,14 @@
                         navDiv.insertBefore(processBtn, navDiv.querySelector("button"));
                     }
                 } else {
-                    // Personal mode: hide nav entirely
-                    const nav = document.querySelector("header nav");
-                    if (nav) nav.style.display = "none";
+                    // Personal mode: nav stays visible — Phase A introduced a
+                    // language picker + a meaningful logout (real OAuth users
+                    // do exist in the post-beta DB), so we no longer blanket-
+                    // hide the whole bar like in the beta-era design.
+                    // Greeting fills in if a real user is logged in.
+                    if (!username) username = "Admin (LAN)";
+                    const greeting = document.getElementById("userGreeting");
+                    if (greeting) greeting.textContent = _t("home.greeting", {name: username}, `Hello, ${username}`);
                 }
             }).catch(() => {});
         } else if (username) {
@@ -219,7 +224,11 @@
   function logout() {
       localStorage.removeItem("livechord_token");
       localStorage.removeItem("livechord_username");
-      window.location.href = "/login";
+      // Personal mode falls back to LAN bypass on /, no login page needed.
+      // Beta / public still bounce to /login so the user picks an auth path.
+      const mode = (window._lcDeploymentMode) ||
+                   localStorage.getItem("livechord_mode_hint") || "";
+      window.location.href = (mode === "personal") ? "/" : "/login";
   }
 
   // (Export-data button moved to player toolbar Tools popup — see player.js)
