@@ -974,10 +974,23 @@
     } catch { return null; }
   }
 
-  // Build the phrase label the same way the chord ribbon does so the two UIs
-  // stay consistent: types appearing more than once are numbered (Verse 1,
-  // Verse 2, Chorus 1, ...); intro/outro/dialogue stay unnumbered.
-  function _buildPhraseLabels(secs) {
+  // Map LiveChordI18n.getLang() → internal "zh" | "en" for label rendering.
+  // The phrase strip and chord-ribbon section headers used to toggle between
+  // these on click; that's gone now (per user request 2026-05-02), and the
+  // language follows the global i18n picker via livechord:langchange.
+  function _currentPhraseLang() {
+    try {
+      const g = (window.LiveChordI18n && window.LiveChordI18n.getLang) ? window.LiveChordI18n.getLang() : "en";
+      return g === "zh-TW" ? "zh" : "en";
+    } catch { return "en"; }
+  }
+
+  // Build the phrase labels the same way the chord ribbon does so the two
+  // UIs stay consistent: types appearing more than once are numbered
+  // (Verse 1, Verse 2, Chorus 1, ...); intro/outro/dialogue stay unnumbered.
+  // Returns parallel arrays [{zh, en}] so the AB strip can stamp both onto
+  // each pill and re-render on language change without a re-build.
+  function _buildPhraseLabelPair(secs) {
     const NO_NUMBER = ["intro", "outro", "dialogue"];
     const totals = {};
     secs.forEach(s => {
@@ -988,12 +1001,26 @@
     return secs.map((s, i) => {
       const t = s.type || s.label || "";
       occur[t] = (occur[t] || 0) + 1;
-      const base = s.label || s.type || `Phrase ${i + 1}`;
-      if (totals[t] > 1 && !NO_NUMBER.includes((t || "").toLowerCase())) {
-        return `${base} ${occur[t]}`;
-      }
-      return base;
+      const baseZh = s.label || s.type || `樂句 ${i + 1}`;
+      // English derived from type, mirroring the chord-ribbon logic at
+      // _renderRibbon (`baseType` strip digits/apostrophes, capitalize,
+      // replace underscore with space). Keeps "verse" → "Verse",
+      // "instrumental" → "Instrumental", "pre_chorus" → "Pre chorus".
+      const baseTypeRaw = (s.type || "").replace(/\d+|'/g, "");
+      const baseEn = baseTypeRaw
+        ? baseTypeRaw.charAt(0).toUpperCase() + baseTypeRaw.slice(1).replace(/_/g, " ")
+        : (s.label || `Phrase ${i + 1}`);
+      const numbered = totals[t] > 1 && !NO_NUMBER.includes((t || "").toLowerCase());
+      const num = numbered ? ` ${occur[t]}` : "";
+      return { zh: `${baseZh}${num}`, en: `${baseEn}${num}` };
     });
+  }
+
+  // Canonical (English) labels — stable identifier used for AB persistence,
+  // because storing the rendered string in localStorage would break across
+  // language switches.
+  function _buildPhraseLabels(secs) {
+    return _buildPhraseLabelPair(secs).map(p => p.en);
   }
 
   // Toggle-based multi-select: any pill tap flips its on/off state. The loop
@@ -1035,9 +1062,10 @@
     const strip = document.getElementById("abPhraseStrip");
     if (!strip) return;
     const secs = (sectionData && Array.isArray(sectionData.sections)) ? sectionData.sections : [];
-    const labels = _buildPhraseLabels(secs);
-    const html = labels.map((label, i) =>
-      `<button class="ab-phrase-pill" data-idx="${i}" role="option">${_escHtml(label)}</button>`
+    const pairs = _buildPhraseLabelPair(secs);
+    const lang = _currentPhraseLang();
+    const html = pairs.map((p, i) =>
+      `<button class="ab-phrase-pill" data-idx="${i}" data-zh="${_escHtml(p.zh)}" data-en="${_escHtml(p.en)}" role="option">${_escHtml(p[lang])}</button>`
     );
     strip.innerHTML = html.join("");
 
@@ -1547,19 +1575,9 @@
         gridPhraseEl.dataset.en = phraseLabelEn;
         gridPhraseEl.style.color = phraseColor;
         
-        // Initial setup
-        const curLang = window.liveChordPhraseLang || 'zh';
-        gridPhraseEl.textContent = curLang === 'zh' ? phraseLabelZh : phraseLabelEn;
-        
-        // Toggle language function on left click
-        gridPhraseEl.addEventListener("click", (e) => {
-          e.stopPropagation();
-          const nextLang = (window.liveChordPhraseLang || 'zh') === 'zh' ? 'en' : 'zh';
-          window.liveChordPhraseLang = nextLang;
-          document.querySelectorAll(".rv-grid-phrase, .rv-section-text").forEach(el => {
-            el.textContent = el.dataset[nextLang];
-          });
-        });
+        // Initial label follows the global LiveChordI18n picker. data-zh /
+        // data-en stay so the langchange listener can re-render in place.
+        gridPhraseEl.textContent = (_currentPhraseLang() === 'zh') ? phraseLabelZh : phraseLabelEn;
 
         gridPhraseEl.addEventListener("contextmenu", (e) => {
           if (typeof showSectionMenu === 'function' && sectionHdr) {
@@ -1667,18 +1685,12 @@
         // Drive the colored border/text via the same var used on chord cards
         hdr.style.setProperty('--phrase-color', sectionHdr.color);
 
-        const curLang = window.liveChordPhraseLang || 'zh';
-        const txt = curLang === 'zh' ? sectionHdr.labelZh : sectionHdr.labelEn;
+        const txt = (_currentPhraseLang() === 'zh') ? sectionHdr.labelZh : sectionHdr.labelEn;
         hdr.innerHTML = `<span class="rv-section-dot" style="background:${sectionHdr.color}"></span><span class="rv-section-text" data-zh="${sectionHdr.labelZh}" data-en="${sectionHdr.labelEn}">${txt}</span>`;
-        
-        hdr.style.cursor = "pointer";
-        hdr.addEventListener("click", (e) => {
-          const nextLang = (window.liveChordPhraseLang || 'zh') === 'zh' ? 'en' : 'zh';
-          window.liveChordPhraseLang = nextLang;
-          document.querySelectorAll(".rv-grid-phrase, .rv-section-text").forEach(el => {
-            el.textContent = el.dataset[nextLang];
-          });
-        });
+
+        // Section-header left click is reserved for the section-edit context
+        // menu (right-click below) — we no longer toggle phrase language here
+        // because phrase labels follow the global LiveChordI18n picker.
         // Add Edit context menu
         hdr.addEventListener("contextmenu", (e) => {
           if (typeof showSectionMenu === 'function') {
@@ -8093,6 +8105,19 @@
       });
     }
   })();
+
+  // Phrase / section labels follow the global LiveChordI18n picker. Listen
+  // for language changes and re-render every annotated label in place from
+  // its data-zh / data-en attributes — covers the chord-ribbon section
+  // headers (.rv-section-text), per-card phrase headers (.rv-grid-phrase),
+  // and the A-B segment loop pills (.ab-phrase-pill).
+  document.addEventListener("livechord:langchange", () => {
+    const lang = _currentPhraseLang();
+    document.querySelectorAll(".rv-grid-phrase, .rv-section-text, .ab-phrase-pill").forEach(el => {
+      const v = el.dataset && el.dataset[lang];
+      if (v) el.textContent = v;
+    });
+  });
 
 })();
 
