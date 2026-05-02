@@ -250,13 +250,10 @@
       </div>
     </div>
 
-    <!-- ── Personal/Beta mode: legacy password form (hidden by JS in public mode) ── -->
+    <!-- ── Personal/Beta mode: legacy password sign-in (hidden by JS in public mode).
+         Register tab removed post-beta — the only registration path is OAuth
+         in public mode, plus the seeded admin row in personal mode. ── -->
     <div id="legacy-section" class="hidden">
-      <div class="tabs">
-        <div class="tab active" id="tab-login" onclick="switchTab('login')" data-i18n="login.tab_signin">登入</div>
-        <div class="tab" id="tab-register" onclick="switchTab('register')" data-i18n="login.tab_register">註冊</div>
-      </div>
-
       <form id="login-form" onsubmit="handleLogin(event)">
         <div class="form-group">
           <label data-i18n="login.field.username">使用者名稱</label>
@@ -271,28 +268,6 @@
                  placeholder="您的密碼">
         </div>
         <button type="submit" class="btn" data-i18n="login.btn_signin">登入</button>
-      </form>
-
-      <form id="register-form" class="hidden" onsubmit="handleRegister(event)">
-        <div class="form-group">
-          <label data-i18n="login.field.username">使用者名稱</label>
-          <input type="text" id="reg-username" required minlength="3"
-                 data-i18n-attr="placeholder=login.field.username_register_placeholder"
-                 placeholder="想一個響亮的名字">
-        </div>
-        <div class="form-group">
-          <label data-i18n="login.field.password">密碼</label>
-          <input type="password" id="reg-password" required minlength="8"
-                 data-i18n-attr="placeholder=login.field.password_register_placeholder"
-                 placeholder="設定密碼（至少 8 字元）">
-        </div>
-        <div class="form-group">
-          <label data-i18n="login.field.invite">邀請碼 (Invite Code)</label>
-          <input type="text" id="reg-invite" required
-                 data-i18n-attr="placeholder=login.field.invite_placeholder"
-                 placeholder="站長發放的密碼">
-        </div>
-        <button type="submit" class="btn" data-i18n="login.btn_register">建立帳號</button>
       </form>
     </div>
 
@@ -366,26 +341,6 @@
       document.getElementById("legacy-section").classList.remove("hidden");
     });
 
-    function switchTab(mode) {
-      document.getElementById("error-msg").textContent = "";
-      const loginTab = document.getElementById("tab-login");
-      const regTab = document.getElementById("tab-register");
-      const loginForm = document.getElementById("login-form");
-      const regForm = document.getElementById("register-form");
-
-      if (mode === 'login') {
-        loginTab.classList.add("active");
-        regTab.classList.remove("active");
-        loginForm.classList.remove("hidden");
-        regForm.classList.add("hidden");
-      } else {
-        regTab.classList.add("active");
-        loginTab.classList.remove("active");
-        regForm.classList.remove("hidden");
-        loginForm.classList.add("hidden");
-      }
-    }
-
     async function handleLogin(e) {
       e.preventDefault();
       const u = document.getElementById("login-username").value;
@@ -412,32 +367,6 @@
       }
     }
 
-    async function handleRegister(e) {
-      e.preventDefault();
-      const u = document.getElementById("reg-username").value;
-      const p = document.getElementById("reg-password").value;
-      const inv = document.getElementById("reg-invite").value;
-      const err = document.getElementById("error-msg");
-
-      try {
-        const res = await fetch("/api/auth/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: u, password: p, invite_code: inv })
-        });
-        const data = await res.json();
-
-        if (data.ok) {
-          localStorage.setItem("livechord_token", data.token);
-          localStorage.setItem("livechord_username", data.username);
-          window.location.href = "/";
-        } else {
-          err.textContent = data.detail || _tr("login.error.register", null, "註冊失敗");
-        }
-      } catch (e) {
-        err.textContent = _tr("login.error.network", null, "網路錯誤");
-      }
-    }
   </script>
 </body>
 </html>
