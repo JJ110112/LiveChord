@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=3.0, user-scalable=yes, viewport-fit=cover">
-  <title>LiveChord — 播放</title>
+  <title data-i18n="player.title_tag">LiveChord — 播放</title>
   <!-- Theme attribute restore (anti-FOUC): set <html data-theme> before
        stylesheets parse so [data-theme="light"] selectors match the very
        first paint instead of flashing dark for 50-200ms. Toggle source is
@@ -21,13 +21,13 @@
        load before any /api/ call so anon X-Anon-Id is injected from the
        first request. Replaces the inline blind-redirect block. -->
   <script src="/js/auth.js?v=4"></script>
-  <script src="/js/i18n.js?v=2"></script>
+  <script src="/js/i18n.js?v=3"></script>
 </head>
 <body>
 
 <!-- ===== TOP: Top Bar ===== -->
 <header class="player-topbar">
-  <a href="/" class="topbar-logo" title="返回首頁">
+  <a href="/" class="topbar-logo" data-i18n-attr="title=common.back_home" title="返回首頁">
     <img src="/favicon.svg?v=3" alt="" class="topbar-logo-icon" aria-hidden="true">
     <span class="topbar-logo-text">LiveChord</span>
   </a>
@@ -127,8 +127,12 @@
          is collapsed, only the remaining (restore) button stays visible,
          centered on the widened handle at the viewport edge. -->
     <div id="resizeHandle" class="resize-handle">
-      <button id="btnCollapseRibbon" class="ribbon-toggle-btn" title="收合和弦列表 (鋼琴擴大至全版)">&#x276F;</button>
-      <button id="btnCollapseWaterfall" class="ribbon-toggle-btn" title="收合鋼琴視窗 (和弦列表擴大至全版)">&#x276E;</button>
+      <button id="btnCollapseRibbon" class="ribbon-toggle-btn"
+              data-i18n-attr="title=player.collapse_chord"
+              title="收合和弦列表 (鋼琴擴大至全版)">&#x276F;</button>
+      <button id="btnCollapseWaterfall" class="ribbon-toggle-btn"
+              data-i18n-attr="title=player.collapse_piano"
+              title="收合鋼琴視窗 (和弦列表擴大至全版)">&#x276E;</button>
     </div>
 
     <!-- RIGHT: Instrument Panel -->
@@ -339,24 +343,28 @@
 
     <!-- Loop -->
     <div class="tb-item" id="tbLoop">
-      <button id="btnLoop" class="tb-trigger" title="循環模式" aria-label="循環模式" aria-haspopup="true">
+      <button id="btnLoop" class="tb-trigger"
+              data-i18n-attr="title=player.toolbar.loop_title,aria-label=player.toolbar.loop_title"
+              title="循環模式" aria-label="循環模式" aria-haspopup="true">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
       </button>
       <div class="tb-popup tb-popup-loop">
-        <div class="tb-popup-title">循環模式</div>
-        <button class="tb-popup-btn loop-opt active" data-loop="off">關閉</button>
-        <button class="tb-popup-btn loop-opt" data-loop="single">單曲循環</button>
-        <button class="tb-popup-btn loop-opt" data-loop="favorites">最愛循環</button>
+        <div class="tb-popup-title" data-i18n="player.toolbar.loop_title">循環模式</div>
+        <button class="tb-popup-btn loop-opt active" data-loop="off" data-i18n="player.toolbar.loop_off">關閉</button>
+        <button class="tb-popup-btn loop-opt" data-loop="single" data-i18n="player.toolbar.loop_single">單曲循環</button>
+        <button class="tb-popup-btn loop-opt" data-loop="favorites" data-i18n="player.toolbar.loop_favorites">最愛循環</button>
       </div>
     </div>
 
     <!-- Transpose -->
     <div class="tb-item" id="tbTranspose">
-      <button class="tb-trigger" title="移調工具" aria-label="移調" aria-haspopup="true">
+      <button class="tb-trigger"
+              data-i18n-attr="title=player.toolbar.transpose_title,aria-label=player.toolbar.transpose"
+              title="移調工具" aria-label="移調" aria-haspopup="true">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg>
       </button>
       <div class="tb-popup tb-popup-transpose">
-        <div class="tb-popup-title">移調</div>
+        <div class="tb-popup-title" data-i18n="player.toolbar.transpose">移調</div>
         <button id="btnTransposeDown" class="tb-popup-btn">−</button>
         <span id="transposeValue" class="tb-transpose-val">0</span>
         <button id="btnTransposeUp" class="tb-popup-btn">+</button>
@@ -378,12 +386,14 @@
 
     <!-- Volume -->
     <div class="tb-item" id="tbVolume">
-      <button id="btnMute" class="tb-trigger" title="音量" aria-label="音量" aria-haspopup="true">
+      <button id="btnMute" class="tb-trigger"
+              data-i18n-attr="title=player.toolbar.volume,aria-label=player.toolbar.volume"
+              title="音量" aria-label="音量" aria-haspopup="true">
         <svg class="tb-icon ico-vol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
         <svg class="tb-icon ico-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>
       </button>
       <div class="tb-popup tb-popup-volume">
-        <div class="tb-popup-title">音量</div>
+        <div class="tb-popup-title" data-i18n="player.toolbar.volume">音量</div>
         <input id="volumeSlider" type="range" min="0" max="1" step="0.05" value="1">
       </div>
     </div>
@@ -393,16 +403,22 @@
   <!-- ===== Transport Row: Prev / Play / Next + times ===== -->
   <div class="tb-row tb-row-tx">
     <div class="tb-item tb-playback" id="tbPlayback">
-      <button id="btnPrev" class="tb-trigger" title="上一首 / 回到開頭" aria-label="上一首">
+      <button id="btnPrev" class="tb-trigger"
+              data-i18n-attr="title=player.toolbar.prev_title,aria-label=player.toolbar.prev"
+              title="上一首 / 回到開頭" aria-label="上一首">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
       </button>
       <span id="timeCurrent" class="tb-time">0:00</span>
-      <button id="btnPlay" class="tb-trigger tb-play-btn" title="播放" aria-label="播放">
+      <button id="btnPlay" class="tb-trigger tb-play-btn"
+              data-i18n-attr="title=player.toolbar.play,aria-label=player.toolbar.play"
+              title="播放" aria-label="播放">
         <svg class="tb-icon ico-play" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>
         <svg class="tb-icon ico-pause" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
       </button>
       <span id="timeDuration" class="tb-time">0:00</span>
-      <button id="btnNext" class="tb-trigger" title="下一首" aria-label="下一首">
+      <button id="btnNext" class="tb-trigger"
+              data-i18n-attr="title=player.toolbar.next,aria-label=player.toolbar.next"
+              title="下一首" aria-label="下一首">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
       </button>
     </div>
@@ -413,50 +429,73 @@
 
     <!-- Instrument select -->
     <div class="tb-item" id="tbInstrument">
-      <button class="tb-trigger" id="btnInstrument" title="樂器選擇" aria-label="樂器選擇" aria-haspopup="true">
+      <button class="tb-trigger" id="btnInstrument"
+              data-i18n-attr="title=player.toolbar.instrument_title,aria-label=player.toolbar.instrument_title"
+              title="樂器選擇" aria-label="樂器選擇" aria-haspopup="true">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/><path d="M18 8h.01"/><path d="M2 12h20"/><path d="M6 12v4"/><path d="M10 12v4"/><path d="M14 12v4"/><path d="M18 12v4"/></svg>
       </button>
       <div class="tb-popup tb-popup-5">
-        <div class="tb-popup-title">樂器</div>
-        <button class="tb-popup-btn" data-tab="piano" title="Piano 鋼琴">&#x1F3B9; 鋼琴</button>
-        <button class="tb-popup-btn" data-tab="guitar" title="Guitar 吉他">&#x1F3B8; 吉他</button>
-        <button class="tb-popup-btn" data-tab="ukulele" title="Ukulele 烏克麗麗">&#x1FA95; 烏克</button>
-        <button class="tb-popup-btn" data-tab="accordion" title="Accordion 手風琴"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:.3em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="4" height="12" rx="1"/><rect x="17" y="6" width="4" height="12" rx="1"/><path d="M7 9 L10 12 L7 15"/><path d="M10 9 L13 12 L10 15"/><path d="M13 9 L16 12 L13 15"/><path d="M16 9 L17 12 L16 15"/></svg>手風琴</button>
-        <button class="tb-popup-btn" data-tab="arranger" title="Arranger 編曲鍵盤">&#x1F3B9; 編曲琴</button>
+        <div class="tb-popup-title" data-i18n="player.toolbar.instrument">樂器</div>
+        <button class="tb-popup-btn" data-tab="piano"
+                data-i18n-attr="title=player.instrument.piano_title"
+                data-i18n="player.instrument.piano"
+                title="Piano 鋼琴">&#x1F3B9; 鋼琴</button>
+        <button class="tb-popup-btn" data-tab="guitar"
+                data-i18n-attr="title=player.instrument.guitar_title"
+                data-i18n="player.instrument.guitar"
+                title="Guitar 吉他">&#x1F3B8; 吉他</button>
+        <button class="tb-popup-btn" data-tab="ukulele"
+                data-i18n-attr="title=player.instrument.ukulele_title"
+                data-i18n="player.instrument.ukulele"
+                title="Ukulele 烏克麗麗">&#x1FA95; 烏克</button>
+        <button class="tb-popup-btn" data-tab="accordion"
+                data-i18n-attr="title=player.instrument.accordion_title"
+                title="Accordion 手風琴"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:.3em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="4" height="12" rx="1"/><rect x="17" y="6" width="4" height="12" rx="1"/><path d="M7 9 L10 12 L7 15"/><path d="M10 9 L13 12 L10 15"/><path d="M13 9 L16 12 L13 15"/><path d="M16 9 L17 12 L16 15"/></svg><span data-i18n="player.instrument.accordion">手風琴</span></button>
+        <button class="tb-popup-btn" data-tab="arranger"
+                data-i18n-attr="title=player.instrument.arranger_title"
+                data-i18n="player.instrument.arranger"
+                title="Arranger 編曲鍵盤">&#x1F3B9; 編曲琴</button>
       </div>
     </div>
 
     <!-- Jazzify: L1 → L2 → L3 → ✨AI -->
     <div class="tb-item" id="tbJazzify">
-      <button id="btnJazzify" class="tb-trigger" title="Jazzify: L1 → L2 → L3 → ✨AI Transformer" aria-label="Jazzify" aria-haspopup="true">
+      <button id="btnJazzify" class="tb-trigger"
+              data-i18n-attr="title=player.toolbar.jazzify_title"
+              title="Jazzify: L1 → L2 → L3 → ✨AI Transformer" aria-label="Jazzify" aria-haspopup="true">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>
       </button>
       <div class="tb-popup tb-popup-jazzify tb-popup-5">
-        <div class="tb-popup-title">Jazzify 風格</div>
-        <button class="tb-popup-btn jazz-opt active" data-jazz="0">關閉</button>
-        <button class="tb-popup-btn jazz-opt" data-jazz="4">&#x2728; AI</button>
-        <button class="tb-popup-btn jazz-opt" data-jazz="1">L1 加色彩</button>
-        <button class="tb-popup-btn jazz-opt" data-jazz="2">L2 替代</button>
-        <button class="tb-popup-btn jazz-opt" data-jazz="3">L3 重配</button>
+        <div class="tb-popup-title" data-i18n="player.jazzify.title">Jazzify 風格</div>
+        <button class="tb-popup-btn jazz-opt active" data-jazz="0" data-i18n="player.jazzify.off">關閉</button>
+        <button class="tb-popup-btn jazz-opt" data-jazz="4" data-i18n="player.jazzify.ai">&#x2728; AI</button>
+        <button class="tb-popup-btn jazz-opt" data-jazz="1" data-i18n="player.jazzify.l1">L1 加色彩</button>
+        <button class="tb-popup-btn jazz-opt" data-jazz="2" data-i18n="player.jazzify.l2">L2 替代</button>
+        <button class="tb-popup-btn jazz-opt" data-jazz="3" data-i18n="player.jazzify.l3">L3 重配</button>
       </div>
     </div>
 
     <!-- A-B -->
     <div class="tb-item" id="tbAB">
-      <button id="btnABRepeat" class="tb-trigger ab-repeat-btn" title="A-B 區段循環" aria-haspopup="true">A-B</button>
+      <button id="btnABRepeat" class="tb-trigger ab-repeat-btn"
+              data-i18n-attr="title=player.toolbar.ab_title"
+              title="A-B 區段循環" aria-haspopup="true">A-B</button>
       <div class="tb-popup tb-popup-ab">
-        <div class="tb-popup-title">A-B 段落循環</div>
+        <div class="tb-popup-title" data-i18n="player.ab.title">A-B 段落循環</div>
         <div class="ab-header">
-          <div class="tb-ab-status" id="abStatus">未設定</div>
+          <div class="tb-ab-status" id="abStatus" data-i18n="player.ab.unset">未設定</div>
         </div>
         <div class="ab-strip-wrap">
-          <div class="ab-phrase-strip" id="abPhraseStrip" role="listbox" aria-label="段落選擇">
+          <div class="ab-phrase-strip" id="abPhraseStrip" role="listbox"
+               data-i18n-attr="aria-label=player.ab.section_label" aria-label="段落選擇">
             <!-- phrase pills populated by _buildPhraseStrip() -->
           </div>
           <div class="ab-manual-col">
-            <button class="ab-phrase-pill manual" data-idx="manual" role="option">手動設定</button>
+            <button class="ab-phrase-pill manual" data-idx="manual" role="option" data-i18n="player.ab.manual">手動設定</button>
             <div class="ab-manual-row" id="abManualRow" style="display:none">
-              <button class="ab-opt ab-clear-btn" data-ab="clear" title="清除 A-B 循環" aria-label="清除 A-B 循環">
+              <button class="ab-opt ab-clear-btn" data-ab="clear"
+                      data-i18n-attr="title=player.ab.clear_title,aria-label=player.ab.clear_title"
+                      title="清除 A-B 循環" aria-label="清除 A-B 循環">
                 <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M3 6h18"/>
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
@@ -465,8 +504,10 @@
                   <line x1="14" x2="14" y1="11" y2="17"/>
                 </svg>
               </button>
-              <button class="tb-popup-btn ab-opt" data-ab="A" title="設定 A 點">A</button>
-              <button class="tb-popup-btn ab-opt" data-ab="B" title="設定 B 點">B</button>
+              <button class="tb-popup-btn ab-opt" data-ab="A"
+                      data-i18n-attr="title=player.ab.set_a_title" title="設定 A 點">A</button>
+              <button class="tb-popup-btn ab-opt" data-ab="B"
+                      data-i18n-attr="title=player.ab.set_b_title" title="設定 B 點">B</button>
             </div>
           </div>
         </div>
@@ -475,64 +516,86 @@
 
     <!-- AI Teaching -->
     <div class="tb-item" id="tbTeaching">
-    <button class="tb-trigger" title="AI 伴奏教學" aria-label="AI 伴奏教學">
+    <button class="tb-trigger"
+            data-i18n-attr="title=player.toolbar.ai_teaching_title,aria-label=player.toolbar.ai_teaching_title"
+            title="AI 伴奏教學" aria-label="AI 伴奏教學">
       <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
     </button>
     <div class="tb-popup tb-popup-wide">
-      <div class="tb-popup-title">AI 伴奏教學</div>
+      <div class="tb-popup-title" data-i18n="player.teach.title">AI 伴奏教學</div>
 
       <!-- Group 1: 練習 (learner-facing, primary) -->
       <div class="tb-subgroup">
-        <div class="tb-subgroup-label">練習 — 由易到難（同步影響顯示、聲音、下載）</div>
+        <div class="tb-subgroup-label" data-i18n="player.teach.practice_label">練習 — 由易到難（同步影響顯示、聲音、下載）</div>
         <!-- Pyramid 3-2-1 with explicit row divs (guaranteed line breaks regardless of flex math) -->
         <div class="tb-subgroup-row practice-row practice-row-solo">
-          <button class="tb-popup-btn practice-opt" data-practice="L" title="最簡單：只練左手伴奏">
+          <button class="tb-popup-btn practice-opt" data-practice="L"
+                  data-i18n-attr="title=player.teach.practice.l_hand_title"
+                  title="最簡單：只練左手伴奏">
             <span class="pp-icons" aria-hidden="true"><svg class="pp-hand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg></span>
-            <span class="pp-label">左手</span>
+            <span class="pp-label" data-i18n="player.teach.practice.l_hand">左手</span>
           </button>
-          <button class="tb-popup-btn practice-opt" data-practice="R-acc" title="簡單：只練右手伴奏（和弦）">
+          <button class="tb-popup-btn practice-opt" data-practice="R-acc"
+                  data-i18n-attr="title=player.teach.practice.r_acc_title"
+                  title="簡單：只練右手伴奏（和弦）">
             <span class="pp-icons" aria-hidden="true"><svg class="pp-hand pp-flip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="pp-mark" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="6" width="16" height="3" rx="0.5"/><rect x="4" y="11" width="16" height="3" rx="0.5"/><rect x="4" y="16" width="16" height="3" rx="0.5"/></svg></span>
-            <span class="pp-label">右手伴奏</span>
+            <span class="pp-label" data-i18n="player.teach.practice.r_acc">右手伴奏</span>
           </button>
-          <button class="tb-popup-btn practice-opt" data-practice="R-mel" title="中等：只練右手主旋律">
+          <button class="tb-popup-btn practice-opt" data-practice="R-mel"
+                  data-i18n-attr="title=player.teach.practice.r_mel_title"
+                  title="中等：只練右手主旋律">
             <span class="pp-icons" aria-hidden="true"><svg class="pp-hand pp-flip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="pp-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3" fill="currentColor"/><circle cx="18" cy="16" r="3" fill="currentColor"/></svg></span>
-            <span class="pp-label">右手旋律</span>
+            <span class="pp-label" data-i18n="player.teach.practice.r_mel">右手旋律</span>
           </button>
         </div>
         <div class="tb-subgroup-row practice-row practice-row-combo">
-          <button class="tb-popup-btn practice-opt" data-practice="LR-acc" title="標準：雙手 + 右手伴奏">
+          <button class="tb-popup-btn practice-opt" data-practice="LR-acc"
+                  data-i18n-attr="title=player.teach.practice.lr_acc_title"
+                  title="標準：雙手 + 右手伴奏">
             <span class="pp-icons" aria-hidden="true"><svg class="pp-hand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="pp-hand pp-flip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="pp-mark" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="6" width="16" height="3" rx="0.5"/><rect x="4" y="11" width="16" height="3" rx="0.5"/><rect x="4" y="16" width="16" height="3" rx="0.5"/></svg></span>
-            <span class="pp-label">左手+右手伴奏</span>
+            <span class="pp-label" data-i18n="player.teach.practice.lr_acc">左手+右手伴奏</span>
           </button>
-          <button class="tb-popup-btn practice-opt" data-practice="LR-mel" title="進階：雙手 + 右手主旋律">
+          <button class="tb-popup-btn practice-opt" data-practice="LR-mel"
+                  data-i18n-attr="title=player.teach.practice.lr_mel_title"
+                  title="進階：雙手 + 右手主旋律">
             <span class="pp-icons" aria-hidden="true"><svg class="pp-hand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="pp-hand pp-flip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="pp-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3" fill="currentColor"/><circle cx="18" cy="16" r="3" fill="currentColor"/></svg></span>
-            <span class="pp-label">左手+右手旋律</span>
+            <span class="pp-label" data-i18n="player.teach.practice.lr_mel">左手+右手旋律</span>
           </button>
         </div>
         <div class="tb-subgroup-row practice-row practice-row-full">
-          <button class="tb-popup-btn practice-opt" data-practice="LR-both" title="最難：雙手 + 右手伴奏+旋律疊加">
+          <button class="tb-popup-btn practice-opt" data-practice="LR-both"
+                  data-i18n-attr="title=player.teach.practice.lr_both_title"
+                  title="最難：雙手 + 右手伴奏+旋律疊加">
             <span class="pp-icons" aria-hidden="true"><svg class="pp-hand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="pp-hand pp-flip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><svg class="pp-mark" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="6" width="16" height="3" rx="0.5"/><rect x="4" y="11" width="16" height="3" rx="0.5"/><rect x="4" y="16" width="16" height="3" rx="0.5"/></svg><svg class="pp-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3" fill="currentColor"/><circle cx="18" cy="16" r="3" fill="currentColor"/></svg></span>
-            <span class="pp-label">左手+右手伴奏+右手旋律</span>
+            <span class="pp-label" data-i18n="player.teach.practice.lr_both">左手+右手伴奏+右手旋律</span>
           </button>
         </div>
-        <!-- Utility row: 指法 -> 組成音 -> 下載 MIDI -->
+        <!-- Utility row: fingering -> chord tones -> MIDI -->
         <div class="tb-subgroup-row">
-          <button id="btnFingering" class="tb-popup-btn" title="鋼琴鍵指法" aria-label="鋼琴鍵指法">
+          <button id="btnFingering" class="tb-popup-btn"
+                  data-i18n-attr="title=player.teach.fingering_title,aria-label=player.teach.fingering_title"
+                  title="鋼琴鍵指法" aria-label="鋼琴鍵指法">
             <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
-            <span>指法</span>
+            <span data-i18n="player.teach.fingering">指法</span>
           </button>
-          <button id="btnShowChordTonesTB" class="tb-popup-btn" title="顯示和弦組成音" aria-label="顯示和弦組成音">
+          <button id="btnShowChordTonesTB" class="tb-popup-btn"
+                  data-i18n-attr="title=player.teach.chord_tones_title,aria-label=player.teach.chord_tones_title"
+                  title="顯示和弦組成音" aria-label="顯示和弦組成音">
             <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-            <span>組成音</span>
+            <span data-i18n="player.teach.chord_tones">組成音</span>
           </button>
-          <button id="btnDownloadMidi" class="tb-popup-btn" title="下載 MIDI（依目前練習模式產生）" aria-label="下載 MIDI">
+          <button id="btnDownloadMidi" class="tb-popup-btn"
+                  data-i18n-attr="title=player.teach.midi_title,aria-label=player.teach.midi"
+                  title="下載 MIDI（依目前練習模式產生）" aria-label="下載 MIDI">
             <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <span>MIDI</span>
+            <span data-i18n="player.teach.midi">MIDI</span>
           </button>
         </div>
         <!-- Mix row: Mix toggle + crossfader slider on same line when visible -->
         <div class="tb-subgroup-row mix-row">
-          <button id="btnAudioMode" class="tb-popup-btn" title="切換音軌（原曲/AI 伴奏混音）" aria-label="切換音軌">
+          <button id="btnAudioMode" class="tb-popup-btn"
+                  data-i18n-attr="title=player.teach.audio_mode_title,aria-label=player.teach.audio_mode_title"
+                  title="切換音軌（原曲/AI 伴奏混音）" aria-label="切換音軌">
             <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
             <span>Mix</span>
           </button>
@@ -546,13 +609,17 @@
 
       <!-- Group 2: 伴奏模式 (what the RH accompaniment plays) -->
       <div class="tb-subgroup">
-        <div class="tb-subgroup-label">伴奏模式 — 右手伴奏的風格</div>
+        <div class="tb-subgroup-label" data-i18n="player.teach.style_label">伴奏模式 — 右手伴奏的風格</div>
         <div class="tb-subgroup-row">
-          <button id="btnTeachAI" class="tb-popup-btn" title="AI 推薦風格">
+          <button id="btnTeachAI" class="tb-popup-btn"
+                  data-i18n-attr="title=player.teach.ai_recommend_title"
+                  title="AI 推薦風格">
             <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>
             <span>AI</span>
           </button>
-          <select id="teachStyle" class="tb-select" title="伴奏風格">
+          <select id="teachStyle" class="tb-select"
+                  data-i18n-attr="title=player.teach.acc_style_title"
+                  title="伴奏風格">
             <option value="Auto" selected>Auto</option>
             <option value="Block">Block</option>
             <option value="Arpeggio">Flow</option>
@@ -560,14 +627,18 @@
             <option value="Walking">Walking</option>
             <option value="Stride">Stride</option>
           </select>
-          <select id="guitarStyleSelect" class="tb-select" title="吉他右手風格" style="display:none">
+          <select id="guitarStyleSelect" class="tb-select"
+                  data-i18n-attr="title=player.teach.guitar_style_title"
+                  title="吉他右手風格" style="display:none">
             <option value="arpeggio" selected>Arpeggio</option>
             <option value="pattern">Rhythm</option>
             <option value="block">Block</option>
           </select>
-          <button id="btnRefreshAcc" class="tb-popup-btn" title="強制重新生成伴奏" aria-label="重新生成伴奏">
+          <button id="btnRefreshAcc" class="tb-popup-btn"
+                  data-i18n-attr="title=player.teach.acc_refresh_title,aria-label=player.teach.acc_refresh"
+                  title="強制重新生成伴奏" aria-label="重新生成伴奏">
             <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
-            <span>伴奏重生</span>
+            <span data-i18n="player.teach.acc_refresh">伴奏重生</span>
           </button>
         </div>
       </div>
