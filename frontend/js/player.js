@@ -1,6 +1,7 @@
 /** LiveChord 播放頁 */
 
 (function () {
+  function _t(k, v) { return (window.LiveChordI18n && window.LiveChordI18n.t) ? window.LiveChordI18n.t(k, v) : k; }
   const $ = (sel) => document.querySelector(sel);
 
   const params = new URLSearchParams(window.location.search);
@@ -646,7 +647,7 @@
     // "Long-running operations" — start/done notifications mandatory).
     // Toast replaces the previous bottom-left status banner (the start/done
     // toast pair already covers the same information, banner was redundant).
-    showToast("已開始擷取旋律，背景處理中…完成會通知", 5000);
+    showToast(_t("toast.melody.started"), 5000);
 
     _melodyPollAbort = new AbortController();
     const signal = _melodyPollAbort.signal;
@@ -657,7 +658,7 @@
         _stopMelodyPolling();
         // Loose-coupling rule: surface timeouts so users don't wonder why
         // their melody silently never showed up.
-        showToast("旋律擷取超時，請稍後重新整理頁面查看", 5000);
+        showToast(_t("toast.melody.timeout"), 5000);
         return;
       }
       try {
@@ -669,7 +670,7 @@
           _stopMelodyPolling();
           // Always toast completion (loose-coupling rule). The phrasing
           // tells the user where to find the result, not just "done".
-          showToast("旋律擷取完成 — 可從 AI 教學切換右手顯示", 5000);
+          showToast(_t("toast.melody.done"), 5000);
           return;
         }
       } catch (e) {
@@ -1163,7 +1164,7 @@
 
     if (!opts.silent) {
       _playerSeek(abA);
-      showToast(`循環：${name}（${formatTime(abA)} → ${formatTime(abB)}）`, 2000);
+      showToast(_t("toast.ab.loop", { name, from: formatTime(abA), to: formatTime(abB) }), 2000);
       // Persist as either single label or JSON array of selected labels
       if (sorted.length === 1) {
         _saveABChoice(labels[lo]);
@@ -1238,7 +1239,7 @@
   function _handleAB(action) {
     if (action === "clear") {
       _forgetABChoice();
-      showToast("A-B 循環已取消", 1500);
+      showToast(_t("toast.ab.cleared"), 1500);
       return;
     }
     if (action === "A") {
@@ -2324,7 +2325,7 @@
       if (data.melody && data.melody.length > 0) {
         melodyData = _filterMelody(data.melody);
         if (showUi && (Date.now() - t0) > 1000) {
-          showToast("旋律擷取完成 — 可從 AI 教學切換右手顯示", 4000);
+          showToast(_t("toast.melody.done"), 4000);
         }
       }
     } catch {} finally {
@@ -2756,7 +2757,7 @@
           if (cdv > 0 && adv < cdv && !_accStaleWarned) {
             _accStaleWarned = true;
             if (typeof showToast === "function") {
-              showToast("節拍已升級，伴奏使用舊版本（背景重生中）", 4000);
+              showToast(_t("toast.acc.stale_after_beat_upgrade"), 4000);
             } else {
               console.info("[acc] stale: chord beat_version=" + cdv + " > acc source_beat_version=" + adv);
             }
@@ -3476,13 +3477,13 @@
         btn.addEventListener("click", () => {
           if (activeHand === "both") {
             activeHand = "left";
-            showToast("手部切換: 顯示左手");
+            showToast(_t("toast.hand.left"));
           } else if (activeHand === "left") {
             activeHand = "right";
-            showToast("手部切換: 顯示右手");
+            showToast(_t("toast.hand.right"));
           } else {
             activeHand = "both";
-            showToast("手部切換: 顯示雙手");
+            showToast(_t("toast.hand.both"));
           }
           localStorage.setItem("livechord_active_hand", activeHand);
           updateHandToggleUI();
@@ -3533,7 +3534,7 @@
         if (!code) return;
         _setPracticeMode(code);
         const label = btn.textContent.trim();
-        showToast(`練習模式：${label}`, 1400);
+        showToast(_t("toast.practice.mode", { label }), 1400);
       });
     });
     _syncPracticeModeUI();
@@ -3545,10 +3546,10 @@
         // canonical path that song_hash() will resolve server-side.
         const p = _accPath();
         if (!p) {
-          showToast("尚未載入歌曲");
+          showToast(_t("toast.song.not_loaded"));
           return;
         }
-        showToast("AI 分析曲風中...");
+        showToast(_t("toast.style.analyzing"));
         fetch(`/api/ai/suggest-style?path=${encodeURIComponent(p)}`)
           .then(r => r.json())
           .then(data => {
@@ -3559,11 +3560,11 @@
               localStorage.setItem("livechord_teach_style", best);
               accData = null;
               if (waterfallActive) _loadAccompaniment();
-              showToast("AI 推薦風格：" + data.suggested_styles.join(", "));
+              showToast(_t("toast.style.suggested", { styles: data.suggested_styles.join(", ") }));
             } else {
-              showToast("AI 無法分析（資料不足）");
+              showToast(_t("toast.style.no_data"));
             }
-          }).catch(() => showToast("AI 推薦失敗"));
+          }).catch(() => showToast(_t("toast.style.failed")));
       });
     }
 
@@ -3604,8 +3605,8 @@
         rhContentMode = _RH_MODES[(i + 1) % _RH_MODES.length];
         try { localStorage.setItem("livechord_rh_mode", rhContentMode); } catch {}
         _syncRhContentBtn();
-        const names = { acc: "伴奏", mel: "旋律", both: "全部（伴奏+旋律）" };
-        showToast(`右手：${names[rhContentMode]}`, 1500);
+        const names = { acc: _t("toast.rh.acc"), mel: _t("toast.rh.mel"), both: _t("toast.rh.both") };
+        showToast(_t("toast.rh.content", { name: names[rhContentMode] }), 1500);
         update88Piano(audio.currentTime || 0);
         if (typeof _syncPracticeModeUI === 'function') _syncPracticeModeUI();
       });
@@ -3624,7 +3625,7 @@
         showFingering = !showFingering;
         localStorage.setItem("livechord_show_fingering", showFingering.toString());
         updateFingeringUI();
-        showToast(showFingering ? "指法顯示: ON" : "指法顯示: OFF", 1500);
+        showToast(_t(showFingering ? "toast.fingering.on" : "toast.fingering.off"), 1500);
       });
     }
 
@@ -3634,7 +3635,7 @@
       btnRefreshAcc.addEventListener("click", () => {
         accData = null;
         _loadAccompaniment(true);
-        showToast("強制重新生成伴奏 (含踏板/力度)...", 3000);
+        showToast(_t("toast.acc.regen"), 3000);
       });
     }
 
@@ -3820,10 +3821,10 @@
                   wrap.title = ver.count > 0
                       ? `平均 ${ver.rating.toFixed(1)} ★ (${ver.count} 票)`
                       : "尚無評分";
-                  showToast(next === 0 ? "已收回評分" : `已評 ${next} 顆星`);
+                  showToast(next === 0 ? _t("toast.rate.cleared") : _t("toast.rate.set", { n: next }));
               } catch (err) {
                   console.error("rate failed:", err);
-                  showToast("評分失敗", true);
+                  showToast(_t("toast.rate.failed"), true);
               }
           });
       });
@@ -4848,9 +4849,9 @@
           window.history.replaceState({}, "", url);
           if (window._updateEditLink) window._updateEditLink();
         }
-        showToast("已自動儲存校正版本", 1500);
+        showToast(_t("toast.corr.autosaved"), 1500);
       } catch (err) {
-        showToast("自動儲存失敗: " + err.message, 3000);
+        showToast(_t("toast.corr.autosave_failed", { err: err.message }), 3000);
       }
     }, 800);
   }
@@ -4899,7 +4900,7 @@
   if (btnBeatTap) {
     btnBeatTap.addEventListener("click", () => {
       if (!chordData || !chordData.chords || chordData.chords.length === 0) {
-        showToast("尚無和弦資料", 2000); return;
+        showToast(_t("toast.error.no_chord_data"), 2000); return;
       }
       window.ChordCorrection.enterBeatTap(chordData, _audioForCorrection, _corrRebuild);
     });
@@ -4909,7 +4910,7 @@
   if (btnChordCalibrate) {
     btnChordCalibrate.addEventListener("click", () => {
       if (!chordData || !chordData.chords || chordData.chords.length === 0) {
-        showToast("尚無和弦資料", 2000); return;
+        showToast(_t("toast.error.no_chord_data"), 2000); return;
       }
       window.ChordCorrection.enterChordCalibrate(chordData, _audioForCorrection, _corrRebuild, {
         sections: (sectionData && Array.isArray(sectionData.sections)) ? sectionData.sections : null,
@@ -4968,9 +4969,9 @@
   if (btnExportData) {
     btnExportData.addEventListener("click", async () => {
       try {
-        showToast("匯出中…", 2000);
+        showToast(_t("toast.export.exporting"), 2000);
         const res = await fetch("/api/export-data");
-        if (!res.ok) { showToast("無資料可匯出", 3000); return; }
+        if (!res.ok) { showToast(_t("toast.export.no_data"), 3000); return; }
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -4982,7 +4983,7 @@
         URL.revokeObjectURL(url);
         a.remove();
       } catch (e) {
-        showToast("匯出失敗：" + (e.message || "網路錯誤"), 3000);
+        showToast(_t("toast.export.failed", { err: e.message || _t("toast.export.network_error") }), 3000);
       }
     });
   }
@@ -4991,7 +4992,7 @@
   if (btnChordAlign) {
     btnChordAlign.addEventListener("click", () => {
       if (!chordData || !chordData.chords || chordData.chords.length === 0) {
-        showToast("尚無和弦資料", 2000); return;
+        showToast(_t("toast.error.no_chord_data"), 2000); return;
       }
       window.ChordCorrection.enterChordAlign(
         chordData, _audioForCorrection, () => activeChordIdx, _corrRebuild
@@ -5003,7 +5004,7 @@
   if (btnAutoSplit) {
     btnAutoSplit.addEventListener("click", () => {
       if (!chordData || !chordData.chords || chordData.chords.length === 0) {
-        showToast("尚無和弦資料", 2000); return;
+        showToast(_t("toast.error.no_chord_data"), 2000); return;
       }
       _showAutoSplitPanel();
     });
@@ -5322,19 +5323,19 @@
           if (snapCount > 0 || count > 0) {
             _corrRebuild();
             const parts = [];
-            if (snapCount > 0) parts.push(`對齊 ${snapCount} 個邊界`);
-            if (count > 0) parts.push(`切分 ${count} 個長和弦`);
-            showToast(`已${parts.join("、")} (每小節 ${beatsPerBar} 拍)`, 2500);
+            if (snapCount > 0) parts.push(_t("toast.split.aligned_msg", { snapCount }));
+            if (count > 0) parts.push(_t("toast.split.split_msg", { count }));
+            showToast(_t("toast.split.barsnap_done", { parts: parts.join("、"), beatsPerBar }), 2500);
           } else {
-            showToast(`沒有需要對齊或切分的和弦 (${beatsPerBar} 拍/小節)`, 2000);
+            showToast(_t("toast.split.barsnap_none", { beatsPerBar }), 2000);
           }
         } else {
           if (count > 0) {
             _corrRebuild();
-            const tail = alignFills > 0 ? `，含補齊 ${alignFills} 個` : "";
-            showToast(`已切分 ${count} 個和弦 (每小節 ${beatsPerBar} 拍${tail})`, 2500);
+            const tail = alignFills > 0 ? _t("toast.split.bar_filltail", { n: alignFills }) : "";
+            showToast(_t("toast.split.bar_done", { count, beatsPerBar, tail }), 2500);
           } else {
-            showToast(`沒有超過一小節的和弦 (${beatsPerBar} 拍/小節)`, 2000);
+            showToast(_t("toast.split.bar_none", { beatsPerBar }), 2000);
           }
         }
         return;
@@ -5374,9 +5375,9 @@
       close();
       if (count > 0) {
         _corrRebuild();
-        showToast(`已切分 ${count} 個和弦 (>${threshold} 拍, ${ratio})`, 2500);
+        showToast(_t("toast.split.ratio_done", { count, threshold, ratio }), 2500);
       } else {
-        showToast(`沒有大於 ${threshold} 拍的和弦`, 2000);
+        showToast(_t("toast.split.ratio_none", { threshold }), 2000);
       }
     });
 
@@ -5402,10 +5403,10 @@
           window.history.replaceState({}, "", url);
           if (window._updateEditLink) window._updateEditLink();
         }
-        showToast("校正版本已儲存", 2000);
+        showToast(_t("toast.corr.saved"), 2000);
         btnSaveCorrected.style.display = "none";
       } catch (err) {
-        showToast("儲存失敗: " + err.message, 3000);
+        showToast(_t("toast.corr.save_failed", { err: err.message }), 3000);
       }
     });
   }
@@ -5432,12 +5433,12 @@
               chords: cleanChords,
             });
             if (result && result.version) currentChordVersion = result.version;
-            showToast("已還原並儲存", 1800);
+            showToast(_t("toast.corr.reverted_saved"), 1800);
           } catch (err) {
-            showToast("已還原（儲存失敗：" + err.message + "）", 2500);
+            showToast(_t("toast.corr.reverted_save_failed", { err: err.message }), 2500);
           }
         } else {
-          showToast("已還原至校正前", 2000);
+          showToast(_t("toast.corr.reverted"), 2000);
         }
       }
     });
@@ -5448,7 +5449,7 @@
   if (btnAiSuggest) {
     btnAiSuggest.addEventListener("click", async () => {
       if (!chordData || !chordData.chords || chordData.chords.length === 0) {
-        showToast("尚無和弦資料", 2000);
+        showToast(_t("toast.error.no_chord_data"), 2000);
         return;
       }
 
@@ -5478,12 +5479,12 @@
           const msg = data.suggestions
             .map(s => `${s.chord}(${s.degree}) ${Math.round(s.probability * 100)}%`)
             .join("  ");
-          showToast(`AI: ${recent.join("→")} → ${msg}`, 5000);
+          showToast(_t("toast.ai.suggest", { recent: recent.join("→"), msg }), 5000);
         } else {
-          showToast("AI 無法預測", 2000);
+          showToast(_t("toast.ai.failed_to_predict"), 2000);
         }
       } catch (err) {
-        showToast("AI 預測失敗: " + err.message, 3000);
+        showToast(_t("toast.ai.predict_failed", { err: err.message }), 3000);
       }
     });
   }
@@ -5600,7 +5601,7 @@
 
   // ---- manual detect: shared by Tools popup button + hero empty-state button (Task 6) ----
   async function runChordDetection() {
-    if (!trackPath) { showToast("無法偵測：此頁為 hash 模式", 3000); return; }
+    if (!trackPath) { showToast(_t("toast.detect.hash_only"), 3000); return; }
     detectOverlay.style.display = "";
     detectMsg.textContent = "搜尋 MIDI…";
     detectDetail.textContent = "";
@@ -5620,9 +5621,9 @@
           detectDetail.textContent = exactMatch.name;
           const result = await API.midiImport(trackPath, exactMatch.path);
           if (result.warning) {
-            showToast(`⚠️ ${result.warning}`, 6000);
+            showToast(_t("toast.detect.warning", { warning: result.warning }), 6000);
           } else {
-            showToast(`MIDI 匯入！${result.chord_count} 和弦，Key: ${result.key}`, 3000);
+            showToast(_t("toast.detect.midi_imported", { count: result.chord_count, key: result.key }), 3000);
           }
           chordCache = {};
           await loadChords(trackPath);
@@ -5638,15 +5639,15 @@
       detectDetail.textContent = "分析音訊中，請稍候";
       const result = await API.detectChords(trackPath);
       if (result.chord_count === 0) {
-        showToast("⚠️ AI 無法辨識此音檔的和弦（可能是合成音色或非常規音源）", 5000);
+        showToast(_t("toast.detect.no_chords"), 5000);
       } else {
-        showToast(`偵測完成！${result.chord_count} 和弦，Key: ${result.key}`, 3000);
+        showToast(_t("toast.detect.done", { count: result.chord_count, key: result.key }), 3000);
       }
       chordCache = {};
       await loadChords(trackPath);
       updateActiveChord(audio.currentTime || -1);
     } catch (err) {
-      showToast("偵測失敗: " + err.message, 4000);
+      showToast(_t("toast.detect.failed", { err: err.message }), 4000);
     } finally {
       detectOverlay.style.display = "none";
     }
@@ -5680,15 +5681,15 @@
                  ? chordData.path.slice(7) : null);
       let targetHash = h;
       if (!targetHash && chordData && chordData.path) {
-        showToast("此頁未提供 hash，請改用 hash 模式或在管理頁批次升級", 3000);
+        showToast(_t("toast.beat_upgrade.no_hash_use_admin"), 3000);
         return;
       }
       if (!targetHash) {
-        showToast("找不到歌曲 hash", 2500);
+        showToast(_t("toast.beat_upgrade.no_song_hash"), 2500);
         return;
       }
       if (_upgradePoll) {
-        showToast("此曲動態節拍偵測進行中…", 2500);
+        showToast(_t("toast.beat_upgrade.in_progress"), 2500);
         return;
       }
       const ok = confirm(
@@ -5705,15 +5706,15 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           const detail = data.detail || `HTTP ${res.status}`;
-          showToast(`動態節拍偵測無法啟動：${detail}`, 5000);
+          showToast(_t("toast.beat_upgrade.cannot_start", { detail }), 5000);
           btnUpgradeBeats.disabled = false;
           return;
         }
-        const songTitle = data.title || "歌曲";
+        const songTitle = data.title || _t("toast.beat_switch.queued_song");
         if (data.duplicate) {
-          showToast(`「${songTitle}」已在偵測中，完成會通知`, 3500);
+          showToast(_t("toast.beat_upgrade.duplicate", { title: songTitle }), 3500);
         } else {
-          showToast(`已開始動態節拍偵測「${songTitle}」，背景處理約 30 秒，完成會通知`, 4500);
+          showToast(_t("toast.beat_upgrade.started", { title: songTitle }), 4500);
         }
         // Start polling — non-blocking, user free to navigate.
         // Sub-status (running:downloading / running:analyzing) updates the
@@ -5733,24 +5734,24 @@
               btnUpgradeBeats.disabled = false;
               const r = sdata.result || {};
               const refreshed = await _refreshChordDataInPlace();
-              const tail = refreshed ? "已套用至目前頁面。" : "請重新載入頁面以套用。";
+              const tail = refreshed ? _t("toast.beat_upgrade.applied_inplace") : _t("toast.beat_upgrade.reload_required");
               showToast(
-                `「${sdata.title || songTitle}」動態節拍偵測完成 — BPM ${r.bpm}, ${r.n_beats} beats, range ${r.tempo_range} BPM。${tail}`,
+                _t("toast.beat_upgrade.done", { title: sdata.title || songTitle, bpm: r.bpm, nBeats: r.n_beats, tempoRange: r.tempo_range, tail }),
                 7000
               );
             } else if (st === "error") {
               clearInterval(_upgradePoll); _upgradePoll = null;
               btnUpgradeBeats.disabled = false;
               showToast(
-                `「${sdata.title || songTitle}」動態節拍偵測失敗：${sdata.error || "unknown"}`,
+                _t("toast.beat_upgrade.failed", { title: sdata.title || songTitle, err: sdata.error || _t("toast.beat_upgrade.unknown_err") }),
                 6000
               );
             } else if (st === "running:downloading" && _lastSubStatus !== "running:downloading") {
               _lastSubStatus = "running:downloading";
-              showToast(`「${sdata.title || songTitle}」重新下載音檔中…`, 4500);
+              showToast(_t("toast.beat_upgrade.redownloading", { title: sdata.title || songTitle }), 4500);
             } else if (st === "running:analyzing" && _lastSubStatus !== "running:analyzing") {
               _lastSubStatus = "running:analyzing";
-              showToast(`「${sdata.title || songTitle}」節拍分析中…（madmom，約 30 秒）`, 4500);
+              showToast(_t("toast.beat_upgrade.analyzing", { title: sdata.title || songTitle }), 4500);
             } else if (st === "not_found") {
               // Worker may not have picked it up yet; keep polling a few more rounds
             }
@@ -5761,7 +5762,7 @@
         }, 4000);
       } catch (e) {
         console.error("upgrade-beats POST failed:", e);
-        showToast(`動態節拍偵測無法啟動：${e.message || e}`, 5000);
+        showToast(_t("toast.beat_upgrade.cannot_start", { detail: e.message || e }), 5000);
         btnUpgradeBeats.disabled = false;
       }
     });
@@ -5789,7 +5790,7 @@
 
   if (btnBarArbitrate) {
     btnBarArbitrate.addEventListener("click", async () => {
-      if (!chordData) { showToast("和弦資料尚未載入", 3000); return; }
+      if (!chordData) { showToast(_t("toast.error.chord_data_not_loaded"), 3000); return; }
       const bar = chordData.bar_correction;
       const isApplied = !!(bar && bar.applied);
       const hasSnapshot = !!(bar && Array.isArray(bar.downbeats_original));
@@ -5799,7 +5800,7 @@
 
       // Restore needs an existing snapshot — early-warn user
       if (isApplied && !hasSnapshot) {
-        showToast("這首歌沒有原始節拍快照，無法還原（先 sync 新版本後再試）", 5000);
+        showToast(_t("toast.bar.no_snapshot"), 5000);
         return;
       }
       btnBarArbitrate.disabled = true;
@@ -5813,7 +5814,7 @@
         });
         const data = await r.json().catch(() => ({}));
         if (!r.ok) {
-          showToast(`失敗 ${r.status}: ${data.detail || r.statusText}`, 5000);
+          showToast(_t("toast.bar.failed_status", { status: r.status, detail: data.detail || r.statusText }), 5000);
           btnBarArbitrateLabel.textContent = origLabel;
           return;
         }
@@ -5824,21 +5825,26 @@
           _buildUnifiedRibbon();
           _updateBarArbitrateLabel();
           if (isApplied) {
-            showToast(`已還原節拍 (${data.n_downbeats || "?"} downbeats)`, 3500);
+            showToast(_t("toast.bar.reverted", { n: data.n_downbeats || "?" }), 3500);
           } else {
             showToast(
-              `已套用 AI 節拍仲裁 (${data.model_version || "model"} bpb=${data.beats_per_bar} ` +
-              `${data.n_downbeats_before}→${data.n_downbeats_after}, conf ${(data.score_after || 0).toFixed(2)})`,
+              _t("toast.bar.applied", {
+                version: data.model_version || "model",
+                beatsPerBar: data.beats_per_bar,
+                before: data.n_downbeats_before,
+                after: data.n_downbeats_after,
+                conf: (data.score_after || 0).toFixed(2)
+              }),
               5000
             );
           }
         } else {
-          showToast("已套用，但頁面重整失敗 — 請手動重新整理", 4000);
+          showToast(_t("toast.bar.applied_reload_failed"), 4000);
           btnBarArbitrateLabel.textContent = origLabel;
         }
       } catch (e) {
         console.error("bar arbitrate failed:", e);
-        showToast(`失敗: ${e.message || e}`, 4000);
+        showToast(_t("toast.bar.failed", { err: e.message || e }), 4000);
         btnBarArbitrateLabel.textContent = origLabel;
       } finally {
         btnBarArbitrate.disabled = false;
@@ -5934,7 +5940,7 @@
 
   async function _switchBeatsTo(mode) {
     if (_beatSwitchBusy) {
-      showToast("節拍切換進行中…", 2000);
+      showToast(_t("toast.beat_switch.in_progress"), 2000);
       return;
     }
     // No client-side early-return: client view of chordData.beats_source can
@@ -5955,7 +5961,7 @@
         params.set("path", chordData.path);
       }
     } else {
-      showToast("找不到歌曲識別，無法切換", 2500);
+      showToast(_t("toast.beat_switch.no_id"), 2500);
       return;
     }
 
@@ -5968,7 +5974,7 @@
                               { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        showToast(`切換失敗：${data.detail || `HTTP ${res.status}`}`, 5000);
+        showToast(_t("toast.beat_switch.failed", { detail: data.detail || `HTTP ${res.status}` }), 5000);
         _beatSwitchBusy = false;
         btnBeatLibrosa.disabled = false;
         btnBeatMadmom.disabled = false;
@@ -5981,7 +5987,7 @@
         // have been stale — e.g., user-version chord file lagging behind
         // the canonical sheet).
         _syncBeatSourceToggle(data.beats_source || mode);
-        showToast(`已經是 ${mode}`, 1800);
+        showToast(_t("toast.beat_switch.already", { mode }), 1800);
         _beatSwitchBusy = false;
         btnBeatLibrosa.disabled = false;
         btnBeatMadmom.disabled = false;
@@ -5989,16 +5995,16 @@
         return;
       }
       if (data.switched) {
-        const how = data.cached ? "快取命中" : "新計算";
-        showToast(`已切換至 ${mode} (${how})，重新載入中…`, 2000);
+        const how = data.cached ? _t("toast.beat_switch.cache_hit") : _t("toast.beat_switch.fresh_compute");
+        showToast(_t("toast.beat_switch.switched", { mode, how }), 2000);
         setTimeout(() => location.reload(), 900);
         return;
       }
       if (data.queued) {
         if (data.duplicate) {
-          showToast(`「${data.title || "歌曲"}」已在計算中，完成會通知`, 3500);
+          showToast(_t("toast.beat_switch.queued_dup", { title: data.title || _t("toast.beat_switch.queued_song") }), 3500);
         } else {
-          showToast(`已啟動 madmom (~30 秒背景處理)，完成會通知`, 4000);
+          showToast(_t("toast.beat_switch.queued_started"), 4000);
         }
         // Poll the upgrade-beats status endpoint (shared queue).
         let _lastSub = "";
@@ -6025,7 +6031,7 @@
               clearInterval(_beatSwitchPoll); _beatSwitchPoll = null;
               _beatSwitchBusy = false;
               const r = sd.result || {};
-              showToast(`「${sd.title || ""}」madmom 完成 — BPM ${r.bpm}。重新載入中…`, 3500);
+              showToast(_t("toast.beat_switch.madmom_done", { title: sd.title || "", bpm: r.bpm }), 3500);
               setTimeout(() => location.reload(), 900);
             } else if (st === "error") {
               clearInterval(_beatSwitchPoll); _beatSwitchPoll = null;
@@ -6033,13 +6039,13 @@
               btnBeatLibrosa.disabled = false;
               btnBeatMadmom.disabled = false;
               if (btnBeatBeatThis) btnBeatBeatThis.disabled = false;
-              showToast(`madmom 失敗：${sd.error || "unknown"}`, 6000);
+              showToast(_t("toast.beat_switch.madmom_failed", { err: sd.error || _t("toast.beat_upgrade.unknown_err") }), 6000);
             } else if (st === "running:downloading" && _lastSub !== st) {
               _lastSub = st;
-              showToast("重新下載音檔中…", 3500);
+              showToast(_t("toast.beat_switch.redownloading"), 3500);
             } else if (st === "running:analyzing" && _lastSub !== st) {
               _lastSub = st;
-              showToast("madmom 分析中 (~30 秒)", 3500);
+              showToast(_t("toast.beat_switch.analyzing"), 3500);
             }
           } catch (e) {
             console.warn("beat switch poll error:", e);
@@ -6052,7 +6058,7 @@
       }
     } catch (e) {
       console.error("switch beats failed:", e);
-      showToast(`切換失敗：${e.message || e}`, 5000);
+      showToast(_t("toast.beat_switch.failed", { detail: e.message || e }), 5000);
       _beatSwitchBusy = false;
       btnBeatLibrosa.disabled = false;
       btnBeatMadmom.disabled = false;
@@ -6094,16 +6100,16 @@
         await API.removeFavorite(_favPath);
         isFavorite = false;
         favTracks = favTracks.filter(p => p !== _favPath);
-        showToast("已取消收藏");
+        showToast(_t("toast.fav.removed"));
       } else {
         await API.addFavorite(_favPath);
         isFavorite = true;
         if (!favTracks.includes(_favPath)) favTracks.unshift(_favPath);
-        showToast("已加入最愛");
+        showToast(_t("toast.fav.added"));
       }
       updateFavButton();
     } catch (err) {
-      showToast("操作失敗: " + err.message);
+      showToast(_t("toast.fav.failed", { err: err.message }));
     }
   });
 
@@ -6529,12 +6535,12 @@
                 <div class="chord-empty-hint">先載入音源試聽，等分析完成後即可顯示和弦</div>
               </div>`;
           }
-          showToast("此曲尚未分析 — 可貼 YouTube URL 或上傳音檔試聽", 5000);
+          showToast(_t("toast.load.unanalyzed"), 5000);
           _showYtFallbackPanel();
         }
       } catch (e) {
         songTitle.textContent = "載入失敗";
-        showToast("載入失敗: " + e.message, 4000);
+        showToast(_t("toast.load.failed", { err: e.message }), 4000);
       } finally {
         _setLoadingState(false);
       }
@@ -6557,7 +6563,7 @@
 
   async function _searchAndEmbedYouTube(title) {
     try {
-      showToast("搜尋 YouTube 對應曲目...", 3000);
+      showToast(_t("toast.yt.searching"), 3000);
       const res = await fetch(`/api/process/youtube-search?q=${encodeURIComponent(title)}`);
       if (!res.ok) { _showYtFallbackPanel(); return; }
       const data = await res.json();
@@ -6615,7 +6621,7 @@
     const raw = (input && input.value || "").trim();
     const m = raw.match(/(?:v=|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
     const vid = m ? m[1] : "";
-    if (!vid) { showToast("無法識別 YouTube URL", 3000); return; }
+    if (!vid) { showToast(_t("toast.yt.invalid_url"), 3000); return; }
     // Tear down existing YT player so _initYouTubeEmbed can rebuild cleanly
     if (_ytPlayer) { try { _ytPlayer.destroy(); } catch {} _ytPlayer = null; }
     if (_ytSyncTimer) { clearInterval(_ytSyncTimer); _ytSyncTimer = null; }
@@ -6729,7 +6735,7 @@
   function _onYtFbFileSubmit(panel) {
     const input = panel.querySelector("#ytFbFile");
     const file = input && input.files && input.files[0];
-    if (!file) { showToast("請先選擇音檔", 3000); return; }
+    if (!file) { showToast(_t("toast.audio.pick_file"), 3000); return; }
     // Tear down YT so the audio element takes over playback
     if (_ytPlayer) { try { _ytPlayer.destroy(); } catch {} _ytPlayer = null; }
     if (_ytSyncTimer) { clearInterval(_ytSyncTimer); _ytSyncTimer = null; }
@@ -6741,7 +6747,7 @@
     _usingLocalFile = true;
     audio.play().catch(() => {});
     panel.remove();
-    showToast(`已載入本地音檔：${file.name}`, 3000);
+    showToast(_t("toast.audio.local_loaded", { name: file.name }), 3000);
     // Verify audio duration vs chord duration — same 10% gate as YT.
     audio.addEventListener("loadedmetadata", function onMeta() {
       audio.removeEventListener("loadedmetadata", onMeta);
@@ -6750,7 +6756,7 @@
       if (!d || isNaN(d)) return;
       const ratio = Math.abs(d - _chordDuration) / _chordDuration;
       if (ratio > 0.10) {
-        showToast(`本地檔長度與和弦差 ${Math.round(ratio*100)}%，播放可能不同步`, 6000);
+        showToast(_t("toast.audio.length_mismatch", { pct: Math.round(ratio*100) }), 6000);
       }
     });
   }
@@ -6852,7 +6858,7 @@
       events: {
         onReady: () => {
           _setLoadingState(false);
-          showToast("YouTube 播放器就緒", 2000);
+          showToast(_t("toast.yt.player_ready"), 2000);
           btnPlay.classList.add("is-playing");
           try {
             const v = (volumeSlider && volumeSlider.value != null) ? parseFloat(volumeSlider.value) : audio.volume;
@@ -6914,7 +6920,7 @@
               localBtn.addEventListener('click', () => _showYtFallbackPanel());
             }
           }
-          showToast("影片無法嵌入 — 可在 YouTube 開啟或載入本地音檔", 6000);
+          showToast(_t("toast.yt.cannot_embed"), 6000);
           _updateYtReopenBtn();
         }
       }
@@ -7239,8 +7245,8 @@
           audioMode = (audioMode + 1) % 3;
           try { localStorage.setItem("livechord_audio_mode", String(audioMode)); } catch {}
           applyAudioMode();
-          const modeNames = ["Music (原曲)", "MIDI (純AI伴奏)", "Mix (原曲+AI伴奏)"];
-          showToast(`已切換至 ${modeNames[audioMode]} 模式`);
+          const modeNames = [_t("toast.audio_mode.music"), _t("toast.audio_mode.midi"), _t("toast.audio_mode.mix")];
+          showToast(_t("toast.audio_mode.switched", { mode: modeNames[audioMode] }));
       });
       applyAudioMode(); // init
   }
@@ -7268,13 +7274,13 @@
                   window.MidiExporter.exportMidi(accData, rTitle, teachStyle, teachLevel, {
                       leftEvents, rightEvents, modeSuffix: _practiceModeSuffix(),
                   });
-                  showToast("✅ MIDI 已下載至預設下載目錄");
+                  showToast(_t("toast.midi.downloaded"));
               } catch (err) {
                   console.error("MIDI export error:", err);
-                  showToast("MIDI 匯出失敗: " + err.message, true);
+                  showToast(_t("toast.midi.export_failed", { err: err.message }), true);
               }
           } else {
-              showToast("尚無伴奏資料可下載", true);
+              showToast(_t("toast.midi.no_acc_data"), true);
           }
       });
   }
@@ -7299,7 +7305,7 @@
 
   if (btnRlhfGood) {
       btnRlhfGood.addEventListener("click", () => {
-          showToast("感謝老師肯定！評分已記錄！");
+          showToast(_t("toast.rlhf.thanks_good"));
           const urlParams = new URLSearchParams(window.location.search);
           const path = urlParams.get('path');
           if (path) {
@@ -7314,7 +7320,7 @@
   }
   if (btnRlhfBad) {
       btnRlhfBad.addEventListener("click", () => {
-          showToast("已紀錄此負面特徵 (Negative Sample)，將用於未來訓練！");
+          showToast(_t("toast.rlhf.thanks_bad"));
           const urlParams = new URLSearchParams(window.location.search);
           const path = urlParams.get('path');
           if (path) {
@@ -7421,7 +7427,7 @@
                   CC.splitChord(chordData, chordIdx, l, r, currentSecPerBeat);
                   if (typeof _corrRebuild === "function") _corrRebuild();
                   else if (typeof window._chordRebuild === "function") window._chordRebuild();
-                  showToast(`已切分 ${l}+${r} 拍`, 2000);
+                  showToast(_t("toast.split.menu_done", { l, r }), 2000);
               };
               menu.appendChild(item);
           });
@@ -7449,7 +7455,7 @@
                       await window.saveSectionFeedback(splitTime, newType);
                       if (typeof _corrRebuild === "function") _corrRebuild();
                       else if (typeof window._chordRebuild === "function") window._chordRebuild();
-                      showToast(`已切分 ${l}+${r} 拍，並建立段落`, 2500);
+                      showToast(_t("toast.split.menu_with_section", { l, r }), 2500);
                   });
               };
               menu.appendChild(item);
@@ -7491,7 +7497,7 @@
                   CC.setBeats(chordData, chordIdx, beats, currentSecPerBeat);
                   if (typeof _corrRebuild === "function") _corrRebuild();
                   else if (typeof window._chordRebuild === "function") window._chordRebuild();
-                  showToast(`${chordName} 改為 ${beats} 拍，後續和弦已平移`, 2000);
+                  showToast(_t("toast.beats.set", { chordName, beats }), 2000);
               };
               menu.appendChild(item);
           }
@@ -7554,7 +7560,7 @@
                       chords[ci].chord = trimmed;
                       if (typeof _corrRebuild === "function") _corrRebuild();
                       else if (typeof window._chordRebuild === "function") window._chordRebuild();
-                      showToast(`${oldName} → ${trimmed}`, 1800);
+                      showToast(_t("toast.chord.renamed", { oldName, newName: trimmed }), 1800);
                   };
                   menu.appendChild(renameItem);
 
@@ -7653,7 +7659,7 @@
                           if (CC.mergeChord(chordData, ci, "prev")) {
                               if (typeof _corrRebuild === "function") _corrRebuild();
                               else if (typeof window._chordRebuild === "function") window._chordRebuild();
-                              showToast(`已併入 ${prevName}`, 1800);
+                              showToast(_t("toast.chord.merged_into_prev", { prevName }), 1800);
                           }
                       };
                       menu.appendChild(mPrevItem);
@@ -7672,7 +7678,7 @@
                           if (CC.mergeChord(chordData, ci, "next")) {
                               if (typeof _corrRebuild === "function") _corrRebuild();
                               else if (typeof window._chordRebuild === "function") window._chordRebuild();
-                              showToast(`${nextName} 已併入 ${currName}`, 1800);
+                              showToast(_t("toast.chord.merged_next_into", { nextName, currName }), 1800);
                           }
                       };
                       menu.appendChild(mNextItem);
@@ -7779,7 +7785,7 @@
               await _syncSectionsToBackend(path);
           }
       } else if (secIdx === 0) {
-          showToast("這是第一段，無法向上合併！");
+          showToast(_t("toast.section.first_no_merge_up"));
       }
   };
   
@@ -7795,20 +7801,20 @@
           };
           
           try {
-              showToast("正在儲存人工修正...");
+              showToast(_t("toast.section.saving"));
               let res = await fetch('/api/ai/sections/feedback', {
                   method: 'POST',
                   headers: {'Content-Type': 'application/json'},
                   body: JSON.stringify(body)
               });
               if (res.ok) {
-                  showToast("✅ 修正成功！重新載入...");
+                  showToast(_t("toast.section.saved"));
                   _loadSections(path);
               } else {
-                  showToast("❌ 修正失敗（伺服器回應異常）", true);
+                  showToast(_t("toast.section.save_failed_server"), true);
               }
           } catch(e) {
-              showToast("❌ 修正失敗：" + e.message, true);
+              showToast(_t("toast.section.save_failed_err", { err: e.message }), true);
           }
   }
 
@@ -8062,13 +8068,13 @@
     // Submit rating
     if (btnSubmit) {
       btnSubmit.addEventListener("click", async () => {
-        if (!_betaRating) { showToast("請先選擇星等"); return; }
+        if (!_betaRating) { showToast(_t("toast.beta.pick_rating_first")); return; }
         try {
           const title = songTitle ? songTitle.textContent : "";
           await API.submitRating(trackPath, _betaRating, betaComment.value.trim(), title);
-          showToast(`已評價 ${"★".repeat(_betaRating)}${"☆".repeat(5 - _betaRating)}`);
+          showToast(_t("toast.beta.rated", { stars: "★".repeat(_betaRating) + "☆".repeat(5 - _betaRating) }));
           if (betaPopup) betaPopup.style.display = "none";
-        } catch (e) { showToast("評價送出失敗: " + e.message); }
+        } catch (e) { showToast(_t("toast.beta.rate_failed", { err: e.message })); }
       });
     }
     if (btnCancel) {
@@ -8088,15 +8094,15 @@
     if (btnBugSubmit) {
       btnBugSubmit.addEventListener("click", async () => {
         const desc = bugDesc ? bugDesc.value.trim() : "";
-        if (!desc) { showToast("請描述問題"); return; }
+        if (!desc) { showToast(_t("toast.bug.describe_first")); return; }
         try {
           const cat = bugCat ? bugCat.value : "other";
           const info = navigator.userAgent;
           await API.submitBug(cat, desc, window.location.href, info);
-          showToast("感謝回報！");
+          showToast(_t("toast.bug.thanks"));
           if (bugDialog) bugDialog.style.display = "none";
           if (bugDesc) bugDesc.value = "";
-        } catch (e) { showToast("回報送出失敗: " + e.message); }
+        } catch (e) { showToast(_t("toast.bug.submit_failed", { err: e.message })); }
       });
     }
     if (btnBugCancel) {

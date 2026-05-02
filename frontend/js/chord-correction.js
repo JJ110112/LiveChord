@@ -11,6 +11,8 @@
 (function () {
   "use strict";
 
+  function _t(k, v) { return (window.LiveChordI18n && window.LiveChordI18n.t) ? window.LiveChordI18n.t(k, v) : k; }
+
   /* ---------- helpers ---------- */
   function median(arr) {
     if (arr.length === 0) return 0;
@@ -264,9 +266,9 @@
   }
 
   function enterChordAlign(chordData, audio, getActiveIdxFn, rebuildFn) {
-    if (_activeMode) { showToast("請先結束目前的修正模式", 2000); return; }
+    if (_activeMode) { showToast(_t("toast.cc.exit_current_mode"), 2000); return; }
     if (!chordData || !chordData.chords || chordData.chords.length === 0) {
-      showToast("尚無和弦資料", 2000); return;
+      showToast(_t("toast.error.no_chord_data"), 2000); return;
     }
     _activeMode = "chord-align";
 
@@ -316,7 +318,7 @@
     document.addEventListener("keydown", keyHandler, { capture: true });
 
     applyBtn.onclick = () => {
-      if (marks.length < 3) { showToast("至少需要 3 個標記", 2000); return; }
+      if (marks.length < 3) { showToast(_t("toast.cc.need_3_marks"), 2000); return; }
       const offsets = marks.map(m => m.audioTime - m.chordTime);
       const offset = median(offsets);
 
@@ -331,7 +333,7 @@
       });
       exitChordAlign();
       rebuildFn();
-      showToast(`已套用偏移 ${round2(offset)}s`, 2500);
+      showToast(_t("toast.cc.offset_applied", { offset: round2(offset) }), 2500);
     };
 
     cancelBtn.onclick = () => { exitChordAlign(); };
@@ -354,9 +356,9 @@
   let _beatState = null; // { chordData, audio, rebuildFn, taps[], panelEl, keyHandler }
 
   function enterBeatTap(chordData, audio, rebuildFn) {
-    if (_activeMode) { showToast("請先結束目前的修正模式", 2000); return; }
+    if (_activeMode) { showToast(_t("toast.cc.exit_current_mode"), 2000); return; }
     if (!chordData || !chordData.chords || chordData.chords.length === 0) {
-      showToast("尚無和弦資料", 2000); return;
+      showToast(_t("toast.error.no_chord_data"), 2000); return;
     }
     _activeMode = "beat-tap";
 
@@ -403,7 +405,7 @@
     document.addEventListener("keydown", keyHandler, { capture: true });
 
     applyBtn.onclick = () => {
-      if (taps.length < 8) { showToast("至少需要 8 次敲擊 (2 小節)", 2000); return; }
+      if (taps.length < 8) { showToast(_t("toast.cc.need_8_taps"), 2000); return; }
 
       // 1. Calculate BPM
       const intervals = [];
@@ -467,7 +469,7 @@
 
       exitBeatTap();
       rebuildFn();
-      showToast(`BPM ${bpm}，修正了 ${corrections} 個和弦`, 2500);
+      showToast(_t("toast.cc.beat_tap_done", { bpm, n: corrections }), 2500);
     };
 
     cancelBtn.onclick = () => { exitBeatTap(); };
@@ -704,11 +706,11 @@
   // after success so the entry disappears from the menu until the next
   // calibrate session seeds it again.
   function applyLastCalibrateToIdx(chordData, targetIdx, rebuildFn) {
-    if (!_lastCalibration) { showToast("尚無可延伸的校正結果", 1800); return false; }
+    if (!_lastCalibration) { showToast(_t("toast.cc.no_calibration_to_extend"), 1800); return false; }
     const { endIdx, mode, a, b, deltaT, bpm } = _lastCalibration;
     const chords = chordData?.chords;
     if (!chords || targetIdx <= endIdx || endIdx >= chords.length - 1) {
-      showToast("無法延伸到此和弦", 1800); return false;
+      showToast(_t("toast.cc.cannot_extend_to_chord"), 1800); return false;
     }
     backup(chordData);
     const transform = { mode, a, b, deltaT };
@@ -743,8 +745,9 @@
       _lastCalibration = { ..._lastCalibration, endIdx: targetIdx, ts: Date.now() };
     }
     if (typeof rebuildFn === "function") rebuildFn();
-    let msg = `已延伸 ${count} 個和絃`;
-    if (waterfallShifted > 0) msg += `｜瀑布流 ${waterfallShifted} 筆已同步`;
+    const msg = waterfallShifted > 0
+      ? _t("toast.cc.extend_done_with_waterfall", { count, n: waterfallShifted })
+      : _t("toast.cc.extend_done", { count });
     showToast(msg, 2000);
     return true;
   }
@@ -753,9 +756,9 @@
     options = options || {};
     const startChordIdx = Math.max(0, Math.min(options.startChordIdx || 0, (chordData?.chords?.length || 1) - 1));
 
-    if (_activeMode) { showToast("請先結束目前的修正模式", 2000); return; }
+    if (_activeMode) { showToast(_t("toast.cc.exit_current_mode"), 2000); return; }
     if (!chordData || !chordData.chords || chordData.chords.length === 0) {
-      showToast("尚無和弦資料", 2000); return;
+      showToast(_t("toast.error.no_chord_data"), 2000); return;
     }
     _activeMode = "chord-calibrate";
 
@@ -820,7 +823,7 @@
         e.stopImmediatePropagation();
         const other = role === "start" ? nextBeatKey : chordStartKey;
         if (e.key === other) {
-          showToast("兩個按鍵不能相同", 1800);
+          showToast(_t("toast.cc.keys_must_differ"), 1800);
           kbdEl.textContent = oldText;
           kbdEl.style.background = "";
           return;
@@ -849,7 +852,7 @@
     let rebindingActive = false;
 
     function recordTap(isChordStart) {
-      if (audio.paused) { showToast("請先播放音樂", 1200); return; }
+      if (audio.paused) { showToast(_t("toast.cc.play_first"), 1200); return; }
       taps.push({ time: audio.currentTime, isChordStart });
       countEl.style.color = "#2196F3";
       setTimeout(() => { countEl.style.color = ""; }, 150);
@@ -895,7 +898,7 @@
 
     applyBtn.onclick = () => {
       const groups = groupsFromTaps();
-      if (groups.length < 2) { showToast("至少敲 2 個和絃才能校正", 2000); return; }
+      if (groups.length < 2) { showToast(_t("toast.cc.need_2_chords"), 2000); return; }
 
       // 1. Derive secPerBeat (filtered median of all inter-tap intervals)
       const intervals = [];
