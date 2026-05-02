@@ -323,7 +323,7 @@
       const offset = median(offsets);
 
       if (Math.abs(offset) > 3) {
-        if (!confirm(`偏移量 ${round2(offset)}s 很大，確定要套用？`)) return;
+        if (!confirm(_t("home.confirm.large_offset", {offset: round2(offset)}))) return;
       }
 
       backup(chordData);

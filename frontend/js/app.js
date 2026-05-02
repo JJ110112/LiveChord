@@ -1,6 +1,8 @@
 /** LiveChord 首頁 — 瀏覽、搜尋、最愛、最近播放 */
 
 (function () {
+  function _t(k, v) { return (window.LiveChordI18n && window.LiveChordI18n.t) ? window.LiveChordI18n.t(k, v) : k; }
+
   // ---- state ----
   let currentPath = localStorage.getItem("livechord_home_path") || "";
   let currentTab = localStorage.getItem("livechord_home_tab") || "recent";
@@ -121,7 +123,7 @@
   }
 
   function _betaPickFile(file) {
-    if (file.size > 200 * 1024 * 1024) { alert("檔案超過 200 MB 上限"); return; }
+    if (file.size > 200 * 1024 * 1024) { alert(_t("home.alert.file_too_big")); return; }
     _betaSelectedFile = file;
     $("#betaFileName").textContent = file.name;
     $("#betaFileSize").textContent = `(${(file.size / 1024 / 1024).toFixed(1)} MB)`;
@@ -194,7 +196,7 @@
           <div class="info">
             <div class="title" title="${safeName}">${safeName}</div>
           </div>
-          <button class="la-remove" data-action="la-remove" data-id="${escapeHtml(t.id)}" title="移除" aria-label="移除">&times;</button>
+          <button class="la-remove" data-action="la-remove" data-id="${escapeHtml(t.id)}" title="${_t("home.local.remove_btn")}" aria-label="${_t("home.local.remove_btn")}">&times;</button>
         </div>`;
     }).join("");
     analyzedRow.style.display = analyzed.length ? "" : "none";
@@ -207,7 +209,7 @@
     analyzedRow.querySelectorAll("[data-action='la-remove']").forEach(btn => {
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        if (!confirm("移除此本機曲目？（不會刪掉已分析的和弦）")) return;
+        if (!confirm(_t("home.confirm.remove_local"))) return;
         await _removeLocalTrack(btn.dataset.id);
         _renderLocalTracks();
       });
@@ -216,7 +218,7 @@
     // Pending: current vertical list layout
     if (pending.length === 0 && analyzed.length === 0) {
       pendingList.innerHTML = `<div style="color:var(--text-dim); font-size:13px; padding:8px 0">
-        還沒有本機音樂。點右上角「+ 選取本機音檔」一次挑一個或多個。
+        ${_t("home.local.empty_hint")}
       </div>`;
       return;
     }
@@ -227,10 +229,10 @@
         <div class="local-track-item" data-id="${escapeHtml(t.id)}">
           <div class="lt-info">
             <div class="lt-name" title="${safeName}">${safeName}</div>
-            <div class="lt-meta"><span class="lt-state lt-pending">未分析</span> · ${sizeMb} MB</div>
+            <div class="lt-meta"><span class="lt-state lt-pending">${_t("home.local.pending")}</span> · ${sizeMb} ${_t("home.local.mb")}</div>
           </div>
-          <button class="lt-action btn-small btn-accent" data-action="play-or-analyze" data-id="${escapeHtml(t.id)}">分析</button>
-          <button class="lt-remove" data-action="remove" data-id="${escapeHtml(t.id)}" title="移除" aria-label="移除">&times;</button>
+          <button class="lt-action btn-small btn-accent" data-action="play-or-analyze" data-id="${escapeHtml(t.id)}">${_t("home.local.analyze")}</button>
+          <button class="lt-remove" data-action="remove" data-id="${escapeHtml(t.id)}" title="${_t("home.local.remove_btn")}" aria-label="${_t("home.local.remove_btn")}">&times;</button>
         </div>`;
     }).join("");
     pendingList.querySelectorAll("[data-action='play-or-analyze']").forEach(btn => {
@@ -238,7 +240,7 @@
     });
     pendingList.querySelectorAll("[data-action='remove']").forEach(btn => {
       btn.addEventListener("click", async () => {
-        if (!confirm("移除此本機曲目？（不會刪掉已分析的和弦）")) return;
+        if (!confirm(_t("home.confirm.remove_local"))) return;
         await _removeLocalTrack(btn.dataset.id);
         _renderLocalTracks();
       });
@@ -262,7 +264,7 @@
     let blob;
     try { blob = await audioDBLoad(id); } catch {}
     if (!blob) {
-      alert("本機檔案暫存遺失，請重新選取。");
+      alert(_t("home.alert.local_blob_lost"));
       return;
     }
     const file = new File([blob], t.name, {
@@ -294,10 +296,10 @@
   async function _addPlaylist(url) {
     const listMatch = url.match(_YT_PLAYLIST_RE);
     const listId = listMatch ? listMatch[1] : "";
-    if (!listId) { alert("URL 中找不到 playlist (list=...) 參數"); return null; }
+    if (!listId) { alert(_t("home.alert.playlist_no_list_param")); return null; }
     const existing = _getPlaylists().find(p => p.list_id === listId);
     if (existing) {
-      alert("此播放清單已存在，展開查看。");
+      alert(_t("home.alert.playlist_exists"));
       _renderPlaylists(true, listId);
       _scrollToPlaylistSection(listId);
       return existing;
@@ -306,12 +308,12 @@
       const res = await fetch(`/api/process/playlist-info?url=${encodeURIComponent(url)}`);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert("讀取清單失敗：" + (err.detail || res.statusText));
+        alert(_t("home.alert.playlist_read_failed_prefix") + (err.detail || res.statusText));
         return null;
       }
       const data = await res.json();
       if (!data.videos || data.videos.length === 0) {
-        alert("清單為空或無法解析。");
+        alert(_t("home.alert.playlist_empty"));
         return null;
       }
       const entry = {
@@ -328,7 +330,7 @@
       _scrollToPlaylistSection(listId);
       return entry;
     } catch (e) {
-      alert("讀取清單失敗：" + e.message);
+      alert(_t("home.alert.playlist_read_failed_prefix") + e.message);
       return null;
     }
   }
@@ -396,21 +398,21 @@
         <div class="yt-pl-card${open ? " open" : ""}" data-id="${escapeHtml(p.list_id)}">
           <div class="yt-pl-header">
             <div class="yt-pl-title">${escapeHtml(p.title)}</div>
-            <div class="yt-pl-meta">${analyzed}/${total} 已分析</div>
-            <button class="yt-pl-refresh" data-action="refresh" data-id="${escapeHtml(p.list_id)}" title="重新讀取">↻</button>
-            <button class="yt-pl-remove" data-action="remove" data-id="${escapeHtml(p.list_id)}" title="移除清單">&times;</button>
-            <button class="yt-pl-toggle" data-action="toggle" data-id="${escapeHtml(p.list_id)}" aria-label="展開">${open ? "▲" : "▼"}</button>
+            <div class="yt-pl-meta">${_t("home.playlist.analyzed_count", {analyzed, total})}</div>
+            <button class="yt-pl-refresh" data-action="refresh" data-id="${escapeHtml(p.list_id)}" title="${_t("home.playlist.refresh_title")}">↻</button>
+            <button class="yt-pl-remove" data-action="remove" data-id="${escapeHtml(p.list_id)}" title="${_t("home.playlist.remove_title")}">&times;</button>
+            <button class="yt-pl-toggle" data-action="toggle" data-id="${escapeHtml(p.list_id)}" aria-label="${_t("home.playlist.expand_aria")}">${open ? "▲" : "▼"}</button>
           </div>
           <div class="yt-pl-videos">
             ${p.videos.map(v => {
               const isDone = !!v.existing_hash;
               const action = isDone ? "play" : "analyze";
-              const label = isDone ? "▶ 播放" : "分析";
+              const label = isDone ? _t("home.playlist.play") : _t("home.playlist.analyze");
               return `
                 <div class="yt-pl-video${isDone ? " is-done" : ""}" data-list="${escapeHtml(p.list_id)}" data-vid="${escapeHtml(v.video_id)}">
                   <div class="ytv-info">
                     <div class="ytv-title" title="${escapeHtml(v.title)}">${escapeHtml(v.title)}</div>
-                    <div class="ytv-meta">${_fmtDuration(v.duration)}${isDone ? " · 已分析" : ""}</div>
+                    <div class="ytv-meta">${_fmtDuration(v.duration)}${isDone ? " · " + _t("home.playlist.analyzed_marker") : ""}</div>
                   </div>
                   <button class="ytv-action btn-small ${isDone ? "btn-accent" : ""}" data-action="${action}" data-list="${escapeHtml(p.list_id)}" data-vid="${escapeHtml(v.video_id)}">${label}</button>
                 </div>`;
@@ -431,7 +433,7 @@
     });
     container.querySelectorAll("[data-action='remove']").forEach(btn => {
       btn.addEventListener("click", () => {
-        if (confirm("移除此播放清單？（不會刪除已分析的和弦資料）"))
+        if (confirm(_t("home.confirm.remove_playlist")))
           _removePlaylist(btn.dataset.id);
       });
     });
@@ -504,7 +506,7 @@
     // and prevents a second concurrent submit mid-run.
     $("#betaFabPanel")?.classList.add("analyzing");
     fill.style.width = "10%";
-    text.textContent = "上傳中...";
+    text.textContent = _t("home.progress.uploading");
     pct.textContent = "10%";
 
     try {
@@ -518,11 +520,11 @@
       const data = await res.json();
       _betaPendingFiles[data.job_id] = _betaSelectedFile;
       fill.style.width = "30%";
-      text.textContent = "已排入佇列，分析中...";
+      text.textContent = _t("home.progress.queued_analyzing");
       pct.textContent = "30%";
       _betaPollJob(data.job_id, fill, text, pct);
     } catch (e) {
-      text.textContent = "失敗: " + e.message;
+      text.textContent = _t("home.progress.failed_prefix") + e.message;
       fill.style.width = "0%";
       btn.disabled = false;
       // Unhide inputs so the user can retry with a different file/URL.
@@ -548,7 +550,7 @@
     // and prevents a second concurrent submit mid-run.
     $("#betaFabPanel")?.classList.add("analyzing");
     fill.style.width = "10%";
-    text.textContent = "提交中...";
+    text.textContent = _t("home.progress.submitting");
     pct.textContent = "10%";
 
     try {
@@ -565,7 +567,7 @@
       if (data.status === "done" && data.result_hash) {
         // Already analyzed — go straight to player
         fill.style.width = "100%";
-        text.textContent = "已有分析結果，直接開啟...";
+        text.textContent = _t("home.progress.already_done_opening");
         pct.textContent = "100%";
         input.value = "";
         setTimeout(() => {
@@ -574,12 +576,12 @@
         return;
       }
       fill.style.width = "20%";
-      text.textContent = "已排入佇列，分析中...";
+      text.textContent = _t("home.progress.queued_analyzing");
       pct.textContent = "20%";
       _betaPollJob(data.job_id, fill, text, pct);
       input.value = "";
     } catch (e) {
-      text.textContent = "失敗: " + e.message;
+      text.textContent = _t("home.progress.failed_prefix") + e.message;
       fill.style.width = "0%";
       // Unhide inputs so the user can retry with a different URL.
       $("#betaFabPanel")?.classList.remove("analyzing");
@@ -600,7 +602,12 @@
         if (fill) fill.style.width = maxProgress + "%";
         if (pctText) pctText.textContent = maxProgress + "%";
         // 細分狀態標籤：有 stage 時以 stage 為準，否則 fallback 到 status
-        const labels = { queued: "排隊中", processing: "分析中", done: "完成！", error: "失敗" };
+        const labels = {
+          queued: _t("home.status.queued"),
+          processing: _t("home.status.processing"),
+          done: _t("home.status.done"),
+          error: _t("home.status.error"),
+        };
         if (statusText) {
           const txt = (d.stage && d.status === "processing") ? d.stage : (labels[d.status] || d.status);
           statusText.textContent = txt;
@@ -636,7 +643,7 @@
           }, 500);
         } else if (d.status === "error") {
           clearInterval(timer);
-          if (statusText) statusText.textContent = "失敗: " + (d.error || "Unknown");
+          if (statusText) statusText.textContent = _t("home.progress.failed_prefix") + (d.error || "Unknown");
           $("#betaUploadBtn") && ($("#betaUploadBtn").disabled = false);
           $("#betaYtBtn") && ($("#betaYtBtn").disabled = false);
           // Unhide inputs so the user can retry.
@@ -679,7 +686,7 @@
             return {
               _isLibrary: false,
               result_hash: r.path.slice(7),
-              title: (r.title || "分析結果"),
+              title: (r.title || _t("home.label.analysis_result")),
               youtube_url: r.youtube_url || "",
               source_type: r.youtube_url ? "youtube" : "upload",
             };
@@ -717,7 +724,7 @@
               </div>
             </div>`;
           }
-          const title = h.title || "分析結果";
+          const title = h.title || _t("home.label.analysis_result");
           return `<div class="grid-item" data-hash="${escapeHtml(h.result_hash)}" style="cursor:pointer">
             ${_buildCoverHtml(h)}
             <div class="info">
@@ -736,11 +743,11 @@
       // Library grid (all items)
       if (grid) {
         if (items.length === 0) {
-          grid.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)">尚無歌曲，上傳音檔或貼上 YouTube URL 開始分析</div>';
+          grid.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-dim)">${_t("home.search.no_songs_empty")}</div>`;
           return;
         }
         grid.innerHTML = items.map(h => {
-          const title = h.title || "分析結果";
+          const title = h.title || _t("home.label.analysis_result");
           return `<div class="grid-item" data-hash="${escapeHtml(h.result_hash)}" style="cursor:pointer">
             ${_buildCoverHtml(h)}
             <div class="info">
@@ -918,7 +925,7 @@
         </div>`;
     }
 
-    browseGrid.innerHTML = html || `<div class="empty"><div class="icon">&#x1F4C2;</div><div class="msg">空目錄</div></div>`;
+    browseGrid.innerHTML = html || `<div class="empty"><div class="icon">&#x1F4C2;</div><div class="msg">${_t("home.browse.empty_dir")}</div></div>`;
 
     browseGrid.querySelectorAll(".grid-item").forEach((el) => {
       el.addEventListener("click", () => {
@@ -990,8 +997,8 @@
     // and confuse the user). Distinguish single-video vs playlist URL.
     if (_isBetaMode && _YT_URL_RE.test(q)) {
       const isPlaylist = _isYtPlaylistUrl(q);
-      const msg = isPlaylist ? "偵測到 YouTube 播放清單" : "偵測到 YouTube 網址";
-      const btnLabel = isPlaylist ? "按 Enter 或點此加入清單" : "按 Enter 或點此分析";
+      const msg = isPlaylist ? _t("home.search.yt_playlist_detected") : _t("home.search.yt_url_detected");
+      const btnLabel = isPlaylist ? _t("home.search.yt_playlist_btn") : _t("home.search.yt_url_btn");
       searchResults.innerHTML = `
         <div class="search-empty">
           <div class="search-empty-msg">${msg}</div>
@@ -1061,8 +1068,8 @@
         if (_isBetaNonAdmin) {
           searchResults.innerHTML = `
             <div class="search-empty">
-              <div class="search-empty-msg">找不到「${escapeHtml(q)}」</div>
-              <button id="searchAddSongBtn" class="search-empty-btn">+ 新增此曲：貼 YT URL 或上傳音檔</button>
+              <div class="search-empty-msg">${_t("home.search.no_match", {q: escapeHtml(q)})}</div>
+              <button id="searchAddSongBtn" class="search-empty-btn">${_t("home.search.add_song_btn")}</button>
             </div>`;
           searchResults.classList.add("show");
           const btn = document.getElementById("searchAddSongBtn");
@@ -1077,7 +1084,7 @@
             if (urlInput) setTimeout(() => urlInput.focus(), 50);
           });
         } else {
-          searchResults.innerHTML = `<div style="padding:12px;color:var(--text-dim)">找不到結果</div>`;
+          searchResults.innerHTML = `<div style="padding:12px;color:var(--text-dim)">${_t("home.search.no_results")}</div>`;
           searchResults.classList.add("show");
         }
         return;
@@ -1087,7 +1094,7 @@
         const hasHash = r.hash || r.path.startsWith("__hash/");
         const coverUrl = hasHash ? "" : API.trackCoverUrl(r.path);
         const uploadBadge = r.is_user_upload
-          ? `<span class="r-upload-badge">本機</span>`
+          ? `<span class="r-upload-badge">${_t("home.search.upload_badge")}</span>`
           : "";
         html += `
           <div class="result-item${r.is_user_upload ? " is-upload" : ""}" data-path="${escapeHtml(r.path)}" ${r.hash ? `data-hash="${escapeHtml(r.hash)}"` : ""}>
@@ -1202,7 +1209,7 @@
           const coverUrl = vid
             ? `https://img.youtube.com/vi/${vid}/mqdefault.jpg`
             : `/api/process/cover/${encodeURIComponent(hash)}`;
-          const title = r.title || "分析結果";
+          const title = r.title || _t("home.label.analysis_result");
           html += `
             <div class="grid-item" data-hash="${escapeHtml(hash)}">
               <img class="cover" src="${coverUrl}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
