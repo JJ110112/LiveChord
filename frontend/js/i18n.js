@@ -92,7 +92,7 @@
 
   function applyDom(root) {
     root = root || document;
-    // Text content
+    // Text content (safe — strips any HTML in the dict value)
     root.querySelectorAll("[data-i18n]").forEach((el) => {
       const key = el.getAttribute("data-i18n");
       if (!key) return;
@@ -108,6 +108,16 @@
       // show the fallback than the raw key.
       if (out === key && el.textContent && el.textContent.trim()) return;
       el.textContent = out;
+    });
+    // HTML content — explicit opt-in for keys whose dict value contains
+    // markup (e.g. <strong> in TOS body). The dictionaries are static and
+    // ship from this repo; treat them as trusted, never inject user data.
+    root.querySelectorAll("[data-i18n-html]").forEach((el) => {
+      const key = el.getAttribute("data-i18n-html");
+      if (!key) return;
+      const out = t(key);
+      if (out === key && el.innerHTML && el.innerHTML.trim()) return;
+      el.innerHTML = out;
     });
     // Attribute substitutions (placeholder, title, aria-label, ...)
     // Format: data-i18n-attr="placeholder=key.path,title=other.key"

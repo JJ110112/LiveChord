@@ -63,68 +63,76 @@
   
   <!-- recent section -->
   <section id="secRecent" class="dash-section" style="display:none">
-    <h2 class="dash-title">最近播放</h2>
+    <h2 class="dash-title" data-i18n="home.section.recent">最近播放</h2>
     <div id="recentList" class="horizontal-scroll"></div>
   </section>
 
   <!-- beta recent plays (hidden by default) -->
   <section id="secBetaRecent" class="dash-section" style="display:none">
-    <h2 class="dash-title">最近播放</h2>
+    <h2 class="dash-title" data-i18n="home.section.recent">最近播放</h2>
     <div id="betaRecentList" class="horizontal-scroll"></div>
   </section>
 
   <!-- favorites section -->
   <section id="secFavorites" class="dash-section" style="display:none">
-    <h2 class="dash-title">我的最愛</h2>
+    <h2 class="dash-title" data-i18n="home.section.favorites">我的最愛</h2>
     <div id="favList" class="horizontal-scroll"></div>
   </section>
 
   <!-- beta local music — user-picked files, persisted via IndexedDB + localStorage metadata -->
   <section id="secBetaLocalTracks" class="dash-section" style="display:none">
     <h2 class="dash-title" style="display:flex; align-items:center; gap:12px">
-      <span>本機音樂</span>
-      <button id="betaBrowseLocalBtn" class="btn-small" style="font-size:0.75rem; padding:4px 10px">+ 選取本機音檔</button>
+      <span data-i18n="home.section.local_tracks">本機音樂</span>
+      <button id="betaBrowseLocalBtn" class="btn-small"
+              style="font-size:0.75rem; padding:4px 10px"
+              data-i18n="home.section.local_pick_btn">+ 選取本機音檔</button>
     </h2>
-    <!-- Analyzed: horizontal scroll of cover-card grid-items (like 最近播放) -->
     <div id="betaLocalAnalyzedRow" class="horizontal-scroll" style="margin-top:8px"></div>
-    <!-- Pending (not yet analyzed): vertical list with 分析 button -->
     <div id="betaLocalTrackList" class="local-track-list" style="margin-top:8px"></div>
     <input type="file" id="betaLocalAudioInput" accept="audio/*" multiple style="display:none">
   </section>
 
-  <!-- YouTube 播放清單 — user-subscribed playlists, analyze one-at-a-time -->
+  <!-- YouTube playlists — user-subscribed playlists, analyze one-at-a-time -->
   <section id="secBetaPlaylists" class="dash-section" style="display:none">
-    <h2 class="dash-title">YouTube 播放清單</h2>
+    <h2 class="dash-title" data-i18n="home.section.playlists">YouTube 播放清單</h2>
     <div id="betaPlaylistList" class="yt-playlist-list" style="margin-top:8px"></div>
   </section>
 
-  <!-- beta add-song modal (opened from search empty-state CTA; no standalone FAB button) -->
+  <!-- add-song modal (opened from search empty-state CTA; no standalone FAB button) -->
   <div id="betaFabBackdrop" class="add-song-backdrop"></div>
   <div id="betaFabPanel" class="beta-fab-panel add-song-modal">
-    <button class="add-song-close" id="betaFabClose" aria-label="關閉">&times;</button>
-    <div class="fab-panel-title">新增歌曲</div>
+    <button class="add-song-close" id="betaFabClose"
+            data-i18n-attr="aria-label=common.close" aria-label="關閉">&times;</button>
+    <div class="fab-panel-title" data-i18n="home.modal.title">新增歌曲</div>
     <div class="fab-section" id="betaDropZone">
-      <span>&#x1F3B5; 拖曳音檔或點擊選取</span>
-      <span class="upload-hint">MP3, FLAC, WAV, M4A, OGG (200 MB)</span>
+      <span data-i18n="home.modal.dropzone">&#x1F3B5; 拖曳音檔或點擊選取</span>
+      <span class="upload-hint" data-i18n="home.modal.upload_hint">MP3, FLAC, WAV, M4A, OGG (200 MB)</span>
       <input type="file" id="betaFileInput" accept="audio/*" style="display:none">
     </div>
     <div class="beta-file-info" id="betaFileInfo" style="display:none">
       <span id="betaFileName"></span>
       <span id="betaFileSize" style="color:var(--text-dim);margin-left:8px"></span>
-      <button class="btn-small btn-accent" id="betaUploadBtn" onclick="window._betaStartUpload()">分析</button>
+      <button class="btn-small btn-accent" id="betaUploadBtn"
+              onclick="window._betaStartUpload()"
+              data-i18n="home.modal.btn_analyze">分析</button>
     </div>
     <div class="beta-progress" id="betaUploadProgress" style="display:none">
       <div class="progress-bar"><div class="progress-fill" id="betaProgressFill"></div></div>
-      <div class="progress-info"><span id="betaProgressText">分析中...</span><span id="betaProgressPct">0%</span></div>
+      <div class="progress-info"><span id="betaProgressText" data-i18n="home.modal.progress_text">分析中...</span><span id="betaProgressPct">0%</span></div>
     </div>
     <div id="betaYtRow" class="add-song-yt-row" style="display:flex;gap:8px;align-items:center;margin-top:10px">
       <span>&#x1F3AC;</span>
-      <input type="text" id="betaYtUrl" placeholder="YouTube URL..." style="flex:1;min-width:0;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.85rem">
-      <button class="btn-small btn-accent" id="betaYtBtn" style="flex-shrink:0" onclick="window._betaStartYoutube()">分析</button>
+      <input type="text" id="betaYtUrl"
+             data-i18n-attr="placeholder=home.modal.yt_placeholder"
+             placeholder="YouTube URL..."
+             style="flex:1;min-width:0;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.85rem">
+      <button class="btn-small btn-accent" id="betaYtBtn" style="flex-shrink:0"
+              onclick="window._betaStartYoutube()"
+              data-i18n="home.modal.btn_analyze">分析</button>
     </div>
     <div class="beta-progress" id="betaYtProgress" style="display:none;margin-top:8px">
       <div class="progress-bar"><div class="progress-fill" id="betaYtFill"></div></div>
-      <div class="progress-info"><span id="betaYtText">處理中...</span><span id="betaYtPct">0%</span></div>
+      <div class="progress-info"><span id="betaYtText" data-i18n="home.modal.processing_text">處理中...</span><span id="betaYtPct">0%</span></div>
     </div>
   </div>
 
@@ -132,10 +140,13 @@
   <section id="secBrowse" class="dash-section">
     <div class="browse-header" style="position: sticky; top: 56px; z-index: 10; background: var(--bg); padding: 10px 0; display: flex; align-items: center; justify-content: space-between;">
       <h2 class="dash-title" style="display:flex; align-items:center; margin-bottom: 0;">
-        音樂庫 
+        <span data-i18n="home.section.library">音樂庫</span>
         <span id="breadcrumb" class="breadcrumb" style="font-size:0.65em; opacity:0.7; font-weight:normal; margin-left:12px; margin-bottom:0;"></span>
       </h2>
-      <input type="text" id="dirFilter" placeholder="過濾曲目..." autocomplete="off" style="display:none; padding: 4px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); font-size: 12px; width: 140px;">
+      <input type="text" id="dirFilter" autocomplete="off"
+             data-i18n-attr="placeholder=home.filter.placeholder"
+             placeholder="過濾曲目..."
+             style="display:none; padding: 4px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); font-size: 12px; width: 140px;">
     </div>
     <div id="browseGrid" class="library-grid" style="margin-top: 16px;"></div>
     <ul id="trackList" class="track-list" style="display:none; margin-top: 16px;"></ul>
@@ -144,7 +155,7 @@
   <!-- loading -->
   <div id="loading" class="loading" style="display:none">
     <div class="spinner"></div>
-    <p style="margin-top:12px">載入中…</p>
+    <p style="margin-top:12px" data-i18n="common.loading">載入中…</p>
   </div>
 </main>
 
@@ -155,8 +166,12 @@
 <script>
   // (Fetch wrapper + 401 handler are installed by /js/auth.js — see <head>.)
 
+  function _t(key, vars, fb) {
+    return window.LiveChordI18n ? window.LiveChordI18n.t(key, vars) : (fb || key);
+  }
+
   let username = localStorage.getItem("livechord_username");
-  
+
   // Check admin status anyway to handle LAN bypass
   fetch("/api/auth/is_admin")
     .then(res => res.json())
@@ -167,18 +182,20 @@
                     // Beta mode: show admin UI
                     if (!username) username = "Admin (LAN)";
                     const greeting = document.getElementById("userGreeting");
-                    if (greeting) greeting.textContent = `Hello, ${username}`;
+                    if (greeting) greeting.textContent = _t("home.greeting", {name: username}, `Hello, ${username}`);
 
                     const navDiv = document.querySelector("nav div");
                     if (!navDiv.querySelector("button.admin-btn")) {
                         const adminBtn = document.createElement("button");
                         adminBtn.className = "admin-btn";
-                        adminBtn.textContent = "管理後台";
+                        adminBtn.setAttribute("data-i18n", "home.admin_btn");
+                        adminBtn.textContent = _t("home.admin_btn", null, "管理後台");
                         adminBtn.onclick = () => window.location.href = "/admin";
                         navDiv.insertBefore(adminBtn, navDiv.querySelector("button"));
 
                         const processBtn = document.createElement("button");
-                        processBtn.textContent = "新歌分析";
+                        processBtn.setAttribute("data-i18n", "home.process_btn");
+                        processBtn.textContent = _t("home.process_btn", null, "新歌分析");
                         processBtn.onclick = () => window.location.href = "/process";
                         navDiv.insertBefore(processBtn, navDiv.querySelector("button"));
                     }
@@ -190,12 +207,12 @@
             }).catch(() => {});
         } else if (username) {
             const greeting = document.getElementById("userGreeting");
-            if (greeting) greeting.textContent = `Hello, ${username}`;
+            if (greeting) greeting.textContent = _t("home.greeting", {name: username}, `Hello, ${username}`);
         }
     }).catch(err => {
         if (username) {
             const greeting = document.getElementById("userGreeting");
-            if (greeting) greeting.textContent = `Hello, ${username}`;
+            if (greeting) greeting.textContent = _t("home.greeting", {name: username}, `Hello, ${username}`);
         }
     });
 
@@ -252,11 +269,14 @@ if (_btnInstall) {
     const isAndroid = /Android/i.test(ua);
     let msg;
     if (isIOS) {
-      msg = "iPhone / iPad 安裝步驟：\n1. 點畫面底部「分享」按鈕（方框向上箭頭）\n2. 往下滑找「加到主畫面」\n3. 右上按「新增」即可";
+      msg = _t("install.ios", null,
+        "iPhone / iPad 安裝步驟：\n1. 點畫面底部「分享」按鈕（方框向上箭頭）\n2. 往下滑找「加到主畫面」\n3. 右上按「新增」即可");
     } else if (isAndroid) {
-      msg = "Android 安裝步驟：\n1. 點瀏覽器右上角選單「⋮」\n2. 選「安裝應用程式」或「加到主畫面」\n\n如看不到此選項，請用 Chrome 開啟；部分瀏覽器（LINE 內建、Facebook webview）不支援安裝 PWA，請改用系統瀏覽器。";
+      msg = _t("install.android", null,
+        "Android 安裝步驟：\n1. 點瀏覽器右上角選單「⋮」\n2. 選「安裝應用程式」或「加到主畫面」\n\n如看不到此選項，請用 Chrome 開啟；部分瀏覽器（LINE 內建、Facebook webview）不支援安裝 PWA，請改用系統瀏覽器。");
     } else {
-      msg = "請在瀏覽器選單中找「加到主畫面」或「安裝應用程式」。";
+      msg = _t("install.fallback", null,
+        "請在瀏覽器選單中找「加到主畫面」或「安裝應用程式」。");
     }
     alert(msg);
   });

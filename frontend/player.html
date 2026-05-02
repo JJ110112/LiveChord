@@ -21,6 +21,7 @@
        load before any /api/ call so anon X-Anon-Id is injected from the
        first request. Replaces the inline blind-redirect block. -->
   <script src="/js/auth.js?v=3"></script>
+  <script src="/js/i18n.js?v=2"></script>
 </head>
 <body>
 
@@ -32,23 +33,26 @@
   </a>
   <div class="topbar-center">
     <span id="songTitle" class="topbar-title" title="">—</span>
-    <button id="btnFav" class="topbar-btn btn-fav" title="收藏">&#x2661;</button>
+    <button id="btnFav" class="topbar-btn btn-fav"
+            data-i18n-attr="title=player.fav_title" title="收藏">&#x2661;</button>
     <div id="topbarSearch" class="topbar-search" style="display:none">
-      <input id="searchInput" type="text" placeholder="請輸入 YouTube URL..." autocomplete="off">
-      <div class="search-marquee" aria-hidden="true"><span class="search-marquee-text">請輸入 YouTube URL...</span></div>
+      <input id="searchInput" type="text" autocomplete="off"
+             data-i18n-attr="placeholder=common.search_placeholder_short"
+             placeholder="請輸入 YouTube URL...">
+      <div class="search-marquee" aria-hidden="true"><span class="search-marquee-text" data-i18n="common.search_placeholder_short">請輸入 YouTube URL...</span></div>
       <div id="searchResults" class="search-results"></div>
     </div>
   </div>
   <div class="topbar-right">
     <div id="versionsContainer" class="versions-dropdown" style="display:none">
       <button id="btnVersionsToggle" class="btn-version">
-        <span id="currentVersionName">官方 AI 版</span> 
+        <span id="currentVersionName" data-i18n="player.versions_label">官方 AI 版</span>
         <span style="font-size:10px">▼</span>
       </button>
       <div id="versionsList" class="versions-list">
         <div class="versions-header">
-          Edits
-          <div class="versions-subtitle">Check out how other users improved the chords of this song.</div>
+          <span data-i18n="player.versions_header">Edits</span>
+          <div class="versions-subtitle" data-i18n="player.versions_subtitle">Check out how other users improved the chords of this song.</div>
         </div>
         <div id="versionsItems"></div>
       </div>
@@ -56,8 +60,10 @@
     <span id="chordBpm" class="topbar-key" style="color:var(--text-dim); margin-right:6px;"></span>
     <span id="chordSource" class="chord-source-badge"></span>
     <span id="chordKey" class="topbar-key"></span>
-    <button id="btnRateAiTop" class="topbar-btn" style="color:#ff5722" title="和弦品質評論">&#x2B50;</button>
-    <button id="btnPageFs" class="topbar-btn" title="全螢幕">&#x26F6;</button>
+    <button id="btnRateAiTop" class="topbar-btn" style="color:#ff5722"
+            data-i18n-attr="title=player.rate_title" title="和弦品質評論">&#x2B50;</button>
+    <button id="btnPageFs" class="topbar-btn"
+            data-i18n-attr="title=player.fullscreen_title" title="全螢幕">&#x26F6;</button>
   </div>
 </header>
 
@@ -71,8 +77,8 @@
       <div id="musicBarsAnim" class="music-bars" style="display:none; margin-bottom:16px;">
         <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
       </div>
-      <div id="detectMsg" class="lc-title" style="padding-right:0; text-align:center;">正在偵測和弦…</div>
-      <div id="detectDetail" class="lc-subtitle" style="margin-top:-4px; text-align:center;">首次播放需要分析音訊，請稍候</div>
+      <div id="detectMsg" class="lc-title" style="padding-right:0; text-align:center;" data-i18n="player.detect_msg">正在偵測和弦…</div>
+      <div id="detectDetail" class="lc-subtitle" style="margin-top:-4px; text-align:center;" data-i18n="player.detect_detail">首次播放需要分析音訊，請稍候</div>
     </div>
   </div>
 
@@ -82,10 +88,17 @@
        / settings / fullscreen — click again (🔒) to return to drag mode. -->
   <div id="ytEmbedContainer" class="yt-embed-container" style="display:none">
     <div id="ytEmbed" class="yt-pip-body"></div>
-    <div id="ytPipDragzone" class="yt-pip-dragzone" aria-label="拖曳移動（點擊切換播放）"></div>
-    <button id="ytPipLock" class="yt-pip-lock-float" aria-label="解鎖 YouTube 原生控件" title="解鎖以使用字幕/設定">&#x1F512;</button>
-    <button id="ytEmbedClose" class="yt-pip-close-float" aria-label="隱藏 YouTube" title="隱藏 YouTube">&times;</button>
-    <div id="ytPipResize" class="yt-pip-resize" aria-label="調整大小" title="拖曳調整大小"></div>
+    <div id="ytPipDragzone" class="yt-pip-dragzone"
+         data-i18n-attr="aria-label=player.yt_pip.drag" aria-label="拖曳移動（點擊切換播放）"></div>
+    <button id="ytPipLock" class="yt-pip-lock-float"
+            data-i18n-attr="aria-label=player.yt_pip.lock,title=player.yt_pip.lock_title"
+            aria-label="解鎖 YouTube 原生控件" title="解鎖以使用字幕/設定">&#x1F512;</button>
+    <button id="ytEmbedClose" class="yt-pip-close-float"
+            data-i18n-attr="aria-label=player.yt_pip.close,title=player.yt_pip.close"
+            aria-label="隱藏 YouTube" title="隱藏 YouTube">&times;</button>
+    <div id="ytPipResize" class="yt-pip-resize"
+         data-i18n-attr="aria-label=player.yt_pip.resize,title=player.yt_pip.resize"
+         aria-label="調整大小" title="拖曳調整大小"></div>
   </div>
 
   <!-- Split layout: Chord Ribbon | Resize Handle | Instrument View -->
@@ -96,10 +109,15 @@
       <div id="unifiedRibbonTrack" class="ribbon-v-track"></div>
       <div class="ribbon-scale-bar">
         <!-- Inline scale controls: [−] [value] [+] [☰ 總覽] — no popup, always visible -->
-        <button id="btnScaleDown" class="scale-btn" title="縮小">−</button>
+        <button id="btnScaleDown" class="scale-btn"
+                data-i18n-attr="title=player.scale.shrink" title="縮小">−</button>
         <span id="scaleLabel" class="scale-label">0.6</span>
-        <button id="btnScaleUp" class="scale-btn" title="放大">+</button>
-        <button id="btnToggleOverview" class="scale-btn overview-btn" title="切換總覽模式" style="margin-left:8px">&#x2630;&#xFE0E; 總覽</button>
+        <button id="btnScaleUp" class="scale-btn"
+                data-i18n-attr="title=player.scale.enlarge" title="放大">+</button>
+        <button id="btnToggleOverview" class="scale-btn overview-btn"
+                data-i18n-attr="title=player.scale.overview_title"
+                title="切換總覽模式" style="margin-left:8px"
+                data-i18n="player.scale.overview_label">&#x2630;&#xFE0E; 總覽</button>
       </div>
     </div>
 

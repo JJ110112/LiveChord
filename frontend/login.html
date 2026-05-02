@@ -10,6 +10,7 @@
        X-Anon-Id is in place + 401 from password endpoints in public mode
        doesn't bounce-loop. -->
   <script src="/js/auth.js?v=3"></script>
+  <script src="/js/i18n.js?v=2"></script>
   <link rel="stylesheet" href="/css/base.css?v=5">
   <style>
     body {
@@ -214,8 +215,8 @@
 <body>
 
   <div class="auth-container">
-    <h1>LiveChord</h1>
-    <div class="subtitle" id="subtitle">登入解鎖收藏與評分</div>
+    <h1 data-i18n="common.brand">LiveChord</h1>
+    <div class="subtitle" id="subtitle" data-i18n="login.subtitle.public">登入解鎖收藏與評分</div>
 
     <!-- ── Public mode: OAuth buttons (default visible; hidden by JS if not public) ── -->
     <div id="oauth-section">
@@ -227,60 +228,71 @@
             <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/>
             <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/>
           </svg>
-          <span>使用 Google 繼續</span>
+          <span data-i18n="login.btn_google">使用 Google 繼續</span>
         </a>
         <a class="oauth-btn oauth-btn-discord" href="/api/auth/oauth/discord/start" data-provider="discord">
           <svg class="oauth-icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
             <path d="M20.317 4.369A19.79 19.79 0 0 0 16.558 3.2a.074.074 0 0 0-.079.037 13.7 13.7 0 0 0-.608 1.249 18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.249.077.077 0 0 0-.079-.037A19.74 19.74 0 0 0 5.93 4.369a.07.07 0 0 0-.032.027C2.625 9.046 1.71 13.58 2.157 18.057a.082.082 0 0 0 .031.056 19.91 19.91 0 0 0 5.993 3.03.078.078 0 0 0 .084-.027 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.105 13.13 13.13 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.371-.291a.074.074 0 0 1 .078-.011c3.927 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .079.01c.12.099.245.198.372.292a.077.077 0 0 1-.006.128 12.32 12.32 0 0 1-1.873.891.077.077 0 0 0-.041.106c.36.698.772 1.362 1.225 1.993a.077.077 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.331c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.955 2.418-2.157 2.418zm7.974 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
           </svg>
-          <span>使用 Discord 繼續</span>
+          <span data-i18n="login.btn_discord">使用 Discord 繼續</span>
         </a>
         <button type="button" class="oauth-btn oauth-btn-apple disabled" disabled
+                data-i18n-attr="title=login.btn_apple_title"
                 title="尚未啟用 — Apple 開發者方案申請中">
           <svg class="oauth-icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
             <path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.23-.02-.3-.03-.01-.07-.04-.22-.04-.39 0-1.13.572-2.26 1.215-2.97.804-.94 2.142-1.65 3.054-1.68.04.16.06.32.06.42 0 .01.005.005.175.005zm4.565 17.13c0 .045-.05.1-.092.15-.413.6-.84 1.2-1.546 2.197-.943 1.32-2.27 2.97-3.92 2.97-1.487 0-1.85-.95-3.85-.95-2.005 0-2.36.95-3.92.95-1.624 0-2.93-1.484-3.871-2.81-2.638-3.7-2.927-8.06-1.293-10.39 1.16-1.65 2.99-2.62 4.71-2.62 1.752 0 2.85.97 4.295.97 1.4 0 2.255-.97 4.275-.97 1.526 0 3.143.83 4.295 2.27-3.78 2.07-3.165 7.49.917 8.232z"/>
           </svg>
-          <span>使用 Apple 繼續（即將推出）</span>
+          <span data-i18n="login.btn_apple_disabled">使用 Apple 繼續（即將推出）</span>
         </button>
       </div>
       <div class="guest-row">
-        <a href="/" id="guest-link">先以訪客瀏覽 →</a>
+        <a href="/" id="guest-link" data-i18n="login.guest_link">先以訪客瀏覽 →</a>
       </div>
     </div>
 
     <!-- ── Personal/Beta mode: legacy password form (hidden by JS in public mode) ── -->
     <div id="legacy-section" class="hidden">
       <div class="tabs">
-        <div class="tab active" id="tab-login" onclick="switchTab('login')">登入</div>
-        <div class="tab" id="tab-register" onclick="switchTab('register')">註冊</div>
+        <div class="tab active" id="tab-login" onclick="switchTab('login')" data-i18n="login.tab_signin">登入</div>
+        <div class="tab" id="tab-register" onclick="switchTab('register')" data-i18n="login.tab_register">註冊</div>
       </div>
 
       <form id="login-form" onsubmit="handleLogin(event)">
         <div class="form-group">
-          <label>使用者名稱</label>
-          <input type="text" id="login-username" required placeholder="例如: Eric">
+          <label data-i18n="login.field.username">使用者名稱</label>
+          <input type="text" id="login-username" required
+                 data-i18n-attr="placeholder=login.field.username_placeholder"
+                 placeholder="例如: Eric">
         </div>
         <div class="form-group">
-          <label>密碼</label>
-          <input type="password" id="login-password" required placeholder="您的密碼">
+          <label data-i18n="login.field.password">密碼</label>
+          <input type="password" id="login-password" required
+                 data-i18n-attr="placeholder=login.field.password_placeholder"
+                 placeholder="您的密碼">
         </div>
-        <button type="submit" class="btn">登入</button>
+        <button type="submit" class="btn" data-i18n="login.btn_signin">登入</button>
       </form>
 
       <form id="register-form" class="hidden" onsubmit="handleRegister(event)">
         <div class="form-group">
-          <label>使用者名稱</label>
-          <input type="text" id="reg-username" required placeholder="想一個響亮的名字" minlength="3">
+          <label data-i18n="login.field.username">使用者名稱</label>
+          <input type="text" id="reg-username" required minlength="3"
+                 data-i18n-attr="placeholder=login.field.username_register_placeholder"
+                 placeholder="想一個響亮的名字">
         </div>
         <div class="form-group">
-          <label>密碼</label>
-          <input type="password" id="reg-password" required placeholder="設定密碼（至少 8 字元）" minlength="8">
+          <label data-i18n="login.field.password">密碼</label>
+          <input type="password" id="reg-password" required minlength="8"
+                 data-i18n-attr="placeholder=login.field.password_register_placeholder"
+                 placeholder="設定密碼（至少 8 字元）">
         </div>
         <div class="form-group">
-          <label>邀請碼 (Invite Code)</label>
-          <input type="text" id="reg-invite" required placeholder="站長發放的密碼">
+          <label data-i18n="login.field.invite">邀請碼 (Invite Code)</label>
+          <input type="text" id="reg-invite" required
+                 data-i18n-attr="placeholder=login.field.invite_placeholder"
+                 placeholder="站長發放的密碼">
         </div>
-        <button type="submit" class="btn">建立帳號</button>
+        <button type="submit" class="btn" data-i18n="login.btn_register">建立帳號</button>
       </form>
     </div>
 
@@ -293,13 +305,27 @@
       window.location.href = "/";
     }
 
+    // i18n helper: t(key, vars) with fallback if i18n.js hasn't booted yet.
+    function _tr(key, vars, fb) {
+      if (window.LiveChordI18n) return window.LiveChordI18n.t(key, vars);
+      return fb || key;
+    }
+
     // Surface OAuth callback errors (`/login?oauth_error=1&p=google`).
     (function _showOAuthError() {
       const params = new URLSearchParams(location.search);
       if (params.get("oauth_error") === "1") {
-        const p = params.get("p") || "";
+        const provider = params.get("p") || "OAuth";
         const err = document.getElementById("error-msg");
-        err.textContent = `登入失敗（${p || "OAuth"}），請重試或選擇其他登入方式`;
+        const apply = () => {
+          err.textContent = _tr(
+            "login.error.oauth", { provider },
+            `登入失敗（${provider}），請重試或選擇其他登入方式`
+          );
+        };
+        apply();
+        document.addEventListener("livechord:i18nready", apply);
+        document.addEventListener("livechord:langchange", apply);
       }
     })();
 
@@ -312,8 +338,13 @@
       if (mode !== "public") {
         document.getElementById("oauth-section").classList.add("hidden");
         document.getElementById("legacy-section").classList.remove("hidden");
-        document.getElementById("subtitle").textContent =
-          mode === "beta" ? "Beta 帳號登入" : "管理員登入";
+        const subKey = mode === "beta" ? "login.subtitle.beta" : "login.subtitle.personal";
+        const sub = document.getElementById("subtitle");
+        sub.setAttribute("data-i18n", subKey);
+        sub.textContent = _tr(
+          subKey, null,
+          mode === "beta" ? "Beta 帳號登入" : "管理員登入"
+        );
       } else {
         // Public: hide providers without configured credentials by querying
         // /api/auth/oauth/providers. Apple is disabled in markup regardless.
@@ -374,10 +405,10 @@
           localStorage.setItem("livechord_username", data.username);
           window.location.href = "/";
         } else {
-          err.textContent = data.detail || "登入失敗";
+          err.textContent = data.detail || _tr("login.error.signin", null, "登入失敗");
         }
       } catch (e) {
-        err.textContent = "網路錯誤";
+        err.textContent = _tr("login.error.network", null, "網路錯誤");
       }
     }
 
@@ -401,10 +432,10 @@
           localStorage.setItem("livechord_username", data.username);
           window.location.href = "/";
         } else {
-          err.textContent = data.detail || "註冊失敗";
+          err.textContent = data.detail || _tr("login.error.register", null, "註冊失敗");
         }
       } catch (e) {
-        err.textContent = "網路錯誤";
+        err.textContent = _tr("login.error.network", null, "網路錯誤");
       }
     }
   </script>
