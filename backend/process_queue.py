@@ -178,6 +178,66 @@ def compute_file_hash(filepath: str) -> str:
 # Chord JSON saving (matches existing format)
 # ---------------------------------------------------------------------------
 
+def _ingest_beats_modal_or_local(audio_path: str, chords: list, job_id: str) -> dict:
+    """Beat-tracking dispatcher used at YouTube/upload ingest time.
+
+    Returns the same dict shape as ``beat_snap.analyze_and_snap_dynamic``
+    (keys: bpm, n_snapped, beats, downbeats, tempo_curve, beats_source,
+    beat_version) plus an optional ``bpm_correction`` key when Modal
+    beat_this already ran ballad_halving_check inside its container — the
+    caller surfaces that record into the chord JSON without re-running
+    the local librosa-backed sanity check.
+
+    Tier 1: Modal beat_this when ``LIVECHORD_USE_MODAL_BEAT_THIS=1``
+    (public/VPS). Tier 2/3: local madmom or librosa via beat_snap.
+
+    Falls through to local on any Modal failure so ingest never blocks
+    on Modal availability or transient errors.
+    """
+    try:
+        from modal_beat_this import modal_beat_this_enabled
+        if modal_beat_this_enabled():
+            try:
+                from modal_beat_this import detect_beats_via_modal
+                from beat_snap import _snap_to_grid, BEAT_VERSION
+                import numpy as np
+                t0 = time.time()
+                r = detect_beats_via_modal(audio_path)
+                elapsed = time.time() - t0
+                if r and r.get("beats") and r.get("bpm"):
+                    beat_arr = np.sort(np.asarray(r["beats"], dtype=np.float64))
+                    n_snap = _snap_to_grid(chords, beat_arr)
+                    logger.info(
+                        "[beat_this-modal] %s ok in %.1fs (%d beats, %d downbeats, bpm=%.1f)",
+                        job_id, elapsed,
+                        len(r["beats"]), len(r["downbeats"]), r["bpm"],
+                    )
+                    return {
+                        "bpm": r["bpm"],
+                        "n_snapped": n_snap,
+                        "beats": r["beats"],
+                        "downbeats": r["downbeats"],
+                        "tempo_curve": r["tempo_curve"],
+                        "beats_source": "beat_this-modal",
+                        "beat_version": BEAT_VERSION,
+                        "bpm_correction": r.get("bpm_correction"),
+                    }
+                logger.warning(
+                    "[beat_this-modal] %s empty result in %.1fs; falling back to local",
+                    job_id, elapsed,
+                )
+            except Exception as e:
+                logger.warning(
+                    "[beat_this-modal] %s dispatch failed (%s: %s); falling back to local",
+                    job_id, type(e).__name__, str(e)[:200],
+                )
+    except Exception:
+        pass
+
+    from beat_snap import analyze_and_snap_dynamic
+    return analyze_and_snap_dynamic(audio_path, chords)
+
+
 def _probe_audio_duration(audio_path: str) -> float:
     """Return the audio file's total duration in seconds, or 0 on failure.
 
@@ -221,30 +281,45 @@ def _save_chord_json(job: ProcessJob, chords: list, key: str,
 
     # Dynamic beat tracking — extracts rubato-aware beats[]/downbeats[]/
     # tempo_curve so the player can sync waterfall to actual tempo drift on
-    # live recordings. madmom ≈ 30s on a 4-min song; falls back to librosa
-    # static BPM if madmom isn't installed. Failure here is non-fatal — the
-    # chord JSON is still useful without beat metadata.
+    # live recordings. Three-tier dispatch:
+    #   1. Modal beat_this (LIVECHORD_USE_MODAL_BEAT_THIS=1, public/VPS) —
+    #      ~5-30s incl. cold start, returns full beats[]+downbeats[] grid
+    #   2. Local madmom (NUC personal w/ madmom installed) — ~30s, rubato-aware
+    #   3. librosa static (any host) — ~1-2s, returns BPM only, no beats[]
+    # Without (1) or (2) the chord JSON has empty beats[]/downbeats[] and every
+    # downstream bar-aware step (beat_refiner, bar_arbitrator, auto-split,
+    # bar_phase, noise_filter) skips with reason=too-few-beats. Failure of any
+    # tier falls through to the next; the chord JSON is still useful without
+    # beat metadata.
     if audio_path and os.path.isfile(audio_path):
         try:
-            from beat_snap import analyze_and_snap_dynamic
-            beat_info = analyze_and_snap_dynamic(audio_path, chords)
+            beat_info = _ingest_beats_modal_or_local(audio_path, chords, job.job_id)
             raw_bpm = beat_info.get("bpm")
+            modal_bpm_correction = beat_info.pop("bpm_correction", None)
             if raw_bpm:
-                try:
-                    from bpm_sanity import ballad_halving_check, apply_halving_to_beat_info
-                    corrected_bpm, bpm_meta = ballad_halving_check(float(raw_bpm), audio_path)
-                    if bpm_meta.get("applied"):
-                        apply_halving_to_beat_info(beat_info)
-                        sheet["bpm_correction"] = bpm_meta
-                        logger.info(
-                            "[bpm_sanity] %s halved %.1f -> %.1f (onset=%.2f, rms_cov=%.4f)",
-                            job.job_id, bpm_meta["original"], corrected_bpm,
-                            bpm_meta["onset_density"] or 0, bpm_meta["rms_cov"] or 0,
-                        )
-                    sheet["bpm"] = round(corrected_bpm, 1)
-                except Exception as e:
-                    logger.warning("bpm_sanity failed for %s: %s", job.job_id, e)
+                if modal_bpm_correction is not None:
+                    # Modal beat_this already ran ballad_halving_check inside
+                    # the GPU container — surface its record without a second
+                    # local pass (would be a no-op but wastes a librosa.load).
+                    if modal_bpm_correction.get("applied"):
+                        sheet["bpm_correction"] = modal_bpm_correction
                     sheet["bpm"] = round(raw_bpm, 1)
+                else:
+                    try:
+                        from bpm_sanity import ballad_halving_check, apply_halving_to_beat_info
+                        corrected_bpm, bpm_meta = ballad_halving_check(float(raw_bpm), audio_path)
+                        if bpm_meta.get("applied"):
+                            apply_halving_to_beat_info(beat_info)
+                            sheet["bpm_correction"] = bpm_meta
+                            logger.info(
+                                "[bpm_sanity] %s halved %.1f -> %.1f (onset=%.2f, rms_cov=%.4f)",
+                                job.job_id, bpm_meta["original"], corrected_bpm,
+                                bpm_meta["onset_density"] or 0, bpm_meta["rms_cov"] or 0,
+                            )
+                        sheet["bpm"] = round(corrected_bpm, 1)
+                    except Exception as e:
+                        logger.warning("bpm_sanity failed for %s: %s", job.job_id, e)
+                        sheet["bpm"] = round(raw_bpm, 1)
             if beat_info.get("beats_source"):
                 sheet["beats"] = beat_info.get("beats", [])
                 sheet["downbeats"] = beat_info.get("downbeats", [])
