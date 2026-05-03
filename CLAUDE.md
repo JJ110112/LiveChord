@@ -8,7 +8,7 @@ Project-specific guidance for Claude Code working in this repo. Also see [doc/QA
 - **Local testing**: IDE Live Server is installed, Playwright MCP is registered for AI-driven local QA.
 - **Prod runtime** (NUC, mounted as `V:\` from PC): backend runs from `V:\backend`, frontend from `V:\frontend`
 - **Backend server**: FastAPI/uvicorn, `main:app` — single instance on NUC, port 8800 (start: [start.bat](start.bat) · restart: [restart.bat](restart.bat)). `LIVECHORD_MODE` defaults to `personal`. The dual-instance scripts ([start_dual.bat](start_dual.bat) / [restart_dual.bat](restart_dual.bat)) and beta-only port 8801/8802/8803 are archival — kept on disk for reference but not in the live workflow
-- **Production QA Server**: `http://192.168.50.6:8800/` (LAN). `https://livechord.org` (Cloudflare Tunnel) is currently *off* by default — ask the user before assuming it's reachable
+- **Production QA Server**: `http://192.168.50.6:8800/` (LAN, NUC personal). `https://livechord.org` is the **public VPS** deployment (Hetzner CPX21 Hillsboro OR, `5.78.135.8`) — separate codebase clone at `/srv/livechord`, deployed via `git pull` (see [doc/OPS.md](doc/OPS.md) "Deploying code changes to the VPS"). NUC's cloudflared is disabled, so livechord.org is VPS-only
 - **Production Admin Account**: User: `hitea` (password user-managed; first-registered user is auto-promoted to admin by `auth_api.init_db`, no seeded account)
 - **Admin page**: `http://localhost:8800/admin`
 
@@ -261,6 +261,8 @@ Open trade-offs and known issues for the active tracks live in [doc/TODOS.md](do
 - QA protocol, test matrix, UI architecture rules: [doc/QA.md](doc/QA.md)
 - **UX convention (mandatory for all UI changes)**: [doc/UX_CONVENTION.md](doc/UX_CONVENTION.md)
 - Battle stories / past incidents: [doc/QA_BATTLE_STORY.md](doc/QA_BATTLE_STORY.md)
+- **VPS operations runbook** (deploy workflow, yt-dlp cookies, tunnel cutover, gotchas): [doc/OPS.md](doc/OPS.md)
+- **SEO / search visibility plan** (current GSC state, Phase 1-5 ranking roadmap): [doc/SEO.md](doc/SEO.md)
 - Productization roadmap (Beta 能跑起來): [doc/PRODUCTIZATION.md](doc/PRODUCTIZATION.md)
 - Scaling roadmap (Beta 成功之後 — 個人/公眾分割、GPU、雲端部署、DB 擴展、i18n): [doc/SCALING.md](doc/SCALING.md)
 - NotebookLM hand-off (accompaniment knowledge doc for AI-coding): [doc/for-notebooklm/](doc/for-notebooklm/)

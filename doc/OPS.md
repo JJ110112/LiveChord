@@ -102,3 +102,64 @@ Schedule:
 2. Investigate VPS via Hetzner console (KVM access if SSH dead)
 3. If unrecoverable, restore from latest weekly snapshot
 4. systemd journals: `journalctl -u livechord.service -n 200 --no-pager`
+
+## Deploying code changes to the VPS
+
+The VPS pulls from GitHub via deploy key `livechord-vps-prod` (SSH `git@github.com:JJ110112/LiveChord.git`). The repo lives at `/srv/livechord` owned by user `livechord`. Always use `git pull` — never `scp` or `rsync` files in (see "Things that will bite you" below).
+
+**SSH access** — `~/.ssh/config` on PC has a `livechord-vps` host alias:
+```
+Host livechord-vps
+HostName 5.78.135.8
+User root
+IdentityFile ~/.ssh/livechord_ed25519
+```
+
+So `ssh livechord-vps` lands as root. Git operations must run as user `livechord` (the repo owner), via `sudo -u livechord -H bash -c '...'`.
+
+### Standard deploy (PC dev → VPS)
+
+```bash
+# 1. PC: commit + push to feature/beta-productization
+cd c:/Users/hitea/Claude/LiveChord
+git add <files>
+git commit -m "..."
+git push
+
+# 2. VPS: pull + restart in one SSH call
+ssh livechord-vps "sudo -u livechord -H bash -c 'cd /srv/livechord && git pull --ff-only' && sudo systemctl restart livechord && sleep 3 && sudo systemctl is-active livechord"
+
+# 3. Verify via public URL
+curl -sI https://livechord.org/   # 200 OK expected
+```
+
+If `git pull --ff-only` rejects with "non-fast-forward", someone made commits on the VPS. Check `git log --oneline origin/feature/beta-productization..HEAD` before deciding whether to merge or reset — never blanket-discard.
+
+### Things that will bite you
+
+- **Hot-copying files (scp / rsync) to VPS leaves git out of sync.** This already happened once — VPS had ~20 files showing as "modified" in `git status` because someone scp'd from PC after a PC commit, but never `git pull`-ed on the VPS. The file content matched origin (so functionally OK), but `git pull` then refused with "local changes would be overwritten." Recovery is `git checkout -- .` then `git pull`, but only after **inspecting every diff** to confirm no real VPS-only edit gets lost. Always pull, never scp.
+
+- **VPS-only edit on `backend/requirements.txt`**: as of 2026-05-03 the VPS working tree intentionally removes the `yt-dlp-ejs>=0.8` block (because deno+ejs install was deferred — see "yt-dlp YouTube extraction prerequisites" above). Origin has the line. Every `git pull` that touches `requirements.txt` needs the removal re-applied:
+  ```bash
+  cp backend/requirements.txt /tmp/vps-req.txt
+  git checkout -- backend/requirements.txt
+  git pull --ff-only
+  cp /tmp/vps-req.txt backend/requirements.txt
+  ```
+  The "M backend/requirements.txt" in `git status` is **expected and load-bearing** — don't try to clean it up. Once deno + yt-dlp-ejs are actually installed and proven working, commit a removal of the block to origin so the working tree goes clean.
+
+- **CRLF vs LF line endings**: PC commits files with CRLF (Git for Windows default). On Linux VPS, big files (`music_api.py`, `chord-render.js`, `app.js`, `string-instrument.js`) get logged with thousand-line "diffs" that are just line-ending normalization — no real content change. `git checkout -- .` resets them to clean LF.
+
+- **The systemd service does NOT auto-install requirements.** After `git pull` of a commit that adds Python deps, you must `sudo -u livechord -H /srv/livechord/.venv/bin/pip install -r backend/requirements.txt` and only then restart. Otherwise uvicorn crashes on import.
+
+- **Cloudflare caches `robots.txt` and other static files** with `Cache-Control: max-age=14400` (4 hours). After a `robots.txt` edit deploys, public URL still serves old content for up to 4 hours. Manually purge in Cloudflare dashboard → Caching → "Purge by URL" if it matters (e.g., before re-submitting to Search Console).
+
+- **Pre-flight check both ports**: a healthy deploy responds 200 on both:
+  - `curl -sI http://127.0.0.1:8800/` (origin, behind tunnel)
+  - `curl -sI https://livechord.org/` (Cloudflare → tunnel → uvicorn)
+
+  If origin is 200 but public is 5xx, the tunnel (cloudflared) is the problem, not uvicorn.
+
+### Restart vs reload
+
+The systemd unit has `Restart=always` and 3 worker processes. `systemctl restart livechord` is ~3 seconds of downtime. There is no graceful reload — uvicorn workers die and respawn. For a 3-worker setup that's tolerable; if traffic ever justifies zero-downtime, switch to gunicorn with `--reload-graceful` or front the service with a reverse proxy that handles 502 retries.
