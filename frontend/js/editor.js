@@ -1,3 +1,7 @@
+"use strict";
+// i18n helper — fall back to the dict key if i18n.js hasn't booted yet.
+function _t(k, v) { return (window.LiveChordI18n && window.LiveChordI18n.t) ? window.LiveChordI18n.t(k, v) : k; }
+
 /** LiveChord 和弦時間軸編輯器 */
 
 (function () {
@@ -302,7 +306,7 @@
           selectedChords.add(c);
           lastSelectedChord = c;
           selectChord(c);
-          showToast(`已替換為 ${paletteChord}`);
+          showToast(_t("editor.toast.replaced_with", { chord: paletteChord }));
           return;
         }
 
@@ -463,7 +467,7 @@
 
     t = snapTime(t);
 
-    const chord = paletteChord || prompt("輸入和弦名稱:", "C");
+    const chord = paletteChord || prompt(_t("editor.prompt.chord_name"), "C");
     if (!chord) return;
 
     const newC = { time: t, end: t + 4, chord: chord };
@@ -478,37 +482,37 @@
   // ---- update / delete ----
 
   $("#btnUpdate").addEventListener("click", () => {
-    if (selectedChords.size === 0) { showToast("請先選取和弦"); return; }
+    if (selectedChords.size === 0) { showToast(_t("editor.toast.select_first")); return; }
     const name = $("#chordNameInput").value.trim();
-    if (!name) { showToast("請輸入和弦名稱"); return; }
+    if (!name) { showToast(_t("editor.toast.need_chord_name")); return; }
     selectedChords.forEach(c => c.chord = name);
     render();
-    showToast("批次更新" + selectedChords.size + "個和弦");
+    showToast(_t("editor.toast.batch_updated", { n: selectedChords.size }));
   });
 
   $("#btnDelete").addEventListener("click", () => {
-    if (selectedChords.size === 0) { showToast("請先選取和弦"); return; }
+    if (selectedChords.size === 0) { showToast(_t("editor.toast.select_first")); return; }
     chords = chords.filter(c => !selectedChords.has(c));
     selectedChords.clear();
     lastSelectedChord = null;
     render();
-    showToast("已刪除");
+    showToast(_t("editor.toast.deleted"));
   });
 
   // ---- replace all ----
 
   $("#btnReplaceAll").addEventListener("click", () => {
-    const from = prompt("要取代的和弦名稱 (例: Am):");
+    const from = prompt(_t("editor.prompt.replace_from"));
     if (!from) return;
-    const to = prompt(`將所有 "${from}" 取代為:`);
+    const to = prompt(_t("editor.prompt.replace_to", { from }));
     if (!to) return;
     let count = 0;
     chords.forEach(c => { if (c.chord === from) { c.chord = to; count++; } });
     if (count === 0) {
-      showToast(`找不到和弦 "${from}"`);
+      showToast(_t("editor.toast.no_match", { from }));
     } else {
       render();
-      showToast(`已將 ${count} 個 "${from}" 取代為 "${to}"`);
+      showToast(_t("editor.toast.replaced_n", { count, from, to }));
     }
   });
 
@@ -569,7 +573,7 @@
     const beatSec = 60 / songBPM;
     const currentDur = (chord.end || chord.time + 2) - chord.time;
     const currentBeats = Math.round((currentDur / beatSec) * 10) / 10;
-    $("#beatAdjustCurrent").textContent = `(目前 ${currentBeats} 拍)`;
+    $("#beatAdjustCurrent").textContent = _t("editor.beat_adjust.current", { n: currentBeats });
     const opts = $("#beatAdjustOptions");
     opts.innerHTML = "";
     // Common beat counts + .5 options for syncopation
@@ -619,7 +623,7 @@
     sortChords();
     render();
     _hideBeatAdjustPopup();
-    showToast(`此和弦改為 ${newBeats} 拍，後續 ${chords.length - idx - 1} 個和弦已平移`);
+    showToast(_t("editor.toast.beats_changed", { n: newBeats, after: chords.length - idx - 1 }));
   }
 
   document.addEventListener("click", (e) => {
@@ -646,12 +650,12 @@
     lastSelectedChord = newChord;
     render();
     hideSplitPopup();
-    showToast(`已分割為 ${leftBeats} / ${rightBeats} 拍`);
+    showToast(_t("editor.toast.split_into", { l: leftBeats, r: rightBeats }));
   }
 
   $("#btnSplit").addEventListener("click", () => {
     if (selectedChords.size !== 1) {
-      showToast("請選取恰好 1 個和弦來分割");
+      showToast(_t("editor.toast.select_one_to_split"));
       return;
     }
     const chord = selectedChords.values().next().value;
@@ -663,7 +667,7 @@
     const left = parseFloat($("#splitCustomLeft").value);
     const right = parseFloat($("#splitCustomRight").value);
     if (!left || !right || left <= 0 || right <= 0) {
-      showToast("請輸入有效的拍數");
+      showToast(_t("editor.toast.invalid_beats"));
       return;
     }
     doSplit(left, right);
@@ -688,7 +692,7 @@
           });
           sortChords();
           render();
-          showToast("選取的和弦向左移 0.25s");
+          showToast(_t("editor.toast.nudged_left"));
       });
   }
 
@@ -701,14 +705,14 @@
           });
           sortChords();
           render();
-          showToast("選取的和弦向右移 0.25s");
+          showToast(_t("editor.toast.nudged_right"));
       });
   }
 
   if ($("#btnQuantize")) {
       $("#btnQuantize").addEventListener("click", () => {
           if (selectedChords.size < 2) {
-              showToast("請至少選取 2 個連續的和弦以進行拍數正規化");
+              showToast(_t("editor.toast.need_2_for_quantize"));
               return;
           }
           const selArr = Array.from(selectedChords).sort((a,b) => a.time - b.time);
@@ -747,14 +751,14 @@
 
           sortChords();
           render();
-          showToast(`已將 ${selArr.length} 個和弦的節拍長度正規化`);
+          showToast(_t("editor.toast.quantized_n", { n: selArr.length }));
       });
   }
 
   if ($("#btnQuantizeAll")) {
       $("#btnQuantizeAll").addEventListener("click", () => {
-          if (chords.length < 2) { showToast("至少要 2 個和弦才能正規化"); return; }
-          if (!confirm(`將對全部 ${chords.length} 個和弦套用拍數正規化 (基準：第一個和弦)。繼續？`)) return;
+          if (chords.length < 2) { showToast(_t("editor.toast.need_2_for_quantize_all")); return; }
+          if (!confirm(_t("editor.confirm.quantize_all", { n: chords.length }))) return;
           const beatSec = 60 / songBPM;
           const resolution = beatSec / 2;
           let currAnchorTime = chords[0].time;
@@ -774,7 +778,7 @@
           cLast.end = cLast.time + lastQ;
           sortChords();
           render();
-          showToast(`已對 ${chords.length} 個和弦套用拍數正規化`);
+          showToast(_t("editor.toast.quantized_all", { n: chords.length }));
       });
   }
 
@@ -793,7 +797,7 @@
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
         if (selectedChords.size > 0) {
             clipboardChords = Array.from(selectedChords).map(c => ({...c})).sort((a, b) => a.time - b.time);
-            showToast(`已複製 ${clipboardChords.length} 個和弦`);
+            showToast(_t("editor.toast.copied_n", { n: clipboardChords.length }));
         }
         return;
     }
@@ -814,7 +818,7 @@
             });
             sortChords();
             render();
-            showToast(`貼上 ${clipboardChords.length} 個和弦`);
+            showToast(_t("editor.toast.pasted_n", { n: clipboardChords.length }));
         }
         return;
     }
@@ -970,7 +974,7 @@
 
   async function initMIDI() {
     if (!navigator.requestMIDIAccess) {
-      showToast("此瀏覽器不支援 Web MIDI API");
+      showToast(_t("editor.toast.midi_unsupported"));
       return;
     }
     try {
@@ -981,13 +985,13 @@
       midiAccess.onstatechange = (e) => {
         if (e.port.type === "input" && e.port.state === "connected") {
           e.port.onmidimessage = handleMIDIMessage;
-          showToast("MIDI 裝置已連接: " + e.port.name);
+          showToast(_t("editor.toast.midi_connected", { name: e.port.name }));
         }
       };
       const count = midiAccess.inputs.size;
-      showToast(count > 0 ? `MIDI 已連接 (${count} 裝置)` : "未偵測到 MIDI 裝置，請連接後自動偵測");
+      showToast(count > 0 ? _t("editor.toast.midi_n", { n: count }) : _t("editor.toast.midi_none"));
     } catch (err) {
-      showToast("MIDI 連接失敗: " + err.message);
+      showToast(_t("editor.toast.midi_failed", { err: err.message }));
     }
   }
 
@@ -1015,7 +1019,7 @@
     setTimeout(() => { btn.style.background = ""; }, 120);
 
     if (tapTimestamps.length < 2) {
-      $("#tapBpmDisplay").textContent = "繼續打拍...";
+      $("#tapBpmDisplay").textContent = _t("editor.tap.keep_tapping");
       return;
     }
     if (tapTimestamps.length > 16) tapTimestamps.shift();
@@ -1026,7 +1030,7 @@
     }
     const avgMs = total / (tapTimestamps.length - 1);
     const bpm = Math.round(60000 / avgMs);
-    $("#tapBpmDisplay").textContent = `${bpm} BPM (${tapTimestamps.length} 拍)`;
+    $("#tapBpmDisplay").textContent = _t("editor.tap.bpm_n_taps", { bpm, n: tapTimestamps.length });
     $("#btnApplyTapBpm").style.display = "";
     $("#btnApplyTapBpm").dataset.bpm = bpm;
     $("#btnResetTap").style.display = "";
@@ -1044,7 +1048,7 @@
       try { localStorage.removeItem(`bpm_mult_${trackPath}`); } catch {}
       _updateBpmDisplay();
       render();
-      showToast(`BPM 已更新為 ${bpm}`);
+      showToast(_t("editor.toast.bpm_updated", { bpm }));
     }
   });
 
@@ -1072,19 +1076,16 @@
         url.searchParams.set("version", result.version);
         window.history.replaceState({}, "", url);
       }
-      showToast("已儲存！", 2000);
+      showToast(_t("editor.toast.saved"), 2000);
     } catch (err) {
-      showToast("儲存失敗: " + err.message, 3000);
+      showToast(_t("editor.toast.save_failed", { err: err.message }), 3000);
     }
   });
 
   // ---- import ChordPro ----
 
   $("#btnImport").addEventListener("click", () => {
-    const input = prompt(
-      "貼上 ChordPro 格式的和弦（每行一個），例如:\n" +
-      "[C]  [Am]  [F]  [G]\n" +
-      "或帶時間: 0:00 C  0:04 Am  0:08 F");
+    const input = prompt(_t("editor.prompt.import_chordpro"));
     if (!input) return;
 
     const lines = input.trim().split("\n");
@@ -1127,7 +1128,7 @@
 
     sortChords();
     render();
-    showToast(`匯入 ${chords.length} 個和弦`);
+    showToast(_t("editor.toast.imported_n", { n: chords.length }));
   });
 
   // ---- chord palette ----
