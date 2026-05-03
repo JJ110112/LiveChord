@@ -456,7 +456,7 @@ def switch_beats(
     mode: str,
     hash: str = "",
     path: str = "",
-    username: str = Depends(get_current_user),
+    username: str = Depends(get_user_or_anon),
 ):
     """Swap a song's beat source between librosa, madmom, and beat_this.
 
@@ -470,12 +470,16 @@ def switch_beats(
 
     Accepts ``hash`` OR ``path`` (8800 path-mode sends path; hash-mode sends hash).
 
-    Mode gating: ``librosa`` and ``madmom`` require personal-mode because they
-    compute on the host (librosa loads audio into memory each call; madmom
-    needs the Windows MSVC build toolchain that VPS hosts won't have). Public
-    callers asking for those return 404. ``mode=beat_this`` is allowed in any
-    deployment mode because the heavy lifting is done on Modal — the local
-    process only does file I/O around the dispatch.
+    Mode + auth gating:
+    - ``librosa`` and ``madmom`` require BOTH personal-mode AND a logged-in user
+      (they compute on the host: librosa loads audio in-memory; madmom needs
+      the MSVC build toolchain unlikely on a VPS). Anonymous or public callers
+      asking for those return 404 / 401.
+    - ``mode=beat_this`` is allowed in any deployment mode AND for anonymous
+      callers, because the heavy lifting is done on Modal — the local process
+      only does file I/O around the dispatch. Anonymous callers still send a
+      well-formed X-Anon-Id header (auto-injected by the frontend auth wrapper)
+      so audit / per-browser tracking still works.
     """
     import json as _json
     from chord_cache import song_hash
@@ -489,10 +493,12 @@ def switch_beats(
             detail="mode must be 'librosa', 'madmom' or 'beat_this'",
         )
 
-    # Per-mode gate: only beat_this is allowed off the personal lane (Modal
-    # carries the GPU + install burden). librosa/madmom keep the original 404.
-    if mode != "beat_this" and not is_personal_mode():
-        raise HTTPException(status_code=404, detail="Not available on this instance")
+    # Librosa / madmom: personal-mode + real account required.
+    if mode != "beat_this":
+        if not is_personal_mode():
+            raise HTTPException(status_code=404, detail="Not available on this instance")
+        if is_anon(username):
+            raise HTTPException(status_code=401, detail="未授權 (Unauthorized)")
 
     if not hash and path:
         hash = song_hash(path)
