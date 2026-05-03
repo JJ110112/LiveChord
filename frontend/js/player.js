@@ -754,7 +754,10 @@
           : avg >= 3 ? "src-mid"
           : "src-bad";
         srcBadge.className = `chord-source-badge ${ratingClass}`;
-        srcBadge.textContent = `${avg.toFixed(1)}★`;
+        // No "★" glyph — would clash visually with the song-card difficulty
+        // stars rendered in the chord ribbon. The colored badge background
+        // (good=green, mid=amber, bad=red) already conveys "this is a rating".
+        srcBadge.textContent = avg.toFixed(1);
         srcBadge.title = _t("player.chord_src.title_rated",
           { stars: avg.toFixed(1), count, src: srcLabel });
       } else if (count > 0) {

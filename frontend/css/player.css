@@ -1529,6 +1529,9 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   max-width: min(360px, 92vw);
   white-space: normal;
   gap: 0;
+  /* Match every other .tb-popup-btn at 13px so the gear popup doesn't
+     read visibly larger than the rest of the toolbar popups. */
+  font-size: 13px;
 }
 .tb-popup-gear .hn-section {
   display: flex;
@@ -2837,16 +2840,21 @@ body.no-jianpu .melody-jianpu { display: none !important; }
 .correction-btn {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid var(--border, #555);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: rgba(255,255,255,0.05);
-  color: #eee;
+  /* Themed surface — the earlier rgba(255,255,255,0.05) over the panel's
+     own light bg in sakura/sunny/sky/light themes wash made #eee text
+     invisible. var(--bg-hover) tracks the theme: dark on dark themes,
+     light tint on light themes; var(--text) gives the matching contrast. */
+  background: var(--bg-hover);
+  color: var(--text);
   cursor: pointer;
   font-size: 13px;
-  transition: all 0.2s;
+  transition: background .15s, color .15s, border-color .15s;
 }
 .correction-btn:hover:not(:disabled) {
-  background: rgba(255,255,255,0.12);
+  background: var(--bg-card);
+  border-color: var(--accent);
 }
 .correction-btn:disabled {
   opacity: 0.4;
