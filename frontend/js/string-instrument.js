@@ -60,35 +60,51 @@ class StringInstrument {
   }
 
   // The two canvases live in side-by-side flex panels (.gt-left-panel /
-  // .gt-right-panel). User can drag the divider to change the 50/50 split
-  // (e.g., to 0/100 or 100/0). Without an observer the LH fretboard only
+  // .gt-right-panel) inside .chord-display-area. The user-draggable
+  // divider sits OUTSIDE this layout — between .chord-ribbon-panel and
+  // .chord-display-area — and resizing it causes both inner panels to
+  // shrink/expand together. Without an observer the LH fretboard only
   // redraws on chord change, and the RH waterfall only on update() ticks
   // (which don't fire while audio is paused). Both canvases keep their
   // pre-resize pixel buffer and get visually stretched until something
-  // else triggers a redraw — typically a full page reload, which is what
-  // the user kept doing as a workaround.
+  // else triggers a redraw — typically a full page reload.
+  //
+  // Observing the canvases directly turned out to be unreliable in some
+  // browsers when the canvas's CSS width is a percentage of its parent;
+  // observing the parent panel itself catches every flex-driven resize.
+  // Redraw is deferred to rAF so callback runs after layout settles, with
+  // a coalescing flag so a continuous drag doesn't queue dozens of redraws.
   _installResizeObserver() {
     if (this._resizeObserver) return;
-    if (typeof ResizeObserver === "undefined") return; // ancient browsers — no-op
+    if (typeof ResizeObserver === "undefined") return;
     const $ = this._b.$;
     const cfg = this._config;
     const fbCanvas = $(cfg.selectors.fretboardCanvas);
     const rhCanvas = $(cfg.selectors.waterfallCanvas);
-    if (!fbCanvas && !rhCanvas) return;
+    const lhPanel = fbCanvas ? fbCanvas.closest(".gt-left-panel") : null;
+    const rhPanel = rhCanvas ? rhCanvas.closest(".gt-right-panel") : null;
+    if (!lhPanel && !rhPanel && !fbCanvas && !rhCanvas) return;
 
+    this._resizePending = false;
     this._resizeObserver = new ResizeObserver(() => {
-      // Skip when this instrument's tab isn't visible — the canvases have
-      // zero dimensions and the redraw helpers early-return anyway, but
-      // we'd waste cycles rebuilding voicing data.
-      if (this._b.getActiveTab() !== this._config.id) return;
+      if (this._resizePending) return;
+      this._resizePending = true;
+      requestAnimationFrame(() => {
+        this._resizePending = false;
+        if (this._b.getActiveTab() !== this._config.id) return;
 
-      const chords = this._b.getDisplayChords();
-      if (chords && chords.length > 0 && this._activeIdx >= 0 && this._activeIdx < chords.length) {
-        this.renderFretboard(chords[this._activeIdx].chord, this._voicingIdx);
-      }
-      const audio = this._b.getAudio();
-      this._drawRhWaterfall(audio ? (audio.currentTime || 0) : 0);
+        const chords = this._b.getDisplayChords();
+        if (chords && chords.length > 0 && this._activeIdx >= 0 && this._activeIdx < chords.length) {
+          this.renderFretboard(chords[this._activeIdx].chord, this._voicingIdx);
+        }
+        const audio = this._b.getAudio();
+        this._drawRhWaterfall(audio ? (audio.currentTime || 0) : 0);
+      });
     });
+    // Observe both the panels (catches outer flex resize) and the canvases
+    // themselves (catches direct CSS changes / ribbon-mode toggles).
+    if (lhPanel) this._resizeObserver.observe(lhPanel);
+    if (rhPanel) this._resizeObserver.observe(rhPanel);
     if (fbCanvas) this._resizeObserver.observe(fbCanvas);
     if (rhCanvas) this._resizeObserver.observe(rhCanvas);
   }
