@@ -11,6 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+  <script src="/js/i18n.js?v=16"></script>
   <link rel="stylesheet" href="/css/base.css?v=4">
   <link rel="stylesheet" href="/css/home.css?v=4">
   <script>
@@ -186,7 +187,7 @@
 
 <header class="header">
   <a href="/" style="text-decoration:none"><h1>LiveChord</h1></a>
-  <span style="color:var(--text-dim);font-size:14px;margin-left:12px">Core</span>
+  <span style="color:var(--text-dim);font-size:14px;margin-left:12px" data-i18n="admin.core.title_subtitle">Core</span>
 </header>
 
 <!-- 冷啟動進度條：4 個初始 API 各 25% -->
@@ -204,159 +205,159 @@
       <span class="badge badge-stopped" id="coreBadge">stopped</span>
       <span id="lockTag" class="lock-tag" style="display:none"></span>
     </h2>
-    <div class="scanning-banner" id="scanningBanner" style="display:none">🔄 掃描中 · 數字將持續變動，掃描完成後即穩定</div>
+    <div class="scanning-banner" id="scanningBanner" style="display:none" data-i18n="admin.core.scanning_banner">🔄 掃描中 · 數字將持續變動，掃描完成後即穩定</div>
     <div class="stat-row">
-      <div class="stat-box"><div class="num" id="sTotalTracks">—</div><div class="label">總曲目</div></div>
-      <div class="stat-box"><div class="num" id="sWithChords">—</div><div class="label">和弦譜</div></div>
-      <div class="stat-box"><div class="num" id="sCoverage">—</div><div class="label">覆蓋率</div></div>
-      <div class="stat-box"><div class="num" id="sQueueSize">—</div><div class="label">待偵測</div></div>
+      <div class="stat-box"><div class="num" id="sTotalTracks">—</div><div class="label" data-i18n="admin.core.label_total_tracks">總曲目</div></div>
+      <div class="stat-box"><div class="num" id="sWithChords">—</div><div class="label" data-i18n="admin.core.label_with_chords">和弦譜</div></div>
+      <div class="stat-box"><div class="num" id="sCoverage">—</div><div class="label" data-i18n="admin.core.cov_label">覆蓋率</div></div>
+      <div class="stat-box"><div class="num" id="sQueueSize">—</div><div class="label" data-i18n="admin.core.detect_queue_label">待偵測</div></div>
     </div>
     <div class="progress-track"><div class="bar green" id="coreBar" style="width:0%"></div></div>
     <div class="current-task" id="currentTask"></div>
 
     <!-- ======== 設定（合併進 Core 卡片，預設展開）======== -->
-    <h2 class="collapse-toggle open" style="margin-top:16px" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">⚙️ 設定</h2>
+    <h2 class="collapse-toggle open" style="margin-top:16px" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.settings.title">⚙️ 設定</h2>
     <div class="collapse-content show">
       <!-- 1. 音樂庫路徑 -->
       <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <label>音樂庫路徑</label>
-          <button id="btnAddRoot" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text-dim);cursor:pointer;font-size:11px">+ 新增</button>
+          <label data-i18n="admin.core.music_root_path_label">音樂庫路徑</label>
+          <button id="btnAddRoot" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text-dim);cursor:pointer;font-size:11px" data-i18n="admin.btn.add">+ 新增</button>
         </div>
         <div id="musicRootsList" style="display:flex;flex-direction:column;gap:4px"></div>
       </div>
       <!-- 2. 啟用群組 -->
       <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <label>啟用群組</label>
-          <span id="optActiveGroupsSummary" style="font-size:11px;color:var(--text-dim)">—</span>
+          <label data-i18n="admin.core.groups_label">啟用群組</label>
+          <span id="optActiveGroupsSummary" style="font-size:11px;color:var(--text-dim)" data-i18n="admin.core.groups_active_summary_empty">—</span>
           <span id="groupsSummary" style="font-size:11px;color:var(--text-dim);margin-left:auto"></span>
         </div>
-        <div style="font-size:11px;color:var(--text-dim);line-height:1.5;padding:6px 8px;background:var(--bg);border-left:2px solid var(--accent);border-radius:3px">
+        <div style="font-size:11px;color:var(--text-dim);line-height:1.5;padding:6px 8px;background:var(--bg);border-left:2px solid var(--accent);border-radius:3px" data-i18n-html="admin.core.groups_tip_html">
           💡 只勾選<strong>節奏穩定、和弦清晰</strong>的類別（Pop / Jazz / Rock / Jam 等）。Classical / Sleep / Ambient / 氛圍類缺乏明確拍點，AI 自動偵測和弦容易錯判，建議不勾。<br>
           📂 Scan 會走訪所有資料夾建立完整曲目清單；此處勾選只控制「哪些類別要跑和弦偵測」，不影響 Scan。
         </div>
         <div id="groupsHost">
-          <span style="color:var(--text-dim);font-size:12px">載入中…</span>
+          <span style="color:var(--text-dim);font-size:12px" data-i18n="admin.core.groups_loading">載入中…</span>
         </div>
       </div>
       <!-- 3. 跳過類別 -->
       <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <label>跳過類別</label>
+          <label data-i18n="admin.core.skip_genres_label">跳過類別</label>
           <span id="skipGenresSummary" style="font-size:11px;color:var(--text-dim)"></span>
         </div>
-        <div style="font-size:11px;color:var(--text-dim);line-height:1.5;padding:6px 8px;background:var(--bg);border-left:2px solid #ff9800;border-radius:3px">
+        <div style="font-size:11px;color:var(--text-dim);line-height:1.5;padding:6px 8px;background:var(--bg);border-left:2px solid #ff9800;border-radius:3px" data-i18n-html="admin.core.skip_genres_tip_html">
           🏷️ 根據 ID3 tag 的 <code>genre</code> 欄位額外過濾（與上方依資料夾分的「啟用群組」獨立運作）。勾選的類別即使在啟用群組中也會跳過偵測。
         </div>
         <div id="skipGenresList" class="gt-grid" style="padding:6px;border:1px solid var(--border);border-radius:4px;background:var(--bg)"></div>
       </div>
       <!-- 4. 自動掃描 -->
       <div class="setting-row">
-        <div><label>自動掃描</label></div>
+        <div><label data-i18n="admin.core.auto_scan_label">自動掃描</label></div>
         <label class="toggle"><input type="checkbox" id="optAutoScan"><span class="slider"></span></label>
         <input type="number" class="num-input" id="optScanInterval" value="30" min="1" max="1440" style="width:65px">
-        <span style="font-size:11px;color:var(--text-dim)">分鐘</span>
+        <span style="font-size:11px;color:var(--text-dim)" data-i18n="admin.core.auto_scan_unit">分鐘</span>
       </div>
       <!-- 5. 自動偵測和弦 -->
       <div class="setting-row">
-        <div><label>自動偵測和弦</label></div>
+        <div><label data-i18n="admin.core.auto_chord_label">自動偵測和弦</label></div>
         <label class="toggle"><input type="checkbox" id="optAutoChord"><span class="slider"></span></label>
         <input type="number" class="num-input" id="optMaxPerCycle" value="20" min="1" max="200" style="width:65px">
-        <span style="font-size:11px;color:var(--text-dim)">首/輪</span>
+        <span style="font-size:11px;color:var(--text-dim)" data-i18n="admin.core.auto_chord_per_cycle_unit">首/輪</span>
       </div>
       <!-- 5b. 建議預設值（一鍵套用常用組合）-->
       <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px">
         <div style="display:flex;align-items:center;gap:8px">
-          <label>建議預設值</label>
-          <span style="font-size:11px;color:var(--text-dim)">一鍵套用常用組合（偵測 1 首約 10 秒起算）</span>
+          <label data-i18n="admin.preset.label">建議預設值</label>
+          <span style="font-size:11px;color:var(--text-dim)" data-i18n="admin.preset.subtitle">一鍵套用常用組合（偵測 1 首約 10 秒起算）</span>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button onclick="applyCorePreset('conservative')" title="日常維運（低 CPU 佔用）" style="display:flex;flex-direction:column;padding:6px 12px;align-items:center;line-height:1.3">
-            <span>🧘 保守</span>
-            <span style="font-size:10px;color:var(--text-dim)">20 首 / 30 分</span>
+          <button onclick="applyCorePreset('conservative')" data-i18n-attr="title=admin.preset.conservative_tip" title="日常維運（低 CPU 佔用）" style="display:flex;flex-direction:column;padding:6px 12px;align-items:center;line-height:1.3">
+            <span data-i18n="admin.preset.conservative">🧘 保守</span>
+            <span style="font-size:10px;color:var(--text-dim)" data-i18n="admin.preset.conservative_summary">20 首 / 30 分</span>
           </button>
-          <button onclick="applyCorePreset('balanced')" title="平衡吞吐與系統反應" style="display:flex;flex-direction:column;padding:6px 12px;align-items:center;line-height:1.3">
-            <span>⚖️ 平衡</span>
-            <span style="font-size:10px;color:var(--text-dim)">50 首 / 15 分</span>
+          <button onclick="applyCorePreset('balanced')" data-i18n-attr="title=admin.preset.balanced_tip" title="平衡吞吐與系統反應" style="display:flex;flex-direction:column;padding:6px 12px;align-items:center;line-height:1.3">
+            <span data-i18n="admin.preset.balanced">⚖️ 平衡</span>
+            <span style="font-size:10px;color:var(--text-dim)" data-i18n="admin.preset.balanced_summary">50 首 / 15 分</span>
           </button>
-          <button onclick="applyCorePreset('aggressive')" title="批次追補大量新歌（CPU 滿載）" style="display:flex;flex-direction:column;padding:6px 12px;align-items:center;line-height:1.3">
-            <span>🚀 積極</span>
-            <span style="font-size:10px;color:var(--text-dim)">200 首 / 10 分</span>
+          <button onclick="applyCorePreset('aggressive')" data-i18n-attr="title=admin.preset.aggressive_tip" title="批次追補大量新歌（CPU 滿載）" style="display:flex;flex-direction:column;padding:6px 12px;align-items:center;line-height:1.3">
+            <span data-i18n="admin.preset.aggressive">🚀 積極</span>
+            <span style="font-size:10px;color:var(--text-dim)" data-i18n="admin.preset.aggressive_summary">200 首 / 10 分</span>
           </button>
         </div>
       </div>
       <!-- 6. 服務啟動時自動開啟 Core -->
       <div class="setting-row">
-        <div><label>服務啟動時自動開啟 Core</label></div>
+        <div><label data-i18n="admin.core.auto_start_label">服務啟動時自動開啟 Core</label></div>
         <label class="toggle"><input type="checkbox" id="optAutoStartOnBoot"><span class="slider"></span></label>
-        <span style="font-size:11px;color:var(--text-dim)">只影響下次後端服務重啟時的行為，不影響目前 Core 狀態</span>
+        <span style="font-size:11px;color:var(--text-dim)" data-i18n="admin.core.auto_start_hint">只影響下次後端服務重啟時的行為，不影響目前 Core 狀態</span>
       </div>
       <!-- 7. 套用設定並啟動 -->
       <div class="setting-row" style="justify-content:flex-end;margin-top:4px;gap:8px">
-        <button class="primary" id="btnApplyAndStart" title="儲存所有設定 → 增量掃描 → 啟動 Core">💾 套用設定並啟動</button>
-        <button id="btnCoreToggle" style="display:none">⏸ 停止 Core</button>
+        <button class="primary" id="btnApplyAndStart" data-i18n-attr="title=admin.tip.apply_settings" title="儲存所有設定 → 增量掃描 → 啟動 Core" data-i18n="admin.btn.apply_settings_start">💾 套用設定並啟動</button>
+        <button id="btnCoreToggle" style="display:none" data-i18n="admin.btn.stop_core">⏸ 停止 Core</button>
       </div>
     </div>
   </div>
 
   <!-- ======== Card 3: 活動記錄（預設展開）======== -->
   <div class="card" id="activityCard">
-    <h2 class="collapse-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">📜 活動記錄</h2>
+    <h2 class="collapse-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.activity.title">📜 活動記錄</h2>
     <div class="collapse-content show">
-      <div class="log-box" id="logBox"><span class="info">等待載入…</span></div>
+      <div class="log-box" id="logBox"><span class="info" data-i18n="admin.activity.waiting">等待載入…</span></div>
     </div>
   </div>
 
   <!-- ======== Card 4: 和弦管理（收摺）======== -->
   <div class="card" id="chordMgmtCard">
-    <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">🎵 和弦管理</h2>
+    <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.chords.card_title">🎵 和弦管理</h2>
     <div class="collapse-content">
       <div class="actions" style="margin-bottom:8px; display:flex; gap:8px; align-items:center;">
-        <input type="text" id="trackSearch" placeholder="搜尋曲目或歌手..." class="num-input" style="flex:1; max-width:200px; text-align:left;">
+        <input type="text" id="trackSearch" placeholder="搜尋曲目或歌手..." data-i18n-attr="placeholder=admin.chords.search_placeholder" class="num-input" style="flex:1; max-width:200px; text-align:left;">
         <select id="trackStatus" class="num-input" style="width: auto;">
-          <option value="all">全部</option>
-          <option value="no_chords">未偵測</option>
-          <option value="has_chords">已偵測</option>
+          <option value="all" data-i18n="admin.chords.status_all">全部</option>
+          <option value="no_chords" data-i18n="admin.chords.status_pending">未偵測</option>
+          <option value="has_chords" data-i18n="admin.chords.status_done">已偵測</option>
         </select>
-        <button id="btnRefreshTracks">重新整理</button>
-        <button id="btnBatchMidi" title="掃尋 MIDI 目錄並自動匯入未偵測曲目的和弦">自動配對 MIDI</button>
+        <button id="btnRefreshTracks" data-i18n="admin.btn.refresh_tracks">重新整理</button>
+        <button id="btnBatchMidi" title="掃尋 MIDI 目錄並自動匯入未偵測曲目的和弦" data-i18n-attr="title=admin.chords.batch_midi_tip" data-i18n="admin.btn.batch_midi">自動配對 MIDI</button>
         <span id="midiStatus" style="font-size:11px;color:var(--text-dim);margin-left:auto"></span>
       </div>
       <div class="actions" style="margin-bottom:8px; display:flex; gap:6px; align-items:center; padding:6px; border:1px dashed var(--border); border-radius:4px;">
-        <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;">📐 BPM</span>
-        <input type="text" id="bpmRecomputePath" placeholder="path / hash / player URL" class="num-input" style="flex:1; max-width:260px; text-align:left;">
+        <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;" data-i18n="admin.bpm.label">📐 BPM</span>
+        <input type="text" id="bpmRecomputePath" placeholder="path / hash / player URL" data-i18n-attr="placeholder=admin.bpm.placeholder" class="num-input" style="flex:1; max-width:260px; text-align:left;">
         <select id="bpmRecomputeMode" class="num-input" style="width:auto;">
-          <option value="auto">自動（聽覺判斷）</option>
-          <option value="halve">強制 ÷2</option>
-          <option value="double">強制 ×2</option>
+          <option value="auto" data-i18n="admin.bpm.mode_auto">自動（聽覺判斷）</option>
+          <option value="halve" data-i18n="admin.bpm.mode_halve">強制 ÷2</option>
+          <option value="double" data-i18n="admin.bpm.mode_double">強制 ×2</option>
         </select>
-        <button id="btnBpmRecompute" title="單曲重新偵測 BPM；慢歌被判快歌時可用">重新偵測</button>
+        <button id="btnBpmRecompute" title="單曲重新偵測 BPM；慢歌被判快歌時可用" data-i18n-attr="title=admin.bpm.recompute_tip" data-i18n="admin.bpm.recompute_btn">重新偵測</button>
         <span id="bpmRecomputeStatus" style="font-size:11px;color:var(--text-dim);"></span>
       </div>
       <div class="actions" style="margin-bottom:8px; display:flex; gap:6px; align-items:center; padding:6px; border:1px dashed var(--border); border-radius:4px;">
-        <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;">🪧 小節</span>
-        <input type="text" id="barRecomputePath" placeholder="path / hash / player URL" class="num-input" style="flex:1; max-width:260px; text-align:left;">
+        <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;" data-i18n="admin.bar.label">🪧 小節</span>
+        <input type="text" id="barRecomputePath" placeholder="path / hash / player URL" data-i18n-attr="placeholder=admin.bar.placeholder" class="num-input" style="flex:1; max-width:260px; text-align:left;">
         <label style="font-size:12px; color:var(--text-dim); display:flex; align-items:center; gap:4px;">
-          <input type="checkbox" id="barRecomputeForce" style="margin:0;"> 強制
+          <input type="checkbox" id="barRecomputeForce" style="margin:0;"> <span data-i18n="admin.bar.recompute_force_label">強制</span>
         </label>
-        <button id="btnBarRecompute" title="單曲重跑 AI bar arbitrator；force 跳過 raw-already-regular 與信心閘">重新仲裁</button>
+        <button id="btnBarRecompute" title="單曲重跑 AI bar arbitrator；force 跳過 raw-already-regular 與信心閘" data-i18n-attr="title=admin.bar.recompute_tip" data-i18n="admin.bar.recompute_btn">重新仲裁</button>
         <span id="barRecomputeStatus" style="font-size:11px;color:var(--text-dim);"></span>
       </div>
       <div id="trackList" style="max-height:50vh;overflow-y:auto; margin-bottom:8px;">
-        <span style="color:var(--text-dim);font-size:12px">展開後載入</span>
+        <span style="color:var(--text-dim);font-size:12px" data-i18n="admin.chords.expand_to_load">展開後載入</span>
       </div>
       <div id="paginationBar" style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-dim); justify-content:center;">
-        <button id="btnPrevPage" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;">上一頁</button>
-        <span id="pageInfo">頁 1 / 1</span>
-        <button id="btnNextPage" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;">下一頁</button>
+        <button id="btnPrevPage" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;" data-i18n="admin.btn.prev_page">上一頁</button>
+        <span id="pageInfo" data-i18n="admin.chords.page_info_initial">頁 1 / 1</span>
+        <button id="btnNextPage" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;" data-i18n="admin.btn.next_page">下一頁</button>
       </div>
     </div>
   </div>
 
   <!-- ======== Card 5: 分散式萃取（收摺）======== -->
   <div class="card" id="extractionCard" style="padding-bottom:0; overflow:hidden;">
-    <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">🛰️ 分散式萃取叢集</h2>
+    <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.cluster.title">🛰️ 分散式萃取叢集</h2>
     <div class="collapse-content" style="margin: -10px -20px 0 -20px;">
       <iframe src="/extraction?embed=1" style="width:100%; height:80vh; border:none; display:block;"></iframe>
     </div>
@@ -364,60 +365,60 @@
 
   <!-- ======== Card 6: Beta 回饋儀表板（收摺）======== -->
   <div class="card" id="betaCard" style="display:none">
-    <h2 class="collapse-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">🧪 Beta 回饋</h2>
+    <h2 class="collapse-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.beta.card_title">🧪 Beta 回饋</h2>
     <div class="collapse-content show">
 
       <!-- Stats row -->
       <div class="stat-row" id="betaStats">
-        <div class="stat-box"><div class="num" id="betaTotalRatings">—</div><div class="label">評價數</div></div>
-        <div class="stat-box"><div class="num" id="betaAvgRating">—</div><div class="label">平均評分</div></div>
-        <div class="stat-box"><div class="num" id="betaOpenBugs">—</div><div class="label">待處理 Bug</div></div>
-        <div class="stat-box"><div class="num" id="betaActiveUsers">—</div><div class="label">活躍使用者 (7d)</div></div>
+        <div class="stat-box"><div class="num" id="betaTotalRatings">—</div><div class="label" data-i18n="admin.beta.total_ratings">評價數</div></div>
+        <div class="stat-box"><div class="num" id="betaAvgRating">—</div><div class="label" data-i18n="admin.beta.avg_rating">平均評分</div></div>
+        <div class="stat-box"><div class="num" id="betaOpenBugs">—</div><div class="label" data-i18n="admin.beta.open_bugs">待處理 Bug</div></div>
+        <div class="stat-box"><div class="num" id="betaActiveUsers">—</div><div class="label" data-i18n="admin.beta.active_users_7d">活躍使用者 (7d)</div></div>
       </div>
 
       <!-- Rating distribution -->
       <div style="margin-bottom:12px">
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">評分分布</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.rating_dist_label">評分分布</div>
         <div id="betaRatingDist" style="display:flex;gap:4px;align-items:end;height:40px"></div>
       </div>
 
       <!-- Worst-rated songs -->
       <div style="margin-bottom:12px">
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">最低評分歌曲（優先修正）</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.worst_songs_label">最低評分歌曲（優先修正）</div>
         <div id="betaWorstSongs" style="font-size:12px"></div>
       </div>
 
       <!-- Recent bug reports -->
       <div style="margin-bottom:12px">
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">最近 Bug 回報</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.bug_list_label">最近 Bug 回報</div>
         <div id="betaBugList" style="font-size:12px;max-height:200px;overflow-y:auto"></div>
       </div>
 
       <!-- Invite code management -->
       <div style="margin-bottom:12px">
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">邀請碼管理</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.invite_label">邀請碼管理</div>
         <div class="actions" style="margin-bottom:8px">
-          <button onclick="createInvite()">+ 產生邀請碼</button>
-          <button onclick="createInvite(5)">+ 5 次用邀請碼</button>
-          <button onclick="createInviteCustom()">+ 自訂次數</button>
+          <button onclick="createInvite()" data-i18n="admin.beta.invite_create">+ 產生邀請碼</button>
+          <button onclick="createInvite(5)" data-i18n="admin.beta.invite_create_5">+ 5 次用邀請碼</button>
+          <button onclick="createInviteCustom()" data-i18n="admin.beta.invite_create_custom">+ 自訂次數</button>
         </div>
         <div id="betaInviteList" style="font-size:12px"></div>
       </div>
 
       <!-- User list -->
       <div style="margin-bottom:12px">
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">已註冊使用者</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.user_list_label">已註冊使用者</div>
         <div id="betaUserList" style="font-size:12px"></div>
       </div>
 
       <!-- Process audit log -->
       <div>
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">偵測紀錄</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.audit_records_label">偵測紀錄</div>
         <div class="actions" style="margin-bottom:8px;display:flex;align-items:center;gap:12px">
           <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;user-select:none">
-            <input type="checkbox" id="auditSelectAll" style="cursor:pointer"> 全選
+            <input type="checkbox" id="auditSelectAll" style="cursor:pointer"> <span data-i18n="admin.audit.select_all">全選</span>
           </label>
-          <button id="btnDeleteSelected" onclick="deleteSelectedAudit()" style="display:none">🗑 刪除勾選</button>
+          <button id="btnDeleteSelected" onclick="deleteSelectedAudit()" style="display:none" data-i18n="admin.audit.delete_selected">🗑 刪除勾選</button>
         </div>
         <div id="betaAuditList" style="font-size:12px;max-height:300px;overflow-y:auto"></div>
       </div>
@@ -426,29 +427,29 @@
   </div>
 
   <div class="card" id="backupCard">
-    <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">📦 備份</h2>
+    <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.backup.card_title">📦 備份</h2>
     <div class="collapse-content">
 
       <!-- Subsection: 設定快照 (collapsible secondary header; reduces visual weight) -->
       <div class="backup-subsection" id="settingsSnapshotSection" style="margin-bottom:12px">
         <div class="sub-collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')"
              style="font-size:13px;font-weight:bold;cursor:pointer;padding:4px 0;user-select:none">
-          ⚙️ 設定快照 <span style="font-size:11px;color:var(--text-dim);font-weight:normal">（點擊展開）</span>
+          <span data-i18n="admin.backup.settings_section_title">⚙️ 設定快照</span> <span style="font-size:11px;color:var(--text-dim);font-weight:normal" data-i18n="admin.backup.click_to_expand">（點擊展開）</span>
         </div>
         <div class="sub-collapse-content" style="display:none">
-          <div style="font-size:11px;color:var(--text-dim);margin:4px 0 8px">
+          <div style="font-size:11px;color:var(--text-dim);margin:4px 0 8px" data-i18n="admin.backup.settings_intro">
             每次儲存 settings 前自動快照到所有目標（每目標保留最新 30 份）。
           </div>
           <div style="margin-bottom:8px">
             <div id="settingsBackupTargets" style="font-size:12px;display:flex;flex-direction:column;gap:2px"></div>
             <div style="display:flex;gap:4px;margin-top:4px">
-              <input id="bkTargetLabel" placeholder="label" style="flex:0 0 100px;font-size:11px;padding:2px 4px">
-              <input id="bkTargetPath" placeholder="path" style="flex:1;font-size:11px;padding:2px 4px">
-              <button onclick="addBackupTarget()" style="font-size:11px;padding:2px 6px">➕</button>
-              <button onclick="loadSettingsBackups()" style="font-size:11px;padding:2px 6px" title="重新整理">↻</button>
+              <input id="bkTargetLabel" placeholder="label" data-i18n-attr="placeholder=admin.backup.label_placeholder" style="flex:0 0 100px;font-size:11px;padding:2px 4px">
+              <input id="bkTargetPath" placeholder="path" data-i18n-attr="placeholder=admin.backup.path_placeholder" style="flex:1;font-size:11px;padding:2px 4px">
+              <button onclick="addBackupTarget()" style="font-size:11px;padding:2px 6px" data-i18n-attr="title=admin.tip.add_target" title="新增備份目標">➕</button>
+              <button onclick="loadSettingsBackups()" style="font-size:11px;padding:2px 6px" title="重新整理" data-i18n-attr="title=admin.backup.refresh_targets">↻</button>
             </div>
           </div>
-          <div id="settingsBackupList" style="font-size:11px;max-height:180px;overflow-y:auto">載入中…</div>
+          <div id="settingsBackupList" style="font-size:11px;max-height:180px;overflow-y:auto" data-i18n="admin.chords.loading">載入中…</div>
         </div>
       </div>
 
@@ -457,21 +458,22 @@
 
       <!-- Subsection: 資料備份 -->
       <div class="backup-subsection" id="dataBackupSection">
-        <div style="font-size:13px;font-weight:bold;margin-bottom:6px">🗄️ 資料備份（分層）</div>
+        <div style="font-size:13px;font-weight:bold;margin-bottom:6px" data-i18n="admin.backup.data_section_title">🗄️ 資料備份（分層）</div>
         <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px">
-          分層備份到 <span id="bkTargetRoot" style="font-family:monospace">W:\LiveChord\backup</span>。
-          Tier 1 不可重建、Tier 2 重算成本高、Tier 3 大量可重建。
+          <span id="bkBackupIntro" data-i18n="admin.backup.data_section_label_prefix">分層備份到</span>
+          <span id="bkTargetRoot" style="font-family:monospace">W:\LiveChord\backup</span>。
+          <span data-i18n="admin.backup.data_intro">Tier 1 不可重建、Tier 2 重算成本高、Tier 3 大量可重建。</span>
         </div>
         <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">
-          <span style="font-size:11px;color:var(--text-dim);flex:0 0 auto">備份位置：</span>
-          <input id="bkRootInput" placeholder="例 \\LOVE\backups\livechord 或 D:\backup\livechord" style="flex:1;font-size:12px;padding:3px 6px">
-          <button onclick="saveBackupRoot()" style="font-size:11px;padding:3px 8px">儲存</button>
+          <span style="font-size:11px;color:var(--text-dim);flex:0 0 auto" data-i18n="admin.backup.location_label">備份位置：</span>
+          <input id="bkRootInput" placeholder="例 \\LOVE\backups\livechord 或 D:\backup\livechord" data-i18n-attr="placeholder=admin.backup.location_placeholder" style="flex:1;font-size:12px;padding:3px 6px">
+          <button onclick="saveBackupRoot()" style="font-size:11px;padding:3px 8px" data-i18n="admin.backup.save_root">儲存</button>
         </div>
-        <div id="bkTierList" style="font-size:12px;display:flex;flex-direction:column;gap:10px">載入中…</div>
+        <div id="bkTierList" style="font-size:12px;display:flex;flex-direction:column;gap:10px" data-i18n="admin.chords.loading">載入中…</div>
 
         <div style="margin-top:14px">
-          <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">最近備份歷史</div>
-          <div id="bkHistory" style="font-size:11px;font-family:monospace;max-height:200px;overflow-y:auto;padding:6px 8px;background:var(--bg);border-radius:3px">尚無記錄</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.backup.history">最近備份歷史</div>
+          <div id="bkHistory" style="font-size:11px;font-family:monospace;max-height:200px;overflow-y:auto;padding:6px 8px;background:var(--bg);border-radius:3px" data-i18n="admin.backup.history_empty">尚無記錄</div>
         </div>
       </div>
 
@@ -516,6 +518,7 @@ window._lcIsBeta = (function() {
 <script>
 (function() {
   const $ = s => document.querySelector(s);
+  const _t = (k, v) => (window.LiveChordI18n ? window.LiveChordI18n.t(k, v) : k);
   // showToast from utils.js
 
   // ---- 冷啟動進度條 ----
@@ -563,7 +566,7 @@ window._lcIsBeta = (function() {
     if (!host) return;
     const tax = window.LC_GENRE_TAXONOMY;
     if (!tax) {
-      host.innerHTML = '<span style="color:#f66;font-size:11px">genre_taxonomy.js 未載入</span>';
+      host.innerHTML = `<span style="color:#f66;font-size:11px">${_t("admin.core.skip_genres_taxonomy_missing")}</span>`;
       return;
     }
 
@@ -579,7 +582,7 @@ window._lcIsBeta = (function() {
       parts.push(`<label class="${cls}" data-cat="${catKey}">
         <input type="checkbox" class="gt-cat-cb" data-cat="${catKey}"${checked}${disabled}>
         <span class="gt-cat-label">${catLabel}</span>
-        <span class="gt-cat-stat">${total} 首</span>
+        <span class="gt-cat-stat">${_t("admin.core.skip_genres_unit", {n: total})}</span>
       </label>`);
     }
     host.innerHTML = parts.join("");
@@ -604,7 +607,7 @@ window._lcIsBeta = (function() {
     const tax = window.LC_GENRE_TAXONOMY;
     if (!tax) { el.textContent = ""; return; }
     const n = tax.CATEGORY_ORDER.filter(_catChecked).length;
-    el.textContent = n ? `已跳過 ${n} 大分類` : "未跳過任何類別";
+    el.textContent = n ? _t("admin.core.skip_genres_summary_n", {n}) : _t("admin.core.skip_genres_summary_none");
   }
 
   async function loadGenres() {
@@ -662,7 +665,7 @@ window._lcIsBeta = (function() {
       <button class="btn-remove-root" style="padding:2px 8px;border:1px solid #f44;border-radius:4px;background:transparent;color:#f44;cursor:pointer;font-size:11px">✕</button>`;
     row.querySelector(".btn-remove-root").addEventListener("click", () => {
       if (rootsList.children.length > 1) row.remove();
-      else showToast("至少保留一個路徑");
+      else showToast(_t("admin.toast.keep_at_least_one_path"));
     });
     rootsList.appendChild(row);
   }
@@ -684,11 +687,11 @@ window._lcIsBeta = (function() {
   $("#btnApplyAndStart").addEventListener("click", async () => {
     const roots = [...rootsList.querySelectorAll(".music-root-input")]
       .map(i => i.value.trim()).filter(Boolean);
-    if (!roots.length) { showToast("至少需要一個路徑"); return; }
+    if (!roots.length) { showToast(_t("admin.toast.need_at_least_one_path")); return; }
 
     const btn = $("#btnApplyAndStart");
     const origText = btn.textContent;
-    btn.textContent = "⚙️ 套用中...";
+    btn.textContent = _t("admin.btn.apply_in_progress");
     btn.disabled = true;
 
     try {
@@ -716,14 +719,14 @@ window._lcIsBeta = (function() {
       if (startRes && startRes.ok === false) {
         try { await API.post("/api/auto/trigger"); } catch {}
       }
-      showToast("✅ 已套用設定，Core 啟動中（首輪掃描將立即開始）");
-      btn.textContent = "✅ 已就緒";
+      showToast(_t("admin.toast.applied_started"));
+      btn.textContent = _t("admin.btn.apply_ready");
       setTimeout(() => { btn.disabled = false; btn.textContent = origText; }, 3000);
       pollStatus();
       loadGroups();
     } catch (e) {
-      showToast("發生錯誤：" + e.message);
-      btn.textContent = "❌ 失敗";
+      showToast(_t("admin.error.generic", {err: e.message}));
+      btn.textContent = _t("admin.btn.failed");
       setTimeout(() => { btn.disabled = false; btn.textContent = origText; }, 3000);
     }
   });
@@ -742,8 +745,8 @@ window._lcIsBeta = (function() {
           auto_chord_skip_genres: Array.from(skipGenresSet),
           auto_start_on_boot: $("#optAutoStartOnBoot").checked,
         });
-        showToast("設定已儲存");
-      } catch (e) { showToast("儲存失敗: " + e.message); }
+        showToast(_t("admin.toast.settings_saved"));
+      } catch (e) { showToast(_t("admin.toast.settings_save_failed", {err: e.message})); }
     }, 200);
   }
   $("#optAutoScan").addEventListener("change", saveAutoSettings);
@@ -760,7 +763,7 @@ window._lcIsBeta = (function() {
     _stopRequested = true;
     const btn = $("#btnCoreToggle");
     btn.disabled = true;
-    btn.textContent = "⏳ 停止中…";
+    btn.textContent = _t("admin.btn.stopping");
     try {
       const r = await API.post("/api/auto/stop");
       showToast(r.message || "");
@@ -781,11 +784,11 @@ window._lcIsBeta = (function() {
   function updateGroupSummary() {
     const el = $("#optActiveGroupsSummary");
     if (!el) return;
-    if (!lastGroups.length) { el.textContent = "—"; return; }
+    if (!lastGroups.length) { el.textContent = _t("admin.core.groups_active_summary_empty"); return; }
     const total = lastGroups.length;
     const active = lastGroups.filter(g => isGroupActive(g.group_id));
     const labels = active.map(g => g.label).join(", ");
-    el.textContent = `${active.length}/${total}（${labels || "無"}）`;
+    el.textContent = _t("admin.core.groups_active_summary_value", {active: active.length, total, labels: labels || _t("admin.core.groups_active_summary_value_none")});
   }
 
   let saveActiveGroupsTimer = null;
@@ -798,20 +801,20 @@ window._lcIsBeta = (function() {
         : Array.from(activeGroupSet);
       try {
         await API.post("/api/auto/settings", { auto_chord_active_groups: ids });
-        showToast("群組選取已儲存");
-      } catch (e) { showToast("儲存失敗: " + e.message); }
+        showToast(_t("admin.toast.groups_saved"));
+      } catch (e) { showToast(_t("admin.toast.groups_save_failed", {err: e.message})); }
     }, 300);
   }
 
   function renderGroups(groups, lockKind) {
     if (!groups.length) {
-      groupsHost.innerHTML = '<span style="color:var(--text-dim);font-size:12px">尚無曲目，請先設定音樂庫並執行掃描</span>';
+      groupsHost.innerHTML = `<span style="color:var(--text-dim);font-size:12px">${_t("admin.core.groups_empty")}</span>`;
       updateGroupSummary();
       return;
     }
     const totalTracks = groups.reduce((s, g) => s + g.track_count, 0);
     const totalDone = groups.reduce((s, g) => s + g.chords_done, 0);
-    $("#groupsSummary").textContent = `${groups.length} 個群組 · ${totalDone}/${totalTracks} 首已偵測`;
+    $("#groupsSummary").textContent = _t("admin.core.groups_count_summary", {n: groups.length, done: totalDone, total: totalTracks});
 
     const busy = lockKind === "SCAN" || lockKind === "CHORD_BATCH";
     const rows = groups.map(g => {
@@ -826,11 +829,11 @@ window._lcIsBeta = (function() {
         <td class="col-label">${esc(g.label)}</td>
         <td class="col-count">${g.track_count}</td>
         <td class="col-cov"><div class="cov-bar"><div class="fill" style="width:${pct}%"></div><div class="pct">${pct}% (${g.chords_done}/${g.track_count})</div></div></td>
-        <td class="col-action"><button class="btn-detect" data-id="${safeId}" ${detectDisabled ? "disabled" : ""} title="${active ? "" : "未啟用此群組"}">偵測</button></td>
+        <td class="col-action"><button class="btn-detect" data-id="${safeId}" ${detectDisabled ? "disabled" : ""} title="${active ? "" : _t("admin.track.tip_inactive_group")}">${_t("admin.btn.detect")}</button></td>
       </tr>`;
     }).join("");
     groupsHost.innerHTML = `<table class="group-table">
-      <thead><tr><th title="勾選 = 納入自動偵測"><input type="checkbox" id="groupActiveAllCb" title="全選 / 全不選"></th><th>音樂庫</th><th>群組</th><th>曲目</th><th>覆蓋率</th><th></th></tr></thead>
+      <thead><tr><th title="${_t("admin.core.groups_th_select_tip")}"><input type="checkbox" id="groupActiveAllCb" title="${_t("admin.core.groups_th_select_all")}"></th><th>${_t("admin.core.groups_th_root")}</th><th>${_t("admin.core.groups_th_group")}</th><th>${_t("admin.core.groups_th_count")}</th><th>${_t("admin.core.groups_th_coverage")}</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 
@@ -856,7 +859,7 @@ window._lcIsBeta = (function() {
         if (!btn) return;
         const active = isGroupActive(gid);
         btn.disabled = busy || g.chords_pending === 0 || !active;
-        btn.title = active ? "" : "未啟用此群組";
+        btn.title = active ? "" : _t("admin.track.tip_inactive_group");
       });
     }
 
@@ -886,21 +889,21 @@ window._lcIsBeta = (function() {
     groupsHost.querySelectorAll(".btn-detect").forEach(b => {
       b.addEventListener("click", async () => {
         b.disabled = true;
-        b.textContent = "啟動中…";
+        b.textContent = _t("admin.btn.starting");
         try {
           const r = await API.batchDetect(b.dataset.id);
           if (r.ok) {
-            showToast(`已啟動：${r.total} 首`);
+            showToast(_t("admin.toast.detect_started_n", {n: r.total}));
           } else {
-            showToast(r.message || "啟動失敗");
+            showToast(r.message || _t("admin.toast.detect_start_failed"));
             b.disabled = false;
-            b.textContent = "偵測";
+            b.textContent = _t("admin.btn.detect");
           }
           pollStatus();
         } catch (e) {
           showToast(e.message);
           b.disabled = false;
-          b.textContent = "偵測";
+          b.textContent = _t("admin.btn.detect");
         }
       });
     });
@@ -926,7 +929,7 @@ window._lcIsBeta = (function() {
       const ts = await API.tasksStatus().catch(() => ({ current: null }));
       renderGroups(lastGroups, ts.current ? ts.current.kind : "");
     } catch (e) {
-      if (!lastGroups.length) groupsHost.innerHTML = `<span style="color:#f66;font-size:12px">載入群組失敗：${esc(e.message)}</span>`;
+      if (!lastGroups.length) groupsHost.innerHTML = `<span style="color:#f66;font-size:12px">${esc(_t("admin.core.groups_load_failed", {err: e.message}))}</span>`;
     } finally {
       if (!_groupsLoadedOnce) { _groupsLoadedOnce = true; bumpInitProgress(); }
     }
@@ -942,21 +945,21 @@ window._lcIsBeta = (function() {
 
   async function loadTrackList(page = 1) {
     if (window._lcIsBeta) return;
-    trackList.innerHTML = '<span style="color:var(--text-dim);font-size:12px">載入中…</span>';
+    trackList.innerHTML = `<span style="color:var(--text-dim);font-size:12px">${_t("admin.chords.loading")}</span>`;
     try {
       const q = $("#trackSearch").value.trim();
       const st = $("#trackStatus").value;
       const data = await API.chordTracks(page, 100, q, st);
       const tracks = data.tracks || [];
-      
+
       currentPage = data.page || 1;
       currentTotalPages = data.total_pages || 1;
-      
-      $("#pageInfo").textContent = `頁 ${currentPage} / ${currentTotalPages} (共 ${data.total || 0} 首)`;
+
+      $("#pageInfo").textContent = _t("admin.chords.page_info", {page: currentPage, total: currentTotalPages, count: data.total || 0});
       $("#btnPrevPage").disabled = currentPage <= 1;
       $("#btnNextPage").disabled = currentPage >= currentTotalPages;
 
-      if (!tracks.length) { trackList.innerHTML = '<span style="color:var(--text-dim);font-size:12px">無曲目</span>'; return; }
+      if (!tracks.length) { trackList.innerHTML = `<span style="color:var(--text-dim);font-size:12px">${_t("admin.chords.no_tracks")}</span>`; return; }
       trackList.innerHTML = tracks.map((t, i) => {
         const src = t.source || "";
         const badgeCls = src === "midi" ? "b-midi" : src === "chordify" ? "b-chordify" : src === "btc" ? "b-btc" : "b-none";
@@ -979,17 +982,17 @@ window._lcIsBeta = (function() {
           try {
             const sr = await API.midiSearch(path);
             if (sr.results && sr.results.length > 0) {
-              btn.textContent = "匯入中";
+              btn.textContent = _t("admin.track.midi_btn_importing");
               const r = await API.midiImport(path, sr.results[0].path);
-              showToast(`MIDI ${r.chord_count} 和弦`);
+              showToast(_t("admin.chords.midi_imported", {count: r.chord_count}));
               loadTrackList();
             } else {
-              btn.textContent = "無";
-              setTimeout(() => { btn.textContent = "MIDI"; btn.disabled = false; }, 2000);
+              btn.textContent = _t("admin.track.midi_btn_none");
+              setTimeout(() => { btn.textContent = _t("admin.track.midi_btn"); btn.disabled = false; }, 2000);
             }
           } catch (err) {
-            showToast("失敗: " + err.message);
-            btn.textContent = "MIDI";
+            showToast(_t("admin.toast.midi_search_failed", {err: err.message}));
+            btn.textContent = _t("admin.track.midi_btn");
             btn.disabled = false;
           }
         });
@@ -1004,7 +1007,7 @@ window._lcIsBeta = (function() {
         });
       });
     } catch (err) {
-      trackList.innerHTML = `<span style="color:#f66;font-size:12px">載入失敗</span>`;
+      trackList.innerHTML = `<span style="color:#f66;font-size:12px">${_t("admin.chords.load_failed")}</span>`;
     }
   }
   loadTrackList();
@@ -1021,12 +1024,12 @@ window._lcIsBeta = (function() {
   $("#trackStatus").addEventListener("change", () => loadTrackList(1));
 
   $("#btnBatchMidi").addEventListener("click", async () => {
-    midiStatus.textContent = "匯入中…";
+    midiStatus.textContent = _t("admin.toast.batch_midi_running");
     try {
       const r = await API.batchMidiImport();
-      midiStatus.textContent = `匯入 ${r.imported}，跳過 ${r.skipped}`;
+      midiStatus.textContent = _t("admin.toast.batch_midi_done", {imported: r.imported, skipped: r.skipped});
       if (r.imported > 0) loadTrackList();
-    } catch (e) { midiStatus.textContent = "失敗: " + e.message; }
+    } catch (e) { midiStatus.textContent = _t("admin.toast.batch_midi_failed", {err: e.message}); }
   });
 
   // Parse user-pasted song identifier into {hash} or {path}.
@@ -1063,9 +1066,9 @@ window._lcIsBeta = (function() {
     const ident = _parseSongIdentifier($("#barRecomputePath").value);
     const force = $("#barRecomputeForce").checked;
     const status = $("#barRecomputeStatus");
-    if (!ident) { status.textContent = "請輸入 path / hash / 完整 URL"; return; }
+    if (!ident) { status.textContent = _t("admin.recompute.parse_failed"); return; }
     const body = { ...ident, force };
-    status.textContent = "處理中…";
+    status.textContent = _t("admin.recompute.processing");
     try {
       const res = await fetch("/api/admin/bar/recompute", {
         method: "POST",
@@ -1074,16 +1077,16 @@ window._lcIsBeta = (function() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        status.textContent = `失敗 ${res.status}: ${data.detail || res.statusText}`;
+        status.textContent = _t("admin.bar.failed_status", {status: res.status, detail: data.detail || res.statusText});
         return;
       }
       if (data.applied) {
-        status.textContent = `${data.model_version} bpb=${data.beats_per_bar} ${data.n_downbeats_before}→${data.n_downbeats_after} (conf ${data.score_after})`;
+        status.textContent = _t("admin.bar.result", {version: data.model_version, bpb: data.beats_per_bar, before: data.n_downbeats_before, after: data.n_downbeats_after, conf: data.score_after});
       } else {
-        status.textContent = `未調整（${data.reason || "不符合條件"}）`;
+        status.textContent = _t("admin.bar.no_change", {reason: data.reason || _t("admin.bar.no_change_default_reason")});
       }
     } catch (e) {
-      status.textContent = "失敗: " + (e.message || e);
+      status.textContent = _t("admin.toast.batch_midi_failed", {err: e.message || e});
     }
   });
 
@@ -1091,9 +1094,9 @@ window._lcIsBeta = (function() {
     const ident = _parseSongIdentifier($("#bpmRecomputePath").value);
     const mode = $("#bpmRecomputeMode").value;
     const status = $("#bpmRecomputeStatus");
-    if (!ident) { status.textContent = "請輸入 path / hash / 完整 URL"; return; }
+    if (!ident) { status.textContent = _t("admin.recompute.parse_failed"); return; }
     const body = { ...ident, mode };
-    status.textContent = "處理中…";
+    status.textContent = _t("admin.recompute.processing");
     try {
       const res = await fetch("/api/admin/bpm/recompute", {
         method: "POST",
@@ -1102,28 +1105,28 @@ window._lcIsBeta = (function() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        status.textContent = `失敗 ${res.status}: ${data.detail || res.statusText}`;
+        status.textContent = _t("admin.bar.failed_status", {status: res.status, detail: data.detail || res.statusText});
         return;
       }
       if (data.applied) {
-        status.textContent = `${data.original_bpm} → ${data.corrected_bpm} BPM (${data.reason})`;
+        status.textContent = _t("admin.bpm.result", {original: data.original_bpm, corrected: data.corrected_bpm, reason: data.reason});
       } else {
-        status.textContent = `未調整（${data.reason || "不符合條件"}）`;
+        status.textContent = _t("admin.bar.no_change", {reason: data.reason || _t("admin.bar.no_change_default_reason")});
       }
     } catch (e) {
-      status.textContent = "失敗: " + (e.message || e);
+      status.textContent = _t("admin.toast.batch_midi_failed", {err: e.message || e});
     }
   });
 
   // ---- 狀態輪詢 ----
   const statusMap = {
-    stopped: { dot: "dot-gray", badge: "badge-stopped", text: "已停止" },
-    idle: { dot: "dot-green", badge: "badge-running", text: "運行中" },
-    waiting: { dot: "dot-green", badge: "badge-waiting", text: "等待中" },
-    scanning: { dot: "dot-green", badge: "badge-scanning", text: "掃描中" },
-    detecting: { dot: "dot-green", badge: "badge-detecting", text: "偵測中" },
-    training: { dot: "dot-green", badge: "badge-detecting", text: "AI 訓練中" },
-    stopping: { dot: "dot-gray", badge: "badge-stopped", text: "停止中…" },
+    stopped: { dot: "dot-gray", badge: "badge-stopped", textKey: "admin.status.stopped" },
+    idle: { dot: "dot-green", badge: "badge-running", textKey: "admin.status.running" },
+    waiting: { dot: "dot-green", badge: "badge-waiting", textKey: "admin.status.waiting" },
+    scanning: { dot: "dot-green", badge: "badge-scanning", textKey: "admin.status.scanning" },
+    detecting: { dot: "dot-green", badge: "badge-detecting", textKey: "admin.status.detecting" },
+    training: { dot: "dot-green", badge: "badge-detecting", textKey: "admin.status.training" },
+    stopping: { dot: "dot-gray", badge: "badge-stopped", textKey: "admin.status.stopping" },
   };
 
   let coreIdle = true;
@@ -1186,11 +1189,11 @@ window._lcIsBeta = (function() {
       $("#coreDot").className = "dot " + st.dot;
       const badge = $("#coreBadge");
       badge.className = "badge " + st.badge;
-      badge.textContent = st.text;
+      badge.textContent = _t(st.textKey);
 
       // 進度條與目前任務（優先顯示 task_lock）
       const coreBar = $("#coreBar");
-      const taskLabelMap = { SCAN: "掃描", CHORD_BATCH: "和弦偵測", MIDI_IMPORT: "MIDI 匯入" };
+      const taskLabelMap = { SCAN: _t("admin.core.task_label_scan"), CHORD_BATCH: _t("admin.core.task_label_chord_batch"), MIDI_IMPORT: _t("admin.core.task_label_midi_import") };
       if (cur && cur.total) {
         // 已知總量：精確百分比
         coreBar.classList.remove("indeterminate");
@@ -1198,7 +1201,7 @@ window._lcIsBeta = (function() {
         coreBar.style.width = pct + "%";
         const item = (cur.current_item || "").split("/").slice(-1)[0];
         const label = taskLabelMap[lockKind] || lockKind;
-        $("#currentTask").textContent = `${label} ${cur.done}/${cur.total} · ${item}`;
+        $("#currentTask").textContent = _t("admin.core.task_progress_done_total", {label, done: cur.done, total: cur.total, item});
       } else if (cur) {
         // 未知總量（如 incremental scan）：indeterminate 動畫 + 計數器
         coreBar.classList.add("indeterminate");
@@ -1213,12 +1216,12 @@ window._lcIsBeta = (function() {
             const added = s.new_tracks || 0;
             const changed = s.updated_tracks || 0;
             const skipped = Math.max(0, done - added - changed);
-            $("#currentTask").textContent = `${label}（${cur.scope}）· 走訪 ${done} · 新增 ${added} · 變更 ${changed} · 略過 ${skipped}${item ? " · " + item : ""}`;
+            $("#currentTask").textContent = _t("admin.core.task_scan_summary", {label, scope: cur.scope, done, added, changed, skipped, itemSuffix: item ? " · " + item : ""});
           } catch {
-            $("#currentTask").textContent = `${label}（${cur.scope}）· 已處理 ${cur.done || 0} · ${item || "…"}`;
+            $("#currentTask").textContent = _t("admin.core.task_unknown_total", {label, scope: cur.scope, done: cur.done || 0, item: item || "…"});
           }
         } else {
-          $("#currentTask").textContent = `${label}（${cur.scope}）· 已處理 ${cur.done || 0} · ${item || "…"}`;
+          $("#currentTask").textContent = _t("admin.core.task_unknown_total", {label, scope: cur.scope, done: cur.done || 0, item: item || "…"});
         }
       } else if (scanTotal > 0) {
         coreBar.classList.remove("indeterminate");
@@ -1231,17 +1234,17 @@ window._lcIsBeta = (function() {
       if (coreRunning) {
         stopBtn.style.display = "";
         if (_stopRequested) {
-          stopBtn.textContent = "⏳ 停止中…";
+          stopBtn.textContent = _t("admin.btn.stopping");
           stopBtn.disabled = true;
         } else {
-          stopBtn.textContent = "⏸ 停止 Core";
+          stopBtn.textContent = _t("admin.btn.stop_core");
           stopBtn.disabled = false;
         }
       } else {
         stopBtn.style.display = "none";
         _stopRequested = false;  // 重設狀態，下次再啟動時可正常使用
         stopBtn.disabled = false;
-        stopBtn.textContent = "⏸ 停止 Core";
+        stopBtn.textContent = _t("admin.btn.stop_core");
       }
 
       // 群組表：lock 狀態變化時重畫
@@ -1268,7 +1271,7 @@ window._lcIsBeta = (function() {
       box.innerHTML = (logData.log || []).map(e => {
         const cls = e.level === "OK" ? "ok" : e.level === "ERROR" ? "error" : "info";
         return `<div><span class="ts">${e.time}</span> <span class="${cls}">[${e.level}]</span> ${esc(e.msg)}</div>`;
-      }).join("") || '<span class="info">無記錄</span>';
+      }).join("") || `<span class="info">${_t("admin.activity.empty")}</span>`;
       if (atBottom) box.scrollTop = box.scrollHeight;
     } catch {}
 
@@ -1317,17 +1320,17 @@ window._lcIsBeta = (function() {
           const cnt = dist[v] || 0;
           const h = Math.max(4, (cnt / maxCnt) * 36);
           const color = v >= 4 ? "#4caf50" : v === 3 ? "#ff9800" : "#f44336";
-          return `<div style="flex:1;text-align:center"><div style="height:${h}px;background:${color};border-radius:2px;margin:0 2px"></div><div style="font-size:10px;color:#888;margin-top:2px">${v}★ (${cnt})</div></div>`;
+          return `<div style="flex:1;text-align:center"><div style="height:${h}px;background:${color};border-radius:2px;margin:0 2px"></div><div style="font-size:10px;color:#888;margin-top:2px">${_t("admin.beta.rating_star_count", {stars: v, count: cnt})}</div></div>`;
         }).join("");
 
         // Worst songs
         const worstEl = document.getElementById("betaWorstSongs");
         if (stats.worst_songs && stats.worst_songs.length) {
           worstEl.innerHTML = stats.worst_songs.slice(0, 8).map(s =>
-            `<div style="padding:2px 0;display:flex;gap:8px"><span style="color:#f44336">${(s.avg||0).toFixed(1)}★</span> <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.song_title || s.song_hash)}</span> <span style="color:#555">(${s.cnt}票)</span></div>`
+            `<div style="padding:2px 0;display:flex;gap:8px"><span style="color:#f44336">${(s.avg||0).toFixed(1)}★</span> <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.song_title || s.song_hash)}</span> <span style="color:#555">${_t("admin.beta.votes", {n: s.cnt})}</span></div>`
           ).join("");
         } else {
-          worstEl.innerHTML = '<span style="color:#555">尚無評價</span>';
+          worstEl.innerHTML = `<span style="color:#555">${_t("admin.beta.no_ratings")}</span>`;
         }
 
         // Bug list
@@ -1337,20 +1340,21 @@ window._lcIsBeta = (function() {
             `<div style="padding:4px 0;border-bottom:1px solid #1a1a1a;display:flex;gap:8px"><span class="badge" style="background:rgba(244,67,54,.15);color:#f44">${esc(b.category)}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.description)}</span><span style="color:#555;white-space:nowrap">${esc(b.username)} ${b.created_at.slice(5,16)}</span></div>`
           ).join("");
         } else {
-          bugEl.innerHTML = '<span style="color:#555">無待處理 Bug</span>';
+          bugEl.innerHTML = `<span style="color:#555">${_t("admin.beta.no_bugs")}</span>`;
         }
 
         // Invites
         const invEl = document.getElementById("betaInviteList");
         if (invites.invites && invites.invites.length) {
+          const STATUS_ACTIVE = _t("admin.beta.invite_status_active");
           invEl.innerHTML = invites.invites.map(i => {
             const expired = i.expires_at && i.expires_at < new Date().toISOString().slice(0,19);
-            const status = i.revoked ? "已撤銷" : expired ? "已過期" : i.use_count >= i.max_uses ? "已用完" : "有效";
-            const color = status === "有效" ? "#4caf50" : "#555";
-            return `<div style="padding:3px 0;display:flex;gap:8px;align-items:center;font-family:Consolas,monospace"><code style="color:${color}">${i.code}</code><span style="color:#555">${i.use_count}/${i.max_uses}</span><span style="color:#555;font-size:10px">${status}</span>${status === "有效" ? `<button style="font-size:10px;padding:1px 6px;border:1px solid #f44;color:#f44;background:transparent;border-radius:3px;cursor:pointer" onclick="revokeInvite('${i.code}')">撤銷</button>` : ""}</div>`;
+            const status = i.revoked ? _t("admin.beta.invite_status_revoked") : expired ? _t("admin.beta.invite_status_expired") : i.use_count >= i.max_uses ? _t("admin.beta.invite_status_used_up") : STATUS_ACTIVE;
+            const color = status === STATUS_ACTIVE ? "#4caf50" : "#555";
+            return `<div style="padding:3px 0;display:flex;gap:8px;align-items:center;font-family:Consolas,monospace"><code style="color:${color}">${i.code}</code><span style="color:#555">${i.use_count}/${i.max_uses}</span><span style="color:#555;font-size:10px">${status}</span>${status === STATUS_ACTIVE ? `<button style="font-size:10px;padding:1px 6px;border:1px solid #f44;color:#f44;background:transparent;border-radius:3px;cursor:pointer" onclick="revokeInvite('${i.code}')">${_t("admin.beta.invite_revoke")}</button>` : ""}</div>`;
           }).join("");
         } else {
-          invEl.innerHTML = '<span style="color:#555">無邀請碼</span>';
+          invEl.innerHTML = `<span style="color:#555">${_t("admin.beta.invite_no_codes")}</span>`;
         }
 
         // Users — sorted newest-first (backend returns DESC by rowid), with
@@ -1359,11 +1363,11 @@ window._lcIsBeta = (function() {
         if (users.users && users.users.length) {
           const header = `
             <div class="user-row user-row-hdr">
-              <span class="u-col-num">#</span>
-              <span class="u-col-name">帳號</span>
-              <span class="u-col-cnt" title="最近 7 天 / 累計 分析次數">7d / 累計</span>
-              <span class="u-col-rat" title="累計評分數">評分</span>
-              <span class="u-col-last">最近登入</span>
+              <span class="u-col-num">${_t("admin.beta.col_num")}</span>
+              <span class="u-col-name">${_t("admin.beta.col_account")}</span>
+              <span class="u-col-cnt" title="${_t("admin.beta.col_count_title")}">${_t("admin.beta.col_count_label")}</span>
+              <span class="u-col-rat" title="${_t("admin.beta.col_rating_title")}">${_t("admin.beta.col_rating")}</span>
+              <span class="u-col-last">${_t("admin.beta.col_last")}</span>
             </div>`;
           const rows = users.users.map((u, idx) => {
             const isRecent = u.last_login && (Date.now() - new Date(u.last_login).getTime() < 7 * 86400000);
@@ -1386,7 +1390,7 @@ window._lcIsBeta = (function() {
           }).join("");
           usrEl.innerHTML = header + rows;
         } else {
-          usrEl.innerHTML = '<span style="color:#555">無使用者</span>';
+          usrEl.innerHTML = `<span style="color:#555">${_t("admin.beta.no_users")}</span>`;
         }
 
         // Audit log
@@ -1408,7 +1412,7 @@ window._lcIsBeta = (function() {
             const total = auditEl.querySelectorAll(".audit-cb").length;
             const checked = auditEl.querySelectorAll(".audit-cb:checked").length;
             btnDel.style.display = checked ? "" : "none";
-            btnDel.textContent = `🗑 刪除勾選 (${checked})`;
+            btnDel.textContent = _t("admin.audit.delete_selected_n", {n: checked});
             if (selectAll) {
               selectAll.checked = checked > 0 && checked === total;
               selectAll.indeterminate = checked > 0 && checked < total;
@@ -1428,7 +1432,7 @@ window._lcIsBeta = (function() {
           }
           _refreshAuditSelection();
         } else {
-          auditEl.innerHTML = '<span style="color:#555">無偵測紀錄</span>';
+          auditEl.innerHTML = `<span style="color:#555">${_t("admin.audit.empty")}</span>`;
           if (selectAll) { selectAll.checked = false; selectAll.indeterminate = false; }
         }
       } catch (e) {
@@ -1457,16 +1461,16 @@ window._lcIsBeta = (function() {
       const intEl = document.getElementById("optScanInterval");
       if (maxEl) maxEl.value = cfg.auto_chord_max_per_cycle;
       if (intEl) intEl.value = cfg.auto_scan_interval_minutes;
-      const name = kind === "conservative" ? "保守" : kind === "balanced" ? "平衡" : "積極";
-      showToast(`已套用 ${name} 預設（${cfg.auto_chord_max_per_cycle} 首 / ${cfg.auto_scan_interval_minutes} 分）`);
-    } catch (e) { showToast("套用失敗：" + e.message); }
+      const name = kind === "conservative" ? _t("admin.preset.name_conservative") : kind === "balanced" ? _t("admin.preset.name_balanced") : _t("admin.preset.name_aggressive");
+      showToast(_t("admin.preset.applied", {name, n: cfg.auto_chord_max_per_cycle, minutes: cfg.auto_scan_interval_minutes}));
+    } catch (e) { showToast(_t("admin.preset.apply_failed", {err: e.message})); }
   };
 
   window.createInvite = async function(maxUses = 1) {
     try {
       const res = await API.post("/api/auth/admin/invite", { max_uses: maxUses, expires_days: 30 });
       if (res.code) {
-        showToast(`邀請碼 (${maxUses} 次): ${res.code}`);
+        showToast(_t("admin.invite.created_n", {uses: maxUses, code: res.code}));
         // navigator.clipboard is undefined on HTTP (non-secure contexts).
         // Guard before calling; clipboard copy is best-effort, the code is
         // also visible in the toast and the refreshed list below.
@@ -1475,14 +1479,14 @@ window._lcIsBeta = (function() {
         }
         initBetaDashboard();
       }
-    } catch (e) { showToast("建立失敗: " + e.message); }
+    } catch (e) { showToast(_t("admin.invite.create_failed", {err: e.message})); }
   };
 
   window.createInviteCustom = async function() {
-    const raw = prompt("邀請碼最大使用次數？", "50");
+    const raw = prompt(_t("admin.invite.prompt_max_uses"), "50");
     if (raw === null) return;
     const n = parseInt(raw, 10);
-    if (!Number.isFinite(n) || n < 1) { showToast("請輸入 ≥1 的整數"); return; }
+    if (!Number.isFinite(n) || n < 1) { showToast(_t("admin.invite.prompt_positive_int")); return; }
     await window.createInvite(n);
   };
 
@@ -1490,21 +1494,21 @@ window._lcIsBeta = (function() {
     const cbs = document.querySelectorAll("#betaAuditList .audit-cb:checked");
     if (!cbs.length) return;
     const ids = Array.from(cbs).map(cb => parseInt(cb.value));
-    if (!confirm(`確定刪除 ${ids.length} 筆偵測紀錄？（含和弦/封面檔案）`)) return;
+    if (!confirm(_t("admin.confirm.delete_audit_n", {n: ids.length}))) return;
     try {
       const res = await API.post("/api/process/admin/audit/delete", { ids });
-      showToast(`已刪除 ${res.deleted} 筆`);
+      showToast(_t("admin.invite.deleted_n", {n: res.deleted}));
       document.getElementById("btnDeleteSelected").style.display = "none";
       initBetaDashboard();
-    } catch (e) { showToast("刪除失敗: " + e.message); }
+    } catch (e) { showToast(_t("admin.invite.delete_failed", {err: e.message})); }
   };
 
   window.revokeInvite = async function(code) {
     try {
       await fetch(`/api/auth/admin/invite/${encodeURIComponent(code)}`, { method: "DELETE" });
-      showToast("已撤銷");
+      showToast(_t("admin.invite.revoked"));
       initBetaDashboard();
-    } catch (e) { showToast("撤銷失敗: " + e.message); }
+    } catch (e) { showToast(_t("admin.invite.revoke_failed", {err: e.message})); }
   };
 
   initBetaDashboard();
@@ -1513,6 +1517,7 @@ window._lcIsBeta = (function() {
 
 <script>
 (function(){
+  const _t = (k, v) => (window.LiveChordI18n ? window.LiveChordI18n.t(k, v) : k);
   // Hide personal-only cards when running in beta instance (8801).
   // Beta admin only needs: Beta 回饋. Backup (settings + data) is Personal-only.
   const _BETA_HIDE_CARDS = ["coreCard", "activityCard", "chordMgmtCard", "extractionCard", "backupCard"];
@@ -1544,7 +1549,7 @@ window._lcIsBeta = (function() {
     const box = document.getElementById("settingsBackupList");
     const tgtBox = document.getElementById("settingsBackupTargets");
     if (!box) return;
-    box.innerHTML = "載入中…";
+    box.innerHTML = _t("admin.chords.loading");
     try {
       const res = await API.get("/api/auto/settings/backups");
       const backups = res.backups || [];
@@ -1553,20 +1558,20 @@ window._lcIsBeta = (function() {
       // Render targets section
       if (tgtBox) {
         if (!targets.length) {
-          tgtBox.innerHTML = '<div style="color:var(--text-dim)">（無 — 使用預設 local）</div>';
+          tgtBox.innerHTML = `<div style="color:var(--text-dim)">${_t("admin.backup.no_targets")}</div>`;
         } else {
           tgtBox.innerHTML = targets.map(t => `
             <div style="display:flex;gap:8px;align-items:center;padding:3px 6px;background:var(--bg);border-radius:3px">
               <span style="flex:0 0 100px;font-weight:bold">${escHtml(t.label)}</span>
               <span style="flex:1;font-family:monospace;color:var(--text-dim);word-break:break-all">${escHtml(t.path)}</span>
-              ${t.label === "local" ? "" : `<button onclick="removeBackupTarget('${escHtml(t.label)}')" style="font-size:10px;padding:2px 6px;color:#f66">移除</button>`}
+              ${t.label === "local" ? "" : `<button onclick="removeBackupTarget('${escHtml(t.label)}')" style="font-size:10px;padding:2px 6px;color:#f66">${_t("admin.backup.remove_label")}</button>`}
             </div>`).join("");
         }
       }
 
       // Render backup rows
       if (!backups.length) {
-        box.innerHTML = '<div style="color:var(--text-dim)">尚無備份（第一次儲存 settings 後會自動產生）</div>';
+        box.innerHTML = `<div style="color:var(--text-dim)">${_t("admin.backup.no_snapshots_yet")}</div>`;
         return;
       }
       // Compact row: badge · time · kb · 還原/下載 — all in ~24px
@@ -1579,13 +1584,13 @@ window._lcIsBeta = (function() {
             <span style="flex:0 0 52px;font-size:9px;padding:1px 4px;background:${badgeColor};color:#fff;border-radius:2px;text-align:center">${escHtml(target)}</span>
             <div style="flex:1;font-family:monospace">${b.mtime}</div>
             <div style="flex:0 0 52px;color:var(--text-dim);text-align:right">${kb} KB</div>
-            <button onclick="restoreSettingsBackup('${escHtml(b.filename)}','${escHtml(target)}')" style="font-size:10px;padding:1px 6px">還原</button>
-            <button onclick="downloadSettingsBackup('${escHtml(b.filename)}','${escHtml(target)}')" style="font-size:10px;padding:1px 6px">下載</button>
+            <button onclick="restoreSettingsBackup('${escHtml(b.filename)}','${escHtml(target)}')" style="font-size:10px;padding:1px 6px">${_t("admin.backup.restore_btn")}</button>
+            <button onclick="downloadSettingsBackup('${escHtml(b.filename)}','${escHtml(target)}')" style="font-size:10px;padding:1px 6px">${_t("admin.backup.download_btn")}</button>
           </div>`;
       }).join("");
       box.innerHTML = rows;
     } catch (e) {
-      box.innerHTML = '<div style="color:#f66">載入失敗：' + (e.message || e) + '</div>';
+      box.innerHTML = `<div style="color:#f66">${escHtml(_t("admin.error.load_failed", {err: e.message || e}))}</div>`;
     }
   }
 
@@ -1593,16 +1598,16 @@ window._lcIsBeta = (function() {
 
   window.restoreSettingsBackup = async function(filename, target) {
     target = target || "local";
-    if (!confirm(`確定從 [${target}] 還原 ${filename} 覆蓋目前 settings？（現有版本會先自動備份到所有目標）`)) return;
+    if (!confirm(_t("admin.confirm.restore_settings", {target, filename}))) return;
     try {
       const res = await API.post("/api/auto/settings/backups/restore", { filename, target });
       if (res.ok) {
-        showToast("已從 " + target + " 還原：" + filename);
+        showToast(_t("admin.toast.restored", {target, filename}));
         loadSettingsBackups();
       } else {
-        showToast("還原失敗");
+        showToast(_t("admin.toast.restore_failed"));
       }
-    } catch (e) { showToast("還原失敗：" + e.message); }
+    } catch (e) { showToast(_t("admin.toast.restore_failed_err", {err: e.message})); }
   };
 
   window.downloadSettingsBackup = async function(filename, target) {
@@ -1620,38 +1625,38 @@ window._lcIsBeta = (function() {
       a.href = url; a.download = filename;
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
-    } catch (e) { showToast("下載失敗：" + e.message); }
+    } catch (e) { showToast(_t("admin.toast.download_failed", {err: e.message})); }
   };
 
   window.addBackupTarget = async function() {
     const label = (document.getElementById("bkTargetLabel").value || "").trim();
     const path = (document.getElementById("bkTargetPath").value || "").trim();
-    if (!label || !path) { showToast("label 與 path 都必填"); return; }
-    if (!/^[A-Za-z0-9_\-]{1,32}$/.test(label)) { showToast("label 只接受英數/底線/連字號，最多 32 字元"); return; }
+    if (!label || !path) { showToast(_t("admin.toast.bk_label_path_required")); return; }
+    if (!/^[A-Za-z0-9_\-]{1,32}$/.test(label)) { showToast(_t("admin.toast.bk_label_invalid")); return; }
     try {
       const cur = await API.get("/api/auto/settings/backups");
       // Keep all existing targets (including the implicit 'local' default) then append
       const list = (cur.targets || []).slice();
-      if (list.some(t => t.label === label)) { showToast("label 已存在"); return; }
+      if (list.some(t => t.label === label)) { showToast(_t("admin.toast.bk_label_exists")); return; }
       list.push({ label, path });
       await API.post("/api/auto/settings", { settings_backup_targets: list });
       document.getElementById("bkTargetLabel").value = "";
       document.getElementById("bkTargetPath").value = "";
-      showToast("已新增目標：" + label);
+      showToast(_t("admin.toast.bk_target_added", {label}));
       loadSettingsBackups();
-    } catch (e) { showToast("新增失敗：" + e.message); }
+    } catch (e) { showToast(_t("admin.toast.bk_target_add_failed", {err: e.message})); }
   };
 
   window.removeBackupTarget = async function(label) {
-    if (label === "local") { showToast("local 為預設目標，無法移除"); return; }
-    if (!confirm(`移除備份目標 ${label}？（已寫到該位置的舊備份檔案不會刪除）`)) return;
+    if (label === "local") { showToast(_t("admin.toast.bk_local_immutable")); return; }
+    if (!confirm(_t("admin.confirm.remove_target", {label}))) return;
     try {
       const cur = await API.get("/api/auto/settings/backups");
       const list = (cur.targets || []).filter(t => t.label !== label);
       await API.post("/api/auto/settings", { settings_backup_targets: list });
-      showToast("已移除：" + label);
+      showToast(_t("admin.toast.bk_target_removed", {label}));
       loadSettingsBackups();
-    } catch (e) { showToast("移除失敗：" + e.message); }
+    } catch (e) { showToast(_t("admin.toast.bk_target_remove_failed", {err: e.message})); }
   };
 
   loadSettingsBackups();
@@ -1660,11 +1665,12 @@ window._lcIsBeta = (function() {
 
 <script>
 (function(){
+  const _t = (k, v) => (window.LiveChordI18n ? window.LiveChordI18n.t(k, v) : k);
   // Beta admin sees the card structure but data backup is Personal-only;
   // replace the tier list with a small note and hide history.
   if (window._lcIsBeta) {
     const tierBox = document.getElementById("bkTierList");
-    if (tierBox) tierBox.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px 0">資料備份為 Personal 專屬功能（從 8800 admin 操作）</div>';
+    if (tierBox) tierBox.innerHTML = `<div style="color:var(--text-dim);font-size:12px;padding:8px 0">${_t("admin.backup.personal_only")}</div>`;
     const hist = document.getElementById("bkHistory");
     if (hist) hist.style.display = "none";
     const histLabel = hist && hist.previousElementSibling;
@@ -1673,9 +1679,9 @@ window._lcIsBeta = (function() {
   }
 
   const TIER_META = {
-    tier1: { label: "Tier 1 · 關鍵（使用者資料 / 人工修正）", color: "#50c878", note: "每日推薦" },
-    tier2: { label: "Tier 2 · 重算成本高（和弦 / 旋律 / 模型）", color: "#f0b23a", note: "每週推薦" },
-    tier3: { label: "Tier 3 · 大量可重建（伴奏 cache）", color: "#888", note: "每月或按需" },
+    tier1: { labelKey: "admin.backup.tier1_label", color: "#50c878", noteKey: "admin.backup.tier1_note" },
+    tier2: { labelKey: "admin.backup.tier2_label", color: "#f0b23a", noteKey: "admin.backup.tier2_note" },
+    tier3: { labelKey: "admin.backup.tier3_label", color: "#888", noteKey: "admin.backup.tier3_note" },
   };
 
   function _bkFmtBytes(n) {
@@ -1703,18 +1709,24 @@ window._lcIsBeta = (function() {
       const running = !!state.running;
 
       const schedule = (info.schedule || {});
-      const DOW_LABELS = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"];
+      const DOW_LABELS = [_t("admin.sched.dow_mon"), _t("admin.sched.dow_tue"), _t("admin.sched.dow_wed"), _t("admin.sched.dow_thu"), _t("admin.sched.dow_fri"), _t("admin.sched.dow_sat"), _t("admin.sched.dow_sun")];
+      const STR_LAST = _t("admin.backup.last_snapshot");
+      const STR_NEVER = _t("admin.backup.never_backed_up");
+      const STR_ITEMS = _t("admin.backup.items_unit");
+      const STR_FILES = _t("admin.backup.files_unit");
 
       const rows = Object.keys(TIER_META).map(tier => {
         const meta = TIER_META[tier];
+        const metaLabel = _t(meta.labelKey);
+        const metaNote = _t(meta.noteKey);
         const t = (info.tiers || {})[tier] || { files: 0, bytes: 0, existing_items: [] };
         const snaps = (info.snapshots || {})[tier] || [];
         const lastSnap = snaps[0];
         const isRunning = running && state.tier === tier;
         const btnDisabled = running ? "disabled" : "";
         const btnLabel = isRunning
-          ? `⏳ ${state.progress_items||0}/${state.total_items||0} · ${_bkEsc(state.current_item || "")}`
-          : "立即備份";
+          ? _t("admin.backup.run_progress", {done: state.progress_items||0, total: state.total_items||0, item: _bkEsc(state.current_item || "")})
+          : _t("admin.backup.run_now");
         const cfg = schedule[tier] || { interval: "off", hour: 3, day_of_week: 0, day_of_month: 1 };
         const iv = cfg.interval || "off";
         const hour = cfg.hour != null ? cfg.hour : 3;
@@ -1724,31 +1736,31 @@ window._lcIsBeta = (function() {
         return `
           <div style="padding:10px;background:var(--bg);border-left:3px solid ${meta.color};border-radius:3px">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-              <span style="font-weight:bold">${_bkEsc(meta.label)}</span>
-              <span style="font-size:10px;color:var(--text-dim)">${_bkEsc(meta.note)}</span>
+              <span style="font-weight:bold">${_bkEsc(metaLabel)}</span>
+              <span style="font-size:10px;color:var(--text-dim)">${_bkEsc(metaNote)}</span>
             </div>
             <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">
-              ${t.existing_items.length} 個項目 · ${t.files.toLocaleString()} 檔 · ${_bkFmtBytes(t.bytes)}
-              ${lastSnap ? ` · 上次：${_bkEsc(lastSnap.mtime)}` : " · 尚未備份"}
+              ${t.existing_items.length} ${STR_ITEMS} · ${t.files.toLocaleString()} ${STR_FILES} · ${_bkFmtBytes(t.bytes)}
+              ${lastSnap ? ` · ${STR_LAST}${_bkEsc(lastSnap.mtime)}` : ` · ${STR_NEVER}`}
             </div>
             <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:11px">
-              <span style="color:var(--text-dim)">自動：</span>
+              <span style="color:var(--text-dim)">${_t("admin.sched.interval_label")}</span>
               <select data-sched-tier="${tier}" data-sched-field="interval" style="font-size:11px;padding:2px 4px">
-                <option value="off" ${iv==="off"?"selected":""}>關閉</option>
-                <option value="daily" ${iv==="daily"?"selected":""}>每日</option>
-                <option value="weekly" ${iv==="weekly"?"selected":""}>每週</option>
-                <option value="monthly" ${iv==="monthly"?"selected":""}>每月</option>
+                <option value="off" ${iv==="off"?"selected":""}>${_t("admin.sched.interval_off")}</option>
+                <option value="daily" ${iv==="daily"?"selected":""}>${_t("admin.sched.interval_daily")}</option>
+                <option value="weekly" ${iv==="weekly"?"selected":""}>${_t("admin.sched.interval_weekly")}</option>
+                <option value="monthly" ${iv==="monthly"?"selected":""}>${_t("admin.sched.interval_monthly")}</option>
               </select>
               <select data-sched-tier="${tier}" data-sched-field="day_of_week" style="font-size:11px;padding:2px 4px;display:${iv==="weekly"?"inline":"none"}">${dowOptions}</select>
               <input type="number" data-sched-tier="${tier}" data-sched-field="day_of_month" min="1" max="28" value="${dom}" style="width:44px;font-size:11px;padding:2px 4px;display:${iv==="monthly"?"inline":"none"}">
-              <span style="color:var(--text-dim);display:${iv!=="off"?"inline":"none"}">於</span>
+              <span style="color:var(--text-dim);display:${iv!=="off"?"inline":"none"}">${_t("admin.sched.on_at")}</span>
               <input type="number" data-sched-tier="${tier}" data-sched-field="hour" min="0" max="23" value="${hour}" style="width:44px;font-size:11px;padding:2px 4px;display:${iv!=="off"?"inline":"none"}">
-              <span style="color:var(--text-dim);display:${iv!=="off"?"inline":"none"}">點</span>
-              <button onclick="saveBackupSchedule('${tier}')" style="font-size:11px;padding:2px 8px">儲存</button>
+              <span style="color:var(--text-dim);display:${iv!=="off"?"inline":"none"}">${_t("admin.sched.hour_unit")}</span>
+              <button onclick="saveBackupSchedule('${tier}')" style="font-size:11px;padding:2px 8px">${_t("admin.sched.save")}</button>
             </div>
             <div style="display:flex;gap:6px;align-items:center">
               <button onclick="runDataBackup('${tier}')" ${btnDisabled} style="font-size:11px;padding:4px 10px">${btnLabel}</button>
-              ${snaps.length ? `<span style="font-size:10px;color:var(--text-dim)">${snaps.length} 份快照</span>` : ""}
+              ${snaps.length ? `<span style="font-size:10px;color:var(--text-dim)">${_t("admin.backup.snapshot_count", {n: snaps.length})}</span>` : ""}
             </div>
           </div>`;
       }).join("");
@@ -1758,8 +1770,9 @@ window._lcIsBeta = (function() {
       const hist = info.history || [];
       if (histBox) {
         if (!hist.length) {
-          histBox.innerHTML = '<span style="color:var(--text-dim)">尚無記錄</span>';
+          histBox.innerHTML = `<span style="color:var(--text-dim)">${_t("admin.backup.history_empty")}</span>`;
         } else {
+          const STR_FILES2 = _t("admin.backup.files_unit");
           histBox.innerHTML = hist.map(h => {
             const mark = h.ok ? "✓" : "✗";
             const color = h.ok ? "#50c878" : "#f66";
@@ -1767,7 +1780,7 @@ window._lcIsBeta = (function() {
             const errHtml = !h.ok && primaryErr
               ? `<div style="color:#f66;padding-left:16px;font-size:10px">${_bkEsc(primaryErr)}</div>`
               : "";
-            return `<div><span style="color:${color}">${mark}</span> ${_bkEsc(h.timestamp)} · ${_bkEsc(h.tier)} · ${h.files || 0} 檔 · ${_bkFmtBytes(h.bytes)} · ${h.duration_s}s</div>${errHtml}`;
+            return `<div><span style="color:${color}">${mark}</span> ${_bkEsc(h.timestamp)} · ${_bkEsc(h.tier)} · ${h.files || 0} ${STR_FILES2} · ${_bkFmtBytes(h.bytes)} · ${h.duration_s}s</div>${errHtml}`;
           }).join("");
         }
       }
@@ -1781,7 +1794,7 @@ window._lcIsBeta = (function() {
         }, 2000);
       }
     } catch (e) {
-      box.innerHTML = '<span style="color:#f66">載入失敗：' + (e.message || e) + '</span>';
+      box.innerHTML = `<span style="color:#f66">${_bkEsc(_t("admin.error.load_failed", {err: e.message || e}))}</span>`;
     }
   }
 
@@ -1809,9 +1822,15 @@ window._lcIsBeta = (function() {
       const sched = Object.assign({}, cur.schedule || {});
       sched[tier] = cfg;
       await API.post("/api/auto/settings", { backup_schedule: sched });
-      showToast(`${tier} 排程已儲存：${interval === "off" ? "關閉" : interval}`);
+      const stateLabel = interval === "off"
+        ? _t("admin.sched.interval_off")
+        : interval === "daily" ? _t("admin.sched.interval_daily")
+        : interval === "weekly" ? _t("admin.sched.interval_weekly")
+        : interval === "monthly" ? _t("admin.sched.interval_monthly")
+        : interval;
+      showToast(_t("admin.sched.saved", {tier, state: stateLabel}));
       loadDataBackup();
-    } catch (e) { showToast("儲存失敗：" + e.message); }
+    } catch (e) { showToast(_t("admin.toast.bk_save_failed", {err: e.message})); }
   };
 
   window.saveBackupRoot = async function() {
@@ -1820,10 +1839,10 @@ window._lcIsBeta = (function() {
     const val = (inp.value || "").trim();
     try {
       await API.post("/api/auto/settings", { data_backup_root: val });
-      showToast("備份位置已儲存" + (val ? "" : "（已清除，使用預設）"));
+      showToast(val ? _t("admin.toast.bk_root_saved") : _t("admin.toast.bk_root_saved_cleared"));
       inp.dataset.userEdited = "";  // allow auto-sync on next load
       loadDataBackup();
-    } catch (e) { showToast("儲存失敗：" + e.message); }
+    } catch (e) { showToast(_t("admin.toast.bk_save_failed", {err: e.message})); }
   };
 
   // Track when user edits the input so polling doesn't overwrite their typing.
@@ -1834,17 +1853,17 @@ window._lcIsBeta = (function() {
   })();
 
   window.runDataBackup = async function(tier) {
-    if (!confirm(`立即執行 ${tier} 備份？大量資料 (tier2/tier3) 可能需要數分鐘到十幾分鐘。`)) return;
+    if (!confirm(_t("admin.confirm.run_backup", {tier}))) return;
     try {
       const res = await API.post("/api/admin/backup/run", { tier });
       if (res.ok) {
-        showToast(`${tier} 備份已啟動`);
+        showToast(_t("admin.toast.tier_run_started", {tier}));
         loadDataBackup();  // will start polling while running
       } else {
-        showToast("啟動失敗");
+        showToast(_t("admin.toast.tier_run_failed"));
       }
     } catch (e) {
-      showToast(`啟動失敗：${e.message}`);
+      showToast(_t("admin.toast.tier_run_failed_err", {err: e.message}));
     }
   };
 
