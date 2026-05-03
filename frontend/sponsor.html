@@ -29,10 +29,10 @@
   </h1>
   <nav style="margin-left:auto; margin-right: 32px;">
     <div style="display:flex; align-items:center; gap: 14px;">
-      <a href="/" class="header-link" data-i18n="help.nav.home">首頁</a>
-      <a href="/help" class="header-link" data-i18n="help.nav.help">說明</a>
-      <a href="/sponsor" class="header-link is-active" data-i18n="help.nav.sponsor">贊助</a>
-      <select id="langPicker" class="lang-picker" data-i18n-attr="title=lang.picker_title" title="語言"
+      <a href="/" class="header-link" data-i18n="help.nav.home">Home</a>
+      <a href="/help" class="header-link" data-i18n="help.nav.help">Help</a>
+      <a href="/sponsor" class="header-link is-active" data-i18n="help.nav.sponsor">Sponsor</a>
+      <select id="langPicker" class="lang-picker" data-i18n-attr="title=lang.picker_title" title="Language"
               onchange="if(window.LiveChordI18n) window.LiveChordI18n.setLang(this.value)">
         <option value="en">EN</option>
         <option value="zh-TW">繁中</option>
@@ -43,51 +43,51 @@
 
 <main class="help-main">
   <section class="help-hero support-hero">
-    <h1 data-i18n="sponsor.hero.title">支持 LiveChord</h1>
-    <p data-i18n="sponsor.hero.subtitle">這是一個獨立開發的個人專案。如果它對你有幫助，歡迎請我喝杯咖啡。</p>
+    <h1 data-i18n="sponsor.hero.title">Support LiveChord</h1>
+    <p data-i18n="sponsor.hero.subtitle">An indie one-person project. If it's been useful, you can buy me a coffee.</p>
   </section>
 
   <section class="support-block">
-    <p data-i18n="sponsor.intro.body">LiveChord 由一個人在一台 GPU 伺服器上自己寫、自己跑、自己除錯。每一個和弦的偵測精度、每一個小節的對齊、每一個鋼琴指法的視覺化，背後都是無數個夜晚的調參與重寫。它一直是免費使用的。</p>
+    <p data-i18n="sponsor.intro.body">LiveChord is built, run, and debugged by one person on a single GPU server. Every chord detection tweak, every bar alignment, every piano-fingering visual is the result of countless evenings of tuning and rewriting. It's free to use and always will be.</p>
 
     <div class="tip-wrap" id="tipBtnWrap">
       <a id="tipBtn" class="tip-btn" href="#" target="_blank" rel="noopener" hidden>
-        <span data-i18n="sponsor.cta.bmc">☕ 請我喝杯咖啡</span>
+        <span data-i18n="sponsor.cta.bmc">☕ Buy me a coffee</span>
       </a>
-      <p id="tipPending" class="tip-pending-msg" data-i18n="sponsor.cta.pending">贊助連結設定中。如果你想支持這個專案，請寫信給 hiteacherwu@gmail.com，我會回信給你目前可用的捐款方式。</p>
+      <p id="tipPending" class="tip-pending-msg" data-i18n="sponsor.cta.pending">Tipping setup is in progress. If you'd like to support the project, please email hiteacherwu@gmail.com and I'll reply with the currently available donation methods.</p>
     </div>
   </section>
 
   <section class="support-block">
-    <h2 data-i18n="sponsor.where.title">錢用在哪裡</h2>
-    <p data-i18n-html="sponsor.where.body">LiveChord 全月固定成本約 <strong>美金 30 元</strong>，主要由三個部分組成：</p>
+    <h2 data-i18n="sponsor.where.title">Where the money goes</h2>
+    <p data-i18n-html="sponsor.where.body">Total fixed monthly cost is around <strong>USD $30</strong>, split across three line items:<strong>美金 30 元</strong>，主要由三個部分組成：</p>
     <ul class="support-list">
-      <li data-i18n-html="sponsor.where.vps">CPU VPS（FastAPI、SQLite、節拍／伴奏 worker）— <strong>€15/月</strong></li>
-      <li data-i18n-html="sponsor.where.gpu">Modal serverless GPU（BTC 和弦偵測）— <strong>$3–8/月</strong>，用多少付多少</li>
-      <li data-i18n-html="sponsor.where.r2">Cloudflare R2 物件儲存（封面、暫存音檔）— <strong>$1–5/月</strong>，免出口流量費</li>
+      <li data-i18n-html="sponsor.where.vps">CPU VPS (FastAPI, SQLite, beat / accompaniment workers) — <strong>$17/mo</strong><strong>€15/月</strong></li>
+      <li data-i18n-html="sponsor.where.gpu">Modal serverless GPU (BTC chord detection) — <strong>$3–8/mo</strong>, pay-per-use<strong>$3–8/月</strong>，用多少付多少</li>
+      <li data-i18n-html="sponsor.where.r2">Cloudflare R2 object storage (covers, temp uploads) — <strong>$1–5/mo</strong>, zero egress fee<strong>$1–5/月</strong>，免出口流量費</li>
     </ul>
-    <p data-i18n="sponsor.where.surplus">超出的部分會回到專案本身：更多 GPU 訓練時間、更好的節拍模型、新功能（例如人聲分軌、更精準的爵士再和聲）。所有改進都會以免費更新形式回饋給所有使用者。</p>
+    <p data-i18n="sponsor.where.surplus">Anything beyond costs goes back into the project: more GPU training time, better beat models, new features (vocal stem separation, more accurate jazz reharmonisation). Every improvement ships as a free update for everyone.</p>
   </section>
 
   <section class="support-block">
-    <h2 data-i18n="sponsor.faq.title">常見問題</h2>
+    <h2 data-i18n="sponsor.faq.title">FAQ</h2>
     <details class="help-q">
-      <summary data-i18n="sponsor.faq.q_why">為什麼要捐款？我不是已經能免費使用了嗎？</summary>
-      <p data-i18n="sponsor.faq.a_why">完全沒錯，免費使用是 LiveChord 的承諾。這個贊助頁是寫給「想表達感謝」或「希望這個專案能繼續活下去」的使用者的。一杯咖啡的金額足以讓 GPU 多跑兩天，意義很大。</p>
+      <summary data-i18n="sponsor.faq.q_why">Why donate? I can already use it for free, right?</summary>
+      <p data-i18n="sponsor.faq.a_why">Exactly — staying free is the LiveChord promise. This page is for users who want to say thanks or who want to help keep the project alive. The cost of a coffee is enough to run the GPU for two extra days, which adds up.</p>
     </details>
     <details class="help-q">
-      <summary data-i18n="sponsor.faq.q_refund">可以退款嗎？</summary>
-      <p data-i18n="sponsor.faq.a_refund">Buy Me a Coffee 視為一次性禮物贈送，預設不退款。如果有重大誤解，請在 7 天內寫信給 hiteacherwu@gmail.com，我會手動處理。</p>
+      <summary data-i18n="sponsor.faq.q_refund">Can I get a refund?</summary>
+      <p data-i18n="sponsor.faq.a_refund">Buy Me a Coffee treats donations as one-off gifts, so refunds aren't enabled by default. If there's a serious misunderstanding, email hiteacherwu@gmail.com within 7 days and I'll handle it manually.</p>
     </details>
     <details class="help-q">
-      <summary data-i18n="sponsor.faq.q_tax">可以開收據／發票嗎？</summary>
-      <p data-i18n="sponsor.faq.a_tax">目前是個人專案，無法開立發票或收據。Buy Me a Coffee 平台會發送 email 確認，可作為個人捐款記錄。如有公司贊助、合作專案或商業授權需求，請來信詢問。</p>
+      <summary data-i18n="sponsor.faq.q_tax">Can you issue a receipt or invoice?</summary>
+      <p data-i18n="sponsor.faq.a_tax">Not currently — this is an individual project, so no formal invoice or tax receipt. Buy Me a Coffee sends an email confirmation that can serve as a personal donation record. For corporate sponsorship, partnerships or commercial licensing, please email me.</p>
     </details>
   </section>
 
   <footer class="help-footer">
     <p>
-      <span data-i18n="help.footer.contact">問題沒解決？</span>
+      <span data-i18n="help.footer.contact">Still stuck?</span>
       <a href="mailto:hiteacherwu@gmail.com">hiteacherwu@gmail.com</a>
     </p>
   </footer>

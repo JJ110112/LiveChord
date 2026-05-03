@@ -205,159 +205,157 @@
       <span class="badge badge-stopped" id="coreBadge">stopped</span>
       <span id="lockTag" class="lock-tag" style="display:none"></span>
     </h2>
-    <div class="scanning-banner" id="scanningBanner" style="display:none" data-i18n="admin.core.scanning_banner">🔄 掃描中 · 數字將持續變動，掃描完成後即穩定</div>
+    <div class="scanning-banner" id="scanningBanner" style="display:none" data-i18n="admin.core.scanning_banner">🔄 Scanning · numbers will keep changing, will stabilize when done</div>
     <div class="stat-row">
-      <div class="stat-box"><div class="num" id="sTotalTracks">—</div><div class="label" data-i18n="admin.core.label_total_tracks">總曲目</div></div>
-      <div class="stat-box"><div class="num" id="sWithChords">—</div><div class="label" data-i18n="admin.core.label_with_chords">和弦譜</div></div>
-      <div class="stat-box"><div class="num" id="sCoverage">—</div><div class="label" data-i18n="admin.core.cov_label">覆蓋率</div></div>
-      <div class="stat-box"><div class="num" id="sQueueSize">—</div><div class="label" data-i18n="admin.core.detect_queue_label">待偵測</div></div>
+      <div class="stat-box"><div class="num" id="sTotalTracks">—</div><div class="label" data-i18n="admin.core.label_total_tracks">Total tracks</div></div>
+      <div class="stat-box"><div class="num" id="sWithChords">—</div><div class="label" data-i18n="admin.core.label_with_chords">Has chords</div></div>
+      <div class="stat-box"><div class="num" id="sCoverage">—</div><div class="label" data-i18n="admin.core.cov_label">Coverage</div></div>
+      <div class="stat-box"><div class="num" id="sQueueSize">—</div><div class="label" data-i18n="admin.core.detect_queue_label">Pending detection</div></div>
     </div>
     <div class="progress-track"><div class="bar green" id="coreBar" style="width:0%"></div></div>
     <div class="current-task" id="currentTask"></div>
 
     <!-- ======== 設定（合併進 Core 卡片，預設展開）======== -->
-    <h2 class="collapse-toggle open" style="margin-top:16px" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.settings.title">⚙️ 設定</h2>
+    <h2 class="collapse-toggle open" style="margin-top:16px" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.settings.title">⚙️ Settings</h2>
     <div class="collapse-content show">
       <!-- 1. 音樂庫路徑 -->
       <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <label data-i18n="admin.core.music_root_path_label">音樂庫路徑</label>
-          <button id="btnAddRoot" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text-dim);cursor:pointer;font-size:11px" data-i18n="admin.btn.add">+ 新增</button>
+          <label data-i18n="admin.core.music_root_path_label">Music library path</label>
+          <button id="btnAddRoot" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text-dim);cursor:pointer;font-size:11px" data-i18n="admin.btn.add">+ Add</button>
         </div>
         <div id="musicRootsList" style="display:flex;flex-direction:column;gap:4px"></div>
       </div>
       <!-- 2. 啟用群組 -->
       <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <label data-i18n="admin.core.groups_label">啟用群組</label>
+          <label data-i18n="admin.core.groups_label">Active groups</label>
           <span id="optActiveGroupsSummary" style="font-size:11px;color:var(--text-dim)" data-i18n="admin.core.groups_active_summary_empty">—</span>
           <span id="groupsSummary" style="font-size:11px;color:var(--text-dim);margin-left:auto"></span>
         </div>
-        <div style="font-size:11px;color:var(--text-dim);line-height:1.5;padding:6px 8px;background:var(--bg);border-left:2px solid var(--accent);border-radius:3px" data-i18n-html="admin.core.groups_tip_html">
-          💡 只勾選<strong>節奏穩定、和弦清晰</strong>的類別（Pop / Jazz / Rock / Jam 等）。Classical / Sleep / Ambient / 氛圍類缺乏明確拍點，AI 自動偵測和弦容易錯判，建議不勾。<br>
+        <div style="font-size:11px;color:var(--text-dim);line-height:1.5;padding:6px 8px;background:var(--bg);border-left:2px solid var(--accent);border-radius:3px" data-i18n-html="admin.core.groups_tip_html">💡 Only check categories with <strong>steady tempo and clear chords</strong> (Pop / Jazz / Rock / Jam, etc). Classical / Sleep / Ambient lack clear beats and the AI mis-detects them — leave unchecked.<br>📂 Scan walks every folder to build the full track list; this checkbox only controls <em>which categories run chord detection</em>, scan itself is unaffected.<strong>節奏穩定、和弦清晰</strong>的類別（Pop / Jazz / Rock / Jam 等）。Classical / Sleep / Ambient / 氛圍類缺乏明確拍點，AI 自動偵測和弦容易錯判，建議不勾。<br>
           📂 Scan 會走訪所有資料夾建立完整曲目清單；此處勾選只控制「哪些類別要跑和弦偵測」，不影響 Scan。
         </div>
         <div id="groupsHost">
-          <span style="color:var(--text-dim);font-size:12px" data-i18n="admin.core.groups_loading">載入中…</span>
+          <span style="color:var(--text-dim);font-size:12px" data-i18n="admin.core.groups_loading">Loading…</span>
         </div>
       </div>
       <!-- 3. 跳過類別 -->
       <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <label data-i18n="admin.core.skip_genres_label">跳過類別</label>
+          <label data-i18n="admin.core.skip_genres_label">Skip categories</label>
           <span id="skipGenresSummary" style="font-size:11px;color:var(--text-dim)"></span>
         </div>
-        <div style="font-size:11px;color:var(--text-dim);line-height:1.5;padding:6px 8px;background:var(--bg);border-left:2px solid #ff9800;border-radius:3px" data-i18n-html="admin.core.skip_genres_tip_html">
-          🏷️ 根據 ID3 tag 的 <code>genre</code> 欄位額外過濾（與上方依資料夾分的「啟用群組」獨立運作）。勾選的類別即使在啟用群組中也會跳過偵測。
+        <div style="font-size:11px;color:var(--text-dim);line-height:1.5;padding:6px 8px;background:var(--bg);border-left:2px solid #ff9800;border-radius:3px" data-i18n-html="admin.core.skip_genres_tip_html">🏷️ Filters by ID3 <code>genre</code> tag (independent of folder-based <em>active groups</em> above). Checked categories are skipped even if their group is active.<code>genre</code> 欄位額外過濾（與上方依資料夾分的「啟用群組」獨立運作）。勾選的類別即使在啟用群組中也會跳過偵測。
         </div>
         <div id="skipGenresList" class="gt-grid" style="padding:6px;border:1px solid var(--border);border-radius:4px;background:var(--bg)"></div>
       </div>
       <!-- 4. 自動掃描 -->
       <div class="setting-row">
-        <div><label data-i18n="admin.core.auto_scan_label">自動掃描</label></div>
+        <div><label data-i18n="admin.core.auto_scan_label">Auto scan</label></div>
         <label class="toggle"><input type="checkbox" id="optAutoScan"><span class="slider"></span></label>
         <input type="number" class="num-input" id="optScanInterval" value="30" min="1" max="1440" style="width:65px">
-        <span style="font-size:11px;color:var(--text-dim)" data-i18n="admin.core.auto_scan_unit">分鐘</span>
+        <span style="font-size:11px;color:var(--text-dim)" data-i18n="admin.core.auto_scan_unit">minutes</span>
       </div>
       <!-- 5. 自動偵測和弦 -->
       <div class="setting-row">
-        <div><label data-i18n="admin.core.auto_chord_label">自動偵測和弦</label></div>
+        <div><label data-i18n="admin.core.auto_chord_label">Auto chord detection</label></div>
         <label class="toggle"><input type="checkbox" id="optAutoChord"><span class="slider"></span></label>
         <input type="number" class="num-input" id="optMaxPerCycle" value="20" min="1" max="200" style="width:65px">
-        <span style="font-size:11px;color:var(--text-dim)" data-i18n="admin.core.auto_chord_per_cycle_unit">首/輪</span>
+        <span style="font-size:11px;color:var(--text-dim)" data-i18n="admin.core.auto_chord_per_cycle_unit">songs/cycle</span>
       </div>
       <!-- 5b. 建議預設值（一鍵套用常用組合）-->
       <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px">
         <div style="display:flex;align-items:center;gap:8px">
-          <label data-i18n="admin.preset.label">建議預設值</label>
-          <span style="font-size:11px;color:var(--text-dim)" data-i18n="admin.preset.subtitle">一鍵套用常用組合（偵測 1 首約 10 秒起算）</span>
+          <label data-i18n="admin.preset.label">Suggested presets</label>
+          <span style="font-size:11px;color:var(--text-dim)" data-i18n="admin.preset.subtitle">One-click common combos (≈10s+ to detect 1 song)</span>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button onclick="applyCorePreset('conservative')" data-i18n-attr="title=admin.preset.conservative_tip" title="日常維運（低 CPU 佔用）" style="display:flex;flex-direction:column;padding:6px 12px;align-items:center;line-height:1.3">
-            <span data-i18n="admin.preset.conservative">🧘 保守</span>
-            <span style="font-size:10px;color:var(--text-dim)" data-i18n="admin.preset.conservative_summary">20 首 / 30 分</span>
+          <button onclick="applyCorePreset('conservative')" data-i18n-attr="title=admin.preset.conservative_tip" title="Daily upkeep (low CPU)" style="display:flex;flex-direction:column;padding:6px 12px;align-items:center;line-height:1.3">
+            <span data-i18n="admin.preset.conservative">🧘 Conservative</span>
+            <span style="font-size:10px;color:var(--text-dim)" data-i18n="admin.preset.conservative_summary">20 songs / 30 min</span>
           </button>
-          <button onclick="applyCorePreset('balanced')" data-i18n-attr="title=admin.preset.balanced_tip" title="平衡吞吐與系統反應" style="display:flex;flex-direction:column;padding:6px 12px;align-items:center;line-height:1.3">
-            <span data-i18n="admin.preset.balanced">⚖️ 平衡</span>
-            <span style="font-size:10px;color:var(--text-dim)" data-i18n="admin.preset.balanced_summary">50 首 / 15 分</span>
+          <button onclick="applyCorePreset('balanced')" data-i18n-attr="title=admin.preset.balanced_tip" title="Balance throughput and system responsiveness" style="display:flex;flex-direction:column;padding:6px 12px;align-items:center;line-height:1.3">
+            <span data-i18n="admin.preset.balanced">⚖️ Balanced</span>
+            <span style="font-size:10px;color:var(--text-dim)" data-i18n="admin.preset.balanced_summary">50 songs / 15 min</span>
           </button>
-          <button onclick="applyCorePreset('aggressive')" data-i18n-attr="title=admin.preset.aggressive_tip" title="批次追補大量新歌（CPU 滿載）" style="display:flex;flex-direction:column;padding:6px 12px;align-items:center;line-height:1.3">
-            <span data-i18n="admin.preset.aggressive">🚀 積極</span>
-            <span style="font-size:10px;color:var(--text-dim)" data-i18n="admin.preset.aggressive_summary">200 首 / 10 分</span>
+          <button onclick="applyCorePreset('aggressive')" data-i18n-attr="title=admin.preset.aggressive_tip" title="Catch up on a large backlog (CPU pegged)" style="display:flex;flex-direction:column;padding:6px 12px;align-items:center;line-height:1.3">
+            <span data-i18n="admin.preset.aggressive">🚀 Aggressive</span>
+            <span style="font-size:10px;color:var(--text-dim)" data-i18n="admin.preset.aggressive_summary">200 songs / 10 min</span>
           </button>
         </div>
       </div>
       <!-- 6. 服務啟動時自動開啟 Core -->
       <div class="setting-row">
-        <div><label data-i18n="admin.core.auto_start_label">服務啟動時自動開啟 Core</label></div>
+        <div><label data-i18n="admin.core.auto_start_label">Auto-start Core when service boots</label></div>
         <label class="toggle"><input type="checkbox" id="optAutoStartOnBoot"><span class="slider"></span></label>
-        <span style="font-size:11px;color:var(--text-dim)" data-i18n="admin.core.auto_start_hint">只影響下次後端服務重啟時的行為，不影響目前 Core 狀態</span>
+        <span style="font-size:11px;color:var(--text-dim)" data-i18n="admin.core.auto_start_hint">Only affects next backend restart, current Core state unchanged</span>
       </div>
       <!-- 7. 套用設定並啟動 -->
       <div class="setting-row" style="justify-content:flex-end;margin-top:4px;gap:8px">
-        <button class="primary" id="btnApplyAndStart" data-i18n-attr="title=admin.tip.apply_settings" title="儲存所有設定 → 增量掃描 → 啟動 Core" data-i18n="admin.btn.apply_settings_start">💾 套用設定並啟動</button>
-        <button id="btnCoreToggle" style="display:none" data-i18n="admin.btn.stop_core">⏸ 停止 Core</button>
+        <button class="primary" id="btnApplyAndStart" data-i18n-attr="title=admin.tip.apply_settings" title="Save all settings → incremental scan → start Core" data-i18n="admin.btn.apply_settings_start">💾 Apply settings and start</button>
+        <button id="btnCoreToggle" style="display:none" data-i18n="admin.btn.stop_core">⏸ Stop Core</button>
       </div>
     </div>
   </div>
 
   <!-- ======== Card 3: 活動記錄（預設展開）======== -->
   <div class="card" id="activityCard">
-    <h2 class="collapse-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.activity.title">📜 活動記錄</h2>
+    <h2 class="collapse-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.activity.title">📜 Activity log</h2>
     <div class="collapse-content show">
-      <div class="log-box" id="logBox"><span class="info" data-i18n="admin.activity.waiting">等待載入…</span></div>
+      <div class="log-box" id="logBox"><span class="info" data-i18n="admin.activity.waiting">Waiting to load…</span></div>
     </div>
   </div>
 
   <!-- ======== Card 4: 和弦管理（收摺）======== -->
   <div class="card" id="chordMgmtCard">
-    <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.chords.card_title">🎵 和弦管理</h2>
+    <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.chords.card_title">🎵 Chord management</h2>
     <div class="collapse-content">
       <div class="actions" style="margin-bottom:8px; display:flex; gap:8px; align-items:center;">
-        <input type="text" id="trackSearch" placeholder="搜尋曲目或歌手..." data-i18n-attr="placeholder=admin.chords.search_placeholder" class="num-input" style="flex:1; max-width:200px; text-align:left;">
+        <input type="text" id="trackSearch" placeholder="Search song or artist…" data-i18n-attr="placeholder=admin.chords.search_placeholder" class="num-input" style="flex:1; max-width:200px; text-align:left;">
         <select id="trackStatus" class="num-input" style="width: auto;">
-          <option value="all" data-i18n="admin.chords.status_all">全部</option>
-          <option value="no_chords" data-i18n="admin.chords.status_pending">未偵測</option>
-          <option value="has_chords" data-i18n="admin.chords.status_done">已偵測</option>
+          <option value="all" data-i18n="admin.chords.status_all">All</option>
+          <option value="no_chords" data-i18n="admin.chords.status_pending">Undetected</option>
+          <option value="has_chords" data-i18n="admin.chords.status_done">Detected</option>
         </select>
-        <button id="btnRefreshTracks" data-i18n="admin.btn.refresh_tracks">重新整理</button>
-        <button id="btnBatchMidi" title="掃尋 MIDI 目錄並自動匯入未偵測曲目的和弦" data-i18n-attr="title=admin.chords.batch_midi_tip" data-i18n="admin.btn.batch_midi">自動配對 MIDI</button>
+        <button id="btnRefreshTracks" data-i18n="admin.btn.refresh_tracks">Refresh</button>
+        <button id="btnBatchMidi" title="Scan the MIDI directory and auto-import chords for undetected tracks" data-i18n-attr="title=admin.chords.batch_midi_tip" data-i18n="admin.btn.batch_midi">Auto-match MIDI</button>
         <span id="midiStatus" style="font-size:11px;color:var(--text-dim);margin-left:auto"></span>
       </div>
       <div class="actions" style="margin-bottom:8px; display:flex; gap:6px; align-items:center; padding:6px; border:1px dashed var(--border); border-radius:4px;">
         <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;" data-i18n="admin.bpm.label">📐 BPM</span>
         <input type="text" id="bpmRecomputePath" placeholder="path / hash / player URL" data-i18n-attr="placeholder=admin.bpm.placeholder" class="num-input" style="flex:1; max-width:260px; text-align:left;">
         <select id="bpmRecomputeMode" class="num-input" style="width:auto;">
-          <option value="auto" data-i18n="admin.bpm.mode_auto">自動（聽覺判斷）</option>
-          <option value="halve" data-i18n="admin.bpm.mode_halve">強制 ÷2</option>
-          <option value="double" data-i18n="admin.bpm.mode_double">強制 ×2</option>
+          <option value="auto" data-i18n="admin.bpm.mode_auto">Auto (audio inference)</option>
+          <option value="halve" data-i18n="admin.bpm.mode_halve">Force ÷2</option>
+          <option value="double" data-i18n="admin.bpm.mode_double">Force ×2</option>
         </select>
-        <button id="btnBpmRecompute" title="單曲重新偵測 BPM；慢歌被判快歌時可用" data-i18n-attr="title=admin.bpm.recompute_tip" data-i18n="admin.bpm.recompute_btn">重新偵測</button>
+        <button id="btnBpmRecompute" title="Re-detect BPM for a single song; useful when a slow song is misjudged as fast" data-i18n-attr="title=admin.bpm.recompute_tip" data-i18n="admin.bpm.recompute_btn">Recompute</button>
         <span id="bpmRecomputeStatus" style="font-size:11px;color:var(--text-dim);"></span>
       </div>
       <div class="actions" style="margin-bottom:8px; display:flex; gap:6px; align-items:center; padding:6px; border:1px dashed var(--border); border-radius:4px;">
-        <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;" data-i18n="admin.bar.label">🪧 小節</span>
+        <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;" data-i18n="admin.bar.label">🪧 Bar</span>
         <input type="text" id="barRecomputePath" placeholder="path / hash / player URL" data-i18n-attr="placeholder=admin.bar.placeholder" class="num-input" style="flex:1; max-width:260px; text-align:left;">
         <label style="font-size:12px; color:var(--text-dim); display:flex; align-items:center; gap:4px;">
-          <input type="checkbox" id="barRecomputeForce" style="margin:0;"> <span data-i18n="admin.bar.recompute_force_label">強制</span>
+          <input type="checkbox" id="barRecomputeForce" style="margin:0;"> <span data-i18n="admin.bar.recompute_force_label">Force</span>
         </label>
-        <button id="btnBarRecompute" title="單曲重跑 AI bar arbitrator；force 跳過 raw-already-regular 與信心閘" data-i18n-attr="title=admin.bar.recompute_tip" data-i18n="admin.bar.recompute_btn">重新仲裁</button>
+        <button id="btnBarRecompute" title="Re-run AI bar arbitrator on a single song; force skips raw-already-regular and confidence gates" data-i18n-attr="title=admin.bar.recompute_tip" data-i18n="admin.bar.recompute_btn">Re-arbitrate</button>
         <span id="barRecomputeStatus" style="font-size:11px;color:var(--text-dim);"></span>
       </div>
       <div id="trackList" style="max-height:50vh;overflow-y:auto; margin-bottom:8px;">
-        <span style="color:var(--text-dim);font-size:12px" data-i18n="admin.chords.expand_to_load">展開後載入</span>
+        <span style="color:var(--text-dim);font-size:12px" data-i18n="admin.chords.expand_to_load">Expand to load</span>
       </div>
       <div id="paginationBar" style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-dim); justify-content:center;">
-        <button id="btnPrevPage" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;" data-i18n="admin.btn.prev_page">上一頁</button>
-        <span id="pageInfo" data-i18n="admin.chords.page_info_initial">頁 1 / 1</span>
-        <button id="btnNextPage" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;" data-i18n="admin.btn.next_page">下一頁</button>
+        <button id="btnPrevPage" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;" data-i18n="admin.btn.prev_page">Previous</button>
+        <span id="pageInfo" data-i18n="admin.chords.page_info_initial">Page 1 / 1</span>
+        <button id="btnNextPage" style="padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;" data-i18n="admin.btn.next_page">Next</button>
       </div>
     </div>
   </div>
 
   <!-- ======== Card 5: 分散式萃取（收摺）======== -->
   <div class="card" id="extractionCard" style="padding-bottom:0; overflow:hidden;">
-    <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.cluster.title">🛰️ 分散式萃取叢集</h2>
+    <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.cluster.title">🛰️ Distributed extraction cluster</h2>
     <div class="collapse-content" style="margin: -10px -20px 0 -20px;">
       <iframe src="/extraction?embed=1" style="width:100%; height:80vh; border:none; display:block;"></iframe>
     </div>
@@ -365,60 +363,60 @@
 
   <!-- ======== Card 6: Beta 回饋儀表板（收摺）======== -->
   <div class="card" id="betaCard" style="display:none">
-    <h2 class="collapse-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.beta.card_title">🧪 Beta 回饋</h2>
+    <h2 class="collapse-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.beta.card_title">🧪 Beta feedback</h2>
     <div class="collapse-content show">
 
       <!-- Stats row -->
       <div class="stat-row" id="betaStats">
-        <div class="stat-box"><div class="num" id="betaTotalRatings">—</div><div class="label" data-i18n="admin.beta.total_ratings">評價數</div></div>
-        <div class="stat-box"><div class="num" id="betaAvgRating">—</div><div class="label" data-i18n="admin.beta.avg_rating">平均評分</div></div>
-        <div class="stat-box"><div class="num" id="betaOpenBugs">—</div><div class="label" data-i18n="admin.beta.open_bugs">待處理 Bug</div></div>
-        <div class="stat-box"><div class="num" id="betaActiveUsers">—</div><div class="label" data-i18n="admin.beta.active_users_7d">活躍使用者 (7d)</div></div>
+        <div class="stat-box"><div class="num" id="betaTotalRatings">—</div><div class="label" data-i18n="admin.beta.total_ratings">Total ratings</div></div>
+        <div class="stat-box"><div class="num" id="betaAvgRating">—</div><div class="label" data-i18n="admin.beta.avg_rating">Average rating</div></div>
+        <div class="stat-box"><div class="num" id="betaOpenBugs">—</div><div class="label" data-i18n="admin.beta.open_bugs">Open bugs</div></div>
+        <div class="stat-box"><div class="num" id="betaActiveUsers">—</div><div class="label" data-i18n="admin.beta.active_users_7d">Active users (7d)</div></div>
       </div>
 
       <!-- Rating distribution -->
       <div style="margin-bottom:12px">
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.rating_dist_label">評分分布</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.rating_dist_label">Rating distribution</div>
         <div id="betaRatingDist" style="display:flex;gap:4px;align-items:end;height:40px"></div>
       </div>
 
       <!-- Worst-rated songs -->
       <div style="margin-bottom:12px">
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.worst_songs_label">最低評分歌曲（優先修正）</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.worst_songs_label">Lowest-rated songs (fix first)</div>
         <div id="betaWorstSongs" style="font-size:12px"></div>
       </div>
 
       <!-- Recent bug reports -->
       <div style="margin-bottom:12px">
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.bug_list_label">最近 Bug 回報</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.bug_list_label">Recent bug reports</div>
         <div id="betaBugList" style="font-size:12px;max-height:200px;overflow-y:auto"></div>
       </div>
 
       <!-- Invite code management -->
       <div style="margin-bottom:12px">
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.invite_label">邀請碼管理</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.invite_label">Invite code management</div>
         <div class="actions" style="margin-bottom:8px">
-          <button onclick="createInvite()" data-i18n="admin.beta.invite_create">+ 產生邀請碼</button>
-          <button onclick="createInvite(5)" data-i18n="admin.beta.invite_create_5">+ 5 次用邀請碼</button>
-          <button onclick="createInviteCustom()" data-i18n="admin.beta.invite_create_custom">+ 自訂次數</button>
+          <button onclick="createInvite()" data-i18n="admin.beta.invite_create">+ Generate invite code</button>
+          <button onclick="createInvite(5)" data-i18n="admin.beta.invite_create_5">+ 5-use invite code</button>
+          <button onclick="createInviteCustom()" data-i18n="admin.beta.invite_create_custom">+ Custom uses</button>
         </div>
         <div id="betaInviteList" style="font-size:12px"></div>
       </div>
 
       <!-- User list -->
       <div style="margin-bottom:12px">
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.user_list_label">已註冊使用者</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.user_list_label">Registered users</div>
         <div id="betaUserList" style="font-size:12px"></div>
       </div>
 
       <!-- Process audit log -->
       <div>
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.audit_records_label">偵測紀錄</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.audit_records_label">Detection records</div>
         <div class="actions" style="margin-bottom:8px;display:flex;align-items:center;gap:12px">
           <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;user-select:none">
-            <input type="checkbox" id="auditSelectAll" style="cursor:pointer"> <span data-i18n="admin.audit.select_all">全選</span>
+            <input type="checkbox" id="auditSelectAll" style="cursor:pointer"> <span data-i18n="admin.audit.select_all">Select all</span>
           </label>
-          <button id="btnDeleteSelected" onclick="deleteSelectedAudit()" style="display:none" data-i18n="admin.audit.delete_selected">🗑 刪除勾選</button>
+          <button id="btnDeleteSelected" onclick="deleteSelectedAudit()" style="display:none" data-i18n="admin.audit.delete_selected">🗑 Delete selected</button>
         </div>
         <div id="betaAuditList" style="font-size:12px;max-height:300px;overflow-y:auto"></div>
       </div>
@@ -427,29 +425,28 @@
   </div>
 
   <div class="card" id="backupCard">
-    <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.backup.card_title">📦 備份</h2>
+    <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.backup.card_title">📦 Backup</h2>
     <div class="collapse-content">
 
       <!-- Subsection: 設定快照 (collapsible secondary header; reduces visual weight) -->
       <div class="backup-subsection" id="settingsSnapshotSection" style="margin-bottom:12px">
         <div class="sub-collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')"
              style="font-size:13px;font-weight:bold;cursor:pointer;padding:4px 0;user-select:none">
-          <span data-i18n="admin.backup.settings_section_title">⚙️ 設定快照</span> <span style="font-size:11px;color:var(--text-dim);font-weight:normal" data-i18n="admin.backup.click_to_expand">（點擊展開）</span>
+          <span data-i18n="admin.backup.settings_section_title">⚙️ Settings snapshots</span> <span style="font-size:11px;color:var(--text-dim);font-weight:normal" data-i18n="admin.backup.click_to_expand">(click to expand)</span>
         </div>
         <div class="sub-collapse-content" style="display:none">
           <div style="font-size:11px;color:var(--text-dim);margin:4px 0 8px" data-i18n="admin.backup.settings_intro">
-            每次儲存 settings 前自動快照到所有目標（每目標保留最新 30 份）。
-          </div>
+Auto-snapshots to every target before each settings save (keeps newest 30 per target).</div>
           <div style="margin-bottom:8px">
             <div id="settingsBackupTargets" style="font-size:12px;display:flex;flex-direction:column;gap:2px"></div>
             <div style="display:flex;gap:4px;margin-top:4px">
               <input id="bkTargetLabel" placeholder="label" data-i18n-attr="placeholder=admin.backup.label_placeholder" style="flex:0 0 100px;font-size:11px;padding:2px 4px">
               <input id="bkTargetPath" placeholder="path" data-i18n-attr="placeholder=admin.backup.path_placeholder" style="flex:1;font-size:11px;padding:2px 4px">
-              <button onclick="addBackupTarget()" style="font-size:11px;padding:2px 6px" data-i18n-attr="title=admin.tip.add_target" title="新增備份目標">➕</button>
-              <button onclick="loadSettingsBackups()" style="font-size:11px;padding:2px 6px" title="重新整理" data-i18n-attr="title=admin.backup.refresh_targets">↻</button>
+              <button onclick="addBackupTarget()" style="font-size:11px;padding:2px 6px" data-i18n-attr="title=admin.tip.add_target" title="Add backup target">➕</button>
+              <button onclick="loadSettingsBackups()" style="font-size:11px;padding:2px 6px" title="Refresh" data-i18n-attr="title=admin.backup.refresh_targets">↻</button>
             </div>
           </div>
-          <div id="settingsBackupList" style="font-size:11px;max-height:180px;overflow-y:auto" data-i18n="admin.chords.loading">載入中…</div>
+          <div id="settingsBackupList" style="font-size:11px;max-height:180px;overflow-y:auto" data-i18n="admin.chords.loading">Loading…</div>
         </div>
       </div>
 
@@ -458,22 +455,22 @@
 
       <!-- Subsection: 資料備份 -->
       <div class="backup-subsection" id="dataBackupSection">
-        <div style="font-size:13px;font-weight:bold;margin-bottom:6px" data-i18n="admin.backup.data_section_title">🗄️ 資料備份（分層）</div>
+        <div style="font-size:13px;font-weight:bold;margin-bottom:6px" data-i18n="admin.backup.data_section_title">🗄️ Data backup (tiered)</div>
         <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px">
-          <span id="bkBackupIntro" data-i18n="admin.backup.data_section_label_prefix">分層備份到</span>
+          <span id="bkBackupIntro" data-i18n="admin.backup.data_section_label_prefix">Tiered backup to</span>
           <span id="bkTargetRoot" style="font-family:monospace">W:\LiveChord\backup</span>。
-          <span data-i18n="admin.backup.data_intro">Tier 1 不可重建、Tier 2 重算成本高、Tier 3 大量可重建。</span>
+          <span data-i18n="admin.backup.data_intro">Tier 1 cannot be rebuilt; Tier 2 is expensive to recompute; Tier 3 is bulk and rebuildable.</span>
         </div>
         <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">
-          <span style="font-size:11px;color:var(--text-dim);flex:0 0 auto" data-i18n="admin.backup.location_label">備份位置：</span>
-          <input id="bkRootInput" placeholder="例 \\LOVE\backups\livechord 或 D:\backup\livechord" data-i18n-attr="placeholder=admin.backup.location_placeholder" style="flex:1;font-size:12px;padding:3px 6px">
-          <button onclick="saveBackupRoot()" style="font-size:11px;padding:3px 8px" data-i18n="admin.backup.save_root">儲存</button>
+          <span style="font-size:11px;color:var(--text-dim);flex:0 0 auto" data-i18n="admin.backup.location_label">Backup location:</span>
+          <input id="bkRootInput" placeholder="e.g. \\LOVE\backups\livechord or D:\backup\livechord" data-i18n-attr="placeholder=admin.backup.location_placeholder" style="flex:1;font-size:12px;padding:3px 6px">
+          <button onclick="saveBackupRoot()" style="font-size:11px;padding:3px 8px" data-i18n="admin.backup.save_root">Save</button>
         </div>
-        <div id="bkTierList" style="font-size:12px;display:flex;flex-direction:column;gap:10px" data-i18n="admin.chords.loading">載入中…</div>
+        <div id="bkTierList" style="font-size:12px;display:flex;flex-direction:column;gap:10px" data-i18n="admin.chords.loading">Loading…</div>
 
         <div style="margin-top:14px">
-          <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.backup.history">最近備份歷史</div>
-          <div id="bkHistory" style="font-size:11px;font-family:monospace;max-height:200px;overflow-y:auto;padding:6px 8px;background:var(--bg);border-radius:3px" data-i18n="admin.backup.history_empty">尚無記錄</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.backup.history">Recent backup history</div>
+          <div id="bkHistory" style="font-size:11px;font-family:monospace;max-height:200px;overflow-y:auto;padding:6px 8px;background:var(--bg);border-radius:3px" data-i18n="admin.backup.history_empty">No history yet</div>
         </div>
       </div>
 

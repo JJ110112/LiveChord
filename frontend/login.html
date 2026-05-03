@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title data-i18n="login.title_tag">LiveChord - 登入</title>
+  <title data-i18n="login.title_tag">LiveChord — Sign in</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <!-- Phase A shared fetch wrapper. Loaded BEFORE any /api/ call so anon
@@ -215,7 +215,7 @@
 
   <div class="auth-container">
     <h1 data-i18n="common.brand">LiveChord</h1>
-    <div class="subtitle" id="subtitle" data-i18n="login.subtitle.public">登入解鎖收藏與評分</div>
+    <div class="subtitle" id="subtitle" data-i18n="login.subtitle.public">Sign in to unlock favorites and ratings</div>
 
     <!-- ── Public mode: OAuth buttons (default visible; hidden by JS if not public) ── -->
     <div id="oauth-section">
@@ -227,17 +227,17 @@
             <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/>
             <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/>
           </svg>
-          <span data-i18n="login.btn_google">使用 Google 繼續</span>
+          <span data-i18n="login.btn_google">Continue with Google</span>
         </a>
         <a class="oauth-btn oauth-btn-discord" href="/api/auth/oauth/discord/start" data-provider="discord">
           <svg class="oauth-icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
             <path d="M20.317 4.369A19.79 19.79 0 0 0 16.558 3.2a.074.074 0 0 0-.079.037 13.7 13.7 0 0 0-.608 1.249 18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.249.077.077 0 0 0-.079-.037A19.74 19.74 0 0 0 5.93 4.369a.07.07 0 0 0-.032.027C2.625 9.046 1.71 13.58 2.157 18.057a.082.082 0 0 0 .031.056 19.91 19.91 0 0 0 5.993 3.03.078.078 0 0 0 .084-.027 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.105 13.13 13.13 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.371-.291a.074.074 0 0 1 .078-.011c3.927 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .079.01c.12.099.245.198.372.292a.077.077 0 0 1-.006.128 12.32 12.32 0 0 1-1.873.891.077.077 0 0 0-.041.106c.36.698.772 1.362 1.225 1.993a.077.077 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.331c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.955 2.418-2.157 2.418zm7.974 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
           </svg>
-          <span data-i18n="login.btn_discord">使用 Discord 繼續</span>
+          <span data-i18n="login.btn_discord">Continue with Discord</span>
         </a>
       </div>
       <div class="guest-row">
-        <a href="/" id="guest-link" data-i18n="login.guest_link">先以訪客瀏覽 →</a>
+        <a href="/" id="guest-link" data-i18n="login.guest_link">Continue as guest →</a>
       </div>
     </div>
 
@@ -247,18 +247,18 @@
     <div id="legacy-section" class="hidden">
       <form id="login-form" onsubmit="handleLogin(event)">
         <div class="form-group">
-          <label data-i18n="login.field.username">使用者名稱</label>
+          <label data-i18n="login.field.username">Username</label>
           <input type="text" id="login-username" required
                  data-i18n-attr="placeholder=login.field.username_placeholder"
                  placeholder="e.g. Eric">
         </div>
         <div class="form-group">
-          <label data-i18n="login.field.password">密碼</label>
+          <label data-i18n="login.field.password">Password</label>
           <input type="password" id="login-password" required
                  data-i18n-attr="placeholder=login.field.password_placeholder"
                  placeholder="Your password">
         </div>
-        <button type="submit" class="btn" data-i18n="login.btn_signin">登入</button>
+        <button type="submit" class="btn" data-i18n="login.btn_signin">Sign in</button>
       </form>
     </div>
 

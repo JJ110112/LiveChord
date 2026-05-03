@@ -97,18 +97,18 @@
   <div class="card">
     <h2>
       <span class="dot dot-gray" id="overallDot"></span>
-      <span data-i18n="extraction.progress.title">擷取進度</span>
+      <span data-i18n="extraction.progress.title">Extraction progress</span>
       <span class="badge badge-idle" id="overallBadge" data-i18n="extraction.badge.idle">idle</span>
     </h2>
 
     <div id="jobsContainer">
-      <div style="font-size:12px;color:var(--text-dim)" data-i18n="extraction.waiting">等待擷取任務啟動...</div>
+      <div style="font-size:12px;color:var(--text-dim)" data-i18n="extraction.waiting">Waiting for an extraction job to start…</div>
     </div>
 
     <div class="actions">
-      <button class="danger" id="btnStopAll" disabled data-i18n="extraction.btn.stop_all">全部停止</button>
-      <button class="danger" id="btnStopPC" disabled style="background:transparent;border-color:#d32f2f;color:#d32f2f" data-i18n="extraction.btn.stop_pc">停止 PC</button>
-      <button class="danger" id="btnStopNUC" disabled style="background:transparent;border-color:#ff9800;color:#ff9800" data-i18n="extraction.btn.stop_nuc">停止 NUC</button>
+      <button class="danger" id="btnStopAll" disabled data-i18n="extraction.btn.stop_all">Stop all</button>
+      <button class="danger" id="btnStopPC" disabled style="background:transparent;border-color:#d32f2f;color:#d32f2f" data-i18n="extraction.btn.stop_pc">Stop PC</button>
+      <button class="danger" id="btnStopNUC" disabled style="background:transparent;border-color:#ff9800;color:#ff9800" data-i18n="extraction.btn.stop_nuc">Stop NUC</button>
     </div>
 
     <div class="hint" data-i18n-html="extraction.hint_html">
@@ -120,9 +120,9 @@
 
   <!-- ======== 活動記錄 ======== -->
   <div class="card">
-    <h2 class="collapse-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="extraction.activity.title">活動記錄</h2>
+    <h2 class="collapse-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="extraction.activity.title">Activity log</h2>
     <div class="collapse-content show">
-      <div class="log-box" id="logBox"><span class="info" data-i18n="extraction.waiting">等待擷取任務啟動...</span></div>
+      <div class="log-box" id="logBox"><span class="info" data-i18n="extraction.waiting">Waiting for an extraction job to start…</span></div>
     </div>
   </div>
 
