@@ -16,16 +16,18 @@ function _applySearchMarqueeText(text) {
 }
 
 // Localized strings come from common.search_placeholder /
-// common.search_placeholder_short. We keep the Chinese fallbacks so the
-// marquee still reads correctly if i18n.js is delayed or fails to load.
+// common.search_placeholder_short. English fallbacks below match the
+// EN-default deployment — they only show if i18n.js is delayed or fails.
 function _marqueeStrings() {
   const t = (window.LiveChordI18n && window.LiveChordI18n.t) || null;
-  const short = t ? t("common.search_placeholder_short") : "請輸入 YouTube URL...";
-  const long  = t ? t("common.search_placeholder")       : "請輸入歌曲、專輯、藝人或YouTube URL...";
-  // t() returns the key itself for missing strings — fall back to Chinese in that case.
+  const SHORT_FB = "Paste a YouTube URL...";
+  const LONG_FB  = "Search a song, album, artist, or paste a YouTube URL...";
+  const short = t ? t("common.search_placeholder_short") : SHORT_FB;
+  const long  = t ? t("common.search_placeholder")       : LONG_FB;
+  // t() returns the key itself for missing strings — fall back to English then.
   return {
-    short: short === "common.search_placeholder_short" ? "請輸入 YouTube URL..." : short,
-    long:  short === "common.search_placeholder"       ? "請輸入歌曲、專輯、藝人或YouTube URL..." : long,
+    short: short === "common.search_placeholder_short" ? SHORT_FB : short,
+    long:  long  === "common.search_placeholder"       ? LONG_FB  : long,
   };
 }
 

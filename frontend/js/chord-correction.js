@@ -274,8 +274,8 @@
 
     const marks = [];
     const panel = _createPanel(
-      "\u23F1 和弦對齊 (Chord Align)",
-      "播放音樂，聽到和弦變換時按 <kbd>Space</kbd>"
+      _t("cc.chord_align.title"),
+      _t("cc.chord_align.instruction")
     );
 
     const countEl = panel.querySelector(".cc-count");
@@ -284,13 +284,14 @@
     const cancelBtn = panel.querySelector(".correction-cancel");
 
     function updateUI() {
-      countEl.textContent = `${marks.length} 個標記`;
+      countEl.textContent = _t("cc.chord_align.marks_count", { n: marks.length });
       if (marks.length >= 3) {
         const offsets = marks.map(m => m.audioTime - m.chordTime);
         const med = median(offsets);
         resultEl.style.display = "";
         const sign = med >= 0 ? "+" : "";
-        resultEl.textContent = `偏移量: ${sign}${round2(med)}s`;
+        resultEl.textContent = _t("cc.chord_align.offset_label",
+          { value: `${sign}${round2(med)}` });
         applyBtn.disabled = false;
       }
     }
@@ -364,8 +365,8 @@
 
     const taps = [];
     const panel = _createPanel(
-      "\uD83E\uDD41 節拍校正 (Beat Tap)",
-      "播放音樂，按 <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> 鍵敲擊每一拍"
+      _t("cc.beat_tap.title"),
+      _t("cc.beat_tap.instruction")
     );
 
     const countEl = panel.querySelector(".cc-count");
@@ -374,7 +375,7 @@
     const cancelBtn = panel.querySelector(".correction-cancel");
 
     function updateUI() {
-      countEl.textContent = `${taps.length} 次敲擊`;
+      countEl.textContent = _t("cc.beat_tap.taps_count", { n: taps.length });
       if (taps.length >= 4) {
         const intervals = [];
         for (let i = 1; i < taps.length; i++) {
@@ -525,7 +526,7 @@
         for (let j = lastCalibratedIdx + 1; j < total; j++) {
           if ((chordData.chords[j].time || 0) >= nextSec.start - 0.05) {
             phraseEndIdx = j - 1;  // last chord BEFORE the next section
-            phraseLabel = nextSec.label || nextSec.type || "下個段落";
+            phraseLabel = nextSec.label || nextSec.type || _t("cc.calibrate.fallback_phrase_label");
             break;
           }
         }
@@ -541,12 +542,13 @@
       const slope = transform.a.toFixed(3);
       const offsetStr = (transform.b >= 0 ? "+" : "") + transform.b.toFixed(2) + " s";
       const nearPure = Math.abs(transform.a - 1) < 0.005;
-      confidence = `線性延伸：×${slope} 倍 ${offsetStr} (最大殘差 ${transform.maxResidual.toFixed(2)} s)` +
-                   (nearPure ? "（≈ 純位移）" : "");
+      confidence = _t("cc.calibrate.confidence_affine",
+        { slope, offset: offsetStr, residual: transform.maxResidual.toFixed(2) })
+        + (nearPure ? _t("cc.calibrate.near_pure_suffix") : "");
     } else {
       const dt = transform.deltaT;
       const sign = dt >= 0 ? "+" : "";
-      confidence = `位移模式：${sign}${dt.toFixed(2)} s`;
+      confidence = _t("cc.calibrate.confidence_shift", { value: `${sign}${dt.toFixed(2)}` });
     }
 
     // Build the range-selector block.
@@ -555,27 +557,31 @@
     const segmentCount = N;
     const endCount = total - 1 - lastCalibratedIdx;
     const phraseCount = phraseEndIdx !== null ? phraseEndIdx - lastCalibratedIdx : 0;
+    const phraseSpan = phraseEndIdx === null
+      ? _t("cc.calibrate.range_phrase_disabled")
+      : _t("cc.calibrate.range_phrase",
+          { label: _escape(phraseLabel), n: phraseCount });
+    const endSpan = endCount <= 0
+      ? _t("cc.calibrate.range_end_disabled")
+      : _t("cc.calibrate.range_end", { n: endCount });
     block.innerHTML = `
       <div class="cc-range-summary">
-        已輕敲 ${tapsCount} 個節拍點 (${N} 個和絃)，BPM ${newBpm}
+        ${_t("cc.calibrate.summary_tapped",
+          { taps: tapsCount, chords: N, bpm: newBpm })}
         <br><span class="cc-range-confidence">${confidence}</span>
       </div>
-      <div class="cc-range-prompt">將此校正套用到 (請選擇)：</div>
+      <div class="cc-range-prompt">${_t("cc.calibrate.range_prompt")}</div>
       <label class="cc-range-opt"><input type="radio" name="cc-range" value="segment">
-        <span>只校正這 ${segmentCount} 個和絃</span></label>
+        <span>${_t("cc.calibrate.range_segment", { n: segmentCount })}</span></label>
       <label class="cc-range-opt ${phraseEndIdx === null ? "cc-range-disabled" : ""}">
         <input type="radio" name="cc-range" value="phrase" ${phraseEndIdx === null ? "disabled" : ""}>
-        <span>${phraseEndIdx === null
-          ? "延伸到下個樂句邊界（沒有下個樂句）"
-          : `延伸到下個樂句邊界 — ${_escape(phraseLabel)} 起 (+${phraseCount} 個)`}</span></label>
+        <span>${phraseSpan}</span></label>
       <label class="cc-range-opt ${endCount <= 0 ? "cc-range-disabled" : ""}">
         <input type="radio" name="cc-range" value="end" ${endCount <= 0 ? "disabled" : ""}>
-        <span>${endCount <= 0
-          ? "延伸到結尾（此段已是最後一段）"
-          : `延伸到結尾 (+${endCount} 個)`}</span></label>
+        <span>${endSpan}</span></label>
       <div class="cc-range-actions">
-        <button type="button" class="correction-btn cc-range-back">&#x2039; 回上一步</button>
-        <button type="button" class="correction-btn correction-apply cc-range-apply" disabled>&#x2713; 套用</button>
+        <button type="button" class="correction-btn cc-range-back">&#x2039; ${_t("cc.btn.back")}</button>
+        <button type="button" class="correction-btn correction-apply cc-range-apply" disabled>&#x2713; ${_t("cc.btn.apply")}</button>
       </div>
     `;
     panel.appendChild(block);
@@ -691,10 +697,10 @@
       ts: Date.now(),
     };
 
-    let summary = `已校正 ${N} 個和絃`;
-    if (extrapolated > 0) summary += ` + 延伸 ${extrapolated} 個`;
-    summary += ` (BPM=${newBpm})`;
-    if (waterfallShifted > 0) summary += `｜瀑布流 ${waterfallShifted} 筆已同步`;
+    let summary = _t("cc.calibrate.toast_calibrated", { n: N });
+    if (extrapolated > 0) summary += _t("cc.calibrate.toast_extrapolated_suffix", { n: extrapolated });
+    summary += _t("cc.calibrate.toast_bpm_suffix", { bpm: newBpm });
+    if (waterfallShifted > 0) summary += _t("cc.calibrate.toast_waterfall_suffix", { n: waterfallShifted });
 
     exitChordCalibrate();
     rebuildFn();
@@ -782,8 +788,8 @@
     }
 
     const title = startChordIdx > 0
-      ? `\u{1F3AF} 從第 ${startChordIdx + 1} 個和絃開始校正`
-      : `\u{1F3AF} 和弦與節拍校正 (Chord + Beat Calibrate)`;
+      ? _t("cc.calibrate.title_from_idx", { n: startChordIdx + 1 })
+      : _t("cc.calibrate.title");
     const panel = _createPanel(title, "");  // instruction set below
 
     const countEl = panel.querySelector(".cc-count");
@@ -794,10 +800,10 @@
 
     function refreshInstruction() {
       // Clickable <kbd> labels — click to rebind. No modal, inline capture.
+      const startKbd = `<kbd class="cc-bind" data-role="start">${chordStartKey}</kbd>`;
+      const nextKbd  = `<kbd class="cc-bind" data-role="next">${nextBeatKey}</kbd>`;
       instructionEl.innerHTML =
-        `播放音樂，按 <kbd class="cc-bind" data-role="start">${chordStartKey}</kbd> = 換和弦；` +
-        `<kbd class="cc-bind" data-role="next">${nextBeatKey}</kbd> = 同和弦下一拍` +
-        `<br><span style="opacity:0.6; font-size:11px;">(點擊按鍵可自訂；手機請用下方 <b>新和弦</b> / <b>下一拍</b> 按鈕)</span>`;
+        _t("cc.calibrate.instruction_html", { startKbd, nextKbd });
       instructionEl.querySelectorAll(".cc-bind").forEach(kbd => {
         kbd.style.cssText = "cursor:pointer; padding:2px 8px; background:rgba(33,150,243,0.2); border-radius:3px; min-width:20px; display:inline-block; text-align:center;";
         kbd.addEventListener("click", () => _rebindOne(kbd));
@@ -807,7 +813,7 @@
     function _rebindOne(kbdEl) {
       const role = kbdEl.dataset.role; // "start" or "next"
       const oldText = kbdEl.textContent;
-      kbdEl.textContent = "按任意鍵...";
+      kbdEl.textContent = _t("cc.calibrate.press_any_key");
       kbdEl.style.background = "rgba(255,152,0,0.4)";
       rebindingActive = true;
       const oneshot = (e) => {
@@ -872,7 +878,8 @@
 
     function updateUI() {
       const groups = groupsFromTaps();
-      countEl.textContent = `${groups.length} 個和絃，${taps.length} 拍`;
+      countEl.textContent = _t("cc.calibrate.count_chords_beats",
+        { chords: groups.length, beats: taps.length });
       if (taps.length >= 4) {
         const intervals = [];
         for (let i = 1; i < taps.length; i++) intervals.push(taps[i].time - taps[i - 1].time);
