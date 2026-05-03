@@ -95,6 +95,32 @@
         if (closeBtn) closeBtn.addEventListener("click", closeAddSongModal);
         if (backdrop) backdrop.addEventListener("click", closeAddSongModal);
       }
+      if (_isBetaMode) {
+        // Local-music + YouTube-playlists sections are user-data sections
+        // (no NAS leak, fully personal); both should render for ANY beta /
+        // public visitor including admins. Previously these were hidden
+        // entirely on the admin code path so the homepage had no visible
+        // "+ Pick local audio" entry — admin had to discover the file
+        // upload via the search-modal CTA, which is non-obvious.
+        // Hide the YouTube-playlists card in public mode since YT
+        // extraction is being phased out for public users (Hetzner IP
+        // gets aggressively flagged by YouTube).
+        const secBetaLocal = $("#secBetaLocalTracks");
+        if (secBetaLocal) secBetaLocal.style.display = "";
+        const secBetaPlaylists = $("#secBetaPlaylists");
+        if (secBetaPlaylists && !_isPublicMode) secBetaPlaylists.style.display = "";
+
+        // YouTube URL row inside the add-song modal — public mode hides
+        // it so file-upload is the only path. The search bar's YT-URL
+        // auto-detection CTA is gated separately (see _isPublicMode
+        // checks in the search-input handlers below).
+        if (_isPublicMode) {
+          const ytRow = $("#betaYtRow");
+          const ytProgress = $("#betaYtProgress");
+          if (ytRow) ytRow.style.display = "none";
+          if (ytProgress) ytProgress.style.display = "none";
+        }
+      }
       if (_isBetaMode && !adminRes.is_admin) {
         _isBetaNonAdmin = true;
         // Hide remaining NAS-leaking section for non-admin users.
@@ -1026,7 +1052,10 @@
     }
     // Paste of a YouTube URL — don't hit /api/search (it would return "找不到結果"
     // and confuse the user). Distinguish single-video vs playlist URL.
-    if (_isBetaMode && _YT_URL_RE.test(q)) {
+    // Public mode skips this branch entirely: YouTube extraction is disabled
+    // for public users because Hetzner IPs get flagged too hard for tier-2
+    // cookies to survive (see doc/OPS.md "yt-dlp cookies refresh" history).
+    if (_isBetaMode && !_isPublicMode && _YT_URL_RE.test(q)) {
       const isPlaylist = _isYtPlaylistUrl(q);
       const msg = isPlaylist ? _t("home.search.yt_playlist_detected") : _t("home.search.yt_url_detected");
       const btnLabel = isPlaylist ? _t("home.search.yt_playlist_btn") : _t("home.search.yt_url_btn");
@@ -1064,7 +1093,7 @@
   searchInput.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
     const raw = searchInput.value.trim();
-    if (_isBetaMode && _YT_URL_RE.test(raw)) {
+    if (_isBetaMode && !_isPublicMode && _YT_URL_RE.test(raw)) {
       e.preventDefault();
       if (_isYtPlaylistUrl(raw)) _onAddPlaylistFromSearch(raw);
       else _searchTriggerUrlAnalyze(raw);
