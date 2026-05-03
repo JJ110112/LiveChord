@@ -1486,8 +1486,14 @@ const ChordRender = {
     const H = opts.canvasH || canvas.clientHeight || 400;
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
-    canvas.style.width = W + "px";
-    canvas.style.height = H + "px";
+    // NOTE: do NOT write canvas.style.width / .height here. The canvas's
+    // CSS already sizes it via `width: 80%` / `flex: 1` from the parent,
+    // so an inline px value would override the percentage and pin the
+    // canvas at whatever width happened to be at the first render —
+    // breaking every subsequent panel resize (the canvas's clientWidth
+    // would never grow back, ResizeObserver wouldn't fire, redraws kept
+    // sampling the stale pinned width). Pixel buffer (canvas.width) is
+    // enough; the browser scales it to the CSS-computed display size.
     const ctx = canvas.getContext("2d");
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, W, H);
