@@ -446,6 +446,11 @@ async def robots():
     return FileResponse(FRONTEND_DIR / "robots.txt", media_type="text/plain")
 
 
+@app.get("/sitemap.xml")
+async def sitemap():
+    return FileResponse(FRONTEND_DIR / "sitemap.xml", media_type="application/xml")
+
+
 NO_CACHE_HEADERS = {
     "Cache-Control": "no-cache, no-store, must-revalidate",
     "Pragma": "no-cache",
