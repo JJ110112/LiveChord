@@ -355,10 +355,14 @@ a:hover { text-decoration: underline; }
   margin: 0;
 }
 .header-brand-icon {
-  width: 28px;
-  height: 28px;
+  /* Match the 38px footprint of the sibling .header-coffee-btn and
+     .header-settings-btn so the brand mark doesn't look visibly smaller
+     than the buttons next to it. Earlier 28px made the LC icon read
+     as secondary against the 38px coffee + gear cluster on the right. */
+  width: 38px;
+  height: 38px;
   display: block;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 /* Show only the cyan LC icon — hide the "LiveChord" wordmark on every
    viewport so the brand looks identical on PC and mobile, matching the
