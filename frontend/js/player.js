@@ -7432,14 +7432,14 @@
       menu.style.top = e.pageY + "px";
       
       const types = [
-        { type: "dialogue", label: "對白 (Dialogue)" },
-        { type: "intro", label: "前奏 (Intro)" },
-        { type: "verse", label: "主歌 (Verse)" },
-        { type: "pre_chorus", label: "導歌 (PreChorus)" },
-        { type: "chorus", label: "副歌 (Chorus)" },
-        { type: "instrumental", label: "間奏 (Interlude)" },
-        { type: "bridge", label: "橋段 (Bridge)" },
-        { type: "outro", label: "尾奏 (Outro)" }
+        { type: "dialogue",     label: _t("player.section.dialogue") },
+        { type: "intro",        label: _t("player.section.intro") },
+        { type: "verse",        label: _t("player.section.verse") },
+        { type: "pre_chorus",   label: _t("player.section.pre_chorus") },
+        { type: "chorus",       label: _t("player.section.chorus") },
+        { type: "instrumental", label: _t("player.section.instrumental") },
+        { type: "bridge",       label: _t("player.section.bridge") },
+        { type: "outro",        label: _t("player.section.outro") },
       ];
       
       const isBoundary = (chordTime === null || (activeSec && Math.abs(chordTime - activeSec.start) < 0.5));
@@ -7454,19 +7454,21 @@
           menu.style.top = top + "px";
       }
       
-      function renderTypeList(titleText, callback) {
+      function renderTypeList(titleText, callback, opts) {
+          opts = opts || {};
+          const isModify = !!opts.isModify;
           menu.innerHTML = "";
           const t = document.createElement("div");
           t.className = "title";
-          t.innerHTML = `<span>${titleText}</span><span style="opacity:0.6;float:right;cursor:pointer">🔙 回上層</span>`;
+          t.innerHTML = `<span>${titleText}</span><span style="opacity:0.6;float:right;cursor:pointer">${_t("player.menu.back")}</span>`;
           t.querySelector("span:last-child").onclick = (ev) => { ev.stopPropagation(); renderMain(); };
           menu.appendChild(t);
-          
+
           let originalType = activeSec ? activeSec.type : null;
           types.forEach(tObj => {
               const item = document.createElement("div");
               item.className = "rv-section-menu-item";
-              const isSelected = (titleText.includes("修改") && originalType === tObj.type);
+              const isSelected = (isModify && originalType === tObj.type);
               if (isSelected) {
                   item.style.fontWeight = "bold";
                   item.style.color = "#4caf50";
@@ -7489,7 +7491,7 @@
           menu.innerHTML = "";
           const t = document.createElement("div");
           t.className = "title";
-          t.innerHTML = `<span>\u2702 切分 ${chordName} (${totalBeats} 拍)</span><span style="opacity:0.6;float:right;cursor:pointer">\uD83D\uDD19 回上層</span>`;
+          t.innerHTML = `<span>${_t("player.menu.title.split_chord", { chord: chordName, beats: totalBeats })}</span><span style="opacity:0.6;float:right;cursor:pointer">${_t("player.menu.back")}</span>`;
           t.querySelector("span:last-child").onclick = (ev) => { ev.stopPropagation(); renderMain(); };
           menu.appendChild(t);
 
@@ -7531,10 +7533,10 @@
           options.forEach(([l, r]) => {
               const item = document.createElement("div");
               item.className = "rv-section-menu-item";
-              item.innerHTML = `<span style="flex:1">${l}+${r} \u2192 選段落...</span>`;
+              item.innerHTML = `<span style="flex:1">${_t("player.menu.item.split_with_section", { l, r })}</span>`;
               item.onclick = (ev) => {
                   ev.stopPropagation();
-                  renderTypeList(`切分 ${l}+${r} \u2192 新段落`, async (newType) => {
+                  renderTypeList(_t("player.menu.title.split_with_section", { l, r }), async (newType) => {
                       CC.backup(chordData);
                       const splitTime = CC.splitChord(chordData, chordIdx, l, r, currentSecPerBeat);
                       await window.saveSectionFeedback(splitTime, newType);
@@ -7555,7 +7557,7 @@
           menu.innerHTML = "";
           const t = document.createElement("div");
           t.className = "title";
-          t.innerHTML = `<span>\u{1F941} ${chordName} 拍數 (目前 ${currentBeats})</span><span style="opacity:0.6;float:right;cursor:pointer">🔙 回上層</span>`;
+          t.innerHTML = `<span>${_t("player.menu.title.beats_adjust", { chord: chordName, n: currentBeats })}</span><span style="opacity:0.6;float:right;cursor:pointer">${_t("player.menu.back")}</span>`;
           t.querySelector("span:last-child").onclick = (ev) => { ev.stopPropagation(); renderMain(); };
           menu.appendChild(t);
 
@@ -7573,7 +7575,7 @@
                   item.style.fontWeight = "bold";
                   item.style.color = "#4caf50";
               }
-              item.innerHTML = `<span style="flex:1">${beats} 拍${beats === currentBeats ? " ✓" : ""}</span>`;
+              item.innerHTML = `<span style="flex:1">${_t("player.menu.item.beats_choice", { n: beats, check: beats === currentBeats ? " ✓" : "" })}</span>`;
               item.onclick = (ev) => {
                   ev.stopPropagation();
                   menu.remove();
@@ -7593,28 +7595,30 @@
           menu.innerHTML = "";
           const t1 = document.createElement("div");
           t1.className = "title";
-          t1.textContent = activeSec ? `目前段落: ${activeSec.labelZh || activeSec.type}` : `樂句模型標籤`;
+          t1.textContent = activeSec
+            ? _t("player.menu.title.section_current", { label: activeSec.labelZh || activeSec.type })
+            : _t("player.menu.title.section_default");
           menu.appendChild(t1);
 
           const renameItem = document.createElement("div");
           renameItem.className = "rv-section-menu-item";
-          renameItem.innerHTML = `<span style="flex:1">📝 修改本段名稱...</span>`;
+          renameItem.innerHTML = `<span style="flex:1">${_t("player.menu.item.rename_section")}</span>`;
           renameItem.onclick = (ev) => {
               ev.stopPropagation();
               let exactTime = activeSec ? activeSec.start : chordTime;
-              renderTypeList("修改名稱", async (newType) => {
+              renderTypeList(_t("player.menu.title.modify_name"), async (newType) => {
                   await window.saveSectionFeedback(exactTime, newType);
-              });
+              }, { isModify: true });
           };
           menu.appendChild(renameItem);
 
           if (chordTime !== null && !isBoundary) {
               const splitItem = document.createElement("div");
               splitItem.className = "rv-section-menu-item";
-              splitItem.innerHTML = `<span style="flex:1">✂️ 從此和弦切出新段...</span>`;
+              splitItem.innerHTML = `<span style="flex:1">${_t("player.menu.item.split_section")}</span>`;
               splitItem.onclick = (ev) => {
                   ev.stopPropagation();
-                  renderTypeList("切出新段落", async (newType) => {
+                  renderTypeList(_t("player.menu.title.split_out"), async (newType) => {
                       await window.saveSectionFeedback(chordTime, newType);
                   });
               };
@@ -7631,11 +7635,11 @@
                   // menu (most-used chord correction: "wrong chord name").
                   const renameItem = document.createElement("div");
                   renameItem.className = "rv-section-menu-item";
-                  renameItem.innerHTML = `<span style="flex:1">\u{1F3B9} 更換和弦 (目前 ${chords[ci].chord})...</span>`;
+                  renameItem.innerHTML = `<span style="flex:1">${_t("player.menu.item.rename_chord", { chord: chords[ci].chord })}</span>`;
                   renameItem.onclick = (ev) => {
                       ev.stopPropagation();
                       menu.remove();
-                      const newName = prompt(`輸入新和弦名稱 (例: Am, Cmaj7, F#m7b5):`, chords[ci].chord);
+                      const newName = prompt(_t("player.prompt.new_chord_name"), chords[ci].chord);
                       if (!newName) return;
                       const trimmed = newName.trim();
                       if (!trimmed || trimmed === chords[ci].chord) return;
@@ -7661,7 +7665,7 @@
                       const csItem = document.createElement("div");
                       csItem.className = "rv-section-menu-item";
                       csItem.style.color = "#ff9800";
-                      csItem.innerHTML = `<span style="flex:1">\u2702 切分和弦 (${beats} 拍)...</span>`;
+                      csItem.innerHTML = `<span style="flex:1">${_t("player.menu.item.split_chord", { n: beats })}</span>`;
                       csItem.onclick = (ev) => {
                           ev.stopPropagation();
                           renderSplitOptions(ci, chords[ci].chord, beats);
@@ -7677,7 +7681,7 @@
                   // the hover background matches the inline color.
                   const baItem = document.createElement("div");
                   baItem.className = "rv-section-menu-item";
-                  baItem.innerHTML = `<span style="flex:1">\u{1F941} 調整拍數 (目前 ${beats})...</span>`;
+                  baItem.innerHTML = `<span style="flex:1">${_t("player.menu.item.adjust_beats", { n: beats })}</span>`;
                   baItem.onclick = (ev) => {
                       ev.stopPropagation();
                       renderBeatAdjustOptions(ci, chords[ci].chord, beats);
@@ -7689,7 +7693,7 @@
                   // untouched. Supports iterative "do a few, resume later".
                   const ccItem = document.createElement("div");
                   ccItem.className = "rv-section-menu-item";
-                  ccItem.innerHTML = `<span style="flex:1">\u{1F3AF} 由此和弦開始校正...</span>`;
+                  ccItem.innerHTML = `<span style="flex:1">${_t("player.menu.item.calibrate_from_here")}</span>`;
                   ccItem.onclick = (ev) => {
                       ev.stopPropagation();
                       menu.remove();
@@ -7716,7 +7720,7 @@
                       if (lastCal && ci > lastCal.endIdx && (Date.now() - lastCal.ts) < 5 * 60 * 1000) {
                           const extItem = document.createElement("div");
                           extItem.className = "rv-section-menu-item";
-                          extItem.innerHTML = `<span style="flex:1">\u{1F680} 以前段校正延伸至此和弦</span>`;
+                          extItem.innerHTML = `<span style="flex:1">${_t("player.menu.item.extend_calibration")}</span>`;
                           extItem.onclick = (ev) => {
                               ev.stopPropagation();
                               menu.remove();
@@ -7735,7 +7739,7 @@
                       const mPrevItem = document.createElement("div");
                       mPrevItem.className = "rv-section-menu-item";
                       const prevName = chords[ci - 1].chord;
-                      mPrevItem.innerHTML = `<span style="flex:1">\u{1F517} 合併至前一個 (併入 ${prevName})</span>`;
+                      mPrevItem.innerHTML = `<span style="flex:1">${_t("player.menu.item.merge_into_prev", { prevName })}</span>`;
                       mPrevItem.onclick = (ev) => {
                           ev.stopPropagation();
                           menu.remove();
@@ -7754,7 +7758,7 @@
                       mNextItem.className = "rv-section-menu-item";
                       const nextName = chords[ci + 1].chord;
                       const currName = chords[ci].chord;
-                      mNextItem.innerHTML = `<span style="flex:1">\u{1F517} 合併下一個 (${nextName} 併入 ${currName})</span>`;
+                      mNextItem.innerHTML = `<span style="flex:1">${_t("player.menu.item.merge_next_into", { nextName, currName })}</span>`;
                       mNextItem.onclick = (ev) => {
                           ev.stopPropagation();
                           menu.remove();
@@ -7775,7 +7779,7 @@
               const delItem = document.createElement("div");
               delItem.className = "rv-section-menu-item";
               delItem.style.color = "#f44";
-              delItem.innerHTML = `<span style="flex:1">❌ 移除本段 (向上合併)</span>`;
+              delItem.innerHTML = `<span style="flex:1">${_t("player.menu.item.delete_section")}</span>`;
               delItem.onclick = async (ev) => {
                   ev.stopPropagation();
                   menu.remove();
@@ -7994,7 +7998,6 @@
     numStrings: 6,
     openMidi: [40, 45, 50, 55, 59, 64],
     stringLabels: ["E", "A", "D", "G", "B", "e"],
-    stringNamesZh: ["6弦 E", "5弦 A", "4弦 D", "3弦 G", "2弦 B", "1弦 e"],
     diagramCacheKey: "diagram_guitar",
     selectors: {
       container: "#chordDisplayGuitar",
@@ -8012,7 +8015,6 @@
     numStrings: 4,
     openMidi: [55, 48, 52, 57],
     stringLabels: ["G", "C", "E", "A"],
-    stringNamesZh: ["4弦 G", "3弦 C", "2弦 E", "1弦 A"],
     diagramCacheKey: "diagram_ukulele",
     selectors: {
       container: "#chordDisplayUkulele",
