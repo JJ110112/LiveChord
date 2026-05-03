@@ -85,12 +85,17 @@ class StringInstrument {
     const rhPanel = rhCanvas ? rhCanvas.closest(".gt-right-panel") : null;
     if (!lhPanel && !rhPanel && !fbCanvas && !rhCanvas) return;
 
-    this._resizePending = false;
+    // Trailing-edge debounce: every observation cancels the previous timer
+    // and schedules a new one. After 80 ms of no further resize events we
+    // redraw at the final size. Leading-edge with rAF (the previous attempt)
+    // captured the size at transition START, not END — when the user toggled
+    // ribbon collapse the panel went display:none and the layout settled
+    // over multiple frames; the first observation saw stale dimensions.
+    this._resizeTimer = null;
     this._resizeObserver = new ResizeObserver(() => {
-      if (this._resizePending) return;
-      this._resizePending = true;
-      requestAnimationFrame(() => {
-        this._resizePending = false;
+      if (this._resizeTimer) clearTimeout(this._resizeTimer);
+      this._resizeTimer = setTimeout(() => {
+        this._resizeTimer = null;
         if (this._b.getActiveTab() !== this._config.id) return;
 
         const chords = this._b.getDisplayChords();
@@ -99,7 +104,7 @@ class StringInstrument {
         }
         const audio = this._b.getAudio();
         this._drawRhWaterfall(audio ? (audio.currentTime || 0) : 0);
-      });
+      }, 80);
     });
     // Observe both the panels (catches outer flex resize) and the canvases
     // themselves (catches direct CSS changes / ribbon-mode toggles).
@@ -107,6 +112,26 @@ class StringInstrument {
     if (rhPanel) this._resizeObserver.observe(rhPanel);
     if (fbCanvas) this._resizeObserver.observe(fbCanvas);
     if (rhCanvas) this._resizeObserver.observe(rhCanvas);
+
+    // Belt-and-suspenders: also listen for an explicit layout-change event
+    // dispatched by player.js _applyRibbonLayout. ResizeObserver alone isn't
+    // 100% reliable when the parent flips display:none ↔ "" in the same
+    // frame as a flex-driven resize — Chrome occasionally batches the size
+    // change in a way that gives us only the start frame.
+    this._onPanelResize = () => {
+      if (this._resizeTimer) clearTimeout(this._resizeTimer);
+      this._resizeTimer = setTimeout(() => {
+        this._resizeTimer = null;
+        if (this._b.getActiveTab() !== this._config.id) return;
+        const chords = this._b.getDisplayChords();
+        if (chords && chords.length > 0 && this._activeIdx >= 0 && this._activeIdx < chords.length) {
+          this.renderFretboard(chords[this._activeIdx].chord, this._voicingIdx);
+        }
+        const audio = this._b.getAudio();
+        this._drawRhWaterfall(audio ? (audio.currentTime || 0) : 0);
+      }, 80);
+    };
+    document.addEventListener("livechord:panelresize", this._onPanelResize);
   }
 
   async prefetchData() {

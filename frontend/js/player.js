@@ -1990,6 +1990,13 @@
     if (typeof _ribbonLastKey !== "undefined") {
       _ribbonLastKey = _ribbonLayoutKey();
     }
+    // Notify instrument modules that their canvas containers may have just
+    // resized. Instrument code listens for this event and trailing-edge
+    // debounces a redraw — ResizeObserver alone has been unreliable when
+    // display:none ↔ "" transitions race with flex-driven width changes.
+    try {
+      document.dispatchEvent(new CustomEvent("livechord:panelresize"));
+    } catch {}
   }
 
   function _persistRibbonLayout() {
