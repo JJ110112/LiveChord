@@ -5141,42 +5141,42 @@
     const panel = document.createElement("div");
     panel.className = "lc-modal";
     panel.innerHTML = `
-      <div class="lc-title">✂ 自動切分長和弦</div>
+      <div class="lc-title">${_t("player.auto_split.title")}</div>
       ${!_hasDownbeats ? `
       <div class="as-no-downbeats-warn" style="background:rgba(255,193,7,.12); border:1px solid rgba(255,193,7,.4); color:#ffd54f; padding:8px 10px; border-radius:6px; font-size:13px; line-height:1.5; margin-bottom:10px;">
-        ⚠ 此曲尚未擷取小節資訊（downbeats）。「依小節切分」與「對齊小節線」需先到「工具 → 升級節拍」執行 madmom 節拍偵測，否則會用估算 BPM 建立虛擬小節線，位置容易偏掉。目前僅開放「依比例切分」。
+        ${_t("player.auto_split.no_downbeats_warn")}
       </div>` : ``}
       <div class="as-mode-row">
-        <button class="as-mode-btn" data-mode="bar"${!_hasDownbeats ? ' disabled style="opacity:.4;cursor:not-allowed"' : ""}>依小節切分</button>
-        <button class="as-mode-btn" data-mode="barsnap"${!_hasDownbeats ? ' disabled style="opacity:.4;cursor:not-allowed"' : ""}>對齊小節線</button>
-        <button class="as-mode-btn" data-mode="ratio">依比例切分</button>
+        <button class="as-mode-btn" data-mode="bar"${!_hasDownbeats ? ' disabled style="opacity:.4;cursor:not-allowed"' : ""}>${_t("player.auto_split.mode_bar")}</button>
+        <button class="as-mode-btn" data-mode="barsnap"${!_hasDownbeats ? ' disabled style="opacity:.4;cursor:not-allowed"' : ""}>${_t("player.auto_split.mode_barsnap")}</button>
+        <button class="as-mode-btn" data-mode="ratio">${_t("player.auto_split.mode_ratio")}</button>
       </div>
 
       <div class="as-bar-section as-section">
-        <div class="as-section-label">拍號（每小節幾拍）</div>
+        <div class="as-section-label">${_t("player.auto_split.ts_label")}</div>
         <div class="as-ts-row"></div>
-        <div class="as-bar-hint">${inferredHint}超過一小節的和弦會沿小節線切，起點未對齊時先補齊當前小節。</div>
+        <div class="as-bar-hint">${inferredHint}${_t("player.auto_split.bar_hint_suffix")}</div>
         <div class="as-snap-hint" style="display:none">
-          ⚠ 會把相鄰和弦之間的交界線移到最近的小節線 (±半小節容差)，可能改變某個時間點的「目前和弦」。若 BTC 的切點是刻意放在反拍/切分音上，套用後會變成方正節奏。可用「還原」退回。
+          ${_t("player.auto_split.snap_hint")}
         </div>
       </div>
 
       <div class="as-ratio-section as-section">
-        <div class="as-section-label">拍數門檻 (大於此值才切分)</div>
+        <div class="as-section-label">${_t("player.auto_split.thresh_label")}</div>
         <div class="as-thresh-row">
           <button class="as-dec">−</button>
           <input class="as-thresh" type="number" min="2" max="32" value="${threshold}">
           <button class="as-inc">+</button>
-          <span style="color:var(--text-dim); font-size:12px;">拍</span>
+          <span style="color:var(--text-dim); font-size:12px;">${_t("player.auto_split.thresh_unit")}</span>
         </div>
-        <div class="as-section-label" style="margin-top:10px;">切分比例 (依和弦拍數等比例縮放)</div>
+        <div class="as-section-label" style="margin-top:10px;">${_t("player.auto_split.ratio_label")}</div>
         <div class="as-ratios"></div>
-        <div class="as-hint-small">例: 8 拍 + 1:3 → 2+6；8 拍 + 1:1:1 → 3+2+3</div>
+        <div class="as-hint-small">${_t("player.auto_split.ratio_example")}</div>
       </div>
 
       <div class="lc-modal-actions">
-        <button class="as-cancel">取消</button>
-        <button class="as-apply">套用</button>
+        <button class="as-cancel">${_t("common.cancel")}</button>
+        <button class="as-apply">${_t("common.apply")}</button>
       </div>
     `;
     backdrop.appendChild(panel);
