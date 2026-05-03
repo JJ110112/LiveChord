@@ -581,6 +581,17 @@ class AccordionInstrument {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
+      // Constrain bar + bloom + glow drawing to the waterfall band only.
+      // Without this clip, future-note bars whose yTop is way above the canvas
+      // edge had their shadowBlur bloom extending into the chord-name header,
+      // and currently-playing bars whose yBottom slipped past waterfallH could
+      // paint orange wash onto the keyboard image (visible as "highlight 超出
+      // 鍵盤範圍" near chord transitions).
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, W, waterfallH);
+      ctx.clip();
+
       for (const evt of rhEvents) {
         const noteStart = evt.time;
         const noteEnd = evt.time + evt.duration;
@@ -690,6 +701,8 @@ class AccordionInstrument {
 
       // Firework spark particles (shared across instruments via bridge)
       if (this._b.drawWaterfallParticles) this._b.drawWaterfallParticles(ctx);
+
+      ctx.restore();   // release waterfall-band clip
     }
 
     // Draw piano keyboard at the bottom (static cached image)
