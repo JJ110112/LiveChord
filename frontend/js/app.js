@@ -70,18 +70,13 @@
         const secBrowse = $("#secBrowse");
         if (secBrowse) secBrowse.style.display = "none";
       }
-      if (_isBetaMode && !adminRes.is_admin) {
-        _isBetaNonAdmin = true;
-        // Hide remaining NAS-leaking section for non-admin users.
-        // (secBrowse already hidden above for the admin path too.)
-        const secRecent = $("#secRecent");
-        if (secRecent) secRecent.style.display = "none";
-        // Show beta sections (no standalone FAB — modal opens from search empty state)
-        const secBetaRecent = $("#secBetaRecent");
-        const secHistory = $("#secHistory");
-        if (secBetaRecent) secBetaRecent.style.display = "";
-        if (secHistory) secHistory.style.display = "";
-        // Modal close via × button or backdrop click
+      if (_isBetaMode) {
+        // Modal close via × button or backdrop click. Wired for ANY beta/
+        // public visitor (admin + anonymous + signed-in non-admin) — the
+        // add-song modal is reachable from every entry point so its close
+        // handler must be unconditional. Earlier this lived inside the
+        // !is_admin branch; admins logged in on livechord.org found that
+        // the × button did nothing on error and had to reload the page.
         const closeBtn = $("#betaFabClose");
         const backdrop = $("#betaFabBackdrop");
         const closeAddSongModal = () => {
@@ -99,6 +94,18 @@
         };
         if (closeBtn) closeBtn.addEventListener("click", closeAddSongModal);
         if (backdrop) backdrop.addEventListener("click", closeAddSongModal);
+      }
+      if (_isBetaMode && !adminRes.is_admin) {
+        _isBetaNonAdmin = true;
+        // Hide remaining NAS-leaking section for non-admin users.
+        // (secBrowse already hidden above for the admin path too.)
+        const secRecent = $("#secRecent");
+        if (secRecent) secRecent.style.display = "none";
+        // Show beta sections (no standalone FAB — modal opens from search empty state)
+        const secBetaRecent = $("#secBetaRecent");
+        const secHistory = $("#secHistory");
+        if (secBetaRecent) secBetaRecent.style.display = "";
+        if (secHistory) secHistory.style.display = "";
       } else if (_isBetaMode) {
         // Admin in beta mode: show history section alongside regular sections
         const secHistory = $("#secHistory");
