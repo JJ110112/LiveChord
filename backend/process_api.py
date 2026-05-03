@@ -372,8 +372,6 @@ router.add_api_route("/upgrade-beats/status", upgrade_beats_status,
 # Swap preserves user edits to chords/sections/etc; only beat-related fields
 # are replaced (see BEAT_FIELDS).
 # ---------------------------------------------------------------------------
-from personal_mode import require_personal_mode
-
 _BEAT_FIELDS = ("bpm", "beats", "downbeats", "tempo_curve",
                 "beats_source", "beat_version", "bpm_correction")
 
@@ -453,7 +451,7 @@ def _overlay_beat_fields_to_user_version(hash: str, username: str, sheet: dict):
                        hash, username, e)
 
 
-@router.post("/beats/switch", dependencies=[Depends(require_personal_mode)])
+@router.post("/beats/switch")
 def switch_beats(
     mode: str,
     hash: str = "",
@@ -466,15 +464,22 @@ def switch_beats(
     - If target == librosa and cache missing: run librosa synchronously (~1-2s).
     - If target == madmom and cache missing: enqueue madmom job (~30s,
       background) — client polls /upgrade-beats/status.
-    - If target == beat_this and cache missing: 503 (this instance has no
-      CUDA / no beat_this installed; bulk-process on PC then push to V:\\).
+    - If target == beat_this and cache missing: dispatched to Modal serverless
+      GPU when LIVECHORD_USE_MODAL_BEAT_THIS=1; otherwise 503 with
+      "run PC bulk batch first".
 
     Accepts ``hash`` OR ``path`` (8800 path-mode sends path; hash-mode sends hash).
-    Personal-mode only; beta instance returns 404.
+
+    Mode gating: ``librosa`` and ``madmom`` require personal-mode because they
+    compute on the host (librosa loads audio into memory each call; madmom
+    needs the Windows MSVC build toolchain that VPS hosts won't have). Public
+    callers asking for those return 404. ``mode=beat_this`` is allowed in any
+    deployment mode because the heavy lifting is done on Modal — the local
+    process only does file I/O around the dispatch.
     """
     import json as _json
     from chord_cache import song_hash
-    from config import resolve_path
+    from config import resolve_path, is_personal_mode
     from beat_snap import (HAS_MADMOM, MADMOM_IMPORT_ERROR,
                            analyze_and_snap_dynamic)
 
@@ -483,6 +488,11 @@ def switch_beats(
             status_code=400,
             detail="mode must be 'librosa', 'madmom' or 'beat_this'",
         )
+
+    # Per-mode gate: only beat_this is allowed off the personal lane (Modal
+    # carries the GPU + install burden). librosa/madmom keep the original 404.
+    if mode != "beat_this" and not is_personal_mode():
+        raise HTTPException(status_code=404, detail="Not available on this instance")
 
     if not hash and path:
         hash = song_hash(path)
