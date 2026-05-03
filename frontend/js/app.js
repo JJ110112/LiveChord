@@ -791,7 +791,11 @@
         // #betaRecentList (最近播放) — must keep it for the recent list.
         tasks.push(_loadBetaHistory(), loadFavorites());
       } else {
-        tasks.push(loadRecent(), loadFavorites(), browse(currentPath));
+        // Admin path. NAS browse is personal-only — skip in beta/public to
+        // avoid /api/browse 404 spam (the section is already hidden by
+        // _checkBetaAccess but the fetch was still firing here).
+        tasks.push(loadRecent(), loadFavorites());
+        if (!_isBetaMode) tasks.push(browse(currentPath));
         if (_isBetaMode) tasks.push(_loadBetaHistory());
       }
       await Promise.allSettled(tasks);
