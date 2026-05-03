@@ -18,6 +18,17 @@ httpx>=0.27
 python-dotenv>=1.0
 itsdangerous>=2.1
 
+# YouTube anti-bot mitigation. yt-dlp 2026.x deprecated extraction
+# without a JavaScript runtime; YouTube's "n parameter" challenge needs
+# a community-maintained JS solver script distribution. Without these,
+# yt-dlp tier 1 falls through to "Sign in to confirm you're not a bot"
+# (bot challenge) → cookies (tier 2) → "n challenge solving failed"
+# (only image / storyboard formats visible) on Hetzner-class IPs.
+# Required pair: a JS runtime (`deno` on system PATH; `apt install deno`
+# isn't available, install via https://deno.land/install.sh into
+# /usr/local/bin) plus yt-dlp-ejs to provide the solver.
+yt-dlp-ejs>=0.8
+
 # Optional: madmom (dynamic beat tracking for live/rubato recordings).
 # Released wheel (0.16.1, 2018) breaks on Python 3.10+ because it imports
 # collections.MutableSequence; the unreleased master branch is patched.

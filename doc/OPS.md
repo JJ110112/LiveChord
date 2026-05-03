@@ -2,6 +2,21 @@
 
 Operational procedures for the public deployment on Hetzner CPX21 Hillsboro OR (us-west, IPv4 `5.78.135.8`). Personal/NUC operations stay in [CLAUDE.md](../CLAUDE.md). VPS provider rationale: [vps-survey-for-livechord-jolly-pancake.md](../../.claude/plans/vps-survey-for-livechord-jolly-pancake.md). Deployed 2026-05-03; tunnel `livechord` (UUID `d182dd0a-3655-42db-86e3-b78294aee428`) routes via local config at [/etc/cloudflared/config.yml](../deploy/cloudflared.yml).
 
+## yt-dlp YouTube extraction prerequisites
+
+yt-dlp 2026.x deprecated extraction without a JavaScript runtime, and YouTube added an "n parameter" JS challenge that requires a community-maintained solver script. Both are mandatory for any audio download:
+
+1. **Deno** (JS runtime) — `apt` doesn't ship it; install via the official script with target `/usr/local/bin` so it's on the systemd PATH:
+   ```bash
+   apt-get install -y unzip
+   curl -fsSL https://deno.land/install.sh | sh -s -- -y
+   mv /root/.deno/bin/deno /usr/local/bin/deno
+   chmod 755 /usr/local/bin/deno
+   ```
+2. **yt-dlp-ejs** (solver script distribution) — pulled into the venv via [backend/requirements.txt](../backend/requirements.txt). After upgrade just `uv pip install yt-dlp-ejs` to refresh.
+
+Without both, yt-dlp errors with "Only images are available for download" / "n challenge solving failed" even with valid cookies.
+
 ## yt-dlp cookies refresh
 
 Hetzner IP ranges are flagged by YouTube. Tier 1 (direct) hits 403/SABR walls; tier 2 carries an authenticated cookie jar from a low-value Google account.
