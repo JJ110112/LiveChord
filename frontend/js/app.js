@@ -617,7 +617,19 @@
           error: _t("home.status.error"),
         };
         if (statusText) {
-          const txt = (d.stage && d.status === "processing") ? d.stage : (labels[d.status] || d.status);
+          // Backend stages travel as i18n keys (home.job_stage.*) so the
+          // same /api/process/status response renders correctly in en + zh-TW
+          // without server-side locale negotiation. Older deploys may still
+          // emit literal CJK strings — the prefix check passes those through
+          // unchanged so a rolling backend/frontend update doesn't show keys.
+          let stageDisplay = d.stage;
+          if (stageDisplay && typeof stageDisplay === "string"
+              && stageDisplay.startsWith("home.job_stage.")) {
+            stageDisplay = _t(stageDisplay);
+          }
+          const txt = (stageDisplay && d.status === "processing")
+              ? stageDisplay
+              : (labels[d.status] || d.status);
           statusText.textContent = txt;
         }
 

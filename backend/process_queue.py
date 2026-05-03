@@ -903,7 +903,11 @@ def _worker_loop():
 
         job.status = JobStatus.PROCESSING
         job.progress = 10
-        job.stage = "準備中…"
+        # Stage strings are i18n keys (home.job_stage.*); the frontend
+        # /api/process/status poller translates them via _t() before display.
+        # Keys travel over the wire so the same backend serves zh-TW + en
+        # clients without per-request locale negotiation.
+        job.stage = "home.job_stage.preparing"
         audio_path = job.audio_path
         chord_count = 0
 
@@ -913,13 +917,13 @@ def _worker_loop():
             # value there starts at 0).
             if job.source_type == "youtube" and job.youtube_url:
                 job.progress = 15
-                job.stage = "讀取 YouTube 標題…"
+                job.stage = "home.job_stage.yt_title"
                 # Extract title before download
                 title = _get_youtube_title(job.youtube_url)
                 if title:
                     job.title = title
                 job.progress = 20
-                job.stage = "下載 YouTube 音訊…"
+                job.stage = "home.job_stage.yt_download"
                 out_path = str(TMP_DIR / f"{job.job_id}.wav")
                 audio_path = _download_youtube(job.youtube_url, out_path)
                 job.audio_path = audio_path
@@ -928,11 +932,11 @@ def _worker_loop():
 
             # Step 2: BTC chord detection
             job.progress = 40
-            job.stage = "分析和弦中（BTC）…"
+            job.stage = "home.job_stage.btc_detect"
             from chord_detect import detect_chords_and_key_isolated
             chords, key = detect_chords_and_key_isolated(audio_path)
             job.progress = 75
-            job.stage = "儲存和弦資料…"
+            job.stage = "home.job_stage.save"
 
             # Step 3: Extract cover art (before audio is deleted)
             if job.source_type == "upload" and audio_path:
@@ -957,12 +961,12 @@ def _worker_loop():
             # waterfall view. We accept that the worker thread stays busy past DONE;
             # subsequent queued jobs wait, which is fine for beta-scale load.
             job.progress = 90
-            job.stage = "寫入紀錄…"
+            job.stage = "home.job_stage.audit_write"
             _write_audit(job, chord_count, status="done")
 
             job.status = JobStatus.DONE
             job.progress = 100
-            job.stage = "完成"
+            job.stage = "home.job_stage.done"
             logger.info("Job %s done (chords): %s chords, key=%s", job_id, chord_count, key)
 
             # Step 5: Hand off melody extraction to the separate melody worker so
