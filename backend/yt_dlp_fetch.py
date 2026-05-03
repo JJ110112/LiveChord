@@ -29,8 +29,10 @@ import logging
 import os
 import shutil
 import subprocess
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Iterator, Optional, Sequence
 
 logger = logging.getLogger("livechord.yt_dlp_fetch")
 
@@ -106,6 +108,45 @@ def _looks_like_ip_block(stderr: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Disposable cookies copy
+# ---------------------------------------------------------------------------
+
+@contextmanager
+def _disposable_cookies(master_path: str) -> Iterator[str]:
+    """Yield a temp copy of the cookies file; delete on exit.
+
+    yt-dlp's ``--cookies <file>`` flag REWRITES the file after each session
+    so it can persist updated session cookies. On a flagged IP (Hetzner etc.)
+    YouTube downgrades successful sessions server-side — the SID /
+    __Secure-1PSID / LOGIN_INFO cookies that came from the original logged-in
+    browser session get replaced with anti-bot challenge cookies. Every call
+    that uses the master file directly slowly corrupts it: a fresh 5-15 KB
+    cookies.txt with all auth cookies degrades to a ~1 KB file with only
+    PREF / VISITOR_INFO1_LIVE within hours, after which tier 2 is dead until
+    the user re-uploads from a browser export.
+
+    Pattern: copy master → tempfile, hand tempfile to yt-dlp, delete after.
+    The master never gets touched. Survives until the underlying YouTube
+    account's session naturally expires (14-28 day cycle, per OPS.md).
+    """
+    fd, tmp_path = tempfile.mkstemp(prefix="lc-ytdlp-cookies-", suffix=".txt")
+    try:
+        os.close(fd)
+        shutil.copyfile(master_path, tmp_path)
+        # yt-dlp won't open a world-readable cookies file; mirror master perms.
+        try:
+            os.chmod(tmp_path, 0o600)
+        except OSError:
+            pass
+        yield tmp_path
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -155,8 +196,11 @@ def run_yt_dlp(
     cookies = _cookies_path()
     if cookies and _looks_like_ip_block(stderr):
         logger.info("yt_dlp_fetch tier1 failed (IP-block signature); retrying with cookies")
-        with_cookies = [YTDLP_BIN, "--cookies", cookies, *args]
-        result2 = subprocess.run(with_cookies, **run_kwargs)
+        # Disposable copy — see _disposable_cookies docstring. yt-dlp writes
+        # back to whatever path we pass; using a tempfile insulates the master.
+        with _disposable_cookies(cookies) as tmp_cookies:
+            with_cookies = [YTDLP_BIN, "--cookies", tmp_cookies, *args]
+            result2 = subprocess.run(with_cookies, **run_kwargs)
         if result2.returncode == 0:
             return result2, 2
         # Fall through to tier 3 with the cookies-attempt result so caller
