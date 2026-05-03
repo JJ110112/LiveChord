@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LiveChord - 登入</title>
+  <title data-i18n="login.title_tag">LiveChord - 登入</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <!-- Phase A shared fetch wrapper. Loaded BEFORE any /api/ call so anon
        X-Anon-Id is in place + 401 from password endpoints in public mode
        doesn't bounce-loop. -->
   <script src="/js/auth.js?v=4"></script>
-  <script src="/js/i18n.js?v=7"></script>
+  <script src="/js/i18n.js?v=8"></script>
   <link rel="stylesheet" href="/css/base.css?v=5">
   <style>
     body {
@@ -286,7 +286,7 @@
         const apply = () => {
           err.textContent = _tr(
             "login.error.oauth", { provider },
-            `登入失敗（${provider}），請重試或選擇其他登入方式`
+            `Sign-in failed (${provider}). Please retry or pick another method.`
           );
         };
         apply();
@@ -309,7 +309,7 @@
         sub.setAttribute("data-i18n", subKey);
         sub.textContent = _tr(
           subKey, null,
-          mode === "beta" ? "Beta 帳號登入" : "管理員登入"
+          mode === "beta" ? "Beta account sign-in" : "Admin sign-in"
         );
       } else {
         // Public: hide providers without configured credentials by querying
@@ -351,10 +351,10 @@
           localStorage.setItem("livechord_username", data.username);
           window.location.href = "/";
         } else {
-          err.textContent = data.detail || _tr("login.error.signin", null, "登入失敗");
+          err.textContent = data.detail || _tr("login.error.signin", null, "Sign-in failed");
         }
       } catch (e) {
-        err.textContent = _tr("login.error.network", null, "網路錯誤");
+        err.textContent = _tr("login.error.network", null, "Network error");
       }
     }
 
