@@ -1702,13 +1702,19 @@ const ChordRender = {
           }
         }
       } else {
-        // Next chord doesn't fit — show name only
+        // Next chord doesn't fit — show name only.
+        // Place the label in the LAST visible fret row (almost always empty
+        // for typical voicings whose lowest fret anchors the diagram top).
+        // Earlier the label rendered at padTop + fretSpacing*0.4 — inside
+        // the first fret cell, where barre voicings (e.g. Gm7 barre @1) put
+        // their fingering circles, making both unreadable.
         ctx.globalAlpha = ghostAlpha;
         ctx.fillStyle = "rgba(255,152,0,0.85)";
-        ctx.font = `bold ${Math.round(dotR * 1.1)}px sans-serif`;
+        ctx.font = `bold ${Math.round(dotR * 1.0)}px sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(`${jumpDir} ${_t("instrument.fret_position", { n: nextMinFret })}  ${nextName}`, W / 2, padTop + fretSpacing * 0.4);
+        const safeY = padTop + fretSpacing * (numFrets - 0.5);
+        ctx.fillText(`${jumpDir} ${_t("instrument.fret_position", { n: nextMinFret })}  ${nextName}`, W / 2, safeY);
       }
 
       // Position jump warning (gradient + label) for jumps ≥ 2 frets
