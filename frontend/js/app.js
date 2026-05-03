@@ -61,12 +61,20 @@
       ]);
       _isPublicMode = cfgRes.deployment_mode === "public";
       _isBetaMode = cfgRes.deployment_mode === "beta" || _isPublicMode;
+      // NAS browse section is personal-mode-only — the /api/browse endpoint
+      // is gated by require_personal_mode and returns 404 in beta/public.
+      // Admins in public mode were seeing the section render a 404 warning;
+      // the NAS volume isn't even mounted on the VPS so there's nothing
+      // useful to show. Hide unconditionally outside personal mode.
+      if (_isBetaMode) {
+        const secBrowse = $("#secBrowse");
+        if (secBrowse) secBrowse.style.display = "none";
+      }
       if (_isBetaMode && !adminRes.is_admin) {
         _isBetaNonAdmin = true;
-        // Hide NAS-dependent sections (but keep favorites — works with __hash/ paths)
-        const secBrowse = $("#secBrowse");
+        // Hide remaining NAS-leaking section for non-admin users.
+        // (secBrowse already hidden above for the admin path too.)
         const secRecent = $("#secRecent");
-        if (secBrowse) secBrowse.style.display = "none";
         if (secRecent) secRecent.style.display = "none";
         // Show beta sections (no standalone FAB — modal opens from search empty state)
         const secBetaRecent = $("#secBetaRecent");
