@@ -201,7 +201,6 @@
   // "both" is the power-user overlay view. Default to "acc" (what the hand
   // actually plays if following the arrangement).
   const _RH_MODES = ["acc", "mel", "both"];
-  const _RH_LABELS = { acc: "伴奏", mel: "旋律", both: "伴奏加旋律" };
   let rhContentMode = localStorage.getItem("livechord_rh_mode") || "acc";
   if (!_RH_MODES.includes(rhContentMode)) rhContentMode = "acc";
 
@@ -249,7 +248,9 @@
     const lab = document.getElementById("btnRhContentLabel");
     if (lab) lab.textContent = _t("player.teach.rh_content_" + rhContentMode) || _t("player.teach.rh_content_acc");
     const btn = document.getElementById("btnRhContent");
-    if (btn) btn.title = `右手內容：${rhContentMode === "acc" ? "伴奏" : rhContentMode === "mel" ? "旋律" : "全部"}（點擊切換）`;
+    if (btn) btn.title = _t("player.rh_content.title", {
+      mode: _t("player.rh_content." + rhContentMode),
+    });
   }
   let showFingering = localStorage.getItem("livechord_show_fingering") !== "false"; // 預設開啟
   let teachStyle = localStorage.getItem("livechord_teach_style") || "Auto";
@@ -617,7 +618,7 @@
       e.stopPropagation();
       const unlocked = container.classList.toggle("unlocked");
       lockBtn.innerHTML = unlocked ? "&#x1F513;" : "&#x1F512;";   // 🔓 : 🔒
-      lockBtn.title = unlocked ? "鎖回拖曳模式" : "解鎖以使用字幕/設定";
+      lockBtn.title = _t(unlocked ? "player.yt_pip.lock_btn" : "player.yt_pip.unlock_btn");
     });
   }
   // Clear the "hidden" flag on every page load so new navigation shows the PiP
@@ -715,22 +716,18 @@
   // Color priority:
   //   - count ≥ 3: rating-driven (avg ≥4 綠, ≥3 黃, <3 紅)
   //   - count <  3: source-driven fallback (midi 綠, btc 黃)
-  const _SOURCE_LABEL = {
-    midi: "人工校對",
-    btc: "AI 偵測",
-    btc_upload: "AI 偵測（上傳）",
-    btc_batch: "AI 偵測",
-    chordy: "AI 偵測",
-    chordify: "人工匯入",
-  };
+  // Source-label keys live in the i18n dict under player.chord_src.<key>;
+  // we look them up via _t() so they switch with the user's language.
   async function _updateChordQualityBadge(cd, ratingKey) {
     const srcBadge = document.getElementById("chordSource");
     if (!srcBadge) return;
     const rawSrc = (cd && cd.source) || "btc";
-    const srcLabel = _SOURCE_LABEL[rawSrc] || "未知來源";
+    const srcKey = ["midi", "btc", "btc_upload", "btc_batch", "chordy", "chordify"]
+      .includes(rawSrc) ? `player.chord_src.${rawSrc}` : "player.chord_src.unknown";
+    const srcLabel = _t(srcKey);
     const srcShort = rawSrc.startsWith("btc") ? "AI"
-                    : rawSrc === "midi" ? "校"
-                    : rawSrc === "chordify" ? "校" : "?";
+                    : rawSrc === "midi" ? _t("player.chord_src.badge_corrected")
+                    : rawSrc === "chordify" ? _t("player.chord_src.badge_corrected") : "?";
     // Paint immediately with source-based fallback
     const sourceCssClass =
       rawSrc === "midi" ? "src-midi"
@@ -738,7 +735,7 @@
       : "src-btc";
     srcBadge.className = `chord-source-badge ${sourceCssClass}`;
     srcBadge.textContent = srcShort;
-    srcBadge.title = `來源：${srcLabel}`;
+    srcBadge.title = _t("player.chord_src.title_simple", { src: srcLabel });
 
     // Fetch user rating summary. The rating table's song_hash column just
     // stores whatever the UI submitted — trackPath in DB-path mode, the md5
@@ -758,11 +755,13 @@
           : "src-bad";
         srcBadge.className = `chord-source-badge ${ratingClass}`;
         srcBadge.textContent = `${avg.toFixed(1)}★`;
-        srcBadge.title = `${avg.toFixed(1)}★ × ${count} 人評分　·　來源：${srcLabel}`;
+        srcBadge.title = _t("player.chord_src.title_rated",
+          { stars: avg.toFixed(1), count, src: srcLabel });
       } else if (count > 0) {
-        srcBadge.title = `尚未累積足夠評分（${count} 人）　·　來源：${srcLabel}`;
+        srcBadge.title = _t("player.chord_src.title_few",
+          { count, src: srcLabel });
       } else {
-        srcBadge.title = `尚無評分　·　來源：${srcLabel}`;
+        srcBadge.title = _t("player.chord_src.title_no_rating", { src: srcLabel });
       }
     } catch {}
   }
@@ -1029,7 +1028,7 @@
     return secs.map((s, i) => {
       const t = s.type || s.label || "";
       occur[t] = (occur[t] || 0) + 1;
-      const baseZh = s.label || s.type || `樂句 ${i + 1}`;
+      const baseZh = s.label || s.type || _t("player.phrase_fallback", { n: i + 1 });
       // English derived from type, mirroring the chord-ribbon logic at
       // _renderRibbon (`baseType` strip digits/apostrophes, capitalize,
       // replace underscore with space). Keeps "verse" → "Verse",
@@ -1499,15 +1498,21 @@
         bpmEl.style.cursor = "pointer";
         const lines = [];
         if (halved) {
-            lines.push(`BPM 已自動修正 (原 ${Math.round(correction.original || 0)} BPM，判為慢歌倍拍)`);
+            lines.push(_t("player.bpm.halved_notice",
+              { orig: Math.round(correction.original || 0) }));
         }
         if (barFixed) {
             const bpb = barCorr.beats_per_bar || 4;
-            const conf = (typeof barCorr.score_after === "number") ? ` 信心 ${barCorr.score_after.toFixed(2)}` : "";
-            const tag = barCorr.model_version === "model_v1" ? "AI" : "規則";
-            lines.push(`節拍相位已 ${tag} 校正 (每小節 ${bpb} 拍${conf})`);
+            const conf = (typeof barCorr.score_after === "number")
+              ? _t("player.bar_arb.confidence_suffix",
+                  { score: barCorr.score_after.toFixed(2) })
+              : "";
+            const tag = barCorr.model_version === "model_v1"
+              ? _t("player.bar_arb.tag_ai")
+              : _t("player.bar_arb.tag_rule");
+            lines.push(_t("player.bar_arb.notice", { tag, bpb, conf }));
         }
-        lines.push("點擊切換 BPM 倍率 (自動儲存)");
+        lines.push(_t("player.bpm.click_to_cycle"));
         bpmEl.title = lines.join("\n");
         bpmEl.onclick = () => {
             if (bpmMult === 1.0) bpmMult = 0.5;
@@ -1961,17 +1966,15 @@
       btnCollapseRibbon.style.display = waterfallHidden ? "none" : "";
       btnCollapseRibbon.innerHTML = _ribbonGlyph;
       btnCollapseRibbon.title = ribbonHidden
-        ? "按一下：顯示和弦列表"
-        : (_isPortrait
-            ? "按一下：收合鋼琴視窗 (和弦列表擴大至全版)"
-            : "按一下：收合鋼琴視窗 (和弦列表擴大至全版)");
+        ? _t("player.layout.expand_chords")
+        : _t("player.layout.collapse_piano");
     }
     if (btnCollapseWaterfall) {
       btnCollapseWaterfall.style.display = ribbonHidden ? "none" : "";
       btnCollapseWaterfall.innerHTML = _waterfallGlyph;
       btnCollapseWaterfall.title = waterfallHidden
-        ? "按一下：顯示鋼琴視窗"
-        : "按一下：收合和弦列表 (鋼琴擴大至全版)";
+        ? _t("player.layout.expand_piano")
+        : _t("player.layout.collapse_chords");
     }
 
     // Layout key depends on `.ribbon-wide` (which we just toggled); reload
@@ -2124,7 +2127,7 @@
     if (popup && !popup.querySelector(".tb-popup-close")) {
       const closeBtn = document.createElement("button");
       closeBtn.className = "tb-popup-close";
-      closeBtn.setAttribute("aria-label", "關閉");
+      closeBtn.setAttribute("aria-label", _t("common.close"));
       closeBtn.setAttribute("type", "button");
       closeBtn.innerHTML = "&times;";
       closeBtn.addEventListener("click", (e) => {
@@ -3517,10 +3520,10 @@
             lImg.classList.toggle("active", activeHand === "both" || activeHand === "left");
             rImg.classList.toggle("active", activeHand === "both" || activeHand === "right");
           }
-          let title = "雙手";
-          if (activeHand === "left") title = "僅左手";
-          if (activeHand === "right") title = "僅右手";
-          btn.title = `切換教學手勢 (${title})`;
+          const handKey = activeHand === "left" ? "player.hand.left_only"
+                        : activeHand === "right" ? "player.hand.right_only"
+                        : "player.hand.both";
+          btn.title = _t("player.hand.switch_title", { hand: _t(handKey) });
         });
       };
       // Init UI state
@@ -3832,9 +3835,10 @@
       const wrap = document.createElement("div");
       wrap.className = "rating-stars" + (ver.can_rate ? "" : " disabled");
       const baseTitle = ver.count > 0
-          ? `平均 ${ver.rating.toFixed(1)} ★ (${ver.count} 票)`
-          : "尚無評分";
-      wrap.title = ver.can_rate ? baseTitle : (ver.is_self ? "不能對自己的版本評分" : "請先登入");
+          ? _t("player.rating.avg_n_votes", { stars: ver.rating.toFixed(1), n: ver.count })
+          : _t("player.rating.none_yet");
+      wrap.title = ver.can_rate ? baseTitle
+        : (ver.is_self ? _t("player.rating.cant_self") : _t("player.rating.signin_first"));
 
       const stars = [];
       for (let i = 1; i <= 5; i++) {
@@ -3872,8 +3876,8 @@
                       avgEl.textContent = ver.count > 0 ? `${ver.rating.toFixed(1)} ★ (${ver.count})` : "—";
                   }
                   wrap.title = ver.count > 0
-                      ? `平均 ${ver.rating.toFixed(1)} ★ (${ver.count} 票)`
-                      : "尚無評分";
+                      ? _t("player.rating.avg_n_votes", { stars: ver.rating.toFixed(1), n: ver.count })
+                      : _t("player.rating.none_yet");
                   showToast(next === 0 ? _t("toast.rate.cleared") : _t("toast.rate.set", { n: next }));
               } catch (err) {
                   console.error("rate failed:", err);
@@ -4032,9 +4036,9 @@
     if (unifiedRibbonTrack) {
       unifiedRibbonTrack.innerHTML = `
         <div class="chord-empty-state">
-          <div class="chord-empty-msg">尚無和弦譜</div>
-          <button id="btnDetectHero" class="chord-empty-btn">一鍵偵測和弦</button>
-          <div class="chord-empty-hint">首次分析約 30 秒 ~ 1 分鐘</div>
+          <div class="chord-empty-msg">${_t("player.chord_empty.msg_no_sheet")}</div>
+          <button id="btnDetectHero" class="chord-empty-btn">${_t("player.chord_empty.btn_detect")}</button>
+          <div class="chord-empty-hint">${_t("player.chord_empty.hint_detect_time")}</div>
         </div>`;
     }
     _isBetaModeAsync.then(isBeta => {
@@ -4653,7 +4657,8 @@
   // ---- 循環模式：off → single → favorites ----
   const btnLoop = $("#btnLoop");
   const LOOP_MODES = ["off", "single", "favorites"];
-  const LOOP_LABELS = { off: "循環 OFF", single: "單曲循環", favorites: "最愛循環" };
+  // LOOP_LABELS resolved per-call via _t so UI updates on language switch.
+  const _loopLabel = (k) => _t("player.loop.label_" + k);
   // Lucide SVG variants — keep in sync with the inline SVG baseline in player.html so
   // the whole toolbar renders identically across Android/iOS/desktop.
   const _LUCIDE_REPEAT = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>';
@@ -4684,7 +4689,7 @@
     loopMode = mode;
     localStorage.setItem("livechord_loop_mode", loopMode);
     _updateLoopUI();
-    showToast(LOOP_LABELS[loopMode], 1500);
+    showToast(_loopLabel(loopMode), 1500);
   }
   btnLoop.addEventListener("click", () => {
     if (_isTouchLike) return;  // touch devices use the popup (see .loop-opt handlers)
@@ -5025,7 +5030,7 @@
     const lab = document.getElementById("btnToggleJianpuLabel");
     if (lab) {
       const key = _showJianpu ? "player.tools.jianpu_on" : "player.tools.jianpu_off";
-      const fb  = _showJianpu ? "簡譜：開" : "簡譜：關";
+      const fb  = _t(_showJianpu ? "player.tools.jianpu_on" : "player.tools.jianpu_off");
       lab.textContent = (window.LiveChordI18n ? window.LiveChordI18n.t(key) : key) || fb;
       if (lab.textContent === key) lab.textContent = fb;
     }
@@ -5114,8 +5119,8 @@
     // Drop "(預設)" when we're already inside "自動 (…)" — nested parens read awkwardly.
     const inferredLabel = inferred ? `${inferred}` : "4";
     const inferredHint = inferred
-      ? `偵測到：每小節 ${inferred} 拍。`
-      : `無法從 downbeats 自動偵測，預設每小節 4 拍。`;
+      ? _t("player.bar_split.inferred_hint", { n: inferred })
+      : _t("player.bar_split.fallback_hint");
     // Guardrail: bar / barsnap modes need real downbeats[] to align cuts to
     // the music. Without them the algorithm falls back to a synthetic grid
     // anchored on the first chord, which is rarely on a real bar line — so
@@ -5195,7 +5200,7 @@
 
     // --- Time-signature override chips ---
     const TS_OPTS = [
-      { v: "auto", label: `自動 (${inferredLabel})` },
+      { v: "auto", label: _t("player.bar_split.ts_auto", { n: inferredLabel }) },
       { v: "3",    label: "3/4" },
       { v: "4",    label: "4/4" },
       { v: "6",    label: "6/8 → 6" },
@@ -5774,11 +5779,7 @@
         showToast(_t("toast.beat_upgrade.in_progress"), 2500);
         return;
       }
-      const ok = confirm(
-        "動態節拍偵測（rubato 追蹤，適合 Live / 老錄音）\n\n" +
-        "後端背景處理約 30 秒，期間可繼續使用其他功能。\n" +
-        "完成時會跳出通知。\n\n繼續嗎？"
-      );
+      const ok = confirm(_t("player.beat_upgrade.confirm"));
       if (!ok) return;
 
       btnUpgradeBeats.disabled = true;
@@ -5887,7 +5888,7 @@
       }
       btnBarArbitrate.disabled = true;
       const origLabel = btnBarArbitrateLabel.textContent;
-      btnBarArbitrateLabel.textContent = isApplied ? "還原中…" : "仲裁中…";
+      btnBarArbitrateLabel.textContent = _t(isApplied ? "player.bar_arb.reverting" : "player.bar_arb.arbitrating");
       try {
         const r = await fetch(url, {
           method: "POST",
@@ -6341,7 +6342,7 @@
           
           const results = data.results || [];
           if (results.length === 0) {
-            searchResults.innerHTML = '<div style="padding:12px;color:var(--text-dim);font-size:12px">找不到結果</div>';
+            searchResults.innerHTML = `<div style="padding:12px;color:var(--text-dim);font-size:12px">${_t("player.search.no_results")}</div>`;
           } else {
             let html = "";
             for (const r of results.slice(0, 50)) {
@@ -6493,7 +6494,7 @@
       _setLoadingState(true, _t("loading.chord"), _t("loading.chord_detail"));
       try {
         const res = await fetch(`/api/chords/by-hash?hash=${encodeURIComponent(hashMode)}`);
-        if (!res.ok) throw new Error("找不到和弦資料");
+        if (!res.ok) throw new Error(_t("player.error.no_chord_data"));
         chordData = await res.json();
         if (chordData.exists && chordData.chords && chordData.chords.length > 0) {
           hasChords = true;
@@ -6503,7 +6504,7 @@
           _ytVerifiedOk = false;
           const title = chordData.title
             || (chordData.path ? chordData.path.split("/").pop().replace(/\.\w+$/i, "") : "")
-            || "分析結果";
+            || _t("player.title.analysis_result");
           songTitle.textContent = title;
           songTitle.title = title;
           _checkMarquee(songTitle);
@@ -6605,7 +6606,7 @@
           // and at least audition the track while analysis is pending.
           const fallbackTitle = chordData.title
             || (chordData.path ? chordData.path.split("/").pop().replace(/\.\w+$/i, "") : "")
-            || "尚未分析";
+            || _t("player.title.not_analyzed");
           songTitle.textContent = fallbackTitle;
           songTitle.title = fallbackTitle;
           _checkMarquee(songTitle);
@@ -6613,8 +6614,8 @@
           if (unifiedRibbonTrack) {
             unifiedRibbonTrack.innerHTML = `
               <div class="chord-empty-state">
-                <div class="chord-empty-msg">此曲尚未分析</div>
-                <div class="chord-empty-hint">先載入音源試聽，等分析完成後即可顯示和弦</div>
+                <div class="chord-empty-msg">${_t("player.chord_empty.msg_unanalyzed")}</div>
+                <div class="chord-empty-hint">${_t("player.chord_empty.hint_unanalyzed")}</div>
               </div>`;
           }
           showToast(_t("toast.load.unanalyzed"), 5000);
@@ -6671,17 +6672,17 @@
     backdrop.className = "yt-fallback-panel lc-modal-backdrop";
     backdrop.innerHTML = `
       <div class="lc-modal">
-        <button class="lc-close yt-fb-close" aria-label="關閉">&times;</button>
-        <div class="lc-title">選擇正確的音源</div>
-        <div class="yt-fb-hint">自動搜尋找不到對應版本，或版本長度不符和弦。你可以：</div>
+        <button class="lc-close yt-fb-close" aria-label="${_t("common.close")}">&times;</button>
+        <div class="lc-title">${_t("player.yt_fb.title")}</div>
+        <div class="yt-fb-hint">${_t("player.yt_fb.hint")}</div>
         <div class="yt-fb-row">
-          <input id="ytFbUrl" type="text" placeholder="貼上 YouTube URL" />
-          <button id="ytFbUrlSubmit" class="yt-fb-btn">使用</button>
+          <input id="ytFbUrl" type="text" placeholder="${_t("player.yt_fb.url_placeholder")}" />
+          <button id="ytFbUrlSubmit" class="yt-fb-btn">${_t("player.yt_fb.btn_use")}</button>
         </div>
-        <div class="yt-fb-sep"><span>或</span></div>
+        <div class="yt-fb-sep"><span>${_t("player.yt_fb.or")}</span></div>
         <div class="yt-fb-row">
           <input id="ytFbFile" type="file" accept="audio/*" />
-          <button id="ytFbFileSubmit" class="yt-fb-btn secondary">載入本地檔</button>
+          <button id="ytFbFileSubmit" class="yt-fb-btn secondary">${_t("player.yt_fb.btn_local")}</button>
         </div>
       </div>
     `;
@@ -6726,18 +6727,19 @@
   }
 
   function _startAnalysisForUrl(url) {
-    _showAnalysisBanner("提交分析中…", 0);
+    _showAnalysisBanner(_t("player.analysis.submitting"), 0);
     fetch("/api/process/youtube", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url }),
     }).then(r => r.json().then(d => ({ ok: r.ok, d }))).then(({ ok, d }) => {
       if (!ok) {
-        _showAnalysisBanner(`提交失敗：${(d && d.detail) || "未知錯誤"}`, null, /*error=*/true);
+        _showAnalysisBanner(_t("player.analysis.submit_failed",
+          { detail: (d && d.detail) || _t("player.analysis.unknown_error") }), null, /*error=*/true);
         return;
       }
       if (d.status === "done" && d.result_hash) {
-        _showAnalysisBanner("已有現成分析結果，切換中…", 100);
+        _showAnalysisBanner(_t("player.analysis.existing_result"), 100);
         setTimeout(() => {
           window.location.href = `/player?hash=${encodeURIComponent(d.result_hash)}`;
         }, 600);
@@ -6745,7 +6747,7 @@
       }
       if (d.job_id) _pollAnalysisJob(d.job_id);
     }).catch(e => {
-      _showAnalysisBanner(`提交失敗：${e.message}`, null, true);
+      _showAnalysisBanner(_t("player.analysis.submit_failed", { detail: e.message }), null, true);
     });
   }
 
@@ -6764,7 +6766,8 @@
           _showAnalysisBannerDone(d.result_hash);
         } else if (d.status === "error") {
           clearInterval(timer);
-          _showAnalysisBanner(`分析失敗：${d.error || "未知錯誤"}`, null, true);
+          _showAnalysisBanner(_t("player.analysis.failed",
+            { detail: d.error || _t("player.analysis.unknown_error") }), null, true);
         }
       } catch {}
     }, 2000);
@@ -6780,7 +6783,7 @@
         <div class="yt-ab-row">
           <span class="yt-ab-text"></span>
           <span class="yt-ab-pct"></span>
-          <button class="yt-ab-close" aria-label="關閉">&times;</button>
+          <button class="yt-ab-close" aria-label="${_t("common.close")}">&times;</button>
         </div>
         <div class="yt-ab-bar"><div class="yt-ab-fill"></div></div>
       `;
@@ -6921,9 +6924,9 @@
     el.id = "ytDesyncBanner";
     el.className = "yt-desync-banner lc-banner lc-banner--warn";
     el.innerHTML = `
-      <span>⚠ YouTube 版本長度 ${formatTime(dYt)} 與和弦 ${formatTime(dChord)} 差 ${pct}%，同步已停用</span>
-      <button id="ytDesyncFallback" class="lc-banner-btn">換版本/上傳音檔</button>
-      <button id="ytDesyncClose" class="lc-banner-close" aria-label="關閉">&times;</button>
+      <span>${_t("player.yt_desync.message", { yt: formatTime(dYt), chord: formatTime(dChord), pct })}</span>
+      <button id="ytDesyncFallback" class="lc-banner-btn">${_t("player.yt_desync.btn_swap")}</button>
+      <button id="ytDesyncClose" class="lc-banner-close" aria-label="${_t("common.close")}">&times;</button>
     `;
     document.body.appendChild(el);
     document.getElementById("ytDesyncClose")?.addEventListener("click", () => el.remove());
@@ -6990,11 +6993,11 @@
           // on PC but not on phone. Offer a direct link + local-file fallback.
           const ytUrl = videoId ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}` : null;
           if (container) {
-            const ytBtn = ytUrl ? `<a href="${ytUrl}" target="_blank" rel="noopener" style="display:inline-block;margin:6px 4px;padding:8px 14px;background:#ff0000;color:#fff;text-decoration:none;border-radius:4px;font-size:13px;font-weight:600">▶ 在 YouTube 開啟</a>` : '';
-            const fallbackBtn = `<button id="ytErrLoadLocal" style="display:inline-block;margin:6px 4px;padding:8px 14px;background:var(--accent,#5a9af2);color:#fff;border:none;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer">📁 載入本地音檔</button>`;
+            const ytBtn = ytUrl ? `<a href="${ytUrl}" target="_blank" rel="noopener" style="display:inline-block;margin:6px 4px;padding:8px 14px;background:#ff0000;color:#fff;text-decoration:none;border-radius:4px;font-size:13px;font-weight:600">${_t("player.yt_err.open_on_yt")}</a>` : '';
+            const fallbackBtn = `<button id="ytErrLoadLocal" style="display:inline-block;margin:6px 4px;padding:8px 14px;background:var(--accent,#5a9af2);color:#fff;border:none;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer">${_t("player.yt_err.load_local")}</button>`;
             container.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px">
-              此影片無法在此嵌入<br>
-              <span style="font-size:11px;opacity:.75">（YouTube 擁有者限制桌面嵌入，手機通常可正常播放）</span>
+              ${_t("player.yt_err.cannot_embed")}<br>
+              <span style="font-size:11px;opacity:.75">${_t("player.yt_err.cannot_embed_hint")}</span>
               <div style="margin-top:12px">${ytBtn}${fallbackBtn}</div>
             </div>`;
             const localBtn = document.getElementById('ytErrLoadLocal');
