@@ -50,6 +50,9 @@ data/settings_personal.json
 data/settings_beta.json
 data/settings_shared.json
 data/backups/
+# Generated assets / runtime logs that don't belong in source control
+data/kofi_cover.png
+data/logs/
 data/backup_history.json
 # Local helper scripts (machine-specific paths, not part of repo)
 _sync_acc_to_v.bat
