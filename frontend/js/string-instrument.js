@@ -8,9 +8,10 @@
  *   InstrumentRegistry.register("guitar", guitar);
  */
 
-const FINGER_NAMES = ["", "食指", "中指", "無名指", "小指"];
 const NOTE_SEMIS = { C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11 };
 const SEMI_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+function _t(k, v) { return (window.LiveChordI18n && window.LiveChordI18n.t) ? window.LiveChordI18n.t(k, v) : k; }
 
 class StringInstrument {
   /**
@@ -124,7 +125,7 @@ class StringInstrument {
           const btn = document.createElement("button");
           btn.className = "gt-voicing-btn" + (idx === voicingIdx ? " active" : "");
           btn.textContent = String.fromCodePoint(0x2460 + idx);
-          btn.title = v.label || `把位 ${idx + 1}`;
+          btn.title = v.label || _t("instrument.position_label", { n: idx + 1 });
           btn.addEventListener("click", () => {
             self._voicingIdx = idx;
             self.renderFretboard(chordName, idx);
@@ -226,11 +227,14 @@ class StringInstrument {
           const curMin = Math.min(...curDiag.strings.filter(f => f > 0), 99);
           const nxtMin = Math.min(...nextDiag.strings.filter(f => f > 0), 99);
           const dist = Math.abs(nxtMin - curMin);
-          if (dist >= 2) jumpLabel = nxtMin > curMin ? ` ↓${dist}格` : ` ↑${dist}格`;
+          if (dist >= 2) jumpLabel = " " + (nxtMin > curMin
+            ? _t("instrument.fret_jump_down", { n: dist })
+            : _t("instrument.fret_jump_up", { n: dist }));
         }
-        lhInfo.textContent = `左手 ${chordName} → ${nextName}${jumpLabel}`;
+        lhInfo.textContent = _t("instrument.lh.next",
+          { chord: chordName, next: nextName, jump: jumpLabel });
       } else {
-        lhInfo.textContent = `左手 ${chordName}`;
+        lhInfo.textContent = _t("instrument.lh.current", { chord: chordName });
       }
     }
 
@@ -238,10 +242,15 @@ class StringInstrument {
       const strumStyle = this._b.getStrumStyle();
       if (strumStyle === "arpeggio") {
         const pat = ARPEGGIO_PATTERNS[this._b.getArpPattern()];
-        rhInfo.textContent = pat ? `右手 ${pat.name}` : "右手 琶音";
+        rhInfo.textContent = pat
+          ? _t("instrument.rh.with_pattern", { name: pat.name })
+          : _t("instrument.rh.arpeggio");
       } else {
-        const styleLabels = { block: "右手 下刷", pattern: "右手 D DU UDU" };
-        rhInfo.textContent = styleLabels[strumStyle] || "右手";
+        const styleLabels = {
+          block:   _t("instrument.rh.strum_block"),
+          pattern: _t("instrument.rh.strum_pattern"),
+        };
+        rhInfo.textContent = styleLabels[strumStyle] || _t("instrument.rh.fallback");
       }
     }
   }
