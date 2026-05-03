@@ -24,23 +24,51 @@ Hetzner IP ranges are flagged by YouTube. Tier 1 (direct) hits 403/SABR walls; t
 ### Initial setup (once)
 
 1. Create a throwaway Google account. Don't reuse a real one — when it gets terminated, no collateral damage
-2. Sign into youtube.com from a clean browser profile, watch a few videos so the account looks lived-in
-3. Install the [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) extension (or any maintained equivalent — the LOCALLY suffix matters; some forks exfiltrate)
-4. Export cookies for `youtube.com` to `cookies.txt`
-5. Copy to VPS:
-   ```bash
-   scp cookies.txt livechord@<vps-ip>:/home/livechord/.config/yt-dlp/cookies.txt
-   ssh livechord@<vps-ip> 'chmod 600 /home/livechord/.config/yt-dlp/cookies.txt'
-   ```
-6. systemd unit's `ReadWritePaths=/home/livechord/.config/yt-dlp` already permits writes from the service
+2. Install the [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) extension (the LOCALLY suffix matters — some forks exfiltrate)
+3. Follow the **Proper export procedure** below
+4. Upload to VPS via the `scp` + `install` one-liner under "Standard upload"
+5. systemd unit's `ReadWritePaths=/home/livechord/.config/yt-dlp` already permits writes from the service
+
+### Proper export procedure (avoids YouTube's rotation defense)
+
+YouTube actively rotates `__Secure-1PSIDTS / SIDCC / SAPISID` to defeat yt-dlp. If the browser session keeps running after export, the snapshot you saved becomes stale within hours and yt-dlp errors with `cookies are no longer valid ... rotated in the browser as a security measure`. To prevent this:
+
+1. Open browser → **incognito / private window** (Chrome/Edge `Ctrl+Shift+N`, Firefox `Ctrl+Shift+P`)
+2. Inside incognito: sign into the throwaway Google account at `youtube.com`
+3. Watch 1-2 short videos for ~20-30s each (gives the session legitimacy with YouTube's anti-bot scoring)
+4. New tab in the **same** incognito window → use the cookies extension → export `cookies.txt` for `youtube.com`
+5. **Close the entire incognito window WITHOUT signing out.** Signing out tells YouTube to revoke the session immediately. Just-closing kills the local browser session but YouTube's server-side session stays valid for ~14 days.
+6. Don't open YouTube with that account in any browser until cookies are uploaded — any activity = rotation risk = invalidation.
+
+### Standard upload
+
+```bash
+scp <local-cookies.txt> livechord-vps:/tmp/cookies.txt
+ssh livechord-vps "install -o livechord -g livechord -m 600 /tmp/cookies.txt /home/livechord/.config/yt-dlp/cookies.txt && rm /tmp/cookies.txt && wc -c /home/livechord/.config/yt-dlp/cookies.txt && grep -cE 'SID|LOGIN_INFO|__Secure' /home/livechord/.config/yt-dlp/cookies.txt"
+```
+
+A healthy upload reports ~2.5-15 KB and ≥15 critical-cookie matches. No service restart needed — `yt_dlp_fetch.py` reads the file fresh on every call.
 
 ### Weekly refresh (scheduled)
 
-Cookies expire on ~14–28 day cycles even without account intervention. Set a calendar reminder for Sunday evening:
+Cookies last ~14 days when both fixes hold (disposable-copy in [yt_dlp_fetch.py](../backend/yt_dlp_fetch.py) + proper export procedure above). Set a calendar reminder for Sunday evening:
 
-1. From the same browser profile, re-export `cookies.txt`
-2. `scp` overwrite as above
-3. No service restart needed — `yt_dlp_fetch.py` reads the file at each invocation
+1. Re-export per the procedure above
+2. Upload via the standard one-liner
+3. No service restart needed
+
+### Triage when yt-dlp tier 2 fails
+
+```bash
+ssh livechord-vps "wc -c /home/livechord/.config/yt-dlp/cookies.txt; grep -cE 'SID|LOGIN_INFO|__Secure' /home/livechord/.config/yt-dlp/cookies.txt; sudo journalctl -u livechord -n 50 --no-pager | grep -iE 'tier|sign in|rotated'"
+```
+
+| Symptom | Diagnosis | Fix |
+|---|---|---|
+| File size dropped to ~1.3 KB, auth-cookie count <5 | yt-dlp writeback corruption — disposable-copy fix has been reverted or bypassed | Restore `_disposable_cookies` context manager in [backend/yt_dlp_fetch.py](../backend/yt_dlp_fetch.py); user re-uploads cookies |
+| Size unchanged, error mentions "rotated in the browser" | YouTube actively invalidated the session — browser activity after export | User re-exports per "Proper export procedure" above |
+| Size unchanged, error mentions "Sign in to confirm" | Account burned (terminated by YouTube) | User creates fresh throwaway, re-exports |
+| Refreshes needed more than weekly | Manual workflow no longer scales | Build Phase H Modal-tier-3 yt-dlp (`LiveChord-5gg` stub already in `yt_dlp_fetch.py`) |
 
 ### Emergency refresh (`ip_block` ratio spikes)
 
