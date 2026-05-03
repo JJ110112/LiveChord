@@ -8210,6 +8210,31 @@
     });
   });
 
+  // ---------------------------------------------------------------------
+  // i18n re-renderers for JS-set tooltip / title / textContent that don't
+  // ride the data-i18n applyDom() path. Without this listener, dict-key
+  // references would resolve to literals on first render (race with the
+  // async dict fetch in i18n.js _boot) and never refresh on lang flips.
+  // ---------------------------------------------------------------------
+  function _refreshI18nTooltips() {
+    try { _syncRhContentBtn(); } catch (e) {}
+    try {
+      if (typeof chordData !== 'undefined' && chordData) {
+        _updateChordQualityBadge(chordData, hashMode || trackPath);
+      }
+    } catch (e) {}
+    // _buildUnifiedRibbon owns the BPM element title — re-running it on
+    // langchange repaints bpmEl.title with the new dict values.
+    try {
+      if (typeof chordData !== 'undefined' && chordData
+          && typeof _buildUnifiedRibbon === 'function') {
+        _buildUnifiedRibbon();
+      }
+    } catch (e) {}
+  }
+  document.addEventListener("livechord:i18nready", _refreshI18nTooltips);
+  document.addEventListener("livechord:langchange", _refreshI18nTooltips);
+
 })();
 
 // 移調工具函式、簡譜函式 moved to utils.js
