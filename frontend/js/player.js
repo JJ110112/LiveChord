@@ -67,6 +67,13 @@
       panelOverlayHeavy: "rgba(10, 10, 10, 0.65)",
       noteEmphasis: "rgba(255,255,255,0.85)",
       noteEdge: "rgba(255,255,255,0.4)",
+      // Piano-specific (88-key + accordion). pianoLH/pianoRH paint key
+      // highlights; chordOutline traces non-played chord-tone hints; chordTint
+      // is the very faint background wash for chord-scale tones.
+      pianoLH: "rgba(41, 182, 246, 0.9)",
+      pianoRH: "rgba(255, 152, 0, 0.9)",
+      chordOutline: "rgba(182, 79, 255, 0.85)",
+      chordTint: "#4fc3f7",
     },
     light: {
       noteRH: "#0277BD",
@@ -85,6 +92,10 @@
       panelOverlayHeavy: "rgba(245, 243, 235, 0.85)",
       noteEmphasis: "rgba(0,0,0,0.78)",
       noteEdge: "rgba(0,0,0,0.40)",
+      pianoLH: "rgba(2, 119, 189, 0.95)",        // deeper blue for white-key contrast
+      pianoRH: "rgba(216, 67, 21, 0.95)",        // deep orange that reads on cream
+      chordOutline: "rgba(106, 27, 154, 0.85)",  // deep purple
+      chordTint: "rgba(2, 119, 189, 0.7)",
     },
     // Forest — dark-bg family. Cyan + orange accents on deep forest.
     forest: {
@@ -104,6 +115,10 @@
       panelOverlayHeavy: "rgba(5, 26, 15, 0.78)",
       noteEmphasis: "rgba(209,250,229,0.88)",
       noteEdge: "rgba(255,107,53,0.50)",
+      pianoLH: "rgba(255, 107, 53, 0.92)",
+      pianoRH: "rgba(6, 182, 212, 0.92)",
+      chordOutline: "rgba(167, 139, 250, 0.85)",
+      chordTint: "#06b6d4",
     },
     // Sakura — light-bg family. Rose + mint on warm cream.
     sakura: {
@@ -123,6 +138,10 @@
       panelOverlayHeavy: "rgba(254, 230, 236, 0.88)",
       noteEmphasis: "rgba(74,29,63,0.80)",
       noteEdge: "rgba(236,72,153,0.45)",
+      pianoLH: "rgba(15, 118, 110, 0.95)",        // deeper teal for white-key contrast
+      pianoRH: "rgba(190, 24, 93, 0.95)",         // deep rose
+      chordOutline: "rgba(126, 34, 206, 0.85)",
+      chordTint: "rgba(15, 118, 110, 0.7)",
     },
     // Sunny — light-bg family. Ocean teal + sun yellow on warm sand.
     sunny: {
@@ -142,6 +161,10 @@
       panelOverlayHeavy: "rgba(254,240,200,0.88)",
       noteEmphasis: "rgba(30,58,77,0.80)",
       noteEdge: "rgba(8,145,178,0.45)",
+      pianoLH: "rgba(180, 83, 9, 0.95)",          // burnt amber on cream
+      pianoRH: "rgba(7, 89, 133, 0.95)",          // deeper teal
+      chordOutline: "rgba(126, 34, 206, 0.85)",
+      chordTint: "rgba(180, 83, 9, 0.65)",
     },
     // Sky — light-bg family. Azure + sun yellow on light blue.
     sky: {
@@ -161,6 +184,10 @@
       panelOverlayHeavy: "rgba(198,220,253,0.88)",
       noteEmphasis: "rgba(30,58,138,0.80)",
       noteEdge: "rgba(37,99,235,0.45)",
+      pianoLH: "rgba(217, 119, 6, 0.95)",         // amber against sky-blue
+      pianoRH: "rgba(29, 78, 216, 0.95)",         // deeper azure
+      chordOutline: "rgba(126, 34, 206, 0.85)",
+      chordTint: "rgba(217, 119, 6, 0.65)",
     },
   };
   const _VALID_THEMES = new Set(["dark", "light", "forest", "sakura", "sunny", "sky"]);
@@ -2346,13 +2373,21 @@
   // ---- 88-key piano ----
 
   function _get88PianoMaxWidth() {
-    const container = pianoWaterfallView || chordDisplay88;
+    const container = chordDisplay88 || pianoWaterfallView;
     const w = (container && container.clientWidth) || 800;
-    const containerH = (container && container.clientHeight) || 400;
-    const maxKeyH = Math.max(80, containerH - 40);
-    return Math.min(w, Math.round(maxKeyH / 5.1 * 52));  // 15% shorter keys
+    // The .chord-88-keys CSS reserves min-height 200px specifically so the
+    // keyboard can render at full ratio. Cap key height so the cache + canvas
+    // never exceed that container — overshooting was the root cause of the
+    // "keyboard clipped, highlights spill above keys" bug. Bevel (~6%) +
+    // label strip (16px) eat ~22px of the container, leave 24px buffer.
+    const reservedH = 178; // 200 - 22
+    return Math.min(w, Math.round(reservedH / 5.1 * 52));  // 15% shorter keys
   }
 
+  // var (not let) — _init88Piano is called from _switchTab during boot before
+  // this line evaluates; let would put us in TDZ and throw, breaking the rest
+  // of player.js initialisation (jianpu toggle, etc.).
+  var _piano88Resizer = null;
   function _init88Piano() {
     if (!pianoWaterfallView) return;
     piano88Canvas = $("#piano88Canvas");
@@ -2365,8 +2400,25 @@
     piano88Canvas.height = Math.round(h * dpr);
     piano88Canvas.style.width = maxW + "px";
     piano88Canvas.style.height = h + "px";
-    // draw static keyboard immediately
-    ChordRender.draw88Piano(piano88Canvas, piano88Cache, [], -1, {});
+    // draw static keyboard immediately (theme palette so initial light-theme
+    // render doesn't briefly show dark-mode default highlights)
+    ChordRender.draw88Piano(piano88Canvas, piano88Cache, [], -1, { colors: _palette() });
+
+    // Re-init on container resize so highlights stay bound to keys after the
+    // user toggles the waterfall, rotates the device, or resizes the window.
+    if (_piano88Resizer) { try { _piano88Resizer.disconnect(); } catch (_) {} _piano88Resizer = null; }
+    if (typeof ResizeObserver !== "undefined") {
+      let lastW = maxW;
+      _piano88Resizer = new ResizeObserver(() => {
+        const newW = _get88PianoMaxWidth();
+        if (Math.abs(newW - lastW) > 16) {
+          lastW = newW;
+          _init88Piano();
+        }
+      });
+      const target = chordDisplay88 || pianoWaterfallView;
+      if (target) _piano88Resizer.observe(target);
+    }
   }
 
   // Get melody notes (as jianpu) within a time range
@@ -2612,6 +2664,7 @@
       fingeringMap: showFingering ? fingeringMap : null,
       pedalActive: pedalActive,
       pedalDepth: pedalDepth,
+      colors: _palette(),
     });
   }
 
@@ -4961,6 +5014,35 @@
   // Initial sync — picks up the value the inline <head> script set so the
   // label/meta reflect persisted state on first paint.
   _applyTheme(_currentTheme);
+
+  // Jianpu (簡譜) visibility toggle. Hidden via body.no-jianpu CSS class so
+  // both ribbon variants (.rv-jianpu chord ribbon + .chord-jianpu/.melody-jianpu
+  // 88-key ribbon) flip together. localStorage keeps the choice across reloads.
+  const _jianpuStored = localStorage.getItem("livechord_show_jianpu");
+  let _showJianpu = _jianpuStored == null ? true : _jianpuStored === "true";
+  function _applyJianpuVisibility() {
+    document.body.classList.toggle("no-jianpu", !_showJianpu);
+    const lab = document.getElementById("btnToggleJianpuLabel");
+    if (lab) {
+      const key = _showJianpu ? "player.tools.jianpu_on" : "player.tools.jianpu_off";
+      const fb  = _showJianpu ? "簡譜：開" : "簡譜：關";
+      lab.textContent = (window.LiveChordI18n ? window.LiveChordI18n.t(key) : key) || fb;
+      if (lab.textContent === key) lab.textContent = fb;
+    }
+    const btn = document.getElementById("btnToggleJianpu");
+    if (btn) btn.setAttribute("aria-pressed", _showJianpu ? "true" : "false");
+  }
+  const btnToggleJianpu = $("#btnToggleJianpu");
+  if (btnToggleJianpu) {
+    btnToggleJianpu.addEventListener("click", () => {
+      _showJianpu = !_showJianpu;
+      try { localStorage.setItem("livechord_show_jianpu", _showJianpu ? "true" : "false"); } catch (_) {}
+      _applyJianpuVisibility();
+    });
+  }
+  _applyJianpuVisibility();
+  document.addEventListener("livechord:langchange", _applyJianpuVisibility);
+  document.addEventListener("livechord:i18nready",  _applyJianpuVisibility);
 
   // Export-data lives inside the toolbar Tools popup (moved from homepage
   // header menu) so the user reaches it mid-practice, where they're most

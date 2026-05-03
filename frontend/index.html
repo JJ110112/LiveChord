@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
-  <link rel="stylesheet" href="/css/base.css?v=15">
+  <link rel="stylesheet" href="/css/base.css?v=19">
   <link rel="stylesheet" href="/css/home.css?v=24">
   <link rel="stylesheet" href="/css/help.css?v=2">
   <!-- Warm the CDN so the player page's YouTube IFrame bootstraps faster -->
@@ -24,7 +24,7 @@
   <script src="/js/auth.js?v=4"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
-  <script src="/js/i18n.js?v=5"></script>
+  <script src="/js/i18n.js?v=7"></script>
 </head>
 <body>
 
@@ -41,24 +41,76 @@
     <div class="search-marquee" aria-hidden="true"><span class="search-marquee-text" data-i18n="common.search_placeholder_short">請輸入 YouTube URL...</span></div>
     <div id="searchResults" class="search-results"></div>
   </div>
-  <nav style="margin-right: 32px;">
-    <div style="display:flex; align-items:center; gap: 10px;">
-      <span id="userGreeting" style="font-size: 0.85em; color: var(--text-muted);"></span>
-      <a href="/help" class="header-link" data-i18n="help.nav.help">說明</a>
-      <a href="/sponsor" class="header-link" data-i18n="help.nav.sponsor">贊助</a>
-      <select id="langPicker" class="lang-picker" data-i18n-attr="title=lang.picker_title" title="語言"
-              onchange="if(window.LiveChordI18n) window.LiveChordI18n.setLang(this.value)">
-        <option value="en">EN</option>
-        <option value="zh-TW">繁中</option>
-      </select>
-      <button id="btnInstallApp" data-i18n-attr="title=common.install_app_title" title="安裝為 App"><span data-i18n="common.install_app_label">📱 安裝</span></button>
-      <button onclick="logout()" data-i18n="common.logout">登出</button>
+  <a href="/sponsor" class="header-coffee-btn" id="btnHeaderCoffee"
+     data-i18n-attr="title=help.nav.sponsor,aria-label=help.nav.sponsor" title="贊助" aria-label="贊助">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="22" height="22">
+      <path d="M17 8h1a4 4 0 1 1 0 8h-1"/>
+      <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/>
+      <line x1="6" y1="2" x2="6" y2="4"/>
+      <line x1="10" y1="2" x2="10" y2="4"/>
+      <line x1="14" y1="2" x2="14" y2="4"/>
+    </svg>
+  </a>
+  <nav class="header-nav" aria-label="Settings">
+    <div class="header-nav-inner" role="menu">
+      <div class="hn-greeting" id="userGreeting" aria-hidden="true"></div>
+      <div class="hn-section">
+        <div class="hn-section-title" data-i18n="player.tools.theme_label">主題</div>
+        <div class="hn-theme-grid">
+          <button class="hn-theme-opt" data-pick="dark"   data-i18n-attr="title=player.tools.theme.dark_title"   title="深色 — 預設"   aria-label="深色主題">
+            <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#1a1a2e 0%,#222 100%)"></span>
+            <span class="hn-theme-name" data-i18n="player.tools.theme.dark">深色</span>
+          </button>
+          <button class="hn-theme-opt" data-pick="light"  data-i18n-attr="title=player.tools.theme.light_title"  title="淡色 — 暖白紙"  aria-label="淡色主題">
+            <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#f7f5f0 0%,#e8e3d8 100%)"></span>
+            <span class="hn-theme-name" data-i18n="player.tools.theme.light">淡色</span>
+          </button>
+          <button class="hn-theme-opt" data-pick="forest" data-i18n-attr="title=player.tools.theme.forest_title" title="森林 — 深森綠 + 警示橘" aria-label="森林主題">
+            <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#0d2818 0%,#ff6b35 100%)"></span>
+            <span class="hn-theme-name" data-i18n="player.tools.theme.forest">森林</span>
+          </button>
+          <button class="hn-theme-opt" data-pick="sakura" data-i18n-attr="title=player.tools.theme.sakura_title" title="櫻夢 — 暖米色 + 玫瑰粉" aria-label="櫻夢主題">
+            <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#fef5f7 0%,#ec4899 100%)"></span>
+            <span class="hn-theme-name" data-i18n="player.tools.theme.sakura">櫻夢</span>
+          </button>
+          <button class="hn-theme-opt" data-pick="sunny"  data-i18n-attr="title=player.tools.theme.sunny_title"  title="陽光沙灘 — 暖砂金 + 海洋藍" aria-label="陽光沙灘主題">
+            <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#fff8e1 0%,#0891b2 100%)"></span>
+            <span class="hn-theme-name" data-i18n="player.tools.theme.sunny">沙灘</span>
+          </button>
+          <button class="hn-theme-opt" data-pick="sky"    data-i18n-attr="title=player.tools.theme.sky_title"    title="藍天白雲 — 淺藍 + 陽光黃" aria-label="藍天白雲主題">
+            <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#dbeafe 0%,#2563eb 100%)"></span>
+            <span class="hn-theme-name" data-i18n="player.tools.theme.sky">藍天</span>
+          </button>
+        </div>
+      </div>
+      <div class="hn-section">
+        <label class="hn-row hn-row-lang">
+          <span data-i18n="lang.picker_title">語言</span>
+          <select id="langPicker" class="lang-picker" data-i18n-attr="title=lang.picker_title" title="語言"
+                  onchange="if(window.LiveChordI18n) window.LiveChordI18n.setLang(this.value)">
+            <option value="en">EN</option>
+            <option value="zh-TW">繁中</option>
+          </select>
+        </label>
+      </div>
+      <div class="hn-section">
+        <a href="/help" class="hn-row" role="menuitem" data-i18n="help.nav.help">說明</a>
+        <a href="/sponsor" class="hn-row" role="menuitem" data-i18n="help.nav.sponsor">贊助</a>
+      </div>
+      <div class="hn-section">
+        <button class="hn-row" id="btnInstallApp" type="button" role="menuitem" data-i18n-attr="title=common.install_app_title" title="安裝為 App" data-i18n="common.install_app_label">📱 安裝</button>
+        <button class="hn-row" onclick="logout()" type="button" role="menuitem" data-i18n="common.logout">登出</button>
+      </div>
     </div>
+    <button class="header-settings-btn" id="btnHeaderSettings" type="button"
+            data-i18n-attr="title=common.settings_title,aria-label=common.settings_title" title="設定" aria-label="設定" aria-expanded="false"
+            onclick="(function(b){const e=b.closest('.header-nav');const open=e.classList.toggle('mobile-open');b.setAttribute('aria-expanded',open?'true':'false');})(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="22" height="22">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
   </nav>
-  <button class="header-fs-btn" data-i18n-attr="title=common.fullscreen" title="全螢幕" onclick="
-    if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{})}
-    else{document.exitFullscreen()}
-  ">&#x26F6;</button>
 </header>
 
 <!-- dashboard layout -->
@@ -196,7 +248,7 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/js/utils.js?v=6"></script>
+<script src="/js/utils.js?v=7"></script>
 <script src="/js/api.js?v=58"></script>
 <script>
   // (Fetch wrapper + 401 handler are installed by /js/auth.js — see <head>.)
@@ -225,6 +277,52 @@
   document.addEventListener("livechord:profile", _renderGreeting);
   // Re-paint on language toggle so the "Hello," prefix flips between locales.
   document.addEventListener("livechord:langchange", _renderGreeting);
+  // Re-paint once the i18n dictionary finishes loading. Without this, a cold
+  // reload that already has a cached display_name renders the literal key
+  // "home.greeting" because _t() runs before the dict is in memory.
+  document.addEventListener("livechord:i18nready", _renderGreeting);
+  // Initial paint with whatever t() can resolve right now (English fallback if
+  // the dict isn't loaded yet) so the user never sees "home.greeting" between
+  // first paint and the i18nready event.
+  _renderGreeting();
+
+  // Theme picker — moved from player.html Tools popup into the homepage gear
+  // menu (theme is a global setting and the gear is the canonical app-settings
+  // entry point). Mirrors player.js's _applyTheme() so the persisted choice is
+  // honored consistently across pages.
+  (function() {
+    const VALID = new Set(["dark", "light", "forest", "sakura", "sunny", "sky"]);
+    const META = { dark: "#1a1a2e", light: "#f7f5f0", forest: "#0d2818",
+                   sakura: "#fef5f7", sunny: "#fff8e1", sky: "#dbeafe" };
+    function apply(theme) {
+      if (!VALID.has(theme)) theme = "dark";
+      document.documentElement.setAttribute("data-theme", theme);
+      try { localStorage.setItem("livechord_theme", theme); } catch (_) {}
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute("content", META[theme]);
+      document.querySelectorAll(".hn-theme-opt").forEach(b => {
+        b.classList.toggle("active", b.dataset.pick === theme);
+      });
+    }
+    document.querySelectorAll(".hn-theme-opt").forEach(btn => {
+      btn.addEventListener("click", () => apply(btn.dataset.pick));
+    });
+    let cur = localStorage.getItem("livechord_theme");
+    apply(VALID.has(cur) ? cur : "dark");
+  })();
+
+  // Close the settings popover when the user taps outside of it (any click that
+  // is not on the gear trigger or inside the open menu collapses it). Without
+  // this the menu only closes via a second tap on the gear, which feels sticky.
+  document.addEventListener("click", (e) => {
+    const nav = document.querySelector(".header-nav.mobile-open");
+    const gear = document.getElementById("btnHeaderSettings");
+    if (!nav) return;
+    if (gear && (gear === e.target || gear.contains(e.target))) return;
+    if (nav.contains(e.target)) return;
+    nav.classList.remove("mobile-open");
+    if (gear) gear.setAttribute("aria-expanded", "false");
+  });
 
   let username = localStorage.getItem("livechord_username");
 

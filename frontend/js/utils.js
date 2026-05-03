@@ -15,9 +15,22 @@ function _applySearchMarqueeText(text) {
   document.querySelectorAll(".search-marquee-text").forEach((el) => { el.textContent = text; });
 }
 
+// Localized strings come from common.search_placeholder /
+// common.search_placeholder_short. We keep the Chinese fallbacks so the
+// marquee still reads correctly if i18n.js is delayed or fails to load.
+function _marqueeStrings() {
+  const t = (window.LiveChordI18n && window.LiveChordI18n.t) || null;
+  const short = t ? t("common.search_placeholder_short") : "請輸入 YouTube URL...";
+  const long  = t ? t("common.search_placeholder")       : "請輸入歌曲、專輯、藝人或YouTube URL...";
+  // t() returns the key itself for missing strings — fall back to Chinese in that case.
+  return {
+    short: short === "common.search_placeholder_short" ? "請輸入 YouTube URL..." : short,
+    long:  short === "common.search_placeholder"       ? "請輸入歌曲、專輯、藝人或YouTube URL..." : long,
+  };
+}
+
 async function updateSearchMarqueeText() {
-  const short = "請輸入 YouTube URL...";
-  const long  = "請輸入歌曲、專輯、藝人或YouTube URL...";
+  const { short, long } = _marqueeStrings();
   const isBeta = location.port === "8801" || location.hostname.endsWith("livechord.org");
 
   // Personal/admin: flip to long text immediately (no async fetch needed),
@@ -28,6 +41,7 @@ async function updateSearchMarqueeText() {
   }
   // Beta: short is the default (HTML already has it) — only upgrade to long
   // when the user has at least one analyzed song in their history.
+  _applySearchMarqueeText(short);
   try {
     const r = await fetch("/api/process/my-history?limit=1");
     if (!r.ok) return;
@@ -45,6 +59,10 @@ if (document.readyState === "loading") {
 } else {
   updateSearchMarqueeText();
 }
+// Re-render on language switch and once the dictionary first loads, so the
+// marquee tracks the picker without a page reload.
+document.addEventListener("livechord:langchange", updateSearchMarqueeText);
+document.addEventListener("livechord:i18nready",  updateSearchMarqueeText);
 
 // ---- DOM helpers ----
 

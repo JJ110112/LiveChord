@@ -15,13 +15,13 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="/css/base.css?v=15">
-  <link rel="stylesheet" href="/css/player.css?v=110">
+  <link rel="stylesheet" href="/css/base.css?v=19">
+  <link rel="stylesheet" href="/css/player.css?v=113">
   <!-- Phase A: shared auth + fetch wrapper (see frontend/js/auth.js). Must
        load before any /api/ call so anon X-Anon-Id is injected from the
        first request. Replaces the inline blind-redirect block. -->
   <script src="/js/auth.js?v=4"></script>
-  <script src="/js/i18n.js?v=5"></script>
+  <script src="/js/i18n.js?v=7"></script>
 </head>
 <body>
 
@@ -718,14 +718,12 @@
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         <span data-i18n="player.tools.export">匯出資料</span>
       </button>
-      <div class="tb-separator"></div>
-      <div class="tb-subtitle" data-i18n="player.tools.theme_label">主題</div>
-      <button class="tb-popup-btn theme-opt" data-pick="dark" title="深色 — 預設" data-i18n="player.tools.theme.dark" data-i18n-attr="title=player.tools.theme.dark_title" aria-label="深色主題">深色</button>
-      <button class="tb-popup-btn theme-opt" data-pick="light" title="淡色 — 暖白紙" data-i18n="player.tools.theme.light" data-i18n-attr="title=player.tools.theme.light_title" aria-label="淡色主題">淡色</button>
-      <button class="tb-popup-btn theme-opt" data-pick="forest" title="森林 — 深森綠 + 警示橘" data-i18n="player.tools.theme.forest" data-i18n-attr="title=player.tools.theme.forest_title" aria-label="森林主題">森林</button>
-      <button class="tb-popup-btn theme-opt" data-pick="sakura" title="櫻夢 — 暖米色 + 玫瑰粉" data-i18n="player.tools.theme.sakura" data-i18n-attr="title=player.tools.theme.sakura_title" aria-label="櫻夢主題">櫻夢</button>
-      <button class="tb-popup-btn theme-opt" data-pick="sunny" title="陽光沙灘 — 暖砂金 + 海洋藍" data-i18n="player.tools.theme.sunny" data-i18n-attr="title=player.tools.theme.sunny_title" aria-label="陽光沙灘主題">沙灘</button>
-      <button class="tb-popup-btn theme-opt" data-pick="sky" title="藍天白雲 — 淺藍 + 陽光黃" data-i18n="player.tools.theme.sky" data-i18n-attr="title=player.tools.theme.sky_title" aria-label="藍天白雲主題">藍天</button>
+      <button id="btnToggleJianpu" class="tb-popup-btn" title="顯示 / 隱藏簡譜" data-i18n-attr="title=player.tools.jianpu_title,aria-label=player.tools.jianpu" aria-label="切換簡譜顯示" aria-pressed="true">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 17V5l10-2v12"/><circle cx="6" cy="17" r="3"/><circle cx="16" cy="15" r="3"/></svg>
+        <span id="btnToggleJianpuLabel" data-i18n="player.tools.jianpu_on">簡譜：開</span>
+      </button>
+      <!-- Theme picker moved to homepage gear menu (global setting). The
+           player still respects the persisted livechord_theme value. -->
     </div>
   </div>
 
@@ -761,19 +759,19 @@
   </div>
 </div>
 
-<script src="/js/utils.js?v=6"></script>
+<script src="/js/utils.js?v=7"></script>
 <script src="/js/api.js?v=57"></script>
-<script src="/js/chord-render.js?v=54"></script>
+<script src="/js/chord-render.js?v=56"></script>
 <script src="/js/arpeggio-patterns.js?v=1"></script>
-<script src="/js/string-instrument.js?v=2"></script>
+<script src="/js/string-instrument.js?v=3"></script>
 <script src="/js/instrument-registry.js?v=1"></script>
-<script src="/js/accordion-instrument.js?v=2"></script>
+<script src="/js/accordion-instrument.js?v=3"></script>
 <script src="/js/arranger-instrument.js?v=3"></script>
 <script src="/js/midi-exporter.js?v=2"></script>
 <script src="/js/beat-sync.js?v=1"></script>
 <script src="/js/chord-correction.js?v=14"></script>
 <!-- Phase A: fetch wrapper installed by /js/auth.js at <head>; the inline
      duplicate block was removed. -->
-<script src="/js/player.js?v=246"></script>
+<script src="/js/player.js?v=249"></script>
 </body>
 </html>

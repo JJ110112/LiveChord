@@ -292,14 +292,24 @@ class AccordionInstrument {
     const stepIsChord = (step === "C");
     const stepIsAlt = (step === "Ab");
 
-    // Column headers with finger colors — positioned just above the first button row
+    // Column headers with finger colors — positioned just above the first button row.
+    // On light-bg themes the bright yellow "Bass" header becomes unreadable on cream;
+    // swap to a darker variant (#9a7a00) and bump orange to #c45a00 for the same reason.
+    const _accLight = (function() {
+      try {
+        const t = document.documentElement.getAttribute("data-theme");
+        return t === "light" || t === "sakura" || t === "sunny" || t === "sky";
+      } catch (_) { return false; }
+    })();
+    const HEADER_LIGHT_REMAP = { "#ffeb3b": "#9a7a00", "#ff9800": "#c45a00", "#ef5350": "#b91c1c", "#66bb6a": "#1b5e20" };
     ctx.font = "bold 11px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "bottom";
     for (let d = 0; d < nTypes; d++) {
       const row = D2R[d];
       const finger = RFINGER[row];
-      ctx.fillStyle = FCLR[finger];
+      const base = FCLR[finger];
+      ctx.fillStyle = _accLight ? (HEADER_LIGHT_REMAP[base] || base) : base;
       ctx.fillText(DLABELS[d], gridLeft + (d + 0.5) * colW, padTop + headerH - 2);
     }
 

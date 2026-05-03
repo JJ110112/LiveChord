@@ -345,10 +345,20 @@ class StringInstrument {
     const stringSpacing = (w - padL - padR) / Math.max(numStrings - 1, 1);
     function strX(s) { return padL + s * stringSpacing; }
 
-    // String lines (full height)
+    // String lines (full height) — theme-aware via document data-theme so
+    // light themes render visible black-on-cream instead of invisible white.
+    const _rhIsLight = (function() {
+      try {
+        const t = document.documentElement.getAttribute("data-theme");
+        return t === "light" || t === "sakura" || t === "sunny" || t === "sky";
+      } catch (_) { return false; }
+    })();
+    const _rhInk = (a) => _rhIsLight
+      ? `rgba(0,0,0,${Math.min(1, a * 1.4).toFixed(3)})`
+      : `rgba(255,255,255,${a.toFixed(3)})`;
     for (let s = 0; s < numStrings; s++) {
       const x = strX(s);
-      ctx.strokeStyle = "rgba(255,255,255,0.2)";
+      ctx.strokeStyle = _rhInk(0.40);
       ctx.lineWidth = s === 0 ? 1.5 : 1;
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
     }
@@ -366,7 +376,7 @@ class StringInstrument {
           const y = h - (bt - currentTime) * pxPerSec;
           if (y < 0 || y > h) continue;
           const isBar = (b === 0);
-          ctx.strokeStyle = isBar ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.04)";
+          ctx.strokeStyle = isBar ? _rhInk(0.30) : _rhInk(0.10);
           ctx.lineWidth = isBar ? 1 : 0.5;
           ctx.beginPath(); ctx.moveTo(padL - 8, y); ctx.lineTo(w - padR + 8, y); ctx.stroke();
         }

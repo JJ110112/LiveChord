@@ -322,6 +322,13 @@
 }
 .rv-item.active .rv-time { color: var(--text-dim); }
 
+/* Jianpu (numeric notation) toggle. Body-level class set by Tools > 簡譜 button
+   so the user can practice with chord names alone (less visual noise) and the
+   choice persists across reloads via localStorage. */
+body.no-jianpu .rv-jianpu,
+body.no-jianpu .chord-jianpu,
+body.no-jianpu .melody-jianpu { display: none !important; }
+
 .rv-item canvas {
   margin-top: 4px;
   filter: drop-shadow(0 1px 3px rgba(0,0,0,0.4));
@@ -634,6 +641,11 @@
   min-height: 0;
 }
 
+/* `.chord-88-keys` is the wrapper for BOTH the waterfall AND the 88-key
+   piano canvas — it fills its parent (.chord-piano-tab) so the waterfall
+   can actually fill vertical space. Piano canvas height is determined by
+   JS (_get88PianoMaxWidth + init88PianoCache → ~200px), pinned to the
+   bottom via `margin-top: auto`; waterfall takes the remaining space.   */
 .chord-88-keys {
   display: flex;
   flex-direction: column;
@@ -661,7 +673,7 @@
 }
 .waterfall-canvas.active {
   display: block;
-  flex: 4;
+  flex: 1 1 auto;        /* fill the space above the bottom-pinned piano */
   min-height: 120px;
 }
 
@@ -726,7 +738,7 @@
 .gt-main-chord-name {
   font-size: 22px;
   font-weight: 800;
-  color: #fff;
+  color: var(--text);              /* theme-aware: white on dark, dark on light */
   line-height: 1;
   text-align: center;
 }
@@ -901,19 +913,27 @@
 .acc-main-chord-name {
   font-size: 22px;
   font-weight: bold;
-  color: #fff;
+  color: var(--text);              /* theme-aware */
   text-shadow: 0 0 8px rgba(100,180,255,0.3);
+}
+/* Light themes: white-on-cream becomes dark-on-cream + recolor halo to the
+   theme accent so the glow doesn't bleach the letters out. */
+[data-theme="light"]  .acc-main-chord-name,
+[data-theme="sakura"] .acc-main-chord-name,
+[data-theme="sunny"]  .acc-main-chord-name,
+[data-theme="sky"]    .acc-main-chord-name {
+  text-shadow: 0 0 8px var(--bg-card);
 }
 
 .acc-bass-pattern-label {
   font-size: 11px;
-  color: #aaa;
+  color: var(--text-dim);
 }
 
 .acc-pattern-select {
-  background: rgba(30,30,40,0.85);
-  color: #ccc;
-  border: 1px solid rgba(255,255,255,0.15);
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 2px 6px;
   font-size: 11px;
@@ -3646,11 +3666,15 @@
 [data-theme="light"] .gt-voicing-btn,
 [data-theme="sakura"] .gt-voicing-btn,
 [data-theme="sunny"] .gt-voicing-btn,
-[data-theme="sky"] .gt-voicing-btn { background: rgba(0, 0, 0, 0.05); }
+[data-theme="sky"] .gt-voicing-btn {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.30);   /* darker outline so chip is visible on cream */
+  color: var(--text);                  /* full ink for the ① ② ③ glyph */
+}
 [data-theme="light"] .gt-voicing-btn:hover,
 [data-theme="sakura"] .gt-voicing-btn:hover,
 [data-theme="sunny"] .gt-voicing-btn:hover,
-[data-theme="sky"] .gt-voicing-btn:hover { background: rgba(0, 0, 0, 0.10); }
+[data-theme="sky"] .gt-voicing-btn:hover { background: rgba(0, 0, 0, 0.12); }
 [data-theme="light"] .gt-arp-select option,
 [data-theme="sakura"] .gt-arp-select option,
 [data-theme="sunny"] .gt-arp-select option,
