@@ -429,14 +429,15 @@ def _extract_cover(audio_path: str, result_hash: str):
 def _get_youtube_title(url: str) -> str:
     """Extract video title from YouTube URL using yt-dlp.
 
-    Uses --dump-json + explicit UTF-8 decoding so CJK titles survive on
-    Windows NUCs whose console code page is not UTF-8 (cp950/cp932 etc.).
+    Routes through yt_dlp_fetch.run_yt_dlp so VPS deployments transparently
+    fall back to cookies (tier 2) / Modal (tier 3) when the host IP is
+    flagged. UTF-8 decoding is the default in the wrapper.
     """
     try:
-        result = subprocess.run(
-            [YTDLP_BIN, "--dump-json", "--no-download", "--no-playlist", url],
-            capture_output=True, timeout=30,
-            encoding="utf-8", errors="replace",
+        from yt_dlp_fetch import run_yt_dlp
+        result, _tier = run_yt_dlp(
+            ["--dump-json", "--no-download", "--no-playlist", url],
+            timeout=30,
         )
         if result.returncode == 0 and result.stdout.strip():
             first = result.stdout.strip().splitlines()[0]
@@ -447,15 +448,23 @@ def _get_youtube_title(url: str) -> str:
 
 
 def _download_youtube(url: str, output_path: str) -> str:
-    """Download audio from YouTube URL using yt-dlp. Returns path to wav file."""
-    result = subprocess.run(
-        [YTDLP_BIN, "-x", "--audio-format", "wav", "--audio-quality", "0",
+    """Download audio from YouTube URL. Returns path to wav file.
+
+    Three-tier fallback via yt_dlp_fetch (see backend/yt_dlp_fetch.py and
+    doc/OPS.md). On NUC personal mode tier 1 almost always wins; on VPS
+    public mode tier 2/3 carry it.
+    """
+    from yt_dlp_fetch import run_yt_dlp
+    result, tier = run_yt_dlp(
+        ["-x", "--audio-format", "wav", "--audio-quality", "0",
          "--max-filesize", "200m", "--no-playlist",
          "-o", output_path, url],
-        capture_output=True, text=True, timeout=180
+        timeout=180,
     )
     if result.returncode != 0:
-        raise RuntimeError(f"yt-dlp failed: {result.stderr[:300]}")
+        raise RuntimeError(f"yt-dlp failed (tier={tier}): {(result.stderr or '')[:300]}")
+    if tier > 1:
+        logger.info("yt-dlp download served from tier %d for %s", tier, url)
     # yt-dlp may append .wav if output_path doesn't have it
     if os.path.isfile(output_path):
         return output_path

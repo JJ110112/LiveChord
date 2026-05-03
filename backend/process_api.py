@@ -700,8 +700,7 @@ def switch_beats(
 # YouTube search (find matching video for a song title)
 # ---------------------------------------------------------------------------
 
-import subprocess
-from process_queue import YTDLP_BIN
+import subprocess  # subprocess.TimeoutExpired still raised by yt_dlp_fetch wrapper
 
 # Simple in-memory cache for YouTube search results
 _yt_search_cache: dict[str, str] = {}
@@ -745,11 +744,12 @@ def playlist_info(url: str, username: str = Depends(get_user_or_anon)):
     if "list=" not in url:
         raise HTTPException(status_code=400, detail="URL 不含 playlist (list=)")
     try:
-        result = subprocess.run(
-            [YTDLP_BIN, "--flat-playlist", "--dump-json", "--no-warnings",
+        from yt_dlp_fetch import run_yt_dlp
+        result, _tier = run_yt_dlp(
+            ["--flat-playlist", "--dump-json", "--no-warnings",
              "--playlist-end", "50",   # cap to avoid huge playlists flooding
              url],
-            capture_output=True, text=True, timeout=45
+            timeout=45,
         )
         if result.returncode != 0:
             raise HTTPException(status_code=500,
@@ -810,12 +810,13 @@ def youtube_search(q: str, username: str = Depends(get_user_or_anon)):
         return {"video_id": vid, "url": f"https://www.youtube.com/watch?v={vid}"}
 
     try:
-        result = subprocess.run(
-            [YTDLP_BIN, "--get-id", "--no-download", "--no-playlist",
+        from yt_dlp_fetch import run_yt_dlp
+        result, _tier = run_yt_dlp(
+            ["--get-id", "--no-download", "--no-playlist",
              f"ytsearch1:{q}"],
-            capture_output=True, text=True, timeout=15
+            timeout=15,
         )
-        vid = result.stdout.strip()
+        vid = (result.stdout or "").strip()
         if result.returncode != 0 or not vid or len(vid) != 11:
             return {"video_id": None, "url": None}
         _yt_search_cache[cache_key] = vid
@@ -862,16 +863,13 @@ def youtube_search_list(
     try:
         # ytsearchN:<query> + --dump-json emits one JSON per match (NDJSON).
         # --flat-playlist keeps the query lightweight (no per-video HTTP).
-        # encoding="utf-8" matters on Windows NUC where cp950 silently drops
-        # CJK title characters — same fix CLAUDE.md documents for
-        # _get_youtube_title.
-        result = subprocess.run(
-            [YTDLP_BIN, "--flat-playlist", "--dump-json", "--no-warnings",
+        # The wrapper defaults to UTF-8 decoding so CJK titles survive on
+        # Windows NUC consoles whose code page is cp950 — same fix
+        # CLAUDE.md documents for _get_youtube_title.
+        from yt_dlp_fetch import run_yt_dlp
+        result, _tier = run_yt_dlp(
+            ["--flat-playlist", "--dump-json", "--no-warnings",
              "--no-download", f"ytsearch{n}:{q}"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             timeout=20,
         )
         if result.returncode != 0:

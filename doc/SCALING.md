@@ -95,7 +95,7 @@ audio_tensor = audio_tensor.to(DEVICE)
 |---|---|---|---|
 | **目前 NUC + Cloudflare Tunnel** | ~0（電費） | Personal + Beta <100 MAU | 住家斷網、GPU 擴充、地理冗餘 |
 | **Fly.io / Railway** | \$5–30 | FastAPI app, 小 volume, 自動擴展 | 大檔案儲存（貴） |
-| **Hetzner VPS + Cloudflare R2** | \$10–40 | 自控後端 + 便宜物件儲存 | 自己 setup nginx/systemd/backup |
+| **Hetzner CPX21 Singapore + Cloudflare R2** | \$8–15 | 自控後端 + 便宜物件儲存 + Asia 低延遲 | 自己 setup systemd/backup；Hetzner IP 被 YouTube 標記，需要 yt-dlp 三層 fallback |
 | **AWS/GCP** | \$50+ | 真商業化、多區域、GPU instance | 運維複雜度高 |
 | **Modal** | 按 call | 只把 AI 推論外包，app 留在別處 | 做整個 app |
 | **Tauri desktop 打包** | 0 | 完全 local、零 infra、繞過版權風險 | 需要雲端同步 |
@@ -212,7 +212,7 @@ NUC 退回純 personal 用，公眾流量完全獨立。Beta → 雲端的遷移
 
 - **Rate limit**: 目前 auth endpoint 有（`_RATE_MAX_AUTH`），其他 endpoint 沒有。至少 `/api/process/*` 應加 per-user quota（每日 10 次已有，但缺 per-minute 的 burst limit）
 - **CAPTCHA**: 註冊開放後，bot 註冊會是問題。Cloudflare Turnstile 免費且不吵
-- **yt-dlp 被 YouTube 限速**: 現況 subprocess 直跑，量大會被 IP 封。考慮 Modal 等「帶住宅 IP 的託管服務」
+- **yt-dlp 被 YouTube 限速**: VPS 部署在 Hetzner（datacenter IP 段 YouTube 已標記）後變成 Day-1 風險，不再是 future scaling 議題。三層 fallback wrapper [backend/yt_dlp_fetch.py](../backend/yt_dlp_fetch.py)：tier 1 直連 → tier 2 cookies (`~/.config/yt-dlp/cookies.txt`，每週 refresh) → tier 3 Modal serverless（[LiveChord-5gg](backend/) Phase H 待實作，cleaner outbound IPs）。詳見 [vps-survey-for-livechord-jolly-pancake.md](../../../.claude/plans/vps-survey-for-livechord-jolly-pancake.md) 與 [doc/OPS.md](OPS.md)
 
 ### 6.2 媒體儲存策略
 
