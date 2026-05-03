@@ -1329,13 +1329,15 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   gap: 6px;
   /* Solid background — popup text + buttons must remain unambiguously
      readable against any backdrop (chord ribbon, waterfall, dialogs).
-     Earlier glass variants made the popup itself look washed out; user
-     prefers a clearly-defined panel over see-through. */
-  background: #161b22;
-  border: 1px solid rgba(255,255,255,0.12);
+     Themed via --lc-popup-bg so light themes (sakura/sunny/sky/light)
+     get a near-white panel and forest gets the deep green; dark theme
+     stays at the original near-black. The earlier hardcoded #161b22
+     leaked dark popups into all light themes. */
+  background: var(--lc-popup-bg);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 8px 12px;
-  box-shadow: 0 -4px 24px rgba(0,0,0,0.6);
+  box-shadow: var(--lc-popup-shadow, 0 -4px 24px rgba(0,0,0,0.6));
   white-space: nowrap;
   z-index: 10000;
   /* Clamp every popup to viewport — 720px hard cap on desktop, 16px
@@ -1513,6 +1515,102 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   flex-wrap: wrap;
   justify-content: center;
   max-width: min(720px, 92vw);
+}
+
+/* Settings gear popup — mirrors the homepage .header-nav scope with
+   .hn-* children but lives inside a .tb-popup. Each .hn-section gets
+   its own column block; theme grid is 3×2 swatches; lang picker rides
+   in the middle section. Min-width keeps the panel from collapsing
+   to the title strip when used inside a small toolbar item. */
+.tb-popup-gear {
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 280px;
+  max-width: min(360px, 92vw);
+  white-space: normal;
+  gap: 0;
+}
+.tb-popup-gear .hn-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 4px;
+}
+.tb-popup-gear .hn-section + .hn-section {
+  border-top: 1px solid var(--border);
+}
+.tb-popup-gear .hn-section-title {
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  padding: 0 4px 4px;
+}
+.tb-popup-gear .hn-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 0.95em;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  text-decoration: none;
+}
+.tb-popup-gear .hn-row:hover,
+.tb-popup-gear .hn-row:focus-visible {
+  background: var(--bg-card);
+  text-decoration: none;
+  outline: none;
+}
+.tb-popup-gear .hn-row-lang { cursor: default; }
+.tb-popup-gear .hn-row-lang:hover { background: transparent; }
+.tb-popup-gear .lang-picker {
+  font: inherit;
+  font-size: 0.9em;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  cursor: pointer;
+}
+.tb-popup-gear .hn-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 0 4px;
+}
+.tb-popup-gear .hn-theme-opt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-size: 0.78em;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+.tb-popup-gear .hn-theme-opt:hover { background: var(--bg-card); }
+.tb-popup-gear .hn-theme-opt.active {
+  border-color: var(--accent);
+  background: var(--bg-card);
+}
+.tb-popup-gear .hn-theme-swatch {
+  display: block;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
 }
 
 /* Subgroup: forces its own row; contents wrap within */
@@ -2640,25 +2738,29 @@ body.no-jianpu .melody-jianpu { display: none !important; }
 
 /* ========== [END: RESPONSIVE] ========== */
 
-/* RLHF Section Menu */
+/* Chord / section right-click menu — themed via --lc-popup-bg so it
+   matches the toolbar popup AND the homepage gear menu across every
+   theme (light / sakura / sunny / sky / forest / dark). The earlier
+   `var(--bg-hover) + backdrop-filter:blur` recipe gave a frosted look
+   that was too transparent over a busy chord ribbon and didn't pick
+   up the theme accents on the light themes. */
 .rv-section-menu {
   position: absolute;
-  background: var(--bg-hover, #2d3036);
-  border: 1px solid var(--border, #444);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.8);
+  background: var(--lc-popup-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--lc-popup-shadow, 0 8px 24px rgba(0,0,0,0.6));
   z-index: 10000;
   padding: 6px 0;
-  color: #eee;
+  color: var(--text);
   font-size: 14px;
-  min-width: 160px;
-  backdrop-filter: blur(8px);
+  min-width: 180px;
 }
 .rv-section-menu .title {
   padding: 6px 16px;
   font-size: 12px;
-  color: #888;
-  border-bottom: 1px solid var(--border, #444);
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
   margin-bottom: 6px;
   font-weight: 600;
 }
@@ -2668,20 +2770,21 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   display: flex;
   align-items: center;
   gap: 8px;
-  transition: all 0.2s;
+  color: var(--text);
+  transition: background .15s, color .15s;
 }
 .rv-section-menu-item:hover {
-  background: var(--accent, #4caf50);
-  color: white;
+  background: var(--accent);
+  color: #fff;
 }
 .rv-section-menu-label {
   font-size: 11px;
-  color: var(--text-dim, #888);
+  color: var(--text-dim);
   padding: 6px 16px 2px;
   letter-spacing: 0.5px;
 }
 .rv-section-menu-sep {
-  border-top: 1px solid rgba(255,255,255,0.1);
+  border-top: 1px solid var(--border);
   margin: 4px 0;
 }
 

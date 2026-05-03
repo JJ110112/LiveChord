@@ -16,7 +16,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=19">
-  <link rel="stylesheet" href="/css/player.css?v=113">
+  <link rel="stylesheet" href="/css/player.css?v=114">
   <!-- Phase A: shared auth + fetch wrapper (see frontend/js/auth.js). Must
        load before any /api/ call so anon X-Anon-Id is injected from the
        first request. Replaces the inline blind-redirect block. -->
@@ -398,36 +398,8 @@
       </div>
     </div>
 
-  </div><!-- /tb-row-t1 -->
-
-  <!-- ===== Transport Row: Prev / Play / Next + times ===== -->
-  <div class="tb-row tb-row-tx">
-    <div class="tb-item tb-playback" id="tbPlayback">
-      <button id="btnPrev" class="tb-trigger"
-              data-i18n-attr="title=player.toolbar.prev_title,aria-label=player.toolbar.prev"
-              title="上一首 / 回到開頭" aria-label="上一首">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
-      </button>
-      <span id="timeCurrent" class="tb-time">0:00</span>
-      <button id="btnPlay" class="tb-trigger tb-play-btn"
-              data-i18n-attr="title=player.toolbar.play,aria-label=player.toolbar.play"
-              title="播放" aria-label="播放">
-        <svg class="tb-icon ico-play" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>
-        <svg class="tb-icon ico-pause" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-      </button>
-      <span id="timeDuration" class="tb-time">0:00</span>
-      <button id="btnNext" class="tb-trigger"
-              data-i18n-attr="title=player.toolbar.next,aria-label=player.toolbar.next"
-              title="下一首" aria-label="下一首">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
-      </button>
-    </div>
-  </div><!-- /tb-row-tx -->
-
-  <!-- ===== T2 Row: 次常用 (Instrument / Jazzify / A-B / AI Teaching / Tools / Bug) ===== -->
-  <div class="tb-row tb-row-t2">
-
-    <!-- Instrument select -->
+    <!-- Instrument select — moved from t2 so mobile-portrait T1 row reads
+         1x / Loop / Transpose / Volume / Instrument (5 items) per UX brief. -->
     <div class="tb-item" id="tbInstrument">
       <button class="tb-trigger" id="btnInstrument"
               data-i18n-attr="title=player.toolbar.instrument_title,aria-label=player.toolbar.instrument_title"
@@ -457,6 +429,36 @@
                 title="Arranger 編曲鍵盤">&#x1F3B9; 編曲琴</button>
       </div>
     </div>
+
+  </div><!-- /tb-row-t1 -->
+
+  <!-- ===== Transport Row: Prev / Play / Next + times ===== -->
+  <div class="tb-row tb-row-tx">
+    <div class="tb-item tb-playback" id="tbPlayback">
+      <button id="btnPrev" class="tb-trigger"
+              data-i18n-attr="title=player.toolbar.prev_title,aria-label=player.toolbar.prev"
+              title="上一首 / 回到開頭" aria-label="上一首">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
+      </button>
+      <span id="timeCurrent" class="tb-time">0:00</span>
+      <button id="btnPlay" class="tb-trigger tb-play-btn"
+              data-i18n-attr="title=player.toolbar.play,aria-label=player.toolbar.play"
+              title="播放" aria-label="播放">
+        <svg class="tb-icon ico-play" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+        <svg class="tb-icon ico-pause" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+      </button>
+      <span id="timeDuration" class="tb-time">0:00</span>
+      <button id="btnNext" class="tb-trigger"
+              data-i18n-attr="title=player.toolbar.next,aria-label=player.toolbar.next"
+              title="下一首" aria-label="下一首">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+      </button>
+    </div>
+  </div><!-- /tb-row-tx -->
+
+  <!-- ===== T2 Row: 次常用 (Jazzify / A-B / AI Teaching / Tools / Gear / Bug) =====
+       Instrument moved to T1 row. -->
+  <div class="tb-row tb-row-t2">
 
     <!-- Jazzify: L1 → L2 → L3 → ✨AI -->
     <div class="tb-item" id="tbJazzify">
@@ -727,6 +729,68 @@
     </div>
   </div>
 
+    <!-- Settings gear — same global preferences as the homepage gear:
+         theme picker + lang picker + help/sponsor/install/signout.
+         Reuses the .hn-section markup nested inside a .tb-popup so the
+         dark/light themes pick it up via --lc-popup-bg. -->
+    <div class="tb-item" id="tbGear">
+      <button class="tb-trigger" id="btnPlayerSettings"
+              data-i18n-attr="title=common.settings_title,aria-label=common.settings_title"
+              title="設定" aria-label="設定" aria-haspopup="true">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+      <div class="tb-popup tb-popup-wide tb-popup-gear">
+        <div class="tb-popup-title" data-i18n="common.settings_title">設定</div>
+        <div class="hn-section">
+          <div class="hn-section-title" data-i18n="player.tools.theme_label">主題</div>
+          <div class="hn-theme-grid">
+            <button class="hn-theme-opt" data-pick="dark"   data-i18n-attr="title=player.tools.theme.dark_title"   title="深色 — 預設"   aria-label="深色主題">
+              <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#1a1a2e 0%,#222 100%)"></span>
+              <span class="hn-theme-name" data-i18n="player.tools.theme.dark">深色</span>
+            </button>
+            <button class="hn-theme-opt" data-pick="light"  data-i18n-attr="title=player.tools.theme.light_title"  title="淡色 — 暖白紙"  aria-label="淡色主題">
+              <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#f7f5f0 0%,#e8e3d8 100%)"></span>
+              <span class="hn-theme-name" data-i18n="player.tools.theme.light">淡色</span>
+            </button>
+            <button class="hn-theme-opt" data-pick="forest" data-i18n-attr="title=player.tools.theme.forest_title" title="森林 — 深森綠 + 警示橘" aria-label="森林主題">
+              <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#0d2818 0%,#ff6b35 100%)"></span>
+              <span class="hn-theme-name" data-i18n="player.tools.theme.forest">森林</span>
+            </button>
+            <button class="hn-theme-opt" data-pick="sakura" data-i18n-attr="title=player.tools.theme.sakura_title" title="櫻夢 — 暖米色 + 玫瑰粉" aria-label="櫻夢主題">
+              <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#fef5f7 0%,#ec4899 100%)"></span>
+              <span class="hn-theme-name" data-i18n="player.tools.theme.sakura">櫻夢</span>
+            </button>
+            <button class="hn-theme-opt" data-pick="sunny"  data-i18n-attr="title=player.tools.theme.sunny_title"  title="陽光沙灘 — 暖砂金 + 海洋藍" aria-label="陽光沙灘主題">
+              <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#fff8e1 0%,#0891b2 100%)"></span>
+              <span class="hn-theme-name" data-i18n="player.tools.theme.sunny">沙灘</span>
+            </button>
+            <button class="hn-theme-opt" data-pick="sky"    data-i18n-attr="title=player.tools.theme.sky_title"    title="藍天白雲 — 淺藍 + 陽光黃" aria-label="藍天白雲主題">
+              <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#dbeafe 0%,#2563eb 100%)"></span>
+              <span class="hn-theme-name" data-i18n="player.tools.theme.sky">藍天</span>
+            </button>
+          </div>
+        </div>
+        <div class="hn-section">
+          <label class="hn-row hn-row-lang">
+            <span data-i18n="lang.picker_title">語言</span>
+            <select id="langPickerPlayer" class="lang-picker" data-i18n-attr="title=lang.picker_title" title="語言"
+                    onchange="if(window.LiveChordI18n) window.LiveChordI18n.setLang(this.value)">
+              <option value="en">EN</option>
+              <option value="zh-TW">繁中</option>
+            </select>
+          </label>
+        </div>
+        <div class="hn-section">
+          <a href="/" class="hn-row" role="menuitem" data-i18n="help.nav.home">首頁</a>
+          <a href="/help" class="hn-row" role="menuitem" data-i18n="help.nav.help">說明</a>
+          <a href="/sponsor" class="hn-row" role="menuitem" data-i18n="help.nav.sponsor">贊助</a>
+        </div>
+      </div>
+    </div>
+
     <!-- Beta: Bug report -->
     <div class="tb-item" id="tbBugReport" style="display:none">
       <button id="btnBugReport" class="tb-trigger" title="回報問題" data-i18n-attr="title=player.bug.title,aria-label=player.bug.title" aria-label="回報問題">
@@ -773,5 +837,30 @@
 <!-- Phase A: fetch wrapper installed by /js/auth.js at <head>; the inline
      duplicate block was removed. -->
 <script src="/js/player.js?v=253"></script>
+<script>
+  // Toolbar gear theme picker — mirrors the homepage gear handler so the
+  // user's theme choice is honored on either entry point. Active state on
+  // the swatch button keeps the popup visually in sync with the persisted
+  // pick across page loads.
+  (function () {
+    const VALID = new Set(["dark", "light", "forest", "sakura", "sunny", "sky"]);
+    const META = { dark: "#1a1a2e", light: "#f7f5f0", forest: "#0d2818",
+                   sakura: "#fef5f7", sunny: "#fff8e1", sky: "#dbeafe" };
+    function apply(theme) {
+      if (!VALID.has(theme)) theme = "dark";
+      document.documentElement.setAttribute("data-theme", theme);
+      try { localStorage.setItem("livechord_theme", theme); } catch (_) {}
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute("content", META[theme]);
+      document.querySelectorAll(".tb-popup-gear .hn-theme-opt").forEach(b => {
+        b.classList.toggle("active", b.dataset.pick === theme);
+      });
+    }
+    document.querySelectorAll(".tb-popup-gear .hn-theme-opt").forEach(btn => {
+      btn.addEventListener("click", (e) => { e.stopPropagation(); apply(btn.dataset.pick); });
+    });
+    apply(localStorage.getItem("livechord_theme") || "dark");
+  })();
+</script>
 </body>
 </html>
