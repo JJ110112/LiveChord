@@ -441,12 +441,12 @@ async def service_worker():
     )
 
 
-@app.get("/robots.txt")
+@app.api_route("/robots.txt", methods=["GET", "HEAD"])
 async def robots():
     return FileResponse(FRONTEND_DIR / "robots.txt", media_type="text/plain")
 
 
-@app.get("/sitemap.xml")
+@app.api_route("/sitemap.xml", methods=["GET", "HEAD"])
 async def sitemap():
     return FileResponse(FRONTEND_DIR / "sitemap.xml", media_type="application/xml")
 
