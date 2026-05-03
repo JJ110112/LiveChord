@@ -121,6 +121,49 @@ modal app stop livechord-btc
 modal volume delete livechord-btc-model
 ```
 
+## beat_this on Modal (separate app, same pattern)
+
+`backend/modal_beat_this.py` mirrors the BTC setup so users can switch a song's beat tracker to **beat_this** on demand from any host — without needing a local CUDA install. Without it, `process_api.switch_beats` returns 503 for `mode=beat_this` and tells the user to run a PC bulk batch (which public users can't).
+
+### Deploy steps
+
+```bash
+# 1. Deploy the app — no separate volume step; the beat_this checkpoint is
+#    pre-cached into the image at build time via run_commands(File2Beats).
+modal deploy backend/modal_beat_this.py
+
+# 2. Flip the dispatcher env flag on the host that calls Modal (VPS or NUC).
+#    Personal NUC instances can opt in too — they have no local beat_this
+#    install (CPU-only path), so Modal is the only on-demand route.
+echo "LIVECHORD_USE_MODAL_BEAT_THIS=1" >> .env
+```
+
+First deploy takes 4-6 minutes (image bakes torch + beat_this from git + downloads checkpoint via the `File2Beats(checkpoint_path='final0', device='cpu')` prime step). Subsequent deploys reuse cached layers.
+
+### Verification
+
+```bash
+python scripts/smoke_test_modal_beat_this.py /path/to/test.wav
+```
+
+Expected: ~10-15 s warm, ~30 s cold. Prints `beats_source: beat_this`, BPM, beat/downbeat counts, and a halving notice if `bpm_correction.applied` fires.
+
+### How callers use it
+
+`backend/process_api.py` `switch_beats(mode="beat_this")` reads `LIVECHORD_USE_MODAL_BEAT_THIS` via `modal_beat_this.modal_beat_this_enabled()`. When set, it enqueues onto the existing `beat_upgrade_queue` with `tracker="beat_this"` and the worker calls `detect_beats_via_modal(audio_path)`. Status polled via `GET /api/process/upgrade-beats/status` exactly like the madmom path. On success the result is cached as `<hash>.json.bak.beat_this` so the next switch back to beat_this is instant.
+
+### Cost
+
+beat_this inference is ~3-5 s on a T4 vs BTC's 10-15 s, so per-call cost runs about 30% of BTC. For LiveChord traffic this should be a rounding error on top of the BTC bill.
+
+### Tearing down
+
+```bash
+modal app stop livechord-beat-this
+```
+
+No volume to delete — the checkpoint lives inside the image layer.
+
 ## Architecture in 30 seconds
 
 ```

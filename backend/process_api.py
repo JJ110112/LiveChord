@@ -595,15 +595,52 @@ def switch_beats(
             "beats_source": sheet.get("beats_source"),
         }
 
-    # mode == "beat_this" — no on-demand path on NUC (no CUDA). The cache
-    # is populated by the PC-side bulk batch (migrate_add_beats_via_beat_this.py).
-    # If the song was never bulk-processed yet, instruct the user to run the
-    # PC batch first; we don't try to fall back to CPU mode here.
+    # mode == "beat_this" — two routes depending on host capability:
+    #   (a) LIVECHORD_USE_MODAL_BEAT_THIS=1 → dispatch to Modal serverless GPU
+    #       via the same upgrade-beats queue (asynchronous, ~10-15s warm).
+    #   (b) flag unset → no on-demand path (NUC has no CUDA, VPS without Modal
+    #       can't run beat_this either). Instruct the user.
+    # Cache is populated either way (.bak.beat_this), so future switches are
+    # instant once a song has been beat_this-analyzed once.
     if mode == "beat_this":
-        raise HTTPException(
-            status_code=503,
-            detail="此曲尚未由 beat_this 分析。請在 PC 端跑批次後再切換。",
-        )
+        from modal_beat_this import modal_beat_this_enabled
+        if not modal_beat_this_enabled():
+            raise HTTPException(
+                status_code=503,
+                detail="此曲尚未由 beat_this 分析。請在 PC 端跑批次後再切換。",
+            )
+        if track_path.startswith("__upload/") and not youtube_url:
+            raise HTTPException(
+                status_code=410,
+                detail="此曲為直接上傳音檔，原始檔已清除；請從首頁重新上傳此曲以重新偵測節拍",
+            )
+        if track_path and not track_path.startswith("__upload/"):
+            if not audio_path or not os.path.isfile(audio_path):
+                raise HTTPException(status_code=404, detail="audio file not found")
+
+        # Snapshot current as its cache before queuing the beat_this run
+        if not os.path.exists(other_bak):
+            try:
+                with open(other_bak, "w", encoding="utf-8") as f:
+                    _json.dump(sheet, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                logger.warning("switch %s: %s cache write failed: %s",
+                               hash, current_cat, e)
+
+        from beat_upgrade_queue import enqueue as _enqueue, get_status as _get_status
+        title = sheet.get("title") or os.path.basename(track_path) or hash
+        qs = _enqueue(hash, audio_path, str(chord_file),
+                      title=title, requested_by=username,
+                      youtube_url=youtube_url, tracker="beat_this")
+        snap = _get_status(hash) or {}
+        logger.info("switch_beats %s -> beat_this (Modal) queued by %s: %s",
+                    hash, username, qs)
+        return {
+            "ok": True, "queued": True, "hash": hash, "mode": "beat_this",
+            "title": title,
+            "status": snap.get("status", qs),
+            "duplicate": qs == "duplicate",
+        }
 
     # mode == "madmom" — delegate to background queue
     if not HAS_MADMOM:

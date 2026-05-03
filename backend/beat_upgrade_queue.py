@@ -59,6 +59,10 @@ class _Record:
     result: Optional[dict] = None  # {bpm, beats_source, beat_version, n_beats, n_downbeats, tempo_range}
     submitted_at: float = field(default_factory=time.time)
     requested_by: str = ""
+    # "madmom" (default) or "beat_this". When "beat_this", _process_one
+    # routes to Modal dispatch (modal_beat_this.detect_beats_via_modal) and
+    # writes the result into .bak.beat_this instead of .bak.madmom.
+    tracker: str = "madmom"
 
 
 _jobs: dict[str, _Record] = {}
@@ -83,7 +87,7 @@ def _evict_old_records():
 
 def enqueue(hash: str, audio_path: str, sheet_path: str,
             title: str = "", requested_by: str = "",
-            youtube_url: str = "") -> str:
+            youtube_url: str = "", tracker: str = "madmom") -> str:
     """Add an upgrade job for ``hash``. Returns the new status string.
 
     If a job for this hash is already queued/running, returns "duplicate"
@@ -104,6 +108,7 @@ def enqueue(hash: str, audio_path: str, sheet_path: str,
         _jobs[hash] = _Record(
             hash=hash, audio_path=audio_path, sheet_path=sheet_path,
             title=title, requested_by=requested_by, youtube_url=youtube_url,
+            tracker=tracker,
         )
         _evict_old_records()
     _queue.put(hash)
@@ -142,8 +147,12 @@ def _process_one(hash: str):
         audio_path = rec.audio_path
         sheet_path = rec.sheet_path
         youtube_url = rec.youtube_url
+        tracker = rec.tracker
 
-    if not HAS_MADMOM:
+    # madmom track requires a local madmom install. beat_this track only
+    # requires the LIVECHORD_USE_MODAL_BEAT_THIS Modal dispatcher to be
+    # configured (caller validated the env flag before enqueueing).
+    if tracker == "madmom" and not HAS_MADMOM:
         with _lock:
             rec.status = ERROR
             rec.completed_at = time.time()
@@ -219,33 +228,66 @@ def _process_one(hash: str):
         with _lock:
             rec.status = RUNNING_ANALYZING
 
-        # Run madmom
+        # ---- Analysis step (tracker-specific) ----
         chords_copy = [dict(c) for c in chords]
-        try:
-            info = analyze_and_snap_dynamic(audio_path, chords_copy, prefer_madmom=True)
-        except Exception as e:
-            with _lock:
-                rec.status = ERROR
-                rec.completed_at = time.time()
-                rec.error = f"madmom failed: {type(e).__name__}: {e}"
-            logger.error("upgrade-beats %s: madmom error: %s", hash, e)
-            return
+        if tracker == "beat_this":
+            try:
+                from modal_beat_this import detect_beats_via_modal
+                info = detect_beats_via_modal(audio_path)
+            except Exception as e:
+                with _lock:
+                    rec.status = ERROR
+                    rec.completed_at = time.time()
+                    rec.error = f"beat_this Modal failed: {type(e).__name__}: {str(e)[:200]}"
+                logger.error("upgrade-beats %s: beat_this Modal error: %s", hash, e)
+                return
+            # Modal function returns a flat dict with bpm_correction key.
+            # Map to the sheet directly (chord boundaries unchanged — the
+            # PC migration script doesn't snap chords for beat_this either).
+            if not info.get("beats_source"):
+                with _lock:
+                    rec.status = ERROR
+                    rec.completed_at = time.time()
+                    rec.error = info.get("error") or "no beats detected"
+                return
+            if info.get("bpm"):
+                sheet["bpm"] = round(info["bpm"], 1)
+            sheet["beats"] = info.get("beats", [])
+            sheet["downbeats"] = info.get("downbeats", [])
+            sheet["tempo_curve"] = info.get("tempo_curve", [])
+            sheet["beats_source"] = info["beats_source"]
+            sheet["beat_version"] = int(sheet.get("beat_version", 0)) + 1
+            if info.get("bpm_correction") is not None:
+                sheet["bpm_correction"] = info["bpm_correction"]
+            elif "bpm_correction" in sheet:
+                sheet.pop("bpm_correction", None)
+        else:
+            # Run madmom (default)
+            try:
+                info = analyze_and_snap_dynamic(audio_path, chords_copy, prefer_madmom=True)
+            except Exception as e:
+                with _lock:
+                    rec.status = ERROR
+                    rec.completed_at = time.time()
+                    rec.error = f"madmom failed: {type(e).__name__}: {e}"
+                logger.error("upgrade-beats %s: madmom error: %s", hash, e)
+                return
 
-        if not info.get("beats_source"):
-            with _lock:
-                rec.status = ERROR
-                rec.completed_at = time.time()
-                rec.error = "no beats detected"
-            return
+            if not info.get("beats_source"):
+                with _lock:
+                    rec.status = ERROR
+                    rec.completed_at = time.time()
+                    rec.error = "no beats detected"
+                return
 
-        sheet["chords"] = chords_copy
-        if info.get("bpm"):
-            sheet["bpm"] = round(info["bpm"], 1)
-        sheet["beats"] = info.get("beats", [])
-        sheet["downbeats"] = info.get("downbeats", [])
-        sheet["tempo_curve"] = info.get("tempo_curve", [])
-        sheet["beats_source"] = info["beats_source"]
-        sheet["beat_version"] = int(sheet.get("beat_version", 0)) + 1
+            sheet["chords"] = chords_copy
+            if info.get("bpm"):
+                sheet["bpm"] = round(info["bpm"], 1)
+            sheet["beats"] = info.get("beats", [])
+            sheet["downbeats"] = info.get("downbeats", [])
+            sheet["tempo_curve"] = info.get("tempo_curve", [])
+            sheet["beats_source"] = info["beats_source"]
+            sheet["beat_version"] = int(sheet.get("beat_version", 0)) + 1
 
         tmp = sheet_path + ".tmp"
         try:
@@ -259,14 +301,15 @@ def _process_one(hash: str):
                 rec.error = f"write failed: {type(e).__name__}: {e}"
             return
 
-        # Cache madmom result for fast bidirectional toggle via /beats/switch.
-        madmom_bak = sheet_path + ".bak.madmom"
+        # Cache the new state under .bak.<tracker> for fast bidirectional
+        # toggle via /beats/switch. Same convention as the PC migration script.
+        bak_path = sheet_path + f".bak.{tracker}"
         try:
-            with open(madmom_bak, "w", encoding="utf-8") as f:
+            with open(bak_path, "w", encoding="utf-8") as f:
                 json.dump(sheet, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            logger.warning("upgrade-beats %s: madmom cache write failed: %s",
-                           hash, e)
+            logger.warning("upgrade-beats %s: %s cache write failed: %s",
+                           hash, tracker, e)
 
         # Overlay beat fields onto the requesting user's personal chord version
         # if one exists. GET /api/chords serves the user version first on
