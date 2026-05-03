@@ -56,6 +56,41 @@ class StringInstrument {
       this.renderFretboard(chords[0].chord, 0);
       this._drawRhWaterfall(this._b.getAudio().currentTime || 0);
     }
+    this._installResizeObserver();
+  }
+
+  // The two canvases live in side-by-side flex panels (.gt-left-panel /
+  // .gt-right-panel). User can drag the divider to change the 50/50 split
+  // (e.g., to 0/100 or 100/0). Without an observer the LH fretboard only
+  // redraws on chord change, and the RH waterfall only on update() ticks
+  // (which don't fire while audio is paused). Both canvases keep their
+  // pre-resize pixel buffer and get visually stretched until something
+  // else triggers a redraw — typically a full page reload, which is what
+  // the user kept doing as a workaround.
+  _installResizeObserver() {
+    if (this._resizeObserver) return;
+    if (typeof ResizeObserver === "undefined") return; // ancient browsers — no-op
+    const $ = this._b.$;
+    const cfg = this._config;
+    const fbCanvas = $(cfg.selectors.fretboardCanvas);
+    const rhCanvas = $(cfg.selectors.waterfallCanvas);
+    if (!fbCanvas && !rhCanvas) return;
+
+    this._resizeObserver = new ResizeObserver(() => {
+      // Skip when this instrument's tab isn't visible — the canvases have
+      // zero dimensions and the redraw helpers early-return anyway, but
+      // we'd waste cycles rebuilding voicing data.
+      if (this._b.getActiveTab() !== this._config.id) return;
+
+      const chords = this._b.getDisplayChords();
+      if (chords && chords.length > 0 && this._activeIdx >= 0 && this._activeIdx < chords.length) {
+        this.renderFretboard(chords[this._activeIdx].chord, this._voicingIdx);
+      }
+      const audio = this._b.getAudio();
+      this._drawRhWaterfall(audio ? (audio.currentTime || 0) : 0);
+    });
+    if (fbCanvas) this._resizeObserver.observe(fbCanvas);
+    if (rhCanvas) this._resizeObserver.observe(rhCanvas);
   }
 
   async prefetchData() {
