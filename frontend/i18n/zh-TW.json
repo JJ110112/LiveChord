@@ -613,6 +613,7 @@
   "install.ios": "iPhone / iPad 安裝步驟：\n1. 點畫面底部「分享」按鈕（方框向上箭頭）\n2. 往下滑找「加到主畫面」\n3. 右上按「新增」即可",
   "instrument.fret_jump_down": "↓{n} 格",
   "instrument.fret_jump_up": "↑{n} 格",
+  "instrument.fret_position": "{n}格",
   "instrument.lh.current": "左手 {chord}",
   "instrument.lh.next": "左手 {chord} → {next}{jump}",
   "instrument.position_label": "把位 {n}",

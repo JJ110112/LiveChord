@@ -613,6 +613,7 @@
   "install.ios": "iPhone / iPad install:\n1. Tap the Share button (square with up arrow) at the bottom\n2. Scroll down and pick 'Add to Home Screen'\n3. Tap 'Add' on the top right",
   "instrument.fret_jump_down": "↓{n} frets",
   "instrument.fret_jump_up": "↑{n} frets",
+  "instrument.fret_position": "fret {n}",
   "instrument.lh.current": "LH {chord}",
   "instrument.lh.next": "LH {chord} → {next}{jump}",
   "instrument.position_label": "Position {n}",

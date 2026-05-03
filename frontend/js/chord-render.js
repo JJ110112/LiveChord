@@ -1,5 +1,7 @@
 /** 和弦渲染模組 — 簡譜文字 & Canvas 和弦圖 */
 
+function _t(k, v) { return (window.LiveChordI18n && window.LiveChordI18n.t) ? window.LiveChordI18n.t(k, v) : k; }
+
 // Light-bg themes need black-based RGBA for canvas strokes/labels;
 // dark-bg themes use white-based. Reads <html data-theme> directly so the
 // module stays callable without threading a palette through every signature.
@@ -1706,7 +1708,7 @@ const ChordRender = {
         ctx.font = `bold ${Math.round(dotR * 1.1)}px sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(`${jumpDir} ${nextMinFret}格  ${nextName}`, W / 2, padTop + fretSpacing * 0.4);
+        ctx.fillText(`${jumpDir} ${_t("instrument.fret_position", { n: nextMinFret })}  ${nextName}`, W / 2, padTop + fretSpacing * 0.4);
       }
 
       // Position jump warning (gradient + label) for jumps ≥ 2 frets
@@ -1731,7 +1733,7 @@ const ChordRender = {
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           const labelY = nextMinFret > curMinFret ? H - padBot - 8 : padTop + 12;
-          ctx.fillText(`${jumpDir} ${nextMinFret}格`, W / 2, labelY);
+          ctx.fillText(`${jumpDir} ${_t("instrument.fret_position", { n: nextMinFret })}`, W / 2, labelY);
         }
       }
 
