@@ -24,7 +24,7 @@
   <script src="/js/auth.js?v=4"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
-  <script src="/js/i18n.js?v=8"></script>
+  <script src="/js/i18n.js?v=9"></script>
 </head>
 <body>
 
@@ -37,7 +37,7 @@
   <div class="search-box">
     <input id="searchInput" type="text"
            data-i18n-attr="placeholder=common.search_placeholder_short"
-           placeholder="請輸入 YouTube URL..." autocomplete="off">
+           placeholder="Paste a YouTube URL..." autocomplete="off">
     <div class="search-marquee" aria-hidden="true"><span class="search-marquee-text" data-i18n="common.search_placeholder_short">請輸入 YouTube URL...</span></div>
     <div id="searchResults" class="search-results"></div>
   </div>
@@ -232,7 +232,7 @@
       </h2>
       <input type="text" id="dirFilter" autocomplete="off"
              data-i18n-attr="placeholder=home.filter.placeholder"
-             placeholder="過濾曲目..."
+             placeholder="Filter songs..."
              style="display:none; padding: 4px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); font-size: 12px; width: 140px;">
     </div>
     <div id="browseGrid" class="library-grid" style="margin-top: 16px;"></div>
@@ -342,13 +342,13 @@
                         const adminBtn = document.createElement("button");
                         adminBtn.className = "admin-btn";
                         adminBtn.setAttribute("data-i18n", "home.admin_btn");
-                        adminBtn.textContent = _t("home.admin_btn", null, "管理後台");
+                        adminBtn.textContent = _t("home.admin_btn", null, "Admin");
                         adminBtn.onclick = () => window.location.href = "/admin";
                         navDiv.insertBefore(adminBtn, navDiv.querySelector("button"));
 
                         const processBtn = document.createElement("button");
                         processBtn.setAttribute("data-i18n", "home.process_btn");
-                        processBtn.textContent = _t("home.process_btn", null, "新歌分析");
+                        processBtn.textContent = _t("home.process_btn", null, "Analyze song");
                         processBtn.onclick = () => window.location.href = "/process";
                         navDiv.insertBefore(processBtn, navDiv.querySelector("button"));
                     }
@@ -429,13 +429,13 @@ if (_btnInstall) {
     let msg;
     if (isIOS) {
       msg = _t("install.ios", null,
-        "iPhone / iPad 安裝步驟：\n1. 點畫面底部「分享」按鈕（方框向上箭頭）\n2. 往下滑找「加到主畫面」\n3. 右上按「新增」即可");
+        "iPhone / iPad install:\n1. Tap the Share button (square with up arrow) at the bottom\n2. Scroll down to 'Add to Home Screen'\n3. Tap 'Add' at the top right");
     } else if (isAndroid) {
       msg = _t("install.android", null,
-        "Android 安裝步驟：\n1. 點瀏覽器右上角選單「⋮」\n2. 選「安裝應用程式」或「加到主畫面」\n\n如看不到此選項，請用 Chrome 開啟；部分瀏覽器（LINE 內建、Facebook webview）不支援安裝 PWA，請改用系統瀏覽器。");
+        "Android install:\n1. Open the browser menu (⋮ at the top right)\n2. Pick 'Install app' or 'Add to Home screen'\n\nIf you don't see the option, open in Chrome — some browsers (LINE built-in, Facebook webview) can't install PWAs.");
     } else {
       msg = _t("install.fallback", null,
-        "請在瀏覽器選單中找「加到主畫面」或「安裝應用程式」。");
+        "Look for 'Add to Home screen' or 'Install app' in the browser menu.");
     }
     alert(msg);
   });
