@@ -218,7 +218,12 @@ def _ingest_beats_modal_or_local(audio_path: str, chords: list, job_id: str) -> 
                         "beats": r["beats"],
                         "downbeats": r["downbeats"],
                         "tempo_curve": r["tempo_curve"],
-                        "beats_source": "beat_this-modal",
+                        # Canonical name expected by every downstream consumer
+                        # (chord_splitter._is_confident, migration scripts,
+                        # process_api._normalize_tracker). The "via Modal"
+                        # provenance is captured in the journal log line above
+                        # — keep it out of the chord JSON.
+                        "beats_source": "beat_this",
                         "beat_version": BEAT_VERSION,
                         "bpm_correction": r.get("bpm_correction"),
                     }

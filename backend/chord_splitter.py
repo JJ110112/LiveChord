@@ -59,7 +59,17 @@ def _is_confident(chord_data: Dict) -> bool:
     if len(downbeats) < 2:
         return False
     source = (chord_data.get("beats_source") or "").lower()
-    source_ok = source in {"madmom", "beat_this", "beat-this"}
+    # Prefix check rather than exact-set match so we accept future variants
+    # without re-editing this gate. We were bitten once when ingest emitted
+    # "beat_this-modal" to disambiguate the Modal-dispatched path; the exact
+    # whitelist rejected it and the splitter silently no-op'd on every public
+    # song until the offending suffix was traced back here. Also covers older
+    # JSONs on disk that may still have the suffixed name.
+    source_ok = (
+        source.startswith("beat_this")
+        or source.startswith("beat-this")
+        or source == "madmom"
+    )
     bar_correction = chord_data.get("bar_correction") or {}
     if not (source_ok or bar_correction.get("applied")):
         return False
