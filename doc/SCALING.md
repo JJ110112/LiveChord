@@ -95,7 +95,7 @@ audio_tensor = audio_tensor.to(DEVICE)
 |---|---|---|---|
 | **目前 NUC + Cloudflare Tunnel** | ~0（電費） | Personal + Beta <100 MAU | 住家斷網、GPU 擴充、地理冗餘 |
 | **Fly.io / Railway** | \$5–30 | FastAPI app, 小 volume, 自動擴展 | 大檔案儲存（貴） |
-| **Hetzner CPX21 Singapore + Cloudflare R2** | \$8–15 | 自控後端 + 便宜物件儲存 + Asia 低延遲 | 自己 setup systemd/backup；Hetzner IP 被 YouTube 標記，需要 yt-dlp 三層 fallback |
+| **Hetzner CPX21 Hillsboro OR + Cloudflare R2** | \$15–22 | 自控後端 + 便宜物件儲存 + NA 低延遲（受眾 NA-first） | 自己 setup systemd/backup；Hetzner IP 被 YouTube 標記，需要 yt-dlp 三層 fallback |
 | **AWS/GCP** | \$50+ | 真商業化、多區域、GPU instance | 運維複雜度高 |
 | **Modal** | 按 call | 只把 AI 推論外包，app 留在別處 | 做整個 app |
 | **Tauri desktop 打包** | 0 | 完全 local、零 infra、繞過版權風險 | 需要雲端同步 |

@@ -12,9 +12,14 @@ Project-specific guidance for Claude Code working in this repo. Also see [doc/QA
 - **Production Admin Account**: User: `hitea` (password user-managed; first-registered user is auto-promoted to admin by `auth_api.init_db`, no seeded account)
 - **Admin page**: `http://localhost:8800/admin`
 
-## Post-Beta Status (single-instance personal mode)
+## Post-Beta Status (split deployment — NUC personal + VPS public)
 
-The 2026-04-16 → 2026-04-26 invite-only beta on `livechord.org:8801` ended on 2026-04-26. Going forward LiveChord runs as a single uvicorn on port 8800 (personal mode) on the NUC. The beta-mode code paths, dual-instance scripts, and `LIVECHORD_MODE=beta` gates are kept inert in the codebase so the deployment can be re-enabled later without re-implementing — but they are *not* exercised in the current workflow and you should not assume they're running.
+The 2026-04-16 → 2026-04-26 invite-only beta on `livechord.org:8801` ended on 2026-04-26. Going forward LiveChord runs split:
+
+- **NUC** — single uvicorn on `192.168.50.6:8800`, `LIVECHORD_MODE=personal`, LAN bypass. Personal/admin use only. Started via [start.bat](start.bat) / [restart.bat](restart.bat).
+- **VPS (Hetzner CPX21 Hillsboro OR, IPv4 `5.78.135.8`, deployed 2026-05-03)** — `LIVECHORD_MODE=public`, OAuth (Google + Discord), Modal-dispatched BTC + beat_this, R2 cover storage. Serves `livechord.org` via Cloudflare Tunnel `d182dd0a-3655-42db-86e3-b78294aee428` (locally-managed config at `/etc/cloudflared/config.yml`, systemd unit at [deploy/livechord.service](deploy/livechord.service)). Operations runbook: [doc/OPS.md](doc/OPS.md).
+
+NUC's cloudflared service is **disabled** (2026-05-03) so VPS is the sole tunnel replica going forward. The beta-mode code paths, dual-instance scripts, and `LIVECHORD_MODE=beta` gates are kept inert in the codebase so the deployment can be re-enabled later without re-implementing — but they are *not* exercised in the current workflow and you should not assume they're running.
 
 The user-facing data left over from the beta (`feedback.db`, `auth.db`, `audit.db` `process_audit` rows, `youtube_library_map`, `data/human_feedback/`, `data/human_sections/`) is **kept** — it's training signal for the AI quality pipeline below, and any historical analyses still resolve. Treat these tables as append-only history.
 
