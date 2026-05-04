@@ -1,7 +1,6 @@
-"""Process API — 上傳音檔 / YouTube URL 和弦偵測"""
+"""Process API — 上傳音檔 和弦偵測"""
 
 import os
-import re
 import queue
 import logging
 from pathlib import Path
@@ -18,8 +17,7 @@ from process_queue import (
     ProcessJob, JobStatus, TMP_DIR, COVERS_DIR,
     submit_job, get_job, generate_job_id, compute_file_hash,
     check_quota, get_user_daily_count, get_audit_log, get_user_audit_log,
-    delete_audit_entries, find_existing_result, write_reuse_audit,
-    find_library_mapping, upsert_library_mapping,
+    delete_audit_entries,
     CHORDS_DIR,
 )
 from chord_cache import chord_file_for, chord_bak_for, ensure_chord_bucket
@@ -35,50 +33,13 @@ ALLOWED_MIME_TYPES = {
     "audio/x-m4a", "audio/aac", "audio/webm",
 }
 
-_YOUTUBE_RE = re.compile(
-    r"^https?://((www|m)\.)?(youtube\.com/(watch|shorts)|youtu\.be/|music\.youtube\.com/watch)"
-)
-
-
-def _normalize_youtube_url(raw_url: str) -> tuple[str, str]:
-    """Extract 11-char video ID and build canonical URL.
-
-    Returns (canonical_url, video_id). Empty video_id if extraction fails;
-    caller decides whether to reject or pass through.
-    """
-    m = re.search(r"(?:v=|youtu\.be/|/shorts/)([A-Za-z0-9_-]{11})", raw_url or "")
-    vid = m.group(1) if m else ""
-    if vid:
-        return f"https://www.youtube.com/watch?v={vid}", vid
-    return raw_url, ""
-
 
 def _require_user_facing():
     """Process API only exists on user-facing instances (beta or public).
     On personal mode (LAN self-use) these endpoints are 404 — personal users
-    use the library-scan flow, not upload/YouTube ingest."""
+    use the library-scan flow, not the upload ingest."""
     if not (is_beta_mode() or is_public_mode()):
         raise HTTPException(status_code=404, detail="Not available")
-
-
-def _require_non_public_for_youtube():
-    """YouTube ingest endpoints are disabled in public mode (livechord.org).
-
-    Reason: Hetzner VPS IP gets aggressively rotation-attacked by YouTube;
-    cookies survive <30 min in practice, and using residential proxies to
-    evade detection drifts into legal grey territory. The user explicitly
-    chose Plan B (2026-05-04): public mode is upload-only, YouTube
-    extraction stays NUC/personal-mode where the residential ISP avoids
-    flagging entirely.
-
-    Personal/beta still get YouTube. Defense-in-depth: even if a stale
-    frontend or curl reaches these endpoints in public mode, they 404.
-    """
-    if is_public_mode():
-        raise HTTPException(
-            status_code=404,
-            detail="YouTube ingest is disabled in public mode; upload an audio file instead",
-        )
 
 
 # Back-compat alias — old beta-only callers still resolve.
@@ -139,76 +100,6 @@ def upload_audio(file: UploadFile = File(...),
 
 
 # ---------------------------------------------------------------------------
-# YouTube URL
-# ---------------------------------------------------------------------------
-
-class YouTubeRequest(BaseModel):
-    url: str = Field(min_length=10, max_length=500)
-
-
-@router.post("/youtube", dependencies=[Depends(_require_user_facing), Depends(_require_non_public_for_youtube)])
-def process_youtube(req: YouTubeRequest, username: str = Depends(get_user_or_anon)):
-    if not check_quota(username):
-        raise HTTPException(
-            status_code=429,
-            detail=f"每日額度已用完 ({get_user_daily_count(username)}/10)"
-        )
-
-    raw_url = req.url.strip()
-    if not _YOUTUBE_RE.match(raw_url):
-        raise HTTPException(status_code=400, detail="請提供有效的 YouTube URL")
-
-    url, vid = _normalize_youtube_url(raw_url)
-    logger.info("process_youtube: user=%s raw=%r normalized=%r vid=%r",
-                username, raw_url, url, vid)
-
-    # Task 2: cross-mode reuse — check YT URL → NAS library hash map first.
-    libmap = find_library_mapping(url)
-    if libmap:
-        lh = libmap["library_hash"]
-        logger.info("process_youtube: LIBRARY MAP hit url=%r → library_hash=%r", url, lh)
-        # Count chords for audit accuracy
-        try:
-            import json as _json
-            _cd = _json.loads(chord_file_for(lh).read_text(encoding="utf-8"))
-            _cc = len(_cd.get("chords", []))
-            _title = _cd.get("title", "")
-        except Exception:
-            _cc, _title = 0, ""
-        write_reuse_audit(username, url, _title, lh, _cc)
-        return {"job_id": None, "status": "done",
-                "result_hash": lh, "title": _title, "source": "library"}
-
-    # Reuse existing result if same URL was already processed via upload/YT
-    existing = find_existing_result(url)
-    if existing:
-        logger.info("process_youtube: REUSE hit url=%r → result_hash=%r title=%r",
-                    url, existing.get("result_hash"), existing.get("title"))
-        write_reuse_audit(username, url, existing["title"],
-                          existing["result_hash"], existing["chord_count"])
-        return {"job_id": None, "status": "done",
-                "result_hash": existing["result_hash"],
-                "title": existing["title"]}
-    logger.info("process_youtube: no reuse, queueing new job for url=%r", url)
-
-    job_id = generate_job_id()
-    job = ProcessJob(
-        job_id=job_id,
-        username=username,
-        source_type="youtube",
-        youtube_url=url,
-        title=f"YouTube: {vid or url[-11:]}",
-    )
-
-    try:
-        submit_job(job)
-    except queue.Full:
-        raise HTTPException(status_code=503, detail="處理佇列已滿，請稍後再試")
-
-    return {"job_id": job_id, "status": "queued"}
-
-
-# ---------------------------------------------------------------------------
 # Status & Result
 # ---------------------------------------------------------------------------
 
@@ -226,7 +117,6 @@ def job_status(job_id: str, username: str = Depends(get_user_or_anon)):
         "error": job.error_msg if job.status == JobStatus.ERROR else "",
         "result_hash": job.result_hash if job.status == JobStatus.DONE else None,
         "source_type": job.source_type,
-        "youtube_url": job.youtube_url if job.source_type == "youtube" else "",
     }
 
 
@@ -316,21 +206,18 @@ def upgrade_beats(hash: str, username: str = Depends(get_current_user)):
 
     sheet = _json.loads(chord_file.read_text(encoding="utf-8"))
     track_path = sheet.get("path", "")
-    youtube_url = sheet.get("youtube_url", "")
 
-    # Upload-mode (process_queue cleaned up the audio after melody extraction).
-    # YT-mode upload (chord JSON has youtube_url): worker can re-download.
-    # Pure file upload (no youtube_url): no recovery path → 410 with prompt.
-    if track_path.startswith("__upload/") and not youtube_url:
+    # Upload-mode (process_queue cleaned up the audio after melody extraction):
+    # no recovery path → 410 with prompt.
+    if track_path.startswith("__upload/"):
         raise HTTPException(
             status_code=410,
             detail="此曲為直接上傳音檔，原始檔已清除；請從首頁重新上傳此曲以重新偵測節拍",
         )
 
-    # For library-mode (NAS path) songs, audio must exist on disk now.
-    # For YT upload-mode, skip the existence check — worker will re-download.
+    # Library-mode (NAS path) songs: audio must exist on disk now.
     audio_path = ""
-    if track_path and not track_path.startswith("__upload/"):
+    if track_path:
         audio_path = resolve_path(track_path)
         if not audio_path or not os.path.isfile(audio_path):
             raise HTTPException(status_code=404, detail="audio file not found")
@@ -341,8 +228,7 @@ def upgrade_beats(hash: str, username: str = Depends(get_current_user)):
 
     title = sheet.get("title") or os.path.basename(track_path) or hash
     queued_status = _enqueue(hash, audio_path, str(chord_file),
-                             title=title, requested_by=username,
-                             youtube_url=youtube_url)
+                             title=title, requested_by=username)
     snapshot = _get_status(hash) or {}
 
     logger.info("upgrade_beats enqueued by %s: hash=%s status=%s",
@@ -578,7 +464,6 @@ def switch_beats(
 
     # Slow path: target cache missing → compute
     track_path = sheet.get("path", "")
-    youtube_url = sheet.get("youtube_url", "")
     audio_path = ""
     if track_path and not track_path.startswith("__upload/"):
         audio_path = resolve_path(track_path) or ""
@@ -645,12 +530,12 @@ def switch_beats(
                 status_code=503,
                 detail="此曲尚未由 beat_this 分析。請在 PC 端跑批次後再切換。",
             )
-        if track_path.startswith("__upload/") and not youtube_url:
+        if track_path.startswith("__upload/"):
             raise HTTPException(
                 status_code=410,
                 detail="此曲為直接上傳音檔，原始檔已清除；請從首頁重新上傳此曲以重新偵測節拍",
             )
-        if track_path and not track_path.startswith("__upload/"):
+        if track_path:
             if not audio_path or not os.path.isfile(audio_path):
                 raise HTTPException(status_code=404, detail="audio file not found")
 
@@ -667,7 +552,7 @@ def switch_beats(
         title = sheet.get("title") or os.path.basename(track_path) or hash
         qs = _enqueue(hash, audio_path, str(chord_file),
                       title=title, requested_by=username,
-                      youtube_url=youtube_url, tracker="beat_this")
+                      tracker="beat_this")
         snap = _get_status(hash) or {}
         logger.info("switch_beats %s -> beat_this (Modal) queued by %s: %s",
                     hash, username, qs)
@@ -684,12 +569,12 @@ def switch_beats(
             status_code=503,
             detail=f"madmom not installed: {MADMOM_IMPORT_ERROR or 'unknown'}",
         )
-    if track_path.startswith("__upload/") and not youtube_url:
+    if track_path.startswith("__upload/"):
         raise HTTPException(
             status_code=410,
             detail="此曲為直接上傳音檔，原始檔已清除；請從首頁重新上傳此曲以重新偵測節拍",
         )
-    if track_path and not track_path.startswith("__upload/"):
+    if track_path:
         if not audio_path or not os.path.isfile(audio_path):
             raise HTTPException(status_code=404, detail="audio file not found")
 
@@ -704,7 +589,7 @@ def switch_beats(
     from beat_upgrade_queue import enqueue as _enqueue, get_status as _get_status
     title = sheet.get("title") or os.path.basename(track_path) or hash
     qs = _enqueue(hash, audio_path, str(chord_file),
-                  title=title, requested_by=username, youtube_url=youtube_url)
+                  title=title, requested_by=username)
     snap = _get_status(hash) or {}
     logger.info("switch_beats %s -> madmom queued by %s: %s",
                 hash, username, qs)
@@ -714,231 +599,6 @@ def switch_beats(
         "status": snap.get("status", qs),
         "duplicate": qs == "duplicate",
     }
-
-
-# ---------------------------------------------------------------------------
-# YouTube search (find matching video for a song title)
-# ---------------------------------------------------------------------------
-
-import subprocess  # subprocess.TimeoutExpired still raised by yt_dlp_fetch wrapper
-
-# Simple in-memory cache for YouTube search results
-_yt_search_cache: dict[str, str] = {}
-
-
-class LibraryLearnRequest(BaseModel):
-    youtube_url: str = Field(min_length=10, max_length=500)
-    library_hash: str = Field(min_length=8, max_length=32, pattern=r"^[a-f0-9]+$")
-
-
-@router.post("/yt-library-learn", dependencies=[Depends(_require_user_facing), Depends(_require_non_public_for_youtube)])
-def yt_library_learn(req: LibraryLearnRequest,
-                     username: str = Depends(get_user_or_anon)):
-    """Task 2: auto-learn YT URL → library hash mapping.
-
-    Called by the player front-end after it confirms (a) the NAS chord JSON
-    exists at this hash and (b) the embedded YT video length matches the
-    chord length within 5%. Strict gate on the front-end keeps wrong
-    mappings out.
-    """
-    if not _YOUTUBE_RE.match(req.youtube_url.strip()):
-        raise HTTPException(status_code=400, detail="Invalid YouTube URL")
-    url, vid = _normalize_youtube_url(req.youtube_url.strip())
-    if not vid:
-        raise HTTPException(status_code=400, detail="Cannot extract video ID")
-    inserted = upsert_library_mapping(url, req.library_hash, mapped_by=f"auto:{username}")
-    logger.info("yt_library_learn: user=%s url=%r lib=%r new=%s",
-                username, url, req.library_hash, inserted)
-    return {"ok": True, "new": inserted}
-
-
-@router.get("/playlist-info", dependencies=[Depends(_require_user_facing), Depends(_require_non_public_for_youtube)])
-def playlist_info(url: str, username: str = Depends(get_user_or_anon)):
-    """Extract video list from a YouTube playlist URL via yt-dlp --flat-playlist.
-
-    Returns {playlist_title, videos:[{video_id, title, duration, existing_hash}]}
-    where existing_hash is set if this video was already analyzed (library map
-    hit or prior process_audit 'done' row). UI renders 分析 or ▶ 播放 accordingly.
-    """
-    url = (url or "").strip()
-    if "list=" not in url:
-        raise HTTPException(status_code=400, detail="URL 不含 playlist (list=)")
-    try:
-        from yt_dlp_fetch import run_yt_dlp
-        result, _tier = run_yt_dlp(
-            ["--flat-playlist", "--dump-json", "--no-warnings",
-             "--playlist-end", "50",   # cap to avoid huge playlists flooding
-             url],
-            timeout=45,
-        )
-        if result.returncode != 0:
-            raise HTTPException(status_code=500,
-                                detail=f"yt-dlp failed: {(result.stderr or '')[:200]}")
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="yt-dlp 逾時（清單太大？）")
-
-    import json as _json
-    videos = []
-    playlist_title = ""
-    for line in (result.stdout or "").splitlines():
-        if not line.strip():
-            continue
-        try:
-            entry = _json.loads(line)
-        except Exception:
-            continue
-        vid = entry.get("id") or ""
-        if len(vid) != 11:
-            continue
-        if not playlist_title:
-            playlist_title = entry.get("playlist_title") or entry.get("playlist") or ""
-        canonical = f"https://www.youtube.com/watch?v={vid}"
-        # Was this video already analyzed? Check library map → process_audit.
-        existing_hash = None
-        try:
-            m = find_library_mapping(canonical)
-            if m:
-                existing_hash = m["library_hash"]
-            else:
-                e = find_existing_result(canonical)
-                if e:
-                    existing_hash = e["result_hash"]
-        except Exception:
-            pass
-        videos.append({
-            "video_id": vid,
-            "title": entry.get("title") or vid,
-            "duration": entry.get("duration") or 0,
-            "existing_hash": existing_hash,
-        })
-    logger.info("playlist_info: user=%s url=%r videos=%d title=%r",
-                username, url, len(videos), playlist_title)
-    return {"playlist_title": playlist_title, "videos": videos}
-
-
-@router.get("/youtube-search", dependencies=[Depends(_require_non_public_for_youtube)])
-def youtube_search(q: str, username: str = Depends(get_user_or_anon)):
-    """Search YouTube for a song and return the best match video ID."""
-    q = q.strip()[:120]
-    if not q:
-        raise HTTPException(status_code=400, detail="Empty query")
-
-    # Check cache
-    cache_key = q.lower()
-    if cache_key in _yt_search_cache:
-        vid = _yt_search_cache[cache_key]
-        return {"video_id": vid, "url": f"https://www.youtube.com/watch?v={vid}"}
-
-    try:
-        from yt_dlp_fetch import run_yt_dlp
-        result, _tier = run_yt_dlp(
-            ["--get-id", "--no-download", "--no-playlist",
-             f"ytsearch1:{q}"],
-            timeout=15,
-        )
-        vid = (result.stdout or "").strip()
-        if result.returncode != 0 or not vid or len(vid) != 11:
-            return {"video_id": None, "url": None}
-        _yt_search_cache[cache_key] = vid
-        return {"video_id": vid, "url": f"https://www.youtube.com/watch?v={vid}"}
-    except Exception as e:
-        return {"video_id": None, "url": None, "error": str(e)[:100]}
-
-
-# Cache (q, n) → list of result dicts for the multi-result list endpoint.
-# yt-dlp search is slow (3-5s) and YouTube doesn't churn fast — caching for
-# the process lifetime is fine. Key includes n so we can grow the list later
-# without serving stale shorter results.
-_yt_search_list_cache: dict[tuple[str, int], list] = {}
-_YT_LIST_CACHE_MAX = 256  # per-process bound; LRU-ish via insertion order
-
-
-def _format_duration(seconds: int | float | None) -> str:
-    if not seconds or seconds <= 0:
-        return ""
-    s = int(seconds)
-    return f"{s // 60}:{s % 60:02d}"
-
-
-@router.get("/youtube-search-list", dependencies=[Depends(_require_user_facing), Depends(_require_non_public_for_youtube)])
-def youtube_search_list(
-    q: str,
-    n: int = 5,
-    username: str = Depends(get_user_or_anon),
-):
-    """Multi-result YouTube search for the homepage search dropdown.
-
-    Returns up to ``n`` videos with metadata so the frontend can render
-    rich rows (thumbnail, title, channel, duration). Click flow on the
-    frontend reuses the existing pasted-URL analyze path."""
-    q = q.strip()[:120]
-    if not q:
-        raise HTTPException(status_code=400, detail="Empty query")
-    n = max(1, min(10, n))
-
-    cache_key = (q.lower(), n)
-    if cache_key in _yt_search_list_cache:
-        return {"results": _yt_search_list_cache[cache_key], "cached": True}
-
-    try:
-        # ytsearchN:<query> + --dump-json emits one JSON per match (NDJSON).
-        # --flat-playlist keeps the query lightweight (no per-video HTTP).
-        # The wrapper defaults to UTF-8 decoding so CJK titles survive on
-        # Windows NUC consoles whose code page is cp950 — same fix
-        # CLAUDE.md documents for _get_youtube_title.
-        from yt_dlp_fetch import run_yt_dlp
-        result, _tier = run_yt_dlp(
-            ["--flat-playlist", "--dump-json", "--no-warnings",
-             "--no-download", f"ytsearch{n}:{q}"],
-            timeout=20,
-        )
-        if result.returncode != 0:
-            return {"results": [], "error": (result.stderr or "yt-dlp failed")[:200]}
-
-        out: list[dict] = []
-        import json as _json
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                meta = _json.loads(line)
-            except Exception:
-                continue
-            vid = meta.get("id") or ""
-            if not vid or len(vid) != 11:
-                continue
-            title = (meta.get("title") or "").strip()
-            channel = (meta.get("channel") or meta.get("uploader") or "").strip()
-            duration = meta.get("duration")
-            # Modal/web thumbnail pattern — img.youtube.com is what the player
-            # already uses for embed thumbnails, no extra DNS round trip.
-            thumb = f"https://img.youtube.com/vi/{vid}/mqdefault.jpg"
-            out.append({
-                "video_id": vid,
-                "title": title or vid,
-                "channel": channel,
-                "duration": _format_duration(duration),
-                "thumbnail_url": thumb,
-                "url": f"https://www.youtube.com/watch?v={vid}",
-            })
-            if len(out) >= n:
-                break
-
-        # Trim cache if it grows unbounded
-        if len(_yt_search_list_cache) >= _YT_LIST_CACHE_MAX:
-            try:
-                first = next(iter(_yt_search_list_cache))
-                _yt_search_list_cache.pop(first, None)
-            except StopIteration:
-                pass
-        _yt_search_list_cache[cache_key] = out
-        return {"results": out, "cached": False}
-
-    except subprocess.TimeoutExpired:
-        return {"results": [], "error": "timeout"}
-    except Exception as e:
-        return {"results": [], "error": str(e)[:200]}
 
 
 # ---------------------------------------------------------------------------

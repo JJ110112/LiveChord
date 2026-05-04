@@ -1,4 +1,4 @@
-"""Process Queue — 上傳/YouTube 新歌和弦偵測佇列
+"""Process Queue — 上傳新歌和弦偵測佇列
 
 Single-threaded worker + queue.Queue，與 chord_batch.py 風格一致。
 複用 chord_detect.detect_chords_and_key_isolated() 做 GPU BTC 偵測。
@@ -9,9 +9,7 @@ import json
 import logging
 import os
 import queue
-import shutil
 import sqlite3
-import subprocess
 import threading
 import time
 import uuid
@@ -60,20 +58,6 @@ TMP_DIR.mkdir(parents=True, exist_ok=True)
 CHORDS_DIR.mkdir(parents=True, exist_ok=True)
 MELODIES_DIR.mkdir(parents=True, exist_ok=True)
 
-def _find_ytdlp() -> str:
-    """Resolve yt-dlp executable path, falling back to known pip Scripts dir."""
-    found = shutil.which("yt-dlp")
-    if found:
-        return found
-    # pip install puts it here on Windows
-    fallback = Path.home() / "AppData/Local/Python/pythoncore-3.14-64/Scripts/yt-dlp.exe"
-    if fallback.is_file():
-        return str(fallback)
-    raise FileNotFoundError("yt-dlp not found on PATH or in known locations")
-
-YTDLP_BIN = _find_ytdlp()
-
-
 # ---------------------------------------------------------------------------
 # Job data model
 # ---------------------------------------------------------------------------
@@ -89,9 +73,9 @@ class JobStatus(str, Enum):
 class ProcessJob:
     job_id: str
     username: str
-    source_type: str          # "upload" or "youtube"
+    source_type: str          # "upload" (kept for forward-compat with future
+                              # source types; only "upload" is wired now)
     audio_path: str = ""      # temp file path (for upload)
-    youtube_url: str = ""     # YouTube URL (for youtube)
     title: str = ""
     file_hash: str = ""       # SHA256 first 1MB, 16 hex chars
     created_at: float = field(default_factory=time.time)
@@ -179,7 +163,7 @@ def compute_file_hash(filepath: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _ingest_beats_modal_or_local(audio_path: str, chords: list, job_id: str) -> dict:
-    """Beat-tracking dispatcher used at YouTube/upload ingest time.
+    """Beat-tracking dispatcher used at upload ingest time.
 
     Returns the same dict shape as ``beat_snap.analyze_and_snap_dynamic``
     (keys: bpm, n_snapped, beats, downbeats, tempo_curve, beats_source,
@@ -274,8 +258,6 @@ def _save_chord_json(job: ProcessJob, chords: list, key: str,
         "title": job.title,
         "chords": chords,
     }
-    if job.youtube_url:
-        sheet["youtube_url"] = job.youtube_url
     # Embed true audio duration when we still have the file on disk — the
     # player's desync check reads this, and falling back to last-chord-end
     # was triggering false positives on songs with outro silence.
@@ -503,63 +485,6 @@ def _extract_cover(audio_path: str, result_hash: str):
 
 
 # ---------------------------------------------------------------------------
-# YouTube download
-# ---------------------------------------------------------------------------
-
-def _get_youtube_title(url: str) -> str:
-    """Extract video title from YouTube URL using yt-dlp.
-
-    Routes through yt_dlp_fetch.run_yt_dlp so VPS deployments transparently
-    fall back to cookies (tier 2) / Modal (tier 3) when the host IP is
-    flagged. UTF-8 decoding is the default in the wrapper.
-    """
-    try:
-        from yt_dlp_fetch import run_yt_dlp
-        result, _tier = run_yt_dlp(
-            ["--dump-json", "--no-download", "--no-playlist", url],
-            timeout=30,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            first = result.stdout.strip().splitlines()[0]
-            return (json.loads(first).get("title") or "").strip()
-    except Exception:
-        pass
-    return ""
-
-
-def _download_youtube(url: str, output_path: str) -> str:
-    """Download audio from YouTube URL. Returns path to wav file.
-
-    Three-tier fallback via yt_dlp_fetch (see backend/yt_dlp_fetch.py and
-    doc/OPS.md). On NUC personal mode tier 1 almost always wins; on VPS
-    public mode tier 2/3 carry it.
-    """
-    from yt_dlp_fetch import run_yt_dlp
-    result, tier = run_yt_dlp(
-        ["-x", "--audio-format", "wav", "--audio-quality", "0",
-         "--max-filesize", "200m", "--no-playlist",
-         "-o", output_path, url],
-        timeout=180,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"yt-dlp failed (tier={tier}): {(result.stderr or '')[:300]}")
-    if tier > 1:
-        logger.info("yt-dlp download served from tier %d for %s", tier, url)
-    # yt-dlp may append .wav if output_path doesn't have it
-    if os.path.isfile(output_path):
-        return output_path
-    wav_path = output_path.rsplit(".", 1)[0] + ".wav"
-    if os.path.isfile(wav_path):
-        return wav_path
-    # Search for any file with the job uuid prefix in tmp
-    base = os.path.basename(output_path).rsplit(".", 1)[0]
-    for f in TMP_DIR.iterdir():
-        if f.name.startswith(base):
-            return str(f)
-    raise RuntimeError(f"Downloaded file not found for {output_path}")
-
-
-# ---------------------------------------------------------------------------
 # Audit log
 # ---------------------------------------------------------------------------
 
@@ -586,24 +511,14 @@ def _init_audit_db():
                 completed_at TEXT DEFAULT ''
             )
         """)
+        # ``youtube_url`` column kept on the schema for read-back compatibility
+        # with rows written before Plan B (2026-05-04). Always inserted as ''
+        # going forward — no new YouTube-source rows.
         # Migration: add result_hash column
         try:
             conn.execute("ALTER TABLE process_audit ADD COLUMN result_hash TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass
-        # Task 2: YouTube URL → library hash map. Lets beta users reuse NAS-analyzed
-        # chords when they drop the same song's YouTube URL into process, instead of
-        # re-downloading and re-analyzing. Populated by front-end auto-learn after
-        # strict duration match (Δ/D < 5%) or manually by admin.
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS youtube_library_map (
-                youtube_url TEXT PRIMARY KEY,
-                library_hash TEXT NOT NULL,
-                mapped_by TEXT NOT NULL,
-                ts DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_ylm_hash ON youtube_library_map(library_hash)")
         conn.commit()
 
 
@@ -631,7 +546,7 @@ def _write_audit(job: ProcessJob, chord_count: int = 0, status: Optional[str] = 
                        (job_id, username, source_type, file_hash, youtube_url, title, status, chord_count, created_at, completed_at, result_hash)
                        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                     (job.job_id, job.username, job.source_type, job.file_hash,
-                     job.youtube_url, job.title, final_status, chord_count,
+                     "", job.title, final_status, chord_count,
                      time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(job.created_at)),
                      time.strftime("%Y-%m-%dT%H:%M:%S"),
                      job.result_hash or "")
@@ -652,88 +567,6 @@ def _write_audit(job: ProcessJob, chord_count: int = 0, status: Optional[str] = 
         "Chord/melody files may exist on disk but will not appear in user history.",
         job.job_id, job.username, job.title, job.result_hash, last_exc,
     )
-
-
-def find_existing_result(youtube_url: str) -> dict | None:
-    """Check if a YouTube URL was already processed successfully."""
-    with _audit_conn() as conn:
-        conn.row_factory = sqlite3.Row
-        row = conn.execute(
-            "SELECT result_hash, title, chord_count FROM process_audit "
-            "WHERE youtube_url=? AND status='done' AND result_hash!='' "
-            "ORDER BY id DESC LIMIT 1",
-            (youtube_url,)
-        ).fetchone()
-    if not row:
-        return None
-    # Verify chord file still exists
-    rh = row["result_hash"]
-    if not chord_file_for(rh).is_file():
-        return None
-    return dict(row)
-
-
-def find_library_mapping(youtube_url: str) -> dict | None:
-    """Task 2: look up a YouTube URL → NAS-library hash mapping.
-
-    Self-heals stale rows: if the mapped chord JSON no longer exists (admin
-    deleted it), the map entry is removed and None is returned.
-    """
-    if not youtube_url:
-        return None
-    with _audit_conn() as conn:
-        conn.row_factory = sqlite3.Row
-        row = conn.execute(
-            "SELECT library_hash, mapped_by, ts FROM youtube_library_map WHERE youtube_url=?",
-            (youtube_url,),
-        ).fetchone()
-        if not row:
-            return None
-        lh = row["library_hash"]
-        if not chord_file_for(lh).is_file():
-            # Stale — auto-purge.
-            conn.execute("DELETE FROM youtube_library_map WHERE youtube_url=?", (youtube_url,))
-            conn.commit()
-            return None
-        return dict(row)
-
-
-def upsert_library_mapping(youtube_url: str, library_hash: str, mapped_by: str) -> bool:
-    """Task 2: record a YT URL → library hash mapping. Returns True if newly inserted."""
-    if not youtube_url or not library_hash:
-        return False
-    if not chord_file_for(library_hash).is_file():
-        return False
-    try:
-        with _audit_conn() as conn:
-            cur = conn.execute(
-                "INSERT OR IGNORE INTO youtube_library_map(youtube_url, library_hash, mapped_by) "
-                "VALUES (?,?,?)",
-                (youtube_url, library_hash, mapped_by or "auto"),
-            )
-            conn.commit()
-            return cur.rowcount > 0
-    except Exception as e:
-        logger.error("upsert_library_mapping failed: %s", e)
-        return False
-
-
-def write_reuse_audit(username: str, youtube_url: str, title: str,
-                      result_hash: str, chord_count: int):
-    """Write audit entry for a reused result (no actual processing)."""
-    try:
-        now = time.strftime("%Y-%m-%dT%H:%M:%S")
-        with _audit_conn() as conn:
-            conn.execute(
-                """INSERT INTO process_audit
-                   (job_id, username, source_type, file_hash, youtube_url, title, status, chord_count, created_at, completed_at, result_hash)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                (f"reuse_{int(time.time())}", username, "youtube", "",
-                 youtube_url, title, "done", chord_count, now, now, result_hash)
-            )
-            conn.commit()
-    except Exception as e:
-        logger.error("Reuse audit write failed: %s", e)
 
 
 def _purge_user_hash_refs(hashes: set[str]) -> None:
@@ -839,7 +672,6 @@ def get_user_audit_log(username: str, limit: int = 20) -> list[dict]:
         ).fetchall()
     seen_titles = set()
     seen_hashes = set()
-    seen_urls = set()
     results = []
     import html as _html_mod
     for r in rows:
@@ -858,12 +690,6 @@ def get_user_audit_log(username: str, limit: int = 20) -> list[dict]:
             continue
         if rh:
             seen_hashes.add(rh)
-        # Deduplicate by youtube_url
-        yt = (d.get("youtube_url") or "").strip()
-        if yt and yt in seen_urls:
-            continue
-        if yt:
-            seen_urls.add(yt)
         # Deduplicate by title (keep most recent)
         title_key = (d.get("title") or "").strip().lower()
         if title_key and title_key in seen_titles:
@@ -917,25 +743,7 @@ def _worker_loop():
         chord_count = 0
 
         try:
-            # Step 1: If YouTube, download first. Progress must be monotonic so the
-            # UI bar never goes backwards (frontend uses Math.max clamp but initial
-            # value there starts at 0).
-            if job.source_type == "youtube" and job.youtube_url:
-                job.progress = 15
-                job.stage = "home.job_stage.yt_title"
-                # Extract title before download
-                title = _get_youtube_title(job.youtube_url)
-                if title:
-                    job.title = title
-                job.progress = 20
-                job.stage = "home.job_stage.yt_download"
-                out_path = str(TMP_DIR / f"{job.job_id}.wav")
-                audio_path = _download_youtube(job.youtube_url, out_path)
-                job.audio_path = audio_path
-                job.file_hash = compute_file_hash(audio_path)
-                job.progress = 35
-
-            # Step 2: BTC chord detection
+            # BTC chord detection
             job.progress = 40
             job.stage = "home.job_stage.btc_detect"
             from chord_detect import detect_chords_and_key_isolated

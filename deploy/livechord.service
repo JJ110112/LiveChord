@@ -35,7 +35,6 @@ ProtectSystem=full
 ProtectHome=read-only
 ReadWritePaths=/srv/livechord/data
 ReadWritePaths=/srv/livechord/logs
-ReadWritePaths=/home/livechord/.config/yt-dlp
 
 [Install]
 WantedBy=multi-user.target

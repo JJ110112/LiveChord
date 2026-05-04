@@ -36,7 +36,6 @@ logger = logging.getLogger(__name__)
 # Status values surfaced to the frontend
 QUEUED = "queued"
 RUNNING = "running"
-RUNNING_DOWNLOADING = "running:downloading"  # YT re-download phase (8801 upload-mode)
 RUNNING_ANALYZING = "running:analyzing"      # madmom phase
 DONE = "done"
 ERROR = "error"
@@ -51,7 +50,6 @@ class _Record:
     audio_path: str
     sheet_path: str
     title: str = ""
-    youtube_url: str = ""  # For YT re-download fallback when audio_path missing
     status: str = QUEUED
     started_at: float = 0.0
     completed_at: float = 0.0
@@ -87,27 +85,25 @@ def _evict_old_records():
 
 def enqueue(hash: str, audio_path: str, sheet_path: str,
             title: str = "", requested_by: str = "",
-            youtube_url: str = "", tracker: str = "madmom") -> str:
+            tracker: str = "madmom") -> str:
     """Add an upgrade job for ``hash``. Returns the new status string.
 
     If a job for this hash is already queued/running, returns "duplicate"
     without re-queueing. If a previous job finished (DONE/ERROR), the
     record is replaced with a fresh QUEUED record and re-queued.
 
-    ``youtube_url`` (optional): when ``audio_path`` is missing on disk
-    (8801 upload-mode chord JSONs whose source audio was cleaned up by
-    process_queue), the worker will re-download via yt-dlp before running
-    madmom. Pass empty string for library-mode songs where audio_path is
-    a real NAS file.
+    ``audio_path`` must point at an existing file — re-running an upgrade
+    on an upload whose source audio was cleaned up returns ERROR. Caller
+    is expected to validate file existence before enqueueing.
     """
     with _lock:
         existing = _jobs.get(hash)
         if existing and existing.status in (QUEUED, RUNNING,
-                                            RUNNING_DOWNLOADING, RUNNING_ANALYZING):
+                                            RUNNING_ANALYZING):
             return "duplicate"
         _jobs[hash] = _Record(
             hash=hash, audio_path=audio_path, sheet_path=sheet_path,
-            title=title, requested_by=requested_by, youtube_url=youtube_url,
+            title=title, requested_by=requested_by,
             tracker=tracker,
         )
         _evict_old_records()
@@ -130,11 +126,10 @@ def get_status(hash: str) -> Optional[dict]:
 
 
 def _process_one(hash: str):
-    """Worker handler: run madmom on the queued hash and write the result.
-
-    For 8801 upload-mode (audio cleaned up by process_queue), re-downloads
-    via yt-dlp using the stored ``youtube_url`` first. Temp file is removed
-    in a finally clause so it doesn't accumulate on disk.
+    """Worker handler: run the requested tracker on the queued hash and
+    write the result. ``audio_path`` must point at an existing file —
+    upload-mode jobs whose source audio was cleaned up should be rejected
+    by the API layer before enqueueing.
     """
     from beat_snap import analyze_and_snap_dynamic, HAS_MADMOM, MADMOM_IMPORT_ERROR
 
@@ -146,7 +141,6 @@ def _process_one(hash: str):
         rec.started_at = time.time()
         audio_path = rec.audio_path
         sheet_path = rec.sheet_path
-        youtube_url = rec.youtube_url
         tracker = rec.tracker
 
     # madmom track requires a local madmom install. beat_this track only
@@ -160,31 +154,13 @@ def _process_one(hash: str):
         logger.warning("upgrade-beats %s: madmom missing", hash)
         return
 
-    # YT re-download fallback when audio is missing on disk
     temp_audio_to_cleanup = None
     if not audio_path or not os.path.isfile(audio_path):
-        if youtube_url:
-            with _lock:
-                rec.status = RUNNING_DOWNLOADING
-            try:
-                from process_queue import _download_youtube, TMP_DIR
-                temp_path = str(TMP_DIR / f"beat_upgrade_{hash}.wav")
-                logger.info("upgrade-beats %s: re-downloading from %s", hash, youtube_url)
-                audio_path = _download_youtube(youtube_url, temp_path)
-                temp_audio_to_cleanup = audio_path
-            except Exception as e:
-                with _lock:
-                    rec.status = ERROR
-                    rec.completed_at = time.time()
-                    rec.error = f"YT re-download failed: {type(e).__name__}: {str(e)[:200]}"
-                logger.error("upgrade-beats %s: download failed: %s", hash, e)
-                return
-        else:
-            with _lock:
-                rec.status = ERROR
-                rec.completed_at = time.time()
-                rec.error = "audio file not found and no youtube_url for re-download"
-            return
+        with _lock:
+            rec.status = ERROR
+            rec.completed_at = time.time()
+            rec.error = "audio file not found"
+        return
 
     try:
         try:
