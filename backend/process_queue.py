@@ -442,46 +442,55 @@ def _run_bar_arbitrator_into_sheet(sheet: dict, job_id: str):
         logger.info("[bar_arbitrator] %s skipped: %s", job_id, res["reason"])
 
 
-def _extract_cover(audio_path: str, result_hash: str):
-    """Extract embedded cover art from audio file and save as JPEG."""
+def _read_cover_bytes(audio_path: str):
+    """Pull embedded cover art bytes from an audio file via mutagen.
+    Returns the JPEG/PNG bytes, or None if the file has no cover.
+    Pure read — no I/O to disk or R2."""
     try:
         from mutagen import File as MutagenFile
         audio = MutagenFile(audio_path)
         if audio is None:
-            return
-        cover_data = None
+            return None
         # FLAC
         if hasattr(audio, "pictures") and audio.pictures:
-            cover_data = audio.pictures[0].data
+            return audio.pictures[0].data
+        # MP4/M4A — check 'covr' before generic APIC scan because MP4Tags also
+        # iterates with `for key in audio.tags`.
+        if hasattr(audio, "tags") and audio.tags and "covr" in audio.tags:
+            return bytes(audio.tags["covr"][0])
         # MP3 (ID3)
-        elif hasattr(audio, "tags") and audio.tags:
+        if hasattr(audio, "tags") and audio.tags:
             for key in audio.tags:
                 if key.startswith("APIC"):
-                    cover_data = audio.tags[key].data
-                    break
-        # MP4/M4A
-        elif hasattr(audio, "tags") and audio.tags and "covr" in audio.tags:
-            cover_data = bytes(audio.tags["covr"][0])
-        if cover_data and len(cover_data) > 100:
-            # Mode-aware: public deploys can route cover storage to Cloudflare
-            # R2 by setting LIVECHORD_USE_R2=1 + the R2_* vars. The local-disk
-            # path stays the default for personal/beta and acts as the
-            # fallback when R2 upload fails so we never lose a cover.
-            from r2_storage import is_r2_enabled, upload_cover
-            uploaded_to_r2 = False
-            if is_r2_enabled():
-                try:
-                    upload_cover(result_hash, cover_data)
-                    uploaded_to_r2 = True
-                    logger.info("Cover → R2 for %s (%d bytes)", result_hash, len(cover_data))
-                except Exception as e:
-                    logger.warning("R2 upload failed for %s, falling back to local disk: %s", result_hash, e)
-            if not uploaded_to_r2:
-                cover_path = COVERS_DIR / f"{result_hash}.jpg"
-                cover_path.write_bytes(cover_data)
-                logger.info("Cover → local for %s (%d bytes)", result_hash, len(cover_data))
+                    return audio.tags[key].data
+        return None
     except Exception as e:
-        logger.debug("Cover extraction failed for %s: %s", result_hash, e)
+        logger.debug("Cover read failed for %s: %s", audio_path, e)
+        return None
+
+
+def _persist_cover(result_hash: str, cover_data: bytes):
+    """Write `cover_data` under `result_hash` — to R2 if enabled, else local
+    disk. Falls back to disk on R2 failure so we never lose a cover.
+    Caller MUST have a real result_hash; the previous 'extract under
+    "pending", rename later' pattern only worked for local disk and silently
+    stranded covers under key "pending" in R2."""
+    if not (cover_data and len(cover_data) > 100):
+        return
+    try:
+        from r2_storage import is_r2_enabled, upload_cover
+        if is_r2_enabled():
+            try:
+                upload_cover(result_hash, cover_data)
+                logger.info("Cover → R2 for %s (%d bytes)", result_hash, len(cover_data))
+                return
+            except Exception as e:
+                logger.warning("R2 upload failed for %s, falling back to local disk: %s", result_hash, e)
+        cover_path = COVERS_DIR / f"{result_hash}.jpg"
+        cover_path.write_bytes(cover_data)
+        logger.info("Cover → local for %s (%d bytes)", result_hash, len(cover_data))
+    except Exception as e:
+        logger.debug("Cover persist failed for %s: %s", result_hash, e)
 
 
 # ---------------------------------------------------------------------------
@@ -751,9 +760,14 @@ def _worker_loop():
             job.progress = 75
             job.stage = "home.job_stage.save"
 
-            # Step 3: Extract cover art (before audio is deleted)
+            # Step 3: Pull embedded cover bytes from the upload (audio is
+            # cleaned up shortly after this in the melody worker, so read now).
+            # We persist AFTER result_hash is known — the prior 'extract under
+            # "pending" then rename' pattern only worked for local disk; the
+            # R2 path silently stranded every cover under key "pending".
+            pending_cover_bytes = None
             if job.source_type == "upload" and audio_path:
-                _extract_cover(audio_path, "pending")  # placeholder, real hash below
+                pending_cover_bytes = _read_cover_bytes(audio_path)
 
             # Step 4: Save chord JSON (+ real audio duration so YT desync check
             # has a trustworthy reference) → result_hash available for reuse lookups
@@ -761,11 +775,9 @@ def _worker_loop():
             chord_count = len(chords)
             job.result_hash = result_hash
 
-            # Rename cover file to final hash if extracted
-            if job.source_type == "upload":
-                pending_cover = COVERS_DIR / "pending.jpg"
-                if pending_cover.is_file():
-                    pending_cover.rename(COVERS_DIR / f"{result_hash}.jpg")
+            # Persist cover under the real hash now that we have it.
+            if pending_cover_bytes:
+                _persist_cover(result_hash, pending_cover_bytes)
 
             # Write audit + flip status to DONE NOW so the frontend can navigate to
             # the player page immediately. Melody extraction runs afterwards below

@@ -225,6 +225,28 @@ class TestMaybeSplitForServe(unittest.TestCase):
         self.assertFalse(out["auto_split_meta"]["applied"])
         self.assertEqual(out["auto_split_meta"]["reason"], "no-chords")
 
+    def test_halved_downbeats_fallback(self):
+        # Slow-ballad scenario: beat_this emits a downbeat every 2 beats
+        # (half-bar density). With BPM 71.4 and gap 0.84s the raw bpb is
+        # ~2.12 — under 3.0 so the strict gate would reject. The halved
+        # grid (every other downbeat, gap 1.68s) gives bpb ≈ 4.24, in
+        # range. Reproduces the Air Supply 'Out Of Nothing At All' case
+        # (LiveChord-11w).
+        bar_gap = (60.0 / 71.4) * 2.12  # ~1.78s
+        raw_db = [round(i * bar_gap, 2) for i in range(9)]  # 9 half-bars
+        data = {
+            "chords": [{"time": 0.0, "end": raw_db[-1], "chord": "C"}],
+            "downbeats": raw_db,
+            "beats_source": "beat_this",
+            "bpm": 71.4,
+        }
+        out = maybe_split_for_serve(data)
+        self.assertTrue(out["auto_split_meta"]["applied"])
+        self.assertEqual(out["auto_split_meta"]["reason"], "ok-halved-downbeats")
+        # 9 half-bar downbeats → 5 full-bar downbeats (idx 0,2,4,6,8) →
+        # 3 interior split points → original chord becomes 4 segments.
+        self.assertEqual(out["auto_split_meta"]["after"], 4)
+
 
 if __name__ == "__main__":
     unittest.main()

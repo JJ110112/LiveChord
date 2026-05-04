@@ -42,8 +42,20 @@ _MIN_SEG_BAR_FRAC = 0.20
 _GAP_INTERPOLATION_THRESHOLD = 1.5
 
 
-def _is_confident(chord_data: Dict) -> bool:
-    """Decide whether the song's downbeats are trustworthy enough to split on.
+def _bpb_class(downbeats: List[float], bpm: float) -> float:
+    """Median(downbeat_gap) / seconds_per_beat = beats per bar implied by the
+    downbeats grid. 0 when not computable."""
+    bar_gap = _median_bar_gap(downbeats)
+    if not bar_gap or bpm <= 0:
+        return 0.0
+    spb = 60.0 / bpm
+    if spb <= 0:
+        return 0.0
+    return bar_gap / spb
+
+
+def _resolve_split_downbeats(chord_data: Dict) -> Optional[List[float]]:
+    """Decide which downbeats to split on, or None to skip splitting.
 
     Splitting on bad downbeats would chop chords mid-bar and make things worse
     than the overflow it's trying to fix, so we gate on:
@@ -54,10 +66,16 @@ def _is_confident(chord_data: Dict) -> bool:
         chord_data["bpm"]. beat_refiner sometimes over-densifies downbeats
         (e.g. emits one per 2 beats instead of one per 4), which would make
         the splitter chop bars in half. See LiveChord-3kh.
+
+    "Doubled-downbeats" fallback (LiveChord-11w): when the raw grid implies
+    bpb≈2 (a half-bar emission, common for slow ballads off beat_this), but
+    using every other downbeat lands in [3,5], we use the halved grid. The
+    song really IS 4/4; the tracker just emitted twice the rate. Without
+    this, every slow pop ballad bypasses auto-split.
     """
-    downbeats = chord_data.get("downbeats") or []
-    if len(downbeats) < 2:
-        return False
+    raw = chord_data.get("downbeats") or []
+    if len(raw) < 2:
+        return None
     source = (chord_data.get("beats_source") or "").lower()
     # Prefix check rather than exact-set match so we accept future variants
     # without re-editing this gate. We were bitten once when ingest emitted
@@ -72,21 +90,39 @@ def _is_confident(chord_data: Dict) -> bool:
     )
     bar_correction = chord_data.get("bar_correction") or {}
     if not (source_ok or bar_correction.get("applied")):
-        return False
+        return None
 
-    # Bar/BPM sanity gate. Compute median gap; expected beats per bar
-    # = median_gap / (60/bpm). If outside [3, 5], the downbeats are at
-    # the wrong granularity and we should NOT split (player rendering
-    # would show 2x/4x apparent dot speed).
-    bar_gap = _median_bar_gap([float(d) for d in downbeats])
     bpm = float(chord_data.get("bpm") or 0)
-    if bar_gap and bpm > 0:
-        spb = 60.0 / bpm
-        if spb > 0:
-            bpb = bar_gap / spb
-            if bpb < 3.0 or bpb > 5.0:
-                return False
-    return True
+    db_floats = [float(d) for d in raw]
+
+    # When BPM (or bar_gap) is unavailable we skip the bpb sanity check and
+    # trust the source — that's what the old gate did. Tests rely on it
+    # (downbeats grid + recognized source + no bpm → confident).
+    bpb = _bpb_class(db_floats, bpm)
+    if bpb == 0.0:
+        return db_floats
+
+    # Primary: raw downbeats imply plausible bpb.
+    if 3.0 <= bpb <= 5.0:
+        return db_floats
+
+    # Halved-downbeats fallback: if the raw grid is at half-bar density
+    # (bpb ≈ 2), using every other downbeat doubles the bar gap and may
+    # land us back in the plausible window. Window [1.7, 2.3] catches the
+    # common ballad case without touching genuine 3/4 (bpb=3) or compound
+    # meters.
+    if 1.7 <= bpb <= 2.3:
+        halved = db_floats[::2]
+        bpb_h = _bpb_class(halved, bpm)
+        if 3.0 <= bpb_h <= 5.0:
+            return halved
+
+    return None
+
+
+def _is_confident(chord_data: Dict) -> bool:
+    """Backwards-compat alias — returns True when downbeats can be resolved."""
+    return _resolve_split_downbeats(chord_data) is not None
 
 
 def _interior_downbeats(start: float, end: float, downbeats: List[float]) -> List[float]:
@@ -253,18 +289,17 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
         }
         return chord_data
 
-    if not _is_confident(chord_data):
+    resolved = _resolve_split_downbeats(chord_data)
+    if resolved is None:
         # Distinguish bpb-rejection from generic low-confidence so the admin
         # / debug UI can tell whether the song was actually evaluated.
         downbeats = chord_data.get("downbeats") or []
         bpm = float(chord_data.get("bpm") or 0)
         reason = "low-confidence-downbeats"
         if len(downbeats) >= 2 and bpm > 0:
-            bar_gap = _median_bar_gap([float(d) for d in downbeats])
-            if bar_gap:
-                bpb = bar_gap / (60.0 / bpm)
-                if bpb < 3.0 or bpb > 5.0:
-                    reason = f"implausible-bpb={bpb:.2f}"
+            bpb = _bpb_class([float(d) for d in downbeats], bpm)
+            if bpb and (bpb < 3.0 or bpb > 5.0):
+                reason = f"implausible-bpb={bpb:.2f}"
         chord_data["auto_split_meta"] = {
             "applied": False,
             "reason": reason,
@@ -273,12 +308,13 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
         }
         return chord_data
 
-    downbeats = chord_data.get("downbeats") or []
-    new_chords = split_chords_at_bars(chords, downbeats)
+    raw_downbeats = chord_data.get("downbeats") or []
+    halved = len(resolved) != len(raw_downbeats)
+    new_chords = split_chords_at_bars(chords, resolved)
     chord_data["chords"] = new_chords
     chord_data["auto_split_meta"] = {
         "applied": True,
-        "reason": "ok",
+        "reason": "ok-halved-downbeats" if halved else "ok",
         "before": len(chords),
         "after": len(new_chords),
     }
