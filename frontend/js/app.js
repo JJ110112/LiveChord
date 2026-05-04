@@ -95,35 +95,44 @@
         if (closeBtn) closeBtn.addEventListener("click", closeAddSongModal);
         if (backdrop) backdrop.addEventListener("click", closeAddSongModal);
       }
-      if (_isBetaMode) {
-        // Local-music section is user-data (no NAS leak, fully personal);
-        // shown for ANY beta / public visitor including admins. Previously
-        // hidden entirely on the admin code path so the homepage had no
-        // visible "+ Pick local audio" entry — admin had to discover the
-        // file upload via the search-modal CTA, which is non-obvious.
+      // Public mode: split the homepage into TWO mutually exclusive views:
+      //   - Logged-out → marketing landing only (intro banner + hero +
+      //     how-it-works + footer). No dashboard, no recent / favorites /
+      //     local-music — those need an account.
+      //   - Logged-in  → dashboard only (recent / favorites / local-music).
+      //     The marketing sections stay hidden; the user already chose to
+      //     sign up, no need to re-pitch them.
+      if (_isPublicMode) {
+        const isLoggedIn = !!localStorage.getItem("livechord_token");
+        const intro = $("#secHomeIntro");
+        const heroSec = $("#secHomeHero");
+        const hiwSec = $("#secHomeHowItWorks");
         const secBetaLocal = $("#secBetaLocalTracks");
-        if (secBetaLocal) secBetaLocal.style.display = "";
+        const secBetaRecent = $("#secBetaRecent");
+        const secFavorites = $("#secFavorites");
 
-        // Marketing intro banner: shown to non-logged-in visitors in
-        // public mode. Logged-in users go straight to the dashboard.
-        if (_isPublicMode) {
-          const isLoggedIn = !!localStorage.getItem("livechord_token");
-          const intro = $("#secHomeIntro");
-          if (intro && !isLoggedIn) intro.style.display = "";
-        }
-
-        // Public-mode hero: explain the service to first-time visitors.
-        // Shown when (a) public mode AND (b) no analyzed history yet —
-        // returning users with songs in their history get the dashboard
-        // immediately. Crawlers always see it because the section is in
-        // the static HTML; the hide-if-history check only runs in JS
-        // post-page-load, after Googlebot has already indexed the body.
-        if (_isPublicMode) {
-          const heroSec = $("#secHomeHero");
-          const hiwSec = $("#secHomeHowItWorks");
+        if (isLoggedIn) {
+          // Dashboard view: hide marketing surfaces, show user-data sections.
+          if (intro) intro.style.display = "none";
+          if (heroSec) heroSec.style.display = "none";
+          if (hiwSec) hiwSec.style.display = "none";
+          if (secBetaLocal) secBetaLocal.style.display = "";
+          if (secBetaRecent) secBetaRecent.style.display = "";
+          if (secFavorites) secFavorites.style.display = "";
+        } else {
+          // Marketing view: show landing surfaces, hide user-data sections
+          // (they'd be empty for an anonymous visitor anyway, and would
+          // bury the sign-up CTA below empty placeholder cards).
+          if (intro) intro.style.display = "";
           if (heroSec) heroSec.style.display = "";
           if (hiwSec) hiwSec.style.display = "";
-          // Wire CTA to open the existing add-song modal (file upload).
+          if (secBetaLocal) secBetaLocal.style.display = "none";
+          if (secBetaRecent) secBetaRecent.style.display = "none";
+          if (secFavorites) secFavorites.style.display = "none";
+          // Wire the hero "Upload audio to get started" CTA — opens the
+          // upload modal directly. (Anonymous file upload is supported in
+          // public mode via X-Anon-Id; the user sees their analysis but
+          // it's not tied to an account until they sign in.)
           const cta = $("#heroUploadBtn");
           if (cta && !cta._lcWired) {
             cta._lcWired = true;
@@ -134,21 +143,11 @@
               if (backdrop) backdrop.classList.add("open");
             });
           }
-          // After the dashboard finishes loading, hide hero + how-it-works
-          // if user already has analyzed songs. Wait one tick so
-          // /api/process/my-history (called from _loadBetaHistory) has had
-          // a chance to populate sessionStorage hints, then check both that
-          // and the DOM counts of analyzed cards.
-          setTimeout(() => {
-            const recentCount = $("#betaRecentList")?.children.length || 0;
-            const localCount = $("#betaLocalAnalyzedRow")?.children.length || 0;
-            if (recentCount > 0 || localCount > 0) {
-              if (heroSec) heroSec.style.display = "none";
-              if (hiwSec) hiwSec.style.display = "none";
-            }
-          }, 1500);
         }
-
+      } else if (_isBetaMode) {
+        // Beta-mode (legacy invite-only). Show local-music for everyone.
+        const secBetaLocal = $("#secBetaLocalTracks");
+        if (secBetaLocal) secBetaLocal.style.display = "";
       }
       if (_isBetaMode && !adminRes.is_admin) {
         _isBetaNonAdmin = true;
@@ -159,7 +158,10 @@
         // Show beta sections (no standalone FAB — modal opens from search empty state)
         const secBetaRecent = $("#secBetaRecent");
         const secHistory = $("#secHistory");
-        if (secBetaRecent) secBetaRecent.style.display = "";
+        // In public mode the logged-in branch above already handled this;
+        // in beta non-admin we need to surface the section regardless of
+        // the marketing-vs-dashboard split (no marketing in beta).
+        if (!_isPublicMode && secBetaRecent) secBetaRecent.style.display = "";
         if (secHistory) secHistory.style.display = "";
       } else if (_isBetaMode) {
         // Admin in beta mode: show history section alongside regular sections
