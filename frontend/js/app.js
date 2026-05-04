@@ -568,13 +568,27 @@
         });
       } catch {}
 
-      // Merge: process history first, then NAS library (deduplicate by title)
-      const seenTitles = new Set(items.map(h => (h.title || "").toLowerCase()));
-      const mergedRecent = [...items];
+      // Merge: PLAY history first (most-recently-played at top), then
+      // fall back to analysis history for songs analyzed but not yet
+      // played manually. The previous order put `items` first which is
+      // sorted by analyze time, so the user-most-recent song appeared
+      // wherever it landed in analyze order — they had to scan the row
+      // to find what they just played. /api/recent already returns
+      // play-time DESC (so most-recent first).
+      const seenTitles = new Set();
+      const mergedRecent = [];
       for (const r of recentItems) {
-        if (!seenTitles.has(r.title.toLowerCase())) {
+        const key = (r.title || "").toLowerCase();
+        if (key && !seenTitles.has(key)) {
           mergedRecent.push(r);
-          seenTitles.add(r.title.toLowerCase());
+          seenTitles.add(key);
+        }
+      }
+      for (const h of items) {
+        const key = (h.title || "").toLowerCase();
+        if (key && !seenTitles.has(key)) {
+          mergedRecent.push(h);
+          seenTitles.add(key);
         }
       }
 
