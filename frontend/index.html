@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=20">
-  <link rel="stylesheet" href="/css/home.css?v=29">
+  <link rel="stylesheet" href="/css/home.css?v=30">
   <link rel="stylesheet" href="/css/help.css?v=4">
   <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
        Authorization for logged-in users, mode-aware 401 handling. Replaces
@@ -287,18 +287,19 @@
       <span class="upload-hint" data-i18n="home.modal.upload_hint">MP3, FLAC, WAV, M4A, OGG (200 MB)</span>
       <input type="file" id="betaFileInput" accept="audio/*" style="display:none">
     </div>
-    <div class="upload-rights-notice" data-i18n="home.modal.upload_rights_notice">⚠ Please only upload audio you have the right to use.</div>
     <div class="beta-file-info" id="betaFileInfo" style="display:none">
-      <span id="betaFileName"></span>
-      <span id="betaFileSize" style="color:var(--text-dim);margin-left:8px"></span>
+      <span id="betaFileName" class="beta-file-name"></span>
+      <span id="betaFileSize" class="beta-file-size"></span>
       <button class="btn-small btn-accent" id="betaUploadBtn"
               onclick="window._betaStartUpload()"
               data-i18n="home.modal.btn_analyze">Analyze</button>
     </div>
     <div class="beta-progress" id="betaUploadProgress" style="display:none">
+      <div class="beta-progress-title" id="betaProgressTitle"></div>
       <div class="progress-bar"><div class="progress-fill" id="betaProgressFill"></div></div>
       <div class="progress-info"><span id="betaProgressText" data-i18n="home.modal.progress_text">Analyzing…</span><span id="betaProgressPct">0%</span></div>
     </div>
+    <div class="upload-rights-notice" data-i18n="home.modal.upload_rights_notice">⚠ Please only upload audio you have the right to use.</div>
   </div>
 
   <!-- browse section -->
@@ -535,6 +536,6 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 }
 </script>
 
-<script src="/js/app.js?v=85"></script>
+<script src="/js/app.js?v=86"></script>
 </body>
 </html>

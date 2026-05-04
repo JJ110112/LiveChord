@@ -277,7 +277,8 @@
    (and so the modal isn't cluttered with duplicate 分析 buttons). */
 .beta-fab-panel.add-song-modal.analyzing #betaDropZone,
 .beta-fab-panel.add-song-modal.analyzing .add-song-yt-row,
-.beta-fab-panel.add-song-modal.analyzing .beta-file-info {
+.beta-fab-panel.add-song-modal.analyzing .beta-file-info,
+.beta-fab-panel.add-song-modal.analyzing .upload-rights-notice {
   display: none !important;
 }
 
@@ -781,10 +782,11 @@
 .search-empty-btn:hover { filter: brightness(1.1); }
 
 .fab-panel-title {
-  font-size: 0.9rem;
-  font-weight: 600;
-  margin-bottom: 10px;
-  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: #fff;
+  letter-spacing: 0.2px;
 }
 
 .fab-section {
@@ -810,12 +812,28 @@
   margin-top: 12px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 8px 14px;
   background: var(--bg-hover);
   border-radius: 8px;
   font-size: 0.9rem;
+  min-width: 0;
 }
+.beta-file-name {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.beta-file-size {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+.beta-file-info .btn-small { flex: 0 0 auto; }
 
 .btn-small {
   padding: 7px 16px;
@@ -833,6 +851,16 @@
 .btn-accent:hover { opacity: 0.85; }
 
 .beta-progress { margin-top: 12px; }
+.beta-progress-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.beta-progress-title:empty { display: none; }
 .progress-bar {
   height: 6px;
   background: var(--bg-hover);

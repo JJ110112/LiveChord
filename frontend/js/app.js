@@ -91,6 +91,7 @@
           // stale "Reading title... 100%" bar would still be visible).
           const up = $("#betaUploadProgress"); if (up) up.style.display = "none";
           const yt = $("#betaYtProgress"); if (yt) yt.style.display = "none";
+          const tt = $("#betaProgressTitle"); if (tt) tt.textContent = "";
         };
         if (closeBtn) closeBtn.addEventListener("click", closeAddSongModal);
         if (backdrop) backdrop.addEventListener("click", closeAddSongModal);
@@ -414,6 +415,14 @@
     const fill = $("#betaProgressFill");
     const text = $("#betaProgressText");
     const pct = $("#betaProgressPct");
+    const titleEl = $("#betaProgressTitle");
+    // Populate the progress-title with the song name (filename minus
+    // extension) so the user can see what's being analyzed once the
+    // .beta-file-info row is hidden by the .analyzing class. Pre-pic3
+    // bug: only the rights-notice + spinner showed, no song identity.
+    if (titleEl) {
+      titleEl.textContent = (_betaSelectedFile.name || "").replace(/\.[^.]+$/, "");
+    }
     prog.style.display = "";
     // Hide drop-zone + YT URL row while analyzing — reduces modal clutter
     // and prevents a second concurrent submit mid-run.
