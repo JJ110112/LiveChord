@@ -619,13 +619,16 @@
         tasks.push(loadRecent(), loadFavorites());
         if (!_isBetaMode) tasks.push(browse(currentPath));
         if (_isBetaMode) tasks.push(_loadBetaHistory());
-        // Public-mode logged-in users see the local-music section
-        // (toggled visible by _checkBetaAccess); the "+ Pick local audio"
-        // button and the upload modal both need their click handlers
-        // bound — without these calls, taps on the buttons no-op.
+        // Public-mode users need the upload modal wired so the hero CTA
+        // (and signed-in Add-song flows) can analyze audio. The local-
+        // music dashboard section + its "+ Pick local audio" button are
+        // only meaningful when signed in (the section is force-hidden
+        // for anon visitors above) — _initBetaLocalAudio also calls
+        // section.style.display = "" which would un-hide it for anon
+        // visitors if called unconditionally.
         if (_isPublicMode) {
           _initBetaUpload();
-          _initBetaLocalAudio();
+          if (localStorage.getItem("livechord_token")) _initBetaLocalAudio();
         }
       }
       await Promise.allSettled(tasks);
