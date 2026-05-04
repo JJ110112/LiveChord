@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=20">
-  <link rel="stylesheet" href="/css/home.css?v=27">
+  <link rel="stylesheet" href="/css/home.css?v=28">
   <link rel="stylesheet" href="/css/help.css?v=4">
   <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
        Authorization for logged-in users, mode-aware 401 handling. Replaces
@@ -148,7 +148,7 @@
        only when (a) public mode AND (b) no localStorage token. -->
   <section id="secHomeIntro" class="home-intro" style="display:none">
     <div class="home-intro-inner">
-      <p class="home-intro-tagline" data-i18n="home.intro.tagline">A free, AI-powered chord chart from your own audio. Practice piano, guitar, ukulele, and accordion — anywhere in your browser.</p>
+      <img src="/img/cover.png?v=1" alt="LiveChord" class="home-intro-cover">
       <a href="/login" class="home-intro-cta" data-i18n="home.intro.cta">開始免費使用</a>
     </div>
   </section>
@@ -166,7 +166,7 @@
     <h1 class="home-hero-title">Turn your audio into a real-time chord chart</h1>
     <p class="home-hero-tagline" data-i18n="home.hero.tagline">Upload an audio file. AI detects the chord progression, beats, and key. Practice with synced piano, guitar, ukulele, accordion, and arranger views — transpose, slow-down, A-B loop, all in your browser. Free.</p>
     <div class="home-hero-cta-row">
-      <button id="heroUploadBtn" class="home-hero-cta" data-i18n="home.hero.cta">📤 Upload audio to get started</button>
+      <button id="heroUploadBtn" class="home-hero-cta" data-i18n="home.hero.cta">Get started for free</button>
     </div>
     <div class="home-hero-features">
       <div class="home-hero-feature">
@@ -536,6 +536,6 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 }
 </script>
 
-<script src="/js/app.js?v=80"></script>
+<script src="/js/app.js?v=81"></script>
 </body>
 </html>

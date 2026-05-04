@@ -405,6 +405,24 @@
   // when the user loads a local audio file. 0 = unknown / skip the check.
   let _chordDuration = 0;
 
+  // Inert AI synth placeholder. Pre-open-source the player owned a
+  // PianoSynth (Web Audio) for MIDI / Mix audio modes; the synth class
+  // was deleted during yt-removal stage 3 but ~14 `aiSynth.*` references
+  // were left in place. Without this stub, applyAudioMode() throws
+  // ReferenceError during init, which crashes the rest of player.js
+  // setup — including the post-registry _switchTab() retry that wires
+  // up guitar / ukulele / accordion / arranger right-hand waterfalls.
+  // Surface shape mirrors the original synth so the residual call-sites
+  // silently no-op. Audio mode 0 (Music) still works; modes 1/2 (MIDI/Mix)
+  // produce no sound but no longer crash the page.
+  const aiSynth = {
+    ctx: null,
+    volLeft: 0,
+    volRight: 0,
+    init() {},
+    playNote() {},
+  };
+
   function _stopMelodyPolling() {
     if (_melodyPollAbort) { try { _melodyPollAbort.abort(); } catch {} _melodyPollAbort = null; }
     if (_melodyPollTimeout) { clearTimeout(_melodyPollTimeout); _melodyPollTimeout = null; }

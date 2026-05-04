@@ -104,6 +104,7 @@
       //     sign up, no need to re-pitch them.
       if (_isPublicMode) {
         const isLoggedIn = !!localStorage.getItem("livechord_token");
+        const headerEl = document.querySelector("header.header");
         const intro = $("#secHomeIntro");
         const heroSec = $("#secHomeHero");
         const hiwSec = $("#secHomeHowItWorks");
@@ -113,6 +114,7 @@
 
         if (isLoggedIn) {
           // Dashboard view: hide marketing surfaces, show user-data sections.
+          if (headerEl) headerEl.style.display = "";
           if (intro) intro.style.display = "none";
           if (heroSec) heroSec.style.display = "none";
           if (hiwSec) hiwSec.style.display = "none";
@@ -122,7 +124,10 @@
         } else {
           // Marketing view: show landing surfaces, hide user-data sections
           // (they'd be empty for an anonymous visitor anyway, and would
-          // bury the sign-up CTA below empty placeholder cards).
+          // bury the sign-up CTA below empty placeholder cards). Top bar
+          // (logo / search / sponsor / settings) hidden too — clean
+          // sign-up funnel; access via /login still works via the intro CTA.
+          if (headerEl) headerEl.style.display = "none";
           if (intro) intro.style.display = "";
           if (heroSec) heroSec.style.display = "";
           if (hiwSec) hiwSec.style.display = "";
@@ -614,6 +619,14 @@
         tasks.push(loadRecent(), loadFavorites());
         if (!_isBetaMode) tasks.push(browse(currentPath));
         if (_isBetaMode) tasks.push(_loadBetaHistory());
+        // Public-mode logged-in users see the local-music section
+        // (toggled visible by _checkBetaAccess); the "+ Pick local audio"
+        // button and the upload modal both need their click handlers
+        // bound — without these calls, taps on the buttons no-op.
+        if (_isPublicMode) {
+          _initBetaUpload();
+          _initBetaLocalAudio();
+        }
       }
       await Promise.allSettled(tasks);
     } finally {
