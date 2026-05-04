@@ -82,25 +82,6 @@
     </div>
   </div>
 
-  <!-- YouTube embed — floating PiP widget. Default: dragzone overlay catches
-       all pointer events (drag anywhere to move, tap = play/pause). Toggle
-       lock button (🔓) hides the overlay so you can reach YT's native captions
-       / settings / fullscreen — click again (🔒) to return to drag mode. -->
-  <div id="ytEmbedContainer" class="yt-embed-container" style="display:none">
-    <div id="ytEmbed" class="yt-pip-body"></div>
-    <div id="ytPipDragzone" class="yt-pip-dragzone"
-         data-i18n-attr="aria-label=player.yt_pip.drag" aria-label="Drag to move (tap to play/pause)"></div>
-    <button id="ytPipLock" class="yt-pip-lock-float"
-            data-i18n-attr="aria-label=player.yt_pip.lock,title=player.yt_pip.lock_title"
-            aria-label="Unlock YouTube native controls" title="Unlock for captions / settings">&#x1F512;</button>
-    <button id="ytEmbedClose" class="yt-pip-close-float"
-            data-i18n-attr="aria-label=player.yt_pip.close,title=player.yt_pip.close"
-            aria-label="Hide YouTube" title="Hide YouTube">&times;</button>
-    <div id="ytPipResize" class="yt-pip-resize"
-         data-i18n-attr="aria-label=player.yt_pip.resize,title=player.yt_pip.resize"
-         aria-label="Resize" title="Resize"></div>
-  </div>
-
   <!-- Split layout: Chord Ribbon | Resize Handle | Instrument View -->
   <div id="chordDisplayScaleTarget" class="middle-split">
 
@@ -804,12 +785,6 @@
 
 <div id="toast" class="toast"></div>
 
-<!-- Floating FAB to re-open the YT PiP when hidden (mimics old bug-report FAB style) -->
-<button id="ytFloatBtn" class="yt-float-btn" aria-label="Show YouTube" title="Show YouTube" data-i18n-attr="title=player.yt_pip.show,aria-label=player.yt_pip.show" style="display:none">
-  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-    <polygon points="7 4 20 12 7 20 7 4"/>
-  </svg>
-</button>
 <audio id="audio" preload="metadata"></audio>
 <input type="file" id="localFileInput" accept="audio/*" style="display:none">
 

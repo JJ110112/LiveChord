@@ -401,263 +401,21 @@
   const pxPerSec = 100;
   const chordDisplay88 = pianoWaterfallView;
 
-  // ---- YouTube embed state (hoisted so helpers below can reference) ----
-  let _ytPlayer = null;
-  let _ytSyncTimer = null;
-  // Duration desync state: set when chord data loads (Task 1).
-  // _chordDuration: song length from chord JSON (seconds). 0 = unknown/skip check.
-  // _ytSyncDisabled: true → YT timer skips chord/piano/key updates (time+progress still update).
-  // _ytVerifiedOk: true → duration Δ < 5%, safe to auto-learn YT→library mapping (Task 2 gate).
+  // Chord JSON's stored duration field — used by length-mismatch warnings
+  // when the user loads a local audio file. 0 = unknown / skip the check.
   let _chordDuration = 0;
+
+  // Inert YouTube state. Pre-open-source the player owned a YT IFrame
+  // player + a sync timer + flags for duration verification. The
+  // integration was removed when LiveChord was open-sourced; these
+  // names stay so the residual `if (_ytPlayer && ...)` short-circuits
+  // sprinkled around the file evaluate to falsy without throwing
+  // ReferenceError. Future cleanup can delete every such guard.
+  const _ytPlayer = null;
+  const _ytSyncTimer = null;
   let _ytSyncDisabled = false;
   let _ytVerifiedOk = false;
-  // YT PiP widget (drag + resize + show/hide + localStorage persist).
-  // Position/size are persisted PER ORIENTATION so rotating the device
-  // restores the size the user chose for that orientation.
-  const _YT_PIP_KEY = "livechord_yt_pip";
-  function _getYtOrient() {
-    return (window.innerHeight > window.innerWidth) ? "p" : "l";
-  }
-  function _loadYtPipRoot() {
-    try { return JSON.parse(localStorage.getItem(_YT_PIP_KEY) || "{}") || {}; }
-    catch { return {}; }
-  }
-  function _loadYtPipState() {
-    // Flat shape {hidden, x, y, width, height} with per-orientation overrides
-    // under .p / .l — callers read the merged view for the current orientation.
-    const root = _loadYtPipRoot();
-    const orient = _getYtOrient();
-    const per = (root[orient] && typeof root[orient] === "object") ? root[orient] : {};
-    return {
-      hidden: !!root.hidden,
-      x: typeof per.x === "number" ? per.x : undefined,
-      y: typeof per.y === "number" ? per.y : undefined,
-      width: typeof per.width === "number" ? per.width : undefined,
-      height: typeof per.height === "number" ? per.height : undefined,
-    };
-  }
-  function _saveYtPipState(partial) {
-    try {
-      const root = _loadYtPipRoot();
-      const orient = _getYtOrient();
-      if (!root[orient] || typeof root[orient] !== "object") root[orient] = {};
-      if (typeof partial.hidden === "boolean") root.hidden = partial.hidden;
-      for (const k of ["x", "y", "width", "height"]) {
-        if (typeof partial[k] === "number") root[orient][k] = partial[k];
-      }
-      localStorage.setItem(_YT_PIP_KEY, JSON.stringify(root));
-    } catch {}
-  }
-  function _applyYtPipState() {
-    const container = document.getElementById("ytEmbedContainer");
-    if (!container) return;
-    const s = _loadYtPipState();
-    // Clear stale inline sizing first so a smaller orientation doesn't inherit
-    // larger values from the previous one.
-    container.style.left = ""; container.style.top = "";
-    container.style.right = ""; container.style.bottom = "";
-    container.style.width = ""; container.style.height = "";
-    // Clamp size to viewport so saved width/height from a larger window
-    // don't cause the PiP to overflow here.
-    const vw = window.innerWidth, vh = window.innerHeight;
-    let w = typeof s.width === "number" ? s.width : 320;
-    let h = typeof s.height === "number" ? s.height : 200;
-    w = Math.max(180, Math.min(vw - 16, w));
-    h = Math.max(120, Math.min(Math.round(vh * 0.7), h));
-    if (typeof s.width === "number") container.style.width = w + "px";
-    if (typeof s.height === "number") container.style.height = h + "px";
-    // Clamp position to viewport — a saved x/y from a larger window (or after
-    // a window resize/rotate) can park the PiP off-screen. Top clamp matches
-    // drag handler (44 = topbar height) so PiP never hides behind it.
-    const TOPBAR_H = 44;
-    if (typeof s.x === "number") {
-      const x = Math.max(0, Math.min(vw - w, s.x));
-      container.style.left = x + "px"; container.style.right = "auto";
-    }
-    if (typeof s.y === "number") {
-      const y = Math.max(TOPBAR_H, Math.min(vh - h, s.y));
-      container.style.top = y + "px"; container.style.bottom = "auto";
-    }
-  }
-  function _updateYtReopenBtn() {
-    const btn = document.getElementById("ytFloatBtn");
-    if (!btn) return;
-    const hidden = !!_loadYtPipState().hidden;
-    const show = hidden && !!_ytPlayer;
-    btn.style.display = show ? "flex" : "none";
-  }
-  function _showYtPip() {
-    const container = document.getElementById("ytEmbedContainer");
-    if (!container) return;
-    container.style.display = "";
-    _saveYtPipState({ hidden: false });
-    _updateYtReopenBtn();
-  }
-  function _initYtPipControls() {
-    const container = document.getElementById("ytEmbedContainer");
-    const dragzone = document.getElementById("ytPipDragzone");
-    const handle = document.getElementById("ytPipResize");
-    const closeBtn = document.getElementById("ytEmbedClose");
-    const reopenFab = document.getElementById("ytFloatBtn");
-    if (!container) return;
-    _applyYtPipState();
 
-    // Drag anywhere on the PiP body (overlay). Distinguishes tap vs drag by
-    // movement threshold: pure tap (<6px) is re-routed to YT API as play/pause
-    // (replacing the native iframe click the overlay swallows); drag moves
-    // the PiP. Top clamp = 44 so the PiP never hides behind the player-topbar.
-    if (dragzone) dragzone.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      dragzone.setPointerCapture?.(e.pointerId);
-      const rect = container.getBoundingClientRect();
-      const startX = e.clientX, startY = e.clientY;
-      const startL = rect.left, startT = rect.top;
-      let moved = false;
-      const THRESH = 6;
-      const TOPBAR_H = 44;
-      const move = (ev) => {
-        const dx = ev.clientX - startX;
-        const dy = ev.clientY - startY;
-        if (!moved && Math.hypot(dx, dy) > THRESH) moved = true;
-        if (!moved) return;
-        const w = container.offsetWidth, h = container.offsetHeight;
-        const nx = Math.max(0, Math.min(window.innerWidth - w, startL + dx));
-        const ny = Math.max(TOPBAR_H, Math.min(window.innerHeight - h, startT + dy));
-        container.style.left = nx + "px";
-        container.style.top = ny + "px";
-        container.style.right = "auto";
-        container.style.bottom = "auto";
-      };
-      const up = () => {
-        window.removeEventListener("pointermove", move);
-        window.removeEventListener("pointerup", up);
-        window.removeEventListener("pointercancel", up);
-        if (!moved) {
-          // Pure tap — toggle YT play/pause via API (iframe never saw the click)
-          if (_ytPlayer && typeof _ytPlayer.getPlayerState === "function") {
-            try {
-              const s = _ytPlayer.getPlayerState();
-              if (s === 1) _ytPlayer.pauseVideo();
-              else if (typeof _ytPlayer.playVideo === "function") _ytPlayer.playVideo();
-            } catch {}
-          }
-        } else {
-          const r = container.getBoundingClientRect();
-          _saveYtPipState({ x: r.left, y: r.top });
-        }
-      };
-      window.addEventListener("pointermove", move);
-      window.addEventListener("pointerup", up);
-      window.addEventListener("pointercancel", up);
-    });
-
-    // Resize via bottom-right handle. Container IS the body now (no header
-    // element), so maintain 16:9 across the whole container — keeps iframe
-    // exactly video-aspect so there are no residual black bars.
-    const BODY_ASPECT = 16 / 9;
-    if (handle) handle.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      handle.setPointerCapture?.(e.pointerId);
-      const rect = container.getBoundingClientRect();
-      const startX = e.clientX, startY = e.clientY;
-      const startW = rect.width;
-      const move = (ev) => {
-        const maxW = window.innerWidth - rect.left - 4;
-        const maxH = window.innerHeight - rect.top - 4;
-        // Drive resize off whichever axis moved more so diagonal drag feels
-        // natural; derive the other axis from the 16:9 rule.
-        const dX = ev.clientX - startX;
-        const dY = ev.clientY - startY;
-        let nw;
-        if (Math.abs(dY) > Math.abs(dX)) {
-          const nh0 = Math.max(100, Math.min(maxH, (startW / BODY_ASPECT) + dY));
-          nw = nh0 * BODY_ASPECT;
-        } else {
-          nw = Math.max(140, Math.min(maxW, startW + dX));
-        }
-        nw = Math.max(140, Math.min(maxW, nw));
-        let nh = nw / BODY_ASPECT;
-        if (nh > maxH) { nh = maxH; nw = nh * BODY_ASPECT; }
-        container.style.width = Math.round(nw) + "px";
-        container.style.height = Math.round(nh) + "px";
-        // Nudge YT API so the player UI inside the iframe re-lays out to the
-        // new size — CSS alone scales the iframe box, but YT's internal player
-        // only re-rules on an explicit setSize call.
-        if (_ytPlayer && typeof _ytPlayer.setSize === "function") {
-          try { _ytPlayer.setSize(Math.round(nw), Math.round(nh)); } catch {}
-        }
-      };
-      const up = () => {
-        window.removeEventListener("pointermove", move);
-        window.removeEventListener("pointerup", up);
-        window.removeEventListener("pointercancel", up);
-        const r = container.getBoundingClientRect();
-        _saveYtPipState({ width: r.width, height: r.height });
-      };
-      window.addEventListener("pointermove", move);
-      window.addEventListener("pointerup", up);
-      window.addEventListener("pointercancel", up);
-    });
-
-    // Close = hide the PiP (YT keeps playing audio; toolbar btn reopens it)
-    if (closeBtn) closeBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      container.style.display = "none";
-      _saveYtPipState({ hidden: true });
-      _updateYtReopenBtn();
-    });
-
-    // Floating FAB re-shows the PiP (replaces old toolbar button)
-    if (reopenFab) reopenFab.addEventListener("click", _showYtPip);
-
-    // Lock toggle — flips .unlocked class so dragzone goes pointer-events:none
-    // and user can tap YT's native captions / settings / fullscreen.
-    const lockBtn = document.getElementById("ytPipLock");
-    if (lockBtn) lockBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const unlocked = container.classList.toggle("unlocked");
-      lockBtn.innerHTML = unlocked ? "&#x1F513;" : "&#x1F512;";   // 🔓 : 🔒
-      lockBtn.title = _t(unlocked ? "player.yt_pip.lock_btn" : "player.yt_pip.unlock_btn");
-    });
-  }
-  // Clear the "hidden" flag on every page load so new navigation shows the PiP
-  // by default (user can still close per-visit). Keep x/y/width/height persisted.
-  _saveYtPipState({ hidden: false });
-
-  // Wire up immediately — DOM is already present in the IIFE scope
-  _initYtPipControls();
-
-  // On rotate / viewport resize → re-apply the orientation-specific PiP state
-  // so the widget snaps back to the size the user chose for that orientation.
-  let _ytOrientLast = _getYtOrient();
-  window.addEventListener("resize", () => {
-    const now = _getYtOrient();
-    if (now !== _ytOrientLast) {
-      _ytOrientLast = now;
-      _applyYtPipState();
-      if (_ytPlayer && typeof _ytPlayer.setSize === "function") {
-        const c = document.getElementById("ytEmbedContainer");
-        if (c) {
-          const r = c.getBoundingClientRect();
-          try { _ytPlayer.setSize(Math.round(r.width), Math.round(r.height)); } catch {}
-        }
-      }
-    }
-  });
-
-  // Melody-pending: when the user lands on a freshly-analyzed hash, the
-  // melody worker is still running in the background (~40–60s). Loose
-  // coupling rule (CLAUDE.md): no mid-flight banner — toast on start, toast
-  // on completion. _maybeStartMelodyPolling and _loadMelody both follow this.
-  // Polling lifecycle handles: AbortController cancels in-flight fetch and
-  // the timeout keeps the retry chain alive. Both are torn down on `pagehide`
-  // so hitting browser-back during extraction doesn't leave a 5-minute retry
-  // chain chained to an orphaned fetch — that was making the previous page
-  // feel unresponsive for ~1 minute while the browser waited for the fetch
-  // to settle (melody endpoint can take ~1 minute uncached).
-  let _melodyPollAbort = null;
-  let _melodyPollTimeout = null;
   function _stopMelodyPolling() {
     if (_melodyPollAbort) { try { _melodyPollAbort.abort(); } catch {} _melodyPollAbort = null; }
     if (_melodyPollTimeout) { clearTimeout(_melodyPollTimeout); _melodyPollTimeout = null; }
@@ -808,45 +566,14 @@
     } catch (e) { return { err: e && e.message, stack: e && e.stack }; }
   };
 
-  // ---- Unified playback accessors (YouTube iframe takes precedence over audio element) ----
-  function _ytActive() {
-    return !!(_ytPlayer && typeof _ytPlayer.getCurrentTime === "function");
-  }
-  function _playerCurrentTime() {
-    if (_ytActive()) {
-      try { return _ytPlayer.getCurrentTime() || 0; } catch { return 0; }
-    }
-    return audio.currentTime || 0;
-  }
-  function _playerDuration() {
-    if (_ytActive()) {
-      try {
-        const d = _ytPlayer.getDuration();
-        if (d && !isNaN(d)) return d;
-      } catch {}
-    }
-    return audio.duration || 0;
-  }
-  function _playerSeek(t) {
-    if (_ytActive() && typeof _ytPlayer.seekTo === "function") {
-      try {
-        _ytPlayer.seekTo(t, true);
-        // Reflect the seek on the UI immediately — don't wait for the 50ms sync interval
-        try {
-          const dur = _ytPlayer.getDuration() || 0;
-          if (timeCurrent) timeCurrent.textContent = formatTime(t);
-          if (dur > 0 && topProgressFill) topProgressFill.style.width = ((t / dur) * 100) + "%";
-        } catch {}
-        // Force-scroll ribbon to the seeked-to chord. The native YT
-        // sync poller calls updateActiveChord without forceScroll, and
-        // its scroll gate suppresses scrolling when paused — so a
-        // rewind-to-start (or any scrub) wouldn't recenter without this.
-        try { updateActiveChord(t, true); } catch {}
-        return;
-      } catch {}
-    }
-    audio.currentTime = t;
-  }
+  // Unified playback accessors. Pre-open-source these had a YouTube iframe
+  // branch; that's gone now. _ytActive() always returns false so any
+  // residual `if (_ytActive())` branches still in the file are dead code
+  // (kept for blame-stable history; cleanup welcome).
+  function _ytActive() { return false; }
+  function _playerCurrentTime() { return audio.currentTime || 0; }
+  function _playerDuration() { return audio.duration || 0; }
+  function _playerSeek(t) { audio.currentTime = t; }
 
   // ---- A-B Repeat state ----
   const btnABRepeat = $("#btnABRepeat");
@@ -4012,27 +3739,6 @@
         // 載入段落 + 旋律資訊
         _loadSections(path);
         _loadMelody(path);
-        // Beta: attach YouTube iframe for video sync (DB-path mode parity with hash mode)
-        _isBetaModeAsync.then(isBeta => {
-          if (!isBeta || _usingLocalFile) return;
-          const ytUrl = chordData.youtube_url || "";
-          const _extractId = typeof extractYouTubeId === "function" ? extractYouTubeId
-            : (u) => { const m = (u||"").match(/(?:v=|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})/); return m ? m[1] : null; };
-          const ytVideoId = _extractId(ytUrl);
-          const willEmbed = ytVideoId || (chordData.title || songTitle?.textContent || "").trim();
-          if (willEmbed) {
-            // Pause NAS audio so it doesn't play alongside YouTube (if YT fails, user can hit ▶ to resume)
-            try { audio.pause(); } catch {}
-          }
-          if (ytVideoId) {
-            _initYouTubeEmbed(ytVideoId);
-          } else {
-            const t = chordData.title || (songTitle && songTitle.textContent) || "";
-            const a = chordData.artist || "";
-            const q = (a ? `${a} ${t}` : t).trim();
-            if (q) _searchAndEmbedYouTube(q);
-          }
-        });
         return;
       }
     } catch (err) {
@@ -6590,24 +6296,12 @@
             }
           } catch (e) { console.warn("IndexedDB load failed:", e); }
 
-          // YouTube embed mode
-          const ytUrl = chordData.youtube_url || "";
-          const _extractId = typeof extractYouTubeId === "function" ? extractYouTubeId
-            : (u) => { const m = (u||"").match(/(?:v=|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})/); return m ? m[1] : null; };
-          const ytVideoId = _extractId(ytUrl);
-          if (!audioLoaded && ytVideoId) {
-            _initYouTubeEmbed(ytVideoId);
-          } else if (!audioLoaded) {
-            // No audio blob and no youtube_url — try searching YouTube by title.
-            // If we can't even search (no title), surface the fallback panel so
-            // the user can paste a URL or load a local file instead of being
-            // stranded with just a toast.
-            const searchTitle = chordData.title || "";
-            if (searchTitle) {
-              _searchAndEmbedYouTube(searchTitle);
-            } else {
-              _showYtFallbackPanel();
-            }
+          // No bundled audio — show the fallback panel so the user can
+          // load a local audio file. Legacy chord JSONs that have a
+          // youtube_url field are no longer auto-embedded; users must
+          // upload the audio file themselves.
+          if (!audioLoaded) {
+            _showYtFallbackPanel();
           }
         } else {
           // Hash mode, but no chord data (song exists in library metadata but not yet analyzed,
@@ -6651,56 +6345,24 @@
     });
   }
 
-  // --- YouTube IFrame embed for chord sync ---
-  // (_ytPlayer / _ytSyncTimer declared near top of IIFE so playback helpers can reference them)
+  // YouTube IFrame embed and yt-dlp-driven analysis were removed when
+  // LiveChord was open-sourced (2026-05-04). The remaining fallback panel
+  // is a file-picker only — surfaced when the chord JSON has no bundled
+  // audio and no IndexedDB blob. Legacy chord JSONs that contain a
+  // ``youtube_url`` field still load (the field is silently ignored);
+  // users have to upload the audio file to get playback.
 
-  async function _searchAndEmbedYouTube(title) {
-    try {
-      showToast(_t("toast.yt.searching"), 3000);
-      const res = await fetch(`/api/process/youtube-search?q=${encodeURIComponent(title)}`);
-      if (!res.ok) { _showYtFallbackPanel(); return; }
-      const data = await res.json();
-      if (data.video_id) {
-        _initYouTubeEmbed(data.video_id);
-      } else {
-        // Task 7: no YT match found — let user paste URL or load local file.
-        _showYtFallbackPanel();
-      }
-    } catch (e) {
-      _showYtFallbackPanel();
-    }
-  }
-
-  // Task 7: fallback panel — user pastes correct YT URL or uploads a local audio file
-  // when auto-search fails or desync banner indicates wrong version.
-  // Public-mode flag resolved from /api/config/public. The async fetch in
-  // _configPromise above starts at module load; this promise lets the YT
-  // fallback panel decide whether to render the YT URL row at all.
-  const _isPublicModeAsync = _configPromise.then(cfg => cfg.deployment_mode === "public");
-
-  async function _showYtFallbackPanel() {
+  function _showYtFallbackPanel() {
     const old = document.getElementById("ytFallbackPanel");
     if (old) { old.remove(); }
-    // Plan B (2026-05-04): public mode is upload-only. Drop the YT URL row
-    // from the fallback panel so users aren't offered a path that would
-    // immediately fail at the yt-dlp tier.
-    const isPublic = await _isPublicModeAsync.catch(() => false);
-    // Type B modal — backdrop wraps a .lc-modal card. Click backdrop to dismiss.
     const backdrop = document.createElement("div");
     backdrop.id = "ytFallbackPanel";
     backdrop.className = "yt-fallback-panel lc-modal-backdrop";
-    const ytRowHtml = isPublic ? "" : `
-        <div class="yt-fb-row">
-          <input id="ytFbUrl" type="text" placeholder="${_t("player.yt_fb.url_placeholder")}" />
-          <button id="ytFbUrlSubmit" class="yt-fb-btn">${_t("player.yt_fb.btn_use")}</button>
-        </div>
-        <div class="yt-fb-sep"><span>${_t("player.yt_fb.or")}</span></div>`;
     backdrop.innerHTML = `
       <div class="lc-modal">
         <button class="lc-close yt-fb-close" aria-label="${_t("common.close")}">&times;</button>
         <div class="lc-title">${_t("player.yt_fb.title")}</div>
         <div class="yt-fb-hint">${_t("player.yt_fb.hint")}</div>
-        ${ytRowHtml}
         <div class="yt-fb-row">
           <input id="ytFbFile" type="file" accept="audio/*" />
           <button id="ytFbFileSubmit" class="yt-fb-btn secondary">${_t("player.yt_fb.btn_local")}</button>
@@ -6710,153 +6372,20 @@
     document.body.appendChild(backdrop);
     const close = () => backdrop.remove();
     backdrop.querySelector(".yt-fb-close")?.addEventListener("click", close);
-    // Backdrop click dismisses; clicks inside the .lc-modal card bubble to backdrop
-    // but target !== backdrop so they don't close. Clicking outside the card does.
     backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
-    if (!isPublic) {
-      backdrop.querySelector("#ytFbUrlSubmit")?.addEventListener("click", () => _onYtFbUrlSubmit(backdrop));
-      backdrop.querySelector("#ytFbUrl")?.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") _onYtFbUrlSubmit(backdrop);
-      });
-    }
     backdrop.querySelector("#ytFbFileSubmit")?.addEventListener("click", () => _onYtFbFileSubmit(backdrop));
-  }
-
-  function _onYtFbUrlSubmit(panel) {
-    const input = panel.querySelector("#ytFbUrl");
-    const raw = (input && input.value || "").trim();
-    const m = raw.match(/(?:v=|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
-    const vid = m ? m[1] : "";
-    if (!vid) { showToast(_t("toast.yt.invalid_url"), 3000); return; }
-    // Tear down existing YT player so _initYouTubeEmbed can rebuild cleanly
-    if (_ytPlayer) { try { _ytPlayer.destroy(); } catch {} _ytPlayer = null; }
-    if (_ytSyncTimer) { clearInterval(_ytSyncTimer); _ytSyncTimer = null; }
-    _ytSyncDisabled = false; _ytVerifiedOk = false;
-    // Clear guard so re-learn can fire after new duration check
-    try {
-      for (const k of Object.keys(sessionStorage)) {
-        if (k.startsWith("ytlib:")) sessionStorage.removeItem(k);
-      }
-    } catch {}
-    panel.remove();
-    _initYouTubeEmbed(vid);
-    // User manually picked a URL — strong "this is the version I want" signal.
-    // Always kick off analysis so chord data matches their chosen version.
-    // Backend reuses existing result if URL was already processed (library map
-    // or prior YT job), so the cost is zero when nothing new needs analyzing.
-    if (hashMode) {
-      _startAnalysisForUrl(raw || `https://www.youtube.com/watch?v=${vid}`);
-    }
-  }
-
-  function _startAnalysisForUrl(url) {
-    _showAnalysisBanner(_t("player.analysis.submitting"), 0);
-    fetch("/api/process/youtube", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
-    }).then(r => r.json().then(d => ({ ok: r.ok, d }))).then(({ ok, d }) => {
-      if (!ok) {
-        _showAnalysisBanner(_t("player.analysis.submit_failed",
-          { detail: (d && d.detail) || _t("player.analysis.unknown_error") }), null, /*error=*/true);
-        return;
-      }
-      if (d.status === "done" && d.result_hash) {
-        _showAnalysisBanner(_t("player.analysis.existing_result"), 100);
-        setTimeout(() => {
-          window.location.href = `/player?hash=${encodeURIComponent(d.result_hash)}`;
-        }, 600);
-        return;
-      }
-      if (d.job_id) _pollAnalysisJob(d.job_id);
-    }).catch(e => {
-      _showAnalysisBanner(_t("player.analysis.submit_failed", { detail: e.message }), null, true);
-    });
-  }
-
-  function _pollAnalysisJob(jobId) {
-    let maxProgress = 0;
-    const timer = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/process/status/${jobId}`);
-        if (!res.ok) { clearInterval(timer); return; }
-        const d = await res.json();
-        maxProgress = Math.max(maxProgress, d.progress || 0);
-        const stage = (d.stage && d.status === "processing") ? d.stage : (d.status || "");
-        _showAnalysisBanner(stage, maxProgress);
-        if (d.status === "done" && d.result_hash) {
-          clearInterval(timer);
-          _showAnalysisBannerDone(d.result_hash);
-        } else if (d.status === "error") {
-          clearInterval(timer);
-          _showAnalysisBanner(_t("player.analysis.failed",
-            { detail: d.error || _t("player.analysis.unknown_error") }), null, true);
-        }
-      } catch {}
-    }, 2000);
-  }
-
-  function _showAnalysisBanner(text, pct, isError = false) {
-    let el = document.getElementById("ytAnalysisBanner");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "ytAnalysisBanner";
-      el.className = "yt-analysis-banner lc-banner lc-banner--info";
-      el.innerHTML = `
-        <div class="yt-ab-row">
-          <span class="yt-ab-text"></span>
-          <span class="yt-ab-pct"></span>
-          <button class="yt-ab-close" aria-label="${_t("common.close")}">&times;</button>
-        </div>
-        <div class="yt-ab-bar"><div class="yt-ab-fill"></div></div>
-      `;
-      document.body.appendChild(el);
-      el.querySelector(".yt-ab-close").addEventListener("click", () => el.remove());
-    }
-    el.classList.toggle("is-error", !!isError);
-    el.querySelector(".yt-ab-text").textContent = text || "";
-    el.querySelector(".yt-ab-pct").textContent = pct == null ? "" : `${pct}%`;
-    const fill = el.querySelector(".yt-ab-fill");
-    if (pct != null) fill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
-  }
-
-  function _showAnalysisBannerDone(resultHash) {
-    const el = document.getElementById("ytAnalysisBanner");
-    if (!el) return;
-    el.querySelector(".yt-ab-text").textContent = _t("yt.analysis_done");
-    el.querySelector(".yt-ab-pct").textContent = "100%";
-    el.querySelector(".yt-ab-fill").style.width = "100%";
-    // Replace close with a "view chords" CTA
-    const row = el.querySelector(".yt-ab-row");
-    row.querySelector(".yt-ab-close")?.remove();
-    const btn = document.createElement("button");
-    btn.className = "yt-ab-cta";
-    btn.textContent = _t("yt.view_chords");
-    btn.addEventListener("click", () => {
-      // Flag fresh so the destination player shows the "旋律擷取中" banner.
-      try { sessionStorage.setItem("livechord_fresh_hash", `${resultHash}|${Date.now()}`); } catch {}
-      window.location.href = `/player?hash=${encodeURIComponent(resultHash)}`;
-    });
-    row.appendChild(btn);
   }
 
   function _onYtFbFileSubmit(panel) {
     const input = panel.querySelector("#ytFbFile");
     const file = input && input.files && input.files[0];
     if (!file) { showToast(_t("toast.audio.pick_file"), 3000); return; }
-    // Tear down YT so the audio element takes over playback
-    if (_ytPlayer) { try { _ytPlayer.destroy(); } catch {} _ytPlayer = null; }
-    if (_ytSyncTimer) { clearInterval(_ytSyncTimer); _ytSyncTimer = null; }
-    const ytContainer = document.getElementById("ytEmbedContainer");
-    if (ytContainer) ytContainer.style.display = "none";
-    _ytSyncDisabled = false;
     const objUrl = URL.createObjectURL(file);
     audio.src = objUrl;
     _usingLocalFile = true;
     audio.play().catch(() => {});
     panel.remove();
     showToast(_t("toast.audio.local_loaded", { name: file.name }), 3000);
-    // Verify audio duration vs chord duration — same 10% gate as YT.
     audio.addEventListener("loadedmetadata", function onMeta() {
       audio.removeEventListener("loadedmetadata", onMeta);
       if (!_chordDuration || _chordDuration < 30) return;
@@ -6868,353 +6397,6 @@
       }
     });
   }
-
-  function _initYouTubeEmbed(videoId) {
-    const container = document.getElementById("ytEmbedContainer");
-    if (!container) return;
-    // Respect persisted hidden state (user closed the PiP last time) — YT still boots
-    // and plays audio; toolbar shows "重新顯示 YouTube" button so they can re-open.
-    const pipState = _loadYtPipState();
-    container.style.display = pipState.hidden ? "none" : "";
-    _applyYtPipState();
-    _updateYtReopenBtn();
-
-    // Show a loading overlay until onReady clears it — iframe_api + player boot can take 5–15s
-    _setLoadingState(true, _t("loading.yt_player"), _t("loading.yt_player_detail"));
-
-    // Load YouTube IFrame API
-    if (!window.YT) {
-      const tag = document.createElement("script");
-      tag.src = "https://www.youtube.com/iframe_api";
-      document.head.appendChild(tag);
-      window.onYouTubeIframeAPIReady = () => _createYTPlayer(videoId);
-    } else {
-      _createYTPlayer(videoId);
-    }
-  }
-
-  // Task 1: compare YT video length against chord JSON length; show banner + gate sync on mismatch.
-  // Retries up to 3× because getDuration() may return 0 during buffering.
-  function _checkYtDuration(attempt = 0) {
-    if (!_ytPlayer || typeof _ytPlayer.getDuration !== "function") return;
-    if (!_chordDuration || _chordDuration < 30) return;  // skip check if unknown or too short
-    let dYt = 0;
-    try { dYt = _ytPlayer.getDuration() || 0; } catch { dYt = 0; }
-    if (!dYt || isNaN(dYt)) {
-      if (attempt < 3) setTimeout(() => _checkYtDuration(attempt + 1), 500);
-      return;
-    }
-    const ratio = Math.abs(dYt - _chordDuration) / _chordDuration;
-    if (ratio > 0.10) {
-      _ytSyncDisabled = true;
-      _ytVerifiedOk = false;
-      _showDesyncBanner(dYt, _chordDuration, ratio);
-    } else if (ratio <= 0.05) {
-      _ytVerifiedOk = true;
-      _maybeLearnLibraryMapping();
-    }
-  }
-
-  // Task 2: auto-learn YT URL → library hash mapping when duration matches tightly.
-  // Single-shot per (hash, videoId) pair, guarded in sessionStorage.
-  function _maybeLearnLibraryMapping() {
-    if (!hashMode || !_ytVerifiedOk || !_ytPlayer) return;
-    let videoUrl = "";
-    try { videoUrl = _ytPlayer.getVideoUrl ? _ytPlayer.getVideoUrl() : ""; } catch { videoUrl = ""; }
-    const m = videoUrl.match(/(?:v=|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
-    const vid = m ? m[1] : "";
-    if (!vid) return;
-    const canonical = `https://www.youtube.com/watch?v=${vid}`;
-    const guardKey = `ytlib:${hashMode}:${vid}`;
-    try { if (sessionStorage.getItem(guardKey)) return; } catch {}
-    fetch("/api/process/yt-library-learn", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ youtube_url: canonical, library_hash: hashMode }),
-    }).then(r => {
-      if (r.ok) {
-        try { sessionStorage.setItem(guardKey, "1"); } catch {}
-      }
-    }).catch(() => {});
-  }
-
-  function _showDesyncBanner(dYt, dChord, ratio) {
-    // Remove any existing banner first
-    const old = document.getElementById("ytDesyncBanner");
-    if (old) old.remove();
-    const pct = Math.round(ratio * 100);
-    const el = document.createElement("div");
-    el.id = "ytDesyncBanner";
-    el.className = "yt-desync-banner lc-banner lc-banner--warn";
-    el.innerHTML = `
-      <span>${_t("player.yt_desync.message", { yt: formatTime(dYt), chord: formatTime(dChord), pct })}</span>
-      <button id="ytDesyncFallback" class="lc-banner-btn">${_t("player.yt_desync.btn_swap")}</button>
-      <button id="ytDesyncClose" class="lc-banner-close" aria-label="${_t("common.close")}">&times;</button>
-    `;
-    document.body.appendChild(el);
-    document.getElementById("ytDesyncClose")?.addEventListener("click", () => el.remove());
-    document.getElementById("ytDesyncFallback")?.addEventListener("click", () => {
-      el.remove();
-      if (typeof _showYtFallbackPanel === "function") _showYtFallbackPanel();
-    });
-  }
-
-  function _createYTPlayer(videoId) {
-    _ytPlayer = new YT.Player("ytEmbed", {
-      videoId: videoId,
-      playerVars: { autoplay: 1, modestbranding: 1, rel: 0 },
-      events: {
-        onReady: () => {
-          _setLoadingState(false);
-          showToast(_t("toast.yt.player_ready"), 2000);
-          btnPlay.classList.add("is-playing");
-          try {
-            const v = (volumeSlider && volumeSlider.value != null) ? parseFloat(volumeSlider.value) : audio.volume;
-            _ytPlayer.setVolume(Math.max(0, Math.min(1, v)) * 100);
-            if (audio.muted) _ytPlayer.mute(); else _ytPlayer.unMute();
-            const s = SPEEDS[speedIdx];
-            if (s !== 1 && typeof _ytPlayer.setPlaybackRate === "function") _ytPlayer.setPlaybackRate(s);
-          } catch (e) {}
-          _startYTSync();
-          // Task 1: verify YT length matches chord length (with retry for buffering).
-          setTimeout(() => _checkYtDuration(0), 600);
-          // PiP toolbar button reflects current player existence.
-          _updateYtReopenBtn();
-          // Sync YT internal layout to the persisted PiP size (setSize triggers
-          // re-layout that CSS %-sizing alone doesn't always flow through).
-          try {
-            const c = document.getElementById("ytEmbedContainer");
-            if (c && _ytPlayer && typeof _ytPlayer.setSize === "function") {
-              const r = c.getBoundingClientRect();
-              _ytPlayer.setSize(Math.round(r.width), Math.round(r.height));
-            }
-          } catch {}
-        },
-        onStateChange: (e) => {
-          // 0=ended, 1=playing, 2=paused, 3=buffering, 5=cued
-          if (e.data === 1) {
-            btnPlay.classList.add("is-playing");
-            // Re-arm the sync timer in case it was cleared (close-button, destroy, etc.)
-            _startYTSync();
-          }
-          else if (e.data === 2) btnPlay.classList.remove("is-playing");
-          else if (e.data === 0) {
-            if (loopMode === "single") {
-              try { _ytPlayer.seekTo(0, true); _ytPlayer.playVideo(); } catch (err) {}
-            } else if (loopMode === "favorites" && favTracks.length > 0) {
-              _navNext();
-            } else {
-              btnPlay.classList.remove("is-playing");
-            }
-          }
-        },
-        onError: (e) => {
-          _ytPlayer = null;
-          const container = document.getElementById("ytEmbedContainer");
-          // YT error codes: 101/150 = embed disabled by uploader on desktop web;
-          // mobile native app has different permissions so users often see this
-          // on PC but not on phone. Offer a direct link + local-file fallback.
-          const ytUrl = videoId ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}` : null;
-          if (container) {
-            const ytBtn = ytUrl ? `<a href="${ytUrl}" target="_blank" rel="noopener" style="display:inline-block;margin:6px 4px;padding:8px 14px;background:#ff0000;color:#fff;text-decoration:none;border-radius:4px;font-size:13px;font-weight:600">${_t("player.yt_err.open_on_yt")}</a>` : '';
-            const fallbackBtn = `<button id="ytErrLoadLocal" style="display:inline-block;margin:6px 4px;padding:8px 14px;background:var(--accent,#5a9af2);color:#fff;border:none;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer">${_t("player.yt_err.load_local")}</button>`;
-            container.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px">
-              ${_t("player.yt_err.cannot_embed")}<br>
-              <span style="font-size:11px;opacity:.75">${_t("player.yt_err.cannot_embed_hint")}</span>
-              <div style="margin-top:12px">${ytBtn}${fallbackBtn}</div>
-            </div>`;
-            const localBtn = document.getElementById('ytErrLoadLocal');
-            if (localBtn && typeof _showYtFallbackPanel === 'function') {
-              localBtn.addEventListener('click', () => _showYtFallbackPanel());
-            }
-          }
-          showToast(_t("toast.yt.cannot_embed"), 6000);
-          _updateYtReopenBtn();
-        }
-      }
-    });
-  }
-
-  function _startYTSync() {
-    if (_ytSyncTimer) clearInterval(_ytSyncTimer);
-    _ytSyncTimer = setInterval(() => {
-      if (!_ytPlayer || typeof _ytPlayer.getCurrentTime !== "function") return;
-      try {
-        const state = _ytPlayer.getPlayerState();
-        // -1=unstarted, 0=ended, 1=playing, 2=paused, 3=buffering, 5=cued
-        // Always refresh time/progress UI for states 1/2/3 so paused + buffering show the real position;
-        // skip heavy chord/instrument animation unless actually playing.
-        if (state === -1) return;
-        let t = _ytPlayer.getCurrentTime();
-        if (abState === "active" && abA != null && abB != null && t >= abB) {
-          _ytPlayer.seekTo(abA, true);
-          t = abA;
-        }
-
-        // Always keep the time display + progress bar in sync with the real YT currentTime,
-        // including when paused / buffering, so a seek while paused visibly lands.
-        const dur = _ytPlayer.getDuration();
-        timeCurrent.textContent = formatTime(t);
-        if (dur > 0) {
-          timeDuration.textContent = formatTime(dur);
-          const pct = (t / dur) * 100;
-          if (topProgressFill) topProgressFill.style.width = pct + "%";
-        }
-
-        // Chord/instrument animation only while playing (state 1) to avoid burning cycles when paused
-        if (state !== 1) return;
-        // Task 1: gate chord/instrument updates when YT length ≠ chord length (time/progress still update above).
-        if (_ytSyncDisabled) return;
-        if (t > 0) {
-          updateActiveChord(t);
-          _updateBeatDots(t);
-          _updateKeyDisplay(t);
-          if (activeTab === "piano") {
-            update88Piano(t);
-            drawWaterfall(t);
-          } else {
-            const _inst = InstrumentRegistry.get(activeTab);
-            if (_inst) _inst.update(t);
-          }
-        }
-      } catch (e) {
-        // Expose for post-mortem debugging: open DevTools on the player page,
-        // check window.__lcYtError for the last exception.
-        window.__lcYtError = { msg: e && e.message, when: Date.now() };
-      }
-    }, 50); // 20 fps for smooth animation
-  }
-
-  // --- AI Auditing Synthesizer (Salamander Grand Piano Sampler) ---
-  class PianoSynth {
-    constructor() {
-      this.ctx = null;
-      this.masterGain = null;
-      this.volLeft = 1;
-      this.volRight = 1;
-      this.samples = {};    // MIDI note -> AudioBuffer
-      this.loading = false;
-      this.loaded = false;
-      // Salamander Grand Piano (CC-BY-3.0) via Tone.js CDN
-      this._baseUrl = "https://tonejs.github.io/audio/salamander/";
-      // Notes we actually load (every 3 semitones covers 88 keys with pitch-shift)
-      this._sampleNotes = [
-        21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54,
-        57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90,
-        93, 96, 99, 102, 105, 108
-      ];
-    }
-
-    _noteToName(midi) {
-      // Tone.js Salamander uses sharps (Cs, Ds, Fs, Gs, As), not flats
-      const names = ['C','Cs','D','Ds','E','F','Fs','G','Gs','A','As','B'];
-      const oct = Math.floor(midi / 12) - 1;
-      return names[midi % 12] + oct;
-    }
-
-    async _loadSamples() {
-      if (this.loading || this.loaded) return;
-      this.loading = true;
-      const promises = this._sampleNotes.map(async (note) => {
-        const name = this._noteToName(note);
-        const url = this._baseUrl + name + ".mp3";
-        try {
-          const resp = await fetch(url);
-          if (!resp.ok) return;
-          const buf = await resp.arrayBuffer();
-          this.samples[note] = await this.ctx.decodeAudioData(buf);
-        } catch (e) {
-          console.warn("Failed to load sample:", name, e);
-        }
-      });
-      await Promise.all(promises);
-      this.loaded = true;
-      this.loading = false;
-      console.log(`Piano samples loaded: ${Object.keys(this.samples).length} notes`);
-    }
-
-    _findClosestSample(pitch) {
-      let best = this._sampleNotes[0];
-      let bestDist = Math.abs(pitch - best);
-      for (const n of this._sampleNotes) {
-        const d = Math.abs(pitch - n);
-        if (d < bestDist) { bestDist = d; best = n; }
-      }
-      return best;
-    }
-
-    init() {
-      if (!this.ctx) {
-        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-        this.masterGain = this.ctx.createGain();
-        this.masterGain.gain.value = 0.5;
-        this.masterGain.connect(this.ctx.destination);
-        this._loadSamples();
-      }
-    }
-
-    playNote(pitch, duration, hand, startTime, velocity) {
-      if (!this.ctx) return;
-      if (typeof activeHand !== 'undefined' && activeHand !== "both" && activeHand !== hand) return;
-
-      const vol = hand === 'left' ? this.volLeft : this.volRight;
-      if (vol <= 0) return;
-
-      // Velocity-sensitive gain. Backend accompaniment JSON emits MIDI velocity
-      // (0-127) per note — typically LH=30-40 (soft comping), RH=40-60 (melody).
-      // Before this change velocity was ignored and every note played at vol*0.4,
-      // which combined with LH chord voicings (3+ simultaneous notes) made LH
-      // perceptually ~6x louder than RH. Now velocity drives amplitude linearly.
-      // Curve: vel 30 -> 0.3x, vel 64 -> 0.64x, vel 100+ -> 1.0x.
-      const velGain = Math.max(0.15, Math.min(1.0, (velocity || 64) / 100));
-      // Pedagogical bias: real piano accompaniment is played with less force
-      // than melody. LH 0.55 pushes LH further down after user field-test said
-      // 0.7 still felt loud. RH 1.1 gives melody a bit of presence boost.
-      const handBias = hand === 'left' ? 0.55 : 1.1;
-      const peakGain = vol * 0.75 * velGain * handBias;  // 0.75 = global headroom (user field-tested: 0.5→0.6→0.75)
-
-      // Sampler mode (preferred)
-      if (this.loaded && Object.keys(this.samples).length > 0) {
-        const sampleNote = this._findClosestSample(pitch);
-        const buffer = this.samples[sampleNote];
-        if (!buffer) return;
-
-        const source = this.ctx.createBufferSource();
-        source.buffer = buffer;
-        source.playbackRate.value = Math.pow(2, (pitch - sampleNote) / 12);
-
-        const gain = this.ctx.createGain();
-        source.connect(gain);
-        gain.connect(this.masterGain);
-
-        gain.gain.setValueAtTime(peakGain, startTime);
-        gain.gain.setValueAtTime(peakGain, startTime + Math.max(0, duration - 0.08));
-        gain.gain.linearRampToValueAtTime(0, startTime + duration + 0.1);
-
-        source.start(startTime);
-        source.stop(startTime + duration + 0.15);
-        return;
-      }
-
-      // Fallback: oscillator (while samples are loading)
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = pitch < 60 ? 'triangle' : 'sine';
-      osc.frequency.value = 440 * Math.pow(2, (pitch - 69) / 12);
-      osc.connect(gain);
-      gain.connect(this.masterGain);
-      const oscPeak = peakGain * 0.75;  // osc fallback is harsher; pull it down
-      gain.gain.setValueAtTime(0, startTime);
-      gain.gain.linearRampToValueAtTime(oscPeak, startTime + 0.02);
-      gain.gain.exponentialRampToValueAtTime(Math.max(oscPeak * 0.25, 0.001), Math.max(startTime + 0.02, startTime + duration - 0.05));
-      gain.gain.linearRampToValueAtTime(0, startTime + duration);
-      osc.start(startTime);
-      osc.stop(startTime + duration);
-    }
-  }
-
-  const aiSynth = new PianoSynth();
-  let lastScheduledTime = 0;
 
   function scheduleNotes(currentTime) {
       if (!aiSynth.ctx) return;
