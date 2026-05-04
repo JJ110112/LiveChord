@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=20">
-  <link rel="stylesheet" href="/css/home.css?v=28">
+  <link rel="stylesheet" href="/css/home.css?v=29">
   <link rel="stylesheet" href="/css/help.css?v=4">
   <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
        Authorization for logged-in users, mode-aware 401 handling. Replaces
@@ -49,7 +49,7 @@
   <script src="/js/auth.js?v=4"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
-  <script src="/js/i18n.js?v=25"></script>
+  <script src="/js/i18n.js?v=26"></script>
 </head>
 <body>
 
@@ -149,7 +149,6 @@
   <section id="secHomeIntro" class="home-intro" style="display:none">
     <div class="home-intro-inner">
       <img src="/img/cover.png?v=1" alt="LiveChord" class="home-intro-cover">
-      <a href="/login" class="home-intro-cta" data-i18n="home.intro.cta">開始免費使用</a>
     </div>
   </section>
 
@@ -164,7 +163,7 @@
        zh-TW switch. -->
   <section id="secHomeHero" class="home-hero" style="display:none">
     <h1 class="home-hero-title">Turn your audio into a real-time chord chart</h1>
-    <p class="home-hero-tagline" data-i18n="home.hero.tagline">Upload an audio file. AI detects the chord progression, beats, and key. Practice with synced piano, guitar, ukulele, accordion, and arranger views — transpose, slow-down, A-B loop, all in your browser. Free.</p>
+    <p class="home-hero-tagline" data-i18n="home.hero.tagline">Upload an audio file. AI detects the chord progression, beats, and key. Practice with synced piano, guitar, ukulele, accordion, and arranger views — transpose, slow-down, A-B loop, all in your browser.</p>
     <div class="home-hero-cta-row">
       <button id="heroUploadBtn" class="home-hero-cta" data-i18n="home.hero.cta">Get started for free</button>
     </div>
@@ -536,6 +535,6 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 }
 </script>
 
-<script src="/js/app.js?v=83"></script>
+<script src="/js/app.js?v=84"></script>
 </body>
 </html>

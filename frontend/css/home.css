@@ -463,60 +463,29 @@
   margin-bottom: 32px;
 }
 
-/* Marketing intro banner — top of homepage for non-logged-in visitors.
-   Slim CTA-first layout; encourages sign-up before the visitor scrolls
-   into the (longer) hero + how-it-works sections below. */
+/* Marketing intro — standalone cover image at the top of the logged-out
+   homepage. No frame / background — image sits naked on the page bg so it
+   can carry its own composition. CTA lives in the hero block below. */
 .home-intro {
   margin: 8px 0 24px;
-  padding: 22px 24px;
-  background: linear-gradient(135deg,
-    color-mix(in srgb, var(--accent) 14%, var(--bg-card)),
-    color-mix(in srgb, var(--accent) 4%, var(--bg-card)));
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
-  border-radius: var(--radius);
+  padding: 0;
+  background: none;
+  border: none;
 }
 .home-intro-inner {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 18px;
+  justify-content: center;
   max-width: 1100px;
   margin: 0 auto;
-  text-align: center;
 }
 .home-intro-cover {
   display: block;
-  width: min(540px, 100%);
+  width: min(720px, 100%);
   max-width: 100%;
   height: auto;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-}
-.home-intro-cta {
-  display: inline-block;
-  flex-shrink: 0;
-  padding: 11px 26px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 15px;
-  font-weight: 600;
-  text-decoration: none;
-  white-space: nowrap;
-  box-shadow: 0 4px 14px rgba(33, 150, 243, 0.35);
-  transition: transform 0.15s, box-shadow 0.15s;
-}
-.home-intro-cta:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(33, 150, 243, 0.45);
 }
 @media (max-width: 600px) {
-  .home-intro {
-    padding: 16px 14px;
-    margin: 4px 0 18px;
-  }
-  .home-intro-inner { flex-direction: column; align-items: stretch; text-align: center; }
-  .home-intro-cta { width: 100%; box-sizing: border-box; }
+  .home-intro { margin: 4px 0 18px; }
 }
 
 /* Public-mode homepage hero (Plan B 2026-05-04). Static markup so

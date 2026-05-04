@@ -6211,7 +6211,14 @@
             }
           } catch {}
 
-          // Try to auto-load audio from IndexedDB (uploaded file pass-through)
+          // Try to auto-load audio from IndexedDB (uploaded file pass-through).
+          // Keep the blob — users can land on this hash again from 最近播放 or
+          // 本機音樂 cards, and recent-card clicks don't have the local-id ↔
+          // hash copy step that the local-tracks card uses, so deleting the
+          // blob after first play stranded users with the YT fallback panel
+          // on every replay. IndexedDB is bounded by user-explicit add/remove
+          // via the local-tracks list; uncapped growth is preferable to the
+          // surprise "I uploaded this 5 seconds ago, why doesn't it play?"
           let audioLoaded = false;
           try {
             const blob = await audioDBLoad(hashMode);
@@ -6221,7 +6228,6 @@
               _usingLocalFile = true;
               audio.play().catch(() => {});
               audioLoaded = true;
-              audioDBDelete(hashMode); // clean up storage
             }
           } catch (e) { console.warn("IndexedDB load failed:", e); }
 

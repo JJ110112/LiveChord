@@ -873,6 +873,7 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   padding: 6px 8px;
   min-width: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .acc-right-panel {

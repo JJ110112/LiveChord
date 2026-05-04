@@ -647,7 +647,7 @@
   "home.hero.feat3.body": "Transpose to any key, slow playback to 0.5×, loop a single section A-B, and let the bar-aware splitter break long chords into one-bar cards. Designed for actual practice, not casual listening.",
   "home.hero.feat3.title": "Built for practice",
   "home.hero.rights_notice": "⚠ Please only upload audio you have the right to use.",
-  "home.hero.tagline": "Upload an audio file. AI detects the chord progression, beats, and key. Practice with synced piano, guitar, ukulele, accordion, and arranger views — transpose, slow-down, A-B loop, all in your browser. Free.",
+  "home.hero.tagline": "Upload an audio file. AI detects the chord progression, beats, and key. Practice with synced piano, guitar, ukulele, accordion, and arranger views — transpose, slow-down, A-B loop, all in your browser.",
   "home.hero.title": "Turn your audio into a real-time chord chart",
   "home.how_it_works.heading": "How LiveChord works",
   "home.how_it_works.step1.body": "Drag an audio file onto the upload area or click to pick one. MP3, FLAC, WAV, M4A and OGG up to 200 MB. The file lives in memory only for the duration of analysis — it never goes into a long-term archive.",

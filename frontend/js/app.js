@@ -134,18 +134,14 @@
           if (secBetaLocal) secBetaLocal.style.display = "none";
           if (secBetaRecent) secBetaRecent.style.display = "none";
           if (secFavorites) secFavorites.style.display = "none";
-          // Wire the hero "Upload audio to get started" CTA — opens the
-          // upload modal directly. (Anonymous file upload is supported in
-          // public mode via X-Anon-Id; the user sees their analysis but
-          // it's not tied to an account until they sign in.)
+          // Wire the hero "Get started for free" CTA — routes to /login so
+          // the marketing funnel ends at sign-up. The post-login dashboard
+          // is where uploads happen, not the marketing page.
           const cta = $("#heroUploadBtn");
           if (cta && !cta._lcWired) {
             cta._lcWired = true;
             cta.addEventListener("click", () => {
-              const panel = $("#betaFabPanel");
-              const backdrop = $("#betaFabBackdrop");
-              if (panel) { panel.classList.add("open"); panel.classList.remove("file-only"); }
-              if (backdrop) backdrop.classList.add("open");
+              window.location.href = "/login";
             });
           }
         }
@@ -264,12 +260,17 @@
     const analyzed = tracks.filter(t => t.analyzedHash);
     const pending = tracks.filter(t => !t.analyzedHash);
 
-    // Analyzed: horizontal grid-item cards (like 最近播放)
+    // Analyzed: horizontal grid-item cards (like 最近播放). Backend extracts
+    // an embedded cover at upload time (process_queue.py _extract_cover) and
+    // serves it from /api/process/cover/<hash>; render the same <img> the
+    // recent-list uses so the card matches 最近播放 visually.
     analyzedRow.innerHTML = analyzed.map(t => {
       const safeName = escapeHtml(t.name.replace(/\.[^.]+$/, ""));
+      const hash = escapeHtml(t.analyzedHash);
       return `
         <div class="grid-item local-analyzed-card" data-id="${escapeHtml(t.id)}" style="cursor:pointer; position:relative">
-          <div class="cover-placeholder" style="display:flex">&#x1F3B5;</div>
+          <img class="cover" src="/api/process/cover/${hash}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
+          <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
           <div class="info">
             <div class="title" title="${safeName}">${safeName}</div>
           </div>
