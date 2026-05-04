@@ -554,6 +554,75 @@
   }
 }
 
+/* "How it works" — 3-step explanation below the hero. */
+.home-how-it-works {
+  margin: 0 0 40px;
+  padding: 28px 24px 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.hiw-heading {
+  font-size: clamp(18px, 2.5vw, 22px);
+  font-weight: 700;
+  margin: 0 0 22px;
+  color: var(--text);
+  text-align: center;
+}
+.hiw-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+.hiw-step {
+  position: relative;
+  padding: 18px 16px 16px 56px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.hiw-step .hiw-num {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(33, 150, 243, 0.3);
+}
+.hiw-step .hiw-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+.hiw-step .hiw-body {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0;
+  line-height: 1.6;
+}
+@media (max-width: 600px) {
+  .home-how-it-works {
+    padding: 20px 14px 16px;
+    margin: 0 0 28px;
+  }
+  .hiw-steps {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
 .dash-section:last-child {
   margin-bottom: 0px;
 }

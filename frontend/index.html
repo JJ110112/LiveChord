@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=20">
-  <link rel="stylesheet" href="/css/home.css?v=25">
+  <link rel="stylesheet" href="/css/home.css?v=26">
   <link rel="stylesheet" href="/css/help.css?v=4">
   <!-- Warm the CDN so the player page's YouTube IFrame bootstraps faster -->
   <link rel="preconnect" href="https://www.youtube.com">
@@ -52,7 +52,7 @@
   <script src="/js/auth.js?v=4"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
-  <script src="/js/i18n.js?v=22"></script>
+  <script src="/js/i18n.js?v=23"></script>
 </head>
 <body>
 
@@ -177,6 +177,32 @@
       </div>
     </div>
     <p class="home-hero-rights" data-i18n="home.hero.rights_notice">⚠ Please only upload audio you have the right to use.</p>
+  </section>
+
+  <!-- "How it works" — 3-step explanation. Same visibility rules as
+       the hero: public-mode only, hidden after returning visitor has
+       analyzed songs. Static markup so crawlers see the steps and the
+       step body text — more long-tail SEO surface for queries like
+       "how to get chords from audio" / "AI chord detection upload". -->
+  <section id="secHomeHowItWorks" class="home-how-it-works" style="display:none">
+    <h2 class="hiw-heading" data-i18n="home.how_it_works.heading">How LiveChord works</h2>
+    <ol class="hiw-steps">
+      <li class="hiw-step">
+        <div class="hiw-num">1</div>
+        <h3 class="hiw-title" data-i18n="home.how_it_works.step1.title">Upload your audio</h3>
+        <p class="hiw-body" data-i18n="home.how_it_works.step1.body">Drag an audio file onto the upload area or click to pick one. MP3, FLAC, WAV, M4A and OGG up to 200 MB. The file lives in memory only for the duration of analysis — it never goes into a long-term archive.</p>
+      </li>
+      <li class="hiw-step">
+        <div class="hiw-num">2</div>
+        <h3 class="hiw-title" data-i18n="home.how_it_works.step2.title">AI analyzes the song</h3>
+        <p class="hiw-body" data-i18n="home.how_it_works.step2.body">A chord-recognition transformer detects the chord progression. A beat-tracking model finds bar lines and tempo. A section detector labels verses, choruses and bridges. Typical analysis takes 30 seconds to 2 minutes depending on song length.</p>
+      </li>
+      <li class="hiw-step">
+        <div class="hiw-num">3</div>
+        <h3 class="hiw-title" data-i18n="home.how_it_works.step3.title">Practice with synced views</h3>
+        <p class="hiw-body" data-i18n="home.how_it_works.step3.body">The player opens with chords, fingering and timing in lockstep with the audio. Transpose to your singing key, slow playback to 0.5×, loop a single section A-B, switch instrument view at any time. Built for actual practice — not just casual listening.</p>
+      </li>
+    </ol>
   </section>
 
   <!-- recent section -->
@@ -521,6 +547,6 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 }
 </script>
 
-<script src="/js/app.js?v=77"></script>
+<script src="/js/app.js?v=78"></script>
 </body>
 </html>
