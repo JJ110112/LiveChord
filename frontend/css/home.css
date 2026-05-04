@@ -837,18 +837,34 @@
 
 .btn-small {
   padding: 7px 16px;
-  border: none;
+  border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+  /* Theme-aware default: visible chip on both light and dark themes.
+     The previous unstyled rule fell back to the browser's grey button
+     which read fine on dark but disappeared on the light/cream
+     backgrounds. Use the same card surface vars the rest of the
+     dashboard cards use so the button blends in but stays legible. */
+  background: var(--bg-hover, rgba(255,255,255,0.06));
+  color: var(--text);
+}
+.btn-small:hover {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-hover, rgba(255,255,255,0.06)));
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
 }
 .btn-accent {
   background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
 }
-.btn-accent:hover { opacity: 0.85; }
+.btn-accent:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  opacity: 0.85;
+}
 
 .beta-progress { margin-top: 12px; }
 .beta-progress-title {
