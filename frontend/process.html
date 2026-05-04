@@ -89,23 +89,6 @@
     .file-info .name { font-weight: 600; }
     .file-info .size { color: var(--text-dim); margin-left: 8px; }
 
-    /* YouTube input */
-    .yt-row {
-      display: flex;
-      gap: 10px;
-    }
-    .yt-row input {
-      flex: 1;
-      padding: 10px 14px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      background: var(--bg);
-      color: var(--text);
-      font-size: 0.95rem;
-    }
-    .yt-row input::placeholder { color: var(--text-dim); opacity: 0.6; }
-    .yt-row input:focus { outline: none; border-color: var(--accent); }
-
     /* Buttons */
     .btn {
       padding: 10px 20px;
@@ -236,22 +219,6 @@
     </div>
   </div>
 
-  <!-- YouTube card — hidden on public mode (Plan B 2026-05-04: upload-only) -->
-  <div class="card" id="ytCard" style="display:none">
-    <h2><span class="icon">&#x1F3AC;</span> <span data-i18n="process.youtube.heading">Analyze YouTube URL</span></h2>
-    <div class="yt-row">
-      <input type="text" id="ytUrl" placeholder="https://www.youtube.com/watch?v=...">
-      <button class="btn btn-primary" id="btnYoutube" onclick="startYoutube()" data-i18n="process.youtube.btn_analyze">Analyze</button>
-    </div>
-    <div class="progress-wrap" id="ytProgress">
-      <div class="progress-bar"><div class="fill" id="ytFill"></div></div>
-      <div class="progress-label">
-        <span id="ytStatusText" data-i18n="process.youtube.processing">Processing...</span>
-        <span id="ytPct">0%</span>
-      </div>
-    </div>
-  </div>
-
   <!-- Jobs list -->
   <div class="card">
     <h2><span class="icon">&#x1F4CB;</span> <span data-i18n="process.history.heading">Analysis history</span></h2>
@@ -292,7 +259,7 @@
   /* ── State ── */
   let selectedFile = null;
   const pendingFiles = {};   // job_id → File (for IndexedDB pass-through)
-  const jobs = [];           // { job_id, title, status, progress, result_hash, error, source_type, youtube_url }
+  const jobs = [];           // { job_id, title, status, progress, result_hash, error, source_type }
   const POLL_MS = 2000;
 
   /* ── TOS guard ── */
@@ -329,7 +296,6 @@
           result_hash: h.result_hash || null,
           error: h.status === 'error' ? 'Failed' : '',
           source_type: h.source_type || '',
-          youtube_url: h.youtube_url || '',
         });
       }
       renderJobs();
@@ -402,46 +368,6 @@
     fileInput.value = '';
   }
 
-  /* ── YouTube ── */
-  async function startYoutube() {
-    const input = document.getElementById('ytUrl');
-    const url = input.value.trim();
-    if (!url) return;
-    const btn = document.getElementById('btnYoutube');
-    btn.disabled = true;
-    const prog = document.getElementById('ytProgress');
-    const fill = document.getElementById('ytFill');
-    const text = document.getElementById('ytStatusText');
-    const pct = document.getElementById('ytPct');
-    prog.style.display = 'block';
-    fill.style.width = '10%';
-    text.textContent = _tr('process.youtube.submitting', 'Submitting...');
-    pct.textContent = '10%';
-
-    try {
-      const res = await fetch('/api/process/youtube', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || res.statusText);
-      }
-      const data = await res.json();
-      fill.style.width = '20%';
-      text.textContent = _tr('process.upload.queued_msg', 'Added to queue');
-      pct.textContent = '20%';
-      trackJob(data.job_id, 'YouTube: ' + url.slice(-15), fill, text, pct);
-      input.value = '';
-    } catch (e) {
-      text.textContent = _tr('process.status.failed_prefix', 'Failed: ') + e.message;
-      fill.style.width = '0%';
-      pct.textContent = '';
-    }
-    btn.disabled = false;
-  }
-
   /* ── Poll job status ── */
   function trackJob(jobId, title, fill, statusText, pctText) {
     const entry = { job_id: jobId, title, status: 'queued', progress: 0, result_hash: null, error: '' };
@@ -460,7 +386,6 @@
         entry.result_hash = d.result_hash;
         entry.error = d.error;
         entry.source_type = d.source_type || entry.source_type;
-        entry.youtube_url = d.youtube_url || entry.youtube_url;
         if (d.title) entry.title = d.title;
 
         if (fill) { fill.style.width = maxProgress + '%'; }
@@ -519,9 +444,6 @@
       let action = '';
       if (j.status === 'done' && j.result_hash) {
         action = `<a class="action-link" href="/player?hash=${j.result_hash}">${esc(viewLabel)}</a>`;
-        if (j.source_type === 'youtube' && j.youtube_url) {
-          action = `<a class="action-link" href="${esc(j.youtube_url)}" target="_blank" style="margin-right:8px">YouTube</a>` + action;
-        }
       } else if (j.status === 'error' && j.error) {
         action = `<span style="font-size:0.8rem;color:#f44336">${esc(j.error.slice(0, 60))}</span>`;
       }
@@ -534,19 +456,6 @@
     d.textContent = s;
     return d.innerHTML;
   }
-</script>
-<script>
-  // Plan B (2026-05-04): YouTube ingest disabled on public mode. Only show
-  // the YT card when running on personal/beta. Default-hidden in HTML so
-  // public visitors never see a flash of the card before this script runs.
-  (function () {
-    fetch("/api/config/public").then(r => r.json()).then(cfg => {
-      if (cfg.deployment_mode !== "public") {
-        const c = document.getElementById("ytCard");
-        if (c) c.style.display = "";
-      }
-    }).catch(() => {});
-  })();
 </script>
 </body>
 </html>

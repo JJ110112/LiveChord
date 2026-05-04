@@ -3,7 +3,6 @@ Disallow: /api/
 Disallow: /admin
 Disallow: /editor
 Disallow: /process
-Disallow: /share
 Disallow: /tos
 Allow: /
 

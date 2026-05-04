@@ -42,9 +42,6 @@
   <link rel="stylesheet" href="/css/base.css?v=20">
   <link rel="stylesheet" href="/css/home.css?v=26">
   <link rel="stylesheet" href="/css/help.css?v=4">
-  <!-- Warm the CDN so the player page's YouTube IFrame bootstraps faster -->
-  <link rel="preconnect" href="https://www.youtube.com">
-  <link rel="dns-prefetch" href="https://www.youtube.com">
   <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
        Authorization for logged-in users, mode-aware 401 handling. Replaces
        the inline blind-redirect block. Must load synchronously before any
@@ -65,8 +62,8 @@
   <div class="search-box">
     <input id="searchInput" type="text"
            data-i18n-attr="placeholder=common.search_placeholder_short"
-           placeholder="Paste a YouTube URL..." autocomplete="off">
-    <div class="search-marquee" aria-hidden="true"><span class="search-marquee-text" data-i18n="common.search_placeholder_short">Paste a YouTube URL...</span></div>
+           placeholder="Upload an audio file..." autocomplete="off">
+    <div class="search-marquee" aria-hidden="true"><span class="search-marquee-text" data-i18n="common.search_placeholder_short">Upload an audio file...</span></div>
     <div id="searchResults" class="search-results"></div>
   </div>
   <a href="/sponsor" class="header-coffee-btn" id="btnHeaderCoffee"
@@ -236,12 +233,6 @@
     <input type="file" id="betaLocalAudioInput" accept="audio/*" multiple style="display:none">
   </section>
 
-  <!-- YouTube playlists — user-subscribed playlists, analyze one-at-a-time -->
-  <section id="secBetaPlaylists" class="dash-section" style="display:none">
-    <h2 class="dash-title" data-i18n="home.section.playlists">YouTube playlists</h2>
-    <div id="betaPlaylistList" class="yt-playlist-list" style="margin-top:8px"></div>
-  </section>
-
   <!-- First-run instrument picker — shown once if livechord_tab unset.
        Writes to localStorage.livechord_tab so /player picks up the choice
        on next song open. Dismissible (defaults to piano if skipped). -->
@@ -296,20 +287,6 @@
     <div class="beta-progress" id="betaUploadProgress" style="display:none">
       <div class="progress-bar"><div class="progress-fill" id="betaProgressFill"></div></div>
       <div class="progress-info"><span id="betaProgressText" data-i18n="home.modal.progress_text">Analyzing…</span><span id="betaProgressPct">0%</span></div>
-    </div>
-    <div id="betaYtRow" class="add-song-yt-row" style="display:flex;gap:8px;align-items:center;margin-top:10px">
-      <span>&#x1F3AC;</span>
-      <input type="text" id="betaYtUrl"
-             data-i18n-attr="placeholder=home.modal.yt_placeholder"
-             placeholder="YouTube URL..."
-             style="flex:1;min-width:0;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.85rem">
-      <button class="btn-small btn-accent" id="betaYtBtn" style="flex-shrink:0"
-              onclick="window._betaStartYoutube()"
-              data-i18n="home.modal.btn_analyze">Analyze</button>
-    </div>
-    <div class="beta-progress" id="betaYtProgress" style="display:none;margin-top:8px">
-      <div class="progress-bar"><div class="progress-fill" id="betaYtFill"></div></div>
-      <div class="progress-info"><span id="betaYtText" data-i18n="home.modal.processing_text">Processing…</span><span id="betaYtPct">0%</span></div>
     </div>
   </div>
 
