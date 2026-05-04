@@ -92,6 +92,22 @@
           const up = $("#betaUploadProgress"); if (up) up.style.display = "none";
           const yt = $("#betaYtProgress"); if (yt) yt.style.display = "none";
           const tt = $("#betaProgressTitle"); if (tt) tt.textContent = "";
+          // Cancel any in-flight analysis poll. Backend job keeps running —
+          // result hash will still land via process_audit if the user
+          // re-uploads the same file (file_hash dedupe). What we MUST
+          // reset is the modal state so re-opening doesn't render a
+          // stuck-disabled 分析 button + null _betaSelectedFile + hidden
+          // file-info row, which is what the user hit when dismissing
+          // mid-upload then clicking the per-track 分析 again.
+          if (_betaActivePollTimer) {
+            clearInterval(_betaActivePollTimer);
+            _betaActivePollTimer = null;
+          }
+          _betaSelectedFile = null;
+          _currentAnalyzingLocalId = null;
+          const fi = $("#betaFileInfo"); if (fi) fi.style.display = "none";
+          const ub = $("#betaUploadBtn"); if (ub) ub.disabled = false;
+          const yb = $("#betaYtBtn"); if (yb) yb.disabled = false;
         };
         if (closeBtn) closeBtn.addEventListener("click", closeAddSongModal);
         if (backdrop) backdrop.addEventListener("click", closeAddSongModal);
@@ -176,6 +192,12 @@
   // ---- beta upload logic (homepage) ----
   let _betaSelectedFile = null;
   const _betaPendingFiles = {};
+  // Hoisted out of _betaPollJob so closeAddSongModal can stop the polling
+  // when the user dismisses the modal mid-analysis. Without this the
+  // interval keeps running, _betaSelectedFile=null at end of upload, and
+  // a re-opened modal lands in a half-broken state (analyze button stuck
+  // disabled, file-info row hidden).
+  let _betaActivePollTimer = null;
   const POLL_MS = 2000;
 
   function _initBetaUpload() {
@@ -352,6 +374,11 @@
     });
     _betaPickFile(file);
     _currentAnalyzingLocalId = id;
+    // Belt-and-suspenders: ensure analyze button is clickable on
+    // re-open. closeAddSongModal already resets this, but if anything
+    // ever calls _onLocalTrackAction without going through the close
+    // path the button could still be disabled from a prior upload.
+    const ub = $("#betaUploadBtn"); if (ub) ub.disabled = false;
     const panel = $("#betaFabPanel");
     const backdrop = $("#betaFabBackdrop");
     if (panel) { panel.classList.add("open"); panel.classList.add("file-only"); }
@@ -461,10 +488,13 @@
     // Seed with the current visual width (already set by caller to 20–30%) so the
     // bar never jumps backwards when the first poll returns a lower backend value.
     let maxProgress = fill ? parseInt((fill.style.width || "0").replace("%", "")) || 0 : 0;
+    // Cancel any prior poll so two analyses can't race their progress
+    // updates against the same DOM elements.
+    if (_betaActivePollTimer) { clearInterval(_betaActivePollTimer); _betaActivePollTimer = null; }
     const timer = setInterval(async () => {
       try {
         const res = await fetch(`/api/process/status/${jobId}`);
-        if (!res.ok) { clearInterval(timer); return; }
+        if (!res.ok) { clearInterval(timer); _betaActivePollTimer = null; return; }
         const d = await res.json();
         maxProgress = Math.max(maxProgress, d.progress);
         if (fill) fill.style.width = maxProgress + "%";
@@ -495,6 +525,7 @@
 
         if (d.status === "done" && d.result_hash) {
           clearInterval(timer);
+          _betaActivePollTimer = null;
           // Store audio blob in IndexedDB for auto-play
           const pendingFile = _betaPendingFiles[jobId];
           if (pendingFile) {
@@ -518,6 +549,7 @@
           }, 500);
         } else if (d.status === "error") {
           clearInterval(timer);
+          _betaActivePollTimer = null;
           if (statusText) statusText.textContent = _t("home.progress.failed_prefix") + (d.error || "Unknown");
           $("#betaUploadBtn") && ($("#betaUploadBtn").disabled = false);
           $("#betaYtBtn") && ($("#betaYtBtn").disabled = false);
@@ -526,6 +558,7 @@
         }
       } catch (e) {}
     }, POLL_MS);
+    _betaActivePollTimer = timer;
   }
 
   // ---- beta history ----
