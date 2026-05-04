@@ -218,8 +218,30 @@
     });
   }
 
+  // Public mode is fronted by Cloudflare which caps the request body
+  // at 100 MB on the free plan — bigger files get a 413 from Cloudflare's
+  // edge before uvicorn ever sees them, which surfaced to users as
+  // "失敗 10%" with no real error message. Personal/beta mode hits the
+  // backend directly with no Cloudflare in front, so 200 MB stays the
+  // ceiling there.
+  function _maxUploadBytes() {
+    return _isPublicMode ? 100 * 1024 * 1024 : 200 * 1024 * 1024;
+  }
+  function _maxUploadMb() {
+    return _isPublicMode ? 100 : 200;
+  }
+  function _alertFileTooBig(file) {
+    const mb = (file.size / 1024 / 1024).toFixed(1);
+    const limit = _maxUploadMb();
+    // Useful hint: lossless FLAC at CD quality is roughly 30-50 MB per
+    // 5-min track, so a 180 MB FLAC is usually a high-bitrate or
+    // long-duration source. Suggest MP3 320 kbps (~12 MB / 5 min)
+    // which still gives clean chord detection.
+    alert(_t("home.alert.file_too_big_hint", { size: mb, limit: limit }));
+  }
+
   function _betaPickFile(file) {
-    if (file.size > 200 * 1024 * 1024) { alert(_t("home.alert.file_too_big")); return; }
+    if (file.size > _maxUploadBytes()) { _alertFileTooBig(file); return; }
     _betaSelectedFile = file;
     $("#betaFileName").textContent = file.name;
     $("#betaFileSize").textContent = `(${(file.size / 1024 / 1024).toFixed(1)} MB)`;
@@ -405,9 +427,12 @@
     input.addEventListener("change", async () => {
       const files = Array.from(input.files || []);
       if (!files.length) return;
-      const valid = files.filter(f => f.size <= 200 * 1024 * 1024);
+      const limit = _maxUploadBytes();
+      const valid = files.filter(f => f.size <= limit);
       if (valid.length < files.length) {
-        alert(_t("home.alert.file_too_big"));
+        // Find the first oversize file so the alert can name its size.
+        const big = files.find(f => f.size > limit);
+        if (big) _alertFileTooBig(big);
       }
       const entries = [];
       for (const file of valid) {
