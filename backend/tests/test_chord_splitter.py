@@ -225,6 +225,41 @@ class TestMaybeSplitForServe(unittest.TestCase):
         self.assertFalse(out["auto_split_meta"]["applied"])
         self.assertEqual(out["auto_split_meta"]["reason"], "no-chords")
 
+    def test_three_four_with_fuzz_passes(self):
+        # 'A Thousand Miles' scenario: 93.8 BPM, song genuinely in 3/4.
+        # 125 downbeats over 237s → median gap ~1.90s → bpb ≈ 2.97. The
+        # strict <3.0 gate would reject by 0.03 due to a couple of
+        # dropped/extra downbeats; widened bound to 2.7 lets it pass.
+        # bar_arbitrator on the same chord data also reports
+        # beats_per_bar: 3, so 3/4 is the right call here.
+        bar_gap = (60.0 / 93.8) * 2.97  # ~1.90s
+        raw_db = [round(i * bar_gap, 2) for i in range(20)]
+        data = {
+            "chords": [{"time": 0.0, "end": raw_db[-1], "chord": "B"}],
+            "downbeats": raw_db,
+            "beats_source": "beat_this",
+            "bpm": 93.8,
+        }
+        out = maybe_split_for_serve(data)
+        self.assertTrue(out["auto_split_meta"]["applied"])
+        self.assertEqual(out["auto_split_meta"]["reason"], "ok")
+
+    def test_two_seven_lower_bound_still_rejects(self):
+        # bpb=2.5 is too far from genuine 3/4 — likely sparse half-bar
+        # emissions. Reject, since halved fallback only triggers in
+        # [1.5, 2.3].
+        bar_gap = (60.0 / 100.0) * 2.5  # 1.5s
+        raw_db = [round(i * bar_gap, 2) for i in range(10)]
+        data = {
+            "chords": [{"time": 0.0, "end": raw_db[-1], "chord": "C"}],
+            "downbeats": raw_db,
+            "beats_source": "beat_this",
+            "bpm": 100.0,
+        }
+        out = maybe_split_for_serve(data)
+        self.assertFalse(out["auto_split_meta"]["applied"])
+        self.assertTrue(out["auto_split_meta"]["reason"].startswith("implausible-bpb="))
+
     def test_halved_downbeats_fallback(self):
         # Slow-ballad scenario: beat_this emits a downbeat every 2 beats
         # (half-bar density). With BPM 71.4 and gap 0.84s the raw bpb is

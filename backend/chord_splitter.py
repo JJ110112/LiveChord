@@ -102,19 +102,25 @@ def _resolve_split_downbeats(chord_data: Dict) -> Optional[List[float]]:
     if bpb == 0.0:
         return db_floats
 
-    # Primary: raw downbeats imply plausible bpb.
-    if 3.0 <= bpb <= 5.0:
+    # Primary: raw downbeats imply plausible bpb. Window stretches down
+    # to 2.7 (instead of a hard 3.0) so genuine 3/4 songs whose median
+    # downbeat gap lands at 2.93-2.99 due to a couple of dropped/extra
+    # downbeats among 100+ entries don't get rejected by 0.05 of fuzz.
+    # Upper stays at 5.0 to keep doubled-density (≥6) out — the halved
+    # fallback below handles those.
+    if 2.7 <= bpb <= 5.0:
         return db_floats
 
     # Halved-downbeats fallback: if the raw grid is at half-bar density
     # (bpb ≈ 2), using every other downbeat doubles the bar gap and may
-    # land us back in the plausible window. Window [1.7, 2.3] catches the
-    # common ballad case without touching genuine 3/4 (bpb=3) or compound
-    # meters.
-    if 1.7 <= bpb <= 2.3:
+    # land us back in the plausible window. Window [1.5, 2.3] catches
+    # both the ballad case (bpb≈2.12) and the slow 4/4 with denser
+    # half-bar emissions; doubled lands at [3.0, 4.6], inside the
+    # primary window.
+    if 1.5 <= bpb <= 2.3:
         halved = db_floats[::2]
         bpb_h = _bpb_class(halved, bpm)
-        if 3.0 <= bpb_h <= 5.0:
+        if 2.7 <= bpb_h <= 5.0:
             return halved
 
     return None
@@ -298,7 +304,7 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
         reason = "low-confidence-downbeats"
         if len(downbeats) >= 2 and bpm > 0:
             bpb = _bpb_class([float(d) for d in downbeats], bpm)
-            if bpb and (bpb < 3.0 or bpb > 5.0):
+            if bpb and (bpb < 2.7 or bpb > 5.0):
                 reason = f"implausible-bpb={bpb:.2f}"
         chord_data["auto_split_meta"] = {
             "applied": False,
