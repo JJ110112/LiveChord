@@ -463,6 +463,97 @@
   margin-bottom: 32px;
 }
 
+/* Public-mode homepage hero (Plan B 2026-05-04). Static markup so
+   crawlers see the body content; app.js hides this for returning
+   visitors who already have analyzed songs. */
+.home-hero {
+  margin: 8px 0 40px;
+  padding: 32px 24px 28px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-align: center;
+}
+.home-hero-title {
+  font-size: clamp(22px, 4vw, 32px);
+  font-weight: 800;
+  margin: 0 0 12px;
+  color: var(--text);
+  line-height: 1.25;
+}
+.home-hero-tagline {
+  font-size: clamp(14px, 1.7vw, 16px);
+  color: var(--text-dim);
+  max-width: 720px;
+  margin: 0 auto 22px;
+  line-height: 1.6;
+}
+.home-hero-cta-row {
+  margin-bottom: 32px;
+}
+.home-hero-cta {
+  display: inline-block;
+  padding: 12px 28px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(33, 150, 243, 0.35);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.home-hero-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(33, 150, 243, 0.45);
+}
+.home-hero-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+  text-align: left;
+}
+.home-hero-feature {
+  padding: 18px 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.home-hero-feature .hf-icon {
+  font-size: 26px;
+  margin-bottom: 8px;
+}
+.home-hero-feature .hf-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  color: var(--text);
+}
+.home-hero-feature .hf-body {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0;
+  line-height: 1.55;
+}
+.home-hero-rights {
+  font-size: 12px;
+  color: var(--text-dim);
+  opacity: 0.75;
+  margin: 16px 0 0;
+}
+@media (max-width: 600px) {
+  .home-hero {
+    padding: 22px 14px 18px;
+    margin: 4px 0 28px;
+  }
+  .home-hero-features {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+
 .dash-section:last-child {
   margin-bottom: 0px;
 }

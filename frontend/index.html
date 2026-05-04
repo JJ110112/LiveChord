@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=20">
-  <link rel="stylesheet" href="/css/home.css?v=24">
+  <link rel="stylesheet" href="/css/home.css?v=25">
   <link rel="stylesheet" href="/css/help.css?v=4">
   <!-- Warm the CDN so the player page's YouTube IFrame bootstraps faster -->
   <link rel="preconnect" href="https://www.youtube.com">
@@ -52,7 +52,7 @@
   <script src="/js/auth.js?v=4"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
-  <script src="/js/i18n.js?v=21"></script>
+  <script src="/js/i18n.js?v=22"></script>
 </head>
 <body>
 
@@ -143,7 +143,42 @@
 
 <!-- dashboard layout -->
 <main class="content dashboard-layout">
-  
+
+  <!-- Public-mode hero — explains the service to first-time visitors and
+       gives crawlers a meaningful body to index (the rest of the homepage
+       is JS-rendered cards which Googlebot can't see in first-paint).
+       app.js hides this section once the visitor has at least one
+       analyzed song so returning users aren't shown the marketing copy
+       repeatedly. Static (no data-i18n on H1 / hero p so the EN strings
+       are guaranteed to render even before i18n.js loads — these are
+       the SEO-critical strings). Sub-sections use data-i18n for the
+       zh-TW switch. -->
+  <section id="secHomeHero" class="home-hero" style="display:none">
+    <h1 class="home-hero-title">Turn your audio into a real-time chord chart</h1>
+    <p class="home-hero-tagline" data-i18n="home.hero.tagline">Upload an audio file. AI detects the chord progression, beats, and key. Practice with synced piano, guitar, ukulele, accordion, and arranger views — transpose, slow-down, A-B loop, all in your browser. Free.</p>
+    <div class="home-hero-cta-row">
+      <button id="heroUploadBtn" class="home-hero-cta" data-i18n="home.hero.cta">📤 Upload audio to get started</button>
+    </div>
+    <div class="home-hero-features">
+      <div class="home-hero-feature">
+        <div class="hf-icon">🎵</div>
+        <h3 class="hf-title" data-i18n="home.hero.feat1.title">AI chord detection</h3>
+        <p class="hf-body" data-i18n="home.hero.feat1.body">Drop in any audio file (MP3 / FLAC / WAV / M4A / OGG, up to 200 MB). Our model returns chord progression, beat grid, and key signature in 30 seconds to 2 minutes — depending on song length.</p>
+      </div>
+      <div class="home-hero-feature">
+        <div class="hf-icon">🎹</div>
+        <h3 class="hf-title" data-i18n="home.hero.feat2.title">Five instrument views</h3>
+        <p class="hf-body" data-i18n="home.hero.feat2.body">See the same song through piano, guitar, ukulele, accordion, or arranger lenses. Switch any time — chords, fingering, and timing stay synced; only the visual presentation changes.</p>
+      </div>
+      <div class="home-hero-feature">
+        <div class="hf-icon">🎯</div>
+        <h3 class="hf-title" data-i18n="home.hero.feat3.title">Built for practice</h3>
+        <p class="hf-body" data-i18n="home.hero.feat3.body">Transpose to any key, slow playback to 0.5×, loop a single section A-B, and let the bar-aware splitter break long chords into one-bar cards. Designed for actual practice, not casual listening.</p>
+      </div>
+    </div>
+    <p class="home-hero-rights" data-i18n="home.hero.rights_notice">⚠ Please only upload audio you have the right to use.</p>
+  </section>
+
   <!-- recent section -->
   <section id="secRecent" class="dash-section" style="display:none">
     <h2 class="dash-title" data-i18n="home.section.recent">Recently played</h2>
@@ -486,6 +521,6 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 }
 </script>
 
-<script src="/js/app.js?v=76"></script>
+<script src="/js/app.js?v=77"></script>
 </body>
 </html>

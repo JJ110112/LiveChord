@@ -110,6 +110,42 @@
         const secBetaPlaylists = $("#secBetaPlaylists");
         if (secBetaPlaylists && !_isPublicMode) secBetaPlaylists.style.display = "";
 
+        // Public-mode hero: explain the service to first-time visitors.
+        // Shown when (a) public mode AND (b) no analyzed history yet —
+        // returning users with songs in their history get the dashboard
+        // immediately. Crawlers always see it because the section is in
+        // the static HTML; the hide-if-history check only runs in JS
+        // post-page-load, after Googlebot has already indexed the body.
+        if (_isPublicMode) {
+          const heroSec = $("#secHomeHero");
+          if (heroSec) {
+            heroSec.style.display = "";
+            // Wire CTA to open the existing add-song modal (file upload).
+            const cta = $("#heroUploadBtn");
+            if (cta && !cta._lcWired) {
+              cta._lcWired = true;
+              cta.addEventListener("click", () => {
+                const panel = $("#betaFabPanel");
+                const backdrop = $("#betaFabBackdrop");
+                if (panel) { panel.classList.add("open"); panel.classList.remove("file-only"); }
+                if (backdrop) backdrop.classList.add("open");
+              });
+            }
+            // After the dashboard finishes loading, hide if user already
+            // has analyzed songs. Wait one tick so /api/process/my-history
+            // (called from _loadBetaHistory) has had a chance to populate
+            // sessionStorage hints, then check both that and the DOM
+            // counts of analyzed cards.
+            setTimeout(() => {
+              const recentCount = $("#betaRecentList")?.children.length || 0;
+              const localCount = $("#betaLocalAnalyzedRow")?.children.length || 0;
+              if (recentCount > 0 || localCount > 0) {
+                heroSec.style.display = "none";
+              }
+            }, 1500);
+          }
+        }
+
         // YouTube URL row inside the add-song modal — public mode hides
         // it so file-upload is the only path. The search bar's YT-URL
         // auto-detection CTA is gated separately (see _isPublicMode
