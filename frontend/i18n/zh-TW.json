@@ -638,6 +638,8 @@
   "home.modal.progress_text": "分析中…",
   "home.modal.title": "新增歌曲",
   "home.hero.cta": "📤 上傳音檔開始使用",
+  "home.intro.cta": "開始免費使用",
+  "home.intro.tagline": "免費的 AI 和弦譜服務，從你自己的音檔產生。可在瀏覽器內練習鋼琴、吉他、烏克麗麗與手風琴。",
   "home.hero.feat1.body": "拖入任何音訊檔（MP3 / FLAC / WAV / M4A / OGG，最大 200 MB）。AI 模型會在 30 秒到 2 分鐘內回傳和弦進行、節拍網格與調性，視音檔長度而定。",
   "home.hero.feat1.title": "AI 和弦偵測",
   "home.hero.feat2.body": "用鋼琴、吉他、烏克麗麗、手風琴或編曲琴五種樂器視角看同一首歌。隨時切換——和弦、指法與時間軸保持同步，只有視覺呈現會改變。",

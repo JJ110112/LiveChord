@@ -104,6 +104,14 @@
         const secBetaLocal = $("#secBetaLocalTracks");
         if (secBetaLocal) secBetaLocal.style.display = "";
 
+        // Marketing intro banner: shown to non-logged-in visitors in
+        // public mode. Logged-in users go straight to the dashboard.
+        if (_isPublicMode) {
+          const isLoggedIn = !!localStorage.getItem("livechord_token");
+          const intro = $("#secHomeIntro");
+          if (intro && !isLoggedIn) intro.style.display = "";
+        }
+
         // Public-mode hero: explain the service to first-time visitors.
         // Shown when (a) public mode AND (b) no analyzed history yet —
         // returning users with songs in their history get the dashboard

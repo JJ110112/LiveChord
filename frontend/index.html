@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=20">
-  <link rel="stylesheet" href="/css/home.css?v=26">
+  <link rel="stylesheet" href="/css/home.css?v=27">
   <link rel="stylesheet" href="/css/help.css?v=4">
   <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
        Authorization for logged-in users, mode-aware 401 handling. Replaces
@@ -49,7 +49,7 @@
   <script src="/js/auth.js?v=4"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
-  <script src="/js/i18n.js?v=23"></script>
+  <script src="/js/i18n.js?v=24"></script>
 </head>
 <body>
 
@@ -140,6 +140,18 @@
 
 <!-- dashboard layout -->
 <main class="content dashboard-layout">
+
+  <!-- Marketing intro banner — appears at the top for non-logged-in
+       visitors in public mode. CTA routes to /login; once signed in
+       the user lands back on this page and sees the dashboard
+       (recent / favorites / local music). app.js sets display=""
+       only when (a) public mode AND (b) no localStorage token. -->
+  <section id="secHomeIntro" class="home-intro" style="display:none">
+    <div class="home-intro-inner">
+      <p class="home-intro-tagline" data-i18n="home.intro.tagline">A free, AI-powered chord chart from your own audio. Practice piano, guitar, ukulele, and accordion — anywhere in your browser.</p>
+      <a href="/login" class="home-intro-cta" data-i18n="home.intro.cta">開始免費使用</a>
+    </div>
+  </section>
 
   <!-- Public-mode hero — explains the service to first-time visitors and
        gives crawlers a meaningful body to index (the rest of the homepage
@@ -524,6 +536,6 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 }
 </script>
 
-<script src="/js/app.js?v=78"></script>
+<script src="/js/app.js?v=79"></script>
 </body>
 </html>

@@ -638,6 +638,8 @@
   "home.modal.progress_text": "Analyzing…",
   "home.modal.title": "Add a song",
   "home.hero.cta": "📤 Upload audio to get started",
+  "home.intro.cta": "Get started for free",
+  "home.intro.tagline": "A free, AI-powered chord chart from your own audio. Practice piano, guitar, ukulele, and accordion — anywhere in your browser.",
   "home.hero.feat1.body": "Drop in any audio file (MP3 / FLAC / WAV / M4A / OGG, up to 200 MB). Our model returns chord progression, beat grid, and key signature in 30 seconds to 2 minutes — depending on song length.",
   "home.hero.feat1.title": "AI chord detection",
   "home.hero.feat2.body": "See the same song through piano, guitar, ukulele, accordion, or arranger lenses. Switch any time — chords, fingering, and timing stay synced; only the visual presentation changes.",
