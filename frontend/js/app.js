@@ -377,12 +377,32 @@
     input.addEventListener("change", async () => {
       const files = Array.from(input.files || []);
       if (!files.length) return;
-      for (const file of files) {
-        if (file.size > 200 * 1024 * 1024) continue;
-        await _addLocalTrackEntry(file);
+      const valid = files.filter(f => f.size <= 200 * 1024 * 1024);
+      if (valid.length < files.length) {
+        alert(_t("home.alert.file_too_big"));
+      }
+      const entries = [];
+      for (const file of valid) {
+        entries.push(await _addLocalTrackEntry(file));
       }
       _renderLocalTracks();
       input.value = "";  // re-pick same files allowed
+      // Single-file shortcut: skip the explicit "click 分析" step and
+      // hand off to _onLocalTrackAction (which opens the upload modal
+      // and primes _betaSelectedFile), then immediately fire the upload
+      // so the user lands on the progress bar without an extra click.
+      // Multi-pick keeps the existing per-track analyze button so users
+      // batch-add files and analyze them on their own schedule.
+      if (valid.length === 1 && entries[0]) {
+        const entry = entries[0];
+        await _onLocalTrackAction(entry.id);
+        // _onLocalTrackAction routes to the player immediately when the
+        // entry already has analyzedHash (re-pick of an already-analyzed
+        // file), so guard the auto-upload to the unanalyzed branch.
+        if (!entry.analyzedHash && typeof window._betaStartUpload === "function") {
+          window._betaStartUpload();
+        }
+      }
     });
   }
 
