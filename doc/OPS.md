@@ -2,81 +2,28 @@
 
 Operational procedures for the public deployment on Hetzner CPX21 Hillsboro OR (us-west, IPv4 `5.78.135.8`). Personal/NUC operations stay in [CLAUDE.md](../CLAUDE.md). VPS provider rationale: [vps-survey-for-livechord-jolly-pancake.md](../../.claude/plans/vps-survey-for-livechord-jolly-pancake.md). Deployed 2026-05-03; tunnel `livechord` (UUID `d182dd0a-3655-42db-86e3-b78294aee428`) routes via local config at [/etc/cloudflared/config.yml](../deploy/cloudflared.yml).
 
-## yt-dlp YouTube extraction prerequisites
+## YouTube ingest — REMOVED (2026-05-04)
 
-yt-dlp 2026.x deprecated extraction without a JavaScript runtime, and YouTube added an "n parameter" JS challenge that requires a community-maintained solver script. Both are mandatory for any audio download:
+LiveChord no longer accepts YouTube URLs as an analysis input. The `yt-dlp`
+binary, `yt-dlp-ejs` JS solver, the deno runtime install, and the entire
+cookies-refresh workflow are gone. The repo went open-source under AGPL
+on the same day; chasing YouTube's rotation defense with
+disposable-account cookies wasn't a maintenance burden the project would
+take on. Personal NUC use moved to CD-track ingest only.
 
-1. **Deno** (JS runtime) — `apt` doesn't ship it; install via the official script with target `/usr/local/bin` so it's on the systemd PATH:
-   ```bash
-   apt-get install -y unzip
-   curl -fsSL https://deno.land/install.sh | sh -s -- -y
-   mv /root/.deno/bin/deno /usr/local/bin/deno
-   chmod 755 /usr/local/bin/deno
-   ```
-2. **yt-dlp-ejs** (solver script distribution) — pulled into the venv via [backend/requirements.txt](../backend/requirements.txt). After upgrade just `uv pip install yt-dlp-ejs` to refresh.
+If YouTube ingest needs to come back, it would require reverting the
+`chore(yt-removal stage N/4)` commit series, not flipping a flag — the
+modules and call sites have been deleted.
 
-Without both, yt-dlp errors with "Only images are available for download" / "n challenge solving failed" even with valid cookies.
-
-## yt-dlp cookies refresh
-
-Hetzner IP ranges are flagged by YouTube. Tier 1 (direct) hits 403/SABR walls; tier 2 carries an authenticated cookie jar from a low-value Google account.
-
-### Initial setup (once)
-
-1. Create a throwaway Google account. Don't reuse a real one — when it gets terminated, no collateral damage
-2. Install the [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) extension (the LOCALLY suffix matters — some forks exfiltrate)
-3. Follow the **Proper export procedure** below
-4. Upload to VPS via the `scp` + `install` one-liner under "Standard upload"
-5. systemd unit's `ReadWritePaths=/home/livechord/.config/yt-dlp` already permits writes from the service
-
-### Proper export procedure (avoids YouTube's rotation defense)
-
-YouTube actively rotates `__Secure-1PSIDTS / SIDCC / SAPISID` to defeat yt-dlp. If the browser session keeps running after export, the snapshot you saved becomes stale within hours and yt-dlp errors with `cookies are no longer valid ... rotated in the browser as a security measure`. To prevent this:
-
-1. Open browser → **incognito / private window** (Chrome/Edge `Ctrl+Shift+N`, Firefox `Ctrl+Shift+P`)
-2. Inside incognito: sign into the throwaway Google account at `youtube.com`
-3. Watch 1-2 short videos for ~20-30s each (gives the session legitimacy with YouTube's anti-bot scoring)
-4. New tab in the **same** incognito window → use the cookies extension → export `cookies.txt` for `youtube.com`
-5. **Close the entire incognito window WITHOUT signing out.** Signing out tells YouTube to revoke the session immediately. Just-closing kills the local browser session but YouTube's server-side session stays valid for ~14 days.
-6. Don't open YouTube with that account in any browser until cookies are uploaded — any activity = rotation risk = invalidation.
-
-### Standard upload
-
-```bash
-scp <local-cookies.txt> livechord-vps:/tmp/cookies.txt
-ssh livechord-vps "install -o livechord -g livechord -m 600 /tmp/cookies.txt /home/livechord/.config/yt-dlp/cookies.txt && rm /tmp/cookies.txt && wc -c /home/livechord/.config/yt-dlp/cookies.txt && grep -cE 'SID|LOGIN_INFO|__Secure' /home/livechord/.config/yt-dlp/cookies.txt"
-```
-
-A healthy upload reports ~2.5-15 KB and ≥15 critical-cookie matches. No service restart needed — `yt_dlp_fetch.py` reads the file fresh on every call.
-
-### Weekly refresh (scheduled)
-
-Cookies last ~14 days when both fixes hold (disposable-copy in [yt_dlp_fetch.py](../backend/yt_dlp_fetch.py) + proper export procedure above). Set a calendar reminder for Sunday evening:
-
-1. Re-export per the procedure above
-2. Upload via the standard one-liner
-3. No service restart needed
-
-### Triage when yt-dlp tier 2 fails
-
-```bash
-ssh livechord-vps "wc -c /home/livechord/.config/yt-dlp/cookies.txt; grep -cE 'SID|LOGIN_INFO|__Secure' /home/livechord/.config/yt-dlp/cookies.txt; sudo journalctl -u livechord -n 50 --no-pager | grep -iE 'tier|sign in|rotated'"
-```
-
-| Symptom | Diagnosis | Fix |
-|---|---|---|
-| File size dropped to ~1.3 KB, auth-cookie count <5 | yt-dlp writeback corruption — disposable-copy fix has been reverted or bypassed | Restore `_disposable_cookies` context manager in [backend/yt_dlp_fetch.py](../backend/yt_dlp_fetch.py); user re-uploads cookies |
-| Size unchanged, error mentions "rotated in the browser" | YouTube actively invalidated the session — browser activity after export | User re-exports per "Proper export procedure" above |
-| Size unchanged, error mentions "Sign in to confirm" | Account burned (terminated by YouTube) | User creates fresh throwaway, re-exports |
-| Refreshes needed more than weekly | Manual workflow no longer scales | Build Phase H Modal-tier-3 yt-dlp (`LiveChord-5gg` stub already in `yt_dlp_fetch.py`) |
-
-### Emergency refresh (`ip_block` ratio spikes)
-
-Trigger: weekly `process_audit` query (see survey §Verification step 5) shows `ip_block` ratio crossing 5% on tier 1 calls.
-
-1. Refresh cookies as above
-2. If still failing within 24 h → the throwaway account is burned; create a new one and re-export
-3. If burning new accounts within days → escalate to residential proxy or Phase H Modal tier 3 (see [LiveChord-5gg](https://github.com/...))
+What this means for the VPS:
+- No `yt-dlp` / `deno` / `yt-dlp-ejs` install required
+- `/home/livechord/.config/yt-dlp/` directory unused (deleted)
+- `LIVECHORD_USE_MODAL_YTDL` env var has no effect (the module it gated is gone)
+- The `/api/process/youtube*`, `/api/process/playlist-info`,
+  `/api/process/yt-library-learn` endpoints return 404 unconditionally
+  (well, technically: they don't exist on the router)
+- Users analyse songs by uploading audio files (200 MB cap, MP3 / FLAC /
+  WAV / M4A / OGG)
 
 ## VPS health checks
 
