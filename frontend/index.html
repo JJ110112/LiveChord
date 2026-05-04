@@ -39,8 +39,8 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
-  <link rel="stylesheet" href="/css/base.css?v=20">
-  <link rel="stylesheet" href="/css/home.css?v=31">
+  <link rel="stylesheet" href="/css/base.css?v=21">
+  <link rel="stylesheet" href="/css/home.css?v=32">
   <link rel="stylesheet" href="/css/help.css?v=4">
   <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
        Authorization for logged-in users, mode-aware 401 handling. Replaces
@@ -296,6 +296,15 @@
     </div>
     <div class="beta-progress" id="betaUploadProgress" style="display:none">
       <div class="beta-progress-title" id="betaProgressTitle"></div>
+      <!-- Animated EQ bars while analysis runs (30-120s). Hidden in
+           every other state via the .beta-progress visibility chain. -->
+      <div class="upload-music-bars" aria-hidden="true">
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+      </div>
       <div class="progress-bar"><div class="progress-fill" id="betaProgressFill"></div></div>
       <div class="progress-info"><span id="betaProgressText" data-i18n="home.modal.progress_text">Analyzing…</span><span id="betaProgressPct">0%</span></div>
     </div>
@@ -536,6 +545,6 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 }
 </script>
 
-<script src="/js/app.js?v=86"></script>
+<script src="/js/app.js?v=87"></script>
 </body>
 </html>

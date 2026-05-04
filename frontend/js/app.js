@@ -653,7 +653,13 @@
         // Admin path. NAS browse is personal-only — skip in beta/public to
         // avoid /api/browse 404 spam (the section is already hidden by
         // _checkBetaAccess but the fetch was still firing here).
-        tasks.push(loadRecent(), loadFavorites());
+        // loadRecent populates #secRecent (NAS-library recents). Skip
+        // it in public mode — _loadBetaHistory already populates
+        // #secBetaRecent with the same merged process_audit + library
+        // data, and rendering both gave the user TWO "Recently played"
+        // rows on the public dashboard.
+        if (!_isPublicMode) tasks.push(loadRecent());
+        tasks.push(loadFavorites());
         if (!_isBetaMode) tasks.push(browse(currentPath));
         if (_isBetaMode) tasks.push(_loadBetaHistory());
         // Public-mode users need the upload modal wired so the hero CTA

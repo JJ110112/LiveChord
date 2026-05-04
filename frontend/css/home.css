@@ -877,6 +877,34 @@
   white-space: nowrap;
 }
 .beta-progress-title:empty { display: none; }
+
+/* EQ music-bars animation — runs while analysis is in flight. Same
+   visual language as the player's .music-bars (player.css/style.css)
+   so users see a familiar "audio is being processed" cue during the
+   30-120s analysis wait, instead of just a static progress bar. */
+.upload-music-bars {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 5px;
+  height: 36px;
+  margin-bottom: 12px;
+}
+.upload-music-bars .bar {
+  width: 7px;
+  background-color: var(--accent);
+  border-radius: 3px;
+  animation: upload-eq-jump 0.9s infinite ease-in-out;
+}
+.upload-music-bars .bar:nth-child(1) { height: 12px; animation-delay: 0.1s; }
+.upload-music-bars .bar:nth-child(2) { height: 28px; animation-delay: 0.4s; }
+.upload-music-bars .bar:nth-child(3) { height: 20px; animation-delay: 0.2s; }
+.upload-music-bars .bar:nth-child(4) { height: 26px; animation-delay: 0.5s; background-color: #ff9800; }
+.upload-music-bars .bar:nth-child(5) { height: 16px; animation-delay: 0.3s; }
+@keyframes upload-eq-jump {
+  0%, 100% { transform: scaleY(0.4); transform-origin: bottom; opacity: 0.65; }
+  50%      { transform: scaleY(1.0); transform-origin: bottom; opacity: 1; }
+}
 .progress-bar {
   height: 6px;
   background: var(--bg-hover);

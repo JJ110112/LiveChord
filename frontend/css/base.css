@@ -692,6 +692,19 @@ a:hover { text-decoration: underline; }
   .chord-item .chord-name { font-size: 14px; }
 }
 
+/* Desktop dashboard ordering — flexbox so we can hoist Local music
+   ("+ Pick local audio" entry point) above Recently played + Favorites.
+   Without this hoisting the user has to scroll past two sections to
+   reach the upload button, which buried the primary action. */
+.dashboard-layout { display: flex; flex-direction: column; }
+.dashboard-layout #secBetaLocalTracks { order: 0; }
+.dashboard-layout #secRecent,
+.dashboard-layout #secBetaRecent      { order: 1; }
+.dashboard-layout #secFavorites       { order: 2; }
+.dashboard-layout #secBetaPlaylists   { order: 3; }
+.dashboard-layout #secBrowse          { order: 4; }
+.dashboard-layout .site-footer        { order: 99; }
+
 /* phone (< 640px) */
 @media (max-width: 640px) {
   .header { padding: 10px 12px; gap: 8px; }
@@ -704,14 +717,8 @@ a:hover { text-decoration: underline; }
   }
   .header-fs-btn { display: none !important; }   /* fullscreen affordance redundant on phones */
 
-  /* Reorder home sections to mirror Chordify hierarchy on mobile.
-     Desktop ordering (DOM order) is unchanged — these only apply ≤640px. */
-  .dashboard-layout { display: flex; flex-direction: column; }
-  #secRecent, #secBetaRecent { order: 1; }
-  #secFavorites               { order: 2; }
-  #secBetaLocalTracks         { order: 3; }
-  #secBetaPlaylists           { order: 4; }
-  #secBrowse                  { order: 5; }
+  /* Section ordering applies in both desktop + mobile via the rules
+     just outside this media query — no per-viewport overrides needed. */
   .dash-title { font-size: 18px; padding-top: 8px; }
 
   .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
