@@ -405,17 +405,6 @@
   // when the user loads a local audio file. 0 = unknown / skip the check.
   let _chordDuration = 0;
 
-  // Inert YouTube state. Pre-open-source the player owned a YT IFrame
-  // player + a sync timer + flags for duration verification. The
-  // integration was removed when LiveChord was open-sourced; these
-  // names stay so the residual `if (_ytPlayer && ...)` short-circuits
-  // sprinkled around the file evaluate to falsy without throwing
-  // ReferenceError. Future cleanup can delete every such guard.
-  const _ytPlayer = null;
-  const _ytSyncTimer = null;
-  let _ytSyncDisabled = false;
-  let _ytVerifiedOk = false;
-
   function _stopMelodyPolling() {
     if (_melodyPollAbort) { try { _melodyPollAbort.abort(); } catch {} _melodyPollAbort = null; }
     if (_melodyPollTimeout) { clearTimeout(_melodyPollTimeout); _melodyPollTimeout = null; }
@@ -539,38 +528,7 @@
     return 0;
   }
 
-  // Always-available debug hook — safe to call from DevTools Console at any point
-  // in the page lifecycle, whether YT has booted or not.
-  window.__lcYtDebug = () => {
-    try {
-      const fill = document.querySelector("#topProgressFill");
-      const tc = document.querySelector("#timeCurrent");
-      const td = document.querySelector("#timeDuration");
-      return {
-        hasPlayer: !!_ytPlayer,
-        playerIsObj: typeof _ytPlayer === "object",
-        state: _ytPlayer && _ytPlayer.getPlayerState ? _ytPlayer.getPlayerState() : "(no getPlayerState)",
-        currentTime: _ytPlayer && _ytPlayer.getCurrentTime ? _ytPlayer.getCurrentTime() : "(no getCurrentTime)",
-        duration: _ytPlayer && _ytPlayer.getDuration ? _ytPlayer.getDuration() : "(no getDuration)",
-        fillWidth: fill ? fill.style.width : "(no el)",
-        fillComputedWidth: fill ? getComputedStyle(fill).width : "(no el)",
-        timeText: tc ? tc.textContent : "(no el)",
-        durationText: td ? td.textContent : "(no el)",
-        timerAlive: !!_ytSyncTimer,
-        lastError: window.__lcYtError || null,
-        ytApiLoaded: !!window.YT,
-        chordDuration: _chordDuration,
-        syncDisabled: _ytSyncDisabled,
-        verifiedOk: _ytVerifiedOk,
-      };
-    } catch (e) { return { err: e && e.message, stack: e && e.stack }; }
-  };
-
-  // Unified playback accessors. Pre-open-source these had a YouTube iframe
-  // branch; that's gone now. _ytActive() always returns false so any
-  // residual `if (_ytActive())` branches still in the file are dead code
-  // (kept for blame-stable history; cleanup welcome).
-  function _ytActive() { return false; }
+  // Unified playback accessors. Audio element is the only playback path now.
   function _playerCurrentTime() { return audio.currentTime || 0; }
   function _playerDuration() { return audio.duration || 0; }
   function _playerSeek(t) { audio.currentTime = t; }
@@ -1369,11 +1327,7 @@
       });
       
       item.addEventListener("click", () => {
-        if (_ytPlayer && typeof _ytPlayer.seekTo === "function") {
-          _ytPlayer.seekTo(c.time, true);
-        } else {
-          audio.currentTime = c.time;
-        }
+        audio.currentTime = c.time;
         updateActiveChord(c.time, true);
       });
 
@@ -3706,10 +3660,7 @@
       chordData = await API.getChords(path, version);
       if (chordData.exists && chordData.chords && chordData.chords.length > 0) {
         hasChords = true;
-        // Task 1: record album-track duration for YT desync detection; reset gates.
         _chordDuration = _computeChordDuration(chordData);
-        _ytSyncDisabled = false;
-        _ytVerifiedOk = false;
         // 和弦品質燈號（helper handles both source + user rating summary）
         _updateChordQualityBadge(chordData, /*key*/ trackPath);
         if (chordData.key) {
@@ -3976,10 +3927,7 @@
       // Auto-scroll ribbon to keep active chord visible. Gate must cover both
       // NAS audio playback (8800) and YT embed playback (8801 hash mode) —
       // audio.paused is always true in hash mode because <audio> never starts.
-      const _isAnyPlaying = _ytActive()
-        ? (_ytPlayer.getPlayerState && _ytPlayer.getPlayerState() === 1)
-        : !audio.paused;
-      if (chordRibbonPanel && (_isAnyPlaying || forceScroll)) {
+      if (chordRibbonPanel && (!audio.paused || forceScroll)) {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
       }
     }
@@ -3993,13 +3941,6 @@
   // Playing: ◀ = rewind to start, ▶ = pause
   // Stopped: ◀ = prev song, ▶ = play
   btnPlay.addEventListener("click", () => {
-    // YouTube embed mode: control YouTube player
-    if (_ytPlayer && typeof _ytPlayer.getPlayerState === "function") {
-      const state = _ytPlayer.getPlayerState();
-      if (state === 1) { _ytPlayer.pauseVideo(); btnPlay.classList.remove("is-playing"); }
-      else { _ytPlayer.playVideo(); btnPlay.classList.add("is-playing"); }
-      return;
-    }
     // Hash mode without audio loaded: open file picker
     if (hashMode && !_usingLocalFile && (!audio.src || audio.src === location.href)) {
       if (localFileInput) localFileInput.click();
@@ -4465,10 +4406,6 @@
     const v = parseFloat(volumeSlider.value);
     audio.volume = v;
     audio.muted = false;
-    if (_ytPlayer && typeof _ytPlayer.setVolume === "function") {
-      _ytPlayer.setVolume(v * 100);
-      _ytPlayer.unMute();
-    }
     localStorage.setItem("livechord_volume", volumeSlider.value);
     if (btnMute) btnMute.classList.toggle("is-muted", v === 0);
   });
@@ -4483,9 +4420,6 @@
       // volume slider (field feedback 2026-04-19).
       if (_isTouchLike) return;
       audio.muted = !audio.muted;
-      if (_ytPlayer && typeof _ytPlayer.isMuted === "function") {
-        if (_ytPlayer.isMuted()) _ytPlayer.unMute(); else _ytPlayer.mute();
-      }
       btnMute.classList.toggle("is-muted", audio.muted);
     });
   }
@@ -4519,9 +4453,6 @@
     if (i < 0) return;
     speedIdx = i;
     audio.playbackRate = s;
-    if (_ytPlayer && typeof _ytPlayer.setPlaybackRate === "function") {
-      try { _ytPlayer.setPlaybackRate(s); } catch (e) {}
-    }
     _syncSpeedUI();
     localStorage.setItem("livechord_speed", s);
   }
@@ -4648,27 +4579,10 @@
   Object.defineProperty(window, '_playerActiveChordIdx', { get: () => activeChordIdx });
   Object.defineProperty(window, '_playerSecPerBeat', { get: () => currentSecPerBeat });
 
-  // Wrapper that exposes playback state transparently for YT mode too.
-  // chord-correction.js only reads `.paused`, `.currentTime`, `.duration` —
-  // delegate those to the YT player when it's active (beta hash mode), else
-  // forward to the raw HTMLAudioElement (8800 path mode).
-  const _audioForCorrection = new Proxy(audio, {
-    get(target, prop) {
-      if (_ytActive()) {
-        if (prop === "paused") {
-          try { return _ytPlayer.getPlayerState() !== 1; } catch { return true; }
-        }
-        if (prop === "currentTime") {
-          try { return _ytPlayer.getCurrentTime() || 0; } catch { return 0; }
-        }
-        if (prop === "duration") {
-          try { return _ytPlayer.getDuration() || 0; } catch { return 0; }
-        }
-      }
-      const v = target[prop];
-      return typeof v === "function" ? v.bind(target) : v;
-    },
-  });
+  // chord-correction.js reads .paused / .currentTime / .duration — the
+  // raw HTMLAudioElement is now the only playback source so a passthrough
+  // is enough.
+  const _audioForCorrection = audio;
 
   const btnBeatTap = $("#btnBeatTap");
   if (btnBeatTap) {
@@ -6214,10 +6128,7 @@
         chordData = await res.json();
         if (chordData.exists && chordData.chords && chordData.chords.length > 0) {
           hasChords = true;
-          // Task 1: record album-track duration for YT desync detection; reset gates.
           _chordDuration = _computeChordDuration(chordData);
-          _ytSyncDisabled = false;
-          _ytVerifiedOk = false;
           const title = chordData.title
             || (chordData.path ? chordData.path.split("/").pop().replace(/\.\w+$/i, "") : "")
             || _t("player.title.analysis_result");
@@ -6447,21 +6358,14 @@
   // whatever surface is actually playing. scheduleNotes also lazy-inits
   // aiSynth so MIDI / Mix modes work without having to have hit ▶ on <audio>.
   setInterval(() => {
-      const ytMode = _ytActive();
-      const playing = ytMode
-          ? (_ytPlayer.getPlayerState && _ytPlayer.getPlayerState() === 1)
-          : !audio.paused;
-      if (!playing) return;
+      if (audio.paused) return;
       if (!aiSynth.ctx) {
           try { aiSynth.init(); } catch {}
       }
       if (aiSynth.ctx && aiSynth.ctx.state === "suspended") {
           try { aiSynth.ctx.resume(); } catch {}
       }
-      const t = ytMode
-          ? (_ytPlayer.getCurrentTime ? _ytPlayer.getCurrentTime() : 0)
-          : audio.currentTime;
-      scheduleNotes(t);
+      scheduleNotes(audio.currentTime);
   }, 50);
 
   // Audio Mode UI Bindings (Music -> MIDI -> Mix)
@@ -6484,12 +6388,7 @@
     if ([0, 1, 2].includes(_saved)) audioMode = _saved;
   } catch {}
 
-  // Route source-audio volume to whichever surface is actually playing:
-  // YT iframe in beta hash mode, HTMLAudioElement in 8800 path mode.
   function _setSourceVolume(vol01) {
-      if (_ytActive() && typeof _ytPlayer.setVolume === "function") {
-          try { _ytPlayer.setVolume(Math.max(0, Math.min(1, vol01)) * 100); } catch {}
-      }
       audio.volume = Math.max(0, Math.min(1, vol01));
   }
 

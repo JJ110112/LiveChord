@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  python-syntax:
+    name: Python — compile + import check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile every .py file
+        run: |
+          python -m compileall -q backend scripts || exit 1
+      - name: Lazy-import probe (modules with no GPU/Modal deps)
+        # Importing the modules catches missing names / typos that
+        # syntax compile alone misses. We add the backend dir to PYTHONPATH
+        # and import the lightweight ones — anything needing PyTorch /
+        # Modal / madmom is intentionally skipped (CI doesn't install
+        # those heavy deps).
+        run: |
+          export PYTHONPATH="$GITHUB_WORKSPACE/backend"
+          python - <<'PY'
+          import importlib
+          for mod in [
+              "config",
+              "chord_cache",
+              "chord_splitter",
+              "personal_mode",
+          ]:
+              try:
+                  importlib.import_module(mod)
+                  print(f"  {mod}: import ok")
+              except Exception as e:
+                  print(f"  {mod}: FAILED — {type(e).__name__}: {e}")
+                  raise
+          PY
+
+  json-lint:
+    name: JSON — i18n + manifest + sitemap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate JSON files
+        run: |
+          for f in frontend/i18n/*.json frontend/manifest.json; do
+            python -m json.tool < "$f" > /dev/null || { echo "Invalid JSON: $f"; exit 1; }
+            echo "  $f: ok"
+          done
+
+  js-parse:
+    name: JS — parse check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Parse every JS file
+        # Wrap each file in `new Function(...)` — throws SyntaxError on
+        # malformed JS. Doesn't execute the body. Catches typos that would
+        # otherwise only surface in the browser console.
+        run: |
+          for f in frontend/js/*.js; do
+            node -e "new Function(require('fs').readFileSync('$f','utf8'))" \
+              && echo "  $f: parse ok" \
+              || { echo "  $f: SYNTAX ERROR"; exit 1; }
+          done
+
+  yt-removal-guard:
+    name: Verify YT-removal stays clean
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Forbid yt-dlp / YouTube extraction code from sneaking back
+        # The project went open-source under AGPL with YouTube extraction
+        # explicitly removed (see commits "chore(yt-removal stage N/4)"
+        # and CONTRIBUTING.md). This guard fails the build if anyone
+        # re-introduces the typical yt-dlp call sites.
+        run: |
+          if grep -rn "import yt_dlp\|from yt_dlp\|yt-dlp-ejs\|--cookies-from-browser" \
+                backend/ frontend/ scripts/ 2>/dev/null; then
+            echo "::error::yt-dlp / YouTube extraction code is forbidden — see CONTRIBUTING.md"
+            exit 1
+          fi
+          echo "  no yt-dlp call sites detected"
