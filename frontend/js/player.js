@@ -6673,23 +6673,34 @@
 
   // Task 7: fallback panel — user pastes correct YT URL or uploads a local audio file
   // when auto-search fails or desync banner indicates wrong version.
-  function _showYtFallbackPanel() {
+  // Public-mode flag resolved from /api/config/public. The async fetch in
+  // _configPromise above starts at module load; this promise lets the YT
+  // fallback panel decide whether to render the YT URL row at all.
+  const _isPublicModeAsync = _configPromise.then(cfg => cfg.deployment_mode === "public");
+
+  async function _showYtFallbackPanel() {
     const old = document.getElementById("ytFallbackPanel");
     if (old) { old.remove(); }
+    // Plan B (2026-05-04): public mode is upload-only. Drop the YT URL row
+    // from the fallback panel so users aren't offered a path that would
+    // immediately fail at the yt-dlp tier.
+    const isPublic = await _isPublicModeAsync.catch(() => false);
     // Type B modal — backdrop wraps a .lc-modal card. Click backdrop to dismiss.
     const backdrop = document.createElement("div");
     backdrop.id = "ytFallbackPanel";
     backdrop.className = "yt-fallback-panel lc-modal-backdrop";
+    const ytRowHtml = isPublic ? "" : `
+        <div class="yt-fb-row">
+          <input id="ytFbUrl" type="text" placeholder="${_t("player.yt_fb.url_placeholder")}" />
+          <button id="ytFbUrlSubmit" class="yt-fb-btn">${_t("player.yt_fb.btn_use")}</button>
+        </div>
+        <div class="yt-fb-sep"><span>${_t("player.yt_fb.or")}</span></div>`;
     backdrop.innerHTML = `
       <div class="lc-modal">
         <button class="lc-close yt-fb-close" aria-label="${_t("common.close")}">&times;</button>
         <div class="lc-title">${_t("player.yt_fb.title")}</div>
         <div class="yt-fb-hint">${_t("player.yt_fb.hint")}</div>
-        <div class="yt-fb-row">
-          <input id="ytFbUrl" type="text" placeholder="${_t("player.yt_fb.url_placeholder")}" />
-          <button id="ytFbUrlSubmit" class="yt-fb-btn">${_t("player.yt_fb.btn_use")}</button>
-        </div>
-        <div class="yt-fb-sep"><span>${_t("player.yt_fb.or")}</span></div>
+        ${ytRowHtml}
         <div class="yt-fb-row">
           <input id="ytFbFile" type="file" accept="audio/*" />
           <button id="ytFbFileSubmit" class="yt-fb-btn secondary">${_t("player.yt_fb.btn_local")}</button>
@@ -6702,10 +6713,12 @@
     // Backdrop click dismisses; clicks inside the .lc-modal card bubble to backdrop
     // but target !== backdrop so they don't close. Clicking outside the card does.
     backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
-    backdrop.querySelector("#ytFbUrlSubmit")?.addEventListener("click", () => _onYtFbUrlSubmit(backdrop));
-    backdrop.querySelector("#ytFbUrl")?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") _onYtFbUrlSubmit(backdrop);
-    });
+    if (!isPublic) {
+      backdrop.querySelector("#ytFbUrlSubmit")?.addEventListener("click", () => _onYtFbUrlSubmit(backdrop));
+      backdrop.querySelector("#ytFbUrl")?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") _onYtFbUrlSubmit(backdrop);
+      });
+    }
     backdrop.querySelector("#ytFbFileSubmit")?.addEventListener("click", () => _onYtFbFileSubmit(backdrop));
   }
 

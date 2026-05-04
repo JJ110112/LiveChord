@@ -15,24 +15,42 @@ function _applySearchMarqueeText(text) {
   document.querySelectorAll(".search-marquee-text").forEach((el) => { el.textContent = text; });
 }
 
-// Localized strings come from common.search_placeholder /
-// common.search_placeholder_short. English fallbacks below match the
-// EN-default deployment — they only show if i18n.js is delayed or fails.
-function _marqueeStrings() {
+// Localized strings come from common.search_placeholder* (long/short
+// variants × generic/public). Public mode (livechord.org) uses the
+// upload-focused copy — Plan B 2026-05-04 disables YT extraction there
+// so the placeholder must not promise it. English fallbacks below match
+// the EN-default deployment; they only show if i18n.js is delayed.
+function _marqueeStrings(isPublic) {
   const t = (window.LiveChordI18n && window.LiveChordI18n.t) || null;
-  const SHORT_FB = "Paste a YouTube URL...";
-  const LONG_FB  = "Search a song, album, artist, or paste a YouTube URL...";
-  const short = t ? t("common.search_placeholder_short") : SHORT_FB;
-  const long  = t ? t("common.search_placeholder")       : LONG_FB;
+  const SHORT_FB        = "Paste a YouTube URL...";
+  const LONG_FB         = "Search a song, album, artist, or paste a YouTube URL...";
+  const SHORT_FB_PUB    = "Upload an audio file...";
+  const LONG_FB_PUB     = "Search your analyzed songs, or upload an audio file...";
+  const shortKey = isPublic ? "common.search_placeholder_short_public" : "common.search_placeholder_short";
+  const longKey  = isPublic ? "common.search_placeholder_public"        : "common.search_placeholder";
+  const shortFb  = isPublic ? SHORT_FB_PUB : SHORT_FB;
+  const longFb   = isPublic ? LONG_FB_PUB  : LONG_FB;
+  const short = t ? t(shortKey) : shortFb;
+  const long  = t ? t(longKey)  : longFb;
   // t() returns the key itself for missing strings — fall back to English then.
   return {
-    short: short === "common.search_placeholder_short" ? SHORT_FB : short,
-    long:  long  === "common.search_placeholder"       ? LONG_FB  : long,
+    short: short === shortKey ? shortFb : short,
+    long:  long  === longKey  ? longFb  : long,
   };
 }
 
 async function updateSearchMarqueeText() {
-  const { short, long } = _marqueeStrings();
+  // Public mode (livechord.org) gets upload-focused copy — YT extraction
+  // is disabled there so we can't promise YouTube URLs work. Detect via
+  // /api/config/public; cache the promise so we don't re-fetch per call.
+  if (!window._lcIsPublicModePromise) {
+    window._lcIsPublicModePromise = fetch("/api/config/public")
+      .then(r => r.json())
+      .then(cfg => cfg.deployment_mode === "public")
+      .catch(() => false);
+  }
+  const isPublic = await window._lcIsPublicModePromise;
+  const { short, long } = _marqueeStrings(isPublic);
   const isBeta = location.port === "8801" || location.hostname.endsWith("livechord.org");
 
   // Personal/admin: flip to long text immediately (no async fetch needed),

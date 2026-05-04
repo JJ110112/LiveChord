@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title data-i18n="share.title_tag">Receiving share — LiveChord</title>
-<script src="/js/i18n.js?v=18"></script>
+<script src="/js/i18n.js?v=19"></script>
 <style>
   html, body { margin:0; padding:0; background:#0f0f0f; color:#eee;
     font-family: "Segoe UI", "Microsoft JhengHei", "PingFang TC", sans-serif; }
@@ -25,7 +25,20 @@ function _trShare(key, fb) {
   if (window.LiveChordI18n) return window.LiveChordI18n.t(key);
   return fb || key;
 }
-(function () {
+(async function () {
+  // Plan B (2026-05-04): YouTube ingest disabled in public mode. Web Share
+  // Target route still exists (manifest may have been cached on user's
+  // device), so when a YT URL arrives via Android share intent we redirect
+  // straight to the homepage instead of pretending to analyze.
+  let isPublic = false;
+  try {
+    const cfg = await fetch("/api/config/public").then(r => r.json());
+    isPublic = cfg.deployment_mode === "public";
+  } catch {}
+  if (isPublic) {
+    window.location.replace("/");
+    return;
+  }
   const YT_RE = /(?:v=|youtu\.be\/|\/shorts\/|\/embed\/)([A-Za-z0-9_-]{11})/;
   const params = new URLSearchParams(window.location.search);
   const candidates = [params.get("url"), params.get("text"), params.get("title")].filter(Boolean);

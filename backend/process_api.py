@@ -61,6 +61,26 @@ def _require_user_facing():
         raise HTTPException(status_code=404, detail="Not available")
 
 
+def _require_non_public_for_youtube():
+    """YouTube ingest endpoints are disabled in public mode (livechord.org).
+
+    Reason: Hetzner VPS IP gets aggressively rotation-attacked by YouTube;
+    cookies survive <30 min in practice, and using residential proxies to
+    evade detection drifts into legal grey territory. The user explicitly
+    chose Plan B (2026-05-04): public mode is upload-only, YouTube
+    extraction stays NUC/personal-mode where the residential ISP avoids
+    flagging entirely.
+
+    Personal/beta still get YouTube. Defense-in-depth: even if a stale
+    frontend or curl reaches these endpoints in public mode, they 404.
+    """
+    if is_public_mode():
+        raise HTTPException(
+            status_code=404,
+            detail="YouTube ingest is disabled in public mode; upload an audio file instead",
+        )
+
+
 # Back-compat alias — old beta-only callers still resolve.
 _require_beta = _require_user_facing
 
@@ -126,7 +146,7 @@ class YouTubeRequest(BaseModel):
     url: str = Field(min_length=10, max_length=500)
 
 
-@router.post("/youtube", dependencies=[Depends(_require_user_facing)])
+@router.post("/youtube", dependencies=[Depends(_require_user_facing), Depends(_require_non_public_for_youtube)])
 def process_youtube(req: YouTubeRequest, username: str = Depends(get_user_or_anon)):
     if not check_quota(username):
         raise HTTPException(
@@ -711,7 +731,7 @@ class LibraryLearnRequest(BaseModel):
     library_hash: str = Field(min_length=8, max_length=32, pattern=r"^[a-f0-9]+$")
 
 
-@router.post("/yt-library-learn", dependencies=[Depends(_require_user_facing)])
+@router.post("/yt-library-learn", dependencies=[Depends(_require_user_facing), Depends(_require_non_public_for_youtube)])
 def yt_library_learn(req: LibraryLearnRequest,
                      username: str = Depends(get_user_or_anon)):
     """Task 2: auto-learn YT URL → library hash mapping.
@@ -732,7 +752,7 @@ def yt_library_learn(req: LibraryLearnRequest,
     return {"ok": True, "new": inserted}
 
 
-@router.get("/playlist-info", dependencies=[Depends(_require_user_facing)])
+@router.get("/playlist-info", dependencies=[Depends(_require_user_facing), Depends(_require_non_public_for_youtube)])
 def playlist_info(url: str, username: str = Depends(get_user_or_anon)):
     """Extract video list from a YouTube playlist URL via yt-dlp --flat-playlist.
 
@@ -796,7 +816,7 @@ def playlist_info(url: str, username: str = Depends(get_user_or_anon)):
     return {"playlist_title": playlist_title, "videos": videos}
 
 
-@router.get("/youtube-search")
+@router.get("/youtube-search", dependencies=[Depends(_require_non_public_for_youtube)])
 def youtube_search(q: str, username: str = Depends(get_user_or_anon)):
     """Search YouTube for a song and return the best match video ID."""
     q = q.strip()[:120]
@@ -840,7 +860,7 @@ def _format_duration(seconds: int | float | None) -> str:
     return f"{s // 60}:{s % 60:02d}"
 
 
-@router.get("/youtube-search-list", dependencies=[Depends(_require_user_facing)])
+@router.get("/youtube-search-list", dependencies=[Depends(_require_user_facing), Depends(_require_non_public_for_youtube)])
 def youtube_search_list(
     q: str,
     n: int = 5,

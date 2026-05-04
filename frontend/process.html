@@ -6,7 +6,7 @@
   <title data-i18n="process.title_tag">LiveChord — Analyze new song</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
-  <script src="/js/i18n.js?v=18"></script>
+  <script src="/js/i18n.js?v=19"></script>
   <link rel="stylesheet" href="/css/base.css?v=4">
   <script>
     if (!localStorage.getItem("livechord_token")) {
@@ -224,8 +224,8 @@
     </div>
   </div>
 
-  <!-- YouTube card -->
-  <div class="card">
+  <!-- YouTube card — hidden on public mode (Plan B 2026-05-04: upload-only) -->
+  <div class="card" id="ytCard" style="display:none">
     <h2><span class="icon">&#x1F3AC;</span> <span data-i18n="process.youtube.heading">Analyze YouTube URL</span></h2>
     <div class="yt-row">
       <input type="text" id="ytUrl" placeholder="https://www.youtube.com/watch?v=...">
@@ -250,7 +250,7 @@
 
 </div>
 
-<script src="/js/utils.js?v=8"></script>
+<script src="/js/utils.js?v=9"></script>
 <script src="/js/api.js?v=5"></script>
 <script>
   /* ── Fetch interceptor (inject auth token) ── */
@@ -522,6 +522,19 @@
     d.textContent = s;
     return d.innerHTML;
   }
+</script>
+<script>
+  // Plan B (2026-05-04): YouTube ingest disabled on public mode. Only show
+  // the YT card when running on personal/beta. Default-hidden in HTML so
+  // public visitors never see a flash of the card before this script runs.
+  (function () {
+    fetch("/api/config/public").then(r => r.json()).then(cfg => {
+      if (cfg.deployment_mode !== "public") {
+        const c = document.getElementById("ytCard");
+        if (c) c.style.display = "";
+      }
+    }).catch(() => {});
+  })();
 </script>
 </body>
 </html>
