@@ -363,6 +363,13 @@
     const input = $("#betaLocalAudioInput");
     const section = $("#secBetaLocalTracks");
     if (!btn || !input || !section) return;
+    // Public-mode anonymous visitors land in this code path because
+    // _isBetaNonAdmin gets set whenever _isBetaMode (which is true for
+    // any public deployment) AND !is_admin — but the local-music section
+    // is logged-in-only. _checkBetaAccess hid it; do not un-hide for
+    // anon visitors. Beta deployments always force login so they always
+    // have a token, so this gate doesn't disturb beta UX.
+    if (_isPublicMode && !localStorage.getItem("livechord_token")) return;
     section.style.display = "";
     _renderLocalTracks();
     btn.addEventListener("click", () => input.click());
