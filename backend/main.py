@@ -514,6 +514,18 @@ async def sponsor_page():
     return FileResponse(FRONTEND_DIR / "sponsor.html", headers=NO_CACHE_HEADERS)
 
 
+@app.get("/disclaimer")
+@app.get("/disclaimer.html")
+async def disclaimer_page():
+    return FileResponse(FRONTEND_DIR / "disclaimer.html", headers=NO_CACHE_HEADERS)
+
+
+@app.get("/privacy")
+@app.get("/privacy.html")
+async def privacy_page():
+    return FileResponse(FRONTEND_DIR / "privacy.html", headers=NO_CACHE_HEADERS)
+
+
 @app.get("/tos")
 @app.get("/tos.html")
 async def tos_page():

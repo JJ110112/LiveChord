@@ -10,7 +10,7 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <script src="/js/auth.js?v=4"></script>
-  <script src="/js/i18n.js?v=19"></script>
+  <script src="/js/i18n.js?v=20"></script>
   <link rel="stylesheet" href="/css/base.css?v=5">
   <style>
     body {
@@ -128,104 +128,79 @@
 </head>
 <body>
   <div class="tos-container">
-    <h1 data-i18n="tos.title">LiveChord Terms of Service</h1>
+    <h1 data-i18n="terms.title">LiveChord Terms of Service</h1>
     <div class="tos-content">
-      <h3 data-i18n="tos.h.service">1. About this service</h3>
-      <p data-i18n="tos.p.service_intro">LiveChord is a music chord analysis and learning tool. The current build offers:</p>
+      <p style="color:var(--text-dim); margin-bottom:1rem"><span data-i18n="terms.last_updated">Last updated:</span> 2026-05-04</p>
+      <p data-i18n="terms.welcome">Welcome to LiveChord. This service provides audio analysis tools to support music learning and practice.</p>
+
+      <h3 data-i18n="terms.h.service">1. Nature of the service</h3>
+      <p data-i18n="terms.p.service_offers">LiveChord offers:</p>
       <ul>
-        <li data-i18n="tos.li.browse_db">Browse the existing chord database (54,000+ songs)</li>
-        <li data-i18n="tos.li.upload_detect">Upload an audio file for automatic chord detection</li>
-        <li data-i18n="tos.li.youtube_extract">Extract chords from a YouTube URL</li>
+        <li data-i18n="terms.li.offer.analysis">Audio analysis (chord, beat, key, and similar music structure)</li>
+        <li data-i18n="terms.li.offer.learning">Music learning aids (transpose, A-B loop, slow-down playback, instrument visualization)</li>
+      </ul>
+      <p data-i18n="terms.p.service_does_not_offer">LiveChord does NOT offer:</p>
+      <ul>
+        <li data-i18n="terms.li.no.download">Music download</li>
+        <li data-i18n="terms.li.no.streaming">Music streaming</li>
+        <li data-i18n="terms.li.no.distribution">Distribution of copyrighted content</li>
       </ul>
 
-      <h3 data-i18n="tos.h.audio_rules">2. How we handle uploaded audio</h3>
+      <h3 data-i18n="terms.h.user_content">2. User-uploaded content</h3>
+      <p data-i18n="terms.p.user_agrees">By using the service, you agree to:</p>
       <ul>
-        <li data-i18n-html="tos.li.audio_only_for_analysis">Uploaded audio is <strong>used only for chord analysis</strong> and deleted right after<strong>僅用於和弦分析</strong>，處理完畢後立即刪除</li>
-        <li data-i18n="tos.li.audio_kept_10min">Audio is retained for at most 10 minutes, then automatically purged</li>
-        <li data-i18n="tos.li.no_audio_copy">We do not keep any audio file copies on the server</li>
-        <li data-i18n="tos.li.keep_only_results">Only analysis results (chord progressions, key) are kept</li>
+        <li data-i18n="terms.li.user.own_rights">Only upload audio you have the right to use</li>
+        <li data-i18n="terms.li.user.no_infringe">Not upload anything that infringes copyright or other rights</li>
+      </ul>
+      <p data-i18n="terms.p.no_responsibility">LiveChord is not responsible for content uploaded by users.</p>
+
+      <h3 data-i18n="terms.h.audio_handling">3. Audio file handling</h3>
+      <ul>
+        <li data-i18n="terms.li.audio.analysis_only">Uploaded audio is used only for real-time analysis</li>
+        <li data-i18n="terms.li.audio.deleted_after">Once analysis completes, the audio file is automatically deleted</li>
+        <li data-i18n="terms.li.audio.no_archive">LiveChord does not maintain a long-term audio archive or build a music database</li>
       </ul>
 
-      <h3 data-i18n="tos.h.usage_limits">3. Usage limits</h3>
+      <h3 data-i18n="terms.h.results">4. Analysis results</h3>
       <ul>
-        <li data-i18n="tos.li.daily_quota">Each user may process at most 10 new songs per day</li>
-        <li data-i18n="tos.li.size_limit">Single-file upload size limit: 200 MB</li>
-        <li data-i18n-html="tos.li.personal_use_only">This service is for <strong>personal music study only</strong><strong>個人音樂學習用途</strong></li>
+        <li data-i18n="terms.li.results.reference">Analysis output (chords, beats, etc.) is provided for reference only</li>
+        <li data-i18n="terms.li.results.not_guaranteed">Accuracy is not guaranteed</li>
+        <li data-i18n="terms.li.results.not_score">Output is not a formal music score or published edition</li>
       </ul>
 
-      <h3 data-i18n="tos.h.data_use">4. How we use the data</h3>
+      <h3 data-i18n="terms.h.third_party">5. Third-party services</h3>
+      <p data-i18n="terms.p.third_party_intro">LiveChord may embed third-party services (for example, the YouTube iframe player):</p>
       <ul>
-        <li data-i18n="tos.li.data_for_quality">Generated chord data may be used to improve service quality</li>
-        <li data-i18n="tos.li.anon_stats">Anonymous usage stats help us understand which features people use</li>
-        <li data-i18n="tos.li.no_third_party">Personal information is never shared with third parties</li>
+        <li data-i18n="terms.li.tp.from_third">All audio/video content is provided by the third party</li>
+        <li data-i18n="terms.li.tp.no_control">LiveChord does not control that content</li>
+        <li data-i18n="terms.li.tp.user_complies">You must comply with the terms of those platforms</li>
       </ul>
 
-      <h3 data-i18n="tos.h.disclaimer">5. Disclaimer</h3>
+      <h3 data-i18n="terms.h.prohibited">6. Prohibited conduct</h3>
+      <p data-i18n="terms.p.prohibited_intro">You may not:</p>
       <ul>
-        <li data-i18n="tos.li.ai_accuracy">Chord analysis is AI-generated; accuracy may be limited</li>
-        <li data-i18n="tos.li.beta_uptime">The service may be unstable; uptime is not guaranteed</li>
-        <li data-i18n="tos.li.user_legality">Users are responsible for ensuring uploaded content complies with local law</li>
+        <li data-i18n="terms.li.no.infringe_upload">Upload infringing content</li>
+        <li data-i18n="terms.li.no.reverse">Reverse-engineer or otherwise abuse the service</li>
+        <li data-i18n="terms.li.no.illegal">Use the service for illegal purposes</li>
+      </ul>
+
+      <h3 data-i18n="terms.h.disclaimer">7. Disclaimer</h3>
+      <p data-i18n="terms.p.as_is">The service is provided on an "as-is" basis:</p>
+      <ul>
+        <li data-i18n="terms.li.as_is.uptime">No guarantee of uninterrupted or error-free operation</li>
+        <li data-i18n="terms.li.as_is.no_liability">No liability for any damages arising from use of the service</li>
+      </ul>
+
+      <h3 data-i18n="terms.h.termination">8. Termination</h3>
+      <p data-i18n="terms.p.reserves">LiveChord reserves the right at any time to:</p>
+      <ul>
+        <li data-i18n="terms.li.term.modify">Modify or discontinue the service</li>
+        <li data-i18n="terms.li.term.restrict">Restrict or terminate user access</li>
       </ul>
     </div>
 
-    <button class="btn-accept" id="btnAccept" onclick="acceptTos()" data-i18n="tos.btn_accept">I accept these terms</button>
-    <a class="back-link" href="/" data-i18n="tos.back_link">Back to home</a>
+    <a class="back-link" href="/" data-i18n="terms.back_link">Back to home</a>
   </div>
 
-  <script>
-    const token = localStorage.getItem('livechord_token');
-
-    // Public mode: TOS is viewable as info-only by anonymous visitors. No
-    // login redirect; the accept button is hidden because there's no account
-    // to attach consent to. Beta/personal: legacy behaviour (login required).
-    const _mode = (window._lcDeploymentMode) || localStorage.getItem('livechord_mode_hint');
-    if (!token) {
-      if (_mode === 'public') {
-        const btn = document.getElementById('btnAccept');
-        if (btn) btn.style.display = 'none';
-      } else {
-        location.href = '/login';
-      }
-    }
-
-    function _trTos(key, fb) {
-      if (window.LiveChordI18n) return window.LiveChordI18n.t(key);
-      return fb || key;
-    }
-
-    async function acceptTos() {
-      const btn = document.getElementById('btnAccept');
-      btn.disabled = true;
-      btn.textContent = _trTos('tos.processing', 'Processing...');
-      try {
-        const res = await fetch('/api/auth/accept-tos', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + token },
-        });
-        if (!res.ok) throw new Error('Failed');
-        // Redirect back to process page (or wherever the user came from)
-        const back = new URLSearchParams(location.search).get('next') || '/process';
-        location.href = back;
-      } catch (e) {
-        btn.disabled = false;
-        btn.textContent = _trTos('tos.btn_accept', 'I accept these terms');
-        alert(_trTos('tos.alert.failed', 'Action failed, please retry'));
-      }
-    }
-
-    // If already accepted, redirect away
-    (async () => {
-      try {
-        const res = await fetch('/api/auth/tos-status', {
-          headers: { 'Authorization': 'Bearer ' + token },
-        });
-        const data = await res.json();
-        if (data.accepted) {
-          const back = new URLSearchParams(location.search).get('next') || '/process';
-          location.href = back;
-        }
-      } catch (e) {}
-    })();
-  </script>
 </body>
 </html>

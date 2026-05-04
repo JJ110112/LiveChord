@@ -161,6 +161,38 @@
   text-decoration: none;
 }
 .help-footer a:hover { text-decoration: underline; }
+.help-footer .footer-links { margin-top: 8px; font-size: 0.85em; }
+.help-footer .footer-sep { margin: 0 6px; opacity: 0.5; }
+
+/* Site footer (homepage / process) — Terms / Disclaimer / Privacy / Help */
+.site-footer {
+  margin-top: 48px;
+  padding: 20px 16px 28px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.85em;
+}
+.site-footer a {
+  color: var(--text-dim);
+  text-decoration: none;
+}
+.site-footer a:hover { color: var(--accent); text-decoration: underline; }
+.site-footer .footer-sep { margin: 0 8px; opacity: 0.5; }
+
+/* Upload-rights notice — shown next to file upload controls.
+   Plan B 2026-05-04: prominent reminder so users self-gate on copyright. */
+.upload-rights-notice {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: rgba(255, 193, 7, 0.08);
+  border: 1px solid rgba(255, 193, 7, 0.25);
+  border-radius: 8px;
+  font-size: 0.8em;
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1.4;
+}
 
 /* Sponsor specifics */
 .support-hero { padding-bottom: 24px; }
