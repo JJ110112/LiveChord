@@ -424,7 +424,7 @@
       // Local override at audio/samples/grand-piano/ shadows this once
       // present (Phase 4b will populate it).
       baseUrl: "https://tonejs.github.io/audio/salamander/",
-      localBaseUrl: "audio/samples/grand-piano/",
+      localBaseUrl: "/audio/samples/grand-piano/",
       notes: [21,24,27,30,33,36,39,42,45,48,51,54,57,60,63,66,69,72,75,78,81,84,87,90,93,96,99,102,105,108],
       nameFormat: "sharps", extension: "mp3",
       gainScalar: 1.0,

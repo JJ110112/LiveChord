@@ -199,6 +199,13 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 app.mount("/css", StaticFiles(directory=FRONTEND_DIR / "css"), name="css")
 app.mount("/js", StaticFiles(directory=FRONTEND_DIR / "js"), name="js")
 app.mount("/img", StaticFiles(directory=FRONTEND_DIR / "img"), name="img")
+# Phase 4 — locally-hosted instrument samples (Salamander Grand Piano under
+# audio/samples/grand-piano/) served as static MP3s. Lets SampleSynth drop
+# the tonejs.github.io CDN dependency. ETag from StaticFiles is sufficient
+# for cache control; sample sets are immutable per soundId.
+_AUDIO_DIR = FRONTEND_DIR / "audio"
+if _AUDIO_DIR.exists():
+    app.mount("/audio", StaticFiles(directory=_AUDIO_DIR), name="audio")
 # Phase C — i18n dictionaries served as static JSON. Browsers cache via the
 # `force-cache` hint in i18n.js, so a cache-bust step (rename file) would
 # require a versioning scheme later. For now, ETag from StaticFiles is enough.
