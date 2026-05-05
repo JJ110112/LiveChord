@@ -627,6 +627,7 @@ def suggest_style_api(
 
     bpm = 120.0
     genre = ""
+    time_signature = ""
     cache_path = DATA_DIR / "library_cache.json"
     if cache_path.is_file():
         try:
@@ -638,7 +639,7 @@ def suggest_style_api(
         except Exception:
             pass
 
-    # 從和弦估算 BPM
+    # 從和弦估算 BPM + 取得 time signature（若 chord JSON 有）
     chords_file = chord_file_for(h)
     if chords_file.is_file():
         try:
@@ -650,6 +651,8 @@ def suggest_style_api(
                 median_dur = sorted(durations)[len(durations) // 2]
                 if median_dur > 0:
                     bpm = 60.0 / median_dur
+            # Time-signature hint feeds suggest_style for 3/4 / 6/8 routing.
+            time_signature = chord_data.get("time_signature", "") or ""
         except Exception:
             pass
 
@@ -659,7 +662,8 @@ def suggest_style_api(
         "path": path,
         "genre": genre,
         "bpm": round(bpm, 1),
-        "suggested_styles": suggest_style(genre, bpm),
+        "time_signature": time_signature,
+        "suggested_styles": suggest_style(genre, bpm, time_signature),
     }
 
 

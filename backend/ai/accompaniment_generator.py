@@ -558,23 +558,61 @@ def clamp_to_range(pitches: List[int], low: int, high: int) -> List[int]:
 # 肆、伴奏生成核心
 # ==============================================================================
 
-def suggest_style(genre: str = "", bpm: float = 120.0) -> List[str]:
-    """根據曲風和 BPM 建議伴奏風格，回傳排序後的建議清單。"""
+def suggest_style(
+    genre: str = "",
+    bpm: float = 120.0,
+    time_signature: str = "",
+) -> List[str]:
+    """根據曲風、BPM 和拍號建議伴奏風格，回傳排序後的建議清單。
+
+    Time-signature hint (v4): chord JSONs that carry an explicit
+    `time_signature` field steer the suggestion toward styles that
+    actually fit that meter. 3/4 boosts Jazz Waltz / Alberti / Stride;
+    6/8 boosts Slow Blues / Pop Ballad (compound feel).
+    Empty `time_signature` retains the original 4/4-assumption behaviour.
+
+    Genre priority (v4): when an explicit genre matches, BPM scoring
+    only counts styles that are also in the genre's recommended list —
+    keeps a "jazz, 130 BPM" call from leaking RockEighths into the top 3.
+    """
     genre_lower = genre.lower().strip()
     scores: Dict[str, float] = {}
 
     # Genre 匹配
+    matched_genre_styles: Optional[set] = None
     for key, styles in GENRE_STYLE_MAP.items():
         if key in genre_lower:
             for i, s in enumerate(styles):
                 scores[s] = scores.get(s, 0) + (3 - i)  # 越前面分數越高
+            if matched_genre_styles is None:
+                matched_genre_styles = set(styles)
+            else:
+                matched_genre_styles |= set(styles)
 
     # BPM 匹配
     for threshold, styles in BPM_STYLE_MAP:
         if bpm < threshold:
             for i, s in enumerate(styles):
+                # When a genre is matched, only credit BPM styles that are
+                # also valid for that genre — prevents cross-genre leakage.
+                if matched_genre_styles is not None and s not in matched_genre_styles:
+                    continue
                 scores[s] = scores.get(s, 0) + (2 - i * 0.5)
             break
+
+    # Time-signature 加成
+    ts = (time_signature or "").strip()
+    if ts in ("3/4", "3"):
+        # Triple-meter: jazz waltz + classical waltz LH (Alberti / Stride
+        # already split-bass, both work in 3/4)
+        for s in ("JazzWaltz", "Alberti", "Stride"):
+            if s in STYLE_DICT:
+                scores[s] = scores.get(s, 0) + 2.5
+    elif ts in ("6/8", "12/8"):
+        # Compound: slow-blues triplet feel + flowing arpeggio fits 6/8
+        for s in ("SlowBlues", "BluesShuffle", "PopBallad", "Arpeggio"):
+            if s in STYLE_DICT:
+                scores[s] = scores.get(s, 0) + 2.0
 
     # 無匹配時回傳預設
     if not scores:
