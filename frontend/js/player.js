@@ -405,23 +405,132 @@
   // when the user loads a local audio file. 0 = unknown / skip the check.
   let _chordDuration = 0;
 
-  // Inert AI synth placeholder. Pre-open-source the player owned a
-  // PianoSynth (Web Audio) for MIDI / Mix audio modes; the synth class
-  // was deleted during yt-removal stage 3 but ~14 `aiSynth.*` references
-  // were left in place. Without this stub, applyAudioMode() throws
-  // ReferenceError during init, which crashes the rest of player.js
-  // setup — including the post-registry _switchTab() retry that wires
-  // up guitar / ukulele / accordion / arranger right-hand waterfalls.
-  // Surface shape mirrors the original synth so the residual call-sites
-  // silently no-op. Audio mode 0 (Music) still works; modes 1/2 (MIDI/Mix)
-  // produce no sound but no longer crash the page.
-  const aiSynth = {
-    ctx: null,
-    volLeft: 0,
-    volRight: 0,
-    init() {},
-    playNote() {},
-  };
+  // AI accompaniment synth (Web Audio). Salamander Grand Piano (CC-BY-3.0)
+  // sampled every 3 semitones, pitch-shifted via playbackRate; oscillator
+  // fallback covers the window before samples finish decoding. Hoisted to
+  // this position (rather than its historical site near the scheduler)
+  // because applyAudioMode() runs during init and must not ReferenceError —
+  // a regression from yt-removal stage 3 (cb584b8) cascaded into
+  // _switchTab not wiring guitar/uke/accordion/arranger tabs.
+  class PianoSynth {
+    constructor() {
+      this.ctx = null;
+      this.masterGain = null;
+      this.volLeft = 1;
+      this.volRight = 1;
+      this.samples = {};
+      this.loading = false;
+      this.loaded = false;
+      this._baseUrl = "https://tonejs.github.io/audio/salamander/";
+      this._sampleNotes = [
+        21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54,
+        57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90,
+        93, 96, 99, 102, 105, 108
+      ];
+    }
+
+    _noteToName(midi) {
+      // Salamander uses sharps (Cs/Ds/Fs/Gs/As), not flats
+      const names = ['C','Cs','D','Ds','E','F','Fs','G','Gs','A','As','B'];
+      const oct = Math.floor(midi / 12) - 1;
+      return names[midi % 12] + oct;
+    }
+
+    async _loadSamples() {
+      if (this.loading || this.loaded) return;
+      this.loading = true;
+      const promises = this._sampleNotes.map(async (note) => {
+        const name = this._noteToName(note);
+        const url = this._baseUrl + name + ".mp3";
+        try {
+          const resp = await fetch(url);
+          if (!resp.ok) return;
+          const buf = await resp.arrayBuffer();
+          this.samples[note] = await this.ctx.decodeAudioData(buf);
+        } catch (e) {
+          console.warn("Failed to load sample:", name, e);
+        }
+      });
+      await Promise.all(promises);
+      this.loaded = true;
+      this.loading = false;
+      console.log(`Piano samples loaded: ${Object.keys(this.samples).length} notes`);
+    }
+
+    _findClosestSample(pitch) {
+      let best = this._sampleNotes[0];
+      let bestDist = Math.abs(pitch - best);
+      for (const n of this._sampleNotes) {
+        const d = Math.abs(pitch - n);
+        if (d < bestDist) { bestDist = d; best = n; }
+      }
+      return best;
+    }
+
+    init() {
+      if (!this.ctx) {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.masterGain = this.ctx.createGain();
+        this.masterGain.gain.value = 0.5;
+        this.masterGain.connect(this.ctx.destination);
+        this._loadSamples();
+      }
+    }
+
+    playNote(pitch, duration, hand, startTime, velocity) {
+      if (!this.ctx) return;
+      if (typeof activeHand !== 'undefined' && activeHand !== "both" && activeHand !== hand) return;
+
+      const vol = hand === 'left' ? this.volLeft : this.volRight;
+      if (vol <= 0) return;
+
+      // Velocity drives amplitude linearly. Curve: vel 30→0.3x, 64→0.64x, 100+→1.0x.
+      // Without this, LH chord voicings (3+ simultaneous notes) drown out RH melody.
+      const velGain = Math.max(0.15, Math.min(1.0, (velocity || 64) / 100));
+      // LH 0.55 / RH 1.1 — pedagogical bias, field-tuned
+      const handBias = hand === 'left' ? 0.55 : 1.1;
+      const peakGain = vol * 0.75 * velGain * handBias;  // 0.75 = global headroom
+
+      if (this.loaded && Object.keys(this.samples).length > 0) {
+        const sampleNote = this._findClosestSample(pitch);
+        const buffer = this.samples[sampleNote];
+        if (!buffer) return;
+
+        const source = this.ctx.createBufferSource();
+        source.buffer = buffer;
+        source.playbackRate.value = Math.pow(2, (pitch - sampleNote) / 12);
+
+        const gain = this.ctx.createGain();
+        source.connect(gain);
+        gain.connect(this.masterGain);
+
+        gain.gain.setValueAtTime(peakGain, startTime);
+        gain.gain.setValueAtTime(peakGain, startTime + Math.max(0, duration - 0.08));
+        gain.gain.linearRampToValueAtTime(0, startTime + duration + 0.1);
+
+        source.start(startTime);
+        source.stop(startTime + duration + 0.15);
+        return;
+      }
+
+      // Oscillator fallback while samples are still loading
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = pitch < 60 ? 'triangle' : 'sine';
+      osc.frequency.value = 440 * Math.pow(2, (pitch - 69) / 12);
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      const oscPeak = peakGain * 0.75;
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(oscPeak, startTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(Math.max(oscPeak * 0.25, 0.001), Math.max(startTime + 0.02, startTime + duration - 0.05));
+      gain.gain.linearRampToValueAtTime(0, startTime + duration);
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    }
+  }
+
+  const aiSynth = new PianoSynth();
 
   function _stopMelodyPolling() {
     if (_melodyPollAbort) { try { _melodyPollAbort.abort(); } catch {} _melodyPollAbort = null; }
