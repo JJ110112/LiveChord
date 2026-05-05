@@ -531,6 +531,7 @@
   }
 
   const aiSynth = new PianoSynth();
+  let lastScheduledTime = 0;
 
   function _stopMelodyPolling() {
     if (_melodyPollAbort) { try { _melodyPollAbort.abort(); } catch {} _melodyPollAbort = null; }
