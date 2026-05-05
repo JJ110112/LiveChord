@@ -146,9 +146,15 @@
       !url.includes("/api/auth/oauth")
     ) {
       const mode = window._lcDeploymentMode;
-      if (mode === "public") {
-        // Anonymous calling a login-required endpoint. Page-level UI handles
-        // this (e.g. "Login to rate"); do not auto-redirect.
+      if (mode === "public" || mode === "unknown") {
+        // public: anonymous calling a login-required endpoint. Page-level
+        //   UI handles this (e.g. "Login to rate"); do not auto-redirect.
+        // unknown: bootstrap probe still in flight (first-time visitor or
+        //   cache cleared, with no `livechord_mode_hint` cached). If the
+        //   site IS public, redirecting here causes an instant bounce
+        //   from `/` → `/login` even though the visitor is allowed
+        //   anonymous. Swallow the 401 silently; the next /api/ call after
+        //   the probe resolves will route correctly.
         return res;
       }
       // beta / personal: stale token — clear and bounce. BUT not when we're
