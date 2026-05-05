@@ -2875,6 +2875,22 @@
   // AI Teacher HUD state (must be before drawWaterfall)
   let _teacherMsgCache = "";
   var _teacherMsgTime = 0;
+  // i18n is fetched async; if _generateTeacherMessage runs before the dict
+  // arrives, _t() returns the raw key (e.g. "teach.hint.style_arpeggio")
+  // and the 1.5s currentTime gate keeps that raw key cached even after
+  // i18n finishes loading. Two-prong fix:
+  //   1. Listen for the i18nready event and flush the teacher cache.
+  //   2. _generateTeacherMessage detects raw-key output and skips caching
+  //      it, so even an event miss recovers on the next render tick.
+  document.addEventListener("livechord:i18nready", () => {
+    _teacherMsgCache = "";
+    _teacherMsgTime = -999;
+  });
+  function _looksLikeI18nKey(s) {
+    // Raw key shape: "teach.hint.style_arpeggio" — dotted, no spaces, no
+    // CJK. Translated values always contain a space or non-ASCII char.
+    return typeof s === "string" && /^[a-z0-9_]+(\.[a-z0-9_]+)+$/i.test(s);
+  }
 
   function drawWaterfall(currentTime) {
     if (!waterfallCanvas || !waterfallCtx || !waterfallActive) return;
@@ -3358,8 +3374,12 @@
       e.time > currentTime && e.time <= currentTime + 0.5
     );
 
-    // 每 1.5 秒更新一次訊息，避免閃爍
-    if (currentTime - _teacherMsgTime > 1.5 || !_teacherMsgCache) {
+    // 每 1.5 秒更新一次訊息，避免閃爍。
+    // 但若上一次 cache 結果像是未翻譯的 i18n key (i18n 還沒載入)，立即重試
+    // 不要鎖在 1.5s window — 否則使用者要等 1.5s 播放才會看到正確文字。
+    if (currentTime - _teacherMsgTime > 1.5
+        || !_teacherMsgCache
+        || _looksLikeI18nKey(_teacherMsgCache)) {
       _teacherMsgCache = _generateTeacherMessage(currentTime, nowPlaying, upcoming);
       _teacherMsgTime = currentTime;
     }
