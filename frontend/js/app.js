@@ -125,6 +125,7 @@
         const intro = $("#secHomeIntro");
         const heroSec = $("#secHomeHero");
         const hiwSec = $("#secHomeHowItWorks");
+        const osSec = $("#secHomeOpenSource");
         const secBetaLocal = $("#secBetaLocalTracks");
         const secBetaRecent = $("#secBetaRecent");
         const secFavorites = $("#secFavorites");
@@ -135,6 +136,7 @@
           if (intro) intro.style.display = "none";
           if (heroSec) heroSec.style.display = "none";
           if (hiwSec) hiwSec.style.display = "none";
+          if (osSec) osSec.style.display = "none";
           if (secBetaLocal) secBetaLocal.style.display = "";
           if (secBetaRecent) secBetaRecent.style.display = "";
           if (secFavorites) secFavorites.style.display = "";
@@ -148,6 +150,7 @@
           if (intro) intro.style.display = "";
           if (heroSec) heroSec.style.display = "";
           if (hiwSec) hiwSec.style.display = "";
+          if (osSec) osSec.style.display = "";
           if (secBetaLocal) secBetaLocal.style.display = "none";
           if (secBetaRecent) secBetaRecent.style.display = "none";
           if (secFavorites) secFavorites.style.display = "none";
