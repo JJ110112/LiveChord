@@ -9,7 +9,7 @@ import argparse
 from pathlib import Path
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
-from chord_cache import song_hash
+from chord_cache import song_hash, chord_file_for
 
 SKIP_GENRES = {
     "classics", "classical", "symphony",
@@ -68,7 +68,7 @@ def main():
 
             total += 1
             h = song_hash(rel_path)
-            out_file = CHORDS_DIR / f"{h}.json"
+            out_file = chord_file_for(h)
 
             if not out_file.is_file():
                 missing.append((rel_path, fsize, "NO_JSON"))

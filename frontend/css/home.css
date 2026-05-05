@@ -2,9 +2,23 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 180px));
+  gap: 12px;
 }
+
+/* Library grid — wrapping grid with scroll for large collections */
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 150px);
+  gap: 12px;
+  max-height: 70vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.08) transparent;
+  padding-right: 4px;
+}
+.library-grid::-webkit-scrollbar { width: 4px; }
+.library-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
 
 .grid-item {
   background: var(--bg-card);
@@ -78,7 +92,13 @@
 
 .track-list {
   list-style: none;
+  max-height: 70vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.08) transparent;
 }
+.track-list::-webkit-scrollbar { width: 4px; }
+.track-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
 
 .track-list li {
   display: flex;
@@ -121,13 +141,15 @@
   top: 100%;
   left: 0;
   right: 0;
-  background: var(--bg-card);
+  background: var(--lc-popup-bg);
+  backdrop-filter: var(--lc-popup-blur);
+  -webkit-backdrop-filter: var(--lc-popup-blur);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   max-height: 400px;
   overflow-y: auto;
   z-index: 200;
-  box-shadow: var(--shadow);
+  box-shadow: var(--lc-popup-shadow);
   display: none;
 }
 
@@ -171,6 +193,233 @@
   color: var(--text-dim);
 }
 
+/* User's own uploaded analyses — green "本機" tag + subtle tint so they're
+   unmistakable at the top of the results. */
+.search-results .result-item.is-upload {
+  background: rgba(45, 125, 70, 0.08);
+}
+.search-results .result-item.is-upload:hover {
+  background: rgba(45, 125, 70, 0.16);
+}
+.r-upload-badge {
+  display: inline-block;
+  background: #2d7d46;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* YouTube section in the search dropdown */
+.search-results .search-section-header {
+  padding: 8px 14px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+  background: rgba(0, 0, 0, 0.12);
+}
+.search-results .search-section-header:first-child {
+  border-top: none;
+  margin-top: 0;
+}
+.search-results .yt-loading {
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+.search-results .result-item.yt-result .yt-thumb {
+  /* mqdefault is 320×180 — render at the same dimensions as a track cover so
+     rows align. object-fit prevents the wider aspect from looking squashed. */
+  object-fit: cover;
+}
+.yt-r-dur {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.yt-r-source {
+  display: inline-block;
+  background: #ff0000;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 4px;
+  vertical-align: middle;
+  letter-spacing: 0.04em;
+}
+
+/* Modal variant: when user triggered from local-track list, hide YT URL row
+   + drop zone so there's only the "selected file + 分析" path (avoids two
+   duplicate 分析 buttons). */
+.beta-fab-panel.add-song-modal.file-only #betaDropZone,
+.beta-fab-panel.add-song-modal.file-only .add-song-yt-row {
+  display: none !important;
+}
+
+/* `analyzing` — hide inputs while the progress row is active, so the user
+   isn't tempted to start a second upload or paste another URL mid-analysis
+   (and so the modal isn't cluttered with duplicate 分析 buttons). */
+.beta-fab-panel.add-song-modal.analyzing #betaDropZone,
+.beta-fab-panel.add-song-modal.analyzing .add-song-yt-row,
+.beta-fab-panel.add-song-modal.analyzing .beta-file-info,
+.beta-fab-panel.add-song-modal.analyzing .upload-rights-notice {
+  display: none !important;
+}
+
+/* Local tracks list (beta homepage — user-picked audio files, persisted) */
+.local-track-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.local-track-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-card, rgba(255,255,255,0.03));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.local-track-item .lt-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.local-track-item .lt-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.local-track-item .lt-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.local-track-item .lt-state { font-weight: 600; }
+.local-track-item .lt-state.lt-done { color: #4caf50; }
+.local-track-item .lt-state.lt-pending { color: #ff9800; }
+.local-track-item .lt-action {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+.local-track-item .lt-remove {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 6px;
+  line-height: 1;
+}
+.local-track-item .lt-remove:hover { color: #f44336; }
+
+/* Analyzed-local-track cards: small × overlay (match grid-item layout) */
+.grid-item.local-analyzed-card .la-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  border: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+}
+.grid-item.local-analyzed-card:hover .la-remove { opacity: 1; }
+.grid-item.local-analyzed-card .la-remove:hover { background: #f44336; }
+
+/* YouTube playlist cards (beta homepage) */
+.yt-playlist-list { display: flex; flex-direction: column; gap: 10px; }
+.yt-pl-card {
+  background: var(--bg-card, rgba(255,255,255,0.03));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.yt-pl-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: default;
+}
+.yt-pl-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.yt-pl-meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.yt-pl-refresh, .yt-pl-remove, .yt-pl-toggle {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 8px;
+  line-height: 1;
+}
+.yt-pl-refresh:hover, .yt-pl-remove:hover, .yt-pl-toggle:hover { color: var(--text); }
+.yt-pl-remove:hover { color: #f44336; }
+.yt-pl-videos { display: none; border-top: 1px solid var(--border); }
+.yt-pl-card.open .yt-pl-videos { display: block; }
+.yt-pl-video {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+.yt-pl-video:first-child { border-top: none; }
+.yt-pl-video.is-done { background: rgba(45, 125, 70, 0.06); }
+.yt-pl-video .ytv-info { flex: 1 1 auto; min-width: 0; }
+.yt-pl-video .ytv-title {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.yt-pl-video .ytv-meta { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.yt-pl-video .ytv-action { flex-shrink: 0; font-size: 12px; padding: 4px 10px; }
+
 /* ========== [END: SEARCH RESULTS] ========== */
 
 
@@ -213,6 +462,199 @@
 
 .dash-section {
   margin-bottom: 32px;
+}
+
+/* Marketing intro — standalone cover image at the top of the logged-out
+   homepage. No frame / background — image sits naked on the page bg so it
+   can carry its own composition. CTA lives in the hero block below. */
+.home-intro {
+  margin: 8px 0 24px;
+  padding: 0;
+  background: none;
+  border: none;
+}
+.home-intro-inner {
+  display: flex;
+  justify-content: center;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.home-intro-cover {
+  display: block;
+  width: min(720px, 100%);
+  max-width: 100%;
+  height: auto;
+}
+@media (max-width: 600px) {
+  .home-intro { margin: 4px 0 18px; }
+}
+
+/* Public-mode homepage hero (Plan B 2026-05-04). Static markup so
+   crawlers see the body content; app.js hides this for returning
+   visitors who already have analyzed songs.
+   Background uses a soft accent-tinted gradient so light themes
+   (sakura / sunny / sky / light) get a colored card instead of a
+   flat grey. color-mix() is widely supported in 2024+ browsers. */
+.home-hero {
+  margin: 8px 0 40px;
+  padding: 32px 24px 28px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 10%, var(--bg-card)),
+    var(--bg-card));
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
+  border-radius: var(--radius);
+  text-align: center;
+}
+.home-hero-title {
+  font-size: clamp(22px, 4vw, 32px);
+  font-weight: 800;
+  margin: 0 0 12px;
+  color: var(--text);
+  line-height: 1.25;
+}
+.home-hero-tagline {
+  font-size: clamp(14px, 1.7vw, 16px);
+  color: var(--text-dim);
+  max-width: 720px;
+  margin: 0 auto 22px;
+  line-height: 1.6;
+}
+.home-hero-cta-row {
+  margin-bottom: 32px;
+}
+.home-hero-cta {
+  display: inline-block;
+  padding: 12px 28px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(33, 150, 243, 0.35);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.home-hero-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(33, 150, 243, 0.45);
+}
+.home-hero-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+  text-align: left;
+}
+.home-hero-feature {
+  padding: 18px 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.home-hero-feature .hf-icon {
+  font-size: 26px;
+  margin-bottom: 8px;
+}
+.home-hero-feature .hf-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  color: var(--text);
+}
+.home-hero-feature .hf-body {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0;
+  line-height: 1.55;
+}
+.home-hero-rights {
+  font-size: 12px;
+  color: var(--text-dim);
+  opacity: 0.75;
+  margin: 16px 0 0;
+}
+@media (max-width: 600px) {
+  .home-hero {
+    padding: 22px 14px 18px;
+    margin: 4px 0 28px;
+  }
+  .home-hero-features {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+
+/* "How it works" — 3-step explanation below the hero. Same accent
+   tint pattern as .home-hero so light themes don't show flat grey. */
+.home-how-it-works {
+  margin: 0 0 40px;
+  padding: 28px 24px 24px;
+  background: linear-gradient(135deg,
+    var(--bg-card),
+    color-mix(in srgb, var(--accent) 8%, var(--bg-card)));
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+  border-radius: var(--radius);
+}
+.hiw-heading {
+  font-size: clamp(18px, 2.5vw, 22px);
+  font-weight: 700;
+  margin: 0 0 22px;
+  color: var(--text);
+  text-align: center;
+}
+.hiw-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+.hiw-step {
+  position: relative;
+  padding: 18px 16px 16px 56px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.hiw-step .hiw-num {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(33, 150, 243, 0.3);
+}
+.hiw-step .hiw-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+.hiw-step .hiw-body {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0;
+  line-height: 1.6;
+}
+@media (max-width: 600px) {
+  .home-how-it-works {
+    padding: 20px 14px 16px;
+    margin: 0 0 28px;
+  }
+  .hiw-steps {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
 }
 
 .dash-section:last-child {
@@ -265,61 +707,204 @@
   display: block;
   margin-left: 0 !important;
   margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* ========== [COMPONENT: BETA UPLOAD] ========== */
+/* ========== [COMPONENT: ADD-SONG MODAL] ========== */
+/* Was the beta FAB panel — now a centered modal opened from the search
+   empty-state CTA. Separate #betaFabBackdrop element handles dimming + click
+   to dismiss; panel itself is just the card. */
 
-.beta-upload-card, .beta-yt-card {
-  background: var(--bg-card);
+.add-song-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 2000;
+  display: none;
+}
+.add-song-backdrop.open { display: block; }
+
+.beta-fab-panel.add-song-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  background: rgb(22, 27, 34);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 20px;
-  backdrop-filter: var(--glass-blur);
+  padding: 20px 18px 16px;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.6);
+  z-index: 2001;
+  display: none;
+}
+.beta-fab-panel.add-song-modal.open { display: block; }
+
+.add-song-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 22px;
+  cursor: pointer;
+  padding: 2px 8px;
+  line-height: 1;
+}
+.add-song-close:hover { color: var(--text); }
+
+/* Search empty-state CTA (beta non-admin) */
+.search-empty {
+  padding: 14px 12px;
+  text-align: center;
+}
+.search-empty-msg {
+  color: var(--text-dim);
+  font-size: 0.88rem;
+  margin-bottom: 10px;
+}
+.search-empty-btn {
+  background: var(--accent, #4caf50);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.search-empty-btn:hover { filter: brightness(1.1); }
+
+.fab-panel-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: #fff;
+  letter-spacing: 0.2px;
 }
 
-.upload-drop-zone {
+.fab-section {
   border: 2px dashed var(--border);
-  border-radius: 10px;
-  padding: 40px 20px;
+  border-radius: 8px;
+  padding: 14px;
   text-align: center;
   cursor: pointer;
   transition: border-color 0.2s, background 0.2s;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-.upload-drop-zone:hover, .upload-drop-zone.dragover {
+.fab-section:hover, .fab-section.dragover {
   border-color: var(--accent);
   background: rgba(33, 150, 243, 0.05);
 }
-.upload-icon { font-size: 2.5rem; margin-bottom: 8px; }
-.upload-text { font-size: 1rem; color: var(--text-dim); }
-.upload-hint { font-size: 0.8rem; color: var(--text-dim); opacity: 0.6; margin-top: 6px; }
+.upload-hint { font-size: 0.75rem; color: var(--text-dim); opacity: 0.5; }
 
 .beta-file-info {
   margin-top: 12px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 8px 14px;
   background: var(--bg-hover);
   border-radius: 8px;
   font-size: 0.9rem;
+  min-width: 0;
 }
+.beta-file-name {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.beta-file-size {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+.beta-file-info .btn-small { flex: 0 0 auto; }
 
 .btn-small {
   padding: 7px 16px;
-  border: none;
+  border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+  /* Theme-aware default: visible chip on both light and dark themes.
+     The previous unstyled rule fell back to the browser's grey button
+     which read fine on dark but disappeared on the light/cream
+     backgrounds. Use the same card surface vars the rest of the
+     dashboard cards use so the button blends in but stays legible. */
+  background: var(--bg-hover, rgba(255,255,255,0.06));
+  color: var(--text);
+}
+.btn-small:hover {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-hover, rgba(255,255,255,0.06)));
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
 }
 .btn-accent {
   background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
 }
-.btn-accent:hover { opacity: 0.85; }
+.btn-accent:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  opacity: 0.85;
+}
 
 .beta-progress { margin-top: 12px; }
+.beta-progress-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.beta-progress-title:empty { display: none; }
+
+/* EQ music-bars animation — runs while analysis is in flight. Same
+   visual language as the player's .music-bars (player.css/style.css)
+   so users see a familiar "audio is being processed" cue during the
+   30-120s analysis wait, instead of just a static progress bar. */
+.upload-music-bars {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 5px;
+  height: 36px;
+  margin-bottom: 12px;
+}
+.upload-music-bars .bar {
+  width: 7px;
+  background-color: var(--accent);
+  border-radius: 3px;
+  animation: upload-eq-jump 0.9s infinite ease-in-out;
+}
+.upload-music-bars .bar:nth-child(1) { height: 12px; animation-delay: 0.1s; }
+.upload-music-bars .bar:nth-child(2) { height: 28px; animation-delay: 0.4s; }
+.upload-music-bars .bar:nth-child(3) { height: 20px; animation-delay: 0.2s; }
+.upload-music-bars .bar:nth-child(4) { height: 26px; animation-delay: 0.5s; background-color: #ff9800; }
+.upload-music-bars .bar:nth-child(5) { height: 16px; animation-delay: 0.3s; }
+@keyframes upload-eq-jump {
+  0%, 100% { transform: scaleY(0.4); transform-origin: bottom; opacity: 0.65; }
+  50%      { transform: scaleY(1.0); transform-origin: bottom; opacity: 1; }
+}
 .progress-bar {
   height: 6px;
   background: var(--bg-hover);
@@ -341,32 +926,9 @@
   color: var(--text-dim);
 }
 
-/* History grid cards for beta */
-#historyGrid .grid-item {
-  position: relative;
-  min-height: 100px;
-}
-#historyGrid .grid-item .cover-bg {
-  width: 100%;
-  height: 120px;
-  object-fit: cover;
-  border-radius: var(--radius) var(--radius) 0 0;
-  background: var(--bg-hover);
-}
-#historyGrid .grid-item .cover-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 120px;
-  font-size: 2.5rem;
-  background: var(--bg-hover);
-  border-radius: var(--radius) var(--radius) 0 0;
-}
-#historyGrid .grid-item .info {
-  padding: 10px 12px;
-}
+/* History cards for beta — same style as horizontal-scroll */
 #historyGrid .grid-item .title {
-  font-size: 0.85rem;
+  font-size: 13px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -379,3 +941,153 @@
 }
 
 /* ========== [END: DASHBOARD] ========== */
+
+/* ========== [COMPONENT: MOBILE RESPONSIVE] ========== */
+
+@media (max-width: 640px) {
+  .beta-fab-panel.add-song-modal {
+    width: auto;
+    max-width: calc(100vw - 24px);
+    padding: 14px 12px 12px;
+  }
+  .fab-panel-title { font-size: 0.85rem; margin-bottom: 8px; }
+  .fab-section { padding: 10px; font-size: 0.8rem; }
+  .upload-hint { font-size: 0.7rem; }
+  .progress-info { font-size: 0.7rem; line-height: 1.3; }
+  .beta-file-info { font-size: 0.8rem; padding: 6px 10px; }
+}
+
+/* ========== [END: MOBILE RESPONSIVE] ========== */
+
+
+/* ========== [COMPONENT: THEME OVERRIDES] ==========
+   Dashboard selectors that hardcode #fff or dark hex values, mapped
+   per theme. Section titles flip on light-bg themes (light/sakura);
+   court keeps the white title since its bg is dark forest. Cover
+   placeholders get retinted for each theme's palette. */
+
+/* Section titles ("最近播放", "音樂庫", etc.) — flip on light-bg only */
+[data-theme="light"] .dash-title,
+[data-theme="sakura"] .dash-title,
+[data-theme="sunny"] .dash-title,
+[data-theme="sky"] .dash-title { color: var(--text); }
+
+/* Cover placeholder gradient — per-theme palette */
+[data-theme="light"] .grid-item .cover-placeholder {
+  background: linear-gradient(135deg, #e8eaf0, #d3d9e2);
+  color: #b0b8c5;
+}
+[data-theme="sakura"] .grid-item .cover-placeholder {
+  background: linear-gradient(135deg, #fde2e8, #f9c5d3);
+  color: #d68fa3;
+}
+[data-theme="sunny"] .grid-item .cover-placeholder {
+  background: linear-gradient(135deg, #fff3c4, #ffd97a);
+  color: #c89020;
+}
+[data-theme="sky"] .grid-item .cover-placeholder {
+  background: linear-gradient(135deg, #e0ecff, #b8d4ff);
+  color: #5a85cc;
+}
+[data-theme="forest"] .grid-item .cover-placeholder {
+  background: linear-gradient(135deg, #16331e, #0a2614);
+  color: #4a8462;
+}
+
+[data-theme="light"] .grid-item .cover,
+[data-theme="sakura"] .grid-item .cover,
+[data-theme="sunny"] .grid-item .cover,
+[data-theme="sky"] .grid-item .cover { background: #e8eaed; }
+[data-theme="forest"] .grid-item .cover { background: #0a2614; }
+
+/* Scrollbar track inversion on light-bg themes */
+[data-theme="light"] .horizontal-scroll, [data-theme="light"] .track-list,
+[data-theme="sakura"] .horizontal-scroll, [data-theme="sakura"] .track-list,
+[data-theme="sunny"] .horizontal-scroll, [data-theme="sunny"] .track-list,
+[data-theme="sky"] .horizontal-scroll, [data-theme="sky"] .track-list { scrollbar-color: rgba(0,0,0,0.20) transparent; }
+
+/* ========== [END: THEME OVERRIDES] ========== */
+
+
+/* ========== [COMPONENT: FIRST-RUN INSTRUMENT PICKER] ========== */
+.instrument-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 9998;
+}
+.instrument-picker-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px 24px 18px;
+  z-index: 9999;
+}
+.ip-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+  text-align: center;
+}
+.ip-subtitle {
+  font-size: 0.88rem;
+  color: var(--text-dim);
+  margin-bottom: 18px;
+  text-align: center;
+  line-height: 1.55;
+}
+.ip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.ip-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 8px;
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s, background 0.12s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-family: inherit;
+  color: var(--text);
+}
+.ip-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  background: rgba(33, 150, 243, 0.06);
+}
+.ip-icon { font-size: 1.85rem; line-height: 1; }
+.ip-name { font-size: 0.85rem; font-weight: 500; }
+.ip-skip {
+  display: block;
+  margin: 4px auto 0;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 6px 12px;
+  font-family: inherit;
+}
+.ip-skip:hover { color: var(--text); text-decoration: underline; }
+
+@media (max-width: 480px) {
+  .ip-grid { grid-template-columns: repeat(3, 1fr); }
+  .instrument-picker-panel { padding: 18px 16px 12px; }
+}

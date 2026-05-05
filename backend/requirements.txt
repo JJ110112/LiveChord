@@ -9,3 +9,38 @@ mir_eval>=0.7
 demucs>=4.0
 basic-pitch>=0.3
 torchcodec>=0.1.0
+
+# OAuth (public-mode sign-in via Google/Discord). Authlib handles the OAuth2/OIDC
+# dance + state via Starlette SessionMiddleware. python-dotenv loads OAuth client
+# id/secret from `.env` at repo root. itsdangerous powers the session cookie.
+authlib>=1.3
+httpx>=0.27
+python-dotenv>=1.0
+itsdangerous>=2.1
+
+# Optional: madmom (dynamic beat tracking for live/rubato recordings).
+# Released wheel (0.16.1, 2018) breaks on Python 3.10+ because it imports
+# collections.MutableSequence; the unreleased master branch is patched.
+# Cython must exist before the build, and madmom's pyproject doesn't
+# declare it as a build req — so PEP 517 isolation fails. Install with:
+#   pip install Cython numpy
+#   pip install --no-build-isolation git+https://github.com/CPJKU/madmom.git
+# When absent, beat_snap falls back to librosa.beat.beat_track (static BPM
+# only — no rubato tracking). Safe to skip on machines that only serve
+# already-analyzed songs.
+
+# Optional: modal (serverless GPU dispatch for BTC chord detection on a
+# CPU-only host). Only needed when LIVECHORD_USE_MODAL_BTC=1; the NUC has
+# a local GPU and doesn't need it. On a VPS deploy:
+#   pip install modal
+#   modal token new
+#   modal volume create livechord-btc-model
+#   modal volume put livechord-btc-model backend/btc/btc_model_large_voca.pt /btc.pt
+#   modal deploy backend/modal_btc.py
+# See doc/MODAL_DEPLOY.md for the full runbook.
+
+# Optional: boto3 (S3-compatible client for Cloudflare R2 cover storage).
+# Only needed when LIVECHORD_USE_R2=1 + the four R2_* env vars are set.
+# Personal/beta and the NUC keep covers on local disk; this is dormant.
+#   pip install boto3
+# See doc/R2_DEPLOY.md for the bucket / token / env wiring.

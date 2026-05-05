@@ -7,7 +7,8 @@ import threading
 from pathlib import Path
 from collections import Counter
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
+from personal_mode import require_personal_mode
 
 from chord_cache import (
     song_hash,
@@ -15,6 +16,8 @@ from chord_cache import (
     get_chord_meta,
     update_entry_from_file as cache_update_entry,
     invalidate as cache_invalidate,
+    chord_file_for,
+    ensure_chord_bucket,
 )
 from data_cache import invalidate_chord_hash_set as _invalidate_chord_hash_set
 from config import resolve_path
@@ -52,7 +55,18 @@ def _get_chord_hashes() -> set:
     hashes = set()
     if CHORDS_DIR.is_dir():
         try:
-            hashes = {n[:-5] for n in os.listdir(CHORDS_DIR) if n.endswith(".json")}
+            with os.scandir(CHORDS_DIR) as buckets:
+                for b in buckets:
+                    if not b.is_dir() or len(b.name) != 2:
+                        continue
+                    try:
+                        with os.scandir(b.path) as it:
+                            for entry in it:
+                                name = entry.name
+                                if name.endswith(".json") and ".json.bak." not in name:
+                                    hashes.add(name[:-5])
+                    except OSError:
+                        continue
         except OSError:
             pass
     _chord_hashes_cache["set"] = hashes
@@ -90,7 +104,7 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
         _batch_state["current_track"] = track_path
         lock.update_progress(current_item=track_path, done=i + 1)
 
-        chords_file = CHORDS_DIR / f"{song_hash(track_path)}.json"
+        chords_file = chord_file_for(song_hash(track_path))
         if skip_existing and chords_file.is_file():
             _batch_state["skipped"] += 1
             continue
@@ -103,6 +117,7 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
         try:
             chords, key = detect_chords_and_key_isolated(full)
             sheet = {"path": track_path, "key": key, "capo": 0, "source": "btc", "chords": chords}
+            ensure_chord_bucket(song_hash(track_path))
             chords_file.write_text(
                 json.dumps(sheet, ensure_ascii=False, indent=2),
                 encoding="utf-8",
@@ -126,8 +141,21 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
 
     if _batch_state["succeeded"] > 0 and CACHE_FILE.is_file():
         try:
-            # 一次 listdir 取代每檔一次 is_file()（同時捎帶修正其他歷史遺留的 stale 條目）
-            chord_hashes = {n[:-5] for n in os.listdir(CHORDS_DIR) if n.endswith(".json")} if CHORDS_DIR.is_dir() else set()
+            # 一次 walk bucketed layout 取代每檔一次 is_file()（同時捎帶修正其他歷史遺留的 stale 條目）
+            chord_hashes = set()
+            if CHORDS_DIR.is_dir():
+                with os.scandir(CHORDS_DIR) as buckets:
+                    for b in buckets:
+                        if not b.is_dir() or len(b.name) != 2:
+                            continue
+                        try:
+                            with os.scandir(b.path) as it:
+                                for entry in it:
+                                    name = entry.name
+                                    if name.endswith(".json") and ".json.bak." not in name:
+                                        chord_hashes.add(name[:-5])
+                        except OSError:
+                            continue
             cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
             modified = False
             for t in cache.get("tracks", []):
@@ -279,7 +307,7 @@ def batch_midi_import():
 
     for t in cache.get("tracks", []):
         p = t.get("path", "")
-        chord_file = CHORDS_DIR / f"{song_hash(p)}.json"
+        chord_file = chord_file_for(song_hash(p))
         if chord_file.is_file():
             try:
                 existing = json.loads(chord_file.read_text(encoding="utf-8"))
@@ -314,6 +342,7 @@ def batch_midi_import():
                     roots.append(root)
             key = Counter(roots).most_common(1)[0][0] if roots else ""
             sheet = {"path": p, "key": key, "capo": 0, "source": "midi", "chords": entries}
+            ensure_chord_bucket(song_hash(p))
             chord_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
             cache_update_entry(p)
             imported += 1
@@ -410,10 +439,10 @@ def chords_tracks(
 
 
 _stats_cache = {"data": None, "ts": 0}
-_STATS_CACHE_TTL = 10
+_STATS_CACHE_TTL = 30
 
 
-@router.get("/chords/stats")
+@router.get("/chords/stats", dependencies=[Depends(require_personal_mode)])
 def chords_stats():
     """和弦譜統計 — 只計算 auto_chord_active_groups 啟用的群組，
     讓上方統計（總曲目 / 和弦譜 / 覆蓋率）反映使用者實際關注的範圍。

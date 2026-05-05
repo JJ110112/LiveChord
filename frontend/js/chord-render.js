@@ -1,5 +1,24 @@
 /** 和弦渲染模組 — 簡譜文字 & Canvas 和弦圖 */
 
+function _t(k, v) { return (window.LiveChordI18n && window.LiveChordI18n.t) ? window.LiveChordI18n.t(k, v) : k; }
+
+// Light-bg themes need black-based RGBA for canvas strokes/labels;
+// dark-bg themes use white-based. Reads <html data-theme> directly so the
+// module stays callable without threading a palette through every signature.
+const _LIGHT_BG_THEMES = new Set(["light", "sakura", "sunny", "sky"]);
+function _crIsLightBg() {
+  try { return _LIGHT_BG_THEMES.has(document.documentElement.getAttribute("data-theme")); }
+  catch (_) { return false; }
+}
+// alpha-prefixed: returns rgba(255,255,255,a) on dark or rgba(0,0,0,a*1.4) on light.
+// Light bg needs slightly higher contrast (1.4× alpha bump) because faint white-on-dark
+// translates poorly to faint black-on-cream.
+function _crInk(a) {
+  return _crIsLightBg()
+    ? `rgba(0,0,0,${Math.min(1, a * 1.4).toFixed(3)})`
+    : `rgba(255,255,255,${a.toFixed(3)})`;
+}
+
 const ChordRender = {
   /**
    * 將簡譜字串轉為 HTML（升降號上標）
@@ -165,11 +184,10 @@ const ChordRender = {
       }
     }
 
-    // 和弦名稱
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 10px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(data.name || "", sw / 2, sh - 2);
+    // No chord-name label here — both callers (ribbon cards in
+    // player.js and the chord-picker dialog in chord-render.js) pair
+    // this canvas with a separate HTML chord-name element above it, so
+    // drawing the name inside the canvas just duplicated it.
   },
 
   /**
@@ -846,10 +864,14 @@ const ChordRender = {
     ctx.scale(dpr, dpr);
 
     const { whiteXs, blackXs } = cache;
-    // Updated Hand Colors matching the waterfall + reference imagery
-    const LH_COLOR = "rgba(41, 182, 246, 0.9)";   // Bright Cyan (Left)
-    const RH_COLOR = "rgba(255, 152, 0, 0.9)";    // Deep Orange (Right)
-    const CHORD_OUTLINE = "rgba(182, 79, 255, 0.85)"; // Purple pill aura
+    // Hand / chord colors. Caller (player.js) passes a theme palette via
+    // opts.colors so light themes get readable contrast on white keys; the
+    // hard-coded defaults are the dark-theme values for legacy callers.
+    const _C = (opts && opts.colors) || {};
+    const LH_COLOR      = _C.pianoLH      || "rgba(41, 182, 246, 0.9)";
+    const RH_COLOR      = _C.pianoRH      || "rgba(255, 152, 0, 0.9)";
+    const CHORD_OUTLINE = _C.chordOutline || "rgba(182, 79, 255, 0.85)";
+    const FAINT_TINT    = _C.chordTint    || "#4fc3f7";
 
     // Convert rightMidis if it was still passed as single number temporarily
     const rMidis = Array.isArray(rightMidis) ? rightMidis : (rightMidis >= 0 ? [rightMidis] : []);
@@ -895,12 +917,11 @@ const ChordRender = {
 
     // Global Chord Tones (faint background highlight across keyboard)
     if (opts && opts.chordTones && opts.chordTones.length > 0) {
-      const FAINT_BLUE = "#4fc3f7"; // Soft cyan highlighting
       for (let m = 21; m <= 108; m++) {
         const pc = m % 12;
         if (opts.chordTones.includes(pc)) {
            if (!lMidis.includes(m) && !rMidis.includes(m) && !(opts.chordHints && opts.chordHints.includes(m))) {
-             highlights.push({ midi: m, color: FAINT_BLUE, alpha: 0.9, outlineOnly: true, fillFaint: true });
+             highlights.push({ midi: m, color: FAINT_TINT, alpha: 0.9, outlineOnly: true, fillFaint: true });
            }
         }
       }
@@ -1122,11 +1143,18 @@ const ChordRender = {
         }
 
         if (upcoming) {
-          // Upcoming: subtle pulsing circle (prepare hand position)
+          // Upcoming: subtle pulsing circle (prepare hand position).
+          // Uses the theme's pianoLH/pianoRH so light themes don't render
+          // washed-out cyan/orange that disappears on white keys.
           const pulse = 0.5 + 0.3 * Math.sin(fNow * 5);
-          const circleColor = hand === "left"
-            ? `rgba(33, 150, 243, ${pulse})`
-            : `rgba(255, 152, 0, ${pulse})`;
+          const baseColor = hand === "left" ? LH_COLOR : RH_COLOR;
+          // Strip any existing alpha so we can multiply by pulse
+          const _withPulse = (rgba, p) => {
+            const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/.exec(rgba);
+            if (!m) return rgba;
+            return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${p})`;
+          };
+          const circleColor = _withPulse(baseColor, pulse);
 
           ctx.globalAlpha = 1;
           ctx.fillStyle = circleColor;
@@ -1146,10 +1174,8 @@ const ChordRender = {
           ctx.font = `bold ${Math.round(circleR * 1.3)}px sans-serif`;
           ctx.fillText(String(finger), cx, cy + 0.5);
         } else {
-          // Currently playing: solid circle
-          const circleColor = hand === "left"
-            ? (isBlack ? "rgba(33, 150, 243, 0.95)" : "rgba(33, 150, 243, 0.9)")
-            : (isBlack ? "rgba(255, 152, 0, 0.95)" : "rgba(255, 152, 0, 0.9)");
+          // Currently playing: solid circle (theme-aware via LH/RH palette).
+          const circleColor = hand === "left" ? LH_COLOR : RH_COLOR;
 
           ctx.globalAlpha = 1;
           ctx.fillStyle = circleColor;
@@ -1271,8 +1297,8 @@ const ChordRender = {
       return leftPad + f * fretSpacing;
     }
 
-    // Draw fret lines (vertical)
-    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    // Draw fret lines (vertical) — theme-aware ink
+    ctx.strokeStyle = _crInk(0.40);
     ctx.lineWidth = 1;
     for (let f = 0; f <= numFrets; f++) {
       const x = fretX(f);
@@ -1284,7 +1310,7 @@ const ChordRender = {
 
     // Nut (thick line at fret 0 if baseFret === 1)
     if (baseFret === 1) {
-      ctx.strokeStyle = "#fff";
+      ctx.strokeStyle = _crIsLightBg() ? "#222" : "#fff";
       ctx.lineWidth = 4 * scale;
       const x = fretX(0);
       ctx.beginPath();
@@ -1293,7 +1319,7 @@ const ChordRender = {
       ctx.stroke();
     } else {
       // Show baseFret number
-      ctx.fillStyle = "#888";
+      ctx.fillStyle = _crInk(0.55);
       ctx.font = `${Math.round(11 * scale)}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -1306,7 +1332,7 @@ const ChordRender = {
       const isMuted = strings[i] === -1;
 
       // String line
-      ctx.strokeStyle = isMuted ? "rgba(255,80,80,0.15)" : "rgba(255,255,255,0.35)";
+      ctx.strokeStyle = isMuted ? "rgba(231,76,60,0.55)" : _crInk(0.55);
       ctx.lineWidth = isMuted ? 1 : (1.5 + (numStrings - 1 - i) * 0.2) * scale;
       ctx.beginPath();
       ctx.moveTo(fretX(0), y);
@@ -1314,7 +1340,7 @@ const ChordRender = {
       ctx.stroke();
 
       // String name (left side)
-      ctx.fillStyle = isMuted ? "#e74c3c" : "rgba(255,255,255,0.6)";
+      ctx.fillStyle = isMuted ? "#e74c3c" : _crInk(0.75);
       ctx.font = `bold ${fontSize}px sans-serif`;
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
@@ -1460,8 +1486,14 @@ const ChordRender = {
     const H = opts.canvasH || canvas.clientHeight || 400;
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
-    canvas.style.width = W + "px";
-    canvas.style.height = H + "px";
+    // NOTE: do NOT write canvas.style.width / .height here. The canvas's
+    // CSS already sizes it via `width: 80%` / `flex: 1` from the parent,
+    // so an inline px value would override the percentage and pin the
+    // canvas at whatever width happened to be at the first render —
+    // breaking every subsequent panel resize (the canvas's clientWidth
+    // would never grow back, ResizeObserver wouldn't fire, redraws kept
+    // sampling the stale pinned width). Pixel buffer (canvas.width) is
+    // enough; the browser scales it to the CSS-computed display size.
     const ctx = canvas.getContext("2d");
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, W, H);
@@ -1481,10 +1513,11 @@ const ChordRender = {
     // Finger colors
     const FINGER_CLR = { 1: "#ef5350", 2: "#ff9800", 3: "#ffeb3b", 4: "#66bb6a" };
 
-    // Draw fret lines (horizontal)
+    // Draw fret lines (horizontal). Theme-aware via _crInk so light themes
+    // get black-based ink that's actually visible against cream bg.
     for (let f = 0; f <= numFrets; f++) {
       const y = fretY(f);
-      ctx.strokeStyle = f === 0 && baseFret === 1 ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.15)";
+      ctx.strokeStyle = (f === 0 && baseFret === 1) ? _crInk(0.7) : _crInk(0.30);
       ctx.lineWidth = f === 0 && baseFret === 1 ? 3 : 1;
       ctx.beginPath();
       ctx.moveTo(strX(0) - 4, y);
@@ -1495,7 +1528,7 @@ const ChordRender = {
     // Draw string lines (vertical)
     for (let s = 0; s < numStrings; s++) {
       const x = strX(s);
-      ctx.strokeStyle = "rgba(255,255,255,0.2)";
+      ctx.strokeStyle = _crInk(0.40);
       ctx.lineWidth = s === 0 ? 1.5 : 1;
       ctx.beginPath();
       ctx.moveTo(x, fretY(0));
@@ -1504,7 +1537,7 @@ const ChordRender = {
     }
 
     // Fret numbers on left
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.fillStyle = _crInk(0.55);
     ctx.font = "10px sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
@@ -1515,7 +1548,7 @@ const ChordRender = {
 
     // String name labels at top
     const STRING_LABELS = data._stringLabels || (numStrings === 4 ? ["G","C","E","A"] : ["E","A","D","G","B","e"]);
-    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.fillStyle = _crInk(0.65);
     ctx.font = "bold 11px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
@@ -1530,13 +1563,13 @@ const ChordRender = {
       const x = strX(s);
       const fret = strings[s];
       if (fret === 0) {
-        ctx.strokeStyle = "rgba(255,255,255,0.5)";
+        ctx.strokeStyle = _crInk(0.7);
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(x, padTop - 12, 5, 0, Math.PI * 2);
         ctx.stroke();
       } else if (fret === -1) {
-        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        ctx.fillStyle = _crInk(0.55);
         ctx.font = "bold 12px sans-serif";
         ctx.textBaseline = "middle";
         ctx.fillText("×", x, padTop - 12);
@@ -1675,13 +1708,19 @@ const ChordRender = {
           }
         }
       } else {
-        // Next chord doesn't fit — show name only
+        // Next chord doesn't fit — show name only.
+        // Place the label in the LAST visible fret row (almost always empty
+        // for typical voicings whose lowest fret anchors the diagram top).
+        // Earlier the label rendered at padTop + fretSpacing*0.4 — inside
+        // the first fret cell, where barre voicings (e.g. Gm7 barre @1) put
+        // their fingering circles, making both unreadable.
         ctx.globalAlpha = ghostAlpha;
         ctx.fillStyle = "rgba(255,152,0,0.85)";
-        ctx.font = `bold ${Math.round(dotR * 1.1)}px sans-serif`;
+        ctx.font = `bold ${Math.round(dotR * 1.0)}px sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(`${jumpDir} ${nextMinFret}格  ${nextName}`, W / 2, padTop + fretSpacing * 0.4);
+        const safeY = padTop + fretSpacing * (numFrets - 0.5);
+        ctx.fillText(`${jumpDir} ${_t("instrument.fret_position", { n: nextMinFret })}  ${nextName}`, W / 2, safeY);
       }
 
       // Position jump warning (gradient + label) for jumps ≥ 2 frets
@@ -1706,7 +1745,7 @@ const ChordRender = {
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           const labelY = nextMinFret > curMinFret ? H - padBot - 8 : padTop + 12;
-          ctx.fillText(`${jumpDir} ${nextMinFret}格`, W / 2, labelY);
+          ctx.fillText(`${jumpDir} ${_t("instrument.fret_position", { n: nextMinFret })}`, W / 2, labelY);
         }
       }
 

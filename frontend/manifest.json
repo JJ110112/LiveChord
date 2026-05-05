@@ -1,12 +1,15 @@
 {
   "name": "LiveChord",
   "short_name": "LiveChord",
-  "description": "即時音樂和弦顯示",
+  "description": "Real-time music chord chart from your audio files",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f0f0f",
-  "theme_color": "#e94560",
+  "theme_color": "#2196F3",
   "icons": [
-    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/img/livechord-icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/img/livechord-icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/img/livechord-icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

@@ -3,223 +3,548 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LiveChord</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <title>LiveChord — AI Chord Recognition for Piano &amp; Guitar Practice</title>
+  <meta name="description" content="Upload any audio file (MP3 / FLAC / WAV / M4A / OGG, up to 100 MB) and LiveChord generates a real-time chord chart with synced piano and guitar practice tools — transpose, A-B loop, slow-down. Free in your browser.">
+  <link rel="canonical" href="https://livechord.org/">
+  <link rel="alternate" hreflang="en" href="https://livechord.org/">
+  <link rel="alternate" hreflang="zh-TW" href="https://livechord.org/?lang=zh-TW">
+  <link rel="alternate" hreflang="x-default" href="https://livechord.org/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="LiveChord">
+  <meta property="og:title" content="LiveChord — AI Chord Recognition for Piano &amp; Guitar Practice">
+  <meta property="og:description" content="Upload an audio file, get a real-time chord chart. Piano and guitar practice tools — transpose, A-B loop, slow-down. Free.">
+  <meta property="og:url" content="https://livechord.org/">
+  <meta property="og:image" content="https://livechord.org/img/livechord-icon-512.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="LiveChord — AI Chord Recognition for Piano &amp; Guitar Practice">
+  <meta name="twitter:description" content="Upload audio, get a real-time chord chart for piano and guitar practice.">
+  <meta name="twitter:image" content="https://livechord.org/img/livechord-icon-512.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "LiveChord",
+    "url": "https://livechord.org/",
+    "description": "Upload an audio file and get an AI-powered real-time chord chart. Practice piano and guitar with synced chord display, transpose, A-B loop, and slow-down playback. Free in your browser.",
+    "applicationCategory": "MusicApplication",
+    "operatingSystem": "Any (web)",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "inLanguage": ["en", "zh-TW"]
+  }
+  </script>
+  <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#e94560">
+  <meta name="theme-color" content="#1a1a2e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="/css/base.css?v=1">
-  <link rel="stylesheet" href="/css/home.css?v=2">
-  <script>
-    if (!localStorage.getItem("livechord_token")) {
-      fetch('/api/auth/is_admin').then(r => {
-        if (!r.ok) window.location.href = "/login";
-      }).catch(() => {
-        window.location.href = "/login";
-      });
-    }
-  </script>
+  <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+  <link rel="stylesheet" href="/css/base.css?v=21">
+  <link rel="stylesheet" href="/css/home.css?v=32">
+  <link rel="stylesheet" href="/css/help.css?v=4">
+  <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
+       Authorization for logged-in users, mode-aware 401 handling. Replaces
+       the inline blind-redirect block. Must load synchronously before any
+       other /api/ call. -->
+  <script src="/js/auth.js?v=4"></script>
+  <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
+       patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
+  <script src="/js/i18n.js?v=28"></script>
 </head>
 <body>
 
 <!-- header -->
 <header class="header">
-  <h1>LiveChord</h1>
+  <h1 class="header-brand">
+    <img src="/favicon.svg?v=4" alt="" class="header-brand-icon" aria-hidden="true">
+    <span>LiveChord</span>
+  </h1>
   <div class="search-box">
-    <input id="searchInput" type="text" placeholder="搜尋歌曲、演出者、專輯…" autocomplete="off">
+    <input id="searchInput" type="text"
+           data-i18n-attr="placeholder=common.search_placeholder_short"
+           placeholder="Upload an audio file..." autocomplete="off">
+    <div class="search-marquee" aria-hidden="true"><span class="search-marquee-text" data-i18n="common.search_placeholder_short">Upload an audio file...</span></div>
     <div id="searchResults" class="search-results"></div>
   </div>
-  <nav style="margin-right: 32px;">
-    <div style="display:flex; align-items:center; gap: 10px;">
-      <span id="userGreeting" style="font-size: 0.85em; color: var(--text-muted);"></span>
-      <button onclick="exportData()">匯出資料</button>
-      <button onclick="logout()">登出</button>
+  <a href="/sponsor" class="header-coffee-btn" id="btnHeaderCoffee"
+     data-i18n-attr="title=help.nav.sponsor,aria-label=help.nav.sponsor" title="Sponsor" aria-label="Sponsor">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="22" height="22">
+      <path d="M17 8h1a4 4 0 1 1 0 8h-1"/>
+      <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/>
+      <line x1="6" y1="2" x2="6" y2="4"/>
+      <line x1="10" y1="2" x2="10" y2="4"/>
+      <line x1="14" y1="2" x2="14" y2="4"/>
+    </svg>
+  </a>
+  <nav class="header-nav" aria-label="Settings">
+    <div class="header-nav-inner" role="menu">
+      <div class="hn-greeting" id="userGreeting" aria-hidden="true"></div>
+      <div class="hn-section">
+        <div class="hn-section-title" data-i18n="player.tools.theme_label">Theme</div>
+        <div class="hn-theme-grid">
+          <button class="hn-theme-opt" data-pick="dark"   data-i18n-attr="title=player.tools.theme.dark_title"   title="Dark — default"   aria-label="深色主題">
+            <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#1a1a2e 0%,#222 100%)"></span>
+            <span class="hn-theme-name" data-i18n="player.tools.theme.dark">Dark</span>
+          </button>
+          <button class="hn-theme-opt" data-pick="light"  data-i18n-attr="title=player.tools.theme.light_title"  title="Light — warm white paper"  aria-label="淡色主題">
+            <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#f7f5f0 0%,#e8e3d8 100%)"></span>
+            <span class="hn-theme-name" data-i18n="player.tools.theme.light">Light</span>
+          </button>
+          <button class="hn-theme-opt" data-pick="forest" data-i18n-attr="title=player.tools.theme.forest_title" title="Forest — deep green + amber alert" aria-label="森林主題">
+            <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#0d2818 0%,#ff6b35 100%)"></span>
+            <span class="hn-theme-name" data-i18n="player.tools.theme.forest">Forest</span>
+          </button>
+          <button class="hn-theme-opt" data-pick="sakura" data-i18n-attr="title=player.tools.theme.sakura_title" title="Sakura — beige + rose pink" aria-label="櫻夢主題">
+            <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#fef5f7 0%,#ec4899 100%)"></span>
+            <span class="hn-theme-name" data-i18n="player.tools.theme.sakura">Sakura</span>
+          </button>
+          <button class="hn-theme-opt" data-pick="sunny"  data-i18n-attr="title=player.tools.theme.sunny_title"  title="Sunny beach — warm sand + ocean blue" aria-label="陽光沙灘主題">
+            <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#fff8e1 0%,#0891b2 100%)"></span>
+            <span class="hn-theme-name" data-i18n="player.tools.theme.sunny">Beach</span>
+          </button>
+          <button class="hn-theme-opt" data-pick="sky"    data-i18n-attr="title=player.tools.theme.sky_title"    title="Sky — light blue + sun yellow" aria-label="藍天白雲主題">
+            <span class="hn-theme-swatch" style="background:linear-gradient(135deg,#dbeafe 0%,#2563eb 100%)"></span>
+            <span class="hn-theme-name" data-i18n="player.tools.theme.sky">Sky</span>
+          </button>
+        </div>
+      </div>
+      <div class="hn-section">
+        <label class="hn-row hn-row-lang">
+          <span data-i18n="lang.picker_title">Language</span>
+          <select id="langPicker" class="lang-picker" data-i18n-attr="title=lang.picker_title" title="Language"
+                  onchange="if(window.LiveChordI18n) window.LiveChordI18n.setLang(this.value)">
+            <option value="en">EN</option>
+            <option value="zh-TW">繁中</option>
+          </select>
+        </label>
+      </div>
+      <div class="hn-section">
+        <a href="/help" class="hn-row" role="menuitem" data-i18n="help.nav.help">Help</a>
+        <a href="/sponsor" class="hn-row" role="menuitem" data-i18n="help.nav.sponsor">Sponsor</a>
+      </div>
+      <div class="hn-section">
+        <button class="hn-row" id="btnInstallApp" type="button" role="menuitem" data-i18n-attr="title=common.install_app_title" title="Install as app" data-i18n="common.install_app_label">📱 Install</button>
+        <button class="hn-row" onclick="logout()" type="button" role="menuitem" data-i18n="common.logout">Sign out</button>
+      </div>
     </div>
+    <button class="header-settings-btn" id="btnHeaderSettings" type="button"
+            data-i18n-attr="title=common.settings_title,aria-label=common.settings_title" title="Settings" aria-label="Settings" aria-expanded="false"
+            onclick="(function(b){const e=b.closest('.header-nav');const open=e.classList.toggle('mobile-open');b.setAttribute('aria-expanded',open?'true':'false');})(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="22" height="22">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
   </nav>
-  <button class="header-fs-btn" title="全螢幕" onclick="
-    if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{})}
-    else{document.exitFullscreen()}
-  ">&#x26F6;</button>
 </header>
 
 <!-- dashboard layout -->
 <main class="content dashboard-layout">
-  
+
+  <!-- Marketing intro banner — appears at the top for non-logged-in
+       visitors in public mode. CTA routes to /login; once signed in
+       the user lands back on this page and sees the dashboard
+       (recent / favorites / local music). app.js sets display=""
+       only when (a) public mode AND (b) no localStorage token. -->
+  <section id="secHomeIntro" class="home-intro" style="display:none">
+    <div class="home-intro-inner">
+      <img src="/img/cover.png?v=1" alt="LiveChord" class="home-intro-cover">
+    </div>
+  </section>
+
+  <!-- Public-mode hero — explains the service to first-time visitors and
+       gives crawlers a meaningful body to index (the rest of the homepage
+       is JS-rendered cards which Googlebot can't see in first-paint).
+       app.js hides this section once the visitor has at least one
+       analyzed song so returning users aren't shown the marketing copy
+       repeatedly. Static (no data-i18n on H1 / hero p so the EN strings
+       are guaranteed to render even before i18n.js loads — these are
+       the SEO-critical strings). Sub-sections use data-i18n for the
+       zh-TW switch. -->
+  <section id="secHomeHero" class="home-hero" style="display:none">
+    <h1 class="home-hero-title">Turn your audio into a real-time chord chart</h1>
+    <p class="home-hero-tagline" data-i18n="home.hero.tagline">Upload an audio file. AI detects the chord progression, beats, and key. Practice with synced piano, guitar, ukulele, accordion, and arranger views — transpose, slow-down, A-B loop, all in your browser.</p>
+    <div class="home-hero-cta-row">
+      <button id="heroUploadBtn" class="home-hero-cta" data-i18n="home.hero.cta">Get started for free</button>
+    </div>
+    <div class="home-hero-features">
+      <div class="home-hero-feature">
+        <div class="hf-icon">🎵</div>
+        <h3 class="hf-title" data-i18n="home.hero.feat1.title">AI chord detection</h3>
+        <p class="hf-body" data-i18n="home.hero.feat1.body">Drop in any audio file (MP3 / FLAC / WAV / M4A / OGG, up to 100 MB). Our model returns chord progression, beat grid, and key signature in 30 seconds to 2 minutes — depending on song length.</p>
+      </div>
+      <div class="home-hero-feature">
+        <div class="hf-icon">🎹</div>
+        <h3 class="hf-title" data-i18n="home.hero.feat2.title">Five instrument views</h3>
+        <p class="hf-body" data-i18n="home.hero.feat2.body">See the same song through piano, guitar, ukulele, accordion, or arranger lenses. Switch any time — chords, fingering, and timing stay synced; only the visual presentation changes.</p>
+      </div>
+      <div class="home-hero-feature">
+        <div class="hf-icon">🎯</div>
+        <h3 class="hf-title" data-i18n="home.hero.feat3.title">Built for practice</h3>
+        <p class="hf-body" data-i18n="home.hero.feat3.body">Transpose to any key, slow playback to 0.5×, loop a single section A-B, and let the bar-aware splitter break long chords into one-bar cards. Designed for actual practice, not casual listening.</p>
+      </div>
+    </div>
+    <p class="home-hero-rights" data-i18n="home.hero.rights_notice">⚠ Please only upload audio you have the right to use.</p>
+  </section>
+
+  <!-- "How it works" — 3-step explanation. Same visibility rules as
+       the hero: public-mode only, hidden after returning visitor has
+       analyzed songs. Static markup so crawlers see the steps and the
+       step body text — more long-tail SEO surface for queries like
+       "how to get chords from audio" / "AI chord detection upload". -->
+  <section id="secHomeHowItWorks" class="home-how-it-works" style="display:none">
+    <h2 class="hiw-heading" data-i18n="home.how_it_works.heading">How LiveChord works</h2>
+    <ol class="hiw-steps">
+      <li class="hiw-step">
+        <div class="hiw-num">1</div>
+        <h3 class="hiw-title" data-i18n="home.how_it_works.step1.title">Upload your audio</h3>
+        <p class="hiw-body" data-i18n="home.how_it_works.step1.body">Drag an audio file onto the upload area or click to pick one. MP3, FLAC, WAV, M4A and OGG up to 100 MB. The file lives in memory only for the duration of analysis — it never goes into a long-term archive.</p>
+      </li>
+      <li class="hiw-step">
+        <div class="hiw-num">2</div>
+        <h3 class="hiw-title" data-i18n="home.how_it_works.step2.title">AI analyzes the song</h3>
+        <p class="hiw-body" data-i18n="home.how_it_works.step2.body">A chord-recognition transformer detects the chord progression. A beat-tracking model finds bar lines and tempo. A section detector labels verses, choruses and bridges. Typical analysis takes 30 seconds to 2 minutes depending on song length.</p>
+      </li>
+      <li class="hiw-step">
+        <div class="hiw-num">3</div>
+        <h3 class="hiw-title" data-i18n="home.how_it_works.step3.title">Practice with synced views</h3>
+        <p class="hiw-body" data-i18n="home.how_it_works.step3.body">The player opens with chords, fingering and timing in lockstep with the audio. Transpose to your singing key, slow playback to 0.5×, loop a single section A-B, switch instrument view at any time. Built for actual practice — not just casual listening.</p>
+      </li>
+    </ol>
+  </section>
+
   <!-- recent section -->
   <section id="secRecent" class="dash-section" style="display:none">
-    <h2 class="dash-title">最近播放</h2>
+    <h2 class="dash-title" data-i18n="home.section.recent">Recently played</h2>
     <div id="recentList" class="horizontal-scroll"></div>
-  </section>
-
-  <!-- favorites section -->
-  <section id="secFavorites" class="dash-section" style="display:none">
-    <h2 class="dash-title">我的最愛</h2>
-    <div id="favList" class="horizontal-scroll"></div>
-  </section>
-
-  <!-- beta upload section (hidden by default, shown for beta non-admin) -->
-  <section id="secUpload" class="dash-section" style="display:none">
-    <div class="beta-upload-card">
-      <div class="upload-drop-zone" id="betaDropZone">
-        <div class="upload-icon">&#x1F3B5;</div>
-        <div class="upload-text">拖曳音檔至此，或點擊選取</div>
-        <div class="upload-hint">支援 MP3, FLAC, WAV, M4A, OGG (上限 200 MB)</div>
-        <input type="file" id="betaFileInput" accept="audio/*" style="display:none">
-      </div>
-      <div class="beta-file-info" id="betaFileInfo" style="display:none">
-        <span id="betaFileName"></span>
-        <span id="betaFileSize" style="color:var(--text-dim);margin-left:8px"></span>
-        <button class="btn-small btn-accent" id="betaUploadBtn" onclick="window._betaStartUpload()">開始分析</button>
-      </div>
-      <div class="beta-progress" id="betaUploadProgress" style="display:none">
-        <div class="progress-bar"><div class="progress-fill" id="betaProgressFill"></div></div>
-        <div class="progress-info">
-          <span id="betaProgressText">分析中...</span>
-          <span id="betaProgressPct">0%</span>
-        </div>
-      </div>
-    </div>
-    <div class="beta-yt-card" style="margin-top:12px">
-      <div style="display:flex;gap:10px;align-items:center">
-        <span style="font-size:1.2rem">&#x1F3AC;</span>
-        <input type="text" id="betaYtUrl" placeholder="貼上 YouTube URL..." style="flex:1;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.95rem">
-        <button class="btn-small btn-accent" id="betaYtBtn" onclick="window._betaStartYoutube()">分析</button>
-      </div>
-      <div class="beta-progress" id="betaYtProgress" style="display:none;margin-top:10px">
-        <div class="progress-bar"><div class="progress-fill" id="betaYtFill"></div></div>
-        <div class="progress-info">
-          <span id="betaYtText">處理中...</span>
-          <span id="betaYtPct">0%</span>
-        </div>
-      </div>
-    </div>
   </section>
 
   <!-- beta recent plays (hidden by default) -->
   <section id="secBetaRecent" class="dash-section" style="display:none">
-    <h2 class="dash-title">最近播放</h2>
+    <h2 class="dash-title" data-i18n="home.section.recent">Recently played</h2>
     <div id="betaRecentList" class="horizontal-scroll"></div>
   </section>
 
-  <!-- beta library = analysis history as grid (hidden by default) -->
-  <section id="secHistory" class="dash-section" style="display:none">
-    <h2 class="dash-title">音樂庫</h2>
-    <div id="historyGrid" class="grid" style="margin-top:12px"></div>
+  <!-- favorites section -->
+  <section id="secFavorites" class="dash-section" style="display:none">
+    <h2 class="dash-title" data-i18n="home.section.favorites">Favorites</h2>
+    <div id="favList" class="horizontal-scroll"></div>
   </section>
+
+  <!-- beta local music — user-picked files, persisted via IndexedDB + localStorage metadata -->
+  <section id="secBetaLocalTracks" class="dash-section" style="display:none">
+    <h2 class="dash-title" style="display:flex; align-items:center; gap:12px">
+      <span data-i18n="home.section.local_tracks">Local music</span>
+      <button id="betaBrowseLocalBtn" class="btn-small"
+              style="font-size:0.75rem; padding:4px 10px"
+              data-i18n="home.section.local_pick_btn">+ Pick local audio</button>
+    </h2>
+    <div id="betaLocalAnalyzedRow" class="horizontal-scroll" style="margin-top:8px"></div>
+    <div id="betaLocalTrackList" class="local-track-list" style="margin-top:8px"></div>
+    <input type="file" id="betaLocalAudioInput" accept="audio/*" multiple style="display:none">
+  </section>
+
+  <!-- First-run instrument picker — shown once if livechord_tab unset.
+       Writes to localStorage.livechord_tab so /player picks up the choice
+       on next song open. Dismissible (defaults to piano if skipped). -->
+  <div id="instrumentPickerBackdrop" class="instrument-picker-backdrop" style="display:none"></div>
+  <div id="instrumentPickerPanel" class="instrument-picker-panel" style="display:none">
+    <div class="ip-title" data-i18n="home.instrument_picker.title">Pick your main instrument</div>
+    <div class="ip-subtitle" data-i18n="home.instrument_picker.subtitle">After analyzing any song, the player will open in this instrument by default. You can switch any time from the bottom toolbar.</div>
+    <div class="ip-grid">
+      <button class="ip-card" data-pick="piano" type="button">
+        <div class="ip-icon">🎹</div>
+        <div class="ip-name" data-i18n="player.instrument.piano_title">Piano</div>
+      </button>
+      <button class="ip-card" data-pick="guitar" type="button">
+        <div class="ip-icon">🎸</div>
+        <div class="ip-name" data-i18n="player.instrument.guitar_title">Guitar</div>
+      </button>
+      <button class="ip-card" data-pick="ukulele" type="button">
+        <div class="ip-icon">🪕</div>
+        <div class="ip-name" data-i18n="player.instrument.ukulele_title">Ukulele</div>
+      </button>
+      <button class="ip-card" data-pick="accordion" type="button">
+        <div class="ip-icon">🪗</div>
+        <div class="ip-name" data-i18n="player.instrument.accordion_title">Accordion</div>
+      </button>
+      <button class="ip-card" data-pick="arranger" type="button">
+        <div class="ip-icon">🎛️</div>
+        <div class="ip-name" data-i18n="player.instrument.arranger_title">Arranger</div>
+      </button>
+    </div>
+    <button class="ip-skip" id="ipSkip" type="button" data-i18n="home.instrument_picker.skip">Skip — I'll pick later</button>
+  </div>
+
+  <!-- add-song modal (opened from search empty-state CTA; no standalone FAB button) -->
+  <div id="betaFabBackdrop" class="add-song-backdrop"></div>
+  <div id="betaFabPanel" class="beta-fab-panel add-song-modal">
+    <button class="add-song-close" id="betaFabClose"
+            data-i18n-attr="aria-label=common.close" aria-label="Close">&times;</button>
+    <div class="fab-panel-title" data-i18n="home.modal.title">Add a song</div>
+    <div class="fab-section" id="betaDropZone">
+      <span data-i18n="home.modal.dropzone">🎵 Drop audio or click to pick</span>
+      <span class="upload-hint" data-i18n="home.modal.upload_hint">MP3, FLAC, WAV, M4A, OGG (100 MB)</span>
+      <input type="file" id="betaFileInput" accept="audio/*" style="display:none">
+    </div>
+    <div class="beta-file-info" id="betaFileInfo" style="display:none">
+      <span id="betaFileName" class="beta-file-name"></span>
+      <span id="betaFileSize" class="beta-file-size"></span>
+      <button class="btn-small btn-accent" id="betaUploadBtn"
+              onclick="window._betaStartUpload()"
+              data-i18n="home.modal.btn_analyze">Analyze</button>
+    </div>
+    <div class="beta-progress" id="betaUploadProgress" style="display:none">
+      <div class="beta-progress-title" id="betaProgressTitle"></div>
+      <!-- Animated EQ bars while analysis runs (30-120s). Hidden in
+           every other state via the .beta-progress visibility chain. -->
+      <div class="upload-music-bars" aria-hidden="true">
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+        <div class="bar"></div>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="betaProgressFill"></div></div>
+      <div class="progress-info"><span id="betaProgressText" data-i18n="home.modal.progress_text">Analyzing…</span><span id="betaProgressPct">0%</span></div>
+    </div>
+    <div class="upload-rights-notice" data-i18n="home.modal.upload_rights_notice">⚠ Please only upload audio you have the right to use.</div>
+  </div>
 
   <!-- browse section -->
   <section id="secBrowse" class="dash-section">
     <div class="browse-header" style="position: sticky; top: 56px; z-index: 10; background: var(--bg); padding: 10px 0; display: flex; align-items: center; justify-content: space-between;">
       <h2 class="dash-title" style="display:flex; align-items:center; margin-bottom: 0;">
-        音樂庫 
+        <span data-i18n="home.section.library">Music library</span>
         <span id="breadcrumb" class="breadcrumb" style="font-size:0.65em; opacity:0.7; font-weight:normal; margin-left:12px; margin-bottom:0;"></span>
       </h2>
-      <input type="text" id="dirFilter" placeholder="過濾曲目..." autocomplete="off" style="display:none; padding: 4px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); font-size: 12px; width: 140px;">
+      <input type="text" id="dirFilter" autocomplete="off"
+             data-i18n-attr="placeholder=home.filter.placeholder"
+             placeholder="Filter songs..."
+             style="display:none; padding: 4px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); font-size: 12px; width: 140px;">
     </div>
-    <div id="browseGrid" class="grid" style="margin-top: 16px;"></div>
+    <div id="browseGrid" class="library-grid" style="margin-top: 16px;"></div>
     <ul id="trackList" class="track-list" style="display:none; margin-top: 16px;"></ul>
   </section>
 
   <!-- loading -->
   <div id="loading" class="loading" style="display:none">
     <div class="spinner"></div>
-    <p style="margin-top:12px">載入中…</p>
+    <p style="margin-top:12px" data-i18n="common.loading">Loading…</p>
   </div>
+
+  <footer class="site-footer">
+    <a href="/tos" data-i18n="footer.terms">Terms</a>
+    <span class="footer-sep">·</span>
+    <a href="/disclaimer" data-i18n="footer.disclaimer">Disclaimer</a>
+    <span class="footer-sep">·</span>
+    <a href="/privacy" data-i18n="footer.privacy">Privacy</a>
+    <span class="footer-sep">·</span>
+    <a href="/help" data-i18n="footer.help">Help</a>
+  </footer>
 </main>
 
 <div id="toast" class="toast"></div>
 
-<script src="/js/utils.js?v=2"></script>
-<script src="/js/api.js?v=57"></script>
+<script src="/js/utils.js?v=9"></script>
+<script src="/js/api.js?v=58"></script>
 <script>
-  // Insert auth token into all fetch requests in api.js globally!
-  const originalFetch = window.fetch;
-  window.fetch = function() {
-    let [resource, config] = arguments;
-    if(config == null) config = {};
-    const url = typeof resource === 'string' ? resource : (resource instanceof Request ? resource.url : '');
-    if (url.startsWith('/') || url.includes(window.location.host)) {
-        if(config.headers == null) config.headers = {};
-        const token = localStorage.getItem("livechord_token");
-        if(token) config.headers['Authorization'] = `Bearer ${token}`;
+  // (Fetch wrapper + 401 handler are installed by /js/auth.js — see <head>.)
+
+  function _t(key, vars, fb) {
+    return window.LiveChordI18n ? window.LiveChordI18n.t(key, vars) : (fb || key);
+  }
+
+  // Display name preferred over the opaque OAuth-derived username
+  // ("oauth_google_a1b2c3d4"). Falls back to username if no display_name was
+  // captured (legacy session) until auth.js's /me backfill arrives.
+  function _displayName() {
+    return localStorage.getItem("livechord_display_name") ||
+           localStorage.getItem("livechord_username") || "";
+  }
+
+  function _renderGreeting() {
+    const greeting = document.getElementById("userGreeting");
+    if (!greeting) return;
+    const name = _displayName();
+    if (!name) { greeting.textContent = ""; return; }
+    greeting.textContent = _t("home.greeting", {name}, `Hello, ${name}`);
+  }
+
+  // Re-paint when auth.js backfills display_name from /api/auth/oauth/me.
+  document.addEventListener("livechord:profile", _renderGreeting);
+  // Re-paint on language toggle so the "Hello," prefix flips between locales.
+  document.addEventListener("livechord:langchange", _renderGreeting);
+  // Re-paint once the i18n dictionary finishes loading. Without this, a cold
+  // reload that already has a cached display_name renders the literal key
+  // "home.greeting" because _t() runs before the dict is in memory.
+  document.addEventListener("livechord:i18nready", _renderGreeting);
+  // Initial paint with whatever t() can resolve right now (English fallback if
+  // the dict isn't loaded yet) so the user never sees "home.greeting" between
+  // first paint and the i18nready event.
+  _renderGreeting();
+
+  // Theme picker — moved from player.html Tools popup into the homepage gear
+  // menu (theme is a global setting and the gear is the canonical app-settings
+  // entry point). Mirrors player.js's _applyTheme() so the persisted choice is
+  // honored consistently across pages.
+  (function() {
+    const VALID = new Set(["dark", "light", "forest", "sakura", "sunny", "sky"]);
+    const META = { dark: "#1a1a2e", light: "#f7f5f0", forest: "#0d2818",
+                   sakura: "#fef5f7", sunny: "#fff8e1", sky: "#dbeafe" };
+    function apply(theme) {
+      if (!VALID.has(theme)) theme = "dark";
+      document.documentElement.setAttribute("data-theme", theme);
+      try { localStorage.setItem("livechord_theme", theme); } catch (_) {}
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute("content", META[theme]);
+      document.querySelectorAll(".hn-theme-opt").forEach(b => {
+        b.classList.toggle("active", b.dataset.pick === theme);
+      });
     }
-    return originalFetch(resource, config);
-  };
-  
+    document.querySelectorAll(".hn-theme-opt").forEach(btn => {
+      btn.addEventListener("click", () => apply(btn.dataset.pick));
+    });
+    let cur = localStorage.getItem("livechord_theme");
+    apply(VALID.has(cur) ? cur : "dark");
+  })();
+
+  // Close the settings popover when the user taps outside of it (any click that
+  // is not on the gear trigger or inside the open menu collapses it). Without
+  // this the menu only closes via a second tap on the gear, which feels sticky.
+  document.addEventListener("click", (e) => {
+    const nav = document.querySelector(".header-nav.mobile-open");
+    const gear = document.getElementById("btnHeaderSettings");
+    if (!nav) return;
+    if (gear && (gear === e.target || gear.contains(e.target))) return;
+    if (nav.contains(e.target)) return;
+    nav.classList.remove("mobile-open");
+    if (gear) gear.setAttribute("aria-expanded", "false");
+  });
+
   let username = localStorage.getItem("livechord_username");
-  
+
   // Check admin status anyway to handle LAN bypass
   fetch("/api/auth/is_admin")
     .then(res => res.json())
     .then(data => {
         if (data.is_admin) {
-            if (!username) {
-                username = "Admin (LAN)";
-            }
-            const greeting = document.getElementById("userGreeting");
-            if (greeting) greeting.textContent = `Hello, ${username}`;
+            fetch("/api/config/public").then(r => r.json()).then(cfg => {
+                if (cfg.deployment_mode === "beta" || cfg.deployment_mode === "public") {
+                    // User-facing modes: show admin UI for authenticated admins
+                    if (!username) username = "Admin (LAN)";
+                    _renderGreeting();
 
-            const navDiv = document.querySelector("nav div");
-            // Only add button if it's not already there
-            if (!navDiv.querySelector("button.admin-btn")) {
-                const adminBtn = document.createElement("button");
-                adminBtn.className = "admin-btn";
-                adminBtn.textContent = "管理後台";
-                adminBtn.onclick = () => window.location.href = "/admin";
-                navDiv.insertBefore(adminBtn, navDiv.querySelector("button"));
-                
-                // For Beta mode admin "新歌分析" button
-                fetch("/api/config/public").then(r => r.json()).then(cfg => {
-                    if (cfg.deployment_mode === "beta") {
+                    const navDiv = document.querySelector("nav div");
+                    if (!navDiv.querySelector("button.admin-btn")) {
+                        const adminBtn = document.createElement("button");
+                        adminBtn.className = "admin-btn";
+                        adminBtn.setAttribute("data-i18n", "home.admin_btn");
+                        adminBtn.textContent = _t("home.admin_btn", null, "Admin");
+                        adminBtn.onclick = () => window.location.href = "/admin";
+                        navDiv.insertBefore(adminBtn, navDiv.querySelector("button"));
+
                         const processBtn = document.createElement("button");
-                        processBtn.textContent = "新歌分析";
+                        processBtn.setAttribute("data-i18n", "home.process_btn");
+                        processBtn.textContent = _t("home.process_btn", null, "Analyze song");
                         processBtn.onclick = () => window.location.href = "/process";
                         navDiv.insertBefore(processBtn, navDiv.querySelector("button"));
                     }
-                }).catch(() => {});
-            }
+                } else {
+                    // Personal mode: nav stays visible — Phase A introduced a
+                    // language picker + a meaningful logout (real OAuth users
+                    // do exist in the post-beta DB), so we no longer blanket-
+                    // hide the whole bar like in the beta-era design.
+                    if (!username) username = "Admin (LAN)";
+                    _renderGreeting();
+                }
+            }).catch(() => {});
         } else if (username) {
-            const greeting = document.getElementById("userGreeting");
-            if (greeting) greeting.textContent = `Hello, ${username}`;
+            _renderGreeting();
         }
     }).catch(err => {
         if (username) {
-            const greeting = document.getElementById("userGreeting");
-            if (greeting) greeting.textContent = `Hello, ${username}`;
+            _renderGreeting();
         }
     });
 
   function logout() {
       localStorage.removeItem("livechord_token");
       localStorage.removeItem("livechord_username");
-      window.location.href = "/login";
+      localStorage.removeItem("livechord_display_name");
+      // Personal mode falls back to LAN bypass on /, no login page needed.
+      // Beta / public still bounce to /login so the user picks an auth path.
+      const mode = (window._lcDeploymentMode) ||
+                   localStorage.getItem("livechord_mode_hint") || "";
+      window.location.href = (mode === "personal") ? "/" : "/login";
   }
 
-  async function exportData() {
-      const token = localStorage.getItem("livechord_token");
-      if (!token) return;
-      try {
-          const res = await fetch("/api/export-data");
-          if (!res.ok) {
-              alert("無資料可匯出");
-              return;
-          }
-          const blob = await res.blob();
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.style.display = "none";
-          a.href = url;
-          a.download = `${localStorage.getItem("livechord_username")}_backup.zip`;
-          document.body.appendChild(a);
-          a.click();
-          window.URL.revokeObjectURL(url);
-      } catch (e) {
-          alert("網路錯誤");
-      }
-  }
+  // (Export-data button moved to player toolbar Tools popup — see player.js)
 </script>
-<script src="/js/app.js?v=40"></script>
+
+<script>
+// ─── PWA install flow ─────────────────────────────────────────────────────
+// Register service worker (required for installability on Chrome/Edge),
+// then capture beforeinstallprompt so the user can trigger install from
+// the header button any time — not just the browser's first-visit prompt.
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
+let _lcInstallPrompt = null;
+const _btnInstall = document.getElementById("btnInstallApp");
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  _lcInstallPrompt = e;
+  if (_btnInstall) _btnInstall.style.display = "inline-block";
+});
+
+window.addEventListener("appinstalled", () => {
+  if (_btnInstall) _btnInstall.style.display = "none";
+  _lcInstallPrompt = null;
+});
+
+if (_btnInstall) {
+  _btnInstall.addEventListener("click", async () => {
+    if (matchMedia("(display-mode: standalone)").matches) return;
+    // Chrome/Edge path: beforeinstallprompt already captured → trigger native install
+    if (_lcInstallPrompt) {
+      _lcInstallPrompt.prompt();
+      const { outcome } = await _lcInstallPrompt.userChoice;
+      _lcInstallPrompt = null;
+      if (outcome === "accepted") _btnInstall.style.display = "none";
+      return;
+    }
+    // Fallback: no prompt event was captured — either iOS Safari (never fires
+    // it), or Android Chrome before the engagement threshold. Show
+    // platform-specific steps so the user isn't stuck. Default hint is
+    // generic enough to cover edge cases (Firefox, in-app webview, etc.).
+    const ua = navigator.userAgent;
+    const isIOS = /iPhone|iPad|iPod/.test(ua) && !window.MSStream;
+    const isAndroid = /Android/i.test(ua);
+    let msg;
+    if (isIOS) {
+      msg = _t("install.ios", null,
+        "iPhone / iPad install:\n1. Tap the Share button (square with up arrow) at the bottom\n2. Scroll down to 'Add to Home Screen'\n3. Tap 'Add' at the top right");
+    } else if (isAndroid) {
+      msg = _t("install.android", null,
+        "Android install:\n1. Open the browser menu (⋮ at the top right)\n2. Pick 'Install app' or 'Add to Home screen'\n\nIf you don't see the option, open in Chrome — some browsers (LINE built-in, Facebook webview) can't install PWAs.");
+    } else {
+      msg = _t("install.fallback", null,
+        "Look for 'Add to Home screen' or 'Install app' in the browser menu.");
+    }
+    alert(msg);
+  });
+}
+
+// If already launched as standalone PWA, hide the install button outright
+if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
+  _btnInstall.style.display = "none";
+}
+</script>
+
+<script src="/js/app.js?v=90"></script>
 </body>
 </html>

@@ -18,7 +18,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from chord_detect import detect_chords, detect_key, _load_model
-from chord_cache import song_hash
+from chord_cache import song_hash, chord_file_for, ensure_chord_bucket
 import torch
 
 # ---------------------------------------------------------------------------
@@ -81,7 +81,8 @@ _gpu_semaphore = threading.Semaphore(2)  # 最多 2 個同時用 GPU，避免 VR
 def process_track(root_dir: str, rel_path: str):
     full_path = os.path.join(root_dir, rel_path)
     h = song_hash(rel_path)
-    out_file = CHORDS_DIR / f"{h}.json"
+    ensure_chord_bucket(h)
+    out_file = chord_file_for(h)
 
     if out_file.is_file():
         try:

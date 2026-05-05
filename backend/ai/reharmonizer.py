@@ -15,8 +15,24 @@ except ImportError:
     from preprocess import NOTE_TO_SEMI, SEMI_TO_NOTE, chord_to_degree, parse_chord_name
     import jazz_rules
 
-# 最小可插入持續時間（秒）
+# 最小可插入持續時間（秒）。120 BPM 預設，慢歌會依 bpm 放寬避免把半小節
+# 塞 ii-V。實際值由 _min_insert_duration() 動態產生。
 MIN_INSERT_DURATION = 1.2
+
+
+def _min_insert_duration(bpm):
+    """回傳給定 BPM 下的最小可插入秒數（至少兩拍）。
+
+    120 BPM -> 1.0s, 70 BPM -> 1.71s, 160 BPM -> 0.75s。下限 0.6s 避免
+    非常快的曲子完全擋掉插入。
+    """
+    try:
+        b = float(bpm) if bpm else 120.0
+    except (TypeError, ValueError):
+        b = 120.0
+    b = max(40.0, min(240.0, b))
+    beat_sec = 60.0 / b
+    return max(0.6, beat_sec * 2)
 
 
 class Reharmonizer:
@@ -26,7 +42,7 @@ class Reharmonizer:
         """
         self.level = min(max(level, 1), 3)
 
-    def jazzify(self, chords, key="C", melody_data=None, mode="rule-based"):
+    def jazzify(self, chords, key="C", melody_data=None, mode="rule-based", bpm=None):
         """主入口：重配和聲
 
         Args:
@@ -34,6 +50,8 @@ class Reharmonizer:
             melody_data: [{start, end, midi}, ...] 可選旋律資料
             key: 調性字串如 "C", "Gm"
             mode: "rule-based" 或是 "transformer"
+            bpm: 歌曲 BPM（含 ballad halving 修正後）。用於動態縮放插入閾值，
+                 慢歌下 ii-V / 二次屬插入的 prev_duration 下限會放寬。
 
         Returns:
             {
@@ -52,6 +70,8 @@ class Reharmonizer:
         # 解析 key
         key_semi = self._parse_key(key)
         is_minor = key.endswith("m") and len(key) > 1
+        min_insert = _min_insert_duration(bpm)
+        self._min_insert = min_insert
 
         # 深拷貝避免改動原資料
         result = [copy.deepcopy(c) for c in chords]
@@ -396,6 +416,25 @@ class Reharmonizer:
                         
                     i += 1
                     
+                # Transformer decoder sequence length is bounded by max_len +
+                # model-learned EOS; accumulated `current_time += dur_val` is
+                # almost always SHORTER than the original song. Rescale the
+                # time axis so the jazzified progression spans the full song
+                # (otherwise the back half has no chord to follow).
+                if new_chords and original_chords:
+                    orig_start = original_chords[0].get("time", 0.0)
+                    orig_end = max(c.get("end", c.get("time", 0.0)) for c in original_chords)
+                    trans_start = new_chords[0].get("time", 0.0)
+                    trans_end = new_chords[-1].get("end", new_chords[-1].get("time", 0.0))
+                    orig_span = orig_end - orig_start
+                    trans_span = trans_end - trans_start
+                    if trans_span > 0 and orig_span > 0 and abs(orig_span - trans_span) > 1.0:
+                        scale = orig_span / trans_span
+                        for c in new_chords:
+                            c["time"] = orig_start + (c.get("time", 0.0) - trans_start) * scale
+                            if "end" in c:
+                                c["end"] = orig_start + (c["end"] - trans_start) * scale
+
                 if new_chords:
                     result_chords = new_chords
                     changes.append({
@@ -518,7 +557,7 @@ class Reharmonizer:
                 prev = result[-1]
                 prev_duration = prev.get("end", prev["time"] + 2) - prev["time"]
 
-                if prev_duration >= MIN_INSERT_DURATION and not prev.get("inserted"):
+                if prev_duration >= getattr(self, "_min_insert", MIN_INSERT_DURATION) and not prev.get("inserted"):
                     # ii 根音 = V 根音 - 5 半音
                     ii_semi = (root_semi - 5) % 12
 
@@ -604,7 +643,7 @@ class Reharmonizer:
                     prev = result[-1]
                     prev_duration = prev.get("end", prev["time"] + 2) - prev["time"]
 
-                    if prev_duration >= MIN_INSERT_DURATION and not prev.get("inserted"):
+                    if prev_duration >= getattr(self, "_min_insert", MIN_INSERT_DURATION) and not prev.get("inserted"):
                         sec_root, sec_quality = jazz_rules.secondary_dominant(root_semi)
                         sec_name = jazz_rules.root_name(sec_root) + sec_quality
 

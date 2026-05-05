@@ -3,9 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LiveChord - 新歌分析</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/css/base.css?v=1">
+  <title data-i18n="process.title_tag">LiveChord — Analyze new song</title>
+  <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
+  <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+  <script src="/js/i18n.js?v=28"></script>
+  <link rel="stylesheet" href="/css/base.css?v=4">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -87,23 +89,6 @@
     .file-info .name { font-weight: 600; }
     .file-info .size { color: var(--text-dim); margin-left: 8px; }
 
-    /* YouTube input */
-    .yt-row {
-      display: flex;
-      gap: 10px;
-    }
-    .yt-row input {
-      flex: 1;
-      padding: 10px 14px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      background: var(--bg);
-      color: var(--text);
-      font-size: 0.95rem;
-    }
-    .yt-row input::placeholder { color: var(--text-dim); opacity: 0.6; }
-    .yt-row input:focus { outline: none; border-color: var(--accent); }
-
     /* Buttons */
     .btn {
       padding: 10px 20px;
@@ -182,15 +167,26 @@
       margin-top: -8px;
       margin-bottom: 16px;
     }
+    .upload-rights-notice {
+      margin-top: 10px;
+      padding: 8px 12px;
+      background: rgba(255, 193, 7, 0.08);
+      border: 1px solid rgba(255, 193, 7, 0.25);
+      border-radius: 8px;
+      font-size: 0.8em;
+      color: var(--text-dim);
+      text-align: center;
+      line-height: 1.4;
+    }
   </style>
 </head>
 <body>
 
 <div class="page-header">
-  <h1>LiveChord &mdash; 新歌分析</h1>
+  <h1 data-i18n="process.heading">LiveChord &mdash; Analyze new song</h1>
   <nav>
-    <a href="/">首頁</a>
-    <a href="/player">播放器</a>
+    <a href="/" data-i18n="help.nav.home">Home</a>
+    <a href="/player" data-i18n="process.nav.player">Player</a>
   </nav>
 </div>
 
@@ -200,55 +196,40 @@
 
   <!-- Upload card -->
   <div class="card">
-    <h2><span class="icon">&#x1F4E4;</span> 上傳音檔分析</h2>
+    <h2><span class="icon">&#x1F4E4;</span> <span data-i18n="process.upload.heading">Upload audio for analysis</span></h2>
     <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
-      <div>將音檔拖曳至此處，或點擊選取</div>
-      <div class="hint">支援 MP3, FLAC, WAV, M4A, OGG (上限 200 MB)</div>
+      <div data-i18n="process.upload.dropzone">Drop an audio file here, or click to choose</div>
+      <div class="hint" data-i18n="process.upload.size_hint">Supports MP3, FLAC, WAV, M4A, OGG (100 MB max)</div>
       <input type="file" id="fileInput" accept="audio/*">
     </div>
     <div class="file-info" id="fileInfo">
       <span class="name" id="fileName"></span>
       <span class="size" id="fileSize"></span>
     </div>
+    <div class="upload-rights-notice" data-i18n="home.modal.upload_rights_notice">⚠ Please only upload audio you have the right to use.</div>
     <div style="margin-top: 14px; text-align: right;">
-      <button class="btn btn-primary" id="btnUpload" disabled onclick="startUpload()">開始分析</button>
+      <button class="btn btn-primary" id="btnUpload" disabled onclick="startUpload()" data-i18n="process.upload.btn_start">Start analysis</button>
     </div>
     <div class="progress-wrap" id="uploadProgress">
       <div class="progress-bar"><div class="fill" id="uploadFill"></div></div>
       <div class="progress-label">
-        <span id="uploadStatusText">上傳中...</span>
+        <span id="uploadStatusText" data-i18n="process.upload.uploading">Uploading...</span>
         <span id="uploadPct">0%</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- YouTube card -->
-  <div class="card">
-    <h2><span class="icon">&#x1F3AC;</span> YouTube URL 分析</h2>
-    <div class="yt-row">
-      <input type="text" id="ytUrl" placeholder="https://www.youtube.com/watch?v=...">
-      <button class="btn btn-primary" id="btnYoutube" onclick="startYoutube()">分析</button>
-    </div>
-    <div class="progress-wrap" id="ytProgress">
-      <div class="progress-bar"><div class="fill" id="ytFill"></div></div>
-      <div class="progress-label">
-        <span id="ytStatusText">處理中...</span>
-        <span id="ytPct">0%</span>
       </div>
     </div>
   </div>
 
   <!-- Jobs list -->
   <div class="card">
-    <h2><span class="icon">&#x1F4CB;</span> 分析記錄</h2>
+    <h2><span class="icon">&#x1F4CB;</span> <span data-i18n="process.history.heading">Analysis history</span></h2>
     <div class="jobs-list" id="jobsList">
-      <div class="empty-msg">尚無分析記錄</div>
+      <div class="empty-msg" data-i18n="process.history.empty">No analyses yet</div>
     </div>
   </div>
 
 </div>
 
-<script src="/js/utils.js?v=2"></script>
+<script src="/js/utils.js?v=9"></script>
 <script src="/js/api.js?v=5"></script>
 <script>
   /* ── Fetch interceptor (inject auth token) ── */
@@ -269,10 +250,16 @@
     return originalFetch(resource, config);
   };
 
+  /* ── i18n helper (i18n.js may load after this script in slow networks) ── */
+  function _tr(key, fb, vars) {
+    if (window.LiveChordI18n) return window.LiveChordI18n.t(key, vars);
+    return fb || key;
+  }
+
   /* ── State ── */
   let selectedFile = null;
   const pendingFiles = {};   // job_id → File (for IndexedDB pass-through)
-  const jobs = [];           // { job_id, title, status, progress, result_hash, error, source_type, youtube_url }
+  const jobs = [];           // { job_id, title, status, progress, result_hash, error, source_type }
   const POLL_MS = 2000;
 
   /* ── TOS guard ── */
@@ -290,7 +277,7 @@
   })();
 
   async function loadQuota() {
-    document.getElementById('quotaInfo').textContent = '每日額度：10 首';
+    document.getElementById('quotaInfo').textContent = _tr('process.quota.daily', 'Daily quota: 10 songs');
   }
 
   async function loadHistory() {
@@ -309,7 +296,6 @@
           result_hash: h.result_hash || null,
           error: h.status === 'error' ? 'Failed' : '',
           source_type: h.source_type || '',
-          youtube_url: h.youtube_url || '',
         });
       }
       renderJobs();
@@ -333,7 +319,7 @@
 
   function pickFile(file) {
     if (file.size > 200 * 1024 * 1024) {
-      alert('檔案超過 200 MB 上限');
+      alert(_tr('process.upload.error.too_large', 'File exceeds the 100 MB limit'));
       return;
     }
     selectedFile = file;
@@ -354,7 +340,7 @@
     const pct = document.getElementById('uploadPct');
     prog.style.display = 'block';
     fill.style.width = '10%';
-    text.textContent = '上傳中...';
+    text.textContent = _tr('process.upload.uploading', 'Uploading...');
     pct.textContent = '10%';
 
     try {
@@ -368,11 +354,11 @@
       const data = await res.json();
       pendingFiles[data.job_id] = selectedFile;
       fill.style.width = '30%';
-      text.textContent = '已排入佇列';
+      text.textContent = _tr('process.upload.queued_msg', 'Added to queue');
       pct.textContent = '30%';
       trackJob(data.job_id, selectedFile.name.replace(/\.[^.]+$/, ''), fill, text, pct);
     } catch (e) {
-      text.textContent = '失敗: ' + e.message;
+      text.textContent = _tr('process.status.failed_prefix', 'Failed: ') + e.message;
       fill.style.width = '0%';
       pct.textContent = '';
       btn.disabled = false;
@@ -380,46 +366,6 @@
     selectedFile = null;
     document.getElementById('fileInfo').style.display = 'none';
     fileInput.value = '';
-  }
-
-  /* ── YouTube ── */
-  async function startYoutube() {
-    const input = document.getElementById('ytUrl');
-    const url = input.value.trim();
-    if (!url) return;
-    const btn = document.getElementById('btnYoutube');
-    btn.disabled = true;
-    const prog = document.getElementById('ytProgress');
-    const fill = document.getElementById('ytFill');
-    const text = document.getElementById('ytStatusText');
-    const pct = document.getElementById('ytPct');
-    prog.style.display = 'block';
-    fill.style.width = '10%';
-    text.textContent = '提交中...';
-    pct.textContent = '10%';
-
-    try {
-      const res = await fetch('/api/process/youtube', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || res.statusText);
-      }
-      const data = await res.json();
-      fill.style.width = '20%';
-      text.textContent = '已排入佇列';
-      pct.textContent = '20%';
-      trackJob(data.job_id, 'YouTube: ' + url.slice(-15), fill, text, pct);
-      input.value = '';
-    } catch (e) {
-      text.textContent = '失敗: ' + e.message;
-      fill.style.width = '0%';
-      pct.textContent = '';
-    }
-    btn.disabled = false;
   }
 
   /* ── Poll job status ── */
@@ -440,13 +386,17 @@
         entry.result_hash = d.result_hash;
         entry.error = d.error;
         entry.source_type = d.source_type || entry.source_type;
-        entry.youtube_url = d.youtube_url || entry.youtube_url;
         if (d.title) entry.title = d.title;
 
         if (fill) { fill.style.width = maxProgress + '%'; }
         if (pctText) { pctText.textContent = maxProgress + '%'; }
         if (statusText) {
-          const labels = { queued: '排隊中', processing: '分析中', done: '完成', error: '失敗' };
+          const labels = {
+            queued:     _tr('process.status.queued',     'Queued'),
+            processing: _tr('process.status.processing', 'Processing'),
+            done:       _tr('process.status.done',       'Done'),
+            error:      _tr('process.status.error',      'Failed'),
+          };
           statusText.textContent = labels[d.status] || d.status;
         }
 
@@ -459,9 +409,9 @@
               try { await audioDBStore(d.result_hash, pf); } catch (e) {}
               delete pendingFiles[jobId];
             }
-            if (statusText) statusText.textContent = '完成！';
+            if (statusText) statusText.textContent = _tr('process.status.complete_excl', 'Done!');
           }
-          if (d.status === 'error' && statusText) statusText.textContent = '失敗: ' + (d.error || 'Unknown');
+          if (d.status === 'error' && statusText) statusText.textContent = _tr('process.status.failed_prefix', 'Failed: ') + (d.error || 'Unknown');
           document.getElementById('btnUpload').disabled = !selectedFile;
           document.getElementById('btnYoutube').disabled = false;
         }
@@ -476,19 +426,24 @@
   function renderJobs() {
     const el = document.getElementById('jobsList');
     if (!jobs.length) {
-      el.innerHTML = '<div class="empty-msg">尚無分析記錄</div>';
+      const empty = _tr('process.history.empty', 'No analyses yet');
+      el.innerHTML = `<div class="empty-msg">${esc(empty)}</div>`;
       return;
     }
+    const badgeLabels = {
+      queued:     _tr('process.status.queued_short', 'Queue'),
+      processing: _tr('process.status.processing',   'Processing'),
+      done:       _tr('process.status.done',         'Done'),
+      error:      _tr('process.status.error',        'Failed'),
+    };
+    const viewLabel = _tr('process.history.view_chords', 'View chords');
     el.innerHTML = jobs.map(j => {
       const badge = `<span class="status-badge badge-${j.status}">${
-        { queued: '排隊', processing: '分析中', done: '完成', error: '失敗' }[j.status] || j.status
+        badgeLabels[j.status] || j.status
       }${j.status === 'processing' ? ' ' + j.progress + '%' : ''}</span>`;
       let action = '';
       if (j.status === 'done' && j.result_hash) {
-        action = `<a class="action-link" href="/player?hash=${j.result_hash}">查看和弦</a>`;
-        if (j.source_type === 'youtube' && j.youtube_url) {
-          action = `<a class="action-link" href="${esc(j.youtube_url)}" target="_blank" style="margin-right:8px">YouTube</a>` + action;
-        }
+        action = `<a class="action-link" href="/player?hash=${j.result_hash}">${esc(viewLabel)}</a>`;
       } else if (j.status === 'error' && j.error) {
         action = `<span style="font-size:0.8rem;color:#f44336">${esc(j.error.slice(0, 60))}</span>`;
       }

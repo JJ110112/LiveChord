@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import re
 
-from chord_cache import song_hash
+from chord_cache import song_hash, chord_file_for
 
 router = APIRouter(prefix="/api/benchmark", tags=["benchmark"])
 
@@ -36,7 +36,7 @@ def _library_gt_path(song_id: str) -> Path:
 
 def _library_cache_path(song_id: str) -> Path:
     """library mode 下的偵測來源 — 直接讀現成 chord cache"""
-    return CHORDS_DIR / f"{song_id}.json"
+    return chord_file_for(song_id)
 
 
 def _list_library_songs() -> list:
@@ -60,7 +60,7 @@ def _list_library_songs() -> list:
             "level": LIBRARY_LEVEL,
             "hash": h,
             "has_ground_truth": (LIBRARY_GT_DIR / f"{h}.lab").is_file(),
-            "has_detection": (CHORDS_DIR / f"{h}.json").is_file(),
+            "has_detection": chord_file_for(h).is_file(),
         })
     songs.sort(key=lambda s: s["name"].lower())
     return songs

@@ -3,9 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LiveChord - 使用條款</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/css/base.css?v=2">
+  <title data-i18n="tos.title_tag">LiveChord — Terms of Service</title>
+  <meta name="description" content="LiveChord Terms of Service.">
+  <meta name="robots" content="noindex,follow">
+  <link rel="canonical" href="https://livechord.org/tos">
+  <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
+  <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+  <script src="/js/auth.js?v=4"></script>
+  <script src="/js/i18n.js?v=28"></script>
+  <link rel="stylesheet" href="/css/base.css?v=5">
   <style>
     body {
       display: flex;
@@ -122,89 +128,79 @@
 </head>
 <body>
   <div class="tos-container">
-    <h1>LiveChord Beta 使用條款</h1>
+    <h1 data-i18n="terms.title">LiveChord Terms of Service</h1>
     <div class="tos-content">
-      <h3>1. 服務說明</h3>
-      <p>LiveChord 是一個音樂和弦分析學習工具。Beta 測試階段提供以下功能：</p>
+      <p style="color:var(--text-dim); margin-bottom:1rem"><span data-i18n="terms.last_updated">Last updated:</span> 2026-05-04</p>
+      <p data-i18n="terms.welcome">Welcome to LiveChord. This service provides audio analysis tools to support music learning and practice.</p>
+
+      <h3 data-i18n="terms.h.service">1. Nature of the service</h3>
+      <p data-i18n="terms.p.service_offers">LiveChord offers:</p>
       <ul>
-        <li>瀏覽既有和弦資料庫（54,000+ 首）</li>
-        <li>上傳音檔進行和弦自動偵測</li>
-        <li>透過 YouTube URL 擷取和弦</li>
+        <li data-i18n="terms.li.offer.analysis">Audio analysis (chord, beat, key, and similar music structure)</li>
+        <li data-i18n="terms.li.offer.learning">Music learning aids (transpose, A-B loop, slow-down playback, instrument visualization)</li>
+      </ul>
+      <p data-i18n="terms.p.service_does_not_offer">LiveChord does NOT offer:</p>
+      <ul>
+        <li data-i18n="terms.li.no.download">Music download</li>
+        <li data-i18n="terms.li.no.streaming">Music streaming</li>
+        <li data-i18n="terms.li.no.distribution">Distribution of copyrighted content</li>
       </ul>
 
-      <h3>2. 音檔處理規則</h3>
+      <h3 data-i18n="terms.h.user_content">2. User-uploaded content</h3>
+      <p data-i18n="terms.p.user_agrees">By using the service, you agree to:</p>
       <ul>
-        <li>上傳之音檔<strong>僅用於和弦分析</strong>，處理完畢後立即刪除</li>
-        <li>音檔最長保留 10 分鐘，逾時自動清除</li>
-        <li>Server 不儲存任何音訊檔案副本</li>
-        <li>僅保留分析結果（和弦進行、調性）</li>
+        <li data-i18n="terms.li.user.own_rights">Only upload audio you have the right to use</li>
+        <li data-i18n="terms.li.user.no_infringe">Not upload anything that infringes copyright or other rights</li>
+      </ul>
+      <p data-i18n="terms.p.no_responsibility">LiveChord is not responsible for content uploaded by users.</p>
+
+      <h3 data-i18n="terms.h.audio_handling">3. Audio file handling</h3>
+      <ul>
+        <li data-i18n="terms.li.audio.analysis_only">Uploaded audio is used only for real-time analysis</li>
+        <li data-i18n="terms.li.audio.deleted_after">Once analysis completes, the audio file is automatically deleted</li>
+        <li data-i18n="terms.li.audio.no_archive">LiveChord does not maintain a long-term audio archive or build a music database</li>
       </ul>
 
-      <h3>3. 使用限制</h3>
+      <h3 data-i18n="terms.h.results">4. Analysis results</h3>
       <ul>
-        <li>每位使用者每日最多處理 10 首新歌</li>
-        <li>單一音檔大小上限 50 MB</li>
-        <li>本服務僅供<strong>個人音樂學習用途</strong></li>
+        <li data-i18n="terms.li.results.reference">Analysis output (chords, beats, etc.) is provided for reference only</li>
+        <li data-i18n="terms.li.results.not_guaranteed">Accuracy is not guaranteed</li>
+        <li data-i18n="terms.li.results.not_score">Output is not a formal music score or published edition</li>
       </ul>
 
-      <h3>4. 資料使用</h3>
+      <h3 data-i18n="terms.h.third_party">5. Third-party services</h3>
+      <p data-i18n="terms.p.third_party_intro">LiveChord may embed third-party services (for example, the YouTube iframe player):</p>
       <ul>
-        <li>產生之和弦資料可能用於改善服務品質</li>
-        <li>匿名使用統計用於了解功能使用狀況</li>
-        <li>不會將個人資訊提供給第三方</li>
+        <li data-i18n="terms.li.tp.from_third">All audio/video content is provided by the third party</li>
+        <li data-i18n="terms.li.tp.no_control">LiveChord does not control that content</li>
+        <li data-i18n="terms.li.tp.user_complies">You must comply with the terms of those platforms</li>
       </ul>
 
-      <h3>5. 免責聲明</h3>
+      <h3 data-i18n="terms.h.prohibited">6. Prohibited conduct</h3>
+      <p data-i18n="terms.p.prohibited_intro">You may not:</p>
       <ul>
-        <li>和弦分析結果為 AI 自動產生，準確度可能有限</li>
-        <li>Beta 階段服務可能不穩定，恕不保證可用性</li>
-        <li>使用者應確保上傳之內容不違反當地法律</li>
+        <li data-i18n="terms.li.no.infringe_upload">Upload infringing content</li>
+        <li data-i18n="terms.li.no.reverse">Reverse-engineer or otherwise abuse the service</li>
+        <li data-i18n="terms.li.no.illegal">Use the service for illegal purposes</li>
+      </ul>
+
+      <h3 data-i18n="terms.h.disclaimer">7. Disclaimer</h3>
+      <p data-i18n="terms.p.as_is">The service is provided on an "as-is" basis:</p>
+      <ul>
+        <li data-i18n="terms.li.as_is.uptime">No guarantee of uninterrupted or error-free operation</li>
+        <li data-i18n="terms.li.as_is.no_liability">No liability for any damages arising from use of the service</li>
+      </ul>
+
+      <h3 data-i18n="terms.h.termination">8. Termination</h3>
+      <p data-i18n="terms.p.reserves">LiveChord reserves the right at any time to:</p>
+      <ul>
+        <li data-i18n="terms.li.term.modify">Modify or discontinue the service</li>
+        <li data-i18n="terms.li.term.restrict">Restrict or terminate user access</li>
       </ul>
     </div>
 
-    <button class="btn-accept" id="btnAccept" onclick="acceptTos()">我同意以上條款</button>
-    <a class="back-link" href="/">返回首頁</a>
+    <a class="back-link" href="/" data-i18n="terms.back_link">Back to home</a>
   </div>
 
-  <script>
-    const token = localStorage.getItem('livechord_token');
-    if (!token) {
-      location.href = '/login';
-    }
-
-    async function acceptTos() {
-      const btn = document.getElementById('btnAccept');
-      btn.disabled = true;
-      btn.textContent = '處理中...';
-      try {
-        const res = await fetch('/api/auth/accept-tos', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + token },
-        });
-        if (!res.ok) throw new Error('Failed');
-        // Redirect back to process page (or wherever the user came from)
-        const back = new URLSearchParams(location.search).get('next') || '/process';
-        location.href = back;
-      } catch (e) {
-        btn.disabled = false;
-        btn.textContent = '我同意以上條款';
-        alert('操作失敗，請重試');
-      }
-    }
-
-    // If already accepted, redirect away
-    (async () => {
-      try {
-        const res = await fetch('/api/auth/tos-status', {
-          headers: { 'Authorization': 'Bearer ' + token },
-        });
-        const data = await res.json();
-        if (data.accepted) {
-          const back = new URLSearchParams(location.search).get('next') || '/process';
-          location.href = back;
-        }
-      } catch (e) {}
-    })();
-  </script>
 </body>
 </html>

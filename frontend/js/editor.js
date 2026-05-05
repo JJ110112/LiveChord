@@ -1,3 +1,7 @@
+"use strict";
+// i18n helper — fall back to the dict key if i18n.js hasn't booted yet.
+function _t(k, v) { return (window.LiveChordI18n && window.LiveChordI18n.t) ? window.LiveChordI18n.t(k, v) : k; }
+
 /** LiveChord 和弦時間軸編輯器 */
 
 (function () {
@@ -5,7 +9,13 @@
 
   const params = new URLSearchParams(window.location.search);
   const trackPath = params.get("path");
-  if (!trackPath) { window.location.href = "/"; return; }
+  // `encodeURIComponent(null)` from the player used to land users on
+  // `/editor?path=null` with an empty timeline. Treat the literal "null" /
+  // "undefined" strings as missing too.
+  if (!trackPath || trackPath === "null" || trackPath === "undefined") {
+    window.location.href = "/";
+    return;
+  }
 
   // ---- state ----
   let chords = [];          // [{time, end, chord}]
@@ -61,10 +71,44 @@
       }
     } catch {}
 
+    // Mirror the player's BPM-multiplier so what the user sees in the editor
+    // matches what they were looking at in the player. Without this, a user
+    // who tapped the player's BPM badge down to 68 lands on an editor still
+    // using the raw 136 from the JSON — every chord's dot count doubles and
+    // "the BPM seems wrong" is the first thing they hit.
+    try {
+      const mult = parseFloat(localStorage.getItem(`bpm_mult_${trackPath}`));
+      if (mult > 0 && mult !== 1) songBPM = songBPM * mult;
+    } catch {}
+
+    // Section bands (phrase overlay above chord blocks). Non-blocking —
+    // bands render when the fetch resolves; editor stays usable meanwhile.
+    _loadSections().catch(() => {});
+
     $("#zoomSlider").value = pixelsPerSec;
+    _updateBpmDisplay();
 
     buildPalette();
     render();
+  }
+
+  // Seek to the playhead time the user was at in the player (URL param `t`).
+  // Timeline auto-scrolls to follow the playhead via `updatePlayheadUI`.
+  const seekParam = parseFloat(params.get("t") || "");
+  if (seekParam > 0 && isFinite(seekParam)) {
+    const applySeek = () => {
+      try {
+        audio.currentTime = Math.min(audio.duration || seekParam, seekParam);
+        // updatePlayheadUI's scroll branch only fires while playing; force
+        // an initial centered scroll so the relevant chords are on-screen.
+        requestAnimationFrame(() => {
+          const container = timeline.parentElement;
+          const px = seekParam * pixelsPerSec;
+          container.scrollLeft = Math.max(0, px - container.clientWidth * 0.3);
+        });
+      } catch {}
+    };
+    audio.addEventListener("loadedmetadata", applySeek, { once: true });
   }
 
   // ---- audio ----
@@ -149,6 +193,56 @@
       tick.textContent = formatTime(t);
       ruler.appendChild(tick);
     }
+    // Sections reflow on zoom because px/sec changes
+    _renderSectionBands();
+  }
+
+  // ---- section (phrase) bands ----
+
+  let _sectionData = null;
+
+  async function _loadSections() {
+    try {
+      const r = await fetch(`/api/ai/sections?path=${encodeURIComponent(trackPath)}`);
+      if (!r.ok) return;
+      const data = await r.json();
+      _sectionData = (data && Array.isArray(data.sections)) ? data.sections : [];
+      _renderSectionBands();
+    } catch {}
+  }
+
+  function _renderSectionBands() {
+    const bands = $("#sectionBands");
+    if (!bands) return;
+    bands.innerHTML = "";
+    if (!_sectionData || _sectionData.length === 0) return;
+    // Type counts for numbering (e.g., Verse 1 / Verse 2)
+    const typeCounts = {};
+    _sectionData.forEach(s => { typeCounts[s.type] = (typeCounts[s.type] || 0) + 1; });
+    const noNumberTypes = ["intro", "outro", "dialogue"];
+    const typeSeen = {};
+    for (const s of _sectionData) {
+      const left = s.start * pixelsPerSec;
+      const width = Math.max(2, (s.end - s.start) * pixelsPerSec);
+      typeSeen[s.type] = (typeSeen[s.type] || 0) + 1;
+      const total = typeCounts[s.type] || 1;
+      const numStr = (total > 1 && !noNumberTypes.includes(s.type)) ? ` ${typeSeen[s.type]}` : "";
+      const label = (s.label || s.type || "") + numStr;
+      const color = s.color || "#888";
+      const band = document.createElement("div");
+      band.className = "section-band";
+      band.style.left = left + "px";
+      band.style.width = width + "px";
+      band.style.background = color;
+      band.textContent = label;
+      band.title = `${label} — ${formatTime(s.start)} ~ ${formatTime(s.end)}`;
+      bands.appendChild(band);
+    }
+  }
+
+  function _updateBpmDisplay() {
+    const el = $("#bpmDisplay");
+    if (el) el.textContent = Math.round(songBPM);
   }
 
   // ---- render chord blocks ----
@@ -169,10 +263,14 @@
       const beatSec = 60 / songBPM;
       const durSec = (c.end || c.time + 2) - c.time;
       const beats = Math.round((durSec / beatSec) * 10) / 10;
-      
-      // 始終在方塊內顯示拍時長度，位於右下角
+      const dotCount = Math.max(1, Math.min(16, Math.round(durSec / beatSec)));
+      let dotsHtml = "";
+      for (let d = 0; d < dotCount; d++) dotsHtml += '<span class="beat-dot"></span>';
+
+      // 方塊內：和弦名（置中）、節拍點（底部中央）、拍數 0.1 精度（右下角）
       block.innerHTML = `
           <div style="pointer-events:none;">${c.chord}</div>
+          <div class="chord-block-beats">${dotsHtml}</div>
           <div style="position:absolute; bottom:2px; right:8px; font-size:10px; opacity:0.5; pointer-events:none;">${beats}</div>
       `;
 
@@ -180,6 +278,14 @@
       const handle = document.createElement("div");
       handle.className = "resize-handle";
       block.appendChild(handle);
+
+      // Right-click → quick beat-count adjust (cascades subsequent chords
+      // so the downstream timing stays coherent with the music).
+      block.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        _showBeatAdjustPopup(c, block, e);
+      });
 
       // click to select
       block.addEventListener("mousedown", (e) => {
@@ -190,6 +296,19 @@
           return;
         }
         e.stopPropagation();
+
+        // Palette-armed replace: if a palette chord is selected, tapping an
+        // existing block rewrites its name in place. Skips drag/multi-select
+        // so the user can chain-tap multiple blocks with the same palette pick.
+        if (paletteChord && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          c.chord = paletteChord;
+          selectedChords.clear();
+          selectedChords.add(c);
+          lastSelectedChord = c;
+          selectChord(c);
+          showToast(_t("editor.toast.replaced_with", { chord: paletteChord }));
+          return;
+        }
 
         let shouldSelectRange = false;
         if (e.shiftKey && lastSelectedChord != null) {
@@ -348,7 +467,7 @@
 
     t = snapTime(t);
 
-    const chord = paletteChord || prompt("輸入和弦名稱:", "C");
+    const chord = paletteChord || prompt(_t("editor.prompt.chord_name"), "C");
     if (!chord) return;
 
     const newC = { time: t, end: t + 4, chord: chord };
@@ -363,37 +482,37 @@
   // ---- update / delete ----
 
   $("#btnUpdate").addEventListener("click", () => {
-    if (selectedChords.size === 0) { showToast("請先選取和弦"); return; }
+    if (selectedChords.size === 0) { showToast(_t("editor.toast.select_first")); return; }
     const name = $("#chordNameInput").value.trim();
-    if (!name) { showToast("請輸入和弦名稱"); return; }
+    if (!name) { showToast(_t("editor.toast.need_chord_name")); return; }
     selectedChords.forEach(c => c.chord = name);
     render();
-    showToast("批次更新" + selectedChords.size + "個和弦");
+    showToast(_t("editor.toast.batch_updated", { n: selectedChords.size }));
   });
 
   $("#btnDelete").addEventListener("click", () => {
-    if (selectedChords.size === 0) { showToast("請先選取和弦"); return; }
+    if (selectedChords.size === 0) { showToast(_t("editor.toast.select_first")); return; }
     chords = chords.filter(c => !selectedChords.has(c));
     selectedChords.clear();
     lastSelectedChord = null;
     render();
-    showToast("已刪除");
+    showToast(_t("editor.toast.deleted"));
   });
 
   // ---- replace all ----
 
   $("#btnReplaceAll").addEventListener("click", () => {
-    const from = prompt("要取代的和弦名稱 (例: Am):");
+    const from = prompt(_t("editor.prompt.replace_from"));
     if (!from) return;
-    const to = prompt(`將所有 "${from}" 取代為:`);
+    const to = prompt(_t("editor.prompt.replace_to", { from }));
     if (!to) return;
     let count = 0;
     chords.forEach(c => { if (c.chord === from) { c.chord = to; count++; } });
     if (count === 0) {
-      showToast(`找不到和弦 "${from}"`);
+      showToast(_t("editor.toast.no_match", { from }));
     } else {
       render();
-      showToast(`已將 ${count} 個 "${from}" 取代為 "${to}"`);
+      showToast(_t("editor.toast.replaced_n", { count, from, to }));
     }
   });
 
@@ -443,6 +562,76 @@
     splitTarget = null;
   }
 
+  // ---- right-click: adjust beat count of a single chord ----
+
+  let _beatAdjustTarget = null;
+
+  function _showBeatAdjustPopup(chord, anchorEl, ev) {
+    _beatAdjustTarget = chord;
+    const popup = $("#beatAdjustPopup");
+    if (!popup) return;
+    const beatSec = 60 / songBPM;
+    const currentDur = (chord.end || chord.time + 2) - chord.time;
+    const currentBeats = Math.round((currentDur / beatSec) * 10) / 10;
+    $("#beatAdjustCurrent").textContent = _t("editor.beat_adjust.current", { n: currentBeats });
+    const opts = $("#beatAdjustOptions");
+    opts.innerHTML = "";
+    // Common beat counts + .5 options for syncopation
+    const choices = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 12, 16];
+    for (const beats of choices) {
+      const btn = document.createElement("button");
+      btn.className = "toolbar-btn";
+      btn.style.cssText = "padding:3px 10px;font-size:12px;min-width:36px";
+      btn.textContent = String(beats);
+      if (Math.abs(beats - currentBeats) < 0.05) {
+        btn.style.outline = "2px solid var(--accent)";
+      }
+      btn.addEventListener("click", () => _applyBeatAdjust(beats));
+      opts.appendChild(btn);
+    }
+    popup.style.display = "block";
+    // Position near the right-click
+    const x = ev && typeof ev.clientX === "number" ? ev.clientX : (anchorEl?.getBoundingClientRect().left || 0);
+    const y = ev && typeof ev.clientY === "number" ? ev.clientY : (anchorEl?.getBoundingClientRect().bottom || 0);
+    popup.style.left = Math.min(x, window.innerWidth - 240) + "px";
+    popup.style.top = Math.min(y + 4, window.innerHeight - 150) + "px";
+  }
+
+  function _hideBeatAdjustPopup() {
+    $("#beatAdjustPopup").style.display = "none";
+    _beatAdjustTarget = null;
+  }
+
+  function _applyBeatAdjust(newBeats) {
+    if (!_beatAdjustTarget) return;
+    const chord = _beatAdjustTarget;
+    const beatSec = 60 / songBPM;
+    const oldEnd = chord.end || chord.time + 2;
+    const newEnd = chord.time + newBeats * beatSec;
+    const delta = newEnd - oldEnd;
+    const idx = chords.indexOf(chord);
+    chord.end = newEnd;
+    // Cascade: shift every subsequent chord by `delta` so their relative
+    // placement is preserved. Without this, shortening this chord leaves
+    // a gap and growing it overlaps the next one.
+    if (idx >= 0 && Math.abs(delta) > 0.001) {
+      for (let j = idx + 1; j < chords.length; j++) {
+        chords[j].time += delta;
+        if (chords[j].end) chords[j].end += delta;
+      }
+    }
+    sortChords();
+    render();
+    _hideBeatAdjustPopup();
+    showToast(_t("editor.toast.beats_changed", { n: newBeats, after: chords.length - idx - 1 }));
+  }
+
+  document.addEventListener("click", (e) => {
+    if ($("#beatAdjustPopup").style.display !== "none" && !e.target.closest("#beatAdjustPopup")) {
+      _hideBeatAdjustPopup();
+    }
+  });
+
   function doSplit(leftBeats, rightBeats) {
     if (!splitTarget) return;
     const chord = splitTarget;
@@ -461,12 +650,12 @@
     lastSelectedChord = newChord;
     render();
     hideSplitPopup();
-    showToast(`已分割為 ${leftBeats} / ${rightBeats} 拍`);
+    showToast(_t("editor.toast.split_into", { l: leftBeats, r: rightBeats }));
   }
 
   $("#btnSplit").addEventListener("click", () => {
     if (selectedChords.size !== 1) {
-      showToast("請選取恰好 1 個和弦來分割");
+      showToast(_t("editor.toast.select_one_to_split"));
       return;
     }
     const chord = selectedChords.values().next().value;
@@ -478,7 +667,7 @@
     const left = parseFloat($("#splitCustomLeft").value);
     const right = parseFloat($("#splitCustomRight").value);
     if (!left || !right || left <= 0 || right <= 0) {
-      showToast("請輸入有效的拍數");
+      showToast(_t("editor.toast.invalid_beats"));
       return;
     }
     doSplit(left, right);
@@ -503,7 +692,7 @@
           });
           sortChords();
           render();
-          showToast("選取的和弦向左移 0.25s");
+          showToast(_t("editor.toast.nudged_left"));
       });
   }
 
@@ -516,14 +705,14 @@
           });
           sortChords();
           render();
-          showToast("選取的和弦向右移 0.25s");
+          showToast(_t("editor.toast.nudged_right"));
       });
   }
 
   if ($("#btnQuantize")) {
       $("#btnQuantize").addEventListener("click", () => {
           if (selectedChords.size < 2) {
-              showToast("請至少選取 2 個連續的和弦以進行拍數正規化");
+              showToast(_t("editor.toast.need_2_for_quantize"));
               return;
           }
           const selArr = Array.from(selectedChords).sort((a,b) => a.time - b.time);
@@ -562,7 +751,34 @@
 
           sortChords();
           render();
-          showToast(`已將 ${selArr.length} 個和弦的節拍長度正規化`);
+          showToast(_t("editor.toast.quantized_n", { n: selArr.length }));
+      });
+  }
+
+  if ($("#btnQuantizeAll")) {
+      $("#btnQuantizeAll").addEventListener("click", () => {
+          if (chords.length < 2) { showToast(_t("editor.toast.need_2_for_quantize_all")); return; }
+          if (!confirm(_t("editor.confirm.quantize_all", { n: chords.length }))) return;
+          const beatSec = 60 / songBPM;
+          const resolution = beatSec / 2;
+          let currAnchorTime = chords[0].time;
+          for (let i = 0; i < chords.length - 1; i++) {
+              const cCurr = chords[i], cNext = chords[i + 1];
+              const diff = cNext.time - cCurr.time;
+              let quantizedDiff = Math.abs(diff) < 0.02 ? 0 : Math.round(diff / resolution) * resolution;
+              if (quantizedDiff <= 0) quantizedDiff = resolution;
+              cNext.time = currAnchorTime + quantizedDiff;
+              cCurr.end = cNext.time;
+              currAnchorTime = cNext.time;
+          }
+          const cLast = chords[chords.length - 1];
+          const lastDur = (cLast.end || cLast.time + 2) - cLast.time;
+          let lastQ = Math.round(lastDur / resolution) * resolution;
+          if (lastQ <= 0) lastQ = resolution;
+          cLast.end = cLast.time + lastQ;
+          sortChords();
+          render();
+          showToast(_t("editor.toast.quantized_all", { n: chords.length }));
       });
   }
 
@@ -581,7 +797,7 @@
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
         if (selectedChords.size > 0) {
             clipboardChords = Array.from(selectedChords).map(c => ({...c})).sort((a, b) => a.time - b.time);
-            showToast(`已複製 ${clipboardChords.length} 個和弦`);
+            showToast(_t("editor.toast.copied_n", { n: clipboardChords.length }));
         }
         return;
     }
@@ -602,7 +818,7 @@
             });
             sortChords();
             render();
-            showToast(`貼上 ${clipboardChords.length} 個和弦`);
+            showToast(_t("editor.toast.pasted_n", { n: clipboardChords.length }));
         }
         return;
     }
@@ -642,6 +858,7 @@
         return;
       }
       if ($("#splitPopup").style.display !== "none") { hideSplitPopup(); return; }
+      if ($("#beatAdjustPopup").style.display !== "none") { _hideBeatAdjustPopup(); return; }
       deselectAll();
     }
     if (e.key.toLowerCase() === "r" && !e.ctrlKey && !e.metaKey) {
@@ -757,7 +974,7 @@
 
   async function initMIDI() {
     if (!navigator.requestMIDIAccess) {
-      showToast("此瀏覽器不支援 Web MIDI API");
+      showToast(_t("editor.toast.midi_unsupported"));
       return;
     }
     try {
@@ -768,13 +985,13 @@
       midiAccess.onstatechange = (e) => {
         if (e.port.type === "input" && e.port.state === "connected") {
           e.port.onmidimessage = handleMIDIMessage;
-          showToast("MIDI 裝置已連接: " + e.port.name);
+          showToast(_t("editor.toast.midi_connected", { name: e.port.name }));
         }
       };
       const count = midiAccess.inputs.size;
-      showToast(count > 0 ? `MIDI 已連接 (${count} 裝置)` : "未偵測到 MIDI 裝置，請連接後自動偵測");
+      showToast(count > 0 ? _t("editor.toast.midi_n", { n: count }) : _t("editor.toast.midi_none"));
     } catch (err) {
-      showToast("MIDI 連接失敗: " + err.message);
+      showToast(_t("editor.toast.midi_failed", { err: err.message }));
     }
   }
 
@@ -802,7 +1019,7 @@
     setTimeout(() => { btn.style.background = ""; }, 120);
 
     if (tapTimestamps.length < 2) {
-      $("#tapBpmDisplay").textContent = "繼續打拍...";
+      $("#tapBpmDisplay").textContent = _t("editor.tap.keep_tapping");
       return;
     }
     if (tapTimestamps.length > 16) tapTimestamps.shift();
@@ -813,7 +1030,7 @@
     }
     const avgMs = total / (tapTimestamps.length - 1);
     const bpm = Math.round(60000 / avgMs);
-    $("#tapBpmDisplay").textContent = `${bpm} BPM (${tapTimestamps.length} 拍)`;
+    $("#tapBpmDisplay").textContent = _t("editor.tap.bpm_n_taps", { bpm, n: tapTimestamps.length });
     $("#btnApplyTapBpm").style.display = "";
     $("#btnApplyTapBpm").dataset.bpm = bpm;
     $("#btnResetTap").style.display = "";
@@ -825,8 +1042,13 @@
     const bpm = parseInt($("#btnApplyTapBpm").dataset.bpm);
     if (bpm > 0) {
       songBPM = bpm;
+      // User explicitly re-derived BPM here — clear any player-side
+      // multiplier so the next /player load sees this raw value (otherwise
+      // the mult is silently applied on top, doubling/halving again).
+      try { localStorage.removeItem(`bpm_mult_${trackPath}`); } catch {}
+      _updateBpmDisplay();
       render();
-      showToast(`BPM 已更新為 ${bpm}`);
+      showToast(_t("editor.toast.bpm_updated", { bpm }));
     }
   });
 
@@ -854,19 +1076,16 @@
         url.searchParams.set("version", result.version);
         window.history.replaceState({}, "", url);
       }
-      showToast("已儲存！", 2000);
+      showToast(_t("editor.toast.saved"), 2000);
     } catch (err) {
-      showToast("儲存失敗: " + err.message, 3000);
+      showToast(_t("editor.toast.save_failed", { err: err.message }), 3000);
     }
   });
 
   // ---- import ChordPro ----
 
   $("#btnImport").addEventListener("click", () => {
-    const input = prompt(
-      "貼上 ChordPro 格式的和弦（每行一個），例如:\n" +
-      "[C]  [Am]  [F]  [G]\n" +
-      "或帶時間: 0:00 C  0:04 Am  0:08 F");
+    const input = prompt(_t("editor.prompt.import_chordpro"));
     if (!input) return;
 
     const lines = input.trim().split("\n");
@@ -909,7 +1128,7 @@
 
     sortChords();
     render();
-    showToast(`匯入 ${chords.length} 個和弦`);
+    showToast(_t("editor.toast.imported_n", { n: chords.length }));
   });
 
   // ---- chord palette ----

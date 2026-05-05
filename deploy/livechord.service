@@ -1,0 +1,40 @@
+[Unit]
+Description=LiveChord public mode (FastAPI / uvicorn)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=livechord
+Group=livechord
+WorkingDirectory=/srv/livechord/backend
+Environment=LIVECHORD_MODE=public
+Environment=LIVECHORD_USE_MODAL_BTC=1
+Environment=LIVECHORD_USE_MODAL_BEAT_THIS=1
+Environment=LIVECHORD_USE_R2=1
+Environment=LIVECHORD_BTC_WORKERS=0
+Environment=PATH=/srv/livechord/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=-/etc/livechord/secrets.env
+
+ExecStart=/srv/livechord/.venv/bin/uvicorn main:app \
+    --host 127.0.0.1 \
+    --port 8800 \
+    --workers 3 \
+    --log-level info \
+    --proxy-headers \
+    --forwarded-allow-ips 127.0.0.1
+
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/srv/livechord/data
+ReadWritePaths=/srv/livechord/logs
+
+[Install]
+WantedBy=multi-user.target

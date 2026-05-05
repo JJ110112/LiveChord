@@ -1,0 +1,9 @@
+User-agent: *
+Disallow: /api/
+Disallow: /admin
+Disallow: /editor
+Disallow: /process
+Disallow: /tos
+Allow: /
+
+Sitemap: https://livechord.org/sitemap.xml

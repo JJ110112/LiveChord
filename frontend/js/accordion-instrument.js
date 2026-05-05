@@ -292,14 +292,24 @@ class AccordionInstrument {
     const stepIsChord = (step === "C");
     const stepIsAlt = (step === "Ab");
 
-    // Column headers with finger colors — positioned just above the first button row
+    // Column headers with finger colors — positioned just above the first button row.
+    // On light-bg themes the bright yellow "Bass" header becomes unreadable on cream;
+    // swap to a darker variant (#9a7a00) and bump orange to #c45a00 for the same reason.
+    const _accLight = (function() {
+      try {
+        const t = document.documentElement.getAttribute("data-theme");
+        return t === "light" || t === "sakura" || t === "sunny" || t === "sky";
+      } catch (_) { return false; }
+    })();
+    const HEADER_LIGHT_REMAP = { "#ffeb3b": "#9a7a00", "#ff9800": "#c45a00", "#ef5350": "#b91c1c", "#66bb6a": "#1b5e20" };
     ctx.font = "bold 11px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "bottom";
     for (let d = 0; d < nTypes; d++) {
       const row = D2R[d];
       const finger = RFINGER[row];
-      ctx.fillStyle = FCLR[finger];
+      const base = FCLR[finger];
+      ctx.fillStyle = _accLight ? (HEADER_LIGHT_REMAP[base] || base) : base;
       ctx.fillText(DLABELS[d], gridLeft + (d + 0.5) * colW, padTop + headerH - 2);
     }
 
@@ -544,19 +554,25 @@ class AccordionInstrument {
       }
     }
 
-    // Right-hand note events (fallback to melody if no accompaniment right_hand)
+    // Right-hand note events (fallback to melody if no accompaniment right_hand).
+    // Cache the mapped melody list so `_sparked` persists across frames (otherwise
+    // every frame would re-spawn particles because a fresh object loses the flag).
     const accData = this._b.getAccData ? this._b.getAccData() : null;
     let rhEvents = (accData && accData.right_hand) ? accData.right_hand : [];
     if (rhEvents.length === 0) {
       const melodyData = this._b.getMelodyData ? this._b.getMelodyData() : null;
       if (melodyData && melodyData.length > 0) {
-        rhEvents = melodyData.map(m => ({
-          time: m.start,
-          duration: m.end - m.start,
-          pitch: m.midi,
-          velocity: 80,
-          finger: null,
-        }));
+        if (!this._mappedMelody || this._mappedMelodySrc !== melodyData) {
+          this._mappedMelody = melodyData.map(m => ({
+            time: m.start,
+            duration: m.end - m.start,
+            pitch: m.midi,
+            velocity: 80,
+            finger: null,
+          }));
+          this._mappedMelodySrc = melodyData;
+        }
+        rhEvents = this._mappedMelody;
       }
     }
     const activeKeys = new Set(); // collect currently-sounding MIDI notes for keyboard highlight
@@ -565,10 +581,24 @@ class AccordionInstrument {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
+      // Constrain bar + bloom + glow drawing to the waterfall band only.
+      // Without this clip, future-note bars whose yTop is way above the canvas
+      // edge had their shadowBlur bloom extending into the chord-name header,
+      // and currently-playing bars whose yBottom slipped past waterfallH could
+      // paint orange wash onto the keyboard image (visible as "highlight 超出
+      // 鍵盤範圍" near chord transitions).
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, W, waterfallH);
+      ctx.clip();
+
       for (const evt of rhEvents) {
         const noteStart = evt.time;
         const noteEnd = evt.time + evt.duration;
         if (noteEnd < currentTime || noteStart > currentTime + lookAhead) continue;
+
+        // Re-arm spark flag on backward-seek so the same note can spark again.
+        if (evt._sparked && currentTime < noteStart) evt._sparked = false;
 
         const yBottom = waterfallH - (noteStart - currentTime) * pxPerSec;
         const yTop = waterfallH - (noteEnd - currentTime) * pxPerSec;
@@ -579,48 +609,55 @@ class AccordionInstrument {
         if (!keyInfo) continue;
         const x = keyInfo.x;
         const kw = keyInfo.w;
-        const isOnBlackKey = !!cache.blackXs[midi];
 
-        // Velocity-responsive orange color
+        // RH color formula — identical to piano waterfall so all instruments
+        // share the same hot-amber → blazing-orange velocity ramp.
         const vel = evt.velocity || 80;
         const velT = Math.min(1.0, Math.max(0.0, (vel - 55) / 40));
         const velP = velT * velT;
-        const cr = Math.round(100 + velP * 155);
-        const cg = Math.round(40 + velP * 170);
-        const cb = Math.round(0 + velP * 50);
-        const color = `rgba(${cr}, ${cg}, ${cb}, ${isOnBlackKey ? 0.95 : 0.9})`;
-        const glowColor = `rgba(255, ${Math.min(255, cg + 60)}, ${Math.min(255, cb + 80)}, 1)`;
+        const cr = Math.round(230 + velP * 25);
+        const cg = Math.round(130 + velP * 90);
+        const cb = Math.round(40 + velP * 40);
+        const color = `rgba(${cr}, ${cg}, ${cb}, 1)`;
+        const glowColor = `rgba(255, 200, 120, 1)`;
 
-        // Prediction shadow on keys
+        // Landing-pad glow just above the keyboard
         if (yBottom > waterfallH - 40 && yBottom < waterfallH) {
-          ctx.fillStyle = "rgba(255, 152, 0, 0.4)";
+          ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, 0.35)`;
           ctx.fillRect(x, waterfallH - 5, kw, -20);
         }
 
-        // Note bar with velocity glow
+        // Main note bar with always-on bloom
         const rr = Math.min(4, noteH / 2);
         ctx.save();
-        if (velP > 0.15) {
-          ctx.shadowColor = glowColor;
-          ctx.shadowBlur = Math.round(3 + velP * 25);
-        }
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = Math.round(12 + velP * 36);
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.roundRect(x + 1, yTop, kw - 2, noteH, rr);
         ctx.fill();
-        if (velP > 0.5) {
-          ctx.shadowBlur = Math.round(velP * 35);
+        if (velP > 0.4) {
+          ctx.shadowBlur = Math.round(velP * 55);
           ctx.fill();
         }
         ctx.restore();
 
-        // Dim outline for very quiet notes
-        if (velP < 0.15) {
-          ctx.strokeStyle = "rgba(255,255,255,0.2)";
-          ctx.lineWidth = 1;
+        // Top highlight — energy-column head
+        if (noteH > 4) {
+          const hlH = Math.min(8, noteH * 0.35);
+          const grd = ctx.createLinearGradient(0, yTop, 0, yTop + hlH);
+          grd.addColorStop(0, "rgba(255,255,255,0.55)");
+          grd.addColorStop(1, "rgba(255,255,255,0)");
+          ctx.fillStyle = grd;
           ctx.beginPath();
-          ctx.roundRect(x + 1, yTop, kw - 2, noteH, rr);
-          ctx.stroke();
+          ctx.roundRect(x + 1, yTop, kw - 2, hlH, rr);
+          ctx.fill();
+        }
+
+        // Hot leading edge at the falling head
+        if (yBottom < waterfallH && noteH > 3) {
+          ctx.fillStyle = `rgba(255, 255, 255, ${0.25 + velP * 0.35})`;
+          ctx.fillRect(x + 2, yBottom - 2, kw - 4, 2);
         }
 
         // Track active (currently sounding) keys
@@ -628,18 +665,23 @@ class AccordionInstrument {
           activeKeys.add(midi);
         }
 
-        // Contact flash
+        // Contact burst + spark particles at keyboard line
         if (yBottom >= waterfallH && yTop <= waterfallH) {
           ctx.save();
           ctx.fillStyle = color;
           ctx.shadowColor = glowColor;
-          ctx.shadowBlur = 8 + velP * 22;
+          ctx.shadowBlur = 14 + velP * 30;
           ctx.fillRect(x + 1, waterfallH - 4, kw - 2, 8);
-          ctx.fillStyle = `rgba(255,255,255,${0.3 + velP * 0.6})`;
-          ctx.shadowBlur = velP * 15;
+          ctx.fillStyle = `rgba(255,255,255,${0.5 + velP * 0.5})`;
+          ctx.shadowBlur = 8 + velP * 20;
           ctx.shadowColor = "#fff";
           ctx.fillRect(x + 3, waterfallH - 2, kw - 6, 4);
           ctx.restore();
+
+          if (!evt._sparked && this._b.spawnWaterfallParticles) {
+            evt._sparked = true;
+            this._b.spawnWaterfallParticles(x + kw / 2, waterfallH - 2, kw, cr, cg, cb, velP);
+          }
         }
 
         // Articulation markers
@@ -656,6 +698,11 @@ class AccordionInstrument {
           ctx.stroke();
         }
       }
+
+      // Firework spark particles (shared across instruments via bridge)
+      if (this._b.drawWaterfallParticles) this._b.drawWaterfallParticles(ctx);
+
+      ctx.restore();   // release waterfall-band clip
     }
 
     // Draw piano keyboard at the bottom (static cached image)
@@ -692,6 +739,34 @@ class AccordionInstrument {
         ctx.fillRect(wk.x + 2, waterfallH + kh - 6, wk.w - 4, 6);
         ctx.restore();
       }
+
+      // Intermission: erase any orange bleed from the white-key pass that
+      // covered the black-key footprint, then re-paint the black-key
+      // backgrounds (mirrors draw88Piano's 3-pass pattern).
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+      for (const m in cache.blackXs) {
+        const bk = cache.blackXs[m];
+        ctx.fillStyle = "#1a1a1a";
+        ctx.fillRect(bk.x - 1, waterfallH, bk.w + 2, bh + 4);
+      }
+      ctx.save();
+      ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
+      ctx.shadowBlur = 6;
+      ctx.shadowOffsetY = 2;
+      for (const m in cache.blackXs) {
+        const bk = cache.blackXs[m];
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(bk.x, waterfallH, bk.w, bh, [0, 0, 3, 3]);
+        else ctx.rect(bk.x, waterfallH, bk.w, bh);
+        const bgGrad = ctx.createLinearGradient(bk.x, waterfallH, bk.x, waterfallH + bh);
+        bgGrad.addColorStop(0, "#111");
+        bgGrad.addColorStop(1, "#2a2a2a");
+        ctx.fillStyle = bgGrad;
+        ctx.fill();
+      }
+      ctx.restore();
 
       // Pass 2: Black key highlights (draw on top)
       for (const midi of activeKeys) {

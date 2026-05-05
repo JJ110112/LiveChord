@@ -61,8 +61,22 @@ def get_chord_hash_set(force: bool = False) -> set:
     if not CHORDS_DIR.is_dir():
         result = set()
     else:
+        # Sharded layout: <CHORDS_DIR>/<bucket>/<hash>.json — walk one level deep,
+        # skip .bak.* sidecars and any stray non-2-char entries.
+        result = set()
         try:
-            result = {n[:-5] for n in os.listdir(CHORDS_DIR) if n.endswith(".json")}
+            with os.scandir(CHORDS_DIR) as buckets:
+                for b in buckets:
+                    if not b.is_dir() or len(b.name) != 2:
+                        continue
+                    try:
+                        with os.scandir(b.path) as it:
+                            for entry in it:
+                                name = entry.name
+                                if name.endswith(".json") and ".json.bak." not in name:
+                                    result.add(name[:-5])
+                    except OSError:
+                        continue
         except OSError:
             result = set()
     _chord_hash_cache["data"] = result
@@ -72,12 +86,17 @@ def get_chord_hash_set(force: bool = False) -> set:
 
 def invalidate_chord_hash_set():
     """強制下一次 get_chord_hash_set 重掃。
-    順手清掉 chord_batch 內的 _stats_cache，讓 admin 上方統計也立即反映變化。"""
+    順手清掉 chord_batch 與 library_groups 的快取，讓 admin 統計立即反映變化。"""
     _chord_hash_cache["data"] = None
     _chord_hash_cache["ts"] = 0.0
     try:
         from chord_batch import _stats_cache
         _stats_cache["data"] = None
         _stats_cache["ts"] = 0
+    except Exception:
+        pass
+    try:
+        from library_groups import invalidate_groups_cache
+        invalidate_groups_cache()
     except Exception:
         pass

@@ -44,14 +44,20 @@ def _midi_matches(song_name: str, midi_fname: str) -> bool:
     min_len = min(len(sk), len(mk))
     return overlap >= max(2, min_len * 0.6)
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends, Header
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends, Header, Request
 from pydantic import BaseModel
 
-from auth_api import get_current_user, DB_PATH as AUTH_DB_PATH
+from auth_api import get_current_user, get_admin_user, DB_PATH as AUTH_DB_PATH
 import sqlite3
 from chord_table import get_chord_info, get_chord_jianpu, analyze_chord_in_key
 from chord_diagrams import get_chord_diagram, get_chord_voicings
-from chord_cache import song_hash, update_entry_from_file as cache_update_entry
+from chord_cache import (
+    song_hash, update_entry_from_file as cache_update_entry,
+    chord_file_for, chord_bak_for, ensure_chord_bucket,
+)
+from chord_splitter import maybe_split_for_serve
+from chord_noise_filter import maybe_filter_for_serve as maybe_noise_filter_for_serve
+from bar_phase_corrector import maybe_correct_for_serve as maybe_phase_correct_for_serve
 from instrument_registry import get_instrument, list_instruments, INSTRUMENTS
 
 from config import resolve_path
@@ -92,13 +98,17 @@ def _version_rating(votes: dict) -> tuple:
     return (round(sum(vals) / len(vals), 1), len(vals))
 
 
-def _optional_user(authorization: str = Header(None)) -> Optional[str]:
-    """Return username if Authorization header is valid, else None (no error)."""
-    if not authorization:
-        return None
+def _optional_user(request: Request, authorization: str = Header(None)) -> Optional[str]:
+    """Return username if caller is identifiable, else None.
+
+    Delegates to ``get_current_user`` so LAN bypass (personal-mode auto-admin)
+    applies even when the browser has no Authorization header — without this,
+    GET /chords falls through to the official version while POST /chords saves
+    to data/users/admin/, making the admin's edits invisible on the next load.
+    """
     try:
-        return get_current_user(authorization)
-    except HTTPException:
+        return get_current_user(request, authorization)
+    except Exception:
         return None
 
 
@@ -199,10 +209,10 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
     if version and version != "official":
         chords_file = DATA_DIR / "users" / version / "chords" / f"{song_hash(path)}.json"
         if not chords_file.is_file():
-            chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+            chords_file = chord_file_for(song_hash(path))
             is_fallback = True
     else:
-        chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+        chords_file = chord_file_for(song_hash(path))
 
     if not chords_file.is_file():
         return {"path": path, "key": "", "capo": 0, "chords": [], "exists": False}
@@ -210,31 +220,74 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
     data = json.loads(chords_file.read_text(encoding="utf-8"))
     data["exists"] = True
     data["current_version"] = "official" if is_fallback or not version else version
+    maybe_phase_correct_for_serve(data) # rewrite irregular downbeats[] to regular grid
+    maybe_noise_filter_for_serve(data)  # absorb 1-beat noise tails
+    maybe_split_for_serve(data)         # split long chords at corrected downbeats
     return data
 
 
 @router.get("/chords/by-hash")
 async def get_chords_by_hash(hash: str = Query(..., min_length=8, max_length=16)):
     """直接用 hash 取得和弦譜（給 process 結果用）"""
-    chords_file = CHORDS_DIR / f"{hash}.json"
+    chords_file = chord_file_for(hash)
     if not chords_file.is_file():
         return {"hash": hash, "key": "", "capo": 0, "chords": [], "exists": False}
     data = json.loads(chords_file.read_text(encoding="utf-8"))
     data["exists"] = True
+    maybe_phase_correct_for_serve(data)
+    maybe_noise_filter_for_serve(data)
+    maybe_split_for_serve(data)
     return data
 
 
 @router.post("/chords")
 async def save_chords(sheet: ChordSheet, username: str = Depends(get_current_user)):
-    """儲存和弦譜至個人專屬空間"""
+    """儲存和弦譜至個人專屬空間。
+
+    Belt-and-suspenders: sort the chord array by time and drop near-duplicate
+    consecutive entries (within 0.2s) before writing. The frontend already
+    does this in _cleanChordsForSave, but we repeat it server-side because a
+    corrupted-but-unsorted payload here was how the previous overlap bug
+    ("C Bb 重疊" at 2:39) got persisted.
+    """
     user_chords_dir = DATA_DIR / "users" / username / "chords"
     user_chords_dir.mkdir(parents=True, exist_ok=True)
     chords_file = user_chords_dir / f"{song_hash(sheet.path)}.json"
-    
-    chords_file.write_text(
-        json.dumps(sheet.model_dump(), ensure_ascii=False, indent=2),
+
+    payload = sheet.model_dump()
+    chords = sorted(payload.get("chords") or [],
+                    key=lambda c: c.get("time", 0.0))
+    MIN_GAP = 0.2
+    cleaned = []
+    for c in chords:
+        if cleaned and (c.get("time", 0.0) - cleaned[-1].get("time", 0.0)) < MIN_GAP:
+            cleaned[-1] = c  # later-indexed wins (matches frontend policy)
+        else:
+            cleaned.append(c)
+    # Ensure end == next.time so ribbon doesn't show gaps
+    for i in range(len(cleaned) - 1):
+        cleaned[i]["end"] = cleaned[i + 1].get("time", cleaned[i].get("end"))
+    payload["chords"] = cleaned
+
+    # Merge-on-save: preserve fields the ChordSheet model doesn't know about
+    # (beats, downbeats, tempo_curve, beats_source, beat_version, bpm_correction,
+    # source, etc.) — otherwise upgrade-beats data gets wiped on the next chord
+    # correction save and the ribbon can no longer derive correct dot counts.
+    if chords_file.is_file():
+        try:
+            existing = json.loads(chords_file.read_text(encoding="utf-8"))
+            if isinstance(existing, dict):
+                merged = {**existing, **payload}
+                payload = merged
+        except Exception:
+            pass
+
+    tmp = chords_file.with_suffix(chords_file.suffix + ".tmp")
+    tmp.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    os.replace(tmp, chords_file)
     return {"ok": True, "path": sheet.path, "version": username}
 
 
@@ -262,7 +315,7 @@ def get_chord_versions(path: str = Query(...), username: Optional[str] = Depends
         }
 
     # 1. 官方版
-    official_file = CHORDS_DIR / f"{target_hash}.json"
+    official_file = chord_file_for(target_hash)
     if official_file.is_file():
         versions.append(_build("official", "官方 AI 版"))
 
@@ -325,6 +378,221 @@ def rate_chord_version(req: RatingRequest, username: str = Depends(get_current_u
 
 
 # ---------------------------------------------------------------------------
+# admin: BPM recompute (ballad halving heuristic, per-song manual)
+# ---------------------------------------------------------------------------
+
+class BpmRecomputeRequest(BaseModel):
+    path: Optional[str] = None
+    hash: Optional[str] = None
+    mode: str = "auto"  # "auto" | "halve" | "double"
+
+
+@router.post("/admin/bpm/recompute")
+def admin_bpm_recompute(req: BpmRecomputeRequest, username: str = Depends(get_admin_user)):
+    """Manually re-decide BPM for a single song.
+
+    mode=auto  → re-run bpm_sanity.ballad_halving_check against the current
+                 stored BPM (no re-running madmom — that's expensive and a
+                 separate concern via /api/process/upgrade-beats).
+    mode=halve → force bpm /= 2, halve tempo_curve, thin downbeats.
+    mode=double → inverse of halve (for undo).
+
+    Admin-only via get_admin_user (handles LAN bypass + token auth uniformly).
+    """
+    if req.hash:
+        h = req.hash
+    elif req.path:
+        h = song_hash(req.path)
+    else:
+        raise HTTPException(status_code=400, detail="missing path or hash")
+
+    chords_file = chord_file_for(h)
+    if not chords_file.is_file():
+        raise HTTPException(status_code=404, detail="chord JSON not found")
+
+    data = json.loads(chords_file.read_text(encoding="utf-8"))
+    original_bpm = float(data.get("bpm") or 0)
+    if original_bpm <= 0:
+        raise HTTPException(status_code=400, detail="stored chord JSON has no bpm")
+
+    corrected_bpm = original_bpm
+    meta = {"applied": False, "reason": "", "original": original_bpm}
+
+    if req.mode == "halve":
+        corrected_bpm = original_bpm / 2.0
+        meta = {"applied": True, "reason": "admin-manual-halve", "original": original_bpm}
+    elif req.mode == "double":
+        corrected_bpm = original_bpm * 2.0
+        meta = {"applied": True, "reason": "admin-manual-double", "original": original_bpm}
+    else:  # auto
+        audio_path = data.get("audio_path") or data.get("path") or ""
+        try:
+            resolved = resolve_path(audio_path) if audio_path else ""
+        except Exception:
+            resolved = ""
+        if not resolved or not os.path.isfile(resolved):
+            raise HTTPException(status_code=400, detail="audio file not available; use halve/double")
+        from bpm_sanity import ballad_halving_check
+        corrected_bpm, meta = ballad_halving_check(original_bpm, resolved)
+
+    if meta.get("applied"):
+        # scale tempo_curve + thin downbeats to match new tempo
+        scale = corrected_bpm / original_bpm if original_bpm else 1.0
+        tempo_curve = data.get("tempo_curve") or []
+        data["tempo_curve"] = [
+            {"t": p.get("t", 0.0), "bpm": round(float(p.get("bpm", 0.0)) * scale, 2)}
+            for p in tempo_curve
+        ]
+        downbeats = data.get("downbeats") or []
+        if req.mode == "halve" or (req.mode == "auto" and scale < 1):
+            if len(downbeats) >= 2:
+                data["downbeats"] = downbeats[::2]
+        elif req.mode == "double":
+            # Doubling downbeats correctly would need beat times; we conservatively
+            # leave them — player derives from bpm+beats anyway
+            pass
+        data["bpm"] = round(corrected_bpm, 1)
+        data["bpm_correction"] = meta
+
+    chords_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {
+        "ok": True,
+        "hash": h,
+        "original_bpm": original_bpm,
+        "corrected_bpm": round(corrected_bpm, 1),
+        "applied": meta.get("applied", False),
+        "reason": meta.get("reason", ""),
+        "onset_density": meta.get("onset_density"),
+        "rms_cov": meta.get("rms_cov"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# admin: bar/downbeat arbitrator recompute (Phase 2 — bar_arbitrator)
+# ---------------------------------------------------------------------------
+
+class BarRecomputeRequest(BaseModel):
+    path: Optional[str] = None
+    hash: Optional[str] = None
+    force: bool = False  # bypass already-regular gate + low-confidence gate
+
+
+@router.post("/admin/bar/recompute")
+def admin_bar_recompute(req: BarRecomputeRequest, username: str = Depends(get_admin_user)):
+    """Manually re-run bar_arbitrator on a single song.
+
+    Reads the chord JSON, runs ``ai.bar_arbitrator.arbitrate`` (model path
+    if available else rule baseline), writes the result back. Personal-mode
+    only — admin token already restricts to LAN in beta mode.
+
+    ``force=True`` bypasses both gates (raw-already-regular and low model
+    confidence) so admins can override on songs where the auto-judge would
+    keep the (broken) raw downbeats.
+
+    Refuses to act when process_queue has in-flight jobs — avoids two
+    workers writing the same chord JSON race.
+    """
+    # Queue-empty guard — don't race the ingest worker
+    try:
+        from process_queue import process_queue, queue
+        if not isinstance(process_queue, queue.Queue):
+            pass  # imported wrong thing, skip guard
+        elif process_queue.qsize() > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=f"process_queue has {process_queue.qsize()} jobs in flight; retry when idle",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        # If we can't introspect the queue, proceed (single-song manual op
+        # is low-risk vs. blocking admin entirely)
+        pass
+
+    if req.hash:
+        h = req.hash
+    elif req.path:
+        h = song_hash(req.path)
+    else:
+        raise HTTPException(status_code=400, detail="missing path or hash")
+
+    chords_file = chord_file_for(h)
+    if not chords_file.is_file():
+        raise HTTPException(status_code=404, detail="chord JSON not found")
+
+    data = json.loads(chords_file.read_text(encoding="utf-8"))
+
+    from ai.bar_arbitrator import arbitrate, apply_to_chord_json
+    from process_queue import _resolve_bar_model_path
+    model_path = _resolve_bar_model_path()
+    res = arbitrate(data, model_path=model_path, force=req.force)
+    apply_to_chord_json(data, res)
+
+    # Atomic write — same .tmp + os.replace pattern bpm/recompute uses
+    tmp = chords_file.with_suffix(chords_file.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, chords_file)
+
+    return {
+        "ok": True,
+        "hash": h,
+        "applied": res["applied"],
+        "reason": res["reason"],
+        "model_version": res["model_version"],
+        "beats_per_bar": res["beats_per_bar"],
+        "raw_regularity_cv": res["raw_regularity_cv"],
+        "score_after": res["score_after"],
+        "n_downbeats_before": len(res["downbeats_before"]),
+        "n_downbeats_after": len(res["downbeats_after"]),
+    }
+
+
+class BarRestoreRequest(BaseModel):
+    path: Optional[str] = None
+    hash: Optional[str] = None
+
+
+@router.post("/admin/bar/restore")
+def admin_bar_restore(req: BarRestoreRequest, username: str = Depends(get_admin_user)):
+    """Revert downbeats to ``bar_correction.downbeats_original`` snapshot.
+
+    Pairs with /admin/bar/recompute. Snapshot is created on first apply and
+    preserved across apply→restore→apply cycles, so this always returns to
+    the truly-original beat-tracker output.
+
+    Returns 400 with ``no-snapshot`` if the chord JSON has no
+    ``bar_correction.downbeats_original`` (i.e. arbitrator was never run on
+    this song, or it ran via an old version that didn't snapshot).
+    """
+    if req.hash:
+        h = req.hash
+    elif req.path:
+        h = song_hash(req.path)
+    else:
+        raise HTTPException(status_code=400, detail="missing path or hash")
+
+    chords_file = chord_file_for(h)
+    if not chords_file.is_file():
+        raise HTTPException(status_code=404, detail="chord JSON not found")
+
+    data = json.loads(chords_file.read_text(encoding="utf-8"))
+    from ai.bar_arbitrator import restore_from_snapshot
+    ok, reason = restore_from_snapshot(data)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+
+    tmp = chords_file.with_suffix(chords_file.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, chords_file)
+
+    return {
+        "ok": True,
+        "hash": h,
+        "n_downbeats": len(data.get("downbeats") or []),
+    }
+
+
+# ---------------------------------------------------------------------------
 # auto-detect (Phase 4)
 # ---------------------------------------------------------------------------
 
@@ -336,7 +604,7 @@ async def detect_chords_api(path: str = Query(...)):
         raise HTTPException(status_code=404, detail="檔案不存在")
 
     # 如果已有 chordify 來源的和弦，不要用 BTC 覆蓋
-    chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+    chords_file = chord_file_for(song_hash(path))
     if chords_file.is_file():
         existing = json.loads(chords_file.read_text(encoding="utf-8"))
         if existing.get("source") == "chordify":
@@ -401,7 +669,7 @@ async def detect_chords_api(path: str = Query(...)):
         "chords": chords,
     }
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
-    chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+    chords_file = chord_file_for(song_hash(path))
     chords_file.write_text(
         json.dumps(sheet, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -501,7 +769,7 @@ def midi_import(path: str = Query(...), midi_path: str = Query(...)):
         sheet = {"path": path, "key": audio_key, "capo": 0,
                  "source": "btc", "chords": btc_chords}
         CHORDS_DIR.mkdir(parents=True, exist_ok=True)
-        chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+        chords_file = chord_file_for(song_hash(path))
         chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
         cache_update_entry(path)
         return {
@@ -516,7 +784,7 @@ def midi_import(path: str = Query(...), midi_path: str = Query(...)):
         "source": "midi", "chords": entries,
     }
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
-    chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+    chords_file = chord_file_for(song_hash(path))
     chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
     cache_update_entry(path)
 
@@ -567,7 +835,7 @@ async def midi_upload(path: str = Query(...), file: UploadFile = File(...)):
 
     sheet = {"path": path, "key": key, "capo": 0, "source": "midi", "chords": entries}
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
-    chords_file = CHORDS_DIR / f"{song_hash(path)}.json"
+    chords_file = chord_file_for(song_hash(path))
     chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
     cache_update_entry(path)
 

@@ -1,23 +1,26 @@
-"""Process API — 上傳音檔 / YouTube URL 和弦偵測"""
+"""Process API — 上傳音檔 和弦偵測"""
 
-import html
 import os
-import re
 import queue
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from auth_api import get_current_user, get_admin_user
-from config import is_beta_mode
+logger = logging.getLogger(__name__)
+
+from auth_api import get_current_user, get_admin_user, get_user_or_anon, is_anon
+from config import is_beta_mode, is_public_mode
 from process_queue import (
     ProcessJob, JobStatus, TMP_DIR, COVERS_DIR,
     submit_job, get_job, generate_job_id, compute_file_hash,
     check_quota, get_user_daily_count, get_audit_log, get_user_audit_log,
+    delete_audit_entries,
     CHORDS_DIR,
 )
+from chord_cache import chord_file_for, chord_bak_for, ensure_chord_bucket
 
 router = APIRouter(prefix="/api/process", tags=["process"])
 
@@ -30,23 +33,26 @@ ALLOWED_MIME_TYPES = {
     "audio/x-m4a", "audio/aac", "audio/webm",
 }
 
-_YOUTUBE_RE = re.compile(
-    r"^https?://(www\.)?(youtube\.com/(watch|shorts)|youtu\.be/|music\.youtube\.com/watch)"
-)
 
-
-def _require_beta():
-    if not is_beta_mode():
+def _require_user_facing():
+    """Process API only exists on user-facing instances (beta or public).
+    On personal mode (LAN self-use) these endpoints are 404 — personal users
+    use the library-scan flow, not the upload ingest."""
+    if not (is_beta_mode() or is_public_mode()):
         raise HTTPException(status_code=404, detail="Not available")
+
+
+# Back-compat alias — old beta-only callers still resolve.
+_require_beta = _require_user_facing
 
 
 # ---------------------------------------------------------------------------
 # Upload
 # ---------------------------------------------------------------------------
 
-@router.post("/upload", dependencies=[Depends(_require_beta)])
+@router.post("/upload", dependencies=[Depends(_require_user_facing)])
 def upload_audio(file: UploadFile = File(...),
-                 username: str = Depends(get_current_user)):
+                 username: str = Depends(get_user_or_anon)):
     # Quota check
     if not check_quota(username):
         raise HTTPException(
@@ -73,7 +79,7 @@ def upload_audio(file: UploadFile = File(...),
     # Compute file hash for audit
     file_hash = compute_file_hash(str(tmp_path))
 
-    title = html.escape(os.path.splitext(file.filename or "")[0].strip()) or "Uploaded"
+    title = os.path.splitext(file.filename or "")[0].strip() or "Uploaded"
 
     job = ProcessJob(
         job_id=job_id,
@@ -94,48 +100,11 @@ def upload_audio(file: UploadFile = File(...),
 
 
 # ---------------------------------------------------------------------------
-# YouTube URL
-# ---------------------------------------------------------------------------
-
-class YouTubeRequest(BaseModel):
-    url: str = Field(min_length=10, max_length=500)
-
-
-@router.post("/youtube", dependencies=[Depends(_require_beta)])
-def process_youtube(req: YouTubeRequest, username: str = Depends(get_current_user)):
-    if not check_quota(username):
-        raise HTTPException(
-            status_code=429,
-            detail=f"每日額度已用完 ({get_user_daily_count(username)}/10)"
-        )
-
-    url = req.url.strip()
-    if not _YOUTUBE_RE.match(url):
-        raise HTTPException(status_code=400, detail="請提供有效的 YouTube URL")
-
-    job_id = generate_job_id()
-    job = ProcessJob(
-        job_id=job_id,
-        username=username,
-        source_type="youtube",
-        youtube_url=url,
-        title=f"YouTube: {url[-11:]}",
-    )
-
-    try:
-        submit_job(job)
-    except queue.Full:
-        raise HTTPException(status_code=503, detail="處理佇列已滿，請稍後再試")
-
-    return {"job_id": job_id, "status": "queued"}
-
-
-# ---------------------------------------------------------------------------
 # Status & Result
 # ---------------------------------------------------------------------------
 
-@router.get("/status/{job_id}", dependencies=[Depends(_require_beta)])
-def job_status(job_id: str, username: str = Depends(get_current_user)):
+@router.get("/status/{job_id}", dependencies=[Depends(_require_user_facing)])
+def job_status(job_id: str, username: str = Depends(get_user_or_anon)):
     job = get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -143,16 +112,16 @@ def job_status(job_id: str, username: str = Depends(get_current_user)):
         "job_id": job.job_id,
         "status": job.status.value,
         "progress": job.progress,
+        "stage": job.stage,
         "title": job.title,
         "error": job.error_msg if job.status == JobStatus.ERROR else "",
         "result_hash": job.result_hash if job.status == JobStatus.DONE else None,
         "source_type": job.source_type,
-        "youtube_url": job.youtube_url if job.source_type == "youtube" else "",
     }
 
 
-@router.get("/result/{job_id}", dependencies=[Depends(_require_beta)])
-def job_result(job_id: str, username: str = Depends(get_current_user)):
+@router.get("/result/{job_id}", dependencies=[Depends(_require_user_facing)])
+def job_result(job_id: str, username: str = Depends(get_user_or_anon)):
     job = get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -161,7 +130,7 @@ def job_result(job_id: str, username: str = Depends(get_current_user)):
     if not job.result_hash:
         raise HTTPException(status_code=500, detail="No result hash")
 
-    chord_file = CHORDS_DIR / f"{job.result_hash}.json"
+    chord_file = chord_file_for(job.result_hash)
     if not chord_file.is_file():
         raise HTTPException(status_code=404, detail="Chord data not found")
 
@@ -175,58 +144,468 @@ def job_result(job_id: str, username: str = Depends(get_current_user)):
 
 @router.get("/cover/{hash}")
 def get_cover(hash: str):
-    """Serve cover art for a processed song."""
+    """Serve cover art for a processed song.
+
+    Public mode with LIVECHORD_USE_R2=1 streams from Cloudflare R2; the
+    local-disk path is checked first (so covers extracted before R2 was
+    enabled keep working) and falls through to R2 on miss. Personal/beta
+    deploys never touch R2."""
     cover_path = COVERS_DIR / f"{hash}.jpg"
-    if not cover_path.is_file():
-        raise HTTPException(status_code=404, detail="No cover")
-    return FileResponse(cover_path, media_type="image/jpeg",
-                        headers={"Cache-Control": "public, max-age=86400"})
-
-
-# ---------------------------------------------------------------------------
-# YouTube search (find matching video for a song title)
-# ---------------------------------------------------------------------------
-
-import subprocess
-from process_queue import YTDLP_BIN
-
-# Simple in-memory cache for YouTube search results
-_yt_search_cache: dict[str, str] = {}
-
-
-@router.get("/youtube-search")
-def youtube_search(q: str, username: str = Depends(get_current_user)):
-    """Search YouTube for a song and return the best match video ID."""
-    q = q.strip()[:120]
-    if not q:
-        raise HTTPException(status_code=400, detail="Empty query")
-
-    # Check cache
-    cache_key = q.lower()
-    if cache_key in _yt_search_cache:
-        vid = _yt_search_cache[cache_key]
-        return {"video_id": vid, "url": f"https://www.youtube.com/watch?v={vid}"}
-
-    try:
-        result = subprocess.run(
-            [YTDLP_BIN, "--get-id", "--no-download", "--no-playlist",
-             f"ytsearch1:{q}"],
-            capture_output=True, text=True, timeout=15
+    if cover_path.is_file():
+        return FileResponse(
+            cover_path, media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=86400"},
         )
-        vid = result.stdout.strip()
-        if result.returncode != 0 or not vid or len(vid) != 11:
-            return {"video_id": None, "url": None}
-        _yt_search_cache[cache_key] = vid
-        return {"video_id": vid, "url": f"https://www.youtube.com/watch?v={vid}"}
+
+    from r2_storage import is_r2_enabled, download_cover
+    if is_r2_enabled():
+        data = download_cover(hash)
+        if data is not None:
+            from fastapi.responses import Response
+            return Response(
+                content=data,
+                media_type="image/jpeg",
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
+
+    raise HTTPException(status_code=404, detail="No cover")
+
+
+# ---------------------------------------------------------------------------
+# On-demand beat upgrade — runs the slow madmom path against an existing
+# chord JSON. Default ingest uses librosa (fast); users opt into rubato
+# tracking from the player Tools popup. See doc/QA_BATTLE_STORY.md 番外篇 VII.
+# ---------------------------------------------------------------------------
+
+def upgrade_beats(hash: str, username: str = Depends(get_current_user)):
+    """Enqueue an on-demand madmom beat-detection job.
+
+    Returns immediately with ``{status: queued|duplicate, hash, ...}``.
+    The actual madmom run (~30s) happens in beat_upgrade_queue's daemon
+    worker thread; client polls ``GET /api/process/upgrade-beats/status``
+    for completion. Pre-flight rejects (early validation):
+      - madmom missing → 503 with diagnostic
+      - upload-mode path (audio cleaned up) → 410
+      - chord JSON / audio missing → 404
+      - chord array empty → 400
+    """
+    import json as _json
+    from beat_snap import HAS_MADMOM, MADMOM_IMPORT_ERROR
+    from beat_upgrade_queue import enqueue as _enqueue, get_status as _get_status
+    from config import resolve_path
+
+    if not HAS_MADMOM:
+        raise HTTPException(
+            status_code=503,
+            detail=f"madmom not installed: {MADMOM_IMPORT_ERROR or 'unknown'}",
+        )
+
+    chord_file = chord_file_for(hash)
+    if not chord_file.is_file():
+        raise HTTPException(status_code=404, detail="chord JSON not found")
+
+    sheet = _json.loads(chord_file.read_text(encoding="utf-8"))
+    track_path = sheet.get("path", "")
+
+    # Upload-mode (process_queue cleaned up the audio after melody extraction):
+    # no recovery path → 410 with prompt.
+    if track_path.startswith("__upload/"):
+        raise HTTPException(
+            status_code=410,
+            detail="此曲為直接上傳音檔，原始檔已清除；請從首頁重新上傳此曲以重新偵測節拍",
+        )
+
+    # Library-mode (NAS path) songs: audio must exist on disk now.
+    audio_path = ""
+    if track_path:
+        audio_path = resolve_path(track_path)
+        if not audio_path or not os.path.isfile(audio_path):
+            raise HTTPException(status_code=404, detail="audio file not found")
+
+    chords = sheet.get("chords") or []
+    if not chords:
+        raise HTTPException(status_code=400, detail="chord JSON has no chords")
+
+    title = sheet.get("title") or os.path.basename(track_path) or hash
+    queued_status = _enqueue(hash, audio_path, str(chord_file),
+                             title=title, requested_by=username)
+    snapshot = _get_status(hash) or {}
+
+    logger.info("upgrade_beats enqueued by %s: hash=%s status=%s",
+                username, hash, queued_status)
+
+    return {
+        "ok": True,
+        "hash": hash,
+        "title": title,
+        "status": snapshot.get("status", queued_status),
+        "queued": queued_status == "queued",
+        "duplicate": queued_status == "duplicate",
+    }
+
+
+def upgrade_beats_status(hash: str, username: str = Depends(get_user_or_anon)):
+    """Return current status of a beat-upgrade job for ``hash``.
+
+    Status values: queued / running / done / error / not_found.
+    Frontend polls this to decide when to fire the completion toast.
+    """
+    from beat_upgrade_queue import get_status as _get_status
+    snap = _get_status(hash)
+    if snap is None:
+        return {"status": "not_found", "hash": hash}
+    return {"hash": hash, **snap}
+
+
+router.add_api_route("/upgrade-beats", upgrade_beats, methods=["POST"])
+router.add_api_route("/upgrade-beats/status", upgrade_beats_status,
+                     methods=["GET"])
+
+
+# ---------------------------------------------------------------------------
+# Beat source toggle (personal-only, 8800)
+# ---------------------------------------------------------------------------
+# Lets the user flip a song between librosa (fast, ingest default) and madmom
+# (rubato tracking) beat sources, for A/B comparison. Each source's result is
+# cached to disk so subsequent switches are instant (no 30s madmom re-run).
+#
+# Caches:
+#   <hash>.json.bak.librosa  — full sheet snapshot when librosa was source
+#   <hash>.json.bak.madmom   — full sheet snapshot when madmom was source
+# Legacy .bak.beats (written by old upgrade_beats flow) migrates to .bak.librosa
+# on first read — semantically equivalent (pre-madmom == librosa).
+#
+# Swap preserves user edits to chords/sections/etc; only beat-related fields
+# are replaced (see BEAT_FIELDS).
+# ---------------------------------------------------------------------------
+_BEAT_FIELDS = ("bpm", "beats", "downbeats", "tempo_curve",
+                "beats_source", "beat_version", "bpm_correction")
+
+
+def _beat_source_category(src) -> str:
+    if not src:
+        return "librosa"
+    s = str(src).lower()
+    if "beat_this" in s:
+        return "beat_this"
+    if "madmom" in s:
+        return "madmom"
+    return "librosa"
+
+
+def _migrate_legacy_bak(sheet_path: str):
+    legacy = sheet_path + ".bak.beats"
+    lib = sheet_path + ".bak.librosa"
+    if os.path.exists(legacy) and not os.path.exists(lib):
+        try:
+            os.replace(legacy, lib)
+            logger.info("migrated legacy .bak.beats -> .bak.librosa: %s", sheet_path)
+        except Exception as e:
+            logger.warning("bak migration failed %s: %s", sheet_path, e)
+
+
+def _apply_beat_fields_from_snapshot(current: dict, snapshot: dict):
+    """Copy beat fields from snapshot onto current (in-place).
+
+    Keys missing in snapshot get removed from current, so a librosa snapshot
+    predating bpm_correction doesn't leave a stale correction behind.
+    """
+    for k in _BEAT_FIELDS:
+        if k in snapshot:
+            current[k] = snapshot[k]
+        else:
+            current.pop(k, None)
+
+
+def _overlay_beat_fields_to_user_version(hash: str, username: str, sheet: dict):
+    """If the caller has a user-specific chord version saved (which is what
+    GET /api/chords serves them on LAN personal mode), overlay the beat fields
+    from the canonical sheet onto that file so the UI sees the new beats_source.
+
+    The user version was saved via ChordSheet (Pydantic) which only preserves
+    path/key/capo/bpm/chords — beat fields get stripped. Without this overlay,
+    the user continues to see stale/missing beat data after a switch.
+    """
+    import json as _json
+    from pathlib import Path
+    if not username or username == "admin" and False:
+        return  # (no special-case; kept explicit for reviewers)
+    if not username:
+        return
+    user_path = (Path(__file__).parent.parent / "data" / "users"
+                 / username / "chords" / f"{hash}.json")
+    if not user_path.is_file():
+        return
+    try:
+        user_sheet = _json.loads(user_path.read_text(encoding="utf-8"))
     except Exception as e:
-        return {"video_id": None, "url": None, "error": str(e)[:100]}
+        logger.warning("overlay %s -> user %s failed to read: %s",
+                       hash, username, e)
+        return
+    # Apply the same beat fields (bpm is in ChordSheet so already tracked;
+    # beats/downbeats/tempo_curve/beats_source/beat_version/bpm_correction
+    # are the ones that normally get stripped).
+    _apply_beat_fields_from_snapshot(user_sheet, sheet)
+    tmp = str(user_path) + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            _json.dump(user_sheet, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, str(user_path))
+        logger.info("overlay beat fields to user version: %s / %s", username, hash)
+    except Exception as e:
+        logger.warning("overlay %s -> user %s write failed: %s",
+                       hash, username, e)
+
+
+@router.post("/beats/switch")
+def switch_beats(
+    mode: str,
+    hash: str = "",
+    path: str = "",
+    username: str = Depends(get_user_or_anon),
+):
+    """Swap a song's beat source between librosa, madmom, and beat_this.
+
+    - If target cache exists: atomic in-place swap, <1s.
+    - If target == librosa and cache missing: run librosa synchronously (~1-2s).
+    - If target == madmom and cache missing: enqueue madmom job (~30s,
+      background) — client polls /upgrade-beats/status.
+    - If target == beat_this and cache missing: dispatched to Modal serverless
+      GPU when LIVECHORD_USE_MODAL_BEAT_THIS=1; otherwise 503 with
+      "run PC bulk batch first".
+
+    Accepts ``hash`` OR ``path`` (8800 path-mode sends path; hash-mode sends hash).
+
+    Mode + auth gating:
+    - ``librosa`` and ``madmom`` require BOTH personal-mode AND a logged-in user
+      (they compute on the host: librosa loads audio in-memory; madmom needs
+      the MSVC build toolchain unlikely on a VPS). Anonymous or public callers
+      asking for those return 404 / 401.
+    - ``mode=beat_this`` is allowed in any deployment mode AND for anonymous
+      callers, because the heavy lifting is done on Modal — the local process
+      only does file I/O around the dispatch. Anonymous callers still send a
+      well-formed X-Anon-Id header (auto-injected by the frontend auth wrapper)
+      so audit / per-browser tracking still works.
+    """
+    import json as _json
+    from chord_cache import song_hash
+    from config import resolve_path, is_personal_mode
+    from beat_snap import (HAS_MADMOM, MADMOM_IMPORT_ERROR,
+                           analyze_and_snap_dynamic)
+
+    if mode not in ("librosa", "madmom", "beat_this"):
+        raise HTTPException(
+            status_code=400,
+            detail="mode must be 'librosa', 'madmom' or 'beat_this'",
+        )
+
+    # Librosa / madmom: personal-mode + real account required.
+    if mode != "beat_this":
+        if not is_personal_mode():
+            raise HTTPException(status_code=404, detail="Not available on this instance")
+        if is_anon(username):
+            raise HTTPException(status_code=401, detail="未授權 (Unauthorized)")
+
+    if not hash and path:
+        hash = song_hash(path)
+    if not hash:
+        raise HTTPException(status_code=400, detail="hash or path required")
+
+    chord_file = chord_file_for(hash)
+    if not chord_file.is_file():
+        raise HTTPException(status_code=404, detail="chord JSON not found")
+
+    sheet_path = str(chord_file)
+    sheet = _json.loads(chord_file.read_text(encoding="utf-8"))
+
+    _migrate_legacy_bak(sheet_path)
+
+    current_cat = _beat_source_category(sheet.get("beats_source"))
+    if current_cat == mode:
+        return {
+            "ok": True, "already": True, "hash": hash, "mode": mode,
+            "bpm": sheet.get("bpm"),
+            "beats_source": sheet.get("beats_source"),
+        }
+
+    target_bak = sheet_path + f".bak.{mode}"
+    other_bak = sheet_path + f".bak.{current_cat}"
+
+    # Fast path: target cache hit
+    if os.path.isfile(target_bak):
+        try:
+            target_snapshot = _json.loads(
+                open(target_bak, encoding="utf-8").read())
+        except Exception as e:
+            raise HTTPException(status_code=500,
+                                detail=f"target cache read failed: {e}")
+        # Save current state as the other-mode cache if not already stored
+        if not os.path.exists(other_bak):
+            try:
+                with open(other_bak, "w", encoding="utf-8") as f:
+                    _json.dump(sheet, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                logger.warning("switch %s: %s cache write failed: %s",
+                               hash, current_cat, e)
+        _apply_beat_fields_from_snapshot(sheet, target_snapshot)
+        tmp = sheet_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            _json.dump(sheet, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, sheet_path)
+        _overlay_beat_fields_to_user_version(hash, username, sheet)
+        logger.info("switch_beats %s -> %s (cached, by %s)",
+                    hash, mode, username)
+        return {
+            "ok": True, "switched": True, "cached": True,
+            "hash": hash, "mode": mode,
+            "bpm": sheet.get("bpm"),
+            "beats_source": sheet.get("beats_source"),
+        }
+
+    # Slow path: target cache missing → compute
+    track_path = sheet.get("path", "")
+    audio_path = ""
+    if track_path and not track_path.startswith("__upload/"):
+        audio_path = resolve_path(track_path) or ""
+
+    chords = sheet.get("chords") or []
+    if not chords:
+        raise HTTPException(status_code=400, detail="chord JSON has no chords")
+
+    if mode == "librosa":
+        if not audio_path or not os.path.isfile(audio_path):
+            raise HTTPException(status_code=404, detail="audio file not found")
+        # Snapshot current (madmom) as its cache before overwriting
+        if not os.path.exists(other_bak):
+            try:
+                with open(other_bak, "w", encoding="utf-8") as f:
+                    _json.dump(sheet, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                logger.warning("switch %s: %s cache write failed: %s",
+                               hash, current_cat, e)
+        chords_copy = [dict(c) for c in chords]
+        info = analyze_and_snap_dynamic(audio_path, chords_copy,
+                                        prefer_madmom=False)
+        if not info.get("beats_source"):
+            raise HTTPException(status_code=500,
+                                detail="librosa returned no beats")
+        sheet["chords"] = chords_copy
+        if info.get("bpm"):
+            sheet["bpm"] = round(info["bpm"], 1)
+        sheet["beats"] = info.get("beats", [])
+        sheet["downbeats"] = info.get("downbeats", [])
+        sheet["tempo_curve"] = info.get("tempo_curve", [])
+        sheet["beats_source"] = info["beats_source"]
+        sheet["beat_version"] = int(sheet.get("beat_version", 0)) + 1
+        # Write librosa cache
+        try:
+            with open(sheet_path + ".bak.librosa", "w", encoding="utf-8") as f:
+                _json.dump(sheet, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning("switch %s: librosa cache write failed: %s", hash, e)
+        tmp = sheet_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            _json.dump(sheet, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, sheet_path)
+        _overlay_beat_fields_to_user_version(hash, username, sheet)
+        logger.info("switch_beats %s -> librosa (fresh, by %s)", hash, username)
+        return {
+            "ok": True, "switched": True, "cached": False,
+            "hash": hash, "mode": "librosa",
+            "bpm": sheet.get("bpm"),
+            "beats_source": sheet.get("beats_source"),
+        }
+
+    # mode == "beat_this" — two routes depending on host capability:
+    #   (a) LIVECHORD_USE_MODAL_BEAT_THIS=1 → dispatch to Modal serverless GPU
+    #       via the same upgrade-beats queue (asynchronous, ~10-15s warm).
+    #   (b) flag unset → no on-demand path (NUC has no CUDA, VPS without Modal
+    #       can't run beat_this either). Instruct the user.
+    # Cache is populated either way (.bak.beat_this), so future switches are
+    # instant once a song has been beat_this-analyzed once.
+    if mode == "beat_this":
+        from modal_beat_this import modal_beat_this_enabled
+        if not modal_beat_this_enabled():
+            raise HTTPException(
+                status_code=503,
+                detail="此曲尚未由 beat_this 分析。請在 PC 端跑批次後再切換。",
+            )
+        if track_path.startswith("__upload/"):
+            raise HTTPException(
+                status_code=410,
+                detail="此曲為直接上傳音檔，原始檔已清除；請從首頁重新上傳此曲以重新偵測節拍",
+            )
+        if track_path:
+            if not audio_path or not os.path.isfile(audio_path):
+                raise HTTPException(status_code=404, detail="audio file not found")
+
+        # Snapshot current as its cache before queuing the beat_this run
+        if not os.path.exists(other_bak):
+            try:
+                with open(other_bak, "w", encoding="utf-8") as f:
+                    _json.dump(sheet, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                logger.warning("switch %s: %s cache write failed: %s",
+                               hash, current_cat, e)
+
+        from beat_upgrade_queue import enqueue as _enqueue, get_status as _get_status
+        title = sheet.get("title") or os.path.basename(track_path) or hash
+        qs = _enqueue(hash, audio_path, str(chord_file),
+                      title=title, requested_by=username,
+                      tracker="beat_this")
+        snap = _get_status(hash) or {}
+        logger.info("switch_beats %s -> beat_this (Modal) queued by %s: %s",
+                    hash, username, qs)
+        return {
+            "ok": True, "queued": True, "hash": hash, "mode": "beat_this",
+            "title": title,
+            "status": snap.get("status", qs),
+            "duplicate": qs == "duplicate",
+        }
+
+    # mode == "madmom" — delegate to background queue
+    if not HAS_MADMOM:
+        raise HTTPException(
+            status_code=503,
+            detail=f"madmom not installed: {MADMOM_IMPORT_ERROR or 'unknown'}",
+        )
+    if track_path.startswith("__upload/"):
+        raise HTTPException(
+            status_code=410,
+            detail="此曲為直接上傳音檔，原始檔已清除；請從首頁重新上傳此曲以重新偵測節拍",
+        )
+    if track_path:
+        if not audio_path or not os.path.isfile(audio_path):
+            raise HTTPException(status_code=404, detail="audio file not found")
+
+    # Snapshot current (librosa) as its cache before queuing madmom run
+    if not os.path.exists(other_bak):
+        try:
+            with open(other_bak, "w", encoding="utf-8") as f:
+                _json.dump(sheet, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning("switch %s: librosa cache write failed: %s", hash, e)
+
+    from beat_upgrade_queue import enqueue as _enqueue, get_status as _get_status
+    title = sheet.get("title") or os.path.basename(track_path) or hash
+    qs = _enqueue(hash, audio_path, str(chord_file),
+                  title=title, requested_by=username)
+    snap = _get_status(hash) or {}
+    logger.info("switch_beats %s -> madmom queued by %s: %s",
+                hash, username, qs)
+    return {
+        "ok": True, "queued": True, "hash": hash, "mode": "madmom",
+        "title": title,
+        "status": snap.get("status", qs),
+        "duplicate": qs == "duplicate",
+    }
 
 
 # ---------------------------------------------------------------------------
 # User history (non-admin)
 # ---------------------------------------------------------------------------
 
-@router.get("/my-history", dependencies=[Depends(_require_beta)])
+@router.get("/my-history", dependencies=[Depends(_require_user_facing)])
 def my_history(limit: int = 20, username: str = Depends(get_current_user)):
     """Get current user's own process history from audit log."""
     return {"history": get_user_audit_log(username, limit)}
@@ -240,3 +619,16 @@ def my_history(limit: int = 20, username: str = Depends(get_current_user)):
 def admin_audit(limit: int = 50, offset: int = 0,
                 admin: str = Depends(get_admin_user)):
     return {"audit": get_audit_log(limit, offset)}
+
+
+class DeleteAuditRequest(BaseModel):
+    ids: list[int] = Field(..., min_length=1, max_length=100)
+
+
+@router.post("/admin/audit/delete")
+def admin_audit_delete(req: DeleteAuditRequest,
+                       admin: str = Depends(get_admin_user)):
+    """Delete audit entries and associated chord/cover/melody files."""
+    deleted = delete_audit_entries(req.ids)
+    return {"deleted": deleted}
+

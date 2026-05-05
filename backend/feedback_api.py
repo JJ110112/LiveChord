@@ -10,13 +10,19 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from auth_api import get_current_user, get_admin_user
-from config import is_beta_mode
+from config import is_beta_mode, is_public_mode
 
 
-def _require_beta():
-    """Only allow user-facing feedback endpoints in beta mode."""
-    if not is_beta_mode():
+def _require_user_facing():
+    """Feedback (ratings, bug reports) is available on user-facing instances:
+    beta or public. Personal-mode (LAN self-use) returns 404 — there are no
+    end-users on personal mode to leave feedback."""
+    if not (is_beta_mode() or is_public_mode()):
         raise HTTPException(status_code=404, detail="Not available")
+
+
+# Back-compat alias
+_require_beta = _require_user_facing
 
 
 router = APIRouter(prefix="/api/feedback", tags=["feedback"])

@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "LiveChord",
+  "project_id": "cb60f31d-2676-4500-acc7-715829ed2a51"
+}

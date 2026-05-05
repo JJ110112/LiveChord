@@ -1,8 +1,10 @@
 /** LiveChord 首頁 — 瀏覽、搜尋、最愛、最近播放 */
 
 (function () {
+  function _t(k, v) { return (window.LiveChordI18n && window.LiveChordI18n.t) ? window.LiveChordI18n.t(k, v) : k; }
+
   // ---- state ----
-  let currentPath = "";
+  let currentPath = localStorage.getItem("livechord_home_path") || "";
   let currentTab = localStorage.getItem("livechord_home_tab") || "recent";
   let searchTimer = null;
 
@@ -38,12 +40,18 @@
     else if (uc >= 9) stars = 3;
     else if (uc >= 5) stars = 2;
     const key = item.chord_key || "";
-    return ` <span class="difficulty" style="font-size:0.8em;opacity:0.6;margin-left:6px">${"⭐".repeat(stars)}${key ? " " + key : ""}</span>`;
+    return ` <span class="difficulty" style="font-size:0.65em;opacity:0.6;margin-left:6px;white-space:nowrap;letter-spacing:-1px">${"⭐".repeat(stars)}${key ? `<span style="margin-left:4px;letter-spacing:normal">${key}</span>` : ""}</span>`;
   }
 
   // ---- beta mode: hide NAS-dependent sections for non-admin ----
+  // Variable name predates Phase B/C; "user-facing" today means beta OR public.
+  // Both modes share the same UI shape (no NAS browse for non-admin, search-bar
+  // is the entry, beta-style add-song modal). _isBetaMode stays the central
+  // "user-facing" flag; _isPublicMode lets callers distinguish when the auth
+  // semantics matter (forced login in beta vs anonymous-allowed in public).
   let _isBetaNonAdmin = false;
   let _isBetaMode = false;
+  let _isPublicMode = false;
 
   async function _checkBetaAccess() {
     try {
@@ -51,20 +59,127 @@
         fetch("/api/config/public").then(r => r.json()),
         fetch("/api/auth/is_admin").then(r => r.json()),
       ]);
-      _isBetaMode = cfgRes.deployment_mode === "beta";
+      _isPublicMode = cfgRes.deployment_mode === "public";
+      _isBetaMode = cfgRes.deployment_mode === "beta" || _isPublicMode;
+      // NAS browse section is personal-mode-only — the /api/browse endpoint
+      // is gated by require_personal_mode and returns 404 in beta/public.
+      // Admins in public mode were seeing the section render a 404 warning;
+      // the NAS volume isn't even mounted on the VPS so there's nothing
+      // useful to show. Hide unconditionally outside personal mode.
+      if (_isBetaMode) {
+        const secBrowse = $("#secBrowse");
+        if (secBrowse) secBrowse.style.display = "none";
+      }
+      if (_isBetaMode) {
+        // Modal close via × button or backdrop click. Wired for ANY beta/
+        // public visitor (admin + anonymous + signed-in non-admin) — the
+        // add-song modal is reachable from every entry point so its close
+        // handler must be unconditional. Earlier this lived inside the
+        // !is_admin branch; admins logged in on livechord.org found that
+        // the × button did nothing on error and had to reload the page.
+        const closeBtn = $("#betaFabClose");
+        const backdrop = $("#betaFabBackdrop");
+        const closeAddSongModal = () => {
+          const p = $("#betaFabPanel");
+          if (p) {
+            p.classList.remove("open");
+            p.classList.remove("file-only");
+            p.classList.remove("analyzing");
+          }
+          if (backdrop) backdrop.classList.remove("open");
+          // Reset progress rows so the next open starts clean (otherwise a
+          // stale "Reading title... 100%" bar would still be visible).
+          const up = $("#betaUploadProgress"); if (up) up.style.display = "none";
+          const yt = $("#betaYtProgress"); if (yt) yt.style.display = "none";
+          const tt = $("#betaProgressTitle"); if (tt) tt.textContent = "";
+          // Cancel any in-flight analysis poll. Backend job keeps running —
+          // result hash will still land via process_audit if the user
+          // re-uploads the same file (file_hash dedupe). What we MUST
+          // reset is the modal state so re-opening doesn't render a
+          // stuck-disabled 分析 button + null _betaSelectedFile + hidden
+          // file-info row, which is what the user hit when dismissing
+          // mid-upload then clicking the per-track 分析 again.
+          if (_betaActivePollTimer) {
+            clearInterval(_betaActivePollTimer);
+            _betaActivePollTimer = null;
+          }
+          _betaSelectedFile = null;
+          _currentAnalyzingLocalId = null;
+          const fi = $("#betaFileInfo"); if (fi) fi.style.display = "none";
+          const ub = $("#betaUploadBtn"); if (ub) ub.disabled = false;
+          const yb = $("#betaYtBtn"); if (yb) yb.disabled = false;
+        };
+        if (closeBtn) closeBtn.addEventListener("click", closeAddSongModal);
+        if (backdrop) backdrop.addEventListener("click", closeAddSongModal);
+      }
+      // Public mode: split the homepage into TWO mutually exclusive views:
+      //   - Logged-out → marketing landing only (intro banner + hero +
+      //     how-it-works + footer). No dashboard, no recent / favorites /
+      //     local-music — those need an account.
+      //   - Logged-in  → dashboard only (recent / favorites / local-music).
+      //     The marketing sections stay hidden; the user already chose to
+      //     sign up, no need to re-pitch them.
+      if (_isPublicMode) {
+        const isLoggedIn = !!localStorage.getItem("livechord_token");
+        const headerEl = document.querySelector("header.header");
+        const intro = $("#secHomeIntro");
+        const heroSec = $("#secHomeHero");
+        const hiwSec = $("#secHomeHowItWorks");
+        const secBetaLocal = $("#secBetaLocalTracks");
+        const secBetaRecent = $("#secBetaRecent");
+        const secFavorites = $("#secFavorites");
+
+        if (isLoggedIn) {
+          // Dashboard view: hide marketing surfaces, show user-data sections.
+          if (headerEl) headerEl.style.display = "";
+          if (intro) intro.style.display = "none";
+          if (heroSec) heroSec.style.display = "none";
+          if (hiwSec) hiwSec.style.display = "none";
+          if (secBetaLocal) secBetaLocal.style.display = "";
+          if (secBetaRecent) secBetaRecent.style.display = "";
+          if (secFavorites) secFavorites.style.display = "";
+        } else {
+          // Marketing view: show landing surfaces, hide user-data sections
+          // (they'd be empty for an anonymous visitor anyway, and would
+          // bury the sign-up CTA below empty placeholder cards). Top bar
+          // (logo / search / sponsor / settings) hidden too — clean
+          // sign-up funnel; access via /login still works via the intro CTA.
+          if (headerEl) headerEl.style.display = "none";
+          if (intro) intro.style.display = "";
+          if (heroSec) heroSec.style.display = "";
+          if (hiwSec) hiwSec.style.display = "";
+          if (secBetaLocal) secBetaLocal.style.display = "none";
+          if (secBetaRecent) secBetaRecent.style.display = "none";
+          if (secFavorites) secFavorites.style.display = "none";
+          // Wire the hero "Get started for free" CTA — routes to /login so
+          // the marketing funnel ends at sign-up. The post-login dashboard
+          // is where uploads happen, not the marketing page.
+          const cta = $("#heroUploadBtn");
+          if (cta && !cta._lcWired) {
+            cta._lcWired = true;
+            cta.addEventListener("click", () => {
+              window.location.href = "/login";
+            });
+          }
+        }
+      } else if (_isBetaMode) {
+        // Beta-mode (legacy invite-only). Show local-music for everyone.
+        const secBetaLocal = $("#secBetaLocalTracks");
+        if (secBetaLocal) secBetaLocal.style.display = "";
+      }
       if (_isBetaMode && !adminRes.is_admin) {
         _isBetaNonAdmin = true;
-        // Hide NAS-dependent sections (but keep favorites — works with __hash/ paths)
-        const secBrowse = $("#secBrowse");
+        // Hide remaining NAS-leaking section for non-admin users.
+        // (secBrowse already hidden above for the admin path too.)
         const secRecent = $("#secRecent");
-        if (secBrowse) secBrowse.style.display = "none";
         if (secRecent) secRecent.style.display = "none";
-        // Show beta sections
-        const secUpload = $("#secUpload");
+        // Show beta sections (no standalone FAB — modal opens from search empty state)
         const secBetaRecent = $("#secBetaRecent");
         const secHistory = $("#secHistory");
-        if (secUpload) secUpload.style.display = "";
-        if (secBetaRecent) secBetaRecent.style.display = "";
+        // In public mode the logged-in branch above already handled this;
+        // in beta non-admin we need to surface the section regardless of
+        // the marketing-vs-dashboard split (no marketing in beta).
+        if (!_isPublicMode && secBetaRecent) secBetaRecent.style.display = "";
         if (secHistory) secHistory.style.display = "";
       } else if (_isBetaMode) {
         // Admin in beta mode: show history section alongside regular sections
@@ -77,6 +192,12 @@
   // ---- beta upload logic (homepage) ----
   let _betaSelectedFile = null;
   const _betaPendingFiles = {};
+  // Hoisted out of _betaPollJob so closeAddSongModal can stop the polling
+  // when the user dismisses the modal mid-analysis. Without this the
+  // interval keeps running, _betaSelectedFile=null at end of upload, and
+  // a re-opened modal lands in a half-broken state (analyze button stuck
+  // disabled, file-info row hidden).
+  let _betaActivePollTimer = null;
   const POLL_MS = 2000;
 
   function _initBetaUpload() {
@@ -97,12 +218,245 @@
     });
   }
 
+  // Public mode is fronted by Cloudflare which caps the request body
+  // at 100 MB on the free plan — bigger files get a 413 from Cloudflare's
+  // edge before uvicorn ever sees them, which surfaced to users as
+  // "失敗 10%" with no real error message. Personal/beta mode hits the
+  // backend directly with no Cloudflare in front, so 200 MB stays the
+  // ceiling there.
+  function _maxUploadBytes() {
+    return _isPublicMode ? 100 * 1024 * 1024 : 200 * 1024 * 1024;
+  }
+  function _maxUploadMb() {
+    return _isPublicMode ? 100 : 200;
+  }
+  function _alertFileTooBig(file) {
+    const mb = (file.size / 1024 / 1024).toFixed(1);
+    const limit = _maxUploadMb();
+    // Useful hint: lossless FLAC at CD quality is roughly 30-50 MB per
+    // 5-min track, so a 180 MB FLAC is usually a high-bitrate or
+    // long-duration source. Suggest MP3 320 kbps (~12 MB / 5 min)
+    // which still gives clean chord detection.
+    alert(_t("home.alert.file_too_big_hint", { size: mb, limit: limit }));
+  }
+
   function _betaPickFile(file) {
-    if (file.size > 200 * 1024 * 1024) { alert("檔案超過 200 MB 上限"); return; }
+    if (file.size > _maxUploadBytes()) { _alertFileTooBig(file); return; }
     _betaSelectedFile = file;
     $("#betaFileName").textContent = file.name;
     $("#betaFileSize").textContent = `(${(file.size / 1024 / 1024).toFixed(1)} MB)`;
     $("#betaFileInfo").style.display = "flex";
+  }
+
+  // ─── Local tracks registry (multi-select + IndexedDB persist) ───
+  // Persistent list of user-picked local audio files. Metadata in localStorage
+  // (small, fast to read every render), blobs in IndexedDB keyed by track id
+  // (blobs are MB-scale, don't fit in localStorage). Registry survives page
+  // reloads, so "pick folder once → play many" UX without re-picking each time.
+  const LOCAL_TRACKS_KEY = "livechord_local_tracks";
+  let _currentAnalyzingLocalId = null;  // set before _betaStartUpload; read after done
+
+  function _getLocalTracks() {
+    try { return JSON.parse(localStorage.getItem(LOCAL_TRACKS_KEY) || "[]"); }
+    catch { return []; }
+  }
+  function _saveLocalTracks(arr) {
+    try { localStorage.setItem(LOCAL_TRACKS_KEY, JSON.stringify(arr)); } catch {}
+  }
+  async function _addLocalTrackEntry(file) {
+    const tracks = _getLocalTracks();
+    const dup = tracks.find(t =>
+      t.name === file.name && t.size === file.size && t.lastModified === file.lastModified);
+    if (dup) return dup;
+    const id = `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    try { await audioDBStore(id, file); } catch {}
+    const entry = {
+      id,
+      name: file.name,
+      size: file.size,
+      lastModified: file.lastModified || 0,
+      analyzedHash: null,
+      addedAt: Date.now(),
+    };
+    tracks.unshift(entry);
+    _saveLocalTracks(tracks);
+    return entry;
+  }
+  function _markLocalTrackAnalyzed(id, resultHash) {
+    if (!id || !resultHash) return;
+    const tracks = _getLocalTracks();
+    const t = tracks.find(x => x.id === id);
+    if (t) {
+      t.analyzedHash = resultHash;
+      _saveLocalTracks(tracks);
+    }
+  }
+  async function _removeLocalTrack(id) {
+    try { await audioDBDelete(id); } catch {}
+    _saveLocalTracks(_getLocalTracks().filter(t => t.id !== id));
+  }
+
+  function _renderLocalTracks() {
+    const section = $("#secBetaLocalTracks");
+    const analyzedRow = $("#betaLocalAnalyzedRow");
+    const pendingList = $("#betaLocalTrackList");
+    if (!section || !analyzedRow || !pendingList) return;
+    const tracks = _getLocalTracks();
+    const analyzed = tracks.filter(t => t.analyzedHash);
+    const pending = tracks.filter(t => !t.analyzedHash);
+
+    // Analyzed: horizontal grid-item cards (like 最近播放). Backend extracts
+    // an embedded cover at upload time (process_queue.py _extract_cover) and
+    // serves it from /api/process/cover/<hash>; render the same <img> the
+    // recent-list uses so the card matches 最近播放 visually.
+    analyzedRow.innerHTML = analyzed.map(t => {
+      const safeName = escapeHtml(t.name.replace(/\.[^.]+$/, ""));
+      const hash = escapeHtml(t.analyzedHash);
+      return `
+        <div class="grid-item local-analyzed-card" data-id="${escapeHtml(t.id)}" style="cursor:pointer; position:relative">
+          <img class="cover" src="/api/process/cover/${hash}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
+          <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
+          <div class="info">
+            <div class="title" title="${safeName}">${safeName}</div>
+          </div>
+          <button class="la-remove" data-action="la-remove" data-id="${escapeHtml(t.id)}" title="${_t("home.local.remove_btn")}" aria-label="${_t("home.local.remove_btn")}">&times;</button>
+        </div>`;
+    }).join("");
+    analyzedRow.style.display = analyzed.length ? "" : "none";
+    analyzedRow.querySelectorAll(".grid-item").forEach(el => {
+      el.addEventListener("click", (e) => {
+        if (e.target.closest("[data-action='la-remove']")) return;
+        _onLocalTrackAction(el.dataset.id);
+      });
+    });
+    analyzedRow.querySelectorAll("[data-action='la-remove']").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (!confirm(_t("home.confirm.remove_local"))) return;
+        await _removeLocalTrack(btn.dataset.id);
+        _renderLocalTracks();
+      });
+    });
+
+    // Pending: current vertical list layout
+    if (pending.length === 0 && analyzed.length === 0) {
+      pendingList.innerHTML = `<div style="color:var(--text-dim); font-size:13px; padding:8px 0">
+        ${_t("home.local.empty_hint")}
+      </div>`;
+      return;
+    }
+    pendingList.innerHTML = pending.map(t => {
+      const sizeMb = (t.size / 1048576).toFixed(1);
+      const safeName = escapeHtml(t.name);
+      return `
+        <div class="local-track-item" data-id="${escapeHtml(t.id)}">
+          <div class="lt-info">
+            <div class="lt-name" title="${safeName}">${safeName}</div>
+            <div class="lt-meta"><span class="lt-state lt-pending">${_t("home.local.pending")}</span> · ${sizeMb} ${_t("home.local.mb")}</div>
+          </div>
+          <button class="lt-action btn-small btn-accent" data-action="play-or-analyze" data-id="${escapeHtml(t.id)}">${_t("home.local.analyze")}</button>
+          <button class="lt-remove" data-action="remove" data-id="${escapeHtml(t.id)}" title="${_t("home.local.remove_btn")}" aria-label="${_t("home.local.remove_btn")}">&times;</button>
+        </div>`;
+    }).join("");
+    pendingList.querySelectorAll("[data-action='play-or-analyze']").forEach(btn => {
+      btn.addEventListener("click", () => _onLocalTrackAction(btn.dataset.id));
+    });
+    pendingList.querySelectorAll("[data-action='remove']").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!confirm(_t("home.confirm.remove_local"))) return;
+        await _removeLocalTrack(btn.dataset.id);
+        _renderLocalTracks();
+      });
+    });
+  }
+
+  async function _onLocalTrackAction(id) {
+    const t = _getLocalTracks().find(x => x.id === id);
+    if (!t) return;
+    if (t.analyzedHash) {
+      // Copy local blob under the analyzed hash key so player's audioDBLoad
+      // finds it (player reads by hash, not by local id).
+      try {
+        const blob = await audioDBLoad(id);
+        if (blob) await audioDBStore(t.analyzedHash, blob);
+      } catch {}
+      window.location.href = `/player?hash=${encodeURIComponent(t.analyzedHash)}`;
+      return;
+    }
+    // Not yet analyzed → hand off to existing upload modal flow.
+    let blob;
+    try { blob = await audioDBLoad(id); } catch {}
+    if (!blob) {
+      alert(_t("home.alert.local_blob_lost"));
+      return;
+    }
+    const file = new File([blob], t.name, {
+      type: blob.type || "audio/mpeg",
+      lastModified: t.lastModified || Date.now(),
+    });
+    _betaPickFile(file);
+    _currentAnalyzingLocalId = id;
+    // Belt-and-suspenders: ensure analyze button is clickable on
+    // re-open. closeAddSongModal already resets this, but if anything
+    // ever calls _onLocalTrackAction without going through the close
+    // path the button could still be disabled from a prior upload.
+    const ub = $("#betaUploadBtn"); if (ub) ub.disabled = false;
+    const panel = $("#betaFabPanel");
+    const backdrop = $("#betaFabBackdrop");
+    if (panel) { panel.classList.add("open"); panel.classList.add("file-only"); }
+    if (backdrop) backdrop.classList.add("open");
+  }
+
+  // Homepage "+ 選取本機音檔" — multi-select; each file goes into the local
+  // tracks list. List item click decides analyze vs play.
+  function _initBetaLocalAudio() {
+    const btn = $("#betaBrowseLocalBtn");
+    const input = $("#betaLocalAudioInput");
+    const section = $("#secBetaLocalTracks");
+    if (!btn || !input || !section) return;
+    // Public-mode anonymous visitors land in this code path because
+    // _isBetaNonAdmin gets set whenever _isBetaMode (which is true for
+    // any public deployment) AND !is_admin — but the local-music section
+    // is logged-in-only. _checkBetaAccess hid it; do not un-hide for
+    // anon visitors. Beta deployments always force login so they always
+    // have a token, so this gate doesn't disturb beta UX.
+    if (_isPublicMode && !localStorage.getItem("livechord_token")) return;
+    section.style.display = "";
+    _renderLocalTracks();
+    btn.addEventListener("click", () => input.click());
+    input.addEventListener("change", async () => {
+      const files = Array.from(input.files || []);
+      if (!files.length) return;
+      const limit = _maxUploadBytes();
+      const valid = files.filter(f => f.size <= limit);
+      if (valid.length < files.length) {
+        // Find the first oversize file so the alert can name its size.
+        const big = files.find(f => f.size > limit);
+        if (big) _alertFileTooBig(big);
+      }
+      const entries = [];
+      for (const file of valid) {
+        entries.push(await _addLocalTrackEntry(file));
+      }
+      _renderLocalTracks();
+      input.value = "";  // re-pick same files allowed
+      // Single-file shortcut: skip the explicit "click 分析" step and
+      // hand off to _onLocalTrackAction (which opens the upload modal
+      // and primes _betaSelectedFile), then immediately fire the upload
+      // so the user lands on the progress bar without an extra click.
+      // Multi-pick keeps the existing per-track analyze button so users
+      // batch-add files and analyze them on their own schedule.
+      if (valid.length === 1 && entries[0]) {
+        const entry = entries[0];
+        await _onLocalTrackAction(entry.id);
+        // _onLocalTrackAction routes to the player immediately when the
+        // entry already has analyzedHash (re-pick of an already-analyzed
+        // file), so guard the auto-upload to the unanalyzed branch.
+        if (!entry.analyzedHash && typeof window._betaStartUpload === "function") {
+          window._betaStartUpload();
+        }
+      }
+    });
   }
 
   window._betaStartUpload = async function() {
@@ -113,9 +467,20 @@
     const fill = $("#betaProgressFill");
     const text = $("#betaProgressText");
     const pct = $("#betaProgressPct");
+    const titleEl = $("#betaProgressTitle");
+    // Populate the progress-title with the song name (filename minus
+    // extension) so the user can see what's being analyzed once the
+    // .beta-file-info row is hidden by the .analyzing class. Pre-pic3
+    // bug: only the rights-notice + spinner showed, no song identity.
+    if (titleEl) {
+      titleEl.textContent = (_betaSelectedFile.name || "").replace(/\.[^.]+$/, "");
+    }
     prog.style.display = "";
+    // Hide drop-zone + YT URL row while analyzing — reduces modal clutter
+    // and prevents a second concurrent submit mid-run.
+    $("#betaFabPanel")?.classList.add("analyzing");
     fill.style.width = "10%";
-    text.textContent = "上傳中...";
+    text.textContent = _t("home.progress.uploading");
     pct.textContent = "10%";
 
     try {
@@ -129,101 +494,103 @@
       const data = await res.json();
       _betaPendingFiles[data.job_id] = _betaSelectedFile;
       fill.style.width = "30%";
-      text.textContent = "已排入佇列，分析中...";
+      text.textContent = _t("home.progress.queued_analyzing");
       pct.textContent = "30%";
       _betaPollJob(data.job_id, fill, text, pct);
     } catch (e) {
-      text.textContent = "失敗: " + e.message;
+      text.textContent = _t("home.progress.failed_prefix") + e.message;
       fill.style.width = "0%";
       btn.disabled = false;
+      // Unhide inputs so the user can retry with a different file/URL.
+      $("#betaFabPanel")?.classList.remove("analyzing");
     }
     _betaSelectedFile = null;
     $("#betaFileInfo").style.display = "none";
     $("#betaFileInput").value = "";
   };
 
-  window._betaStartYoutube = async function() {
-    const input = $("#betaYtUrl");
-    const url = input.value.trim();
-    if (!url) return;
-    const btn = $("#betaYtBtn");
-    btn.disabled = true;
-    const prog = $("#betaYtProgress");
-    const fill = $("#betaYtFill");
-    const text = $("#betaYtText");
-    const pct = $("#betaYtPct");
-    prog.style.display = "";
-    fill.style.width = "10%";
-    text.textContent = "提交中...";
-    pct.textContent = "10%";
-
-    try {
-      const res = await fetch("/api/process/youtube", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || res.statusText);
-      }
-      const data = await res.json();
-      fill.style.width = "20%";
-      text.textContent = "已排入佇列，分析中...";
-      pct.textContent = "20%";
-      _betaPollJob(data.job_id, fill, text, pct);
-      input.value = "";
-    } catch (e) {
-      text.textContent = "失敗: " + e.message;
-      fill.style.width = "0%";
-    }
-    btn.disabled = false;
-  };
-
   function _betaPollJob(jobId, fill, statusText, pctText) {
-    let maxProgress = 0;
+    // Seed with the current visual width (already set by caller to 20–30%) so the
+    // bar never jumps backwards when the first poll returns a lower backend value.
+    let maxProgress = fill ? parseInt((fill.style.width || "0").replace("%", "")) || 0 : 0;
+    // Cancel any prior poll so two analyses can't race their progress
+    // updates against the same DOM elements.
+    if (_betaActivePollTimer) { clearInterval(_betaActivePollTimer); _betaActivePollTimer = null; }
     const timer = setInterval(async () => {
       try {
         const res = await fetch(`/api/process/status/${jobId}`);
-        if (!res.ok) { clearInterval(timer); return; }
+        if (!res.ok) { clearInterval(timer); _betaActivePollTimer = null; return; }
         const d = await res.json();
         maxProgress = Math.max(maxProgress, d.progress);
         if (fill) fill.style.width = maxProgress + "%";
         if (pctText) pctText.textContent = maxProgress + "%";
-        const labels = { queued: "排隊中", processing: "分析中", done: "完成！", error: "失敗" };
-        if (statusText) statusText.textContent = labels[d.status] || d.status;
+        // 細分狀態標籤：有 stage 時以 stage 為準，否則 fallback 到 status
+        const labels = {
+          queued: _t("home.status.queued"),
+          processing: _t("home.status.processing"),
+          done: _t("home.status.done"),
+          error: _t("home.status.error"),
+        };
+        if (statusText) {
+          // Backend stages travel as i18n keys (home.job_stage.*) so the
+          // same /api/process/status response renders correctly in en + zh-TW
+          // without server-side locale negotiation. Older deploys may still
+          // emit literal CJK strings — the prefix check passes those through
+          // unchanged so a rolling backend/frontend update doesn't show keys.
+          let stageDisplay = d.stage;
+          if (stageDisplay && typeof stageDisplay === "string"
+              && stageDisplay.startsWith("home.job_stage.")) {
+            stageDisplay = _t(stageDisplay);
+          }
+          const txt = (stageDisplay && d.status === "processing")
+              ? stageDisplay
+              : (labels[d.status] || d.status);
+          statusText.textContent = txt;
+        }
 
         if (d.status === "done" && d.result_hash) {
           clearInterval(timer);
+          _betaActivePollTimer = null;
           // Store audio blob in IndexedDB for auto-play
           const pendingFile = _betaPendingFiles[jobId];
           if (pendingFile) {
             await audioDBStore(d.result_hash, pendingFile);
             delete _betaPendingFiles[jobId];
           }
+          // Flag this hash as freshly-analyzed so the player can show a
+          // "旋律擷取中" banner while the melody worker finishes in the background.
+          try { sessionStorage.setItem("livechord_fresh_hash", `${d.result_hash}|${Date.now()}`); } catch {}
+          // If this job came from a local-tracks-list entry, stamp the
+          // analyzedHash back onto it so next click goes straight to play.
+          if (_currentAnalyzingLocalId) {
+            _markLocalTrackAnalyzed(_currentAnalyzingLocalId, d.result_hash);
+            _currentAnalyzingLocalId = null;
+          }
+          // Same for playlist videos — mark existing_hash so the card's list
+          // shows ▶ 播放 next time user opens it.
           // Navigate to player
           setTimeout(() => {
             window.location.href = `/player?hash=${encodeURIComponent(d.result_hash)}`;
           }, 500);
         } else if (d.status === "error") {
           clearInterval(timer);
-          if (statusText) statusText.textContent = "失敗: " + (d.error || "Unknown");
+          _betaActivePollTimer = null;
+          if (statusText) statusText.textContent = _t("home.progress.failed_prefix") + (d.error || "Unknown");
           $("#betaUploadBtn") && ($("#betaUploadBtn").disabled = false);
           $("#betaYtBtn") && ($("#betaYtBtn").disabled = false);
+          // Unhide inputs so the user can retry.
+          $("#betaFabPanel")?.classList.remove("analyzing");
         }
       } catch (e) {}
     }, POLL_MS);
+    _betaActivePollTimer = timer;
   }
 
   // ---- beta history ----
   function _buildCoverHtml(h) {
-    const isYT = h.source_type === "youtube";
-    const _extId = typeof extractYouTubeId === "function" ? extractYouTubeId
-      : (u) => { const m = (u||"").match(/(?:v=|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})/); return m ? m[1] : null; };
-    const videoId = isYT ? _extId(h.youtube_url || "") : null;
-    return videoId
-      ? `<img class="cover-bg" src="https://img.youtube.com/vi/${videoId}/mqdefault.jpg" onerror="this.outerHTML='<div class=\\'cover-placeholder\\'>&#x1F3AC;</div>'" loading="lazy">`
-      : `<img class="cover-bg" src="/api/process/cover/${escapeHtml(h.result_hash)}" onerror="this.outerHTML='<div class=\\'cover-placeholder\\'>&#x1F3B5;</div>'" loading="lazy">`;
+    const imgSrc = `/api/process/cover/${escapeHtml(h.result_hash)}`;
+    return `<img class="cover" src="${imgSrc}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
+      <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>`;
   }
 
   async function _loadBetaHistory() {
@@ -236,17 +603,79 @@
       const data = await res.json();
       const items = (data.history || []).filter(h => h.status === "done" && h.result_hash);
 
-      // Recent plays — horizontal scroll (top 8, same style as admin recent)
-      if (recentContainer && items.length > 0) {
-        recentContainer.innerHTML = items.slice(0, 8).map(h => {
-          const title = h.title || "分析結果";
-          return `<div class="grid-item" data-hash="${escapeHtml(h.result_hash)}" style="cursor:pointer;min-width:140px">
+      // Also fetch NAS library recent plays and merge into the recent section
+      let recentItems = [];
+      try {
+        const recentData = await API.getRecent();
+        recentItems = (recentData.recent || []).map(r => {
+          // __hash/ 項目是上傳分析的處理結果，當成 hash-card 處理，不走 library path
+          if (typeof r.path === "string" && r.path.startsWith("__hash/")) {
+            return {
+              _isLibrary: false,
+              result_hash: r.path.slice(7),
+              title: (r.title || _t("home.label.analysis_result")),
+              source_type: "upload",
+            };
+          }
+          return {
+            _isLibrary: true,
+            path: r.path,
+            title: (r.title || r.path.split("/").pop()).replace(/\.flac$/i, ""),
+            result_hash: r.hash || "",
+          };
+        });
+      } catch {}
+
+      // Merge: PLAY history first (most-recently-played at top), then
+      // fall back to analysis history for songs analyzed but not yet
+      // played manually. The previous order put `items` first which is
+      // sorted by analyze time, so the user-most-recent song appeared
+      // wherever it landed in analyze order — they had to scan the row
+      // to find what they just played. /api/recent already returns
+      // play-time DESC (so most-recent first).
+      const seenTitles = new Set();
+      const mergedRecent = [];
+      for (const r of recentItems) {
+        const key = (r.title || "").toLowerCase();
+        if (key && !seenTitles.has(key)) {
+          mergedRecent.push(r);
+          seenTitles.add(key);
+        }
+      }
+      for (const h of items) {
+        const key = (h.title || "").toLowerCase();
+        if (key && !seenTitles.has(key)) {
+          mergedRecent.push(h);
+          seenTitles.add(key);
+        }
+      }
+
+      // Recent plays — show for non-admin (their only recent section), or when many items
+      if (recentContainer && mergedRecent.length > 0 && (_isBetaNonAdmin || mergedRecent.length > 8)) {
+        recentContainer.innerHTML = mergedRecent.slice(0, 8).map(h => {
+          if (h._isLibrary) {
+            const coverUrl = API.trackCoverUrl(h.path);
+            return `<div class="grid-item" data-path="${escapeHtml(h.path)}" style="cursor:pointer">
+              <img class="cover" src="${coverUrl}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
+              <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
+              <div class="info">
+                <div class="title">${escapeHtml(h.title)}</div>
+                ${getDifficultyHtml(h)}
+              </div>
+            </div>`;
+          }
+          const title = h.title || _t("home.label.analysis_result");
+          return `<div class="grid-item" data-hash="${escapeHtml(h.result_hash)}" style="cursor:pointer">
             ${_buildCoverHtml(h)}
-            <div class="info"><div class="title">${escapeHtml(title)}</div></div>
+            <div class="info">
+              <div class="title">${escapeHtml(title)}</div>
+              ${getDifficultyHtml(h)}
+            </div>
           </div>`;
         }).join("");
         recentContainer.querySelectorAll(".grid-item").forEach(el => {
-          el.addEventListener("click", () => goPlayer("", el.dataset.hash));
+          if (el.dataset.path) el.addEventListener("click", () => goPlayer(el.dataset.path));
+          else el.addEventListener("click", () => goPlayer("", el.dataset.hash));
         });
         if (recentSection) recentSection.style.display = "";
       }
@@ -254,15 +683,17 @@
       // Library grid (all items)
       if (grid) {
         if (items.length === 0) {
-          grid.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)">尚無歌曲，上傳音檔或貼上 YouTube URL 開始分析</div>';
+          grid.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-dim)">${_t("home.search.no_songs_empty")}</div>`;
           return;
         }
         grid.innerHTML = items.map(h => {
-          const title = h.title || "分析結果";
-          const date = (h.completed_at || "").slice(0, 10);
+          const title = h.title || _t("home.label.analysis_result");
           return `<div class="grid-item" data-hash="${escapeHtml(h.result_hash)}" style="cursor:pointer">
             ${_buildCoverHtml(h)}
-            <div class="info"><div class="title">${escapeHtml(title)}</div><div class="subtitle">${date}</div></div>
+            <div class="info">
+              <div class="title">${escapeHtml(title)}</div>
+              ${getDifficultyHtml(h)}
+            </div>
           </div>`;
         }).join("");
         grid.querySelectorAll(".grid-item").forEach(el => {
@@ -286,21 +717,57 @@
       const tasks = [];
       if (_isBetaNonAdmin) {
         _initBetaUpload();
+        _initBetaLocalAudio();
+        // _loadBetaHistory fills both #historyGrid (now null, guarded) AND
+        // #betaRecentList (最近播放) — must keep it for the recent list.
         tasks.push(_loadBetaHistory(), loadFavorites());
       } else {
-        tasks.push(loadRecent(), loadFavorites(), browse(currentPath));
+        // Admin path. NAS browse is personal-only — skip in beta/public to
+        // avoid /api/browse 404 spam (the section is already hidden by
+        // _checkBetaAccess but the fetch was still firing here).
+        // loadRecent populates #secRecent (NAS-library recents). Skip
+        // it in public mode — _loadBetaHistory already populates
+        // #secBetaRecent with the same merged process_audit + library
+        // data, and rendering both gave the user TWO "Recently played"
+        // rows on the public dashboard.
+        if (!_isPublicMode) tasks.push(loadRecent());
+        tasks.push(loadFavorites());
+        if (!_isBetaMode) tasks.push(browse(currentPath));
         if (_isBetaMode) tasks.push(_loadBetaHistory());
+        // Public-mode users need the upload modal wired so the hero CTA
+        // (and signed-in Add-song flows) can analyze audio. The local-
+        // music dashboard section + its "+ Pick local audio" button are
+        // only meaningful when signed in (the section is force-hidden
+        // for anon visitors above) — _initBetaLocalAudio also calls
+        // section.style.display = "" which would un-hide it for anon
+        // visitors if called unconditionally.
+        if (_isPublicMode) {
+          _initBetaUpload();
+          if (localStorage.getItem("livechord_token")) _initBetaLocalAudio();
+        }
       }
       await Promise.allSettled(tasks);
     } finally {
       showLoading(false);
     }
+
+    // bfcache refresh — mobile browsers snapshot this page when the user
+    // navigates into the player; pressing Back restores the snapshot instantly
+    // (no init re-run), so a song the user just analyzed+played would NOT
+    // show up in 最近播放 until some other trigger reflowed the list. Rerun
+    // the beta history fetch whenever we're restored from bfcache.
+    window.addEventListener("pageshow", (ev) => {
+      if (!ev.persisted) return;  // normal reload/forward — init already ran
+      if (_isBetaMode) _loadBetaHistory();
+      else if (typeof loadRecent === "function") loadRecent();
+    });
   }
 
   // ---- browse ----
 
   async function browse(path) {
     currentPath = path;
+    try { localStorage.setItem("livechord_home_path", path || ""); } catch {}
     showLoading(true);
     browseGrid.innerHTML = "";
     trackList.innerHTML = "";
@@ -327,6 +794,12 @@
         renderGrid(dirs, files);
       }
     } catch (err) {
+      // Saved path may be stale (folder renamed/deleted) — fall back to root once.
+      if (path) {
+        try { localStorage.removeItem("livechord_home_path"); } catch {}
+        showLoading(false);
+        return browse("");
+      }
       browseGrid.innerHTML = `<div class="empty"><div class="icon">&#x26A0;</div><div class="msg">${escapeHtml(err.message)}</div></div>`;
     } finally {
       showLoading(false);
@@ -382,7 +855,7 @@
         </div>`;
     }
 
-    browseGrid.innerHTML = html || `<div class="empty"><div class="icon">&#x1F4C2;</div><div class="msg">空目錄</div></div>`;
+    browseGrid.innerHTML = html || `<div class="empty"><div class="icon">&#x1F4C2;</div><div class="msg">${_t("home.browse.empty_dir")}</div></div>`;
 
     browseGrid.querySelectorAll(".grid-item").forEach((el) => {
       el.addEventListener("click", () => {
@@ -437,47 +910,96 @@
     if (searchResults.children.length > 0) searchResults.classList.add("show");
   });
 
+  // Enter on the search box for beta non-admin opens the add-song modal —
+  // gives a clear "no results, want to upload?" affordance.
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    if (!_isBetaNonAdmin) return;
+    e.preventDefault();
+    searchResults.classList.remove("show");
+    const panel = $("#betaFabPanel");
+    const backdrop = $("#betaFabBackdrop");
+    if (panel) { panel.classList.add("open"); panel.classList.remove("file-only"); }
+    if (backdrop) backdrop.classList.add("open");
+  });
+
   document.addEventListener("click", (e) => {
     if (!e.target.closest(".search-box")) searchResults.classList.remove("show");
   });
 
-  async function doSearch(q) {
-    try {
-      const data = await API.search(q);
-      if (data.error) {
-        searchResults.innerHTML = `<div style="padding:12px;color:var(--text-dim)">${escapeHtml(data.error)}</div>`;
-        searchResults.classList.add("show");
-        return;
-      }
-      if (data.results.length === 0) {
-        searchResults.innerHTML = `<div style="padding:12px;color:var(--text-dim)">找不到結果</div>`;
-        searchResults.classList.add("show");
-        return;
-      }
-      let html = "";
-      for (const r of data.results) {
-        const hasHash = r.hash || r.path.startsWith("__hash/");
-        const coverUrl = hasHash ? "" : API.trackCoverUrl(r.path);
-        html += `
-          <div class="result-item" data-path="${escapeHtml(r.path)}" ${r.hash ? `data-hash="${escapeHtml(r.hash)}"` : ""}>
-            ${coverUrl ? `<img class="r-cover" src="${coverUrl}" onerror="this.style.display='none'" loading="lazy" alt="">` : ""}
-            <div class="r-info">
-              <div class="r-title">${escapeHtml(r.title || r.path.split("/").pop())}${getDifficultyHtml(r)}</div>
-              <div class="r-artist">${escapeHtml(r.artist || "")} ${r.album ? "— " + escapeHtml(r.album) : ""}</div>
-            </div>
-          </div>`;
-      }
-      searchResults.innerHTML = html;
-      searchResults.classList.add("show");
-      searchResults.querySelectorAll(".result-item").forEach((el) => {
-        el.addEventListener("click", () => {
-          searchResults.classList.remove("show");
-          goPlayer(el.dataset.path, el.dataset.hash || "");
-        });
-      });
-    } catch (err) {
-      console.error("search error", err);
+  function _renderLibraryHtml(results) {
+    let html = "";
+    for (const r of results) {
+      const hasHash = r.hash || r.path.startsWith("__hash/");
+      const coverUrl = hasHash ? "" : API.trackCoverUrl(r.path);
+      const uploadBadge = r.is_user_upload
+        ? `<span class="r-upload-badge">${_t("home.search.upload_badge")}</span>`
+        : "";
+      html += `
+        <div class="result-item${r.is_user_upload ? " is-upload" : ""}" data-path="${escapeHtml(r.path)}" ${r.hash ? `data-hash="${escapeHtml(r.hash)}"` : ""}>
+          ${coverUrl ? `<img class="r-cover" src="${coverUrl}" onerror="this.style.display='none'" loading="lazy" alt="">` : ""}
+          <div class="r-info">
+            <div class="r-title">${escapeHtml(r.title || r.path.split("/").pop())}${uploadBadge}${getDifficultyHtml(r)}</div>
+            <div class="r-artist">${escapeHtml(r.artist || "")} ${r.album ? "— " + escapeHtml(r.album) : ""}</div>
+          </div>
+        </div>`;
     }
+    return html;
+  }
+
+  function _renderEmptyState(q) {
+    if (_isBetaNonAdmin) {
+      searchResults.innerHTML = `
+        <div class="search-empty">
+          <div class="search-empty-msg">${_t("home.search.no_match", {q: escapeHtml(q)})}</div>
+          <button id="searchAddSongBtn" class="search-empty-btn">${_t("home.search.add_song_btn")}</button>
+        </div>`;
+      const btn = document.getElementById("searchAddSongBtn");
+      if (btn) btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        searchResults.classList.remove("show");
+        const panel = $("#betaFabPanel");
+        const backdrop = $("#betaFabBackdrop");
+        if (panel) { panel.classList.add("open"); panel.classList.remove("file-only"); }
+        if (backdrop) backdrop.classList.add("open");
+      });
+    } else {
+      searchResults.innerHTML = `<div style="padding:12px;color:var(--text-dim)">${_t("home.search.no_results")}</div>`;
+    }
+  }
+
+  function _bindLibraryClicks() {
+    searchResults.querySelectorAll(".result-item").forEach((el) => {
+      el.addEventListener("click", () => {
+        searchResults.classList.remove("show");
+        goPlayer(el.dataset.path, el.dataset.hash || "");
+      });
+    });
+  }
+
+  // Tracks the currently in-flight query so a stale response from a previous
+  // keystroke doesn't paint over fresher results.
+  let _searchEpoch = 0;
+
+  async function doSearch(q) {
+    const epoch = ++_searchEpoch;
+    const lib = await API.search(q).catch(err => ({ error: String(err).slice(0, 200) }));
+    if (epoch !== _searchEpoch) return; // user typed something else; bail
+
+    if (lib && lib.error) {
+      searchResults.innerHTML = `<div style="padding:12px;color:var(--text-dim)">${escapeHtml(lib.error)}</div>`;
+      searchResults.classList.add("show");
+      return;
+    }
+    const libResults = (lib && lib.results) || [];
+    if (libResults.length === 0) {
+      _renderEmptyState(q);
+      searchResults.classList.add("show");
+      return;
+    }
+    searchResults.innerHTML = _renderLibraryHtml(libResults);
+    searchResults.classList.add("show");
+    _bindLibraryClicks();
   }
 
   // ---- favorites ----
@@ -499,7 +1021,7 @@
         const hash = f.path.replace("__hash/", "");
         try {
           const cd = await fetch(`/api/chords/by-hash?hash=${hash}`).then(r => r.json());
-          if (cd.exists) hashTitles[hash] = { title: cd.title || hash, youtube_url: cd.youtube_url || "" };
+          if (cd.exists) hashTitles[hash] = { title: cd.title || hash };
         } catch {}
       }
 
@@ -508,16 +1030,10 @@
         const isHash = f.path.startsWith("__hash/");
         const hash = isHash ? f.path.replace("__hash/", "") : "";
         if (isHash) {
-          const info = hashTitles[hash] || { title: hash, youtube_url: "" };
-          const _extId = typeof extractYouTubeId === "function" ? extractYouTubeId
-            : (u) => { const m = (u||"").match(/(?:v=|youtu\.be\/|\/shorts\/)([A-Za-z0-9_-]{11})/); return m ? m[1] : null; };
-          const vid = _extId(info.youtube_url);
-          const coverHtml = vid
-            ? `<img class="cover" src="https://img.youtube.com/vi/${vid}/mqdefault.jpg" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">`
-            : `<img class="cover" src="/api/process/cover/${escapeHtml(hash)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">`;
+          const info = hashTitles[hash] || { title: hash };
           html += `
             <div class="grid-item" data-hash="${escapeHtml(hash)}">
-              ${coverHtml}
+              <img class="cover" src="/api/process/cover/${escapeHtml(hash)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
               <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
               <div class="info"><div class="title">${escapeHtml(info.title)}</div></div>
             </div>`;
@@ -559,9 +1075,24 @@
         return;
       }
       section.style.display = "";
-      
+
       let html = '';
-      data.recent.forEach((r, i) => {
+      data.recent.forEach((r) => {
+        const isHash = typeof r.path === "string" && r.path.startsWith("__hash/");
+        if (isHash) {
+          const hash = r.path.slice(7);
+          const coverUrl = `/api/process/cover/${encodeURIComponent(hash)}`;
+          const title = r.title || _t("home.label.analysis_result");
+          html += `
+            <div class="grid-item" data-hash="${escapeHtml(hash)}">
+              <img class="cover" src="${coverUrl}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
+              <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
+              <div class="info">
+                <div class="title">${escapeHtml(title)}</div>
+              </div>
+            </div>`;
+          return;
+        }
         const name = r.path.split("/").pop().replace(/\.flac$/i, "");
         const coverUrl = API.trackCoverUrl(r.path);
         html += `
@@ -576,7 +1107,8 @@
       });
       container.innerHTML = html;
       container.querySelectorAll(".grid-item").forEach((el) => {
-        el.addEventListener("click", () => goPlayer(el.dataset.path));
+        if (el.dataset.hash) el.addEventListener("click", () => goPlayer("", el.dataset.hash));
+        else el.addEventListener("click", () => goPlayer(el.dataset.path));
       });
     } catch (err) {
       section.style.display = "none";
@@ -685,6 +1217,41 @@
   }).observe(document.body, { childList: true, subtree: true });
 
   // ---- init ----
+
+  // First-run instrument picker. Shown once if `livechord_tab` is unset
+  // (which is the same key player.js uses to remember the last chosen
+  // instrument tab — picking here pre-seeds it). Skipping or closing
+  // writes "piano" so the modal doesn't reappear.
+  function _initInstrumentPicker() {
+    const SKIP_KEY = "livechord_tab";
+    let saved;
+    try { saved = localStorage.getItem(SKIP_KEY); } catch { saved = null; }
+    if (saved) return; // user already has a default — never nag
+
+    const backdrop = $("#instrumentPickerBackdrop");
+    const panel = $("#instrumentPickerPanel");
+    if (!backdrop || !panel) return;
+
+    function close(pick) {
+      try { localStorage.setItem(SKIP_KEY, pick); } catch {}
+      backdrop.style.display = "none";
+      panel.style.display = "none";
+    }
+
+    backdrop.style.display = "block";
+    panel.style.display = "block";
+
+    panel.querySelectorAll(".ip-card").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const pick = btn.getAttribute("data-pick") || "piano";
+        close(pick);
+      });
+    });
+    const skip = $("#ipSkip");
+    if (skip) skip.addEventListener("click", () => close("piano"));
+    backdrop.addEventListener("click", () => close("piano"));
+  }
+  _initInstrumentPicker();
 
   // 啟動 Dashboard (Lazy + Parallel)
   initDashboard();

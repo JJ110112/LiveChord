@@ -148,7 +148,8 @@ def scan_candidates(library_meta: dict, style_map: dict, melody_hashes: set) -> 
     skipped_empty = 0
     t0 = time.time()
 
-    for f in CHORDS_DIR.glob("*.json"):
+    from chord_cache import iter_chord_files
+    for f in iter_chord_files(CHORDS_DIR):
         scanned += 1
 
         try:

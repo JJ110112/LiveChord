@@ -3,13 +3,33 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LiveChord — Extraction Manager</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <title data-i18n="extraction.title_tag">LiveChord — Extraction Manager</title>
+  <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#2196F3">
-  <link rel="stylesheet" href="/css/base.css?v=1">
-  <link rel="stylesheet" href="/css/home.css?v=1">
-  <script>if (!localStorage.getItem("livechord_token")) window.location.href = "/login";</script>
+  <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+  <script src="/js/i18n.js?v=28"></script>
+  <link rel="stylesheet" href="/css/base.css?v=4">
+  <link rel="stylesheet" href="/css/home.css?v=4">
+  <script>
+    if (!localStorage.getItem("livechord_token")) {
+      fetch('/api/auth/is_admin').then(r => {
+        if (!r.ok) window.location.href = "/login";
+      }).catch(() => {
+        window.location.href = "/login";
+      });
+    }
+    // Extraction cluster is a personal-only feature. Beta instance (8801)
+    // must never poll /api/extraction/status — redirect to admin which
+    // will render without the extraction card anyway.
+    (function() {
+      var port = window.location.port;
+      var host = window.location.hostname;
+      if (port === "8801" || host === "livechord.org" || host.endsWith(".livechord.org")) {
+        window.location.replace("/admin");
+      }
+    })();
+  </script>
   <style>
     .admin-page { max-width: 960px; margin: 0 auto; padding: 20px 24px; }
     .card { background: var(--bg-card); border-radius: var(--radius); padding: 20px; margin-bottom: 14px; }
@@ -67,7 +87,7 @@
 
 <header class="header">
   <a href="/" style="text-decoration:none"><h1>LiveChord</h1></a>
-  <span style="color:var(--text-dim);font-size:14px;margin-left:12px">Extraction Manager</span>
+  <span style="color:var(--text-dim);font-size:14px;margin-left:12px" data-i18n="extraction.header_subtitle">Extraction Manager</span>
   <a href="/admin" style="margin-left:auto;font-size:12px;color:var(--text-dim)">Core</a>
 </header>
 
@@ -77,21 +97,21 @@
   <div class="card">
     <h2>
       <span class="dot dot-gray" id="overallDot"></span>
-      擷取進度
-      <span class="badge badge-idle" id="overallBadge">idle</span>
+      <span data-i18n="extraction.progress.title">Extraction progress</span>
+      <span class="badge badge-idle" id="overallBadge" data-i18n="extraction.badge.idle">idle</span>
     </h2>
 
     <div id="jobsContainer">
-      <div style="font-size:12px;color:var(--text-dim)">等待擷取任務啟動...</div>
+      <div style="font-size:12px;color:var(--text-dim)" data-i18n="extraction.waiting">Waiting for an extraction job to start…</div>
     </div>
 
     <div class="actions">
-      <button class="danger" id="btnStopAll" disabled>全部停止</button>
-      <button class="danger" id="btnStopPC" disabled style="background:transparent;border-color:#d32f2f;color:#d32f2f">停止 PC</button>
-      <button class="danger" id="btnStopNUC" disabled style="background:transparent;border-color:#ff9800;color:#ff9800">停止 NUC</button>
+      <button class="danger" id="btnStopAll" disabled data-i18n="extraction.btn.stop_all">Stop all</button>
+      <button class="danger" id="btnStopPC" disabled style="background:transparent;border-color:#d32f2f;color:#d32f2f" data-i18n="extraction.btn.stop_pc">Stop PC</button>
+      <button class="danger" id="btnStopNUC" disabled style="background:transparent;border-color:#ff9800;color:#ff9800" data-i18n="extraction.btn.stop_nuc">Stop NUC</button>
     </div>
 
-    <div class="hint">
+    <div class="hint" data-i18n-html="extraction.hint_html">
       <strong>PC</strong> (GPU+i9): <code>Run-SuperWorker.bat</code> 或 <code>Run-ChordWorker-PC.bat</code><br>
       <strong>NUC</strong> (CPU): <code>Run-MelodyWorker-NUC.bat</code><br>
       <strong>Hybrid</strong>: <code>run_hybrid_extraction.bat</code> (PC only)
@@ -100,9 +120,9 @@
 
   <!-- ======== 活動記錄 ======== -->
   <div class="card">
-    <h2 class="collapse-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')">活動記錄</h2>
+    <h2 class="collapse-toggle open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="extraction.activity.title">Activity log</h2>
     <div class="collapse-content show">
-      <div class="log-box" id="logBox"><span class="info">等待擷取任務啟動...</span></div>
+      <div class="log-box" id="logBox"><span class="info" data-i18n="extraction.waiting">Waiting for an extraction job to start…</span></div>
     </div>
   </div>
 
@@ -129,6 +149,7 @@
 <script>
 (function() {
   const $ = s => document.querySelector(s);
+  const _t = (k, v) => (window.LiveChordI18n ? window.LiveChordI18n.t(k, v) : k);
 
   function fmt(n) {
     if (n == null || n === '--') return '--';
@@ -141,9 +162,9 @@
     const h = Math.floor((sec % 86400) / 3600);
     const m = Math.floor((sec % 3600) / 60);
     const parts = [];
-    if (d > 0) parts.push(d + '天');
-    if (h > 0) parts.push(h + '時');
-    parts.push(m + '分');
+    if (d > 0) parts.push(d + _t('extraction.duration.day'));
+    if (h > 0) parts.push(h + _t('extraction.duration.hour'));
+    parts.push(m + _t('extraction.duration.min'));
     return parts.join(' ');
   }
 
@@ -153,17 +174,27 @@
     return d.innerHTML;
   }
 
-  const typeLabels = {
-    super_both: '和弦+旋律', super_melody: '旋律 (CPU)',
-    super_chord: '和弦 (GPU)', hybrid: 'Hybrid MIDI',
-    super: '和弦+旋律'
-  };
+  function typeLabel(jt) {
+    if (jt === 'super_both' || jt === 'super') return _t('extraction.type.super_both');
+    if (jt === 'super_melody') return _t('extraction.type.super_melody');
+    if (jt === 'super_chord') return _t('extraction.type.super_chord');
+    if (jt === 'hybrid') return _t('extraction.type.hybrid');
+    return jt || '';
+  }
+
+  function badgeLabel(status) {
+    if (status === 'running') return _t('extraction.badge.running');
+    if (status === 'completed') return _t('extraction.badge.completed');
+    if (status === 'stopped') return _t('extraction.badge.stopped');
+    if (status === 'stale') return _t('extraction.badge.stale');
+    if (status === 'idle') return _t('extraction.badge.idle');
+    return status;
+  }
 
   function renderJobCard(job) {
     const src = job._source || '?';
     const status = job.status || 'idle';
     const dotCls = { running: 'dot-green', completed: 'dot-green', stopped: 'dot-red', stale: 'dot-red' }[status] || 'dot-gray';
-    const badgeLabels = { running: '執行中', completed: '已完成', stopped: '已停止', stale: '可能中斷', idle: '閒置' };
     const barCls = status === 'completed' ? 'bar-blue' : status === 'stale' ? 'bar-yellow' : 'bar-green';
     const pct = job.total > 0 ? (job.done / job.total * 100) : 0;
     const icon = src === 'PC' ? '🖥️' : '📦';
@@ -173,25 +204,25 @@
       <h3>
         <span class="device-icon">${icon}</span>
         <span>${src}</span>
-        <span class="badge badge-${status === 'error' ? 'stopped' : status}">${badgeLabels[status] || status}</span>
-        <span style="font-size:10px;color:var(--text-dim);margin-left:auto">${typeLabels[jt] || jt}</span>
+        <span class="badge badge-${status === 'error' ? 'stopped' : status}">${badgeLabel(status)}</span>
+        <span style="font-size:10px;color:var(--text-dim);margin-left:auto">${typeLabel(jt)}</span>
       </h3>
       <div class="stat-row">
-        <div class="stat-box"><div class="num">${fmt(job.total)}</div><div class="label">總計</div></div>
-        <div class="stat-box"><div class="num">${fmt(job.done)}</div><div class="label">已掃描</div></div>
-        <div class="stat-box"><div class="num">${fmt(job.processed)}</div><div class="label">已處理</div></div>
-        <div class="stat-box"><div class="num">${fmt(job.skipped)}</div><div class="label">已跳過</div></div>
-        <div class="stat-box"><div class="num${(job.errors||0)>0?' warn':''}">${fmt(job.errors)}</div><div class="label">錯誤</div></div>
+        <div class="stat-box"><div class="num">${fmt(job.total)}</div><div class="label">${_t('extraction.stat.total')}</div></div>
+        <div class="stat-box"><div class="num">${fmt(job.done)}</div><div class="label">${_t('extraction.stat.done')}</div></div>
+        <div class="stat-box"><div class="num">${fmt(job.processed)}</div><div class="label">${_t('extraction.stat.processed')}</div></div>
+        <div class="stat-box"><div class="num">${fmt(job.skipped)}</div><div class="label">${_t('extraction.stat.skipped')}</div></div>
+        <div class="stat-box"><div class="num${(job.errors||0)>0?' warn':''}">${fmt(job.errors)}</div><div class="label">${_t('extraction.stat.errors')}</div></div>
       </div>
       <div class="progress-track"><div class="bar ${barCls}" style="width:${pct.toFixed(1)}%"></div></div>
       <div class="eta-row">
-        <span>速度: <strong>${job.real_tps > 0 ? job.real_tps.toFixed(4) : '--'}</strong> 首/秒</span>
-        <span>剩餘: <strong>${fmtDuration(job.eta_seconds)}</strong></span>
-        <span>完成: <strong>${job.estimated_finish || '--'}</strong></span>
+        <span>${_t('extraction.eta.speed')}<strong>${job.real_tps > 0 ? job.real_tps.toFixed(4) : '--'}</strong>${_t('extraction.eta.unit_per_sec')}</span>
+        <span>${_t('extraction.eta.eta')}<strong>${fmtDuration(job.eta_seconds)}</strong></span>
+        <span>${_t('extraction.eta.finish')}<strong>${job.estimated_finish || '--'}</strong></span>
       </div>
-      <div class="current-task">${job.current_file ? '目前: ' + esc(job.current_file) : (job.message || '')}</div>
+      <div class="current-task">${job.current_file ? _t('extraction.current_prefix') + esc(job.current_file) : (job.message || '')}</div>
       <div class="meta-row">
-        <span>來源: ${esc(job.root_dir || '--')}</span>
+        <span>${_t('extraction.source_prefix')}${esc(job.root_dir || '--')}</span>
         <span>Workers: ${job.workers || '--'}</span>
         ${job.gpu_concurrent ? '<span>GPU: ' + job.gpu_concurrent + '</span>' : ''}
         <span>PID: ${job.pid || '--'}</span>
@@ -223,9 +254,8 @@
     // Overall dot & badge
     const dotMap = { running: 'dot-green', completed: 'dot-green', stopped: 'dot-red', stale: 'dot-red', idle: 'dot-gray' };
     $('#overallDot').className = 'dot ' + (dotMap[status] || 'dot-gray');
-    const badgeLabels = { running: '執行中', completed: '已完成', stopped: '已停止', stale: '異常', idle: '閒置' };
     const badge = $('#overallBadge');
-    badge.textContent = badgeLabels[status] || status;
+    badge.textContent = badgeLabel(status);
     badge.className = 'badge badge-' + (status === 'error' ? 'stopped' : status);
 
     // Job cards
@@ -233,7 +263,7 @@
     if (jobs.length > 0) {
       container.innerHTML = jobs.map(renderJobCard).join('');
     } else {
-      container.innerHTML = '<div style="font-size:12px;color:var(--text-dim)">沒有任務在執行</div>';
+      container.innerHTML = `<div style="font-size:12px;color:var(--text-dim)">${_t('extraction.no_jobs')}</div>`;
     }
 
     // Buttons
@@ -271,21 +301,28 @@
 
   // ---- Stop buttons ----
   async function doStop(target, label) {
-    if (!confirm(`確定要停止 ${label} 的擷取任務？`)) return;
+    if (!confirm(_t('extraction.confirm.stop', { target: label }))) return;
     try {
       const res = await API.post(`/api/extraction/stop?target=${target}`);
-      showToast(res.message || '已發送停止信號');
+      showToast(res.message || _t('extraction.toast.stop_sent'));
     } catch (e) {
-      showToast('停止失敗: ' + e.message);
+      showToast(_t('extraction.toast.stop_failed', { err: e.message }));
     }
   }
-  $('#btnStopAll').addEventListener('click', () => doStop('all', '所有'));
+  $('#btnStopAll').addEventListener('click', () => doStop('all', _t('extraction.target.all')));
   $('#btnStopPC').addEventListener('click', () => doStop('pc', 'PC'));
   $('#btnStopNUC').addEventListener('click', () => doStop('nuc', 'NUC'));
 
   // ---- Start polling ----
-  pollStatus();
-  pollLogs();
+  // Wait for i18n dict so first render isn't raw keys.
+  function _start() { pollStatus(); pollLogs(); }
+  if (window.LiveChordI18n && window.LiveChordI18n.t('extraction.progress.title') !== 'extraction.progress.title') {
+    _start();
+  } else {
+    document.addEventListener('livechord:i18nready', _start, { once: true });
+  }
+  // Re-render the current snapshot on language switch.
+  document.addEventListener('livechord:langchange', () => { clearTimeout(statusTimer); pollStatus(); });
   
   if (window.location.search.includes('embed=1')) {
     const header = document.querySelector('.header');

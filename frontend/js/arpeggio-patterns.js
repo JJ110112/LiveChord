@@ -15,7 +15,6 @@ window.ARPEGGIO_PATTERNS = {
       { finger: "m", zone: "2" },
       { finger: "a", zone: "1" },
     ],
-    description: "基本上行琶音",
   },
   pimami: {
     name: "p-i-m-a-m-i", category: "classical", subdiv: 2,
@@ -27,7 +26,6 @@ window.ARPEGGIO_PATTERNS = {
       { finger: "m", zone: "2" },
       { finger: "i", zone: "3" },
     ],
-    description: "古典滾奏（Romance）",
   },
   pami: {
     name: "p-a-m-i", category: "classical", subdiv: 1,
@@ -37,7 +35,6 @@ window.ARPEGGIO_PATTERNS = {
       { finger: "m", zone: "2" },
       { finger: "i", zone: "3" },
     ],
-    description: "下行琶音",
   },
   pima_chord: {
     name: "p + ima", category: "classical", subdiv: 1,
@@ -47,7 +44,6 @@ window.ARPEGGIO_PATTERNS = {
       null,
       { finger: "ima", zone: "321" },
     ],
-    description: "低音+和弦撥（Bossa Nova）",
   },
   travis_basic: {
     name: "Travis Basic", category: "travis", subdiv: 2,
@@ -61,7 +57,6 @@ window.ARPEGGIO_PATTERNS = {
       { finger: "p", zone: "bass_alt" },
       { finger: "m", zone: "2" },
     ],
-    description: "交替 Bass（Merle Travis）",
   },
   travis_pinch: {
     name: "Travis Pinch", category: "travis", subdiv: 2,
@@ -75,7 +70,6 @@ window.ARPEGGIO_PATTERNS = {
       { finger: "p", zone: "bass_alt" },
       { finger: "a", zone: "1" },
     ],
-    description: "交替 Bass + Fill",
   },
   folk_44: {
     name: "Folk 4/4", category: "folk", subdiv: 2,
@@ -89,7 +83,6 @@ window.ARPEGGIO_PATTERNS = {
       { finger: "m", zone: "2" },
       { finger: "i", zone: "3" },
     ],
-    description: "民謠指彈（Dust in the Wind）",
   },
   pop_ballad: {
     name: "Pop Ballad", category: "pop", subdiv: 2,
@@ -103,7 +96,6 @@ window.ARPEGGIO_PATTERNS = {
       { finger: "m", zone: "2" },
       { finger: "i", zone: "3" },
     ],
-    description: "流行抒情",
   },
 };
 

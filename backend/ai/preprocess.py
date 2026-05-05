@@ -116,7 +116,12 @@ def load_all_chord_sequences(chords_dir):
     if not chords_path.is_dir():
         return songs
 
-    for f in sorted(chords_path.glob("*.json")):
+    # Sharded layout: <chords_path>/<bucket>/<hash>.json. Recurse 1 level deep.
+    json_files = sorted(chords_path.glob("*/*.json"))
+    if not json_files:
+        # Backward fallback for legacy flat layout (testing only)
+        json_files = sorted(chords_path.glob("*.json"))
+    for f in json_files:
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
             chords = data.get("chords", [])

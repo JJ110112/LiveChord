@@ -1,11 +1,17 @@
 """AI 和弦預測 + Jazzify + Phase 11 教學引擎 API"""
 
+import logging
+
 from fastapi import APIRouter, Query, Body
 from pydantic import BaseModel
 from pathlib import Path
 from typing import Optional, List
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/ai", tags=["ai"])
+
+from chord_cache import chord_file_for, chord_bak_for, ensure_chord_bucket
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 CHORDS_DIR = DATA_DIR / "chords"
@@ -57,6 +63,7 @@ class JazzifyRequest(BaseModel):
     key: str = "C"
     level: int = 1
     mode: str = "rule-based"
+    bpm: Optional[float] = None
 
 
 @router.post("/jazzify")
@@ -65,7 +72,7 @@ async def jazzify(body: JazzifyRequest):
     from ai.reharmonizer import Reharmonizer
 
     rh = Reharmonizer(level=body.level)
-    result = rh.jazzify(body.chords, key=body.key, mode=body.mode)
+    result = rh.jazzify(body.chords, key=body.key, mode=body.mode, bpm=body.bpm)
     return result
 
 
@@ -108,8 +115,9 @@ def evaluate():
 
 
 @router.get("/melody")
-async def get_melody(
-    path: str = Query(..., description="歌曲路徑"),
+def get_melody(
+    path: str = Query(default="", description="歌曲路徑"),
+    hash: str = Query(default="", description="直接用 hash 查詢"),
 ):
     """取得旋律資料（快取或即時提取）"""
     import json as _json
@@ -117,6 +125,29 @@ async def get_melody(
 
     MELODY_DIR = DATA_DIR / "melodies"
     MELODY_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Hash mode: direct lookup (for process results)
+    if hash and not path:
+        cache_file = MELODY_DIR / f"{hash}.json"
+        if cache_file.is_file():
+            return _json.loads(cache_file.read_text(encoding="utf-8"))
+        # Try to find path from chord data and derive melody hash
+        chords_file = chord_file_for(hash)
+        if chords_file.is_file():
+            try:
+                cd = _json.loads(chords_file.read_text(encoding="utf-8"))
+                if cd.get("path"):
+                    from chord_cache import song_hash as get_song_hash
+                    melody_hash = get_song_hash(cd["path"])
+                    alt_file = MELODY_DIR / f"{melody_hash}.json"
+                    if alt_file.is_file():
+                        return _json.loads(alt_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        return {"melody": []}
+
+    if not path:
+        return {"melody": []}
 
     from chord_cache import song_hash as get_song_hash
     h = get_song_hash(path)
@@ -201,7 +232,8 @@ from fastapi import Depends
 
 @router.get("/sections")
 async def detect_sections_api(
-    path: str = Query(..., description="歌曲路徑"),
+    path: str = Query(None, description="歌曲路徑 (可選，與 hash 二擇一)"),
+    hash: str = Query(None, description="歌曲 hash (可選，與 path 二擇一；hash mode 專用)"),
     author: str = Query(None, description="要載入哪個使用者的標註 (可選)"),
     username: str = Depends(get_current_user)
 ):
@@ -209,20 +241,36 @@ async def detect_sections_api(
     import json as _json
     from ai.section_detect import detect_sections
 
-    from chord_cache import song_hash as get_song_hash
-    h = get_song_hash(path)
-    chords_file = CHORDS_DIR / f"{h}.json"
+    if hash:
+        h = hash
+    elif path:
+        from chord_cache import song_hash as get_song_hash
+        h = get_song_hash(path)
+    else:
+        return {"error": "missing path or hash"}
+    chords_file = chord_file_for(h)
     if not chords_file.is_file():
         return {"error": "no chord data"}
 
     data = _json.loads(chords_file.read_text(encoding="utf-8"))
     
-    # 決定要讀取的 Ground Truth (標註) 來源，優先讀取 author，否則讀自己的
+    # 決定要讀取的 Ground Truth (標註) 來源，優先讀取 author，否則讀自己的。
+    # Fallback：如果該使用者沒有針對這首歌的 human_sections 標註，就用 root DATA_DIR
+    # （讓 beta 使用者拿到跟 personal 相同的演算法偵測結果，不會因為 per-user dir
+    #  沒 MIDI feature / annotations 就退化成單一 verse）。
     target_user = author if author else username
     user_data_dir = DATA_DIR / "users" / target_user
-    
-    result = detect_sections(data.get("chords", []), data.get("key", "C"), song_hash=h, data_dir=str(user_data_dir), fallback_data_dir=str(DATA_DIR))
+    user_human_sections = user_data_dir / "human_sections" / f"{h}.json"
+    effective_data_dir = str(user_data_dir) if user_human_sections.is_file() else str(DATA_DIR)
+
+    result = detect_sections(
+        data.get("chords", []), data.get("key", "C"),
+        song_hash=h, data_dir=effective_data_dir,
+        fallback_data_dir=str(DATA_DIR),
+        hint_bpm=data.get("bpm"),
+    )
     result["path"] = path
+    result["hash"] = h
     result["author"] = target_user
     return result
 
@@ -309,8 +357,13 @@ async def detect_patterns(
 
 
 @router.post("/retrain")
-async def retrain():
-    """重新訓練所有模型（含儲存快取）"""
+def retrain():
+    """重新訓練所有模型（含儲存快取）。
+
+    Plain def (not async) so FastAPI dispatches to the worker thread pool —
+    training is CPU-bound + file-I/O-heavy and would freeze the event loop
+    otherwise (see feedback_async_def rule and commit 2b503b4).
+    """
     from ai.markov import retrain as do_retrain
     from ai.chord2vec import get_chord2vec
     from ai.groove_dict import get_groove_dict
@@ -358,6 +411,51 @@ async def retrain():
     }
 
 
+def _dedupe_hand_collisions(left_hand, right_hand, melody=None, tol=0.05):
+    """Remove LH pitches that collide in time+pitch with RH or the song's melody.
+
+    LH must not double a note that is already sounding in RH or in the melody
+    (which is rendered as orange in the waterfall and is in the actual audio).
+    Tolerance `tol` in seconds lets near-simultaneous onsets count as a collision.
+    """
+    blocker_index = {}
+    for e in right_hand or []:
+        pitches = e.get("pitches") or ([e["pitch"]] if "pitch" in e else [])
+        start = float(e.get("time", 0.0))
+        end = start + float(e.get("duration", 0.5))
+        for p in pitches:
+            blocker_index.setdefault(p, []).append((start, end))
+    for e in melody or []:
+        p = e.get("midi") if "midi" in e else e.get("pitch")
+        if p is None:
+            continue
+        start = float(e.get("start", e.get("time", 0.0)))
+        end = float(e.get("end", start + float(e.get("duration", 0.5))))
+        blocker_index.setdefault(p, []).append((start, end))
+
+    cleaned = []
+    for e in left_hand:
+        pitches = e.get("pitches") or ([e["pitch"]] if "pitch" in e else [])
+        start = float(e.get("time", 0.0))
+        end = start + float(e.get("duration", 0.5))
+        kept = [
+            p for p in pitches
+            if not any(a - tol < end and b + tol > start for (a, b) in blocker_index.get(p, ()))
+        ]
+        if not kept:
+            continue
+        ev = dict(e)
+        if "pitches" in e:
+            ev["pitches"] = kept
+        elif len(kept) == 1:
+            ev["pitch"] = kept[0]
+        else:
+            ev.pop("pitch", None)
+            ev["pitches"] = kept
+        cleaned.append(ev)
+    return cleaned
+
+
 @router.get("/accompaniment")
 def get_accompaniment(
     path: str = Query(..., description="歌曲路徑"),
@@ -374,8 +472,9 @@ def get_accompaniment(
     ACC_DIR.mkdir(parents=True, exist_ok=True)
 
     from chord_cache import song_hash as get_song_hash
+    from ai.accompaniment_generator import ACC_ENGINE_VERSION
     h = get_song_hash(path)
-    cache_file = ACC_DIR / f"{h}_{style}_{level}_{section_type}.json"
+    cache_file = ACC_DIR / f"{h}_{style}_{level}_{section_type}_{ACC_ENGINE_VERSION}.json"
 
     # nocache: 清除此歌所有伴奏快取
     if nocache:
@@ -386,12 +485,23 @@ def get_accompaniment(
             except Exception:
                 pass
 
+    # 載入旋律快取（供去重使用）
+    melody = []
+    melody_file = DATA_DIR / "melodies" / f"{h}.json"
+    if melody_file.is_file():
+        mel_data = _json.loads(melody_file.read_text(encoding="utf-8"))
+        melody = mel_data.get("melody", mel_data if isinstance(mel_data, list) else [])
+
     # 快取命中
     if cache_file.is_file():
-        return _json.loads(cache_file.read_text(encoding="utf-8"))
+        cached = _json.loads(cache_file.read_text(encoding="utf-8"))
+        cached["left_hand"] = _dedupe_hand_collisions(
+            cached.get("left_hand", []), cached.get("right_hand", []), melody
+        )
+        return cached
 
     # 載入和弦資料
-    chords_file = CHORDS_DIR / f"{h}.json"
+    chords_file = chord_file_for(h)
     if not chords_file.is_file():
         return {"error": "no chord data", "left_hand": [], "right_hand": []}
 
@@ -400,15 +510,17 @@ def get_accompaniment(
     if not chords:
         return {"error": "empty chords", "left_hand": [], "right_hand": []}
 
-    # 載入旋律快取
-    melody = []
-    melody_file = DATA_DIR / "melodies" / f"{h}.json"
-    if melody_file.is_file():
-        mel_data = _json.loads(melody_file.read_text(encoding="utf-8"))
-        melody = mel_data.get("melody", mel_data if isinstance(mel_data, list) else [])
+    # Phase 2: dynamic-beat fields. Older chord JSONs (pre Phase 1 deploy)
+    # don't have these — generators fall back to scalar bpm.
+    tempo_curve = chord_data.get("tempo_curve") or None
+    beat_version = chord_data.get("beat_version", 0)
 
-    # 取得 BPM 與 genre (從 library_cache)
-    bpm = 120.0
+    # 取得 BPM 與 genre。優先順序：chord JSON 的 bpm（經 ballad-halving 修正）
+    # → library_cache → 120 預設。BPM_STYLE_MAP 閾值 80/120 決定 Slow Ballad
+    # vs Dance-Pop 風格，所以這裡拿修正後值才會自動切到 Arpeggio/Shell。
+    bpm_persisted = chord_data.get("bpm")
+    bpm_correction = chord_data.get("bpm_correction") or {}
+    bpm = float(bpm_persisted) if bpm_persisted else 120.0
     genre = ""
     cache_path = DATA_DIR / "library_cache.json"
     if cache_path.is_file():
@@ -417,25 +529,36 @@ def get_accompaniment(
             for t in lib.get("tracks", []):
                 if t.get("path", "").replace("\\", "/") == path.replace("\\", "/"):
                     genre = t.get("genre", "")
-                    dur = t.get("duration", 0)
-                    if dur > 0 and chords:
-                        # 估算 BPM: 中位和弦長度
-                        durations = [c.get("end", 0) - c.get("time", 0)
-                                     for c in chords if c.get("end", 0) > c.get("time", 0)]
-                        if durations:
-                            median_dur = sorted(durations)[len(durations) // 2]
-                            if median_dur > 0:
-                                bpm = 60.0 / median_dur
+                    if not bpm_persisted:
+                        dur = t.get("duration", 0)
+                        if dur > 0 and chords:
+                            # 估算 BPM: 中位和弦長度
+                            durations = [c.get("end", 0) - c.get("time", 0)
+                                         for c in chords if c.get("end", 0) > c.get("time", 0)]
+                            if durations:
+                                median_dur = sorted(durations)[len(durations) // 2]
+                                if median_dur > 0:
+                                    bpm = 60.0 / median_dur
                     break
         except Exception:
             pass
+
+    if bpm_correction.get("applied"):
+        logger.info(
+            "[accompaniment] %s using halved BPM %.1f (was %.1f, reason=%s)",
+            h, bpm, bpm_correction.get("original", 0),
+            bpm_correction.get("reason", ""),
+        )
 
     # 載入段落資料 (Auto mode 用)
     sections = []
     if style == "Auto":
         try:
             from ai.section_detect import detect_sections
-            sec_result = detect_sections(chords, chord_data.get("key", "C"), song_hash=h)
+            sec_result = detect_sections(
+                chords, chord_data.get("key", "C"),
+                song_hash=h, hint_bpm=bpm_persisted,
+            )
             sections = sec_result.get("sections", [])
         except Exception:
             pass
@@ -447,10 +570,14 @@ def get_accompaniment(
         chords=chords, melody=melody,
         bpm=bpm, style=style, level=level, genre=genre,
         section_type=section_type, sections=sections,
+        tempo_curve=tempo_curve,
     )
     result["path"] = path
     result["bpm"] = round(bpm, 1)
     result["genre"] = genre
+    # Phase 2: stamp source beat version so player / downstream can detect
+    # stale acc when the chord JSON's beats[] has been regenerated.
+    result["source_beat_version"] = beat_version
 
     # Phase 11: 踏板建議
     try:
@@ -469,6 +596,11 @@ def get_accompaniment(
         generate_dynamics(result["right_hand"], bpm=int(bpm), section_type=section_type)
     except Exception:
         pass
+
+    # 消除左手與右手／旋律同時落在同一音高的碰撞（人手無法彈；與原曲 melody 雙擊也會糊）
+    result["left_hand"] = _dedupe_hand_collisions(
+        result.get("left_hand", []), result.get("right_hand", []), melody
+    )
 
     # 寫入快取
     try:
@@ -507,7 +639,7 @@ def suggest_style_api(
             pass
 
     # 從和弦估算 BPM
-    chords_file = CHORDS_DIR / f"{h}.json"
+    chords_file = chord_file_for(h)
     if chords_file.is_file():
         try:
             chord_data = _json.loads(chords_file.read_text(encoding="utf-8"))
@@ -619,7 +751,7 @@ def evaluate_accompaniment_api(
 
     # 載入和弦
     chords = []
-    chords_file = CHORDS_DIR / f"{h}.json"
+    chords_file = chord_file_for(h)
     if chords_file.is_file():
         chord_data = _json.loads(chords_file.read_text(encoding="utf-8"))
         chords = chord_data.get("chords", [])
@@ -644,7 +776,7 @@ def pedal_api(
 
     from chord_cache import song_hash as get_song_hash
     h = get_song_hash(path)
-    chords_file = CHORDS_DIR / f"{h}.json"
+    chords_file = chord_file_for(h)
     if not chords_file.is_file():
         return {"error": "no chord data", "pedal": []}
 
@@ -714,7 +846,7 @@ def qa_battle_api(
     h = get_song_hash(path)
 
     # 載入和弦
-    chords_file = CHORDS_DIR / f"{h}.json"
+    chords_file = chord_file_for(h)
     if not chords_file.is_file():
         return {"error": "no chord data", "verdict": "fail"}
     chord_data = _json.loads(chords_file.read_text(encoding="utf-8"))
@@ -758,7 +890,7 @@ def section_context_api(
 
     from chord_cache import song_hash as get_song_hash
     h = get_song_hash(path)
-    chords_file = CHORDS_DIR / f"{h}.json"
+    chords_file = chord_file_for(h)
     if not chords_file.is_file():
         return {"error": "no chord data"}
 

@@ -25,6 +25,127 @@
     inset 0 1px 2px rgba(255,255,255,0.35),
     inset 0 -1px 2px rgba(0,0,0,0.2);
   --chord-text-shadow: 0 0 14px rgba(255,255,255,0.4), 0 1px 2px rgba(0,0,0,0.3);
+
+  /* Solid popup/toast surface — promoted to base so .toast (in base.css)
+     and Type B/C/D popups (in player.css) can both reference it without
+     player.css being loaded. Each theme overrides this below. */
+  --lc-popup-bg: rgba(22, 27, 34, 0.96);
+  --lc-popup-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --lc-popup-blur: blur(12px);
+}
+
+/* Light theme — warm paper, opt-in via <html data-theme="light">.
+   Toggle from player Tools popup (#btnTheme). Persisted to localStorage
+   key `livechord_theme`. Each page reads the key in an early inline
+   script in <head> so the attribute is set before stylesheets paint. */
+[data-theme="light"] {
+  --bg: #f7f5f0;
+  --bg-card: rgba(255, 255, 255, 0.7);
+  --bg-hover: rgba(0, 0, 0, 0.06);
+  --accent: #1976D2;
+  --accent-dim: #1565C0;
+  --text: #1f2933;
+  --text-dim: #5a6b7a;
+  --border: rgba(0, 0, 0, 0.10);
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
+  /* Chord purple stays — it's the visual anchor in both themes — but the
+     glow is dialed back so it doesn't bleed across the lighter page. */
+  --chord-glow:
+    0 0 18px rgba(147,51,234,0.30),
+    0 0 36px rgba(147,51,234,0.15),
+    inset 0 1px 2px rgba(255,255,255,0.35),
+    inset 0 -1px 2px rgba(0,0,0,0.2);
+}
+
+/* Forest theme — deep forest bg + warning orange accent + cyan highlight.
+   High-contrast outdoor vibe; dark-bg family (text light, surfaces dark). */
+[data-theme="forest"] {
+  --bg: #0d2818;
+  --bg-card: rgba(255, 107, 53, 0.08);
+  --bg-hover: rgba(255, 107, 53, 0.16);
+  --accent: #ff6b35;
+  --accent-dim: #e35420;
+  --text: #d1fae5;
+  --text-dim: #86c5a4;
+  --border: rgba(255, 107, 53, 0.18);
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --chord-gradient:
+    linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 38%, transparent 50%),
+    linear-gradient(180deg, #06b6d4 0%, #0891b2 35%, #0e7490 70%, #155e75 100%);
+  --chord-glow:
+    0 0 24px rgba(6, 182, 212, 0.55),
+    0 0 48px rgba(6, 182, 212, 0.28),
+    inset 0 1px 2px rgba(255,255,255,0.30),
+    inset 0 -1px 2px rgba(0,0,0,0.25);
+}
+
+/* Sakura theme — warm rose-cream bg + rose accent + mint highlight.
+   Soft kawaii vibe; light-bg family (text dark, surfaces light). */
+[data-theme="sakura"] {
+  --bg: #fef5f7;
+  --bg-card: rgba(236, 72, 153, 0.08);
+  --bg-hover: rgba(236, 72, 153, 0.14);
+  --accent: #ec4899;
+  --accent-dim: #be185d;
+  --text: #4a1d3f;
+  --text-dim: #8b5a7a;
+  --border: rgba(236, 72, 153, 0.18);
+  --shadow: 0 4px 16px rgba(236, 72, 153, 0.12);
+  --chord-gradient:
+    linear-gradient(180deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.06) 38%, transparent 50%),
+    linear-gradient(180deg, #f472b6 0%, #ec4899 35%, #db2777 70%, #be185d 100%);
+  --chord-glow:
+    0 0 22px rgba(236, 72, 153, 0.45),
+    0 0 44px rgba(236, 72, 153, 0.20),
+    inset 0 1px 2px rgba(255,255,255,0.40),
+    inset 0 -1px 2px rgba(0,0,0,0.15);
+  --chord-text-shadow: 0 0 14px rgba(255,255,255,0.5), 0 1px 2px rgba(0,0,0,0.2);
+}
+
+/* Sunny theme — warm sand bg + ocean teal accent + sun-yellow highlight.
+   Beach-day vibe; light-bg family. */
+[data-theme="sunny"] {
+  --bg: #fff8e1;
+  --bg-card: rgba(8, 145, 178, 0.08);
+  --bg-hover: rgba(8, 145, 178, 0.14);
+  --accent: #0891b2;
+  --accent-dim: #0e7490;
+  --text: #1e3a4d;
+  --text-dim: #5a7a8c;
+  --border: rgba(8, 145, 178, 0.20);
+  --shadow: 0 4px 16px rgba(251, 191, 36, 0.15);
+  --chord-gradient:
+    linear-gradient(180deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.06) 38%, transparent 50%),
+    linear-gradient(180deg, #06b6d4 0%, #0891b2 35%, #0e7490 70%, #155e75 100%);
+  --chord-glow:
+    0 0 22px rgba(8, 145, 178, 0.42),
+    0 0 44px rgba(251, 191, 36, 0.25),
+    inset 0 1px 2px rgba(255,255,255,0.40),
+    inset 0 -1px 2px rgba(0,0,0,0.15);
+  --chord-text-shadow: 0 0 14px rgba(255,255,255,0.5), 0 1px 2px rgba(0,0,0,0.2);
+}
+
+/* Sky theme — light blue bg + azure accent + sun-yellow highlight.
+   Open-sky vibe; light-bg family. */
+[data-theme="sky"] {
+  --bg: #dbeafe;
+  --bg-card: rgba(37, 99, 235, 0.08);
+  --bg-hover: rgba(37, 99, 235, 0.14);
+  --accent: #2563eb;
+  --accent-dim: #1d4ed8;
+  --text: #1e3a8a;
+  --text-dim: #5a73b0;
+  --border: rgba(37, 99, 235, 0.20);
+  --shadow: 0 4px 16px rgba(37, 99, 235, 0.15);
+  --chord-gradient:
+    linear-gradient(180deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0.06) 38%, transparent 50%),
+    linear-gradient(180deg, #60a5fa 0%, #3b82f6 35%, #2563eb 70%, #1d4ed8 100%);
+  --chord-glow:
+    0 0 22px rgba(37, 99, 235, 0.42),
+    0 0 44px rgba(37, 99, 235, 0.20),
+    inset 0 1px 2px rgba(255,255,255,0.40),
+    inset 0 -1px 2px rgba(0,0,0,0.15);
+  --chord-text-shadow: 0 0 14px rgba(255,255,255,0.5), 0 1px 2px rgba(0,0,0,0.2);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -58,11 +179,196 @@ a:hover { text-decoration: underline; }
   z-index: 100;
 }
 
+/* Header settings menu — gear button is the single entry point on all sizes.
+   The inline nav row is collapsed into a theme-aware popover anchored top-right. */
+.header .header-nav { margin-right: 0; position: relative; }
+.header .header-nav .header-nav-inner { display: none; }
+.header .header-nav.mobile-open .header-nav-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  background: var(--lc-popup-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  min-width: 260px;
+  max-width: min(92vw, 320px);
+  z-index: 200;
+  box-shadow: var(--lc-popup-shadow, 0 8px 28px rgba(0,0,0,0.45));
+}
+.header .header-nav .hn-greeting {
+  font-size: 0.95em;
+  color: var(--text-dim);
+  font-weight: 500;
+  padding: 0 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.header .header-nav .hn-greeting:empty { display: none; }
+.header .header-nav .hn-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.header .header-nav .hn-section + .hn-section {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.header .header-nav .hn-section-title {
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  padding: 0 4px 4px;
+}
+/* Uniform menu-row: links + buttons render as the same list-style row so
+   "Install" / "Sign out" stop looking indented relative to "Help" / "Sponsor". */
+.header .header-nav .hn-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 0.95em;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  text-decoration: none;
+}
+.header .header-nav .hn-row:hover,
+.header .header-nav .hn-row:focus-visible {
+  background: var(--bg-card);
+  text-decoration: none;
+  outline: none;
+}
+.header .header-nav .hn-row-lang { cursor: default; }
+.header .header-nav .hn-row-lang:hover { background: transparent; }
+.header .header-nav .lang-picker {
+  font: inherit;
+  font-size: 0.9em;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  cursor: pointer;
+}
+/* Theme swatch grid (3×2) */
+.header .header-nav .hn-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 0 4px;
+}
+.header .header-nav .hn-theme-opt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-size: 0.78em;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+.header .header-nav .hn-theme-opt:hover {
+  background: var(--bg-card);
+}
+.header .header-nav .hn-theme-opt.active {
+  border-color: var(--accent);
+  background: var(--bg-card);
+}
+.header .header-nav .hn-theme-swatch {
+  display: block;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+}
+/* Coffee/sponsor pill — sits to the immediate left of the gear so support is
+   one tap away. Warm amber tint signals "tip jar" without shouting. */
+.header-coffee-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  margin-left: auto;            /* push self + gear cluster to the right */
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(245, 158, 11, 0.10);   /* warm amber wash */
+  color: #d97706;                          /* coffee-ish brown — readable on both bgs */
+  text-decoration: none;
+  transition: background 0.15s, transform 0.2s;
+}
+.header-coffee-btn:hover {
+  background: rgba(245, 158, 11, 0.22);
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+.header-coffee-btn + .header-nav { margin-left: 6px; }   /* tighten the gap to the gear */
+
+/* Gear trigger — visible on every viewport size */
+.header .header-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  margin-left: auto;          /* push to the far right of the header */
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, transform 0.2s;
+}
+.header .header-settings-btn:hover {
+  background: var(--bg-card);
+}
+.header .header-settings-btn[aria-expanded="true"] {
+  background: var(--bg-card);
+  transform: rotate(45deg);   /* small flourish to signal "open" */
+}
+
 .header h1 {
   font-size: 20px;
   font-weight: 700;
   color: var(--accent);
   white-space: nowrap;
+}
+.header-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.header-brand-icon {
+  /* Match the 38px footprint of the sibling .header-coffee-btn and
+     .header-settings-btn so the brand mark doesn't look visibly smaller
+     than the buttons next to it. Earlier 28px made the LC icon read
+     as secondary against the 38px coffee + gear cluster on the right. */
+  width: 38px;
+  height: 38px;
+  display: block;
+  border-radius: 8px;
+}
+/* Show only the cyan LC icon — hide the "LiveChord" wordmark on every
+   viewport so the brand looks identical on PC and mobile, matching the
+   player topbar. */
+.header-brand > span {
+  display: none;
 }
 
 .header .search-box {
@@ -86,20 +392,62 @@ a:hover { text-decoration: underline; }
   border-color: var(--accent);
 }
 
+/* Monochrome search-glass icon — SVG mask so the glyph picks up the current
+   theme's text color (instead of the colored 🔍 emoji which clashes with both
+   dark and light schemes and renders OS-styled inconsistently). */
 .header .search-box::before {
-  content: "\1F50D";
+  content: "";
   position: absolute;
   left: 12px;
   top: 50%;
+  width: 16px;
+  height: 16px;
   transform: translateY(-50%);
+  background-color: var(--text);
+  opacity: 0.55;
+  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>") center / contain no-repeat;
+  mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>") center / contain no-repeat;
+  pointer-events: none;
+}
+
+.search-marquee {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
   font-size: 14px;
+  color: rgba(255,255,255,0.35);
+  line-height: 1;
+}
+.header .search-box .search-marquee { left: 36px; right: 14px; }
+.topbar-search .search-marquee { left: 14px; right: 14px; }
+.header .search-box input::placeholder,
+.topbar-search input::placeholder { color: transparent; }
+.header .search-box input:focus ~ .search-marquee,
+.header .search-box input:not(:placeholder-shown) ~ .search-marquee,
+.topbar-search input:focus ~ .search-marquee,
+.topbar-search input:not(:placeholder-shown) ~ .search-marquee { display: none; }
+.search-marquee-text {
+  display: inline-block;
+  padding-left: 100%;
+  animation: lc-search-marquee 11s linear infinite;
+}
+@keyframes lc-search-marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
 }
 
 .header-fs-btn {
   position: absolute;
   right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
+  /* Anchor to the top of the header (not vertical-center). On mobile the
+     header wraps to 2 rows (brand + nav, then search bar) — vertical-
+     centering put the button in the middle of that wrap, landing on top
+     of the search input. Top-aligning keeps it in row 1 next to the nav
+     buttons regardless of how many rows the header wraps into. */
+  top: 12px;
   background: none;
   border: none;
   color: rgba(255,255,255,0.3);
@@ -117,14 +465,25 @@ a:hover { text-decoration: underline; }
 }
 
 .header nav button {
-  padding: 6px 16px;
+  padding: 6px 14px;
   border: 1px solid var(--border);
   border-radius: 20px;
   background: transparent;
   color: var(--text-dim);
   cursor: pointer;
   font-size: 13px;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: all .2s;
+}
+/* User greeting (Hello, name) shrinks first when viewport is tight so the
+   button labels keep their natural width and never wrap. */
+.header nav #userGreeting {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .header nav button.active,
@@ -132,6 +491,47 @@ a:hover { text-decoration: underline; }
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
+}
+
+/* Header overflow menu — houses 匯出資料 + future admin utilities so the
+   visible header row stays compact on mobile. */
+.header-menu {
+  position: relative;
+}
+.header-menu-popup {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 140px;
+  padding: 6px;
+  background: rgba(22,27,34,0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  z-index: 10000;
+}
+.header-menu-popup.open { display: flex; }
+.header-menu-popup button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.header-menu-popup button:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: var(--border);
 }
 
 /* ========== [END: HEADER] ========== */
@@ -143,13 +543,15 @@ a:hover { text-decoration: underline; }
   top: 100%;
   left: 0;
   right: 0;
-  background: var(--bg-card);
+  background: var(--lc-popup-bg);
+  backdrop-filter: var(--lc-popup-blur);
+  -webkit-backdrop-filter: var(--lc-popup-blur);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   max-height: 400px;
   overflow-y: auto;
   z-index: 200;
-  box-shadow: var(--shadow);
+  box-shadow: var(--lc-popup-shadow);
   display: none;
 }
 
@@ -254,12 +656,18 @@ a:hover { text-decoration: underline; }
   position: fixed;
   bottom: 64px;
   right: 24px;
-  background: var(--bg-card);
+  /* Solid popup-surface bg + theme text — keeps the toast readable on top
+     of any backdrop (chord ribbon, waterfall, modals) and visually matches
+     the Tools/Speed/Loop popups in every theme. */
+  background: var(--lc-popup-bg);
+  color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 12px 20px;
   font-size: 14px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--lc-popup-shadow);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   transform: translateY(80px);
   opacity: 0;
   transition: all .3s;
@@ -284,17 +692,109 @@ a:hover { text-decoration: underline; }
   .chord-item .chord-name { font-size: 14px; }
 }
 
+/* Desktop dashboard ordering — flexbox so we can hoist Local music
+   ("+ Pick local audio" entry point) above Recently played + Favorites.
+   Without this hoisting the user has to scroll past two sections to
+   reach the upload button, which buried the primary action. */
+.dashboard-layout { display: flex; flex-direction: column; }
+.dashboard-layout #secBetaLocalTracks { order: 0; }
+.dashboard-layout #secRecent,
+.dashboard-layout #secBetaRecent      { order: 1; }
+.dashboard-layout #secFavorites       { order: 2; }
+.dashboard-layout #secBetaPlaylists   { order: 3; }
+.dashboard-layout #secBrowse          { order: 4; }
+.dashboard-layout .site-footer        { order: 99; }
+
 /* phone (< 640px) */
 @media (max-width: 640px) {
-  .header { flex-wrap: wrap; padding: 10px 12px; }
-  .header .search-box { max-width: none; order: 3; flex-basis: 100%; }
+  .header { padding: 10px 12px; gap: 8px; }
+  .header .header-brand { flex: 0 0 auto; }
+  .header .search-box { max-width: none; flex: 1 1 auto; min-width: 0; }
+  /* Settings popover snaps to a comfortable width on phones */
+  .header .header-nav.mobile-open .header-nav-inner {
+    right: 8px;
+    min-width: min(86vw, 280px);
+  }
+  .header-fs-btn { display: none !important; }   /* fullscreen affordance redundant on phones */
+
+  /* Section ordering applies in both desktop + mobile via the rules
+     just outside this media query — no per-viewport overrides needed. */
+  .dash-title { font-size: 18px; padding-top: 8px; }
+
   .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
   .player-header { flex-direction: row; }
   .player-cover { width: 56px; height: 56px; }
   .chord-toolbar { padding: 8px; }
   .chord-ribbon { min-height: 100px; }
-  .chord-88-keys { min-height: 100px; }
+  .chord-88-keys { min-height: 140px; }   /* keep keyboard tall enough to read on phones */
   #modeSwitch { flex-wrap: wrap; }
 }
 
 /* ========== [END: RESPONSIVE] ========== */
+
+
+/* ========== [COMPONENT: LIGHT THEME OVERRIDES] ==========
+   Spot fixes for selectors above that hardcode rgba(255,255,255,X)
+   or rgba(22,27,34,X) — those don't flip via the :root vars. Kept
+   in one block at the bottom so the original selectors stay intact
+   and the feature is trivially removable. */
+
+[data-theme="light"] body,
+[data-theme="forest"] body,
+[data-theme="sakura"] body,
+[data-theme="sunny"] body,
+[data-theme="sky"] body { background: var(--bg); }
+
+/* Per-theme popup/toast surface. Must contrast with --bg, NOT match it —
+   if popup === bg the panel blends into the page. Light-bg themes elevate
+   to pure white with a per-theme color shadow (so popup reads as a "lifted
+   card"); dark-bg themes use a slightly lifted deep tone. */
+[data-theme="light"]  { --lc-popup-bg: rgba(255, 255, 255, 0.98); --lc-popup-shadow: 0 8px 28px rgba(0, 0, 0, 0.22); }
+[data-theme="sakura"] { --lc-popup-bg: rgba(255, 255, 255, 0.98); --lc-popup-shadow: 0 8px 28px rgba(236, 72, 153, 0.28); }
+[data-theme="sunny"]  { --lc-popup-bg: rgba(255, 255, 255, 0.98); --lc-popup-shadow: 0 8px 28px rgba(251, 191, 36, 0.32); }
+[data-theme="sky"]    { --lc-popup-bg: rgba(255, 255, 255, 0.98); --lc-popup-shadow: 0 8px 28px rgba(37, 99, 235, 0.28); }
+[data-theme="forest"] { --lc-popup-bg: rgba(28, 64, 38, 0.98);    --lc-popup-shadow: 0 8px 28px rgba(0, 0, 0, 0.6); }
+
+/* Spot fixes for selectors that hardcode rgba(255,255,255,X) — these
+   need to flip on light-bg themes (light + sakura + sunny + sky).
+   Forest is dark-bg and inherits the :root behavior so no flip needed. */
+
+[data-theme="light"] .search-marquee,
+[data-theme="sakura"] .search-marquee,
+[data-theme="sunny"] .search-marquee,
+[data-theme="sky"] .search-marquee { color: rgba(0, 0, 0, 0.35); }
+
+[data-theme="light"] .header-fs-btn,
+[data-theme="sakura"] .header-fs-btn,
+[data-theme="sunny"] .header-fs-btn,
+[data-theme="sky"] .header-fs-btn { color: rgba(0, 0, 0, 0.30); }
+[data-theme="light"] .header-fs-btn:hover,
+[data-theme="sakura"] .header-fs-btn:hover,
+[data-theme="sunny"] .header-fs-btn:hover,
+[data-theme="sky"] .header-fs-btn:hover { color: rgba(0, 0, 0, 0.65); }
+
+[data-theme="light"] .header-menu-popup,
+[data-theme="sakura"] .header-menu-popup,
+[data-theme="sunny"] .header-menu-popup,
+[data-theme="sky"] .header-menu-popup {
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+[data-theme="light"] .header-menu-popup button:hover,
+[data-theme="sakura"] .header-menu-popup button:hover,
+[data-theme="sunny"] .header-menu-popup button:hover,
+[data-theme="sky"] .header-menu-popup button:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] .search-results .result-item .r-cover,
+[data-theme="sakura"] .search-results .result-item .r-cover,
+[data-theme="sunny"] .search-results .result-item .r-cover,
+[data-theme="sky"] .search-results .result-item .r-cover { background: #e8eaed; }
+
+[data-theme="light"] .breadcrumb .sep,
+[data-theme="sakura"] .breadcrumb .sep,
+[data-theme="sunny"] .breadcrumb .sep,
+[data-theme="sky"] .breadcrumb .sep { color: #b0b8c0; }
+
+/* ========== [END: LIGHT THEME OVERRIDES] ========== */

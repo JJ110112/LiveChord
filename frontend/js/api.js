@@ -62,7 +62,7 @@ const API = {
   tasksStatus: () => API.get("/api/tasks/status"),
   chordVoicings: (inst, name) => API.get(`/api/chord/voicings/${inst}/${encodeURIComponent(name)}`),
   chordAnalysis: (key, name) => API.get(`/api/chord/analysis/${encodeURIComponent(key)}/${encodeURIComponent(name)}`),
-  jazzify: (chords, key, level, mode = "rule-based") => API.post("/api/ai/jazzify", { chords, key, level, mode }),
+  jazzify: (chords, key, level, mode = "rule-based", bpm = null) => API.post("/api/ai/jazzify", { chords, key, level, mode, bpm }),
 
   // Jam Tracks
   jamTracksStyles: () => API.get("/api/jam_tracks/styles"),
@@ -87,7 +87,6 @@ const API = {
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     return res.json();
   },
-  processYoutube: (url) => API.post("/api/process/youtube", { url }),
   processStatus: (jobId) => API.get(`/api/process/status/${jobId}`),
   processResult: (jobId) => API.get(`/api/process/result/${jobId}`),
 

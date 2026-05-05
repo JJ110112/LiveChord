@@ -68,6 +68,21 @@
   text-decoration: none !important;
   white-space: nowrap;
   padding: 4px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.topbar-logo-icon {
+  width: 26px;
+  height: 26px;
+  display: block;
+  border-radius: 6px;
+}
+/* Player topbar: show only the cyan LC icon — the "LiveChord" wordmark
+   is hidden on every viewport (desktop + mobile). The icon alone carries
+   the brand here; the homepage `.header-brand` keeps the full wordmark. */
+.topbar-logo-text {
+  display: none !important;
 }
 .topbar-logo:hover { opacity: 0.8; }
 
@@ -134,13 +149,15 @@
   top: calc(100% + 4px);
   left: 0;
   right: 0;
-  background: var(--bg-card);
+  background: var(--lc-popup-bg);
+  backdrop-filter: var(--lc-popup-blur);
+  -webkit-backdrop-filter: var(--lc-popup-blur);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   max-height: 400px;
   overflow-y: auto;
   z-index: 200;
-  box-shadow: var(--shadow);
+  box-shadow: var(--lc-popup-shadow);
   display: none;
 }
 .topbar-search .search-results.show { display: block; }
@@ -240,32 +257,53 @@
   padding: 10px 8px;
   cursor: pointer;
   transition: all .2s;
+  border: 1px solid rgba(255,255,255,0.06);
   border-left: 3px solid transparent;
-  opacity: 0.5;
+  background: rgba(255,255,255,0.03);
   position: relative;
+  /* No parent opacity — keeps chord-name text at full brightness on every
+     card. User wants to read the whole song structure at a glance. Active /
+     upcoming-next / played still stand out via background tint + border
+     color + gradient on the active chord name. */
 }
-.rv-item:hover { opacity: 0.75; background: rgba(255,255,255,0.03); }
+.rv-item:hover { background: rgba(255,255,255,0.07); }
+.rv-item.upcoming-next {
+  background: rgba(33,150,243,0.07);
+  border-left-color: rgba(33,150,243,0.5);
+}
 .rv-item.active {
-  opacity: 1;
   border-left-color: var(--phrase-color, var(--accent));
-  background: rgba(33,150,243,0.08);
+  border-left-width: 4px;
+  background: rgba(33,150,243,0.18);
 }
-.rv-item.played { opacity: 0.3; }
+/* Played cards: subtle background dim only, chord-name text stays readable. */
+.rv-item.played { background: rgba(255,255,255,0.015); }
 
+/* Phrase-start chord card: thin color bar across the top marks where a new
+   section (Intro / Verse 1 / Chorus 1 / ...) begins. JS sets data-phrase-start
+   and --phrase-color on the item. Works in both overview mode and the default
+   vertical ribbon. */
+.rv-item[data-phrase-start="true"] {
+  border-top: 3px solid var(--phrase-color, var(--accent));
+  padding-top: 22px;  /* make room for the absolute .rv-grid-phrase label */
+}
+
+/* Keep the chord-name pill geometry identical across states so becoming
+   active never bounces the layout. Only the fill/glow changes on .active. */
 .rv-item .rv-chord-name {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--text);
-  transition: all .2s;
-}
-.rv-item.active .rv-chord-name {
-  color: #fff;
-  font-size: 18px;
   display: inline-block;
   padding: 2px 10px;
   border-radius: 8px;
+  border: 1px solid transparent;
+  transition: background .2s, box-shadow .2s, color .2s, border-color .2s;
+}
+.rv-item.active .rv-chord-name {
+  color: #fff;
   background: var(--chord-gradient);
-  border: 1px solid rgba(255,255,255,0.2);
+  border-color: rgba(255,255,255,0.2);
   box-shadow: var(--chord-glow);
   text-shadow: var(--chord-text-shadow);
 }
@@ -284,6 +322,13 @@
 }
 .rv-item.active .rv-time { color: var(--text-dim); }
 
+/* Jianpu (numeric notation) toggle. Body-level class set by Tools > 簡譜 button
+   so the user can practice with chord names alone (less visual noise) and the
+   choice persists across reloads via localStorage. */
+body.no-jianpu .rv-jianpu,
+body.no-jianpu .chord-jianpu,
+body.no-jianpu .melody-jianpu { display: none !important; }
+
 .rv-item canvas {
   margin-top: 4px;
   filter: drop-shadow(0 1px 3px rgba(0,0,0,0.4));
@@ -293,17 +338,60 @@
   filter: drop-shadow(0 2px 6px rgba(139,92,246,0.4));
 }
 
+/* Card content scales with --ribbon-scale so the chord name, 簡譜, time, and
+   beat dots shrink/grow alongside the card width (which is also driven by
+   --ribbon-scale via grid-template-columns / .ribbon-wide width). Without
+   this, the chord name stayed at 18px while the card narrowed to ~42px at
+   scale 0.3 — the card looked like a tall, awkwardly-empty strip. The mini
+   piano canvas already scales because _buildUnifiedRibbon passes ribbonScale
+   to ChordRender.drawPiano() at draw time. `max(MIN, …)` clamps prevent text
+   from disappearing at scale 0.1. */
+.rv-item {
+  /* Outer padding shrinks with scale so a 42-px-wide card at scale 0.3
+     doesn't burn 16px on horizontal padding alone. */
+  padding: max(2px, calc(10px * var(--ribbon-scale, 1)))
+           max(2px, calc(8px * var(--ribbon-scale, 1)));
+}
+.rv-item[data-phrase-start="true"] {
+  padding-top: max(12px, calc(22px * var(--ribbon-scale, 1)));
+}
+.rv-item .rv-chord-name {
+  font-size: max(9px, calc(18px * var(--ribbon-scale, 1)));
+  padding: max(1px, calc(2px * var(--ribbon-scale, 1)))
+           max(4px, calc(10px * var(--ribbon-scale, 1)));
+}
+.rv-item .rv-jianpu {
+  font-size: max(7px, calc(11px * var(--ribbon-scale, 1)));
+}
+.rv-item .rv-time {
+  font-size: max(7px, calc(10px * var(--ribbon-scale, 1)));
+}
+.rv-item .rv-beats {
+  height: max(3px, calc(6px * var(--ribbon-scale, 1)));
+  gap: max(2px, calc(4px * var(--ribbon-scale, 1)));
+}
+.rv-item .beat-dot {
+  width: max(3px, calc(5px * var(--ribbon-scale, 1)));
+  height: max(3px, calc(5px * var(--ribbon-scale, 1)));
+}
+.rv-item .beat-dot.is-downbeat {
+  width: max(4px, calc(6px * var(--ribbon-scale, 1)));
+  height: max(4px, calc(6px * var(--ribbon-scale, 1)));
+}
+
 /* Section markers in ribbon */
 .rv-section-header {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 12px 4px;
-  font-size: 10px;
+  padding: 8px 12px 6px;
+  margin-top: 4px;
+  font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
   letter-spacing: 0.5px;
-  opacity: 0.8;
+  color: var(--phrase-color, var(--text));
+  border-bottom: 2px solid var(--phrase-color, var(--border));
+  opacity: 0.95;
 }
 .rv-section-dot {
   width: 7px;
@@ -312,50 +400,76 @@
   flex-shrink: 0;
 }
 
-/* --- Resize Handle --- */
+/* --- Resize Handle ---
+   Low-visual-weight: 2px divider, toggle buttons hidden by default,
+   only surface on hover or focus. Keeps the eye on content, not chrome. */
 .resize-handle {
-  width: 4px;
+  width: 2px;
   cursor: col-resize;
-  background: var(--border);
+  background: rgba(255,255,255,0.05);
   flex-shrink: 0;
-  transition: background .15s;
-}
-.resize-handle:hover, .resize-handle:active {
-  background: var(--accent);
-}
-.resize-handle {
+  transition: background .15s, width .15s;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
 }
+.resize-handle:hover, .resize-handle:active, .resize-handle:focus-within {
+  background: var(--accent);
+  width: 4px;
+}
 .ribbon-toggle-btn {
   position: absolute;
   top: 50%;
-  left: 0;
-  transform: translateY(-50%);
-  width: 20px;
-  height: 40px;
-  background: rgba(22,27,34,0.9);
-  border: 1px solid var(--border);
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 18px;
+  height: 36px;
+  background: rgba(22,27,34,0.75);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 4px;
-  color: var(--text-dim);
+  color: rgba(255,255,255,0.4);
   cursor: pointer;
   font-size: 11px;
   padding: 0;
   z-index: 5;
-  transition: all .15s;
+  transition: opacity .15s, color .15s, background .15s, border-color .15s;
   display: flex;
   align-items: center;
   justify-content: center;
+  opacity: 0.65;
+}
+/* Full brightness when the divider is engaged or one side is collapsed */
+.resize-handle:hover .ribbon-toggle-btn,
+.resize-handle:focus-within .ribbon-toggle-btn,
+.resize-handle.has-hidden-side .ribbon-toggle-btn {
+  opacity: 1;
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+/* When both panels visible (no .has-hidden-side), shift the two buttons
+   horizontally so they sit side-by-side as `< >` straddling the handle's
+   vertical centerline, each with its own arrow direction. */
+.resize-handle:not(.has-hidden-side) #btnCollapseRibbon {
+  transform: translate(calc(-100% - 1px), -50%);
+}
+.resize-handle:not(.has-hidden-side) #btnCollapseWaterfall {
+  transform: translate(1px, -50%);
 }
 .ribbon-toggle-btn:hover {
   color: var(--text);
   background: var(--bg-hover);
   border-color: var(--accent);
 }
-.ribbon-toggle-btn.collapsed {
-  /* Arrow points right when ribbon is hidden */
+/* When either side is collapsed, the resize handle must widen so the 20px
+   button stays inside the visible layout (otherwise the button overhangs
+   into the hidden side and becomes unreachable). Also disable the drag
+   cursor — there's nothing to resize when one side is gone. */
+.resize-handle.has-hidden-side {
+  min-width: 24px;
+  background: transparent;
+  cursor: default;
 }
 
 /* --- Right: Instrument Panel --- */
@@ -373,10 +487,12 @@
   bottom: 0;
   display: flex;
   justify-content: center;
-  padding: 3px 0;
-  background: rgba(13,17,23,0.92);
+  align-items: center;
+  min-height: 32px;
+  padding: 6px 0;
+  background: #0d1117;
   border-top: 1px solid var(--border);
-  z-index: 5;
+  z-index: 15;
 }
 .scale-btn {
   background: none;
@@ -390,6 +506,19 @@
   font-weight: 600;
 }
 .scale-btn:hover { color: var(--text); border-color: var(--text-dim); }
+.scale-btn.overview-btn {
+  font-size: 12px;
+  color: #4fc3f7;
+  padding: 2px 10px;
+}
+.ribbon-scale-bar { gap: 4px; align-items: center; }
+.scale-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  line-height: 1;
+}
 .scale-label {
   font-size: 11px;
   color: var(--text-dim);
@@ -407,6 +536,46 @@
   max-width: 50% !important;
   border-right: 2px solid var(--border);
 }
+
+/* .ribbon-wide — state 2 of the ribbon toggle: waterfall is hidden so the
+   ribbon expands to the full row AND reflows into a wrap-grid (overview-
+   like) so the extra horizontal space shows more chord cards side-by-side
+   instead of leaving whitespace. Used primarily for phrase / chord-name
+   editing where the user wants to click through many cards quickly. */
+.chord-ribbon-panel.ribbon-wide {
+  width: 100% !important;
+  max-width: none !important;
+  flex: 1 1 auto;
+  border-right: none;
+}
+.chord-ribbon-panel.ribbon-wide .ribbon-v-track {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-content: flex-start;
+  padding: 16px;
+  gap: 12px;
+}
+.chord-ribbon-panel.ribbon-wide .ribbon-v-track > .rv-section-header {
+  flex-basis: 100%;
+  width: 100%;
+}
+.chord-ribbon-panel.ribbon-wide .rv-item {
+  width: calc(140px * var(--ribbon-scale, 1));
+  border-left: none;
+  border-top: 4px solid var(--phrase-color, #888);
+  background: rgba(0,0,0,0.4);
+  border-radius: 6px;
+  position: relative;
+  padding-top: 24px;
+}
+.chord-ribbon-panel.ribbon-wide .rv-item.active {
+  background: rgba(139, 92, 246, 0.2);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+  border-top-color: var(--phrase-color, var(--accent));
+  transform: scale(1.05);
+  z-index: 2;
+}
 .chord-ribbon-panel.overview-mode .ribbon-v-track {
   flex-direction: row;
   flex-wrap: wrap;
@@ -415,9 +584,13 @@
   padding: 16px;
   gap: 12px;
 }
+.chord-ribbon-panel.overview-mode .ribbon-v-track > .rv-section-header {
+  flex-basis: 100%;
+  width: 100%;
+}
 .chord-ribbon-panel.overview-mode .rv-item {
-  order: var(--chord-idx, 0); /* Flex order override for correct visual direction */
-  width: 140px;
+  /* DOM is time-ascending after 2026-04-19 flip; no `order:` override needed. */
+  width: calc(140px * var(--ribbon-scale, 1));
   border-left: none;
   border-top: 4px solid var(--phrase-color, #888);
   background: rgba(0,0,0,0.4);
@@ -432,25 +605,29 @@
   transform: scale(1.05);
   z-index: 2;
 }
+/* In-card phrase label (shown on first-of-section cards) — unified across
+   normal and overview modes so the section boundary sits *on* the chord
+   card, not as a separate row above it (user feedback 2026-04-19). */
 .rv-grid-phrase {
-  display: none;
-}
-.chord-ribbon-panel.overview-mode .rv-grid-phrase {
   display: block;
   position: absolute;
   top: 4px;
   left: 8px;
-  font-size: 12px;
-  font-weight: bold;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--phrase-color, var(--text));
   cursor: pointer;
   z-index: 10;
+  pointer-events: auto;
 }
-.chord-ribbon-panel.overview-mode .rv-grid-phrase:hover {
+.rv-grid-phrase:hover {
   text-decoration: underline;
   opacity: 0.8;
 }
-.chord-ribbon-panel.overview-mode .rv-section-header {
-  display: none;
+/* Section-header row hidden in both modes — the in-card label + colored
+   border-top already convey section boundaries. */
+.rv-section-header {
+  display: none !important;
 }
 /* ========== [END: OVERVIEW MODE] ========== */
 
@@ -464,6 +641,11 @@
   min-height: 0;
 }
 
+/* `.chord-88-keys` is the wrapper for BOTH the waterfall AND the 88-key
+   piano canvas — it fills its parent (.chord-piano-tab) so the waterfall
+   can actually fill vertical space. Piano canvas height is determined by
+   JS (_get88PianoMaxWidth + init88PianoCache → ~200px), pinned to the
+   bottom via `margin-top: auto`; waterfall takes the remaining space.   */
 .chord-88-keys {
   display: flex;
   flex-direction: column;
@@ -487,10 +669,11 @@
   display: none;
   width: 100%;
   image-rendering: crisp-edges;
+  background: #000;  /* absolute black for max neon contrast (Sheet Music Boss style) */
 }
 .waterfall-canvas.active {
   display: block;
-  flex: 4;
+  flex: 1 1 auto;        /* fill the space above the bottom-pinned piano */
   min-height: 120px;
 }
 
@@ -555,7 +738,7 @@
 .gt-main-chord-name {
   font-size: 22px;
   font-weight: 800;
-  color: #fff;
+  color: var(--text);              /* theme-aware: white on dark, dark on light */
   line-height: 1;
   text-align: center;
 }
@@ -690,6 +873,7 @@
   padding: 6px 8px;
   min-width: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .acc-right-panel {
@@ -730,19 +914,27 @@
 .acc-main-chord-name {
   font-size: 22px;
   font-weight: bold;
-  color: #fff;
+  color: var(--text);              /* theme-aware */
   text-shadow: 0 0 8px rgba(100,180,255,0.3);
+}
+/* Light themes: white-on-cream becomes dark-on-cream + recolor halo to the
+   theme accent so the glow doesn't bleach the letters out. */
+[data-theme="light"]  .acc-main-chord-name,
+[data-theme="sakura"] .acc-main-chord-name,
+[data-theme="sunny"]  .acc-main-chord-name,
+[data-theme="sky"]    .acc-main-chord-name {
+  text-shadow: 0 0 8px var(--bg-card);
 }
 
 .acc-bass-pattern-label {
   font-size: 11px;
-  color: #aaa;
+  color: var(--text-dim);
 }
 
 .acc-pattern-select {
-  background: rgba(30,30,40,0.85);
-  color: #ccc;
-  border: 1px solid rgba(255,255,255,0.15);
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 2px 6px;
   font-size: 11px;
@@ -804,45 +996,204 @@
 /* ========== [END: ARRANGER KEYBOARD TAB] ========== */
 
 
-/* ========== [COMPONENT: RLHF RATE POPUP] ========== */
+/* ========== [COMPONENT: SHARED POPUP SURFACE (Type B modal / C panel / D banner)] ==========
+   Canonical vocabulary for every non-toolbar popup. See doc/UX_CONVENTION.md §12
+   for the taxonomy. Type A (toolbar .tb-popup) stays unchanged — it owns its
+   own dense-dropdown style and is the reference for button styling. */
 
-.rate-popup {
+/* --lc-popup-bg + --lc-popup-shadow are now defined in base.css :root and
+   per-theme blocks. The player-only popup vars (blur/border/radius) stay
+   here. */
+:root {
+  --lc-popup-blur: blur(12px);
+  --lc-popup-border: 1px solid var(--border);
+  --lc-popup-radius-sm: 10px;
+  --lc-popup-radius-lg: 12px;
+}
+
+/* Shared title + close button (used by Type B + Type C).
+   .tb-popup keeps its own 11px uppercase title — do NOT apply .lc-title there. */
+.lc-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 10px 0;
+  padding-right: 28px;
+  line-height: 1.3;
+}
+.lc-subtitle {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: -6px 0 12px;
+  line-height: 1.5;
+}
+.lc-close {
+  position: absolute;
+  top: 8px; right: 8px;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 0;
+  color: var(--text-dim);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+.lc-close:hover { background: var(--bg-hover); color: var(--text); }
+
+/* Type B — Modal dialog (centered, with backdrop, blocks page). */
+.lc-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: lcFadeIn 0.15s ease-out;
+}
+.lc-modal {
+  position: relative;
+  background: var(--lc-popup-bg);
+  backdrop-filter: var(--lc-popup-blur);
+  -webkit-backdrop-filter: var(--lc-popup-blur);
+  border: var(--lc-popup-border);
+  border-radius: var(--lc-popup-radius-lg);
+  box-shadow: var(--lc-popup-shadow);
+  color: var(--text);
+  padding: 18px 20px;
+  min-width: 320px;
+  max-width: min(560px, 92vw);
+  max-height: 85vh;
+  overflow: auto;
+  animation: lcZoomIn 0.18s ease-out;
+}
+.lc-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+@keyframes lcFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lcZoomIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Type C — Floating panel (corner-anchored, no backdrop). Each usage sets
+   its own top/bottom/left/right. */
+.lc-panel {
+  position: fixed;
+  background: var(--lc-popup-bg);
+  backdrop-filter: var(--lc-popup-blur);
+  -webkit-backdrop-filter: var(--lc-popup-blur);
+  border: var(--lc-popup-border);
+  border-radius: var(--lc-popup-radius-sm);
+  box-shadow: var(--lc-popup-shadow);
+  color: var(--text);
+  padding: 14px 16px;
+  min-width: 220px;
+  max-width: 320px;
+  z-index: 9600;
+  animation: lcSlideUp 0.2s ease-out;
+}
+@keyframes lcSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Type D — Toast banner (slim top or bottom, status / warning / info / success). */
+.lc-banner {
   position: fixed;
   top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 24px);
+  background: var(--lc-popup-bg);
+  backdrop-filter: var(--lc-popup-blur);
+  -webkit-backdrop-filter: var(--lc-popup-blur);
+  border: var(--lc-popup-border);
+  border-radius: var(--lc-popup-radius-sm);
+  box-shadow: var(--lc-popup-shadow);
+  color: var(--text);
+  padding: 10px 14px;
+  font-size: 13px;
+  z-index: 10001;
+  animation: lcFadeIn 0.2s ease-out;
+}
+.lc-banner--warn    { border-color: rgba(255,152,0,0.6); background: rgba(66,40,10,0.92); }
+.lc-banner--info    { border-color: rgba(33,150,243,0.5); }
+.lc-banner--success { border-color: rgba(76,175,80,0.5); }
+.lc-banner--bottom  { top: auto; bottom: calc(54px + env(safe-area-inset-bottom, 0px) + 80px); left: 12px; transform: none; }
+.lc-banner .lc-banner-btn {
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.3);
+  color: inherit;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.lc-banner .lc-banner-btn:hover { background: rgba(255,255,255,0.25); }
+.lc-banner .lc-banner-close {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  opacity: 0.8;
+}
+.lc-banner .lc-banner-close:hover { opacity: 1; }
+
+/* Touch: enlarge .lc-close hit target without changing visible size. */
+@media (pointer: coarse) {
+  .lc-close { padding: 8px; width: 40px; height: 40px; }
+}
+
+/* Mobile: banners don't need centering with translate when small viewport can barely fit. */
+@media (max-width: 640px) {
+  .lc-banner { font-size: 12px; flex-wrap: wrap; justify-content: center; top: 50px; }
+  .lc-banner--bottom { flex-wrap: nowrap; justify-content: flex-start; }
+}
+
+/* ========== [END: SHARED POPUP SURFACE] ========== */
+
+
+/* ========== [COMPONENT: RLHF RATE POPUP] ==========
+   Type C panel — inherits .lc-panel surface, overrides position + content. */
+
+.rate-popup {
+  top: 52px;
   right: 60px;
-  background: rgba(30,30,30,0.95);
-  backdrop-filter: blur(8px);
-  border: 1px solid #555;
-  border-radius: 10px;
+  left: auto;
+  min-width: auto;
+  max-width: none;
   padding: 10px;
   white-space: nowrap;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
   display: flex;
   gap: 8px;
   z-index: 9200;
 }
-.rate-good {
-  background: #2e7d32;
-  color: #fff;
-  border: none;
+.rate-good, .rate-bad {
+  border: 0;
   border-radius: 8px;
   padding: 8px 16px;
   cursor: pointer;
   font-size: 13px;
+  color: #fff;
   transition: background .15s;
 }
+.rate-good { background: #2e7d32; }
 .rate-good:hover { background: #388e3c; }
-.rate-bad {
-  background: #c62828;
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 16px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: background .15s;
-}
-.rate-bad:hover { background: #d32f2f; }
+.rate-bad  { background: #c62828; }
+.rate-bad:hover  { background: #d32f2f; }
 
 /* ========== [END: FLOATING RLHF] ========== */
 
@@ -865,7 +1216,20 @@
   border-top: 1px solid var(--border);
   z-index: 9000;
   padding: 0 8px;
+  /* Lift content above Android gesture-nav zone (~16-24px on Samsung S22).
+     Falls back to 0 when safe-area is unknown; the extra 4px gives breathing
+     room so tap hit-area doesn't overlap the system gesture strip. */
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
 }
+
+/* Toolbar rows — desktop: three rows flow inline as one logical row. Mobile
+   (max-width:640px) switches to column layout (see @media block further down). */
+.tb-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.tb-row-tx { gap: 4px; }
 
 /* Toolbar item container */
 .tb-item {
@@ -891,6 +1255,21 @@
   white-space: nowrap;
   min-width: 32px;
   height: 32px;
+  /* 強制控制符號以文字樣式渲染，避免 Android/iOS 將 ▶⏸⏮🔁 顯示為彩色 emoji */
+  font-variant-emoji: text;
+  font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols2", "Noto Sans Symbols", system-ui, sans-serif;
+  /* Bypass Android Chrome's 300ms touch delay + ghost-click quirk; otherwise
+     tapping button center (where SVG paths sit) may hit the SVG and fail to
+     bubble when the popup opens right under the finger. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(0,0,0,0);
+}
+/* Route all tap events through the button itself, never SVG children — fixes
+   "tap center of Teaching/Tools/Bug button doesn't open popup" on Android. */
+.tb-trigger .tb-icon,
+.tb-trigger svg,
+.tb-trigger > span {
+  pointer-events: none;
 }
 .tb-trigger:hover {
   color: var(--text);
@@ -941,16 +1320,93 @@
   transform: translateX(-50%);
   display: none;
   align-items: center;
+  /* Wrap by default so no popup can exceed viewport width — even the
+     densest popup (Tools, ~12 buttons) now flows to multiple rows when
+     the trigger is near the viewport edge instead of bleeding off-screen.
+     Popups that must stay single-row (Speed/Loop/Jazzify/A-B, ≤6 buttons)
+     still fit on one line because .tb-popup base max-width >> their
+     natural width. */
+  flex-wrap: wrap;
   gap: 6px;
-  background: rgba(22,27,34,0.96);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  /* Solid background — popup text + buttons must remain unambiguously
+     readable against any backdrop (chord ribbon, waterfall, dialogs).
+     Themed via --lc-popup-bg so light themes (sakura/sunny/sky/light)
+     get a near-white panel and forest gets the deep green; dark theme
+     stays at the original near-black. The earlier hardcoded #161b22
+     leaked dark popups into all light themes. */
+  background: var(--lc-popup-bg);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 8px 12px;
-  box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+  box-shadow: var(--lc-popup-shadow, 0 -4px 24px rgba(0,0,0,0.6));
   white-space: nowrap;
   z-index: 10000;
+  /* Clamp every popup to viewport — 720px hard cap on desktop, 16px
+     margin floor on narrow phones. Matches .lc-modal's responsive
+     clamp pattern (see UX_CONVENTION §12). */
+  max-width: min(720px, calc(100vw - 16px));
+  box-sizing: border-box;
+  /* Without width:max-content the absolutely-positioned popup collapses
+     to the narrowest item under flex-wrap:wrap and renders as a single
+     column. max-content makes it grow to its natural width FIRST, then
+     the max-width cap forces the wrap only when content would overflow. */
+  width: max-content;
+}
+
+/* Popup header title — absolutely positioned so the popup's flex layout
+   computes width from the buttons alone. When title used flex-basis:100%,
+   popup shrink-to-fit width collapsed to max(item widths) = the title
+   itself, forcing buttons to wrap vertically on PC. */
+.tb-popup-title {
+  position: absolute;
+  top: 0;
+  left: 8px;
+  right: 8px;
+  padding: 5px 0 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+/* Popups with a title need top padding to clear the absolute-positioned
+   title strip. Exactly one rule via :has() — all supported modern browsers. */
+.tb-popup:has(> .tb-popup-title) {
+  padding-top: 30px;
+}
+
+/* Close (×) button, injected by JS into every .tb-popup on init.
+   Sits in the top-right of the title strip; small but has a 28+ min-hit
+   area via padding so touch targets stay >= HIG 28-pt minimum. Title's
+   right edge is inset 8px, so this sits just inside that. */
+.tb-popup-close {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: var(--text-dim);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  z-index: 1;           /* above .tb-popup-title (which has pointer-events:none) */
+  transition: background .15s, color .15s;
+}
+.tb-popup-close:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+@media (pointer: coarse) {
+  .tb-popup-close { width: 28px; height: 28px; top: 1px; right: 1px; }
 }
 
 /* Invisible bridge to keep popup open when moving mouse */
@@ -963,8 +1419,9 @@
   height: 12px;
 }
 
-/* Show popup on hover or touch-open */
-.tb-item:hover > .tb-popup,
+/* Show popup only on explicit click (stay-open pattern — no hover trigger).
+   Unintentional hover-out dismissal was annoying; popup now stays pinned
+   until user clicks outside. */
 .tb-item.open > .tb-popup {
   display: flex;
 }
@@ -993,6 +1450,20 @@
   border-color: var(--accent);
 }
 
+/* Section sub-label inside a Tools popup — small uppercase row separator
+   used by the theme picker (and reusable by future grouped controls). */
+.tb-subtitle {
+  flex-basis: 100%;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  text-align: center;
+  margin: 2px 0 -2px;
+  pointer-events: none;
+}
+
 /* Select in popup */
 .tb-select {
   padding: 4px 8px;
@@ -1015,14 +1486,15 @@
 }
 
 .tb-popup-transpose {
-  gap: 4px;
+  gap: 6px;
+  justify-content: center;
 }
 .tb-transpose-val {
-  font-size: 13px;
-  font-weight: 600;
-  min-width: 20px;
+  font-size: 16px;
+  font-weight: 700;
+  min-width: 40px;
   text-align: center;
-  color: var(--text-dim);
+  color: var(--text);
 }
 .tb-capo-group {
   display: flex;
@@ -1038,7 +1510,436 @@
 }
 
 .tb-popup-wide {
-  flex-wrap: nowrap;
+  /* Wrap enabled so the 3 subgroups (練習/伴奏模式/其他) stack vertically
+     — each subgroup owns its own row inside. Max-width clamps so the popup
+     doesn't overflow on wide monitors. */
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: min(720px, 92vw);
+}
+
+/* Settings gear popup — mirrors the homepage .header-nav scope with
+   .hn-* children but lives inside a .tb-popup. Each .hn-section gets
+   its own column block; theme grid is 3×2 swatches; lang picker rides
+   in the middle section. Min-width keeps the panel from collapsing
+   to the title strip when used inside a small toolbar item. */
+.tb-popup-gear {
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 280px;
+  max-width: min(360px, 92vw);
+  white-space: normal;
+  gap: 0;
+  /* Match every other .tb-popup-btn at 13px so the gear popup doesn't
+     read visibly larger than the rest of the toolbar popups. */
+  font-size: 13px;
+}
+.tb-popup-gear .hn-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 4px;
+}
+.tb-popup-gear .hn-section + .hn-section {
+  border-top: 1px solid var(--border);
+}
+.tb-popup-gear .hn-section-title {
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  padding: 0 4px 4px;
+}
+.tb-popup-gear .hn-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 0.95em;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  text-decoration: none;
+}
+.tb-popup-gear .hn-row:hover,
+.tb-popup-gear .hn-row:focus-visible {
+  background: var(--bg-card);
+  text-decoration: none;
+  outline: none;
+}
+.tb-popup-gear .hn-row-lang { cursor: default; }
+.tb-popup-gear .hn-row-lang:hover { background: transparent; }
+.tb-popup-gear .lang-picker {
+  font: inherit;
+  font-size: 0.9em;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  cursor: pointer;
+}
+.tb-popup-gear .hn-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 0 4px;
+}
+.tb-popup-gear .hn-theme-opt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-size: 0.78em;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+.tb-popup-gear .hn-theme-opt:hover { background: var(--bg-card); }
+.tb-popup-gear .hn-theme-opt.active {
+  border-color: var(--accent);
+  background: var(--bg-card);
+}
+.tb-popup-gear .hn-theme-swatch {
+  display: block;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+}
+
+/* Subgroup: forces its own row; contents wrap within */
+.tb-subgroup {
+  flex-basis: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.tb-subgroup:last-child { border-bottom: none; margin-bottom: 0; }
+.tb-subgroup-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 0 4px;
+  font-weight: 600;
+}
+.tb-subgroup-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.tb-subgroup-row .tb-popup-btn {
+  flex: 0 1 auto;
+}
+.tb-subgroup-row .tb-popup-btn.practice-opt {
+  flex: 1 1 calc(33.333% - 4px);
+  min-width: 80px;
+  font-size: 12px;
+  padding: 6px 6px;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.tb-subgroup-row .tb-popup-btn.practice-opt.active {
+  background: var(--accent, #5a9af2);
+  color: #fff;
+  border-color: var(--accent, #5a9af2);
+}
+/* Pyramid 3-2-1 via explicit rows. Each row = its own .tb-subgroup-row,
+   flex: 1 1 0 so children share width equally within that row. Rigid layout
+   regardless of viewport or flex math quirks. */
+.practice-row { flex-wrap: nowrap; }
+.practice-row .practice-opt {
+  flex: 1 1 0;
+  min-width: 0;
+}
+/* Icon badges inside preset buttons */
+.practice-opt .pp-icons {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+}
+.practice-opt .pp-hand,
+.practice-opt .pp-mark {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+}
+.practice-opt .pp-flip {
+  transform: scaleX(-1);
+}
+.practice-opt .pp-label {
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+}
+/* Mix row: Mix button + crossfader slider share a line */
+.tb-subgroup-row.mix-row {
+  align-items: center;
+  gap: 8px;
+}
+.crossfader-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+}
+.crossfader-inline .cf-slider {
+  flex: 1 1 auto;
+  min-width: 80px;
+  max-width: 180px;
+}
+.crossfader-inline .cf-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.crossfader-inline .cf-label.cf-midi {
+  color: var(--accent, #ff9800);
+}
+
+/* Speed / Loop / A-B / Jazzify popups: absolute-value pill lists.
+   Desktop keeps them in a row; mobile @media (pointer:coarse) wraps already.
+   A-B specifically allows wrap even on desktop because we have 4+ buttons. */
+.tb-popup-speed,
+.tb-popup-loop,
+.tb-popup-jazzify,
+.tb-popup-ab {
+  gap: 4px;
+}
+.tb-popup-ab {
+  flex-wrap: wrap;
+}
+.tb-popup-speed .tb-popup-btn,
+.tb-popup-loop .tb-popup-btn,
+.tb-popup-jazzify .tb-popup-btn,
+.tb-popup-ab .tb-popup-btn {
+  /* Equal-width cycle options; font-weight inherits from .tb-popup-btn base
+     (normal) so Jazzify/Speed/Loop/A-B match Instrument and other popups. */
+  min-width: 48px;
+  justify-content: center;
+}
+
+/* Speed popup: keep single-row on desktop (6 buttons fit easily), force
+   3×2 grid only on touch portrait where horizontal space is limited.
+   User feedback 2026-04-19: PC showed Speed as vertical-ish 3×2 while
+   Loop was single-row — inconsistent. */
+@media (pointer: coarse) and (orientation: portrait) {
+  .tb-popup-speed {
+    width: min(240px, 80vw);
+    justify-content: center;
+  }
+  .tb-popup-speed .speed-opt {
+    flex: 0 0 calc(33.333% - 6px);
+    min-width: 0;
+  }
+}
+
+/* A-B popup: lifted higher than default so the progress bar underneath
+   remains visible / clickable. Progress bar sits just above the toolbar
+   row; extra clearance keeps it usable during A-B setup. */
+.tb-popup-ab {
+  bottom: calc(100% + 40px);
+  /* Cap popup width so the inner .ab-phrase-strip (overflow-x:auto) actually
+     scrolls when songs have many sections. Without a cap, the popup grew to
+     fit every pill and overflowed past the viewport with no scrollbar. */
+  max-width: min(90vw, 720px);
+}
+
+/* Strip wrap: horizontal strip of phrase pills (flex:1 scrollable) +
+   right-side column for "手動設定" pill and A/B buttons below it. */
+.ab-strip-wrap {
+  display: flex;
+  flex-basis: 100%;
+  gap: 8px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.ab-manual-col {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+}
+.ab-manual-col .ab-manual-row {
+  display: flex;
+  flex-basis: auto !important;
+  flex-direction: row;
+  gap: 4px;
+}
+.ab-manual-col .ab-manual-row .tb-popup-btn {
+  min-width: 32px !important;
+  padding: 4px 8px;
+}
+
+/* Phrase pills: toggle on/off. Multiple pills can be active at once;
+   pills between two selected endpoints auto-display .in-range (same
+   continuous loop window — multi-segment jump is not supported yet). */
+.ab-phrase-strip {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 2px;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+}
+
+/* Mobile portrait: ab-strip-wrap stacks vertically so the phrase strip
+   occupies full popup width (horizontal scroll works) and the manual
+   column sits below it. Without this stack the strip sometimes can't
+   overflow-scroll because flex row layout on a narrow viewport squeezes
+   it to zero width. */
+@media (pointer: coarse) and (orientation: portrait) {
+  .ab-strip-wrap {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ab-phrase-strip {
+    width: 100%;
+    max-width: 100%;
+  }
+  .ab-manual-col {
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: center;
+    padding-top: 0;
+  }
+}
+
+/* Touch devices — hide the scrollbar on the phrase strip. Swipe-to-scroll
+   stays enabled (touch-action: pan-x + -webkit-overflow-scrolling: touch),
+   but the visible bar was overlaying the pills and hiding labels. */
+@media (pointer: coarse) {
+  .ab-phrase-strip {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .ab-phrase-strip::-webkit-scrollbar {
+    display: none;
+  }
+}
+.ab-phrase-pill {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-dim);
+  white-space: nowrap;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.ab-phrase-pill:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+.ab-phrase-pill.in-range {
+  color: var(--text);
+  background: rgba(74, 144, 226, 0.15);
+  border-color: rgba(74, 144, 226, 0.4);
+}
+.ab-phrase-pill.endpoint {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.ab-phrase-pill.manual {
+  border-style: dashed;
+  color: var(--text-dim);
+}
+.ab-phrase-pill.manual.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  border-style: solid;
+  background: rgba(74, 144, 226, 0.08);
+}
+/* Manual A/B button row only shown when the manual pill is selected */
+.ab-manual-row {
+  display: flex;
+  flex-basis: 100%;
+  gap: 4px;
+}
+/* Header row: status text takes the space, trash icon pinned right */
+.ab-header {
+  display: flex;
+  flex-basis: 100%;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.ab-header .tb-ab-status {
+  flex: 1;
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+/* Trash icon in the header: neutral tone, subtle hover */
+.ab-clear-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ab-clear-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+.ab-clear-btn .tb-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* When the user has set A but not B yet, make the popup body click-through so
+   they can still tap the progress bar / waterfall to seek to their desired
+   B position. Interactive children (buttons, select, clear) re-enable
+   pointer-events so they remain clickable. */
+.tb-popup-ab.ab-semi-set {
+  pointer-events: none;
+}
+.tb-popup-ab.ab-semi-set .ab-opt,
+.tb-popup-ab.ab-semi-set .ab-phrase-nav,
+.tb-popup-ab.ab-semi-set .ab-phrase-select,
+.tb-popup-ab.ab-semi-set .ab-clear-btn,
+.tb-popup-ab.ab-semi-set .tb-ab-status {
+  pointer-events: auto;
+}
+
+/* A-B status header sits at top of the A-B popup, reports current A/B points */
+.tb-ab-status {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 0 4px 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
 }
 
 .tb-separator {
@@ -1119,25 +2020,27 @@
 .chord-source-badge.src-midi::before { background: #4caf50; }
 .chord-source-badge.src-btc { background: rgba(255,152,0,.12); color: #ff9800; }
 .chord-source-badge.src-btc::before { background: #ff9800; }
+/* User-rating-driven states (overlay source fallback when ≥3 ratings) */
+.chord-source-badge.src-good { background: rgba(76,175,80,.18); color: #4caf50; }
+.chord-source-badge.src-good::before { background: #4caf50; }
+.chord-source-badge.src-mid { background: rgba(255,193,7,.18); color: #ffc107; }
+.chord-source-badge.src-mid::before { background: #ffc107; }
+.chord-source-badge.src-bad { background: rgba(244,67,54,.18); color: #f44336; }
+.chord-source-badge.src-bad::before { background: #f44336; }
 
 /* ========== [END: CHORD SOURCE BADGE] ========== */
 
 
-/* ========== [COMPONENT: DETECT OVERLAY] ========== */
+/* ========== [COMPONENT: DETECT OVERLAY] ==========
+   Type B modal — composes .lc-modal-backdrop + .lc-modal in HTML. */
 
 .detect-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.7);
+  /* Upgrade z-index above default .lc-modal-backdrop (999) so detection
+     overlay sits above any transient modal the user opened before it. */
   z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 .detect-box {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  min-width: 0;
   padding: 32px 48px;
   text-align: center;
 }
@@ -1188,6 +2091,146 @@
 
 /* ========== [COMPONENT: RESPONSIVE] ========== */
 
+/* YouTube embed — floating PiP: fixed positioning, drag via header, resize via handle, persisted */
+.yt-embed-container {
+  position: fixed;
+  top: 60px;
+  right: 8px;
+  z-index: 20;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  background: #000;
+  width: 320px;
+  height: 180px;               /* 16:9 of 320, no header */
+  min-width: 180px;
+  min-height: 101px;           /* 16:9 of 180 */
+  max-width: 95vw;
+  max-height: 70vh;
+  touch-action: none;          /* prevent browser pan/zoom while dragging */
+}
+/* Dragzone overlay covers the iframe — captures all pointer events so the whole
+   PiP body is draggable. A short tap (<6px movement) is re-routed to the YT API
+   as play/pause, replacing the iframe's native click. The close × and resize
+   corner sit above the dragzone via higher z-index so they stay interactive. */
+.yt-pip-dragzone {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+}
+.yt-pip-dragzone:active { cursor: grabbing; }
+.yt-pip-close-float {
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  z-index: 6;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s;
+}
+.yt-pip-close-float:hover { background: rgba(0,0,0,0.9); opacity: 1; }
+
+/* Lock toggle — sits immediately right of × close so it stays out of the
+   bottom-center region where YouTube renders CC subtitles. When the PiP has
+   .unlocked class, the dragzone goes pointer-events:none so user can tap YT
+   captions / settings / fullscreen natively; lock button flips to 🔓. */
+.yt-pip-lock-float {
+  position: absolute;
+  bottom: 2px;
+  left: 22px;                    /* 2px (close left) + 16 (close width) + 4 gap */
+  z-index: 6;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s;
+}
+.yt-pip-lock-float:hover { background: rgba(0,0,0,0.9); opacity: 1; }
+.yt-embed-container.unlocked .yt-pip-dragzone {
+  pointer-events: none;
+}
+.yt-embed-container.unlocked {
+  outline: 2px dashed rgba(76, 175, 80, 0.7);   /* visual cue: YT native mode */
+}
+/* #ytEmbed is the YT API target. Pre-init it's a <div class="yt-pip-body">,
+   post-init YT REPLACES it with an <iframe id="ytEmbed"> that LOSES the
+   custom class — so selector .yt-pip-body iframe never matched the live
+   iframe. Target #ytEmbed directly so both states fill the container and
+   the video never letterboxes against container black. */
+#ytEmbed,
+.yt-pip-body {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100% !important;
+  height: 100% !important;
+  border: 0;
+  display: block;
+}
+.yt-pip-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  cursor: se-resize;
+  touch-action: none;
+  background:
+    linear-gradient(135deg, transparent 55%, rgba(255,255,255,0.5) 55%, rgba(255,255,255,0.5) 62%, transparent 62%, transparent 72%, rgba(255,255,255,0.5) 72%, rgba(255,255,255,0.5) 79%, transparent 79%);
+  z-index: 5;      /* above dragzone (3) so it stays grabbable */
+}
+
+/* Floating FAB for re-opening the YT PiP when hidden (red circle, white play triangle) */
+.yt-float-btn {
+  position: fixed;
+  bottom: 56px;
+  right: 16px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #e53935;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+  z-index: 9500;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: transform 0.15s;
+}
+.yt-float-btn:hover { transform: scale(1.08); }
+.yt-float-btn:active { transform: scale(0.95); }
+.yt-float-btn svg { width: 22px; height: 22px; margin-left: 2px; }
+.yt-float-btn.show { display: flex !important; }
+
 @media (max-width: 900px) {
   .chord-ribbon-panel {
     min-width: 140px;
@@ -1198,51 +2241,530 @@
 }
 
 @media (max-width: 640px) {
+  .yt-embed-container {
+    width: min(55vw, 220px);
+    height: auto;
+    aspect-ratio: 16 / 9;
+    min-width: 140px;
+    min-height: 0;
+  }
+  .yt-pip-body { top: 0; }
+  /* Chord ribbon — upper ~50% of screen so cards are readable + ratio/overview
+     controls are reachable. Grid layout: 3 cards per row, vertical scroll.
+     `!important` on display keeps it visible even if a prior desktop session
+     hid it via the collapse arrow (`#btnToggleRibbon`) — that toggle lives
+     inside `.resize-handle` which is `display:none` on mobile, so without
+     this override the user has no way to re-show the ribbon on a phone. */
   .chord-ribbon-panel {
-    display: none;
+    /* Portrait is chord-only overview — ribbon takes the entire chord-
+       display-area. Waterfall + fold buttons are hidden below. The earlier
+       40vh upper-half design was dropped after user feedback that mobile
+       portrait should focus on a single scrollable chord grid (no
+       split-screen mental model on a small viewport). bottom:24px keeps
+       the inline scale-bar (at the panel's bottom flex edge) from sitting
+       on top of the .progress-bar-mid scrub strip ~10px above the toolbar. */
+    display: flex !important;
+    flex-direction: column;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 24px;
+    width: 100%;
+    height: auto;
+    min-width: 0;
+    max-width: none;
+    z-index: 15;
+    background: rgba(26,26,46,0.85);
+    backdrop-filter: blur(4px);
+  }
+  .ribbon-v-track {
+    display: grid;
+    /* Column width tracks --ribbon-scale so + / - scales cards in BOTH
+       dimensions (was height-only because grid cols were fixed repeat(2,1fr)). */
+    grid-template-columns: repeat(auto-fit, minmax(calc(140px * var(--ribbon-scale, 1)), 1fr));
+    overflow-x: hidden;
+    overflow-y: auto;
+    gap: 6px;
+    padding: 6px;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .ribbon-v-track > * {
+    transform: none;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  /* Section header spans the full row so chord cards below start on a fresh
+     line — otherwise the header occupies 1 grid cell and the first chord
+     sits beside it, which looks like a layout glitch (user report
+     2026-04-19). */
+  .ribbon-v-track > .rv-section-header {
+    grid-column: 1 / -1;
+  }
+  /* Overview mode (total view toggle) on mobile portrait: keep it full-width
+     and laid out LTR without flex-order override (grid auto-flow handles it).
+     Default overview rule sets width:50% + order:var(--chord-idx) which on a
+     narrow phone looks shifted/reversed. */
+  .chord-ribbon-panel.overview-mode {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .chord-ribbon-panel.overview-mode .ribbon-v-track {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-auto-flow: row;
+    direction: ltr;
+  }
+  .chord-ribbon-panel.overview-mode .rv-item {
+    order: unset;
+    width: 100%;
+    min-width: 0;
+  }
+  /* Portrait keeps the [−] [val] [+] scale-bar so users can still adjust
+     card ratio (per user request); 總覽 + fold buttons remain hidden because
+     overview mode is forced and there's no waterfall to fold. */
+  .ribbon-scale-bar {
+    display: flex;
+    flex: 0 0 auto;
+  }
+  /* 官方AI版 jazzify dropdown + ★ chord-quality star are always hidden in
+     portrait — they're niche desktop affordances that crowd the small
+     topbar and aren't critical to the mobile play-along flow. */
+  #versionsContainer,
+  #btnRateAiTop {
+    display: none !important;
+  }
+  .middle-split {
+    /* Ribbon takes the entire chord-display area (top:0/bottom:0); waterfall
+       is hidden in portrait, so no padding-top reservation is needed. */
+    padding-top: 0;
+  }
+  /* The chord-display-area's `bottom: 49px` assumes a single-row 54px
+     toolbar. Portrait stacks the toolbar into 3 rows (~130-148px tall) so
+     the bottom of the chord ribbon ends up under the toolbar. Push it up
+     unconditionally for any portrait phone (was previously gated on
+     `pointer: coarse`, which excludes DevTools emulation). */
+  .chord-display-area {
+    bottom: calc(148px + env(safe-area-inset-bottom, 0px));
+  }
+  /* Portrait is chord-only overview: hide the waterfall/instrument panel,
+     hide the fold buttons (no layout-change option per user request), and
+     hide the 總覽 toggle (overview is forced regardless of the persisted
+     `livechord_overview_mode` value). The +/- ribbon-scale buttons stay so
+     users can still zoom card content. */
+  #instrumentPanel {
+    display: none !important;
   }
   .resize-handle {
-    display: none;
+    display: none !important;
   }
+  #btnToggleOverview {
+    display: none !important;
+  }
+  /* Force grid layout regardless of `.overview-mode` class — same shape as
+     the explicit overview rule below, but always-on in portrait so the user
+     gets a consistent scrollable grid. auto-fit + minmax lets the column
+     count adapt to scale: at scale=1 we get ~3 cols on a 360px viewport,
+     at scale=0.3 we get more. */
+  .chord-ribbon-panel .ribbon-v-track {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(calc(110px * var(--ribbon-scale, 1)), 1fr)) !important;
+    grid-auto-flow: row;
+    direction: ltr;
+    overflow-x: hidden;
+    overflow-y: auto;
+    gap: 6px;
+    padding: 6px;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .chord-ribbon-panel .rv-item {
+    order: unset;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  /* (bug-report-fab mobile override lives after the base rule below) */
   .player-topbar {
     gap: 8px;
     padding: 0 8px;
   }
+  /* font-size only — flex/ellipsis rules live below in the proper
+     .topbar-center / .topbar-title block. The earlier max-width:200px clamp
+     was forcing the title to bleed under the right-side controls on phones
+     when the controls were wider than the freed space. */
   .topbar-title {
     font-size: 13px;
-    max-width: 200px;
   }
+  /* Three-tier stacked mobile toolbar — replaces the old single-row overflow-x
+     scrollable toolbar. T1 pills (speed/loop/transpose/volume) on top, transport
+     row (prev/play/next) in the middle, T2 icons (instrument/jazzify/AB/teaching/
+     tools/bug) on the bottom. Each row is full-width and evenly spaced.
+     Constrained to portrait: landscape on narrow phones keeps the single-row
+     layout so short viewport height isn't eaten by three stacked rows. */
   .bottom-toolbar {
-    gap: 0;
-    padding: 0 4px;
+    overflow: visible;
+  }
+  .tb-row {
+    width: 100%;
+    justify-content: space-around;
+    gap: 4px;
+  }
+  .tb-row-tx {
+    justify-content: center;
+    gap: 12px;
+  }
+  /* T2 bug report: the hidden bug-report div can create an uneven gap; compensate */
+  .tb-row-t2 { flex-wrap: wrap; }
+  .tb-trigger {
+    padding: 4px 6px;
+    font-size: 13px;
+    /* Keep a finger-friendly hit target even when the trigger is pure text
+       (e.g. Speed "1x", A-B) — without this the button shrinks to ~24px wide
+       and users keep missing it. */
+    min-width: 40px;
+    min-height: 36px;
+    flex-shrink: 1;
+  }
+  .tb-item { flex-shrink: 1; min-width: 0; }
+  /* Play button stays a perfect circle on mobile — otherwise the toolbar's
+     flex-shrink narrows the 34x34 box into an ellipse. */
+  .tb-play-btn {
+    flex: 0 0 40px !important;
+    width: 40px !important;
+    height: 40px !important;
+    padding: 0 !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .progress-bar-mid {
+    height: 10px;
+    bottom: 44px;
+  }
+  .progress-bar-mid:hover { height: 10px; }
+  /* Header: let title stretch + ellipsize, BPM hidden to free space for ❤ + title */
+  .topbar-center {
+    position: static;
+    transform: none;
+    max-width: none;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .topbar-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #chordBpm { display: none; }
+}
+
+/* Very-narrow phones (≤480px): topbar gets cramped because logo + title +
+   jazzify dropdown + LED + key + ★ + × all compete on one row. Free space
+   by hiding the LED (info is tooltip-only) and shrinking the jazzify pill;
+   keep LiveChord text + full-screen button per user choice. The "LiveChord"
+   wordmark hides too — the cyan LC icon (added 2026-04-25) carries the
+   brand identity at small widths. */
+@media (max-width: 480px) {
+  #chordSource { display: none; }
+  .btn-version {
+    font-size: 11px;
+    padding: 2px 6px;
+  }
+  /* (.topbar-logo-text already hidden universally by base rule.) */
+}
+
+/* Three-tier stacked mobile toolbar — PORTRAIT only. Landscape stays single-row. */
+@media (max-width: 640px) and (orientation: portrait) {
+  .bottom-toolbar {
+    flex-direction: column;
+    height: auto;
+    gap: 4px;
+    padding: 4px 6px 6px;
+  }
+  .tb-row {
+    width: 100%;
+    justify-content: space-around;
+    gap: 4px;
+  }
+  .tb-row-tx {
+    justify-content: center;
+    gap: 12px;
+  }
+  .tb-row-t2 { flex-wrap: wrap; }
+  /* 進度條上移，避開三列工具列：T1 (~36) + Tx (~44) + T2 (~36) + gaps/padding ≈ 132px */
+  .progress-bar-mid { bottom: 132px; }
+  /* Play button becomes a pill (horizontal oval) on portrait phones — it's the
+     primary transport control and should stand out from the row of circles. */
+  .tb-play-btn {
+    width: 72px !important;
+    flex: 0 0 72px !important;
+    border-radius: 22px !important;
+  }
+}
+
+/* Touch-device popup fix: viewport-anchored bottom sheet. Covers both portrait
+   (where parent .bottom-toolbar has overflow-x:auto clipping absolute popups)
+   and landscape phones (width >640px but short height, where absolute popups
+   can still glitch against the toolbar). `pointer: coarse` matches touch
+   devices regardless of orientation. */
+@media (pointer: coarse) {
+  .tb-popup {
+    position: fixed !important;
+    bottom: 52px !important;           /* default: single-row toolbar (44px + 8px gap) */
+    left: 8px !important;
+    right: 8px !important;
+    top: auto !important;
+    transform: none !important;
+    max-width: none !important;
+    width: auto !important;
+    white-space: normal;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    z-index: 10500 !important;         /* above chord-ribbon-panel (15) and FAB (9500) */
+  }
+  .tb-item.open > .tb-popup { display: flex !important; }
+  .tb-popup-wide { flex-wrap: wrap !important; }   /* AI teaching popup row-wrap on narrow */
+  .tb-popup::after { display: none; }  /* hover-bridge not needed on touch */
+  .tb-popup-btn { font-size: 13px; padding: 8px 12px; }
+}
+/* Portrait narrow phones: toolbar is three rows ≈ 132px tall; lift popup above it.
+   Same height cap as landscape so tall popups (AI Teaching) don't overlap the topbar. */
+@media (pointer: coarse) and (max-width: 640px) and (orientation: portrait) {
+  .tb-popup {
+    bottom: 140px !important;
+    max-height: calc(100vh - 44px - 140px - 8px);
+    overflow-y: auto;
+  }
+}
+
+/* Five-option popups (Instrument, Jazzify) — equal-width grid on touch
+   portrait. Row 1 = 3 buttons (2-col spans), Row 2 = 2 buttons offset by
+   1 cell so they're centered. Title + buttons are children 1..6 of the
+   popup (title inserted as first child), so `.tb-popup-btn:nth-child(N)`
+   selectors count from the first button (child 2) onward. */
+@media (pointer: coarse) and (orientation: portrait) {
+  /* Scope `display: grid` to the open state only — otherwise it overrides
+     the base `.tb-popup { display: none }` and the popup sits visible all
+     the time. User report 2026-04-19: Jazzify popup auto-showed on player
+     load because `.tb-popup-5 { display:grid }` ran unconditionally. */
+  .tb-item.open > .tb-popup-5 {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+  }
+  .tb-popup-5 .tb-popup-title { grid-column: 1 / -1; }
+  .tb-popup-5 .tb-popup-btn:nth-child(2) { grid-column: 1 / span 2; }
+  .tb-popup-5 .tb-popup-btn:nth-child(3) { grid-column: 3 / span 2; }
+  .tb-popup-5 .tb-popup-btn:nth-child(4) { grid-column: 5 / span 2; }
+  .tb-popup-5 .tb-popup-btn:nth-child(5) { grid-column: 2 / span 2; }
+  .tb-popup-5 .tb-popup-btn:nth-child(6) { grid-column: 4 / span 2; }
+  .tb-popup-5 .tb-popup-btn {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    justify-content: center;
+  }
+}
+
+/* AI Teaching + Tools popups: many items (7–9), enforce a balanced 3-column
+   grid on touch devices in portrait so rows are even instead of wrap-breaking
+   unevenly by content width. Separators get a full-row so they split groups. */
+@media (pointer: coarse) and (orientation: portrait) {
+  .tb-popup-wide .tb-popup-btn,
+  #tbTools .tb-popup .tb-popup-btn {
+    flex: 0 0 calc(33.333% - 8px);
+    justify-content: center;
+  }
+  .tb-popup-wide .tb-separator,
+  #tbTools .tb-popup .tb-separator {
+    flex-basis: 100%;
+    height: 1px;
+    width: auto;
+    background: var(--border);
+    margin: 2px 0;
+  }
+  /* Teaching's inline selects should also respect the grid cadence */
+  .tb-popup-wide .tb-select {
+    flex: 0 0 calc(33.333% - 8px);
+  }
+  /* AudioMode crossfader stays full-width when revealed */
+  .tb-popup-wide #crossfaderContainer[style*="flex"] {
+    flex-basis: 100%;
+    justify-content: center;
+  }
+}
+
+/* Touch devices (any orientation): hide the resize-handle fold buttons so
+   the waterfall is always visible alongside the chord ribbon. Mouse-user
+   desktops keep them — drag-resize is useful there but pointless on a
+   phone where the divider isn't draggable anyway. Portrait already hides
+   via @media (max-width:640px) above; this catches landscape phones.
+   (LiveChord brand is hidden universally via the base .topbar-logo rule.) */
+@media (pointer: coarse) {
+  .resize-handle {
+    display: none !important;
+  }
+}
+
+/* Landscape (pointer:coarse) — popups centered + width-capped so buttons
+   don't stretch across the full 900+px viewport. Anchors above transport row.
+   Tall popups (e.g. AI Teaching with ~10 rows) are capped at viewport
+   height minus topbar + toolbar so they don't visually cover the song
+   title + × close button up top — overflow scrolls inside the popup. */
+@media (pointer: coarse) and (orientation: landscape) {
+  .tb-popup {
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    width: auto !important;
+    /* `!important` because the base touch rule at line ~2363 sets
+       `max-width: none !important` (resetting desktop's caps); without
+       `!important` here the A-B popup's many phrase pills overflow the
+       viewport horizontally instead of scrolling inside .ab-phrase-strip. */
+    max-width: min(90vw, 520px) !important;
+    bottom: 60px !important;           /* matches taller touch toolbar */
+    max-height: calc(100vh - 44px - 60px - 8px);  /* topbar 44 + toolbar 60 + 8 gap */
+    overflow-y: auto;
+  }
+  /* Touch landscape = waterfall-only. Hide the chord-ribbon-panel and let
+     the instrument panel (piano + falling notes) take the full width.
+     Mirror of the portrait rule that hides #instrumentPanel + shows the
+     chord ribbon — orientation flips which side is hidden. */
+  .chord-ribbon-panel { display: none !important; }
+  #instrumentPanel { width: 100% !important; flex: 1 1 100% !important; }
+  .middle-split { padding-top: 0; }
+  /* Base `.chord-display-area { bottom: 49px }` assumes a 44px desktop
+     toolbar. On touch landscape the toolbar grows to ~64px (min-height 54
+     + safe-area/breathing 10) AND the progress-bar-mid floats 10px above
+     the toolbar at bottom:74px. Without raising chord-display-area's
+     bottom, (a) the bottom 15px of the 88-key canvas (incl. C1/C2/.../C7
+     labels) gets hidden behind the toolbar and (b) the progress bar
+     floats on top of the keyboard area instead of sitting in its own
+     reserved strip. Reserve 82px so labels clear the toolbar AND the
+     progress bar sits in the gap, not over the keys. */
+  .chord-display-area {
+    bottom: calc(54px + max(env(safe-area-inset-bottom, 0px), 10px) + 18px) !important;
+  }
+  /* (LiveChord brand hidden in all mobile orientations via the rule below.) */
+  .tb-popup-5 .tb-popup-btn,
+  .tb-popup-wide .tb-popup-btn,
+  #tbTools .tb-popup .tb-popup-btn {
+    flex: 0 1 auto;          /* natural width — no stretching */
+    min-width: 64px;
+  }
+}
+
+/* Touch-device hit-target polish — fixes "bottom 4/5 of Tools/Bug button
+   doesn't respond" reports on Samsung S22. Root causes: (1) 32px tall button
+   sits too close to Android's bottom gesture zone, (2) progress-bar-mid at
+   bottom:44px touches the top of the toolbar so stray taps land on it. */
+@media (pointer: coarse) {
+  .bottom-toolbar {
+    /* 10px breathing room above the gesture strip on phones where env()
+       returns 0 (Chrome on Android doesn't expose gesture insets). */
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 10px);
+    height: auto;
+    min-height: 54px;
   }
   .tb-trigger {
-    padding: 6px 5px;
+    min-height: 44px;                  /* Android/iOS HIG minimum tap target */
+    padding: 8px 10px;
+  }
+  .tb-play-btn {
+    width: 44px !important;
+    height: 44px !important;
+  }
+  .progress-bar-mid {
+    /* Sit 16px above the toolbar so aiming at Tools/Bug near the top edge
+       doesn't overshoot onto the seek bar. */
+    bottom: calc(54px + max(env(safe-area-inset-bottom, 0px), 10px) + 10px) !important;
+    height: 4px;
+  }
+  .progress-bar-mid:hover { height: 6px; }
+}
+/* Portrait three-row toolbar is taller — progress bar + popup lift to match */
+@media (pointer: coarse) and (max-width: 640px) and (orientation: portrait) {
+  .bottom-toolbar {
+    min-height: 148px;                 /* three rows × 44 + gaps/padding */
+  }
+  /* Base rule has bottom:49px which assumes a single-row 54px toolbar; on
+     3-row portrait the toolbar is 148px, so without this override the
+     instrument panel + waterfall canvas extend ~99px BEHIND the toolbar and
+     are invisibly clipped. Align the region's bottom with the toolbar's
+     visible top edge. */
+  .chord-display-area {
+    bottom: calc(148px + env(safe-area-inset-bottom, 0px));
+  }
+  .progress-bar-mid {
+    bottom: calc(148px + max(env(safe-area-inset-bottom, 0px), 10px)) !important;
+  }
+  .tb-popup {
+    bottom: calc(148px + max(env(safe-area-inset-bottom, 0px), 10px) + 8px) !important;
+  }
+}
+
+/* Phone landscape: BPM stays visible (wider room) but shrink it + ❤ so they don't collide */
+@media (max-width: 900px) and (orientation: landscape) {
+  .topbar-center {
+    position: static;
+    transform: none;
+    max-width: none;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 6px;
+    overflow: hidden;
+  }
+  .topbar-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .topbar-key { font-size: 10px; flex-shrink: 0; }
+  .topbar-btn.btn-fav {
     font-size: 14px;
+    padding: 2px 4px;
+    margin-left: auto;
+    flex-shrink: 0;
   }
 }
 
 /* ========== [END: RESPONSIVE] ========== */
 
-/* RLHF Section Menu */
+/* Chord / section right-click menu — themed via --lc-popup-bg so it
+   matches the toolbar popup AND the homepage gear menu across every
+   theme (light / sakura / sunny / sky / forest / dark). The earlier
+   `var(--bg-hover) + backdrop-filter:blur` recipe gave a frosted look
+   that was too transparent over a busy chord ribbon and didn't pick
+   up the theme accents on the light themes. */
 .rv-section-menu {
   position: absolute;
-  background: var(--bg-hover, #2d3036);
-  border: 1px solid var(--border, #444);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.8);
+  background: var(--lc-popup-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--lc-popup-shadow, 0 8px 24px rgba(0,0,0,0.6));
   z-index: 10000;
   padding: 6px 0;
-  color: #eee;
+  color: var(--text);
   font-size: 14px;
-  min-width: 160px;
-  backdrop-filter: blur(8px);
+  min-width: 180px;
 }
 .rv-section-menu .title {
   padding: 6px 16px;
   font-size: 12px;
-  color: #888;
-  border-bottom: 1px solid var(--border, #444);
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
   margin-bottom: 6px;
   font-weight: 600;
 }
@@ -1252,48 +2774,37 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  transition: all 0.2s;
+  color: var(--text);
+  transition: background .15s, color .15s;
 }
 .rv-section-menu-item:hover {
-  background: var(--accent, #4caf50);
-  color: white;
+  background: var(--accent);
+  color: #fff;
 }
 .rv-section-menu-label {
   font-size: 11px;
-  color: var(--text-dim, #888);
+  color: var(--text-dim);
   padding: 6px 16px 2px;
   letter-spacing: 0.5px;
 }
 .rv-section-menu-sep {
-  border-top: 1px solid rgba(255,255,255,0.1);
+  border-top: 1px solid var(--border);
   margin: 4px 0;
 }
 
-/* Correction Panel (beat tap / chord align) */
+/* Correction Panel (beat tap / chord align) — Type C panel.
+   Composes .lc-panel in JS (chord-correction.js _createPanel). Overrides
+   bottom-right positioning + slightly larger max-width for calibration readouts. */
 .correction-panel {
-  position: fixed;
   bottom: 80px;
-  left: 20px;
-  background: var(--bg-hover, #2d3036);
-  border: 1px solid var(--border, #444);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.8);
-  z-index: 9999;
-  padding: 16px;
-  color: #eee;
-  font-size: 14px;
+  right: 20px;       /* right of the ribbon/waterfall divider so it doesn't cover chord cards */
+  left: auto;
   min-width: 220px;
   max-width: 280px;
-  backdrop-filter: blur(8px);
-  animation: corrSlideUp 0.2s ease-out;
-}
-@keyframes corrSlideUp {
-  from { transform: translateY(20px); opacity: 0; }
-  to   { transform: translateY(0); opacity: 1; }
+  font-size: 14px;
 }
 .correction-title {
-  font-size: 16px;
-  font-weight: 700;
+  /* Retained for backward-compat selector; visual style comes from .lc-title. */
   margin-bottom: 8px;
 }
 .correction-instructions {
@@ -1330,16 +2841,21 @@
 .correction-btn {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid var(--border, #555);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: rgba(255,255,255,0.05);
-  color: #eee;
+  /* Themed surface — the earlier rgba(255,255,255,0.05) over the panel's
+     own light bg in sakura/sunny/sky/light themes wash made #eee text
+     invisible. var(--bg-hover) tracks the theme: dark on dark themes,
+     light tint on light themes; var(--text) gives the matching contrast. */
+  background: var(--bg-hover);
+  color: var(--text);
   cursor: pointer;
   font-size: 13px;
-  transition: all 0.2s;
+  transition: background .15s, color .15s, border-color .15s;
 }
 .correction-btn:hover:not(:disabled) {
-  background: rgba(255,255,255,0.12);
+  background: var(--bg-card);
+  border-color: var(--accent);
 }
 .correction-btn:disabled {
   opacity: 0.4;
@@ -1360,6 +2876,62 @@
   background: rgba(244,67,54,0.25);
 }
 
+/* Calibrate — step 2 range selector (post-tap, pre-commit).
+   Lives inside .correction-panel, so z-index / positioning inherits. */
+.cc-range-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+.cc-range-summary {
+  font-size: 12px;
+  color: #bbb;
+  line-height: 1.5;
+}
+.cc-range-confidence {
+  color: #4caf50;
+  font-weight: 600;
+}
+.cc-range-prompt {
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 2px;
+  color: #eee;
+}
+.cc-range-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: 13px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.cc-range-opt:hover:not(.cc-range-disabled) {
+  background: rgba(33,150,243,0.15);
+  border-color: rgba(33,150,243,0.4);
+}
+.cc-range-opt input[type="radio"] {
+  margin-top: 2px;
+  accent-color: #2196F3;
+}
+.cc-range-opt.cc-range-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cc-range-opt.cc-range-disabled input {
+  cursor: not-allowed;
+}
+.cc-range-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 /* Chord Beats Indicator */
 .rv-beats {
   display: flex;
@@ -1371,21 +2943,62 @@
   flex-wrap: wrap;
 }
 .beat-dot {
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background-color: rgba(255,255,255,0.3);
+  background-color: rgba(255,255,255,0.7);
 }
 
 
+/* Unified purple beat indicator — independent of phrase/section color.
+   Prior design tinted the dot per-phrase (red/orange/green/blue) which
+   flickered distractingly across section boundaries. Dual-ring outer
+   glow + white core makes it read as a luminous gem regardless of the
+   card's background tint. */
 .beat-active {
-  background-color: var(--phrase-color, var(--accent)) !important;
-  width: 6px !important;
-  height: 6px !important;
-  box-shadow: 0 0 8px var(--phrase-color, var(--accent));
-  transform: scale(1.2);
+  background-color: #a855f7 !important;   /* rich purple-500 core */
+  width: 7px !important;
+  height: 7px !important;
+  box-shadow:
+    0 0 3px rgba(216, 180, 254, 0.9),
+    0 0 10px rgba(147, 51, 234, 1),
+    0 0 22px rgba(126, 34, 206, 0.75) !important;
+  transform: scale(1.25);
   transition: all 0.1s ease-out;
 }
+.beat-dot.is-downbeat.beat-active {
+  /* Downbeat in the active moment — bigger halo, same hue family */
+  background-color: #9333ea !important;
+  box-shadow:
+    0 0 4px rgba(216, 180, 254, 1),
+    0 0 14px rgba(147, 51, 234, 1),
+    0 0 28px rgba(126, 34, 206, 0.85) !important;
+}
+
+/* Virtual beat mapping — downbeat accent (bar start) */
+.beat-dot.is-downbeat {
+  width: 6px;
+  height: 6px;
+  background-color: rgba(0, 255, 204, 0.85);
+  box-shadow: 0 0 6px rgba(0, 255, 204, 0.55);
+}
+/* Downbeat + active override handled above in .beat-dot.is-downbeat.beat-active
+   (purple gem style). The legacy teal override is intentionally removed so all
+   beat indicators share one hue family. */
+/* Card whose first beat IS a downbeat → left-edge bar-line marker.
+   Base .rv-item already reserves border-left:3px transparent, so this only
+   colors the border — no layout shift. .rv-item.active wins via cascade
+   order (its rule is earlier but same specificity; we want active to take
+   over so students still see which card is playing). */
+.rv-item.chord-at-downbeat:not(.active) {
+  border-left-color: rgba(0, 255, 204, 0.55);
+}
+/* Short chord — visual degrade (passing chord / syncopation).
+   Opacity removed: user wants to read the whole song structure clearly,
+   and parent opacity was cascading to dim the chord name too. The
+   smaller font on the chord-name still signals "this is a short
+   passing chord" without making it hard to read. */
+.rv-item.chord-short .rv-chord-name { font-size: 0.9em; }
 
 /* Versions Dropdown */
 .versions-dropdown {
@@ -1526,29 +3139,17 @@
 }
 
 
-/* ========== [COMPONENT: LOCAL AUDIO PROMPT] ========== */
+/* ========== [COMPONENT: LOCAL AUDIO PROMPT] ==========
+   Type B modal — composes .lc-modal-backdrop + .lc-modal in HTML. */
 
-.local-audio-prompt {
-  position: fixed;
-  inset: 0;
-  z-index: 9500;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0,0,0,0.7);
-  backdrop-filter: blur(4px);
-}
 .local-audio-box {
+  min-width: 0;
   text-align: center;
   padding: 24px 32px;
-  background: var(--bg-card, #1e1e2e);
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.1);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 }
 .local-audio-btn {
   padding: 8px 20px;
-  border: none;
+  border: 0;
   border-radius: 6px;
   background: var(--accent, #2196f3);
   color: #fff;
@@ -1571,25 +3172,14 @@
 }
 
 
-/* ========== [COMPONENT: BETA RATING POPUP] ========== */
+/* ========== [COMPONENT: BETA RATING POPUP] ==========
+   Type C panel — inherits .lc-panel surface, overrides position + content. */
 
 .beta-rate-popup {
-  position: absolute;
   top: 44px;
   right: 60px;
-  z-index: 9100;
-  background: var(--bg-card, #1e1e2e);
-  border: 1px solid rgba(255,255,255,0.15);
-  border-radius: 10px;
-  padding: 12px 16px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-  min-width: 200px;
-}
-.beta-rate-header {
-  font-size: 13px;
-  font-weight: bold;
-  margin-bottom: 8px;
-  color: var(--text-primary, #fff);
+  left: auto;
+  min-width: 240px;
 }
 .beta-stars {
   display: flex;
@@ -1643,51 +3233,17 @@
 }
 
 
-/* ========== [COMPONENT: BUG REPORT FAB] ========== */
-
-.bug-report-fab {
-  position: fixed;
-  bottom: 60px;
-  right: 16px;
-  z-index: 8500;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: none;
-  background: #f44336;
-  color: #fff;
-  font-size: 18px;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(244,67,54,0.4);
-  transition: transform 0.2s;
-}
-.bug-report-fab:hover {
-  transform: scale(1.1);
-}
+/* ========== [COMPONENT: BUG REPORT DIALOG] ==========
+   Type B modal — composes .lc-modal-backdrop + .lc-modal in HTML. */
 
 .bug-report-dialog {
-  position: fixed;
-  inset: 0;
+  /* Upgrade default .lc-modal-backdrop z-index (999) because this dialog
+     must sit above the floating bug-report FAB (z:9600) that opens it. */
   z-index: 9600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0,0,0,0.7);
-  backdrop-filter: blur(4px);
 }
-.bug-report-box {
-  padding: 20px 24px;
-  background: var(--bg-card, #1e1e2e);
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.1);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-  min-width: 300px;
+.bug-report-dialog .lc-modal {
+  /* Parent provides z-index: 9600; modal itself rides on that stack. */
   max-width: 400px;
-}
-.bug-report-title {
-  font-size: 16px;
-  font-weight: bold;
-  margin-bottom: 12px;
 }
 .bug-input {
   width: 100%;
@@ -1696,7 +3252,556 @@
   border: 1px solid rgba(255,255,255,0.15);
   border-radius: 6px;
   background: rgba(0,0,0,0.3);
-  color: var(--text-primary, #fff);
+  color: var(--text, #fff);
   font-size: 13px;
   margin-bottom: 10px;
 }
+
+/* YT fallback panel — Type B modal (composes .lc-modal-backdrop + .lc-modal).
+   YT desync banner — uses shared .lc-banner .lc-banner--warn (no CSS needed here). */
+
+.yt-fallback-panel {
+  /* Upgrade z-index: must sit above the YT desync banner (10001) that opens it,
+     so the modal covers the banner instead of the banner bleeding through. */
+  z-index: 10002;
+}
+.yt-fallback-panel .lc-modal {
+  min-width: 320px;
+  max-width: calc(100vw - 24px);
+}
+.yt-fallback-panel .yt-fb-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+}
+.yt-fallback-panel .yt-fb-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.yt-fallback-panel input[type="text"] {
+  flex: 1;
+  padding: 8px 10px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+}
+.yt-fallback-panel .yt-fb-btn {
+  padding: 8px 14px;
+  background: var(--accent, #2196F3);
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.yt-fallback-panel .yt-fb-btn.secondary {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid var(--border);
+}
+.yt-fallback-panel .yt-fb-sep {
+  border-top: 1px solid var(--border);
+  margin: 14px 0;
+  text-align: center;
+  position: relative;
+}
+.yt-fallback-panel .yt-fb-sep span {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--lc-popup-bg);
+  padding: 0 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* Task 4: Lucide SVG icons on toolbar triggers — unified cross-platform appearance */
+.tb-trigger .tb-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+  vertical-align: middle;
+}
+.tb-popup-btn .tb-icon {
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 2px;
+}
+/* Loop button favorite-mode badge overlay */
+.loop-icon-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+.loop-fav-badge {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  width: 9px;
+  height: 9px;
+}
+.tb-trigger.tb-text-btn { /* Speed 1x, A-B text buttons keep text styling */ }
+/* Play/pause state toggle */
+#btnPlay.is-playing .ico-play { display: none; }
+#btnPlay.is-playing .ico-pause { display: inline-block !important; }
+/* Mute state toggle */
+#btnMute.is-muted .ico-vol { display: none; }
+#btnMute.is-muted .ico-mute { display: inline-block !important; }
+
+/* Analysis progress banner — Type D banner (.lc-banner .lc-banner--info).
+   Composes shared surface; only content-specific rules live here. */
+.yt-analysis-banner {
+  width: min(420px, calc(100vw - 24px));
+  flex-direction: column;
+  align-items: stretch;
+}
+.yt-analysis-banner.is-error {
+  background: rgba(183, 50, 50, 0.96);
+  border-color: rgba(244, 67, 54, 0.7);
+}
+.yt-analysis-banner .yt-ab-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.yt-analysis-banner .yt-ab-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.yt-analysis-banner .yt-ab-pct {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.yt-analysis-banner .yt-ab-close {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.yt-analysis-banner .yt-ab-cta {
+  background: var(--accent, #4caf50);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.yt-analysis-banner .yt-ab-bar {
+  margin-top: 6px;
+  height: 4px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.yt-analysis-banner .yt-ab-fill {
+  height: 100%;
+  background: var(--accent, #4caf50);
+  width: 0;
+  transition: width 0.3s ease;
+}
+
+/* ========== [COMPONENT: AUTO-SPLIT PANEL] ==========
+   Type B modal — composes .lc-modal-backdrop + .lc-modal in JS.
+   All content styling lives here (no inline styles in the JS template). */
+
+.auto-split-panel .lc-modal {
+  min-width: 340px;
+  max-width: min(520px, 92vw);
+}
+.as-mode-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.as-mode-btn {
+  flex: 1;
+  padding: 7px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all .15s;
+}
+.as-mode-btn:hover { background: var(--bg-hover); }
+.as-mode-btn.active {
+  background: rgba(33,150,243,0.35);
+  border-color: var(--accent, #2196F3);
+  font-weight: 600;
+}
+.as-section { margin-bottom: 14px; }
+.as-section-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.as-ts-row, .as-ratios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.as-chip {
+  padding: 6px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all .15s;
+}
+.as-chip:hover { background: var(--bg-hover); }
+.as-chip.active {
+  background: rgba(33,150,243,0.35);
+  border-color: var(--accent, #2196F3);
+}
+.as-ratio-chip { font-family: monospace; }
+.as-bar-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+.as-snap-hint {
+  font-size: 11px;
+  color: #ff9800;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: rgba(255,152,0,0.08);
+  border: 1px solid rgba(255,152,0,0.3);
+  border-radius: 6px;
+  line-height: 1.5;
+}
+.as-thresh-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.as-dec, .as-inc {
+  padding: 4px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.as-dec:hover, .as-inc:hover { background: var(--bg-hover); }
+.as-thresh {
+  width: 64px;
+  padding: 4px 6px;
+  text-align: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+}
+.as-hint-small {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+.as-cancel, .as-apply {
+  padding: 7px 18px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.as-cancel {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.as-cancel:hover { background: var(--bg-hover); }
+.as-apply {
+  background: var(--accent, #2196F3);
+  border: 1px solid var(--accent, #2196F3);
+  color: #fff;
+  font-weight: 600;
+}
+.as-apply:hover { background: #1976d2; }
+
+/* ========== [END: AUTO-SPLIT PANEL] ========== */
+
+
+/* Empty-chord hero detect button (Task 6) */
+.chord-empty-state {
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.chord-empty-msg {
+  font-size: 14px;
+  color: var(--text, #eee);
+}
+.chord-empty-btn {
+  padding: 10px 24px;
+  background: var(--accent, #4caf50);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.chord-empty-btn:hover { filter: brightness(1.1); }
+.chord-empty-btn:disabled { opacity: 0.5; cursor: wait; }
+.chord-empty-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+
+/* ========== [COMPONENT: THEME OVERRIDES] ==========
+   Per-theme overrides for player selectors that hardcode whites/darks.
+   Two families:
+     light-bg family: light + sakura + sunny + sky (text dark, white-tint surfaces)
+     dark-bg family:  dark (default :root) + forest (text light, dark surfaces)
+   `dark` needs no overrides (matches :root). All light-bg themes share the
+   same override behavior — only the per-theme tint of the topbar/toolbar
+   surface differs (matches each bg). */
+
+/* === Topbar + bottom toolbar bg (per-theme tinted glass) === */
+[data-theme="light"]  .player-topbar { background: rgba(247, 245, 240, 0.92); }
+[data-theme="light"]  .bottom-toolbar { background: rgba(247, 245, 240, 0.95); }
+[data-theme="sakura"] .player-topbar { background: rgba(254, 245, 247, 0.92); }
+[data-theme="sakura"] .bottom-toolbar { background: rgba(254, 245, 247, 0.95); }
+[data-theme="sunny"]  .player-topbar { background: rgba(255, 248, 225, 0.92); }
+[data-theme="sunny"]  .bottom-toolbar { background: rgba(255, 248, 225, 0.95); }
+[data-theme="sky"]    .player-topbar { background: rgba(219, 234, 254, 0.92); }
+[data-theme="sky"]    .bottom-toolbar { background: rgba(219, 234, 254, 0.95); }
+[data-theme="forest"] .player-topbar { background: rgba(13, 40, 24, 0.92); }
+[data-theme="forest"] .bottom-toolbar { background: rgba(13, 40, 24, 0.95); }
+
+/* === Type A toolbar popup — solid panel, themed per-family === */
+[data-theme="light"] .tb-popup,
+[data-theme="sakura"] .tb-popup,
+[data-theme="sunny"] .tb-popup,
+[data-theme="sky"] .tb-popup {
+  background: var(--lc-popup-bg);
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.18);
+}
+[data-theme="forest"] .tb-popup {
+  background: var(--lc-popup-bg);
+  border-color: rgba(255, 107, 53, 0.20);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.6);
+}
+[data-theme="light"] .tb-popup-btn:hover,
+[data-theme="sakura"] .tb-popup-btn:hover,
+[data-theme="sunny"] .tb-popup-btn:hover,
+[data-theme="sky"] .tb-popup-btn:hover { background: rgba(0, 0, 0, 0.06); }
+
+/* === Scale bar + canvas surfaces === */
+/* Chord ribbon scale bar (the [−] [val] [+] [☰ 總覽] strip at the bottom of
+   the ribbon panel) — bg hardcoded as #0d1117, .overview-btn color hardcoded
+   #4fc3f7. Both flip per theme so the strip looks part of the theme. */
+[data-theme="light"]  .ribbon-scale-bar,
+[data-theme="sakura"] .ribbon-scale-bar,
+[data-theme="sunny"]  .ribbon-scale-bar,
+[data-theme="sky"]    .ribbon-scale-bar,
+[data-theme="forest"] .ribbon-scale-bar { background: var(--bg); }
+[data-theme="light"]  .scale-btn.overview-btn,
+[data-theme="sakura"] .scale-btn.overview-btn,
+[data-theme="sunny"]  .scale-btn.overview-btn,
+[data-theme="sky"]    .scale-btn.overview-btn,
+[data-theme="forest"] .scale-btn.overview-btn { color: var(--accent); }
+
+/* Active chord card jianpu (簡譜 numbers row, e.g. "5 7 2") — original
+   rule sets `color: #eee` for dark-bg readability against the active card's
+   light blue tint. On light-bg themes that bg is barely visible and #eee
+   becomes invisible. Flip to --text so jianpu reads on cream/white pages. */
+[data-theme="light"]  .rv-item.active .rv-jianpu,
+[data-theme="sakura"] .rv-item.active .rv-jianpu,
+[data-theme="sunny"]  .rv-item.active .rv-jianpu,
+[data-theme="sky"]    .rv-item.active .rv-jianpu { color: var(--text); }
+
+/* Beat dots at the bottom of each chord card — original is white@0.7 which
+   vanishes on light bg. Flip to a dark gray for non-downbeats and a theme-
+   tinted accent for downbeats. .beat-active (purple gem) and .is-downbeat
+   .beat-active stay untouched — they're the universal "currently playing"
+   marker and read clearly on every theme via the purple glow. */
+[data-theme="light"]  .beat-dot,
+[data-theme="sakura"] .beat-dot,
+[data-theme="sunny"]  .beat-dot,
+[data-theme="sky"]    .beat-dot { background-color: rgba(0, 0, 0, 0.30); }
+
+[data-theme="light"]  .beat-dot.is-downbeat,
+[data-theme="sakura"] .beat-dot.is-downbeat,
+[data-theme="sunny"]  .beat-dot.is-downbeat,
+[data-theme="sky"]    .beat-dot.is-downbeat {
+  background-color: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
+/* Waterfall canvas DOM bg per theme. Note colors come from
+   _THEME_PALETTE in player.js. */
+[data-theme="light"]  .waterfall-canvas { background: #fdfcf7; }
+[data-theme="sakura"] .waterfall-canvas { background: #fff5f8; }
+[data-theme="sunny"]  .waterfall-canvas { background: #fffbed; }
+[data-theme="sky"]    .waterfall-canvas { background: #ecf3ff; }
+[data-theme="forest"] .waterfall-canvas { background: #051a0f; }
+
+/* === Ribbon panel + items — per-theme accent tint, no gray ===
+   Each theme tints the inactive chord cards with its own accent color so
+   the ribbon reads as part of the theme rather than a neutral gray strip.
+   Active cards still get the purple --chord-gradient overlay (in player.js)
+   for the "currently playing" emphasis. */
+[data-theme="light"] .chord-ribbon-panel,
+[data-theme="sakura"] .chord-ribbon-panel,
+[data-theme="sunny"] .chord-ribbon-panel,
+[data-theme="sky"] .chord-ribbon-panel,
+[data-theme="forest"] .chord-ribbon-panel {
+  background: transparent;
+}
+[data-theme="light"] .chord-ribbon-panel,
+[data-theme="sakura"] .chord-ribbon-panel,
+[data-theme="sunny"] .chord-ribbon-panel,
+[data-theme="sky"] .chord-ribbon-panel { scrollbar-color: rgba(0, 0, 0, 0.20) transparent; }
+[data-theme="light"] .chord-ribbon-panel::-webkit-scrollbar-thumb,
+[data-theme="sakura"] .chord-ribbon-panel::-webkit-scrollbar-thumb,
+[data-theme="sunny"] .chord-ribbon-panel::-webkit-scrollbar-thumb,
+[data-theme="sky"] .chord-ribbon-panel::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.20); }
+
+/* Per-theme rv-item tints. Light family uses lower alpha (panel reads soft);
+   forest uses orange tint that pops against deep green. */
+[data-theme="light"]  .rv-item { background: rgba(25, 118, 210, 0.05);  border-color: rgba(25, 118, 210, 0.18); }
+[data-theme="light"]  .rv-item:hover { background: rgba(25, 118, 210, 0.10); }
+[data-theme="light"]  .rv-item.played { background: rgba(25, 118, 210, 0.02); }
+
+[data-theme="sakura"] .rv-item { background: rgba(236, 72, 153, 0.07); border-color: rgba(236, 72, 153, 0.22); }
+[data-theme="sakura"] .rv-item:hover { background: rgba(236, 72, 153, 0.14); }
+[data-theme="sakura"] .rv-item.played { background: rgba(236, 72, 153, 0.025); }
+
+[data-theme="sunny"]  .rv-item { background: rgba(8, 145, 178, 0.07);   border-color: rgba(8, 145, 178, 0.22); }
+[data-theme="sunny"]  .rv-item:hover { background: rgba(8, 145, 178, 0.14); }
+[data-theme="sunny"]  .rv-item.played { background: rgba(8, 145, 178, 0.025); }
+
+[data-theme="sky"]    .rv-item { background: rgba(37, 99, 235, 0.07);   border-color: rgba(37, 99, 235, 0.22); }
+[data-theme="sky"]    .rv-item:hover { background: rgba(37, 99, 235, 0.14); }
+[data-theme="sky"]    .rv-item.played { background: rgba(37, 99, 235, 0.025); }
+
+[data-theme="forest"] .rv-item { background: rgba(255, 107, 53, 0.07);  border-color: rgba(255, 107, 53, 0.22); }
+[data-theme="forest"] .rv-item:hover { background: rgba(255, 107, 53, 0.14); }
+[data-theme="forest"] .rv-item.played { background: rgba(255, 107, 53, 0.025); }
+
+/* Ribbon-wide + overview-mode have their own .rv-item bg rules at lines
+   554+ and 582+ that hardcode rgba(0,0,0,0.4) — solid 40% black gray that
+   wins over the per-theme tints above by specificity (0,3,0 vs 0,2,0).
+   Re-tint per theme at matching specificity (0,4,0) so the chord cards
+   in those modes also pick up the theme accent.
+   .upcoming-next is also rebound per theme since its base rule uses the
+   dark-theme blue rgba(33,150,243,X). .active stays purple (chord-gradient)
+   in all themes so the playing chord is universally recognizable. */
+[data-theme="light"]  .chord-ribbon-panel.ribbon-wide .rv-item,
+[data-theme="light"]  .chord-ribbon-panel.overview-mode .rv-item { background: rgba(25, 118, 210, 0.06); }
+[data-theme="sakura"] .chord-ribbon-panel.ribbon-wide .rv-item,
+[data-theme="sakura"] .chord-ribbon-panel.overview-mode .rv-item { background: rgba(236, 72, 153, 0.08); }
+[data-theme="sunny"]  .chord-ribbon-panel.ribbon-wide .rv-item,
+[data-theme="sunny"]  .chord-ribbon-panel.overview-mode .rv-item { background: rgba(8, 145, 178, 0.08); }
+[data-theme="sky"]    .chord-ribbon-panel.ribbon-wide .rv-item,
+[data-theme="sky"]    .chord-ribbon-panel.overview-mode .rv-item { background: rgba(37, 99, 235, 0.08); }
+[data-theme="forest"] .chord-ribbon-panel.ribbon-wide .rv-item,
+[data-theme="forest"] .chord-ribbon-panel.overview-mode .rv-item { background: rgba(255, 107, 53, 0.10); }
+
+/* upcoming-next (immediate next chord) — slightly stronger tint to draw eye */
+[data-theme="light"]  .rv-item.upcoming-next { background: rgba(25, 118, 210, 0.12); border-left-color: rgba(25, 118, 210, 0.55); }
+[data-theme="sakura"] .rv-item.upcoming-next { background: rgba(236, 72, 153, 0.14); border-left-color: rgba(236, 72, 153, 0.55); }
+[data-theme="sunny"]  .rv-item.upcoming-next { background: rgba(8, 145, 178, 0.14);   border-left-color: rgba(8, 145, 178, 0.55); }
+[data-theme="sky"]    .rv-item.upcoming-next { background: rgba(37, 99, 235, 0.14);   border-left-color: rgba(37, 99, 235, 0.55); }
+[data-theme="forest"] .rv-item.upcoming-next { background: rgba(255, 107, 53, 0.14);  border-left-color: rgba(255, 107, 53, 0.55); }
+
+/* === Topbar fav star — accent-tinted glow on light bg === */
+[data-theme="light"] .topbar-btn.btn-fav.active,
+[data-theme="sakura"] .topbar-btn.btn-fav.active,
+[data-theme="sunny"] .topbar-btn.btn-fav.active,
+[data-theme="sky"] .topbar-btn.btn-fav.active {
+  color: var(--accent);
+  text-shadow: 0 0 6px var(--accent);
+}
+
+/* === Banners (Type D) === */
+[data-theme="light"] .lc-banner .lc-banner-btn,
+[data-theme="sakura"] .lc-banner .lc-banner-btn,
+[data-theme="sunny"] .lc-banner .lc-banner-btn,
+[data-theme="sky"] .lc-banner .lc-banner-btn {
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.20);
+  color: var(--text);
+}
+[data-theme="light"] .lc-banner .lc-banner-btn:hover,
+[data-theme="sakura"] .lc-banner .lc-banner-btn:hover,
+[data-theme="sunny"] .lc-banner .lc-banner-btn:hover,
+[data-theme="sky"] .lc-banner .lc-banner-btn:hover { background: rgba(0, 0, 0, 0.14); }
+
+/* === Form inputs (beta rate) === */
+[data-theme="light"] .beta-rate input,
+[data-theme="light"] .beta-rate textarea,
+[data-theme="light"] .beta-rate select,
+[data-theme="sakura"] .beta-rate input,
+[data-theme="sakura"] .beta-rate textarea,
+[data-theme="sakura"] .beta-rate select,
+[data-theme="sunny"] .beta-rate input,
+[data-theme="sunny"] .beta-rate textarea,
+[data-theme="sunny"] .beta-rate select,
+[data-theme="sky"] .beta-rate input,
+[data-theme="sky"] .beta-rate textarea,
+[data-theme="sky"] .beta-rate select {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: var(--text);
+}
+
+/* === Guitar voicing controls === */
+[data-theme="light"] .gt-voicing-btn,
+[data-theme="sakura"] .gt-voicing-btn,
+[data-theme="sunny"] .gt-voicing-btn,
+[data-theme="sky"] .gt-voicing-btn {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.30);   /* darker outline so chip is visible on cream */
+  color: var(--text);                  /* full ink for the ① ② ③ glyph */
+}
+[data-theme="light"] .gt-voicing-btn:hover,
+[data-theme="sakura"] .gt-voicing-btn:hover,
+[data-theme="sunny"] .gt-voicing-btn:hover,
+[data-theme="sky"] .gt-voicing-btn:hover { background: rgba(0, 0, 0, 0.12); }
+[data-theme="light"] .gt-arp-select option,
+[data-theme="sakura"] .gt-arp-select option,
+[data-theme="sunny"] .gt-arp-select option,
+[data-theme="sky"] .gt-arp-select option { background: #ffffff; color: var(--text); }
+
+/* === Loading spinners === */
+[data-theme="light"] .lc-spinner, [data-theme="light"] .as-spinner, [data-theme="light"] [class*="spinner"],
+[data-theme="sakura"] .lc-spinner, [data-theme="sakura"] .as-spinner, [data-theme="sakura"] [class*="spinner"],
+[data-theme="sunny"] .lc-spinner, [data-theme="sunny"] .as-spinner, [data-theme="sunny"] [class*="spinner"],
+[data-theme="sky"] .lc-spinner, [data-theme="sky"] .as-spinner, [data-theme="sky"] [class*="spinner"] {
+  border-color: rgba(0, 0, 0, 0.20);
+  border-top-color: var(--accent);
+}
+
+/* YT PiP control buttons — kept dark across all themes so PiP reads as
+   a distinct surface against any page bg. */
+
+/* ========== [END: THEME OVERRIDES] ========== */

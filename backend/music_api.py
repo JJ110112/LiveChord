@@ -1,6 +1,7 @@
 """音樂庫 API — 瀏覽、搜尋、串流、metadata"""
 
 import os
+import re
 import json
 import time
 import threading
@@ -12,7 +13,7 @@ from fastapi.responses import FileResponse, StreamingResponse, Response
 
 from mutagen.flac import FLAC
 
-from config import get_music_root, get_music_roots, set_music_roots, resolve_path, is_beta_mode
+from config import get_music_root, get_music_roots, set_music_roots, resolve_path, is_beta_mode, is_personal_mode, is_public_mode
 from batch_state import BatchState
 from task_lock import get_task_lock
 
@@ -107,25 +108,26 @@ def _has_cover(filepath: str) -> bool:
     return False
 
 
-from chord_cache import get_chord_summary as _get_chord_summary, song_hash
+from chord_cache import get_chord_summary as _get_chord_summary, song_hash, chord_file_for
 
 # ---------------------------------------------------------------------------
 # browse
 # ---------------------------------------------------------------------------
 
 def _check_browse_access(authorization: str = Header(None)):
-    """In beta mode, only admin can browse the NAS file tree."""
-    if not is_beta_mode():
+    """Only personal-mode (LAN) callers can browse the NAS file tree.
+    In beta or public, NAS path exposure is forbidden — admin must come via token."""
+    if is_personal_mode():
         return
     if not authorization:
-        raise HTTPException(status_code=403, detail="Browse not available for beta users")
+        raise HTTPException(status_code=403, detail="Browse not available")
     token = authorization.replace("Bearer ", "")
     import sqlite3
     db = Path(__file__).parent.parent / "data" / "users.db"
     with sqlite3.connect(db, timeout=10) as conn:
         row = conn.execute("SELECT is_admin FROM users WHERE token=?", (token,)).fetchone()
         if not row or row[0] != 1:
-            raise HTTPException(status_code=403, detail="Browse not available for beta users")
+            raise HTTPException(status_code=403, detail="Browse not available")
 
 
 @router.get("/browse")
@@ -234,40 +236,130 @@ def _is_admin_request(authorization: str) -> bool:
         return False
 
 
+def _resolve_username_soft(authorization: Optional[str]) -> Optional[str]:
+    """Best-effort token → username; returns None instead of raising when the
+    token is missing/invalid. Used by search so unauthenticated personal-mode
+    requests just skip the user-uploads branch instead of 401'ing."""
+    if not authorization:
+        return None
+    try:
+        import sqlite3
+        from auth_api import DB_PATH
+        token = authorization.replace("Bearer ", "")
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
+            row = conn.execute("SELECT username FROM users WHERE token=?", (token,)).fetchone()
+            return row[0] if row else None
+    except Exception:
+        return None
+
+
 @router.get("/search")
 def search(q: str = Query(default=""), authorization: str = Header(None)):
-    """搜尋音樂庫（從快取索引）"""
+    """搜尋音樂庫（從快取索引）+ 使用者自己的上傳分析結果（優先）"""
     if not q or len(q.strip()) < 1:
         return {"results": []}
 
     q_lower = q.strip().lower()
+    # 將查詢字串依非字元切成 token，容忍 "Artist - Title" / 大小寫 / 標點變化
+    q_tokens = [tok for tok in re.split(r"\W+", q_lower, flags=re.UNICODE) if tok]
 
+    # ─── User's own uploads / YT analyses come FIRST ────────────────────────
+    user_uploads = []
+    username = _resolve_username_soft(authorization)
+    if username and q_tokens:
+        try:
+            import sqlite3
+            from process_queue import AUDIT_DB_PATH, CHORDS_DIR
+            with sqlite3.connect(AUDIT_DB_PATH, timeout=10) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    "SELECT result_hash, title, chord_count, source_type FROM process_audit "
+                    "WHERE username=? AND status='done' AND result_hash!='' "
+                    "ORDER BY id DESC LIMIT 50",
+                    (username,),
+                ).fetchall()
+            seen_hashes = set()
+            for r in rows:
+                rh = r["result_hash"]
+                if rh in seen_hashes:
+                    continue
+                title = (r["title"] or "").lower()
+                if not title:
+                    continue
+                if not all(tok in title for tok in q_tokens):
+                    continue
+                # Self-heal: skip audit rows whose chord JSON was deleted.
+                if not chord_file_for(rh).is_file():
+                    continue
+                seen_hashes.add(rh)
+                src = (r["source_type"] or "upload").strip()
+                album_label = "YouTube 分析" if src == "youtube" else "本機上傳"
+                user_uploads.append({
+                    "path": f"__hash/{rh}",
+                    "hash": rh,
+                    "title": r["title"],
+                    "artist": "",
+                    "album": album_label,
+                    "is_user_upload": True,
+                    "source_type": src,
+                    "has_chords": True,
+                    "unique_chords": r["chord_count"] or 0,
+                })
+                if len(user_uploads) >= 20:
+                    break
+        except Exception:
+            pass  # never fail the whole search over a user-uploads lookup error
+
+    # Beta/public non-admin: restrict search to user's own uploads / YT analyses.
+    # NAS library tracks were chord-analyzed from album masters while users
+    # searching on beta/public are almost always looking for YouTube MV versions;
+    # surfacing the library match leads to a "same title, wrong audio
+    # length" mismatch that confuses the chord player. Personal (LAN) and
+    # beta admins still get full library search below.
+    if not is_personal_mode() and not _is_admin_request(authorization):
+        return {"results": user_uploads}
+
+    # Public mode (VPS): NAS volume isn't mounted, library_cache.json doesn't
+    # exist and never will. Admin in public mode would otherwise fall through
+    # to the "索引尚未建立, 請點掃描" error path below — misleading because the
+    # frontend's parallel YouTube search would have surfaced viable hits.
+    # Bypass the library code path entirely here so the YT side gets to render.
+    if is_public_mode():
+        return {"results": user_uploads}
+
+    # ─── Library results ────────────────────────────────────────────────────
     if not CACHE_FILE.is_file():
         if _scan_state["running"]:
-            return {"results": [], "error": f"掃描進行中（{_scan_state['progress']} 首），請稍候…"}
+            return {"results": user_uploads,
+                    "error": f"掃描進行中（{_scan_state['progress']} 首），請稍候…"}
+        if user_uploads:
+            return {"results": user_uploads}
         return {"results": [], "error": "索引尚未建立，請點右上角「掃描」或到管理頁面執行"}
 
-    # Beta non-admin: hide NAS paths, use chord hash instead
-    hide_paths = is_beta_mode() and not _is_admin_request(authorization)
+    # (Library search below is admin-only in beta/public — non-admin returned
+    # above. `hide_paths` remains for safety in case future routing lands
+    # a non-admin call here.)
+    hide_paths = not is_personal_mode() and not _is_admin_request(authorization)
 
     cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
     tracks = cache.get("tracks", [])
 
-    results = []
+    library_results = []
+    library_cap = max(0, 50 - len(user_uploads))
     for t in tracks:
         fname = os.path.splitext(os.path.basename(t.get('path','')))[0]
         searchable = f"{t.get('title','')} {t.get('artist','')} {t.get('album','')} {fname}".lower()
-        if q_lower in searchable:
+        if q_tokens and all(tok in searchable for tok in q_tokens):
             if "unique_chords" not in t:
                 summary = _get_chord_summary(t.get("path", ""))
                 t.update(summary)
             if hide_paths:
                 t = {**t, "path": f"__hash/{song_hash(t['path'])}", "hash": song_hash(t["path"])}
-            results.append(t)
-            if len(results) >= 50:
+            library_results.append(t)
+            if len(library_results) >= library_cap:
                 break
 
-    return {"results": results}
+    return {"results": user_uploads + library_results}
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +367,7 @@ def search(q: str = Query(default=""), authorization: str = Header(None)):
 # ---------------------------------------------------------------------------
 
 @router.get("/track/info")
-async def track_info(path: str = Query(...)):
+def track_info(path: str = Query(...)):
     """取得單曲 metadata"""
     full = _safe_path(resolve_path(path))
     if not os.path.isfile(full):
@@ -296,7 +388,7 @@ async def track_info(path: str = Query(...)):
 
 
 @router.get("/track/stream")
-async def track_stream(request: Request, path: str = Query(...)):
+def track_stream(request: Request, path: str = Query(...)):
     """串流 FLAC 音訊（支援 HTTP Range — 相容平板瀏覽器）"""
     full = _safe_path(resolve_path(path))
     if not os.path.isfile(full):
@@ -490,13 +582,11 @@ def _scan_worker(mode: str = "incremental"):
                 errored_prefixes.add(current_rel_prefix)
                 return
 
-            # 是否在 music_root 第一層（用來套 active_groups 過濾）
-            is_at_root = (current_rel_prefix == root_prefix)
-            try:
-                root_idx = int(root_prefix[1:-1]) if root_prefix.startswith("@") else 0
-            except ValueError:
-                root_idx = 0
-
+            # NOTE: 先前會在 music_root 第一層套 active_groups 過濾來節省 SMB I/O，
+            # 但這造成「未啟用群組的 track 永遠不會進 library_cache」→ admin UI
+            # 看不到未啟用的群組 → 使用者無法勾選/管理。修正後 scan 永遠走訪
+            # 所有子資料夾、建立完整 cache；active_groups 過濾改到 detection 端
+            # （auto_worker._get_unanalyzed_tracks）套用，確保和弦偵測仍只跑啟用群組。
             dirs = []
             for entry in entries:
                 if _scan_cancel:
@@ -509,20 +599,8 @@ def _scan_worker(mode: str = "incremental"):
                     exclude_dirs = {"#recycle", "@eaDir", "@tmp", "#snapshot"}
                     if entry.name in exclude_dirs:
                         continue
-                    # 在 music_root 第一層套 active_groups 過濾：
-                    # 只有勾選的子資料夾會被走訪，其他直接跳過（節省 SMB I/O）
-                    if is_at_root and active_groups:
-                        gid = f"@{root_idx}/{entry.name}"
-                        if gid not in active_groups:
-                            continue
                     dirs.append(entry)
                 elif entry.is_file() and entry.name.lower().endswith(".flac"):
-                    # 在 music_root 第一層的 .flac 檔，若 active_groups 有設定且未涵蓋
-                    # 「未分類」群組，則跳過（這些檔案歸屬 @{idx}/未分類）
-                    if is_at_root and active_groups:
-                        gid_uncategorized = f"@{root_idx}/未分類"
-                        if gid_uncategorized not in active_groups:
-                            continue
                     full = entry.path
                     rel = current_rel_prefix + entry.name
                     seen_paths.add(rel)
@@ -587,9 +665,26 @@ def _scan_worker(mode: str = "incremental"):
                 break
             prefix = f"@{root_idx}/" if root_idx > 0 else ""
             if not os.path.isdir(root):
+                try:
+                    from auto_worker import add_log
+                    add_log("INFO", f"  跳過 [{root_idx+1}/{len(roots)}]（路徑無法存取）：{root}")
+                except Exception:
+                    pass
                 continue
 
+            try:
+                from auto_worker import add_log
+                add_log("INFO", f"  → 開始掃描 [{root_idx+1}/{len(roots)}]：{root}")
+            except Exception:
+                pass
+            before_progress = _scan_state.get("progress", 0)
             _scan_dir(root, prefix, prefix)
+            try:
+                from auto_worker import add_log
+                scanned = _scan_state.get("progress", 0) - before_progress
+                add_log("INFO", f"  ← 完成 [{root_idx+1}/{len(roots)}]：{root}（走訪 {scanned} 首）")
+            except Exception:
+                pass
 
         # 保留：
         # (1) 未啟用群組的既有條目 — 本輪不會走訪，完整保留避免誤刪
@@ -709,11 +804,14 @@ async def library_scan_status():
     }
 
 
-@router.get("/settings")
+from personal_mode import require_personal_mode
+
+
+@router.get("/settings", dependencies=[Depends(require_personal_mode)])
 def get_settings():
     return {"music_roots": get_music_roots()}
 
-@router.post("/settings")
+@router.post("/settings", dependencies=[Depends(require_personal_mode)])
 async def update_settings(request: Request):
     payload = await request.json()
     # 新格式：music_roots 列表

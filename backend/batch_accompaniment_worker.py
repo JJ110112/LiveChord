@@ -20,9 +20,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from ai.accompaniment_generator import generate_accompaniment
+from ai.accompaniment_generator import generate_accompaniment, ACC_ENGINE_VERSION
 
 CHORDS_DIR = Path(__file__).parent.parent / "data" / "chords"
+from chord_cache import chord_file_for, iter_chord_files  # noqa: E402
 MELODIES_DIR = Path(__file__).parent.parent / "data" / "melodies"
 ACCOMP_DIR = Path(__file__).parent.parent / "data" / "accompaniments"
 
@@ -55,7 +56,7 @@ def _get_dominant_section(sections, chords):
 
 def process_track(song_hash: str, levels: list, styles: list,
                   add_pedal: bool = True, add_dynamics: bool = True):
-    chord_file = CHORDS_DIR / f"{song_hash}.json"
+    chord_file = chord_file_for(song_hash)
     melody_file = MELODIES_DIR / f"{song_hash}.json"
 
     if not chord_file.is_file() or not melody_file.is_file():
@@ -73,6 +74,10 @@ def process_track(song_hash: str, levels: list, styles: list,
         key = sheet_data.get("key", "C")
         genre = sheet_data.get("genre", "pop")
         bpm = sheet_data.get("bpm", 120)
+        # Phase 2: dynamic-beat fields. Empty/None when chord JSON predates
+        # beat_snap.analyze_and_snap_dynamic — generators fall back to scalar bpm.
+        tempo_curve = sheet_data.get("tempo_curve") or None
+        beat_version = sheet_data.get("beat_version", 0)
 
         # Phase 11: 段落偵測
         sections = _detect_sections_safe(chords, key, song_hash=song_hash)
@@ -81,7 +86,7 @@ def process_track(song_hash: str, levels: list, styles: list,
         results = []
         for level in levels:
             for style in styles:
-                out_name = f"{song_hash}_{style}_{level}_default.json"
+                out_name = f"{song_hash}_{style}_{level}_default_{ACC_ENGINE_VERSION}.json"
                 out_path = ACCOMP_DIR / out_name
 
                 if out_path.exists():
@@ -93,9 +98,13 @@ def process_track(song_hash: str, levels: list, styles: list,
                     chords=chords, melody=melody,
                     bpm=bpm, style=style, level=level, genre=genre,
                     section_type=dominant_section,
+                    tempo_curve=tempo_curve,
                 )
                 acc["bpm"] = round(bpm, 1)
                 acc["genre"] = genre
+                # Phase 2: stamp source beat version so player can detect
+                # stale acc when the chord JSON's beats[] has been regenerated.
+                acc["source_beat_version"] = beat_version
 
                 # Phase 11: 踏板
                 if add_pedal:
@@ -159,7 +168,7 @@ def main():
     print("==================================================")
 
     # 找出同時有 chord + melody 的 hash
-    chord_hashes = {f.stem for f in CHORDS_DIR.glob("*.json")}
+    chord_hashes = {f.stem for f in iter_chord_files()}
     melody_hashes = {f.stem for f in MELODIES_DIR.glob("*.json")}
     hashes = sorted(chord_hashes & melody_hashes)
 

@@ -3,10 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LiveChord — 和弦編輯</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/css/base.css?v=2">
-  <link rel="stylesheet" href="/css/player.css?v=2">
+  <title data-i18n="editor.title_tag">LiveChord — Chord Editor</title>
+  <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
+  <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+  <script src="/js/i18n.js?v=28"></script>
+  <link rel="stylesheet" href="/css/base.css?v=5">
+  <link rel="stylesheet" href="/css/player.css?v=108">
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -59,9 +61,29 @@
       z-index: 10;
       pointer-events: none;
     }
+    .section-bands {
+      position: absolute;
+      top: 22px; left: 0; right: 0;
+      height: 18px;
+      pointer-events: none;
+    }
+    .section-band {
+      position: absolute;
+      top: 0; bottom: 0;
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #fff;
+      border-radius: 3px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    }
     .timeline .chord-block {
       position: absolute;
-      top: 24px;
+      top: 44px;
       height: 60px;
       background: rgba(233, 69, 96, 0.3);
       border: 1px solid var(--accent);
@@ -90,6 +112,19 @@
       background: transparent;
     }
     .chord-block .resize-handle:hover { background: rgba(255,255,255,.2); }
+    .chord-block-beats {
+      position: absolute;
+      bottom: 4px; left: 4px; right: 22px;
+      height: 6px;
+      display: flex; flex-wrap: wrap;
+      gap: 4px; justify-content: center; align-items: center;
+      pointer-events: none;
+    }
+    .chord-block .beat-dot {
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      background-color: rgba(255,255,255,0.45);
+    }
 
     /* 和弦面板 */
     .chord-palette {
@@ -188,8 +223,8 @@
   <a href="/" style="text-decoration:none"><h1>LiveChord</h1></a>
   <span id="editorTitle" style="color:var(--text-dim);font-size:14px;margin-left:12px"></span>
   <div style="margin-left:auto;display:flex;gap:8px">
-    <button id="btnSave" class="toolbar-btn" style="width:auto;padding:4px 14px;font-size:13px">儲存</button>
-    <a id="btnBack" href="/player" class="toolbar-btn" style="width:auto;padding:4px 14px;font-size:13px;text-decoration:none;display:flex;align-items:center">返回播放</a>
+    <button id="btnSave" class="toolbar-btn" style="width:auto;padding:4px 14px;font-size:13px" data-i18n="editor.btn_save">Save</button>
+    <a id="btnBack" href="/player" class="toolbar-btn" style="width:auto;padding:4px 14px;font-size:13px;text-decoration:none;display:flex;align-items:center" data-i18n="editor.btn_back">Back to player</a>
   </div>
 </header>
 
@@ -205,9 +240,9 @@
       <span id="timeDuration">0:00</span>
     </div>
     <div class="controls-row">
-      <button onclick="document.getElementById('audio').currentTime -= 5" class="btn-play" style="font-size:14px; padding: 4px 8px;" title="倒轉 5 秒">⏪</button>
-      <button id="btnPlay" class="btn-play" title="播放/暫停">&#x25B6;</button>
-      <button onclick="document.getElementById('audio').currentTime += 5" class="btn-play" style="font-size:14px; padding: 4px 8px;" title="快進 5 秒">⏩</button>
+      <button onclick="document.getElementById('audio').currentTime -= 5" class="btn-play" style="font-size:14px; padding: 4px 8px;" data-i18n-attr="title=editor.tip.rewind_5s" title="Rewind 5 s">⏪</button>
+      <button id="btnPlay" class="btn-play" data-i18n-attr="title=editor.tip.play_pause" title="Play / pause">&#x25B6;</button>
+      <button onclick="document.getElementById('audio').currentTime += 5" class="btn-play" style="font-size:14px; padding: 4px 8px;" data-i18n-attr="title=editor.tip.fwd_5s" title="Forward 5 s">⏩</button>
       <div class="volume-control" style="margin-left: 12px;">
         <span>&#x1F509;</span>
         <input id="volumeSlider" type="range" min="0" max="1" step="0.05" value="1">
@@ -220,46 +255,50 @@
     <label>Key:</label>
     <input id="keyInput" type="text" value="" style="width:50px" placeholder="C">
     <div class="sep"></div>
-    <label>選中和弦:</label>
+    <label data-i18n="editor.label.selected_chord">Selected chord:</label>
     <input id="chordNameInput" type="text" style="width:80px" placeholder="Am">
-    <button id="btnUpdate" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px" title="更新選中和弦的名稱">更新</button>
-    <button id="btnDelete" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#f66">刪除 <kbd>Del</kbd></button>
-    <button id="btnReplaceAll" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#ff9800" title="全曲取代：將某和弦名稱全部換成另一個 (Ctrl+H)">🔄 全取代 <kbd>Ctrl+H</kbd></button>
+    <button id="btnUpdate" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px" data-i18n-attr="title=editor.tip.update_name" title="Update the selected chord's name" data-i18n="editor.btn.update">Update</button>
+    <button id="btnDelete" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#f66" data-i18n-html="editor.btn.delete_html">Delete <kbd>Del</kbd></button>
+    <button id="btnReplaceAll" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#ff9800" data-i18n-attr="title=editor.tip.replace_all" title="Replace one chord with another across the whole song (Ctrl+H)" data-i18n-html="editor.btn.replace_all_html">🔄 Replace all <kbd>Ctrl+H</kbd></button>
     <div class="sep"></div>
-    <label>縮放:</label>
+    <label data-i18n="editor.label.zoom">Zoom:</label>
     <input id="zoomSlider" type="range" min="5" max="150" value="15" style="width:100px">
     <div class="sep"></div>
-    <button id="btnNudgeLeft" class="toolbar-btn" style="width:auto;padding:2px 6px;font-size:12px" title="向左偏移 0.25s">◀ 移</button>
-    <button id="btnNudgeRight" class="toolbar-btn" style="width:auto;padding:2px 6px;font-size:12px" title="向右偏移 0.25s">移 ▶</button>
+    <button id="btnNudgeLeft" class="toolbar-btn" style="width:auto;padding:2px 6px;font-size:12px" data-i18n-attr="title=editor.tip.nudge_left" title="Nudge left 0.25 s" data-i18n="editor.btn.nudge_left">◀ Nudge</button>
+    <button id="btnNudgeRight" class="toolbar-btn" style="width:auto;padding:2px 6px;font-size:12px" data-i18n-attr="title=editor.tip.nudge_right" title="Nudge right 0.25 s" data-i18n="editor.btn.nudge_right">Nudge ▶</button>
     <div class="sep"></div>
-    <button id="btnSplit" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#4caf50" title="分割選中的和弦為兩段 (S)">✂ 分割 <kbd>S</kbd></button>
-    <button id="btnQuantize" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#2196F3" title="將所選連續和弦的長度修整至最佳拍數 (消除零碎拍子)">🌟 正規化</button>
+    <button id="btnSplit" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#4caf50" data-i18n-attr="title=editor.tip.split" title="Split the selected chord in two (S)" data-i18n-html="editor.btn.split_html">✂ Split <kbd>S</kbd></button>
+    <button id="btnQuantize" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#2196F3" data-i18n-attr="title=editor.tip.quantize" title="Quantize selected chord lengths to clean beat counts" data-i18n="editor.btn.quantize">🌟 Quantize</button>
+    <button id="btnQuantizeAll" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#2196F3" data-i18n-attr="title=editor.tip.quantize_all" title="Quantize every chord to the nearest half-beat (anchored to the first chord)" data-i18n="editor.btn.quantize_all">🔧 Quantize all</button>
     <div class="sep"></div>
-    <label style="display:flex; align-items:center; cursor:pointer;" id="lblSnap"><input type="checkbox" id="chkSnap" checked style="margin-right:4px">貼齊 (BPM)</label>
+    <label style="display:flex; align-items:center; cursor:pointer;" id="lblSnap"><input type="checkbox" id="chkSnap" checked style="margin-right:4px" data-i18n="editor.label.snap_bpm">Snap (BPM)</label>
     <div class="sep"></div>
-    <button id="btnTapTempo" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#ff5722" title="打拍子修正 BPM (T)">🥁 打拍 <kbd>T</kbd></button>
+    <span style="font-size:12px;color:var(--text-dim)">BPM:</span>
+    <span id="bpmDisplay" style="font-size:13px;font-weight:600;color:var(--accent);min-width:34px" data-i18n-attr="title=editor.tip.bpm_current" title="Current BPM (song data × player multiplier)">120</span>
+    <button id="btnTapTempo" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#ff5722" data-i18n-attr="title=editor.tip.tap_tempo" title="Tap tempo to fix BPM (T)" data-i18n-html="editor.btn.tap_tempo_html">🥁 Tap <kbd>T</kbd></button>
     <span id="tapBpmDisplay" style="font-size:12px;color:var(--text-dim);min-width:50px"></span>
-    <button id="btnApplyTapBpm" class="toolbar-btn" style="display:none;width:auto;padding:2px 10px;font-size:12px;color:#4caf50">套用 BPM</button>
-    <button id="btnResetTap" class="toolbar-btn" style="display:none;width:auto;padding:2px 6px;font-size:11px;color:#999">重置</button>
+    <button id="btnApplyTapBpm" class="toolbar-btn" style="display:none;width:auto;padding:2px 10px;font-size:12px;color:#4caf50" data-i18n="editor.btn.apply_bpm">Apply BPM</button>
+    <button id="btnResetTap" class="toolbar-btn" style="display:none;width:auto;padding:2px 6px;font-size:11px;color:#999" data-i18n="editor.btn.reset">Reset</button>
     <div class="sep"></div>
-    <button id="btnRecordMode" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#e91e63" title="即時輸入模式：播放時打字或 MIDI 輸入和弦 (R)">🎤 即時輸入 <kbd>R</kbd></button>
+    <button id="btnRecordMode" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px;color:#e91e63" data-i18n-attr="title=editor.tip.live_input" title="Live input mode: type or play MIDI chords while playback runs (R)" data-i18n-html="editor.btn.live_input_html">🎤 Live input <kbd>R</kbd></button>
     <span id="recordModeIndicator" style="display:none;font-size:12px;color:#e91e63;font-weight:bold;">● REC</span>
-    <button id="btnMIDI" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px" title="連接 MIDI 控制器">🎹 MIDI</button>
+    <button id="btnMIDI" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px" data-i18n-attr="title=editor.tip.midi_connect" title="Connect a MIDI controller">🎹 MIDI</button>
     <div class="sep"></div>
-    <button id="btnImport" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px">匯入 ChordPro</button>
+    <button id="btnImport" class="toolbar-btn" style="width:auto;padding:2px 10px;font-size:12px" data-i18n="editor.btn.import_chordpro">Import ChordPro</button>
   </div>
 
   <!-- 時間軸 -->
   <div class="timeline-container">
     <div id="timeline" class="timeline">
       <div id="ruler" class="ruler"></div>
+      <div id="sectionBands" class="section-bands"></div>
       <div id="playhead" class="playhead" style="left:0"></div>
     </div>
   </div>
 
   <!-- 和弦面板 -->
   <div>
-    <div style="font-size:13px;color:var(--text-dim);margin-bottom:6px">點擊時間軸空白處新增和弦，或從面板選取後點擊：</div>
+    <div style="font-size:13px;color:var(--text-dim);margin-bottom:6px" data-i18n="editor.hint.add_chord">Click an empty timeline area to add a chord, or pick one from the palette and click:</div>
     <div id="chordPalette" class="chord-palette"></div>
   </div>
 
@@ -267,41 +306,46 @@
 
 <div id="helpBackdrop" class="help-backdrop"></div>
 <div id="helpOverlay" class="help-overlay">
-  <h3>快捷鍵一覽 <span style="font-size:12px;color:var(--text-dim);font-weight:normal">按 ? 或 Esc 關閉</span></h3>
+  <h3 data-i18n-html="editor.help.shortcuts_title">Keyboard shortcuts <span style="font-size:12px;color:var(--text-dim);font-weight:normal" data-i18n="editor.help.close_hint">Press ? or Esc to close</span></h3>
   <table>
-    <tr><td>Space</td><td>播放 / 暫停</td></tr>
-    <tr><td>← →</td><td>快退 / 快進 5 秒</td></tr>
-    <tr><td>Del</td><td>刪除選中和弦</td></tr>
-    <tr><td>Ctrl+C / V</td><td>複製 / 貼上和弦</td></tr>
-    <tr><td>Ctrl+H</td><td>全曲取代和弦</td></tr>
-    <tr><td>S</td><td>分割選中和弦</td></tr>
-    <tr><td>T</td><td>打拍子 (修正 BPM)</td></tr>
-    <tr><td>R</td><td>即時輸入模式</td></tr>
-    <tr><td>Esc</td><td>取消選取 / 關閉</td></tr>
-    <tr><td>Alt+拖曳</td><td>複製和弦</td></tr>
-    <tr><td>Shift+點擊</td><td>範圍選取</td></tr>
-    <tr><td>?</td><td>顯示此說明</td></tr>
+    <tr><td>Space</td><td data-i18n="editor.help.row.space">Play / pause</td></tr>
+    <tr><td>← →</td><td data-i18n="editor.help.row.arrows">Rewind / forward 5 s</td></tr>
+    <tr><td>Del</td><td data-i18n="editor.help.row.del">Delete selected chord</td></tr>
+    <tr><td>Ctrl+C / V</td><td data-i18n="editor.help.row.copypaste">Copy / paste chord</td></tr>
+    <tr><td>Ctrl+H</td><td data-i18n="editor.help.row.replace_all">Replace chord across whole song</td></tr>
+    <tr><td>S</td><td data-i18n="editor.help.row.split">Split selected chord</td></tr>
+    <tr><td>T</td><td data-i18n="editor.help.row.tap">Tap tempo (fix BPM)</td></tr>
+    <tr><td>R</td><td data-i18n="editor.help.row.live">Live input mode</td></tr>
+    <tr><td>Esc</td><td data-i18n="editor.help.row.esc">Deselect / close</td></tr>
+    <tr><td data-i18n="editor.help.row.alt_drag_key">Alt+drag</td><td data-i18n="editor.help.row.alt_drag">Duplicate chord</td></tr>
+    <tr><td data-i18n="editor.help.row.shift_click_key">Shift+click</td><td data-i18n="editor.help.row.shift_click">Range select</td></tr>
+    <tr><td>?</td><td data-i18n="editor.help.row.help">Show this help</td></tr>
   </table>
 </div>
 <div id="liveChordInput" style="display:none;position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(22,27,34,0.95);border:2px solid #e91e63;border-radius:12px;padding:12px 20px;z-index:200;text-align:center;">
-  <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">輸入和弦後按 Enter 放置 (Esc 結束)</div>
+  <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px" data-i18n="editor.hint.live_chord">Type a chord then press Enter to place it (Esc to exit)</div>
   <input id="liveChordText" type="text" placeholder="C, Am, F7..." style="width:200px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:18px;text-align:center;font-weight:bold;">
 </div>
 <div id="splitPopup" style="display:none;position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px;z-index:200;min-width:200px;box-shadow:0 8px 24px rgba(0,0,0,.4);">
-  <div style="font-size:13px;margin-bottom:8px;color:var(--text-dim)">分割比例 (拍數):</div>
+  <div style="font-size:13px;margin-bottom:8px;color:var(--text-dim)" data-i18n="editor.split.ratio_label">Split ratio (beats):</div>
   <div id="splitOptions" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
   <div style="margin-top:10px;display:flex;gap:6px;align-items:center;border-top:1px solid var(--border);padding-top:8px;">
-    <label style="font-size:12px;color:var(--text-dim)">自訂:</label>
+    <label style="font-size:12px;color:var(--text-dim)" data-i18n="editor.split.custom_label">Custom:</label>
     <input id="splitCustomLeft" type="number" min="0.5" step="0.5" style="width:50px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px;">
     <span style="color:var(--text-dim);font-size:12px">/</span>
     <input id="splitCustomRight" type="number" min="0.5" step="0.5" style="width:50px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px;">
-    <button id="splitCustomBtn" class="toolbar-btn" style="width:auto;padding:2px 8px;font-size:11px">套用</button>
+    <button id="splitCustomBtn" class="toolbar-btn" style="width:auto;padding:2px 8px;font-size:11px" data-i18n="common.apply">Apply</button>
   </div>
+</div>
+<div id="beatAdjustPopup" style="display:none;position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;z-index:200;min-width:220px;box-shadow:0 8px 24px rgba(0,0,0,.4);">
+  <div style="font-size:12px;margin-bottom:6px;color:var(--text-dim)" data-i18n-html="editor.beat_adjust.label">Adjust beats <span id="beatAdjustCurrent" style="color:var(--accent);font-weight:600"></span>：</div>
+  <div id="beatAdjustOptions" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
+  <div style="margin-top:8px;font-size:11px;color:var(--text-dim);line-height:1.4" data-i18n="editor.beat_adjust.hint">⓵ Click a number to change this chord's beat count; later chord times shift automatically.</div>
 </div>
 <div id="toast" class="toast"></div>
 <audio id="audio" preload="auto"></audio>
 
-<script src="/js/utils.js?v=2"></script>
+<script src="/js/utils.js?v=9"></script>
 <script>
   const originalFetch = window.fetch;
   window.fetch = function() {
@@ -317,6 +361,6 @@
   };
 </script>
 <script src="/js/api.js"></script>
-<script src="/js/editor.js"></script>
+<script src="/js/editor.js?v=6"></script>
 </body>
 </html>

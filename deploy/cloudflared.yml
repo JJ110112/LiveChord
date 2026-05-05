@@ -1,0 +1,18 @@
+tunnel: <REPLACE_WITH_TUNNEL_UUID>
+credentials-file: /etc/cloudflared/<REPLACE_WITH_TUNNEL_UUID>.json
+
+ingress:
+  - hostname: livechord.org
+    service: http://127.0.0.1:8800
+    originRequest:
+      connectTimeout: 30s
+      noTLSVerify: false
+      httpHostHeader: livechord.org
+
+  - hostname: www.livechord.org
+    service: http://127.0.0.1:8800
+    originRequest:
+      connectTimeout: 30s
+      httpHostHeader: livechord.org
+
+  - service: http_status:404

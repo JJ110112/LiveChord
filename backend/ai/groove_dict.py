@@ -73,7 +73,11 @@ class GrooveDictionary:
         self.total_songs = stats["total_songs"]
 
         # 也需要原始時值資料
-        for f in sorted(chords_path.glob("*.json")):
+        # Sharded layout: <chords_path>/<bucket>/<hash>.json. Recurse 1 level.
+        json_files = sorted(chords_path.glob("*/*.json"))
+        if not json_files:
+            json_files = sorted(chords_path.glob("*.json"))
+        for f in json_files:
             try:
                 data = json.loads(f.read_text(encoding="utf-8"))
                 chords = data.get("chords", [])

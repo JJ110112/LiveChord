@@ -1,6 +1,6 @@
 # LiveChord 品管文件
 
-> 版本: 3.8 | 日期: 2026-04-08
+> 版本: 3.9 | 日期: 2026-04-18
 > 和弦引擎: BTC Transformer (ISMIR 2019)
 > 對應規格書: SPEC.md v2.0
 
@@ -15,6 +15,61 @@
 | 和弦準確度 | 偵測 vs 參考答案 | run_test.py (Lv1-Lv5) | 每次演算法修改 |
 | 效能測試 | 回應時間、記憶體、GPU | DevTools + 伺服器 log | 重大變更 |
 | 迴歸測試 | 全量測試 | pytest (66+ cases) | 上線前 |
+
+### 1.1 YouTube embed 測試限制
+
+Playwright headless (Chromium) 無法播放 YouTube IFrame 嵌入：
+
+- YT IFrame API 會因 cookie/origin/autoplay policy 被 block，`onReady` 不一定會 fire。
+- 即使 iframe 載入，`player.getCurrentTime()` 恆為 0；duration sync、chord 高亮、desync banner 均無法驗證。
+
+**可自動化測試範圍**：UI 控件、toolbar、popup、seek bar、非 YT 功能、REST endpoint。
+**必須人工驗證**：YT 同步準確度、duration desync banner、YT→library auto-learn、A-B 循環在 YT 模式下的精度。
+
+**人工 debug 流程**：
+1. 桌面 Chrome/Edge 開 `/player?hash=<h>`（不要用 headless）
+2. DevTools Console 執行 `window.__lcYtDebug()` 取快照（`hasPlayer / state / currentTime / duration / fillWidth / timerAlive / lastError`）
+3. 若 desync banner 出現，檢 Network tab 確認 `/api/process/yt-library-learn` 未被誤觸發（嚴格 5% gate 應擋掉）
+4. `window.__lcYtError` 保存最近一次 sync-tick 例外，供抓取異常
+
+### 1.2 Playwright mobile 媒體查詢限制
+
+Playwright（Chromium headless / MCP）預設**不 emulate `pointer: coarse`**，所以 CSS 裡這條 media query 不會 fire：
+
+```css
+@media (pointer: coarse) and (max-width: 640px) and (orientation: portrait) { ... }
+```
+
+這塊目前放了**手機直屏專用的關鍵佈局**：`.bottom-toolbar { min-height: 148px }`（3-row 工具列）、`.progress-bar-mid / .tb-popup` 抬高、`.chord-display-area { bottom: calc(148px + env(safe-area-inset-bottom, 0px)) }`（避免瀑布流被工具列遮住，2026-04-20 修復）。只 resize viewport 到 375×667 測，Playwright 會得到「桌面樣式 + 直屏尺寸」的混合狀態，量出的 `.chord-display-area` 位置、toolbar 高度都**與真實手機不符**。
+
+**對策**：
+
+1. **首選**：測試前先注入強制樣式繞過 `pointer: coarse` gate：
+   ```js
+   // browser_evaluate
+   const s = document.createElement("style");
+   s.id = "__qa_force_portrait";
+   s.textContent = `
+     .bottom-toolbar { min-height: 148px !important; }
+     .chord-display-area { bottom: calc(148px + env(safe-area-inset-bottom, 0px)) !important; }
+     .progress-bar-mid { bottom: calc(148px + max(env(safe-area-inset-bottom, 0px), 10px)) !important; }
+     .tb-popup { bottom: calc(148px + max(env(safe-area-inset-bottom, 0px), 10px) + 8px) !important; }
+   `;
+   document.head.appendChild(s);
+   ```
+   然後 `getBoundingClientRect()` 量測數值就會符合實機。
+
+2. **檢測法**：測試開頭先跑 `matchMedia("(pointer: coarse)").matches` — 若為 `false` 表示 media query 失效，要嘛注入強制樣式，要嘛改用 device emulation。
+
+3. **嚴謹驗證（非 MCP 場景）**：用 `playwright.chromium.launch()` + `context = browser.new_context(**playwright.devices['iPhone 14'])` 的 device profile，才會自動帶 `pointer: coarse, hover: none, touch: true`。目前 Playwright MCP 沒有直接暴露這個 context 參數，用強制樣式替代。
+
+**已知被此限制影響的 QA 項目**：
+- 直屏工具列高度（應 148px / Playwright 原生量到 ~130px）
+- 瀑布流與工具列的重疊（應 0 / Playwright 原生量到 ~82px）
+- `.tb-popup` 彈出位置
+- 任何依賴 `@media (pointer: coarse)` 的 touch-target hit-area 調整
+
+人工測手機時這些 media query **會正確 fire**，所以 Playwright QA 通過後仍要**真機 smoke test**（尤其動到 toolbar / chord-display-area / progress bar 位置時）。
 
 ---
 

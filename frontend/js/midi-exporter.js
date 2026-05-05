@@ -48,11 +48,17 @@ window.MidiExporter = (function() {
     return header.concat(trackData);
   }
 
-  function exportMidi(accData, title, style, level) {
+  function exportMidi(accData, title, style, level, opts) {
     if (!accData) return;
+    opts = opts || {};
 
-    const leftTrack = createTrack(accData.left_hand || [], 0);  // Ch 1
-    const rightTrack = createTrack(accData.right_hand || [], 1); // Ch 2
+    // Caller may supply pre-filtered left/right event arrays (e.g. to match
+    // the user's current practice-mode selection). Fall back to accData.
+    const leftEvents = (opts.leftEvents != null) ? opts.leftEvents : (accData.left_hand || []);
+    const rightEvents = (opts.rightEvents != null) ? opts.rightEvents : (accData.right_hand || []);
+
+    const leftTrack = createTrack(leftEvents, 0);  // Ch 1
+    const rightTrack = createTrack(rightEvents, 1); // Ch 2
 
     // Format 1, 2 tracks, 480 ticks per quarter
     const mthd = [
@@ -66,11 +72,12 @@ window.MidiExporter = (function() {
     const midiFile = mthd.concat(leftTrack, rightTrack);
     const u8 = new Uint8Array(midiFile);
 
-    // 檔名: 曲名_伴奏型態_等級
+    // 檔名: 曲名_伴奏型態_等級[_練習模式]
     const safeName = (title || 'AI_Accompaniment').replace(/[<>:"/\\|?*]+/g, '_');
     const sStyle = style || 'Accomp';
     const sLevel = level || 'L1';
-    const fileName = `${safeName}_${sStyle}_${sLevel}.mid`;
+    const modeSfx = opts.modeSuffix ? `_${opts.modeSuffix}` : "";
+    const fileName = `${safeName}_${sStyle}_${sLevel}${modeSfx}.mid`;
 
     // 使用 data URI 避免 blob: insecure connection 警告
     let binary = '';

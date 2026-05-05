@@ -8,9 +8,10 @@
  *   InstrumentRegistry.register("guitar", guitar);
  */
 
-const FINGER_NAMES = ["", "食指", "中指", "無名指", "小指"];
 const NOTE_SEMIS = { C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11 };
 const SEMI_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+function _t(k, v) { return (window.LiveChordI18n && window.LiveChordI18n.t) ? window.LiveChordI18n.t(k, v) : k; }
 
 class StringInstrument {
   /**
@@ -55,6 +56,82 @@ class StringInstrument {
       this.renderFretboard(chords[0].chord, 0);
       this._drawRhWaterfall(this._b.getAudio().currentTime || 0);
     }
+    this._installResizeObserver();
+  }
+
+  // The two canvases live in side-by-side flex panels (.gt-left-panel /
+  // .gt-right-panel) inside .chord-display-area. The user-draggable
+  // divider sits OUTSIDE this layout — between .chord-ribbon-panel and
+  // .chord-display-area — and resizing it causes both inner panels to
+  // shrink/expand together. Without an observer the LH fretboard only
+  // redraws on chord change, and the RH waterfall only on update() ticks
+  // (which don't fire while audio is paused). Both canvases keep their
+  // pre-resize pixel buffer and get visually stretched until something
+  // else triggers a redraw — typically a full page reload.
+  //
+  // Observing the canvases directly turned out to be unreliable in some
+  // browsers when the canvas's CSS width is a percentage of its parent;
+  // observing the parent panel itself catches every flex-driven resize.
+  // Redraw is deferred to rAF so callback runs after layout settles, with
+  // a coalescing flag so a continuous drag doesn't queue dozens of redraws.
+  _installResizeObserver() {
+    if (this._resizeObserver) return;
+    if (typeof ResizeObserver === "undefined") return;
+    const $ = this._b.$;
+    const cfg = this._config;
+    const fbCanvas = $(cfg.selectors.fretboardCanvas);
+    const rhCanvas = $(cfg.selectors.waterfallCanvas);
+    const lhPanel = fbCanvas ? fbCanvas.closest(".gt-left-panel") : null;
+    const rhPanel = rhCanvas ? rhCanvas.closest(".gt-right-panel") : null;
+    if (!lhPanel && !rhPanel && !fbCanvas && !rhCanvas) return;
+
+    // Trailing-edge debounce: every observation cancels the previous timer
+    // and schedules a new one. After 80 ms of no further resize events we
+    // redraw at the final size. Leading-edge with rAF (the previous attempt)
+    // captured the size at transition START, not END — when the user toggled
+    // ribbon collapse the panel went display:none and the layout settled
+    // over multiple frames; the first observation saw stale dimensions.
+    this._resizeTimer = null;
+    this._resizeObserver = new ResizeObserver(() => {
+      if (this._resizeTimer) clearTimeout(this._resizeTimer);
+      this._resizeTimer = setTimeout(() => {
+        this._resizeTimer = null;
+        if (this._b.getActiveTab() !== this._config.id) return;
+
+        const chords = this._b.getDisplayChords();
+        if (chords && chords.length > 0 && this._activeIdx >= 0 && this._activeIdx < chords.length) {
+          this.renderFretboard(chords[this._activeIdx].chord, this._voicingIdx);
+        }
+        const audio = this._b.getAudio();
+        this._drawRhWaterfall(audio ? (audio.currentTime || 0) : 0);
+      }, 80);
+    });
+    // Observe both the panels (catches outer flex resize) and the canvases
+    // themselves (catches direct CSS changes / ribbon-mode toggles).
+    if (lhPanel) this._resizeObserver.observe(lhPanel);
+    if (rhPanel) this._resizeObserver.observe(rhPanel);
+    if (fbCanvas) this._resizeObserver.observe(fbCanvas);
+    if (rhCanvas) this._resizeObserver.observe(rhCanvas);
+
+    // Belt-and-suspenders: also listen for an explicit layout-change event
+    // dispatched by player.js _applyRibbonLayout. ResizeObserver alone isn't
+    // 100% reliable when the parent flips display:none ↔ "" in the same
+    // frame as a flex-driven resize — Chrome occasionally batches the size
+    // change in a way that gives us only the start frame.
+    this._onPanelResize = () => {
+      if (this._resizeTimer) clearTimeout(this._resizeTimer);
+      this._resizeTimer = setTimeout(() => {
+        this._resizeTimer = null;
+        if (this._b.getActiveTab() !== this._config.id) return;
+        const chords = this._b.getDisplayChords();
+        if (chords && chords.length > 0 && this._activeIdx >= 0 && this._activeIdx < chords.length) {
+          this.renderFretboard(chords[this._activeIdx].chord, this._voicingIdx);
+        }
+        const audio = this._b.getAudio();
+        this._drawRhWaterfall(audio ? (audio.currentTime || 0) : 0);
+      }, 80);
+    };
+    document.addEventListener("livechord:panelresize", this._onPanelResize);
   }
 
   async prefetchData() {
@@ -124,7 +201,7 @@ class StringInstrument {
           const btn = document.createElement("button");
           btn.className = "gt-voicing-btn" + (idx === voicingIdx ? " active" : "");
           btn.textContent = String.fromCodePoint(0x2460 + idx);
-          btn.title = v.label || `把位 ${idx + 1}`;
+          btn.title = v.label || _t("instrument.position_label", { n: idx + 1 });
           btn.addEventListener("click", () => {
             self._voicingIdx = idx;
             self.renderFretboard(chordName, idx);
@@ -226,11 +303,14 @@ class StringInstrument {
           const curMin = Math.min(...curDiag.strings.filter(f => f > 0), 99);
           const nxtMin = Math.min(...nextDiag.strings.filter(f => f > 0), 99);
           const dist = Math.abs(nxtMin - curMin);
-          if (dist >= 2) jumpLabel = nxtMin > curMin ? ` ↓${dist}格` : ` ↑${dist}格`;
+          if (dist >= 2) jumpLabel = " " + (nxtMin > curMin
+            ? _t("instrument.fret_jump_down", { n: dist })
+            : _t("instrument.fret_jump_up", { n: dist }));
         }
-        lhInfo.textContent = `左手 ${chordName} → ${nextName}${jumpLabel}`;
+        lhInfo.textContent = _t("instrument.lh.next",
+          { chord: chordName, next: nextName, jump: jumpLabel });
       } else {
-        lhInfo.textContent = `左手 ${chordName}`;
+        lhInfo.textContent = _t("instrument.lh.current", { chord: chordName });
       }
     }
 
@@ -238,10 +318,15 @@ class StringInstrument {
       const strumStyle = this._b.getStrumStyle();
       if (strumStyle === "arpeggio") {
         const pat = ARPEGGIO_PATTERNS[this._b.getArpPattern()];
-        rhInfo.textContent = pat ? `右手 ${pat.name}` : "右手 琶音";
+        rhInfo.textContent = pat
+          ? _t("instrument.rh.with_pattern", { name: pat.name })
+          : _t("instrument.rh.arpeggio");
       } else {
-        const styleLabels = { block: "右手 下刷", pattern: "右手 D DU UDU" };
-        rhInfo.textContent = styleLabels[strumStyle] || "右手";
+        const styleLabels = {
+          block:   _t("instrument.rh.strum_block"),
+          pattern: _t("instrument.rh.strum_pattern"),
+        };
+        rhInfo.textContent = styleLabels[strumStyle] || _t("instrument.rh.fallback");
       }
     }
   }
@@ -345,10 +430,20 @@ class StringInstrument {
     const stringSpacing = (w - padL - padR) / Math.max(numStrings - 1, 1);
     function strX(s) { return padL + s * stringSpacing; }
 
-    // String lines (full height)
+    // String lines (full height) — theme-aware via document data-theme so
+    // light themes render visible black-on-cream instead of invisible white.
+    const _rhIsLight = (function() {
+      try {
+        const t = document.documentElement.getAttribute("data-theme");
+        return t === "light" || t === "sakura" || t === "sunny" || t === "sky";
+      } catch (_) { return false; }
+    })();
+    const _rhInk = (a) => _rhIsLight
+      ? `rgba(0,0,0,${Math.min(1, a * 1.4).toFixed(3)})`
+      : `rgba(255,255,255,${a.toFixed(3)})`;
     for (let s = 0; s < numStrings; s++) {
       const x = strX(s);
-      ctx.strokeStyle = "rgba(255,255,255,0.2)";
+      ctx.strokeStyle = _rhInk(0.40);
       ctx.lineWidth = s === 0 ? 1.5 : 1;
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
     }
@@ -366,7 +461,7 @@ class StringInstrument {
           const y = h - (bt - currentTime) * pxPerSec;
           if (y < 0 || y > h) continue;
           const isBar = (b === 0);
-          ctx.strokeStyle = isBar ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.04)";
+          ctx.strokeStyle = isBar ? _rhInk(0.30) : _rhInk(0.10);
           ctx.lineWidth = isBar ? 1 : 0.5;
           ctx.beginPath(); ctx.moveTo(padL - 8, y); ctx.lineTo(w - padR + 8, y); ctx.stroke();
         }
@@ -377,6 +472,22 @@ class StringInstrument {
     const STRUM_CLR = "rgb(0,151,167)";
     const PICK_CLR  = "rgb(0,172,193)";
     const STRUM_UP_CLR = "rgb(38,166,154)";
+    // RGB tuples mirror the CSS strings above so spark particles
+    // can take the same color as the event that fired them.
+    const STRUM_RGB = [0, 151, 167];
+    const PICK_RGB  = [0, 172, 193];
+    const STRUM_UP_RGB = [38, 166, 154];
+    function _hex2rgb(hex) {
+      const h = (hex || "").replace("#", "");
+      if (h.length !== 6) return PICK_RGB;
+      return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+    }
+    // Re-arm set for particle spawn idempotency (same time+event = single burst).
+    // Bound size so a long song can't grow it unbounded.
+    if (!this._sparkedKeys) this._sparkedKeys = new Set();
+    if (this._sparkedKeys.size > 2000) this._sparkedKeys.clear();
+    const spawn = this._b.spawnWaterfallParticles;
+    const sparkVelP = 0.6; // strings have no velocity data — mid-range burst
 
     for (const ev of rhEvents) {
       const yBot = h - (ev.time - currentTime) * pxPerSec;
@@ -407,6 +518,17 @@ class StringInstrument {
         ctx.textBaseline = "middle";
         ctx.fillText(ev.dir === "down" ? "▶" : "◀", (minX + maxX) / 2, arrowY);
         ctx.restore();
+
+        // Spawn a spark burst at each string when the strum crosses the bottom.
+        if (cB >= h - 4 && cT <= h && spawn) {
+          const key = `s|${ev.time.toFixed(3)}|${ev.dir}`;
+          if (!this._sparkedKeys.has(key)) {
+            this._sparkedKeys.add(key);
+            const rgb = ev.dir === "up" ? STRUM_UP_RGB : STRUM_RGB;
+            const span = (maxX - minX) / Math.max(xs.length - 1, 1);
+            for (const sx of xs) spawn(sx, h - 2, Math.max(span, 12), rgb[0], rgb[1], rgb[2], sparkVelP);
+          }
+        }
       } else if (ev.type === "pick") {
         const x = strX(ev.string);
         const cy = (cT + cB) / 2;
@@ -443,6 +565,15 @@ class StringInstrument {
           ctx.arc(x, h, r * 0.35, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
+
+          if (spawn) {
+            const key = `p|${ev.time.toFixed(3)}|${ev.string}`;
+            if (!this._sparkedKeys.has(key)) {
+              this._sparkedKeys.add(key);
+              const rgb = ev.finger ? _hex2rgb(FINGER_COLORS[ev.finger]) : PICK_RGB;
+              spawn(x, h - 2, r * 2, rgb[0], rgb[1], rgb[2], sparkVelP);
+            }
+          }
         }
       } else if (ev.type === "pluck") {
         const cy = (cT + cB) / 2;
@@ -480,10 +611,22 @@ class StringInstrument {
             ctx.arc(x, h, r * 0.35, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
+
+            if (spawn) {
+              const key = `pl|${ev.time.toFixed(3)}|${ev.strings[si]}`;
+              if (!this._sparkedKeys.has(key)) {
+                this._sparkedKeys.add(key);
+                const rgb = fg ? _hex2rgb(FINGER_COLORS[fg]) : PICK_RGB;
+                spawn(x, h - 2, r * 2, rgb[0], rgb[1], rgb[2], sparkVelP);
+              }
+            }
           }
         }
       }
     }
+
+    // Firework spark particles (shared via bridge — same effect as piano)
+    if (this._b.drawWaterfallParticles) this._b.drawWaterfallParticles(ctx);
 
     // Now line at bottom
     ctx.strokeStyle = "rgba(0,188,212,0.5)";

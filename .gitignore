@@ -3,6 +3,19 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 
+# Python virtual envs (AI-specific venv for basic-pitch + onnxruntime-openvino)
+venv_ai/
+venv/
+.venv/
+
+# MIDI test library (user-provided, Phase 4 POC; possibly licensed content)
+E-POP/
+
+# Soundfonts for pretty_midi.fluidsynth (large SF2/SF3 binaries, user-downloaded)
+soundfonts/
+*.sf2
+*.sf3
+
 # 運行時資料（不進版控）
 songs/
 data/library_cache.json
@@ -19,9 +32,12 @@ data/server.log.*
 data/chord_queue.json
 data/.queue_cursor.json
 data/melodies/
+data/melodies_v2/
+data/shadow_v2.log
 data/models/
 data/accompaniments/
 data/auth.db
+data/oauth_session_key
 data/jam_tracks.json
 data/ratings.json
 data/style_map.json
@@ -29,11 +45,33 @@ data/.local_music_root
 data/config.json
 data/users.db
 data/users/
+# Split settings (Phase: dual-instance isolation) + snapshot history
+data/settings_personal.json
+data/settings_beta.json
+data/settings_shared.json
+data/backups/
+# Generated assets / runtime logs that don't belong in source control
+data/kofi_cover.png
+data/logs/
+data/backup_history.json
+# Local helper scripts (machine-specific paths, not part of repo)
+_sync_acc_to_v.bat
+_sync_acc_v3_to_v.bat
+run_accompaniment_local.bat
+run_chroma_batch.ps1
+
+# Project-local scratch + test zones (survive data/tmp reaper; not for version control)
+/tmp/
+/scripts_test/
 data/human_sections/
 data/human_feedback/
 data/feedback.db
 data/analytics.db
 data/audit.db
+data/process_audit.db
+# SQLite WAL-mode sidecar files (auto-generated at runtime)
+data/*.db-shm
+data/*.db-wal
 data/tmp/
 data/covers/
 
@@ -50,6 +88,7 @@ start-hidden.vbs
 .vscode/
 .idea/
 .claude/
+scratch/
 
 # Doc 參考用原始專案（太大不進版控）
 doc/SheetMusicChord/
@@ -89,6 +128,7 @@ agent/.env
 agent/.langgraph_api/
 recent_diff.md
 test_finger.py
+reports/train_v1.log
 
 # MIDI 測試/下載檔
 midi/
@@ -104,3 +144,21 @@ transcribed_midi/
 ghost-keys-qa-*.png
 qa-*.png
 editor-*.png
+mobile-*.png
+page-*.png
+screenshot-*.png
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+
+# OAuth / API secrets — never commit. .env.example is the safe template.
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Beat refiner training corpus (reproducible from scripts/build_training_corpus.py — too large for git)
+backend/ai/splits/
+

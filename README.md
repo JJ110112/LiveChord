@@ -1,155 +1,172 @@
 # LiveChord
 
-即時音樂和弦顯示網站 — 從 NAS 讀取 FLAC 音樂，播放時即時顯示和弦、簡譜與鍵盤指法。
+> Turn an audio file into a real-time, playable chord chart.
+> Practice piano / guitar / ukulele / accordion with synced chord display, transpose, A-B loop, and slow-down playback — all in your browser.
 
-## 功能
+🌐 **Live demo:** [livechord.org](https://livechord.org)
+📚 **Docs:** [doc/](doc/) · architecture overview in [CLAUDE.md](CLAUDE.md)
+🏷️ **License:** [AGPL-3.0](LICENSE)
 
-### 播放與顯示
-- **FLAC 串流播放** — 支援 HTTP Range，PC 與平板瀏覽器皆可播放
-- **即時和弦顯示** — 兩種視圖：Overview（全覽）與 Diagrams（滾動時間軸）
-- **鋼琴 / 吉他 / 烏克麗麗** — 三種指法顯示模式
-- **鋼琴鍵盤** — 2 個八度、根音優先排列、圓點標示按鍵（指法請參考 [AI鋼琴教師視覺符號說明書](AI-Piano-Teacher-Guide.md)）
-- **簡譜** — 和弦以簡譜符號標示（1=C）
-- **移調 + Capo** — 即時移調，Capo 設定（吉他/烏克麗麗模式）
-- **播放速度** — 0.5x ~ 2x 可調，練習慢速播放
-- **循環模式** — 單曲循環 / 最愛播放清單循環
-- **和弦區全螢幕** — 專注練習模式，含迷你播放控制
-- **頁面全螢幕** — 隱藏瀏覽器網址列（平板練習用）
-- **和弦區縮放** — +/- 按鈕調整和弦顯示大小
+---
 
-### 和弦管理
-- **MIDI 匯入** — Player 直接選檔上傳，或從 X:\ 自動匹配
-- **AI 偵測** — BTC Transformer 自動偵測（fallback）
-- **批次匯入** — Admin 頁面一鍵批次 MIDI 匯入
-- **和弦編輯器** — 拖曳、縮放、新增、刪除和弦
-- **來源保護** — Chordify > MIDI > BTC，高品質不被覆蓋
+## What it does
 
-### 音樂庫
-- **瀏覽** — 樹狀結構瀏覽 NAS 音樂庫
-- **搜尋** — 即時搜尋歌名、演出者、專輯
-- **最愛 / 最近播放** — 收藏歌曲，記錄播放歷史
-- **LiveChord Core** — 背景自動掃描 + 自動和弦偵測
+You upload an audio file (MP3 / FLAC / WAV / M4A / OGG, up to 200 MB).
+LiveChord runs:
 
-### 持久化
-- 音量、播放速度、顯示模式、視圖（Overview/Diagrams）、縮放比例、循環模式自動記憶
+- a **chord-recognition transformer** (BTC) for the chord progression,
+- a **beat-tracking model** (beat_this on GPU, librosa fallback) for bar lines and tempo,
+- a **section detector** for verses / choruses / bridges,
+- optional **bar arbitration** + **beat refinement** post-processors that clean up bar phase + downbeat alignment.
 
-## 系統需求
+The result drives an interactive player: chord cards in time with the audio, with five instrument views (piano keyboard + waterfall, guitar / ukulele fretboards, accordion bass+chord buttons, arranger-style backing). Transpose to any key, slow playback to 0.5×, loop a single section A-B, and switch instrument view at any time.
 
-- **Python 3.9+**（已測試 3.11, 3.14）
-- **瀏覽器**: Chrome / Edge / Firefox（Safari 不支援 FLAC）
-- **NAS**: 掛載為 Windows 磁碟代號（預設 Y:\ = 音樂, X:\ = MIDI）
+There's no music download, no streaming, no copyrighted-content distribution — only **analysis** of audio you already have the right to use.
 
-## 安裝
+## Status
+
+LiveChord started as a personal project (NAS + home GPU server) and evolved through an invite-only beta into a public hobby release. Features are stable for everyday practice; AI quality is actively being improved (see [doc/SCALING.md](doc/SCALING.md) and the "AI Quality Pipeline" section in [CLAUDE.md](CLAUDE.md)).
+
+This is a **one-person hobby project** — the author maintains it because they use it daily themselves. Pull requests welcome but bear in mind: low-friction issues that improve the hobby experience get attention faster than ambitious refactors.
+
+## Quick start (local development)
 
 ```bash
-cd LiveChord/backend
-pip install -r requirements.txt
+# 1. Clone
+git clone https://github.com/JJ110112/LiveChord.git
+cd LiveChord
+
+# 2. Python deps (one-time)
+python -m venv .venv
+.venv/Scripts/activate           # Windows
+# source .venv/bin/activate      # macOS / Linux
+pip install -r backend/requirements.txt
+
+# 3. Copy env template and fill in any OAuth keys you want (optional)
+cp .env.example .env
+
+# 4. Run
+cd backend
+python -m uvicorn main:app --host 127.0.0.1 --port 8800 --reload
+
+# 5. Open http://127.0.0.1:8800
 ```
 
-## 部署模式
+The default `LIVECHORD_MODE=personal` runs a single-user mode with no auth and no upload quota. Set `LIVECHORD_MODE=public` to mirror the livechord.org behaviour (anonymous + OAuth, daily quota, hidden NAS browse).
 
-同一套程式碼透過環境變數 `LIVECHORD_MODE` 決定行為，NUC 上同時執行兩個實例：
-
-### Personal (Port 8800)
-- `LIVECHORD_MODE=personal`
-- 僅允許 LAN (192.168.x.x / 10.x.x.x) 存取
-- 不強制登入 — LAN 自動授權為 Admin
-- 顯示完整 NAS 路徑
-- FLAC 串流播放
-
-### Beta / Public SaaS (Port 8801)
-- `LIVECHORD_MODE=beta`
-- 透過 Cloudflare Tunnel 對外 → `https://livechord.org`
-- 強制登入（未登入導向 `/login`）
-- 隱藏 NAS 路徑（搜尋結果回傳 hash）
-- 封鎖 `/api/track/stream`（不提供 FLAC 串流）
-- 封鎖 `/api/diag/paths`（不暴露本機路徑）
-- Admin 頁面僅限 LAN 存取
-
-### 快速啟動
-```bash
-start_dual.bat               # 同時啟動 Personal + Beta
-start.bat                    # 單一實例（依 settings.json 的 deployment_mode）
-start_local.bat              # 本機資料夾模式 (personal)
-```
-
-### 平板使用
-1. 連上同一區網
-2. 瀏覽器開啟 `http://NUC_IP:8800`
-3. 點頁面右上角 ⛶ 進入全螢幕
-
-### Cloudflare Tunnel
-- 域名：`livechord.org`
-- Tunnel 指向 `localhost:8801`（Beta 實例）
-- 設定檔：`%USERPROFILE%\.cloudflared\config.yml`
-- 開機自動啟動：Windows Startup 資料夾（VBS 腳本）
-
-### 批次檔
-
-| 檔案 | 用途 |
-|------|------|
-| `start_dual.bat` | 同時啟動 Personal (8800) + Beta (8801) |
-| `start.bat` | 啟動單一實例（透過 run.py） |
-| `start_local.bat` | 啟動伺服器（本機資料夾模式） |
-| `restart.bat` | 重啟伺服器 |
-| `scan.bat` | 命令列掃描音樂庫 |
-| `install-service.bat` | Windows 開機自動啟動 |
-| `uninstall-service.bat` | 移除開機自動啟動 |
-
-## 頁面
-
-| 路徑 | 說明 |
-|------|------|
-| `/` | 首頁 — 瀏覽、搜尋、最愛、最近播放 |
-| `/player?path=...` | 播放頁 — 即時和弦 + 播放控制 |
-| `/editor?path=...` | 編輯頁 — 和弦時間軸編輯器 |
-| `/admin` | 管理頁 — Core 狀態、和弦管理、MIDI 匯入 |
-
-## 技術架構
+## Architecture (one-screen overview)
 
 ```
-                        ┌─────────────────────────────────┐
-LAN 平板/PC ──────────▶ │ Personal  (port 8800)           │
-                        │ LIVECHORD_MODE=personal         │
-                        │ LAN only / 免登入 / FLAC 串流    │
-                        └─────────────────────────────────┘
-
-                        ┌─────────────────────────────────┐
-Cloudflare Tunnel ────▶ │ Beta SaaS (port 8801)           │
-(livechord.org)         │ LIVECHORD_MODE=beta             │
-                        │ 強制登入 / 隱藏路徑 / 封鎖串流    │
-                        └─────────────────────────────────┘
-
-Backend               │  Frontend (vanilla JS)
-├── run.py            │  ├── player.html/js    播放 + 即時和弦
-├── main.py           │  ├── chord-render.js   鋼琴/吉他/烏克麗麗渲染
-├── music_api.py      │  ├── api.js            API 呼叫封裝
-├── chord_api.py      │  ├── app.js            首頁邏輯
-├── user_api.py       │  ├── admin.html        管理頁
-├── auto_worker.py    │  ├── editor.html/js    和弦編輯器
-├── config.py         │  └── manifest.json     PWA 設定
-├── chord_detect.py   │
-├── chord_table.py    │  data/
-├── chord_diagrams.py │  ├── chords/*.json     和弦資料（per song）
-└── btc/              │  ├── library_cache.json 音樂庫索引
-                      │  ├── settings.json     系統設定
-tools/                │  ├── favorites.json    最愛
-├── chordify_gui.py   │  └── recent.json       最近播放
-├── midi_to_lab.py    │
-└── chordify_ocr.py   │  路徑設定
-                      │  Y:\ = 音樂根目錄
-                      │  X:\ = MIDI 根目錄
-                      │  W:\ = 部署目錄
+┌────────────────────────────────────────┐
+│ Browser (Vanilla JS + Canvas)          │
+│  index.html / player.html / process... │
+└────────────────────────────────────────┘
+                 ↑↓ HTTP
+┌────────────────────────────────────────┐
+│ FastAPI (uvicorn) on port 8800         │
+│  ├─ process_api  (upload + jobs)       │
+│  ├─ chord_api    (BTC detection)       │
+│  ├─ ai_api       (sections + melody)   │
+│  ├─ feedback_api / auth_api / ...      │
+│  └─ static: frontend/                  │
+└────────────────────────────────────────┘
+                 ↓
+┌────────────────────────────────────────┐
+│ Workers (queue.Queue + daemon thread)  │
+│  ├─ process_queue   chord pipeline     │
+│  ├─ beat_upgrade_q  on-demand beats    │
+│  └─ auto_worker     library batch      │
+└────────────────────────────────────────┘
+                 ↓
+┌────────────────────────────────────────┐
+│ Models                                 │
+│  ├─ BTC chord transformer (PyTorch)    │
+│  ├─ beat_this beat tracker (Modal GPU) │
+│  ├─ section_detect (DL + rule-based)   │
+│  ├─ bar_arbitrator + beat_refiner      │
+│  └─ chord2vec, reharmonizer (Jazzify)  │
+└────────────────────────────────────────┘
 ```
 
-## 和弦資料來源
+Notable design rules:
 
-| 來源 | 準確度 | 方式 |
-|------|--------|------|
-| Chordify | ~100% | tools/chordify_gui.py 擷取 |
-| MIDI | ~92% | Player 上傳 / X:\ 自動匹配 / Admin 批次匯入 |
-| BTC | ~41% | AI 音訊分析（fallback） |
+- **Long-running jobs are loosely coupled from the client** — the upload endpoint enqueues + returns a job ID in <100 ms; a daemon worker processes it; the client polls `/api/process/status/<id>` every few seconds. No long-poll, no WebSocket. See [CLAUDE.md "Coding Rules"](CLAUDE.md) for the full pattern.
+- **No `async def` for file I/O endpoints** — plain `def` so FastAPI dispatches to the thread pool. Prevents the event loop from being blocked by chord JSON disk writes.
+- **GIL-bound work runs in subprocesses** — BTC chord detection runs in a `ProcessPoolExecutor`; pure-Python loops on daemon threads still hold the GIL and starve request threads, so `chord2vec` retrain spawns a fresh interpreter via `sys.executable`.
 
-## 授權
+## Repository layout
 
-私人使用
+```
+backend/                Python (FastAPI app)
+  main.py               app + route mounts
+  process_api.py        /api/process/upload + /status + /result
+  process_queue.py      queue + worker for new uploads
+  beat_upgrade_queue.py on-demand beat re-detection
+  chord_detect.py       BTC chord recognition
+  chord_api.py          read/write/rate chord JSONs
+  ai/                   chord2vec, section_detect, bar_arbitrator,
+                        beat_refiner, reharmonizer, neural_arranger
+  modal_btc.py          BTC dispatch to Modal serverless GPU (optional)
+  modal_beat_this.py    beat_this dispatch to Modal (optional)
+  ...
+frontend/               Vanilla JS / HTML / CSS (no build step)
+  index.html            homepage
+  player.html           the practice player (chord ribbon + instruments)
+  process.html          standalone upload page
+  js/player.js          ~7,000 lines of player logic (the heart of the UX)
+  js/app.js             homepage logic
+  css/                  base / home / player styles
+data/                   runtime data (chord JSONs, models, audit DB).
+                        Path is environment-dependent — see CLAUDE.md.
+deploy/                 systemd unit, cloudflared config (VPS deploy)
+doc/                    architecture, QA protocol, scaling roadmap, etc.
+scripts/                training-corpus + bulk-migration scripts
+```
+
+## Documentation map
+
+If you only read one file: [CLAUDE.md](CLAUDE.md) — the project's working notes, kept fresh because the author uses Claude Code for development. It documents conventions, environment quirks, intentional gotchas, and the "why" behind several non-obvious design choices.
+
+| Doc | What it covers |
+|---|---|
+| [CLAUDE.md](CLAUDE.md) | Single-source onboarding, current state, coding rules, AI quality pipeline status |
+| [doc/QA.md](doc/QA.md) | QA protocol, test matrix, UI architecture rules |
+| [doc/UX_CONVENTION.md](doc/UX_CONVENTION.md) | UX patterns (popups, toolbars, modals) — mandatory for UI changes |
+| [doc/QA_BATTLE_STORY.md](doc/QA_BATTLE_STORY.md) | Past incidents and the lessons baked into the codebase |
+| [doc/OPS.md](doc/OPS.md) | VPS operations runbook |
+| [doc/SEO.md](doc/SEO.md) | Search visibility plan for livechord.org |
+| [doc/SCALING.md](doc/SCALING.md) | Roadmap for scaling beyond a single GPU |
+
+## Models + research credits
+
+LiveChord stitches together work from several open-source projects. None of these are vendored — they're fetched at install time:
+
+- **BTC** (Bi-directional Transformer for Chord recognition) — chord-detection backbone
+- **beat_this** (CPJKU) — beat + downbeat tracker (preferred), with **madmom** as the rubato-aware fallback and **librosa** as the always-available baseline
+- **basic-pitch** (Spotify) — melody pitch tracking
+- **mir_eval / pretty_midi** — evaluation + MIDI utilities
+- **PyTorch + ONNX Runtime** — model inference
+- **FastAPI + uvicorn** — web framework
+- **OAuth via Authlib** (Google + Discord) — sign-in, no password storage
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Short version:
+
+- Open an issue first for anything bigger than a typo fix — the project is opinionated and a 5-minute conversation can save a 5-hour PR
+- Style: Python = match the surrounding code (no formatter enforced); JS = no build step, vanilla, no framework
+- The `data/` folder + the audit SQLite DBs are state, not source — never commit them
+
+## License
+
+LiveChord is licensed under the [GNU Affero General Public License v3.0](LICENSE).
+
+In plain language: you can use, modify, and redistribute LiveChord freely, but if you run a modified version as a network service (e.g. host a fork at `your-livechord-fork.com`), you must make your modified source code available to users of that service. This matches the project's spirit — "free for everyone, including the people who fork it."
+
+If AGPL doesn't fit your use case (e.g. proprietary commercial integration), email the author at hiteacherwu@gmail.com to discuss.
+
+## Acknowledgments
+
+Built between 2024 and 2026 by one person who wanted a chord chart that scrolls in time with the music, then kept extending it because piano practice is more fun when the visuals are right. Thanks to everyone whose models and libraries are listed above — none of this would be possible without your work being open in the first place.
+
+If LiveChord has been useful, the [sponsor page](https://livechord.org/sponsor) accepts coffee.

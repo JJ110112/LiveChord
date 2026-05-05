@@ -20,15 +20,31 @@ def is_lan_ip(ip_str: str) -> bool:
         return False
 
 DATA_DIR = Path(__file__).parent.parent / "data"
-SETTINGS_FILE = DATA_DIR / "settings.json"
+SETTINGS_FILE = DATA_DIR / "settings.json"  # legacy, archival only
+PERSONAL_SETTINGS_FILE = DATA_DIR / "settings_personal.json"
+SHARED_SETTINGS_FILE = DATA_DIR / "settings_shared.json"
+
+
+def _read_json_dict(p: Path) -> dict:
+    if not p.is_file():
+        return {}
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
 
 def _load_settings() -> dict:
-    if SETTINGS_FILE.is_file():
-        try:
-            return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {}
+    """Merged view: legacy + shared + personal (personal wins).
+    Kept so existing callers keep working during migration."""
+    # Prefer split files; fall back to legacy if split doesn't exist yet.
+    if PERSONAL_SETTINGS_FILE.is_file() or SHARED_SETTINGS_FILE.is_file():
+        merged = {}
+        merged.update(_read_json_dict(SHARED_SETTINGS_FILE))
+        merged.update(_read_json_dict(PERSONAL_SETTINGS_FILE))
+        return merged
+    return _read_json_dict(SETTINGS_FILE)
 
 
 def get_music_roots() -> list[str]:
@@ -50,15 +66,17 @@ def get_music_root() -> str:
 
 
 def set_music_roots(roots: list[str]):
-    """儲存多音樂庫路徑"""
+    """儲存多音樂庫路徑（寫入 settings_personal.json，music_roots 為 personal 專有）"""
     normed = [os.path.normpath(p) for p in roots if p and p.strip()]
     if not normed:
         raise ValueError("至少需要一個音樂庫路徑")
-    settings = _load_settings()
+    settings = _read_json_dict(PERSONAL_SETTINGS_FILE)
     settings["music_roots"] = normed
     settings.pop("music_root", None)  # 移除舊格式
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    SETTINGS_FILE.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
+    PERSONAL_SETTINGS_FILE.write_text(
+        json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
 
 
 def set_music_root(new_path: str):
@@ -105,20 +123,55 @@ def set_midi_root(new_path: str):
     _save_setting("midi_root", os.path.normpath(new_path))
 
 
+VALID_MODES = ("personal", "beta", "public")
+
+
 def get_deployment_mode() -> str:
-    """回傳部署模式: 優先讀取環境變數 LIVECHORD_MODE，其次 fallback settings.json: 'personal' (預設) 或 'beta'"""
+    """部署模式: env LIVECHORD_MODE > settings 'deployment_mode' > 'personal'.
+    'public' = 雲端對公眾, 匿名可用, OAuth 登入解鎖收藏/評分.
+    'personal' = NUC LAN 自用, LAN bypass 為 admin.
+    'beta' = 封測 (archival, 目前不啟用).
+    """
     env_mode = os.environ.get("LIVECHORD_MODE")
-    if env_mode in ["personal", "beta"]:
+    if env_mode in VALID_MODES:
         return env_mode
-    return _load_settings().get("deployment_mode", "personal")
+    settings_mode = _load_settings().get("deployment_mode", "personal")
+    return settings_mode if settings_mode in VALID_MODES else "personal"
 
 
 def is_beta_mode() -> bool:
     return get_deployment_mode() == "beta"
 
 
+def is_public_mode() -> bool:
+    return get_deployment_mode() == "public"
+
+
+def is_personal_mode() -> bool:
+    return get_deployment_mode() == "personal"
+
+
 def _save_setting(key: str, value):
-    settings = _load_settings()
+    """Write a personal-owned key into settings_personal.json (e.g. midi_root)."""
+    settings = _read_json_dict(PERSONAL_SETTINGS_FILE)
     settings[key] = value
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    SETTINGS_FILE.write_text(json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8")
+    PERSONAL_SETTINGS_FILE.write_text(
+        json.dumps(settings, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+def get_env_mode() -> str:
+    """自動偵測目前是在開發機(PC)還是邊緣伺服器(NUC)上執行"""
+    current_path = os.path.abspath(os.getcwd()).lower()
+    if r"c:\users\hitea" in current_path:
+        return "PC"
+    elif r"c:\livechord" in current_path:
+        return "NUC"
+    return os.environ.get("LIVECHORD_ENV", "PC")
+
+# Feature Flag: 預設關閉，等您測試沒問題再改為 True，全面啟用 Neural Pitch Tracker
+ENABLE_NN_MELODY = False
+
+# Shadow Mode: V1 primary + V2 背景平行跑收集資料。需 venv_ai 存在才生效。
+# 開著不影響用戶（V1 仍回傳給用戶），只是多一份 V2 輸出 + shadow_v2.log
+SHADOW_V2_ENABLED = True

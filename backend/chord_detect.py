@@ -5,11 +5,14 @@
 
 import os
 import sys
+import warnings
 import numpy as np
 import torch
 import librosa
 import soundfile as sf
 import threading
+
+warnings.filterwarnings("ignore", message="n_fft=.*is too large for input signal")
 
 # 單曲最大分析長度（秒）。超長合輯（例如 29 首精選）會被截斷至此長度，
 # 避免 librosa.load 產生超過 NumPy 最大陣列的情況。
@@ -124,6 +127,7 @@ def _load_model():
     _idx_to_chord = idx2voca_chord()
 
     os.chdir(old_cwd)
+    print(f"🎸 BTC device: {_device}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -418,15 +422,42 @@ def _subprocess_detect(audio_path, min_dur=0.5):
     return detect_chords_and_key(audio_path, min_dur)
 
 
+def _modal_btc_enabled() -> bool:
+    """Public-mode opt-in. Set LIVECHORD_USE_MODAL_BTC=1 on a CPU-only host
+    (VPS) to route BTC inference to a deployed Modal serverless GPU function
+    instead of running the local PyTorch model. See doc/MODAL_DEPLOY.md."""
+    val = (os.environ.get("LIVECHORD_USE_MODAL_BTC") or "").strip().lower()
+    return val in ("1", "true", "yes", "on")
+
+
 def detect_chords_and_key_isolated(audio_path: str, min_dur: float = 0.5) -> tuple:
     """
     在獨立子程序中執行 BTC 推論，完全隔離 GIL。
     子程序第一次呼叫會載入模型（約數秒），之後重複使用同一程序。
+
+    When LIVECHORD_USE_MODAL_BTC=1 the call is routed to Modal serverless
+    GPU instead — same return shape. On Modal failure we fall back to local
+    so a transient outage doesn't take the site down.
     """
+    if _modal_btc_enabled():
+        try:
+            from modal_btc import detect_via_modal
+            return detect_via_modal(audio_path, min_dur)
+        except Exception as e:
+            print(
+                f"⚠️ BTC Modal dispatch failed, falling back to local subprocess: {e}",
+                flush=True,
+            )
+
     global _btc_pool
     if _btc_pool is None:
         from concurrent.futures import ProcessPoolExecutor
-        _btc_pool = ProcessPoolExecutor(max_workers=1)
+        try:
+            workers = max(1, int(os.environ.get("LIVECHORD_BTC_WORKERS", "1")))
+        except ValueError:
+            workers = 1
+        print(f"🎸 BTC ProcessPool max_workers={workers}", flush=True)
+        _btc_pool = ProcessPoolExecutor(max_workers=workers)
     future = _btc_pool.submit(_subprocess_detect, audio_path, min_dur)
     return future.result(timeout=600)
 

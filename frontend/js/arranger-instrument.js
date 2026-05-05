@@ -344,19 +344,24 @@ class ArrangerInstrument {
       }
     }
 
-    // RH: accompaniment right_hand or melody data
+    // RH: accompaniment right_hand or melody data. Cache the mapped melody so
+    // `_sparked` persists across frames (fresh-object remap would flood particles).
     const accData = this._b.getAccData ? this._b.getAccData() : null;
     let rhEvents = (accData && accData.right_hand) ? accData.right_hand : [];
     if (rhEvents.length === 0) {
       const melodyData = this._b.getMelodyData ? this._b.getMelodyData() : null;
       if (melodyData && melodyData.length > 0) {
-        rhEvents = melodyData.map(m => ({
-          time: m.start,
-          duration: m.end - m.start,
-          pitch: m.midi,
-          velocity: 80,
-          finger: null,
-        }));
+        if (!this._mappedMelody || this._mappedMelodySrc !== melodyData) {
+          this._mappedMelody = melodyData.map(m => ({
+            time: m.start,
+            duration: m.end - m.start,
+            pitch: m.midi,
+            velocity: 80,
+            finger: null,
+          }));
+          this._mappedMelodySrc = melodyData;
+        }
+        rhEvents = this._mappedMelody;
       }
     }
     // Filter RH to notes above split point
@@ -376,6 +381,9 @@ class ArrangerInstrument {
       const noteEnd = evt.time + evt.duration;
       if (noteEnd < currentTime || noteStart > currentTime + lookAhead) continue;
 
+      // Re-arm spark flag on backward-seek
+      if (evt._sparked && currentTime < noteStart) evt._sparked = false;
+
       const yBottom = H - (noteStart - currentTime) * pxPerSec;
       const yTop = H - (noteEnd - currentTime) * pxPerSec;
       const noteH = Math.max(yBottom - yTop, 3);
@@ -386,57 +394,63 @@ class ArrangerInstrument {
       const x = keyInfo.x;
       const kw = keyInfo.w;
       const isLeft = evt._hand === "left";
-      const isOnBlackKey = !!cache.blackXs[midi];
 
-      // Velocity-responsive coloring (same as piano waterfall)
+      // Piano-parity velocity → color ramp (identical formula across
+      // piano / accordion / arranger so everything reads the same).
       const vel = evt.velocity || 80;
       const velT = Math.min(1.0, Math.max(0.0, (vel - 55) / 40));
       const velP = velT * velT;
-      let color, glowColor;
+      let cr, cg, cb, glowColor;
       if (isLeft) {
-        const cr = Math.round(10 + velP * 100);
-        const cg = Math.round(40 + velP * 160);
-        const cb = Math.round(100 + velP * 155);
-        color = `rgba(${cr}, ${cg}, ${cb}, ${isOnBlackKey ? 0.95 : 0.9})`;
-        glowColor = `rgba(${Math.min(255, cr+80)}, ${Math.min(255, cg+60)}, 255, 1)`;
+        cr = Math.round(40 + velP * 100);
+        cg = Math.round(150 + velP * 85);
+        cb = Math.round(230 + velP * 25);
+        glowColor = `rgba(120, 200, 255, 1)`;
       } else {
-        const cr = Math.round(100 + velP * 155);
-        const cg = Math.round(40 + velP * 170);
-        const cb = Math.round(0 + velP * 50);
-        color = `rgba(${cr}, ${cg}, ${cb}, ${isOnBlackKey ? 0.95 : 0.9})`;
-        glowColor = `rgba(255, ${Math.min(255, cg+60)}, ${Math.min(255, cb+80)}, 1)`;
+        cr = Math.round(230 + velP * 25);
+        cg = Math.round(130 + velP * 90);
+        cb = Math.round(40 + velP * 40);
+        glowColor = `rgba(255, 200, 120, 1)`;
       }
+      const color = `rgba(${cr}, ${cg}, ${cb}, 1)`;
 
-      // Prediction shadow
+      // Landing-pad glow
       if (yBottom > H - 40 && yBottom < H) {
-        ctx.fillStyle = isLeft ? ArrangerInstrument.LH_GLOW : ArrangerInstrument.RH_GLOW;
+        ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, 0.35)`;
         ctx.fillRect(x, H - 5, kw, -20);
       }
 
-      // Note bar with glow
+      // Main note bar with always-on bloom
       const rr = Math.min(4, noteH / 2);
       ctx.save();
-      if (velP > 0.15) {
-        ctx.shadowColor = glowColor;
-        ctx.shadowBlur = Math.round(3 + velP * 25);
-      }
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = Math.round(12 + velP * 36);
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.roundRect(x + 1, yTop, kw - 2, noteH, rr);
       ctx.fill();
-      if (velP > 0.5) {
-        ctx.shadowBlur = Math.round(velP * 35);
+      if (velP > 0.4) {
+        ctx.shadowBlur = Math.round(velP * 55);
         ctx.fill();
       }
       ctx.restore();
 
-      // Dim outline for quiet notes
-      if (velP < 0.15) {
-        ctx.strokeStyle = "rgba(255,255,255,0.2)";
-        ctx.lineWidth = 1;
+      // Top highlight
+      if (noteH > 4) {
+        const hlH = Math.min(8, noteH * 0.35);
+        const grd = ctx.createLinearGradient(0, yTop, 0, yTop + hlH);
+        grd.addColorStop(0, "rgba(255,255,255,0.55)");
+        grd.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = grd;
         ctx.beginPath();
-        ctx.roundRect(x + 1, yTop, kw - 2, noteH, rr);
-        ctx.stroke();
+        ctx.roundRect(x + 1, yTop, kw - 2, hlH, rr);
+        ctx.fill();
+      }
+
+      // Hot leading edge
+      if (yBottom < H && noteH > 3) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.25 + velP * 0.35})`;
+        ctx.fillRect(x + 2, yBottom - 2, kw - 4, 2);
       }
 
       // Track active keys + fingering
@@ -450,21 +464,28 @@ class ArrangerInstrument {
         }
       }
 
-      // Contact flash
+      // Contact burst + spark particles
       if (yBottom >= H && yTop <= H) {
         ctx.save();
         ctx.fillStyle = color;
         ctx.shadowColor = glowColor;
-        ctx.shadowBlur = 8 + velP * 22;
+        ctx.shadowBlur = 14 + velP * 30;
         ctx.fillRect(x + 1, H - 4, kw - 2, 8);
-        ctx.fillStyle = `rgba(255,255,255,${0.3 + velP * 0.6})`;
-        ctx.shadowBlur = velP * 15;
+        ctx.fillStyle = `rgba(255,255,255,${0.5 + velP * 0.5})`;
+        ctx.shadowBlur = 8 + velP * 20;
         ctx.shadowColor = "#fff";
         ctx.fillRect(x + 3, H - 2, kw - 6, 4);
         ctx.restore();
-      }
 
+        if (!evt._sparked && this._b.spawnWaterfallParticles) {
+          evt._sparked = true;
+          this._b.spawnWaterfallParticles(x + kw / 2, H - 2, kw, cr, cg, cb, velP);
+        }
+      }
     }
+
+    // Firework spark particles (shared via bridge)
+    if (this._b.drawWaterfallParticles) this._b.drawWaterfallParticles(ctx);
 
     // Store active keys + fingering for keyboard highlighting
     this._activeLh = activeLh;

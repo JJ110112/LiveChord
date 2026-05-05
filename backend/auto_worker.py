@@ -37,21 +37,331 @@ DEFAULT_SETTINGS = {
     "auto_chord_delay_seconds": 1.0,    # 每首之間的延遲（秒），避免 CPU 飢餓導致前端無回應
     "auto_chord_skip_genres": [],       # 跳過的 genre（如 Classics）
     "auto_chord_active_groups": [],     # 啟用的曲目群組（空 = 不過濾，附 1 用）
+    "bar_arbitrator_enabled": False,    # run bar_arbitrator at ingest after bpm_sanity
+                                        # (default-on in public mode via _public_mode_overrides)
+    "beat_refiner_enabled": False,      # audio-level Compact-Transformer beat/downbeat refiner
+                                        # (Phase 1 — runs before bar_arbitrator). Gate inside phase1_refine
+                                        # ensures refinement is only applied when it actually beats input
+                                        # alignment by ≥0.02; otherwise falls back. Safe to flip.
+                                        # (default-on in public mode via _public_mode_overrides)
 }
 
 
+def _public_mode_overrides() -> dict:
+    """In public (cloud) mode, override two defaults to True so visitors get
+    auto-bar-split + beat refinement out of the box. Personal/beta defaults
+    are unchanged. User-set values in settings files still win on conflict."""
+    try:
+        from config import is_public_mode
+        if is_public_mode():
+            return {
+                "bar_arbitrator_enabled": True,
+                "beat_refiner_enabled": True,
+            }
+    except Exception:
+        pass
+    return {}
+
+# ---------------------------------------------------------------------------
+# Per-instance settings isolation (Phase: option B)
+#
+# Three files live alongside the legacy settings.json:
+#   settings_personal.json  — keys only 8800 (personal) cares about
+#   settings_beta.json      — keys only 8801 (beta) cares about
+#   settings_shared.json    — keys both instances read/write (engine flags etc.)
+#
+# load_settings() → DEFAULT ∪ shared ∪ own-mode (own-mode wins on conflict)
+# save_settings() → splits incoming dict: SHARED_KEYS → shared file, rest → mode file
+# Legacy settings.json stays untouched as archival reference; never written again.
+# ---------------------------------------------------------------------------
+
+SHARED_KEYS = frozenset({
+    "accompaniment_v2_enabled",
+    "settings_backup_targets",  # list of {label, path} — where to write snapshots
+    "data_backup_root",         # str — where tiered data backups go (e.g. UNC path)
+    "backup_schedule",          # per-tier auto-backup schedule (see backup_scheduler.py)
+})
+
+PERSONAL_SETTINGS_FILE = DATA_DIR / "settings_personal.json"
+BETA_SETTINGS_FILE = DATA_DIR / "settings_beta.json"
+SHARED_SETTINGS_FILE = DATA_DIR / "settings_shared.json"
+
+
+PUBLIC_SETTINGS_FILE = DATA_DIR / "settings_public.json"
+
+
+def _current_mode() -> str:
+    """Return 'personal', 'beta', or 'public' based on LIVECHORD_MODE env var."""
+    m = (os.environ.get("LIVECHORD_MODE") or "").lower().strip()
+    if m == "beta":
+        return "beta"
+    if m == "public":
+        return "public"
+    return "personal"
+
+
+def _mode_settings_path(mode: str) -> Path:
+    if mode == "beta":
+        return BETA_SETTINGS_FILE
+    if mode == "public":
+        return PUBLIC_SETTINGS_FILE
+    return PERSONAL_SETTINGS_FILE
+
+
+def _read_json_dict(p: Path) -> dict:
+    if not p.is_file():
+        return {}
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _write_json_atomic(p: Path, data: dict):
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, p)
+
+
+def _migrate_legacy_settings_if_needed():
+    """One-time split of legacy settings.json into personal/beta/shared files."""
+    if (PERSONAL_SETTINGS_FILE.is_file() or BETA_SETTINGS_FILE.is_file()
+            or SHARED_SETTINGS_FILE.is_file()):
+        return
+    if not SETTINGS_FILE.is_file():
+        return
+    try:
+        data = _read_json_dict(SETTINGS_FILE)
+    except Exception:
+        return
+    shared = {k: data[k] for k in SHARED_KEYS if k in data}
+    personal = {k: v for k, v in data.items() if k not in SHARED_KEYS}
+    try:
+        _write_json_atomic(SHARED_SETTINGS_FILE, shared)
+        _write_json_atomic(PERSONAL_SETTINGS_FILE, personal)
+        _write_json_atomic(BETA_SETTINGS_FILE, {})
+        log.info(
+            f"Migrated legacy settings.json → personal={len(personal)} keys, "
+            f"shared={len(shared)} keys, beta={{}}"
+        )
+    except Exception as e:
+        log.warning(f"settings migration failed: {e}")
+
+
 def load_settings() -> dict:
-    if SETTINGS_FILE.is_file():
+    _migrate_legacy_settings_if_needed()
+    # Prefer split files; fall back to legacy for safety before first migration.
+    if not (PERSONAL_SETTINGS_FILE.is_file() or BETA_SETTINGS_FILE.is_file()
+            or PUBLIC_SETTINGS_FILE.is_file() or SHARED_SETTINGS_FILE.is_file()):
+        if SETTINGS_FILE.is_file():
+            try:
+                return {**DEFAULT_SETTINGS,
+                        **_public_mode_overrides(),
+                        **_read_json_dict(SETTINGS_FILE)}
+            except Exception:
+                pass
+        return {**DEFAULT_SETTINGS, **_public_mode_overrides()}
+    mode = _current_mode()
+    shared = _read_json_dict(SHARED_SETTINGS_FILE)
+    mine = _read_json_dict(_mode_settings_path(mode))
+    # Order: base defaults < mode-specific defaults (public flips two flags) <
+    # shared file < mode-specific file. User-set values still win.
+    return {**DEFAULT_SETTINGS, **_public_mode_overrides(), **shared, **mine}
+
+
+# ---------------------------------------------------------------------------
+# Settings auto-backup (safety net — every save snapshots the previous version)
+#
+# Per-instance backup lanes: filename carries mode prefix so 8800 (personal) and
+# 8801 (beta) each see only their own snapshots via the admin UI.
+#   settings_personal_YYYYMMDD_HHMMSS[_NN].json
+#   settings_beta_YYYYMMDD_HHMMSS[_NN].json
+# Legacy (pre-prefix) files `settings_YYYYMMDD_HHMMSS.json` are treated as personal.
+# ---------------------------------------------------------------------------
+
+import re
+
+SETTINGS_BACKUP_DIR = DATA_DIR / "backups" / "settings"  # legacy default target
+SETTINGS_BACKUP_KEEP = 30  # per-mode per-target
+_BACKUP_FILENAME_RE = re.compile(
+    r"^settings_(?:(?:personal|beta|public)_)?\d{8}_\d{6}(?:_\d{2})?\.json$"
+)
+_LABEL_RE = re.compile(r"^[A-Za-z0-9_\-]{1,32}$")  # restore/download accept only these
+
+
+def _mode_of_filename(filename: str) -> str:
+    """Infer owning mode from a backup filename. Legacy files -> 'personal'."""
+    if filename.startswith("settings_beta_"):
+        return "beta"
+    if filename.startswith("settings_public_"):
+        return "public"
+    return "personal"
+
+
+def _backup_targets() -> list:
+    """Resolve the list of [(label, Path)] where snapshots are written.
+    Reads shared settings; default = one 'local' target at data/backups/settings."""
+    shared = _read_json_dict(SHARED_SETTINGS_FILE)
+    raw = shared.get("settings_backup_targets") or []
+    targets = []
+    seen_labels = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        label = (item.get("label") or "").strip()
+        path = (item.get("path") or "").strip()
+        if not label or not path or not _LABEL_RE.match(label):
+            continue
+        if label in seen_labels:
+            continue
+        seen_labels.add(label)
         try:
-            return {**DEFAULT_SETTINGS, **json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))}
+            targets.append((label, Path(path)))
+        except Exception:
+            continue
+    if not targets:
+        targets = [("local", SETTINGS_BACKUP_DIR)]
+    return targets
+
+
+def _target_by_label(label: str) -> Path:
+    for lab, p in _backup_targets():
+        if lab == label:
+            return p
+    raise FileNotFoundError(f"unknown target: {label}")
+
+
+def _snapshot_settings() -> str | None:
+    """Snapshot the current instance's mode-specific settings file to every configured target.
+    Silent on per-target failure (remaining targets still attempted)."""
+    mode = _current_mode()
+    src = _mode_settings_path(mode)
+    if not src.is_file():
+        return None
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    last_name = None
+    for label, target_dir in _backup_targets():
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+            dst = target_dir / f"settings_{mode}_{ts}.json"
+            if dst.exists():
+                for i in range(1, 100):
+                    alt = target_dir / f"settings_{mode}_{ts}_{i:02d}.json"
+                    if not alt.exists():
+                        dst = alt
+                        break
+            dst.write_bytes(src.read_bytes())
+            _prune_settings_backups_for_target(target_dir, mode)
+            last_name = dst.name
+        except Exception as e:
+            log.warning(f"settings snapshot failed for target '{label}' ({target_dir}): {e}")
+    return last_name
+
+
+def _iter_backups_in_dir_for_mode(target_dir: Path, mode: str):
+    """Yield backup files in a specific target dir owned by `mode`."""
+    if not target_dir.is_dir():
+        return
+    for f in sorted(target_dir.glob("settings_*.json")):
+        if _mode_of_filename(f.name) == mode:
+            yield f
+
+
+def _prune_settings_backups_for_target(target_dir: Path, mode: str):
+    files = list(_iter_backups_in_dir_for_mode(target_dir, mode))
+    while len(files) > SETTINGS_BACKUP_KEEP:
+        try:
+            files[0].unlink()
         except Exception:
             pass
-    return dict(DEFAULT_SETTINGS)
+        files = files[1:]
+
+
+def list_settings_backups() -> list:
+    """Return newest-first list of backup metadata across ALL configured targets,
+    owned by the current instance. Each entry carries its source target label."""
+    mode = _current_mode()
+    out = []
+    for label, target_dir in _backup_targets():
+        for f in _iter_backups_in_dir_for_mode(target_dir, mode):
+            try:
+                st = f.stat()
+                out.append({
+                    "filename": f.name,
+                    "size": st.st_size,
+                    "mtime": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                    "mode": mode,
+                    "target": label,
+                })
+            except Exception:
+                pass
+    out.sort(key=lambda e: e.get("mtime", ""), reverse=True)
+    return out
+
+
+def _validate_backup_access(filename: str, target_label: str = "local") -> Path:
+    if not _BACKUP_FILENAME_RE.match(filename):
+        raise ValueError("invalid backup filename")
+    if _mode_of_filename(filename) != _current_mode():
+        raise PermissionError("backup belongs to another instance")
+    if not _LABEL_RE.match(target_label or ""):
+        raise ValueError("invalid target label")
+    target_dir = _target_by_label(target_label)
+    src = target_dir / filename
+    if not src.is_file():
+        raise FileNotFoundError(filename)
+    return src
+
+
+def restore_settings_backup(filename: str, target_label: str = "local") -> str:
+    """Restore a named backup from the given target over the current instance's mode-specific file.
+    Takes a safety snapshot of the current mode file first (into all configured targets)."""
+    src = _validate_backup_access(filename, target_label)
+    _snapshot_settings()
+    mode = _current_mode()
+    dst = _mode_settings_path(mode)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = dst.with_suffix(dst.suffix + ".tmp")
+    tmp.write_bytes(src.read_bytes())
+    os.replace(tmp, dst)
+    return filename
+
+
+def read_settings_backup(filename: str, target_label: str = "local") -> bytes:
+    """Read raw bytes of a backup file for download."""
+    src = _validate_backup_access(filename, target_label)
+    return src.read_bytes()
+
+
+def list_backup_targets() -> list:
+    """Return [{label, path}] for UI to display / edit."""
+    return [{"label": lab, "path": str(p)} for lab, p in _backup_targets()]
 
 
 def save_settings(settings: dict):
+    """Split incoming settings: SHARED_KEYS go to shared file, rest to current mode file.
+    Snapshots the mode-specific file before overwriting."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    SETTINGS_FILE.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+    _migrate_legacy_settings_if_needed()
+    _snapshot_settings()
+
+    mode = _current_mode()
+    mode_file = _mode_settings_path(mode)
+    mode_old = _read_json_dict(mode_file)
+    shared_old = _read_json_dict(SHARED_SETTINGS_FILE)
+
+    mode_new = dict(mode_old)
+    shared_new = dict(shared_old)
+    for k, v in (settings or {}).items():
+        if k in SHARED_KEYS:
+            shared_new[k] = v
+        else:
+            mode_new[k] = v
+
+    _write_json_atomic(mode_file, mode_new)
+    _write_json_atomic(SHARED_SETTINGS_FILE, shared_new)
 
 
 # ---------------------------------------------------------------------------
@@ -247,12 +557,16 @@ def _get_unanalyzed_tracks(settings: dict, midi_index: list = None) -> tuple:
     result = []
     test_tracks = []  # 優先處理的測試歌曲
     stats = {"new": 0, "upgrade": 0}
+    skipped = 0  # 已有和弦（或 BTC 無 MIDI 升級機會）的曲數
     relevant_total = len(relevant)
-    _worker_state["current_task"] = f"建立佇列 0/{relevant_total}"
+    _worker_state["current_task"] = f"建立佇列 0/{relevant_total} · 已完成 0 · 待偵測 0"
 
     for i, t in enumerate(relevant):
         if i % 1000 == 0 and i > 0:
-            _worker_state["current_task"] = f"建立佇列 {i}/{relevant_total}"
+            pending = len(test_tracks) + len(result)
+            _worker_state["current_task"] = (
+                f"建立佇列 {i}/{relevant_total} · 已完成 {skipped} · 待偵測 {pending}"
+            )
 
         track_path = t.get("path", "")  # 已在 Pass 1 驗證
         track_hash = song_hash(track_path)
@@ -279,6 +593,8 @@ def _get_unanalyzed_tracks(settings: dict, midi_index: list = None) -> tuple:
                 test_tracks.append(track_path)
             else:
                 result.append(track_path)
+        else:
+            skipped += 1
 
     # 儲存 cursor — 下輪同樣狀態下可走快路徑
     _save_queue_cursor({
@@ -406,7 +722,8 @@ def _retrain_ai_models():
     """
     global _last_chord_count
     try:
-        chord_files = list(CHORDS_DIR.glob("*.json")) if CHORDS_DIR.is_dir() else []
+        from chord_cache import iter_chord_files
+        chord_files = list(iter_chord_files()) if CHORDS_DIR.is_dir() else []
         current_count = len(chord_files)
 
         # 首次啟動：記錄目前數量，若有快取就跳過重訓
@@ -471,19 +788,36 @@ def _do_auto_scan(settings: dict):
     try:
         _worker_state["status"] = "scanning"
         _worker_state["current_task"] = "掃描音樂庫"
-        add_log("INFO", "開始自動增量掃描")
+
+        # Describe scan scope up-front so the activity log says what it's about to do.
+        try:
+            from config import get_music_roots
+            roots = get_music_roots()
+        except Exception:
+            roots = []
+        active_groups = settings.get("auto_chord_active_groups", []) or []
+        n_roots = len(roots)
+        if active_groups:
+            add_log("INFO",
+                    f"開始自動增量掃描：{n_roots} 個音樂庫 · 啟用群組 {len(active_groups)} 個")
+        else:
+            add_log("INFO",
+                    f"開始自動增量掃描：{n_roots} 個音樂庫 · 全群組（未啟用過濾）")
+        for i, r in enumerate(roots):
+            add_log("INFO", f"  [{i+1}/{n_roots}] 音樂庫路徑：{r}")
 
         _scan_worker("incremental")
 
         new = _scan_state.get("new_tracks", 0)
         updated = _scan_state.get("updated_tracks", 0)
+        progress = _scan_state.get("progress", 0)
         _worker_state["scan_count"] += 1
         _worker_state["last_scan_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         if new > 0 or updated > 0:
-            add_log("INFO", f"掃描完成: 新增 {new}, 更新 {updated}")
+            add_log("INFO", f"掃描完成：走訪 {progress} 首 · 新增 {new} / 更新 {updated}")
         else:
-            add_log("INFO", "掃描完成: 無變動")
+            add_log("INFO", f"掃描完成：走訪 {progress} 首 · 無變動")
     finally:
         lock.release()
 
@@ -570,7 +904,8 @@ def _auto_chord_detect_loop(settings: dict, batch: list, unanalyzed: list, lock,
         lock.update_progress(current_item=track_path, done=i + 1)
 
         # 判斷此 track 是「新檔」還是「BTC 升級」
-        chords_file = CHORDS_DIR / f"{song_hash(track_path)}.json"
+        from chord_cache import chord_file_for
+        chords_file = chord_file_for(song_hash(track_path))
         is_btc_upgrade = False
         if chords_file.is_file():
             try:
@@ -619,12 +954,75 @@ def _auto_chord_detect_loop(settings: dict, batch: list, unanalyzed: list, lock,
         try:
             from chord_detect import detect_chords_and_key_isolated
             chords, key = detect_chords_and_key_isolated(full)
+            # Post-process: dynamic beat tracking + chord-boundary snap +
+            # tempo_curve persistence. madmom (when installed) follows
+            # rubato/live tempo drift; falls back to librosa static BPM
+            # otherwise. Without this the front-end sees fractional beat
+            # counts ("3.3 beats"). Failure here is non-fatal — save raw
+            # BTC output and move on.
+            beat_info = {}
+            try:
+                from beat_snap import analyze_and_snap_dynamic
+                beat_info = analyze_and_snap_dynamic(full, chords)
+            except Exception as _snap_err:
+                add_log("WARN", f"beat_snap 失敗: {name} — {type(_snap_err).__name__}")
             sheet = {"path": track_path, "key": key, "capo": 0,
                      "source": "btc", "chords": chords}
+            bpm_val = beat_info.get("bpm")
+            n_snap = beat_info.get("n_snapped", 0)
+            if bpm_val:
+                sheet["bpm"] = round(bpm_val, 1)
+            # Dynamic beat fields — empty arrays are still useful as
+            # "we tried, no beats" signal vs "field absent (legacy)".
+            if beat_info.get("beats_source"):
+                sheet["beats"] = beat_info.get("beats", [])
+                sheet["downbeats"] = beat_info.get("downbeats", [])
+                sheet["tempo_curve"] = beat_info.get("tempo_curve", [])
+                sheet["beats_source"] = beat_info["beats_source"]
+                sheet["beat_version"] = beat_info.get("beat_version", 0)
+
+            # Beat refiner — Phase 1 audio-level Compact Transformer.
+            # Same hook as process_queue.py upload path, gated on the same
+            # ``beat_refiner_enabled`` setting. The phase1_refine internal
+            # gate ensures refinement only adopts when alignment improves
+            # by ≥+0.02; otherwise silent no-op. See backend/ai/bar_arbitrator
+            # phase1_refine for the full quality-gate logic.
+            if settings.get("beat_refiner_enabled", False) and sheet.get("beats"):
+                try:
+                    from ai.bar_arbitrator import phase1_refine
+                    res = phase1_refine(sheet, full)
+                    sheet["beat_refiner"] = {
+                        "applied": res["applied"],
+                        "reason": res["reason"],
+                        "model_version": res.get("model_version", "phase1_v1"),
+                        "score_before": res.get("score_before", 0.0),
+                        "score_after": res.get("score_after", 0.0),
+                        "n_beats_before": len(res.get("beats_before") or []),
+                        "n_beats_after": len(res.get("beats_after") or []),
+                        "n_downbeats_before": len(res.get("downbeats_before") or []),
+                        "n_downbeats_after": len(res.get("downbeats_after") or []),
+                    }
+                    if res["applied"]:
+                        sheet["beats"] = res["beats_after"]
+                        sheet["downbeats"] = res["downbeats_after"]
+                        add_log(
+                            "OK",
+                            f"beat_refiner: {name} align "
+                            f"{res.get('score_before', 0):.2f}->{res.get('score_after', 0):.2f} "
+                            f"n_db {len(res['downbeats_before'])}->{len(res['downbeats_after'])}",
+                        )
+                except Exception as _ref_err:
+                    add_log(
+                        "WARN",
+                        f"beat_refiner 失敗: {name} — {type(_ref_err).__name__}",
+                    )
+
             chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
             cache_update_entry(track_path)
             _worker_state["detect_count"] += 1
-            add_log("OK", f"BTC 偵測: {name} (Key: {key}, {len(chords)} chords)")
+            bpm_tag = f", BPM {bpm_val:.0f}" if bpm_val else ""
+            snap_tag = f", snap {n_snap}" if n_snap else ""
+            add_log("OK", f"BTC 偵測: {name} (Key: {key}, {len(chords)} chords{bpm_tag}{snap_tag})")
         except Exception as e:
             reason = _classify_detect_error(e, full)
             add_log("ERROR", f"偵測失敗: {name} — {reason}")
@@ -648,6 +1046,11 @@ def _auto_chord_detect_loop(settings: dict, batch: list, unanalyzed: list, lock,
 
 def start_worker():
     global _worker_thread, _stop_event
+    # Hard gate: beta instance (8801) must never scan NAS — personal-only feature.
+    # Regardless of settings, environment variable LIVECHORD_MODE=beta blocks Core.
+    if _current_mode() == "beta":
+        log.info("start_worker blocked: beta instance cannot run Core")
+        return False
     if _worker_state["running"]:
         return False
     _stop_event = threading.Event()

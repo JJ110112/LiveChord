@@ -28,7 +28,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="ai.melody_extrac
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from chord_cache import song_hash
+from chord_cache import song_hash, chord_file_for, ensure_chord_bucket
 
 # 延遲 import: melody-only 模式不需要 GPU 相關套件
 # chord_detect, torch 在 chord/both 模式才載入
@@ -159,7 +159,8 @@ def _ensure_melody_extractor():
 def process_track(root_dir: str, rel_path: str):
     full_path = os.path.join(root_dir, rel_path)
     h = song_hash(rel_path)
-    chord_file = CHORDS_DIR / f"{h}.json"
+    ensure_chord_bucket(h)
+    chord_file = chord_file_for(h)
     melody_file = MELODIES_DIR / f"{h}.json"
 
     do_melody = _run_mode in ("both", "melody")
@@ -208,7 +209,8 @@ def process_track(root_dir: str, rel_path: str):
         return "ERROR_FS (file access)"
 
     # --- 跨進程/機器鎖機制 (Atomic Lock) ---
-    lock_file = CHORDS_DIR / f"{h}.lock"
+    # Lock file co-located with chord file inside the bucket
+    lock_file = chord_file.parent / f"{h}.lock"
     try:
         # 使用 os.O_CREAT | os.O_EXCL 達成原子操作 (Atomic)建立鎖檔案
         # 若已有其他機器建立，會觸發 FileExistsError

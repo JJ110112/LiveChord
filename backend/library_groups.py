@@ -9,6 +9,7 @@
 
 import json
 import os
+import time
 from pathlib import Path
 
 from chord_cache import song_hash
@@ -18,6 +19,9 @@ from data_cache import get_library_cache, get_chord_hash_set
 DATA_DIR = Path(__file__).parent.parent / "data"
 CACHE_FILE = DATA_DIR / "library_cache.json"
 CHORDS_DIR = DATA_DIR / "chords"
+
+# list_groups() cache — invalidates when library mtime or chord hash set changes
+_groups_cache = {"data": None, "lib_mtime": 0.0, "chord_ts": 0.0}
 
 UNCATEGORIZED = "未分類"
 
@@ -66,7 +70,16 @@ def list_groups() -> list[dict]:
     """從 library_cache 計算所有群組與覆蓋率。
     每個已設定的 music_root 至少會回傳一筆 placeholder（即使尚無曲目），
     讓使用者在 admin 介面可以看到所有掛載的音樂庫。
+    結果依 library mtime + chord_hash_set 時戳快取，避免重複迴圈 45k 曲目。
     """
+    from data_cache import _lib_cache, _chord_hash_cache
+    lib_mt = _lib_cache["mtime"]
+    ch_ts = _chord_hash_cache["ts"]
+    if (_groups_cache["data"] is not None
+            and _groups_cache["lib_mtime"] == lib_mt
+            and _groups_cache["chord_ts"] == ch_ts):
+        return _groups_cache["data"]
+
     cache = get_library_cache()
     chord_hashes = get_chord_hash_set()
     groups: dict[tuple[int, str], dict] = {}
@@ -110,12 +123,50 @@ def list_groups() -> list[dict]:
                 "chords_done": 0,
             }
 
+    # 額外：即使 scan 尚未走到某個子資料夾，只要它實際存在於磁碟上，
+    # 就在 admin UI 顯示 placeholder（track_count=0），讓使用者「邊掃邊勾選」
+    # 而不用等完整 scan 結束。成本：每個 root 一次淺層 listdir（十幾個項目）。
+    EXCLUDE_DIRS = {"#recycle", "@eaDir", "@tmp", "#snapshot"}
+    for idx, root in enumerate(roots):
+        if not os.path.isdir(root):
+            continue
+        try:
+            entries = os.listdir(root)
+        except OSError:
+            continue
+        for name in entries:
+            if name.startswith(".") or name in EXCLUDE_DIRS:
+                continue
+            if not os.path.isdir(os.path.join(root, name)):
+                continue
+            key = (idx, name)
+            if key in groups:
+                continue  # cache 已有 tracks，維持計算結果
+            prefix = (f"@{idx}/" if idx > 0 else "") + name + "/"
+            groups[key] = {
+                "group_id": f"@{idx}/{name}",
+                "root_idx": idx,
+                "root_label": _root_label(idx),
+                "label": name,
+                "path_prefix": prefix,
+                "track_count": 0,
+                "chords_done": 0,
+            }
+
     result = list(groups.values())
     for g in result:
         g["chords_pending"] = g["track_count"] - g["chords_done"]
         g["coverage"] = round(g["chords_done"] / g["track_count"] * 100, 1) if g["track_count"] else 0
     result.sort(key=lambda x: (x["root_idx"], x["label"]))
+    _groups_cache["data"] = result
+    _groups_cache["lib_mtime"] = _lib_cache["mtime"]
+    _groups_cache["chord_ts"] = _chord_hash_cache["ts"]
     return result
+
+
+def invalidate_groups_cache():
+    """強制下次 list_groups() 重新計算。"""
+    _groups_cache["data"] = None
 
 
 def filter_tracks_by_group(tracks: list, group_id: str) -> list:

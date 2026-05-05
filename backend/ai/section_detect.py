@@ -59,18 +59,26 @@ def _chord_complexity(chord_str):
     return score
 
 
-def _estimate_bpm_and_window(chords, is_simple):
-    """BPM 自動偵測 + 動態窗口"""
-    durations = [c.get("end", c["time"] + 2) - c["time"] for c in chords if c.get("end")]
-    durations = [d for d in durations if 0.1 < d < 10]
+def _estimate_bpm_and_window(chords, is_simple, hint_bpm=None):
+    """BPM 自動偵測 + 動態窗口
 
-    if not durations:
-        return 120, 8.0
+    hint_bpm: chord JSON 裡已持久化的 BPM（含 ballad halving 修正）。若在
+    40–240 範圍內就直接採用，跳過 chord-duration 反推，避免 window 被誤判
+    BPM 壓成半長、導致慢歌樂句被切碎。
+    """
+    if hint_bpm and 40 <= hint_bpm <= 240:
+        best_bpm = int(round(hint_bpm))
+    else:
+        durations = [c.get("end", c["time"] + 2) - c["time"] for c in chords if c.get("end")]
+        durations = [d for d in durations if 0.1 < d < 10]
 
-    median_dur = sorted(durations)[len(durations) // 2]
-    bpms = [60.0 / median_dur * mul for mul in (1, 2, 4)]
-    best_bpm = min(bpms, key=lambda b: abs(b - 100))
-    best_bpm = max(60, min(180, round(best_bpm)))
+        if not durations:
+            return 120, 8.0
+
+        median_dur = sorted(durations)[len(durations) // 2]
+        bpms = [60.0 / median_dur * mul for mul in (1, 2, 4)]
+        best_bpm = min(bpms, key=lambda b: abs(b - 100))
+        best_bpm = max(60, min(180, round(best_bpm)))
 
     beat_sec = 60.0 / best_bpm
     if is_simple:
@@ -129,7 +137,7 @@ def _extract_midi_features(song_hash, data_dir="V:/data"):
 # 主入口
 # ---------------------------------------------------------------------------
 
-def detect_sections(chords, key="C", song_hash=None, data_dir="V:/data", mode="auto", fallback_data_dir=None):
+def detect_sections(chords, key="C", song_hash=None, data_dir="V:/data", mode="auto", fallback_data_dir=None, hint_bpm=None):
     if not chords or len(chords) < 4:
         return {"sections": [], "analysis": {}}
 
@@ -172,7 +180,7 @@ def detect_sections(chords, key="C", song_hash=None, data_dir="V:/data", mode="a
     actual_data_dir = fallback_data_dir if fallback_data_dir else data_dir
     melody_all, bass_all = _extract_midi_features(song_hash, actual_data_dir)
 
-    bpm, WINDOW = _estimate_bpm_and_window(chords, is_simple)
+    bpm, WINDOW = _estimate_bpm_and_window(chords, is_simple, hint_bpm=hint_bpm)
 
     # 切割窗口
     n_windows = max(1, int(math.ceil(total_dur / WINDOW)))
@@ -412,7 +420,16 @@ def _classify_dl(windows_data, data_dir):
     """使用 PyTorch BiLSTM 模型預測段落標籤。若模型尚未訓練則回傳 False 觸發 Fallback"""
     if not windows_data:
         return False
-        
+
+    # Features 全零 → hybrid MIDI extraction 沒跑（只 18% 的歌有）。這時 BiLSTM
+    # 的 melody/bass 輸入全為 0，預測會退化成單一 "verse"，還不如走 rule-based。
+    midi_signal = sum(
+        float(w.get("melody_density", 0)) + float(w.get("bass_density", 0))
+        for w in windows_data
+    )
+    if midi_signal == 0:
+        return False
+
     try:
         import torch
         from pathlib import Path
@@ -507,7 +524,8 @@ if __name__ == "__main__":
 
     for song in test_songs:
         h = hashlib.md5(song.encode()).hexdigest()[:12]
-        f = chords_dir / f"{h}.json"
+        # Sharded layout: <chords_dir>/<bucket>/<hash>.json
+        f = chords_dir / h[:2] / f"{h}.json"
         if not f.is_file():
             continue
         data = json.loads(f.read_text(encoding="utf-8"))
