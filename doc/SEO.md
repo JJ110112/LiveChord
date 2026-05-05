@@ -49,14 +49,15 @@ Google's PageRank-derived ranking is **dominated** by domain authority, which co
 **Priority order (highest ROI first):**
 
 ### 2a. Reddit (single highest-leverage move)
-- **r/piano** (1.2M members) — "I built a free AI tool that turns any YouTube song into a real-time chord chart"
+- **r/piano** (1.2M members) — "I built a free AI tool that turns any audio file you upload into a real-time chord chart"
 - **r/WeAreTheMusicMakers** (2.1M) — same angle, different framing
 - **r/chordsforpiano**, **r/Guitar**, **r/musictheory** — secondary
 - One Reddit dofollow link in a high-engagement thread ≈ 30 generic blog backlinks
 - **Risk**: low-effort posts get flagged as self-promo. Lead with a specific feature (e.g. "AI bar-line correction" or "transpose + slow-down + A-B loop") + a usage screenshot, mention LiveChord in the comments. Don't put the URL in the title.
+- **Don't pitch as a "YouTube chord finder"** — public mode is upload-only as of 2026-05-04 (see [project_youtube_public_disabled](../../.claude/projects/c--Users-hitea-Claude-LiveChord/memory/project_youtube_public_disabled.md)). Anyone landing on `livechord.org` expecting YT URL ingest will bounce. Frame around "drop your MP3/WAV/FLAC" instead.
 
 ### 2b. Hacker News
-- **Show HN: LiveChord – AI piano/guitar chords for any YouTube song**
+- **Show HN: LiveChord – AI piano/guitar chords for any audio file you upload**
 - Best posting window: Tuesday-Thursday 8-10am Pacific
 - Upvote velocity in first 30 min decides front-page placement
 - Even a 50-upvote post that doesn't front-page gives 1 dofollow link from `news.ycombinator.com` (DR ~91)
@@ -67,7 +68,7 @@ Google's PageRank-derived ranking is **dominated** by domain authority, which co
 - Top-5 of day → 200-500 visits + 3-5 reviewer blog mentions
 
 ### 2d. Long-tail content sites
-- **iThome 鐵人賽** — 30-day series "用 AI 做出能跟著 YouTube 即時顯示和弦的網站"
+- **iThome 鐵人賽** — 30-day series "用 AI 做出能即時辨識音檔和弦並陪你練習的網站"
 - **Medium / Dev.to** — "How I built a 110M-param music transformer for chord-aware MIDI generation" (technical angle, links back to demo)
 - **痞客邦 / 方格子** — Mandarin audience, lower DA but easier to rank
 
