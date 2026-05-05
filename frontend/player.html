@@ -652,6 +652,33 @@
             <span data-i18n="player.teach.acc_refresh">Regen acc</span>
           </button>
         </div>
+        <div class="tb-subgroup-label" data-i18n="player.teach.sound_label">Instrument sound — per tab, persists across sessions</div>
+        <div class="tb-subgroup-row">
+          <select id="instrumentSound" class="tb-select"
+                  title="Instrument sound (only audible in MIDI / Mix mode)">
+            <optgroup label="Keyboard">
+              <option value="grand-piano">Grand Piano</option>
+              <option value="upright-piano">Upright Piano</option>
+              <option value="rhodes">Rhodes</option>
+              <option value="wurlitzer">Wurlitzer</option>
+              <option value="organ">Organ</option>
+            </optgroup>
+            <optgroup label="String">
+              <option value="nylon-guitar">Nylon Guitar</option>
+              <option value="steel-guitar">Steel Guitar</option>
+            </optgroup>
+            <optgroup label="Other">
+              <option value="accordion">Accordion</option>
+              <option value="synth-pad">Synth Pad</option>
+            </optgroup>
+          </select>
+          <button id="btnResetSound" class="tb-popup-btn"
+                  title="Reset sound to this tab's default"
+                  aria-label="Reset to default sound">
+            <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+            <span>Default</span>
+          </button>
+        </div>
       </div>
 
       <!-- Hidden shells: btnTopHandSwitch + btnRhContent are no longer visible (練習 group
@@ -839,7 +866,7 @@
 <script src="/js/chord-correction.js?v=15"></script>
 <!-- Phase A: fetch wrapper installed by /js/auth.js at <head>; the inline
      duplicate block was removed. -->
-<script src="/js/player.js?v=264"></script>
+<script src="/js/player.js?v=265"></script>
 <script>
   // Toolbar gear theme picker — mirrors the homepage gear handler so the
   // user's theme choice is honored on either entry point. Active state on
