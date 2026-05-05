@@ -3538,7 +3538,14 @@
     }
     function _syncSoundPickerEnabled() {
       if (!soundSelect) return;
-      const muted = (typeof audioMode !== "undefined" && audioMode === 0);
+      // audioMode is a `let` declared further down the IIFE; this function
+      // can run during _setupTeachControls (called from _switchTab during
+      // init) BEFORE that let-binding is reached, hitting the TDZ. typeof
+      // also throws on TDZ-let so we have to swallow the ReferenceError.
+      // applyAudioMode() re-runs _syncSoundPickerEnabled once audioMode
+      // is live, so the UI ends up correct either way.
+      let muted = false;
+      try { muted = (audioMode === 0); } catch { muted = false; }
       soundSelect.disabled = muted;
       if (soundResetBtn) soundResetBtn.disabled = muted;
       soundSelect.title = muted
