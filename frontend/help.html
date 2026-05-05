@@ -14,9 +14,9 @@
   <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <script src="/js/auth.js?v=5"></script>
-  <script src="/js/i18n.js?v=31"></script>
+  <script src="/js/i18n.js?v=33"></script>
   <link rel="stylesheet" href="/css/base.css?v=5">
-  <link rel="stylesheet" href="/css/help.css?v=4">
+  <link rel="stylesheet" href="/css/help.css?v=5">
 </head>
 <body class="help-body">
 
@@ -45,6 +45,7 @@
   <section class="help-hero">
     <h1 data-i18n="help.hero.title">LiveChord Help Center</h1>
     <p data-i18n="help.hero.subtitle">Find answers to common questions.</p>
+    <p class="help-hero-mission" data-i18n="help.hero.mission">LiveChord is a non-commercial tool — built to help music enthusiasts study chord recognition and re-harmonization (Re-harmonization) with AI, for academic research and personal practice.</p>
     <div class="help-search-wrap">
       <input id="helpSearch" type="search" class="help-search"
              data-i18n-attr="placeholder=help.search_placeholder"
@@ -128,6 +129,28 @@
         <details class="help-q">
           <summary data-i18n="help.q.bar_split">What does 'Auto-split' do?</summary>
           <p data-i18n="help.a.bar_split">Slices long chords (chords spanning multiple bars) into one-bar cards so they're easier to practise. Pick from 'Split by bar', 'Snap to bar lines' (which nudges boundaries slightly to align), or 'Split by ratio' for proportional cuts.</p>
+        </details>
+      </div>
+    </details>
+
+    <details class="help-card">
+      <summary><span data-i18n="help.section.reharm">Re-harmonization &amp; AI accompaniment</span></summary>
+      <div class="help-card-body">
+        <details class="help-q">
+          <summary data-i18n="help.q.reharm_what">What is "re-harmonization"?</summary>
+          <p data-i18n="help.a.reharm_what">Re-harmonization rewrites a song's chord progression — replacing a plain triad with a colour chord, inserting passing ii–V's, dropping in tritone substitutes, or swapping the whole progression for a jazz re-arrangement. It's how a jazz pianist turns a pop ballad into a cocktail-bar standard, and it's one of LiveChord's headline features (the toolbar's Jazzify button).</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.reharm_levels">What's the difference between L1, L2, L3 and ✨AI?</summary>
+          <p data-i18n="help.a.reharm_levels">L1 (colour) adds 7ths and 9ths to your existing triads — gentle, the original harmony is still recognisable. L2 (substitute) introduces secondary dominants and tritone subs, redirecting the progression while preserving its skeleton. L3 (re-harmonise) rewrites larger sections with passing ii–V chains and modal interchange — close to a full jazz arrangement. ✨AI runs a Transformer trained on jazz lead-sheet data: it generates a fresh progression matched to the original timing, often with surprising voice leading.</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.reharm_how">How do I use Jazzify in the player?</summary>
+          <p data-i18n="help.a.reharm_how">Open any analysed song and tap the Jazzify button (✨ icon) in the bottom toolbar, then pick L1 / L2 / L3 / ✨AI from the popup. The chord ribbon, piano view, and A-B looping update to the new progression instantly. Tap the Off option to restore the original. The chord-source LED in the player corner labels which version you're hearing so you can A/B compare.</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.accompaniment">What does the AI accompaniment do (left + right hand)?</summary>
+          <p data-i18n="help.a.accompaniment">Beyond the chord chart, LiveChord generates a per-onset playable accompaniment — separate left-hand (bass + chord voicing) and right-hand (melody or arpeggio) parts, with finger numbers, velocity, and pedal markings. The piano falling-bar waterfall and the 88-key keyboard render this exactly as you'd play it. This is what separates LiveChord from a plain chord recogniser: it doesn't just label what the chords are, it shows you a way to play them. The Arranger view adds backing-pattern templates (Bossa, Walking, Swing, Slow Ballad…) auto-picked by tempo, and the Tools popup's right-hand mode lets you pick whether the right hand plays the AI accompaniment, the extracted melody, or both.</p>
         </details>
       </div>
     </details>

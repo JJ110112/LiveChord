@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LiveChord — AI Chord Recognition for Piano &amp; Guitar Practice</title>
-  <meta name="description" content="Upload any audio file (MP3 / FLAC / WAV / M4A / OGG, up to 100 MB) and LiveChord generates a real-time chord chart with synced piano and guitar practice tools — transpose, A-B loop, slow-down. Free in your browser.">
+  <meta name="description" content="Upload your own audio file (MP3 / FLAC / WAV / M4A / OGG, up to 100 MB) and LiveChord generates a real-time chord chart with synced piano and guitar practice tools — transpose, A-B loop, slow-down. Free in your browser.">
   <link rel="canonical" href="https://livechord.org/">
   <link rel="alternate" hreflang="en" href="https://livechord.org/">
   <link rel="alternate" hreflang="zh-TW" href="https://livechord.org/?lang=zh-TW">
@@ -41,7 +41,7 @@
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=21">
   <link rel="stylesheet" href="/css/home.css?v=33">
-  <link rel="stylesheet" href="/css/help.css?v=4">
+  <link rel="stylesheet" href="/css/help.css?v=5">
   <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
        Authorization for logged-in users, mode-aware 401 handling. Replaces
        the inline blind-redirect block. Must load synchronously before any
@@ -49,7 +49,7 @@
   <script src="/js/auth.js?v=5"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
-  <script src="/js/i18n.js?v=31"></script>
+  <script src="/js/i18n.js?v=33"></script>
 </head>
 <body>
 
@@ -163,7 +163,7 @@
        zh-TW switch. -->
   <section id="secHomeHero" class="home-hero" style="display:none">
     <h1 class="home-hero-title">Turn your audio into a real-time chord chart</h1>
-    <p class="home-hero-tagline" data-i18n="home.hero.tagline">Upload an audio file. AI detects the chord progression, beats, and key. Practice with synced piano, guitar, ukulele, accordion, and arranger views — transpose, slow-down, A-B loop, all in your browser.</p>
+    <p class="home-hero-tagline" data-i18n="home.hero.tagline">Upload your own audio file. AI detects chord progression, beats, and key. Practice with synced piano, guitar, ukulele, accordion, and arranger views — transpose, slow-down, A-B loop, all in your browser.</p>
     <div class="home-hero-cta-row">
       <button id="heroUploadBtn" class="home-hero-cta" data-i18n="home.hero.cta">Get started for free</button>
     </div>
@@ -171,12 +171,12 @@
       <div class="home-hero-feature">
         <div class="hf-icon">🎵</div>
         <h3 class="hf-title" data-i18n="home.hero.feat1.title">AI chord detection</h3>
-        <p class="hf-body" data-i18n="home.hero.feat1.body">Drop in any audio file (MP3 / FLAC / WAV / M4A / OGG, up to 100 MB). Our model returns chord progression, beat grid, and key signature in 30 seconds to 2 minutes — depending on song length.</p>
+        <p class="hf-body" data-i18n="home.hero.feat1.body">Upload audio you have permission to use (MP3 / FLAC / WAV / M4A / OGG, up to 100 MB). Our model returns chord progression, beat grid, and key signature in 30 seconds to 2 minutes — depending on track length.</p>
       </div>
       <div class="home-hero-feature">
         <div class="hf-icon">🎹</div>
         <h3 class="hf-title" data-i18n="home.hero.feat2.title">Five instrument views</h3>
-        <p class="hf-body" data-i18n="home.hero.feat2.body">See the same song through piano, guitar, ukulele, accordion, or arranger lenses. Switch any time — chords, fingering, and timing stay synced; only the visual presentation changes.</p>
+        <p class="hf-body" data-i18n="home.hero.feat2.body">See the same track through piano, guitar, ukulele, accordion, or arranger lenses. Switch any time — chords, fingering, and timing stay synced; only the visual presentation changes.</p>
       </div>
       <div class="home-hero-feature">
         <div class="hf-icon">🎯</div>
@@ -202,8 +202,8 @@
       </li>
       <li class="hiw-step">
         <div class="hiw-num">2</div>
-        <h3 class="hiw-title" data-i18n="home.how_it_works.step2.title">AI analyzes the song</h3>
-        <p class="hiw-body" data-i18n="home.how_it_works.step2.body">A chord-recognition transformer detects the chord progression. A beat-tracking model finds bar lines and tempo. A section detector labels verses, choruses and bridges. Typical analysis takes 30 seconds to 2 minutes depending on song length.</p>
+        <h3 class="hiw-title" data-i18n="home.how_it_works.step2.title">AI analyzes the uploaded audio</h3>
+        <p class="hiw-body" data-i18n="home.how_it_works.step2.body">A chord-recognition transformer detects the chord progression. A beat-tracking model finds bar lines and tempo. A section detector identifies structural sections (e.g., verse/chorus patterns). Typical analysis takes 30 seconds to 2 minutes depending on track length.</p>
       </li>
       <li class="hiw-step">
         <div class="hiw-num">3</div>
@@ -486,11 +486,15 @@
       localStorage.removeItem("livechord_token");
       localStorage.removeItem("livechord_username");
       localStorage.removeItem("livechord_display_name");
-      // Personal mode falls back to LAN bypass on /, no login page needed.
-      // Beta / public still bounce to /login so the user picks an auth path.
-      const mode = (window._lcDeploymentMode) ||
-                   localStorage.getItem("livechord_mode_hint") || "";
-      window.location.href = (mode === "personal") ? "/" : "/login";
+      // Also clear the "Continue as guest" ack so a returning logged-out
+      // visitor lands on the full marketing landing (intro + hero +
+      // how-it-works + open-source) instead of skipping straight to the
+      // guest dashboard. Sign-in is still reachable via the intro CTA on
+      // that page; users who pick guest can re-set the ack from /login.
+      localStorage.removeItem("livechord_guest_acked");
+      // All modes go to / on logout — public/beta show the marketing
+      // landing for logged-out users; personal falls back to LAN bypass.
+      window.location.href = "/";
   }
 
   // (Export-data button moved to player toolbar Tools popup — see player.js)
