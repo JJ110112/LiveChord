@@ -113,19 +113,16 @@
         if (backdrop) backdrop.addEventListener("click", closeAddSongModal);
       }
       // Public mode: split the homepage into TWO mutually exclusive views:
-      //   - Logged-out → marketing landing only (intro banner + hero +
-      //     how-it-works + footer). No dashboard, no recent / favorites /
-      //     local-music — those need an account.
       //   - Logged-in  → dashboard only (recent / favorites / local-music).
       //     The marketing sections stay hidden; the user already chose to
       //     sign up, no need to re-pitch them.
+      //   - Logged-out (incl. "Continue as guest") → full marketing landing
+      //     (intro banner + hero + how-it-works + open-source). Header is
+      //     hidden — clean sign-up funnel, no LC logo / search bar above
+      //     the pitch. The hero CTA still works for guests (opens the
+      //     upload modal directly instead of round-tripping /login).
       if (_isPublicMode) {
         const isLoggedIn = !!localStorage.getItem("livechord_token");
-        // "Continue as guest" on /login sets this flag so the visitor lands
-        // on the dashboard view instead of the marketing hero on the next
-        // /. First-time visitors with no flag still see marketing.
-        const guestAcked = localStorage.getItem("livechord_guest_acked") === "1";
-        const showDashboard = isLoggedIn || guestAcked;
         const headerEl = document.querySelector("header.header");
         const intro = $("#secHomeIntro");
         const heroSec = $("#secHomeHero");
@@ -135,7 +132,7 @@
         const secBetaRecent = $("#secBetaRecent");
         const secFavorites = $("#secFavorites");
 
-        if (showDashboard && isLoggedIn) {
+        if (isLoggedIn) {
           // Logged-in dashboard: hide marketing, show user-data sections.
           if (headerEl) headerEl.style.display = "";
           if (intro) intro.style.display = "none";
@@ -145,36 +142,12 @@
           if (secBetaLocal) secBetaLocal.style.display = "";
           if (secBetaRecent) secBetaRecent.style.display = "";
           if (secFavorites) secFavorites.style.display = "";
-        } else if (showDashboard) {
-          // Guest dashboard: header visible (so search / settings reachable),
-          // but per-user sections stay hidden because they're either empty
-          // (favorites / recent / my-history all 401 for anon) or wired to
-          // an IndexedDB registry that needs a token to be useful (local
-          // music). Showing them as empty cards or with a dead "+ Pick"
-          // button leaves the page baffling — the user reported it.
-          // Instead, surface the marketing hero + how-it-works as the
-          // primary content so the guest sees a clear "Upload audio" CTA
-          // and a visual explainer of what the service does. The CTA is
-          // re-wired below to open the upload modal directly (no /login
-          // round-trip — they already chose guest).
-          if (headerEl) headerEl.style.display = "";
-          if (intro) intro.style.display = "none";
-          if (heroSec) heroSec.style.display = "";
-          if (hiwSec) hiwSec.style.display = "";
-          // Show the open-source / project-description block too, so a
-          // returning guest sees the full marketing pitch (mission + AGPL
-          // + sponsor link) rather than a hero-only page that ends abruptly
-          // above the footer.
-          if (osSec) osSec.style.display = "";
-          if (secBetaLocal) secBetaLocal.style.display = "none";
-          if (secBetaRecent) secBetaRecent.style.display = "none";
-          if (secFavorites) secFavorites.style.display = "none";
         } else {
-          // Marketing view: show landing surfaces, hide user-data sections
-          // (they'd be empty for an anonymous visitor anyway, and would
-          // bury the sign-up CTA below empty placeholder cards). Top bar
-          // (logo / search / sponsor / settings) hidden too — clean
-          // sign-up funnel; access via /login still works via the intro CTA.
+          // Marketing view (logged-out, incl. guest-acked): show landing
+          // surfaces, hide user-data sections (they'd be empty for an
+          // anonymous visitor and would bury the sign-up CTA below empty
+          // placeholder cards). Top bar hidden too — clean funnel, /login
+          // is reachable via the hero CTA.
           if (headerEl) headerEl.style.display = "none";
           if (intro) intro.style.display = "";
           if (heroSec) heroSec.style.display = "";
