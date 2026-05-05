@@ -161,7 +161,11 @@
           if (intro) intro.style.display = "none";
           if (heroSec) heroSec.style.display = "";
           if (hiwSec) hiwSec.style.display = "";
-          if (osSec) osSec.style.display = "none";
+          // Show the open-source / project-description block too, so a
+          // returning guest sees the full marketing pitch (mission + AGPL
+          // + sponsor link) rather than a hero-only page that ends abruptly
+          // above the footer.
+          if (osSec) osSec.style.display = "";
           if (secBetaLocal) secBetaLocal.style.display = "none";
           if (secBetaRecent) secBetaRecent.style.display = "none";
           if (secFavorites) secFavorites.style.display = "none";
