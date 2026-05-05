@@ -821,10 +821,11 @@ class AccordionInstrument {
     const i18n = window.LiveChordI18n;
     const tt = (k, v) => (i18n && typeof i18n.t === "function" ? i18n.t(k, v) : k);
     if (!resolved || !resolved.available) {
-      if (this._lhHintEl) {
-        const wtxt = AccordionInstrument._warnText(resolved);
-        this._lhHintEl.textContent = wtxt || tt("player.gt.acc_lh_hint");
-      }
+      // Canvas already paints the warning big-and-red; the absolutely-
+      // positioned bottom-right hint would just duplicate it and overlap
+      // the .acc-finger-legend row. Default it back to the short hint so
+      // the corner isn't empty.
+      if (this._lhHintEl) this._lhHintEl.textContent = tt("player.gt.acc_lh_hint");
       return;
     }
     const bass = resolved.buttons[0] ? resolved.buttons[0].label : "?";
