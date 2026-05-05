@@ -154,14 +154,23 @@
           if (secBetaLocal) secBetaLocal.style.display = "none";
           if (secBetaRecent) secBetaRecent.style.display = "none";
           if (secFavorites) secFavorites.style.display = "none";
-          // Wire the hero "Get started for free" CTA — routes to /login so
-          // the marketing funnel ends at sign-up. The post-login dashboard
-          // is where uploads happen, not the marketing page.
+          // Wire the hero "Get started for free" CTA. Public mode allows
+          // anonymous uploads, so open the add-song modal directly — anon
+          // visitors who clicked through "Continue as guest" expect a way
+          // to actually use the service without signing up. Prior wiring
+          // routed back to /login which created a dead loop:
+          //   /  →  Get started  →  /login  →  Continue as guest  →  /
           const cta = $("#heroUploadBtn");
           if (cta && !cta._lcWired) {
             cta._lcWired = true;
             cta.addEventListener("click", () => {
-              window.location.href = "/login";
+              const panel = $("#betaFabPanel");
+              const backdrop = $("#betaFabBackdrop");
+              if (panel) {
+                panel.classList.add("open");
+                panel.classList.remove("file-only");
+              }
+              if (backdrop) backdrop.classList.add("open");
             });
           }
         }
