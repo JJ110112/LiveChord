@@ -135,13 +135,8 @@
         const secBetaRecent = $("#secBetaRecent");
         const secFavorites = $("#secFavorites");
 
-        if (showDashboard) {
-          // Dashboard view: hide marketing surfaces, show user-data sections.
-          // Guests fall in here too — their per-user fetches (favorites /
-          // recent / my-history) all 401 and the call sites self-hide the
-          // empty sections, so the layout collapses to header + search bar.
-          // The search bar's Enter / no-result CTA still opens the upload
-          // modal, so guests can upload without an explicit hero button.
+        if (showDashboard && isLoggedIn) {
+          // Logged-in dashboard: hide marketing, show user-data sections.
           if (headerEl) headerEl.style.display = "";
           if (intro) intro.style.display = "none";
           if (heroSec) heroSec.style.display = "none";
@@ -150,6 +145,26 @@
           if (secBetaLocal) secBetaLocal.style.display = "";
           if (secBetaRecent) secBetaRecent.style.display = "";
           if (secFavorites) secFavorites.style.display = "";
+        } else if (showDashboard) {
+          // Guest dashboard: header visible (so search / settings reachable),
+          // but per-user sections stay hidden because they're either empty
+          // (favorites / recent / my-history all 401 for anon) or wired to
+          // an IndexedDB registry that needs a token to be useful (local
+          // music). Showing them as empty cards or with a dead "+ Pick"
+          // button leaves the page baffling — the user reported it.
+          // Instead, surface the marketing hero + how-it-works as the
+          // primary content so the guest sees a clear "Upload audio" CTA
+          // and a visual explainer of what the service does. The CTA is
+          // re-wired below to open the upload modal directly (no /login
+          // round-trip — they already chose guest).
+          if (headerEl) headerEl.style.display = "";
+          if (intro) intro.style.display = "none";
+          if (heroSec) heroSec.style.display = "";
+          if (hiwSec) hiwSec.style.display = "";
+          if (osSec) osSec.style.display = "none";
+          if (secBetaLocal) secBetaLocal.style.display = "none";
+          if (secBetaRecent) secBetaRecent.style.display = "none";
+          if (secFavorites) secFavorites.style.display = "none";
         } else {
           // Marketing view: show landing surfaces, hide user-data sections
           // (they'd be empty for an anonymous visitor anyway, and would
@@ -164,17 +179,30 @@
           if (secBetaLocal) secBetaLocal.style.display = "none";
           if (secBetaRecent) secBetaRecent.style.display = "none";
           if (secFavorites) secFavorites.style.display = "none";
-          // "Get started for free" routes to /login — sign-up funnel intact.
-          // Visitors who pick "Continue as guest" on /login set the
-          // livechord_guest_acked flag, which sends them to the dashboard
-          // branch above on next /, bypassing this marketing view.
-          const cta = $("#heroUploadBtn");
-          if (cta && !cta._lcWired) {
-            cta._lcWired = true;
-            cta.addEventListener("click", () => {
+        }
+        // Hero "Get started for free" CTA — wiring depends on guest state.
+        // Marketing visitors (no flag) → /login funnel.
+        // Guest dashboard → open the upload modal directly. They already
+        // picked "Continue as guest", round-tripping back to /login is
+        // the dead loop the original bug report flagged.
+        const cta = $("#heroUploadBtn");
+        if (cta && !cta._lcWired) {
+          cta._lcWired = true;
+          cta.addEventListener("click", () => {
+            const tokenNow = !!localStorage.getItem("livechord_token");
+            const guestNow = localStorage.getItem("livechord_guest_acked") === "1";
+            if (!tokenNow && guestNow) {
+              const panel = $("#betaFabPanel");
+              const backdrop = $("#betaFabBackdrop");
+              if (panel) {
+                panel.classList.add("open");
+                panel.classList.remove("file-only");
+              }
+              if (backdrop) backdrop.classList.add("open");
+            } else {
               window.location.href = "/login";
-            });
-          }
+            }
+          });
         }
       } else if (_isBetaMode) {
         // Beta-mode (legacy invite-only). Show local-music for everyone.
