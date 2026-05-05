@@ -220,10 +220,16 @@ class AccordionInstrument {
           ],
           altBass: null,
           available: false,
-          warning: `21鍵無 ${root} 低音，以 ${fb} 代替`,
+          warning_key: "player.gt.acc_warn_no_bass_fifth",
+          warning_vars: { root, fallback: fb },
         };
       }
-      return { buttons: [], available: false, warning: `21鍵無法演奏 ${root}` };
+      return {
+        buttons: [],
+        available: false,
+        warning_key: "player.gt.acc_warn_unplayable",
+        warning_vars: { chord: root },
+      };
     }
     const altCol = col < 6 ? col + 1 : null;
     return {
@@ -462,12 +468,25 @@ class AccordionInstrument {
     }
 
     // Warning
-    if (active && !active.available && active.warning) {
-      ctx.fillStyle = "rgba(255,80,80,0.9)";
-      ctx.font = "bold 13px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText(active.warning, W / 2, H - 4);
+    if (active && !active.available) {
+      const wtxt = AccordionInstrument._warnText(active);
+      if (wtxt) {
+        ctx.fillStyle = "rgba(255,80,80,0.9)";
+        ctx.font = "bold 13px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(wtxt, W / 2, H - 4);
+      }
     }
+  }
+
+  static _warnText(r) {
+    if (!r) return "";
+    const i18n = window.LiveChordI18n;
+    if (r.warning_key && i18n && typeof i18n.t === "function") {
+      const out = i18n.t(r.warning_key, r.warning_vars || {});
+      if (out && out !== r.warning_key) return out;
+    }
+    return r.warning || "";
   }
 
   /* ---- Keyboard Waterfall (Right Hand, Piano-style) ---- */
@@ -799,15 +818,22 @@ class AccordionInstrument {
 
   _updateHints(chordName) {
     const resolved = this._resolveChord(chordName);
+    const i18n = window.LiveChordI18n;
+    const tt = (k, v) => (i18n && typeof i18n.t === "function" ? i18n.t(k, v) : k);
     if (!resolved || !resolved.available) {
-      if (this._lhHintEl) this._lhHintEl.textContent = resolved && resolved.warning ? resolved.warning : "左手：低音鈕";
+      if (this._lhHintEl) {
+        const wtxt = AccordionInstrument._warnText(resolved);
+        this._lhHintEl.textContent = wtxt || tt("player.gt.acc_lh_hint");
+      }
       return;
     }
     const bass = resolved.buttons[0] ? resolved.buttons[0].label : "?";
     const chord = resolved.buttons[1] ? resolved.buttons[1].label : "?";
     const alt = resolved.altBass ? resolved.altBass.label : "";
     if (this._lhHintEl) {
-      this._lhHintEl.textContent = `低音: ${bass}  和弦: ${chord}` + (alt ? `  交替: ${alt}` : "");
+      this._lhHintEl.textContent = alt
+        ? tt("player.gt.acc_lh_hint_full_alt", { bass, chord, alt })
+        : tt("player.gt.acc_lh_hint_full", { bass, chord });
     }
   }
 }
