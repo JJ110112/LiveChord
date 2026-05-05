@@ -157,18 +157,21 @@
           if (secBetaRecent) secBetaRecent.style.display = "none";
           if (secFavorites) secFavorites.style.display = "none";
         }
-        // Hero "Get started for free" CTA — wiring depends on guest state.
-        // Marketing visitors (no flag) → /login funnel.
-        // Guest dashboard → open the upload modal directly. They already
-        // picked "Continue as guest", round-tripping back to /login is
-        // the dead loop the original bug report flagged.
+        // Hero "Get started for free" CTA — always /login when no token.
+        // Reading livechord_guest_acked here was a UX trap: the flag is
+        // sticky in localStorage, so a returning user (browser still has
+        // the flag from any prior /login visit) could not reach /login
+        // from the homepage at all — every CTA click opened the upload
+        // modal instead of the sign-up page. The actual guest-upload path
+        // is /login → "Continue as guest" → /?upload=1 (the link below
+        // carries the query param), and #upload-auto-open below picks it
+        // up so the modal still surfaces in one click for guests.
         const cta = $("#heroUploadBtn");
         if (cta && !cta._lcWired) {
           cta._lcWired = true;
           cta.addEventListener("click", () => {
             const tokenNow = !!localStorage.getItem("livechord_token");
-            const guestNow = localStorage.getItem("livechord_guest_acked") === "1";
-            if (!tokenNow && guestNow) {
+            if (tokenNow) {
               const panel = $("#betaFabPanel");
               const backdrop = $("#betaFabBackdrop");
               if (panel) {
@@ -181,6 +184,27 @@
             }
           });
         }
+        // Auto-open the upload modal when arriving with ?upload=1 — set by
+        // /login's "Continue as guest" link. Guests then see the modal
+        // immediately on landing instead of having to spot the CTA. Strip
+        // the param after firing so a hard-reload doesn't re-trigger.
+        try {
+          const params = new URLSearchParams(window.location.search);
+          if (params.get("upload") === "1") {
+            const panel = $("#betaFabPanel");
+            const backdrop = $("#betaFabBackdrop");
+            if (panel) {
+              panel.classList.add("open");
+              panel.classList.remove("file-only");
+            }
+            if (backdrop) backdrop.classList.add("open");
+            params.delete("upload");
+            const cleanQs = params.toString();
+            const cleanUrl = window.location.pathname +
+              (cleanQs ? "?" + cleanQs : "") + window.location.hash;
+            history.replaceState({}, "", cleanUrl);
+          }
+        } catch (_e) {}
       } else if (_isBetaMode) {
         // Beta-mode (legacy invite-only). Show local-music for everyone.
         const secBetaLocal = $("#secBetaLocalTracks");

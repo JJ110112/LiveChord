@@ -671,7 +671,7 @@
   "home.open_source.cta_github": "在 GitHub 看原始碼",
   "home.open_source.cta_license": "閱讀授權條款",
   "home.open_source.heading": "公開原始碼",
-  "home.open_source.lede": "LiveChord 是一位開發者的個人練琴工具,在 2024-2026 年間打磨成公開服務。從和弦辨識、節拍追蹤,到播放器介面,整個技術堆疊全部開放原始碼。",
+  "home.open_source.lede": "LiveChord 是一位開發者的個人練琴工具，於 2026 年打磨成公開服務。從和弦辨識、節拍追蹤、到播放器介面，整個技術堆疊全部開放原始碼。",
   "home.modal.upload_hint": "MP3, FLAC, WAV, M4A, OGG (100 MB)",
   "home.modal.upload_rights_notice": "⚠ 請僅上傳您擁有使用權的音訊內容。",
   "home.modal.yt_placeholder": "YouTube URL…",
