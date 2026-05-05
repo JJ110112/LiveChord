@@ -1221,6 +1221,8 @@
   "toast.hand.left": "Hand toggle: showing left hand",
   "toast.hand.right": "Hand toggle: showing right hand",
   "toast.load.failed": "Load failed: {err}",
+  "toast.login_required.fav": "Sign in to save favorites",
+  "toast.login_required.rate": "Sign in to rate chords",
   "toast.load.unanalyzed": "This song hasn't been analysed yet — paste a YouTube URL or upload audio to try",
   "toast.melody.done": "Melody extraction done — toggle right hand from AI Teaching to view",
   "toast.melody.started": "Melody extraction started, running in background — you'll be notified when done",

@@ -5943,6 +5943,13 @@
   const _favPath = trackPath || (hashMode ? `__hash/${hashMode}` : "");
   btnFav.addEventListener("click", async () => {
     if (!_favPath) return;
+    // Guest gate: anonymous users (no token) cannot persist favorites —
+    // /api/favorites returns 401. Surface "sign in to save" instead of
+    // letting the request fire and rendering a generic failure toast.
+    if (window.LiveChordAuth && window.LiveChordAuth.isAnonymous()) {
+      showToast(_t("toast.login_required.fav"));
+      return;
+    }
     try {
       if (isFavorite) {
         await API.removeFavorite(_favPath);
@@ -7401,6 +7408,12 @@
     if (btnSubmit) {
       btnSubmit.addEventListener("click", async () => {
         if (!_betaRating) { showToast(_t("toast.beta.pick_rating_first")); return; }
+        // Guest gate: rating is per-user. Anonymous callers get a 401 from
+        // /api/feedback/rating; pre-empt with a clearer "sign in" message.
+        if (window.LiveChordAuth && window.LiveChordAuth.isAnonymous()) {
+          showToast(_t("toast.login_required.rate"));
+          return;
+        }
         try {
           const title = songTitle ? songTitle.textContent : "";
           await API.submitRating(trackPath, _betaRating, betaComment.value.trim(), title);

@@ -121,6 +121,11 @@
       //     sign up, no need to re-pitch them.
       if (_isPublicMode) {
         const isLoggedIn = !!localStorage.getItem("livechord_token");
+        // "Continue as guest" on /login sets this flag so the visitor lands
+        // on the dashboard view instead of the marketing hero on the next
+        // /. First-time visitors with no flag still see marketing.
+        const guestAcked = localStorage.getItem("livechord_guest_acked") === "1";
+        const showDashboard = isLoggedIn || guestAcked;
         const headerEl = document.querySelector("header.header");
         const intro = $("#secHomeIntro");
         const heroSec = $("#secHomeHero");
@@ -130,8 +135,13 @@
         const secBetaRecent = $("#secBetaRecent");
         const secFavorites = $("#secFavorites");
 
-        if (isLoggedIn) {
+        if (showDashboard) {
           // Dashboard view: hide marketing surfaces, show user-data sections.
+          // Guests fall in here too — their per-user fetches (favorites /
+          // recent / my-history) all 401 and the call sites self-hide the
+          // empty sections, so the layout collapses to header + search bar.
+          // The search bar's Enter / no-result CTA still opens the upload
+          // modal, so guests can upload without an explicit hero button.
           if (headerEl) headerEl.style.display = "";
           if (intro) intro.style.display = "none";
           if (heroSec) heroSec.style.display = "none";
@@ -154,23 +164,15 @@
           if (secBetaLocal) secBetaLocal.style.display = "none";
           if (secBetaRecent) secBetaRecent.style.display = "none";
           if (secFavorites) secFavorites.style.display = "none";
-          // Wire the hero "Get started for free" CTA. Public mode allows
-          // anonymous uploads, so open the add-song modal directly — anon
-          // visitors who clicked through "Continue as guest" expect a way
-          // to actually use the service without signing up. Prior wiring
-          // routed back to /login which created a dead loop:
-          //   /  →  Get started  →  /login  →  Continue as guest  →  /
+          // "Get started for free" routes to /login — sign-up funnel intact.
+          // Visitors who pick "Continue as guest" on /login set the
+          // livechord_guest_acked flag, which sends them to the dashboard
+          // branch above on next /, bypassing this marketing view.
           const cta = $("#heroUploadBtn");
           if (cta && !cta._lcWired) {
             cta._lcWired = true;
             cta.addEventListener("click", () => {
-              const panel = $("#betaFabPanel");
-              const backdrop = $("#betaFabBackdrop");
-              if (panel) {
-                panel.classList.add("open");
-                panel.classList.remove("file-only");
-              }
-              if (backdrop) backdrop.classList.add("open");
+              window.location.href = "/login";
             });
           }
         }
