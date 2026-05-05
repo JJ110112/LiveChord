@@ -34,7 +34,11 @@ RH_LOW, RH_HIGH = 60, 84
 # v3 (2026-04-19): STYLE_HUMANIZE timing offsets re-tuned to match legacy
 # anticipation feel (-25~-30ms on downbeats). Previous v2 values were too
 # conservative (-8~-12ms) and produced an audible MIDI lag.
-ACC_ENGINE_VERSION = "v3"
+# v4 (2026-05-06): Added 13 genre-specific styles (BluesShuffle, SlowBlues,
+# RockEighths, RockBallad, JazzCharleston, JazzWaltz, SwingFour, PopBallad,
+# BossaNova, Samba, Reggae, Funk16, RnBNeoSoul) plus 3 new RH modes
+# (comp_offbeat, comp_quarter_shell, muted_stab). Old v3 cache invalidated.
+ACC_ENGINE_VERSION = "v4"
 _V2_FLAG_CACHE: Optional[bool] = None
 
 
@@ -110,28 +114,133 @@ STYLE_DICT = {
     "1+3": [
         (0.0, [0], 0.9),     # LH: 根音 (全音符，只彈一次)
     ],
+    # ── Blues 系列 ──
+    # 12/8 shuffle bass: root-5-7-root-5-7 over a triplet feel.
+    # Frac points 0.0, 0.167, 0.333, 0.5, 0.667, 0.833 split the chord into
+    # two triplet halves so users get an audible swing without needing
+    # explicit time-signature info in the chord JSON.
+    "BluesShuffle": [
+        (0.0,    [0],    1.0),
+        (0.167,  [2],    0.8),
+        (0.333,  [3],    0.8),
+        (0.5,    [0],    1.0),
+        (0.667,  [2],    0.8),
+        (0.833,  [3],    0.8),
+    ],
+    # Slow blues: sparse root + b7-flavoured octave on beats 1 and 3.
+    "SlowBlues": [
+        (0.0,  [0, 3], 1.0),
+        (0.5,  [0],    0.85),
+    ],
+    # ── Rock 系列 ──
+    # Power chord (root + 5th + octave via L2) hammered every 8th.
+    "RockEighths": [
+        (0.0,    [0, 2], 1.0),
+        (0.125,  [0, 2], 0.78),
+        (0.25,   [0, 2], 0.92),
+        (0.375,  [0, 2], 0.78),
+        (0.5,    [0, 2], 1.0),
+        (0.625,  [0, 2], 0.78),
+        (0.75,   [0, 2], 0.92),
+        (0.875,  [0, 2], 0.78),
+    ],
+    # Rock ballad: octave bass beats 1 + 3, sustained.
+    "RockBallad": [
+        (0.0,  [0, 2], 1.0),
+        (0.5,  [0, 2], 0.85),
+    ],
+    # ── Jazz 系列 ──
+    # Charleston: bass on 1, hit on "and of 2".
+    "JazzCharleston": [
+        (0.0,    [0],    1.0),
+        (0.375,  [0, 2], 0.85),
+    ],
+    # Jazz waltz (3/4 feel): bass on 1, comp on 2 + 3 (relative to chord).
+    "JazzWaltz": [
+        (0.0,    [0],    1.0),
+        (0.333,  [1, 2], 0.72),
+        (0.667,  [1, 2], 0.7),
+    ],
+    # Swing 4 (Freddie Green): walking quarter notes — same shape as Walking
+    # but slightly softer LH; pairs with comp_quarter_shell on RH.
+    "SwingFour": [
+        (0.0,    [0],  1.0),
+        (0.25,   [1],  0.92),
+        (0.5,    [2],  0.92),
+        (0.75,   [-1], 0.88),
+    ],
+    # ── Pop ballad 變奏 ──
+    # Sustained root half + 5th on beat 3; pairs with RH arpeggio.
+    "PopBallad": [
+        (0.0,  [0], 1.0),
+        (0.5,  [2], 0.72),
+    ],
+    # ── Latin / Bossa ──
+    # Bossa nova clave-flavoured LH: root on 1, 5th on "and of 2", root on 4.
+    "BossaNova": [
+        (0.0,    [0], 1.0),
+        (0.375,  [2], 0.78),
+        (0.75,   [0], 0.85),
+    ],
+    # Samba: surdo accents on beats 2 + 4 with a ghost note in between.
+    "Samba": [
+        (0.25,   [0], 1.0),
+        (0.625,  [0], 0.45),  # ghost
+        (0.75,   [0], 0.95),
+    ],
+    # ── Reggae ──
+    # One-drop: LH bass on beat 3 only; RH skank handled via comp_offbeat.
+    "Reggae": [
+        (0.5,  [0], 1.0),
+    ],
+    # ── Funk ──
+    # Busy 16th-note octave bass with ghost notes; pairs with muted_stab RH.
+    "Funk16": [
+        (0.0,     [0],    1.0),
+        (0.125,   [0],    0.4),    # ghost
+        (0.1875,  [0, 2], 0.92),   # syncopated 16th-and
+        (0.375,   [0],    0.5),
+        (0.5,     [0, 2], 1.0),
+        (0.625,   [0],    0.42),
+        (0.75,    [0],    0.85),
+        (0.875,   [0],    0.5),
+    ],
+    # ── R&B / Neo-Soul ──
+    # Root + 7th wide voicing on beats 1 and 3.
+    "RnBNeoSoul": [
+        (0.0,  [0, 3], 1.0),
+        (0.5,  [0, 3], 0.85),
+    ],
 }
 
 # 曲風適配表
 GENRE_STYLE_MAP = {
-    "pop":       ["Block", "Arpeggio", "Rhythm", "1+3"],
-    "ballad":    ["Arpeggio", "Block", "1+3"],
-    "jazz":      ["Shell", "Walking", "Stride", "1+3"],
-    "bossa":     ["Shell", "Walking"],
+    "pop":       ["Block", "Arpeggio", "Rhythm", "PopBallad", "1+3"],
+    "ballad":    ["PopBallad", "Arpeggio", "Block", "1+3"],
+    "jazz":      ["Shell", "Walking", "SwingFour", "JazzCharleston", "Stride", "1+3"],
+    "swing":     ["SwingFour", "JazzCharleston", "Walking", "Shell"],
+    "bossa":     ["BossaNova", "Shell", "Walking"],
+    "samba":     ["Samba", "BossaNova"],
     "classical": ["Alberti", "Arpeggio"],
-    "rock":      ["Rhythm", "Block"],
-    "r&b":       ["Rhythm", "Shell", "Arpeggio", "1+3"],
+    "waltz":     ["JazzWaltz", "Alberti"],
+    "rock":      ["RockEighths", "RockBallad", "Rhythm", "Block"],
+    "blues":     ["BluesShuffle", "SlowBlues", "Walking", "Shell"],
+    "r&b":       ["RnBNeoSoul", "Rhythm", "Shell", "Arpeggio", "1+3"],
+    "soul":      ["RnBNeoSoul", "Shell", "Arpeggio"],
+    "funk":      ["Funk16", "RnBNeoSoul", "Rhythm"],
+    "reggae":    ["Reggae", "BossaNova"],
     "electronic": ["Block", "Rhythm"],
     "edm":       ["Block", "Rhythm"],
-    "country":   ["Arpeggio", "Block", "1+3"],
-    "folk":      ["Arpeggio", "Block", "1+3"],
-    "latin":     ["Rhythm", "Walking"],
+    "country":   ["Arpeggio", "Block", "PopBallad", "1+3"],
+    "folk":      ["Arpeggio", "Block", "PopBallad", "1+3"],
+    "latin":     ["BossaNova", "Samba", "Rhythm", "Walking"],
 }
 
 BPM_STYLE_MAP = [
-    (80,  ["Arpeggio", "Shell"]),       # 慢歌
-    (120, ["Block", "Arpeggio", "Rhythm"]),  # 中速
-    (999, ["Rhythm", "Block"]),          # 快歌
+    (75,  ["PopBallad", "Arpeggio", "Shell"]),               # 慢歌
+    (100, ["Arpeggio", "Shell", "BossaNova", "PopBallad"]),  # 中慢
+    (130, ["Block", "Arpeggio", "Rhythm", "RockBallad"]),    # 中速
+    (999, ["Rhythm", "Block", "RockEighths", "Funk16"]),     # 快歌
 ]
 
 # ==============================================================================
@@ -159,6 +268,32 @@ STYLE_CONFIG = {
     "Walking": {"lh_level": "L3", "rh_mode": "fill_harmony", "lh_vel": 70, "rh_vel": 85},
     # LH 低音+和弦跳, RH gap-fill block
     "Stride":  {"lh_level": "L3", "rh_mode": "fill_block",   "lh_vel": 70, "rh_vel": 90},
+
+    # ── Phase 1 (v4) 新增 style configs ──
+    # Blues: shuffle bass + bluesy harmony fill
+    "BluesShuffle":   {"lh_level": "L3", "rh_mode": "fill_harmony",       "lh_vel": 70, "rh_vel": 85},
+    "SlowBlues":      {"lh_level": "L3", "rh_mode": "fill_harmony",       "lh_vel": 60, "rh_vel": 80},
+    # Rock: power-chord 8ths + block on downbeats; ballad uses RH arpeggio
+    "RockEighths":    {"lh_level": "L2", "rh_mode": "fill_block",         "lh_vel": 75, "rh_vel": 95},
+    "RockBallad":     {"lh_level": "L2", "rh_mode": "arpeggio",           "lh_vel": 60, "rh_vel": 85},
+    # Jazz Charleston: sparse LH stab pattern, RH offbeat comp
+    "JazzCharleston": {"lh_level": "L3", "rh_mode": "comp_offbeat",       "lh_vel": 65, "rh_vel": 80},
+    # Jazz waltz: 3/4 LH split, RH shell stabs on beats 2 + 3
+    "JazzWaltz":      {"lh_level": "L3", "rh_mode": "comp_offbeat",       "lh_vel": 60, "rh_vel": 78},
+    # Swing 4 / Freddie Green: walking quarters + shell chunks every quarter
+    "SwingFour":      {"lh_level": "L3", "rh_mode": "comp_quarter_shell", "lh_vel": 65, "rh_vel": 70},
+    # Pop ballad: simple LH (root half-note + 5th) + flowing RH arpeggio
+    "PopBallad":      {"lh_level": "L2", "rh_mode": "arpeggio",           "lh_vel": 55, "rh_vel": 80},
+    # Bossa nova: clave-flavoured LH + offbeat comp
+    "BossaNova":      {"lh_level": "L2", "rh_mode": "comp_offbeat",       "lh_vel": 60, "rh_vel": 78},
+    # Samba: surdo accents + 16th comp (falls through to gap-fill harmony for now)
+    "Samba":          {"lh_level": "L2", "rh_mode": "fill_harmony",       "lh_vel": 65, "rh_vel": 82},
+    # Reggae: one-drop LH + offbeat skank
+    "Reggae":         {"lh_level": "L2", "rh_mode": "comp_offbeat",       "lh_vel": 65, "rh_vel": 88},
+    # Funk: octave + ghost 16ths + muted stabs on RH
+    "Funk16":         {"lh_level": "L2", "rh_mode": "muted_stab",         "lh_vel": 70, "rh_vel": 80},
+    # R&B / Neo-soul: wide LH voicing + lush RH arpeggio
+    "RnBNeoSoul":     {"lh_level": "L3", "rh_mode": "arpeggio",           "lh_vel": 60, "rh_vel": 78},
 }
 
 # ==============================================================================
@@ -178,8 +313,17 @@ SECTION_PARAMS = {
 }
 
 # Phase 1 v2 helpers: phrase arc velocity + per-beat weight
-_BACKBEAT_STYLES = frozenset({"Rhythm", "Block", "1+3"})
-_DOWNBEAT_STYLES = frozenset({"Arpeggio", "Alberti", "Shell", "Walking", "Stride"})
+_BACKBEAT_STYLES = frozenset({
+    "Rhythm", "Block", "1+3",
+    # v4: rock/funk/reggae/blues-shuffle emphasise beats 2 and 4
+    "RockEighths", "Funk16", "Reggae", "BluesShuffle",
+})
+_DOWNBEAT_STYLES = frozenset({
+    "Arpeggio", "Alberti", "Shell", "Walking", "Stride",
+    # v4: ballads / jazz / latin all sit on beats 1 and 3 (or 1 of 3 for waltz)
+    "PopBallad", "RockBallad", "SlowBlues", "JazzCharleston", "JazzWaltz",
+    "SwingFour", "BossaNova", "Samba", "RnBNeoSoul",
+})
 
 
 def _phrase_arc_scale(chord_idx: int, n_chords: int, section_type: str) -> float:
@@ -778,10 +922,13 @@ def _build_right_hand(chord_name: str, start_time: float, duration: float,
     生成單一和弦的右手事件。
 
     核心原則: RH 伴奏閃避人聲，在空白處補 fill。
-      - "arpeggio":       無人聲段 → 和弦琶音 (intro/bridge/outro)
-      - "fill_only":      人聲唱時閃開，空白處補單音 fill (verse)
-      - "fill_harmony":   同 fill_only + 空白處 fill 稍豐富 (pre_chorus)
-      - "fill_block":     空白處補複音 block chord (chorus)
+      - "arpeggio":            無人聲段 → 和弦琶音 (intro/bridge/outro)
+      - "fill_only":           人聲唱時閃開，空白處補單音 fill (verse)
+      - "fill_harmony":        同 fill_only + 空白處 fill 稍豐富 (pre_chorus)
+      - "fill_block":          空白處補複音 block chord (chorus)
+      - "comp_offbeat":        Reggae/Bossa/Charleston/JazzWaltz 反拍切分
+      - "comp_quarter_shell":  Freddie Green / SwingFour 每拍 shell voicing 切分
+      - "muted_stab":          Funk16 短促 16th muted stab
 
     rh_mode 舊名對照 (保持 API 相容):
       melody_only    → fill_only
@@ -803,6 +950,99 @@ def _build_right_hand(chord_name: str, start_time: float, duration: float,
         chord_pitches_pc.add(root_to_semitone(n) % 12)
 
     chord_end = start_time + duration
+
+    # ── comp_offbeat: 反拍切分 (Reggae skank / Bossa / Charleston / Jazz Waltz) ──
+    # 在 frac 0.25 + 0.75 彈和弦短切分。對 4/4 即 beat 2 + 4，對 3/4 (Jazz Waltz)
+    # 約落在 beat 2 + 3 附近——上游 chord duration 已決定實際拍長。
+    if rh_mode == "comp_offbeat":
+        raw = note_names_to_midi(chord_notes, base_octave=4)
+        pitches = clamp_to_range(raw, RH_LOW, RH_HIGH)
+        if not pitches:
+            return events
+        # 取上面 3 音 (3rd/5th/7th) 為主，避開根音
+        comp_pitches = pitches[1:4] if len(pitches) >= 4 else pitches[:3]
+        if not comp_pitches:
+            comp_pitches = pitches
+        for frac, vel_ratio in [(0.25, 0.85), (0.75, 0.95)]:
+            evt_time = start_time + frac * duration
+            evt_dur = min(duration * 0.18, 0.18)
+            # 旋律重疊時降一個八度避免撞
+            for p in comp_pitches:
+                if _check_melody_conflict(p, evt_time, evt_dur, melody_segment):
+                    if p - 12 >= RH_LOW:
+                        p -= 12
+                events.append({
+                    "time": round(evt_time, 3),
+                    "duration": round(evt_dur, 3),
+                    "pitch": int(p),
+                    "velocity": int(base_velocity * vel_ratio),
+                    "hand": "right",
+                    "chord_tone": True,
+                })
+        return events
+
+    # ── comp_quarter_shell: 每拍 shell voicing 切分 (Freddie Green / SwingFour) ──
+    # 用 3rd + 7th (shell voicing) 在每拍輕切，模仿 big-band rhythm guitar chunk。
+    if rh_mode == "comp_quarter_shell":
+        # Shell voicing: 3rd + 7th。若無 7th 則退回 3rd + 5th。
+        if len(chord_notes) >= 4:
+            shell_notes = [chord_notes[1], chord_notes[3]]  # 3rd, 7th
+        elif len(chord_notes) >= 3:
+            shell_notes = [chord_notes[1], chord_notes[2]]  # 3rd, 5th
+        else:
+            shell_notes = chord_notes
+        raw = note_names_to_midi(shell_notes, base_octave=4)
+        pitches = clamp_to_range(raw, RH_LOW, RH_HIGH)
+        if not pitches:
+            return events
+        # 4 個 quarter (frac 0, 0.25, 0.5, 0.75)
+        for i, frac in enumerate([0.0, 0.25, 0.5, 0.75]):
+            evt_time = start_time + frac * duration
+            if evt_time >= start_time + duration - 0.05:
+                break
+            evt_dur = min(duration * 0.20, 0.20)
+            # 拍 2 + 4 稍重 (backbeat)
+            vel_ratio = 0.85 if i in (1, 3) else 0.7
+            for p in pitches:
+                if _check_melody_conflict(p, evt_time, evt_dur, melody_segment):
+                    if p - 12 >= RH_LOW:
+                        p -= 12
+                events.append({
+                    "time": round(evt_time, 3),
+                    "duration": round(evt_dur, 3),
+                    "pitch": int(p),
+                    "velocity": int(base_velocity * vel_ratio),
+                    "hand": "right",
+                    "chord_tone": True,
+                })
+        return events
+
+    # ── muted_stab: 16th 切分 muted stab (Funk16) ──
+    # 短促 chord stab，在 beat 2 + and-of-3 + 4 附近切，每次 ~80ms。
+    if rh_mode == "muted_stab":
+        raw = note_names_to_midi(chord_notes, base_octave=4)
+        pitches = clamp_to_range(raw, RH_LOW, RH_HIGH)
+        if not pitches:
+            return events
+        comp_pitches = pitches[:3]  # 緊密 voicing
+        for frac, vel_ratio in [(0.25, 0.85), (0.625, 0.65), (0.75, 0.95), (0.9375, 0.5)]:
+            evt_time = start_time + frac * duration
+            if evt_time >= start_time + duration - 0.05:
+                continue
+            evt_dur = 0.08  # 固定短切分 (muted stab 特徵)
+            for p in comp_pitches:
+                if _check_melody_conflict(p, evt_time, evt_dur, melody_segment):
+                    if p - 12 >= RH_LOW:
+                        p -= 12
+                events.append({
+                    "time": round(evt_time, 3),
+                    "duration": round(evt_dur, 3),
+                    "pitch": int(p),
+                    "velocity": int(base_velocity * vel_ratio),
+                    "hand": "right",
+                    "chord_tone": True,
+                })
+        return events
 
     # ── arpeggio 模式: 右手彈和弦琶音 (intro/bridge/outro 無人聲段) ──
     if rh_mode == "arpeggio":
