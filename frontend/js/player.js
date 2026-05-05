@@ -5439,12 +5439,9 @@
     }
   }
 
-  if (btnJazzify) {
-    btnJazzify.addEventListener("click", () => {
-      if (_isTouchLike) return;  // touch devices use the popup (see .jazz-opt handlers)
-      _setJazzifyLevel((jazzifyLevel + 1) % 5);
-    });
-  }
+  // Jazzify trigger: popup-only (no click-cycle). The state cycle was easy to
+  // misfire — opening the popup is the same gesture as every other toolbar
+  // button, so users can pick L1/L2/L3/AI/Off explicitly.
   document.querySelectorAll(".jazz-opt").forEach(b => {
     b.addEventListener("click", (e) => {
       e.stopPropagation();
