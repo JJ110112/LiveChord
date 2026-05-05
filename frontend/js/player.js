@@ -1139,6 +1139,16 @@
     }
   }
 
+  // Touch-detection gate for state-cycle toolbar buttons (A-B, Loop, Speed,
+  // Jazzify). On touch the cycle handlers no-op so the popup picker takes
+  // over; on desktop they advance the state. Definition was dropped in
+  // 45b72e3 but the 5 call-sites remained — desktop click → ReferenceError.
+  // ontouchstart alone misses Chromium DevTools emulation; pointer:coarse
+  // covers it.
+  const _isTouchLike =
+    ('ontouchstart' in window) ||
+    (typeof matchMedia === "function" && matchMedia('(pointer:coarse)').matches);
+
   if (btnABRepeat) {
     btnABRepeat.addEventListener("click", () => {
       if (_isTouchLike) return;  // touch devices use the popup (see .ab-opt handlers)
