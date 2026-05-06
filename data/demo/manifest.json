@@ -9,8 +9,8 @@
     "vibe": "The killer demo — universal recognition, clearest progression",
     "category": "classical",
     "hash": "a1e9f8e3d7da",
-    "audio_url": "/static/demo/canon_in_d.mp3",
-    "cover_url": "/static/demo/covers/canon_in_d.jpg"
+    "audio_url": "/static/demo/canon_in_d.mp3?v=2",
+    "cover_url": "/static/demo/covers/canon_in_d.jpg?v=2"
   },
   {
     "id": "fur_elise",
@@ -22,8 +22,8 @@
     "vibe": "Romantic miniature; A minor",
     "category": "classical",
     "hash": "b4b35b46473e",
-    "audio_url": "/static/demo/fur_elise.mp3",
-    "cover_url": "/static/demo/covers/fur_elise.jpg"
+    "audio_url": "/static/demo/fur_elise.mp3?v=2",
+    "cover_url": "/static/demo/covers/fur_elise.jpg?v=2"
   },
   {
     "id": "moonlight_sonata_1st",
@@ -35,8 +35,8 @@
     "vibe": "Adagio sostenuto — slow triplet figuration",
     "category": "classical",
     "hash": "83f2db3a1c20",
-    "audio_url": "/static/demo/moonlight_sonata_1st.mp3",
-    "cover_url": "/static/demo/covers/moonlight_sonata_1st.jpg"
+    "audio_url": "/static/demo/moonlight_sonata_1st.mp3?v=2",
+    "cover_url": "/static/demo/covers/moonlight_sonata_1st.jpg?v=2"
   },
   {
     "id": "air_on_g_string",
@@ -48,8 +48,8 @@
     "vibe": "Baroque, super-stable beat — beat-alignment showcase",
     "category": "classical",
     "hash": "6668976006f6",
-    "audio_url": "/static/demo/air_on_g_string.mp3",
-    "cover_url": "/static/demo/covers/air_on_g_string.jpg"
+    "audio_url": "/static/demo/air_on_g_string.mp3?v=2",
+    "cover_url": "/static/demo/covers/air_on_g_string.jpg?v=2"
   },
   {
     "id": "clair_de_lune",
@@ -61,8 +61,8 @@
     "vibe": "Impressionist, modal — tests harmonic sophistication",
     "category": "classical",
     "hash": "891866560078",
-    "audio_url": "/static/demo/clair_de_lune.mp3",
-    "cover_url": "/static/demo/covers/clair_de_lune.jpg"
+    "audio_url": "/static/demo/clair_de_lune.mp3?v=2",
+    "cover_url": "/static/demo/covers/clair_de_lune.jpg?v=2"
   },
   {
     "id": "chopin_nocturne_op9_no2",
@@ -74,8 +74,8 @@
     "vibe": "Romantic classical solo piano — 12/8 compound triple",
     "category": "classical",
     "hash": "eb1e13d8ec4f",
-    "audio_url": "/static/demo/chopin_nocturne_op9_no2.mp3",
-    "cover_url": "/static/demo/covers/chopin_nocturne_op9_no2.jpg"
+    "audio_url": "/static/demo/chopin_nocturne_op9_no2.mp3?v=2",
+    "cover_url": "/static/demo/covers/chopin_nocturne_op9_no2.jpg?v=2"
   },
   {
     "id": "greensleeves",
@@ -87,8 +87,8 @@
     "vibe": "A minor — clear minor-key detection target",
     "category": "folk",
     "hash": "c6116a5ad212",
-    "audio_url": "/static/demo/greensleeves.mp3",
-    "cover_url": "/static/demo/covers/greensleeves.jpg"
+    "audio_url": "/static/demo/greensleeves.mp3?v=2",
+    "cover_url": "/static/demo/covers/greensleeves.jpg?v=2"
   },
   {
     "id": "auld_lang_syne",
@@ -100,8 +100,8 @@
     "vibe": "Universal New Year's tune; I-IV-V",
     "category": "folk",
     "hash": "38c627f85c9a",
-    "audio_url": "/static/demo/auld_lang_syne.mp3",
-    "cover_url": "/static/demo/covers/auld_lang_syne.jpg"
+    "audio_url": "/static/demo/auld_lang_syne.mp3?v=2",
+    "cover_url": "/static/demo/covers/auld_lang_syne.jpg?v=2"
   },
   {
     "id": "scarborough_fair",
@@ -113,8 +113,8 @@
     "vibe": "Dorian mode — proves we're not just major/minor",
     "category": "folk",
     "hash": "05f3d384d67f",
-    "audio_url": "/static/demo/scarborough_fair.mp3",
-    "cover_url": "/static/demo/covers/scarborough_fair.jpg"
+    "audio_url": "/static/demo/scarborough_fair.mp3?v=2",
+    "cover_url": "/static/demo/covers/scarborough_fair.jpg?v=2"
   },
   {
     "id": "when_the_saints",
@@ -126,8 +126,8 @@
     "vibe": "Dixieland I-IV-V — beginner-friendly",
     "category": "jazz",
     "hash": "1746ea2f8ceb",
-    "audio_url": "/static/demo/when_the_saints.mp3",
-    "cover_url": "/static/demo/covers/when_the_saints.jpg"
+    "audio_url": "/static/demo/when_the_saints.mp3?v=2",
+    "cover_url": "/static/demo/covers/when_the_saints.jpg?v=2"
   },
   {
     "id": "carefree",
@@ -139,8 +139,8 @@
     "vibe": "Upbeat ragtime piano",
     "category": "jazz",
     "hash": "4138a8600cf7",
-    "audio_url": "/static/demo/carefree.mp3",
-    "cover_url": "/static/demo/covers/carefree.jpg"
+    "audio_url": "/static/demo/carefree.mp3?v=2",
+    "cover_url": "/static/demo/covers/carefree.jpg?v=2"
   },
   {
     "id": "bossa_antigua",
@@ -152,8 +152,8 @@
     "vibe": "Jazz / bossa with ii-V-I and 7ths",
     "category": "jazz",
     "hash": "7c2a21b32ad3",
-    "audio_url": "/static/demo/bossa_antigua.mp3",
-    "cover_url": "/static/demo/covers/bossa_antigua.jpg"
+    "audio_url": "/static/demo/bossa_antigua.mp3?v=2",
+    "cover_url": "/static/demo/covers/bossa_antigua.jpg?v=2"
   },
   {
     "id": "twinkle_mozart_k265",
@@ -165,12 +165,12 @@
     "vibe": "Theme + 12 variations on the universal nursery tune",
     "category": "easy",
     "hash": "12904a15b76f",
-    "audio_url": "/static/demo/twinkle_mozart_k265.mp3",
-    "cover_url": "/static/demo/covers/twinkle_mozart_k265.jpg"
+    "audio_url": "/static/demo/twinkle_mozart_k265.mp3?v=2",
+    "cover_url": "/static/demo/covers/twinkle_mozart_k265.jpg?v=2"
   },
   {
     "id": "frere_jacques",
-    "title": "Frère Jacques (兩隻老虎)",
+    "title": "Frère Jacques",
     "artist": "French traditional",
     "license": "CC-BY-SA 3.0",
     "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
@@ -178,8 +178,8 @@
     "vibe": "Round in C — 5 seconds to 'oh I know this'",
     "category": "easy",
     "hash": "fb2b2bb39179",
-    "audio_url": "/static/demo/frere_jacques.mp3",
-    "cover_url": "/static/demo/covers/frere_jacques.jpg"
+    "audio_url": "/static/demo/frere_jacques.mp3?v=2",
+    "cover_url": "/static/demo/covers/frere_jacques.jpg?v=2"
   },
   {
     "id": "oh_susanna",
@@ -191,7 +191,7 @@
     "vibe": "Foster (d. 1864) Americana classic — clean instrumental",
     "category": "easy",
     "hash": "beea1b3860ab",
-    "audio_url": "/static/demo/oh_susanna.mp3",
-    "cover_url": "/static/demo/covers/oh_susanna.jpg"
+    "audio_url": "/static/demo/oh_susanna.mp3?v=2",
+    "cover_url": "/static/demo/covers/oh_susanna.jpg?v=2"
   }
 ]

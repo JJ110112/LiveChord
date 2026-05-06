@@ -194,12 +194,7 @@ TRACKS = [
     },
     {
         "id": "frere_jacques",
-        "title": "Frère Jacques (兩隻老虎)",
-        # Cover painter renders only ASCII / Latin via Segoe UI Bold (no CJK
-        # glyphs in that font). cover_title strips the parenthetical so the
-        # painted JPG doesn't show mojibake; the manifest title keeps the
-        # full bilingual label for the homepage card text.
-        "cover_title": "Frère Jacques",
+        "title": "Frère Jacques",
         "artist": "French traditional",
         "license": "CC-BY-SA 3.0",
         "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
@@ -668,6 +663,12 @@ def extract_melody(track: dict, demo_hash_str: str) -> Path | None:
     return out
 
 
+# Bump when demo audio / cover assets change so browsers + Cloudflare evict
+# their cached copies. Appended as ?v=N to audio_url / cover_url in the
+# manifest; the static-mount serves the file regardless of query string.
+MANIFEST_ASSET_VERSION = 2
+
+
 def build_manifest():
     entries = []
     for track in TRACKS:
@@ -677,6 +678,7 @@ def build_manifest():
         if not chord_path.is_file():
             print(f"  [warn] chord JSON missing for {track['id']}, skipping manifest entry")
             continue
+        v = MANIFEST_ASSET_VERSION
         entries.append({
             "id": track["id"],
             "title": track["title"],
@@ -687,8 +689,8 @@ def build_manifest():
             "vibe": track["vibe"],
             "category": track.get("category", "easy"),
             "hash": h,
-            "audio_url": f"/static/demo/{track['id']}.mp3",
-            "cover_url": f"/static/demo/covers/{track['id']}.jpg" if cover_disk.is_file() else "",
+            "audio_url": f"/static/demo/{track['id']}.mp3?v={v}",
+            "cover_url": f"/static/demo/covers/{track['id']}.jpg?v={v}" if cover_disk.is_file() else "",
         })
     MANIFEST_FILE.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n[manifest] {MANIFEST_FILE.relative_to(REPO_ROOT)} written ({len(entries)} entries)")

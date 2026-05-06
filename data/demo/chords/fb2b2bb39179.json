@@ -3,13 +3,13 @@
   "key": "C",
   "capo": 0,
   "source": "demo",
-  "title": "Frère Jacques (兩隻老虎)",
+  "title": "Frère Jacques",
   "artist": "French traditional",
   "license": "CC-BY-SA 3.0",
   "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
   "source_url": "https://commons.wikimedia.org/wiki/File:Frere_Jacques_-_canon.ogg",
   "category": "easy",
-  "demo_audio_url": "/static/demo/frere_jacques.mp3",
+  "demo_audio_url": "/static/demo/frere_jacques.mp3?v=2",
   "chords": [
     {
       "time": 1.5,
