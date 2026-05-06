@@ -298,24 +298,31 @@ class AccordionInstrument {
     const stepIsChord = (step === "C");
     const stepIsAlt = (step === "Ab");
 
-    // Column headers with finger colors — positioned just above the first button row.
-    // On light-bg themes the bright yellow "Bass" header becomes unreadable on cream;
-    // swap to a darker variant (#9a7a00) and bump orange to #c45a00 for the same reason.
+    // Light-bg theme detection + finger-color remap. Bright yellow / pale
+    // orange render as low-contrast washes on cream backgrounds; darker
+    // saturated variants restore legibility. Applies to BOTH column headers
+    // AND the actual chord-button fills (Em/Am/Bb pills + dashed ghost
+    // previews) — earlier this only covered headers, leaving the Bass-
+    // column ghost preview "A" almost invisible on cream (UX_CONVENTION:
+    // "Light themes need their own pass for every saturated colour, not
+    // just the headline ones").
     const _accLight = (function() {
       try {
         const t = document.documentElement.getAttribute("data-theme");
         return t === "light" || t === "sakura" || t === "sunny" || t === "sky";
       } catch (_) { return false; }
     })();
-    const HEADER_LIGHT_REMAP = { "#ffeb3b": "#9a7a00", "#ff9800": "#c45a00", "#ef5350": "#b91c1c", "#66bb6a": "#1b5e20" };
+    const FINGER_LIGHT_REMAP = { "#ffeb3b": "#9a7a00", "#ff9800": "#c45a00", "#ef5350": "#b91c1c", "#66bb6a": "#1b5e20" };
+    const _lc = (c) => (_accLight ? (FINGER_LIGHT_REMAP[c] || c) : c);
+
+    // Column headers with finger colors — positioned just above the first button row.
     ctx.font = "bold 11px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "bottom";
     for (let d = 0; d < nTypes; d++) {
       const row = D2R[d];
       const finger = RFINGER[row];
-      const base = FCLR[finger];
-      ctx.fillStyle = _accLight ? (HEADER_LIGHT_REMAP[base] || base) : base;
+      ctx.fillStyle = _lc(FCLR[finger]);
       ctx.fillText(DLABELS[d], gridLeft + (d + 0.5) * colW, padTop + headerH - 2);
     }
 
@@ -327,7 +334,7 @@ class AccordionInstrument {
       for (let d = 0; d < nTypes; d++) {
         const row = D2R[d]; // data row: 0=Bass, 1=Major, 2=Minor
         const finger = RFINGER[row];
-        const fingerColor = FCLR[finger];
+        const fingerColor = _lc(FCLR[finger]);
         const dy = d * offsetY;
         const cx = gridLeft + (d + 0.5) * colW;
         const cy = padTop + headerH + (ki + 0.5) * rowH + dy;
@@ -359,7 +366,7 @@ class AccordionInstrument {
         // Active finger/color based on step (not row)
         const SFINGER = AccordionInstrument.STEP_FINGER;
         const playFinger = playingStep ? SFINGER[playingStep] : finger;
-        const playColor = playingStep ? FCLR[playFinger] : fingerColor;
+        const playColor = playingStep ? _lc(FCLR[playFinger]) : fingerColor;
 
         // Button circle
         ctx.beginPath();
@@ -447,9 +454,11 @@ class AccordionInstrument {
           ctx.stroke();
         }
 
-        // Label + finger number
+        // Label + finger number. Yellow (finger 3) on dark theme is bright →
+        // needs dark text. On light themes the same fingerColor was remapped
+        // to dark-gold #9a7a00 → needs WHITE text instead. Flip accordingly.
         if (isPlaying) {
-          ctx.fillStyle = playFinger === 3 ? "#333" : "#fff";
+          ctx.fillStyle = (playFinger === 3 && !_accLight) ? "#333" : "#fff";
           ctx.font = `bold ${Math.round(btnR * 1.0)}px sans-serif`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";

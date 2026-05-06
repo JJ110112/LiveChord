@@ -1475,6 +1475,18 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   cursor: pointer;
 }
 .tb-select option { background: var(--bg); color: var(--text); }
+/* optgroup labels (Pop / Rock / Blues / etc grouping) MUST also be themed —
+   without an explicit rule, Chromium on Windows paints them with system-
+   light colors regardless of color-scheme, leaving white-text-on-white
+   labels invisible in dark theme (and vice versa). UX_CONVENTION §
+   "Native widgets must follow theme" — every <select> with optgroup
+   needs both the option AND optgroup rules paired. */
+.tb-select optgroup {
+  background: var(--bg);
+  color: var(--text-dim);
+  font-weight: 600;
+  font-style: normal;  /* default browser is italic and looks off in our UI */
+}
 
 /* Popup variants */
 .tb-popup-volume {

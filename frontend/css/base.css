@@ -3,6 +3,15 @@
 /* ========== [COMPONENT: ROOT & GLOBAL] ========== */
 
 :root {
+  /* color-scheme tells the browser/OS which palette to use for native UI
+     widgets — <select> dropdowns, scrollbars, autofill backgrounds,
+     date pickers, form controls, etc. Without it, Chromium on Windows
+     paints native <select> popups with system-light colors regardless
+     of our themed CSS, leaving white-text-on-white-background optgroup
+     labels invisible (UX_CONVENTION §x — see "Native widgets must follow
+     theme"). Default to dark; light themes override below. */
+  color-scheme: dark;
+
   --bg: #0d1117;
   --bg-card: rgba(22, 27, 34, 0.7);
   --bg-hover: rgba(48, 54, 61, 0.8);
@@ -39,6 +48,7 @@
    key `livechord_theme`. Each page reads the key in an early inline
    script in <head> so the attribute is set before stylesheets paint. */
 [data-theme="light"] {
+  color-scheme: light;
   --bg: #f7f5f0;
   --bg-card: rgba(255, 255, 255, 0.7);
   --bg-hover: rgba(0, 0, 0, 0.06);
@@ -82,6 +92,7 @@
 /* Sakura theme — warm rose-cream bg + rose accent + mint highlight.
    Soft kawaii vibe; light-bg family (text dark, surfaces light). */
 [data-theme="sakura"] {
+  color-scheme: light;
   --bg: #fef5f7;
   --bg-card: rgba(236, 72, 153, 0.08);
   --bg-hover: rgba(236, 72, 153, 0.14);
@@ -105,6 +116,7 @@
 /* Sunny theme — warm sand bg + ocean teal accent + sun-yellow highlight.
    Beach-day vibe; light-bg family. */
 [data-theme="sunny"] {
+  color-scheme: light;
   --bg: #fff8e1;
   --bg-card: rgba(8, 145, 178, 0.08);
   --bg-hover: rgba(8, 145, 178, 0.14);
@@ -128,6 +140,7 @@
 /* Sky theme — light blue bg + azure accent + sun-yellow highlight.
    Open-sky vibe; light-bg family. */
 [data-theme="sky"] {
+  color-scheme: light;
   --bg: #dbeafe;
   --bg-card: rgba(37, 99, 235, 0.08);
   --bg-hover: rgba(37, 99, 235, 0.14);
@@ -672,6 +685,14 @@ a:hover { text-decoration: underline; }
   opacity: 0;
   transition: all .3s;
   z-index: 15000;
+  /* Toast must NEVER intercept pointer events. It overlaps the bottom-right
+     corner where the toolbar sits (A-B / AI Acc / Tools / Gear) and remains
+     in DOM with opacity:0 even after fade-out — without pointer-events:none
+     the user can't click those buttons while a toast is in flight (and the
+     stale opacity-0 toast leaves the lower 4/5 of those buttons unclickable
+     until the next layout reflow). Reproduced repeatedly after audio-mode
+     toggles fire showToast(); fixed once and for all here. */
+  pointer-events: none;
 }
 
 .toast.show {
