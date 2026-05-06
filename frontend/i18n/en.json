@@ -738,6 +738,7 @@
   "instrument.position_label": "Position {n}",
   "instrument.rh.arpeggio": "RH arpeggio",
   "instrument.rh.fallback": "RH",
+  "instrument.rh.offbeat": "RH offbeat skank",
   "instrument.rh.strum_block": "RH downstroke",
   "instrument.rh.strum_pattern": "RH D DU UDU",
   "instrument.rh.with_pattern": "RH {name}",

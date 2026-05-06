@@ -738,6 +738,7 @@
   "instrument.position_label": "把位 {n}",
   "instrument.rh.arpeggio": "右手 琶音",
   "instrument.rh.fallback": "右手",
+  "instrument.rh.offbeat": "右手 切分上刷",
   "instrument.rh.strum_block": "右手 下刷",
   "instrument.rh.strum_pattern": "右手 D DU UDU",
   "instrument.rh.with_pattern": "右手 {name}",

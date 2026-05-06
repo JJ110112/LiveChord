@@ -339,6 +339,8 @@ class StringInstrument {
       const idiom = this._inferAccIdiom(this._b.getAccData());
       if (idiom === "arpeggio") {
         rhInfo.textContent = _t("instrument.rh.arpeggio");
+      } else if (idiom === "offbeat") {
+        rhInfo.textContent = _t("instrument.rh.offbeat");
       } else if (idiom === "strum") {
         rhInfo.textContent = _t("instrument.rh.strum_pattern");
       } else {
@@ -367,17 +369,29 @@ class StringInstrument {
   _inferAccIdiom(accData) {
     if (!accData || !Array.isArray(accData.right_hand)) return null;
     const sample = accData.right_hand;
-    const limit = Math.min(sample.length, 50);
-    let hasStrum = false;
+    const limit = Math.min(sample.length, 100);
+    // Group strum events by strum_id so a 5-string sweep counts as ONE
+    // direction, not 5. Then "all up" strums ⇒ offbeat skank, mixed ⇒
+    // full D-DU-UDU strum, neither ⇒ pluck arpeggio if any p/i/m/a.
+    const strumDirs = new Set();   // unique sids per direction
+    const upSids = new Set();
+    const downSids = new Set();
     let hasPluck = false;
     for (let i = 0; i < limit; i++) {
       const e = sample[i];
       if (!e) continue;
-      if (e.strum_id) { hasStrum = true; }
-      else if (typeof e.finger === "string" && /^[pima]$/i.test(e.finger)) { hasPluck = true; }
-      if (hasStrum && hasPluck) break;
+      if (e.strum_id) {
+        if (e.strum_dir === "up") upSids.add(e.strum_id);
+        else downSids.add(e.strum_id);
+        strumDirs.add(e.strum_id);
+      } else if (typeof e.finger === "string" && /^[pima]$/i.test(e.finger)) {
+        hasPluck = true;
+      }
     }
-    if (hasStrum) return "strum";
+    if (strumDirs.size > 0) {
+      if (downSids.size === 0 && upSids.size > 0) return "offbeat";
+      return "strum";
+    }
     if (hasPluck) return "arpeggio";
     return null;
   }

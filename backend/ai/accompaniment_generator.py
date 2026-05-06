@@ -49,7 +49,14 @@ RH_LOW, RH_HIGH = 60, 84
 # (visual reads the same stream — no more client-side _generateRhEvents
 # divergence). Cache filename now includes instrument segment, so old v5
 # files stay orphaned without conflicting with v6 piano regenerations.
-ACC_ENGINE_VERSION = "v6"
+# v7 (2026-05-06): Fix string idiom routing — v6 routed by piano rh_mode,
+# but rh_mode names piano gap-fill BEHAVIOR (fill_only/fill_block/etc), not
+# guitar idiom. Result: "Arpeggio" style (rh_mode=fill_only) wrongly mapped
+# to strum on guitar. v7 routes by STYLE NAME via STRING_IDIOM_BY_STYLE so
+# "Arpeggio" → arpeggio, "Reggae" → offbeat, etc. v6 cache for guitar/uke
+# is invalidated; piano cache is unaffected by the bump (its events don't
+# change). Lazy regen on next playback per song+style+level+instrument.
+ACC_ENGINE_VERSION = "v7"
 _V2_FLAG_CACHE: Optional[bool] = None
 
 
@@ -498,6 +505,30 @@ STRING_OFFBEAT_PATTERN = [
     (0.75,   "up", 0.90),
 ]
 
+# v7: idiom-by-style for string instruments. Reads the user's AI Acc style
+# name and decides whether a guitarist would interpret it as a finger-pick
+# arpeggio, an offbeat upstroke skank, or a strum (default). Independent of
+# piano rh_mode because rh_mode describes piano gap-fill behavior, not
+# guitar idiom — see ACC_ENGINE_VERSION v7 note for the bug this fixes.
+# Style names not in this table fall through to strum.
+STRING_IDIOM_BY_STYLE = {
+    # Finger-picked pluck (p-i-m-a 8th notes)
+    "Arpeggio":       "arpeggio",
+    "Alberti":        "arpeggio",   # Alberti bass = classical arpeggio
+    "1+3":            "arpeggio",   # bass + chord, Travis-style
+    "PopBallad":      "arpeggio",
+    "RockBallad":     "arpeggio",
+    "RnBNeoSoul":     "arpeggio",
+    # Offbeat upstroke (Reggae skank / Bossa comp / Charleston stab)
+    "Reggae":         "offbeat",
+    "BossaNova":      "offbeat",
+    "JazzCharleston": "offbeat",
+    "JazzWaltz":      "offbeat",
+    # Default → strum (Block / Rhythm / Rock / Blues / Stride / Swing /
+    # Samba / Funk / Shell / Walking — these all read as "strum the chord
+    # in some pattern" on guitar even when piano plays them very differently)
+}
+
 
 def _build_string_rh(chord_evt: Dict, style: str, base_velocity: int,
                      bpm: float, tempo_curve: Optional[List[Dict]],
@@ -557,15 +588,21 @@ def _build_string_rh(chord_evt: Dict, style: str, base_velocity: int,
     by_pitch = sorted(active, key=lambda sf: pitch_of[sf[0]])
 
     cfg = STYLE_CONFIG.get(style, STYLE_CONFIG["Block"])
-    rh_mode = cfg["rh_mode"]
     period_beats = cfg.get("pattern_period_beats", 4)
 
-    if rh_mode in ("arpeggio", "1+3", "1+3_once"):
-        idiom = "arpeggio"
-    elif rh_mode == "comp_offbeat":
-        idiom = "offbeat"
-    else:
-        idiom = "strum"
+    # v7: route by STYLE NAME, not rh_mode. The piano rh_mode field names
+    # piano BEHAVIOR (fill_only = gap-fill at vocal pauses, etc) — it does
+    # NOT describe a guitar idiom. Naively mapping rh_mode → idiom routed
+    # "Arpeggio" (rh_mode=fill_only) to strum, contradicting the user's
+    # expectation that picking the style literally named "Arpeggio" gives
+    # them an arpeggio. The semantic style-name table below matches what
+    # each label means on a guitar regardless of how the same style routes
+    # on piano: "Arpeggio" / "PopBallad" / "RockBallad" / "RnBNeoSoul" /
+    # "Alberti" / "1+3" → finger-picked p-i-m-a; "Reggae" / "BossaNova" /
+    # "JazzCharleston" / "JazzWaltz" → offbeat upstroke skank; everything
+    # else (Block / Rhythm / Rock / Blues / Stride / Swing / Funk / Samba /
+    # Shell / Walking) reads as a strum on guitar.
+    idiom = STRING_IDIOM_BY_STYLE.get(style, "strum")
 
     events: List[Dict] = []
     chord_end = start_time + duration
