@@ -94,12 +94,14 @@ So `ssh livechord-vps` lands as root. Git operations must run as user `livechord
 
 ### Standard deploy (PC dev → VPS)
 
+The VPS tracks `master` (since 2026-05-06; previously `feature/beta-productization` during the beta phase — see "Branch history" below).
+
 ```bash
-# 1. PC: commit + push to feature/beta-productization
+# 1. PC: commit + push to master
 cd c:/Users/hitea/Claude/LiveChord
 git add <files>
 git commit -m "..."
-git push
+git push   # pushes the current branch; master if you're on master
 
 # 2. VPS: pull + restart in one SSH call
 ssh livechord-vps "sudo -u livechord -H bash -c 'cd /srv/livechord && git pull --ff-only' && sudo systemctl restart livechord && sleep 3 && sudo systemctl is-active livechord"
@@ -108,20 +110,18 @@ ssh livechord-vps "sudo -u livechord -H bash -c 'cd /srv/livechord && git pull -
 curl -sI https://livechord.org/   # 200 OK expected
 ```
 
-If `git pull --ff-only` rejects with "non-fast-forward", someone made commits on the VPS. Check `git log --oneline origin/feature/beta-productization..HEAD` before deciding whether to merge or reset — never blanket-discard.
+If `git pull --ff-only` rejects with "non-fast-forward", someone made commits on the VPS. Check `git log --oneline origin/master..HEAD` before deciding whether to merge or reset — never blanket-discard.
+
+#### Branch history
+
+- **2026-05-03 → 2026-05-06**: VPS deployed from `feature/beta-productization` (carried over from the beta-launch workflow). Each push to master also got pushed to that feature branch so VPS could fast-forward.
+- **2026-05-06 onwards**: VPS switched to `master` directly (`git checkout master` on the VPS). Public is now production, so deploying from master is the simpler invariant. The `feature/beta-productization` branch on origin is kept as a historical anchor for the beta period — don't delete it (older docs and battle-story commits reference it), but don't push new code there either.
 
 ### Things that will bite you
 
 - **Hot-copying files (scp / rsync) to VPS leaves git out of sync.** This already happened once — VPS had ~20 files showing as "modified" in `git status` because someone scp'd from PC after a PC commit, but never `git pull`-ed on the VPS. The file content matched origin (so functionally OK), but `git pull` then refused with "local changes would be overwritten." Recovery is `git checkout -- .` then `git pull`, but only after **inspecting every diff** to confirm no real VPS-only edit gets lost. Always pull, never scp.
 
-- **VPS-only edit on `backend/requirements.txt`**: as of 2026-05-03 the VPS working tree intentionally removes the `yt-dlp-ejs>=0.8` block (because deno+ejs install was deferred — see "yt-dlp YouTube extraction prerequisites" above). Origin has the line. Every `git pull` that touches `requirements.txt` needs the removal re-applied:
-  ```bash
-  cp backend/requirements.txt /tmp/vps-req.txt
-  git checkout -- backend/requirements.txt
-  git pull --ff-only
-  cp /tmp/vps-req.txt backend/requirements.txt
-  ```
-  The "M backend/requirements.txt" in `git status` is **expected and load-bearing** — don't try to clean it up. Once deno + yt-dlp-ejs are actually installed and proven working, commit a removal of the block to origin so the working tree goes clean.
+- **`backend/requirements.txt` VPS-only edit (RESOLVED — no longer applies)**: through 2026-05-04 the VPS working tree kept a local-only edit removing the `yt-dlp-ejs>=0.8` line because deno+ejs install was deferred. After the yt-removal stages (2026-05-04) deleted yt-dlp from the codebase entirely, the line is gone from origin too. Working tree is clean as of 2026-05-06 — no copy/restore step needed in the deploy flow. If a future `git status` on the VPS shows `M backend/requirements.txt`, do **not** assume it's the old yt-dlp-ejs preservation; check the diff.
 
 - **CRLF vs LF line endings**: PC commits files with CRLF (Git for Windows default). On Linux VPS, big files (`music_api.py`, `chord-render.js`, `app.js`, `string-instrument.js`) get logged with thousand-line "diffs" that are just line-ending normalization — no real content change. `git checkout -- .` resets them to clean LF.
 
