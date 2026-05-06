@@ -2831,11 +2831,28 @@
   function _loadAccompaniment(forceRefresh) {
     const p = _accPath();
     if (!p || accLoading) return;
-    if (!forceRefresh && accData && accData._style === teachStyle && accData._level === teachLevel) return;
+    // v6: instrument axis. Guitar/uke get string-family RH events from the
+    // backend; everything else (piano/accordion/arranger) keeps piano-pitch
+    // events. Cache check must include instrument or a tab switch
+    // piano↔guitar will silently reuse the wrong stream.
+    const _instReg = (typeof InstrumentRegistry !== "undefined") ? InstrumentRegistry : null;
+    const _isString = _instReg && _instReg.isStringInstrument && _instReg.isStringInstrument(activeTab);
+    const inst = _isString ? activeTab : "piano";
+    if (!forceRefresh && accData
+        && accData._style === teachStyle
+        && accData._level === teachLevel
+        && accData._instrument === inst) return;
+    // v6: instrument changed (piano↔guitar/uke) → clear immediately so the
+    // current tab doesn't draw the previous tab's events for the ~1 RTT it
+    // takes the new fetch to land. Style/level changes are same-instrument
+    // so existing visuals stay valid; we only clear on instrument flip.
+    if (accData && accData._instrument && accData._instrument !== inst) {
+      accData = null;
+    }
     accLoading = true;
     _setLoadingState(true, forceRefresh ? _t("loading.acc_regen") : _t("loading.acc_extract"),
                      forceRefresh ? _t("loading.acc_regen_detail") : _t("loading.acc_extract_detail"));
-    let url = `/api/ai/accompaniment?path=${encodeURIComponent(p)}&style=${teachStyle}&level=${teachLevel}`;
+    let url = `/api/ai/accompaniment?path=${encodeURIComponent(p)}&style=${teachStyle}&level=${teachLevel}&instrument=${inst}`;
     if (forceRefresh) url += "&nocache=1";
     fetch(url).then(r => r.json()).then(data => {
       if (data.error) {
@@ -2844,6 +2861,12 @@
       } else {
         data._style = teachStyle;
         data._level = teachLevel;
+        data._instrument = inst;
+        // Stamp the canonical instrument the backend actually generated for,
+        // so string-instrument.js can verify before consuming events. Backend
+        // also returns this field; trust it over the request param in case
+        // the server downgraded an unknown instrument to piano.
+        if (!data.instrument) data.instrument = inst;
         _detectCrossings(data.left_hand, "left");
         _detectCrossings(data.right_hand, "right");
         accData = data;

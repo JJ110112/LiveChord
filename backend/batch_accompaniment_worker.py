@@ -86,7 +86,10 @@ def process_track(song_hash: str, levels: list, styles: list,
         results = []
         for level in levels:
             for style in styles:
-                out_name = f"{song_hash}_{style}_{level}_default_{ACC_ENGINE_VERSION}.json"
+                # v6: filename includes instrument segment. Batch worker only
+                # backfills the piano cache; guitar/uke variants regenerate
+                # lazily on demand (string-instrument tabs are infrequent).
+                out_name = f"{song_hash}_{style}_{level}_default_piano_{ACC_ENGINE_VERSION}.json"
                 out_path = ACCOMP_DIR / out_name
 
                 if out_path.exists():

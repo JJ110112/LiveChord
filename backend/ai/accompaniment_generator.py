@@ -42,7 +42,14 @@ RH_LOW, RH_HIGH = 60, 84
 # fixed beat rate (pattern_period_beats from STYLE_CONFIG, default 4) instead
 # of frac×duration. Fixes "2-beat chord plays double-time" bug. RH arpeggio
 # upgraded from 4 quarters to 8 eighths. Old v4 cache invalidated.
-ACC_ENGINE_VERSION = "v5"
+# v6 (2026-05-06): Add string-family RH events (LiveChord-vxa). When the
+# caller passes instrument="guitar"/"ukulele", _build_right_hand routes to
+# _build_string_rh, which emits per-string pluck/strum events carrying both
+# pitch (synth path consumes unchanged) and string/finger/strum_id/strum_dir
+# (visual reads the same stream — no more client-side _generateRhEvents
+# divergence). Cache filename now includes instrument segment, so old v5
+# files stay orphaned without conflicting with v6 piano regenerations.
+ACC_ENGINE_VERSION = "v6"
 _V2_FLAG_CACHE: Optional[bool] = None
 
 
@@ -454,6 +461,209 @@ RH_ARPEGGIO_PATTERN = [
 COMP_OFFBEAT_PATTERN = [(0.25, 0.85), (0.75, 0.95)]
 COMP_QUARTER_PATTERN = [(0.0, 0.7), (0.25, 0.85), (0.5, 0.7), (0.75, 0.85)]
 MUTED_STAB_PATTERN   = [(0.25, 0.85), (0.625, 0.65), (0.75, 0.95), (0.9375, 0.5)]
+
+# v6: String-instrument tunings (open-string MIDI per string index, low-to-high
+# by index order — matches frontend GUITAR_CONFIG/UKULELE_CONFIG.openMidi).
+# Ukulele's standard reentrant tuning means index 0 (G4=55) is HIGHER than
+# index 1 (C4=48); the bass-thumb logic must select by pitch, not by index.
+STRING_OPEN_MIDI = {
+    "guitar":  [40, 45, 50, 55, 59, 64],  # E2 A2 D3 G3 B3 E4
+    "ukulele": [55, 48, 52, 57],           # G4 C4 E4 A4 (reentrant)
+}
+
+# v6: String RH idiom patterns. Same period-tile contract as the piano
+# patterns above — frac is 0..1 across pattern_period_beats, NOT chord
+# duration. Tuple shape: (frac, finger|dir, vel_ratio).
+STRING_ARP_PATTERN = [
+    (0.0,    "p", 0.85),  # bass thumb on 1
+    (0.125,  "i", 0.55),
+    (0.25,   "m", 0.70),
+    (0.375,  "i", 0.55),
+    (0.5,    "a", 0.80),
+    (0.625,  "m", 0.60),
+    (0.75,   "i", 0.70),
+    (0.875,  "m", 0.55),
+]
+STRING_STRUM_PATTERN = [
+    # Standard D-D-DU-UDU 8-step folk strum (period_beats=4 → one bar)
+    (0.0,    "down", 0.95),
+    (0.25,   "down", 0.70),
+    (0.375,  "up",   0.55),
+    (0.625,  "up",   0.55),
+    (0.75,   "down", 0.85),
+    (0.875,  "up",   0.70),
+]
+STRING_OFFBEAT_PATTERN = [
+    (0.25,   "up", 0.75),
+    (0.75,   "up", 0.90),
+]
+
+
+def _build_string_rh(chord_evt: Dict, style: str, base_velocity: int,
+                     bpm: float, tempo_curve: Optional[List[Dict]],
+                     instrument: str) -> List[Dict]:
+    """
+    v6: Build right-hand events for guitar/ukulele.
+
+    Emits one event per (string, time). Each event carries:
+      - pitch (resolved via diagram + open-string MIDI) → synth consumes unchanged
+      - string, finger ("p"/"i"/"m"/"a") → visual single-string pick
+      - strum_id, strum_dir → visual groups events into one strum sweep
+
+    Idiom routing is driven by STYLE_CONFIG.rh_mode of the requested piano
+    style, so timing semantics match the piano version of the same style:
+      - arpeggio / 1+3 / 1+3_once → finger-pick arpeggio (pima 8th notes)
+      - comp_offbeat → reggae/bossa upstroke skank
+      - everything else → strum (D-D-DU-UDU 8th pattern)
+    """
+    from .beat_helpers import beat_duration_at  # local import to keep top-of-file clean
+    try:
+        # chord_diagrams lives at backend/chord_diagrams.py — backend root is
+        # already on sys.path (see top of this file).
+        from chord_diagrams import get_chord_diagram
+    except Exception:
+        return []
+
+    chord_name = chord_evt.get("chord", "C")
+    start_time = chord_evt.get("time", 0)
+    end = chord_evt.get("end", start_time + 2.0)
+    duration = end - start_time
+    if duration < 0.1:
+        return []
+
+    diagram = get_chord_diagram(chord_name, instrument)
+    if not diagram or "strings" not in diagram:
+        return []
+    strings_arr = diagram["strings"]
+
+    open_midi = STRING_OPEN_MIDI.get(instrument)
+    if not open_midi:
+        return []
+
+    # Active = (string_index, fret) for non-muted strings within the tuning.
+    active = []
+    for s, f in enumerate(strings_arr):
+        if s >= len(open_midi):
+            break
+        if f is None or f < 0:
+            continue
+        active.append((s, f))
+    if not active:
+        return []
+
+    pitch_of = {s: open_midi[s] + f for s, f in active}
+    # Sort by pitch ascending — needed for both bass-thumb selection AND
+    # ukulele reentrant ordering (where string-index ≠ pitch order).
+    by_pitch = sorted(active, key=lambda sf: pitch_of[sf[0]])
+
+    cfg = STYLE_CONFIG.get(style, STYLE_CONFIG["Block"])
+    rh_mode = cfg["rh_mode"]
+    period_beats = cfg.get("pattern_period_beats", 4)
+
+    if rh_mode in ("arpeggio", "1+3", "1+3_once"):
+        idiom = "arpeggio"
+    elif rh_mode == "comp_offbeat":
+        idiom = "offbeat"
+    else:
+        idiom = "strum"
+
+    events: List[Dict] = []
+    chord_end = start_time + duration
+
+    if idiom == "arpeggio":
+        # Bass thumb plays lowest-pitch active string.
+        # i/m/a play top three pitches (low→high). Pad if fewer than 3.
+        bass_s = by_pitch[0][0]
+        top_pool = [s for s, _ in by_pitch[-3:]]
+        while len(top_pool) < 3:
+            top_pool.append(top_pool[-1])
+        finger_to_string = {"p": bass_s, "i": top_pool[0], "m": top_pool[1], "a": top_pool[2]}
+
+        def emit_arp(pi, item, evt_time, evt_dur):
+            _frac, finger, vel_ratio = item
+            s = finger_to_string.get(finger, bass_s)
+            events.append({
+                "time": round(evt_time, 3),
+                "duration": round(evt_dur, 3),
+                "pitch": int(pitch_of[s]),
+                "velocity": int(base_velocity * vel_ratio),
+                "hand": "right",
+                "chord_tone": True,
+                "string": int(s),
+                "finger": finger,
+            })
+
+        _emit_period_pattern(STRING_ARP_PATTERN, start_time, duration,
+                             period_beats, bpm, tempo_curve, emit_arp)
+        return events
+
+    if idiom == "offbeat":
+        # Light upstroke skank on top 3 strings only (treble comp).
+        comp_strings_lo_hi = [s for s, _ in by_pitch[-3:]]
+
+        def emit_off(pi, item, evt_time, evt_dur):
+            _frac, direction, vel_ratio = item
+            seq = list(comp_strings_lo_hi) if direction == "down" else list(reversed(comp_strings_lo_hi))
+            stagger = 0.005
+            sid = f"o_{round(evt_time, 3)}_{direction}"
+            for k, s in enumerate(seq):
+                t = evt_time + k * stagger
+                if t >= chord_end - 0.005:
+                    break
+                d = min(0.18, chord_end - t)
+                if d <= 0.001:
+                    continue
+                events.append({
+                    "time": round(t, 3),
+                    "duration": round(d, 3),
+                    "pitch": int(pitch_of[s]),
+                    "velocity": int(base_velocity * vel_ratio),
+                    "hand": "right",
+                    "chord_tone": True,
+                    "string": int(s),
+                    "strum_id": sid,
+                    "strum_dir": direction,
+                })
+
+        _emit_period_pattern(STRING_OFFBEAT_PATTERN, start_time, duration,
+                             period_beats, bpm, tempo_curve, emit_off)
+        return events
+
+    # Default: strum across all active strings, low→high on down, reverse on up.
+    all_strings_lo_hi = [s for s, _ in by_pitch]
+
+    def emit_strum(pi, item, evt_time, evt_dur):
+        _frac, direction, vel_ratio = item
+        seq = list(all_strings_lo_hi) if direction == "down" else list(reversed(all_strings_lo_hi))
+        # Up-strokes are typically faster + lighter than down-strokes.
+        stagger = 0.006 if direction == "down" else 0.004
+        sid = f"s_{round(evt_time, 3)}_{direction}"
+        n = max(len(seq) - 1, 1)
+        for k, s in enumerate(seq):
+            t = evt_time + k * stagger
+            if t >= chord_end - 0.005:
+                break
+            d = min(evt_dur, chord_end - t)
+            if d <= 0.001:
+                continue
+            # Subtle velocity shape: trailing strings 5% softer than the
+            # leading edge so the strum has natural inner motion.
+            vel_shape = 1.0 - 0.05 * (k / n)
+            events.append({
+                "time": round(t, 3),
+                "duration": round(d, 3),
+                "pitch": int(pitch_of[s]),
+                "velocity": int(base_velocity * vel_ratio * vel_shape),
+                "hand": "right",
+                "chord_tone": True,
+                "string": int(s),
+                "strum_id": sid,
+                "strum_dir": direction,
+            })
+
+    _emit_period_pattern(STRING_STRUM_PATTERN, start_time, duration,
+                         period_beats, bpm, tempo_curve, emit_strum)
+    return events
 
 
 # ==============================================================================
@@ -1283,7 +1493,8 @@ def generate_accompaniment(chords: List[Dict],
                            section_type: str = "default",
                            sections: List[Dict] = None,
                            humanize: float = 1.0,
-                           tempo_curve: Optional[List[Dict]] = None) -> Dict[str, Any]:
+                           tempo_curve: Optional[List[Dict]] = None,
+                           instrument: str = "piano") -> Dict[str, Any]:
     """
     主入口：根據和弦序列、旋律、風格與難度，生成左右手 MIDI 伴奏。
 
@@ -1387,7 +1598,15 @@ def generate_accompaniment(chords: List[Dict],
         left_events.extend(lh)
 
         # ── 右手 ──
-        if rh_mode in ("1+3", "1+3_once"):
+        # v6: string-family instruments (guitar/ukulele) bypass the piano RH
+        # builders entirely and emit per-string pluck/strum events from
+        # _build_string_rh. The events still carry `pitch` so the audio synth
+        # path consumes them unchanged; the visual reads `string`/`strum_id`.
+        if instrument in ("guitar", "ukulele"):
+            rh = _build_string_rh(chord_evt, current_style, rh_velocity,
+                                  bpm, tempo_curve, instrument)
+            right_events.extend(rh)
+        elif rh_mode in ("1+3", "1+3_once"):
             rh, prev_rh_1plus3 = _build_rh_1plus3(
                 chord_name, start, duration, bpm,
                 prev_rh_1plus3, rh_velocity,
@@ -1419,7 +1638,13 @@ def generate_accompaniment(chords: List[Dict],
 
     # Viterbi 指法推導
     _assign_fingering(left_events, hand="left")
-    _assign_fingering(right_events, hand="right")
+    # v6: string-family RH events already carry p/i/m/a finger labels (which
+    # the visual renders directly). Running the piano-keyboard fingering pass
+    # would overwrite those with 1-5 numbers and throw off the keyboard
+    # tutorial UI when accData is consumed in piano mode by mistake. Skip
+    # for guitar/ukulele.
+    if instrument == "piano":
+        _assign_fingering(right_events, hand="right")
 
     # Humanization: timing 微偏移 + velocity 抖動
     if humanize > 0:
@@ -1437,6 +1662,7 @@ def generate_accompaniment(chords: List[Dict],
         "style": style,
         "level": level,
         "section_type": section_type,
+        "instrument": instrument,
     }
 
 
