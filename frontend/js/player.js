@@ -2881,7 +2881,12 @@
     accLoading = true;
     _setLoadingState(true, forceRefresh ? _t("loading.acc_regen") : _t("loading.acc_extract"),
                      forceRefresh ? _t("loading.acc_regen_detail") : _t("loading.acc_extract_detail"));
-    let url = `/api/ai/accompaniment?path=${encodeURIComponent(p)}&style=${teachStyle}&level=${teachLevel}&instrument=${inst}`;
+    // encodeURIComponent on teachStyle too — the "1+3" style name has a
+    // literal `+`, and `+` in application/x-www-form-urlencoded query
+    // strings decodes to a SPACE on the server. Without this, FastAPI saw
+    // style=" 3" and fell through to the default Block, so guitar tab's
+    // 1+3 selection generated strum instead of the arpeggio idiom.
+    let url = `/api/ai/accompaniment?path=${encodeURIComponent(p)}&style=${encodeURIComponent(teachStyle)}&level=${encodeURIComponent(teachLevel)}&instrument=${encodeURIComponent(inst)}`;
     if (forceRefresh) url += "&nocache=1";
     fetch(url).then(r => r.json()).then(data => {
       if (data.error) {
@@ -3949,34 +3954,29 @@
 
     function _syncGuitarArpUI() {
       const isStringTab = InstrumentRegistry.isStringInstrument(activeTab);
-      const isArp = guitarStrumStyle === "arpeggio";
-      // Top bar: arp selector or style label
-      if (arpSelectorDiv) {
-        arpSelectorDiv.style.display = (isArp && isStringTab) ? "" : "none";
-      }
+      // v7: the AI Acc style (#teachStyle) now governs guitar/uke idiom
+      // too — STRING_IDIOM_BY_STYLE in accompaniment_generator.py picks
+      // arpeggio/strum/offbeat per style. So #teachStyle stays VISIBLE on
+      // every tab. The legacy #guitarStyleSelect (arpeggio/pattern/block)
+      // is decorative now and was actively confusing — picking "Block"
+      // there did nothing because it doesn't trigger an accData refetch
+      // and the chosen value was bypassed by the v6+ event-driven idiom
+      // detection. Hide it permanently. Same for the gtRhStyleLabel and
+      // arpSelectorDiv decorations that branched off guitarStrumStyle.
+      if (arpSelectorDiv) arpSelectorDiv.style.display = "none";
       const styleLabel = $("#gtRhStyleLabel");
-      if (styleLabel) {
-        if (isStringTab && !isArp) {
-          styleLabel.style.display = "";
-          const nameEl = styleLabel.querySelector(".gt-rh-style-name");
-          if (nameEl) nameEl.textContent = guitarStrumStyle === "block" ? "Block ▼" : "D DU UDU";
-        } else {
-          styleLabel.style.display = "none";
-        }
-      }
-      if (guitarStyleSel) {
-        guitarStyleSel.style.display = isStringTab ? "" : "none";
-      }
-      // Bottom legend: p/i/m/a for arpeggio, hide for others
+      if (styleLabel) styleLabel.style.display = "none";
+      if (guitarStyleSel) guitarStyleSel.style.display = "none";
+      // Show the p/i/m/a finger legend on string tabs (the AI emits pluck
+      // events for arpeggio styles regardless of the legacy picker now,
+      // so the legend's relevance is governed by tab, not strum style).
       const rhLegend = $("#gtRhFingerLegend");
-      if (rhLegend) {
-        rhLegend.style.display = (isArp && isStringTab) ? "" : "none";
-      }
-      // Hide piano teachStyle on guitar/ukulele, show on piano
+      if (rhLegend) rhLegend.style.display = isStringTab ? "" : "none";
+      // #teachStyle drives the AI Acc style for ALL tabs in v7+ — keep it
+      // visible always. (Pre-v7 it was hidden on string tabs because the
+      // backend ignored it for guitar/uke; that path is gone.)
       const pianoStyleSel = $("#teachStyle");
-      if (pianoStyleSel) {
-        pianoStyleSel.style.display = isStringTab ? "none" : "";
-      }
+      if (pianoStyleSel) pianoStyleSel.style.display = "";
     }
 
     // Ensure values are initialized (var hoisting leaves them undefined until assignment line)
