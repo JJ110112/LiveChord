@@ -798,31 +798,20 @@
     sec.style.display = "";
   }
 
-  // Dashboard variant only: when the user has any of their own content
-  // (recent / local / favorites), demote the demo strip to the bottom of
-  // the page. Fresh accounts with nothing of their own keep demos near
-  // the top so there's always something to click. Logged-out marketing
-  // landing uses #secDemoSongsHero instead and never reorders.
+  // Logged-in dashboard: always move the demo strip to the bottom so user
+  // content (recent / local / favorites) sits on top. Fresh accounts with
+  // no content of their own still see demos visually high because the empty
+  // user-content sections are display:none and collapse. Logged-out
+  // marketing landing uses #secDemoSongsHero (separate node) and isn't
+  // touched here. Idempotent — safe to call multiple times.
   function _repositionDemoSection() {
     const demo = $("#secDemoSongs");
     if (!demo) return;
-    const hasRecent = !!document.querySelector("#betaRecentList .grid-item")
-                   || !!document.querySelector("#recentList .grid-item");
-    const hasLocal = !!document.querySelector("#betaLocalAnalyzedRow .grid-item")
-                  || !!document.querySelector("#betaLocalTrackList > *");
-    const hasFav = !!document.querySelector("#favList .grid-item");
-    if (!(hasRecent || hasLocal || hasFav)) return;
     const main = demo.parentNode;
     if (!main) return;
-    // Insert after favorites (the last user-content section); fall back to
-    // before the footer / browse section if favorites aren't in this layout.
-    const fav = $("#secFavorites");
-    if (fav && fav.nextSibling) {
-      main.insertBefore(demo, fav.nextSibling);
-    } else {
-      const footer = main.querySelector(".site-footer");
-      main.insertBefore(demo, footer || null);
-    }
+    // Anchor: the last visible user-content section, then footer fallback.
+    const footer = main.querySelector(".site-footer");
+    main.insertBefore(demo, footer || null);
   }
 
   // ---- dashboard init ----
