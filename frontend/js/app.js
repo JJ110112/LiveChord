@@ -810,9 +810,15 @@
       totalRendered += items.length;
     });
 
-    // Click delegation across all category sub-grids
+    // Click delegation across all category sub-grids. Stamp a sessionStorage
+    // flag before navigating so when the user lands back on / (browser back
+    // or explicit return) we can scroll them straight to the demo block
+    // instead of dropping them at the top of the marketing landing.
     sec.querySelectorAll(".demo-card").forEach(el => {
-      el.addEventListener("click", () => goPlayer("", el.dataset.hash));
+      el.addEventListener("click", () => {
+        try { sessionStorage.setItem("livechord_from_demo", "1"); } catch (_) {}
+        goPlayer("", el.dataset.hash);
+      });
     });
 
     // Attribution block — required for CC-BY/SA tracks, helpful for PD too.
@@ -851,6 +857,32 @@
   // block. Empty sections collapse via display:none so fresh users still
   // see demos high; users with content see them below their library.
   function _repositionDemoSection() {}
+
+  // If the user just clicked a demo card, _loadDemoSongs() set a
+  // sessionStorage flag before navigating to /player. When they come back
+  // to / (explicit click on logo, browser back, bfcache restore), scroll
+  // them straight to the demo block instead of dumping them at the top of
+  // the marketing landing or the dashboard. One-shot — flag clears on use.
+  function _scrollToDemoIfFromPlayer() {
+    let from = "";
+    try { from = sessionStorage.getItem("livechord_from_demo") || ""; } catch (_) {}
+    if (!from) return;
+    try { sessionStorage.removeItem("livechord_from_demo"); } catch (_) {}
+    // Pick whichever demo section is currently visible (logged-out hero
+    // variant vs logged-in dashboard variant).
+    const candidates = [
+      document.getElementById("secDemoSongsHero"),
+      document.getElementById("secDemoSongs"),
+    ];
+    const sec = candidates.find(el =>
+      el && getComputedStyle(el).display !== "none");
+    if (!sec) return;
+    // Slight delay so the demo section's async render (cards + attribution
+    // block) has settled before we measure its position.
+    setTimeout(() => {
+      sec.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  }
 
   // ---- dashboard init ----
 
@@ -901,6 +933,7 @@
       }
       await Promise.allSettled(tasks);
       _repositionDemoSection();
+      _scrollToDemoIfFromPlayer();
     } finally {
       showLoading(false);
     }
@@ -911,9 +944,17 @@
     // show up in 最近播放 until some other trigger reflowed the list. Rerun
     // the beta history fetch whenever we're restored from bfcache.
     window.addEventListener("pageshow", (ev) => {
-      if (!ev.persisted) return;  // normal reload/forward — init already ran
+      if (!ev.persisted) {
+        // First-render path or full reload — initDashboard's bottom call
+        // already covered the scroll; nothing to do here.
+        return;
+      }
       if (_isBetaMode) _loadBetaHistory().then(_repositionDemoSection);
       else if (typeof loadRecent === "function") loadRecent();
+      // bfcache: demo section is already in the DOM from the snapshot, so
+      // we can fire the scroll restore immediately without waiting for any
+      // async render.
+      _scrollToDemoIfFromPlayer();
     });
   }
 
