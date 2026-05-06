@@ -4219,6 +4219,22 @@
             inst.init();
           }
         }
+        // Track DB-path-mode play in recent.json. Until 2026-05-06 only the
+        // hash-mode branch posted to /api/recent, so NAS-library songs
+        // played via ?path=... never appeared at the top of the homepage's
+        // 最近播放 (and stayed at whatever stale order /api/recent had cached).
+        // keepalive=true so the POST survives a quick "back" click.
+        try {
+          fetch("/api/recent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            keepalive: true,
+            body: JSON.stringify({
+              path: path,
+              title: chordData.title || "",
+            }),
+          }).catch(() => {});
+        } catch (_) { /* non-fatal */ }
         // Chords loaded
         // 載入段落 + 旋律資訊
         _loadSections(path);

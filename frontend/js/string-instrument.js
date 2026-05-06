@@ -347,26 +347,91 @@ class StringInstrument {
   //   { time, dur, type: "strum"|"pick"|"pluck", dir?, strings?, string?,
   //     finger?, fingers?, chordIdx }
   _extractStringRhEvents(accData, currentTime, lookAhead) {
-    if (!accData || !Array.isArray(accData.right_hand)) return [];
     // v6 follow-up: honor rhContentMode. When the user picks "R melody"
     // (rhContentMode === "mel"), the audio synth path schedules melody
-    // pitches only — the AI accompaniment is intentionally muted. Drawing
-    // strum/pluck bars in that mode would visually contradict what's
-    // playing (user sees 刷弦, hears single melody notes). Return empty
-    // so visual = audio. "both" still draws the acc events because the
-    // audio plays acc + melody simultaneously, and the strum bars at
-    // least represent the acc layer faithfully.
+    // pitches only — drawing AI strum/pluck bars in that mode would
+    // visually contradict what's playing (user hears single melody notes,
+    // sees 刷弦). Map each melody note to a (string, fret) on the current
+    // tuning and render as a pick on that string so visual = audio. For
+    // "both" mode, acc events draw normally (with p/i/m/a finger labels)
+    // PLUS melody on top (no finger label, so the two layers stay
+    // visually distinguishable).
     let _rhMode = "acc";
     try {
       const v = window.localStorage && window.localStorage.getItem("livechord_rh_mode");
       if (v === "mel" || v === "both") _rhMode = v;
     } catch (_) { /* localStorage blocked — keep default */ }
-    if (_rhMode === "mel") return [];
+
     const winLo = currentTime - 0.5;
     const winHi = currentTime + lookAhead + 0.5;
+    const out = [];
+
+    // ── Acc layer (strum / pluck from accData.right_hand) ──
+    if (_rhMode !== "mel" && accData && Array.isArray(accData.right_hand)) {
+      const accOut = this._extractAccStringEvents(accData.right_hand, winLo, winHi);
+      out.push(...accOut);
+    }
+
+    // ── Melody layer (mapped to strings) ──
+    if (_rhMode === "mel" || _rhMode === "both") {
+      const melodyData = (this._b.getMelodyData && this._b.getMelodyData()) || null;
+      if (Array.isArray(melodyData)) {
+        for (const m of melodyData) {
+          if (m == null || typeof m.start !== "number") continue;
+          if (m.start > winHi) break;
+          const noteEnd = (typeof m.end === "number") ? m.end : (m.start + 0.2);
+          if (noteEnd < winLo) continue;
+          const sf = this._pitchToString(m.midi);
+          if (!sf) continue;
+          out.push({
+            time: m.start,
+            dur: noteEnd - m.start,
+            type: "pick",
+            string: sf.string,
+            // Leave finger=null so the renderer falls back to the generic
+            // PICK_CLR. The acc events have p/i/m/a labels — visually the
+            // user can see at a glance which layer each bar comes from.
+            finger: null,
+            chordIdx: 0,
+          });
+        }
+      }
+    }
+
+    out.sort((a, b) => a.time - b.time);
+    return out;
+  }
+
+  // Pick the lowest-fret playable string for a melody pitch on the current
+  // tuning. Lowest fret tends to put melody on the higher strings (since
+  // lower-pitch open strings need more frets for the same target pitch),
+  // which matches how a player would actually pick a melodic line. Returns
+  // null if the pitch is below all open strings or beyond fret 15.
+  _pitchToString(pitch) {
+    const openMidi = this._config.openMidi;
+    if (!openMidi || typeof pitch !== "number") return null;
+    let bestS = -1;
+    let bestFret = 99;
+    for (let s = 0; s < openMidi.length; s++) {
+      const fret = pitch - openMidi[s];
+      if (fret >= 0 && fret <= 15 && fret < bestFret) {
+        bestFret = fret;
+        bestS = s;
+      }
+    }
+    return (bestS >= 0) ? { string: bestS, fret: bestFret } : null;
+  }
+
+  _extractAccStringEvents(rightHand, winLo, winHi) {
+    return this._groupBackendStringEvents(rightHand, winLo, winHi);
+  }
+
+  // Group backend right-hand events by strum_id (sweeps) / same time
+  // (multi-finger plucks) / solo (single-string pick).
+  _groupBackendStringEvents(rightHand, winLo, winHi) {
     // Filter to render window first to avoid grouping the entire song.
     const win = [];
-    for (const e of accData.right_hand) {
+    for (const e of rightHand) {
       if (e == null || typeof e.time !== "number") continue;
       if (e.string == null) continue;       // skip non-string events defensively
       if (e.time > winHi) break;            // backend events are time-sorted
@@ -423,7 +488,7 @@ class StringInstrument {
         });
       }
     }
-    out.sort((a, b) => a.time - b.time);
+    // Caller does the final sort across the merged acc + melody layers.
     return out;
   }
 
