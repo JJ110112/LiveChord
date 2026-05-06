@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=21">
-  <link rel="stylesheet" href="/css/home.css?v=37">
+  <link rel="stylesheet" href="/css/home.css?v=38">
   <link rel="stylesheet" href="/css/help.css?v=5">
   <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
        Authorization for logged-in users, mode-aware 401 handling. Replaces
@@ -201,8 +201,9 @@
   <section id="secDemoSongsHero" class="home-demo-songs" style="display:none">
     <h2 class="home-demo-heading" data-i18n="home.demo.heading">Try a sample first — no upload needed</h2>
     <p class="home-demo-lede" data-i18n="home.demo.lede">Royalty-free tracks pre-analyzed so you can see the player in action right away.</p>
-    <div class="demo-category" data-cat="classical">
-      <h3 class="demo-cat-heading" data-i18n="home.demo.cat.classical">🎹 Classical</h3>
+    <!-- Category order: Easy → Folk → Jazz → Classical (most accessible first) -->
+    <div class="demo-category" data-cat="easy">
+      <h3 class="demo-cat-heading" data-i18n="home.demo.cat.easy">🎵 Easy</h3>
       <div class="demo-grid horizontal-scroll"></div>
     </div>
     <div class="demo-category" data-cat="folk">
@@ -213,10 +214,13 @@
       <h3 class="demo-cat-heading" data-i18n="home.demo.cat.jazz">🎷 Jazz</h3>
       <div class="demo-grid horizontal-scroll"></div>
     </div>
-    <div class="demo-category" data-cat="easy">
-      <h3 class="demo-cat-heading" data-i18n="home.demo.cat.easy">🎵 Easy</h3>
+    <div class="demo-category" data-cat="classical">
+      <h3 class="demo-cat-heading" data-i18n="home.demo.cat.classical">🎹 Classical</h3>
       <div class="demo-grid horizontal-scroll"></div>
     </div>
+    <!-- Attribution block — JS-populated source/license per track. Required for
+         CC-BY/SA tracks; harmless for PD. Stays at the bottom of the section. -->
+    <div class="demo-attribution-block"></div>
   </section>
 
   <!-- "How it works" — 3-step explanation. Same visibility rules as
@@ -272,8 +276,9 @@
        variant; app.js picks the target by login state. -->
   <section id="secDemoSongs" class="dash-section" style="display:none">
     <h2 class="dash-title" data-i18n="home.demo.dashboard_heading">Sample songs</h2>
-    <div class="demo-category" data-cat="classical">
-      <h3 class="demo-cat-heading" data-i18n="home.demo.cat.classical">🎹 Classical</h3>
+    <!-- Category order: Easy → Folk → Jazz → Classical (most accessible first) -->
+    <div class="demo-category" data-cat="easy">
+      <h3 class="demo-cat-heading" data-i18n="home.demo.cat.easy">🎵 Easy</h3>
       <div class="demo-grid horizontal-scroll"></div>
     </div>
     <div class="demo-category" data-cat="folk">
@@ -284,10 +289,12 @@
       <h3 class="demo-cat-heading" data-i18n="home.demo.cat.jazz">🎷 Jazz</h3>
       <div class="demo-grid horizontal-scroll"></div>
     </div>
-    <div class="demo-category" data-cat="easy">
-      <h3 class="demo-cat-heading" data-i18n="home.demo.cat.easy">🎵 Easy</h3>
+    <div class="demo-category" data-cat="classical">
+      <h3 class="demo-cat-heading" data-i18n="home.demo.cat.classical">🎹 Classical</h3>
       <div class="demo-grid horizontal-scroll"></div>
     </div>
+    <!-- Attribution block — JS-populated source/license per track. -->
+    <div class="demo-attribution-block"></div>
   </section>
 
   <!-- beta recent plays (hidden by default) -->
@@ -620,6 +627,6 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 }
 </script>
 
-<script src="/js/app.js?v=102"></script>
+<script src="/js/app.js?v=103"></script>
 </body>
 </html>

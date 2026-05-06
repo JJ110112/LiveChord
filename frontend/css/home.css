@@ -864,6 +864,62 @@
   color: var(--text-dim);
   letter-spacing: 0.02em;
 }
+/* Source-credits block at the bottom of the demo section. Required for
+   CC-BY/SA tracks per their license; harmless for PD. Subtle styling so
+   the cards stay the focus, but every link is clickable. */
+.demo-attribution-block {
+  margin-top: 28px;
+  padding: 14px 16px;
+  border-top: 1px solid color-mix(in srgb, var(--text-dim) 25%, transparent);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  border-radius: 8px;
+}
+.demo-attr-heading {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin: 0 0 8px;
+  opacity: 0.75;
+}
+.demo-attr-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--text-dim);
+  opacity: 0.85;
+}
+.demo-attr-list li {
+  margin: 0;
+  padding: 0;
+  word-break: break-word;
+}
+.demo-attr-list .demo-attr-title {
+  color: var(--text);
+  opacity: 0.9;
+}
+.demo-attr-list .demo-attr-artist {
+  font-style: italic;
+}
+.demo-attr-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.2);
+  text-underline-offset: 2px;
+}
+.demo-attr-link:hover {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+[data-theme="light"] .demo-attr-link,
+[data-theme="sakura"] .demo-attr-link,
+[data-theme="sunny"] .demo-attr-link,
+[data-theme="sky"] .demo-attr-link {
+  text-decoration-color: rgba(0, 0, 0, 0.25);
+}
 .demo-card .demo-credit {
   display: block;
   margin-top: 4px;

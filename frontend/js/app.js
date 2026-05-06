@@ -814,6 +814,34 @@
     sec.querySelectorAll(".demo-card").forEach(el => {
       el.addEventListener("click", () => goPlayer("", el.dataset.hash));
     });
+
+    // Attribution block — required for CC-BY/SA tracks, helpful for PD too.
+    // Lists every demo with its source link + license. Sits at the bottom of
+    // the section in DOM order (one .demo-attribution-block per section).
+    const attrEl = sec.querySelector(".demo-attribution-block");
+    if (attrEl && demos.length > 0) {
+      const heading = _t("home.demo.attribution_heading", null);
+      const headingText = (heading && heading !== "home.demo.attribution_heading")
+        ? heading : "Source credits";
+      const rows = demos.map(d => {
+        const t = escapeHtml(d.title || "");
+        const a = escapeHtml(d.artist || "");
+        const lic = escapeHtml(d.license || "");
+        const licUrl = d.license_url || "";
+        const srcUrl = d.source_url || "";
+        const srcLink = srcUrl
+          ? `<a class="demo-attr-link" href="${escapeHtml(srcUrl)}" target="_blank" rel="noopener">source</a>`
+          : "";
+        const licLink = (lic && licUrl)
+          ? `<a class="demo-attr-link" href="${escapeHtml(licUrl)}" target="_blank" rel="noopener">${lic}</a>`
+          : escapeHtml(lic);
+        return `<li><span class="demo-attr-title">${t}</span> · <span class="demo-attr-artist">${a}</span> · ${licLink}${srcLink ? ` · ${srcLink}` : ""}</li>`;
+      }).join("");
+      attrEl.innerHTML = `
+        <h4 class="demo-attr-heading">${escapeHtml(headingText)}</h4>
+        <ul class="demo-attr-list">${rows}</ul>`;
+    }
+
     if (totalRendered > 0) sec.style.display = "";
   }
 

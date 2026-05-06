@@ -63,20 +63,20 @@ TRACKS = [
     {
         "id": "fur_elise",
         "title": "Für Elise",
-        "artist": "Beethoven (perf. Eileen Joyce, 1940)",
+        "artist": "Beethoven (Bagatelle WoO 59)",
         "license": "Public Domain",
         "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
-        "source_url": "https://archive.org/details/dx-974-beethoven-bagatelle-op-33-2",
+        "source_url": "https://imslp.org/wiki/Bagatelle_in_A_minor,_WoO_59_(Beethoven,_Ludwig_van)",
         "vibe": "Romantic miniature; A minor",
         "category": "classical",
     },
     {
         "id": "moonlight_sonata_1st",
         "title": "Moonlight Sonata (1st mvt)",
-        "artist": "Beethoven (perf. Solomon Cutner, ~1948)",
-        "license": "Public Domain",
-        "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
-        "source_url": "https://archive.org/details/78_1st-movement-part-1-adagio-sostenuto_solomon-beethoven_gbia7003797a",
+        "artist": "Beethoven",
+        "license": "CC-BY-SA 2.0 de",
+        "license_url": "https://creativecommons.org/licenses/by-sa/2.0/de/",
+        "source_url": "https://commons.wikimedia.org/wiki/File:Beethoven_Moonlight_1st_movement.ogg",
         "vibe": "Adagio sostenuto — slow triplet figuration",
         "category": "classical",
     },
@@ -84,9 +84,9 @@ TRACKS = [
         "id": "air_on_g_string",
         "title": "Air on the G String",
         "artist": "J.S. Bach",
-        "license": "Public Domain",
-        "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
-        "source_url": "https://commons.wikimedia.org/wiki/File:Air_(Bach).ogg",
+        "license": "CC0 / Public Domain",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "source_url": "https://orangefreesounds.com/air-on-a-g-string/",
         "vibe": "Baroque, super-stable beat — beat-alignment showcase",
         "category": "classical",
     },
@@ -106,11 +106,13 @@ TRACKS = [
         "artist": "Frédéric Chopin",
         "license": "Public Domain",
         "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
-        "source_url": "https://www.classicals.de/chopin-op9",
+        "source_url": "https://commons.wikimedia.org/wiki/File:Nocturne_in_E_flat_major,_Op._9_no._2.mp3",
         "vibe": "Romantic classical solo piano — 12/8 compound triple",
         "category": "classical",
-        # Manual override: beat_this detects this Nocturne as ~38 BPM in 4/4,
-        # but it's actually 12/8 felt as 3-pulse at ~50 BPM.
+        # Manual override: beat_this often detects this Nocturne as 4/4,
+        # but it's 12/8 felt as 3-pulse. Keep the override; re-detect on
+        # the new audio may pick a different tempo so the bpm_override is
+        # what users will see in the player.
         "bpm_override": 50.0,
         "beats_per_bar_override": 3,
     },
@@ -193,6 +195,11 @@ TRACKS = [
     {
         "id": "frere_jacques",
         "title": "Frère Jacques (兩隻老虎)",
+        # Cover painter renders only ASCII / Latin via Segoe UI Bold (no CJK
+        # glyphs in that font). cover_title strips the parenthetical so the
+        # painted JPG doesn't show mojibake; the manifest title keeps the
+        # full bilingual label for the homepage card text.
+        "cover_title": "Frère Jacques",
         "artist": "French traditional",
         "license": "CC-BY-SA 3.0",
         "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
@@ -203,11 +210,11 @@ TRACKS = [
     {
         "id": "oh_susanna",
         "title": "Oh! Susanna",
-        "artist": "Stephen Foster (1917 recording)",
+        "artist": "Stephen Foster / U.S. Navy Band",
         "license": "Public Domain",
         "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
-        "source_url": "https://commons.wikimedia.org/wiki/File:Oh_Susanna1917.ogg",
-        "vibe": "Foster (d. 1864) Americana classic",
+        "source_url": "https://archive.org/details/OhSusanna_201402",
+        "vibe": "Foster (d. 1864) Americana classic — clean instrumental",
         "category": "easy",
     },
 ]
@@ -473,7 +480,9 @@ def _generate_category_cover(track: dict, cover_path: Path) -> None:
         return ImageFont.load_default()
 
     draw = ImageDraw.Draw(img)
-    title = track.get("title", "")
+    # Prefer cover_title if set (used to strip CJK / overly-long parentheticals
+    # that the Latin font can't render). Falls back to the manifest title.
+    title = track.get("cover_title") or track.get("title", "")
     artist = track.get("artist", "")
 
     # Light category gets dark text for contrast; everything else gets white.

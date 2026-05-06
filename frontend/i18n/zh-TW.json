@@ -706,6 +706,7 @@
   "home.progress.queued_analyzing": "已排入佇列，分析中...",
   "home.progress.submitting": "提交中...",
   "home.progress.uploading": "上傳中...",
+  "home.demo.attribution_heading": "音檔來源與授權",
   "home.demo.cat.classical": "🎹 古典",
   "home.demo.cat.easy": "🎵 簡單",
   "home.demo.cat.folk": "🌍 民謠",
