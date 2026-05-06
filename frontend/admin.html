@@ -342,6 +342,12 @@
         <button id="btnBarRecompute" title="Re-run AI bar arbitrator on a single song; force skips raw-already-regular and confidence gates" data-i18n-attr="title=admin.bar.recompute_tip" data-i18n="admin.bar.recompute_btn">Re-arbitrate</button>
         <span id="barRecomputeStatus" style="font-size:11px;color:var(--text-dim);"></span>
       </div>
+      <div class="actions" style="margin-bottom:8px; display:flex; gap:6px; align-items:center; padding:6px; border:1px dashed var(--border); border-radius:4px;">
+        <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;" data-i18n="admin.acc.label">🎼 AI 伴奏</span>
+        <input type="text" id="accRecomputePath" placeholder="path / hash / player URL" data-i18n-attr="placeholder=admin.acc.placeholder" class="num-input" style="flex:1; max-width:260px; text-align:left;">
+        <button id="btnAccRecompute" title="Clear accompaniment cache for one song; next playback regenerates fresh" data-i18n-attr="title=admin.acc.recompute_tip" data-i18n="admin.acc.recompute_btn">Recompute</button>
+        <span id="accRecomputeStatus" style="font-size:11px;color:var(--text-dim);"></span>
+      </div>
       <div id="trackList" style="max-height:50vh;overflow-y:auto; margin-bottom:8px;">
         <span style="color:var(--text-dim);font-size:12px" data-i18n="admin.chords.expand_to_load">Expand to load</span>
       </div>
@@ -1110,6 +1116,30 @@ window._lcIsBeta = (function() {
       } else {
         status.textContent = _t("admin.bar.no_change", {reason: data.reason || _t("admin.bar.no_change_default_reason")});
       }
+    } catch (e) {
+      status.textContent = _t("admin.toast.batch_midi_failed", {err: e.message || e});
+    }
+  });
+
+  $("#btnAccRecompute").addEventListener("click", async () => {
+    const ident = _parseSongIdentifier($("#accRecomputePath").value);
+    const status = $("#accRecomputeStatus");
+    if (!ident) { status.textContent = _t("admin.recompute.parse_failed"); return; }
+    status.textContent = _t("admin.recompute.processing");
+    try {
+      const res = await fetch("/api/admin/accompaniment/recompute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ident),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        status.textContent = _t("admin.bar.failed_status", {status: res.status, detail: data.detail || res.statusText});
+        return;
+      }
+      // Result message is concrete (file count) — no need for an i18n template;
+      // the parts that need translation (label, button) are already i18n-keyed.
+      status.textContent = `✓ deleted ${data.deleted} cache files`;
     } catch (e) {
       status.textContent = _t("admin.toast.batch_midi_failed", {err: e.message || e});
     }

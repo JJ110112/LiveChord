@@ -593,6 +593,61 @@ def admin_bar_restore(req: BarRestoreRequest, username: str = Depends(get_admin_
 
 
 # ---------------------------------------------------------------------------
+# admin: AI accompaniment cache recompute (per-song manual)
+# ---------------------------------------------------------------------------
+
+class AccompanimentRecomputeRequest(BaseModel):
+    path: Optional[str] = None
+    hash: Optional[str] = None
+
+
+@router.post("/admin/accompaniment/recompute")
+def admin_accompaniment_recompute(
+    req: AccompanimentRecomputeRequest,
+    username: str = Depends(get_admin_user),
+):
+    """Invalidate AI accompaniment cache for one song.
+
+    Deletes every ``data/accompaniments/{hash}_*.json`` file for the target
+    song. Subsequent ``GET /api/ai/accompaniment`` requests will regenerate
+    fresh under the current ``ACC_ENGINE_VERSION`` + STYLE_DICT, so admins
+    can immediately hear the effect of pattern / engine tweaks without
+    bumping the version (which would invalidate every song's cache).
+
+    Mainly a dev-cycle helper. End-user cache invalidation already happens
+    automatically when ``ACC_ENGINE_VERSION`` is bumped.
+
+    Personal-only via ``get_admin_user`` (handles LAN bypass + token auth).
+    """
+    if req.hash:
+        h = req.hash
+    elif req.path:
+        h = song_hash(req.path)
+    else:
+        raise HTTPException(status_code=400, detail="missing path or hash")
+
+    acc_dir = DATA_DIR / "accompaniments"
+    if not acc_dir.is_dir():
+        return {"ok": True, "hash": h, "deleted": 0, "note": "no accompaniments dir"}
+
+    deleted = 0
+    errors = []
+    for f in acc_dir.glob(f"{h}_*.json"):
+        try:
+            f.unlink()
+            deleted += 1
+        except Exception as e:
+            errors.append({"file": f.name, "error": str(e)})
+
+    return {
+        "ok": True,
+        "hash": h,
+        "deleted": deleted,
+        "errors": errors,
+    }
+
+
+# ---------------------------------------------------------------------------
 # auto-detect (Phase 4)
 # ---------------------------------------------------------------------------
 
