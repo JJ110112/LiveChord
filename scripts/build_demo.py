@@ -485,19 +485,52 @@ def _generate_category_cover(track: dict, cover_path: Path) -> None:
     stroke_color = (255, 255, 255) if cat == "easy" else (20, 20, 40)
     sub_color = (90, 90, 110) if cat == "easy" else (220, 220, 240)
 
-    # Title — auto-shrink to fit 540px wide, max 2 lines.
+    # Title rendering — split at " (" so titles like
+    # "Twinkle, Twinkle (Mozart K.265 Variations)" don't get squashed onto a
+    # single shrunken line. Main part stays bold + large; parenthetical sits
+    # below in a smaller weight, same color but slightly dimmer.
+    title_main = title
+    title_sub = ""
+    if " (" in title and title.rstrip().endswith(")"):
+        idx = title.index(" (")
+        title_main = title[:idx]
+        title_sub = title[idx + 1:]   # keep the leading "(" so the line reads naturally
+
+    # Auto-shrink the main title to fit 540px wide.
     title_size = 64
     while title_size > 28:
         title_font = find_font(title_size)
-        tb = draw.textbbox((0, 0), title, font=title_font)
+        tb = draw.textbbox((0, 0), title_main, font=title_font)
         if tb[2] - tb[0] <= 540:
             break
         title_size -= 4
     title_font = find_font(title_size)
-    tb = draw.textbbox((0, 0), title, font=title_font)
+
+    # Vertical layout: center the title block (main + optional sub) around y=270.
+    # Title at y=230 by default; if there's a sub, raise the title slightly so the
+    # whole block stays balanced and the artist line below doesn't overlap.
+    title_y = 230 if not title_sub else 200
+    sub_y = title_y + title_size + 8  # gap below the main line
+    artist_y = (sub_y + 50) if title_sub else 330
+
+    tb = draw.textbbox((0, 0), title_main, font=title_font)
     tw = tb[2] - tb[0]
-    draw.text(((600 - tw) // 2, 230), title, font=title_font, fill=text_color,
+    draw.text(((600 - tw) // 2, title_y), title_main, font=title_font, fill=text_color,
               stroke_width=2, stroke_fill=stroke_color)
+
+    if title_sub:
+        # Sub-title (parenthetical) — smaller, no stroke, slightly dimmer.
+        sub_size = 32
+        while sub_size > 18:
+            sf = find_font(sub_size)
+            sb = draw.textbbox((0, 0), title_sub, font=sf)
+            if sb[2] - sb[0] <= 540:
+                break
+            sub_size -= 2
+        sub_font = find_font(sub_size)
+        sb = draw.textbbox((0, 0), title_sub, font=sub_font)
+        sw = sb[2] - sb[0]
+        draw.text(((600 - sw) // 2, sub_y), title_sub, font=sub_font, fill=sub_color)
 
     artist_font = find_font(26)
     ab = draw.textbbox((0, 0), artist, font=artist_font)
@@ -508,7 +541,7 @@ def _generate_category_cover(track: dict, cover_path: Path) -> None:
             ab = draw.textbbox((0, 0), artist + "…", font=artist_font)
             aw = ab[2] - ab[0]
         artist = artist + "…"
-    draw.text(((600 - aw) // 2, 330), artist, font=artist_font, fill=sub_color)
+    draw.text(((600 - aw) // 2, artist_y), artist, font=artist_font, fill=sub_color)
 
     DEMO_COVERS_DIR.mkdir(parents=True, exist_ok=True)
     img.save(cover_path, "JPEG", quality=88, optimize=True)
@@ -666,7 +699,7 @@ def extract_melody(track: dict, demo_hash_str: str) -> Path | None:
 # Bump when demo audio / cover assets change so browsers + Cloudflare evict
 # their cached copies. Appended as ?v=N to audio_url / cover_url in the
 # manifest; the static-mount serves the file regardless of query string.
-MANIFEST_ASSET_VERSION = 2
+MANIFEST_ASSET_VERSION = 3
 
 
 def build_manifest():
