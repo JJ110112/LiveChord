@@ -468,10 +468,15 @@ class StringInstrument {
             dur: noteEnd - m.start,
             type: "pick",
             string: sf.string,
-            // Leave finger=null so the renderer falls back to the generic
-            // PICK_CLR. The acc events have p/i/m/a labels — visually the
-            // user can see at a glance which layer each bar comes from.
-            finger: null,
+            // Per-string default finger by classical fingerstyle convention:
+            // low strings (bass) → p thumb, mid strings → i/m, top → a.
+            // Without this every melody event was rendered cyan (the
+            // PICK_CLR default), and cyan is also the p-thumb color in
+            // FINGER_COLORS — so the visual implied "play everything with
+            // thumb", which is not how a guitarist would interpret a
+            // melody. Now top-string melody notes show red/orange/yellow
+            // (i/m/a) and only genuine bass notes stay cyan.
+            finger: this._defaultMelodyFinger(sf.string),
             chordIdx: 0,
           });
         }
@@ -500,6 +505,35 @@ class StringInstrument {
       }
     }
     return (bestS >= 0) ? { string: bestS, fret: bestFret } : null;
+  }
+
+  // Map a string index → default RH finger letter for a melody note,
+  // following classical fingerstyle convention. Strings are ranked by
+  // OPEN PITCH (not by index) so the same logic works for guitar standard
+  // tuning AND for ukulele reentrant (where index 0 is HIGHER than index
+  // 1). For guitar (6 strings): bottom 3 ranks (low E / A / D) → p, then
+  // i / m / a for G / B / e. For ukulele (4 strings): rank 0 (lowest C) →
+  // p, then i / m / a ascending.
+  _defaultMelodyFinger(stringIdx) {
+    const openMidi = this._config.openMidi;
+    if (!openMidi) return "i";
+    const ranked = openMidi
+      .map((m, s) => ({ s, m }))
+      .sort((a, b) => a.m - b.m);
+    const rank = ranked.findIndex(p => p.s === stringIdx);
+    if (rank < 0) return "i";
+    if (openMidi.length >= 6) {
+      // Guitar — bottom three pitches are bass duty (p), top three are
+      // i / m / a in pitch order. Matches the classical p–i–m–a layout.
+      if (rank <= 2) return "p";
+      if (rank === 3) return "i";
+      if (rank === 4) return "m";
+      return "a";
+    }
+    // Ukulele (4 strings, reentrant). Lowest pitch = thumb, then i/m/a
+    // ascending. The high reentrant string ends up as "a" (ring) which
+    // matches how players actually pick melody on uke.
+    return ["p", "i", "m", "a"][Math.min(rank, 3)];
   }
 
   _extractAccStringEvents(rightHand, winLo, winHi) {
