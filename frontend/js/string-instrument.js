@@ -348,6 +348,20 @@ class StringInstrument {
   //     finger?, fingers?, chordIdx }
   _extractStringRhEvents(accData, currentTime, lookAhead) {
     if (!accData || !Array.isArray(accData.right_hand)) return [];
+    // v6 follow-up: honor rhContentMode. When the user picks "R melody"
+    // (rhContentMode === "mel"), the audio synth path schedules melody
+    // pitches only — the AI accompaniment is intentionally muted. Drawing
+    // strum/pluck bars in that mode would visually contradict what's
+    // playing (user sees 刷弦, hears single melody notes). Return empty
+    // so visual = audio. "both" still draws the acc events because the
+    // audio plays acc + melody simultaneously, and the strum bars at
+    // least represent the acc layer faithfully.
+    let _rhMode = "acc";
+    try {
+      const v = window.localStorage && window.localStorage.getItem("livechord_rh_mode");
+      if (v === "mel" || v === "both") _rhMode = v;
+    } catch (_) { /* localStorage blocked — keep default */ }
+    if (_rhMode === "mel") return [];
     const winLo = currentTime - 0.5;
     const winHi = currentTime + lookAhead + 0.5;
     // Filter to render window first to avoid grouping the entire song.

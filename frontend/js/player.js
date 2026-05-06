@@ -1430,8 +1430,13 @@
     // "icon not consistent with the others" \u2014 fixed by giving every tab its
     // own inline tb-icon stroke SVG.
     const PIANO_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="1.5"/><line x1="7" y1="6" x2="7" y2="18"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="17" y1="6" x2="17" y2="18"/><rect x="5.3" y="6" width="3.4" height="6.5" fill="currentColor" stroke="none"/><rect x="15.3" y="6" width="3.4" height="6.5" fill="currentColor" stroke="none"/></svg>';
-    const GUITAR_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2 L19 2 L19 4 L14 4 Z" fill="currentColor" stroke="none"/><line x1="16.5" y1="4" x2="16.5" y2="13"/><line x1="14.5" y1="13" x2="18.5" y2="13"/><ellipse cx="10" cy="17" rx="6" ry="5"/><circle cx="10" cy="17" r="1.6"/><line x1="15" y1="13.6" x2="11.5" y2="15.6"/></svg>';
-    const UKULELE_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2 L20 2 L20 4 L15 4 Z" fill="currentColor" stroke="none"/><line x1="17.5" y1="4" x2="17.5" y2="11"/><line x1="15.5" y1="11" x2="19.5" y2="11"/><ellipse cx="11" cy="16" rx="5" ry="6"/><circle cx="11" cy="16" r="1.4"/></svg>';
+    // Guitar / ukulele: vertical orientation, headstock at top, body at
+    // bottom, sound hole filled. The first cut had a diagonal connector
+    // between an off-center body and a top-right headstock — at 14-18px
+    // that read as a snail (round body + antenna). Symmetrical layout reads
+    // as a guitar even when small.
+    const GUITAR_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="2.5" rx="0.5"/><line x1="12" y1="4.5" x2="12" y2="13"/><line x1="10.5" y1="6.5" x2="13.5" y2="6.5"/><line x1="10.5" y1="9" x2="13.5" y2="9"/><line x1="10.5" y1="11.5" x2="13.5" y2="11.5"/><ellipse cx="12" cy="17.5" rx="6.5" ry="5"/><circle cx="12" cy="17.5" r="1.6" fill="currentColor" stroke="none"/></svg>';
+    const UKULELE_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="10" y="2" width="4" height="2" rx="0.4"/><line x1="12" y1="4" x2="12" y2="11"/><line x1="10.8" y1="6" x2="13.2" y2="6"/><line x1="10.8" y1="8.5" x2="13.2" y2="8.5"/><ellipse cx="12" cy="16" rx="5" ry="6"/><circle cx="12" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>';
     const ARRANGER_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="4.5" r="1" fill="currentColor" stroke="none"/><circle cx="9.5" cy="4.5" r="1" fill="currentColor" stroke="none"/><circle cx="14.5" cy="4.5" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="4.5" r="1" fill="currentColor" stroke="none"/><rect x="2" y="9" width="20" height="9" rx="1.2"/><line x1="7" y1="9" x2="7" y2="18"/><line x1="12" y1="9" x2="12" y2="18"/><line x1="17" y1="9" x2="17" y2="18"/><rect x="5.3" y="9" width="3.4" height="5" fill="currentColor" stroke="none"/><rect x="15.3" y="9" width="3.4" height="5" fill="currentColor" stroke="none"/></svg>';
     const iconMap = {
       piano: PIANO_SVG,
@@ -2926,6 +2931,24 @@
           const hasVel = (data.left_hand || []).some(e => e.velocity);
           console.log(`[Refresh] pedal=${pedalCount}, velocity=${hasVel}`);
         }
+        // v6 follow-up: when audio is paused the per-frame animation loop
+        // doesn't fire, so neither the piano waterfall nor the string-
+        // instrument waterfall would redraw on its own after accData
+        // updates. Style flips on guitar tab were silently ineffective
+        // until the user pressed play. Force the active tab's waterfall
+        // to redraw at the current playhead so the new events surface
+        // immediately, paused or not.
+        try {
+          const t = (typeof audio !== "undefined" && audio) ? (audio.currentTime || 0) : 0;
+          if (activeTab === "piano") {
+            if (typeof drawWaterfall === "function" && waterfallActive) drawWaterfall(t);
+          } else if (typeof InstrumentRegistry !== "undefined") {
+            const _activeInst = InstrumentRegistry.get(activeTab);
+            if (_activeInst && typeof _activeInst._drawRhWaterfall === "function") {
+              _activeInst._drawRhWaterfall(t);
+            }
+          }
+        } catch (_) { /* non-fatal */ }
       }
       accLoading = false;
       _setLoadingState(false);
@@ -3761,6 +3784,17 @@
       if (typeof update88Piano === 'function' && typeof audio !== 'undefined') {
         try { update88Piano(audio.currentTime || 0); } catch {}
       }
+      // v6 follow-up: also redraw the active string-instrument waterfall so
+      // toggling between R-acc / R-mel / R-both via a Practice preset takes
+      // effect immediately on guitar/uke (not just after the next play tick).
+      try {
+        if (activeTab !== "piano" && typeof InstrumentRegistry !== "undefined") {
+          const _activeInst = InstrumentRegistry.get(activeTab);
+          if (_activeInst && typeof _activeInst._drawRhWaterfall === "function") {
+            _activeInst._drawRhWaterfall(audio.currentTime || 0);
+          }
+        }
+      } catch (_) { /* non-fatal */ }
     }
     document.querySelectorAll(".practice-opt").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -3842,6 +3876,18 @@
         const names = { acc: _t("toast.rh.acc"), mel: _t("toast.rh.mel"), both: _t("toast.rh.both") };
         showToast(_t("toast.rh.content", { name: names[rhContentMode] }), 1500);
         update88Piano(audio.currentTime || 0);
+        // v6 follow-up: redraw the active string-instrument waterfall too,
+        // so when the user toggles to "R melody" mode the strum/pluck bars
+        // disappear immediately (instead of staying onscreen until next
+        // animation tick — which never fires when audio is paused).
+        try {
+          if (activeTab !== "piano" && typeof InstrumentRegistry !== "undefined") {
+            const _activeInst = InstrumentRegistry.get(activeTab);
+            if (_activeInst && typeof _activeInst._drawRhWaterfall === "function") {
+              _activeInst._drawRhWaterfall(audio.currentTime || 0);
+            }
+          }
+        } catch (_) { /* non-fatal */ }
         if (typeof _syncPracticeModeUI === 'function') _syncPracticeModeUI();
       });
     }
