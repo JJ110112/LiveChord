@@ -1415,7 +1415,12 @@
 
     // Update instrument trigger icon. Accordion uses an inline SVG (matches the
     // popup button) because the U+1FA97 emoji renders inconsistently across OSes.
-    const ACCORDION_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="4" height="12" rx="1"/><rect x="17" y="6" width="4" height="12" rx="1"/><path d="M7 9 L10 12 L7 15"/><path d="M10 9 L13 12 L10 15"/><path d="M13 9 L16 12 L13 15"/><path d="M16 9 L17 12 L16 15"/></svg>';
+    // Redesigned 2026-05-06 (LiveChord-c9d follow-up): the previous icon was
+    // two thin tall rects + tiny chevrons, which read as a dumbbell at 14-18px.
+    // Now uses squarer 6×12 body panels + 3 prominent zigzag pleats spanning
+    // the full middle height, plus a hint of bass-buttons (left dots) and key
+    // lines (right) so the accordion shape is unmistakable on both PC + mobile.
+    const ACCORDION_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="6" height="12" rx="1"/><rect x="16" y="6" width="6" height="12" rx="1"/><circle cx="5" cy="9.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="5" cy="12.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="5" cy="15.5" r="0.9" fill="currentColor" stroke="none"/><line x1="19" y1="8" x2="19" y2="16"/><path d="M8 7 L11 12 L8 17"/><path d="M11 7 L14 12 L11 17"/><path d="M14 7 L16 12 L14 17"/></svg>';
     const iconMap = { piano: "\u{1F3B9}", guitar: "\u{1F3B8}", ukulele: "\u{1FA95}", accordion: ACCORDION_SVG, arranger: "\u{1F3B9}" };
     const btnInstrument = $("#btnInstrument");
     if (btnInstrument) {
