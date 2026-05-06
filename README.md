@@ -29,6 +29,8 @@ LiveChord started as a personal project (NAS + home GPU server), ran an invite-o
 
 The public instance is **upload-only**: drop an MP3 / WAV / FLAC / M4A / OGG (≤ 100 MB through the Cloudflare edge) and LiveChord analyses it. YouTube URL ingest was removed from the codebase on 2026-05-04 on hobby-scale legality grounds; CI guards against it being re-introduced. Bring-your-own audio is the only supported source path.
 
+First-time visitors don't have to upload anything to see the player working — the homepage ships **15 pre-analyzed Public-Domain / CC sample tracks** organized into Easy / Folk / Jazz / Classical sub-rows (Canon in D, Für Elise, Greensleeves, Twinkle Twinkle, …). Click a card and the chord ribbon, beats, downbeats, and melody waterfall all appear instantly. Built via [scripts/build_demo.py](scripts/build_demo.py); audio + chord JSONs ship in the repo under `data/demo/`.
+
 This is a **one-person hobby project** — the author maintains it because they use it daily themselves. Pull requests welcome but bear in mind: low-friction issues that improve the hobby experience get attention faster than ambitious refactors.
 
 ## Quick start (local development)

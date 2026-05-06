@@ -295,6 +295,30 @@ Engineering invariants (don't break these):
 
 UX rules added during this work: UX_CONVENTION §13a (color-scheme + select optgroup styling), §13b (`.toast { pointer-events: none }` mandatory), §13c (light-theme saturated-color remap helper applied to ALL FCLR consumers, not just headers).
 
+## Demo Songs (15 PD/CC tracks shipped on the public landing — 2026-05-06)
+
+Anonymous visitors at livechord.org get a "try without uploading" entry: 15 royalty-free pre-analyzed tracks organized into 4 categories (🎵 Easy → 🌍 Folk → 🎷 Jazz → 🎹 Classical, in render order — easy first, classical last). Cards click straight into `/player?hash=<demo_hash>`; backend serves audio from `/static/demo/<id>.mp3` with chord ribbon + beats + downbeats + melody all pre-computed. Card grids sub-categorize so a long horizontal scroll doesn't bury the recognizable picks.
+
+**Track set** (`scripts/build_demo.py` `TRACKS`): Easy = Twinkle/Mozart K.265, Frère Jacques, Oh! Susanna · Folk = Greensleeves, Auld Lang Syne, Scarborough Fair · Jazz = When the Saints, Carefree (KMacLeod CC-BY), Bossa Antigua (KMacLeod CC-BY) · Classical (6) = Canon in D, Für Elise, Moonlight 1st mvt, Air on G String, Clair de Lune, Chopin Nocturne Op.9 No.2.
+
+**Sourcing**: Wikimedia Commons (PD + CC-BY/SA) → archive.org Great 78 Project (PD by age + 2022 US MMA) → orangefreesounds.com (CC0) → IMSLP (canonical PD score attribution for tracks where the recording's exact provenance is uncertain). Every track in `data/demo/manifest.json` carries `source_url` + `license` + `license_url`; the homepage attribution block at the bottom of #secDemoSongs / #secDemoSongsHero is JS-populated from these fields and is **required** for the CC-BY/SA tracks (Canon, Greensleeves, K.265, Frère Jacques, Moonlight, Clair de Lune, Carefree, Bossa).
+
+**Build pipeline** ([scripts/build_demo.py](scripts/build_demo.py)) runs in-process — no uvicorn needed. Per track: BTC chord detection → `_beat_this_local()` (mirrors VPS Modal output exactly) → optional `bpm_override` / `beats_per_bar_override` / `cover_title` → `_apply_bar_split()` (pre-applies 依小節切分 so cards are bar-sized on first load) → MelodyExtractor → write chord JSON + melody JSON. Cover art via `_ensure_cover()`: extracts ID3 APIC if present, else `_generate_category_cover()` paints a per-category gradient + title (with auto-shrink + " (" split for parentheticals like "(Mozart K.265 Variations)"). Re-run with `--only <id>` to refresh one track; `--manifest-only` to rebuild manifest from existing chord JSONs.
+
+**Backend reuse, no new endpoints** beyond `/api/demo/list` ([backend/demo_api.py](backend/demo_api.py)):
+- `chord_cache.chord_file_for(hash)` falls back to `data/demo/chords/<hash>.json` when the regular sharded path is missing — so `/api/chords/by-hash` transparently serves demo chord JSONs.
+- `process_api._get_demo_cover_map()` lazily reads manifest into `{demo_hash: cover_path}` dict so 最近播放 cards (which always go through `/api/process/cover/<hash>`, even for demos played from a recent-play record) resolve to the shipped JPGs.
+- `/static/demo` mount in `main.py` serves `data/demo/*.mp3` + `data/demo/covers/*.jpg`.
+
+**Frontend** ([frontend/index.html](frontend/index.html) `#secDemoSongs` for logged-in dashboard / `#secDemoSongsHero` for logged-out marketing landing): each section has 4 nested `.demo-category` divs (one per category, with its own `.horizontal-scroll` grid) plus a `.demo-attribution-block` at the bottom. `_loadDemoSongs` in [frontend/js/app.js](frontend/js/app.js) groups manifest entries by `category` field, renders each sub-row independently, and JS-populates the attribution block. CSS section ordering on `.dashboard-layout` puts the demo block at `order: 50` (after recent / favorites / local-music for logged-in users; first thing visitors see for logged-out marketing landing). Card title CSS allows 3-line wrap with `overflow-wrap: anywhere` so long classical names don't truncate.
+
+**Engineering invariants — don't break these**:
+- All 15 demo audio files + cover JPGs are committed under `data/demo/` (~85 MB one-time bloat). Future asset swaps bump `MANIFEST_ASSET_VERSION` in build_demo.py — manifest then appends `?v=N` to every `audio_url` / `cover_url` and chord JSONs' `demo_audio_url` field gets the same suffix, forcing Cloudflare + browser cache eviction. Don't manually purge CF; bump the constant.
+- Demo melody files at `data/melodies/<demo_hash>.json` are git-tracked via explicit `!data/melodies/<hash>.json` exception lines in `.gitignore`. The umbrella `data/melodies/*` exclusion (note the `*`, not `/`) is what makes those exceptions reachable — git can't re-include children of an excluded directory.
+- Per-track meter overrides (`bpm_override` / `beats_per_bar_override`): used for compound-time pieces beat_this picks up as 4/4 (Chopin Nocturne is 12/8 felt as 3-pulse at BPM 50). The override rebuilds `downbeats[]` from `beats[]` taking every Nth (anchored to first detected downbeat to preserve phase).
+- `cover_title` field in TRACKS overrides the painted text. Use it when the manifest title contains CJK the painter's Latin font (Segoe UI Bold) can't render — e.g. if you re-add the bilingual "Frère Jacques (兩隻老虎)" form, set `cover_title: "Frère Jacques"` so the JPG doesn't show mojibake. Card title in the manifest can still keep CJK; the browser font handles it.
+- The 4-category render order is enforced by **DOM order** in `index.html` (Easy / Folk / Jazz / Classical) — `_loadDemoSongs` iterates `sec.querySelectorAll(".demo-category")` which preserves DOM order. To reorder, edit the HTML, not JS.
+
 ## Reference
 
 - QA protocol, test matrix, UI architecture rules: [doc/QA.md](doc/QA.md)
