@@ -6781,6 +6781,18 @@
             }
           } catch (e) { console.warn("IndexedDB load failed:", e); }
 
+          // Demo songs ship audio at /static/demo/<id>.mp3 — chord JSON carries
+          // the URL so the player can wire it up without a separate manifest
+          // round-trip. Marked _usingLocalFile=false so the file-picker fallback
+          // doesn't fire and so seek/play behaviour follows the streaming path.
+          if (!audioLoaded && chordData && chordData.demo_audio_url) {
+            audio.src = chordData.demo_audio_url;
+            _usingLocalFile = false;
+            audio.play().catch(() => {});
+            audioLoaded = true;
+            _showDemoAttribution(chordData);
+          }
+
           // No bundled audio — show the fallback panel so the user can
           // load a local audio file. Legacy chord JSONs that have a
           // youtube_url field are no longer auto-embedded; users must
@@ -6836,6 +6848,39 @@
   // audio and no IndexedDB blob. Legacy chord JSONs that contain a
   // ``youtube_url`` field still load (the field is silently ignored);
   // users have to upload the audio file to get playback.
+
+  // Demo-song attribution strip — required for CC-BY tracks (Kevin MacLeod,
+  // Chris Zabriskie); harmless for Public Domain tracks. Injected next to the
+  // song title in the topbar; idempotent, safe to call repeatedly. Reads
+  // `artist`, `license`, `license_url`, `source_url` from the chord JSON.
+  function _showDemoAttribution(cd) {
+    if (!cd || !songTitle) return;
+    let strip = document.getElementById("demoAttribution");
+    if (!strip) {
+      strip = document.createElement("a");
+      strip.id = "demoAttribution";
+      strip.className = "demo-attribution";
+      strip.target = "_blank";
+      strip.rel = "noopener";
+      // Insert after songTitle's parent (.topbar-center) so the strip sits
+      // on its own line below the topbar instead of cramming the title row.
+      const topbar = document.querySelector(".player-topbar");
+      if (topbar && topbar.parentNode) {
+        topbar.parentNode.insertBefore(strip, topbar.nextSibling);
+      } else {
+        document.body.insertBefore(strip, document.body.firstChild);
+      }
+    }
+    const artist = cd.artist || "";
+    const license = cd.license || "";
+    const licenseUrl = cd.license_url || cd.source_url || "";
+    const parts = ["♪ Sample"];
+    if (artist) parts.push(artist);
+    if (license) parts.push(license);
+    strip.textContent = parts.join(" · ");
+    strip.href = licenseUrl || "#";
+    strip.style.display = "";
+  }
 
   function _showYtFallbackPanel() {
     const old = document.getElementById("ytFallbackPanel");

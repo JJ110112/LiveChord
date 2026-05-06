@@ -3854,3 +3854,38 @@ body.no-jianpu .melody-jianpu { display: none !important; }
    a distinct surface against any page bg. */
 
 /* ========== [END: THEME OVERRIDES] ========== */
+
+/* ========== [COMPONENT: DEMO ATTRIBUTION] ==========
+   Single-line credit strip injected by player.js _showDemoAttribution() when
+   the loaded chord JSON is a demo (CC-BY tracks need visible attribution).
+   Sits below the topbar; clicks open the license URL in a new tab. */
+.demo-attribution {
+  display: block;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  text-decoration: none;
+  text-align: center;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+}
+.demo-attribution:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  opacity: 1;
+}
+[data-theme="light"] .demo-attribution,
+[data-theme="sakura"] .demo-attribution,
+[data-theme="sunny"] .demo-attribution,
+[data-theme="sky"] .demo-attribution {
+  background: rgba(0, 0, 0, 0.04);
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+[data-theme="light"] .demo-attribution:hover,
+[data-theme="sakura"] .demo-attribution:hover,
+[data-theme="sunny"] .demo-attribution:hover,
+[data-theme="sky"] .demo-attribution:hover {
+  background: rgba(0, 0, 0, 0.08);
+}

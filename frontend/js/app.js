@@ -748,6 +748,56 @@
     }
   }
 
+  // ---- demo songs (royalty-free pre-analyzed tracks shipped under data/demo/) ----
+  // Renders into either #secDemoSongsHero (logged-out marketing landing, prominent)
+  // or #secDemoSongs (logged-in dashboard strip, compact). Same backing data
+  // either way; visibility flipped by login state. Click → /player?hash=<h>.
+  // The /api/demo/list endpoint is unauthenticated by design — anonymous
+  // visitors are the primary audience. Silent failure (empty manifest, missing
+  // endpoint, 404) is fine: the section just stays hidden.
+  async function _loadDemoSongs() {
+    let demos = [];
+    try {
+      const res = await fetch("/api/demo/list");
+      if (!res.ok) return;
+      demos = await res.json();
+    } catch { return; }
+    if (!Array.isArray(demos) || demos.length === 0) return;
+
+    const isLoggedIn = !!localStorage.getItem("livechord_token");
+    const targetId = isLoggedIn ? "#secDemoSongs" : "#secDemoSongsHero";
+    const sec = $(targetId);
+    if (!sec) return;
+    const grid = sec.querySelector(".demo-grid");
+    if (!grid) return;
+
+    grid.innerHTML = demos.map(d => {
+      const cover = d.cover_url || "";
+      const license = d.license || "";
+      const licenseUrl = d.license_url || "";
+      const licenseHtml = license
+        ? (licenseUrl
+            ? ` · <a class="demo-license-link" href="${escapeHtml(licenseUrl)}" target="_blank" rel="noopener">${escapeHtml(license)}</a>`
+            : ` · ${escapeHtml(license)}`)
+        : "";
+      return `<div class="grid-item demo-card" data-hash="${escapeHtml(d.hash)}" style="cursor:pointer">
+        ${cover
+          ? `<img class="cover" src="${escapeHtml(cover)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
+             <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>`
+          : `<div class="cover-placeholder" style="display:flex">&#x1F3B5;</div>`}
+        <div class="info">
+          <div class="title">${escapeHtml(d.title || "")}</div>
+          <div class="demo-credit">${escapeHtml(d.artist || "")}${licenseHtml}</div>
+        </div>
+      </div>`;
+    }).join("");
+
+    grid.querySelectorAll(".demo-card").forEach(el => {
+      el.addEventListener("click", () => goPlayer("", el.dataset.hash));
+    });
+    sec.style.display = "";
+  }
+
   // ---- dashboard init ----
 
   async function initDashboard() {
@@ -758,6 +808,12 @@
     try {
       showLoading(true);
       const tasks = [];
+      // Demo songs render in both beta/public modes (logged-in OR logged-out).
+      // _loadDemoSongs picks the target section by login state itself, so a
+      // single unconditional call covers all paths. Personal mode (admin on
+      // LAN) also gets them — they're harmless on the dashboard and the
+      // endpoint is mode-agnostic. Run early in the parallel batch.
+      tasks.push(_loadDemoSongs());
       if (_isBetaNonAdmin) {
         _initBetaUpload();
         _initBetaLocalAudio();

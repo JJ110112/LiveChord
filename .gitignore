@@ -31,7 +31,16 @@ data/server.log
 data/server.log.*
 data/chord_queue.json
 data/.queue_cursor.json
-data/melodies/
+# Use /* (not /) so the directory stays in git's view — otherwise the
+# `!data/melodies/<demo_hash>.json` re-include rules below have no effect
+# (git can't re-include a child once the parent dir is excluded).
+data/melodies/*
+# Demo-song melody files (4 specific hashes shipped with the repo so demos
+# work out of the box on the VPS — see scripts/build_demo.py).
+!data/melodies/4138a8600cf7.json
+!data/melodies/7c2a21b32ad3.json
+!data/melodies/6100380aff2e.json
+!data/melodies/eb1e13d8ec4f.json
 data/melodies_v2/
 data/shadow_v2.log
 data/models/

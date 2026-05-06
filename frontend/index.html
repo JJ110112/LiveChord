@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=21">
-  <link rel="stylesheet" href="/css/home.css?v=34">
+  <link rel="stylesheet" href="/css/home.css?v=35">
   <link rel="stylesheet" href="/css/help.css?v=5">
   <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
        Authorization for logged-in users, mode-aware 401 handling. Replaces
@@ -194,6 +194,16 @@
     <p class="home-hero-rights" data-i18n="home.hero.rights_notice">⚠ Please only upload audio you have the right to use.</p>
   </section>
 
+  <!-- Demo songs row — public-mode logged-out only. Sits between hero and
+       "how it works" so first-time visitors can hit Play immediately
+       without uploading. Cards click → /player?hash=<demo_hash>; backend
+       serves audio from /static/demo/. Populated by app.js _loadDemoSongs(). -->
+  <section id="secDemoSongsHero" class="home-demo-songs" style="display:none">
+    <h2 class="home-demo-heading" data-i18n="home.demo.heading">Try a sample first — no upload needed</h2>
+    <p class="home-demo-lede" data-i18n="home.demo.lede">Royalty-free tracks pre-analyzed so you can see the player in action right away.</p>
+    <div class="demo-grid horizontal-scroll"></div>
+  </section>
+
   <!-- "How it works" — 3-step explanation. Same visibility rules as
        the hero: public-mode only, hidden after returning visitor has
        analyzed songs. Static markup so crawlers see the steps and the
@@ -239,6 +249,15 @@
   <section id="secRecent" class="dash-section" style="display:none">
     <h2 class="dash-title" data-i18n="home.section.recent">Recently played</h2>
     <div id="recentList" class="horizontal-scroll"></div>
+  </section>
+
+  <!-- Demo songs strip — logged-in dashboard variant, compact, sits above
+       最近播放 so signed-in users can also try them without losing their
+       library context. Same data source + click handler as the hero
+       variant; app.js picks the target by login state. -->
+  <section id="secDemoSongs" class="dash-section" style="display:none">
+    <h2 class="dash-title" data-i18n="home.demo.dashboard_heading">Sample songs</h2>
+    <div class="demo-grid horizontal-scroll"></div>
   </section>
 
   <!-- beta recent plays (hidden by default) -->
@@ -571,6 +590,6 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 }
 </script>
 
-<script src="/js/app.js?v=97"></script>
+<script src="/js/app.js?v=98"></script>
 </body>
 </html>

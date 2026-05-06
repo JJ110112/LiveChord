@@ -796,6 +796,58 @@
   text-overflow: ellipsis;
 }
 
+/* ========== [COMPONENT: DEMO SONGS] ==========
+   Two surfaces:
+   - #secDemoSongsHero — logged-out marketing landing variant (under hero CTA),
+     gets a dedicated heading + lede line so first-time visitors understand
+     what they're about to hear.
+   - #secDemoSongs — logged-in dashboard strip (above 最近播放), uses the
+     standard .dash-section / .dash-title styles for parity with the rest of
+     the dashboard. Cards reuse .grid-item via the shared .demo-grid wrapper.
+*/
+.home-demo-songs {
+  margin: 16px 0 24px;
+  padding: 0 16px;
+}
+.home-demo-heading {
+  font-size: clamp(20px, 3.5vw, 26px);
+  font-weight: 700;
+  margin: 0 0 6px;
+  color: #fff;
+  text-align: center;
+}
+.home-demo-lede {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin: 0 0 14px;
+  text-align: center;
+  opacity: 0.85;
+}
+.demo-grid {
+  /* Inherits .horizontal-scroll layout when both classes are present; this
+     block exists so a future redesign can swap to grid without touching the
+     section markup. */
+}
+.demo-card .demo-credit {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.demo-card .demo-credit .demo-license-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.25);
+}
+.demo-card .demo-credit .demo-license-link:hover {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+
 /* ========== [COMPONENT: ADD-SONG MODAL] ========== */
 /* Was the beta FAB panel — now a centered modal opened from the search
    empty-state CTA. Separate #betaFabBackdrop element handles dimming + click

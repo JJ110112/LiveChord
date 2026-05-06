@@ -26,6 +26,12 @@ DATA_DIR = Path(__file__).parent.parent / "data"
 CHORDS_DIR = DATA_DIR / "chords"
 INDEX_FILE = DATA_DIR / "chord_index.json"
 
+# Demo songs ship in the repo with their chord JSONs at data/demo/chords/<hash>.json
+# (flat, not sharded — only ~5 files). chord_file_for() falls back to this dir when
+# the regular sharded path doesn't exist, so /api/chords/by-hash transparently
+# serves demos without a separate code path.
+DEMO_CHORDS_DIR = DATA_DIR / "demo" / "chords"
+
 _chord_index_cache: dict | None = None
 
 # ensure_synced 的節流：30 秒內重複呼叫直接跳過。對 NAS 上 50k+ 檔做 scandir
@@ -60,9 +66,23 @@ def song_hash(path: str) -> str:
 # the bucket scheme later only touches this module.
 
 def chord_file_for(hash_str: str, root: Path | None = None) -> Path:
-    """Return the sharded chord JSON path for ``hash_str``."""
+    """Return the sharded chord JSON path for ``hash_str``.
+
+    Falls back to the demo dir (``data/demo/chords/<hash>.json``) when the
+    sharded path doesn't exist — lets shipped demo songs be served via the
+    same hash-mode endpoints without writes ever leaking into the demo dir
+    (writes go through ensure_chord_bucket + the sharded path returned here,
+    which is only the demo path on cache *miss* — i.e. when no real song
+    has claimed that hash, which is statistically guaranteed for the
+    handful of __demo/<id> hashes shipped in the repo).
+    """
     base = root or CHORDS_DIR
-    return base / hash_str[:2] / f"{hash_str}.json"
+    sharded = base / hash_str[:2] / f"{hash_str}.json"
+    if not sharded.is_file():
+        demo = DEMO_CHORDS_DIR / f"{hash_str}.json"
+        if demo.is_file():
+            return demo
+    return sharded
 
 
 def chord_bak_for(hash_str: str, src: str, root: Path | None = None) -> Path:

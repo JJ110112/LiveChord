@@ -64,6 +64,7 @@ from feedback_api import router as feedback_router
 from analytics_api import router as analytics_router
 from process_api import router as process_router
 from oauth_api import router as oauth_router
+from demo_api import router as demo_router
 import auth_api
 from fastapi import Depends
 import auto_worker
@@ -167,6 +168,7 @@ app.include_router(oauth_router)
 app.include_router(feedback_router)
 app.include_router(analytics_router)
 app.include_router(process_router)
+app.include_router(demo_router)
 
 # ---------------------------------------------------------------------------
 # Admin IP 限制 (beta mode 時只允許 LAN 存取 /admin 相關路徑)
@@ -210,6 +212,14 @@ if _AUDIO_DIR.exists():
 # `force-cache` hint in i18n.js, so a cache-bust step (rename file) would
 # require a versioning scheme later. For now, ETag from StaticFiles is enough.
 app.mount("/i18n", StaticFiles(directory=FRONTEND_DIR / "i18n"), name="i18n")
+
+# Demo songs — pre-analyzed royalty-free tracks shipped under data/demo/.
+# Audio at /static/demo/<id>.mp3, covers at /static/demo/covers/<id>.jpg.
+# Chord JSONs are served via the regular /api/chords/by-hash with the demo
+# fallback inside chord_cache.chord_file_for().
+_DEMO_DIR = Path(__file__).parent.parent / "data" / "demo"
+if _DEMO_DIR.is_dir():
+    app.mount("/static/demo", StaticFiles(directory=_DEMO_DIR), name="demo")
 
 
 # ---------------------------------------------------------------------------

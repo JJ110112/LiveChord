@@ -1,0 +1,50 @@
+[
+  {
+    "id": "carefree",
+    "title": "Carefree",
+    "artist": "Kevin MacLeod",
+    "license": "CC-BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "source_url": "https://incompetech.com/music/royalty-free/index.html?keywords=carefree",
+    "vibe": "Upbeat ragtime piano",
+    "hash": "4138a8600cf7",
+    "audio_url": "/static/demo/carefree.mp3",
+    "cover_url": "/static/demo/covers/carefree.jpg"
+  },
+  {
+    "id": "bossa_antigua",
+    "title": "Bossa Antigua",
+    "artist": "Kevin MacLeod",
+    "license": "CC-BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "source_url": "https://incompetech.com/music/royalty-free/index.html?keywords=bossa+antigua",
+    "vibe": "Jazz / bossa with ii-V-I and 7ths",
+    "hash": "7c2a21b32ad3",
+    "audio_url": "/static/demo/bossa_antigua.mp3",
+    "cover_url": "/static/demo/covers/bossa_antigua.jpg"
+  },
+  {
+    "id": "cylinder_five",
+    "title": "Cylinder Five",
+    "artist": "Chris Zabriskie",
+    "license": "CC-BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "source_url": "https://chriszabriskie.com/cylinders/",
+    "vibe": "Calm minimal piano arpeggios",
+    "hash": "6100380aff2e",
+    "audio_url": "/static/demo/cylinder_five.mp3",
+    "cover_url": "/static/demo/covers/cylinder_five.jpg"
+  },
+  {
+    "id": "chopin_nocturne_op9_no2",
+    "title": "Nocturne Op. 9 No. 2 in E♭ Major",
+    "artist": "Frédéric Chopin",
+    "license": "Public Domain",
+    "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
+    "source_url": "https://www.classicals.de/chopin-op9",
+    "vibe": "Romantic classical solo piano",
+    "hash": "eb1e13d8ec4f",
+    "audio_url": "/static/demo/chopin_nocturne_op9_no2.mp3",
+    "cover_url": "/static/demo/covers/chopin_nocturne_op9_no2.jpg"
+  }
+]
