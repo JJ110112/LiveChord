@@ -768,10 +768,13 @@
     const targetId = isLoggedIn ? "#secDemoSongs" : "#secDemoSongsHero";
     const sec = $(targetId);
     if (!sec) return;
-    const grid = sec.querySelector(".demo-grid");
-    if (!grid) return;
 
-    grid.innerHTML = demos.map(d => {
+    // Group manifest entries by category. Manifest order within a category
+    // is preserved (build_demo.py keeps "easy/recognized first" ordering).
+    const byCat = { classical: [], folk: [], jazz: [], easy: [] };
+    demos.forEach(d => { (byCat[d.category] || byCat.easy).push(d); });
+
+    const renderCard = (d) => {
       const cover = d.cover_url || "";
       const license = d.license || "";
       const licenseUrl = d.license_url || "";
@@ -790,12 +793,28 @@
           <div class="demo-credit">${escapeHtml(d.artist || "")}${licenseHtml}</div>
         </div>
       </div>`;
-    }).join("");
+    };
 
-    grid.querySelectorAll(".demo-card").forEach(el => {
+    let totalRendered = 0;
+    sec.querySelectorAll(".demo-category").forEach(catEl => {
+      const cat = catEl.dataset.cat;
+      const items = byCat[cat] || [];
+      const grid = catEl.querySelector(".demo-grid");
+      if (!grid) return;
+      if (items.length === 0) {
+        catEl.style.display = "none";
+        return;
+      }
+      catEl.style.display = "";
+      grid.innerHTML = items.map(renderCard).join("");
+      totalRendered += items.length;
+    });
+
+    // Click delegation across all category sub-grids
+    sec.querySelectorAll(".demo-card").forEach(el => {
       el.addEventListener("click", () => goPlayer("", el.dataset.hash));
     });
-    sec.style.display = "";
+    if (totalRendered > 0) sec.style.display = "";
   }
 
   // No-op: kept for backward compatibility with the bfcache hook below.

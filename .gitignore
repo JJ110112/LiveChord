@@ -35,12 +35,24 @@ data/.queue_cursor.json
 # `!data/melodies/<demo_hash>.json` re-include rules below have no effect
 # (git can't re-include a child once the parent dir is excluded).
 data/melodies/*
-# Demo-song melody files (4 specific hashes shipped with the repo so demos
-# work out of the box on the VPS — see scripts/build_demo.py).
+# Demo-song melody files — 15 specific hashes shipped with the repo so demos
+# work out of the box on the VPS. Hashes computed via md5("__demo/<id>")[:12]
+# in scripts/build_demo.py.
+!data/melodies/a1e9f8e3d7da.json
+!data/melodies/b4b35b46473e.json
+!data/melodies/83f2db3a1c20.json
+!data/melodies/6668976006f6.json
+!data/melodies/891866560078.json
+!data/melodies/eb1e13d8ec4f.json
+!data/melodies/c6116a5ad212.json
+!data/melodies/38c627f85c9a.json
+!data/melodies/05f3d384d67f.json
+!data/melodies/1746ea2f8ceb.json
 !data/melodies/4138a8600cf7.json
 !data/melodies/7c2a21b32ad3.json
-!data/melodies/6100380aff2e.json
-!data/melodies/eb1e13d8ec4f.json
+!data/melodies/12904a15b76f.json
+!data/melodies/fb2b2bb39179.json
+!data/melodies/beea1b3860ab.json
 data/melodies_v2/
 data/shadow_v2.log
 data/models/

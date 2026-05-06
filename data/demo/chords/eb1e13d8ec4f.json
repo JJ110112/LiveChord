@@ -8,6 +8,7 @@
   "license": "Public Domain",
   "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
   "source_url": "https://www.classicals.de/chopin-op9",
+  "category": "classical",
   "demo_audio_url": "/static/demo/chopin_nocturne_op9_no2.mp3",
   "chords": [
     {
@@ -1185,6 +1186,6 @@
     "applied": true,
     "beats_per_bar": 3,
     "bpm_set": 50.0,
-    "reason": "manual override — Nocturne is 12/8 felt as 3-pulse"
+    "reason": "manual override in scripts/build_demo.py TRACKS"
   }
 }

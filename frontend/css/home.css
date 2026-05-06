@@ -848,6 +848,22 @@
      block exists so a future redesign can swap to grid without touching the
      section markup. */
 }
+/* Per-category sub-row: emoji + label heading + its own horizontal scroll.
+   Used inside both #secDemoSongsHero (logged-out) and #secDemoSongs (logged-in
+   dashboard) so each category renders as its own mini-row. */
+.demo-category {
+  margin-top: 18px;
+}
+.demo-category:first-of-type {
+  margin-top: 0;
+}
+.demo-cat-heading {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
 .demo-card .demo-credit {
   display: block;
   margin-top: 4px;

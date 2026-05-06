@@ -42,10 +42,122 @@ MELODIES_DIR = DATA_DIR / "melodies"
 MANIFEST_FILE = DEMO_DIR / "manifest.json"
 
 # ---------------------------------------------------------------------------
-# Curated 3-track set. Order here is the order users see card grid render in.
+# Curated 15-track set, organized into 4 categories. Order within a category
+# is "easy / globally-recognized first" so each row's first card hooks the
+# visitor (Canon in D opens Classical, Twinkle Twinkle opens Easy, etc).
+# Frontend renders one .demo-category sub-row per `category` value.
 # ---------------------------------------------------------------------------
 
 TRACKS = [
+    # === 🎹 Classical (6) ===
+    {
+        "id": "canon_in_d",
+        "title": "Canon in D",
+        "artist": "Pachelbel",
+        "license": "CC-BY-SA 4.0",
+        "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "source_url": "https://commons.wikimedia.org/wiki/File:Pachelbel_-_Canon_in_D_major,_P._37_(Guitar).ogg",
+        "vibe": "The killer demo — universal recognition, clearest progression",
+        "category": "classical",
+    },
+    {
+        "id": "fur_elise",
+        "title": "Für Elise",
+        "artist": "Beethoven (perf. Eileen Joyce, 1940)",
+        "license": "Public Domain",
+        "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
+        "source_url": "https://archive.org/details/dx-974-beethoven-bagatelle-op-33-2",
+        "vibe": "Romantic miniature; A minor",
+        "category": "classical",
+    },
+    {
+        "id": "moonlight_sonata_1st",
+        "title": "Moonlight Sonata (1st mvt)",
+        "artist": "Beethoven (perf. Solomon Cutner, ~1948)",
+        "license": "Public Domain",
+        "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
+        "source_url": "https://archive.org/details/78_1st-movement-part-1-adagio-sostenuto_solomon-beethoven_gbia7003797a",
+        "vibe": "Adagio sostenuto — slow triplet figuration",
+        "category": "classical",
+    },
+    {
+        "id": "air_on_g_string",
+        "title": "Air on the G String",
+        "artist": "J.S. Bach",
+        "license": "Public Domain",
+        "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
+        "source_url": "https://commons.wikimedia.org/wiki/File:Air_(Bach).ogg",
+        "vibe": "Baroque, super-stable beat — beat-alignment showcase",
+        "category": "classical",
+    },
+    {
+        "id": "clair_de_lune",
+        "title": "Clair de Lune",
+        "artist": "Debussy",
+        "license": "CC-BY 3.0",
+        "license_url": "https://creativecommons.org/licenses/by/3.0/",
+        "source_url": "https://commons.wikimedia.org/wiki/File:Clair_de_lune_(Claude_Debussy)_Suite_bergamasque.ogg",
+        "vibe": "Impressionist, modal — tests harmonic sophistication",
+        "category": "classical",
+    },
+    {
+        "id": "chopin_nocturne_op9_no2",
+        "title": "Nocturne Op. 9 No. 2 in E♭ Major",
+        "artist": "Frédéric Chopin",
+        "license": "Public Domain",
+        "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
+        "source_url": "https://www.classicals.de/chopin-op9",
+        "vibe": "Romantic classical solo piano — 12/8 compound triple",
+        "category": "classical",
+        # Manual override: beat_this detects this Nocturne as ~38 BPM in 4/4,
+        # but it's actually 12/8 felt as 3-pulse at ~50 BPM.
+        "bpm_override": 50.0,
+        "beats_per_bar_override": 3,
+    },
+
+    # === 🌍 Folk (3) ===
+    {
+        "id": "greensleeves",
+        "title": "Greensleeves",
+        "artist": "English traditional (~1580)",
+        "license": "CC-BY-SA 4.0",
+        "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "source_url": "https://commons.wikimedia.org/wiki/File:Greensleeves_for_solo_piano.wav",
+        "vibe": "A minor — clear minor-key detection target",
+        "category": "folk",
+    },
+    {
+        "id": "auld_lang_syne",
+        "title": "Auld Lang Syne",
+        "artist": "Robert Burns / Frank C. Stanley (1910)",
+        "license": "Public Domain",
+        "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
+        "source_url": "https://commons.wikimedia.org/wiki/File:Auld_Lang_Syne.ogg",
+        "vibe": "Universal New Year's tune; I-IV-V",
+        "category": "folk",
+    },
+    {
+        "id": "scarborough_fair",
+        "title": "Scarborough Fair",
+        "artist": "English traditional",
+        "license": "Public Domain",
+        "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
+        "source_url": "https://commons.wikimedia.org/wiki/File:Anonimo_-_Scarborough_Fair.ogg",
+        "vibe": "Dorian mode — proves we're not just major/minor",
+        "category": "folk",
+    },
+
+    # === 🎷 Jazz (3) ===
+    {
+        "id": "when_the_saints",
+        "title": "When the Saints Go Marching In",
+        "artist": "American traditional",
+        "license": "Public Domain",
+        "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
+        "source_url": "https://commons.wikimedia.org/wiki/File:When_the_Saints_Go_Marching_In.ogg",
+        "vibe": "Dixieland I-IV-V — beginner-friendly",
+        "category": "jazz",
+    },
     {
         "id": "carefree",
         "title": "Carefree",
@@ -54,6 +166,7 @@ TRACKS = [
         "license_url": "https://creativecommons.org/licenses/by/4.0/",
         "source_url": "https://incompetech.com/music/royalty-free/index.html?keywords=carefree",
         "vibe": "Upbeat ragtime piano",
+        "category": "jazz",
     },
     {
         "id": "bossa_antigua",
@@ -63,29 +176,39 @@ TRACKS = [
         "license_url": "https://creativecommons.org/licenses/by/4.0/",
         "source_url": "https://incompetech.com/music/royalty-free/index.html?keywords=bossa+antigua",
         "vibe": "Jazz / bossa with ii-V-I and 7ths",
+        "category": "jazz",
+    },
+
+    # === 🎵 Easy (3) ===
+    {
+        "id": "twinkle_mozart_k265",
+        "title": "Twinkle, Twinkle (Mozart K.265 Variations)",
+        "artist": "Mozart",
+        "license": "CC-BY-SA 4.0",
+        "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "source_url": "https://commons.wikimedia.org/wiki/File:KV.265_12_Variations_on_Ah_vous_dirai-je,_Maman_Mozart_JMC,_Han.ogg",
+        "vibe": "Theme + 12 variations on the universal nursery tune",
+        "category": "easy",
     },
     {
-        "id": "cylinder_five",
-        "title": "Cylinder Five",
-        "artist": "Chris Zabriskie",
-        "license": "CC-BY 4.0",
-        "license_url": "https://creativecommons.org/licenses/by/4.0/",
-        "source_url": "https://chriszabriskie.com/cylinders/",
-        "vibe": "Calm minimal piano arpeggios",
+        "id": "frere_jacques",
+        "title": "Frère Jacques (兩隻老虎)",
+        "artist": "French traditional",
+        "license": "CC-BY-SA 3.0",
+        "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
+        "source_url": "https://commons.wikimedia.org/wiki/File:Frere_Jacques_-_canon.ogg",
+        "vibe": "Round in C — 5 seconds to 'oh I know this'",
+        "category": "easy",
     },
     {
-        "id": "chopin_nocturne_op9_no2",
-        "title": "Nocturne Op. 9 No. 2 in E♭ Major",
-        "artist": "Frédéric Chopin",
+        "id": "oh_susanna",
+        "title": "Oh! Susanna",
+        "artist": "Stephen Foster (1917 recording)",
         "license": "Public Domain",
         "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
-        "source_url": "https://www.classicals.de/chopin-op9",
-        "vibe": "Romantic classical solo piano",
-        # Manual override: beat_this detects this Nocturne as ~38 BPM in 4/4,
-        # but it's actually 12/8 felt as 3-pulse at ~50 BPM. Without these the
-        # bar grid is wrong (4-beat cards across compound-triple music).
-        "bpm_override": 50.0,
-        "beats_per_bar_override": 3,
+        "source_url": "https://commons.wikimedia.org/wiki/File:Oh_Susanna1917.ogg",
+        "vibe": "Foster (d. 1864) Americana classic",
+        "category": "easy",
     },
 ]
 
@@ -304,8 +427,93 @@ def _probe_audio_duration(audio_path: str) -> float:
         return 0.0
 
 
+# Per-category 3-stop gradient palettes for the programmatic cover generator.
+# Each entry is (top, mid, bottom). Picked so each category reads as visually
+# distinct in a horizontal row of 3-6 cards.
+_CATEGORY_PALETTES = {
+    "classical": ((15, 25, 60),   (35, 45, 95),   (80, 50, 70)),    # midnight blue -> indigo -> sepia (Chopin palette)
+    "folk":      ((25, 60, 30),   (60, 110, 55),  (140, 100, 50)),  # forest green -> moss -> warm brown
+    "jazz":      ((210, 90, 50),  (230, 140, 80), (180, 80, 95)),   # amber -> sunset -> wine (existing Carefree palette)
+    "easy":      ((180, 220, 200),(200, 200, 230),(245, 235, 215)), # mint -> lavender -> cream (light, friendly)
+}
+
+
+def _generate_category_cover(track: dict, cover_path: Path) -> None:
+    """Paint a 600×600 cover for a track that has no embedded ID3 art.
+    Gradient + soft glow + work title + artist line, with per-category color
+    palette so cards in the same row look like a coherent set."""
+    from PIL import Image, ImageDraw, ImageFont
+    cat = track.get("category", "easy")
+    top_c, mid_c, bot_c = _CATEGORY_PALETTES.get(cat, _CATEGORY_PALETTES["easy"])
+
+    img = Image.new("RGB", (600, 600))
+    px = img.load()
+    def lerp(a, b, t):
+        return tuple(int(a[i] + (b[i]-a[i]) * t) for i in range(3))
+    for y in range(600):
+        c = lerp(top_c, mid_c, y / 300) if y < 300 else lerp(mid_c, bot_c, (y - 300) / 300)
+        for x in range(600):
+            px[x, y] = c
+
+    # Soft glow vignette — color depends on palette warmth.
+    glow_color = (255, 240, 200, 16) if cat != "easy" else (255, 255, 255, 30)
+    for r, alpha in [(450, 16), (320, 14), (220, 12)]:
+        overlay = Image.new("RGBA", (600, 600), (0, 0, 0, 0))
+        od = ImageDraw.Draw(overlay)
+        od.ellipse((300-r, 300-r, 300+r, 300+r),
+                   fill=(glow_color[0], glow_color[1], glow_color[2], alpha))
+        img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+
+    def find_font(size):
+        for p in ("C:/Windows/Fonts/segoeuib.ttf", "C:/Windows/Fonts/arialbd.ttf",
+                  "/Library/Fonts/Arial Bold.ttf",
+                  "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"):
+            try: return ImageFont.truetype(p, size)
+            except Exception: continue
+        return ImageFont.load_default()
+
+    draw = ImageDraw.Draw(img)
+    title = track.get("title", "")
+    artist = track.get("artist", "")
+
+    # Light category gets dark text for contrast; everything else gets white.
+    text_color = (40, 40, 60) if cat == "easy" else (255, 255, 255)
+    stroke_color = (255, 255, 255) if cat == "easy" else (20, 20, 40)
+    sub_color = (90, 90, 110) if cat == "easy" else (220, 220, 240)
+
+    # Title — auto-shrink to fit 540px wide, max 2 lines.
+    title_size = 64
+    while title_size > 28:
+        title_font = find_font(title_size)
+        tb = draw.textbbox((0, 0), title, font=title_font)
+        if tb[2] - tb[0] <= 540:
+            break
+        title_size -= 4
+    title_font = find_font(title_size)
+    tb = draw.textbbox((0, 0), title, font=title_font)
+    tw = tb[2] - tb[0]
+    draw.text(((600 - tw) // 2, 230), title, font=title_font, fill=text_color,
+              stroke_width=2, stroke_fill=stroke_color)
+
+    artist_font = find_font(26)
+    ab = draw.textbbox((0, 0), artist, font=artist_font)
+    aw = ab[2] - ab[0]
+    if aw > 540:  # truncate
+        while aw > 540 and len(artist) > 10:
+            artist = artist[:-2]
+            ab = draw.textbbox((0, 0), artist + "…", font=artist_font)
+            aw = ab[2] - ab[0]
+        artist = artist + "…"
+    draw.text(((600 - aw) // 2, 330), artist, font=artist_font, fill=sub_color)
+
+    DEMO_COVERS_DIR.mkdir(parents=True, exist_ok=True)
+    img.save(cover_path, "JPEG", quality=88, optimize=True)
+    print(f"  [cover] generated {cat} cover -> {cover_path.name}")
+
+
 def _ensure_cover(track: dict, audio_path: Path) -> Path | None:
-    """Make sure data/demo/covers/<id>.jpg exists; extract from ID3 APIC if not."""
+    """Make sure data/demo/covers/<id>.jpg exists; extract from ID3 APIC if
+    embedded, else generate a category-themed gradient cover."""
     cover_path = DEMO_COVERS_DIR / f"{track['id']}.jpg"
     if cover_path.is_file():
         return cover_path
@@ -328,6 +536,13 @@ def _ensure_cover(track: dict, audio_path: Path) -> Path | None:
             return cover_path
     except Exception as e:
         print(f"  [warn] cover extraction failed: {e}")
+
+    # Fallback: programmatic category-themed cover
+    try:
+        _generate_category_cover(track, cover_path)
+        return cover_path
+    except Exception as e:
+        print(f"  [warn] cover generation failed: {e}")
 
     return None
 
@@ -369,6 +584,7 @@ def analyze_track(track: dict) -> dict | None:
         "license": track["license"],
         "license_url": track["license_url"],
         "source_url": track["source_url"],
+        "category": track.get("category", "easy"),
         "demo_audio_url": f"/static/demo/{track['id']}.mp3",
         "chords": chords,
         "duration": duration,
@@ -460,6 +676,7 @@ def build_manifest():
             "license_url": track["license_url"],
             "source_url": track["source_url"],
             "vibe": track["vibe"],
+            "category": track.get("category", "easy"),
             "hash": h,
             "audio_url": f"/static/demo/{track['id']}.mp3",
             "cover_url": f"/static/demo/covers/{track['id']}.jpg" if cover_disk.is_file() else "",
