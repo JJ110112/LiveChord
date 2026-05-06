@@ -1445,6 +1445,19 @@
         if (container) container.style.display = "flex";
         inst.init();
       }
+      // Bug fix: _initWaterfall() is the piano-only path that previously
+      // owned the _loadAccompaniment() call. On cold load with a non-piano
+      // tab restored from livechord_tab (guitar / ukulele / accordion /
+      // arranger), accData stayed null and the audio scheduler skipped
+      // every tick — so AI accompaniment was silent until the user
+      // bounced through the piano tab. Reproduction:
+      //   piano (sound) → guitar → dashboard → click song → player
+      //     → guitar tab restored, AI silent
+      //   → switch to piano → AI plays → switch back to guitar → AI plays
+      // Make the load tab-agnostic so non-piano tabs also bootstrap accData.
+      // Internally _loadAccompaniment is idempotent on style/level cache,
+      // so this is also safe on re-entry.
+      _loadAccompaniment();
     }
     _setupTeachControls();
     _updateCapoVisibility();

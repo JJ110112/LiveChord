@@ -426,7 +426,10 @@ class StringInstrument {
     const lookAhead = 4.0;
     const pxPerSec = h / lookAhead;
     const padL = Math.round(w * 0.1);
-    const padR = Math.round(w * 0.05);
+    // Match drawVerticalFretboard's right-pad floor — finger-circle radius
+    // can reach ~22px, and w*0.05 leaves the high-e string's circle clipped
+    // for any RH-panel narrower than ~440px (split-screen reality).
+    const padR = Math.max(Math.round(w * 0.05), 22);
     const stringSpacing = (w - padL - padR) / Math.max(numStrings - 1, 1);
     function strX(s) { return padL + s * stringSpacing; }
 

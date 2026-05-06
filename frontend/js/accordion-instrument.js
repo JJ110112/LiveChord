@@ -253,17 +253,32 @@ class AccordionInstrument {
   renderBassGrid(chordName, ghostName, ghostAlpha, step) {
     const canvas = this._gridCanvas;
     if (!canvas || !canvas.parentElement) return;
-    const rect = canvas.parentElement.getBoundingClientRect();
-    if (rect.width < 10 || rect.height < 50) return;
+    // Read the canvas's OWN post-layout rect — not the parent's. The canvas
+    // is `flex: 1` inside .acc-left-panel, so its effective height is
+    // determined by flex distribution AFTER the chord-name row + legend +
+    // hint take their share. parent.height - 40 over-estimated by ~28px in
+    // practice, leaving canvas.style.height at 629px while flex squashed the
+    // visible rendering down to ~601px. Browser then scaled the bottom of
+    // the canvas image by ~4.6%, ghosting the warning text twice (red copy
+    // above the legend + grey duplicate peeking through below — bug
+    // LiveChord-j1d follow-up). Use ownRect.height when valid; fall back
+    // to parent-minus-40 only on the very first frame before flex settles.
+    const ownRect = canvas.getBoundingClientRect();
+    const parentRect = canvas.parentElement.getBoundingClientRect();
+    if (parentRect.width < 10 || parentRect.height < 50) return;
     const dpr = window.devicePixelRatio || 1;
-    const drawH = Math.max(rect.height - 40, 60);
-    canvas.width = rect.width * dpr;
+    const drawW = ownRect.width >= 10 ? ownRect.width : parentRect.width;
+    const drawH = ownRect.height >= 60 ? ownRect.height
+                                       : Math.max(parentRect.height - 40, 60);
+    canvas.width = drawW * dpr;
     canvas.height = drawH * dpr;
-    canvas.style.width = rect.width + "px";
+    canvas.style.width = drawW + "px";
     canvas.style.height = drawH + "px";
     const ctx = canvas.getContext("2d");
     ctx.scale(dpr, dpr);
-    const W = rect.width, H = drawH;
+    const W = drawW, H = drawH;
+    // Keep the parent-rect alias for any downstream code that referenced `rect`.
+    const rect = parentRect;
     ctx.clearRect(0, 0, W, H);
 
     const COLS = AccordionInstrument.COLS;

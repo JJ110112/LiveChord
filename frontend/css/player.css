@@ -769,15 +769,25 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   background: var(--border);
 }
 
-/* --- Panel Hint (bottom-right of each panel) --- */
+/* --- Panel Hint (right-aligned row below the finger legend) ---
+   Was previously position:absolute; bottom:6px; right:8px which sat ON TOP
+   of the finger-legend row. On narrow panels (split-screen <440px) the
+   legend "① Index ② Middle ③ Ring ④ Pinky" reached close enough to the
+   right edge to collide with the hint text "LH D → Bm7", producing
+   illegible overlapping mush. Now the hint flows below the legend on its
+   own line — costs ~14px of canvas height but every viewport stays clean.
+   .acc-left-panel + .acc-right-panel inherit this rule via the same class. */
 .gt-panel-hint {
-  position: absolute;
-  bottom: 6px;
-  right: 8px;
+  display: block;
+  width: 100%;
+  text-align: right;
+  padding: 0 8px 2px;
+  margin-top: 2px;
   font-size: 11px;
-  color: rgba(255,255,255,0.35);
+  color: var(--text-dim);
+  opacity: 0.55;
   pointer-events: none;
-  z-index: 2;
+  flex-shrink: 0;   /* keep it visible — don't collapse under flex pressure */
 }
 
 /* --- RIGHT PANEL: Right-Hand Waterfall --- */
