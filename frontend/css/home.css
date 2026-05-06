@@ -920,6 +920,16 @@
 [data-theme="sky"] .demo-attr-link {
   text-decoration-color: rgba(0, 0, 0, 0.25);
 }
+/* Demo cards have longer titles than recent/favorites cards (full classical
+   work names + parentheticals like "(Mozart K.265 Variations)"). Override the
+   shared .horizontal-scroll .grid-item .info .title 2-line clamp so the
+   parenthetical wraps onto its own line instead of getting cut with "...". */
+.demo-card .info .title {
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .demo-card .demo-credit {
   display: block;
   margin-top: 4px;
