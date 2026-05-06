@@ -458,11 +458,31 @@
 
 .dashboard-layout {
   padding-bottom: 80px;
+  display: flex;
+  flex-direction: column;
 }
 
 .dash-section {
   margin-bottom: 32px;
 }
+
+/* Section ordering — flex order overrides DOM order so we can keep the
+   marketing landing top-of-document for SEO while putting user-content
+   sections (recent / favorites / local-music) above the demo strip on
+   the logged-in dashboard. Empty sections are display:none and collapse,
+   so a fresh logged-in user with nothing of their own still sees the
+   demo strip at the top of the visible content area. */
+#secHomeIntro       { order: -50; }
+#secHomeHero        { order: -40; }
+#secHomeHowItWorks  { order: -30; }
+#secHomeOpenSource  { order: -20; }
+#secRecent          { order: 10; }
+#secBetaRecent      { order: 20; }
+#secBetaLocalTracks { order: 30; }
+#secFavorites       { order: 40; }
+#secDemoSongs       { order: 50; }
+#secBrowse          { order: 60; }
+.site-footer        { order: 100; }
 
 /* Marketing intro — standalone cover image at the top of the logged-out
    homepage. No frame / background — image sits naked on the page bg so it

@@ -798,21 +798,12 @@
     sec.style.display = "";
   }
 
-  // Logged-in dashboard: always move the demo strip to the bottom so user
-  // content (recent / local / favorites) sits on top. Fresh accounts with
-  // no content of their own still see demos visually high because the empty
-  // user-content sections are display:none and collapse. Logged-out
-  // marketing landing uses #secDemoSongsHero (separate node) and isn't
-  // touched here. Idempotent — safe to call multiple times.
-  function _repositionDemoSection() {
-    const demo = $("#secDemoSongs");
-    if (!demo) return;
-    const main = demo.parentNode;
-    if (!main) return;
-    // Anchor: the last visible user-content section, then footer fallback.
-    const footer = main.querySelector(".site-footer");
-    main.insertBefore(demo, footer || null);
-  }
+  // No-op: kept for backward compatibility with the bfcache hook below.
+  // Section ordering is now handled entirely by CSS `order:` on
+  // .dashboard-layout — see frontend/css/home.css "Section ordering"
+  // block. Empty sections collapse via display:none so fresh users still
+  // see demos high; users with content see them below their library.
+  function _repositionDemoSection() {}
 
   // ---- dashboard init ----
 
