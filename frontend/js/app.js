@@ -798,6 +798,33 @@
     sec.style.display = "";
   }
 
+  // Dashboard variant only: when the user has any of their own content
+  // (recent / local / favorites), demote the demo strip to the bottom of
+  // the page. Fresh accounts with nothing of their own keep demos near
+  // the top so there's always something to click. Logged-out marketing
+  // landing uses #secDemoSongsHero instead and never reorders.
+  function _repositionDemoSection() {
+    const demo = $("#secDemoSongs");
+    if (!demo) return;
+    const hasRecent = !!document.querySelector("#betaRecentList .grid-item")
+                   || !!document.querySelector("#recentList .grid-item");
+    const hasLocal = !!document.querySelector("#betaLocalAnalyzedRow .grid-item")
+                  || !!document.querySelector("#betaLocalTrackList > *");
+    const hasFav = !!document.querySelector("#favList .grid-item");
+    if (!(hasRecent || hasLocal || hasFav)) return;
+    const main = demo.parentNode;
+    if (!main) return;
+    // Insert after favorites (the last user-content section); fall back to
+    // before the footer / browse section if favorites aren't in this layout.
+    const fav = $("#secFavorites");
+    if (fav && fav.nextSibling) {
+      main.insertBefore(demo, fav.nextSibling);
+    } else {
+      const footer = main.querySelector(".site-footer");
+      main.insertBefore(demo, footer || null);
+    }
+  }
+
   // ---- dashboard init ----
 
   async function initDashboard() {
@@ -846,6 +873,7 @@
         }
       }
       await Promise.allSettled(tasks);
+      _repositionDemoSection();
     } finally {
       showLoading(false);
     }
@@ -857,7 +885,7 @@
     // the beta history fetch whenever we're restored from bfcache.
     window.addEventListener("pageshow", (ev) => {
       if (!ev.persisted) return;  // normal reload/forward — init already ran
-      if (_isBetaMode) _loadBetaHistory();
+      if (_isBetaMode) _loadBetaHistory().then(_repositionDemoSection);
       else if (typeof loadRecent === "function") loadRecent();
     });
   }
