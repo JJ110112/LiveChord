@@ -43,6 +43,14 @@
   color: var(--text-dim);
   margin: 0 0 28px;
 }
+.help-hero-slogan {
+  font-size: 1.1rem !important;
+  font-weight: 600 !important;
+  font-style: italic;
+  color: var(--accent) !important;
+  margin: -16px 0 24px !important;
+  letter-spacing: 0.2px;
+}
 .help-hero-mission {
   max-width: 640px;
   margin: -16px auto 28px !important;

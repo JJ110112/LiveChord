@@ -1421,11 +1421,28 @@
     // the full middle height, plus a hint of bass-buttons (left dots) and key
     // lines (right) so the accordion shape is unmistakable on both PC + mobile.
     const ACCORDION_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="6" height="12" rx="1"/><rect x="16" y="6" width="6" height="12" rx="1"/><circle cx="5" cy="9.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="5" cy="12.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="5" cy="15.5" r="0.9" fill="currentColor" stroke="none"/><line x1="19" y1="8" x2="19" y2="16"/><path d="M8 7 L11 12 L8 17"/><path d="M11 7 L14 12 L11 17"/><path d="M14 7 L16 12 L14 17"/></svg>';
-    const iconMap = { piano: "\u{1F3B9}", guitar: "\u{1F3B8}", ukulele: "\u{1FA95}", accordion: ACCORDION_SVG, arranger: "\u{1F3B9}" };
+    // v6 follow-up: ALL tabs use inline tb-icon SVG so the trigger renders
+    // identically on every OS \u2014 matching the other 11 toolbar icons. Pre-fix,
+    // iconMap mixed emoji with one SVG (only accordion was SVG because U+1FA97
+    // renders inconsistently across platforms): on Android/iOS the piano /
+    // guitar / uke / arranger emoji fell back to colored Noto, so the bottom
+    // toolbar had four colourful icons and one stroke icon. User feedback:
+    // "icon not consistent with the others" \u2014 fixed by giving every tab its
+    // own inline tb-icon stroke SVG.
+    const PIANO_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="1.5"/><line x1="7" y1="6" x2="7" y2="18"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="17" y1="6" x2="17" y2="18"/><rect x="5.3" y="6" width="3.4" height="6.5" fill="currentColor" stroke="none"/><rect x="15.3" y="6" width="3.4" height="6.5" fill="currentColor" stroke="none"/></svg>';
+    const GUITAR_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2 L19 2 L19 4 L14 4 Z" fill="currentColor" stroke="none"/><line x1="16.5" y1="4" x2="16.5" y2="13"/><line x1="14.5" y1="13" x2="18.5" y2="13"/><ellipse cx="10" cy="17" rx="6" ry="5"/><circle cx="10" cy="17" r="1.6"/><line x1="15" y1="13.6" x2="11.5" y2="15.6"/></svg>';
+    const UKULELE_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2 L20 2 L20 4 L15 4 Z" fill="currentColor" stroke="none"/><line x1="17.5" y1="4" x2="17.5" y2="11"/><line x1="15.5" y1="11" x2="19.5" y2="11"/><ellipse cx="11" cy="16" rx="5" ry="6"/><circle cx="11" cy="16" r="1.4"/></svg>';
+    const ARRANGER_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="4.5" r="1" fill="currentColor" stroke="none"/><circle cx="9.5" cy="4.5" r="1" fill="currentColor" stroke="none"/><circle cx="14.5" cy="4.5" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="4.5" r="1" fill="currentColor" stroke="none"/><rect x="2" y="9" width="20" height="9" rx="1.2"/><line x1="7" y1="9" x2="7" y2="18"/><line x1="12" y1="9" x2="12" y2="18"/><line x1="17" y1="9" x2="17" y2="18"/><rect x="5.3" y="9" width="3.4" height="5" fill="currentColor" stroke="none"/><rect x="15.3" y="9" width="3.4" height="5" fill="currentColor" stroke="none"/></svg>';
+    const iconMap = {
+      piano: PIANO_SVG,
+      guitar: GUITAR_SVG,
+      ukulele: UKULELE_SVG,
+      accordion: ACCORDION_SVG,
+      arranger: ARRANGER_SVG,
+    };
     const btnInstrument = $("#btnInstrument");
     if (btnInstrument) {
-      if (tab === "accordion") btnInstrument.innerHTML = ACCORDION_SVG;
-      else btnInstrument.textContent = iconMap[tab] || "\u2328";
+      btnInstrument.innerHTML = iconMap[tab] || PIANO_SVG;
     }
     // Highlight active in popup
     const activeBtn = document.querySelector(`#tbInstrument .tb-popup-btn[data-tab="${tab}"]`);

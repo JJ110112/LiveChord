@@ -14,9 +14,9 @@
   <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <script src="/js/auth.js?v=5"></script>
-  <script src="/js/i18n.js?v=36"></script>
+  <script src="/js/i18n.js?v=37"></script>
   <link rel="stylesheet" href="/css/base.css?v=5">
-  <link rel="stylesheet" href="/css/help.css?v=5">
+  <link rel="stylesheet" href="/css/help.css?v=6">
 </head>
 <body class="help-body">
 
@@ -45,6 +45,7 @@
   <section class="help-hero">
     <h1 data-i18n="help.hero.title">LiveChord Help Center</h1>
     <p data-i18n="help.hero.subtitle">Find answers to common questions.</p>
+    <p class="help-hero-slogan" data-i18n="help.hero.slogan">Your song is your music teacher!</p>
     <p class="help-hero-mission" data-i18n="help.hero.mission">LiveChord is a non-commercial tool — built to help music enthusiasts study chord recognition and re-harmonization (Re-harmonization) with AI, for academic research and personal practice.</p>
     <div class="help-search-wrap">
       <input id="helpSearch" type="search" class="help-search"
@@ -150,7 +151,11 @@
         </details>
         <details class="help-q">
           <summary data-i18n="help.q.accompaniment">What does the AI accompaniment do (left + right hand)?</summary>
-          <p data-i18n="help.a.accompaniment">Beyond the chord chart, LiveChord generates a per-onset playable accompaniment — separate left-hand (bass + chord voicing) and right-hand (melody or arpeggio) parts, with finger numbers, velocity, and pedal markings. The piano falling-bar waterfall and the 88-key keyboard render this exactly as you'd play it. This is what separates LiveChord from a plain chord recogniser: it doesn't just label what the chords are, it shows you a way to play them. The Arranger view adds backing-pattern templates (Bossa, Walking, Swing, Slow Ballad…) auto-picked by tempo, and the Tools popup's right-hand mode lets you pick whether the right hand plays the AI accompaniment, the extracted melody, or both.</p>
+          <p data-i18n="help.a.accompaniment">Beyond the chord chart, LiveChord generates a per-onset playable accompaniment — separate left-hand (bass + chord voicing) and right-hand (melody or arpeggio) parts, with finger numbers, velocity, and pedal markings. On piano this renders as falling-bar waterfall + 88-key highlights exactly as you'd play it. On guitar and ukulele the same backend events drive the right-hand pluck/strum waterfall AND the audio synth at once — so what you see is exactly what you hear, every voicing and finger label staying in lockstep with the audio. The Arranger view adds backing-pattern templates (Bossa, Walking, Swing, Slow Ballad…) auto-picked by tempo, and the Tools popup's right-hand mode lets you pick whether the right hand plays the AI accompaniment, the extracted melody, or both.</p>
+        </details>
+        <details class="help-q">
+          <summary data-i18n="help.q.acc_philosophy">Why is the AI accompaniment a "starting point, not a script"?</summary>
+          <p data-i18n="help.a.acc_philosophy">The AI accompaniment is a template — a clean, playable arrangement to give you ideas: which chord voicings to try, where the bass note sits, how a strum or pick pattern feels at this tempo. Take it as a starting point, then make it your own. Vary the rhythm, swap the voicings, improvise the bass line, change the right-hand pattern entirely. The song you're learning is the real teacher — the AI is just there to help you take the first step. Use it to get unstuck, not to copy.</p>
         </details>
       </div>
     </details>
