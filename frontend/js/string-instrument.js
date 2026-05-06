@@ -327,35 +327,50 @@ class StringInstrument {
     }
 
     if (rhInfo) {
-      // v6: read the idiom from the backend events (accData.right_hand) —
-      // strum_id ⇒ strum sweep, finger=p/i/m/a ⇒ pluck arpeggio. The legacy
-      // getStrumStyle() picker is now decorative (the AI Acc style governs
-      // the idiom server-side), so trusting it here makes the label drift
-      // from what's actually playing — e.g. AI Acc style "Block" → backend
-      // rh_mode "1+3_once" → arpeggio events on the wire, but the picker
-      // localStorage still says "block" → label "RH downstroke" while the
-      // user sees pima circles. Fall back to the picker only when accData
-      // hasn't loaded yet.
-      const idiom = this._inferAccIdiom(this._b.getAccData());
-      if (idiom === "arpeggio") {
-        rhInfo.textContent = _t("instrument.rh.arpeggio");
-      } else if (idiom === "offbeat") {
-        rhInfo.textContent = _t("instrument.rh.offbeat");
-      } else if (idiom === "strum") {
-        rhInfo.textContent = _t("instrument.rh.strum_pattern");
+      // v7: rhContentMode wins over the acc-event idiom. When the user
+      // picks "R melody" the audio is playing the melody (not the AI acc),
+      // so the visual shows melody notes mapped to strings — labelling
+      // that "RH arpeggio" because the underlying acc layer happens to be
+      // arpeggio idiom misleads the user. Only fall back to the acc-event
+      // idiom inference for "acc" mode where the AI acc IS the active
+      // layer. "both" gets a dedicated label so the two-layer state is
+      // explicit.
+      let _rhMode = "acc";
+      try {
+        const v = window.localStorage && window.localStorage.getItem("livechord_rh_mode");
+        if (v === "mel" || v === "both") _rhMode = v;
+      } catch (_) { /* localStorage blocked */ }
+
+      if (_rhMode === "mel") {
+        rhInfo.textContent = _t("instrument.rh.melody");
+      } else if (_rhMode === "both") {
+        rhInfo.textContent = _t("instrument.rh.acc_plus_mel");
       } else {
-        const strumStyle = this._b.getStrumStyle();
-        if (strumStyle === "arpeggio") {
-          const pat = ARPEGGIO_PATTERNS[this._b.getArpPattern()];
-          rhInfo.textContent = pat
-            ? _t("instrument.rh.with_pattern", { name: pat.name })
-            : _t("instrument.rh.arpeggio");
+        // acc mode — read the idiom from the backend events
+        // (accData.right_hand). strum_id ⇒ strum sweep,
+        // finger=p/i/m/a ⇒ pluck arpeggio. Fall back to the legacy
+        // picker only when accData hasn't loaded yet.
+        const idiom = this._inferAccIdiom(this._b.getAccData());
+        if (idiom === "arpeggio") {
+          rhInfo.textContent = _t("instrument.rh.arpeggio");
+        } else if (idiom === "offbeat") {
+          rhInfo.textContent = _t("instrument.rh.offbeat");
+        } else if (idiom === "strum") {
+          rhInfo.textContent = _t("instrument.rh.strum_pattern");
         } else {
-          const styleLabels = {
-            block:   _t("instrument.rh.strum_block"),
-            pattern: _t("instrument.rh.strum_pattern"),
-          };
-          rhInfo.textContent = styleLabels[strumStyle] || _t("instrument.rh.fallback");
+          const strumStyle = this._b.getStrumStyle();
+          if (strumStyle === "arpeggio") {
+            const pat = ARPEGGIO_PATTERNS[this._b.getArpPattern()];
+            rhInfo.textContent = pat
+              ? _t("instrument.rh.with_pattern", { name: pat.name })
+              : _t("instrument.rh.arpeggio");
+          } else {
+            const styleLabels = {
+              block:   _t("instrument.rh.strum_block"),
+              pattern: _t("instrument.rh.strum_pattern"),
+            };
+            rhInfo.textContent = styleLabels[strumStyle] || _t("instrument.rh.fallback");
+          }
         }
       }
     }

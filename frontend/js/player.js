@@ -3798,11 +3798,16 @@
       // v6 follow-up: also redraw the active string-instrument waterfall so
       // toggling between R-acc / R-mel / R-both via a Practice preset takes
       // effect immediately on guitar/uke (not just after the next play tick).
+      // v7 follow-up: refresh labels too — rhContentMode now drives the
+      // RH hint label, not just the waterfall content.
       try {
         if (activeTab !== "piano" && typeof InstrumentRegistry !== "undefined") {
           const _activeInst = InstrumentRegistry.get(activeTab);
           if (_activeInst && typeof _activeInst._drawRhWaterfall === "function") {
             _activeInst._drawRhWaterfall(audio.currentTime || 0);
+          }
+          if (_activeInst && typeof _activeInst.refreshLabels === "function") {
+            _activeInst.refreshLabels();
           }
         }
       } catch (_) { /* non-fatal */ }
@@ -3896,6 +3901,9 @@
             const _activeInst = InstrumentRegistry.get(activeTab);
             if (_activeInst && typeof _activeInst._drawRhWaterfall === "function") {
               _activeInst._drawRhWaterfall(audio.currentTime || 0);
+            }
+            if (_activeInst && typeof _activeInst.refreshLabels === "function") {
+              _activeInst.refreshLabels();
             }
           }
         } catch (_) { /* non-fatal */ }
