@@ -771,7 +771,7 @@
 
     // Group manifest entries by category. Manifest order within a category
     // is preserved (build_demo.py keeps "easy/recognized first" ordering).
-    const byCat = { classical: [], folk: [], jazz: [], easy: [] };
+    const byCat = { classical: [], folk: [], jazz: [], easy: [], pop: [] };
     demos.forEach(d => { (byCat[d.category] || byCat.easy).push(d); });
 
     const renderCard = (d) => {

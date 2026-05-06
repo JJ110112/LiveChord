@@ -53,6 +53,12 @@ data/melodies/*
 !data/melodies/12904a15b76f.json
 !data/melodies/fb2b2bb39179.json
 !data/melodies/beea1b3860ab.json
+# Pop category — 5 FMA CC-BY tracks added 2026-05-06
+!data/melodies/b30f79b999dc.json
+!data/melodies/42c2e8471ddb.json
+!data/melodies/4547d5a0ae5a.json
+!data/melodies/9d19747b402b.json
+!data/melodies/ea8c46e804a8.json
 data/melodies_v2/
 data/shadow_v2.log
 data/models/

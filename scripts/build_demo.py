@@ -117,6 +117,61 @@ TRACKS = [
         "beats_per_bar_override": 3,
     },
 
+    # === 🎤 Pop (5, all from Free Music Archive, all CC-BY) ===
+    {
+        "id": "hungry",
+        "title": "Hungry",
+        "artist": "Oh Yeah, the Future",
+        "license": "CC-BY 4.0",
+        "license_url": "https://creativecommons.org/licenses/by/4.0/",
+        "source_url": "https://freemusicarchive.org/music/Oh_Yeah_the_Future_1152/New_brave_face/",
+        "vibe": "Indie pop / electronic",
+        "category": "pop",
+    },
+    {
+        "id": "evil_cannot_create",
+        "title": "Evil Cannot Create",
+        "artist": "Elephant Funeral (Caleb Lemond)",
+        "license": "CC-BY 4.0",
+        "license_url": "https://creativecommons.org/licenses/by/4.0/",
+        "source_url": "https://freemusicarchive.org/music/Caleb_Lemond/The_Learning_Curve/",
+        "vibe": "Indie alternative",
+        "category": "pop",
+    },
+    {
+        "id": "russian_dawn",
+        "title": "Сквозь тонкие шторы струится рассвет",
+        "cover_title": "Russian Lyrical",  # Cyrillic isn't in Segoe UI Bold
+        "artist": "Andrey Petrov",
+        "license": "CC-BY 4.0",
+        "license_url": "https://creativecommons.org/licenses/by/4.0/",
+        "source_url": "https://freemusicarchive.org/search?quicksearch=andrpetrovnl",
+        "vibe": "Russian lyrical pop ballad",
+        "category": "pop",
+    },
+    {
+        "id": "love_frequency",
+        "title": "사랑의 빈도 (Love Frequency)",
+        "cover_title": "Love Frequency",  # Hangul isn't in Segoe UI Bold
+        "artist": "Adeline Yeo (HP)",
+        "license": "CC-BY 4.0",
+        "license_url": "https://creativecommons.org/licenses/by/4.0/",
+        "source_url": "https://freemusicarchive.org/music/adeline-yeo-hp/",
+        "vibe": "K-pop / hip-hop",
+        "category": "pop",
+    },
+    {
+        "id": "ni_shi_wo_de_xing_chen",
+        "title": "你是我的星辰 (You Are My Star)",
+        "cover_title": "You Are My Star",  # CJK isn't in Segoe UI Bold
+        "artist": "Adeline Yeo (HP)",
+        "license": "CC-BY 4.0",
+        "license_url": "https://creativecommons.org/licenses/by/4.0/",
+        "source_url": "https://freemusicarchive.org/music/adeline-yeo-hp/single/nishiwodexingchen/",
+        "vibe": "Mandarin pop / electronic",
+        "category": "pop",
+    },
+
     # === 🌍 Folk (3) ===
     {
         "id": "greensleeves",
@@ -436,6 +491,7 @@ _CATEGORY_PALETTES = {
     "classical": ((15, 25, 60),   (35, 45, 95),   (80, 50, 70)),    # midnight blue -> indigo -> sepia (Chopin palette)
     "folk":      ((25, 60, 30),   (60, 110, 55),  (140, 100, 50)),  # forest green -> moss -> warm brown
     "jazz":      ((210, 90, 50),  (230, 140, 80), (180, 80, 95)),   # amber -> sunset -> wine (existing Carefree palette)
+    "pop":       ((180, 40, 110), (230, 80, 130), (255, 160, 100)), # magenta -> hot pink -> coral (vibrant pop)
     "easy":      ((180, 220, 200),(200, 200, 230),(245, 235, 215)), # mint -> lavender -> cream (light, friendly)
 }
 
@@ -699,7 +755,7 @@ def extract_melody(track: dict, demo_hash_str: str) -> Path | None:
 # Bump when demo audio / cover assets change so browsers + Cloudflare evict
 # their cached copies. Appended as ?v=N to audio_url / cover_url in the
 # manifest; the static-mount serves the file regardless of query string.
-MANIFEST_ASSET_VERSION = 3
+MANIFEST_ASSET_VERSION = 4
 
 
 def build_manifest():
@@ -731,7 +787,7 @@ def build_manifest():
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--only", help="Only process this track id (debug)")
+    p.add_argument("--only", help="Only process these track id(s); comma-separated for multiple")
     p.add_argument("--skip-melody", action="store_true",
                    help="Skip melody extraction (faster, no waterfall RH on demos)")
     p.add_argument("--manifest-only", action="store_true",
@@ -747,7 +803,8 @@ def main():
     DEMO_COVERS_DIR.mkdir(parents=True, exist_ok=True)
 
     for track in TRACKS:
-        if args.only and track["id"] != args.only:
+        only_ids = set(args.only.split(",")) if args.only else None
+        if only_ids and track["id"] not in only_ids:
             continue
         print(f"\n=== {track['title']} ({track['id']}) — {track['artist']} ===")
 

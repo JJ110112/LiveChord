@@ -9,8 +9,8 @@
     "vibe": "The killer demo — universal recognition, clearest progression",
     "category": "classical",
     "hash": "a1e9f8e3d7da",
-    "audio_url": "/static/demo/canon_in_d.mp3?v=3",
-    "cover_url": "/static/demo/covers/canon_in_d.jpg?v=3"
+    "audio_url": "/static/demo/canon_in_d.mp3?v=4",
+    "cover_url": "/static/demo/covers/canon_in_d.jpg?v=4"
   },
   {
     "id": "fur_elise",
@@ -22,8 +22,8 @@
     "vibe": "Romantic miniature; A minor",
     "category": "classical",
     "hash": "b4b35b46473e",
-    "audio_url": "/static/demo/fur_elise.mp3?v=3",
-    "cover_url": "/static/demo/covers/fur_elise.jpg?v=3"
+    "audio_url": "/static/demo/fur_elise.mp3?v=4",
+    "cover_url": "/static/demo/covers/fur_elise.jpg?v=4"
   },
   {
     "id": "moonlight_sonata_1st",
@@ -35,8 +35,8 @@
     "vibe": "Adagio sostenuto — slow triplet figuration",
     "category": "classical",
     "hash": "83f2db3a1c20",
-    "audio_url": "/static/demo/moonlight_sonata_1st.mp3?v=3",
-    "cover_url": "/static/demo/covers/moonlight_sonata_1st.jpg?v=3"
+    "audio_url": "/static/demo/moonlight_sonata_1st.mp3?v=4",
+    "cover_url": "/static/demo/covers/moonlight_sonata_1st.jpg?v=4"
   },
   {
     "id": "air_on_g_string",
@@ -48,8 +48,8 @@
     "vibe": "Baroque, super-stable beat — beat-alignment showcase",
     "category": "classical",
     "hash": "6668976006f6",
-    "audio_url": "/static/demo/air_on_g_string.mp3?v=3",
-    "cover_url": "/static/demo/covers/air_on_g_string.jpg?v=3"
+    "audio_url": "/static/demo/air_on_g_string.mp3?v=4",
+    "cover_url": "/static/demo/covers/air_on_g_string.jpg?v=4"
   },
   {
     "id": "clair_de_lune",
@@ -61,8 +61,8 @@
     "vibe": "Impressionist, modal — tests harmonic sophistication",
     "category": "classical",
     "hash": "891866560078",
-    "audio_url": "/static/demo/clair_de_lune.mp3?v=3",
-    "cover_url": "/static/demo/covers/clair_de_lune.jpg?v=3"
+    "audio_url": "/static/demo/clair_de_lune.mp3?v=4",
+    "cover_url": "/static/demo/covers/clair_de_lune.jpg?v=4"
   },
   {
     "id": "chopin_nocturne_op9_no2",
@@ -74,8 +74,73 @@
     "vibe": "Romantic classical solo piano — 12/8 compound triple",
     "category": "classical",
     "hash": "eb1e13d8ec4f",
-    "audio_url": "/static/demo/chopin_nocturne_op9_no2.mp3?v=3",
-    "cover_url": "/static/demo/covers/chopin_nocturne_op9_no2.jpg?v=3"
+    "audio_url": "/static/demo/chopin_nocturne_op9_no2.mp3?v=4",
+    "cover_url": "/static/demo/covers/chopin_nocturne_op9_no2.jpg?v=4"
+  },
+  {
+    "id": "hungry",
+    "title": "Hungry",
+    "artist": "Oh Yeah, the Future",
+    "license": "CC-BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "source_url": "https://freemusicarchive.org/music/Oh_Yeah_the_Future_1152/New_brave_face/",
+    "vibe": "Indie pop / electronic",
+    "category": "pop",
+    "hash": "b30f79b999dc",
+    "audio_url": "/static/demo/hungry.mp3?v=4",
+    "cover_url": "/static/demo/covers/hungry.jpg?v=4"
+  },
+  {
+    "id": "evil_cannot_create",
+    "title": "Evil Cannot Create",
+    "artist": "Elephant Funeral (Caleb Lemond)",
+    "license": "CC-BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "source_url": "https://freemusicarchive.org/music/Caleb_Lemond/The_Learning_Curve/",
+    "vibe": "Indie alternative",
+    "category": "pop",
+    "hash": "42c2e8471ddb",
+    "audio_url": "/static/demo/evil_cannot_create.mp3?v=4",
+    "cover_url": "/static/demo/covers/evil_cannot_create.jpg?v=4"
+  },
+  {
+    "id": "russian_dawn",
+    "title": "Сквозь тонкие шторы струится рассвет",
+    "artist": "Andrey Petrov",
+    "license": "CC-BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "source_url": "https://freemusicarchive.org/search?quicksearch=andrpetrovnl",
+    "vibe": "Russian lyrical pop ballad",
+    "category": "pop",
+    "hash": "4547d5a0ae5a",
+    "audio_url": "/static/demo/russian_dawn.mp3?v=4",
+    "cover_url": "/static/demo/covers/russian_dawn.jpg?v=4"
+  },
+  {
+    "id": "love_frequency",
+    "title": "사랑의 빈도 (Love Frequency)",
+    "artist": "Adeline Yeo (HP)",
+    "license": "CC-BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "source_url": "https://freemusicarchive.org/music/adeline-yeo-hp/",
+    "vibe": "K-pop / hip-hop",
+    "category": "pop",
+    "hash": "9d19747b402b",
+    "audio_url": "/static/demo/love_frequency.mp3?v=4",
+    "cover_url": "/static/demo/covers/love_frequency.jpg?v=4"
+  },
+  {
+    "id": "ni_shi_wo_de_xing_chen",
+    "title": "你是我的星辰 (You Are My Star)",
+    "artist": "Adeline Yeo (HP)",
+    "license": "CC-BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "source_url": "https://freemusicarchive.org/music/adeline-yeo-hp/single/nishiwodexingchen/",
+    "vibe": "Mandarin pop / electronic",
+    "category": "pop",
+    "hash": "ea8c46e804a8",
+    "audio_url": "/static/demo/ni_shi_wo_de_xing_chen.mp3?v=4",
+    "cover_url": "/static/demo/covers/ni_shi_wo_de_xing_chen.jpg?v=4"
   },
   {
     "id": "greensleeves",
@@ -87,8 +152,8 @@
     "vibe": "A minor — clear minor-key detection target",
     "category": "folk",
     "hash": "c6116a5ad212",
-    "audio_url": "/static/demo/greensleeves.mp3?v=3",
-    "cover_url": "/static/demo/covers/greensleeves.jpg?v=3"
+    "audio_url": "/static/demo/greensleeves.mp3?v=4",
+    "cover_url": "/static/demo/covers/greensleeves.jpg?v=4"
   },
   {
     "id": "auld_lang_syne",
@@ -100,8 +165,8 @@
     "vibe": "Universal New Year's tune; I-IV-V",
     "category": "folk",
     "hash": "38c627f85c9a",
-    "audio_url": "/static/demo/auld_lang_syne.mp3?v=3",
-    "cover_url": "/static/demo/covers/auld_lang_syne.jpg?v=3"
+    "audio_url": "/static/demo/auld_lang_syne.mp3?v=4",
+    "cover_url": "/static/demo/covers/auld_lang_syne.jpg?v=4"
   },
   {
     "id": "scarborough_fair",
@@ -113,8 +178,8 @@
     "vibe": "Dorian mode — proves we're not just major/minor",
     "category": "folk",
     "hash": "05f3d384d67f",
-    "audio_url": "/static/demo/scarborough_fair.mp3?v=3",
-    "cover_url": "/static/demo/covers/scarborough_fair.jpg?v=3"
+    "audio_url": "/static/demo/scarborough_fair.mp3?v=4",
+    "cover_url": "/static/demo/covers/scarborough_fair.jpg?v=4"
   },
   {
     "id": "when_the_saints",
@@ -126,8 +191,8 @@
     "vibe": "Dixieland I-IV-V — beginner-friendly",
     "category": "jazz",
     "hash": "1746ea2f8ceb",
-    "audio_url": "/static/demo/when_the_saints.mp3?v=3",
-    "cover_url": "/static/demo/covers/when_the_saints.jpg?v=3"
+    "audio_url": "/static/demo/when_the_saints.mp3?v=4",
+    "cover_url": "/static/demo/covers/when_the_saints.jpg?v=4"
   },
   {
     "id": "carefree",
@@ -139,8 +204,8 @@
     "vibe": "Upbeat ragtime piano",
     "category": "jazz",
     "hash": "4138a8600cf7",
-    "audio_url": "/static/demo/carefree.mp3?v=3",
-    "cover_url": "/static/demo/covers/carefree.jpg?v=3"
+    "audio_url": "/static/demo/carefree.mp3?v=4",
+    "cover_url": "/static/demo/covers/carefree.jpg?v=4"
   },
   {
     "id": "bossa_antigua",
@@ -152,8 +217,8 @@
     "vibe": "Jazz / bossa with ii-V-I and 7ths",
     "category": "jazz",
     "hash": "7c2a21b32ad3",
-    "audio_url": "/static/demo/bossa_antigua.mp3?v=3",
-    "cover_url": "/static/demo/covers/bossa_antigua.jpg?v=3"
+    "audio_url": "/static/demo/bossa_antigua.mp3?v=4",
+    "cover_url": "/static/demo/covers/bossa_antigua.jpg?v=4"
   },
   {
     "id": "twinkle_mozart_k265",
@@ -165,8 +230,8 @@
     "vibe": "Theme + 12 variations on the universal nursery tune",
     "category": "easy",
     "hash": "12904a15b76f",
-    "audio_url": "/static/demo/twinkle_mozart_k265.mp3?v=3",
-    "cover_url": "/static/demo/covers/twinkle_mozart_k265.jpg?v=3"
+    "audio_url": "/static/demo/twinkle_mozart_k265.mp3?v=4",
+    "cover_url": "/static/demo/covers/twinkle_mozart_k265.jpg?v=4"
   },
   {
     "id": "frere_jacques",
@@ -178,8 +243,8 @@
     "vibe": "Round in C — 5 seconds to 'oh I know this'",
     "category": "easy",
     "hash": "fb2b2bb39179",
-    "audio_url": "/static/demo/frere_jacques.mp3?v=3",
-    "cover_url": "/static/demo/covers/frere_jacques.jpg?v=3"
+    "audio_url": "/static/demo/frere_jacques.mp3?v=4",
+    "cover_url": "/static/demo/covers/frere_jacques.jpg?v=4"
   },
   {
     "id": "oh_susanna",
@@ -191,7 +256,7 @@
     "vibe": "Foster (d. 1864) Americana classic — clean instrumental",
     "category": "easy",
     "hash": "beea1b3860ab",
-    "audio_url": "/static/demo/oh_susanna.mp3?v=3",
-    "cover_url": "/static/demo/covers/oh_susanna.jpg?v=3"
+    "audio_url": "/static/demo/oh_susanna.mp3?v=4",
+    "cover_url": "/static/demo/covers/oh_susanna.jpg?v=4"
   }
 ]
