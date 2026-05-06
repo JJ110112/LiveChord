@@ -829,11 +829,13 @@
   margin: 16px 0 24px;
   padding: 0 16px;
 }
+/* Theme-aware: var(--text) flips dark↔light per data-theme. The previous
+   hardcoded #fff was invisible on sakura / light / sunny / sky palettes. */
 .home-demo-heading {
   font-size: clamp(20px, 3.5vw, 26px);
   font-weight: 700;
   margin: 0 0 6px;
-  color: #fff;
+  color: var(--text);
   text-align: center;
 }
 .home-demo-lede {
@@ -841,7 +843,6 @@
   color: var(--text-dim);
   margin: 0 0 14px;
   text-align: center;
-  opacity: 0.85;
 }
 .demo-grid {
   /* Inherits .horizontal-scroll layout when both classes are present; this
@@ -948,6 +949,13 @@
 .demo-card .demo-credit .demo-license-link:hover {
   color: var(--text);
   text-decoration-color: currentColor;
+}
+/* Light-theme contrast — same pattern as .demo-attr-link above. */
+[data-theme="light"] .demo-card .demo-credit .demo-license-link,
+[data-theme="sakura"] .demo-card .demo-credit .demo-license-link,
+[data-theme="sunny"] .demo-card .demo-credit .demo-license-link,
+[data-theme="sky"] .demo-card .demo-credit .demo-license-link {
+  text-decoration-color: rgba(0, 0, 0, 0.25);
 }
 
 /* ========== [COMPONENT: ADD-SONG MODAL] ========== */
