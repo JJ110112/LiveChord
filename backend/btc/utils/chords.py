@@ -85,39 +85,6 @@ class Chords:
             'min9': self.interval_list('(1,b3,5,b7,9)'),
             'sus2': self.interval_list('(1,2,5)'),
             'sus4': self.interval_list('(1,4,5)'),
-        }
-    
-    def interval_list(self, chord_definition):
-        """將和弦定義轉換為音程列表"""
-        # 移除括號並分割
-        intervals = chord_definition.strip('()').split(',')
-        result = np.zeros(12, dtype=int)
-        
-        for interval in intervals:
-            interval = interval.strip()
-            # 處理升降記號
-            if interval.startswith('b'):
-                # 降音程
-                semitones = self._interval_to_semitones(interval[1:]) - 1
-            elif interval.startswith('#'):
-                # 升音程
-                semitones = self._interval_to_semitones(interval[1:]) + 1
-            else:
-                semitones = self._interval_to_semitones(interval)
-            
-            if 0 <= semitones < 12:
-                result[semitones] = 1
-        
-        return result
-    
-    def _interval_to_semitones(self, interval):
-        """將音程名稱轉換為半音數"""
-        interval_map = {
-            '1': 0, '2': 2, '3': 4, '4': 5, '5': 7,
-            '6': 9, '7': 11, '9': 14, '11': 17, '13': 21
-        }
-        return interval_map.get(interval, 0) % 12': self.interval_list('(1,2,5)'),
-            'sus4': self.interval_list('(1,4,5)'),
             '11': self.interval_list('(1,3,5,b7,9,11)'),
             'min11': self.interval_list('(1,b3,5,b7,9,11)'),
             '13': self.interval_list('(1,3,5,b7,13)'),
