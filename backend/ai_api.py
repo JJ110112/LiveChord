@@ -462,6 +462,7 @@ def get_accompaniment(
     style: str = Query(default="Block", description="伴奏風格: Block/Arpeggio/Rhythm/Alberti/Shell/Walking/Stride"),
     level: str = Query(default="L1", description="難度: L1/L2/L3"),
     section_type: str = Query(default="default", description="段落類型: intro/verse/chorus/bridge/outro/default"),
+    instrument: str = Query(default="piano", description="樂器: piano/guitar/ukulele (v6: 弦樂器產生 string-family 事件)"),
     nocache: int = Query(default=0, description="1=強制重新生成（刪除快取）"),
 ):
     """生成伴奏（左右手 MIDI events + 指法 + 踏板 + 力度），含快取"""
@@ -471,10 +472,16 @@ def get_accompaniment(
     ACC_DIR = DATA_DIR / "accompaniments"
     ACC_DIR.mkdir(parents=True, exist_ok=True)
 
+    # v6: only piano/guitar/ukulele are valid acc backends today; anything else
+    # (e.g. accordion/arranger tabs) silently falls back to the piano cache so
+    # the synth still has SOMETHING to schedule.
+    if instrument not in ("piano", "guitar", "ukulele"):
+        instrument = "piano"
+
     from chord_cache import song_hash as get_song_hash
     from ai.accompaniment_generator import ACC_ENGINE_VERSION
     h = get_song_hash(path)
-    cache_file = ACC_DIR / f"{h}_{style}_{level}_{section_type}_{ACC_ENGINE_VERSION}.json"
+    cache_file = ACC_DIR / f"{h}_{style}_{level}_{section_type}_{instrument}_{ACC_ENGINE_VERSION}.json"
 
     # nocache: 清除此歌所有伴奏快取
     if nocache:
@@ -571,6 +578,7 @@ def get_accompaniment(
         bpm=bpm, style=style, level=level, genre=genre,
         section_type=section_type, sections=sections,
         tempo_curve=tempo_curve,
+        instrument=instrument,
     )
     result["path"] = path
     result["bpm"] = round(bpm, 1)
@@ -627,6 +635,7 @@ def suggest_style_api(
 
     bpm = 120.0
     genre = ""
+    time_signature = ""
     cache_path = DATA_DIR / "library_cache.json"
     if cache_path.is_file():
         try:
@@ -638,7 +647,7 @@ def suggest_style_api(
         except Exception:
             pass
 
-    # 從和弦估算 BPM
+    # 從和弦估算 BPM + 取得 time signature（若 chord JSON 有）
     chords_file = chord_file_for(h)
     if chords_file.is_file():
         try:
@@ -650,6 +659,8 @@ def suggest_style_api(
                 median_dur = sorted(durations)[len(durations) // 2]
                 if median_dur > 0:
                     bpm = 60.0 / median_dur
+            # Time-signature hint feeds suggest_style for 3/4 / 6/8 routing.
+            time_signature = chord_data.get("time_signature", "") or ""
         except Exception:
             pass
 
@@ -659,7 +670,8 @@ def suggest_style_api(
         "path": path,
         "genre": genre,
         "bpm": round(bpm, 1),
-        "suggested_styles": suggest_style(genre, bpm),
+        "time_signature": time_signature,
+        "suggested_styles": suggest_style(genre, bpm, time_signature),
     }
 
 

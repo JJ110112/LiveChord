@@ -220,10 +220,16 @@ class AccordionInstrument {
           ],
           altBass: null,
           available: false,
-          warning: `21鍵無 ${root} 低音，以 ${fb} 代替`,
+          warning_key: "player.gt.acc_warn_no_bass_fifth",
+          warning_vars: { root, fallback: fb },
         };
       }
-      return { buttons: [], available: false, warning: `21鍵無法演奏 ${root}` };
+      return {
+        buttons: [],
+        available: false,
+        warning_key: "player.gt.acc_warn_unplayable",
+        warning_vars: { chord: root },
+      };
     }
     const altCol = col < 6 ? col + 1 : null;
     return {
@@ -247,17 +253,32 @@ class AccordionInstrument {
   renderBassGrid(chordName, ghostName, ghostAlpha, step) {
     const canvas = this._gridCanvas;
     if (!canvas || !canvas.parentElement) return;
-    const rect = canvas.parentElement.getBoundingClientRect();
-    if (rect.width < 10 || rect.height < 50) return;
+    // Read the canvas's OWN post-layout rect — not the parent's. The canvas
+    // is `flex: 1` inside .acc-left-panel, so its effective height is
+    // determined by flex distribution AFTER the chord-name row + legend +
+    // hint take their share. parent.height - 40 over-estimated by ~28px in
+    // practice, leaving canvas.style.height at 629px while flex squashed the
+    // visible rendering down to ~601px. Browser then scaled the bottom of
+    // the canvas image by ~4.6%, ghosting the warning text twice (red copy
+    // above the legend + grey duplicate peeking through below — bug
+    // LiveChord-j1d follow-up). Use ownRect.height when valid; fall back
+    // to parent-minus-40 only on the very first frame before flex settles.
+    const ownRect = canvas.getBoundingClientRect();
+    const parentRect = canvas.parentElement.getBoundingClientRect();
+    if (parentRect.width < 10 || parentRect.height < 50) return;
     const dpr = window.devicePixelRatio || 1;
-    const drawH = Math.max(rect.height - 40, 60);
-    canvas.width = rect.width * dpr;
+    const drawW = ownRect.width >= 10 ? ownRect.width : parentRect.width;
+    const drawH = ownRect.height >= 60 ? ownRect.height
+                                       : Math.max(parentRect.height - 40, 60);
+    canvas.width = drawW * dpr;
     canvas.height = drawH * dpr;
-    canvas.style.width = rect.width + "px";
+    canvas.style.width = drawW + "px";
     canvas.style.height = drawH + "px";
     const ctx = canvas.getContext("2d");
     ctx.scale(dpr, dpr);
-    const W = rect.width, H = drawH;
+    const W = drawW, H = drawH;
+    // Keep the parent-rect alias for any downstream code that referenced `rect`.
+    const rect = parentRect;
     ctx.clearRect(0, 0, W, H);
 
     const COLS = AccordionInstrument.COLS;
@@ -292,24 +313,31 @@ class AccordionInstrument {
     const stepIsChord = (step === "C");
     const stepIsAlt = (step === "Ab");
 
-    // Column headers with finger colors — positioned just above the first button row.
-    // On light-bg themes the bright yellow "Bass" header becomes unreadable on cream;
-    // swap to a darker variant (#9a7a00) and bump orange to #c45a00 for the same reason.
+    // Light-bg theme detection + finger-color remap. Bright yellow / pale
+    // orange render as low-contrast washes on cream backgrounds; darker
+    // saturated variants restore legibility. Applies to BOTH column headers
+    // AND the actual chord-button fills (Em/Am/Bb pills + dashed ghost
+    // previews) — earlier this only covered headers, leaving the Bass-
+    // column ghost preview "A" almost invisible on cream (UX_CONVENTION:
+    // "Light themes need their own pass for every saturated colour, not
+    // just the headline ones").
     const _accLight = (function() {
       try {
         const t = document.documentElement.getAttribute("data-theme");
         return t === "light" || t === "sakura" || t === "sunny" || t === "sky";
       } catch (_) { return false; }
     })();
-    const HEADER_LIGHT_REMAP = { "#ffeb3b": "#9a7a00", "#ff9800": "#c45a00", "#ef5350": "#b91c1c", "#66bb6a": "#1b5e20" };
+    const FINGER_LIGHT_REMAP = { "#ffeb3b": "#9a7a00", "#ff9800": "#c45a00", "#ef5350": "#b91c1c", "#66bb6a": "#1b5e20" };
+    const _lc = (c) => (_accLight ? (FINGER_LIGHT_REMAP[c] || c) : c);
+
+    // Column headers with finger colors — positioned just above the first button row.
     ctx.font = "bold 11px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "bottom";
     for (let d = 0; d < nTypes; d++) {
       const row = D2R[d];
       const finger = RFINGER[row];
-      const base = FCLR[finger];
-      ctx.fillStyle = _accLight ? (HEADER_LIGHT_REMAP[base] || base) : base;
+      ctx.fillStyle = _lc(FCLR[finger]);
       ctx.fillText(DLABELS[d], gridLeft + (d + 0.5) * colW, padTop + headerH - 2);
     }
 
@@ -321,7 +349,7 @@ class AccordionInstrument {
       for (let d = 0; d < nTypes; d++) {
         const row = D2R[d]; // data row: 0=Bass, 1=Major, 2=Minor
         const finger = RFINGER[row];
-        const fingerColor = FCLR[finger];
+        const fingerColor = _lc(FCLR[finger]);
         const dy = d * offsetY;
         const cx = gridLeft + (d + 0.5) * colW;
         const cy = padTop + headerH + (ki + 0.5) * rowH + dy;
@@ -353,7 +381,7 @@ class AccordionInstrument {
         // Active finger/color based on step (not row)
         const SFINGER = AccordionInstrument.STEP_FINGER;
         const playFinger = playingStep ? SFINGER[playingStep] : finger;
-        const playColor = playingStep ? FCLR[playFinger] : fingerColor;
+        const playColor = playingStep ? _lc(FCLR[playFinger]) : fingerColor;
 
         // Button circle
         ctx.beginPath();
@@ -441,9 +469,11 @@ class AccordionInstrument {
           ctx.stroke();
         }
 
-        // Label + finger number
+        // Label + finger number. Yellow (finger 3) on dark theme is bright →
+        // needs dark text. On light themes the same fingerColor was remapped
+        // to dark-gold #9a7a00 → needs WHITE text instead. Flip accordingly.
         if (isPlaying) {
-          ctx.fillStyle = playFinger === 3 ? "#333" : "#fff";
+          ctx.fillStyle = (playFinger === 3 && !_accLight) ? "#333" : "#fff";
           ctx.font = `bold ${Math.round(btnR * 1.0)}px sans-serif`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
@@ -462,12 +492,25 @@ class AccordionInstrument {
     }
 
     // Warning
-    if (active && !active.available && active.warning) {
-      ctx.fillStyle = "rgba(255,80,80,0.9)";
-      ctx.font = "bold 13px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText(active.warning, W / 2, H - 4);
+    if (active && !active.available) {
+      const wtxt = AccordionInstrument._warnText(active);
+      if (wtxt) {
+        ctx.fillStyle = "rgba(255,80,80,0.9)";
+        ctx.font = "bold 13px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(wtxt, W / 2, H - 4);
+      }
     }
+  }
+
+  static _warnText(r) {
+    if (!r) return "";
+    const i18n = window.LiveChordI18n;
+    if (r.warning_key && i18n && typeof i18n.t === "function") {
+      const out = i18n.t(r.warning_key, r.warning_vars || {});
+      if (out && out !== r.warning_key) return out;
+    }
+    return r.warning || "";
   }
 
   /* ---- Keyboard Waterfall (Right Hand, Piano-style) ---- */
@@ -799,15 +842,23 @@ class AccordionInstrument {
 
   _updateHints(chordName) {
     const resolved = this._resolveChord(chordName);
+    const i18n = window.LiveChordI18n;
+    const tt = (k, v) => (i18n && typeof i18n.t === "function" ? i18n.t(k, v) : k);
     if (!resolved || !resolved.available) {
-      if (this._lhHintEl) this._lhHintEl.textContent = resolved && resolved.warning ? resolved.warning : "左手：低音鈕";
+      // Canvas already paints the warning big-and-red; the absolutely-
+      // positioned bottom-right hint would just duplicate it and overlap
+      // the .acc-finger-legend row. Default it back to the short hint so
+      // the corner isn't empty.
+      if (this._lhHintEl) this._lhHintEl.textContent = tt("player.gt.acc_lh_hint");
       return;
     }
     const bass = resolved.buttons[0] ? resolved.buttons[0].label : "?";
     const chord = resolved.buttons[1] ? resolved.buttons[1].label : "?";
     const alt = resolved.altBass ? resolved.altBass.label : "";
     if (this._lhHintEl) {
-      this._lhHintEl.textContent = `低音: ${bass}  和弦: ${chord}` + (alt ? `  交替: ${alt}` : "");
+      this._lhHintEl.textContent = alt
+        ? tt("player.gt.acc_lh_hint_full_alt", { bass, chord, alt })
+        : tt("player.gt.acc_lh_hint_full", { bass, chord });
     }
   }
 }

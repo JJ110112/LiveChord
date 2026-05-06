@@ -284,6 +284,18 @@ class StringInstrument {
     this._updateHints(chordName, activeIdx, chords);
   }
 
+  // Re-run the hint panels (LH chord transition, RH idiom label) without
+  // waiting for the next activeIdx change. Called from player.js after
+  // _loadAccompaniment lands so a style flip on a paused song refreshes
+  // the "RH …" label immediately instead of staying stuck on the
+  // previous idiom until playback advances to the next chord.
+  refreshLabels() {
+    const chords = this._b.getDisplayChords();
+    if (!chords || chords.length === 0) return;
+    const idx = (this._activeIdx >= 0 && this._activeIdx < chords.length) ? this._activeIdx : 0;
+    this._updateHints(chords[idx].chord, idx, chords);
+  }
+
   _updateHints(chordName, activeIdx, chords) {
     const $ = this._b.$;
     const cfg = this._config;
@@ -315,84 +327,234 @@ class StringInstrument {
     }
 
     if (rhInfo) {
-      const strumStyle = this._b.getStrumStyle();
-      if (strumStyle === "arpeggio") {
-        const pat = ARPEGGIO_PATTERNS[this._b.getArpPattern()];
-        rhInfo.textContent = pat
-          ? _t("instrument.rh.with_pattern", { name: pat.name })
-          : _t("instrument.rh.arpeggio");
+      // v6: read the idiom from the backend events (accData.right_hand) —
+      // strum_id ⇒ strum sweep, finger=p/i/m/a ⇒ pluck arpeggio. The legacy
+      // getStrumStyle() picker is now decorative (the AI Acc style governs
+      // the idiom server-side), so trusting it here makes the label drift
+      // from what's actually playing — e.g. AI Acc style "Block" → backend
+      // rh_mode "1+3_once" → arpeggio events on the wire, but the picker
+      // localStorage still says "block" → label "RH downstroke" while the
+      // user sees pima circles. Fall back to the picker only when accData
+      // hasn't loaded yet.
+      const idiom = this._inferAccIdiom(this._b.getAccData());
+      if (idiom === "arpeggio") {
+        rhInfo.textContent = _t("instrument.rh.arpeggio");
+      } else if (idiom === "offbeat") {
+        rhInfo.textContent = _t("instrument.rh.offbeat");
+      } else if (idiom === "strum") {
+        rhInfo.textContent = _t("instrument.rh.strum_pattern");
       } else {
-        const styleLabels = {
-          block:   _t("instrument.rh.strum_block"),
-          pattern: _t("instrument.rh.strum_pattern"),
-        };
-        rhInfo.textContent = styleLabels[strumStyle] || _t("instrument.rh.fallback");
+        const strumStyle = this._b.getStrumStyle();
+        if (strumStyle === "arpeggio") {
+          const pat = ARPEGGIO_PATTERNS[this._b.getArpPattern()];
+          rhInfo.textContent = pat
+            ? _t("instrument.rh.with_pattern", { name: pat.name })
+            : _t("instrument.rh.arpeggio");
+        } else {
+          const styleLabels = {
+            block:   _t("instrument.rh.strum_block"),
+            pattern: _t("instrument.rh.strum_pattern"),
+          };
+          rhInfo.textContent = styleLabels[strumStyle] || _t("instrument.rh.fallback");
+        }
       }
     }
   }
 
-  // ---- Right-Hand Pattern Generator ----
-
-  _generateRhEvents(chords, bpm) {
-    const numStrings = this._config.numStrings;
-    const voicingsCache = this._voicingsCache;
-    const chordCache = this._b.getChordCache();
-    const style = this._b.getStrumStyle();
-    const diagKey = this._config.diagramCacheKey;
-
-    const events = [];
-    const beatDur = 60 / (bpm || 100);
-    const eighth = beatDur / 2;
-
-    for (let i = 0; i < chords.length; i++) {
-      const c = chords[i];
-      const end = (i + 1 < chords.length) ? chords[i + 1].time : c.time + 4;
-      const cache = chordCache[c.chord] || {};
-      const vData = voicingsCache[c.chord];
-      const diagram = (vData ? vData.voicings[0] : null) || cache[diagKey];
-      const activeStrings = [];
-      if (diagram && diagram.strings) {
-        diagram.strings.forEach((f, s) => { if (f >= 0) activeStrings.push(s); });
-      } else {
-        for (let s = 0; s < numStrings; s++) activeStrings.push(s);
+  // Inspect a slice of backend events to decide whether the active layer is
+  // a strum sweep or a pluck arpeggio. Strum events have strum_id; pluck
+  // events have a single-letter finger (p/i/m/a). Returns null when accData
+  // is empty or carries non-string events (e.g. piano accData on a string
+  // tab during a tab-flip refetch).
+  _inferAccIdiom(accData) {
+    if (!accData || !Array.isArray(accData.right_hand)) return null;
+    const sample = accData.right_hand;
+    const limit = Math.min(sample.length, 100);
+    // Group strum events by strum_id so a 5-string sweep counts as ONE
+    // direction, not 5. Then "all up" strums ⇒ offbeat skank, mixed ⇒
+    // full D-DU-UDU strum, neither ⇒ pluck arpeggio if any p/i/m/a.
+    const strumDirs = new Set();   // unique sids per direction
+    const upSids = new Set();
+    const downSids = new Set();
+    let hasPluck = false;
+    for (let i = 0; i < limit; i++) {
+      const e = sample[i];
+      if (!e) continue;
+      if (e.strum_id) {
+        if (e.strum_dir === "up") upSids.add(e.strum_id);
+        else downSids.add(e.strum_id);
+        strumDirs.add(e.strum_id);
+      } else if (typeof e.finger === "string" && /^[pima]$/i.test(e.finger)) {
+        hasPluck = true;
       }
+    }
+    if (strumDirs.size > 0) {
+      if (downSids.size === 0 && upSids.size > 0) return "offbeat";
+      return "strum";
+    }
+    if (hasPluck) return "arpeggio";
+    return null;
+  }
 
-      if (style === "block") {
-        for (let t = c.time; t < end - 0.05; t += beatDur) {
-          events.push({ time: t, dur: beatDur * 0.8, type: "strum", dir: "down", strings: activeStrings, chordIdx: i });
-        }
-      } else if (style === "arpeggio") {
-        const pat = ARPEGGIO_PATTERNS[this._b.getArpPattern()] || ARPEGGIO_PATTERNS.pima;
-        const stepDur = beatDur / pat.subdiv;
-        const cycleDur = stepDur * pat.steps.length;
-        for (let t = c.time; t < end - 0.05; t += cycleDur) {
-          pat.steps.forEach((step, j) => {
-            if (!step) return;
-            const et = t + j * stepDur;
-            if (et >= end) return;
-            const resolved = resolveArpZone(step.zone, diagram, numStrings);
-            if (Array.isArray(resolved)) {
-              events.push({ time: et, dur: stepDur * 0.9, type: "pluck", strings: resolved,
-                fingers: step.finger.split(""), chordIdx: i });
-            } else {
-              events.push({ time: et, dur: stepDur * 0.9, type: "pick", string: resolved,
-                finger: step.finger, chordIdx: i });
-            }
-          });
-        }
-      } else {
-        // "pattern": D-DU-UDU (8th notes per 2-beat bar)
-        const pat = ["D","","D","U","","U","D","U"];
-        for (let t = c.time; t < end - 0.05; t += beatDur * 2) {
-          pat.forEach((dir, j) => {
-            const et = t + j * eighth;
-            if (et >= end) return;
-            if (dir) events.push({ time: et, dur: eighth * 0.8, type: "strum", dir: dir === "D" ? "down" : "up", strings: activeStrings, chordIdx: i });
+  // ---- Right-Hand Event Extractor (v6: read backend accData.right_hand) ----
+  //
+  // Pre-v6 this class generated arpeggio/strum events client-side, completely
+  // independent of the audio synth's accData.right_hand. The two streams
+  // drifted on offbeat chord starts (engine v5 piano tiled by beat-period
+  // from chord.time, while the local generator used cycleDur-from-time —
+  // they coincided only when chords landed on bar boundaries). LiveChord-vxa.
+  //
+  // Now the backend emits per-string pluck/strum events with both `pitch`
+  // (synth consumes unchanged) and `string`/`strum_id`/`strum_dir`/`finger`
+  // (visual consumes here). Visual + audio share one source of truth.
+  //
+  // Returns the same shape the renderer below already expects:
+  //   { time, dur, type: "strum"|"pick"|"pluck", dir?, strings?, string?,
+  //     finger?, fingers?, chordIdx }
+  _extractStringRhEvents(accData, currentTime, lookAhead) {
+    // v6 follow-up: honor rhContentMode. When the user picks "R melody"
+    // (rhContentMode === "mel"), the audio synth path schedules melody
+    // pitches only — drawing AI strum/pluck bars in that mode would
+    // visually contradict what's playing (user hears single melody notes,
+    // sees 刷弦). Map each melody note to a (string, fret) on the current
+    // tuning and render as a pick on that string so visual = audio. For
+    // "both" mode, acc events draw normally (with p/i/m/a finger labels)
+    // PLUS melody on top (no finger label, so the two layers stay
+    // visually distinguishable).
+    let _rhMode = "acc";
+    try {
+      const v = window.localStorage && window.localStorage.getItem("livechord_rh_mode");
+      if (v === "mel" || v === "both") _rhMode = v;
+    } catch (_) { /* localStorage blocked — keep default */ }
+
+    const winLo = currentTime - 0.5;
+    const winHi = currentTime + lookAhead + 0.5;
+    const out = [];
+
+    // ── Acc layer (strum / pluck from accData.right_hand) ──
+    if (_rhMode !== "mel" && accData && Array.isArray(accData.right_hand)) {
+      const accOut = this._extractAccStringEvents(accData.right_hand, winLo, winHi);
+      out.push(...accOut);
+    }
+
+    // ── Melody layer (mapped to strings) ──
+    if (_rhMode === "mel" || _rhMode === "both") {
+      const melodyData = (this._b.getMelodyData && this._b.getMelodyData()) || null;
+      if (Array.isArray(melodyData)) {
+        for (const m of melodyData) {
+          if (m == null || typeof m.start !== "number") continue;
+          if (m.start > winHi) break;
+          const noteEnd = (typeof m.end === "number") ? m.end : (m.start + 0.2);
+          if (noteEnd < winLo) continue;
+          const sf = this._pitchToString(m.midi);
+          if (!sf) continue;
+          out.push({
+            time: m.start,
+            dur: noteEnd - m.start,
+            type: "pick",
+            string: sf.string,
+            // Leave finger=null so the renderer falls back to the generic
+            // PICK_CLR. The acc events have p/i/m/a labels — visually the
+            // user can see at a glance which layer each bar comes from.
+            finger: null,
+            chordIdx: 0,
           });
         }
       }
     }
-    return events;
+
+    out.sort((a, b) => a.time - b.time);
+    return out;
+  }
+
+  // Pick the lowest-fret playable string for a melody pitch on the current
+  // tuning. Lowest fret tends to put melody on the higher strings (since
+  // lower-pitch open strings need more frets for the same target pitch),
+  // which matches how a player would actually pick a melodic line. Returns
+  // null if the pitch is below all open strings or beyond fret 15.
+  _pitchToString(pitch) {
+    const openMidi = this._config.openMidi;
+    if (!openMidi || typeof pitch !== "number") return null;
+    let bestS = -1;
+    let bestFret = 99;
+    for (let s = 0; s < openMidi.length; s++) {
+      const fret = pitch - openMidi[s];
+      if (fret >= 0 && fret <= 15 && fret < bestFret) {
+        bestFret = fret;
+        bestS = s;
+      }
+    }
+    return (bestS >= 0) ? { string: bestS, fret: bestFret } : null;
+  }
+
+  _extractAccStringEvents(rightHand, winLo, winHi) {
+    return this._groupBackendStringEvents(rightHand, winLo, winHi);
+  }
+
+  // Group backend right-hand events by strum_id (sweeps) / same time
+  // (multi-finger plucks) / solo (single-string pick).
+  _groupBackendStringEvents(rightHand, winLo, winHi) {
+    // Filter to render window first to avoid grouping the entire song.
+    const win = [];
+    for (const e of rightHand) {
+      if (e == null || typeof e.time !== "number") continue;
+      if (e.string == null) continue;       // skip non-string events defensively
+      if (e.time > winHi) break;            // backend events are time-sorted
+      const eEnd = e.time + (e.duration || 0);
+      if (eEnd < winLo) continue;
+      win.push(e);
+    }
+
+    // Group: events sharing strum_id collapse into ONE strum sweep.
+    // Multi-finger plucks (multiple events at the same time, no strum_id)
+    // collapse into ONE pluck. Solo events render as pick.
+    const groups = new Map();
+    for (const e of win) {
+      const key = e.strum_id
+        ? `s|${e.strum_id}`
+        : `t|${e.time.toFixed(4)}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(e);
+    }
+
+    const out = [];
+    for (const evs of groups.values()) {
+      if (evs[0].strum_id) {
+        const t0 = Math.min(...evs.map(e => e.time));
+        const dur = Math.max(...evs.map(e => e.duration || 0)) || 0.1;
+        const strings = evs.map(e => e.string);
+        out.push({
+          time: t0,
+          dur,
+          type: "strum",
+          dir: evs[0].strum_dir || "down",
+          strings,
+          chordIdx: 0,
+        });
+      } else if (evs.length > 1) {
+        const e0 = evs[0];
+        out.push({
+          time: e0.time,
+          dur: e0.duration || 0.1,
+          type: "pluck",
+          strings: evs.map(e => e.string),
+          fingers: evs.map(e => e.finger || "i"),
+          chordIdx: 0,
+        });
+      } else {
+        const e0 = evs[0];
+        out.push({
+          time: e0.time,
+          dur: e0.duration || 0.1,
+          type: "pick",
+          string: e0.string,
+          finger: e0.finger || null,
+          chordIdx: 0,
+        });
+      }
+    }
+    // Caller does the final sort across the merged acc + melody layers.
+    return out;
   }
 
   // ---- Right-Hand Waterfall Renderer ----
@@ -420,13 +582,20 @@ class StringInstrument {
     ctx.clearRect(0, 0, w, h);
 
     const accData = this._b.getAccData();
-    const bpm = (accData && accData.bpm) || 100;
-    const rhEvents = this._generateRhEvents(chords, bpm);
-
     const lookAhead = 4.0;
+    // v6: read string-family events from backend instead of generating
+    // locally. Cold-start window (accData not yet loaded, or loaded for the
+    // wrong instrument) → render an empty waterfall; _loadAccompaniment
+    // runs on tab switch so the strip fills in within ~1 RTT.
+    const rhEvents = (accData && accData.instrument === this._config.id)
+      ? this._extractStringRhEvents(accData, currentTime, lookAhead)
+      : [];
     const pxPerSec = h / lookAhead;
     const padL = Math.round(w * 0.1);
-    const padR = Math.round(w * 0.05);
+    // Match drawVerticalFretboard's right-pad floor — finger-circle radius
+    // can reach ~22px, and w*0.05 leaves the high-e string's circle clipped
+    // for any RH-panel narrower than ~440px (split-screen reality).
+    const padR = Math.max(Math.round(w * 0.05), 22);
     const stringSpacing = (w - padL - padR) / Math.max(numStrings - 1, 1);
     function strX(s) { return padL + s * stringSpacing; }
 

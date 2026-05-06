@@ -21,7 +21,7 @@ LiveChord runs:
 
 The result drives an interactive player: chord cards in time with the audio, with five instrument views (piano keyboard + waterfall, guitar / ukulele fretboards, accordion bass+chord buttons, arranger-style backing). Transpose to any key, slow playback to 0.5×, loop a single section A-B, and switch instrument view at any time.
 
-There's no music download, no streaming, no copyrighted-content distribution — only **analysis** of audio you already have the right to use.
+LiveChord is a **general-purpose audio analysis tool**. It does not provide, host, or distribute copyrighted audio content — there's no music download, no streaming, no media library shipped with the project. The service only **analyzes** audio that the user provides and has the right to use.
 
 ## Status
 

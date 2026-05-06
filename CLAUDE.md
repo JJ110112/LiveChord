@@ -23,6 +23,13 @@ NUC's cloudflared service is **disabled** (2026-05-03) so VPS is the sole tunnel
 
 The user-facing data left over from the beta (`feedback.db`, `auth.db`, `audit.db` `process_audit` rows, `youtube_library_map`, `data/human_feedback/`, `data/human_sections/`) is **kept** — it's training signal for the AI quality pipeline below, and any historical analyses still resolve. Treat these tables as append-only history.
 
+**Public-mode homepage flow** (anti-foot-gun reminder — bit us once on the "guest can't log in" bug):
+
+- Two visual states only: **logged-in dashboard** (recent / favorites / local-music, header visible) vs. **logged-out marketing landing** (intro + hero + how-it-works + open-source, header hidden — clean sign-up funnel)
+- Hero "Get started for free" CTA: **always** routes to `/login` when no token. Do not special-case on `livechord_guest_acked` — that flag is sticky in localStorage and any CTA branch keyed off it makes `/login` unreachable for returning users
+- Guest upload entry: `/login` → "Continue as guest" link redirects to **`/?upload=1`** → [frontend/js/app.js](frontend/js/app.js) reads the query param on load and auto-opens the upload modal, then strips the param via `history.replaceState` so a hard-reload doesn't re-trigger
+- `livechord_guest_acked` is vestigial: set on guest-ack (login.html), cleared on logout (index.html `logout()`), but **not read by layout or CTA logic**. Logout also redirects to `/` for all modes so logged-out users always see the marketing landing
+
 **Default workflow for any change**:
 
 1. **Edit only in the dev repo** (`c:\Users\hitea\Claude\LiveChord`). Never edit `V:\` directly — commits won't pick it up and rollbacks are harder
@@ -257,6 +264,23 @@ Post-beta, the active engineering track is **improving the upstream signal that 
 3. **Phrase / section detection** — `section_detect` DL path improves once melody/bass densities are non-zero across more of the library (currently rule-based fallback covers ~82% per the comment in [backend/ai/section_detect.py](backend/ai/section_detect.py)). Hybrid extraction expansion + the Phase 4 MIDI catalog (see [doc/PHASE_4_HYBRID_MELODY.md](doc/PHASE_4_HYBRID_MELODY.md)) feeds this directly.
 
 Open trade-offs and known issues for the active tracks live in [doc/TODOS.md](doc/TODOS.md) "Quality Tracks (active focus)".
+
+## AI Accompaniment (engine v5, post-2026-05-06)
+
+The AI LH/RH accompaniment shipped on `feature/ai-accompaniment-styles` (commits a46a5af → b5244f8, ~14 commits). Architecture summary:
+
+- **Backend**: [backend/ai/accompaniment_generator.py](backend/ai/accompaniment_generator.py) — 21 styles in `STYLE_DICT`, 7 RH modes (arpeggio / fill_only / fill_harmony / fill_block / comp_offbeat / comp_quarter_shell / muted_stab). `STYLE_CONFIG` carries `pattern_period_beats` (4 default, 3 for JazzWaltz). Patterns tile at fixed beat-period from chord.time, NOT chord-relative — fixes "2-beat chord plays double-time" bug. `RH_ARPEGGIO_PATTERN` is 8-eighth resolution. Output cached at `data/accompaniments/{hash}_{style}_{level}_{section_type}_{ACC_ENGINE_VERSION}.json`. Engine version v5; bump to invalidate.
+- **Frontend audio**: [frontend/js/player.js](frontend/js/player.js) `SampleSynth` class — generic sample/oscillator synth, switches between 9 timbres via `SAMPLE_MANIFEST` + `DEFAULT_TAB_SOUND` + `livechord_sound_<tab>` localStorage. Local samples under [frontend/audio/samples/](frontend/audio/samples/) (~25 MB binary): `grand-piano` / `nylon-guitar` / `steel-guitar` / `organ` / `accordion` from CC-BY-3.0 sources; `upright-piano` / `rhodes` / `wurlitzer` / `synth-pad` are oscillator-based. Audio scheduler reads `accData.right_hand` from `/api/ai/accompaniment` and pipes through `getActiveSynth().playNote()`.
+- **Frontend visual (piano)**: 88-key waterfall in player.js consumes the same `accData.right_hand` — visual + audio agree exactly.
+- **Frontend visual (guitar / ukulele)**: ⚠️ [frontend/js/string-instrument.js](frontend/js/string-instrument.js) `_drawRhWaterfall` calls `_generateRhEvents()` — a CLIENT-SIDE arpeggio/strum pattern generator that consumes `window.ARPEGGIO_PATTERNS` from [arpeggio-patterns.js](frontend/js/arpeggio-patterns.js). This is a SECOND, completely independent event source. Visual + audio diverge on rhythm-shifted patterns and after the v5 period-tile refactor. **Known issue**: [LiveChord-vxa](#) (P3, deferred) — bd notes contain three fix options + reproduction. Don't touch arpeggio-patterns.js without reading that issue first.
+- **Frontend visual (accordion / arranger)**: keyboard waterfall consumes `accData.right_hand` directly via `getAccData()` bridge — same source as audio, visual + audio agree.
+
+UI surfaces:
+- AI-teaching popup `<select id="teachStyle">` with optgroups (Pop / Rock / Blues / Jazz / Latin / Other) — picks LH/RH style.
+- AI-teaching popup `<select id="instrumentSound">` — picks per-tab sound, `livechord_sound_<tab>` persistence.
+- Admin `/api/admin/accompaniment/recompute` — clears cache for one song without ACC_ENGINE_VERSION bump.
+
+UX rules added during this work: UX_CONVENTION §13a (color-scheme + select optgroup styling), §13b (`.toast { pointer-events: none }` mandatory), §13c (light-theme saturated-color remap helper applied to ALL FCLR consumers, not just headers).
 
 ## Reference
 

@@ -9,8 +9,8 @@
   <!-- Phase A shared fetch wrapper. Loaded BEFORE any /api/ call so anon
        X-Anon-Id is in place + 401 from password endpoints in public mode
        doesn't bounce-loop. -->
-  <script src="/js/auth.js?v=4"></script>
-  <script src="/js/i18n.js?v=28"></script>
+  <script src="/js/auth.js?v=5"></script>
+  <script src="/js/i18n.js?v=36"></script>
   <link rel="stylesheet" href="/css/base.css?v=5">
   <style>
     body {
@@ -237,7 +237,8 @@
         </a>
       </div>
       <div class="guest-row">
-        <a href="/" id="guest-link" data-i18n="login.guest_link">Continue as guest →</a>
+        <a href="/?upload=1" id="guest-link" data-i18n="login.guest_link"
+           onclick="try { localStorage.setItem('livechord_guest_acked', '1'); } catch (e) {}">Continue as guest →</a>
       </div>
     </div>
 

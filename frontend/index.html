@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LiveChord — AI Chord Recognition for Piano &amp; Guitar Practice</title>
-  <meta name="description" content="Upload any audio file (MP3 / FLAC / WAV / M4A / OGG, up to 100 MB) and LiveChord generates a real-time chord chart with synced piano and guitar practice tools — transpose, A-B loop, slow-down. Free in your browser.">
+  <meta name="description" content="Upload your own audio file (MP3 / FLAC / WAV / M4A / OGG, up to 100 MB) and LiveChord generates a real-time chord chart with synced piano and guitar practice tools — transpose, A-B loop, slow-down. Free in your browser.">
   <link rel="canonical" href="https://livechord.org/">
   <link rel="alternate" hreflang="en" href="https://livechord.org/">
   <link rel="alternate" hreflang="zh-TW" href="https://livechord.org/?lang=zh-TW">
@@ -40,16 +40,16 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=21">
-  <link rel="stylesheet" href="/css/home.css?v=32">
-  <link rel="stylesheet" href="/css/help.css?v=4">
+  <link rel="stylesheet" href="/css/home.css?v=34">
+  <link rel="stylesheet" href="/css/help.css?v=5">
   <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
        Authorization for logged-in users, mode-aware 401 handling. Replaces
        the inline blind-redirect block. Must load synchronously before any
        other /api/ call. -->
-  <script src="/js/auth.js?v=4"></script>
+  <script src="/js/auth.js?v=5"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
-  <script src="/js/i18n.js?v=28"></script>
+  <script src="/js/i18n.js?v=39"></script>
 </head>
 <body>
 
@@ -163,7 +163,8 @@
        zh-TW switch. -->
   <section id="secHomeHero" class="home-hero" style="display:none">
     <h1 class="home-hero-title">Turn your audio into a real-time chord chart</h1>
-    <p class="home-hero-tagline" data-i18n="home.hero.tagline">Upload an audio file. AI detects the chord progression, beats, and key. Practice with synced piano, guitar, ukulele, accordion, and arranger views — transpose, slow-down, A-B loop, all in your browser.</p>
+    <p class="home-hero-slogan" data-i18n="home.hero.slogan">Your song is your music teacher!</p>
+    <p class="home-hero-tagline" data-i18n="home.hero.tagline">Upload your own audio file. AI detects chord progression, beats, and key. Practice with synced piano, guitar, ukulele, accordion, and arranger views — transpose, slow-down, A-B loop, all in your browser.</p>
     <div class="home-hero-cta-row">
       <button id="heroUploadBtn" class="home-hero-cta" data-i18n="home.hero.cta">Get started for free</button>
     </div>
@@ -171,17 +172,22 @@
       <div class="home-hero-feature">
         <div class="hf-icon">🎵</div>
         <h3 class="hf-title" data-i18n="home.hero.feat1.title">AI chord detection</h3>
-        <p class="hf-body" data-i18n="home.hero.feat1.body">Drop in any audio file (MP3 / FLAC / WAV / M4A / OGG, up to 100 MB). Our model returns chord progression, beat grid, and key signature in 30 seconds to 2 minutes — depending on song length.</p>
+        <p class="hf-body" data-i18n="home.hero.feat1.body">Upload audio you have permission to use (MP3 / FLAC / WAV / M4A / OGG, up to 100 MB). Our model returns chord progression, beat grid, and key signature in 30 seconds to 2 minutes — depending on track length.</p>
       </div>
       <div class="home-hero-feature">
         <div class="hf-icon">🎹</div>
         <h3 class="hf-title" data-i18n="home.hero.feat2.title">Five instrument views</h3>
-        <p class="hf-body" data-i18n="home.hero.feat2.body">See the same song through piano, guitar, ukulele, accordion, or arranger lenses. Switch any time — chords, fingering, and timing stay synced; only the visual presentation changes.</p>
+        <p class="hf-body" data-i18n="home.hero.feat2.body">See the same track through piano, guitar, ukulele, accordion, or arranger lenses. The AI accompaniment plays in lockstep on every instrument — guitar and ukulele get full pluck-and-strum waterfall events synced to the audio, not just chord shapes. Switch any time; chords, fingering, and timing stay aligned.</p>
       </div>
       <div class="home-hero-feature">
         <div class="hf-icon">🎯</div>
         <h3 class="hf-title" data-i18n="home.hero.feat3.title">Built for practice</h3>
         <p class="hf-body" data-i18n="home.hero.feat3.body">Transpose to any key, slow playback to 0.5×, loop a single section A-B, and let the bar-aware splitter break long chords into one-bar cards. Designed for actual practice, not casual listening.</p>
+      </div>
+      <div class="home-hero-feature">
+        <div class="hf-icon">✨</div>
+        <h3 class="hf-title" data-i18n="home.hero.feat4.title">A starting point, not a script</h3>
+        <p class="hf-body" data-i18n="home.hero.feat4.body">The AI accompaniment is a template — chord voicings, fingerings, strum and pick patterns to give you ideas. Then make it your own. Vary the rhythm, swap the voicings, improvise the bass line. The song you're learning is the real teacher; the AI just helps you take the first step.</p>
       </div>
     </div>
     <p class="home-hero-rights" data-i18n="home.hero.rights_notice">⚠ Please only upload audio you have the right to use.</p>
@@ -202,8 +208,8 @@
       </li>
       <li class="hiw-step">
         <div class="hiw-num">2</div>
-        <h3 class="hiw-title" data-i18n="home.how_it_works.step2.title">AI analyzes the song</h3>
-        <p class="hiw-body" data-i18n="home.how_it_works.step2.body">A chord-recognition transformer detects the chord progression. A beat-tracking model finds bar lines and tempo. A section detector labels verses, choruses and bridges. Typical analysis takes 30 seconds to 2 minutes depending on song length.</p>
+        <h3 class="hiw-title" data-i18n="home.how_it_works.step2.title">AI analyzes the uploaded audio</h3>
+        <p class="hiw-body" data-i18n="home.how_it_works.step2.body">A chord-recognition transformer detects the chord progression. A beat-tracking model finds bar lines and tempo. A section detector identifies structural sections (e.g., verse/chorus patterns). Typical analysis takes 30 seconds to 2 minutes depending on track length.</p>
       </li>
       <li class="hiw-step">
         <div class="hiw-num">3</div>
@@ -211,6 +217,21 @@
         <p class="hiw-body" data-i18n="home.how_it_works.step3.body">The player opens with chords, fingering and timing in lockstep with the audio. Transpose to your singing key, slow playback to 0.5×, loop a single section A-B, switch instrument view at any time. Built for actual practice — not just casual listening.</p>
       </li>
     </ol>
+  </section>
+
+  <!-- "Built in the open" — project description + AGPL pitch for first-time
+       visitors. Same visibility rules as the hero / how-it-works sections:
+       public-mode logged-out only. Hidden for returning users so the dashboard
+       isn't buried under marketing copy on every visit. -->
+  <section id="secHomeOpenSource" class="home-open-source" style="display:none">
+    <h2 class="hos-heading" data-i18n="home.open_source.heading">Built in the open</h2>
+    <p class="hos-lede" data-i18n="home.open_source.lede">LiveChord is one developer's personal practice tool, polished into a public service in 2026. The core components — including chord recognition, beat tracking, and the player UI — are open source.</p>
+    <p class="hos-body" data-i18n="home.open_source.body">Released under the GNU Affero General Public License v3.0. You can run it yourself, study how it works, fork it, or contribute a patch. The one ask: if you run a modified version as a network service, you are required to make the modified source code available under the same license. That's the spirit of the project — useful tools should stay useful for everyone.</p>
+    <p class="hos-body hos-disclaimer" data-i18n="home.open_source.disclaimer">LiveChord is a general-purpose audio analysis tool. It does not provide, host, or distribute copyrighted audio content. The service analyzes audio that the user provides and has the right to use.</p>
+    <div class="hos-cta-row">
+      <a class="hos-cta hos-cta-primary" href="https://github.com/JJ110112/LiveChord" target="_blank" rel="noopener noreferrer" data-i18n="home.open_source.cta_github">View source on GitHub</a>
+      <a class="hos-cta hos-cta-secondary" href="https://github.com/JJ110112/LiveChord/blob/master/LICENSE" target="_blank" rel="noopener noreferrer" data-i18n="home.open_source.cta_license">Read the license</a>
+    </div>
   </section>
 
   <!-- recent section -->
@@ -472,11 +493,15 @@
       localStorage.removeItem("livechord_token");
       localStorage.removeItem("livechord_username");
       localStorage.removeItem("livechord_display_name");
-      // Personal mode falls back to LAN bypass on /, no login page needed.
-      // Beta / public still bounce to /login so the user picks an auth path.
-      const mode = (window._lcDeploymentMode) ||
-                   localStorage.getItem("livechord_mode_hint") || "";
-      window.location.href = (mode === "personal") ? "/" : "/login";
+      // Also clear the "Continue as guest" ack so a returning logged-out
+      // visitor lands on the full marketing landing (intro + hero +
+      // how-it-works + open-source) instead of skipping straight to the
+      // guest dashboard. Sign-in is still reachable via the intro CTA on
+      // that page; users who pick guest can re-set the ack from /login.
+      localStorage.removeItem("livechord_guest_acked");
+      // All modes go to / on logout — public/beta show the marketing
+      // landing for logged-out users; personal falls back to LAN bypass.
+      window.location.href = "/";
   }
 
   // (Export-data button moved to player toolbar Tools popup — see player.js)
@@ -545,6 +570,6 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 }
 </script>
 
-<script src="/js/app.js?v=90"></script>
+<script src="/js/app.js?v=97"></script>
 </body>
 </html>

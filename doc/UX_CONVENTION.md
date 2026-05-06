@@ -513,6 +513,147 @@ class itself, plus the `_clampPopupToViewport` helper for position overflow.
 
 ---
 
+## §13a  Native form widgets must follow the page theme
+
+Native widgets (`<select>` dropdowns, `<input type="date">` pickers, scrollbars,
+form autofill backgrounds) are painted by the OS, not by your CSS. Without
+explicit guidance the browser falls back to system colours, which on Windows
+in dark mode is **system-light** — leaving the popup white-on-white-invisible
+even though the page itself is dark.
+
+### Two-prong fix — apply both for every `<select>`, `<input>` etc.
+
+1. **Set `color-scheme` on `:root`**. This signals which palette to use for
+   native UI. [frontend/css/base.css](../frontend/css/base.css) already does
+   this — `:root { color-scheme: dark; }` for the default dark theme, plus
+   `[data-theme="light"|"sakura"|"sunny"|"sky"] { color-scheme: light; }`
+   for the four light themes. Forest stays dark by inheritance. **If you
+   add a new theme, set `color-scheme` in the same rule that sets `--bg`.**
+
+2. **Style the dropdown contents explicitly**. Even with `color-scheme` set,
+   not all browsers honour it for `<option>` / `<optgroup>` text colour.
+   For every styled `<select>`, add **both** rules:
+   ```css
+   .my-select option   { background: var(--bg); color: var(--text); }
+   .my-select optgroup { background: var(--bg); color: var(--text-dim);
+                         font-weight: 600; font-style: normal; }
+   ```
+   `optgroup` defaults to italic in most browsers — looks off in our UI;
+   `font-style: normal` flattens it. `font-weight: 600` keeps the group
+   header distinguishable from its options.
+
+### Past incident (2026-05-06)
+The `<select id="teachStyle">` in the AI-teaching popup was extended with
+`<optgroup>` blocks (Pop / Rock / Blues / Jazz / Latin / Other). Dark theme
+left the optgroup labels invisible because no rule existed for `optgroup`
+and Windows Chromium painted the dropdown popup with system-light colours,
+producing dim-text-on-light-bg → invisible. Fix: `color-scheme` + explicit
+`optgroup` rule per the recipe above.
+
+---
+
+## §13b  Toast banners must NEVER intercept pointer events
+
+Toasts are passive notifications — they fade in, sit for ~1.5s, fade out,
+and stay in the DOM with `opacity: 0` until the next call to `showToast()`
+recycles them. Without `pointer-events: none`, the invisible-but-still-DOM
+toast continues to capture clicks for hundreds of ms after each call,
+masking whatever sits beneath it.
+
+### Rule
+
+`.toast` (and any toast/banner/snackbar variant) MUST carry
+`pointer-events: none`:
+
+```css
+.toast {
+  position: fixed; bottom: 64px; right: 24px;
+  z-index: 15000;
+  /* ... visual styling ... */
+  pointer-events: none;   /* MANDATORY */
+}
+```
+
+If a toast genuinely needs a click target (rare — e.g. an "Undo" affordance),
+make only the inner action button click-receptive:
+
+```css
+.toast { pointer-events: none; }
+.toast .toast-action { pointer-events: auto; }
+```
+
+### Past incident (2026-05-06)
+Audio-mode toggles fire `showToast("Switched to Mix...")`. The toast's
+fixed position (bottom-right, ~370px wide × 43px tall) overlaps the right
+edge of the bottom toolbar where A-B / AI Acc / Tools / Gear sit. Because
+the toast had `pointer-events: auto` (CSS default), every audio-mode click
+left the lower 4/5 of those 4 toolbar buttons unclickable for the duration
+of the fade-out — visible reproduction: "click Music → MIDI → Mix in
+quick succession, then watch A-B / AI Acc / Tools / Gear stop responding
+to mid/bottom clicks for several seconds." Fix:
+`.toast { pointer-events: none; }` once and for all.
+
+This is the same root cause as the S22 Ultra "工具/錯誤回報 buttons need
+top-1/5 to trigger" report from earlier QA — every toast call leaves a
+silent intercept zone over the toolbar's right corner. **Always run a
+`document.elementsFromPoint(x, y)` probe under each toolbar trigger after
+adding any new fixed-position overlay** to confirm the trigger button is
+still on top.
+
+---
+
+## §13c  Saturated colours need a light-theme remap, not just headers
+
+Brand-saturated colours (yellows, light oranges, pale greens) read as
+high-contrast accents on dark backgrounds but dissolve into low-contrast
+washes on cream/sakura/sky backgrounds.
+
+### Rule
+
+When a component uses saturated finger / status / hint colours that are
+shared between dark and light themes, define **one** remap helper local
+to the component and apply it **everywhere** the colour is consumed —
+column headers, button fills, ghost previews, text labels. Do not remap
+just the headers and leave the body of the component on the dark-theme
+palette.
+
+```js
+const _accLight = (() => {
+  const t = document.documentElement.getAttribute("data-theme");
+  return t === "light" || t === "sakura" || t === "sunny" || t === "sky";
+})();
+const FINGER_LIGHT_REMAP = {
+  "#ffeb3b": "#9a7a00",  // yellow → dark gold
+  "#ff9800": "#c45a00",  // orange → burnt orange
+  "#ef5350": "#b91c1c",  // red → dark red
+  "#66bb6a": "#1b5e20",  // green → forest green
+};
+const _lc = (c) => (_accLight ? (FINGER_LIGHT_REMAP[c] || c) : c);
+
+ctx.fillStyle = _lc(FCLR[finger]);     // header
+const fingerColor = _lc(FCLR[finger]); // pass remapped colour into the
+                                        // rest of the function — every
+                                        // pill/ghost/label sees it
+```
+
+If text colour decisions branch on the colour (e.g. "yellow needs dark
+text"), gate that branch on `!_accLight` too — remapped colours have
+different luminance and need the inverse contrast pair.
+
+### Past incident (2026-05-06)
+Accordion bass grid had `HEADER_LIGHT_REMAP` covering the 3 column
+headers but the actual chord-button fills, dashed ghost previews, and
+labels still pulled from the unremapped `FCLR` map. Result on light
+themes: the Bass-column ghost preview "A" rendered as bright yellow on
+cream — nearly invisible. The active-pill text-colour branch
+(`playFinger === 3 ? "#333" : "#fff"`) was tuned for the dark-theme
+yellow background; with the light-theme remap producing dark gold, the
+"#333 dark text on dark gold" combination was equally unreadable. Fix:
+unified `_lc()` helper applied across header + fingerColor + playColor +
+text-colour branch.
+
+---
+
 ## §13  When these rules conflict with urgency
 
 If a hotfix needs to ship in 5 minutes and following §1-12 would take 20, **fix

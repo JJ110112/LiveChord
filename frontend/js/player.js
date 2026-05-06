@@ -405,62 +405,171 @@
   // when the user loads a local audio file. 0 = unknown / skip the check.
   let _chordDuration = 0;
 
-  // AI accompaniment synth (Web Audio). Salamander Grand Piano (CC-BY-3.0)
-  // sampled every 3 semitones, pitch-shifted via playbackRate; oscillator
-  // fallback covers the window before samples finish decoding. Hoisted to
-  // this position (rather than its historical site near the scheduler)
-  // because applyAudioMode() runs during init and must not ReferenceError —
-  // a regression from yt-removal stage 3 (cb584b8) cascaded into
-  // _switchTab not wiring guitar/uke/accordion/arranger tabs.
-  class PianoSynth {
-    constructor() {
+  // ── AI accompaniment synth (Web Audio) ─────────────────────────────────
+  // SampleSynth handles two engine types per SAMPLE_MANIFEST entry:
+  //   - "sample":     fetch + decode pitched samples (Salamander piano)
+  //   - "oscillator": cheap differentiation via Web Audio oscillator + ADSR
+  // getActiveSynth() resolves the right instance per active tab + user
+  // override (livechord_sound_<tab>). All synths share volLeft/volRight via
+  // _applyVolToAllSynths so applyAudioMode() does the right thing across
+  // tab/sound switches. Hoisted near the top of the IIFE so applyAudioMode()
+  // during init never ReferenceErrors — same constraint as the old
+  // PianoSynth (yt-removal stage 3 / cb584b8 regression).
+
+  const SAMPLE_MANIFEST = {
+    "grand-piano": {
+      label: "Grand Piano", labelZh: "平台鋼琴", family: "keyboard",
+      type: "sample",
+      // CDN baseline: tonejs.github.io Salamander samples (CC-BY-3.0).
+      // Local override at audio/samples/grand-piano/ shadows this once
+      // present (Phase 4b will populate it).
+      baseUrl: "https://tonejs.github.io/audio/salamander/",
+      localBaseUrl: "/audio/samples/grand-piano/",
+      notes: [21,24,27,30,33,36,39,42,45,48,51,54,57,60,63,66,69,72,75,78,81,84,87,90,93,96,99,102,105,108],
+      nameFormat: "sharps", extension: "mp3",
+      gainScalar: 1.0,
+    },
+    "upright-piano": {
+      label: "Upright Piano", labelZh: "直立鋼琴", family: "keyboard",
+      type: "oscillator", oscType: "triangle", detune: 4,
+      attack: 0.005, decay: 0.45, sustainLevel: 0.25, release: 0.45,
+      gainScalar: 0.85,
+    },
+    "rhodes": {
+      label: "Rhodes", labelZh: "Rhodes 電鋼琴", family: "keyboard",
+      type: "oscillator", oscType: "sine", bellHarmonic: 4, bellMix: 0.18,
+      attack: 0.008, decay: 0.7, sustainLevel: 0.35, release: 0.7,
+      gainScalar: 0.95,
+    },
+    "wurlitzer": {
+      label: "Wurlitzer", labelZh: "Wurlitzer 電鋼琴", family: "keyboard",
+      type: "oscillator", oscType: "triangle", bellHarmonic: 3, bellMix: 0.25,
+      attack: 0.005, decay: 0.55, sustainLevel: 0.4, release: 0.5,
+      gainScalar: 0.9,
+    },
+    "organ": {
+      label: "Organ", labelZh: "電風琴", family: "keyboard",
+      type: "sample",
+      localBaseUrl: "/audio/samples/organ/",
+      notes: [24,27,30,33,36,39,42,45,48,51,54,57,60,63,66,69,72,75,78,81,84],
+      extension: "mp3",
+      gainScalar: 0.6,
+    },
+    "nylon-guitar": {
+      label: "Nylon Guitar", labelZh: "古典吉他", family: "string",
+      type: "sample",
+      localBaseUrl: "/audio/samples/nylon-guitar/",
+      notes: [35,38,40,42,44,45,47,49,50,52,54,55,57,59,61,63,64,66,68,69,71,73,74,76,78,79,80,81,82],
+      extension: "mp3",
+      gainScalar: 1.0,
+    },
+    "steel-guitar": {
+      label: "Steel Guitar", labelZh: "鋼弦吉他", family: "string",
+      type: "sample",
+      localBaseUrl: "/audio/samples/steel-guitar/",
+      notes: [38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74],
+      extension: "mp3",
+      gainScalar: 0.95,
+    },
+    "accordion": {
+      label: "Accordion", labelZh: "手風琴", family: "wind",
+      type: "sample",
+      localBaseUrl: "/audio/samples/accordion/",
+      notes: [36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,67,68,69,70,71,72,73,74],
+      extension: "mp3",
+      gainScalar: 0.7,
+    },
+    "synth-pad": {
+      label: "Synth Pad", labelZh: "合成器", family: "synth",
+      type: "oscillator", oscType: "sawtooth", detune: 8,
+      attack: 0.4, decay: 0.3, sustainLevel: 0.7, release: 1.4,
+      gainScalar: 0.4,
+    },
+  };
+
+  const DEFAULT_TAB_SOUND = {
+    piano:     "grand-piano",
+    guitar:    "nylon-guitar",
+    ukulele:   "steel-guitar",
+    accordion: "accordion",
+    arranger:  "synth-pad",
+  };
+
+  class SampleSynth {
+    constructor(soundId) {
+      this.soundId = soundId;
+      this.spec = SAMPLE_MANIFEST[soundId] || SAMPLE_MANIFEST["grand-piano"];
       this.ctx = null;
       this.masterGain = null;
       this.volLeft = 1;
       this.volRight = 1;
       this.samples = {};
       this.loading = false;
-      this.loaded = false;
-      this._baseUrl = "https://tonejs.github.io/audio/salamander/";
-      this._sampleNotes = [
-        21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54,
-        57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90,
-        93, 96, 99, 102, 105, 108
-      ];
+      this.loaded = (this.spec.type !== "sample"); // oscillator synths don't need loading
+      // For sample synths, prefer local hosted samples; CDN is the bootstrap
+      // fallback. We probe local on first load and only fall back if 404.
+      this._cdnBaseUrl = this.spec.baseUrl || null;
+      this._localBaseUrl = this.spec.localBaseUrl || null;
+      this._sampleNotes = this.spec.notes || [];
     }
 
     _noteToName(midi) {
-      // Salamander uses sharps (Cs/Ds/Fs/Gs/As), not flats
       const names = ['C','Cs','D','Ds','E','F','Fs','G','Gs','A','As','B'];
       const oct = Math.floor(midi / 12) - 1;
       return names[midi % 12] + oct;
     }
 
+    async _loadOneSample(note, baseUrl) {
+      const name = this._noteToName(note);
+      const url = baseUrl + name + "." + (this.spec.extension || "mp3");
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const buf = await resp.arrayBuffer();
+      this.samples[note] = await this.ctx.decodeAudioData(buf);
+    }
+
     async _loadSamples() {
       if (this.loading || this.loaded) return;
       this.loading = true;
-      const promises = this._sampleNotes.map(async (note) => {
-        const name = this._noteToName(note);
-        const url = this._baseUrl + name + ".mp3";
+
+      // Probe one note from local first; if it works, use local for the rest.
+      // Otherwise fall back to CDN for the entire set.
+      let baseUrl = this._localBaseUrl;
+      if (this._localBaseUrl && this._sampleNotes.length) {
         try {
-          const resp = await fetch(url);
-          if (!resp.ok) return;
-          const buf = await resp.arrayBuffer();
-          this.samples[note] = await this.ctx.decodeAudioData(buf);
-        } catch (e) {
-          console.warn("Failed to load sample:", name, e);
+          await this._loadOneSample(this._sampleNotes[0], this._localBaseUrl);
+        } catch {
+          baseUrl = this._cdnBaseUrl;
         }
-      });
+      } else {
+        baseUrl = this._cdnBaseUrl;
+      }
+
+      if (!baseUrl) {
+        this.loaded = true;
+        this.loading = false;
+        return;
+      }
+
+      const promises = this._sampleNotes
+        .filter(n => !this.samples[n])
+        .map(async (note) => {
+          try { await this._loadOneSample(note, baseUrl); }
+          catch (e) { /* leave gap; _findClosestSample skips missing */ }
+        });
       await Promise.all(promises);
       this.loaded = true;
       this.loading = false;
-      console.log(`Piano samples loaded: ${Object.keys(this.samples).length} notes`);
+      console.log(`[${this.soundId}] samples loaded:`, Object.keys(this.samples).length, "notes");
     }
 
     _findClosestSample(pitch) {
-      let best = this._sampleNotes[0];
+      // Only consider notes that actually decoded successfully
+      const available = Object.keys(this.samples).map(Number);
+      if (!available.length) return null;
+      let best = available[0];
       let bestDist = Math.abs(pitch - best);
-      for (const n of this._sampleNotes) {
+      for (const n of available) {
         const d = Math.abs(pitch - n);
         if (d < bestDist) { bestDist = d; best = n; }
       }
@@ -471,66 +580,151 @@
       if (!this.ctx) {
         this.ctx = new (window.AudioContext || window.webkitAudioContext)();
         this.masterGain = this.ctx.createGain();
-        this.masterGain.gain.value = 0.5;
+        this.masterGain.gain.value = 0.5 * (this.spec.gainScalar || 1.0);
         this.masterGain.connect(this.ctx.destination);
-        this._loadSamples();
+        if (this.spec.type === "sample") this._loadSamples();
       }
+    }
+
+    _peakGain(hand, velocity) {
+      const vol = hand === "left" ? this.volLeft : this.volRight;
+      if (vol <= 0) return 0;
+      const velGain = Math.max(0.15, Math.min(1.0, (velocity || 64) / 100));
+      const handBias = hand === "left" ? 0.55 : 1.1;
+      return vol * 0.75 * velGain * handBias;
+    }
+
+    _playSampleNote(pitch, duration, startTime, peakGain) {
+      const sampleNote = this._findClosestSample(pitch);
+      if (sampleNote === null) {
+        // Samples not yet decoded — fall through to oscillator
+        this._playOscillatorNote(pitch, duration, startTime, peakGain, {
+          oscType: pitch < 60 ? "triangle" : "sine",
+          attack: 0.02, decay: duration * 0.5, sustainLevel: 0.3, release: 0.05,
+        });
+        return;
+      }
+      const buffer = this.samples[sampleNote];
+      const source = this.ctx.createBufferSource();
+      source.buffer = buffer;
+      source.playbackRate.value = Math.pow(2, (pitch - sampleNote) / 12);
+      const gain = this.ctx.createGain();
+      source.connect(gain);
+      gain.connect(this.masterGain);
+      gain.gain.setValueAtTime(peakGain, startTime);
+      gain.gain.setValueAtTime(peakGain, startTime + Math.max(0, duration - 0.08));
+      gain.gain.linearRampToValueAtTime(0, startTime + duration + 0.1);
+      source.start(startTime);
+      source.stop(startTime + duration + 0.15);
+    }
+
+    _playOscillatorNote(pitch, duration, startTime, peakGain, specOverride) {
+      const spec = specOverride || this.spec;
+      const freq = 440 * Math.pow(2, (pitch - 69) / 12);
+      const osc = this.ctx.createOscillator();
+      osc.type = spec.oscType || "sine";
+      osc.frequency.value = freq;
+      if (spec.detune) osc.detune.value = spec.detune;
+
+      const gain = this.ctx.createGain();
+      osc.connect(gain);
+
+      // Optional bell-harmonic mix-in (Rhodes / Wurlitzer character)
+      let bellOsc = null;
+      if (spec.bellHarmonic && spec.bellMix) {
+        bellOsc = this.ctx.createOscillator();
+        bellOsc.type = "sine";
+        bellOsc.frequency.value = freq * spec.bellHarmonic;
+        const bellGain = this.ctx.createGain();
+        bellGain.gain.value = spec.bellMix;
+        bellOsc.connect(bellGain);
+        bellGain.connect(gain);
+      }
+
+      // Optional tremolo (accordion vibrato)
+      let tremoloLFO = null, tremoloGain = null;
+      if (spec.tremoloHz && spec.tremoloDepth) {
+        tremoloLFO = this.ctx.createOscillator();
+        tremoloLFO.frequency.value = spec.tremoloHz;
+        tremoloGain = this.ctx.createGain();
+        tremoloGain.gain.value = spec.tremoloDepth;
+        tremoloLFO.connect(tremoloGain);
+        tremoloGain.connect(gain.gain);
+      }
+
+      gain.connect(this.masterGain);
+
+      // ADSR envelope. Held duration absorbs decay→sustain→release tail.
+      const A = Math.max(0.001, spec.attack || 0.01);
+      const D = Math.max(0.001, spec.decay || 0.1);
+      const S = (spec.sustainLevel != null) ? spec.sustainLevel : 0.5;
+      const R = Math.max(0.01, spec.release || 0.1);
+      const sustainPeak = peakGain * S;
+
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(peakGain, startTime + A);
+      const sustainStart = startTime + A + D;
+      gain.gain.exponentialRampToValueAtTime(Math.max(sustainPeak, 0.001), sustainStart);
+      const releaseStart = Math.max(sustainStart, startTime + Math.max(A + D + 0.01, duration));
+      gain.gain.setValueAtTime(Math.max(sustainPeak, 0.001), releaseStart);
+      gain.gain.exponentialRampToValueAtTime(0.0001, releaseStart + R);
+
+      osc.start(startTime);
+      osc.stop(releaseStart + R + 0.05);
+      if (bellOsc) { bellOsc.start(startTime); bellOsc.stop(releaseStart + R + 0.05); }
+      if (tremoloLFO) { tremoloLFO.start(startTime); tremoloLFO.stop(releaseStart + R + 0.05); }
     }
 
     playNote(pitch, duration, hand, startTime, velocity) {
       if (!this.ctx) return;
-      if (typeof activeHand !== 'undefined' && activeHand !== "both" && activeHand !== hand) return;
-
-      const vol = hand === 'left' ? this.volLeft : this.volRight;
-      if (vol <= 0) return;
-
-      // Velocity drives amplitude linearly. Curve: vel 30→0.3x, 64→0.64x, 100+→1.0x.
-      // Without this, LH chord voicings (3+ simultaneous notes) drown out RH melody.
-      const velGain = Math.max(0.15, Math.min(1.0, (velocity || 64) / 100));
-      // LH 0.55 / RH 1.1 — pedagogical bias, field-tuned
-      const handBias = hand === 'left' ? 0.55 : 1.1;
-      const peakGain = vol * 0.75 * velGain * handBias;  // 0.75 = global headroom
-
-      if (this.loaded && Object.keys(this.samples).length > 0) {
-        const sampleNote = this._findClosestSample(pitch);
-        const buffer = this.samples[sampleNote];
-        if (!buffer) return;
-
-        const source = this.ctx.createBufferSource();
-        source.buffer = buffer;
-        source.playbackRate.value = Math.pow(2, (pitch - sampleNote) / 12);
-
-        const gain = this.ctx.createGain();
-        source.connect(gain);
-        gain.connect(this.masterGain);
-
-        gain.gain.setValueAtTime(peakGain, startTime);
-        gain.gain.setValueAtTime(peakGain, startTime + Math.max(0, duration - 0.08));
-        gain.gain.linearRampToValueAtTime(0, startTime + duration + 0.1);
-
-        source.start(startTime);
-        source.stop(startTime + duration + 0.15);
-        return;
+      if (typeof activeHand !== "undefined" && activeHand !== "both" && activeHand !== hand) return;
+      const peakGain = this._peakGain(hand, velocity);
+      if (peakGain <= 0) return;
+      if (this.spec.type === "sample") {
+        this._playSampleNote(pitch, duration, startTime, peakGain);
+      } else {
+        this._playOscillatorNote(pitch, duration, startTime, peakGain, null);
       }
-
-      // Oscillator fallback while samples are still loading
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = pitch < 60 ? 'triangle' : 'sine';
-      osc.frequency.value = 440 * Math.pow(2, (pitch - 69) / 12);
-      osc.connect(gain);
-      gain.connect(this.masterGain);
-      const oscPeak = peakGain * 0.75;
-      gain.gain.setValueAtTime(0, startTime);
-      gain.gain.linearRampToValueAtTime(oscPeak, startTime + 0.02);
-      gain.gain.exponentialRampToValueAtTime(Math.max(oscPeak * 0.25, 0.001), Math.max(startTime + 0.02, startTime + duration - 0.05));
-      gain.gain.linearRampToValueAtTime(0, startTime + duration);
-      osc.start(startTime);
-      osc.stop(startTime + duration);
     }
   }
 
-  const aiSynth = new PianoSynth();
+  // Synth instance pool — at most one instance per soundId, kept around so
+  // tab/sound switching is instantaneous (no re-decode). 9 sounds × ~3 MB
+  // worst-case sample memory ≈ 30 MB if user explores everything, acceptable.
+  const _synthCache = {};
+  function _ensureSynth(soundId) {
+    if (!SAMPLE_MANIFEST[soundId]) soundId = "grand-piano";
+    if (!_synthCache[soundId]) {
+      _synthCache[soundId] = new SampleSynth(soundId);
+      // Inherit current vol from any existing instance so audio-mode state
+      // persists through tab switches.
+      const any = Object.values(_synthCache).find(s => s.soundId !== soundId);
+      if (any) {
+        _synthCache[soundId].volLeft = any.volLeft;
+        _synthCache[soundId].volRight = any.volRight;
+      }
+    }
+    return _synthCache[soundId];
+  }
+  function _resolveActiveSoundId() {
+    const tab = (typeof activeTab !== "undefined" && activeTab) || localStorage.getItem("livechord_tab") || "piano";
+    const stored = (() => { try { return localStorage.getItem("livechord_sound_" + tab); } catch { return null; } })();
+    return stored || DEFAULT_TAB_SOUND[tab] || "grand-piano";
+  }
+  function getActiveSynth() {
+    return _ensureSynth(_resolveActiveSoundId());
+  }
+  function _applyVolToAllSynths(volL, volR) {
+    for (const s of Object.values(_synthCache)) {
+      s.volLeft = volL; s.volRight = volR;
+    }
+  }
+
+  // aiSynth is a let alias so it can be re-pointed by getActiveSynth() on
+  // each scheduler tick / play handler. Bootstrapped to the default piano
+  // synth so any code that reads aiSynth before scheduleNotes() runs (rare)
+  // still gets a valid object.
+  let aiSynth = _ensureSynth(_resolveActiveSoundId());
   let lastScheduledTime = 0;
 
   function _stopMelodyPolling() {
@@ -1206,6 +1400,11 @@
     activeTab = tab;
     localStorage.setItem("livechord_tab", tab);
     _setAllTabsInactive();
+    // Sound picker tracks per-tab choice — surface the override (or default)
+    // for the new tab so the user sees what's actually playing.
+    if (typeof window._syncSoundPickerValue === "function") {
+      try { window._syncSoundPickerValue(); } catch {}
+    }
 
     // Set displayMode based on tab
     if (tab === "guitar") displayMode = "guitar";
@@ -1216,12 +1415,39 @@
 
     // Update instrument trigger icon. Accordion uses an inline SVG (matches the
     // popup button) because the U+1FA97 emoji renders inconsistently across OSes.
-    const ACCORDION_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="4" height="12" rx="1"/><rect x="17" y="6" width="4" height="12" rx="1"/><path d="M7 9 L10 12 L7 15"/><path d="M10 9 L13 12 L10 15"/><path d="M13 9 L16 12 L13 15"/><path d="M16 9 L17 12 L16 15"/></svg>';
-    const iconMap = { piano: "\u{1F3B9}", guitar: "\u{1F3B8}", ukulele: "\u{1FA95}", accordion: ACCORDION_SVG, arranger: "\u{1F3B9}" };
+    // Redesigned 2026-05-06 (LiveChord-c9d follow-up): the previous icon was
+    // two thin tall rects + tiny chevrons, which read as a dumbbell at 14-18px.
+    // Now uses squarer 6×12 body panels + 3 prominent zigzag pleats spanning
+    // the full middle height, plus a hint of bass-buttons (left dots) and key
+    // lines (right) so the accordion shape is unmistakable on both PC + mobile.
+    const ACCORDION_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="6" height="12" rx="1"/><rect x="16" y="6" width="6" height="12" rx="1"/><circle cx="5" cy="9.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="5" cy="12.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="5" cy="15.5" r="0.9" fill="currentColor" stroke="none"/><line x1="19" y1="8" x2="19" y2="16"/><path d="M8 7 L11 12 L8 17"/><path d="M11 7 L14 12 L11 17"/><path d="M14 7 L16 12 L14 17"/></svg>';
+    // v6 follow-up: ALL tabs use inline tb-icon SVG so the trigger renders
+    // identically on every OS \u2014 matching the other 11 toolbar icons. Pre-fix,
+    // iconMap mixed emoji with one SVG (only accordion was SVG because U+1FA97
+    // renders inconsistently across platforms): on Android/iOS the piano /
+    // guitar / uke / arranger emoji fell back to colored Noto, so the bottom
+    // toolbar had four colourful icons and one stroke icon. User feedback:
+    // "icon not consistent with the others" \u2014 fixed by giving every tab its
+    // own inline tb-icon stroke SVG.
+    const PIANO_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="1.5"/><line x1="7" y1="6" x2="7" y2="18"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="17" y1="6" x2="17" y2="18"/><rect x="5.3" y="6" width="3.4" height="6.5" fill="currentColor" stroke="none"/><rect x="15.3" y="6" width="3.4" height="6.5" fill="currentColor" stroke="none"/></svg>';
+    // Guitar / ukulele: vertical orientation, headstock at top, body at
+    // bottom, sound hole filled. The first cut had a diagonal connector
+    // between an off-center body and a top-right headstock — at 14-18px
+    // that read as a snail (round body + antenna). Symmetrical layout reads
+    // as a guitar even when small.
+    const GUITAR_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="2.5" rx="0.5"/><line x1="12" y1="4.5" x2="12" y2="13"/><line x1="10.5" y1="6.5" x2="13.5" y2="6.5"/><line x1="10.5" y1="9" x2="13.5" y2="9"/><line x1="10.5" y1="11.5" x2="13.5" y2="11.5"/><ellipse cx="12" cy="17.5" rx="6.5" ry="5"/><circle cx="12" cy="17.5" r="1.6" fill="currentColor" stroke="none"/></svg>';
+    const UKULELE_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="10" y="2" width="4" height="2" rx="0.4"/><line x1="12" y1="4" x2="12" y2="11"/><line x1="10.8" y1="6" x2="13.2" y2="6"/><line x1="10.8" y1="8.5" x2="13.2" y2="8.5"/><ellipse cx="12" cy="16" rx="5" ry="6"/><circle cx="12" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>';
+    const ARRANGER_SVG = '<svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="4.5" r="1" fill="currentColor" stroke="none"/><circle cx="9.5" cy="4.5" r="1" fill="currentColor" stroke="none"/><circle cx="14.5" cy="4.5" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="4.5" r="1" fill="currentColor" stroke="none"/><rect x="2" y="9" width="20" height="9" rx="1.2"/><line x1="7" y1="9" x2="7" y2="18"/><line x1="12" y1="9" x2="12" y2="18"/><line x1="17" y1="9" x2="17" y2="18"/><rect x="5.3" y="9" width="3.4" height="5" fill="currentColor" stroke="none"/><rect x="15.3" y="9" width="3.4" height="5" fill="currentColor" stroke="none"/></svg>';
+    const iconMap = {
+      piano: PIANO_SVG,
+      guitar: GUITAR_SVG,
+      ukulele: UKULELE_SVG,
+      accordion: ACCORDION_SVG,
+      arranger: ARRANGER_SVG,
+    };
     const btnInstrument = $("#btnInstrument");
     if (btnInstrument) {
-      if (tab === "accordion") btnInstrument.innerHTML = ACCORDION_SVG;
-      else btnInstrument.textContent = iconMap[tab] || "\u2328";
+      btnInstrument.innerHTML = iconMap[tab] || PIANO_SVG;
     }
     // Highlight active in popup
     const activeBtn = document.querySelector(`#tbInstrument .tb-popup-btn[data-tab="${tab}"]`);
@@ -1241,6 +1467,19 @@
         if (container) container.style.display = "flex";
         inst.init();
       }
+      // Bug fix: _initWaterfall() is the piano-only path that previously
+      // owned the _loadAccompaniment() call. On cold load with a non-piano
+      // tab restored from livechord_tab (guitar / ukulele / accordion /
+      // arranger), accData stayed null and the audio scheduler skipped
+      // every tick — so AI accompaniment was silent until the user
+      // bounced through the piano tab. Reproduction:
+      //   piano (sound) → guitar → dashboard → click song → player
+      //     → guitar tab restored, AI silent
+      //   → switch to piano → AI plays → switch back to guitar → AI plays
+      // Make the load tab-agnostic so non-piano tabs also bootstrap accData.
+      // Internally _loadAccompaniment is idempotent on style/level cache,
+      // so this is also safe on re-entry.
+      _loadAccompaniment();
     }
     _setupTeachControls();
     _updateCapoVisibility();
@@ -2614,11 +2853,40 @@
   function _loadAccompaniment(forceRefresh) {
     const p = _accPath();
     if (!p || accLoading) return;
-    if (!forceRefresh && accData && accData._style === teachStyle && accData._level === teachLevel) return;
+    // v6: instrument axis. Guitar/uke get string-family RH events from the
+    // backend; everything else (piano/accordion/arranger) keeps piano-pitch
+    // events. Cache check must include instrument or a tab switch
+    // piano↔guitar will silently reuse the wrong stream.
+    //
+    // Use a static name list, NOT InstrumentRegistry.isStringInstrument.
+    // The registry is populated near end-of-IIFE (string instances register
+    // ~line 7590), but _switchTab(activeTab) runs once at line 1928 BEFORE
+    // that, and inside it _loadAccompaniment() fires regardless of the
+    // `if (inst)` guard. A registry-based check returns false too early on
+    // cold load → request goes out as piano → guitar accData never lands
+    // until the user manually toggles tabs.
+    const _STRING_TAB_IDS = ["guitar", "ukulele"];
+    const inst = _STRING_TAB_IDS.includes(activeTab) ? activeTab : "piano";
+    if (!forceRefresh && accData
+        && accData._style === teachStyle
+        && accData._level === teachLevel
+        && accData._instrument === inst) return;
+    // v6: instrument changed (piano↔guitar/uke) → clear immediately so the
+    // current tab doesn't draw the previous tab's events for the ~1 RTT it
+    // takes the new fetch to land. Style/level changes are same-instrument
+    // so existing visuals stay valid; we only clear on instrument flip.
+    if (accData && accData._instrument && accData._instrument !== inst) {
+      accData = null;
+    }
     accLoading = true;
     _setLoadingState(true, forceRefresh ? _t("loading.acc_regen") : _t("loading.acc_extract"),
                      forceRefresh ? _t("loading.acc_regen_detail") : _t("loading.acc_extract_detail"));
-    let url = `/api/ai/accompaniment?path=${encodeURIComponent(p)}&style=${teachStyle}&level=${teachLevel}`;
+    // encodeURIComponent on teachStyle too — the "1+3" style name has a
+    // literal `+`, and `+` in application/x-www-form-urlencoded query
+    // strings decodes to a SPACE on the server. Without this, FastAPI saw
+    // style=" 3" and fell through to the default Block, so guitar tab's
+    // 1+3 selection generated strum instead of the arpeggio idiom.
+    let url = `/api/ai/accompaniment?path=${encodeURIComponent(p)}&style=${encodeURIComponent(teachStyle)}&level=${encodeURIComponent(teachLevel)}&instrument=${encodeURIComponent(inst)}`;
     if (forceRefresh) url += "&nocache=1";
     fetch(url).then(r => r.json()).then(data => {
       if (data.error) {
@@ -2627,6 +2895,12 @@
       } else {
         data._style = teachStyle;
         data._level = teachLevel;
+        data._instrument = inst;
+        // Stamp the canonical instrument the backend actually generated for,
+        // so string-instrument.js can verify before consuming events. Backend
+        // also returns this field; trust it over the request param in case
+        // the server downgraded an unknown instrument to piano.
+        if (!data.instrument) data.instrument = inst;
         _detectCrossings(data.left_hand, "left");
         _detectCrossings(data.right_hand, "right");
         accData = data;
@@ -2662,6 +2936,30 @@
           const hasVel = (data.left_hand || []).some(e => e.velocity);
           console.log(`[Refresh] pedal=${pedalCount}, velocity=${hasVel}`);
         }
+        // v6 follow-up: when audio is paused the per-frame animation loop
+        // doesn't fire, so neither the piano waterfall nor the string-
+        // instrument waterfall would redraw on its own after accData
+        // updates. Style flips on guitar tab were silently ineffective
+        // until the user pressed play. Force the active tab's waterfall
+        // to redraw at the current playhead so the new events surface
+        // immediately, paused or not.
+        try {
+          const t = (typeof audio !== "undefined" && audio) ? (audio.currentTime || 0) : 0;
+          if (activeTab === "piano") {
+            if (typeof drawWaterfall === "function" && waterfallActive) drawWaterfall(t);
+          } else if (typeof InstrumentRegistry !== "undefined") {
+            const _activeInst = InstrumentRegistry.get(activeTab);
+            if (_activeInst && typeof _activeInst._drawRhWaterfall === "function") {
+              _activeInst._drawRhWaterfall(t);
+            }
+            // Refresh the RH hint label too — accData drives it (idiom
+            // inferred from event shape) so a style flip needs to repaint
+            // the label even if the active chord index hasn't changed.
+            if (_activeInst && typeof _activeInst.refreshLabels === "function") {
+              _activeInst.refreshLabels();
+            }
+          }
+        } catch (_) { /* non-fatal */ }
       }
       accLoading = false;
       _setLoadingState(false);
@@ -2676,6 +2974,22 @@
   // AI Teacher HUD state (must be before drawWaterfall)
   let _teacherMsgCache = "";
   var _teacherMsgTime = 0;
+  // i18n is fetched async; if _generateTeacherMessage runs before the dict
+  // arrives, _t() returns the raw key (e.g. "teach.hint.style_arpeggio")
+  // and the 1.5s currentTime gate keeps that raw key cached even after
+  // i18n finishes loading. Two-prong fix:
+  //   1. Listen for the i18nready event and flush the teacher cache.
+  //   2. _generateTeacherMessage detects raw-key output and skips caching
+  //      it, so even an event miss recovers on the next render tick.
+  document.addEventListener("livechord:i18nready", () => {
+    _teacherMsgCache = "";
+    _teacherMsgTime = -999;
+  });
+  function _looksLikeI18nKey(s) {
+    // Raw key shape: "teach.hint.style_arpeggio" — dotted, no spaces, no
+    // CJK. Translated values always contain a space or non-ASCII char.
+    return typeof s === "string" && /^[a-z0-9_]+(\.[a-z0-9_]+)+$/i.test(s);
+  }
 
   function drawWaterfall(currentTime) {
     if (!waterfallCanvas || !waterfallCtx || !waterfallActive) return;
@@ -3159,8 +3473,12 @@
       e.time > currentTime && e.time <= currentTime + 0.5
     );
 
-    // 每 1.5 秒更新一次訊息，避免閃爍
-    if (currentTime - _teacherMsgTime > 1.5 || !_teacherMsgCache) {
+    // 每 1.5 秒更新一次訊息，避免閃爍。
+    // 但若上一次 cache 結果像是未翻譯的 i18n key (i18n 還沒載入)，立即重試
+    // 不要鎖在 1.5s window — 否則使用者要等 1.5s 播放才會看到正確文字。
+    if (currentTime - _teacherMsgTime > 1.5
+        || !_teacherMsgCache
+        || _looksLikeI18nKey(_teacherMsgCache)) {
       _teacherMsgCache = _generateTeacherMessage(currentTime, nowPlaying, upcoming);
       _teacherMsgTime = currentTime;
     }
@@ -3325,6 +3643,71 @@
       });
     }
 
+    // ── Instrument sound picker ────────────────────────────────────────
+    // Per-tab override stored in localStorage.livechord_sound_<tab>.
+    // Picker reflects the current tab's stored value (or DEFAULT_TAB_SOUND
+    // if unset). On change, persist + lazy-init the chosen synth so the
+    // first scheduleNotes tick already has it ready. Disabled while
+    // audioMode === 0 (Music) because synth output is muted there.
+    const soundSelect = $("#instrumentSound");
+    const soundResetBtn = $("#btnResetSound");
+    function _syncSoundPickerValue() {
+      if (!soundSelect) return;
+      soundSelect.value = _resolveActiveSoundId();
+    }
+    function _syncSoundPickerEnabled() {
+      if (!soundSelect) return;
+      // audioMode is a `let` declared further down the IIFE; this function
+      // can run during _setupTeachControls (called from _switchTab during
+      // init) BEFORE that let-binding is reached, hitting the TDZ. typeof
+      // also throws on TDZ-let so we have to swallow the ReferenceError.
+      // applyAudioMode() re-runs _syncSoundPickerEnabled once audioMode
+      // is live, so the UI ends up correct either way.
+      let muted = false;
+      try { muted = (audioMode === 0); } catch { muted = false; }
+      soundSelect.disabled = muted;
+      if (soundResetBtn) soundResetBtn.disabled = muted;
+      soundSelect.title = muted
+        ? "Switch to MIDI / Mix mode to hear sound changes"
+        : "Instrument sound (per tab)";
+    }
+    // Expose for applyAudioMode() — declared earlier in IIFE
+    window._syncSoundPickerEnabled = _syncSoundPickerEnabled;
+    if (soundSelect) {
+      _syncSoundPickerValue();
+      _syncSoundPickerEnabled();
+      soundSelect.addEventListener("change", () => {
+        const tab = (typeof activeTab !== "undefined" && activeTab) || "piano";
+        const newSoundId = soundSelect.value;
+        try { localStorage.setItem("livechord_sound_" + tab, newSoundId); } catch {}
+        // Lazy-init so the upcoming scheduler tick doesn't have to wait.
+        const s = _ensureSynth(newSoundId);
+        try { s.init(); } catch {}
+        // Inherit current vol so MIDI/Mix mode keeps its level.
+        if (typeof aiSynth !== "undefined" && aiSynth) {
+          s.volLeft = aiSynth.volLeft;
+          s.volRight = aiSynth.volRight;
+        }
+        if (typeof showToast === "function") {
+          const label = (SAMPLE_MANIFEST[newSoundId] && SAMPLE_MANIFEST[newSoundId].label) || newSoundId;
+          showToast(label, 1500);
+        }
+      });
+    }
+    if (soundResetBtn) {
+      soundResetBtn.addEventListener("click", () => {
+        const tab = (typeof activeTab !== "undefined" && activeTab) || "piano";
+        try { localStorage.removeItem("livechord_sound_" + tab); } catch {}
+        _syncSoundPickerValue();
+        if (typeof showToast === "function") {
+          const label = (SAMPLE_MANIFEST[DEFAULT_TAB_SOUND[tab]] && SAMPLE_MANIFEST[DEFAULT_TAB_SOUND[tab]].label) || "default";
+          showToast("→ " + label, 1500);
+        }
+      });
+    }
+    // Hook tab switch: keep picker in sync with active tab's sound choice
+    window._syncSoundPickerValue = _syncSoundPickerValue;
+
     if (levelBtns.length) {
       levelBtns.forEach(btn => {
         if (btn.dataset.level === teachLevel) btn.classList.add("active");
@@ -3412,6 +3795,17 @@
       if (typeof update88Piano === 'function' && typeof audio !== 'undefined') {
         try { update88Piano(audio.currentTime || 0); } catch {}
       }
+      // v6 follow-up: also redraw the active string-instrument waterfall so
+      // toggling between R-acc / R-mel / R-both via a Practice preset takes
+      // effect immediately on guitar/uke (not just after the next play tick).
+      try {
+        if (activeTab !== "piano" && typeof InstrumentRegistry !== "undefined") {
+          const _activeInst = InstrumentRegistry.get(activeTab);
+          if (_activeInst && typeof _activeInst._drawRhWaterfall === "function") {
+            _activeInst._drawRhWaterfall(audio.currentTime || 0);
+          }
+        }
+      } catch (_) { /* non-fatal */ }
     }
     document.querySelectorAll(".practice-opt").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -3493,6 +3887,18 @@
         const names = { acc: _t("toast.rh.acc"), mel: _t("toast.rh.mel"), both: _t("toast.rh.both") };
         showToast(_t("toast.rh.content", { name: names[rhContentMode] }), 1500);
         update88Piano(audio.currentTime || 0);
+        // v6 follow-up: redraw the active string-instrument waterfall too,
+        // so when the user toggles to "R melody" mode the strum/pluck bars
+        // disappear immediately (instead of staying onscreen until next
+        // animation tick — which never fires when audio is paused).
+        try {
+          if (activeTab !== "piano" && typeof InstrumentRegistry !== "undefined") {
+            const _activeInst = InstrumentRegistry.get(activeTab);
+            if (_activeInst && typeof _activeInst._drawRhWaterfall === "function") {
+              _activeInst._drawRhWaterfall(audio.currentTime || 0);
+            }
+          }
+        } catch (_) { /* non-fatal */ }
         if (typeof _syncPracticeModeUI === 'function') _syncPracticeModeUI();
       });
     }
@@ -3548,34 +3954,29 @@
 
     function _syncGuitarArpUI() {
       const isStringTab = InstrumentRegistry.isStringInstrument(activeTab);
-      const isArp = guitarStrumStyle === "arpeggio";
-      // Top bar: arp selector or style label
-      if (arpSelectorDiv) {
-        arpSelectorDiv.style.display = (isArp && isStringTab) ? "" : "none";
-      }
+      // v7: the AI Acc style (#teachStyle) now governs guitar/uke idiom
+      // too — STRING_IDIOM_BY_STYLE in accompaniment_generator.py picks
+      // arpeggio/strum/offbeat per style. So #teachStyle stays VISIBLE on
+      // every tab. The legacy #guitarStyleSelect (arpeggio/pattern/block)
+      // is decorative now and was actively confusing — picking "Block"
+      // there did nothing because it doesn't trigger an accData refetch
+      // and the chosen value was bypassed by the v6+ event-driven idiom
+      // detection. Hide it permanently. Same for the gtRhStyleLabel and
+      // arpSelectorDiv decorations that branched off guitarStrumStyle.
+      if (arpSelectorDiv) arpSelectorDiv.style.display = "none";
       const styleLabel = $("#gtRhStyleLabel");
-      if (styleLabel) {
-        if (isStringTab && !isArp) {
-          styleLabel.style.display = "";
-          const nameEl = styleLabel.querySelector(".gt-rh-style-name");
-          if (nameEl) nameEl.textContent = guitarStrumStyle === "block" ? "Block ▼" : "D DU UDU";
-        } else {
-          styleLabel.style.display = "none";
-        }
-      }
-      if (guitarStyleSel) {
-        guitarStyleSel.style.display = isStringTab ? "" : "none";
-      }
-      // Bottom legend: p/i/m/a for arpeggio, hide for others
+      if (styleLabel) styleLabel.style.display = "none";
+      if (guitarStyleSel) guitarStyleSel.style.display = "none";
+      // Show the p/i/m/a finger legend on string tabs (the AI emits pluck
+      // events for arpeggio styles regardless of the legacy picker now,
+      // so the legend's relevance is governed by tab, not strum style).
       const rhLegend = $("#gtRhFingerLegend");
-      if (rhLegend) {
-        rhLegend.style.display = (isArp && isStringTab) ? "" : "none";
-      }
-      // Hide piano teachStyle on guitar/ukulele, show on piano
+      if (rhLegend) rhLegend.style.display = isStringTab ? "" : "none";
+      // #teachStyle drives the AI Acc style for ALL tabs in v7+ — keep it
+      // visible always. (Pre-v7 it was hidden on string tabs because the
+      // backend ignored it for guitar/uke; that path is gone.)
       const pianoStyleSel = $("#teachStyle");
-      if (pianoStyleSel) {
-        pianoStyleSel.style.display = isStringTab ? "none" : "";
-      }
+      if (pianoStyleSel) pianoStyleSel.style.display = "";
     }
 
     // Ensure values are initialized (var hoisting leaves them undefined until assignment line)
@@ -3824,6 +4225,22 @@
             inst.init();
           }
         }
+        // Track DB-path-mode play in recent.json. Until 2026-05-06 only the
+        // hash-mode branch posted to /api/recent, so NAS-library songs
+        // played via ?path=... never appeared at the top of the homepage's
+        // 最近播放 (and stayed at whatever stale order /api/recent had cached).
+        // keepalive=true so the POST survives a quick "back" click.
+        try {
+          fetch("/api/recent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            keepalive: true,
+            body: JSON.stringify({
+              path: path,
+              title: chordData.title || "",
+            }),
+          }).catch(() => {});
+        } catch (_) { /* non-fatal */ }
         // Chords loaded
         // 載入段落 + 旋律資訊
         _loadSections(path);
@@ -5439,12 +5856,9 @@
     }
   }
 
-  if (btnJazzify) {
-    btnJazzify.addEventListener("click", () => {
-      if (_isTouchLike) return;  // touch devices use the popup (see .jazz-opt handlers)
-      _setJazzifyLevel((jazzifyLevel + 1) % 5);
-    });
-  }
+  // Jazzify trigger: popup-only (no click-cycle). The state cycle was easy to
+  // misfire — opening the popup is the same gesture as every other toolbar
+  // button, so users can pick L1/L2/L3/AI/Off explicitly.
   document.querySelectorAll(".jazz-opt").forEach(b => {
     b.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -5946,6 +6360,13 @@
   const _favPath = trackPath || (hashMode ? `__hash/${hashMode}` : "");
   btnFav.addEventListener("click", async () => {
     if (!_favPath) return;
+    // Guest gate: anonymous users (no token) cannot persist favorites —
+    // /api/favorites returns 401. Surface "sign in to save" instead of
+    // letting the request fire and rendering a generic failure toast.
+    if (window.LiveChordAuth && window.LiveChordAuth.isAnonymous()) {
+      showToast(_t("toast.login_required.fav"));
+      return;
+    }
     try {
       if (isFavorite) {
         await API.removeFavorite(_favPath);
@@ -6454,13 +6875,16 @@
   }
 
   function scheduleNotes(currentTime) {
+      // Re-resolve per tick so tab/sound switches take effect immediately
+      // without restarting playback. _ensureSynth caches instances.
+      aiSynth = getActiveSynth();
       if (!aiSynth.ctx) return;
       // Handle seek or huge jump
       if (Math.abs(currentTime - lastScheduledTime) > 1.0) lastScheduledTime = currentTime;
-      
-      const lookahead = 0.2; 
+
+      const lookahead = 0.2;
       if (!accData) return;
-      
+
       const scheduleHand = (events, hand) => {
           for (const e of events) {
               if (e.time >= lastScheduledTime && e.time < currentTime + lookahead) {
@@ -6478,7 +6902,7 @@
               }
           }
       };
-      
+
       scheduleHand(accData.left_hand || [], 'left');
       // Right-hand scheduling mirrors the waterfall — _resolveRhEvents()
       // respects rhContentMode so audio plays what the user sees.
@@ -6494,20 +6918,23 @@
   // Actually, I can set an interval or hook it since this is inside the IIFE.
 
   audio.addEventListener("play", () => {
-      aiSynth.init();
-      if (aiSynth.ctx) aiSynth.ctx.resume();
+      const s = getActiveSynth();
+      s.init();
+      if (s.ctx) s.ctx.resume();
   });
 
   // Beta YT mode never fires `audio` play events — hook note scheduling to
   // whatever surface is actually playing. scheduleNotes also lazy-inits
-  // aiSynth so MIDI / Mix modes work without having to have hit ▶ on <audio>.
+  // the active synth so MIDI / Mix modes work without having to have hit ▶
+  // on <audio>.
   setInterval(() => {
       if (audio.paused) return;
-      if (!aiSynth.ctx) {
-          try { aiSynth.init(); } catch {}
+      const s = getActiveSynth();
+      if (!s.ctx) {
+          try { s.init(); } catch {}
       }
-      if (aiSynth.ctx && aiSynth.ctx.state === "suspended") {
-          try { aiSynth.ctx.resume(); } catch {}
+      if (s.ctx && s.ctx.state === "suspended") {
+          try { s.ctx.resume(); } catch {}
       }
       scheduleNotes(audio.currentTime);
   }, 50);
@@ -6547,16 +6974,14 @@
           btnAudioMode.style.color = "#03a9f4";
           btnAudioMode.style.borderColor = "#03a9f4";
           _setSourceVolume(baseVol);
-          aiSynth.volLeft = 0;
-          aiSynth.volRight = 0;
+          _applyVolToAllSynths(0, 0);
           if (crossfaderContainer) crossfaderContainer.style.display = "none";
       } else if (audioMode === 1) {
           btnAudioMode.innerHTML = "🎹 MIDI";
           btnAudioMode.style.color = "#ff9800";
           btnAudioMode.style.borderColor = "#ff9800";
           _setSourceVolume(0);
-          aiSynth.volLeft = 1.0;
-          aiSynth.volRight = 1.0;
+          _applyVolToAllSynths(1.0, 1.0);
           if (crossfaderContainer) crossfaderContainer.style.display = "none";
       } else {
           btnAudioMode.innerHTML = "🎧 Mix";
@@ -6566,11 +6991,13 @@
 
           const mixVal = crossfaderVol ? parseFloat(crossfaderVol.value) : 0.5;
           _setSourceVolume(baseVol * (1 - mixVal));
-          aiSynth.volLeft = mixVal;
-          aiSynth.volRight = mixVal;
+          _applyVolToAllSynths(mixVal, mixVal);
       }
 
-      // The hand mute filtering is still robustly done in aiSynth.playNote
+      // Sound picker UI feedback — disabled in Music mode
+      if (typeof _syncSoundPickerEnabled === "function") _syncSoundPickerEnabled();
+
+      // The hand mute filtering is still robustly done in SampleSynth.playNote
   }
 
   if (btnAudioMode) {
@@ -7404,6 +7831,12 @@
     if (btnSubmit) {
       btnSubmit.addEventListener("click", async () => {
         if (!_betaRating) { showToast(_t("toast.beta.pick_rating_first")); return; }
+        // Guest gate: rating is per-user. Anonymous callers get a 401 from
+        // /api/feedback/rating; pre-empt with a clearer "sign in" message.
+        if (window.LiveChordAuth && window.LiveChordAuth.isAnonymous()) {
+          showToast(_t("toast.login_required.rate"));
+          return;
+        }
         try {
           const title = songTitle ? songTitle.textContent : "";
           await API.submitRating(trackPath, _betaRating, betaComment.value.trim(), title);

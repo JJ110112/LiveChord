@@ -113,55 +113,98 @@
         if (backdrop) backdrop.addEventListener("click", closeAddSongModal);
       }
       // Public mode: split the homepage into TWO mutually exclusive views:
-      //   - Logged-out → marketing landing only (intro banner + hero +
-      //     how-it-works + footer). No dashboard, no recent / favorites /
-      //     local-music — those need an account.
       //   - Logged-in  → dashboard only (recent / favorites / local-music).
       //     The marketing sections stay hidden; the user already chose to
       //     sign up, no need to re-pitch them.
+      //   - Logged-out (incl. "Continue as guest") → full marketing landing
+      //     (intro banner + hero + how-it-works + open-source). Header is
+      //     hidden — clean sign-up funnel, no LC logo / search bar above
+      //     the pitch. The hero CTA still works for guests (opens the
+      //     upload modal directly instead of round-tripping /login).
       if (_isPublicMode) {
         const isLoggedIn = !!localStorage.getItem("livechord_token");
         const headerEl = document.querySelector("header.header");
         const intro = $("#secHomeIntro");
         const heroSec = $("#secHomeHero");
         const hiwSec = $("#secHomeHowItWorks");
+        const osSec = $("#secHomeOpenSource");
         const secBetaLocal = $("#secBetaLocalTracks");
         const secBetaRecent = $("#secBetaRecent");
         const secFavorites = $("#secFavorites");
 
         if (isLoggedIn) {
-          // Dashboard view: hide marketing surfaces, show user-data sections.
+          // Logged-in dashboard: hide marketing, show user-data sections.
           if (headerEl) headerEl.style.display = "";
           if (intro) intro.style.display = "none";
           if (heroSec) heroSec.style.display = "none";
           if (hiwSec) hiwSec.style.display = "none";
+          if (osSec) osSec.style.display = "none";
           if (secBetaLocal) secBetaLocal.style.display = "";
           if (secBetaRecent) secBetaRecent.style.display = "";
           if (secFavorites) secFavorites.style.display = "";
         } else {
-          // Marketing view: show landing surfaces, hide user-data sections
-          // (they'd be empty for an anonymous visitor anyway, and would
-          // bury the sign-up CTA below empty placeholder cards). Top bar
-          // (logo / search / sponsor / settings) hidden too — clean
-          // sign-up funnel; access via /login still works via the intro CTA.
+          // Marketing view (logged-out, incl. guest-acked): show landing
+          // surfaces, hide user-data sections (they'd be empty for an
+          // anonymous visitor and would bury the sign-up CTA below empty
+          // placeholder cards). Top bar hidden too — clean funnel, /login
+          // is reachable via the hero CTA.
           if (headerEl) headerEl.style.display = "none";
           if (intro) intro.style.display = "";
           if (heroSec) heroSec.style.display = "";
           if (hiwSec) hiwSec.style.display = "";
+          if (osSec) osSec.style.display = "";
           if (secBetaLocal) secBetaLocal.style.display = "none";
           if (secBetaRecent) secBetaRecent.style.display = "none";
           if (secFavorites) secFavorites.style.display = "none";
-          // Wire the hero "Get started for free" CTA — routes to /login so
-          // the marketing funnel ends at sign-up. The post-login dashboard
-          // is where uploads happen, not the marketing page.
-          const cta = $("#heroUploadBtn");
-          if (cta && !cta._lcWired) {
-            cta._lcWired = true;
-            cta.addEventListener("click", () => {
-              window.location.href = "/login";
-            });
-          }
         }
+        // Hero "Get started for free" CTA — always /login when no token.
+        // Reading livechord_guest_acked here was a UX trap: the flag is
+        // sticky in localStorage, so a returning user (browser still has
+        // the flag from any prior /login visit) could not reach /login
+        // from the homepage at all — every CTA click opened the upload
+        // modal instead of the sign-up page. The actual guest-upload path
+        // is /login → "Continue as guest" → /?upload=1 (the link below
+        // carries the query param), and #upload-auto-open below picks it
+        // up so the modal still surfaces in one click for guests.
+        const cta = $("#heroUploadBtn");
+        if (cta && !cta._lcWired) {
+          cta._lcWired = true;
+          cta.addEventListener("click", () => {
+            const tokenNow = !!localStorage.getItem("livechord_token");
+            if (tokenNow) {
+              const panel = $("#betaFabPanel");
+              const backdrop = $("#betaFabBackdrop");
+              if (panel) {
+                panel.classList.add("open");
+                panel.classList.remove("file-only");
+              }
+              if (backdrop) backdrop.classList.add("open");
+            } else {
+              window.location.href = "/login";
+            }
+          });
+        }
+        // Auto-open the upload modal when arriving with ?upload=1 — set by
+        // /login's "Continue as guest" link. Guests then see the modal
+        // immediately on landing instead of having to spot the CTA. Strip
+        // the param after firing so a hard-reload doesn't re-trigger.
+        try {
+          const params = new URLSearchParams(window.location.search);
+          if (params.get("upload") === "1") {
+            const panel = $("#betaFabPanel");
+            const backdrop = $("#betaFabBackdrop");
+            if (panel) {
+              panel.classList.add("open");
+              panel.classList.remove("file-only");
+            }
+            if (backdrop) backdrop.classList.add("open");
+            params.delete("upload");
+            const cleanQs = params.toString();
+            const cleanUrl = window.location.pathname +
+              (cleanQs ? "?" + cleanQs : "") + window.location.hash;
+            history.replaceState({}, "", cleanUrl);
+          }
+        } catch (_e) {}
       } else if (_isBetaMode) {
         // Beta-mode (legacy invite-only). Show local-music for everyone.
         const secBetaLocal = $("#secBetaLocalTracks");

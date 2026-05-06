@@ -34,7 +34,29 @@ RH_LOW, RH_HIGH = 60, 84
 # v3 (2026-04-19): STYLE_HUMANIZE timing offsets re-tuned to match legacy
 # anticipation feel (-25~-30ms on downbeats). Previous v2 values were too
 # conservative (-8~-12ms) and produced an audible MIDI lag.
-ACC_ENGINE_VERSION = "v3"
+# v4 (2026-05-06): Added 13 genre-specific styles (BluesShuffle, SlowBlues,
+# RockEighths, RockBallad, JazzCharleston, JazzWaltz, SwingFour, PopBallad,
+# BossaNova, Samba, Reggae, Funk16, RnBNeoSoul) plus 3 new RH modes
+# (comp_offbeat, comp_quarter_shell, muted_stab). Old v3 cache invalidated.
+# v5 (2026-05-06): Pattern timing refactor — patterns now period-tile at a
+# fixed beat rate (pattern_period_beats from STYLE_CONFIG, default 4) instead
+# of frac×duration. Fixes "2-beat chord plays double-time" bug. RH arpeggio
+# upgraded from 4 quarters to 8 eighths. Old v4 cache invalidated.
+# v6 (2026-05-06): Add string-family RH events (LiveChord-vxa). When the
+# caller passes instrument="guitar"/"ukulele", _build_right_hand routes to
+# _build_string_rh, which emits per-string pluck/strum events carrying both
+# pitch (synth path consumes unchanged) and string/finger/strum_id/strum_dir
+# (visual reads the same stream — no more client-side _generateRhEvents
+# divergence). Cache filename now includes instrument segment, so old v5
+# files stay orphaned without conflicting with v6 piano regenerations.
+# v7 (2026-05-06): Fix string idiom routing — v6 routed by piano rh_mode,
+# but rh_mode names piano gap-fill BEHAVIOR (fill_only/fill_block/etc), not
+# guitar idiom. Result: "Arpeggio" style (rh_mode=fill_only) wrongly mapped
+# to strum on guitar. v7 routes by STYLE NAME via STRING_IDIOM_BY_STYLE so
+# "Arpeggio" → arpeggio, "Reggae" → offbeat, etc. v6 cache for guitar/uke
+# is invalidated; piano cache is unaffected by the bump (its events don't
+# change). Lazy regen on next playback per song+style+level+instrument.
+ACC_ENGINE_VERSION = "v7"
 _V2_FLAG_CACHE: Optional[bool] = None
 
 
@@ -110,28 +132,133 @@ STYLE_DICT = {
     "1+3": [
         (0.0, [0], 0.9),     # LH: 根音 (全音符，只彈一次)
     ],
+    # ── Blues 系列 ──
+    # 12/8 shuffle bass: root-5-7-root-5-7 over a triplet feel.
+    # Frac points 0.0, 0.167, 0.333, 0.5, 0.667, 0.833 split the chord into
+    # two triplet halves so users get an audible swing without needing
+    # explicit time-signature info in the chord JSON.
+    "BluesShuffle": [
+        (0.0,    [0],    1.0),
+        (0.167,  [2],    0.8),
+        (0.333,  [3],    0.8),
+        (0.5,    [0],    1.0),
+        (0.667,  [2],    0.8),
+        (0.833,  [3],    0.8),
+    ],
+    # Slow blues: sparse root + b7-flavoured octave on beats 1 and 3.
+    "SlowBlues": [
+        (0.0,  [0, 3], 1.0),
+        (0.5,  [0],    0.85),
+    ],
+    # ── Rock 系列 ──
+    # Power chord (root + 5th + octave via L2) hammered every 8th.
+    "RockEighths": [
+        (0.0,    [0, 2], 1.0),
+        (0.125,  [0, 2], 0.78),
+        (0.25,   [0, 2], 0.92),
+        (0.375,  [0, 2], 0.78),
+        (0.5,    [0, 2], 1.0),
+        (0.625,  [0, 2], 0.78),
+        (0.75,   [0, 2], 0.92),
+        (0.875,  [0, 2], 0.78),
+    ],
+    # Rock ballad: octave bass beats 1 + 3, sustained.
+    "RockBallad": [
+        (0.0,  [0, 2], 1.0),
+        (0.5,  [0, 2], 0.85),
+    ],
+    # ── Jazz 系列 ──
+    # Charleston: bass on 1, hit on "and of 2".
+    "JazzCharleston": [
+        (0.0,    [0],    1.0),
+        (0.375,  [0, 2], 0.85),
+    ],
+    # Jazz waltz (3/4 feel): bass on 1, comp on 2 + 3 (relative to chord).
+    "JazzWaltz": [
+        (0.0,    [0],    1.0),
+        (0.333,  [1, 2], 0.72),
+        (0.667,  [1, 2], 0.7),
+    ],
+    # Swing 4 (Freddie Green): walking quarter notes — same shape as Walking
+    # but slightly softer LH; pairs with comp_quarter_shell on RH.
+    "SwingFour": [
+        (0.0,    [0],  1.0),
+        (0.25,   [1],  0.92),
+        (0.5,    [2],  0.92),
+        (0.75,   [-1], 0.88),
+    ],
+    # ── Pop ballad 變奏 ──
+    # Sustained root half + 5th on beat 3; pairs with RH arpeggio.
+    "PopBallad": [
+        (0.0,  [0], 1.0),
+        (0.5,  [2], 0.72),
+    ],
+    # ── Latin / Bossa ──
+    # Bossa nova clave-flavoured LH: root on 1, 5th on "and of 2", root on 4.
+    "BossaNova": [
+        (0.0,    [0], 1.0),
+        (0.375,  [2], 0.78),
+        (0.75,   [0], 0.85),
+    ],
+    # Samba: surdo accents on beats 2 + 4 with a ghost note in between.
+    "Samba": [
+        (0.25,   [0], 1.0),
+        (0.625,  [0], 0.45),  # ghost
+        (0.75,   [0], 0.95),
+    ],
+    # ── Reggae ──
+    # One-drop: LH bass on beat 3 only; RH skank handled via comp_offbeat.
+    "Reggae": [
+        (0.5,  [0], 1.0),
+    ],
+    # ── Funk ──
+    # Busy 16th-note octave bass with ghost notes; pairs with muted_stab RH.
+    "Funk16": [
+        (0.0,     [0],    1.0),
+        (0.125,   [0],    0.4),    # ghost
+        (0.1875,  [0, 2], 0.92),   # syncopated 16th-and
+        (0.375,   [0],    0.5),
+        (0.5,     [0, 2], 1.0),
+        (0.625,   [0],    0.42),
+        (0.75,    [0],    0.85),
+        (0.875,   [0],    0.5),
+    ],
+    # ── R&B / Neo-Soul ──
+    # Root + 7th wide voicing on beats 1 and 3.
+    "RnBNeoSoul": [
+        (0.0,  [0, 3], 1.0),
+        (0.5,  [0, 3], 0.85),
+    ],
 }
 
 # 曲風適配表
 GENRE_STYLE_MAP = {
-    "pop":       ["Block", "Arpeggio", "Rhythm", "1+3"],
-    "ballad":    ["Arpeggio", "Block", "1+3"],
-    "jazz":      ["Shell", "Walking", "Stride", "1+3"],
-    "bossa":     ["Shell", "Walking"],
+    "pop":       ["Block", "Arpeggio", "Rhythm", "PopBallad", "1+3"],
+    "ballad":    ["PopBallad", "Arpeggio", "Block", "1+3"],
+    "jazz":      ["Shell", "Walking", "SwingFour", "JazzCharleston", "Stride", "1+3"],
+    "swing":     ["SwingFour", "JazzCharleston", "Walking", "Shell"],
+    "bossa":     ["BossaNova", "Shell", "Walking"],
+    "samba":     ["Samba", "BossaNova"],
     "classical": ["Alberti", "Arpeggio"],
-    "rock":      ["Rhythm", "Block"],
-    "r&b":       ["Rhythm", "Shell", "Arpeggio", "1+3"],
+    "waltz":     ["JazzWaltz", "Alberti"],
+    "rock":      ["RockEighths", "RockBallad", "Rhythm", "Block"],
+    "blues":     ["BluesShuffle", "SlowBlues", "Walking", "Shell"],
+    "r&b":       ["RnBNeoSoul", "Rhythm", "Shell", "Arpeggio", "1+3"],
+    "soul":      ["RnBNeoSoul", "Shell", "Arpeggio"],
+    "funk":      ["Funk16", "RnBNeoSoul", "Rhythm"],
+    "reggae":    ["Reggae", "BossaNova"],
     "electronic": ["Block", "Rhythm"],
     "edm":       ["Block", "Rhythm"],
-    "country":   ["Arpeggio", "Block", "1+3"],
-    "folk":      ["Arpeggio", "Block", "1+3"],
-    "latin":     ["Rhythm", "Walking"],
+    "country":   ["Arpeggio", "Block", "PopBallad", "1+3"],
+    "folk":      ["Arpeggio", "Block", "PopBallad", "1+3"],
+    "latin":     ["BossaNova", "Samba", "Rhythm", "Walking"],
 }
 
 BPM_STYLE_MAP = [
-    (80,  ["Arpeggio", "Shell"]),       # 慢歌
-    (120, ["Block", "Arpeggio", "Rhythm"]),  # 中速
-    (999, ["Rhythm", "Block"]),          # 快歌
+    (75,  ["PopBallad", "Arpeggio", "Shell"]),               # 慢歌
+    (100, ["Arpeggio", "Shell", "BossaNova", "PopBallad"]),  # 中慢
+    (130, ["Block", "Arpeggio", "Rhythm", "RockBallad"]),    # 中速
+    (999, ["Rhythm", "Block", "RockEighths", "Funk16"]),     # 快歌
 ]
 
 # ==============================================================================
@@ -142,23 +269,55 @@ BPM_STYLE_MAP = [
 # rh_mode:  控制右手 (fill_only/fill_harmony/fill_block/arpeggio/1+3)
 # lh_vel:   左手基準力度
 # rh_vel:   右手基準力度
+# pattern_period_beats (v5): how many beats one full pattern occupies. The
+# pattern's frac axis is interpreted as 0..1 spanning this many beats — NOT
+# the chord's full duration. Patterns tile across longer chords and truncate
+# on shorter ones, so rhythmic feel stays constant regardless of chord length
+# (fixes the "2-beat chord plays double-time eighths" bug). Default 4 (4/4
+# bar); JazzWaltz overrides to 3 (3/4 bar).
 STYLE_CONFIG = {
     # LH 根音, RH 三和音 block 每拍
-    "1+3":     {"lh_level": "L1", "rh_mode": "1+3",          "lh_vel": 55, "rh_vel": 85},
+    "1+3":     {"lh_level": "L1", "rh_mode": "1+3",          "lh_vel": 55, "rh_vel": 85, "pattern_period_beats": 4},
     # LH root+5th+oct 柱狀, RH 三和音柱狀, 換和弦同時下鍵
-    "Block":   {"lh_level": "L2", "rh_mode": "1+3_once",     "lh_vel": 60, "rh_vel": 90},
+    "Block":   {"lh_level": "L2", "rh_mode": "1+3_once",     "lh_vel": 60, "rh_vel": 90, "pattern_period_beats": 4},
     # LH root+5th+oct 琶音, RH gap-fill
-    "Arpeggio":{"lh_level": "L2", "rh_mode": "fill_only",    "lh_vel": 60, "rh_vel": 85},
+    "Arpeggio":{"lh_level": "L2", "rh_mode": "fill_only",    "lh_vel": 60, "rh_vel": 85, "pattern_period_beats": 4},
     # LH root+5th+oct 附點, RH gap-fill harmony
-    "Rhythm":  {"lh_level": "L2", "rh_mode": "fill_harmony", "lh_vel": 65, "rh_vel": 90},
+    "Rhythm":  {"lh_level": "L2", "rh_mode": "fill_harmony", "lh_vel": 65, "rh_vel": 90, "pattern_period_beats": 4},
     # LH 古典分解, RH gap-fill
-    "Alberti": {"lh_level": "L2", "rh_mode": "fill_only",    "lh_vel": 60, "rh_vel": 85},
+    "Alberti": {"lh_level": "L2", "rh_mode": "fill_only",    "lh_vel": 60, "rh_vel": 85, "pattern_period_beats": 4},
     # LH 3rd+7th, RH gap-fill harmony
-    "Shell":   {"lh_level": "L3", "rh_mode": "fill_harmony", "lh_vel": 65, "rh_vel": 85},
+    "Shell":   {"lh_level": "L3", "rh_mode": "fill_harmony", "lh_vel": 65, "rh_vel": 85, "pattern_period_beats": 4},
     # LH Walking Bass, RH gap-fill harmony
-    "Walking": {"lh_level": "L3", "rh_mode": "fill_harmony", "lh_vel": 70, "rh_vel": 85},
+    "Walking": {"lh_level": "L3", "rh_mode": "fill_harmony", "lh_vel": 70, "rh_vel": 85, "pattern_period_beats": 4},
     # LH 低音+和弦跳, RH gap-fill block
-    "Stride":  {"lh_level": "L3", "rh_mode": "fill_block",   "lh_vel": 70, "rh_vel": 90},
+    "Stride":  {"lh_level": "L3", "rh_mode": "fill_block",   "lh_vel": 70, "rh_vel": 90, "pattern_period_beats": 4},
+
+    # ── Phase 1 (v4) 新增 style configs ──
+    # Blues: shuffle bass + bluesy harmony fill
+    "BluesShuffle":   {"lh_level": "L3", "rh_mode": "fill_harmony",       "lh_vel": 70, "rh_vel": 85, "pattern_period_beats": 4},
+    "SlowBlues":      {"lh_level": "L3", "rh_mode": "fill_harmony",       "lh_vel": 60, "rh_vel": 80, "pattern_period_beats": 4},
+    # Rock: power-chord 8ths + block on downbeats; ballad uses RH arpeggio
+    "RockEighths":    {"lh_level": "L2", "rh_mode": "fill_block",         "lh_vel": 75, "rh_vel": 95, "pattern_period_beats": 4},
+    "RockBallad":     {"lh_level": "L2", "rh_mode": "arpeggio",           "lh_vel": 60, "rh_vel": 85, "pattern_period_beats": 4},
+    # Jazz Charleston: sparse LH stab pattern, RH offbeat comp
+    "JazzCharleston": {"lh_level": "L3", "rh_mode": "comp_offbeat",       "lh_vel": 65, "rh_vel": 80, "pattern_period_beats": 4},
+    # Jazz waltz: 3/4 LH split, RH shell stabs on beats 2 + 3
+    "JazzWaltz":      {"lh_level": "L3", "rh_mode": "comp_offbeat",       "lh_vel": 60, "rh_vel": 78, "pattern_period_beats": 3},
+    # Swing 4 / Freddie Green: walking quarters + shell chunks every quarter
+    "SwingFour":      {"lh_level": "L3", "rh_mode": "comp_quarter_shell", "lh_vel": 65, "rh_vel": 70, "pattern_period_beats": 4},
+    # Pop ballad: simple LH (root half-note + 5th) + flowing RH arpeggio
+    "PopBallad":      {"lh_level": "L2", "rh_mode": "arpeggio",           "lh_vel": 55, "rh_vel": 80, "pattern_period_beats": 4},
+    # Bossa nova: clave-flavoured LH + offbeat comp
+    "BossaNova":      {"lh_level": "L2", "rh_mode": "comp_offbeat",       "lh_vel": 60, "rh_vel": 78, "pattern_period_beats": 4},
+    # Samba: surdo accents + 16th comp (falls through to gap-fill harmony for now)
+    "Samba":          {"lh_level": "L2", "rh_mode": "fill_harmony",       "lh_vel": 65, "rh_vel": 82, "pattern_period_beats": 4},
+    # Reggae: one-drop LH + offbeat skank
+    "Reggae":         {"lh_level": "L2", "rh_mode": "comp_offbeat",       "lh_vel": 65, "rh_vel": 88, "pattern_period_beats": 4},
+    # Funk: octave + ghost 16ths + muted stabs on RH
+    "Funk16":         {"lh_level": "L2", "rh_mode": "muted_stab",         "lh_vel": 70, "rh_vel": 80, "pattern_period_beats": 4},
+    # R&B / Neo-soul: wide LH voicing + lush RH arpeggio
+    "RnBNeoSoul":     {"lh_level": "L3", "rh_mode": "arpeggio",           "lh_vel": 60, "rh_vel": 78, "pattern_period_beats": 4},
 }
 
 # ==============================================================================
@@ -178,8 +337,17 @@ SECTION_PARAMS = {
 }
 
 # Phase 1 v2 helpers: phrase arc velocity + per-beat weight
-_BACKBEAT_STYLES = frozenset({"Rhythm", "Block", "1+3"})
-_DOWNBEAT_STYLES = frozenset({"Arpeggio", "Alberti", "Shell", "Walking", "Stride"})
+_BACKBEAT_STYLES = frozenset({
+    "Rhythm", "Block", "1+3",
+    # v4: rock/funk/reggae/blues-shuffle emphasise beats 2 and 4
+    "RockEighths", "Funk16", "Reggae", "BluesShuffle",
+})
+_DOWNBEAT_STYLES = frozenset({
+    "Arpeggio", "Alberti", "Shell", "Walking", "Stride",
+    # v4: ballads / jazz / latin all sit on beats 1 and 3 (or 1 of 3 for waltz)
+    "PopBallad", "RockBallad", "SlowBlues", "JazzCharleston", "JazzWaltz",
+    "SwingFour", "BossaNova", "Samba", "RnBNeoSoul",
+})
 
 
 def _phrase_arc_scale(chord_idx: int, n_chords: int, section_type: str) -> float:
@@ -210,6 +378,46 @@ def _beat_weight(frac: float, style: str) -> float:
         return 1.08 if style in _BACKBEAT_STYLES else 0.94
     return 0.92
 
+
+def _emit_period_pattern(pattern, start_time, duration, period_beats,
+                         bpm, tempo_curve, emit):
+    """Tile a frac-based ``pattern`` at fixed beat-period across a chord.
+
+    Pattern fracs are interpreted as 0..1 spanning ``period_beats`` (NOT the
+    chord's full duration). This keeps every event's absolute beat position
+    chord-length-independent — a 4-event arpeggio plays the same eighth-note
+    feel whether the chord is 2 beats, 4 beats, or 8 beats long. Patterns
+    truncate at the chord boundary on shorter chords and tile multiple times
+    on longer chords. ``bpm`` + ``tempo_curve`` resolve the local beat
+    duration so rubato songs follow their own tempo curve at chord onset.
+
+    ``pattern`` items are 2-tuples ``(frac, vel_ratio)`` or 3-tuples
+    ``(frac, indices, vel_ratio)`` — the emit callback unpacks whichever
+    shape it expects.
+    """
+    from .beat_helpers import beat_duration_at
+    if not pattern:
+        return
+    beat_dur = beat_duration_at(tempo_curve, start_time, fallback_bpm=bpm)
+    period_dur = max(period_beats, 1) * beat_dur
+    if period_dur <= 0:
+        return
+    chord_end = start_time + duration
+    period_start = start_time
+    while period_start < chord_end - 0.02:
+        for pi, item in enumerate(pattern):
+            frac = item[0]
+            event_time = period_start + frac * period_dur
+            if event_time >= chord_end - 0.02:
+                continue
+            next_frac = pattern[pi + 1][0] if pi + 1 < len(pattern) else 1.0
+            event_dur = (next_frac - frac) * period_dur * 0.9
+            event_dur = min(event_dur, chord_end - event_time)
+            if event_dur <= 0.001:
+                continue
+            emit(pi, item, event_time, event_dur)
+        period_start += period_dur
+
 # ── Section → LH Pattern 自動切換 (style="Auto" 時啟用) ──
 # 參考 Ron Drotos Pop Ballad Accompaniment 各 Lesson 的段落編排
 SECTION_STYLE_MAP = {
@@ -239,13 +447,260 @@ RH_SECTION_MODE = {
     "default":    "fill_only",
 }
 
-# RH 琶音 Pattern (用於 intro/bridge/outro — 右手範圍 C4~C6)
+# RH 琶音 Pattern (v5: 八分音符解析度 — 一個 4 拍 bar 內 8 events)
+# 之前是 4 個四分音符；短和弦上會被擠成八分節奏，造成「速度隨和弦長度變化」。
+# 現在固定八分節奏，period_beats=4 配合 _emit_period_pattern → 4 拍和弦 8 個八分、
+# 2 拍和弦 4 個八分、8 拍和弦 16 個八分，全部維持 1/8 解析度。
 RH_ARPEGGIO_PATTERN = [
-    (0.0,  [0], 0.8),    # Beat 1: Root
-    (0.25, [1], 0.65),   # Beat 2: 3rd
-    (0.50, [2], 0.7),    # Beat 3: 5th
-    (0.75, [1], 0.6),    # Beat 4: 3rd (回落)
+    (0.0,    [0], 0.85),   # 1 — root (downbeat, accented)
+    (0.125,  [1], 0.55),   # 1 + (offbeat, soft)
+    (0.25,   [2], 0.7),    # 2 — 5th
+    (0.375,  [1], 0.55),   # 2 +
+    (0.5,    [0], 0.75),   # 3 — root (mid-bar accent)
+    (0.625,  [1], 0.55),   # 3 +
+    (0.75,   [2], 0.7),    # 4 — 5th
+    (0.875,  [1], 0.55),   # 4 +
 ]
+
+# v5: 三個新 RH mode 的 frac 模板。之前 hardcoded 在 _build_right_hand 內、
+# 用 frac × duration 引用，現在抽出來給 _emit_period_pattern 拼貼用。
+# Tuple shape: (frac, vel_ratio) — pitches 由 mode-specific code 從 chord_notes 取。
+COMP_OFFBEAT_PATTERN = [(0.25, 0.85), (0.75, 0.95)]
+COMP_QUARTER_PATTERN = [(0.0, 0.7), (0.25, 0.85), (0.5, 0.7), (0.75, 0.85)]
+MUTED_STAB_PATTERN   = [(0.25, 0.85), (0.625, 0.65), (0.75, 0.95), (0.9375, 0.5)]
+
+# v6: String-instrument tunings (open-string MIDI per string index, low-to-high
+# by index order — matches frontend GUITAR_CONFIG/UKULELE_CONFIG.openMidi).
+# Ukulele's standard reentrant tuning means index 0 (G4=55) is HIGHER than
+# index 1 (C4=48); the bass-thumb logic must select by pitch, not by index.
+STRING_OPEN_MIDI = {
+    "guitar":  [40, 45, 50, 55, 59, 64],  # E2 A2 D3 G3 B3 E4
+    "ukulele": [55, 48, 52, 57],           # G4 C4 E4 A4 (reentrant)
+}
+
+# v6: String RH idiom patterns. Same period-tile contract as the piano
+# patterns above — frac is 0..1 across pattern_period_beats, NOT chord
+# duration. Tuple shape: (frac, finger|dir, vel_ratio).
+STRING_ARP_PATTERN = [
+    (0.0,    "p", 0.85),  # bass thumb on 1
+    (0.125,  "i", 0.55),
+    (0.25,   "m", 0.70),
+    (0.375,  "i", 0.55),
+    (0.5,    "a", 0.80),
+    (0.625,  "m", 0.60),
+    (0.75,   "i", 0.70),
+    (0.875,  "m", 0.55),
+]
+STRING_STRUM_PATTERN = [
+    # Standard D-D-DU-UDU 8-step folk strum (period_beats=4 → one bar)
+    (0.0,    "down", 0.95),
+    (0.25,   "down", 0.70),
+    (0.375,  "up",   0.55),
+    (0.625,  "up",   0.55),
+    (0.75,   "down", 0.85),
+    (0.875,  "up",   0.70),
+]
+STRING_OFFBEAT_PATTERN = [
+    (0.25,   "up", 0.75),
+    (0.75,   "up", 0.90),
+]
+
+# v7: idiom-by-style for string instruments. Reads the user's AI Acc style
+# name and decides whether a guitarist would interpret it as a finger-pick
+# arpeggio, an offbeat upstroke skank, or a strum (default). Independent of
+# piano rh_mode because rh_mode describes piano gap-fill behavior, not
+# guitar idiom — see ACC_ENGINE_VERSION v7 note for the bug this fixes.
+# Style names not in this table fall through to strum.
+STRING_IDIOM_BY_STYLE = {
+    # Finger-picked pluck (p-i-m-a 8th notes)
+    "Arpeggio":       "arpeggio",
+    "Alberti":        "arpeggio",   # Alberti bass = classical arpeggio
+    "1+3":            "arpeggio",   # bass + chord, Travis-style
+    "PopBallad":      "arpeggio",
+    "RockBallad":     "arpeggio",
+    "RnBNeoSoul":     "arpeggio",
+    # Offbeat upstroke (Reggae skank / Bossa comp / Charleston stab)
+    "Reggae":         "offbeat",
+    "BossaNova":      "offbeat",
+    "JazzCharleston": "offbeat",
+    "JazzWaltz":      "offbeat",
+    # Default → strum (Block / Rhythm / Rock / Blues / Stride / Swing /
+    # Samba / Funk / Shell / Walking — these all read as "strum the chord
+    # in some pattern" on guitar even when piano plays them very differently)
+}
+
+
+def _build_string_rh(chord_evt: Dict, style: str, base_velocity: int,
+                     bpm: float, tempo_curve: Optional[List[Dict]],
+                     instrument: str) -> List[Dict]:
+    """
+    v6: Build right-hand events for guitar/ukulele.
+
+    Emits one event per (string, time). Each event carries:
+      - pitch (resolved via diagram + open-string MIDI) → synth consumes unchanged
+      - string, finger ("p"/"i"/"m"/"a") → visual single-string pick
+      - strum_id, strum_dir → visual groups events into one strum sweep
+
+    Idiom routing is driven by STYLE_CONFIG.rh_mode of the requested piano
+    style, so timing semantics match the piano version of the same style:
+      - arpeggio / 1+3 / 1+3_once → finger-pick arpeggio (pima 8th notes)
+      - comp_offbeat → reggae/bossa upstroke skank
+      - everything else → strum (D-D-DU-UDU 8th pattern)
+    """
+    from .beat_helpers import beat_duration_at  # local import to keep top-of-file clean
+    try:
+        # chord_diagrams lives at backend/chord_diagrams.py — backend root is
+        # already on sys.path (see top of this file).
+        from chord_diagrams import get_chord_diagram
+    except Exception:
+        return []
+
+    chord_name = chord_evt.get("chord", "C")
+    start_time = chord_evt.get("time", 0)
+    end = chord_evt.get("end", start_time + 2.0)
+    duration = end - start_time
+    if duration < 0.1:
+        return []
+
+    diagram = get_chord_diagram(chord_name, instrument)
+    if not diagram or "strings" not in diagram:
+        return []
+    strings_arr = diagram["strings"]
+
+    open_midi = STRING_OPEN_MIDI.get(instrument)
+    if not open_midi:
+        return []
+
+    # Active = (string_index, fret) for non-muted strings within the tuning.
+    active = []
+    for s, f in enumerate(strings_arr):
+        if s >= len(open_midi):
+            break
+        if f is None or f < 0:
+            continue
+        active.append((s, f))
+    if not active:
+        return []
+
+    pitch_of = {s: open_midi[s] + f for s, f in active}
+    # Sort by pitch ascending — needed for both bass-thumb selection AND
+    # ukulele reentrant ordering (where string-index ≠ pitch order).
+    by_pitch = sorted(active, key=lambda sf: pitch_of[sf[0]])
+
+    cfg = STYLE_CONFIG.get(style, STYLE_CONFIG["Block"])
+    period_beats = cfg.get("pattern_period_beats", 4)
+
+    # v7: route by STYLE NAME, not rh_mode. The piano rh_mode field names
+    # piano BEHAVIOR (fill_only = gap-fill at vocal pauses, etc) — it does
+    # NOT describe a guitar idiom. Naively mapping rh_mode → idiom routed
+    # "Arpeggio" (rh_mode=fill_only) to strum, contradicting the user's
+    # expectation that picking the style literally named "Arpeggio" gives
+    # them an arpeggio. The semantic style-name table below matches what
+    # each label means on a guitar regardless of how the same style routes
+    # on piano: "Arpeggio" / "PopBallad" / "RockBallad" / "RnBNeoSoul" /
+    # "Alberti" / "1+3" → finger-picked p-i-m-a; "Reggae" / "BossaNova" /
+    # "JazzCharleston" / "JazzWaltz" → offbeat upstroke skank; everything
+    # else (Block / Rhythm / Rock / Blues / Stride / Swing / Funk / Samba /
+    # Shell / Walking) reads as a strum on guitar.
+    idiom = STRING_IDIOM_BY_STYLE.get(style, "strum")
+
+    events: List[Dict] = []
+    chord_end = start_time + duration
+
+    if idiom == "arpeggio":
+        # Bass thumb plays lowest-pitch active string.
+        # i/m/a play top three pitches (low→high). Pad if fewer than 3.
+        bass_s = by_pitch[0][0]
+        top_pool = [s for s, _ in by_pitch[-3:]]
+        while len(top_pool) < 3:
+            top_pool.append(top_pool[-1])
+        finger_to_string = {"p": bass_s, "i": top_pool[0], "m": top_pool[1], "a": top_pool[2]}
+
+        def emit_arp(pi, item, evt_time, evt_dur):
+            _frac, finger, vel_ratio = item
+            s = finger_to_string.get(finger, bass_s)
+            events.append({
+                "time": round(evt_time, 3),
+                "duration": round(evt_dur, 3),
+                "pitch": int(pitch_of[s]),
+                "velocity": int(base_velocity * vel_ratio),
+                "hand": "right",
+                "chord_tone": True,
+                "string": int(s),
+                "finger": finger,
+            })
+
+        _emit_period_pattern(STRING_ARP_PATTERN, start_time, duration,
+                             period_beats, bpm, tempo_curve, emit_arp)
+        return events
+
+    if idiom == "offbeat":
+        # Light upstroke skank on top 3 strings only (treble comp).
+        comp_strings_lo_hi = [s for s, _ in by_pitch[-3:]]
+
+        def emit_off(pi, item, evt_time, evt_dur):
+            _frac, direction, vel_ratio = item
+            seq = list(comp_strings_lo_hi) if direction == "down" else list(reversed(comp_strings_lo_hi))
+            stagger = 0.005
+            sid = f"o_{round(evt_time, 3)}_{direction}"
+            for k, s in enumerate(seq):
+                t = evt_time + k * stagger
+                if t >= chord_end - 0.005:
+                    break
+                d = min(0.18, chord_end - t)
+                if d <= 0.001:
+                    continue
+                events.append({
+                    "time": round(t, 3),
+                    "duration": round(d, 3),
+                    "pitch": int(pitch_of[s]),
+                    "velocity": int(base_velocity * vel_ratio),
+                    "hand": "right",
+                    "chord_tone": True,
+                    "string": int(s),
+                    "strum_id": sid,
+                    "strum_dir": direction,
+                })
+
+        _emit_period_pattern(STRING_OFFBEAT_PATTERN, start_time, duration,
+                             period_beats, bpm, tempo_curve, emit_off)
+        return events
+
+    # Default: strum across all active strings, low→high on down, reverse on up.
+    all_strings_lo_hi = [s for s, _ in by_pitch]
+
+    def emit_strum(pi, item, evt_time, evt_dur):
+        _frac, direction, vel_ratio = item
+        seq = list(all_strings_lo_hi) if direction == "down" else list(reversed(all_strings_lo_hi))
+        # Up-strokes are typically faster + lighter than down-strokes.
+        stagger = 0.006 if direction == "down" else 0.004
+        sid = f"s_{round(evt_time, 3)}_{direction}"
+        n = max(len(seq) - 1, 1)
+        for k, s in enumerate(seq):
+            t = evt_time + k * stagger
+            if t >= chord_end - 0.005:
+                break
+            d = min(evt_dur, chord_end - t)
+            if d <= 0.001:
+                continue
+            # Subtle velocity shape: trailing strings 5% softer than the
+            # leading edge so the strum has natural inner motion.
+            vel_shape = 1.0 - 0.05 * (k / n)
+            events.append({
+                "time": round(t, 3),
+                "duration": round(d, 3),
+                "pitch": int(pitch_of[s]),
+                "velocity": int(base_velocity * vel_ratio * vel_shape),
+                "hand": "right",
+                "chord_tone": True,
+                "string": int(s),
+                "strum_id": sid,
+                "strum_dir": direction,
+            })
+
+    _emit_period_pattern(STRING_STRUM_PATTERN, start_time, duration,
+                         period_beats, bpm, tempo_curve, emit_strum)
+    return events
 
 
 # ==============================================================================
@@ -414,23 +869,61 @@ def clamp_to_range(pitches: List[int], low: int, high: int) -> List[int]:
 # 肆、伴奏生成核心
 # ==============================================================================
 
-def suggest_style(genre: str = "", bpm: float = 120.0) -> List[str]:
-    """根據曲風和 BPM 建議伴奏風格，回傳排序後的建議清單。"""
+def suggest_style(
+    genre: str = "",
+    bpm: float = 120.0,
+    time_signature: str = "",
+) -> List[str]:
+    """根據曲風、BPM 和拍號建議伴奏風格，回傳排序後的建議清單。
+
+    Time-signature hint (v4): chord JSONs that carry an explicit
+    `time_signature` field steer the suggestion toward styles that
+    actually fit that meter. 3/4 boosts Jazz Waltz / Alberti / Stride;
+    6/8 boosts Slow Blues / Pop Ballad (compound feel).
+    Empty `time_signature` retains the original 4/4-assumption behaviour.
+
+    Genre priority (v4): when an explicit genre matches, BPM scoring
+    only counts styles that are also in the genre's recommended list —
+    keeps a "jazz, 130 BPM" call from leaking RockEighths into the top 3.
+    """
     genre_lower = genre.lower().strip()
     scores: Dict[str, float] = {}
 
     # Genre 匹配
+    matched_genre_styles: Optional[set] = None
     for key, styles in GENRE_STYLE_MAP.items():
         if key in genre_lower:
             for i, s in enumerate(styles):
                 scores[s] = scores.get(s, 0) + (3 - i)  # 越前面分數越高
+            if matched_genre_styles is None:
+                matched_genre_styles = set(styles)
+            else:
+                matched_genre_styles |= set(styles)
 
     # BPM 匹配
     for threshold, styles in BPM_STYLE_MAP:
         if bpm < threshold:
             for i, s in enumerate(styles):
+                # When a genre is matched, only credit BPM styles that are
+                # also valid for that genre — prevents cross-genre leakage.
+                if matched_genre_styles is not None and s not in matched_genre_styles:
+                    continue
                 scores[s] = scores.get(s, 0) + (2 - i * 0.5)
             break
+
+    # Time-signature 加成
+    ts = (time_signature or "").strip()
+    if ts in ("3/4", "3"):
+        # Triple-meter: jazz waltz + classical waltz LH (Alberti / Stride
+        # already split-bass, both work in 3/4)
+        for s in ("JazzWaltz", "Alberti", "Stride"):
+            if s in STYLE_DICT:
+                scores[s] = scores.get(s, 0) + 2.5
+    elif ts in ("6/8", "12/8"):
+        # Compound: slow-blues triplet feel + flowing arpeggio fits 6/8
+        for s in ("SlowBlues", "BluesShuffle", "PopBallad", "Arpeggio"):
+            if s in STYLE_DICT:
+                scores[s] = scores.get(s, 0) + 2.0
 
     # 無匹配時回傳預設
     if not scores:
@@ -443,8 +936,16 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
                      style: str, level: str, prev_lh: List[int],
                      next_root_midi: Optional[int],
                      melody: List[Dict], base_velocity: int = 70,
-                     density_mult: float = 1.0) -> Tuple[List[Dict], List[int]]:
-    """生成單一和弦的左手伴奏事件。"""
+                     density_mult: float = 1.0,
+                     bpm: float = 120.0,
+                     tempo_curve: Optional[List[Dict]] = None) -> Tuple[List[Dict], List[int]]:
+    """生成單一和弦的左手伴奏事件。
+
+    v5: pattern 以「節拍週期」拼貼。pattern_period_beats 從 STYLE_CONFIG 讀，
+    pattern 的 frac 0..1 對應 period_dur (= period_beats × beat_dur)，跟和弦
+    長度脫鉤。短和弦 → 截斷 pattern；長和弦 → 拼貼多個 period。需要 bpm +
+    tempo_curve 來算 beat_dur (rubato 歌走 local BPM)。
+    """
     notes = get_chord_notes(chord_name)
     if not notes:
         return [], prev_lh
@@ -507,16 +1008,19 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
     events = []
     v2 = _load_v2_flag()
     rng = random.Random(hash((chord_name, round(start_time, 3), "lh")) & 0xFFFFFFFF) if v2 else None
-    for pi, (frac, indices, vel_ratio) in enumerate(pattern):
+
+    # Period-tile (v5): pattern fracs interpreted relative to period_dur, not
+    # chord duration. period_beats from STYLE_CONFIG (default 4).
+    period_beats = STYLE_CONFIG.get(style, STYLE_CONFIG["Block"]).get("pattern_period_beats", 4)
+    if level == "L1":
+        period_beats = 4  # L1 fires once at start regardless
+
+    def emit_lh(pi, item, event_time, event_dur):
+        frac, indices, vel_ratio = item
         # Density drop (v2): beat 1 必留，其他 frac 機率 drop
         if v2 and density_mult < 1.0 and frac > 0.001:
             if rng.random() > density_mult:
-                continue
-        event_time = start_time + frac * duration
-        # Gap-based duration: 音符持續到下一個 pattern 位置 (×0.9 留呼吸空間)
-        next_frac = pattern[pi + 1][0] if pi + 1 < len(pattern) else 1.0
-        event_dur = (next_frac - frac) * duration * 0.9
-
+                return
         for idx in indices:
             # Walking Bass approach note: -1 表示下一和弦根音的半音下方
             if idx == -1:
@@ -555,6 +1059,9 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
                 "velocity": velocity,
                 "hand": "left",
             })
+
+    _emit_period_pattern(pattern, start_time, duration, period_beats,
+                         bpm, tempo_curve, emit_lh)
 
     # ── L3 Passing Tone (Lesson 12/14): 在最後半拍加經過音趨近下一根音 ──
     if level == "L3" and next_root_midi is not None and style in ("Arpeggio", "Rhythm", "Block"):
@@ -773,20 +1280,30 @@ def _build_rh_1plus3(chord_name: str, start_time: float, duration: float,
 def _build_right_hand(chord_name: str, start_time: float, duration: float,
                       level: str, melody_segment: List[Dict],
                       base_velocity: int = 90,
-                      rh_mode: str = "melody_only") -> List[Dict]:
+                      rh_mode: str = "melody_only",
+                      style: str = "Block",
+                      bpm: float = 120.0,
+                      tempo_curve: Optional[List[Dict]] = None) -> List[Dict]:
     """
     生成單一和弦的右手事件。
 
     核心原則: RH 伴奏閃避人聲，在空白處補 fill。
-      - "arpeggio":       無人聲段 → 和弦琶音 (intro/bridge/outro)
-      - "fill_only":      人聲唱時閃開，空白處補單音 fill (verse)
-      - "fill_harmony":   同 fill_only + 空白處 fill 稍豐富 (pre_chorus)
-      - "fill_block":     空白處補複音 block chord (chorus)
+      - "arpeggio":            無人聲段 → 和弦琶音 (intro/bridge/outro)
+      - "fill_only":           人聲唱時閃開，空白處補單音 fill (verse)
+      - "fill_harmony":        同 fill_only + 空白處 fill 稍豐富 (pre_chorus)
+      - "fill_block":          空白處補複音 block chord (chorus)
+      - "comp_offbeat":        Reggae/Bossa/Charleston/JazzWaltz 反拍切分
+      - "comp_quarter_shell":  Freddie Green / SwingFour 每拍 shell voicing 切分
+      - "muted_stab":          Funk16 短促 16th muted stab
 
     rh_mode 舊名對照 (保持 API 相容):
       melody_only    → fill_only
       melody_harmony → fill_harmony
       block_melody   → fill_block
+
+    v5: 四個 pattern-based 模式 (arpeggio / comp_offbeat / comp_quarter_shell /
+    muted_stab) 都改走 _emit_period_pattern，pattern_period_beats 從 STYLE_CONFIG
+    讀。需要 style + bpm + tempo_curve 參數。
     """
     # 舊名相容
     mode_alias = {
@@ -803,18 +1320,100 @@ def _build_right_hand(chord_name: str, start_time: float, duration: float,
         chord_pitches_pc.add(root_to_semitone(n) % 12)
 
     chord_end = start_time + duration
+    period_beats = STYLE_CONFIG.get(style, STYLE_CONFIG["Block"]).get("pattern_period_beats", 4)
+
+    def _emit_chord_stabs(pattern, comp_pitches, evt_dur_factor=0.18, evt_dur_max=0.18,
+                          evt_dur_fixed=None):
+        """Shared emit for comp_offbeat / comp_quarter_shell / muted_stab.
+
+        Each pattern entry is (frac, vel_ratio); pitches come from comp_pitches.
+        evt_dur_fixed (e.g. 0.08 for muted_stab) overrides factor-based duration.
+        """
+        def emit(pi, item, evt_time, _natural_dur):
+            frac, vel_ratio = item[0], item[1]
+            if evt_dur_fixed is not None:
+                dur = evt_dur_fixed
+            else:
+                # cap by both factor-of-period and a hard ceiling
+                period_local = period_beats * (60.0 / bpm if not tempo_curve else 1.0)
+                dur = min(_natural_dur * (evt_dur_factor / 0.9), evt_dur_max)
+            dur = min(dur, chord_end - evt_time)
+            if dur <= 0.001:
+                return
+            for p in comp_pitches:
+                if _check_melody_conflict(p, evt_time, dur, melody_segment):
+                    if p - 12 >= RH_LOW:
+                        p -= 12
+                events.append({
+                    "time": round(evt_time, 3),
+                    "duration": round(dur, 3),
+                    "pitch": int(p),
+                    "velocity": int(base_velocity * vel_ratio),
+                    "hand": "right",
+                    "chord_tone": True,
+                })
+        return emit
+
+    # ── comp_offbeat: 反拍切分 (Reggae skank / Bossa / Charleston / Jazz Waltz) ──
+    # period_beats=4 → 4/4 拍 frac 0.25/0.75 = beat 2 + 4 (backbeat skank)
+    # period_beats=3 → 3/4 拍 frac 0.25/0.75 = beat 1.75 + 2.25 (近似 waltz comp)
+    if rh_mode == "comp_offbeat":
+        raw = note_names_to_midi(chord_notes, base_octave=4)
+        pitches = clamp_to_range(raw, RH_LOW, RH_HIGH)
+        if not pitches:
+            return events
+        comp_pitches = pitches[1:4] if len(pitches) >= 4 else pitches[:3]
+        if not comp_pitches:
+            comp_pitches = pitches
+        emit = _emit_chord_stabs(COMP_OFFBEAT_PATTERN, comp_pitches,
+                                 evt_dur_factor=0.18, evt_dur_max=0.18)
+        _emit_period_pattern(COMP_OFFBEAT_PATTERN, start_time, duration,
+                             period_beats, bpm, tempo_curve, emit)
+        return events
+
+    # ── comp_quarter_shell: 每拍 shell voicing 切分 (Freddie Green / SwingFour) ──
+    if rh_mode == "comp_quarter_shell":
+        if len(chord_notes) >= 4:
+            shell_notes = [chord_notes[1], chord_notes[3]]  # 3rd + 7th
+        elif len(chord_notes) >= 3:
+            shell_notes = [chord_notes[1], chord_notes[2]]  # 3rd + 5th
+        else:
+            shell_notes = chord_notes
+        raw = note_names_to_midi(shell_notes, base_octave=4)
+        pitches = clamp_to_range(raw, RH_LOW, RH_HIGH)
+        if not pitches:
+            return events
+        emit = _emit_chord_stabs(COMP_QUARTER_PATTERN, pitches,
+                                 evt_dur_factor=0.20, evt_dur_max=0.20)
+        _emit_period_pattern(COMP_QUARTER_PATTERN, start_time, duration,
+                             period_beats, bpm, tempo_curve, emit)
+        return events
+
+    # ── muted_stab: 16th 切分 muted stab (Funk16) ──
+    if rh_mode == "muted_stab":
+        raw = note_names_to_midi(chord_notes, base_octave=4)
+        pitches = clamp_to_range(raw, RH_LOW, RH_HIGH)
+        if not pitches:
+            return events
+        comp_pitches = pitches[:3]
+        emit = _emit_chord_stabs(MUTED_STAB_PATTERN, comp_pitches,
+                                 evt_dur_fixed=0.08)
+        _emit_period_pattern(MUTED_STAB_PATTERN, start_time, duration,
+                             period_beats, bpm, tempo_curve, emit)
+        return events
 
     # ── arpeggio 模式: 右手彈和弦琶音 (intro/bridge/outro 無人聲段) ──
+    # v5: RH_ARPEGGIO_PATTERN 升級為 8 個八分音符 + period-tile，所以無論
+    # 和弦多長都維持 1/8 解析度 (User QA 反饋)。
     if rh_mode == "arpeggio":
         raw = note_names_to_midi(chord_notes, base_octave=4)
         pitches = clamp_to_range(raw, RH_LOW, RH_HIGH)
         if not pitches:
             pitches = [RH_LOW]
         voicing = expand_voicing(pitches, 4)
-        for pi, (frac, indices, vel_ratio) in enumerate(RH_ARPEGGIO_PATTERN):
-            evt_time = start_time + frac * duration
-            next_frac = RH_ARPEGGIO_PATTERN[pi + 1][0] if pi + 1 < len(RH_ARPEGGIO_PATTERN) else 1.0
-            evt_dur = (next_frac - frac) * duration * 0.9
+
+        def emit_arp(pi, item, evt_time, evt_dur):
+            frac, indices, vel_ratio = item
             for idx in indices:
                 pitch = voicing[idx % len(voicing)]
                 events.append({
@@ -825,6 +1424,9 @@ def _build_right_hand(chord_name: str, start_time: float, duration: float,
                     "hand": "right",
                     "chord_tone": True,
                 })
+
+        _emit_period_pattern(RH_ARPEGGIO_PATTERN, start_time, duration,
+                             period_beats, bpm, tempo_curve, emit_arp)
         return events
 
     # ── fill 模式: 找人聲空白，在 gap 補音 ──
@@ -928,7 +1530,8 @@ def generate_accompaniment(chords: List[Dict],
                            section_type: str = "default",
                            sections: List[Dict] = None,
                            humanize: float = 1.0,
-                           tempo_curve: Optional[List[Dict]] = None) -> Dict[str, Any]:
+                           tempo_curve: Optional[List[Dict]] = None,
+                           instrument: str = "piano") -> Dict[str, Any]:
     """
     主入口：根據和弦序列、旋律、風格與難度，生成左右手 MIDI 伴奏。
 
@@ -1026,11 +1629,21 @@ def generate_accompaniment(chords: List[Dict],
             chord_name, start, duration, current_style, lh_level,
             prev_lh, next_root_midi, melody, lh_velocity,
             density_mult=(density_mult if v2 else 1.0),
+            bpm=bpm,
+            tempo_curve=tempo_curve,
         )
         left_events.extend(lh)
 
         # ── 右手 ──
-        if rh_mode in ("1+3", "1+3_once"):
+        # v6: string-family instruments (guitar/ukulele) bypass the piano RH
+        # builders entirely and emit per-string pluck/strum events from
+        # _build_string_rh. The events still carry `pitch` so the audio synth
+        # path consumes them unchanged; the visual reads `string`/`strum_id`.
+        if instrument in ("guitar", "ukulele"):
+            rh = _build_string_rh(chord_evt, current_style, rh_velocity,
+                                  bpm, tempo_curve, instrument)
+            right_events.extend(rh)
+        elif rh_mode in ("1+3", "1+3_once"):
             rh, prev_rh_1plus3 = _build_rh_1plus3(
                 chord_name, start, duration, bpm,
                 prev_rh_1plus3, rh_velocity,
@@ -1044,7 +1657,10 @@ def generate_accompaniment(chords: List[Dict],
             # Auto mode: 段落覆蓋 rh_mode
             actual_rh_mode = RH_SECTION_MODE.get(chord_section, rh_mode) if auto_mode else rh_mode
             rh = _build_right_hand(chord_name, start, duration, lh_level, melody,
-                                   rh_velocity, rh_mode=actual_rh_mode)
+                                   rh_velocity, rh_mode=actual_rh_mode,
+                                   style=current_style,
+                                   bpm=bpm,
+                                   tempo_curve=tempo_curve)
             right_events.extend(rh)
 
     # 左手跨度限制過濾
@@ -1059,7 +1675,13 @@ def generate_accompaniment(chords: List[Dict],
 
     # Viterbi 指法推導
     _assign_fingering(left_events, hand="left")
-    _assign_fingering(right_events, hand="right")
+    # v6: string-family RH events already carry p/i/m/a finger labels (which
+    # the visual renders directly). Running the piano-keyboard fingering pass
+    # would overwrite those with 1-5 numbers and throw off the keyboard
+    # tutorial UI when accData is consumed in piano mode by mistake. Skip
+    # for guitar/ukulele.
+    if instrument == "piano":
+        _assign_fingering(right_events, hand="right")
 
     # Humanization: timing 微偏移 + velocity 抖動
     if humanize > 0:
@@ -1077,6 +1699,7 @@ def generate_accompaniment(chords: List[Dict],
         "style": style,
         "level": level,
         "section_type": section_type,
+        "instrument": instrument,
     }
 
 

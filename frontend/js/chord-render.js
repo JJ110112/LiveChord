@@ -1502,7 +1502,12 @@ const ChordRender = {
     const padTop = Math.round(H * 0.09);
     const padBot = Math.round(H * 0.03);
     const padLeft = Math.round(W * 0.1);
-    const padRight = Math.round(W * 0.05);
+    // padRight must be >= dotR so the high-e string's finger circle doesn't
+    // clip past the canvas right edge. dotR caps at 18, and W*0.05 only
+    // exceeds 18 once W >= 360 — most guitar panels (split-screen ~270-300
+    // wide) sit below that threshold so the right half of the e-string
+    // circle was getting cut off (visible bug: "string e finger hint cut").
+    const padRight = Math.max(Math.round(W * 0.05), 22);
     const stringSpacing = (W - padLeft - padRight) / Math.max(numStrings - 1, 1);
     const fretSpacing = (H - padTop - padBot) / numFrets;
     const dotR = Math.min(stringSpacing * 0.35, fretSpacing * 0.3, 18);

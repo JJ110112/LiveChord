@@ -507,10 +507,8 @@ def _acc_resolve(chord_name):
 
     # Normalize root to one of the 7 columns
     norm_root = _ACC_ENHARMONIC.get(root, root)
-    warning = None
     if norm_root not in _ACC_COL_IDX:
         # Root not available on 21-button layout (B, Eb, Ab, Db, F#)
-        warning = f"21鍵無 {root} 低音，建議使用五度代替"
         # Fallback: use the fifth as bass (e.g., B -> use E column)
         _fifth_map = {"B": "E", "Eb": "Bb", "Ab": "Bb", "Db": "F", "F#": "D"}
         fallback = _fifth_map.get(norm_root)
@@ -521,11 +519,18 @@ def _acc_resolve(chord_name):
                 "altBass": None,
                 "root": root,
                 "quality": "minor" if is_minor else "major",
-                "warning": warning,
+                "warning_key": "player.gt.acc_warn_no_bass_fifth",
+                "warning_vars": {"root": root, "fallback": fallback},
                 "available": False,
             }
-        return {"buttons": [], "root": root, "quality": "minor" if is_minor else "major",
-                "warning": f"21鍵無法演奏 {chord_name}", "available": False}
+        return {
+            "buttons": [],
+            "root": root,
+            "quality": "minor" if is_minor else "major",
+            "warning_key": "player.gt.acc_warn_unplayable",
+            "warning_vars": {"chord": chord_name},
+            "available": False,
+        }
 
     col = _ACC_COL_IDX[norm_root]
     # Alt bass = one fifth up (next column to the right in circle-of-fifths)
