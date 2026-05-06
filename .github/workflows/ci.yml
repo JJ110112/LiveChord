@@ -17,6 +17,9 @@ jobs:
       - name: Compile every .py file
         run: |
           python -m compileall -q backend scripts || exit 1
+      - name: Install probe deps (fastapi only — no torch/modal/madmom)
+        run: |
+          pip install --quiet fastapi
       - name: Lazy-import probe (modules with no GPU/Modal deps)
         # Importing the modules catches missing names / typos that
         # syntax compile alone misses. We add the backend dir to PYTHONPATH
