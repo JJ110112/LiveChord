@@ -2835,9 +2835,16 @@
     // backend; everything else (piano/accordion/arranger) keeps piano-pitch
     // events. Cache check must include instrument or a tab switch
     // piano↔guitar will silently reuse the wrong stream.
-    const _instReg = (typeof InstrumentRegistry !== "undefined") ? InstrumentRegistry : null;
-    const _isString = _instReg && _instReg.isStringInstrument && _instReg.isStringInstrument(activeTab);
-    const inst = _isString ? activeTab : "piano";
+    //
+    // Use a static name list, NOT InstrumentRegistry.isStringInstrument.
+    // The registry is populated near end-of-IIFE (string instances register
+    // ~line 7590), but _switchTab(activeTab) runs once at line 1928 BEFORE
+    // that, and inside it _loadAccompaniment() fires regardless of the
+    // `if (inst)` guard. A registry-based check returns false too early on
+    // cold load → request goes out as piano → guitar accData never lands
+    // until the user manually toggles tabs.
+    const _STRING_TAB_IDS = ["guitar", "ukulele"];
+    const inst = _STRING_TAB_IDS.includes(activeTab) ? activeTab : "piano";
     if (!forceRefresh && accData
         && accData._style === teachStyle
         && accData._level === teachLevel
