@@ -16,12 +16,13 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=20">
-  <link rel="stylesheet" href="/css/player.css?v=119">
+  <link rel="stylesheet" href="/css/player.css?v=120">
   <!-- Phase A: shared auth + fetch wrapper (see frontend/js/auth.js). Must
        load before any /api/ call so anon X-Anon-Id is injected from the
        first request. Replaces the inline blind-redirect block. -->
   <script src="/js/auth.js?v=5"></script>
-  <script src="/js/i18n.js?v=40"></script>
+  <script src="/js/i18n.js?v=41"></script>
+  <script src="/js/analytics.js?v=1"></script>
 </head>
 <body>
 
@@ -60,8 +61,8 @@
     <span id="chordBpm" class="topbar-key" style="color:var(--text-dim); margin-right:6px;"></span>
     <span id="chordSource" class="chord-source-badge"></span>
     <span id="chordKey" class="topbar-key"></span>
-    <button id="btnRateAiTop" class="topbar-btn" style="color:#ff5722"
-            data-i18n-attr="title=player.rate_title" title="Rate chord quality">&#x2B50;</button>
+    <button id="btnRateAiTop" class="topbar-btn"
+            data-i18n-attr="title=player.rate_title" title="Rate chord quality"><svg class="lc-rate-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg></button>
     <button id="btnPageFs" class="topbar-btn"
             data-i18n-attr="title=player.fullscreen_title" title="Fullscreen">&#x26F6;</button>
   </div>
@@ -262,11 +263,11 @@
   <div id="betaRatePopup" class="beta-rate-popup lc-panel" style="display:none">
     <div class="beta-rate-header lc-title" data-i18n="player.rate.dialog_title">Chord quality rating</div>
     <div id="betaStars" class="beta-stars">
-      <span class="beta-star" data-v="1">&#x2606;</span>
-      <span class="beta-star" data-v="2">&#x2606;</span>
-      <span class="beta-star" data-v="3">&#x2606;</span>
-      <span class="beta-star" data-v="4">&#x2606;</span>
-      <span class="beta-star" data-v="5">&#x2606;</span>
+      <span class="beta-star" data-v="1"><svg class="lc-rate-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg></span>
+      <span class="beta-star" data-v="2"><svg class="lc-rate-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg></span>
+      <span class="beta-star" data-v="3"><svg class="lc-rate-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg></span>
+      <span class="beta-star" data-v="4"><svg class="lc-rate-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg></span>
+      <span class="beta-star" data-v="5"><svg class="lc-rate-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg></span>
     </div>
     <textarea id="betaRateComment" class="beta-rate-comment" rows="2" placeholder="Comment (optional)" data-i18n-attr="placeholder=player.rate.comment_placeholder"></textarea>
     <div class="beta-rate-actions lc-modal-actions">
@@ -862,7 +863,7 @@
 <script src="/js/chord-correction.js?v=15"></script>
 <!-- Phase A: fetch wrapper installed by /js/auth.js at <head>; the inline
      duplicate block was removed. -->
-<script src="/js/player.js?v=280"></script>
+<script src="/js/player.js?v=281"></script>
 <script>
   // Toolbar gear theme picker — mirrors the homepage gear handler so the
   // user's theme choice is honored on either entry point. Active state on

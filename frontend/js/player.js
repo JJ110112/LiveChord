@@ -4079,10 +4079,11 @@
         : (ver.is_self ? _t("player.rating.cant_self") : _t("player.rating.signin_first"));
 
       const stars = [];
+      const RATE_ICON_SVG = '<svg class="lc-rate-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg>';
       for (let i = 1; i <= 5; i++) {
           const s = document.createElement("span");
           s.className = "rs-star" + (i <= (ver.my_rating || 0) ? " mine" : "");
-          s.textContent = "★";
+          s.innerHTML = RATE_ICON_SVG;
           s.dataset.score = String(i);
           stars.push(s);
           wrap.appendChild(s);
@@ -4111,7 +4112,7 @@
                   paint(ver.my_rating, "set");
                   const avgEl = wrap.parentElement && wrap.parentElement.querySelector(".rating-avg");
                   if (avgEl) {
-                      avgEl.textContent = ver.count > 0 ? `${ver.rating.toFixed(1)} ★ (${ver.count})` : "—";
+                      avgEl.textContent = ver.count > 0 ? `${ver.rating.toFixed(1)}/5 (${ver.count})` : "—";
                   }
                   wrap.title = ver.count > 0
                       ? _t("player.rating.avg_n_votes", { stars: ver.rating.toFixed(1), n: ver.count })
@@ -4158,7 +4159,7 @@
           const stars = _renderStarWidget(ver, path);
           const avg = document.createElement("span");
           avg.className = "rating-avg";
-          avg.textContent = ver.count > 0 ? `${ver.rating.toFixed(1)} ★ (${ver.count})` : "—";
+          avg.textContent = ver.count > 0 ? `${ver.rating.toFixed(1)}/5 (${ver.count})` : "—";
           right.appendChild(stars);
           right.appendChild(avg);
 
@@ -7831,7 +7832,6 @@
       betaStars.forEach(x => {
         const v = +x.dataset.v;
         x.classList.toggle("active", v <= _betaRating);
-        x.innerHTML = v <= _betaRating ? "&#x2605;" : "&#x2606;";
       });
     }
 

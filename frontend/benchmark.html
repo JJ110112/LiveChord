@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title data-i18n="benchmark.title_tag">LiveChord — Benchmark</title>
   <link rel="icon" href="/favicon.svg?v=4">
-  <script src="/js/i18n.js?v=36"></script>
+  <script src="/js/i18n.js?v=41"></script>
   <script>
     if (!localStorage.getItem("livechord_token")) {
       fetch('/api/auth/is_admin').then(r => {
@@ -95,6 +95,7 @@
              padding:10px 20px; border-radius:8px; display:none; z-index:999; }
     .toast.show { display:block; }
   </style>
+  <script src="/js/analytics.js?v=1"></script>
 </head>
 <body>
   <h1 data-i18n="benchmark.heading">Benchmark</h1>

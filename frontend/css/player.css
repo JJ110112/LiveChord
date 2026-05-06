@@ -2352,8 +2352,8 @@ body.no-jianpu .melody-jianpu { display: none !important; }
     display: flex;
     flex: 0 0 auto;
   }
-  /* 官方AI版 jazzify dropdown + ★ chord-quality star are always hidden in
-     portrait — they're niche desktop affordances that crowd the small
+  /* 官方AI版 jazzify dropdown + chord-quality rate button are always hidden
+     in portrait — they're niche desktop affordances that crowd the small
      topbar and aren't critical to the mobile play-along flow. */
   #versionsContainer,
   #btnRateAiTop {
@@ -2489,7 +2489,7 @@ body.no-jianpu .melody-jianpu { display: none !important; }
 }
 
 /* Very-narrow phones (≤480px): topbar gets cramped because logo + title +
-   jazzify dropdown + LED + key + ★ + × all compete on one row. Free space
+   jazzify dropdown + LED + key + rate + × all compete on one row. Free space
    by hiding the LED (info is tooltip-only) and shrinking the jazzify pill;
    keep LiveChord text + full-screen button per user choice. The "LiveChord"
    wordmark hides too — the cyan LC icon (added 2026-04-25) carries the
@@ -3142,17 +3142,26 @@ body.no-jianpu .melody-jianpu { display: none !important; }
 
 .rating-stars .rs-star {
   font-size: 14px;
-  color: #4a4a52;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-dim, #4a4a52);
   transition: color 0.1s;
   padding: 0 1px;
 }
 
-.rating-stars .rs-star.mine {
-  color: #8b5cf6;
+.rating-stars .rs-star.mine,
+.rating-stars .rs-star.hover {
+  color: var(--text, #fff);
 }
 
-.rating-stars .rs-star.hover {
-  color: #c084fc;
+.rating-stars .rs-star .lc-rate-icon {
+  fill: none;
+  transition: fill 0.15s;
+}
+
+.rating-stars .rs-star.mine .lc-rate-icon,
+.rating-stars .rs-star.hover .lc-rate-icon {
+  fill: currentColor;
 }
 
 .version-count {
@@ -3210,12 +3219,30 @@ body.no-jianpu .melody-jianpu { display: none !important; }
 }
 .beta-star {
   font-size: 24px;
+  display: inline-flex;
   cursor: pointer;
-  color: #555;
+  color: var(--text-dim, #555);
   transition: color 0.15s;
 }
 .beta-star.active, .beta-star.hover {
-  color: #ffc107;
+  color: var(--text, #fff);
+}
+.beta-star .lc-rate-icon {
+  fill: none;
+  transition: fill 0.15s;
+}
+.beta-star.active .lc-rate-icon,
+.beta-star.hover .lc-rate-icon {
+  fill: currentColor;
+}
+
+/* Shared rating icon: scales with parent font-size so topbar (18px),
+   beta dialog (24px), and version-rating (14px) each get the right size. */
+.lc-rate-icon {
+  width: 1em;
+  height: 1em;
+  display: inline-block;
+  vertical-align: -0.15em;
 }
 .beta-rate-comment {
   width: 100%;
