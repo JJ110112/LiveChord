@@ -844,7 +844,7 @@
   "player.chord_src.midi": "人工校對",
   "player.chord_src.title_few": "尚未累積足夠評分（{count} 人）　·　來源：{src}",
   "player.chord_src.title_no_rating": "尚無評分　·　來源：{src}",
-  "player.chord_src.title_rated": "{stars}★ × {count} 人評分　·　來源：{src}",
+  "player.chord_src.title_rated": "{stars}/5 × {count} 人評分　·　來源：{src}",
   "player.chord_src.title_simple": "來源：{src}",
   "player.chord_src.unknown": "未知來源",
   "player.collapse_chord": "收合和弦列表 (鋼琴擴大至全版)",

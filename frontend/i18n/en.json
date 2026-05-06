@@ -844,7 +844,7 @@
   "player.chord_src.midi": "Human-corrected",
   "player.chord_src.title_few": "Not enough ratings yet ({count}) · Source: {src}",
   "player.chord_src.title_no_rating": "No ratings yet · Source: {src}",
-  "player.chord_src.title_rated": "{stars}★ × {count} ratings · Source: {src}",
+  "player.chord_src.title_rated": "{stars}/5 × {count} ratings · Source: {src}",
   "player.chord_src.title_simple": "Source: {src}",
   "player.chord_src.unknown": "Unknown source",
   "player.collapse_chord": "Collapse chord ribbon (expand piano to full)",
