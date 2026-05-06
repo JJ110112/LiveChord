@@ -825,9 +825,16 @@
      standard .dash-section / .dash-title styles for parity with the rest of
      the dashboard. Cards reuse .grid-item via the shared .demo-grid wrapper.
 */
+/* Match the framing of .home-hero / .home-how-it-works / .home-open-source
+   so the marketing landing reads as one coherent set of sections. */
 .home-demo-songs {
-  margin: 16px 0 24px;
-  padding: 0 16px;
+  margin: 0 0 40px;
+  padding: 28px 24px 24px;
+  background: linear-gradient(135deg,
+    var(--bg-card),
+    color-mix(in srgb, var(--accent) 8%, var(--bg-card)));
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+  border-radius: var(--radius);
 }
 /* Theme-aware: var(--text) flips dark↔light per data-theme. The previous
    hardcoded #fff was invisible on sakura / light / sunny / sky palettes. */
