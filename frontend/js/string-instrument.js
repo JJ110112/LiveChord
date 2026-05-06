@@ -284,6 +284,18 @@ class StringInstrument {
     this._updateHints(chordName, activeIdx, chords);
   }
 
+  // Re-run the hint panels (LH chord transition, RH idiom label) without
+  // waiting for the next activeIdx change. Called from player.js after
+  // _loadAccompaniment lands so a style flip on a paused song refreshes
+  // the "RH …" label immediately instead of staying stuck on the
+  // previous idiom until playback advances to the next chord.
+  refreshLabels() {
+    const chords = this._b.getDisplayChords();
+    if (!chords || chords.length === 0) return;
+    const idx = (this._activeIdx >= 0 && this._activeIdx < chords.length) ? this._activeIdx : 0;
+    this._updateHints(chords[idx].chord, idx, chords);
+  }
+
   _updateHints(chordName, activeIdx, chords) {
     const $ = this._b.$;
     const cfg = this._config;
@@ -315,20 +327,59 @@ class StringInstrument {
     }
 
     if (rhInfo) {
-      const strumStyle = this._b.getStrumStyle();
-      if (strumStyle === "arpeggio") {
-        const pat = ARPEGGIO_PATTERNS[this._b.getArpPattern()];
-        rhInfo.textContent = pat
-          ? _t("instrument.rh.with_pattern", { name: pat.name })
-          : _t("instrument.rh.arpeggio");
+      // v6: read the idiom from the backend events (accData.right_hand) —
+      // strum_id ⇒ strum sweep, finger=p/i/m/a ⇒ pluck arpeggio. The legacy
+      // getStrumStyle() picker is now decorative (the AI Acc style governs
+      // the idiom server-side), so trusting it here makes the label drift
+      // from what's actually playing — e.g. AI Acc style "Block" → backend
+      // rh_mode "1+3_once" → arpeggio events on the wire, but the picker
+      // localStorage still says "block" → label "RH downstroke" while the
+      // user sees pima circles. Fall back to the picker only when accData
+      // hasn't loaded yet.
+      const idiom = this._inferAccIdiom(this._b.getAccData());
+      if (idiom === "arpeggio") {
+        rhInfo.textContent = _t("instrument.rh.arpeggio");
+      } else if (idiom === "strum") {
+        rhInfo.textContent = _t("instrument.rh.strum_pattern");
       } else {
-        const styleLabels = {
-          block:   _t("instrument.rh.strum_block"),
-          pattern: _t("instrument.rh.strum_pattern"),
-        };
-        rhInfo.textContent = styleLabels[strumStyle] || _t("instrument.rh.fallback");
+        const strumStyle = this._b.getStrumStyle();
+        if (strumStyle === "arpeggio") {
+          const pat = ARPEGGIO_PATTERNS[this._b.getArpPattern()];
+          rhInfo.textContent = pat
+            ? _t("instrument.rh.with_pattern", { name: pat.name })
+            : _t("instrument.rh.arpeggio");
+        } else {
+          const styleLabels = {
+            block:   _t("instrument.rh.strum_block"),
+            pattern: _t("instrument.rh.strum_pattern"),
+          };
+          rhInfo.textContent = styleLabels[strumStyle] || _t("instrument.rh.fallback");
+        }
       }
     }
+  }
+
+  // Inspect a slice of backend events to decide whether the active layer is
+  // a strum sweep or a pluck arpeggio. Strum events have strum_id; pluck
+  // events have a single-letter finger (p/i/m/a). Returns null when accData
+  // is empty or carries non-string events (e.g. piano accData on a string
+  // tab during a tab-flip refetch).
+  _inferAccIdiom(accData) {
+    if (!accData || !Array.isArray(accData.right_hand)) return null;
+    const sample = accData.right_hand;
+    const limit = Math.min(sample.length, 50);
+    let hasStrum = false;
+    let hasPluck = false;
+    for (let i = 0; i < limit; i++) {
+      const e = sample[i];
+      if (!e) continue;
+      if (e.strum_id) { hasStrum = true; }
+      else if (typeof e.finger === "string" && /^[pima]$/i.test(e.finger)) { hasPluck = true; }
+      if (hasStrum && hasPluck) break;
+    }
+    if (hasStrum) return "strum";
+    if (hasPluck) return "arpeggio";
+    return null;
   }
 
   // ---- Right-Hand Event Extractor (v6: read backend accData.right_hand) ----

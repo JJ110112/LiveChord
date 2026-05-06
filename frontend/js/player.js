@@ -2947,6 +2947,12 @@
             if (_activeInst && typeof _activeInst._drawRhWaterfall === "function") {
               _activeInst._drawRhWaterfall(t);
             }
+            // Refresh the RH hint label too — accData drives it (idiom
+            // inferred from event shape) so a style flip needs to repaint
+            // the label even if the active chord index hasn't changed.
+            if (_activeInst && typeof _activeInst.refreshLabels === "function") {
+              _activeInst.refreshLabels();
+            }
           }
         } catch (_) { /* non-fatal */ }
       }
