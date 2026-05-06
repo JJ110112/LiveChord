@@ -25,7 +25,9 @@ LiveChord is a **general-purpose audio analysis tool**. It does not provide, hos
 
 ## Status
 
-LiveChord started as a personal project (NAS + home GPU server) and evolved through an invite-only beta into a public hobby release. Features are stable for everyday practice; AI quality is actively being improved (see [doc/SCALING.md](doc/SCALING.md) and the "AI Quality Pipeline" section in [CLAUDE.md](CLAUDE.md)).
+LiveChord started as a personal project (NAS + home GPU server), ran an invite-only beta from 2026-04-16 to 2026-04-26, and has been **publicly launched** at [livechord.org](https://livechord.org) since 2026-05-03. The beta phase is over — anyone can sign up and use the public instance today, no invite code required. Features are stable for everyday practice; AI quality is actively being improved (see [doc/SCALING.md](doc/SCALING.md) and the "AI Quality Pipeline" section in [CLAUDE.md](CLAUDE.md)).
+
+The public instance is **upload-only**: drop an MP3 / WAV / FLAC / M4A / OGG (≤ 100 MB through the Cloudflare edge) and LiveChord analyses it. YouTube URL ingest was removed from the codebase on 2026-05-04 on hobby-scale legality grounds; CI guards against it being re-introduced. Bring-your-own audio is the only supported source path.
 
 This is a **one-person hobby project** — the author maintains it because they use it daily themselves. Pull requests welcome but bear in mind: low-friction issues that improve the hobby experience get attention faster than ambitious refactors.
 
