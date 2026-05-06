@@ -81,6 +81,11 @@ TRACKS = [
         "license_url": "https://creativecommons.org/publicdomain/mark/1.0/",
         "source_url": "https://www.classicals.de/chopin-op9",
         "vibe": "Romantic classical solo piano",
+        # Manual override: beat_this detects this Nocturne as ~38 BPM in 4/4,
+        # but it's actually 12/8 felt as 3-pulse at ~50 BPM. Without these the
+        # bar grid is wrong (4-beat cards across compound-triple music).
+        "bpm_override": 50.0,
+        "beats_per_bar_override": 3,
     },
 ]
 
@@ -373,6 +378,30 @@ def analyze_track(track: dict) -> dict | None:
               "beat_version", "n_snapped", "bpm_correction"):
         if k in beats_info:
             cdata[k] = beats_info[k]
+
+    # Per-track override: lets us hand-correct cases where beat_this got the
+    # meter / tempo wrong (e.g. compound-triple Nocturne pulse-tracked as
+    # straight 4/4). Rebuilds downbeats[] from beats[] taking every Nth and
+    # overrides bpm so the player displays the user-correct value.
+    bpm_ovr = track.get("bpm_override")
+    bpb_ovr = track.get("beats_per_bar_override")
+    if bpm_ovr or bpb_ovr:
+        if bpm_ovr:
+            cdata["bpm_original_detected"] = cdata.get("bpm")
+            cdata["bpm"] = float(bpm_ovr)
+        if bpb_ovr and cdata.get("beats") and cdata.get("downbeats"):
+            beats_arr = cdata["beats"]
+            first_db = cdata["downbeats"][0]
+            anchor = min(range(len(beats_arr)), key=lambda i: abs(beats_arr[i] - first_db))
+            cdata["downbeats"] = beats_arr[anchor::int(bpb_ovr)]
+        cdata["bar_arbitrator_override"] = {
+            "applied": True,
+            "beats_per_bar": bpb_ovr,
+            "bpm_set": bpm_ovr,
+            "reason": "manual override in scripts/build_demo.py TRACKS",
+        }
+        print(f"  [ovr ] bpm={cdata['bpm']} beats_per_bar={bpb_ovr} "
+              f"(downbeats now {len(cdata.get('downbeats',[]))})")
 
     # Pre-apply bar-aware split so demo cards are bar-sized on first load
     # (no need for the user to open the 自動切分 panel). Mirrors the

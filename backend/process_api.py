@@ -142,6 +142,37 @@ def job_result(job_id: str, username: str = Depends(get_user_or_anon)):
 # Cover art
 # ---------------------------------------------------------------------------
 
+# Lazy demo-cover lookup: build {demo_hash: cover_path} on first miss so
+# replays from 最近播放 cards (which always route through this endpoint with
+# the demo hash, not the demo id) still resolve to the shipped cover JPG.
+_DEMO_COVER_MAP: dict[str, "Path"] | None = None
+
+
+def _get_demo_cover_map() -> dict[str, "Path"]:
+    global _DEMO_COVER_MAP
+    if _DEMO_COVER_MAP is not None:
+        return _DEMO_COVER_MAP
+    from pathlib import Path
+    import json as _json
+    out: dict[str, Path] = {}
+    manifest = Path(__file__).parent.parent / "data" / "demo" / "manifest.json"
+    if manifest.is_file():
+        try:
+            for entry in _json.loads(manifest.read_text(encoding="utf-8")):
+                h = entry.get("hash")
+                cover_url = entry.get("cover_url") or ""
+                # cover_url shape: /static/demo/covers/<id>.jpg → resolve to disk
+                if h and cover_url.startswith("/static/demo/"):
+                    rel = cover_url[len("/static/demo/"):]
+                    p = Path(__file__).parent.parent / "data" / "demo" / rel
+                    if p.is_file():
+                        out[h] = p
+        except Exception:
+            pass
+    _DEMO_COVER_MAP = out
+    return out
+
+
 @router.get("/cover/{hash}")
 def get_cover(hash: str):
     """Serve cover art for a processed song.
@@ -149,11 +180,24 @@ def get_cover(hash: str):
     Public mode with LIVECHORD_USE_R2=1 streams from Cloudflare R2; the
     local-disk path is checked first (so covers extracted before R2 was
     enabled keep working) and falls through to R2 on miss. Personal/beta
-    deploys never touch R2."""
+    deploys never touch R2.
+
+    Demo-song fallback: replay from 最近播放 records the path as
+    ``__hash/<demo_hash>``; the homepage card then asks for cover via this
+    endpoint with that hash, which has no entry under data/covers/. We
+    look the hash up against data/demo/manifest.json to surface the
+    shipped JPG instead of returning a 404 placeholder."""
     cover_path = COVERS_DIR / f"{hash}.jpg"
     if cover_path.is_file():
         return FileResponse(
             cover_path, media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    demo_cover = _get_demo_cover_map().get(hash)
+    if demo_cover is not None:
+        return FileResponse(
+            demo_cover, media_type="image/jpeg",
             headers={"Cache-Control": "public, max-age=86400"},
         )
 
