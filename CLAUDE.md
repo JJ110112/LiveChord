@@ -326,6 +326,7 @@ Anonymous visitors at livechord.org get a "try without uploading" entry: 15 roya
 - Battle stories / past incidents: [doc/QA_BATTLE_STORY.md](doc/QA_BATTLE_STORY.md)
 - **VPS operations runbook** (deploy workflow, yt-dlp cookies, tunnel cutover, gotchas): [doc/OPS.md](doc/OPS.md)
 - **SEO / search visibility plan** (current GSC state, Phase 1-5 ranking roadmap): [doc/SEO.md](doc/SEO.md)
+- **HF Hub + PyPI release** (livechord-beat-refiner + livechord-bar-arbitrator under `livechord-music` org, Apache 2.0; live since 2026-05-09): [doc/HF_RELEASE.md](doc/HF_RELEASE.md). Held-out metrics: [doc/beat_refiner_metrics.md](doc/beat_refiner_metrics.md). Staging dirs (not in git): `c:\Users\hitea\hf-hub-staging\`
 - Productization roadmap (Beta 能跑起來): [doc/PRODUCTIZATION.md](doc/PRODUCTIZATION.md)
 - Scaling roadmap (Beta 成功之後 — 個人/公眾分割、GPU、雲端部署、DB 擴展、i18n): [doc/SCALING.md](doc/SCALING.md)
 - NotebookLM hand-off (accompaniment knowledge doc for AI-coding): [doc/for-notebooklm/](doc/for-notebooklm/)
