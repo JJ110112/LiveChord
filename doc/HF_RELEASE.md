@@ -40,7 +40,7 @@ Both packages release under **Apache 2.0** (code + weights, single license). Rat
 
 These require user-side decisions (HF account, name) and aren't auto-runnable:
 
-1. **HF account / org name choice** — register `livechord` on huggingface.co OR use the existing personal account. Repo URLs become `huggingface.co/<account>/livechord-beat-refiner` etc. **Once chosen it's effectively immutable** because the URL is what the world links to. The `_HUB_REPO_ID` constants in both packages currently say `"livechord/..."` — update if the chosen account differs.
+1. **HF org name** — chose `livechord-music` (the username `livechord` was taken). Repo URLs are `huggingface.co/livechord-music/livechord-beat-refiner` and `huggingface.co/livechord-music/livechord-bar-arbitrator`. The `_HUB_REPO_ID` constants in both packages reflect this.
 2. **`huggingface-cli login`** — paste a write token from huggingface.co/settings/tokens.
 3. **Create the two model repos**:
    ```bash
@@ -56,7 +56,7 @@ These require user-side decisions (HF account, name) and aren't auto-runnable:
    git add .gitattributes README.md LICENSE pyproject.toml requirements.txt \
            livechord_beat_refiner/ examples/ model.safetensors config.json
    git commit -m "Initial release v0.1.0"
-   git remote add origin https://huggingface.co/<account>/livechord-beat-refiner
+   git remote add origin https://huggingface.co/livechord-music/livechord-beat-refiner
    git push origin main
    ```
    Same flow for `livechord-bar-arbitrator` (use `git lfs track "*.onnx"`).
