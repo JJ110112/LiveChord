@@ -1,6 +1,6 @@
 # LiveChord Health Monitor
 
-Periodic health check for both LiveChord servers (NUC personal at `192.168.50.6:8800` and VPS public at `livechord.org`). Runs on PC every 10 min. Two-tier design — cheap rule-based checks first, Hermes summarization only when an anomaly is suspected, Telegram push only when severity warrants it.
+Periodic health check for both LiveChord servers (NUC personal at `192.168.50.6:8800` and VPS public at `livechord.org`). Runs on PC **hourly** via Windows Task Scheduler. Two-tier design — cheap rule-based checks first, Hermes summarization only when an anomaly is suspected, Telegram push only when severity warrants it.
 
 ## Quick start
 
@@ -26,12 +26,18 @@ Periodic health check for both LiveChord servers (NUC personal at `192.168.50.6:
    python check.py --target nuc --inject-error
    ```
    You should get a TG message within ~30s. The fingerprint is cached so re-running won't double-ping.
-7. **Schedule it**:
-   - Open Windows Task Scheduler → Create Basic Task
-   - Trigger: Daily, recur every 1 day, repeat every 10 minutes for 1 day, indefinitely
+7. **Schedule it** — one-liner via `schtasks` (hourly cadence):
+   ```cmd
+   schtasks /Create /TN "LiveChord-Health-Monitor" ^
+     /TR "cmd /c \"C:\Users\hitea\Claude\LiveChord\tools\health_monitor\run-once.bat\"" ^
+     /SC HOURLY /MO 1 /ST 11:30 /F
+   ```
+   Verify with `schtasks /Query /TN LiveChord-Health-Monitor`. Delete with `schtasks /Delete /TN LiveChord-Health-Monitor /F`.
+
+   Or via the Task Scheduler GUI:
+   - Trigger: Daily, recur every 1 day, repeat every 1 hour indefinitely
    - Action: Start a program — `cmd.exe /c "C:\Users\hitea\Claude\LiveChord\tools\health_monitor\run-once.bat"`
    - Settings: ✓ Run task as soon as possible after a scheduled start is missed, ✓ Stop task if runs longer than 5 minutes
-   - Run whether user is logged in or not? Yes (so it runs when screen is locked)
 
 ## How it works
 
