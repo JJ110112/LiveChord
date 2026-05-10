@@ -4988,19 +4988,11 @@
     if (btnMute) btnMute.classList.toggle("is-muted", v === 0);
   });
 
-  // Mute toggle
+  // Speaker icon is popup-only on every platform — no mute-on-click. Earlier
+  // desktop mute toggle was muting the audio before the popup appeared, so
+  // clicking the icon felt like "click → audio dies → popup". Slider-to-0 is
+  // the mute path.
   const btnMute = $("#btnMute");
-  let _preMuteVol = 1;
-  if (btnMute) {
-    btnMute.addEventListener("click", () => {
-      // Touch devices: let the click open the popup only. Users complained
-      // that tapping the speaker silenced audio when they just wanted the
-      // volume slider (field feedback 2026-04-19).
-      if (_isTouchLike) return;
-      audio.muted = !audio.muted;
-      btnMute.classList.toggle("is-muted", audio.muted);
-    });
-  }
 
   // ---- 播放速度 ----
   // Music students typically want to slow down first, not speed up — cycle
