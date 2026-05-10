@@ -231,7 +231,7 @@ from auth_api import get_current_user
 from fastapi import Depends
 
 @router.get("/sections")
-async def detect_sections_api(
+def detect_sections_api(
     path: str = Query(None, description="歌曲路徑 (可選，與 hash 二擇一)"),
     hash: str = Query(None, description="歌曲 hash (可選，與 path 二擇一；hash mode 專用)"),
     author: str = Query(None, description="要載入哪個使用者的標註 (可選)"),

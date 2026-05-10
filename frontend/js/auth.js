@@ -237,7 +237,18 @@
   // Expose for callers (rating prompts, etc.)
   window.LiveChordAuth = {
     getAnonId,
-    isAnonymous: () => !localStorage.getItem(TOKEN_KEY),
+    // In personal mode there is no anonymous-user concept: LAN clients are
+    // auto-admin via the backend's LAN bypass (auth_api.get_current_user),
+    // and non-LAN callers without a token will be redirected to /login by
+    // the 401 handler above. Treating the no-token-on-LAN case as
+    // "anonymous" causes UI gates (e.g. favorite, rating) to short-circuit
+    // with "sign in" toasts even though the backend would happily save —
+    // bug surfaced on NUC 8800 when the favorite click did nothing.
+    isAnonymous: () => {
+      const mode = window._lcDeploymentMode || getModeHint();
+      if (mode === "personal") return false;
+      return !localStorage.getItem(TOKEN_KEY);
+    },
     getMode: () => window._lcDeploymentMode || getModeHint(),
     refreshMode: _refreshModeHint,
     getDisplayName: () =>
