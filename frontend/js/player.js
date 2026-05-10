@@ -2214,11 +2214,14 @@
         // floating layer" rule as between toolbar popups.
         const _bugDlg = document.getElementById("bugReportDialog");
         if (_bugDlg && _bugDlg.style.display !== "none") _bugDlg.style.display = "none";
-        item.classList.toggle("open");
-        // If we just opened, nudge the popup horizontally so it doesn't clip
-        // past the viewport edge when the trigger is near left/right bounds.
-        // CSS max-width caps the width; this handles POSITION overflow.
-        if (item.classList.contains("open")) _clampPopupToViewport(popup);
+        // Open-only — clicking the trigger never closes its own popup. Field
+        // feedback: tapping the speaker icon a second time was dismissing the
+        // volume popup unintentionally (icon sits adjacent to the slider on
+        // mobile; thumb scrubs frequently brushed it). The × close button and
+        // outside-tap remain the close paths.
+        const wasOpen = item.classList.contains("open");
+        item.classList.add("open");
+        if (!wasOpen) _clampPopupToViewport(popup);
         e.stopPropagation();
       });
     }
