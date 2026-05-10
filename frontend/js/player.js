@@ -2236,13 +2236,24 @@
   document.querySelectorAll(".tb-popup").forEach(popup => {
     popup.addEventListener("click", e => e.stopPropagation());
   });
+  // Track pointer-press origin so a drag that releases outside the popup
+  // (e.g. volume slider thumb on mobile — popup is ~140px and slider track
+  // ~114px so the thumb easily escapes the popup edge) doesn't synthesize a
+  // click on <body> that the outside-click handler then uses to close.
+  let _popupPressOrigin = null;
+  document.addEventListener("pointerdown", (e) => {
+    _popupPressOrigin = e.target;
+  }, true);
   document.addEventListener("click", () => {
     document.querySelectorAll(".tb-item.open").forEach(i => {
       // Keep A-B popup open while user is in the middle of setting A→B manually
       // (so they can tap the progress bar to seek, then tap "設定 B").
       if (i.id === "tbAB" && abState === "a_set") return;
+      // Press started inside this popup → drag-release click; don't close.
+      if (_popupPressOrigin && i.contains(_popupPressOrigin)) return;
       i.classList.remove("open");
     });
+    _popupPressOrigin = null;
   });
   function _navUrl(path) {
     const fs = document.fullscreenElement ? "&fs=1" : "";
