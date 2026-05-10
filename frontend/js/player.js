@@ -5031,12 +5031,9 @@
     _syncSpeedUI();
     localStorage.setItem("livechord_speed", s);
   }
-  function _cycleSpeed() {
-    if (_isTouchLike) return;  // touch devices use the popup (see .speed-opt handlers)
-    const i = (speedIdx + 1) % SPEEDS.length;
-    _setSpeed(SPEEDS[i]);
-  }
-  if (btnSpeed) btnSpeed.addEventListener("click", _cycleSpeed);
+  // Click on the speed trigger only opens the popup (handled by the generic
+  // .tb-trigger handler) — no desktop cycle. User feedback: cycling on click
+  // skipped past the speed they wanted; popup-pick is the predictable path.
   document.querySelectorAll(".speed-opt").forEach(b => {
     b.addEventListener("click", (e) => {
       e.stopPropagation();
