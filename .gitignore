@@ -29,6 +29,12 @@ data/settings.json
 data/activity.log
 data/server.log
 data/server.log.*
+
+# Health monitor runtime state (tools/health_monitor/) — heartbeat + cooldown
+# fingerprints rewritten every 10 min, plus rolling local logs.
+tools/health_monitor/state.json
+tools/health_monitor/run.log*
+tools/health_monitor/run.scheduler.log
 data/chord_queue.json
 data/.queue_cursor.json
 # Use /* (not /) so the directory stays in git's view — otherwise the

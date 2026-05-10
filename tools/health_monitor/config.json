@@ -1,0 +1,30 @@
+{
+  "tg_token": "",
+  "tg_chat_id": 0,
+  "ollama_url": "http://localhost:11434",
+  "ollama_model": "hermes3:8b",
+  "cooldown_minutes": 30,
+  "quiet_hours": {
+    "enabled": true,
+    "start": "23:00",
+    "end": "08:00"
+  },
+  "tier2_severity_threshold": "warning",
+  "targets": [
+    {
+      "name": "NUC 8800",
+      "kind": "local-log",
+      "url": "http://192.168.50.6:8800/api/recent",
+      "log_path": "V:/data/server.log",
+      "log_tail_lines": 200
+    },
+    {
+      "name": "VPS livechord.org",
+      "kind": "ssh-journal",
+      "url": "https://livechord.org/api/recent",
+      "ssh_host": "livechord-vps",
+      "journal_unit": "livechord",
+      "log_tail_lines": 200
+    }
+  ]
+}
