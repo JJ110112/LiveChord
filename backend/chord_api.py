@@ -648,6 +648,33 @@ def admin_accompaniment_recompute(
 
 
 # ---------------------------------------------------------------------------
+# admin: chord-detect quarantine list
+# ---------------------------------------------------------------------------
+
+@router.get("/admin/chord/quarantine")
+def admin_chord_quarantine_list(username: str = Depends(get_admin_user)):
+    """List tracks currently quarantined from auto chord detection.
+
+    Tracks land here when chord_detect raises "audio too short / corrupted"
+    (zero-frame audio, decoder lost sync on tiny buffer, etc). The auto
+    worker filters them out at queue-build time so they don't keep retrying
+    every scan cycle and spamming server.log with BTC tracebacks.
+    """
+    from auto_worker import get_quarantine_summary
+    return get_quarantine_summary()
+
+
+@router.post("/admin/chord/quarantine/clear")
+def admin_chord_quarantine_clear(username: str = Depends(get_admin_user)):
+    """Drop the entire quarantine list. Quarantined tracks will re-enter the
+    auto-detect queue on the next scan cycle. Use after fixing the underlying
+    source files (re-rip, re-download, repair container)."""
+    from auto_worker import clear_quarantine
+    n = clear_quarantine()
+    return {"ok": True, "cleared": n}
+
+
+# ---------------------------------------------------------------------------
 # auto-detect (Phase 4)
 # ---------------------------------------------------------------------------
 

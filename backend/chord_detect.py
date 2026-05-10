@@ -149,6 +149,14 @@ def _load_audio_mono(audio_path: str, target_sr: int) -> tuple:
     y = data.mean(axis=1) if data.shape[1] > 1 else data[:, 0]
     if native_sr != target_sr:
         y = librosa.resample(y, orig_sr=native_sr, target_sr=target_sr)
+    # Guard: <0.5s of usable audio means a corrupt/empty container. librosa.cqt
+    # would otherwise raise the cryptic "Input signal length=1 is too short for
+    # 6-octave CQT" — auto_worker classifies this as "音檔太短或損毀" and quarantines.
+    min_samples = int(0.5 * target_sr)
+    if len(y) < min_samples:
+        raise ValueError(
+            f"audio too short: {len(y)} samples after resample (need >= {min_samples})"
+        )
     return y, truncated
 
 

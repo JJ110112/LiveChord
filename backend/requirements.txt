@@ -18,6 +18,11 @@ httpx>=0.27
 python-dotenv>=1.0
 itsdangerous>=2.1
 
+# Concurrent rotating file handler — fixes Windows "WinError 32" when
+# stdlib RotatingFileHandler tries to rename server.log while another
+# process holds even a read handle (tail viewer, IDE, batch script).
+concurrent-log-handler>=0.9.25
+
 # Optional: madmom (dynamic beat tracking for live/rubato recordings).
 # Released wheel (0.16.1, 2018) breaks on Python 3.10+ because it imports
 # collections.MutableSequence; the unreleased master branch is patched.

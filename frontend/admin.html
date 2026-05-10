@@ -349,6 +349,13 @@
         <button id="btnAccRecompute" title="Clear accompaniment cache for one song; next playback regenerates fresh" data-i18n-attr="title=admin.acc.recompute_tip" data-i18n="admin.acc.recompute_btn">Recompute</button>
         <span id="accRecomputeStatus" style="font-size:11px;color:var(--text-dim);"></span>
       </div>
+      <div class="actions" style="margin-bottom:8px; display:flex; gap:6px; align-items:center; padding:6px; border:1px dashed var(--border); border-radius:4px;">
+        <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;">🚫 隔離清單</span>
+        <span id="quarantineSummary" style="font-size:12px; color:var(--text-dim); flex:1;">尚未載入</span>
+        <button id="btnQuarantineRefresh" title="Show tracks skipped by auto chord detection due to short/corrupt audio">Refresh</button>
+        <button id="btnQuarantineClear" title="Re-allow all quarantined tracks on next auto-scan">清除</button>
+        <span id="quarantineStatus" style="font-size:11px;color:var(--text-dim);"></span>
+      </div>
       <div id="trackList" style="max-height:50vh;overflow-y:auto; margin-bottom:8px;">
         <span style="color:var(--text-dim);font-size:12px" data-i18n="admin.chords.expand_to_load">Expand to load</span>
       </div>
@@ -1143,6 +1150,51 @@ window._lcIsBeta = (function() {
       status.textContent = `✓ deleted ${data.deleted} cache files`;
     } catch (e) {
       status.textContent = _t("admin.toast.batch_midi_failed", {err: e.message || e});
+    }
+  });
+
+  async function _loadQuarantine() {
+    const summary = $("#quarantineSummary");
+    const status = $("#quarantineStatus");
+    summary.textContent = "載入中…";
+    status.textContent = "";
+    try {
+      const res = await fetch("/api/admin/chord/quarantine");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        summary.textContent = `查詢失敗: ${res.status} ${data.detail || res.statusText}`;
+        return;
+      }
+      const n = data.count || 0;
+      if (n === 0) {
+        summary.textContent = "目前沒有隔離項目";
+      } else {
+        const sample = (data.entries || []).slice(0, 3).map(e => {
+          const name = (e.path || "").split("/").pop().replace(/\.flac$/i, "");
+          return name;
+        }).join("、");
+        summary.textContent = `${n} 首已隔離${sample ? "（例：" + sample + "）" : ""}`;
+      }
+    } catch (e) {
+      summary.textContent = `查詢失敗: ${e.message || e}`;
+    }
+  }
+  $("#btnQuarantineRefresh").addEventListener("click", _loadQuarantine);
+  $("#btnQuarantineClear").addEventListener("click", async () => {
+    const status = $("#quarantineStatus");
+    if (!confirm("清除隔離清單後，這些曲目下次自動掃描會再次嘗試偵測。確認？")) return;
+    status.textContent = "清除中…";
+    try {
+      const res = await fetch("/api/admin/chord/quarantine/clear", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        status.textContent = `失敗: ${res.status} ${data.detail || res.statusText}`;
+        return;
+      }
+      status.textContent = `✓ 已清除 ${data.cleared} 項`;
+      _loadQuarantine();
+    } catch (e) {
+      status.textContent = `失敗: ${e.message || e}`;
     }
   });
 

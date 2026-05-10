@@ -23,6 +23,11 @@ CACHE_FILE = DATA_DIR / "library_cache.json"
 CHORDS_DIR = DATA_DIR / "chords"
 LOG_FILE = DATA_DIR / "activity.log"
 QUEUE_CURSOR_FILE = DATA_DIR / ".queue_cursor.json"
+# Quarantine list for tracks that fail with "audio too short / corrupted".
+# Persisted across restarts; filtered out at queue-build time so the same 3-5
+# corrupt files don't keep retrying every auto-scan and spamming the log.
+# Recover via POST /api/admin/chord/quarantine/clear (admin endpoint).
+QUARANTINE_FILE = DATA_DIR / "chord_detect_quarantine.json"
 
 # ---------------------------------------------------------------------------
 # 設定
@@ -471,6 +476,51 @@ def _save_queue_cursor(data: dict):
         pass
 
 
+def _load_quarantine() -> dict:
+    """Read the quarantine list (path -> {reason, ts}). Empty dict on missing/corrupt."""
+    try:
+        if QUARANTINE_FILE.is_file():
+            return json.loads(QUARANTINE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _save_quarantine(data: dict) -> None:
+    try:
+        QUARANTINE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = QUARANTINE_FILE.with_suffix(QUARANTINE_FILE.suffix + ".tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, QUARANTINE_FILE)
+    except Exception as e:
+        log.warning(f"_save_quarantine failed: {e}")
+
+
+def _add_to_quarantine(track_path: str, reason: str) -> None:
+    data = _load_quarantine()
+    data[track_path] = {
+        "reason": reason,
+        "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    _save_quarantine(data)
+
+
+def clear_quarantine() -> int:
+    """Drop the quarantine list. Returns number of entries cleared.
+    Called by the admin endpoint to retry previously-failed tracks."""
+    data = _load_quarantine()
+    n = len(data)
+    _save_quarantine({})
+    return n
+
+
+def get_quarantine_summary() -> dict:
+    """Return {count, entries: [{path, reason, ts}]} for admin UI."""
+    data = _load_quarantine()
+    entries = [{"path": k, **v} for k, v in data.items()]
+    return {"count": len(entries), "entries": entries}
+
+
 def _get_unanalyzed_tracks(settings: dict, midi_index: list = None) -> tuple:
     """取得尚未偵測和弦的曲目列表。
 
@@ -519,8 +569,9 @@ def _get_unanalyzed_tracks(settings: dict, midi_index: list = None) -> tuple:
         midi_index = _build_midi_index()
 
     # ---- Pass 1：預過濾 ----
-    # 先把 (a) skip_genres 與 (b) active_groups 排除掉，留下「真正候選」清單。
-    # 這樣主迴圈的進度分母就會反映使用者實際選的範圍，而不是整個 library_cache。
+    # 先把 (a) skip_genres、(b) active_groups、(c) 已隔離的損毀檔排除掉，
+    # 留下「真正候選」清單。這樣主迴圈的進度分母就會反映使用者實際選的範圍。
+    quarantined_set = set(_load_quarantine().keys())
     _worker_state["current_task"] = f"過濾候選 0/{len(tracks)}"
     relevant = []
     for i, t in enumerate(tracks):
@@ -531,6 +582,8 @@ def _get_unanalyzed_tracks(settings: dict, midi_index: list = None) -> tuple:
             continue
         track_path = t.get("path", "")
         if not track_path:
+            continue
+        if track_path in quarantined_set:
             continue
         if split_group:
             try:
@@ -862,6 +915,22 @@ def _do_auto_chord_detect(settings: dict):
         lock.release()
 
 
+_SHORT_AUDIO_REASON = "音檔太短或損毀（無可用 PCM frames）"
+
+
+def _is_short_audio_error(e: Exception) -> bool:
+    """True if the error is the "audio too short / unreadable" class.
+    Covers chord_detect._load_audio_mono's explicit ValueError + librosa's
+    ParameterError when CQT is fed a near-empty buffer."""
+    name = type(e).__name__
+    msg = (str(e) or "").lower()
+    if name == "ValueError" and "audio too short" in msg:
+        return True
+    if name == "ParameterError" and "too short" in msg and "cqt" in msg:
+        return True
+    return False
+
+
 def _classify_detect_error(e: Exception, full_path: str) -> str:
     """把底層例外轉成人話，特別標示 0-byte 與損毀流這兩個最常見的原因。"""
     name = type(e).__name__
@@ -877,6 +946,9 @@ def _classify_detect_error(e: Exception, full_path: str) -> str:
 
     if size_bytes == 0:
         return "檔案為 0 bytes（下載失敗或被截斷），建議重新取得"
+
+    if _is_short_audio_error(e):
+        return _SHORT_AUDIO_REASON
 
     msg_low = msg.lower()
     if "lost sync" in msg_low or "decoder lost sync" in msg_low:
@@ -1026,6 +1098,12 @@ def _auto_chord_detect_loop(settings: dict, batch: list, unanalyzed: list, lock,
         except Exception as e:
             reason = _classify_detect_error(e, full)
             add_log("ERROR", f"偵測失敗: {name} — {reason}")
+            # Persistent quarantine for tracks with no usable audio frames.
+            # Without this they re-enter the queue every auto-scan and spam
+            # the log with the same BTC traceback. Recover via admin endpoint.
+            if _is_short_audio_error(e):
+                _add_to_quarantine(track_path, _SHORT_AUDIO_REASON)
+                add_log("WARN", f"已加入隔離清單: {name}（後續掃描將自動跳過，可於管理頁清除）")
 
         # 每首之間暫停，讓 event loop 有時間回應前端請求
         delay = settings.get("auto_chord_delay_seconds", 1.0)

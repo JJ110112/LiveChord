@@ -16,7 +16,7 @@ except ImportError:
 
 import ipaddress
 import logging
-from logging.handlers import RotatingFileHandler
+import sys as _sys
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -29,15 +29,35 @@ from starlette.middleware.sessions import SessionMiddleware
 # Logging: rotate to data/server.log (10 MB × 5 backups) + keep stdout so
 # the uvicorn cmd windows still show live output. Before this, closing the
 # stdout window meant no post-hoc debugging trail — see stress-test report.
+#
+# Use ConcurrentRotatingFileHandler (concurrent-log-handler package) —
+# canonical Windows fix for "PermissionError: WinError 32" during rollover
+# when another process (tail viewer, IDE, batch script) has the log open.
+# Falls back to stdlib RotatingFileHandler if the package is missing so
+# the server still boots on a fresh NUC clone.
 # ---------------------------------------------------------------------------
 _LOG_DIR = Path(__file__).parent.parent / "data"
 _LOG_DIR.mkdir(exist_ok=True)
 _log_formatter = logging.Formatter(
     "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
-_file_h = RotatingFileHandler(
-    _LOG_DIR / "server.log", maxBytes=10_000_000, backupCount=5, encoding="utf-8"
-)
+try:
+    from concurrent_log_handler import ConcurrentRotatingFileHandler
+    _file_h = ConcurrentRotatingFileHandler(
+        str(_LOG_DIR / "server.log"),
+        maxBytes=10_000_000, backupCount=5, encoding="utf-8", use_gzip=False,
+    )
+except ImportError:
+    from logging.handlers import RotatingFileHandler
+    _file_h = RotatingFileHandler(
+        _LOG_DIR / "server.log", maxBytes=10_000_000, backupCount=5, encoding="utf-8"
+    )
+    print(
+        "[livechord.main] concurrent-log-handler not installed; "
+        "using stdlib RotatingFileHandler. Run `pip install concurrent-log-handler` "
+        "to silence Windows rollover PermissionError noise.",
+        file=_sys.stderr,
+    )
 _file_h.setFormatter(_log_formatter)
 _stream_h = logging.StreamHandler()
 _stream_h.setFormatter(_log_formatter)
@@ -64,7 +84,13 @@ from feedback_api import router as feedback_router
 from analytics_api import router as analytics_router
 from process_api import router as process_router
 from oauth_api import router as oauth_router
-from demo_api import router as demo_router
+# demo_api is optional — V:\ NUC personal-mode deploy may lack the module
+# (demo songs feature is for the public landing on livechord.org). Without
+# this guard, an out-of-sync NUC clone fails to boot.
+try:
+    from demo_api import router as demo_router
+except ImportError:
+    demo_router = None
 import auth_api
 from fastapi import Depends
 import auto_worker
@@ -168,7 +194,8 @@ app.include_router(oauth_router)
 app.include_router(feedback_router)
 app.include_router(analytics_router)
 app.include_router(process_router)
-app.include_router(demo_router)
+if demo_router is not None:
+    app.include_router(demo_router)
 
 # ---------------------------------------------------------------------------
 # Admin IP 限制 (beta mode 時只允許 LAN 存取 /admin 相關路徑)
