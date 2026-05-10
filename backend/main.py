@@ -71,6 +71,13 @@ for _name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
     _lg.propagate = False
     _lg.setLevel(logging.INFO)
 
+# Suppress harmless Windows asyncio "connection_lost" noise on streaming
+# endpoints — fires every time a browser tab closes mid-stream or a mobile
+# loses signal during /api/track/stream. Used to live in run.py before the
+# 2026-05-10 logging refactor; reinstated after the health monitor mistook
+# these for real errors. ConnectionResetError WinError 10054 is benign.
+logging.getLogger("asyncio").setLevel(logging.CRITICAL)
+
 from music_api import router as music_router
 from chord_api import router as chord_router
 from chord_batch import router as chord_batch_router
