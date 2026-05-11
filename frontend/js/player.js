@@ -4747,7 +4747,10 @@
         // Cards that are NOT bar-aligned (e.g. 0.73-bar passing chords)
         // fall through to the realBeats path — those genuinely have an
         // odd beat count and should render as such.
-        const expectedBeatsForCard = (spb > 0) ? (durSec / spb) : tsBeats;
+        const songBpm = (chordData && typeof chordData.bpm === "number" && chordData.bpm > 0)
+          ? chordData.bpm : (60.0 / Math.max(0.001, currentSecPerBeat));
+        const nominalSpb = (60.0 / songBpm) / (_currentBpmMult || 1.0);
+        const expectedBeatsForCard = (nominalSpb > 0) ? (durSec / nominalSpb) : ((spb > 0) ? (durSec / spb) : tsBeats);
         const barsApprox = expectedBeatsForCard / tsBeats;
         const roundedBars = Math.round(barsApprox);
         const isBarAligned = roundedBars >= 1 && Math.abs(barsApprox - roundedBars) < 0.20;
