@@ -605,6 +605,7 @@ class ChordPostprocessRequest(BaseModel):
     apply_bar_arbitrator: bool = True
     apply_ghost_filter: bool = True
     force_arbitrator: bool = False  # passes through to arbitrate(force=...)
+    ghost_mode: str = "strict"  # "strict" (default) or "loose" — see chord_detect.filter_ghost_boundary_chords
 
 
 @router.post("/admin/chord/postprocess")
@@ -685,6 +686,7 @@ def admin_chord_postprocess(
                 data.get("chords", []),
                 data.get("downbeats", []),
                 data.get("bpm"),
+                mode=req.ghost_mode,
             )
             if ghost_meta.get("applied"):
                 data["chords"] = filtered

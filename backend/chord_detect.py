@@ -329,29 +329,41 @@ def _merge_segments(raw_segments: list, min_dur: float = 0.5) -> list:
 # 鬼影邊界和弦過濾（post beat-snap）
 # ---------------------------------------------------------------------------
 
-def filter_ghost_boundary_chords(chords: list, downbeats: list, bpm) -> tuple:
+def filter_ghost_boundary_chords(chords: list, downbeats: list, bpm,
+                                 mode: str = "strict") -> tuple:
     """過濾「跨小節邊界的 BTC quality 抖動」造成的 1 拍鬼影和弦。
 
     BTC 偶爾會把下一個小節的和弦 quality 提早 1 拍洩漏到上一小節最後一拍
     （e.g. ``Abmaj7(3) + Fm7(1) + Fm7(4)`` 應為 ``Abmaj7(4) + Fm7(4)``）。
     beat_snap 只把邊界對齊到拍線，不會合併不同名片段，所以這個鬼影會留下。
 
-    四閘 AND（保守，避免誤殺真正的切分音）：
+    Mode ``"strict"`` (default — used at ingest, four閘 AND):
       1. 鬼影時長 ≤ 1.1 拍
       2. 鬼影 end ≈ downbeat（±¼ 拍）
       3. 左鄰時長 ≥ 2 拍（filter 不會把短-短-長序列合掉）
-      4. 鬼影 chord name == 下一個 chord name（與下一拍的真正和弦同名 →
-         確認是 BTC 把下一個和弦的 quality 提早洩漏，不是真的中間插入）
+      4. 鬼影 chord name == 下一個 chord name
+
+    Mode ``"loose"`` (admin opt-in — drops gate 4 and relaxes 1+2):
+      1. 鬼影時長 ≤ 2.1 拍 (寬鬆 1 倍)
+      2. 鬼影 end ≈ downbeat（±½ 拍）
+      3. 左鄰時長 ≥ 2 拍 (不變)
+      4. **不**要求 ghost.name == next.name
+
+    Loose mode 風險：可能把真實的 1-2 拍 V7 過門 (例如 Cm-G7-Cm) 合併掉。
+    僅供 admin 對個別歌手動觸發，預設 strict。
 
     Returns:
         (filtered_chords, meta_dict)。filtered_chords 是新 list（原 list 不被
         mutate）；meta_dict 結構：
-          {"applied": bool, "removed_count": int,
+          {"applied": bool, "mode": "strict"|"loose", "removed_count": int,
            "removed": [{"time", "end", "chord", "merged_into"}],
            "reason": str (僅在 applied=False 時)}
     """
-    meta = {"applied": False, "removed_count": 0, "removed": []}
+    meta = {"applied": False, "mode": mode, "removed_count": 0, "removed": []}
 
+    if mode not in ("strict", "loose"):
+        meta["reason"] = f"unknown-mode:{mode}"
+        return list(chords), meta
     if not chords or len(chords) < 2:
         meta["reason"] = "too-few-chords"
         return list(chords), meta
@@ -368,9 +380,15 @@ def filter_ghost_boundary_chords(chords: list, downbeats: list, bpm) -> tuple:
 
     import bisect
     beat_dur = 60.0 / bpm_f
-    ghost_max = 1.1 * beat_dur
+    if mode == "loose":
+        ghost_max = 2.1 * beat_dur
+        snap_tol = 0.5 * beat_dur
+        require_name_match = False
+    else:
+        ghost_max = 1.1 * beat_dur
+        snap_tol = 0.25 * beat_dur
+        require_name_match = True
     left_min = 2.0 * beat_dur
-    snap_tol = 0.25 * beat_dur
 
     db = sorted(float(t) for t in downbeats if t is not None)
 
@@ -393,11 +411,16 @@ def filter_ghost_boundary_chords(chords: list, downbeats: list, bpm) -> tuple:
         left = out[-1]
         left_dur = float(left["end"]) - float(left["time"])
 
-        if (cur_dur <= ghost_max
-                and _at_downbeat(cur_e)
-                and left.get("chord") != cur_name
-                and left_dur >= left_min
-                and nxt_name == cur_name):
+        gates_ok = (
+            cur_dur <= ghost_max
+            and _at_downbeat(cur_e)
+            and left.get("chord") != cur_name
+            and left_dur >= left_min
+        )
+        if require_name_match:
+            gates_ok = gates_ok and (nxt_name == cur_name)
+
+        if gates_ok:
             meta["removed"].append({
                 "time": round(cur_t, 3),
                 "end": round(cur_e, 3),
