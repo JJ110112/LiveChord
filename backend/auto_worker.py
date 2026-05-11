@@ -29,6 +29,11 @@ QUEUE_CURSOR_FILE = DATA_DIR / ".queue_cursor.json"
 # Recover via POST /api/admin/chord/quarantine/clear (admin endpoint).
 QUARANTINE_FILE = DATA_DIR / "chord_detect_quarantine.json"
 
+# MIDI/Chordify files were useful as early reference baselines, but automatic
+# fuzzy MIDI matches can be wrong-song or wrong-transposition. Keep MIDI import
+# as an explicit manual tool; batch auto-detection should prefer BTC audio.
+AUTO_MIDI_IMPORT_ENABLED = False
+
 # ---------------------------------------------------------------------------
 # 設定
 # ---------------------------------------------------------------------------
@@ -629,13 +634,15 @@ def _get_unanalyzed_tracks(settings: dict, midi_index: list = None) -> tuple:
         track_path = t.get("path", "")  # 已在 Pass 1 驗證
         track_hash = song_hash(track_path)
 
-        kind = None  # "new" | "upgrade" | None
+        kind = None  # "new" | None
         if track_hash not in chord_hashes:
             kind = "new"
         else:
             entry = _chord_index_cache.get(track_hash) if _chord_index_cache else None
             src = (entry.get("source") if entry else "") or ""
-            if src not in ("chordify", "midi"):
+            # MIDI is no longer an automatic "upgrade" over BTC. Wrong fuzzy
+            # matches can regress both key and progression; keep MIDI manual.
+            if AUTO_MIDI_IMPORT_ENABLED and src not in ("chordify", "midi"):
                 # btc 或無來源 → 只有 MIDI 索引中找得到匹配時才升級
                 track_name = t.get("name") or t.get("title", "")
                 if _lookup_midi(track_name, midi_index):
@@ -993,7 +1000,7 @@ def _auto_chord_detect_loop(settings: dict, batch: list, unanalyzed: list, lock,
                 pass
 
         # 優先用 MIDI（從預建 index 查表，O(M)）
-        midi_path = _lookup_midi(name, midi_index)
+        midi_path = _lookup_midi(name, midi_index) if AUTO_MIDI_IMPORT_ENABLED else None
         if midi_path:
             try:
                 import sys
