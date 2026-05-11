@@ -1,6 +1,7 @@
 """和弦 API — 和弦資訊、和弦圖、和弦譜 CRUD、自動偵測、批次偵測"""
 
 import json
+import logging
 import os
 import re
 import time
@@ -8,6 +9,8 @@ import asyncio
 from pathlib import Path
 from threading import Lock
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_name(name: str) -> str:
@@ -240,6 +243,112 @@ async def get_chords_by_hash(hash: str = Query(..., min_length=8, max_length=16)
     return data
 
 
+def _resolve_correction_baseline(path: str, username: str):
+    """Return ``(chords_list, source_version_label)`` to diff a fresh save against.
+
+    Priority: the user's prior personal version > the official BTC version.
+    Returns ``(None, None)`` when neither exists (first save by anyone — no
+    diff worth computing, all chords would look like inserts).
+    """
+    h = song_hash(path)
+    user_file = DATA_DIR / "users" / username / "chords" / f"{h}.json"
+    if user_file.is_file():
+        try:
+            data = json.loads(user_file.read_text(encoding="utf-8"))
+            return data.get("chords") or [], username
+        except Exception:
+            pass
+    official = chord_file_for(h)
+    if official.is_file():
+        try:
+            data = json.loads(official.read_text(encoding="utf-8"))
+            return data.get("chords") or [], "official"
+        except Exception:
+            pass
+    return None, None
+
+
+def _diff_chord_arrays(before: list, after: list, *, tol_sec: float = 0.1) -> list:
+    """Compute the minimal correction diff between two chord arrays.
+
+    Pairing heuristic: scan both arrays in time order; treat two entries as
+    "same chord" when their ``time`` differs by ≤ ``tol_sec``. From there:
+      - same time, different name  → ``kind='name'``
+      - same time, name same, end differs >tol → ``kind='time'``
+      - in before, no match in after → ``kind='delete'``
+      - in after,  no match in before → ``kind='insert'``
+
+    O(n+m) walk. Returns a list of dicts ready for record_chord_corrections().
+    """
+    if not isinstance(before, list) or not isinstance(after, list):
+        return []
+    diffs = []
+    i = j = 0
+    while i < len(before) and j < len(after):
+        b = before[i]
+        a = after[j]
+        bt = float(b.get("time", 0.0))
+        at = float(a.get("time", 0.0))
+        if abs(bt - at) <= tol_sec:
+            bn = b.get("chord")
+            an = a.get("chord")
+            be = float(b.get("end", bt))
+            ae = float(a.get("end", at))
+            if bn != an:
+                diffs.append({
+                    "kind": "name",
+                    "chord_time": round(at, 3),
+                    "before_name": bn,
+                    "after_name": an,
+                })
+            elif abs((be - bt) - (ae - at)) > tol_sec:
+                diffs.append({
+                    "kind": "time",
+                    "chord_time": round(at, 3),
+                    "before_name": bn,
+                    "after_name": an,
+                    "before_dur": round(be - bt, 3),
+                    "after_dur": round(ae - at, 3),
+                })
+            i += 1
+            j += 1
+        elif bt < at:
+            diffs.append({
+                "kind": "delete",
+                "chord_time": round(bt, 3),
+                "before_name": b.get("chord"),
+                "after_name": None,
+            })
+            i += 1
+        else:
+            diffs.append({
+                "kind": "insert",
+                "chord_time": round(at, 3),
+                "before_name": None,
+                "after_name": a.get("chord"),
+            })
+            j += 1
+    while i < len(before):
+        b = before[i]
+        diffs.append({
+            "kind": "delete",
+            "chord_time": round(float(b.get("time", 0.0)), 3),
+            "before_name": b.get("chord"),
+            "after_name": None,
+        })
+        i += 1
+    while j < len(after):
+        a = after[j]
+        diffs.append({
+            "kind": "insert",
+            "chord_time": round(float(a.get("time", 0.0)), 3),
+            "before_name": None,
+            "after_name": a.get("chord"),
+        })
+        j += 1
+    return diffs
+
+
 @router.post("/chords")
 async def save_chords(sheet: ChordSheet, username: str = Depends(get_current_user)):
     """儲存和弦譜至個人專屬空間。
@@ -288,6 +397,36 @@ async def save_chords(sheet: ChordSheet, username: str = Depends(get_current_use
         encoding="utf-8",
     )
     os.replace(tmp, chords_file)
+
+    # Capture user corrections as training signal — diff against the
+    # baseline (the user's prior version if it existed, else the official BTC
+    # output). Failure non-fatal so a feedback-db blip never blocks save.
+    try:
+        baseline_chords, baseline_version = _resolve_correction_baseline(
+            sheet.path, username,
+        )
+        if baseline_chords is not None:
+            diffs = _diff_chord_arrays(baseline_chords, payload.get("chords") or [])
+            if diffs:
+                from feedback_api import record_chord_corrections
+                ts = time.time()
+                records = []
+                for d in diffs:
+                    d_rec = dict(d)
+                    d_rec.update({
+                        "song_hash": song_hash(sheet.path),
+                        "ts": ts,
+                        "username": username,
+                        "bpm": payload.get("bpm"),
+                        "key": payload.get("key"),
+                        "source_version": baseline_version,
+                    })
+                    records.append(d_rec)
+                record_chord_corrections(records)
+    except Exception as e:
+        logger.warning("chord_corrections persist failed for %s: %s",
+                       sheet.path, e)
+
     return {"ok": True, "path": sheet.path, "version": username}
 
 
@@ -593,6 +732,80 @@ def admin_bar_restore(req: BarRestoreRequest, username: str = Depends(get_admin_
 
 
 # ---------------------------------------------------------------------------
+# admin: read-only chord_corrections inspection. The diffs are persisted by
+# /chords POST as users edit; these GETs let admins audit accumulation and
+# (later) export to a fine-tuning corpus.
+# ---------------------------------------------------------------------------
+
+@router.get("/admin/chord/corrections")
+def admin_chord_corrections_list(
+    song_hash: Optional[str] = Query(None),
+    username: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=1000),
+    _: str = Depends(get_admin_user),
+):
+    """Recent chord_corrections rows. Optionally filter by song_hash or username."""
+    from feedback_api import _get_conn
+    conds = []
+    args = []
+    if song_hash:
+        conds.append("song_hash = ?")
+        args.append(song_hash)
+    if username:
+        conds.append("username = ?")
+        args.append(username)
+    where = (" WHERE " + " AND ".join(conds)) if conds else ""
+    sql = (
+        "SELECT id, song_hash, ts, username, kind, chord_time, before_name, "
+        "after_name, before_dur, after_dur, bpm, key, source_version "
+        "FROM chord_corrections" + where + " ORDER BY id DESC LIMIT ?"
+    )
+    args.append(limit)
+    with _get_conn() as conn:
+        rows = conn.execute(sql, args).fetchall()
+    return {"ok": True, "count": len(rows), "rows": [dict(r) for r in rows]}
+
+
+@router.get("/admin/chord/corrections/stats")
+def admin_chord_corrections_stats(_: str = Depends(get_admin_user)):
+    """Aggregate stats across all chord_corrections."""
+    from feedback_api import _get_conn
+    with _get_conn() as conn:
+        total = conn.execute("SELECT COUNT(*) AS c FROM chord_corrections").fetchone()["c"]
+        by_kind = {
+            r["kind"]: r["c"]
+            for r in conn.execute(
+                "SELECT kind, COUNT(*) AS c FROM chord_corrections GROUP BY kind"
+            ).fetchall()
+        }
+        top_songs = [
+            {"song_hash": r["song_hash"], "edits": r["c"]}
+            for r in conn.execute(
+                "SELECT song_hash, COUNT(*) AS c FROM chord_corrections "
+                "GROUP BY song_hash ORDER BY c DESC LIMIT 20"
+            ).fetchall()
+        ]
+        top_users = [
+            {"username": r["username"], "edits": r["c"]}
+            for r in conn.execute(
+                "SELECT username, COUNT(*) AS c FROM chord_corrections "
+                "GROUP BY username ORDER BY c DESC LIMIT 10"
+            ).fetchall()
+        ]
+        n_distinct_songs = conn.execute(
+            "SELECT COUNT(DISTINCT song_hash) AS c FROM chord_corrections"
+        ).fetchone()["c"]
+    return {
+        "ok": True,
+        "total": total,
+        "n_distinct_songs": n_distinct_songs,
+        "by_kind": by_kind,
+        "top_edited_songs": top_songs,
+        "top_users": top_users,
+    }
+
+
+# ---------------------------------------------------------------------------
 # admin: re-run post-BTC processing (bar_arbitrator + ghost filter) without
 # audio. Lets us backfill old chord JSONs that were ingested before the new
 # pipeline shipped (bar_correction:False, ghost_chord_filter:None) when the
@@ -606,6 +819,7 @@ class ChordPostprocessRequest(BaseModel):
     apply_ghost_filter: bool = True
     force_arbitrator: bool = False  # passes through to arbitrate(force=...)
     ghost_mode: str = "strict"  # "strict" (default) or "loose" — see chord_detect.filter_ghost_boundary_chords
+    apply_markov_rescore: bool = False  # post-BTC Markov quality swap (see ai/chord_markov_rescorer.py)
 
 
 @router.post("/admin/chord/postprocess")
@@ -694,6 +908,22 @@ def admin_chord_postprocess(
             summary["ghost_chord_filter"] = ghost_meta
         except Exception as e:
             summary["ghost_chord_filter"] = {"applied": False, "error": f"{type(e).__name__}: {e}"}
+
+    if req.apply_markov_rescore:
+        try:
+            from ai.chord_markov_rescorer import rescore_chords
+            from ai.markov import get_predictor
+            rescored, mk_meta = rescore_chords(
+                data.get("chords", []),
+                data.get("key", "C"),
+                get_predictor(),
+            )
+            if mk_meta.get("applied"):
+                data["chords"] = rescored
+                data["markov_rescoring"] = mk_meta
+            summary["markov_rescoring"] = mk_meta
+        except Exception as e:
+            summary["markov_rescoring"] = {"applied": False, "error": f"{type(e).__name__}: {e}"}
 
     summary["n_chords_after"] = len(data.get("chords") or [])
     summary["n_downbeats_after"] = len(data.get("downbeats") or [])

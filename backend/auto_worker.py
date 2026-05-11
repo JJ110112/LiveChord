@@ -49,6 +49,11 @@ DEFAULT_SETTINGS = {
                                         # (Phase 1 — runs before bar_arbitrator). Gate inside phase1_refine
                                         # ensures refinement is only applied when it actually beats input
                                         # alignment by ≥0.02; otherwise falls back.
+    "markov_rescoring_enabled": False,  # post-BTC Markov chord-progression rescorer
+                                        # (chord_markov_rescorer.py). Default OFF — corpus is
+                                        # currently BTC-self-trained so quality biases mirror
+                                        # BTC's. Enable once Markov is retrained from human-
+                                        # corrected versions (chord_corrections accumulation).
 }
 
 

@@ -371,6 +371,33 @@ def _save_chord_json(job: ProcessJob, chords: list, key: str,
     except Exception as e:
         logger.warning("ghost_chord_filter failed for %s: %s", job.job_id, e)
 
+    # Markov chord-progression rescoring — quality-only swaps when BTC's
+    # predicted chord has very low Markov P given prior chord + key, AND a
+    # same-root different-quality alternative is significantly more likely.
+    # Disabled by default — see chord_markov_rescorer.py docstring for the
+    # honest "BTC-self-trained corpus" caveat.
+    try:
+        from config import is_personal_mode, is_public_mode
+        if is_personal_mode() or is_public_mode():
+            from auto_worker import load_settings
+            if load_settings().get("markov_rescoring_enabled", False):
+                from ai.chord_markov_rescorer import rescore_chords
+                from ai.markov import get_predictor
+                rescored, mk_meta = rescore_chords(
+                    sheet.get("chords", []),
+                    sheet.get("key", "C"),
+                    get_predictor(),
+                )
+                if mk_meta.get("applied"):
+                    sheet["chords"] = rescored
+                    sheet["markov_rescoring"] = mk_meta
+                    logger.info(
+                        "[markov_rescore] %s swapped %d chord(s)",
+                        job.job_id, mk_meta["swaps_count"],
+                    )
+    except Exception as e:
+        logger.warning("markov_rescoring failed for %s: %s", job.job_id, e)
+
     ensure_chord_bucket(hash_val)
     out_file = chord_file_for(hash_val)
     out_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")

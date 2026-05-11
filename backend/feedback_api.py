@@ -65,10 +65,77 @@ def init_feedback_db():
                 created_at TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS chord_corrections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                song_hash TEXT NOT NULL,
+                ts REAL NOT NULL,
+                username TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK(kind IN ('name','time','insert','delete')),
+                chord_time REAL,
+                before_name TEXT,
+                after_name TEXT,
+                before_dur REAL,
+                after_dur REAL,
+                bpm REAL,
+                key TEXT,
+                source_version TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_chord_corrections_hash ON chord_corrections(song_hash)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_chord_corrections_ts ON chord_corrections(ts)")
         conn.commit()
 
 
 init_feedback_db()
+
+
+# ---------------------------------------------------------------------------
+# chord_corrections — used by /api/chords POST to capture human edits as
+# training signal. Available regardless of mode (personal/beta/public) so
+# personal-mode edits also accumulate. The /api/feedback/* endpoints below
+# are still mode-gated.
+# ---------------------------------------------------------------------------
+
+def record_chord_corrections(records: list) -> int:
+    """Batch-insert chord_corrections rows. Returns number of rows inserted.
+
+    Each record dict shape:
+      {song_hash, ts, username, kind, chord_time?, before_name?, after_name?,
+       before_dur?, after_dur?, bpm?, key?, source_version?}
+
+    Failure is non-fatal at the call-site (caller wraps in try/except) — this
+    helper itself raises on schema/connect errors so the caller knows.
+    """
+    if not records:
+        return 0
+    rows = [
+        (
+            r.get("song_hash"),
+            r.get("ts") or time.time(),
+            r.get("username"),
+            r.get("kind"),
+            r.get("chord_time"),
+            r.get("before_name"),
+            r.get("after_name"),
+            r.get("before_dur"),
+            r.get("after_dur"),
+            r.get("bpm"),
+            r.get("key"),
+            r.get("source_version"),
+        )
+        for r in records
+    ]
+    with _get_conn() as conn:
+        conn.executemany(
+            """INSERT INTO chord_corrections
+               (song_hash, ts, username, kind, chord_time, before_name,
+                after_name, before_dur, after_dur, bpm, key, source_version)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            rows,
+        )
+        conn.commit()
+    return len(rows)
 
 
 # ---------------------------------------------------------------------------
