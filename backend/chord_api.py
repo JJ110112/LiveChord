@@ -1074,18 +1074,10 @@ async def detect_chords_api(path: str = Query(...)):
     if not os.path.isfile(full):
         raise HTTPException(status_code=404, detail="檔案不存在")
 
-    # 如果已有 chordify 來源的和弦，不要用 BTC 覆蓋
+    # Player Tools -> Detect is an explicit user re-analysis request. Older
+    # chordify/MIDI charts were early reference baselines and may be stale or
+    # mismatched, so do not preserve them here; run BTC and overwrite.
     chords_file = chord_file_for(song_hash(path))
-    if chords_file.is_file():
-        existing = json.loads(chords_file.read_text(encoding="utf-8"))
-        if existing.get("source") == "chordify":
-            return {
-                "ok": True, "path": path,
-                "key": existing.get("key", ""),
-                "chord_count": len(existing.get("chords", [])),
-                "chords": existing.get("chords", []),
-                "source": "chordify (已有高品質和弦，跳過 BTC 偵測)",
-            }
 
     try:
         from chord_detect import detect_chords_and_key_isolated

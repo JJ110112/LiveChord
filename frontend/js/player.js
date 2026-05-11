@@ -5941,11 +5941,12 @@
   async function runChordDetection() {
     if (!trackPath) { showToast(_t("toast.detect.hash_only"), 3000); return; }
     detectOverlay.style.display = "";
-    detectMsg.textContent = _t("detect.progress.midi_search");
-    detectDetail.textContent = "";
+    detectMsg.textContent = _t("detect.progress.ai_analyzing");
+    detectDetail.textContent = _t("detect.progress.ai_analyzing_detail");
 
     try {
-      const midiResult = await API.midiSearch(trackPath);
+      // MIDI auto-import is disabled here; Detect should re-analyze audio via BTC.
+      const midiResult = { results: [] };
 
       if (midiResult.results && midiResult.results.length > 0) {
         // 找同名 MIDI（檔名去副檔名 = FLAC 檔名去副檔名）
