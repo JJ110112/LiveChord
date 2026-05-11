@@ -59,6 +59,17 @@ _MIN_BEST_ALIGN = 0.20       # new grid must hit at least this absolute
 # making the "real bar" already encoded as bpb=6 in beats — skip for v1.
 _BPB_CANDIDATES = (3, 4)
 
+# Fragment-risk scoring: shifted downbeats can make normal 4/4 chords render
+# as 1+3 / 3+1, and boundary jitter can create 4+1 tails. Treat this as a
+# phase-search penalty rather than a hard ban so real pickups survive.
+_FRAG_BOUNDARY_EPSILON_SEC = 0.05
+_FRAG_ONE_BEAT_MAX = 1.25
+_FRAG_LONG_SEG_MIN = 2.50
+_FRAG_FULL_BAR_RANGE = (3.5, 4.5)
+_FRAG_FIVE_BEAT_RANGE = (4.5, 5.5)
+_MAX_FRAGMENT_PENALTY = 0.45
+_FRAGMENT_REJECT_PENALTY = 0.18
+
 
 def _gap_cv(times: List[float]) -> Optional[float]:
     """Coefficient of variation of consecutive gaps. None when too few items.
@@ -104,6 +115,110 @@ def _alignment(chord_changes: List[float], downbeats: List[float],
     return hits / len(chord_changes)
 
 
+def _interior_points(start: float, end: float, points: List[float]) -> List[float]:
+    return [
+        p for p in points
+        if (p - start) > _FRAG_BOUNDARY_EPSILON_SEC
+        and (end - p) > _FRAG_BOUNDARY_EPSILON_SEC
+    ]
+
+
+def fragmentation_risk(
+    chords: List[Dict],
+    downbeats: List[float],
+    bpm: float,
+    bpb: int = 4,
+) -> Dict:
+    """Estimate whether a downbeat grid would create suspicious fragments.
+
+    Returns metadata used by phase scoring and QA. It does not mutate chords.
+    """
+    result = {
+        "penalty": 0.0,
+        "bad_fragments": 0,
+        "candidate_splits": 0,
+        "patterns": {},
+        "examples": [],
+    }
+    if not chords or not downbeats or bpm <= 0 or bpb <= 0:
+        return result
+
+    spb = 60.0 / bpm
+    if spb <= 0:
+        return result
+    db_sorted = sorted(float(d) for d in downbeats if d is not None)
+    if not db_sorted:
+        return result
+
+    patterns = {}
+
+    def add_pattern(name: str, chord: Dict, seg_beats: List[float]) -> None:
+        patterns[name] = patterns.get(name, 0) + 1
+        result["bad_fragments"] += 1
+        if len(result["examples"]) < 5:
+            result["examples"].append({
+                "time": round(float(chord.get("time", 0.0)), 3),
+                "end": round(float(chord.get("end", chord.get("time", 0.0))), 3),
+                "chord": chord.get("chord"),
+                "pattern": name,
+                "segments": [round(v, 2) for v in seg_beats],
+            })
+
+    for chord in chords:
+        start = chord.get("time")
+        end = chord.get("end")
+        if start is None or end is None:
+            continue
+        start_f = float(start)
+        end_f = float(end)
+        if end_f <= start_f:
+            continue
+        inner = _interior_points(start_f, end_f, db_sorted)
+        if not inner:
+            continue
+
+        boundaries = [start_f] + inner + [end_f]
+        seg_beats = [(boundaries[i + 1] - boundaries[i]) / spb
+                     for i in range(len(boundaries) - 1)]
+        dur_beats = (end_f - start_f) / spb
+        result["candidate_splits"] += len(inner)
+
+        min_seg = min(seg_beats)
+        max_seg = max(seg_beats)
+        if (_FRAG_FULL_BAR_RANGE[0] <= dur_beats <= _FRAG_FULL_BAR_RANGE[1]
+                and min_seg <= _FRAG_ONE_BEAT_MAX
+                and max_seg >= _FRAG_LONG_SEG_MIN):
+            left = round(seg_beats[0])
+            right = round(sum(seg_beats[1:]))
+            if left <= 1:
+                add_pattern("1+3", chord, seg_beats)
+            elif right <= 1:
+                add_pattern("3+1", chord, seg_beats)
+            else:
+                add_pattern("one-bar-fragment", chord, seg_beats)
+        elif (_FRAG_FIVE_BEAT_RANGE[0] <= dur_beats <= _FRAG_FIVE_BEAT_RANGE[1]
+              and min_seg <= _FRAG_ONE_BEAT_MAX
+              and max_seg >= (bpb - 0.5)):
+            left = round(seg_beats[0])
+            right = round(sum(seg_beats[1:]))
+            if left <= 1:
+                add_pattern("1+4", chord, seg_beats)
+            elif right <= 1:
+                add_pattern("4+1", chord, seg_beats)
+            else:
+                add_pattern("five-beat-fragment", chord, seg_beats)
+
+    candidate_splits = max(1, result["candidate_splits"])
+    bad = result["bad_fragments"]
+    penalty = min(
+        _MAX_FRAGMENT_PENALTY,
+        0.45 * (bad / candidate_splits) + max(0, bad - 8) * 0.01,
+    )
+    result["penalty"] = round(penalty, 4)
+    result["patterns"] = patterns
+    return result
+
+
 def _grid_from_phase(beats: List[float], phase: int, bpb: int) -> List[float]:
     """Pick every bpb-th beat starting at index ``phase``."""
     return list(beats[phase::bpb])
@@ -113,7 +228,8 @@ def search_best_phase(
     chord_changes: List[float],
     beats: List[float],
     bpm: float,
-) -> Tuple[int, int, float]:
+    chords: Optional[List[Dict]] = None,
+) -> Tuple[int, int, float, Dict]:
     """Return (bpb, phase, alignment) of the best grid over bpb 3/4 × phase.
 
     Rejects candidate (bpb, phase) where the resulting bar_gap doesn't
@@ -123,7 +239,8 @@ def search_best_phase(
     would imply 3.0s bars at 0.54 spb = bpb=5.55, implausible. Same
     sanity check chord_splitter applies — keeps both layers consistent.
     """
-    best_bpb, best_phase, best_align = 4, 0, -1.0
+    best_bpb, best_phase, best_align, best_score = 4, 0, -1.0, -1.0
+    best_frag = fragmentation_risk([], [], bpm, 4)
     spb = (60.0 / bpm) if bpm > 0 else 0.0
     for bpb in _BPB_CANDIDATES:
         for phase in range(bpb):
@@ -142,11 +259,15 @@ def search_best_phase(
                 if not (2.5 <= computed_bpb <= 4.5 or 5.5 <= computed_bpb <= 6.5):
                     continue
             align = _alignment(chord_changes, grid)
-            if align > best_align:
+            frag = fragmentation_risk(chords or [], grid, bpm, bpb)
+            score = align - float(frag.get("penalty", 0.0))
+            if score > best_score:
                 best_bpb = bpb
                 best_phase = phase
                 best_align = align
-    return best_bpb, best_phase, best_align
+                best_score = score
+                best_frag = frag
+    return best_bpb, best_phase, best_align, best_frag
 
 
 def correct_phase(chord_data: Dict) -> Dict:
@@ -176,6 +297,10 @@ def correct_phase(chord_data: Dict) -> Dict:
         "cv_before": -1.0,
         "bpb_after": 4,
         "phase_after": 0,
+        "fragment_penalty": 0.0,
+        "bad_fragments": 0,
+        "fragment_patterns": {},
+        "fragment_examples": [],
     }
 
     if len(chords) < _MIN_CHORD_CHANGES + 1:
@@ -201,15 +326,21 @@ def correct_phase(chord_data: Dict) -> Dict:
         return result
 
     bpm = float(chord_data.get("bpm") or 0)
-    bpb, phase, best_align = search_best_phase(chord_changes, beats, bpm)
+    bpb, phase, best_align, frag = search_best_phase(chord_changes, beats, bpm, chords)
     result["bpb_after"] = bpb
     result["phase_after"] = phase
     result["align_after"] = round(best_align, 4)
 
+    result["fragment_penalty"] = frag.get("penalty", 0.0)
+    result["bad_fragments"] = frag.get("bad_fragments", 0)
+    result["fragment_patterns"] = frag.get("patterns", {})
+    result["fragment_examples"] = frag.get("examples", [])
+
     align_gain = best_align - current_align
+    fragment_ok = float(frag.get("penalty", 0.0)) < _FRAGMENT_REJECT_PENALTY
 
     # Path A — clear alignment improvement
-    if align_gain >= _MIN_GAIN:
+    if align_gain >= _MIN_GAIN and fragment_ok:
         new_grid = _grid_from_phase(beats, phase, bpb)
         result["applied"] = True
         result["downbeats_after"] = new_grid
@@ -222,7 +353,8 @@ def correct_phase(chord_data: Dict) -> Dict:
     # Path B — current is messy, regular grid is similarly aligned
     if (current_cv is not None and current_cv >= _CV_MESSY
             and align_gain >= -_ALIGN_DROP_TOL
-            and best_align >= _MIN_BEST_ALIGN):
+            and best_align >= _MIN_BEST_ALIGN
+            and fragment_ok):
         new_grid = _grid_from_phase(beats, phase, bpb)
         result["applied"] = True
         result["downbeats_after"] = new_grid
@@ -232,10 +364,16 @@ def correct_phase(chord_data: Dict) -> Dict:
         )
         return result
 
-    result["reason"] = (
-        f"no-fix (align {current_align:.2f}->{best_align:.2f}, "
-        f"cv={current_cv if current_cv else 0:.2f})"
-    )
+    if not fragment_ok:
+        result["reason"] = (
+            f"rejected-fragmentation (align {current_align:.2f}->{best_align:.2f}, "
+            f"penalty={frag.get('penalty', 0.0):.2f}, bad={frag.get('bad_fragments', 0)})"
+        )
+    else:
+        result["reason"] = (
+            f"no-fix (align {current_align:.2f}->{best_align:.2f}, "
+            f"cv={current_cv if current_cv else 0:.2f})"
+        )
     return result
 
 
@@ -254,6 +392,10 @@ def maybe_correct_for_serve(chord_data: Dict) -> Dict:
         "align_after": res["align_after"],
         "bpb_after": res["bpb_after"],
         "phase_after": res["phase_after"],
+        "fragment_penalty": res.get("fragment_penalty", 0.0),
+        "bad_fragments": res.get("bad_fragments", 0),
+        "fragment_patterns": res.get("fragment_patterns", {}),
+        "fragment_examples": res.get("fragment_examples", []),
     }
     if res["applied"] and res.get("downbeats_after"):
         chord_data["downbeats"] = res["downbeats_after"]

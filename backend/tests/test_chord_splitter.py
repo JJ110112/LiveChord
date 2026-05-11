@@ -139,6 +139,13 @@ class TestSplitChordsAtBars(unittest.TestCase):
         self.assertAlmostEqual(out[1]["time"], 96.34, places=3)
         self.assertAlmostEqual(out[1]["end"], 100.055, places=3)
 
+    def test_four_plus_one_fragment_boundary_dropped(self):
+        chords = [{"time": 0.0, "end": 2.5, "chord": "C"}]
+        downbeats = [0.0, 2.0, 4.0]
+        out = split_chords_at_bars(chords, downbeats)
+        self.assertEqual(len(out), 1)
+        self.assertNotIn("auto_split", out[0])
+
     def test_duplicate_downbeats_collapse(self):
         # Duplicate downbeat at 103.22 and 103.30 (0.08s apart) — splitter
         # should not produce a 0.08s segment.
@@ -281,6 +288,24 @@ class TestMaybeSplitForServe(unittest.TestCase):
         # 9 half-bar downbeats → 5 full-bar downbeats (idx 0,2,4,6,8) →
         # 3 interior split points → original chord becomes 4 segments.
         self.assertEqual(out["auto_split_meta"]["after"], 4)
+
+    def test_fragment_guard_blocks_shifted_4_4_one_three_splits(self):
+        data = {
+            "chords": [
+                {"time": 0.0, "end": 2.0, "chord": "C"},
+                {"time": 2.0, "end": 4.0, "chord": "F"},
+                {"time": 4.0, "end": 6.0, "chord": "G"},
+            ],
+            "downbeats": [0.5, 2.5, 4.5, 6.5],
+            "beats_source": "beat_this",
+            "bpm": 120.0,
+        }
+        out = maybe_split_for_serve(data)
+        self.assertFalse(out["auto_split_meta"]["applied"])
+        self.assertEqual(out["auto_split_meta"]["reason"], "fragment-guard")
+        guard = out["auto_split_meta"]["fragment_guard"]
+        self.assertGreaterEqual(guard["skipped"], 3)
+        self.assertIn("1+3", guard["patterns"])
 
 
 if __name__ == "__main__":

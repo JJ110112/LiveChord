@@ -55,6 +55,15 @@ try:
 except ImportError:
     from preprocess import parse_chord_name
 
+try:
+    from backend.bar_phase_corrector import fragmentation_risk as _fragmentation_risk
+except ImportError:
+    try:
+        from bar_phase_corrector import fragmentation_risk as _fragmentation_risk
+    except ImportError:
+        def _fragmentation_risk(chords, downbeats, bpm, bpb=4):
+            return {"penalty": 0.0, "bad_fragments": 0, "patterns": {}, "examples": []}
+
 
 # ---------------------------------------------------------------------------
 # Feature spec — frozen here so training and inference agree
@@ -589,9 +598,13 @@ def arbitrate_rule_based(chord_data: Dict, *, force: bool = False) -> Arbitratio
     # ------------------------------------------------------------------
 
     # Gate 1: raw is already regular → keep it (unless forced)
+    raw_frag = _fragmentation_risk(
+        chords, raw_downbeats, float(bpm), result.get("beats_per_bar", 4)
+    )
     raw_already_clean = (
         raw_cv is not None and raw_cv < _RAW_REGULAR_CV
         and raw_downbeats and len(raw_downbeats) >= 8
+        and float(raw_frag.get("penalty", 0.0)) < 0.18
     )
     if raw_already_clean and not force:
         result["reason"] = "raw-already-regular"
@@ -722,9 +735,13 @@ def arbitrate_model_based(chord_data: Dict, model_path: str, *,
     # Already-regular gate (model path also respects this — replacing a
     # clean song is risky, model could regress something the user already
     # likes). Forced recompute bypasses.
+    raw_frag = _fragmentation_risk(
+        chords, raw_downbeats, float(chord_data.get("bpm") or 120.0), 4
+    )
     raw_already_clean = (
         raw_cv is not None and raw_cv < _RAW_REGULAR_CV
         and raw_downbeats and len(raw_downbeats) >= 8
+        and float(raw_frag.get("penalty", 0.0)) < 0.18
     )
     if raw_already_clean and not force:
         result["reason"] = "raw-already-regular"

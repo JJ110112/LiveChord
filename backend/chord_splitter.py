@@ -13,6 +13,15 @@ serve-time copy is what the player consumes.
 import statistics
 from typing import Iterable, List, Dict, Optional
 
+try:
+    from bar_phase_corrector import fragmentation_risk
+except ImportError:
+    try:
+        from backend.bar_phase_corrector import fragmentation_risk
+    except ImportError:
+        def fragmentation_risk(chords, downbeats, bpm, bpb=4):
+            return {"penalty": 0.0, "bad_fragments": 0, "patterns": {}, "examples": []}
+
 
 # How close to a chord boundary a downbeat must be to count as "the same point"
 # (i.e. NOT an interior split). Chord and downbeat times come from independent
@@ -40,6 +49,7 @@ _MIN_SEG_BAR_FRAC = 0.20
 # chords, leaving a 5-7s "bar" — without interpolation those would render as
 # one giant chord card with overflowing dots, which is the bug we're fixing.
 _GAP_INTERPOLATION_THRESHOLD = 1.5
+_FRAGMENT_GUARD_PENALTY = 0.18
 
 
 def _bpb_class(downbeats: List[float], bpm: float) -> float:
@@ -215,6 +225,41 @@ def _drop_small_segment_boundaries(boundaries: List[float], min_seg: float) -> L
     return boundaries
 
 
+def _drop_fragment_boundaries(boundaries: List[float], bar_gap: float) -> List[float]:
+    """Drop interior boundaries that would create obvious 1+3/3+1/4+1 cards.
+
+    This is the local last line of defense. Phase arbitration handles repeated
+    bad fragments across a song; this catches isolated boundary jitter where a
+    single near-one-bar chord would otherwise become a full bar plus a tiny
+    same-chord tail.
+    """
+    if bar_gap <= 0 or len(boundaries) <= 2:
+        return boundaries
+    total_bars = (boundaries[-1] - boundaries[0]) / bar_gap
+    if not (0.85 <= total_bars <= 1.45):
+        return boundaries
+
+    out = list(boundaries)
+    changed = True
+    while changed and len(out) > 2:
+        changed = False
+        segs = [out[i + 1] - out[i] for i in range(len(out) - 1)]
+        for idx, dur in enumerate(segs):
+            dur_bars = dur / bar_gap
+            if dur_bars > 0.32:
+                continue
+            # Edge tiny segments are the visible 1+3 / 3+1 / 4+1 failure.
+            if idx == 0:
+                out.pop(1)
+                changed = True
+                break
+            if idx == len(segs) - 1:
+                out.pop(-2)
+                changed = True
+                break
+    return out
+
+
 def split_chords_at_bars(
     chords: List[Dict],
     downbeats: Iterable[float],
@@ -261,6 +306,9 @@ def split_chords_at_bars(
             # (incl. song-end chords where the tracker stops emitting downbeats)
             # gets divided into bar-sized segments.
             boundaries = _interpolate_oversized_gaps(boundaries, bar_gap)
+            # Step 1b: remove local 1+3/3+1/4+1 artifacts from shifted or
+            # jittered downbeats before the generic small-segment cleanup.
+            boundaries = _drop_fragment_boundaries(boundaries, bar_gap)
         if min_seg > 0:
             # Step 2: clean up tail slivers and duplicate-downbeat artifacts.
             boundaries = _drop_small_segment_boundaries(boundaries, min_seg)
@@ -316,6 +364,24 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
 
     raw_downbeats = chord_data.get("downbeats") or []
     halved = len(resolved) != len(raw_downbeats)
+    bpm = float(chord_data.get("bpm") or 0)
+    bpb = round(_bpb_class(resolved, bpm)) if bpm > 0 else 4
+    frag = fragmentation_risk(chords, resolved, bpm, bpb)
+    if float(frag.get("penalty", 0.0)) >= _FRAGMENT_GUARD_PENALTY:
+        chord_data["auto_split_meta"] = {
+            "applied": False,
+            "reason": "fragment-guard",
+            "before": len(chords),
+            "after": len(chords),
+            "fragment_guard": {
+                "skipped": frag.get("bad_fragments", 0),
+                "penalty": frag.get("penalty", 0.0),
+                "patterns": frag.get("patterns", {}),
+                "examples": frag.get("examples", []),
+            },
+        }
+        return chord_data
+
     new_chords = split_chords_at_bars(chords, resolved)
     chord_data["chords"] = new_chords
     chord_data["auto_split_meta"] = {
@@ -323,5 +389,10 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
         "reason": "ok-halved-downbeats" if halved else "ok",
         "before": len(chords),
         "after": len(new_chords),
+        "fragment_guard": {
+            "skipped": 0,
+            "penalty": frag.get("penalty", 0.0),
+            "patterns": frag.get("patterns", {}),
+        },
     }
     return chord_data

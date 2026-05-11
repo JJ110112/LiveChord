@@ -5481,6 +5481,7 @@
       let count = 0;
       let alignFills = 0;
       let snapCount = 0;
+      let fragmentSkips = 0;
 
       // --- Shared: nearest-bar-line resolver for bar + barsnap modes ---
       // Uses real downbeats[] when present; falls back to a synthetic grid
@@ -5580,6 +5581,13 @@
             firstSplitBeats = beatsPerBar;
           }
 
+          if (beatsPerBar === 4
+              && ((beats === 4 && (firstSplitBeats === 1 || firstSplitBeats === 3))
+                  || (beats === 5 && (firstSplitBeats === 1 || firstSplitBeats === 4)))) {
+            fragmentSkips++;
+            continue;
+          }
+
           let cursor = i;
           let remaining = beats;
           let didSplit = false;
@@ -5617,7 +5625,10 @@
           if (count > 0) {
             _corrRebuild();
             const tail = alignFills > 0 ? _t("toast.split.bar_filltail", { n: alignFills }) : "";
-            showToast(_t("toast.split.bar_done", { count, beatsPerBar, tail }), 2500);
+            const guardTail = fragmentSkips > 0 ? ` (${fragmentSkips} suspicious fragments skipped)` : "";
+            showToast(_t("toast.split.bar_done", { count, beatsPerBar, tail }) + guardTail, 2500);
+          } else if (fragmentSkips > 0) {
+            showToast(`Skipped ${fragmentSkips} suspicious 1+3/3+1/4+1 split(s)`, 2500);
           } else {
             showToast(_t("toast.split.bar_none", { beatsPerBar }), 2000);
           }
