@@ -42,13 +42,13 @@ DEFAULT_SETTINGS = {
     "auto_chord_delay_seconds": 1.0,    # 每首之間的延遲（秒），避免 CPU 飢餓導致前端無回應
     "auto_chord_skip_genres": [],       # 跳過的 genre（如 Classics）
     "auto_chord_active_groups": [],     # 啟用的曲目群組（空 = 不過濾，附 1 用）
-    "bar_arbitrator_enabled": False,    # run bar_arbitrator at ingest after bpm_sanity
-                                        # (default-on in public mode via _public_mode_overrides)
-    "beat_refiner_enabled": False,      # audio-level Compact-Transformer beat/downbeat refiner
+    "bar_arbitrator_enabled": True,     # run bar_arbitrator at ingest after bpm_sanity.
+                                        # Internal _MIN_CANDIDATE_F1 gate keeps it conservative —
+                                        # only acts when candidate grid scores convincingly.
+    "beat_refiner_enabled": True,       # audio-level Compact-Transformer beat/downbeat refiner
                                         # (Phase 1 — runs before bar_arbitrator). Gate inside phase1_refine
                                         # ensures refinement is only applied when it actually beats input
-                                        # alignment by ≥0.02; otherwise falls back. Safe to flip.
-                                        # (default-on in public mode via _public_mode_overrides)
+                                        # alignment by ≥0.02; otherwise falls back.
 }
 
 

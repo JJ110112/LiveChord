@@ -326,6 +326,95 @@ def _merge_segments(raw_segments: list, min_dur: float = 0.5) -> list:
 
 
 # ---------------------------------------------------------------------------
+# 鬼影邊界和弦過濾（post beat-snap）
+# ---------------------------------------------------------------------------
+
+def filter_ghost_boundary_chords(chords: list, downbeats: list, bpm) -> tuple:
+    """過濾「跨小節邊界的 BTC quality 抖動」造成的 1 拍鬼影和弦。
+
+    BTC 偶爾會把下一個小節的和弦 quality 提早 1 拍洩漏到上一小節最後一拍
+    （e.g. ``Abmaj7(3) + Fm7(1) + Fm7(4)`` 應為 ``Abmaj7(4) + Fm7(4)``）。
+    beat_snap 只把邊界對齊到拍線，不會合併不同名片段，所以這個鬼影會留下。
+
+    四閘 AND（保守，避免誤殺真正的切分音）：
+      1. 鬼影時長 ≤ 1.1 拍
+      2. 鬼影 end ≈ downbeat（±¼ 拍）
+      3. 左鄰時長 ≥ 2 拍（filter 不會把短-短-長序列合掉）
+      4. 鬼影 chord name == 下一個 chord name（與下一拍的真正和弦同名 →
+         確認是 BTC 把下一個和弦的 quality 提早洩漏，不是真的中間插入）
+
+    Returns:
+        (filtered_chords, meta_dict)。filtered_chords 是新 list（原 list 不被
+        mutate）；meta_dict 結構：
+          {"applied": bool, "removed_count": int,
+           "removed": [{"time", "end", "chord", "merged_into"}],
+           "reason": str (僅在 applied=False 時)}
+    """
+    meta = {"applied": False, "removed_count": 0, "removed": []}
+
+    if not chords or len(chords) < 2:
+        meta["reason"] = "too-few-chords"
+        return list(chords), meta
+    if not downbeats:
+        meta["reason"] = "no-downbeats"
+        return list(chords), meta
+    try:
+        bpm_f = float(bpm)
+    except (TypeError, ValueError):
+        bpm_f = 0.0
+    if bpm_f <= 0:
+        meta["reason"] = "no-bpm"
+        return list(chords), meta
+
+    import bisect
+    beat_dur = 60.0 / bpm_f
+    ghost_max = 1.1 * beat_dur
+    left_min = 2.0 * beat_dur
+    snap_tol = 0.25 * beat_dur
+
+    db = sorted(float(t) for t in downbeats if t is not None)
+
+    def _at_downbeat(t: float) -> bool:
+        i = bisect.bisect_left(db, t)
+        for j in (i - 1, i):
+            if 0 <= j < len(db) and abs(db[j] - t) <= snap_tol:
+                return True
+        return False
+
+    out = [dict(chords[0])]
+    for i in range(1, len(chords)):
+        cur = chords[i]
+        cur_t = float(cur.get("time", 0.0))
+        cur_e = float(cur.get("end", cur_t))
+        cur_dur = cur_e - cur_t
+        cur_name = cur.get("chord")
+        nxt_name = chords[i + 1].get("chord") if i + 1 < len(chords) else None
+
+        left = out[-1]
+        left_dur = float(left["end"]) - float(left["time"])
+
+        if (cur_dur <= ghost_max
+                and _at_downbeat(cur_e)
+                and left.get("chord") != cur_name
+                and left_dur >= left_min
+                and nxt_name == cur_name):
+            meta["removed"].append({
+                "time": round(cur_t, 3),
+                "end": round(cur_e, 3),
+                "chord": cur_name,
+                "merged_into": left.get("chord"),
+            })
+            left["end"] = cur_e
+            continue
+
+        out.append(dict(cur))
+
+    meta["removed_count"] = len(meta["removed"])
+    meta["applied"] = meta["removed_count"] > 0
+    return out, meta
+
+
+# ---------------------------------------------------------------------------
 # 公開 API
 # ---------------------------------------------------------------------------
 

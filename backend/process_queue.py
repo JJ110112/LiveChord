@@ -349,6 +349,28 @@ def _save_chord_json(job: ProcessJob, chords: list, key: str,
     except Exception as e:
         logger.warning("bar_arbitrator hook failed for %s: %s", job.job_id, e)
 
+    # Ghost-boundary chord filter — collapses 1-beat BTC quality bleed at
+    # bar lines (e.g. Abmaj7(3)+Fm7(1)+Fm7(4) → Abmaj7(4)+Fm7(4)). Runs
+    # AFTER bar_arbitrator so it sees the corrected downbeats[]. Strict
+    # 4-gate AND (see chord_detect.filter_ghost_boundary_chords) so it
+    # never touches genuine syncopated upbeat changes. Failure non-fatal.
+    try:
+        from chord_detect import filter_ghost_boundary_chords
+        filtered, ghost_meta = filter_ghost_boundary_chords(
+            sheet.get("chords", []),
+            sheet.get("downbeats", []),
+            sheet.get("bpm"),
+        )
+        if ghost_meta.get("applied"):
+            sheet["chords"] = filtered
+            sheet["ghost_chord_filter"] = ghost_meta
+            logger.info(
+                "[ghost_chord_filter] %s removed %d ghost chord(s)",
+                job.job_id, ghost_meta["removed_count"],
+            )
+    except Exception as e:
+        logger.warning("ghost_chord_filter failed for %s: %s", job.job_id, e)
+
     ensure_chord_bucket(hash_val)
     out_file = chord_file_for(hash_val)
     out_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
