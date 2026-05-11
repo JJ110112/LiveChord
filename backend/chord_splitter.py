@@ -50,6 +50,8 @@ _MIN_SEG_BAR_FRAC = 0.20
 # one giant chord card with overflowing dots, which is the bug we're fixing.
 _GAP_INTERPOLATION_THRESHOLD = 1.5
 _FRAGMENT_GUARD_PENALTY = 0.18
+_SAME_CHORD_FRAGMENT_BEATS = 1.25
+_SAME_CHORD_MERGE_TOTAL_BEATS = (3.3, 5.5)
 
 
 def _bpb_class(downbeats: List[float], bpm: float) -> float:
@@ -260,6 +262,82 @@ def _drop_fragment_boundaries(boundaries: List[float], bar_gap: float) -> List[f
     return out
 
 
+def merge_same_chord_fragments(chords: List[Dict], bpm: float) -> tuple[List[Dict], Dict]:
+    """Merge adjacent same-chord 1+3 / 3+1 / 4+1 fragments.
+
+    This repairs persisted legacy data where the chord list itself already
+    contains split fragments (possibly with stale ``auto_split`` flags), so
+    merely preventing new serve-time splits is not enough.
+    """
+    meta = {"applied": False, "merged": 0, "patterns": {}, "examples": []}
+    if not chords or len(chords) < 2 or bpm <= 0:
+        return list(chords), meta
+    spb = 60.0 / bpm
+    if spb <= 0:
+        return list(chords), meta
+
+    out: List[Dict] = []
+    i = 0
+    while i < len(chords):
+        run = [dict(chords[i])]
+        j = i + 1
+        while j < len(chords) and chords[j].get("chord") == chords[i].get("chord"):
+            prev_end = run[-1].get("end")
+            cur_time = chords[j].get("time")
+            if prev_end is None or cur_time is None or abs(float(prev_end) - float(cur_time)) > 0.08:
+                break
+            run.append(dict(chords[j]))
+            j += 1
+
+        if len(run) > 1:
+            start = float(run[0].get("time", 0.0))
+            end = float(run[-1].get("end", run[-1].get("time", start)))
+            total_beats = (end - start) / spb
+            seg_beats = [
+                (float(seg.get("end", seg.get("time", 0.0))) - float(seg.get("time", 0.0))) / spb
+                for seg in run
+            ]
+            min_seg = min(seg_beats) if seg_beats else 99.0
+            has_stale_auto_split = any(seg.get("auto_split") for seg in run)
+            should_merge = (
+                has_stale_auto_split
+                or (
+                    _SAME_CHORD_MERGE_TOTAL_BEATS[0] <= total_beats <= _SAME_CHORD_MERGE_TOTAL_BEATS[1]
+                    and min_seg <= _SAME_CHORD_FRAGMENT_BEATS
+                )
+            )
+            if should_merge:
+                merged = dict(run[0])
+                merged["end"] = run[-1].get("end", merged.get("end"))
+                merged.pop("auto_split", None)
+                out.append(merged)
+                meta["applied"] = True
+                meta["merged"] += len(run) - 1
+                left = round(seg_beats[0]) if seg_beats else 0
+                right = round(sum(seg_beats[1:])) if len(seg_beats) > 1 else 0
+                if left <= 1:
+                    pat = f"1+{max(1, right)}"
+                elif right <= 1:
+                    pat = f"{max(1, left)}+1"
+                else:
+                    pat = "same-chord-fragment"
+                meta["patterns"][pat] = meta["patterns"].get(pat, 0) + 1
+                if len(meta["examples"]) < 5:
+                    meta["examples"].append({
+                        "time": round(start, 3),
+                        "end": round(end, 3),
+                        "chord": merged.get("chord"),
+                        "pattern": pat,
+                        "segments": [round(v, 2) for v in seg_beats],
+                    })
+                i = j
+                continue
+
+        out.extend(run)
+        i = j
+    return out, meta
+
+
 def split_chords_at_bars(
     chords: List[Dict],
     downbeats: Iterable[float],
@@ -337,6 +415,13 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
     the result to the response without affecting on-disk data.
     """
     chords = chord_data.get("chords") or []
+    bpm = float(chord_data.get("bpm") or 0)
+    if chords and bpm > 0:
+        merged_chords, merge_meta = merge_same_chord_fragments(chords, bpm)
+        chord_data["chords"] = merged_chords
+        chord_data["same_chord_fragment_meta"] = merge_meta
+        chords = merged_chords
+
     if not chords:
         chord_data["auto_split_meta"] = {
             "applied": False, "reason": "no-chords", "before": 0, "after": 0,
@@ -364,7 +449,6 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
 
     raw_downbeats = chord_data.get("downbeats") or []
     halved = len(resolved) != len(raw_downbeats)
-    bpm = float(chord_data.get("bpm") or 0)
     bpb = round(_bpb_class(resolved, bpm)) if bpm > 0 else 4
     frag = fragmentation_risk(chords, resolved, bpm, bpb)
     if float(frag.get("penalty", 0.0)) >= _FRAGMENT_GUARD_PENALTY:

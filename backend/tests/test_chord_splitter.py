@@ -13,6 +13,7 @@ import unittest
 from backend.chord_splitter import (
     split_chords_at_bars,
     maybe_split_for_serve,
+    merge_same_chord_fragments,
     _interior_downbeats,
     _is_confident,
     _median_bar_gap,
@@ -144,6 +145,35 @@ class TestSplitChordsAtBars(unittest.TestCase):
         downbeats = [0.0, 2.0, 4.0]
         out = split_chords_at_bars(chords, downbeats)
         self.assertEqual(len(out), 1)
+        self.assertNotIn("auto_split", out[0])
+
+    def test_merge_same_chord_three_plus_one_persisted_fragment(self):
+        chords = [
+            {"time": 0.0, "end": 1.5, "chord": "Cm7", "auto_split": True},
+            {"time": 1.5, "end": 2.0, "chord": "Cm7", "auto_split": True},
+            {"time": 2.0, "end": 4.0, "chord": "F"},
+        ]
+        out, meta = merge_same_chord_fragments(chords, bpm=120.0)
+        self.assertTrue(meta["applied"])
+        self.assertEqual(meta["merged"], 1)
+        self.assertEqual(len(out), 2)
+        self.assertEqual(out[0]["time"], 0.0)
+        self.assertEqual(out[0]["end"], 2.0)
+        self.assertNotIn("auto_split", out[0])
+
+    def test_merge_stale_auto_split_same_chord_run_even_when_longer(self):
+        chords = [
+            {"time": 10.0, "end": 10.6, "chord": "Fm7", "auto_split": True},
+            {"time": 10.6, "end": 12.7, "chord": "Fm7", "auto_split": True},
+            {"time": 12.7, "end": 13.5, "chord": "Fm7", "auto_split": True},
+            {"time": 13.5, "end": 15.0, "chord": "Gm7"},
+        ]
+        out, meta = merge_same_chord_fragments(chords, bpm=115.0)
+        self.assertTrue(meta["applied"])
+        self.assertEqual(meta["merged"], 2)
+        self.assertEqual(len(out), 2)
+        self.assertEqual(out[0]["time"], 10.0)
+        self.assertEqual(out[0]["end"], 13.5)
         self.assertNotIn("auto_split", out[0])
 
     def test_duplicate_downbeats_collapse(self):
