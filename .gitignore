@@ -162,6 +162,7 @@ agent/.langgraph_api/
 recent_diff.md
 test_finger.py
 reports/train_v1.log
+reports/quality_gate*/
 
 # MIDI 測試/下載檔
 midi/
