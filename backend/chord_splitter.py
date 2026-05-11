@@ -55,6 +55,7 @@ _SAME_CHORD_ONE_BAR_EDGE_BEATS = 2.35
 _SAME_CHORD_MERGE_TOTAL_BEATS = (3.3, 5.5)
 _SAME_CHORD_FULL_BAR_BEATS = 3.35
 _SAME_CHORD_SLIVER_BEATS = 1.75
+_SAFE_LONG_SPLIT_MIN_BEATS = 5.5
 
 
 def _bpb_class(downbeats: List[float], bpm: float) -> float:
@@ -479,6 +480,37 @@ def split_chords_at_bars(
     return out
 
 
+def split_long_chords_at_bars(
+    chords: List[Dict],
+    downbeats: Iterable[float],
+    bpm: float,
+) -> List[Dict]:
+    """Split only clearly overlong chords at bar boundaries.
+
+    Used under fragment-guard: one-bar chords may have shifted downbeats that
+    would render as 1+3 / 3+1, but 8+ beat cards still need splitting so the
+    player does not overflow beat dots.
+    """
+    if bpm <= 0:
+        return list(chords)
+    spb = 60.0 / bpm
+    if spb <= 0:
+        return list(chords)
+    out: List[Dict] = []
+    for chord in chords:
+        start = chord.get("time")
+        end = chord.get("end")
+        if start is None or end is None or end <= start:
+            out.append(dict(chord))
+            continue
+        dur_beats = (float(end) - float(start)) / spb
+        if dur_beats >= _SAFE_LONG_SPLIT_MIN_BEATS:
+            out.extend(split_chords_at_bars([chord], downbeats))
+        else:
+            out.append(dict(chord))
+    return out
+
+
 def maybe_split_for_serve(chord_data: Dict) -> Dict:
     """Apply splitter to ``chord_data["chords"]`` if confidence gate passes.
 
@@ -533,16 +565,20 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
         reason = "fragment-guard"
         if stale_merge_risk:
             reason = "fragment-guard-after-stale-merge"
+        safe_chords = split_long_chords_at_bars(chords, resolved, bpm)
+        chord_data["chords"] = safe_chords
+        safe_applied = len(safe_chords) != len(chords)
         chord_data["auto_split_meta"] = {
-            "applied": False,
-            "reason": reason,
+            "applied": safe_applied,
+            "reason": f"{reason}-safe-long-split" if safe_applied else reason,
             "before": len(chords),
-            "after": len(chords),
+            "after": len(safe_chords),
             "fragment_guard": {
                 "skipped": frag.get("bad_fragments", 0),
                 "penalty": frag.get("penalty", 0.0),
                 "patterns": frag.get("patterns", {}),
                 "examples": frag.get("examples", []),
+                "safe_long_split": safe_applied,
             },
         }
         return chord_data

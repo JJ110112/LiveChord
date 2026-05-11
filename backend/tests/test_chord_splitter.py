@@ -382,6 +382,29 @@ class TestMaybeSplitForServe(unittest.TestCase):
         self.assertGreaterEqual(guard["skipped"], 3)
         self.assertIn("1+3", guard["patterns"])
 
+    def test_fragment_guard_still_splits_clearly_long_cards(self):
+        data = {
+            "chords": [
+                {"time": 0.0, "end": 4.0, "chord": "C"},
+                {"time": 4.0, "end": 6.0, "chord": "F"},
+                {"time": 6.0, "end": 8.0, "chord": "G"},
+                {"time": 8.0, "end": 10.0, "chord": "Am"},
+            ],
+            "downbeats": [2.0, 4.5, 6.5, 8.5, 10.5],
+            "beats_source": "beat_this",
+            "bpm": 120.0,
+        }
+        out = maybe_split_for_serve(data)
+        self.assertTrue(out["auto_split_meta"]["applied"])
+        self.assertEqual(out["auto_split_meta"]["reason"], "fragment-guard-safe-long-split")
+        self.assertEqual(out["auto_split_meta"]["before"], 4)
+        self.assertEqual(out["auto_split_meta"]["after"], 5)
+        self.assertEqual(out["chords"][0]["time"], 0.0)
+        self.assertEqual(out["chords"][0]["end"], 2.0)
+        self.assertEqual(out["chords"][1]["time"], 2.0)
+        self.assertEqual(out["chords"][1]["end"], 4.0)
+        self.assertEqual([c["chord"] for c in out["chords"][2:]], ["F", "G", "Am"])
+
     def test_stale_merge_prevents_immediate_resplit(self):
         data = {
             "chords": [
