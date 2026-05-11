@@ -169,6 +169,92 @@ def _float(v: Any, default: float = 0.0) -> float:
         return default
 
 
+def _display_dot_count(chord: Dict[str, Any], bpm: float, bpb: int = 4) -> int:
+    """Approximate player.js _virtualBeats for quality scoring.
+
+    The gate should judge what the user actually sees. The frontend snaps
+    nominal one-bar and half-bar cards to musical dot counts, so an internal
+    downbeat that would have been a raw 1+3 split is not necessarily a visible
+    failure anymore.
+    """
+    if bpm <= 0 or bpb <= 0:
+        return 0
+    start = _float(chord.get("time"))
+    end = _float(chord.get("end"), start)
+    if end <= start:
+        return 0
+    beats = (end - start) / (60.0 / bpm)
+    if chord.get("auto_split") and beats >= bpb * 0.6:
+        return bpb
+    half = bpb / 2
+    if half >= 1 and abs(beats - half) < 0.45:
+        return int(round(half))
+    bars_approx = beats / bpb
+    rounded_bars = round(bars_approx)
+    bar_snap_tol = 0.30 if rounded_bars == 1 else 0.20
+    if rounded_bars >= 1 and abs(bars_approx - rounded_bars) < bar_snap_tol:
+        return min(16, int(rounded_bars * bpb))
+    return max(1, min(16, int(round(beats))))
+
+
+def _visible_fragment_risk(chords: List[Dict[str, Any]], bpm: float, bpb: int = 4) -> Dict[str, Any]:
+    """Count visible POP card/dot failures after the serve pipeline.
+
+    Raw downbeat fragmentation is still useful diagnostic data, but the stage
+    gate should fail a song only when the player would display suspicious
+    short/long beat-dot cards: one-bar cards not showing 4 dots, half-bar cards
+    not showing 2 dots, or same-chord adjacent fragments that survived merging.
+    """
+    result = {"bad_fragments": 0, "patterns": {}, "examples": []}
+    if not chords or bpm <= 0:
+        return result
+    spb = 60.0 / bpm
+
+    def add(pattern: str, chord: Dict[str, Any], detail: str) -> None:
+        result["bad_fragments"] += 1
+        result["patterns"][pattern] = result["patterns"].get(pattern, 0) + 1
+        if len(result["examples"]) < 5:
+            result["examples"].append({
+                "time": round(_float(chord.get("time")), 3),
+                "end": round(_float(chord.get("end"), _float(chord.get("time"))), 3),
+                "chord": chord.get("chord"),
+                "detail": detail,
+            })
+
+    for c in chords:
+        start = _float(c.get("time"))
+        end = _float(c.get("end"), start)
+        if end <= start:
+            continue
+        dur_beats = (end - start) / spb
+        dots = _display_dot_count(c, bpm, bpb)
+        if 3.5 <= dur_beats <= 4.5 and dots != bpb:
+            add(f"one-bar-{dots}-dots", c, f"{dur_beats:.2f} beats -> {dots} dots")
+        elif 1.55 <= dur_beats <= 2.45 and dots != int(round(bpb / 2)):
+            add(f"half-bar-{dots}-dots", c, f"{dur_beats:.2f} beats -> {dots} dots")
+        elif 4.5 < dur_beats <= 5.5 and not c.get("auto_split") and dots > bpb:
+            add(f"five-beat-{dots}-dots", c, f"{dur_beats:.2f} beats -> {dots} dots")
+
+    for prev, cur in zip(chords, chords[1:]):
+        if prev.get("chord") != cur.get("chord"):
+            continue
+        prev_end = _float(prev.get("end"), _float(prev.get("time")))
+        cur_start = _float(cur.get("time"))
+        if abs(prev_end - cur_start) > 0.08:
+            continue
+        start = _float(prev.get("time"))
+        end = _float(cur.get("end"), cur_start)
+        seg_a = (prev_end - start) / spb
+        seg_b = (end - cur_start) / spb
+        total = seg_a + seg_b
+        if 3.3 <= total <= 5.5 and min(seg_a, seg_b) <= 1.35:
+            left = round(seg_a)
+            right = round(seg_b)
+            add(f"same-chord-{left}+{right}", prev, f"{seg_a:.2f}+{seg_b:.2f} beats")
+
+    return result
+
+
 def _issue(issues: List[Dict[str, Any]], issue_type: str, severity: str, detail: str) -> None:
     issues.append({"type": issue_type, "severity": severity, "detail": detail})
 
@@ -284,14 +370,17 @@ def _score_track(track: Track, data_root: Path) -> Dict[str, Any]:
         if tail_gap > max(8.0, last_beat * 0.05):
             _issue(issues, "tail_gap", "severe", f"tail gap {tail_gap:.1f}s")
 
-    frag = fragmentation_risk(chords, downbeats, bpm, 4)
+    raw_frag = fragmentation_risk(chords, downbeats, bpm, 4)
+    frag = _visible_fragment_risk(chords, bpm, 4)
     bad_frag = int(frag.get("bad_fragments") or 0)
     row["bad_fragments"] = bad_frag
-    row["fragment_penalty"] = frag.get("penalty", 0)
+    row["fragment_penalty"] = raw_frag.get("penalty", 0)
     row["fragment_patterns"] = json.dumps(frag.get("patterns") or {}, ensure_ascii=False)
+    row["raw_bad_fragments"] = int(raw_frag.get("bad_fragments") or 0)
+    row["raw_fragment_patterns"] = json.dumps(raw_frag.get("patterns") or {}, ensure_ascii=False)
     if bad_frag:
         sev = "severe" if bad_frag >= 8 else "warn"
-        _issue(issues, "fragments", sev, f"{bad_frag} suspicious split fragments")
+        _issue(issues, "fragments", sev, f"{bad_frag} visible card/dot fragments")
 
     row.update(_finalize(row, issues, metrics))
     return row
@@ -380,6 +469,7 @@ def _write_csv(path: Path, rows: List[Dict[str, Any]]) -> None:
         "n_chords", "n_beats", "n_downbeats", "bpb", "beat_cv", "db_cv",
         "long_cards", "tiny_cards", "max_card_beats", "tail_gap_sec",
         "bad_fragments", "fragment_penalty", "fragment_patterns",
+        "raw_bad_fragments", "raw_fragment_patterns",
         "issue_types", "issue_details", "url", "hash", "chord_file",
     ]
     with path.open("w", newline="", encoding="utf-8-sig") as f:

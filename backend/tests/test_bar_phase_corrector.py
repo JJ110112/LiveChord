@@ -68,6 +68,31 @@ class TestPhaseCorrectorFragmentGuard(unittest.TestCase):
         self.assertEqual(res["phase_after"], 0)
         self.assertEqual(res["bad_fragments"], 0)
 
+    def test_correct_phase_accepts_large_relative_fragment_improvement(self):
+        bpm = 120.0
+        beats = [i * 0.5 for i in range(65)]
+        chords = []
+        for i in range(12):
+            start = i * 2.0
+            # A handful of real one-beat pickups remain even on the best grid.
+            # The corrector should still accept the phase when it removes the
+            # much larger wrong-grid fragment pattern.
+            end = start + (2.5 if i in {1, 3, 5, 7, 9} else 2.0)
+            chords.append({"time": start, "end": end, "chord": "C" if i % 2 == 0 else "F"})
+        data = {
+            "chords": chords,
+            "beats": beats,
+            "downbeats": [0.5 + i * 2.0 for i in range(12)],
+            "bpm": bpm,
+        }
+
+        res = correct_phase(data)
+
+        self.assertTrue(res["applied"], res["reason"])
+        self.assertIn("relative-fragment-fix", res["reason"])
+        self.assertEqual(res["phase_after"], 0)
+        self.assertGreater(res["bad_fragments_before"], res["bad_fragments"])
+
 
 if __name__ == "__main__":
     unittest.main()

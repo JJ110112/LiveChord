@@ -69,6 +69,9 @@ _FRAG_FULL_BAR_RANGE = (3.5, 4.5)
 _FRAG_FIVE_BEAT_RANGE = (4.5, 5.5)
 _MAX_FRAGMENT_PENALTY = 0.45
 _FRAGMENT_REJECT_PENALTY = 0.18
+_RELATIVE_FRAGMENT_MIN_GAIN = 0.25
+_RELATIVE_FRAGMENT_MIN_RATIO = 0.35
+_RELATIVE_FRAGMENT_MAX_ALIGN_DROP = 0.02
 
 
 def _gap_cv(times: List[float]) -> Optional[float]:
@@ -295,6 +298,8 @@ def correct_phase(chord_data: Dict) -> Dict:
         "align_before": 0.0,
         "align_after": 0.0,
         "cv_before": -1.0,
+        "bad_fragments_before": 0,
+        "fragment_penalty_before": 0.0,
         "bpb_after": 4,
         "phase_after": 0,
         "fragment_penalty": 0.0,
@@ -315,17 +320,25 @@ def correct_phase(chord_data: Dict) -> Dict:
         result["reason"] = "too-few-chord-changes"
         return result
 
+    bpm = float(chord_data.get("bpm") or 0)
     current_align = _alignment(chord_changes, current_dbs)
     current_cv = _gap_cv(current_dbs)
+    current_bpb = 4
+    current_frag = fragmentation_risk(chords, current_dbs, bpm, current_bpb)
+    current_bad_fragments = int(current_frag.get("bad_fragments") or 0)
+    current_fragment_penalty = float(current_frag.get("penalty", 0.0))
     result["align_before"] = round(current_align, 4)
     result["cv_before"] = round(current_cv, 4) if current_cv is not None else -1.0
+    result["bad_fragments_before"] = current_bad_fragments
+    result["fragment_penalty_before"] = current_fragment_penalty
 
     # Already-clean: high alignment AND regular cv => leave alone
-    if current_align >= _ALREADY_CLEAN_ALIGN and (current_cv is None or current_cv < _CV_MESSY):
+    if (current_align >= _ALREADY_CLEAN_ALIGN
+            and current_bad_fragments == 0
+            and (current_cv is None or current_cv < _CV_MESSY)):
         result["reason"] = f"already-clean align={current_align:.2f} cv={current_cv if current_cv else 0:.2f}"
         return result
 
-    bpm = float(chord_data.get("bpm") or 0)
     bpb, phase, best_align, frag = search_best_phase(chord_changes, beats, bpm, chords)
     result["bpb_after"] = bpb
     result["phase_after"] = phase
@@ -338,6 +351,26 @@ def correct_phase(chord_data: Dict) -> Dict:
 
     align_gain = best_align - current_align
     fragment_ok = float(frag.get("penalty", 0.0)) < _FRAGMENT_REJECT_PENALTY
+    best_bad_fragments = int(frag.get("bad_fragments") or 0)
+    fragment_gain = current_bad_fragments - best_bad_fragments
+    fragment_ratio = (
+        best_bad_fragments / current_bad_fragments
+        if current_bad_fragments > 0 else 1.0
+    )
+
+    # Candidate grids do not need to be perfect when the current grid is
+    # obviously worse. This is common in POP songs where beat_this found stable
+    # beats but the downbeat phase is one beat late: rejecting the candidate
+    # because it still has a few legitimate pickups leaves dozens of visible
+    # 1+3 / 3+1 fragments in the player. Accept the relative improvement when
+    # alignment is not harmed and the fragment count drops sharply.
+    relative_fragment_fix = (
+        current_bad_fragments >= 8
+        and fragment_gain >= max(4, int(current_bad_fragments * _RELATIVE_FRAGMENT_MIN_GAIN))
+        and fragment_ratio <= (1.0 - _RELATIVE_FRAGMENT_MIN_RATIO)
+        and align_gain >= -_RELATIVE_FRAGMENT_MAX_ALIGN_DROP
+        and best_align >= _MIN_BEST_ALIGN
+    )
 
     # Path A — clear alignment improvement
     if align_gain >= _MIN_GAIN and fragment_ok:
@@ -347,6 +380,20 @@ def correct_phase(chord_data: Dict) -> Dict:
         result["reason"] = (
             f"phase-fix-gain bpb={bpb} phase={phase} "
             f"align {current_align:.2f}->{best_align:.2f}"
+        )
+        return result
+
+    # Path A2 — relative fragment improvement. This is intentionally after the
+    # clean candidate path so perfect/near-perfect fixes keep their simpler
+    # reason, but before regularity so stable wrong-phase POP grids are fixed.
+    if relative_fragment_fix:
+        new_grid = _grid_from_phase(beats, phase, bpb)
+        result["applied"] = True
+        result["downbeats_after"] = new_grid
+        result["reason"] = (
+            f"relative-fragment-fix bpb={bpb} phase={phase} "
+            f"align {current_align:.2f}->{best_align:.2f}, "
+            f"fragments {current_bad_fragments}->{best_bad_fragments}"
         )
         return result
 
@@ -392,6 +439,8 @@ def maybe_correct_for_serve(chord_data: Dict) -> Dict:
         "align_after": res["align_after"],
         "bpb_after": res["bpb_after"],
         "phase_after": res["phase_after"],
+        "bad_fragments_before": res.get("bad_fragments_before", 0),
+        "fragment_penalty_before": res.get("fragment_penalty_before", 0.0),
         "fragment_penalty": res.get("fragment_penalty", 0.0),
         "bad_fragments": res.get("bad_fragments", 0),
         "fragment_patterns": res.get("fragment_patterns", {}),
