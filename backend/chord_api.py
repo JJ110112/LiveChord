@@ -593,6 +593,117 @@ def admin_bar_restore(req: BarRestoreRequest, username: str = Depends(get_admin_
 
 
 # ---------------------------------------------------------------------------
+# admin: re-run post-BTC processing (bar_arbitrator + ghost filter) without
+# audio. Lets us backfill old chord JSONs that were ingested before the new
+# pipeline shipped (bar_correction:False, ghost_chord_filter:None) when the
+# original audio is no longer on disk.
+# ---------------------------------------------------------------------------
+
+class ChordPostprocessRequest(BaseModel):
+    path: Optional[str] = None
+    hash: Optional[str] = None
+    apply_bar_arbitrator: bool = True
+    apply_ghost_filter: bool = True
+    force_arbitrator: bool = False  # passes through to arbitrate(force=...)
+
+
+@router.post("/admin/chord/postprocess")
+def admin_chord_postprocess(
+    req: ChordPostprocessRequest, username: str = Depends(get_admin_user),
+):
+    """Re-run audio-free post-processing on an existing chord JSON.
+
+    Use case: songs ingested before bar_arbitrator + ghost filter shipped
+    have ``bar_correction: False / None`` and ``ghost_chord_filter: None``
+    in their JSON. Re-uploading is the cleanest fix but requires the audio
+    (uploads clear tmp post-analysis). This endpoint runs the same passes
+    against the existing chord+downbeat+bpm data so legacy songs benefit
+    without re-upload.
+
+    Does NOT re-run BTC, beat tracker, or beat_refiner (all of which need
+    audio). Boundary errors larger than the snap tolerance still need
+    either re-upload or the frontend「對齊小節線」tool.
+    """
+    # Queue-empty guard — same as /admin/bar/recompute
+    try:
+        from process_queue import process_queue, queue
+        if isinstance(process_queue, queue.Queue) and process_queue.qsize() > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=f"process_queue has {process_queue.qsize()} jobs in flight; retry when idle",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+    if req.hash:
+        h = req.hash
+    elif req.path:
+        h = song_hash(req.path)
+    else:
+        raise HTTPException(status_code=400, detail="missing path or hash")
+
+    chords_file = chord_file_for(h)
+    if not chords_file.is_file():
+        raise HTTPException(status_code=404, detail="chord JSON not found")
+
+    data = json.loads(chords_file.read_text(encoding="utf-8"))
+
+    summary = {
+        "ok": True,
+        "hash": h,
+        "bar_arbitrator": None,
+        "ghost_chord_filter": None,
+        "n_chords_before": len(data.get("chords") or []),
+        "n_chords_after": None,
+        "n_downbeats_before": len(data.get("downbeats") or []),
+        "n_downbeats_after": None,
+    }
+
+    if req.apply_bar_arbitrator:
+        try:
+            from ai.bar_arbitrator import arbitrate, apply_to_chord_json
+            from process_queue import _resolve_bar_model_path
+            model_path = _resolve_bar_model_path()
+            res = arbitrate(data, model_path=model_path, force=req.force_arbitrator)
+            apply_to_chord_json(data, res)
+            summary["bar_arbitrator"] = {
+                "applied": res["applied"],
+                "reason": res["reason"],
+                "model_version": res.get("model_version"),
+                "score_after": res.get("score_after"),
+                "n_downbeats_after": len(res.get("downbeats_after") or []),
+            }
+        except Exception as e:
+            summary["bar_arbitrator"] = {"applied": False, "error": f"{type(e).__name__}: {e}"}
+
+    if req.apply_ghost_filter:
+        try:
+            from chord_detect import filter_ghost_boundary_chords
+            filtered, ghost_meta = filter_ghost_boundary_chords(
+                data.get("chords", []),
+                data.get("downbeats", []),
+                data.get("bpm"),
+            )
+            if ghost_meta.get("applied"):
+                data["chords"] = filtered
+                data["ghost_chord_filter"] = ghost_meta
+            summary["ghost_chord_filter"] = ghost_meta
+        except Exception as e:
+            summary["ghost_chord_filter"] = {"applied": False, "error": f"{type(e).__name__}: {e}"}
+
+    summary["n_chords_after"] = len(data.get("chords") or [])
+    summary["n_downbeats_after"] = len(data.get("downbeats") or [])
+
+    tmp = chords_file.with_suffix(chords_file.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, chords_file)
+
+    return summary
+
+
+# ---------------------------------------------------------------------------
 # admin: AI accompaniment cache recompute (per-song manual)
 # ---------------------------------------------------------------------------
 
