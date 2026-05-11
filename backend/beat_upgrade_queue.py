@@ -265,6 +265,29 @@ def _process_one(hash: str):
             sheet["beats_source"] = info["beats_source"]
             sheet["beat_version"] = int(sheet.get("beat_version", 0)) + 1
 
+        # Ghost-boundary chord filter — fresh downbeats[] just landed, so
+        # collapse any 1-beat BTC quality bleed at bar lines (e.g. Abmaj7(3)
+        # +Fm7(1)+Fm7(4) → Abmaj7(4)+Fm7(4)). Library songs only see this
+        # filter via the upgrade-beats path because /api/chords/detect writes
+        # without beats and auto_worker batch doesn't run bar-aware passes.
+        # Same strict 4-gate as ingest. Failure non-fatal.
+        try:
+            from chord_detect import filter_ghost_boundary_chords
+            filtered, ghost_meta = filter_ghost_boundary_chords(
+                sheet.get("chords", []),
+                sheet.get("downbeats", []),
+                sheet.get("bpm"),
+            )
+            if ghost_meta.get("applied"):
+                sheet["chords"] = filtered
+                sheet["ghost_chord_filter"] = ghost_meta
+                logger.info(
+                    "[ghost_chord_filter] %s removed %d ghost chord(s)",
+                    hash, ghost_meta["removed_count"],
+                )
+        except Exception as e:
+            logger.warning("upgrade-beats %s: ghost_chord_filter failed: %s", hash, e)
+
         tmp = sheet_path + ".tmp"
         try:
             with open(tmp, "w", encoding="utf-8") as f:
