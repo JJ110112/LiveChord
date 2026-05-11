@@ -218,17 +218,30 @@ def _process_one(hash: str):
                 logger.error("upgrade-beats %s: beat_this Modal error: %s", hash, e)
                 return
             # Modal function returns a flat dict with bpm_correction key.
-            # Map to the sheet directly (chord boundaries unchanged — the
-            # PC migration script doesn't snap chords for beat_this either).
             if not info.get("beats_source"):
                 with _lock:
                     rec.status = ERROR
                     rec.completed_at = time.time()
                     rec.error = info.get("error") or "no beats detected"
                 return
+            # Snap chord boundaries to the new beat grid — mirrors the upload
+            # path (process_queue._ingest_beats_modal_or_local L193) and the
+            # madmom branch below (analyze_and_snap_dynamic snaps internally).
+            # Without this, chords from BTC (boundary precision ~0.2-0.4s)
+            # land at fractional beat positions and the player auto-split
+            # panel slices each chord across bar lines for display.
+            beats = info.get("beats", [])
+            if beats:
+                try:
+                    import numpy as np
+                    from beat_snap import _snap_to_grid
+                    _snap_to_grid(chords_copy, np.sort(np.asarray(beats, dtype=np.float64)))
+                    sheet["chords"] = chords_copy
+                except Exception as e:
+                    logger.warning("upgrade-beats %s: chord snap failed: %s", hash, e)
             if info.get("bpm"):
                 sheet["bpm"] = round(info["bpm"], 1)
-            sheet["beats"] = info.get("beats", [])
+            sheet["beats"] = beats
             sheet["downbeats"] = info.get("downbeats", [])
             sheet["tempo_curve"] = info.get("tempo_curve", [])
             sheet["beats_source"] = info["beats_source"]
