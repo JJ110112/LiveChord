@@ -10,6 +10,7 @@ The original chord array (incl. user manual edits) stays in storage; the
 serve-time copy is what the player consumes.
 """
 
+import math
 import statistics
 from typing import Iterable, List, Dict, Optional
 
@@ -51,7 +52,7 @@ _MIN_SEG_BAR_FRAC = 0.20
 _GAP_INTERPOLATION_THRESHOLD = 1.5
 _ONE_BAR_NO_SPLIT_MAX_FRAC = 1.30
 _FRAGMENT_GUARD_PENALTY = 0.18
-_SAME_CHORD_FRAGMENT_BEATS = 1.25
+_SAME_CHORD_FRAGMENT_BEATS = 1.35
 _SAME_CHORD_ONE_BAR_EDGE_BEATS = 2.35
 _SAME_CHORD_MERGE_TOTAL_BEATS = (3.3, 5.5)
 _SAME_CHORD_FULL_BAR_BEATS = 3.35
@@ -125,7 +126,7 @@ def _resolve_split_downbeats(chord_data: Dict) -> Optional[List[float]]:
     # downbeats among 100+ entries don't get rejected by 0.05 of fuzz.
     # Upper stays at 5.0 to keep doubled-density (≥6) out — the halved
     # fallback below handles those.
-    if 2.7 <= bpb <= 5.0:
+    if 2.7 <= bpb <= 5.0 or 5.2 <= bpb <= 6.8:
         return db_floats
 
     # Halved-downbeats fallback: if the raw grid is at half-bar density
@@ -137,7 +138,7 @@ def _resolve_split_downbeats(chord_data: Dict) -> Optional[List[float]]:
     if 1.5 <= bpb <= 2.3:
         halved = db_floats[::2]
         bpb_h = _bpb_class(halved, bpm)
-        if 2.7 <= bpb_h <= 5.0:
+        if 2.7 <= bpb_h <= 5.0 or 5.2 <= bpb_h <= 6.8:
             return halved
 
     return None
@@ -265,6 +266,31 @@ def _drop_fragment_boundaries(boundaries: List[float], bar_gap: float) -> List[f
                 changed = True
                 break
     return out
+
+
+def _rebalance_long_fragment_boundaries(boundaries: List[float], bar_gap: float) -> List[float]:
+    """Evenly split long held chords when bar cuts create edge fragments.
+
+    When the downbeat phase is slightly late/early, a long same-chord span can
+    become 1+4+1 or 1+4+4+1 after splitting. The user-visible result is worse
+    than a simple even partition. For a single held chord, exact musical
+    downbeat placement is less important than avoiding one-beat cards and
+    keeping every card at or below roughly one bar.
+    """
+    if bar_gap <= 0 or len(boundaries) <= 2:
+        return boundaries
+    total = boundaries[-1] - boundaries[0]
+    total_bars = total / bar_gap
+    if total_bars <= 1.35:
+        return boundaries
+    segs = [boundaries[i + 1] - boundaries[i] for i in range(len(boundaries) - 1)]
+    has_edge_fragment = (segs[0] / bar_gap) <= 0.34 or (segs[-1] / bar_gap) <= 0.34
+    has_oversized_segment = max(segs) > bar_gap * 1.35
+    if not (has_edge_fragment or has_oversized_segment):
+        return boundaries
+    n = max(2, int(math.ceil(total / bar_gap)))
+    step = total / n
+    return [boundaries[0] + step * i for i in range(n)] + [boundaries[-1]]
 
 
 def merge_same_chord_fragments(chords: List[Dict], bpm: float) -> tuple[List[Dict], Dict]:
@@ -472,6 +498,12 @@ def split_chords_at_bars(
         if min_seg > 0:
             # Step 2: clean up tail slivers and duplicate-downbeat artifacts.
             boundaries = _drop_small_segment_boundaries(boundaries, min_seg)
+        if bar_gap:
+            # Step 3: after micro-slivers are gone, long held chords can still
+            # split as 1+4+1 when the whole downbeat grid is slightly shifted.
+            # Rebalance those into evenly sized cards so fast songs do not
+            # show a row of one-beat edge fragments.
+            boundaries = _rebalance_long_fragment_boundaries(boundaries, bar_gap)
 
         # If we collapsed back to just [start, end], no actual split happened
         if len(boundaries) <= 2:
@@ -574,6 +606,7 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
         if stale_merge_risk:
             reason = "fragment-guard-after-stale-merge"
         safe_chords = split_long_chords_at_bars(chords, resolved, bpm)
+        safe_chords, post_merge_meta = merge_same_chord_fragments(safe_chords, bpm)
         chord_data["chords"] = safe_chords
         safe_applied = len(safe_chords) != len(chords)
         chord_data["auto_split_meta"] = {
@@ -587,11 +620,13 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
                 "patterns": frag.get("patterns", {}),
                 "examples": frag.get("examples", []),
                 "safe_long_split": safe_applied,
+                "post_merge": post_merge_meta,
             },
         }
         return chord_data
 
     new_chords = split_chords_at_bars(chords, resolved)
+    new_chords, post_merge_meta = merge_same_chord_fragments(new_chords, bpm)
     chord_data["chords"] = new_chords
     chord_data["auto_split_meta"] = {
         "applied": True,
@@ -602,6 +637,7 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
             "skipped": 0,
             "penalty": frag.get("penalty", 0.0),
             "patterns": frag.get("patterns", {}),
+            "post_merge": post_merge_meta,
         },
     }
     return chord_data

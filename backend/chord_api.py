@@ -61,6 +61,7 @@ from chord_cache import (
 from chord_splitter import maybe_split_for_serve
 from chord_noise_filter import maybe_filter_for_serve as maybe_noise_filter_for_serve
 from bar_phase_corrector import maybe_correct_for_serve as maybe_phase_correct_for_serve
+from bpm_sanity import maybe_apply_structural_bpm_correction_for_serve
 from instrument_registry import get_instrument, list_instruments, INSTRUMENTS
 
 from config import resolve_path
@@ -267,6 +268,7 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
     _apply_requested_beat_source(data, official_file, beat_source)
     data["exists"] = True
     data["current_version"] = "official" if is_fallback or not version else version
+    maybe_apply_structural_bpm_correction_for_serve(data)
     maybe_phase_correct_for_serve(data) # rewrite irregular downbeats[] to regular grid
     maybe_noise_filter_for_serve(data)  # absorb 1-beat noise tails
     maybe_split_for_serve(data)         # split long chords at corrected downbeats
@@ -283,6 +285,7 @@ async def get_chords_by_hash(hash: str = Query(..., min_length=8, max_length=16)
     data = json.loads(chords_file.read_text(encoding="utf-8"))
     _apply_requested_beat_source(data, chords_file, beat_source)
     data["exists"] = True
+    maybe_apply_structural_bpm_correction_for_serve(data)
     maybe_phase_correct_for_serve(data)
     maybe_noise_filter_for_serve(data)
     maybe_split_for_serve(data)

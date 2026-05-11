@@ -54,10 +54,10 @@ _CV_MESSY = 0.30             # current cv above this -> consider regularity path
 _ALIGN_DROP_TOL = 0.03       # tighter — barely any alignment loss tolerated
 _MIN_BEST_ALIGN = 0.20       # new grid must hit at least this absolute
 
-# Candidate meters to try. 3 covers 3/4 waltz, 4 covers 4/4 standard pop.
-# 6/8 is rare in pop and BTC's beat tracker usually emits 8th notes anyway,
-# making the "real bar" already encoded as bpb=6 in beats — skip for v1.
-_BPB_CANDIDATES = (3, 4)
+# Candidate meters to try. 3 covers 3/4 waltz, 4 covers standard pop 4/4,
+# and 6 preserves compound/six-beat grids so they are not forced into 4/4
+# before the splitter has a chance to make stable card-sized segments.
+_BPB_CANDIDATES = (3, 4, 6)
 
 # Fragment-risk scoring: shifted downbeats can make normal 4/4 chords render
 # as 1+3 / 3+1, and boundary jitter can create 4+1 tails. Treat this as a

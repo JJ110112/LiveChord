@@ -38,6 +38,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(BACKEND))
 
 from bar_phase_corrector import fragmentation_risk, maybe_correct_for_serve  # noqa: E402
+from bpm_sanity import maybe_apply_structural_bpm_correction_for_serve  # noqa: E402
 from chord_cache import chord_file_for, song_hash  # noqa: E402
 from chord_noise_filter import maybe_filter_for_serve  # noqa: E402
 from chord_splitter import maybe_split_for_serve  # noqa: E402
@@ -139,6 +140,7 @@ def _load_json(path: Path) -> Optional[Dict[str, Any]]:
 
 def _apply_serve_pipeline(data: Dict[str, Any]) -> Dict[str, Any]:
     served = copy.deepcopy(data)
+    maybe_apply_structural_bpm_correction_for_serve(served)
     maybe_correct_for_serve(served)
     maybe_filter_for_serve(served)
     maybe_split_for_serve(served)
@@ -228,11 +230,14 @@ def _visible_fragment_risk(chords: List[Dict[str, Any]], bpm: float, bpb: int = 
             continue
         dur_beats = (end - start) / spb
         dots = _display_dot_count(c, bpm, bpb)
-        if 3.5 <= dur_beats <= 4.5 and dots != bpb:
+        one_bar_low = bpb - 0.5
+        one_bar_high = bpb + 0.5
+        half_bar = bpb / 2
+        if one_bar_low <= dur_beats <= one_bar_high and dots != bpb:
             add(f"one-bar-{dots}-dots", c, f"{dur_beats:.2f} beats -> {dots} dots")
-        elif 1.55 <= dur_beats <= 2.45 and dots != int(round(bpb / 2)):
+        elif (half_bar - 0.45) <= dur_beats <= (half_bar + 0.45) and dots != int(round(half_bar)):
             add(f"half-bar-{dots}-dots", c, f"{dur_beats:.2f} beats -> {dots} dots")
-        elif 4.5 < dur_beats <= 5.5 and not c.get("auto_split") and dots > bpb:
+        elif one_bar_high < dur_beats <= (bpb + 1.5) and not c.get("auto_split") and dots > bpb:
             add(f"five-beat-{dots}-dots", c, f"{dur_beats:.2f} beats -> {dots} dots")
 
     for prev, cur in zip(chords, chords[1:]):
@@ -247,7 +252,7 @@ def _visible_fragment_risk(chords: List[Dict[str, Any]], bpm: float, bpb: int = 
         seg_a = (prev_end - start) / spb
         seg_b = (end - cur_start) / spb
         total = seg_a + seg_b
-        if 3.3 <= total <= 5.5 and min(seg_a, seg_b) <= 1.35:
+        if (bpb - 0.7) <= total <= (bpb + 1.5) and min(seg_a, seg_b) <= 1.35:
             left = round(seg_a)
             right = round(seg_b)
             add(f"same-chord-{left}+{right}", prev, f"{seg_a:.2f}+{seg_b:.2f} beats")
@@ -261,6 +266,20 @@ def _issue(issues: List[Dict[str, Any]], issue_type: str, severity: str, detail:
 
 def _rate_den(total: int) -> int:
     return max(1, total)
+
+
+def _meter_class(bpb: Optional[float]) -> int:
+    if bpb is None or bpb <= 0:
+        return 4
+    if 2.5 <= bpb < 3.3:
+        return 3
+    if 3.3 <= bpb <= 4.7:
+        return 4
+    if 5.2 <= bpb <= 6.8:
+        return 6
+    if 7.5 <= bpb <= 8.5:
+        return 8
+    return 4
 
 
 def _score_track(track: Track, data_root: Path) -> Dict[str, Any]:
@@ -333,6 +352,14 @@ def _score_track(track: Track, data_root: Path) -> Dict[str, Any]:
     if db_cv is not None and db_cv > 0.18:
         _issue(issues, "irregular_downbeats", "warn", f"db_cv={db_cv:.2f}")
     bpb = metrics["bpb"]
+    # POP target for this phase is 4/4 card stability. Slow ballads often
+    # report bpb≈3 from sparse/half-density beats, but the player expectation
+    # is still a 4-dot bar. Keep POP at 4 unless the grid clearly indicates
+    # a six-beat compound bar.
+    if track.category == "POP":
+        meter_bpb = 6 if bpb and 5.2 <= bpb <= 6.8 else 4
+    else:
+        meter_bpb = _meter_class(bpb)
     if bpb and not (2.5 <= bpb <= 4.5 or 5.5 <= bpb <= 6.5 or 7.5 <= bpb <= 8.5):
         _issue(issues, "irregular_meter", "warn", f"bpb={bpb:.2f}")
 
@@ -349,7 +376,7 @@ def _score_track(track: Track, data_root: Path) -> Dict[str, Any]:
             # One bar can measure slightly above 4 nominal beats when BTC
             # boundaries/BPM are jittery. The player-risk case is a multi-bar
             # card that survived splitting.
-            if dur_beats > 5.5 and not c.get("auto_split"):
+            if dur_beats > (meter_bpb + 1.5) and not c.get("auto_split"):
                 long_cards += 1
             if 0 < dur_beats < 0.45:
                 tiny_cards += 1
@@ -370,8 +397,8 @@ def _score_track(track: Track, data_root: Path) -> Dict[str, Any]:
         if tail_gap > max(8.0, last_beat * 0.05):
             _issue(issues, "tail_gap", "severe", f"tail gap {tail_gap:.1f}s")
 
-    raw_frag = fragmentation_risk(chords, downbeats, bpm, 4)
-    frag = _visible_fragment_risk(chords, bpm, 4)
+    raw_frag = fragmentation_risk(chords, downbeats, bpm, meter_bpb)
+    frag = _visible_fragment_risk(chords, bpm, meter_bpb)
     bad_frag = int(frag.get("bad_fragments") or 0)
     row["bad_fragments"] = bad_frag
     row["fragment_penalty"] = raw_frag.get("penalty", 0)

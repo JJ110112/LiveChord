@@ -19,6 +19,7 @@ from backend.chord_splitter import (
     _median_bar_gap,
     _drop_small_segment_boundaries,
     _interpolate_oversized_gaps,
+    _resolve_split_downbeats,
 )
 
 
@@ -65,6 +66,29 @@ class TestSplitChordsAtBars(unittest.TestCase):
         downbeats = [0.0, 2.0, 4.0, 6.0, 8.0]
         out = split_chords_at_bars(chords, downbeats)
         self.assertEqual(len(out), 4)
+
+    def test_six_beat_bar_grid_is_confident(self):
+        data = {
+            "bpm": 200.0,
+            "beats_source": "beat_this",
+            "downbeats": [0.0, 1.8, 3.6, 5.4, 7.2],
+        }
+        resolved = _resolve_split_downbeats(data)
+        self.assertIsNotNone(resolved)
+        self.assertEqual(len(resolved), 5)
+
+    def test_long_shifted_chord_rebalanced_without_edge_fragments(self):
+        # A 6-beat held chord against a shifted 4/4 grid would split as 1+4+1.
+        # Rebalance to two even cards instead.
+        bpm = 120.0
+        spb = 60.0 / bpm
+        chords = [{"time": 0.0, "end": 6 * spb, "chord": "C"}]
+        downbeats = [-1.5 * spb, 1 * spb, 5 * spb, 9 * spb]
+        out = split_chords_at_bars(chords, downbeats)
+        self.assertEqual(len(out), 2)
+        seg_beats = [(s["end"] - s["time"]) / spb for s in out]
+        self.assertEqual([round(v, 2) for v in seg_beats], [3.0, 3.0])
+        self.assertTrue(all(s.get("auto_split") for s in out))
 
     def test_short_chord_passes_through(self):
         # 2-beat chord (1.0s) with no interior downbeats → unchanged

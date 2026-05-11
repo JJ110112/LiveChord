@@ -10,6 +10,7 @@ See doc/QA.md §BPM for the rollout decision (ingest-only, no backfill).
 
 from __future__ import annotations
 
+import statistics
 from typing import Optional, Tuple
 
 import numpy as np
@@ -108,7 +109,7 @@ def ballad_halving_check(
     return bpm, meta
 
 
-def apply_halving_to_beat_info(beat_info: dict) -> dict:
+def apply_halving_to_beat_info(beat_info: dict, *, thin_beats: bool = False) -> dict:
     """Mutate a beat_info dict in place when halving was applied.
 
     Called after ballad_halving_check returns applied=True. Halves the
@@ -126,4 +127,84 @@ def apply_halving_to_beat_info(beat_info: dict) -> dict:
     if len(downbeats) >= 2:
         beat_info["downbeats"] = downbeats[::2]
 
+    if thin_beats:
+        beats = beat_info.get("beats") or []
+        if len(beats) >= 2:
+            beat_info["beats"] = beats[::2]
+
     return beat_info
+
+
+def _median_gap(values: list) -> Optional[float]:
+    try:
+        vals = sorted(float(v) for v in values if v is not None)
+    except Exception:
+        return None
+    gaps = [vals[i + 1] - vals[i] for i in range(len(vals) - 1) if vals[i + 1] - vals[i] > 0.05]
+    return statistics.median(gaps) if gaps else None
+
+
+def structural_doubletime_check(sheet: dict) -> Tuple[float, dict]:
+    """Detect obvious 2x BPM from stored beat/downbeat structure.
+
+    This is for already-batched songs where audio-feature bpm_sanity did not
+    run or could not read the audio. The signature is:
+      - displayed BPM is very high
+      - halved BPM lands in a normal slow/mid song range
+      - downbeat gap is roughly six detected beat ticks at the stored BPM
+
+    In that case the stored beat ticks are sub-beats. For serve-time use we
+    halve BPM/tempo_curve and thin beats to the corrected pulse while keeping
+    downbeats anchored to the same bar positions.
+    """
+    meta = dict(_DEFAULT_META)
+    try:
+        bpm = float(sheet.get("bpm") or 0)
+    except Exception:
+        bpm = 0.0
+    meta["original"] = bpm
+    if bpm < 180.0 or bpm > 260.0:
+        return bpm, meta
+    halved = bpm / 2.0
+    if not (85.0 <= halved <= 130.0):
+        return bpm, meta
+
+    db_gap = _median_gap(sheet.get("downbeats") or [])
+    if not db_gap:
+        meta["reason"] = "no-downbeat-gap"
+        return bpm, meta
+    spb = 60.0 / bpm
+    if spb <= 0:
+        return bpm, meta
+    bpb = db_gap / spb
+    meta["bpb_original"] = round(bpb, 3)
+    if 5.2 <= bpb <= 6.8:
+        meta["applied"] = True
+        meta["reason"] = "structural-doubletime-bpb6"
+        return halved, meta
+
+    meta["reason"] = "structure-not-doubletime"
+    return bpm, meta
+
+
+def maybe_apply_structural_bpm_correction_for_serve(sheet: dict) -> dict:
+    """Response-time BPM correction for legacy cached beat_this data."""
+    if not isinstance(sheet, dict):
+        return sheet
+    existing = sheet.get("bpm_correction") or {}
+    if existing.get("applied"):
+        return sheet
+    corrected_bpm, meta = structural_doubletime_check(sheet)
+    if not meta.get("applied"):
+        return sheet
+    sheet["bpm"] = round(corrected_bpm, 2)
+    tempo_curve = sheet.get("tempo_curve") or []
+    sheet["tempo_curve"] = [
+        {"t": p.get("t", 0.0), "bpm": round(float(p.get("bpm", 0.0)) / 2.0, 2)}
+        for p in tempo_curve
+    ]
+    beats = sheet.get("beats") or []
+    if len(beats) >= 2:
+        sheet["beats"] = beats[::2]
+    sheet["bpm_correction"] = meta
+    return sheet
