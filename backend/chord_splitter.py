@@ -49,6 +49,7 @@ _MIN_SEG_BAR_FRAC = 0.20
 # chords, leaving a 5-7s "bar" — without interpolation those would render as
 # one giant chord card with overflowing dots, which is the bug we're fixing.
 _GAP_INTERPOLATION_THRESHOLD = 1.5
+_ONE_BAR_NO_SPLIT_MAX_FRAC = 1.30
 _FRAGMENT_GUARD_PENALTY = 0.18
 _SAME_CHORD_FRAGMENT_BEATS = 1.25
 _SAME_CHORD_ONE_BAR_EDGE_BEATS = 2.35
@@ -454,6 +455,13 @@ def split_chords_at_bars(
             continue
 
         if bar_gap:
+            # A chord that is already approximately one full bar should remain
+            # one card. Some beat trackers locally emit half-bar downbeats
+            # inside a normal 4/4 bar (e.g. G(2) D(2) C(4)); splitting those
+            # produces C(2)+C(2), which violates the musical card structure.
+            if (float(end) - float(start)) <= bar_gap * _ONE_BAR_NO_SPLIT_MAX_FRAC:
+                out.append(chord)
+                continue
             # Step 1: fill in for missed/absent downbeats so a long held chord
             # (incl. song-end chords where the tracker stops emitting downbeats)
             # gets divided into bar-sized segments.

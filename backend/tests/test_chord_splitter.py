@@ -75,6 +75,16 @@ class TestSplitChordsAtBars(unittest.TestCase):
         self.assertEqual(out[0], chords[0])
         self.assertNotIn("auto_split", out[0])
 
+    def test_one_bar_chord_not_split_by_local_half_bar_downbeat(self):
+        # Mixed grid: global median bar is 2.0s, but this local C bar has an
+        # extra half-bar downbeat at 11.0. It is still C(4), not C(2)+C(2).
+        chords = [{"time": 10.0, "end": 12.0, "chord": "C"}]
+        downbeats = [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 11.0, 12.0, 14.0, 16.0]
+        out = split_chords_at_bars(chords, downbeats)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0], chords[0])
+        self.assertNotIn("auto_split", out[0])
+
     def test_no_downbeats_passes_through(self):
         chords = [{"time": 0.0, "end": 8.0, "chord": "C"}]
         out = split_chords_at_bars(chords, [])
