@@ -53,6 +53,8 @@ _FRAGMENT_GUARD_PENALTY = 0.18
 _SAME_CHORD_FRAGMENT_BEATS = 1.25
 _SAME_CHORD_ONE_BAR_EDGE_BEATS = 2.35
 _SAME_CHORD_MERGE_TOTAL_BEATS = (3.3, 5.5)
+_SAME_CHORD_FULL_BAR_BEATS = 3.35
+_SAME_CHORD_SLIVER_BEATS = 1.75
 
 
 def _bpb_class(downbeats: List[float], bpm: float) -> float:
@@ -324,6 +326,17 @@ def merge_same_chord_fragments(chords: List[Dict], bpm: float) -> tuple[List[Dic
             return False
         return min(segs) <= _SAME_CHORD_ONE_BAR_EDGE_BEATS
 
+    def stale_full_bar_plus_sliver(items: List[Dict]) -> bool:
+        if not any(seg.get("auto_split") for seg in items):
+            return False
+        segs = segment_beats(items)
+        if len(segs) != 2:
+            return False
+        return (
+            (segs[0] >= _SAME_CHORD_FULL_BAR_BEATS and segs[1] <= _SAME_CHORD_SLIVER_BEATS)
+            or (segs[1] >= _SAME_CHORD_FULL_BAR_BEATS and segs[0] <= _SAME_CHORD_SLIVER_BEATS)
+        )
+
     def merge_items(items: List[Dict]) -> Dict:
         merged = dict(items[0])
         merged["end"] = items[-1].get("end", merged.get("end"))
@@ -351,7 +364,11 @@ def merge_same_chord_fragments(chords: List[Dict], bpm: float) -> tuple[List[Dic
             min_seg = min(seg_beats) if seg_beats else 99.0
             has_stale_auto_split = any(seg.get("auto_split") for seg in run)
             should_merge = (
-                has_stale_auto_split
+                (
+                    has_stale_auto_split
+                    and one_bar_fragment_window(run, 0, len(run))
+                    and not stale_full_bar_plus_sliver(run)
+                )
                 or (
                     _SAME_CHORD_MERGE_TOTAL_BEATS[0] <= total_beats <= _SAME_CHORD_MERGE_TOTAL_BEATS[1]
                     and min_seg <= _SAME_CHORD_FRAGMENT_BEATS
@@ -372,6 +389,8 @@ def merge_same_chord_fragments(chords: List[Dict], bpm: float) -> tuple[List[Dic
                 size = 2 if one_bar_fragment_window(run, k, 2) else 0
                 if not size and one_bar_fragment_window(run, k, 3):
                     size = 3
+                if size and stale_full_bar_plus_sliver(run[k:k + size]):
+                    size = 0
                 if size:
                     items = run[k:k + size]
                     merged = merge_items(items)

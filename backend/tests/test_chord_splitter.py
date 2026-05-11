@@ -161,7 +161,7 @@ class TestSplitChordsAtBars(unittest.TestCase):
         self.assertEqual(out[0]["end"], 2.0)
         self.assertNotIn("auto_split", out[0])
 
-    def test_merge_stale_auto_split_same_chord_run_even_when_longer(self):
+    def test_preserve_stale_auto_split_full_bar_plus_sliver(self):
         chords = [
             {"time": 10.0, "end": 10.6, "chord": "Fm7", "auto_split": True},
             {"time": 10.6, "end": 12.7, "chord": "Fm7", "auto_split": True},
@@ -169,11 +169,24 @@ class TestSplitChordsAtBars(unittest.TestCase):
             {"time": 13.5, "end": 15.0, "chord": "Gm7"},
         ]
         out, meta = merge_same_chord_fragments(chords, bpm=115.0)
-        self.assertTrue(meta["applied"])
-        self.assertEqual(meta["merged"], 2)
-        self.assertEqual(len(out), 2)
+        self.assertFalse(meta["applied"])
+        self.assertEqual(meta["merged"], 0)
+        self.assertEqual(len(out), 4)
         self.assertEqual(out[0]["time"], 10.0)
-        self.assertEqual(out[0]["end"], 13.5)
+        self.assertEqual(out[0]["end"], 10.6)
+
+    def test_merge_stale_auto_split_same_chord_single_bar_fragment(self):
+        chords = [
+            {"time": 13.61, "end": 14.88, "chord": "Gm7", "auto_split": True},
+            {"time": 14.88, "end": 15.83, "chord": "Gm7", "auto_split": True},
+            {"time": 15.83, "end": 17.0, "chord": "Cm7"},
+        ]
+        out, meta = merge_same_chord_fragments(chords, bpm=115.4)
+        self.assertTrue(meta["applied"])
+        self.assertEqual(meta["merged"], 1)
+        self.assertEqual(len(out), 2)
+        self.assertEqual(out[0]["time"], 13.61)
+        self.assertEqual(out[0]["end"], 15.83)
         self.assertNotIn("auto_split", out[0])
 
     def test_merge_same_chord_one_bar_fragment_without_auto_split_flag(self):
