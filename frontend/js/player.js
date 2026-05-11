@@ -4753,6 +4753,16 @@
         const expectedBeatsForCard = (nominalSpb > 0) ? (durSec / nominalSpb) : ((spb > 0) ? (durSec / spb) : tsBeats);
         const barsApprox = expectedBeatsForCard / tsBeats;
         const roundedBars = Math.round(barsApprox);
+        const halfBarBeats = tsBeats / 2;
+        const isHalfBarAligned = halfBarBeats >= 1
+          && Math.abs(expectedBeatsForCard - halfBarBeats) < 0.45;
+        if (isHalfBarAligned) {
+          return {
+            count: halfBarBeats,
+            short: false,
+            dots: _buildVirtualDots(halfBarBeats, durSec, cStart),
+          };
+        }
         const barSnapTol = roundedBars === 1 ? 0.30 : 0.20;
         const isBarAligned = roundedBars >= 1 && Math.abs(barsApprox - roundedBars) < barSnapTol;
         if (isBarAligned) {
