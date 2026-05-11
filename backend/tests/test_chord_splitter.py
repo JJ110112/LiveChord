@@ -176,6 +176,38 @@ class TestSplitChordsAtBars(unittest.TestCase):
         self.assertEqual(out[0]["end"], 13.5)
         self.assertNotIn("auto_split", out[0])
 
+    def test_merge_same_chord_one_bar_fragment_without_auto_split_flag(self):
+        spb = 60.0 / 70.0
+        chords = [
+            {"time": 31.0, "end": 31.0 + 3 * spb, "chord": "Bbmaj7"},
+            {"time": 31.0 + 3 * spb, "end": 31.0 + 5 * spb, "chord": "Bbmaj7"},
+            {"time": 31.0 + 5 * spb, "end": 31.0 + 9 * spb, "chord": "F"},
+        ]
+        out, meta = merge_same_chord_fragments(chords, bpm=70.0)
+        self.assertTrue(meta["applied"])
+        self.assertEqual(meta["merged"], 1)
+        self.assertEqual(len(out), 2)
+        self.assertEqual(out[0]["chord"], "Bbmaj7")
+        self.assertAlmostEqual(out[0]["time"], 31.0)
+        self.assertAlmostEqual(out[0]["end"], 31.0 + 5 * spb)
+
+    def test_merge_same_chord_run_keeps_first_bar_then_merges_tail(self):
+        spb = 60.0 / 70.0
+        chords = [
+            {"time": 80.0, "end": 80.0 + 4 * spb, "chord": "C7"},
+            {"time": 80.0 + 4 * spb, "end": 80.0 + 7 * spb, "chord": "C7"},
+            {"time": 80.0 + 7 * spb, "end": 80.0 + 8 * spb, "chord": "C7"},
+            {"time": 80.0 + 8 * spb, "end": 80.0 + 12 * spb, "chord": "F"},
+        ]
+        out, meta = merge_same_chord_fragments(chords, bpm=70.0)
+        self.assertTrue(meta["applied"])
+        self.assertEqual(meta["merged"], 1)
+        self.assertEqual(len(out), 3)
+        self.assertAlmostEqual(out[0]["time"], 80.0)
+        self.assertAlmostEqual(out[0]["end"], 80.0 + 4 * spb)
+        self.assertAlmostEqual(out[1]["time"], 80.0 + 4 * spb)
+        self.assertAlmostEqual(out[1]["end"], 80.0 + 8 * spb)
+
     def test_duplicate_downbeats_collapse(self):
         # Duplicate downbeat at 103.22 and 103.30 (0.08s apart) — splitter
         # should not produce a 0.08s segment.
@@ -336,6 +368,25 @@ class TestMaybeSplitForServe(unittest.TestCase):
         guard = out["auto_split_meta"]["fragment_guard"]
         self.assertGreaterEqual(guard["skipped"], 3)
         self.assertIn("1+3", guard["patterns"])
+
+    def test_stale_merge_prevents_immediate_resplit(self):
+        data = {
+            "chords": [
+                {"time": 0.0, "end": 0.5, "chord": "Gm7", "auto_split": True},
+                {"time": 0.5, "end": 2.0, "chord": "Gm7", "auto_split": True},
+                {"time": 2.0, "end": 4.0, "chord": "Cm7"},
+            ],
+            "downbeats": [0.5, 2.0, 4.0],
+            "beats_source": "beat_this",
+            "bpm": 120.0,
+        }
+        out = maybe_split_for_serve(data)
+        self.assertTrue(out["same_chord_fragment_meta"]["applied"])
+        self.assertFalse(out["auto_split_meta"]["applied"])
+        self.assertEqual(out["auto_split_meta"]["reason"], "fragment-guard-after-stale-merge")
+        self.assertEqual(len(out["chords"]), 2)
+        self.assertEqual(out["chords"][0]["time"], 0.0)
+        self.assertEqual(out["chords"][0]["end"], 2.0)
 
 
 if __name__ == "__main__":

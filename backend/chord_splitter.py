@@ -51,6 +51,7 @@ _MIN_SEG_BAR_FRAC = 0.20
 _GAP_INTERPOLATION_THRESHOLD = 1.5
 _FRAGMENT_GUARD_PENALTY = 0.18
 _SAME_CHORD_FRAGMENT_BEATS = 1.25
+_SAME_CHORD_ONE_BAR_EDGE_BEATS = 2.35
 _SAME_CHORD_MERGE_TOTAL_BEATS = (3.3, 5.5)
 
 
@@ -276,6 +277,59 @@ def merge_same_chord_fragments(chords: List[Dict], bpm: float) -> tuple[List[Dic
     if spb <= 0:
         return list(chords), meta
 
+    def segment_beats(items: List[Dict]) -> List[float]:
+        return [
+            (float(seg.get("end", seg.get("time", 0.0))) - float(seg.get("time", 0.0))) / spb
+            for seg in items
+        ]
+
+    def pattern_name(seg_beats: List[float]) -> str:
+        left = round(seg_beats[0]) if seg_beats else 0
+        right = round(sum(seg_beats[1:])) if len(seg_beats) > 1 else 0
+        if left <= 1:
+            return f"1+{max(1, right)}"
+        if right <= 1:
+            return f"{max(1, left)}+1"
+        return "same-chord-fragment"
+
+    def record_merge(merged: Dict, items: List[Dict], seg_beats: List[float]) -> None:
+        start = float(items[0].get("time", 0.0))
+        end = float(items[-1].get("end", items[-1].get("time", start)))
+        pat = pattern_name(seg_beats)
+        meta["applied"] = True
+        meta["merged"] += len(items) - 1
+        meta["patterns"][pat] = meta["patterns"].get(pat, 0) + 1
+        if len(meta["examples"]) < 5:
+            meta["examples"].append({
+                "time": round(start, 3),
+                "end": round(end, 3),
+                "chord": merged.get("chord"),
+                "pattern": pat,
+                "segments": [round(v, 2) for v in seg_beats],
+            })
+
+    def one_bar_fragment_window(run: List[Dict], start_idx: int, size: int) -> bool:
+        if start_idx + size > len(run):
+            return False
+        items = run[start_idx:start_idx + size]
+        start = float(items[0].get("time", 0.0))
+        end = float(items[-1].get("end", items[-1].get("time", start)))
+        total_beats = (end - start) / spb
+        if not (_SAME_CHORD_MERGE_TOTAL_BEATS[0] <= total_beats <= _SAME_CHORD_MERGE_TOTAL_BEATS[1]):
+            return False
+        segs = segment_beats(items)
+        if any(v <= 0 for v in segs):
+            return False
+        if all(3.35 <= v <= 4.65 for v in segs):
+            return False
+        return min(segs) <= _SAME_CHORD_ONE_BAR_EDGE_BEATS
+
+    def merge_items(items: List[Dict]) -> Dict:
+        merged = dict(items[0])
+        merged["end"] = items[-1].get("end", merged.get("end"))
+        merged.pop("auto_split", None)
+        return merged
+
     out: List[Dict] = []
     i = 0
     while i < len(chords):
@@ -293,10 +347,7 @@ def merge_same_chord_fragments(chords: List[Dict], bpm: float) -> tuple[List[Dic
             start = float(run[0].get("time", 0.0))
             end = float(run[-1].get("end", run[-1].get("time", start)))
             total_beats = (end - start) / spb
-            seg_beats = [
-                (float(seg.get("end", seg.get("time", 0.0))) - float(seg.get("time", 0.0))) / spb
-                for seg in run
-            ]
+            seg_beats = segment_beats(run)
             min_seg = min(seg_beats) if seg_beats else 99.0
             has_stale_auto_split = any(seg.get("auto_split") for seg in run)
             should_merge = (
@@ -307,29 +358,32 @@ def merge_same_chord_fragments(chords: List[Dict], bpm: float) -> tuple[List[Dic
                 )
             )
             if should_merge:
-                merged = dict(run[0])
-                merged["end"] = run[-1].get("end", merged.get("end"))
-                merged.pop("auto_split", None)
+                merged = merge_items(run)
                 out.append(merged)
-                meta["applied"] = True
-                meta["merged"] += len(run) - 1
-                left = round(seg_beats[0]) if seg_beats else 0
-                right = round(sum(seg_beats[1:])) if len(seg_beats) > 1 else 0
-                if left <= 1:
-                    pat = f"1+{max(1, right)}"
-                elif right <= 1:
-                    pat = f"{max(1, left)}+1"
-                else:
-                    pat = "same-chord-fragment"
-                meta["patterns"][pat] = meta["patterns"].get(pat, 0) + 1
-                if len(meta["examples"]) < 5:
-                    meta["examples"].append({
-                        "time": round(start, 3),
-                        "end": round(end, 3),
-                        "chord": merged.get("chord"),
-                        "pattern": pat,
-                        "segments": [round(v, 2) for v in seg_beats],
-                    })
+                record_merge(merged, run, seg_beats)
+                i = j
+                continue
+            merged_run: List[Dict] = []
+            k = 0
+            run_changed = False
+            while k < len(run):
+                # Prefer the shortest valid one-bar repair so a true preceding
+                # same-chord bar can remain separate while its 3+1 tail merges.
+                size = 2 if one_bar_fragment_window(run, k, 2) else 0
+                if not size and one_bar_fragment_window(run, k, 3):
+                    size = 3
+                if size:
+                    items = run[k:k + size]
+                    merged = merge_items(items)
+                    merged_run.append(merged)
+                    record_merge(merged, items, segment_beats(items))
+                    run_changed = True
+                    k += size
+                    continue
+                merged_run.append(run[k])
+                k += 1
+            if run_changed:
+                out.extend(merged_run)
                 i = j
                 continue
 
@@ -451,10 +505,18 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
     halved = len(resolved) != len(raw_downbeats)
     bpb = round(_bpb_class(resolved, bpm)) if bpm > 0 else 4
     frag = fragmentation_risk(chords, resolved, bpm, bpb)
-    if float(frag.get("penalty", 0.0)) >= _FRAGMENT_GUARD_PENALTY:
+    merge_meta = chord_data.get("same_chord_fragment_meta") or {}
+    stale_merge_risk = merge_meta.get("applied") and frag.get("bad_fragments", 0) >= 1
+    repeated_fragment_risk = frag.get("bad_fragments", 0) >= 3 and float(frag.get("penalty", 0.0)) >= 0.08
+    if (float(frag.get("penalty", 0.0)) >= _FRAGMENT_GUARD_PENALTY
+            or stale_merge_risk
+            or repeated_fragment_risk):
+        reason = "fragment-guard"
+        if stale_merge_risk:
+            reason = "fragment-guard-after-stale-merge"
         chord_data["auto_split_meta"] = {
             "applied": False,
-            "reason": "fragment-guard",
+            "reason": reason,
             "before": len(chords),
             "after": len(chords),
             "fragment_guard": {
