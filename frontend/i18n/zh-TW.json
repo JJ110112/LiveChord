@@ -1030,7 +1030,7 @@
   "player.tools.beat_beat_this": "節拍:beat_this",
   "player.tools.beat_beat_this_title": "使用 beat_this 節拍 (PyTorch GPU，需 PC 端先批次處理)",
   "player.tools.beat_librosa": "節拍:librosa",
-  "player.tools.beat_librosa_title": "使用 librosa 節拍 (快速，ingest 預設)",
+  "player.tools.beat_librosa_title": "使用 librosa 節拍 (快速舊版 tracker)",
   "player.tools.beat_madmom": "節拍:madmom",
   "player.tools.beat_madmom_title": "使用 madmom 節拍 (rubato / downbeat，~30 秒)",
   "player.tools.calibrate": "和弦與節拍校正",

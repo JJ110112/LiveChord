@@ -200,11 +200,54 @@ class ChordSheet(BaseModel):
     chords: list = []
 
 
+_BEAT_FIELDS = ("bpm", "beats", "downbeats", "tempo_curve",
+                "beats_source", "beat_version", "bpm_correction")
+_BEAT_SOURCE_MODES = {"librosa", "madmom", "beat_this"}
+
+
+def _apply_requested_beat_source(data: dict, base_file: Path, beat_source: Optional[str]) -> None:
+    """Overlay cached beat fields for a requested player beat source.
+
+    This is response-only: the player can default to beat_this when the PC/VPS
+    batch has produced .bak.beat_this, while canonical chord JSON stays intact.
+    """
+    mode = (beat_source or "").strip().lower()
+    if not mode:
+        return
+    if mode not in _BEAT_SOURCE_MODES:
+        raise HTTPException(status_code=400, detail="beat_source must be librosa, madmom or beat_this")
+
+    base_path = str(base_file)
+    if mode == "librosa":
+        legacy = base_path + ".bak.beats"
+        lib = base_path + ".bak.librosa"
+        if os.path.exists(legacy) and not os.path.exists(lib):
+            try:
+                os.replace(legacy, lib)
+            except Exception:
+                pass
+
+    bak_path = base_path + f".bak.{mode}"
+    if not os.path.isfile(bak_path):
+        return
+    try:
+        snapshot = json.loads(Path(bak_path).read_text(encoding="utf-8"))
+    except Exception:
+        return
+    for key in _BEAT_FIELDS:
+        if key in snapshot:
+            data[key] = snapshot[key]
+        else:
+            data.pop(key, None)
+
+
 @router.get("/chords")
 async def get_chords(path: str = Query(...), version: str = Query(None),
+                     beat_source: str = Query(None),
                      username: Optional[str] = Depends(_optional_user)):
     """取得某首歌的和弦譜"""
     is_fallback = False
+    official_file = chord_file_for(song_hash(path))
     if not version and username:
         user_file = DATA_DIR / "users" / username / "chords" / f"{song_hash(path)}.json"
         if user_file.is_file():
@@ -212,15 +255,16 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
     if version and version != "official":
         chords_file = DATA_DIR / "users" / version / "chords" / f"{song_hash(path)}.json"
         if not chords_file.is_file():
-            chords_file = chord_file_for(song_hash(path))
+            chords_file = official_file
             is_fallback = True
     else:
-        chords_file = chord_file_for(song_hash(path))
+        chords_file = official_file
 
     if not chords_file.is_file():
         return {"path": path, "key": "", "capo": 0, "chords": [], "exists": False}
 
     data = json.loads(chords_file.read_text(encoding="utf-8"))
+    _apply_requested_beat_source(data, official_file, beat_source)
     data["exists"] = True
     data["current_version"] = "official" if is_fallback or not version else version
     maybe_phase_correct_for_serve(data) # rewrite irregular downbeats[] to regular grid
@@ -230,12 +274,14 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
 
 
 @router.get("/chords/by-hash")
-async def get_chords_by_hash(hash: str = Query(..., min_length=8, max_length=16)):
+async def get_chords_by_hash(hash: str = Query(..., min_length=8, max_length=16),
+                             beat_source: str = Query(None)):
     """直接用 hash 取得和弦譜（給 process 結果用）"""
     chords_file = chord_file_for(hash)
     if not chords_file.is_file():
         return {"hash": hash, "key": "", "capo": 0, "chords": [], "exists": False}
     data = json.loads(chords_file.read_text(encoding="utf-8"))
+    _apply_requested_beat_source(data, chords_file, beat_source)
     data["exists"] = True
     maybe_phase_correct_for_serve(data)
     maybe_noise_filter_for_serve(data)

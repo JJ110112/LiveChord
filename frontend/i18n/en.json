@@ -1030,7 +1030,7 @@
   "player.tools.beat_beat_this": "Beats: beat_this",
   "player.tools.beat_beat_this_title": "Use beat_this beats (PyTorch GPU; needs PC-side batch first)",
   "player.tools.beat_librosa": "Beats: librosa",
-  "player.tools.beat_librosa_title": "Use librosa beats (fast, ingest default)",
+  "player.tools.beat_librosa_title": "Use librosa beats (fast legacy tracker)",
   "player.tools.beat_madmom": "Beats: madmom",
   "player.tools.beat_madmom_title": "Use madmom beats (rubato / downbeat, ~30s)",
   "player.tools.calibrate": "Chord & beat calibration",
