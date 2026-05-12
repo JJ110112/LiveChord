@@ -319,6 +319,45 @@ class TestGlobalChordArbiter(unittest.TestCase):
         self.assertEqual([c.get("display_beats") for c in sheet["chords"]], [4, 4, 1, 4])
         self.assertEqual(sheet["chords"][1].get("display_arbiter"), "stable-downbeat-bar-plus-half")
 
+    def test_fast_rock_near_bar_hold_stays_single_card(self):
+        sheet = {
+            "bpm": 187.5,
+            "downbeats": [0.0, 1.32, 2.64, 3.96, 5.28, 6.60, 7.92, 9.24, 10.56, 11.88],
+            "chords": [
+                {"time": 0.0, "end": 1.32, "chord": "Bb"},
+                {"time": 1.32, "end": 2.64, "chord": "F"},
+                {"time": 2.64, "end": 4.26, "chord": "C"},
+                {"time": 4.25, "end": 5.57, "chord": "Bb"},
+            ],
+        }
+
+        apply_global_structure_corrections(sheet)
+
+        self.assertEqual([c["chord"] for c in sheet["chords"]], ["Bb", "F", "C", "Bb"])
+        self.assertEqual([c.get("display_beats") for c in sheet["chords"]], [4, 4, 4, 4])
+        self.assertEqual(sheet["chords"][2].get("display_arbiter"), "stable-downbeat-near-bar-hold")
+
+    def test_fast_rock_display_bpm_can_stay_above_180(self):
+        sheet = {
+            "bpm": 187.5,
+            "downbeats": [0.0, 1.32, 2.64, 3.96, 5.28, 6.60, 7.92, 9.24, 10.56, 11.88],
+            "chords": [
+                {"time": 0.0, "end": 1.385, "chord": "Bbm"},
+                {"time": 1.385, "end": 2.554, "chord": "F"},
+                {"time": 2.554, "end": 3.889, "chord": "Bbm"},
+                {"time": 3.889, "end": 5.224, "chord": "F"},
+                {"time": 5.224, "end": 6.536, "chord": "Bbm"},
+                {"time": 6.536, "end": 7.848, "chord": "Bbm"},
+                {"time": 7.848, "end": 9.183, "chord": "F"},
+                {"time": 9.183, "end": 10.518, "chord": "F"},
+            ],
+        }
+
+        apply_global_structure_corrections(sheet)
+
+        self.assertGreater(sheet["display_bpm"], 179.5)
+        self.assertLess(sheet["display_bpm"], 190)
+
     def test_stable_quantize_does_not_force_three_beat_intro_cards_to_four(self):
         sheet = {
             "bpm": 130.4,

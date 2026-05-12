@@ -27,7 +27,7 @@ _MAX_INTRO_END_SEC = 75.0
 _LOW_CONF_CV = 0.45
 _LOW_CONF_MIN_GAP_SEC = 0.9
 _DISPLAY_BPM_MIN = 40.0
-_DISPLAY_BPM_MAX = 180.0
+_DISPLAY_BPM_MAX = 220.0
 
 
 def _float(v, default: float = 0.0) -> float:
@@ -1148,6 +1148,17 @@ def _split_stable_full_bar_holds(chords: List[Dict], bar_gap: float) -> Tuple[Li
             first_end = start + bar_gap
             tail = max(0.0, end - first_end)
             tail_beats = max(1, min(3, int(round((tail / bar_gap) * 4.0)))) if tail > 0 else 1
+            # Fast rock/pop songs can overshoot a steady short bar by ~20-30%
+            # without reading like a real 4+1 split. Keep those as a single
+            # card so we don't spray repeated same-chord 4+1 tails across the
+            # section.
+            if tail_beats == 1 and bar_gap < 1.5 and bars_float < 1.30:
+                item = dict(chord)
+                item["display_beats"] = 4
+                item["display_arbiter"] = "stable-downbeat-near-bar-hold"
+                item["global_arbiter"] = item.get("global_arbiter") or "stable-downbeat-quantize"
+                out.append(item)
+                continue
             for seg_start, seg_end, beats in (
                 (start, first_end, 4),
                 (first_end, end, tail_beats),
