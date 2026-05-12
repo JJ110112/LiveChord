@@ -522,6 +522,12 @@ def split_chords_at_bars(
             seg["time"] = boundaries[i]
             seg["end"] = boundaries[i + 1]
             seg["auto_split"] = True
+            split_display = chord.get("split_display_beats")
+            if isinstance(split_display, list) and i < len(split_display):
+                try:
+                    seg["display_beats"] = int(split_display[i])
+                except Exception:
+                    pass
             out.append(seg)
 
     return out

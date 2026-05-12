@@ -193,6 +193,9 @@ class TestGlobalChordArbiter(unittest.TestCase):
         corrected = [c for c in sheet["chords"] if c.get("global_arbiter") == "minor-pop-loop-grammar"]
         self.assertTrue(corrected)
         self.assertTrue(all(c["display_beats"] == 2 for c in corrected if c["chord"] != "Fm"))
+        long_tonics = [c for c in sheet["chords"] if c["chord"] == "Fm" and c.get("end", 0) - c.get("time", 0) > 2.4]
+        self.assertTrue(long_tonics)
+        self.assertTrue(any(c.get("split_display_beats") == [4, 2] for c in long_tonics))
 
 
 if __name__ == "__main__":

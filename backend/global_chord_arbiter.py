@@ -365,7 +365,7 @@ def _find_minor_pop_loop_grammar(chords: List[Dict], bpm: float) -> List[Dict]:
             "suggested_card_beats": beats,
             "confidence": round(min(0.92, 0.70 + roots_ok * 0.03), 3),
         })
-        if len(hints) >= 8:
+        if len(hints) >= 64:
             break
     return hints
 
@@ -548,6 +548,7 @@ def _apply_minor_pop_loop_grammar(chords: List[Dict], candidates: List[Dict]) ->
             # Leave long tonic cards to the long-card splitter; otherwise the
             # song-level rule would hide the useful 4+2 visual split.
             if idx in (0, 6) and dur > 2.4:
+                item["split_display_beats"] = [4, 2]
                 continue
             if item.get("chord") != target:
                 item["chord"] = target

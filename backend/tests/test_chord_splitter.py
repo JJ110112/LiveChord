@@ -166,6 +166,12 @@ class TestSplitChordsAtBars(unittest.TestCase):
             self.assertEqual(seg["bass"], "E")
             self.assertEqual(seg["custom"], "x")
 
+    def test_preserves_split_display_beats(self):
+        chords = [{"time": 0.0, "end": 6.0, "chord": "Fm", "split_display_beats": [4, 2]}]
+        out = split_chords_at_bars(chords, [0.0, 4.0])
+        self.assertEqual([c["display_beats"] for c in out], [4, 2])
+        self.assertTrue(all(c.get("auto_split") for c in out))
+
     def test_does_not_mutate_input(self):
         chords = [{"time": 0.0, "end": 4.0, "chord": "C"}]
         original = dict(chords[0])
