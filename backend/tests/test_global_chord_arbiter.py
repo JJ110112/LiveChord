@@ -243,6 +243,44 @@ class TestGlobalChordArbiter(unittest.TestCase):
         self.assertEqual(corr["merged_cards"], 1)
         self.assertEqual(corr["split_long_holds"], 1)
 
+    def test_compound_12_8_ballad_uses_dotted_quarter_display_bpm(self):
+        downbeats = [
+            0.24, 2.92, 5.58, 8.24, 10.90, 12.24, 13.56, 14.90,
+            16.22, 18.90, 20.24, 21.56, 22.90, 24.24, 26.24,
+            28.24, 30.54, 32.24, 32.56, 34.24, 36.22, 38.22,
+            40.24, 42.24, 44.22, 46.20, 48.24, 50.22, 50.56,
+            52.24, 54.26, 56.26, 58.24, 60.24, 62.24, 64.26,
+            66.24, 68.22, 70.22, 72.22,
+        ]
+        sheet = {
+            "bpm": 176.5,
+            "downbeats": downbeats,
+            "chords": [
+                {"time": 0.28, "end": 8.27, "chord": "D"},
+                {"time": 8.27, "end": 10.00, "chord": "Bm"},
+                {"time": 10.00, "end": 12.14, "chord": "Bm7"},
+                {"time": 12.14, "end": 15.93, "chord": "G"},
+                {"time": 15.93, "end": 18.06, "chord": "D"},
+                {"time": 18.06, "end": 20.25, "chord": "A"},
+                {"time": 20.25, "end": 24.22, "chord": "D"},
+                {"time": 24.22, "end": 28.28, "chord": "Bm7"},
+                {"time": 28.28, "end": 30.00, "chord": "Gsus2"},
+                {"time": 30.00, "end": 33.98, "chord": "D"},
+                {"time": 33.98, "end": 36.29, "chord": "A"},
+                {"time": 36.29, "end": 39.59, "chord": "D"},
+            ],
+        }
+
+        apply_global_structure_corrections(sheet)
+
+        corr = sheet["global_arbiter_meta"]["corrections"][-1]
+        self.assertEqual(corr["type"], "compound_12_8_display_quantize")
+        self.assertAlmostEqual(corr["bar_gap"], 3.96, places=1)
+        self.assertEqual([c["chord"] for c in sheet["chords"][:4]], ["D", "D", "Bm", "G"])
+        self.assertEqual([c.get("display_beats") for c in sheet["chords"][:4]], [4, 4, 4, 4])
+        self.assertGreater(sheet["display_bpm"], 58)
+        self.assertLess(sheet["display_bpm"], 62)
+
 
 if __name__ == "__main__":
     unittest.main()

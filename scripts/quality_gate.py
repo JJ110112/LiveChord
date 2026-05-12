@@ -196,7 +196,7 @@ def _display_dot_count(chord: Dict[str, Any], bpm: float, bpb: int = 4) -> int:
     if chord.get("auto_split") and beats >= bpb * 0.65:
         return bpb
     half = bpb / 2
-    if half >= 1 and abs(beats - half) < 0.45:
+    if half >= 1 and abs(beats - half) < 0.55:
         return int(round(half))
     bars_approx = beats / bpb
     rounded_bars = round(bars_approx)

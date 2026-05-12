@@ -46,6 +46,7 @@ POP 目標先以 4/4 為主。常見規則：
 `display_beats` 不等於原始 chord duration。它表示這張卡在 player 應顯示幾個小圓點。這讓系統可在不破壞原始偵測資料的情況下修正讀譜體驗：
 
 - Perfect Duet：原始 BPM/beat grid 容易半拍密度錯誤，但顯示層應是 63 BPM、4 拍卡。
+- Lifetime：12/8 慢板 ballad 可能被 beat tracker 記成約 180 BPM 的三連音 subdivision；全局仲裁會把約 6 個 subdivision 的 downbeat 主群視為半小節，推回約 60 BPM 的 dotted-quarter display tempo。
 - 獨上西樓：清唱與獨白段沒有穩定鼓點，但仍有 G 大調循環；後段轉 Ab 大調，需要用全曲文法延續。
 - Lover / 夜曲：固定 POP loop 比 local chord detector 更可信。
 
@@ -85,4 +86,3 @@ quality gate 與前端顯示都必須使用 `display_bpm` 作為使用者視角�
 - Jazz/Relax/Christmas 的和聲密度與拍號變化比 POP 複雜，不能直接套 POP gate。
 - 若原始和弦偵測根音錯得太多，全局仲裁只能修切分與讀譜文法，不能憑空知道正確和聲。
 - 每首歌的局部特殊編曲仍可能需要新 pattern，但 pattern 必須升級為可泛化規則，不能只補單曲。
-

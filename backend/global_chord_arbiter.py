@@ -1018,6 +1018,71 @@ def _stable_downbeat_gap(downbeats: List[float], bpm: float = 0.0) -> Optional[D
     return {"raw_gap": med, "bar_gap": med * factor, "factor": factor, "cv": cv}
 
 
+def _compound_12_8_half_bar_gap(chords: List[Dict], downbeats: List[float], bpm: float = 0.0) -> Optional[Dict]:
+    """Detect slow 12/8 ballads tracked at triplet-subdivision BPM.
+
+    A 60 BPM dotted-quarter ballad may be stored around 180 BPM. In that
+    representation, a strong downbeat cluster near 6 detected ticks is often a
+    half-bar marker, while the readable player grammar is a 4-pulse bar twice
+    as long. Require both the 6-subdivision cluster and chord durations that
+    support the doubled bar so real fast 6/8 songs are not pulled down.
+    """
+    if bpm < 150.0 or bpm > 210.0:
+        return None
+    pts = sorted(float(v) for v in downbeats if v is not None)
+    gaps = [pts[i + 1] - pts[i] for i in range(len(pts) - 1) if pts[i + 1] - pts[i] > 0.5]
+    candidates = [g for g in gaps if 1.45 <= g <= 2.45]
+    if len(candidates) < 12:
+        return None
+    med = statistics.median(candidates)
+    if med <= 0:
+        return None
+    spb = 60.0 / bpm
+    beats_per_gap = med / spb if spb > 0 else 0.0
+    if not (5.2 <= beats_per_gap <= 6.8):
+        return None
+    tight = [g for g in candidates if abs(g - med) <= max(0.18, med * 0.10)]
+    if len(tight) < max(10, int(len(gaps) * 0.30)):
+        return None
+
+    bar_gap = med * 2.0
+    half_like = 0
+    full_like = 0
+    double_like = 0
+    for c in chords:
+        start = _float(c.get("time"))
+        end = _float(c.get("end"), start)
+        dur = end - start
+        if dur <= 0.5:
+            continue
+        ratio = dur / bar_gap
+        if 0.32 <= ratio <= 0.70:
+            half_like += 1
+        elif 0.72 <= ratio <= 1.28:
+            full_like += 1
+        elif 1.65 <= ratio <= 2.35:
+            double_like += 1
+    structural = full_like + double_like
+    observed = half_like + full_like + double_like
+    min_structural = max(5, int(observed * 0.25))
+    if structural < min_structural or structural < half_like * 0.55:
+        return None
+
+    mean = statistics.mean(tight)
+    cv = statistics.pstdev(tight) / mean if len(tight) > 1 and mean > 0 else 0.0
+    return {
+        "raw_gap": med,
+        "bar_gap": bar_gap,
+        "factor": 2,
+        "cv": cv,
+        "compound_12_8": True,
+        "beats_per_gap": beats_per_gap,
+        "half_like": half_like,
+        "full_like": full_like,
+        "double_like": double_like,
+    }
+
+
 def _merge_same_root_full_bar_fragments(chords: List[Dict], bar_gap: float) -> Tuple[List[Dict], int]:
     out: List[Dict] = []
     idx = 0
@@ -1099,6 +1164,8 @@ def _split_stable_full_bar_holds(chords: List[Dict], bar_gap: float) -> Tuple[Li
 def _apply_downbeat_display_quantization(chords: List[Dict], downbeats: List[float], bpm: float = 0.0) -> Tuple[List[Dict], Optional[Dict]]:
     gap_info = _stable_downbeat_gap(downbeats, bpm)
     if not gap_info:
+        gap_info = _compound_12_8_half_bar_gap(chords, downbeats, bpm)
+    if not gap_info:
         return chords, None
     if gap_info["factor"] == 1 and _looks_like_half_bar_downbeats(chords, gap_info["raw_gap"]):
         gap_info = {**gap_info, "bar_gap": gap_info["raw_gap"] * 2, "factor": 2}
@@ -1116,7 +1183,7 @@ def _apply_downbeat_display_quantization(chords: List[Dict], downbeats: List[flo
             continue
         ratio = dur / bar_gap
         beat_count = None
-        if 0.32 <= ratio <= 0.66:
+        if 0.32 <= ratio <= 0.70:
             beat_count = 2
         elif 0.72 <= ratio <= 1.36:
             beat_count = 4
@@ -1127,7 +1194,7 @@ def _apply_downbeat_display_quantization(chords: List[Dict], downbeats: List[flo
             changed += 1
     if not changed and not merged and not split_holds:
         return chords, None
-    return out, {
+    result = {
         "type": "stable_downbeat_display_quantize",
         "bar_gap": round(bar_gap, 3),
         "raw_gap": round(gap_info["raw_gap"], 3),
@@ -1136,6 +1203,13 @@ def _apply_downbeat_display_quantization(chords: List[Dict], downbeats: List[flo
         "merged_cards": merged,
         "split_long_holds": split_holds,
     }
+    if gap_info.get("compound_12_8"):
+        result["type"] = "compound_12_8_display_quantize"
+        result["beats_per_gap"] = round(gap_info.get("beats_per_gap") or 0.0, 3)
+        result["half_like_cards"] = gap_info.get("half_like", 0)
+        result["full_like_cards"] = gap_info.get("full_like", 0)
+        result["double_like_cards"] = gap_info.get("double_like", 0)
+    return out, result
 
 
 def _estimate_display_bpm(chords: List[Dict]) -> Optional[Dict]:
