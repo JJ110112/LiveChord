@@ -993,6 +993,52 @@ def _apply_modulated_grid_repairs(chords: List[Dict], candidates: List[Dict]) ->
     return out, corrections
 
 
+def _stable_downbeat_gap(downbeats: List[float]) -> Optional[float]:
+    pts = sorted(float(v) for v in downbeats if v is not None)
+    gaps = [pts[i + 1] - pts[i] for i in range(len(pts) - 1) if pts[i + 1] - pts[i] > 0.5]
+    if len(gaps) < 8:
+        return None
+    med = statistics.median(gaps)
+    if med <= 0:
+        return None
+    mean = statistics.mean(gaps)
+    cv = statistics.pstdev(gaps) / mean if mean > 0 and len(gaps) > 1 else 0.0
+    return med if cv <= 0.18 else None
+
+
+def _apply_downbeat_display_quantization(chords: List[Dict], downbeats: List[float]) -> Tuple[List[Dict], Optional[Dict]]:
+    bar_gap = _stable_downbeat_gap(downbeats)
+    if not bar_gap:
+        return chords, None
+    out = [dict(c) for c in chords]
+    changed = 0
+    for c in out:
+        if c.get("display_beats"):
+            continue
+        start = _float(c.get("time"))
+        end = _float(c.get("end"), start)
+        dur = end - start
+        if dur <= 0:
+            continue
+        ratio = dur / bar_gap
+        beat_count = None
+        if 0.32 <= ratio <= 0.66:
+            beat_count = 2
+        elif 0.72 <= ratio <= 1.36:
+            beat_count = 4
+        if beat_count:
+            c["display_beats"] = beat_count
+            c["display_arbiter"] = "stable-downbeat-quantize"
+            changed += 1
+    if not changed:
+        return chords, None
+    return out, {
+        "type": "stable_downbeat_display_quantize",
+        "bar_gap": round(bar_gap, 3),
+        "cards": changed,
+    }
+
+
 def _estimate_display_bpm(chords: List[Dict]) -> Optional[Dict]:
     values = []
     for c in chords:
@@ -1058,6 +1104,9 @@ def apply_global_structure_corrections(chord_data: Dict, meta: Optional[Dict] = 
     corrections.extend(repeat_corrections)
     chords, grid_corrections = _apply_modulated_grid_repairs(chords, meta.get("modulated_cycle_candidates") or [])
     corrections.extend(grid_corrections)
+    chords, quant_correction = _apply_downbeat_display_quantization(chords, [_float(v) for v in (chord_data.get("downbeats") or [])])
+    if quant_correction:
+        corrections.append(quant_correction)
     if corrections:
         chord_data["chords"] = chords
         meta["corrections"] = corrections

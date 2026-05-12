@@ -197,6 +197,27 @@ class TestGlobalChordArbiter(unittest.TestCase):
         self.assertTrue(long_tonics)
         self.assertTrue(any(c.get("split_display_beats") == [4, 2] for c in long_tonics))
 
+    def test_quantizes_display_beats_from_stable_downbeats(self):
+        sheet = {
+            "bpm": 93.8,
+            "downbeats": [0.28, 2.82, 5.34, 7.88, 10.4, 12.96, 15.48, 18.0, 20.5, 23.02],
+            "chords": [
+                {"time": 10.0, "end": 12.87, "chord": "Eb"},
+                {"time": 12.87, "end": 15.28, "chord": "Bb"},
+                {"time": 15.28, "end": 18.61, "chord": "Ab"},
+                {"time": 18.61, "end": 19.72, "chord": "Bb"},
+                {"time": 19.72, "end": 23.06, "chord": "Eb"},
+            ],
+        }
+
+        apply_global_structure_corrections(sheet)
+
+        self.assertEqual([c.get("display_beats") for c in sheet["chords"]], [4, 4, 4, 2, 4])
+        self.assertEqual(
+            sheet["global_arbiter_meta"]["corrections"][-1]["type"],
+            "stable_downbeat_display_quantize",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
