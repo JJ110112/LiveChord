@@ -302,6 +302,27 @@ class TestGlobalChordArbiter(unittest.TestCase):
             "stable-downbeat-bar-plus-half",
         )
 
+    def test_stable_quantize_does_not_force_three_beat_intro_cards_to_four(self):
+        sheet = {
+            "bpm": 130.4,
+            "downbeats": [0.70, 2.56, 4.40, 6.24, 8.08, 9.94, 11.78, 13.62, 15.48, 17.32],
+            "chords": [
+                {"time": 1.207, "end": 3.042, "chord": "G"},
+                {"time": 3.042, "end": 4.876, "chord": "C"},
+                {"time": 9.520, "end": 10.403, "chord": "C"},
+                {"time": 10.403, "end": 11.819, "chord": "D"},
+                {"time": 11.819, "end": 13.189, "chord": "Gm"},
+            ],
+        }
+
+        apply_global_structure_corrections(sheet)
+
+        by_chord = {c["chord"]: c.get("display_beats") for c in sheet["chords"]}
+        self.assertEqual(by_chord["G"], 4)
+        self.assertEqual(by_chord["C"], 4)
+        self.assertIsNone(by_chord["D"])
+        self.assertIsNone(by_chord["Gm"])
+
 
 if __name__ == "__main__":
     unittest.main()

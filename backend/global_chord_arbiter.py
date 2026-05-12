@@ -1200,7 +1200,7 @@ def _apply_downbeat_display_quantization(chords: List[Dict], downbeats: List[flo
         beat_count = None
         if 0.32 <= ratio <= 0.70:
             beat_count = 2
-        elif 0.72 <= ratio <= 1.36:
+        elif 0.80 <= ratio <= 1.36:
             beat_count = 4
         if beat_count:
             c["display_beats"] = beat_count
