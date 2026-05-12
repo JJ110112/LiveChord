@@ -337,6 +337,34 @@ class TestGlobalChordArbiter(unittest.TestCase):
         self.assertEqual([c.get("display_beats") for c in sheet["chords"]], [4, 4, 4, 4])
         self.assertEqual(sheet["chords"][2].get("display_arbiter"), "stable-downbeat-near-bar-hold")
 
+    def test_repeated_slow_near_bar_holds_are_quantized_back_to_four(self):
+        sheet = {
+            "bpm": 107.7,
+            "downbeats": [0.0, 2.22, 4.44, 6.66, 8.88, 11.10, 13.32, 15.54, 17.76, 19.98, 22.20],
+            "chords": [
+                {"time": 0.00, "end": 2.22, "chord": "D"},
+                {"time": 2.22, "end": 5.00, "chord": "A"},
+                {"time": 5.00, "end": 7.78, "chord": "D"},
+                {"time": 7.78, "end": 10.56, "chord": "Dbm7"},
+                {"time": 10.56, "end": 13.34, "chord": "A"},
+                {"time": 13.34, "end": 15.56, "chord": "E"},
+            ],
+        }
+
+        apply_global_structure_corrections(sheet)
+
+        self.assertEqual(
+            [c["chord"] for c in sheet["chords"]],
+            ["D", "A", "D", "Dbm7", "A", "E"],
+        )
+        self.assertEqual([c.get("display_beats") for c in sheet["chords"]], [4, 4, 4, 4, 4, 4])
+        self.assertTrue(
+            all(
+                c.get("display_arbiter") == "stable-downbeat-near-bar-hold"
+                for c in sheet["chords"][1:5]
+            )
+        )
+
     def test_fast_rock_display_bpm_can_stay_above_180(self):
         sheet = {
             "bpm": 187.5,

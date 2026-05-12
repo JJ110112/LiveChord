@@ -364,6 +364,9 @@
   // Fetch public config once and share the promise across the module
   const _configPromise = fetch("/api/config/public").then(r => r.json()).catch(() => ({}));
   const _isBetaModeAsync = _configPromise.then(cfg => cfg.deployment_mode === "beta");
+  const _isDetectDisabledModeAsync = _configPromise.then(cfg =>
+    cfg.deployment_mode === "beta" || cfg.deployment_mode === "public"
+  );
 
   // Show local-file toolbar button: always in hash mode, otherwise beta mode only
   if (hashMode && tbLocalFile) {
@@ -6025,8 +6028,8 @@
     // In beta mode the detect / MIDI-import path requires trackPath (NAS), which
     // beta non-admin users don't have — hide the button rather than let them
     // tap it and get "此頁為 hash 模式" toast.
-    _isBetaModeAsync.then(isBeta => {
-      if (isBeta) btnDetect.style.display = "none";
+    _isDetectDisabledModeAsync.then(disabled => {
+      if (disabled) btnDetect.style.display = "none";
     }).catch(() => {});
   }
   // Hero detect button (Task 6) is injected into empty chord state; bind via delegation.

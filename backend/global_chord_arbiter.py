@@ -1134,6 +1134,24 @@ def _looks_like_half_bar_downbeats(chords: List[Dict], raw_gap: float) -> bool:
 
 
 def _split_stable_full_bar_holds(chords: List[Dict], bar_gap: float) -> Tuple[List[Dict], int]:
+    repeated_near_bar_one_beat_tails = 0
+    if bar_gap > 0:
+        for chord in chords:
+            start = _float(chord.get("time"))
+            end = _float(chord.get("end"), start)
+            dur = end - start
+            if dur <= 0 or chord.get("display_beats"):
+                continue
+            bars_float = dur / bar_gap
+            if not (1.22 <= bars_float <= 1.30):
+                continue
+            tail = max(0.0, end - (start + bar_gap))
+            if tail <= 0:
+                continue
+            tail_beats = max(1, min(3, int(round((tail / bar_gap) * 4.0))))
+            if tail_beats == 1:
+                repeated_near_bar_one_beat_tails += 1
+
     out: List[Dict] = []
     split_count = 0
     for chord in chords:
@@ -1152,7 +1170,19 @@ def _split_stable_full_bar_holds(chords: List[Dict], bar_gap: float) -> Tuple[Li
             # without reading like a real 4+1 split. Keep those as a single
             # card so we don't spray repeated same-chord 4+1 tails across the
             # section.
-            if tail_beats == 1 and bar_gap < 1.5 and bars_float < 1.30:
+            # Some stable 4/4 pop ballads drift just ~1 beat past the barline
+            # over and over. Showing a whole row of same-chord 4+1 cards is
+            # visually worse than quantizing those slight overshoots back to 4.
+            # Keep the original fast-rock shortcut, and also absorb these
+            # repeated near-bar tails when they recur across the song.
+            if (
+                tail_beats == 1
+                and bars_float < 1.30
+                and (
+                    bar_gap < 1.5
+                    or repeated_near_bar_one_beat_tails >= 4
+                )
+            ):
                 item = dict(chord)
                 item["display_beats"] = 4
                 item["display_arbiter"] = "stable-downbeat-near-bar-hold"
