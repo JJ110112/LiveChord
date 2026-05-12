@@ -1551,7 +1551,11 @@
     // (which halve the median inter-chord diff) look like "BPM 跑掉" even
     // though the editor's songBPM and the saved JSON both agree.
     let estimatedBpm = 0;
-    if (chordData && typeof chordData.bpm === "number" && chordData.bpm > 0) {
+    const displayBpm = chordData && typeof chordData.display_bpm === "number" && chordData.display_bpm > 0
+      ? chordData.display_bpm : 0;
+    if (displayBpm > 0) {
+      estimatedBpm = displayBpm;
+    } else if (chordData && typeof chordData.bpm === "number" && chordData.bpm > 0) {
       estimatedBpm = chordData.bpm;
     } else if (chords.length >= 4) {
       let diffs = [];
@@ -1588,8 +1592,11 @@
         const halved = !!(correction && correction.applied);
         const barCorr = chordData && chordData.bar_correction;
         const barFixed = !!(barCorr && barCorr.applied);
+        const globalArb = chordData && chordData.global_arbiter_meta;
+        const displayBpmMeta = globalArb && globalArb.display_bpm;
+        const globalBpm = !!(displayBpmMeta && displayBpm > 0);
         // ⓘ when either correction applied; tooltip composes both messages
-        const showInfo = halved || barFixed;
+        const showInfo = halved || barFixed || globalBpm;
         const label = showInfo ? `BPM: ${Math.round(estimatedBpm)} ⓘ` : `BPM: ${Math.round(estimatedBpm)}`;
         bpmEl.textContent = label;
         bpmEl.style.cursor = "pointer";
@@ -1608,6 +1615,9 @@
               ? _t("player.bar_arb.tag_ai")
               : _t("player.bar_arb.tag_rule");
             lines.push(_t("player.bar_arb.notice", { tag, bpb, conf }));
+        }
+        if (globalBpm) {
+            lines.push(`Displayed BPM from song-level arbiter (${displayBpmMeta.source || "global"}). Stored BPM: ${Math.round(chordData.bpm || 0)}.`);
         }
         lines.push(_t("player.bpm.click_to_cycle"));
         bpmEl.title = lines.join("\n");

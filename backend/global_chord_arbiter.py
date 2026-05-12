@@ -26,6 +26,8 @@ _MIN_LONG_INTRO_SEC = 24.0
 _MAX_INTRO_END_SEC = 75.0
 _LOW_CONF_CV = 0.45
 _LOW_CONF_MIN_GAP_SEC = 0.9
+_DISPLAY_BPM_MIN = 40.0
+_DISPLAY_BPM_MAX = 180.0
 
 
 def _float(v, default: float = 0.0) -> float:
@@ -454,6 +456,35 @@ def _apply_modulated_cycles(chords: List[Dict], candidates: List[Dict]) -> Tuple
     return out, corrections
 
 
+def _estimate_display_bpm(chords: List[Dict]) -> Optional[Dict]:
+    values = []
+    for c in chords:
+        beats = _float(c.get("display_beats"))
+        if beats <= 0:
+            continue
+        start = _float(c.get("time"))
+        end = _float(c.get("end"), start)
+        dur = end - start
+        if dur <= 0.2:
+            continue
+        bpm = 60.0 * beats / dur
+        if _DISPLAY_BPM_MIN <= bpm <= _DISPLAY_BPM_MAX:
+            # Prefer stable groove grammar over free-time intro cards.
+            weight = 3.0 if c.get("global_arbiter") == "two-beat-chorus-grammar" else 1.0
+            values.append((bpm, weight))
+    if not values:
+        return None
+    expanded = []
+    for bpm, weight in values:
+        expanded.extend([bpm] * int(weight))
+    median_bpm = statistics.median(expanded)
+    return {
+        "bpm": round(median_bpm, 1),
+        "source": "global-arbiter-display-beats",
+        "confidence": 0.82 if any(w >= 3.0 for _, w in values) else 0.68,
+    }
+
+
 def apply_global_structure_corrections(chord_data: Dict, meta: Optional[Dict] = None) -> Dict:
     """Apply high-confidence global corrections to the serve-time payload."""
     if not isinstance(chord_data, dict):
@@ -486,6 +517,11 @@ def apply_global_structure_corrections(chord_data: Dict, meta: Optional[Dict] = 
         meta["rewritten"] = True
     else:
         meta["rewritten"] = False
+    display_bpm = _estimate_display_bpm(chords)
+    if display_bpm and corrections:
+        chord_data["display_bpm"] = display_bpm["bpm"]
+        chord_data["bpm_label"] = f"BPM: {round(display_bpm['bpm'])}"
+        meta["display_bpm"] = display_bpm
     chord_data["global_arbiter_meta"] = meta
     return chord_data
 

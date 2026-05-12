@@ -75,6 +75,9 @@ class TestGlobalChordArbiter(unittest.TestCase):
         corrected = [c for c in sheet["chords"] if c.get("global_arbiter") == "two-beat-chorus-grammar"]
         self.assertEqual([c["display_beats"] for c in corrected], [2, 2, 2, 2, 4, 2, 2])
         self.assertEqual(corrected[4]["chord"], "A")
+        self.assertGreater(sheet["display_bpm"], 75)
+        self.assertLess(sheet["display_bpm"], 77)
+        self.assertEqual(sheet["global_arbiter_meta"]["display_bpm"]["source"], "global-arbiter-display-beats")
 
 
 if __name__ == "__main__":
