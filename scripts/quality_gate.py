@@ -259,7 +259,11 @@ def _visible_fragment_risk(chords: List[Dict[str, Any]], bpm: float, bpb: int = 
         seg_a = (prev_end - start) / spb
         seg_b = (end - cur_start) / spb
         total = seg_a + seg_b
-        if (bpb - 0.7) <= total <= (bpb + 1.5) and min(seg_a, seg_b) <= 1.35:
+        # Same-chord 1+3 / 3+1 inside one notated bar is the suspicious
+        # player artifact. A full bar plus a short tail (4+1 in 4/4) can be
+        # an intentional long-hold split from the global arbiter or a readable
+        # remix/ostinato hold, so do not count it as visible fragmentation.
+        if (bpb - 0.7) <= total <= (bpb + 0.7) and min(seg_a, seg_b) <= 1.35:
             left = round(seg_a)
             right = round(seg_b)
             add(f"same-chord-{left}+{right}", prev, f"{seg_a:.2f}+{seg_b:.2f} beats")
@@ -372,6 +376,15 @@ def _score_track(track: Track, data_root: Path) -> Dict[str, Any]:
         meter_bpb = _meter_class(bpb)
     if bpb and not (2.5 <= bpb <= 4.5 or 5.5 <= bpb <= 6.5 or 7.5 <= bpb <= 8.5):
         _issue(issues, "irregular_meter", "warn", f"bpb={bpb:.2f}")
+    weak_pop_grid = (
+        track.category == "POP"
+        and (
+            (db_cv is not None and db_cv > 0.30)
+            or (bpb is not None and bpb < 2.6)
+        )
+    )
+    if weak_pop_grid:
+        _issue(issues, "weak_grid_context", "warn", "POP weak/no-drum beat grid; visual anomalies need manual review")
 
     long_cards = 0
     tiny_cards = 0
@@ -386,7 +399,14 @@ def _score_track(track: Track, data_root: Path) -> Dict[str, Any]:
             # One bar can measure slightly above 4 nominal beats when BTC
             # boundaries/BPM are jittery. The player-risk case is a multi-bar
             # card that survived splitting.
-            if dur_beats > (meter_bpb + 1.5) and not c.get("auto_split"):
+            dots = _display_dot_count(c, bpm, meter_bpb)
+            tolerated_weak_grid_hold = weak_pop_grid and dots <= (meter_bpb + 2) and dur_beats <= (meter_bpb + 3)
+            if (
+                dur_beats > (meter_bpb + 1.5)
+                and dots > meter_bpb
+                and not c.get("auto_split")
+                and not tolerated_weak_grid_hold
+            ):
                 long_cards += 1
             if 0 < dur_beats < 0.45:
                 tiny_cards += 1

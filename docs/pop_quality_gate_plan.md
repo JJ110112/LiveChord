@@ -9,6 +9,8 @@
 - serve pipeline 與 player API 對齊。
 - 評分使用 `display_bpm`，而不是只用 stored `bpm`。
 - 小圓點評估尊重 `display_beats`。
+- `long_cards` 以 player 視覺風險為準：若實際 duration 很長但卡片只顯示 4 點，像 remix/ostinato/長 hold，不能直接判 severe。
+- POP 弱節拍情境（無鼓鋼琴伴奏、rubato 歌唱）加入 `weak_grid_context` warning；少量 5-dot 近似可先人工觀察，不當作本階段 severe。
 
 ## 建議重跑命令
 
@@ -42,11 +44,17 @@ POP 結果：
 - 量化 gate 仍未通過，因為它現在開始抓到更廣泛的 POP 長卡與特殊曲型，而不是只抓單曲 bug。
 - POP 已從「很多歌局部破碎」進到「大部分一般 POP 可讀，剩下是 long-card/generalization backlog」階段。
 
+2026-05-12 追加人工校準後，`Casablanca (Dieselboy Remix)` 與 `不散,不見` 被確認為 gate false positive：
+
+- `Casablanca (Dieselboy Remix)` 是 remix 舞曲，長時間同和弦/同 loop 但 player 顯示可讀，`same-chord-4+1` 不應視為碎裂。
+- `不散,不見` 是鋼琴伴奏加歌唱、無鼓節奏，beat grid 低信心；若畫面可讀，應列為 weak-grid warning 而不是 severe fail。
+- 同 seed 250 首抽樣重跑後，POP sampled 125，pass rate 0.976，severe rate 0.024，avg visible fragments 0.496。距離 POP 門檻只剩少數 severe 標的。
+
 ## 下一輪優化排序
 
 1. POP long-card repair
    - 對 `long_cards` 為主、`bad_fragments=0` 的歌曲先處理。
-   - 這代表小圓點不一定亂，但卡片超過 4 拍未切，違反 player 規格。
+   - 只處理 player 視覺上真的有過多 dots 或未切開的卡片；remix 長 hold 若顯示 4 點可讀，不列為 repair target。
 
 2. Half-bar display mismatch
    - 例如 `half-bar-4-dots`：duration 接近 2 拍，但顯示 4 點。
@@ -75,4 +83,3 @@ POP 本階段建議門檻：
 - 抽樣 failure top 30 中不再出現同一 pattern 大量重複。
 
 達成後可宣布「POP 4/4 仲裁階段完成」，再進入 Jazz/Rubato/Acoustic 專項。
-
