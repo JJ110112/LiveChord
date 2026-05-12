@@ -279,6 +279,10 @@ def _midi_matches(song_name: str, midi_fname: str) -> bool:
 @router.post("/chords/batch-midi-import")
 def batch_midi_import():
     """批次 MIDI 匯入：對所有尚無和弦的曲目搜尋 MIDI 並匯入"""
+    raise HTTPException(
+        status_code=410,
+        detail="Batch MIDI import is disabled: MIDI files are no longer treated as a trusted chord baseline.",
+    )
     from config import get_midi_root
     import sys
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'tools'))
