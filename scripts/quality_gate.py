@@ -42,6 +42,7 @@ from bpm_sanity import maybe_apply_structural_bpm_correction_for_serve  # noqa: 
 from chord_cache import chord_file_for, song_hash  # noqa: E402
 from chord_noise_filter import maybe_filter_for_serve  # noqa: E402
 from chord_splitter import maybe_split_for_serve  # noqa: E402
+from chord_tail_extender import maybe_extend_tail_for_serve  # noqa: E402
 
 
 AUDIO_EXTS = {".flac", ".mp3", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".wma"}
@@ -143,6 +144,7 @@ def _apply_serve_pipeline(data: Dict[str, Any]) -> Dict[str, Any]:
     maybe_apply_structural_bpm_correction_for_serve(served)
     maybe_correct_for_serve(served)
     maybe_filter_for_serve(served)
+    maybe_extend_tail_for_serve(served)
     maybe_split_for_serve(served)
     return served
 
@@ -186,7 +188,7 @@ def _display_dot_count(chord: Dict[str, Any], bpm: float, bpb: int = 4) -> int:
     if end <= start:
         return 0
     beats = (end - start) / (60.0 / bpm)
-    if chord.get("auto_split") and beats >= bpb * 0.6:
+    if chord.get("auto_split") and beats >= bpb * 0.65:
         return bpb
     half = bpb / 2
     if half >= 1 and abs(beats - half) < 0.45:

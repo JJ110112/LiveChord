@@ -277,12 +277,16 @@ def _rebalance_long_fragment_boundaries(boundaries: List[float], bar_gap: float)
     downbeat placement is less important than avoiding one-beat cards and
     keeping every card at or below roughly one bar.
     """
-    if bar_gap <= 0 or len(boundaries) <= 2:
+    if bar_gap <= 0 or len(boundaries) < 2:
         return boundaries
     total = boundaries[-1] - boundaries[0]
     total_bars = total / bar_gap
     if total_bars <= 1.35:
         return boundaries
+    if len(boundaries) == 2:
+        n = max(2, int(math.ceil(total / bar_gap)))
+        step = total / n
+        return [boundaries[0] + step * i for i in range(n)] + [boundaries[-1]]
     segs = [boundaries[i + 1] - boundaries[i] for i in range(len(boundaries) - 1)]
     has_edge_fragment = (segs[0] / bar_gap) <= 0.34 or (segs[-1] / bar_gap) <= 0.34
     has_oversized_segment = max(segs) > bar_gap * 1.35
@@ -551,6 +555,42 @@ def split_long_chords_at_bars(
     return out
 
 
+def split_long_chords_evenly_by_bpm(
+    chords: List[Dict],
+    bpm: float,
+    bpb: int = 4,
+) -> List[Dict]:
+    """Low-confidence fallback for overlong cards when downbeats are unusable."""
+    if bpm <= 0 or bpb <= 0:
+        return list(chords)
+    spb = 60.0 / bpm
+    if spb <= 0:
+        return list(chords)
+    out: List[Dict] = []
+    for chord in chords:
+        start = chord.get("time")
+        end = chord.get("end")
+        if start is None or end is None or end <= start:
+            out.append(dict(chord))
+            continue
+        start_f = float(start)
+        end_f = float(end)
+        dur_beats = (end_f - start_f) / spb
+        if dur_beats < _SAFE_LONG_SPLIT_MIN_BEATS:
+            out.append(dict(chord))
+            continue
+        n = max(2, int(math.ceil(dur_beats / bpb)))
+        step = (end_f - start_f) / n
+        for i in range(n):
+            seg = dict(chord)
+            seg["time"] = round(start_f + step * i, 3)
+            seg["end"] = round(end_f if i == n - 1 else start_f + step * (i + 1), 3)
+            seg["auto_split"] = True
+            seg["auto_split_fallback"] = "bpm-even"
+            out.append(seg)
+    return out
+
+
 def maybe_split_for_serve(chord_data: Dict) -> Dict:
     """Apply splitter to ``chord_data["chords"]`` if confidence gate passes.
 
@@ -584,11 +624,18 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
             bpb = _bpb_class([float(d) for d in downbeats], bpm)
             if bpb and (bpb < 2.7 or bpb > 5.0):
                 reason = f"implausible-bpb={bpb:.2f}"
+        fallback_chords = split_long_chords_evenly_by_bpm(chords, bpm, 4)
+        fallback_chords, post_merge_meta = merge_same_chord_fragments(fallback_chords, bpm)
+        fallback_applied = len(fallback_chords) != len(chords)
+        chord_data["chords"] = fallback_chords
         chord_data["auto_split_meta"] = {
-            "applied": False,
-            "reason": reason,
+            "applied": fallback_applied,
+            "reason": f"{reason}-bpm-even-long-split" if fallback_applied else reason,
             "before": len(chords),
-            "after": len(chords),
+            "after": len(fallback_chords),
+            "fragment_guard": {
+                "post_merge": post_merge_meta,
+            },
         }
         return chord_data
 

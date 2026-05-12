@@ -4702,7 +4702,7 @@
         ? chordData.bpm : (60.0 / Math.max(0.001, currentSecPerBeat));
       const songSpb = (60.0 / songBpm) / (_currentBpmMult || 1.0);
       const expectedBarDur = tsBeats * songSpb;
-      const tooShort = expectedBarDur > 0 && durSec < expectedBarDur * 0.6;
+      const tooShort = expectedBarDur > 0 && durSec < expectedBarDur * 0.65;
       if (!manualOverride && !tooShort) {
         return {
           count: tsBeats,

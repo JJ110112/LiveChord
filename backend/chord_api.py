@@ -59,6 +59,7 @@ from chord_cache import (
     chord_file_for, chord_bak_for, ensure_chord_bucket,
 )
 from chord_splitter import maybe_split_for_serve
+from chord_tail_extender import maybe_extend_tail_for_serve
 from chord_noise_filter import maybe_filter_for_serve as maybe_noise_filter_for_serve
 from bar_phase_corrector import maybe_correct_for_serve as maybe_phase_correct_for_serve
 from bpm_sanity import maybe_apply_structural_bpm_correction_for_serve
@@ -271,6 +272,7 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
     maybe_apply_structural_bpm_correction_for_serve(data)
     maybe_phase_correct_for_serve(data) # rewrite irregular downbeats[] to regular grid
     maybe_noise_filter_for_serve(data)  # absorb 1-beat noise tails
+    maybe_extend_tail_for_serve(data)   # fill missing outro cards from beat tail
     maybe_split_for_serve(data)         # split long chords at corrected downbeats
     return data
 
@@ -288,6 +290,7 @@ async def get_chords_by_hash(hash: str = Query(..., min_length=8, max_length=16)
     maybe_apply_structural_bpm_correction_for_serve(data)
     maybe_phase_correct_for_serve(data)
     maybe_noise_filter_for_serve(data)
+    maybe_extend_tail_for_serve(data)
     maybe_split_for_serve(data)
     return data
 
@@ -1127,6 +1130,13 @@ async def detect_chords_api(path: str = Query(...)):
         raise HTTPException(status_code=500, detail=f"偵測失敗: {e}")
 
     # 自動儲存
+    beat_info = {}
+    try:
+        from beat_snap import analyze_and_snap_dynamic
+        beat_info = await asyncio.to_thread(analyze_and_snap_dynamic, full, chords)
+    except Exception:
+        beat_info = {}
+
     sheet = {
         "path": path,
         "key": key,
@@ -1134,6 +1144,14 @@ async def detect_chords_api(path: str = Query(...)):
         "source": "btc",
         "chords": chords,
     }
+    if beat_info.get("bpm"):
+        sheet["bpm"] = round(float(beat_info["bpm"]), 1)
+    if beat_info.get("beats_source"):
+        sheet["beats"] = beat_info.get("beats", [])
+        sheet["downbeats"] = beat_info.get("downbeats", [])
+        sheet["tempo_curve"] = beat_info.get("tempo_curve", [])
+        sheet["beats_source"] = beat_info["beats_source"]
+        sheet["beat_version"] = beat_info.get("beat_version", 0)
     CHORDS_DIR.mkdir(parents=True, exist_ok=True)
     chords_file = chord_file_for(song_hash(path))
     chords_file.write_text(
@@ -1149,6 +1167,8 @@ async def detect_chords_api(path: str = Query(...)):
         "chord_count": len(chords),
         "chords": chords,
         "source": "btc",
+        "beats_source": sheet.get("beats_source"),
+        "bpm": sheet.get("bpm"),
     }
 
 

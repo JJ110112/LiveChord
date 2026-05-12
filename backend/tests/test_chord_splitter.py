@@ -12,6 +12,7 @@ import unittest
 
 from backend.chord_splitter import (
     split_chords_at_bars,
+    split_long_chords_evenly_by_bpm,
     maybe_split_for_serve,
     merge_same_chord_fragments,
     _interior_downbeats,
@@ -89,6 +90,30 @@ class TestSplitChordsAtBars(unittest.TestCase):
         seg_beats = [(s["end"] - s["time"]) / spb for s in out]
         self.assertEqual([round(v, 2) for v in seg_beats], [3.0, 3.0])
         self.assertTrue(all(s.get("auto_split") for s in out))
+
+    def test_long_chord_without_interior_downbeat_splits_evenly(self):
+        bpm = 125.0
+        spb = 60.0 / bpm
+        chords = [{"time": 4.17, "end": 4.17 + 6.16 * spb, "chord": "G"}]
+        downbeats = [0.33, 2.25, 8.01, 9.93]
+
+        out = split_chords_at_bars(chords, downbeats)
+
+        self.assertEqual(len(out), 2)
+        seg_beats = [(s["end"] - s["time"]) / spb for s in out]
+        self.assertEqual([round(v, 2) for v in seg_beats], [3.08, 3.08])
+        self.assertTrue(all(s.get("auto_split") for s in out))
+
+    def test_low_confidence_long_chord_splits_evenly_by_bpm(self):
+        bpm = 60.0
+        chords = [{"time": 0.0, "end": 8.0, "chord": "C"}]
+
+        out = split_long_chords_evenly_by_bpm(chords, bpm, 4)
+
+        self.assertEqual(len(out), 2)
+        self.assertEqual([(c["time"], c["end"]) for c in out], [(0.0, 4.0), (4.0, 8.0)])
+        self.assertTrue(all(c.get("auto_split") for c in out))
+        self.assertTrue(all(c.get("auto_split_fallback") == "bpm-even" for c in out))
 
     def test_short_chord_passes_through(self):
         # 2-beat chord (1.0s) with no interior downbeats → unchanged
@@ -367,7 +392,7 @@ class TestMaybeSplitForServe(unittest.TestCase):
         bar_gap = (60.0 / 100.0) * 2.5  # 1.5s
         raw_db = [round(i * bar_gap, 2) for i in range(10)]
         data = {
-            "chords": [{"time": 0.0, "end": raw_db[-1], "chord": "C"}],
+            "chords": [{"time": 0.0, "end": 2.4, "chord": "C"}],
             "downbeats": raw_db,
             "beats_source": "beat_this",
             "bpm": 100.0,
