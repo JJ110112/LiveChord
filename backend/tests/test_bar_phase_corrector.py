@@ -93,6 +93,33 @@ class TestPhaseCorrectorFragmentGuard(unittest.TestCase):
         self.assertEqual(res["phase_after"], 0)
         self.assertGreater(res["bad_fragments_before"], res["bad_fragments"])
 
+    def test_preserves_stable_current_four_four_against_three_beat_candidate(self):
+        bpm = 130.4
+        beats = [round(0.24 + i * 0.46, 3) for i in range(192)]
+        downbeats = [round(0.24 + i * 1.84, 3) for i in range(48)]
+        chords = [
+            {"time": 1.207, "end": 3.042, "chord": "G"},
+            {"time": 3.042, "end": 4.876, "chord": "C"},
+            {"time": 4.876, "end": 7.639, "chord": "Am"},
+            {"time": 7.639, "end": 9.520, "chord": "G"},
+            {"time": 9.520, "end": 10.400, "chord": "C"},
+            {"time": 10.400, "end": 11.817, "chord": "D"},
+            {"time": 11.817, "end": 13.189, "chord": "Gm"},
+            {"time": 13.189, "end": 15.511, "chord": "Cm"},
+            {"time": 15.511, "end": 17.345, "chord": "G"},
+            {"time": 17.345, "end": 20.571, "chord": "Cm"},
+            {"time": 20.571, "end": 21.965, "chord": "Gm"},
+            {"time": 21.965, "end": 22.894, "chord": "Dm"},
+            {"time": 22.894, "end": 32.109, "chord": "Gm"},
+        ]
+        data = {"chords": chords, "beats": beats, "downbeats": downbeats, "bpm": bpm}
+
+        res = correct_phase(data)
+
+        self.assertFalse(res["applied"])
+        self.assertIn("preserve-stable-4/4", res["reason"])
+        self.assertEqual(res["bpb_after"], 3)
+
 
 if __name__ == "__main__":
     unittest.main()

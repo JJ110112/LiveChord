@@ -92,6 +92,19 @@ def _gap_cv(times: List[float]) -> Optional[float]:
     return (var ** 0.5) / mean
 
 
+def _median_gap(times: List[float]) -> Optional[float]:
+    if len(times) < 2:
+        return None
+    gaps = sorted(
+        times[i + 1] - times[i]
+        for i in range(len(times) - 1)
+        if times[i + 1] - times[i] > 0.05
+    )
+    if not gaps:
+        return None
+    return gaps[len(gaps) // 2]
+
+
 def _alignment(chord_changes: List[float], downbeats: List[float],
                tol: float = _ALIGN_TOL_SEC) -> float:
     """Fraction of chord_changes within ``tol`` of any downbeat."""
@@ -357,6 +370,19 @@ def correct_phase(chord_data: Dict) -> Dict:
         best_bad_fragments / current_bad_fragments
         if current_bad_fragments > 0 else 1.0
     )
+    current_gap = _median_gap([float(v) for v in current_dbs if v is not None])
+    current_bpb_est = current_gap / (60.0 / bpm) if current_gap and bpm > 0 else 0.0
+    stable_current_4_4 = (
+        current_cv is not None
+        and current_cv < 0.08
+        and 3.70 <= current_bpb_est <= 4.30
+    )
+    if stable_current_4_4 and bpb != 4:
+        result["reason"] = (
+            f"preserve-stable-4/4 bpb={current_bpb_est:.2f} "
+            f"cv={current_cv:.2f}; rejected bpb={bpb}"
+        )
+        return result
 
     # Candidate grids do not need to be perfect when the current grid is
     # obviously worse. This is common in POP songs where beat_this found stable

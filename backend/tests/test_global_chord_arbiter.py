@@ -281,6 +281,27 @@ class TestGlobalChordArbiter(unittest.TestCase):
         self.assertGreater(sheet["display_bpm"], 58)
         self.assertLess(sheet["display_bpm"], 62)
 
+    def test_stable_one_and_half_bar_hold_splits_as_four_plus_two(self):
+        sheet = {
+            "bpm": 130.4,
+            "downbeats": [0.24, 2.08, 3.92, 5.76, 7.60, 9.44, 11.28, 13.12, 14.96, 16.80],
+            "chords": [
+                {"time": 0.24, "end": 2.08, "chord": "G"},
+                {"time": 2.08, "end": 3.92, "chord": "C"},
+                {"time": 3.92, "end": 6.68, "chord": "Am"},
+                {"time": 6.68, "end": 8.52, "chord": "G"},
+            ],
+        }
+
+        apply_global_structure_corrections(sheet)
+
+        self.assertEqual([c["chord"] for c in sheet["chords"]], ["G", "C", "Am", "Am", "G"])
+        self.assertEqual([c.get("display_beats") for c in sheet["chords"]], [4, 4, 4, 2, 4])
+        self.assertEqual(
+            sheet["chords"][2].get("display_arbiter"),
+            "stable-downbeat-bar-plus-half",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
