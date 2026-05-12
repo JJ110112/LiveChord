@@ -49,6 +49,8 @@ POP 結果：
 - `Casablanca (Dieselboy Remix)` 是 remix 舞曲，長時間同和弦/同 loop 但 player 顯示可讀，`same-chord-4+1` 不應視為碎裂。
 - `不散,不見` 是鋼琴伴奏加歌唱、無鼓節奏，beat grid 低信心；若畫面可讀，應列為 weak-grid warning 而不是 severe fail。
 - 同 seed 250 首抽樣重跑後，POP sampled 125，pass rate 0.976，severe rate 0.024，avg visible fragments 0.496。距離 POP 門檻只剩少數 severe 標的。
+- 再依人工確認調整：`Here I Am (Just When I Thought I Was Over You)` 雖是 `source=midi`，但目前譜面可讀且以 beat_this 節拍比對；這種 readable legacy MIDI 只列 warning。`Carpenters Interview (Your Navy Presents)` 是純談話/非音樂內容，列 `non_song_content` warning，不列本階段 severe。
+- 同 seed 250 首抽樣第二次重跑後，POP sampled 125，pass rate 0.992，severe rate 0.008，avg visible fragments 0.504，已通過 POP 本階段門檻。剩餘 POP severe 為 `POP/J-POP/80~90/HONEY.flac`，tag 為 L'Arc-en-Ciel / HONEY / ray，不是華語 Honey 或 Mariah Carey。
 
 ## 下一輪優化排序
 

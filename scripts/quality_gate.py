@@ -50,6 +50,7 @@ AUDIO_EXTS = {".flac", ".mp3", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".wma"}
 DEFAULT_EXCLUDE = {"classics", "sleep"}
 DEFAULT_WEIGHTS = {"POP": 0.50, "Jazz": 0.25, "__OTHER__": 0.25}
 PLAYER_BASE = "http://192.168.50.6:8800/player?path="
+NON_SONG_MARKERS = ("interview",)
 
 
 THRESHOLDS = {
@@ -297,6 +298,8 @@ def _score_track(track: Track, data_root: Path) -> Dict[str, Any]:
     h = song_hash(track.rel_path)
     chord_path = chord_file_for(h, root=data_root / "chords")
     issues: List[Dict[str, Any]] = []
+    rel_lower = track.rel_path.lower()
+    non_song_content = any(marker in rel_lower for marker in NON_SONG_MARKERS)
     row: Dict[str, Any] = {
         "category": track.category,
         "path": track.rel_path,
@@ -306,8 +309,11 @@ def _score_track(track: Track, data_root: Path) -> Dict[str, Any]:
         "url": PLAYER_BASE + urllib.parse.quote(track.rel_path),
     }
 
+    if non_song_content:
+        _issue(issues, "non_song_content", "warn", "speech/interview/non-song track")
+
     if not chord_path.is_file():
-        _issue(issues, "missing_chords", "severe", "no official chord json")
+        _issue(issues, "missing_chords", "warn" if non_song_content else "severe", "no official chord json")
         row.update(_finalize(row, issues, {}))
         return row
 
@@ -340,12 +346,13 @@ def _score_track(track: Track, data_root: Path) -> Dict[str, Any]:
 
     if source in {"midi", "chordify"}:
         _issue(issues, "legacy_source", "warn", f"source={source}")
+    empty_sev = "warn" if non_song_content else "severe"
     if not chords:
-        _issue(issues, "no_chords", "severe", "no served chords")
+        _issue(issues, "no_chords", empty_sev, "no served chords")
     if len(beats) < 8:
-        _issue(issues, "missing_beats", "severe", f"beats={len(beats)}")
+        _issue(issues, "missing_beats", empty_sev, f"beats={len(beats)}")
     if len(downbeats) < 4:
-        _issue(issues, "missing_downbeats", "severe", f"downbeats={len(downbeats)}")
+        _issue(issues, "missing_downbeats", empty_sev, f"downbeats={len(downbeats)}")
     if beats_source and beats_source != "beat_this":
         _issue(issues, "weak_beat_source", "warn", f"beats_source={beats_source}")
     if raw_bpm and not (45 <= raw_bpm <= 220):
@@ -436,7 +443,18 @@ def _score_track(track: Track, data_root: Path) -> Dict[str, Any]:
     row["raw_bad_fragments"] = int(raw_frag.get("bad_fragments") or 0)
     row["raw_fragment_patterns"] = json.dumps(raw_frag.get("patterns") or {}, ensure_ascii=False)
     if bad_frag:
-        sev = "severe" if bad_frag >= 8 else "warn"
+        readable_legacy_midi = (
+            source in {"midi", "chordify"}
+            and beats_source == "beat_this"
+            and db_cv is not None
+            and db_cv <= 0.15
+            and set(frag.get("patterns") or {}).issubset({"same-chord-3+1", "same-chord-4+1"})
+        )
+        if readable_legacy_midi:
+            sev = "warn"
+            _issue(issues, "readable_legacy_midi", "warn", "midi chord chart aligns with beat_this; fragment warning only")
+        else:
+            sev = "severe" if bad_frag >= 8 else "warn"
         _issue(issues, "fragments", sev, f"{bad_frag} visible card/dot fragments")
 
     row.update(_finalize(row, issues, metrics))
