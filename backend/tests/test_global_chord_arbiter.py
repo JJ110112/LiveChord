@@ -223,6 +223,7 @@ class TestGlobalChordArbiter(unittest.TestCase):
             "bpm": 187.5,
             "downbeats": [1.98, 3.90, 5.78, 7.68, 9.58, 11.48, 13.38, 15.28, 17.18, 19.08],
             "chords": [
+                {"time": 0.37, "end": 7.36, "chord": "Ab"},
                 {"time": 7.36, "end": 9.89, "chord": "Fm7"},
                 {"time": 9.89, "end": 11.19, "chord": "Fm"},
                 {"time": 11.19, "end": 14.98, "chord": "Db"},
@@ -234,13 +235,13 @@ class TestGlobalChordArbiter(unittest.TestCase):
 
         apply_global_structure_corrections(sheet)
 
-        self.assertEqual([c["chord"] for c in sheet["chords"][:2]], ["Fm7", "Db"])
-        self.assertEqual(sheet["chords"][0]["display_beats"], 4)
-        self.assertEqual(sheet["chords"][1]["display_beats"], 4)
-        self.assertEqual([c.get("display_beats") for c in sheet["chords"][2:]], [2, 2, 2])
+        self.assertEqual([c["chord"] for c in sheet["chords"][:4]], ["Ab", "Ab", "Fm7", "Db"])
+        self.assertEqual([c.get("display_beats") for c in sheet["chords"][:4]], [4, 4, 4, 4])
+        self.assertEqual([c.get("display_beats") for c in sheet["chords"][4:]], [2, 2, 2])
         corr = sheet["global_arbiter_meta"]["corrections"][-1]
         self.assertEqual(corr["gap_factor"], 2)
         self.assertEqual(corr["merged_cards"], 1)
+        self.assertEqual(corr["split_long_holds"], 1)
 
 
 if __name__ == "__main__":

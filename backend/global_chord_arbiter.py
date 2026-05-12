@@ -1046,12 +1046,41 @@ def _merge_same_root_full_bar_fragments(chords: List[Dict], bar_gap: float) -> T
     return out, merged
 
 
+def _split_stable_full_bar_holds(chords: List[Dict], bar_gap: float) -> Tuple[List[Dict], int]:
+    out: List[Dict] = []
+    split_count = 0
+    for chord in chords:
+        start = _float(chord.get("time"))
+        end = _float(chord.get("end"), start)
+        dur = end - start
+        if dur <= 0 or chord.get("display_beats"):
+            out.append(dict(chord))
+            continue
+        bars_float = dur / bar_gap if bar_gap > 0 else 0.0
+        bars = int(round(bars_float))
+        if bars < 2 or bars > 8 or abs(bars_float - bars) > 0.28:
+            out.append(dict(chord))
+            continue
+        step = dur / bars
+        for i in range(bars):
+            item = dict(chord)
+            item["time"] = round(start + step * i, 3)
+            item["end"] = round(end if i == bars - 1 else start + step * (i + 1), 3)
+            item["display_beats"] = 4
+            item["display_arbiter"] = "stable-downbeat-long-hold"
+            item["global_arbiter"] = item.get("global_arbiter") or "stable-downbeat-quantize"
+            out.append(item)
+        split_count += 1
+    return out, split_count
+
+
 def _apply_downbeat_display_quantization(chords: List[Dict], downbeats: List[float], bpm: float = 0.0) -> Tuple[List[Dict], Optional[Dict]]:
     gap_info = _stable_downbeat_gap(downbeats, bpm)
     if not gap_info:
         return chords, None
     bar_gap = gap_info["bar_gap"]
     out, merged = _merge_same_root_full_bar_fragments([dict(c) for c in chords], bar_gap)
+    out, split_holds = _split_stable_full_bar_holds(out, bar_gap)
     changed = 0
     for c in out:
         if c.get("display_beats"):
@@ -1072,7 +1101,7 @@ def _apply_downbeat_display_quantization(chords: List[Dict], downbeats: List[flo
             c["display_arbiter"] = "stable-downbeat-quantize"
             c["global_arbiter"] = c.get("global_arbiter") or "stable-downbeat-quantize"
             changed += 1
-    if not changed and not merged:
+    if not changed and not merged and not split_holds:
         return chords, None
     return out, {
         "type": "stable_downbeat_display_quantize",
@@ -1081,6 +1110,7 @@ def _apply_downbeat_display_quantization(chords: List[Dict], downbeats: List[flo
         "gap_factor": gap_info["factor"],
         "cards": changed,
         "merged_cards": merged,
+        "split_long_holds": split_holds,
     }
 
 
