@@ -828,7 +828,7 @@
   "player.bar_split.inferred_hint": "偵測到：每小節 {n} 拍。",
   "player.bar_split.ts_auto": "自動 ({n})",
   "player.beat_upgrade.confirm": "動態節拍偵測（rubato 追蹤，適合 Live / 老錄音）\n\n後端背景處理約 30 秒，期間可繼續使用其他功能。\n完成時會跳出通知。\n\n繼續嗎？",
-  "player.bpm.click_to_cycle": "點擊切換 BPM 倍率 (自動儲存)",
+  "player.bpm.click_to_cycle": "點擊切換顯示用 BPM 倍率 (自動儲存)",
   "player.bpm.halved_notice": "BPM 已自動修正 (原 {orig} BPM，判為慢歌倍拍)",
   "player.bug.cancel": "取消",
   "player.bug.category.accuracy": "和弦準確度",

@@ -828,7 +828,7 @@
   "player.bar_split.inferred_hint": "Detected: {n} beats per bar.",
   "player.bar_split.ts_auto": "Auto ({n})",
   "player.beat_upgrade.confirm": "Dynamic beat detection (rubato tracking, ideal for live / vintage recordings)\n\nBackend processes in the background for ~30 s; you can keep using other features.\nA toast will pop up when it's done.\n\nProceed?",
-  "player.bpm.click_to_cycle": "Click to cycle BPM multiplier (auto-saved)",
+  "player.bpm.click_to_cycle": "Click to cycle the displayed BPM multiplier (auto-saved)",
   "player.bpm.halved_notice": "BPM auto-corrected (originally {orig} BPM, detected as half-time ballad)",
   "player.bug.cancel": "Cancel",
   "player.bug.category.accuracy": "Chord accuracy",
