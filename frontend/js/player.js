@@ -11,35 +11,36 @@
   const restoreFs = params.get("fs") === "1";
   if (!trackPath && !hashMode) { window.location.href = "/"; return; }
   const BEAT_SOURCE_PREF_KEY = "livechord_player_beat_source";
-  const DEFAULT_PLAYER_BEAT_SOURCE = "beat_this";
+  function _pageBeatSourcePrefKey() {
+    const songId = hashMode ? `hash_${hashMode}` : `path_${trackPath || ""}`;
+    return `${BEAT_SOURCE_PREF_KEY}_${songId}`;
+  }
 
   function _playerBeatSourcePreference() {
-    const v = localStorage.getItem(BEAT_SOURCE_PREF_KEY);
+    const v = localStorage.getItem(_pageBeatSourcePrefKey());
     return (v === "librosa" || v === "madmom" || v === "beat_this")
       ? v
-      : DEFAULT_PLAYER_BEAT_SOURCE;
+      : null;
   }
 
   function _chordsByHashUrl(hash) {
-    const qs = new URLSearchParams({
-      hash,
-      beat_source: _playerBeatSourcePreference(),
-    });
+    const qs = new URLSearchParams({ hash });
+    const pref = _playerBeatSourcePreference();
+    if (pref) qs.set("beat_source", pref);
     return `/api/chords/by-hash?${qs.toString()}`;
   }
 
   function _chordsByPathUrl(path, version = null) {
-    const qs = new URLSearchParams({
-      path,
-      beat_source: _playerBeatSourcePreference(),
-    });
+    const qs = new URLSearchParams({ path });
+    const pref = _playerBeatSourcePreference();
+    if (pref) qs.set("beat_source", pref);
     if (version) qs.set("version", version);
     return `/api/chords?${qs.toString()}`;
   }
 
   function _rememberBeatSource(mode) {
     if (mode === "librosa" || mode === "madmom" || mode === "beat_this") {
-      localStorage.setItem(BEAT_SOURCE_PREF_KEY, mode);
+      localStorage.setItem(_pageBeatSourcePrefKey(), mode);
     }
   }
 
@@ -6214,8 +6215,9 @@
   // Simpler: also call once at script-init below after chordData is first loaded.
 
   // ---- 節拍來源切換 (personal 8800 only) ----
-  // 3-way librosa / madmom / beat_this picker. Player loads beat_this by
-  // default when the batch cache exists; this picker persists manual overrides.
+  // 3-way librosa / madmom / beat_this picker. The backend serves the
+  // canonical cached tracker by default; this picker persists per-song manual
+  // overrides without leaking one song's choice into another.
   // Backend endpoint is gated by
   // require_personal_mode so beta (8801) gets 404; we also hide the UI on beta.
   // Cached swaps are <1s (reuse .bak.librosa / .bak.madmom / .bak.beat_this);
