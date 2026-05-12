@@ -29,8 +29,7 @@ MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 
 ALLOWED_MIME_TYPES = {
     "audio/mpeg", "audio/mp3", "audio/flac", "audio/x-flac",
-    "audio/wav", "audio/x-wav", "audio/ogg", "audio/mp4",
-    "audio/x-m4a", "audio/aac", "audio/webm",
+    "audio/wav", "audio/x-wav", "audio/ogg",
 }
 
 

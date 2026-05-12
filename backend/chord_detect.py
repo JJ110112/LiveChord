@@ -140,15 +140,31 @@ def _load_audio_mono(audio_path: str, target_sr: int) -> tuple:
     （NUC 端無 ffmpeg 會噴 NoBackendError）。超長檔案截斷至 MAX_ANALYZE_SECONDS。
     回傳 (mono_float32_at_target_sr, was_truncated)
     """
-    info = sf.info(audio_path)
-    native_sr = info.samplerate
-    max_frames = int(native_sr * MAX_ANALYZE_SECONDS)
-    truncated = info.frames > max_frames
-    frames_to_read = max_frames if truncated else -1
-    data, _ = sf.read(audio_path, frames=frames_to_read, dtype="float32", always_2d=True)
-    y = data.mean(axis=1) if data.shape[1] > 1 else data[:, 0]
+    try:
+        info = sf.info(audio_path)
+        native_sr = info.samplerate
+        max_frames = int(native_sr * MAX_ANALYZE_SECONDS)
+        truncated = info.frames > max_frames
+        frames_to_read = max_frames if truncated else -1
+        data, _ = sf.read(audio_path, frames=frames_to_read, dtype="float32", always_2d=True)
+        y = data.mean(axis=1) if data.shape[1] > 1 else data[:, 0]
+    except Exception as sf_error:
+        # Public/VPS uploads may arrive as AAC/M4A containers that libsndfile
+        # cannot decode directly. On Modal/VPS we have ffmpeg/audioread
+        # available, so retry through librosa before giving up.
+        try:
+            data, native_sr = librosa.load(audio_path, sr=None, mono=False)
+        except Exception:
+            raise sf_error
+        y = data.mean(axis=0) if getattr(data, "ndim", 1) == 2 else data
+        y = np.asarray(y, dtype=np.float32)
+        max_samples_native = int(native_sr * MAX_ANALYZE_SECONDS)
+        truncated = len(y) > max_samples_native
+        if truncated:
+            y = y[:max_samples_native]
     if native_sr != target_sr:
         y = librosa.resample(y, orig_sr=native_sr, target_sr=target_sr)
+    y = np.asarray(y, dtype=np.float32)
     # Guard: <0.5s of usable audio means a corrupt/empty container. librosa.cqt
     # would otherwise raise the cryptic "Input signal length=1 is too short for
     # 6-octave CQT" — auto_worker classifies this as "音檔太短或損毀" and quarantines.
