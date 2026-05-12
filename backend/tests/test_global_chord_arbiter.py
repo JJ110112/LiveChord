@@ -152,6 +152,48 @@ class TestGlobalChordArbiter(unittest.TestCase):
         self.assertEqual([c["chord"] for c in ending], ["Ab", "Fm", "Eb7", "Ab"])
         self.assertEqual([c["display_beats"] for c in ending], [4, 4, 4, 4])
 
+    def test_repairs_minor_pop_loop_quality_and_passing_chords(self):
+        sheet = {
+            "bpm": 88.2,
+            "chords": [
+                {"time": 3.158, "end": 4.551, "chord": "Fm"},
+                {"time": 4.551, "end": 5.224, "chord": "Eb"},
+                {"time": 5.224, "end": 5.921, "chord": "Cm"},
+                {"time": 5.921, "end": 7.291, "chord": "Db"},
+                {"time": 7.291, "end": 8.661, "chord": "Ab"},
+                {"time": 8.661, "end": 10.460, "chord": "Bbm7"},
+                {"time": 10.460, "end": 11.424, "chord": "C7"},
+                {"time": 11.424, "end": 15.581, "chord": "Fm"},
+                {"time": 15.581, "end": 16.951, "chord": "Eb"},
+                {"time": 16.951, "end": 18.344, "chord": "Db"},
+                {"time": 18.344, "end": 19.017, "chord": "Cm"},
+                {"time": 19.017, "end": 20.000, "chord": "Ab"},
+                {"time": 20.000, "end": 21.084, "chord": "Bbm7"},
+                {"time": 21.084, "end": 22.477, "chord": "C"},
+                {"time": 22.477, "end": 26.610, "chord": "Fm"},
+                {"time": 26.610, "end": 27.980, "chord": "Eb"},
+                {"time": 27.980, "end": 29.720, "chord": "Db"},
+                {"time": 29.720, "end": 30.743, "chord": "Ab"},
+                {"time": 30.743, "end": 32.113, "chord": "Bbm"},
+                {"time": 32.113, "end": 33.506, "chord": "C"},
+                {"time": 33.506, "end": 37.640, "chord": "Fm"},
+            ],
+        }
+
+        meta = analyze_global_structure(sheet)
+        self.assertTrue(meta["minor_pop_loop_candidates"], meta)
+        apply_global_structure_corrections(sheet, meta)
+
+        names = [c["chord"] for c in sheet["chords"]]
+        self.assertNotIn("Cm", names[:14])
+        self.assertEqual(names[2], "Db")
+        self.assertEqual(names[9], "Ab")
+        self.assertEqual(names[10], "Bbm7")
+        self.assertEqual(names[11], "C7")
+        corrected = [c for c in sheet["chords"] if c.get("global_arbiter") == "minor-pop-loop-grammar"]
+        self.assertTrue(corrected)
+        self.assertTrue(all(c["display_beats"] == 2 for c in corrected if c["chord"] != "Fm"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -311,6 +311,65 @@ def _find_two_beat_grammar(chords: List[Dict], bpm: float) -> List[Dict]:
     return hints
 
 
+def _chord_name_for_degree(key_pc: int, degree: int, quality: str, prefer_flats: bool) -> str:
+    return _root_name((key_pc + degree) % 12, prefer_flats=prefer_flats) + quality
+
+
+def _minor_pop_loop_names(key_pc: int, prefer_flats: bool = True) -> List[str]:
+    return [
+        _chord_name_for_degree(key_pc, 0, "m", prefer_flats),
+        _chord_name_for_degree(key_pc, 10, "", prefer_flats),
+        _chord_name_for_degree(key_pc, 8, "", prefer_flats),
+        _chord_name_for_degree(key_pc, 3, "", prefer_flats),
+        _chord_name_for_degree(key_pc, 5, "m7", prefer_flats),
+        _chord_name_for_degree(key_pc, 7, "7", prefer_flats),
+        _chord_name_for_degree(key_pc, 0, "m", prefer_flats),
+    ]
+
+
+def _root_matches_degree(name: str, key_pc: int, degree: int) -> bool:
+    root = _chord_root_pc(name)
+    return root is not None and root == (key_pc + degree) % 12
+
+
+def _find_minor_pop_loop_grammar(chords: List[Dict], bpm: float) -> List[Dict]:
+    if bpm <= 0 or len(chords) < 7:
+        return []
+    spb = 60.0 / bpm
+    hints: List[Dict] = []
+    degrees = [0, 10, 8, 3, 5, 7, 0]
+    beats = [2, 2, 2, 2, 2, 2, 4]
+    for i in range(0, len(chords) - 6):
+        seg = chords[i:i + 7]
+        names = [c["chord"] for c in seg]
+        tonic, tonic_quality = _root_quality(names[0])
+        if tonic is None or _quality_family(tonic_quality) != "m":
+            continue
+        roots_ok = sum(1 for name, degree in zip(names, degrees) if _root_matches_degree(name, tonic, degree))
+        # Allow one wrong slot inside the line; apply-time grid repair will
+        # canonicalize common pop confusions such as bIII -> v or V7 -> V.
+        if roots_ok < 6:
+            continue
+        durs = [(_float(c.get("end")) - _float(c.get("time"))) / spb for c in seg]
+        if sum(1 for d in durs[:6] if 1.3 <= d <= 3.2) < 5 or not (3.0 <= durs[6] <= 7.2):
+            continue
+        prefer_flats = True
+        canonical = _minor_pop_loop_names(tonic, prefer_flats=prefer_flats)
+        hints.append({
+            "start": round(seg[0]["time"], 3),
+            "end": round(seg[-1]["end"], 3),
+            "key": canonical[0],
+            "chords": names,
+            "canonical_chords": canonical,
+            "dur_beats": [round(d, 2) for d in durs],
+            "suggested_card_beats": beats,
+            "confidence": round(min(0.92, 0.70 + roots_ok * 0.03), 3),
+        })
+        if len(hints) >= 8:
+            break
+    return hints
+
+
 def _duration_by_name_after(chords: List[Dict], start_idx: int, names: List[str]) -> Dict[str, float]:
     out: Dict[str, float] = {}
     wanted = set(names)
@@ -428,6 +487,151 @@ def _apply_two_beat_grammar(chords: List[Dict], candidates: List[Dict]) -> Tuple
             "span": [round(start, 3), round(end, 3)],
             "chords": names,
             "display_beats": beats,
+        })
+    return out, corrections
+
+
+def _minor_loop_group_matches(group: List[Dict], target: str, slot_idx: int) -> bool:
+    if not group:
+        return False
+    target_root = _chord_root_pc(target)
+    if target_root is None:
+        return False
+    roots = [_chord_root_pc(c.get("chord") or "") for c in group]
+    if target_root in roots:
+        return True
+    # Common BTC confusions in minor pop loops:
+    # bIII (Ab) may appear as v (Cm), and bVI (Db) may be stretched while the
+    # bIII arrives late. Let the grid, not the transient chord label, decide.
+    if slot_idx == 3:
+        return True
+    # V7 often loses the seventh and arrives as plain V.
+    if slot_idx == 5 and any(r == target_root for r in roots):
+        return True
+    return False
+
+
+def _apply_minor_pop_loop_grammar(chords: List[Dict], candidates: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+    if not candidates:
+        return chords, []
+    out = [dict(c) for c in chords]
+    corrections: List[Dict] = []
+    for cand in candidates:
+        canonical = [str(c) for c in (cand.get("canonical_chords") or []) if c]
+        beats = [int(b) for b in (cand.get("suggested_card_beats") or [])]
+        if len(canonical) != 7 or len(beats) != 7:
+            continue
+        start = _float(cand.get("start"))
+        end = _float(cand.get("end"))
+        names = cand.get("chords") or []
+        match_idx = None
+        for i in range(0, len(out) - len(names) + 1):
+            if [c.get("chord") for c in out[i:i + len(names)]] != names:
+                continue
+            if abs(_float(out[i].get("time")) - start) < 0.12 and abs(_float(out[i + len(names) - 1].get("end")) - end) < 0.12:
+                match_idx = i
+                break
+        if match_idx is None:
+            continue
+        groups = [[out[match_idx + idx]] for idx in range(len(canonical))]
+        matches = sum(
+            1
+            for idx, (group, target) in enumerate(zip(groups, canonical))
+            if _minor_loop_group_matches(group, target, idx)
+        )
+        if matches < 6:
+            continue
+        changed = 0
+        for idx, (target, b) in enumerate(zip(canonical, beats)):
+            item = out[match_idx + idx]
+            dur = _float(item.get("end"), _float(item.get("time"))) - _float(item.get("time"))
+            # Leave long tonic cards to the long-card splitter; otherwise the
+            # song-level rule would hide the useful 4+2 visual split.
+            if idx in (0, 6) and dur > 2.4:
+                continue
+            if item.get("chord") != target:
+                item["chord"] = target
+                changed += 1
+            item["display_beats"] = b
+            item["global_arbiter"] = "minor-pop-loop-grammar"
+            changed += 1
+        if not changed:
+            continue
+        corrections.append({
+            "type": "minor_pop_loop_grammar",
+            "span": [round(start, 3), round(end, 3)],
+            "key": cand.get("key"),
+            "chords": canonical,
+            "display_beats": beats,
+            "source_chords": cand.get("chords"),
+        })
+    return out, corrections
+
+
+def _apply_minor_pop_passing_repairs(chords: List[Dict], candidates: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+    if not candidates:
+        return chords, []
+    first = candidates[0]
+    key_name = str(first.get("key") or "")
+    key_pc, _ = _root_quality(key_name)
+    if key_pc is None:
+        return chords, []
+    out = [dict(c) for c in chords]
+    corrections: List[Dict] = []
+    v_minor_root = (key_pc + 7) % 12
+    merge_targets = {
+        (key_pc + 8) % 12: _chord_name_for_degree(key_pc, 8, "", True),
+        (key_pc + 3) % 12: _chord_name_for_degree(key_pc, 3, "", True),
+    }
+    idx = 0
+    merges = 0
+    while idx < len(out) - 1:
+        root, quality = _root_quality(out[idx].get("chord") or "")
+        next_root = _chord_root_pc(out[idx + 1].get("chord") or "")
+        if root == v_minor_root and _quality_family(quality) == "m" and next_root in merge_targets:
+            item = dict(out[idx + 1])
+            item["time"] = round(_float(out[idx].get("time")), 3)
+            item["end"] = round(_float(out[idx + 1].get("end"), _float(out[idx + 1].get("time"))), 3)
+            item["chord"] = merge_targets[next_root]
+            item["display_beats"] = 2
+            item["global_arbiter"] = "minor-pop-passing-repair"
+            out[idx:idx + 2] = [item]
+            merges += 1
+            idx += 1
+            continue
+        idx += 1
+
+    canonical_by_root = {
+        (key_pc + 10) % 12: _chord_name_for_degree(key_pc, 10, "", True),
+        (key_pc + 8) % 12: _chord_name_for_degree(key_pc, 8, "", True),
+        (key_pc + 3) % 12: _chord_name_for_degree(key_pc, 3, "", True),
+        (key_pc + 5) % 12: _chord_name_for_degree(key_pc, 5, "m7", True),
+        (key_pc + 7) % 12: _chord_name_for_degree(key_pc, 7, "7", True),
+    }
+    first_start = _float(first.get("start"))
+    last_end = max(_float(c.get("end"), _float(c.get("start"))) for c in candidates)
+    normalized = 0
+    for item in out:
+        t = _float(item.get("time"))
+        if t < first_start - 22.0 or t > last_end + 2.0:
+            continue
+        root, quality = _root_quality(item.get("chord") or "")
+        if root not in canonical_by_root:
+            continue
+        if root == (key_pc + 7) % 12 and _quality_family(quality) == "m":
+            continue
+        target = canonical_by_root[root]
+        if item.get("chord") != target:
+            item["chord"] = target
+            normalized += 1
+        item["display_beats"] = 2
+        item["global_arbiter"] = item.get("global_arbiter") or "minor-pop-loop-grammar"
+    if merges or normalized:
+        corrections.append({
+            "type": "minor_pop_passing_repair",
+            "key": key_name,
+            "merged_passing_cards": merges,
+            "normalized_cards": normalized,
         })
     return out, corrections
 
@@ -843,6 +1047,10 @@ def apply_global_structure_corrections(chord_data: Dict, meta: Optional[Dict] = 
     corrections.extend(mod_corrections)
     chords, grammar_corrections = _apply_two_beat_grammar(chords, meta.get("two_beat_grammar_candidates") or [])
     corrections.extend(grammar_corrections)
+    chords, minor_loop_corrections = _apply_minor_pop_loop_grammar(chords, meta.get("minor_pop_loop_candidates") or [])
+    corrections.extend(minor_loop_corrections)
+    chords, minor_passing_corrections = _apply_minor_pop_passing_repairs(chords, meta.get("minor_pop_loop_candidates") or [])
+    corrections.extend(minor_passing_corrections)
     chords, transition_corrections = _apply_modulation_transition(chords, meta.get("two_beat_grammar_candidates") or [])
     corrections.extend(transition_corrections)
     chords, repeat_corrections = _apply_modulated_cycle_repeats(chords, meta.get("modulated_cycle_candidates") or [])
@@ -910,7 +1118,16 @@ def analyze_global_structure(chord_data: Dict) -> Dict:
     if two_beat:
         meta["two_beat_grammar_candidates"] = two_beat
 
-    meta["applied"] = bool(meta["hints"] or meta.get("modulation_candidates") or meta.get("two_beat_grammar_candidates"))
+    minor_pop = _find_minor_pop_loop_grammar(chords, bpm)
+    if minor_pop:
+        meta["minor_pop_loop_candidates"] = minor_pop
+
+    meta["applied"] = bool(
+        meta["hints"]
+        or meta.get("modulation_candidates")
+        or meta.get("two_beat_grammar_candidates")
+        or meta.get("minor_pop_loop_candidates")
+    )
     meta["reason"] = "ok" if meta["applied"] else "no-global-pattern"
     return meta
 
