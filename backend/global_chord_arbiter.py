@@ -666,6 +666,128 @@ def _apply_modulated_cycle_repeats(chords: List[Dict], candidates: List[Dict]) -
     return out, corrections
 
 
+def _cycle_slot_duration(chords: List[Dict], names: List[str], start: float) -> Optional[float]:
+    for i in range(0, len(chords) - len(names) + 1):
+        if [c.get("chord") for c in chords[i:i + len(names)]] != names:
+            continue
+        if abs(_float(chords[i].get("time")) - start) >= 0.12:
+            continue
+        durs = [_float(c.get("end"), _float(c.get("time"))) - _float(c.get("time")) for c in chords[i:i + len(names)]]
+        valid = [d for d in durs if 1.0 <= d <= 8.0]
+        if len(valid) == len(names):
+            return statistics.median(valid)
+    return None
+
+
+def _target_root_for_cycle_name(name: str) -> Optional[int]:
+    return _chord_root_pc(name)
+
+
+def _slot_target_start(group: List[Dict], target: str) -> Optional[float]:
+    target_root = _target_root_for_cycle_name(target)
+    if target_root is None:
+        return None
+    for c in group:
+        if _chord_root_pc(c.get("chord") or "") == target_root:
+            return _float(c.get("time"))
+    return None
+
+
+def _cards_in_slot(chords: List[Dict], start: float, end: float) -> List[Dict]:
+    return [
+        c for c in chords
+        if _float(c.get("time")) < end - 0.05 and _float(c.get("end"), _float(c.get("time"))) > start + 0.05
+    ]
+
+
+def _apply_modulated_grid_repairs(chords: List[Dict], candidates: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+    """Use the first confirmed modulated cycle as a four-beat grid.
+
+    Later phrases can contain passing chords or quality flips inside one card
+    (Ab/C7, Fm/Ab, Eb/Eb7/Eb). If their roots still line up on the established
+    Ab-cycle grid, canonicalize the card grammar for display.
+    """
+    if not candidates:
+        return chords, []
+    out = [dict(c) for c in chords]
+    corrections: List[Dict] = []
+    for cand in candidates:
+        cycle = [str(c) for c in (cand.get("to_cycle") or []) if c]
+        if len(cycle) != 4:
+            continue
+        first_end = _find_first_cycle_end(out, cycle, _float(cand.get("time")))
+        slot_dur = _cycle_slot_duration(out, cycle, _float(cand.get("time")))
+        if first_end is None or not slot_dur or slot_dur <= 0:
+            continue
+        patterns = [
+            ("modulated-grid-cycle", cycle),
+            ("modulated-grid-ending", [cycle[0], cycle[1], cycle[3], cycle[0]]),
+        ]
+        idx = 0
+        while idx < len(out):
+            start = _float(out[idx].get("time"))
+            if (
+                start < first_end - 0.05
+                or out[idx].get("global_arbiter")
+                or not _same_root(out[idx].get("chord") or "", cycle[0])
+            ):
+                idx += 1
+                continue
+
+            matched = False
+            for label, pattern in patterns:
+                slot_starts = [start + slot_dur * n for n in range(len(pattern))]
+                slot_ends = [start + slot_dur * (n + 1) for n in range(len(pattern))]
+                groups = [_cards_in_slot(out, s, e) for s, e in zip(slot_starts, slot_ends)]
+                target_starts = [_slot_target_start(group, target) for group, target in zip(groups, pattern)]
+                if sum(1 for v in target_starts if v is not None) < len(pattern):
+                    continue
+                # Keep the repair local to one phrase. If the next target start
+                # drifted too far, a ritardando has begun and local timing wins.
+                drift = [abs(ts - ss) for ts, ss in zip(target_starts, slot_starts) if ts is not None]
+                if drift and max(drift) > max(0.45, slot_dur * 0.22):
+                    continue
+
+                phrase_end = start + slot_dur * len(pattern)
+                consume_end = phrase_end - 0.05
+                cursor = idx
+                while cursor < len(out) and _float(out[cursor].get("time")) < consume_end:
+                    cursor += 1
+                if cursor <= idx + len(pattern):
+                    continue
+                next_start = _float(out[cursor].get("time")) if cursor < len(out) else None
+
+                starts = [round(float(ts), 3) for ts in target_starts]
+                replacement: List[Dict] = []
+                for n, target in enumerate(pattern):
+                    item = dict(groups[n][0] if groups[n] else out[idx])
+                    item["time"] = starts[n]
+                    item_end = starts[n + 1] if n + 1 < len(starts) else phrase_end
+                    if n + 1 == len(starts) and next_start is not None and starts[n] < next_start < phrase_end + 0.3:
+                        item_end = min(item_end, next_start)
+                    item["end"] = round(item_end, 3)
+                    item["chord"] = target
+                    item["display_beats"] = 4
+                    item["global_arbiter"] = label
+                    replacement.append(item)
+                out[idx:cursor] = replacement
+                corrections.append({
+                    "type": label.replace("-", "_"),
+                    "span": [replacement[0]["time"], replacement[-1]["end"]],
+                    "from_key": cand.get("from_key"),
+                    "to_key": cand.get("to_key"),
+                    "chords": pattern,
+                    "consumed_cards": cursor - idx,
+                    "display_beats": 4,
+                })
+                idx += len(replacement)
+                matched = True
+                break
+            if not matched:
+                idx += 1
+    return out, corrections
+
+
 def _estimate_display_bpm(chords: List[Dict]) -> Optional[Dict]:
     values = []
     for c in chords:
@@ -725,6 +847,8 @@ def apply_global_structure_corrections(chord_data: Dict, meta: Optional[Dict] = 
     corrections.extend(transition_corrections)
     chords, repeat_corrections = _apply_modulated_cycle_repeats(chords, meta.get("modulated_cycle_candidates") or [])
     corrections.extend(repeat_corrections)
+    chords, grid_corrections = _apply_modulated_grid_repairs(chords, meta.get("modulated_cycle_candidates") or [])
+    corrections.extend(grid_corrections)
     if corrections:
         chord_data["chords"] = chords
         meta["corrections"] = corrections

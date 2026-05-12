@@ -113,6 +113,20 @@ class TestGlobalChordArbiter(unittest.TestCase):
                 {"time": 120.7, "end": 122.3, "chord": "Bb7"},
                 {"time": 122.3, "end": 123.8, "chord": "Eb7"},
                 {"time": 123.8, "end": 125.3, "chord": "Eb"},
+                {"time": 125.3, "end": 126.9, "chord": "Ab"},
+                {"time": 126.9, "end": 128.5, "chord": "C7"},
+                {"time": 128.5, "end": 130.1, "chord": "Fm"},
+                {"time": 130.1, "end": 131.5, "chord": "Ab"},
+                {"time": 131.5, "end": 134.7, "chord": "Bb"},
+                {"time": 134.7, "end": 137.8, "chord": "Eb"},
+                {"time": 137.8, "end": 139.4, "chord": "Ab"},
+                {"time": 139.4, "end": 140.9, "chord": "Cm"},
+                {"time": 140.9, "end": 144.0, "chord": "Fm"},
+                {"time": 144.0, "end": 145.6, "chord": "Eb"},
+                {"time": 145.6, "end": 146.4, "chord": "Eb7"},
+                {"time": 146.4, "end": 147.2, "chord": "Eb"},
+                {"time": 147.2, "end": 148.7, "chord": "Ab"},
+                {"time": 148.7, "end": 150.2, "chord": "Fm"},
             ],
         }
 
@@ -129,6 +143,14 @@ class TestGlobalChordArbiter(unittest.TestCase):
         self.assertAlmostEqual(repeats[1]["end"], 119.1)
         self.assertAlmostEqual(repeats[2]["end"], 122.3)
         self.assertAlmostEqual(repeats[3]["end"], 125.3)
+
+        grid_cycle = [c for c in sheet["chords"] if c.get("global_arbiter") == "modulated-grid-cycle"]
+        self.assertEqual([c["chord"] for c in grid_cycle], ["Ab", "Fm", "Bbm", "Eb7"])
+        self.assertEqual([c["display_beats"] for c in grid_cycle], [4, 4, 4, 4])
+
+        ending = [c for c in sheet["chords"] if c.get("global_arbiter") == "modulated-grid-ending"]
+        self.assertEqual([c["chord"] for c in ending], ["Ab", "Fm", "Eb7", "Ab"])
+        self.assertEqual([c["display_beats"] for c in ending], [4, 4, 4, 4])
 
 
 if __name__ == "__main__":
