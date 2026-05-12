@@ -59,6 +59,35 @@ def _quality_family(quality: str) -> str:
     return ""
 
 
+def _chord_root_pc(name: str) -> Optional[int]:
+    root, _ = _root_quality(name)
+    return root
+
+
+def _same_root(name: str, target: str) -> bool:
+    a = _chord_root_pc(name)
+    b = _chord_root_pc(target)
+    return a is not None and a == b
+
+
+def _same_minor_root(name: str, target: str) -> bool:
+    root, quality = _root_quality(name)
+    target_root, target_quality = _root_quality(target)
+    if root is None or target_root is None or root != target_root:
+        return False
+    return _quality_family(quality) == "m" or _quality_family(target_quality) == "m"
+
+
+def _same_dominant_root(name: str, target: str) -> bool:
+    root, quality = _root_quality(name)
+    target_root, target_quality = _root_quality(target)
+    if root is None or target_root is None or root != target_root:
+        return False
+    # Dominant sevenths often arrive as a split Eb7/Eb or Bb7/Bbm7 pair in
+    # soft passages. Root continuity is more reliable than the raw quality.
+    return _quality_family(quality) in ("", "7") or _quality_family(target_quality) == "7"
+
+
 def _beat_stats(values: List[float], start: float, end: float) -> Dict:
     pts = sorted(v for v in values if start <= v < end)
     gaps = [pts[i + 1] - pts[i] for i in range(len(pts) - 1) if pts[i + 1] - pts[i] > 0.05]
@@ -456,6 +485,187 @@ def _apply_modulated_cycles(chords: List[Dict], candidates: List[Dict]) -> Tuple
     return out, corrections
 
 
+def _transition_matches_at(chords: List[Dict], idx: int, key_pc: int) -> bool:
+    if idx < 0 or idx + 7 > len(chords):
+        return False
+    seg = chords[idx:idx + 7]
+    expected_roots = [
+        key_pc,
+        (key_pc + 4) % 12,
+        (key_pc + 9) % 12,
+        (key_pc + 7) % 12,
+        (key_pc + 7) % 12,
+        key_pc,
+        (key_pc + 8) % 12,
+    ]
+    expected_families = ["", "m", "m", "", "7", "", ""]
+    for item, root, family in zip(seg, expected_roots, expected_families):
+        item_root, quality = _root_quality(item.get("chord") or "")
+        if item_root is None or item_root != root:
+            return False
+        if family and _quality_family(quality) != family:
+            return False
+    if idx + 10 >= len(chords):
+        return True
+    # Extra confidence: the bridge should land immediately into the raised
+    # tonic's verse grammar, e.g. Ab Fm Bbm Eb7 after G ... Eb.
+    next_key = (key_pc + 1) % 12
+    next_roots = [(next_key + x) % 12 for x in (0, 9, 2, 7)]
+    observed = [_chord_root_pc(c.get("chord") or "") for c in chords[idx + 7:idx + 11]]
+    return observed == next_roots
+
+
+def _apply_modulation_transition(chords: List[Dict], candidates: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+    """Protect the tonic-to-raised-tonic bridge after a two-beat chorus.
+
+    In 獨上西樓 the G-key chorus cadence continues with G Bm Em D D7 G Eb,
+    where Eb is the pivot into the following Ab verse. The local splitter sees
+    the long Em as two cards unless the song-level grammar claims it first.
+    """
+    target_degrees = ["I", "III", "VIm", "I", "II", "V", "V7"]
+    out = [dict(c) for c in chords]
+    corrections: List[Dict] = []
+    starts: List[Tuple[int, int, Optional[str]]] = []
+    for cand in candidates or []:
+        if cand.get("degrees") != target_degrees:
+            continue
+        local_key = (cand.get("local_key") or {}).get("key")
+        if local_key not in NOTE_TO_SEMI:
+            continue
+        key_pc = NOTE_TO_SEMI[local_key]
+        start_after = _float(cand.get("end"))
+        match_idx = None
+        for i, c in enumerate(out):
+            if abs(_float(c.get("time")) - start_after) < 0.12:
+                match_idx = i
+                break
+        if match_idx is not None:
+            starts.append((match_idx, key_pc, local_key))
+    for i in range(0, max(0, len(out) - 10)):
+        root = _chord_root_pc(out[i].get("chord") or "")
+        if root is not None:
+            starts.append((i, root, _root_name(root)))
+
+    used_starts = set()
+    for match_idx, key_pc, local_key in starts:
+        if match_idx in used_starts or not _transition_matches_at(out, match_idx, key_pc):
+            continue
+        seg = out[match_idx:match_idx + 7]
+        beats = [2, 2, 4, 2, 2, 2, 2]
+        for item, beat_count in zip(seg, beats):
+            item["display_beats"] = beat_count
+            item["global_arbiter"] = "modulation-transition-grammar"
+        used_starts.add(match_idx)
+        corrections.append({
+            "type": "modulation_transition",
+            "span": [round(_float(seg[0].get("time")), 3), round(_float(seg[-1].get("end")), 3)],
+            "from_key": local_key,
+            "to_key": _root_name((key_pc + 1) % 12, prefer_flats=True),
+            "chords": [c.get("chord") for c in seg],
+            "display_beats": beats,
+        })
+    return out, corrections
+
+
+def _group_matches_cycle_target(group: List[Dict], target: str) -> bool:
+    if not group:
+        return False
+    target_root, target_quality = _root_quality(target)
+    if target_root is None:
+        return False
+    if any(_chord_root_pc(c.get("chord") or "") != target_root for c in group):
+        return False
+    target_family = _quality_family(target_quality)
+    first_name = group[0].get("chord") or ""
+    if target_family == "m":
+        return _same_minor_root(first_name, target) or any(_same_minor_root(c.get("chord") or "", target) for c in group)
+    if target_family == "7":
+        return any(_same_dominant_root(c.get("chord") or "", target) for c in group)
+    return _same_root(first_name, target)
+
+
+def _find_first_cycle_end(chords: List[Dict], names: List[str], start: float) -> Optional[float]:
+    for i in range(0, len(chords) - len(names) + 1):
+        if [c.get("chord") for c in chords[i:i + len(names)]] != names:
+            continue
+        if abs(_float(chords[i].get("time")) - start) < 0.12:
+            return _float(chords[i + len(names) - 1].get("end"))
+    return None
+
+
+def _apply_modulated_cycle_repeats(chords: List[Dict], candidates: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+    if not candidates:
+        return chords, []
+    out = [dict(c) for c in chords]
+    corrections: List[Dict] = []
+    for cand in candidates:
+        cycle = [str(c) for c in (cand.get("to_cycle") or []) if c]
+        if len(cycle) < 3:
+            continue
+        first_end = _find_first_cycle_end(out, cycle, _float(cand.get("time")))
+        if first_end is None:
+            continue
+        idx = 0
+        while idx < len(out):
+            if _float(out[idx].get("time")) < first_end - 0.05:
+                idx += 1
+                continue
+            if not _same_root(out[idx].get("chord") or "", cycle[0]):
+                idx += 1
+                continue
+
+            cursor = idx
+            groups: List[List[Dict]] = []
+            ok = True
+            for target in cycle:
+                if cursor >= len(out):
+                    ok = False
+                    break
+                target_root = _chord_root_pc(target)
+                if target_root is None or _chord_root_pc(out[cursor].get("chord") or "") != target_root:
+                    ok = False
+                    break
+                group = [out[cursor]]
+                cursor += 1
+                while cursor < len(out) and _chord_root_pc(out[cursor].get("chord") or "") == target_root:
+                    group.append(out[cursor])
+                    cursor += 1
+                if not _group_matches_cycle_target(group, target):
+                    ok = False
+                    break
+                groups.append(group)
+
+            if not ok or len(groups) != len(cycle):
+                idx += 1
+                continue
+
+            consumed = cursor - idx
+            if consumed <= len(cycle):
+                idx += 1
+                continue
+            replacement: List[Dict] = []
+            for target, group in zip(cycle, groups):
+                item = dict(group[0])
+                item["time"] = round(_float(group[0].get("time")), 3)
+                item["end"] = round(_float(group[-1].get("end"), _float(group[-1].get("time"))), 3)
+                item["chord"] = target
+                item["display_beats"] = 4
+                item["global_arbiter"] = "modulated-verse-cycle-repeat"
+                replacement.append(item)
+            out[idx:cursor] = replacement
+            corrections.append({
+                "type": "modulated_cycle_repeat",
+                "span": [round(_float(replacement[0].get("time")), 3), round(_float(replacement[-1].get("end")), 3)],
+                "from_key": cand.get("from_key"),
+                "to_key": cand.get("to_key"),
+                "chords": cycle,
+                "consumed_cards": consumed,
+                "display_beats": 4,
+            })
+            idx += len(replacement)
+    return out, corrections
+
+
 def _estimate_display_bpm(chords: List[Dict]) -> Optional[Dict]:
     values = []
     for c in chords:
@@ -511,6 +721,10 @@ def apply_global_structure_corrections(chord_data: Dict, meta: Optional[Dict] = 
     corrections.extend(mod_corrections)
     chords, grammar_corrections = _apply_two_beat_grammar(chords, meta.get("two_beat_grammar_candidates") or [])
     corrections.extend(grammar_corrections)
+    chords, transition_corrections = _apply_modulation_transition(chords, meta.get("two_beat_grammar_candidates") or [])
+    corrections.extend(transition_corrections)
+    chords, repeat_corrections = _apply_modulated_cycle_repeats(chords, meta.get("modulated_cycle_candidates") or [])
+    corrections.extend(repeat_corrections)
     if corrections:
         chord_data["chords"] = chords
         meta["corrections"] = corrections

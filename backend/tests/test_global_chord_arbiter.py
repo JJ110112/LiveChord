@@ -79,6 +79,57 @@ class TestGlobalChordArbiter(unittest.TestCase):
         self.assertLess(sheet["display_bpm"], 77)
         self.assertEqual(sheet["global_arbiter_meta"]["display_bpm"]["source"], "global-arbiter-display-beats")
 
+    def test_protects_modulation_transition_and_repeated_ab_cycle(self):
+        sheet = {
+            "bpm": 76.0,
+            "chords": [
+                {"time": 0.0, "end": 53.5, "chord": "G"},
+                {"time": 53.5, "end": 56.6, "chord": "Em"},
+                {"time": 56.6, "end": 59.7, "chord": "Am"},
+                {"time": 59.7, "end": 62.8, "chord": "D7"},
+                {"time": 62.8, "end": 65.9, "chord": "G"},
+                {"time": 75.5, "end": 77.1, "chord": "G"},
+                {"time": 77.1, "end": 78.6, "chord": "B"},
+                {"time": 78.6, "end": 80.2, "chord": "Em"},
+                {"time": 80.2, "end": 81.8, "chord": "G"},
+                {"time": 81.8, "end": 84.9, "chord": "A"},
+                {"time": 84.9, "end": 86.4, "chord": "D"},
+                {"time": 86.4, "end": 88.0, "chord": "D7"},
+                {"time": 88.0, "end": 89.6, "chord": "G"},
+                {"time": 89.6, "end": 91.1, "chord": "Bm"},
+                {"time": 91.1, "end": 94.2, "chord": "Em"},
+                {"time": 94.2, "end": 95.8, "chord": "D"},
+                {"time": 95.8, "end": 97.3, "chord": "D7"},
+                {"time": 97.3, "end": 98.9, "chord": "G"},
+                {"time": 98.9, "end": 100.5, "chord": "Eb"},
+                {"time": 100.5, "end": 103.6, "chord": "Ab"},
+                {"time": 103.6, "end": 106.7, "chord": "Fm"},
+                {"time": 106.7, "end": 109.8, "chord": "Bbm"},
+                {"time": 109.8, "end": 112.9, "chord": "Eb7"},
+                {"time": 112.9, "end": 116.0, "chord": "Ab"},
+                {"time": 116.0, "end": 117.6, "chord": "Fm"},
+                {"time": 117.6, "end": 119.1, "chord": "Fm7"},
+                {"time": 119.1, "end": 120.7, "chord": "Bbm7"},
+                {"time": 120.7, "end": 122.3, "chord": "Bb7"},
+                {"time": 122.3, "end": 123.8, "chord": "Eb7"},
+                {"time": 123.8, "end": 125.3, "chord": "Eb"},
+            ],
+        }
+
+        meta = analyze_global_structure(sheet)
+        apply_global_structure_corrections(sheet, meta)
+
+        transition = [c for c in sheet["chords"] if c.get("global_arbiter") == "modulation-transition-grammar"]
+        self.assertEqual([c["chord"] for c in transition], ["G", "Bm", "Em", "D", "D7", "G", "Eb"])
+        self.assertEqual([c["display_beats"] for c in transition], [2, 2, 4, 2, 2, 2, 2])
+
+        repeats = [c for c in sheet["chords"] if c.get("global_arbiter") == "modulated-verse-cycle-repeat"]
+        self.assertEqual([c["chord"] for c in repeats], ["Ab", "Fm", "Bbm", "Eb7"])
+        self.assertEqual([c["display_beats"] for c in repeats], [4, 4, 4, 4])
+        self.assertAlmostEqual(repeats[1]["end"], 119.1)
+        self.assertAlmostEqual(repeats[2]["end"], 122.3)
+        self.assertAlmostEqual(repeats[3]["end"], 125.3)
+
 
 if __name__ == "__main__":
     unittest.main()
