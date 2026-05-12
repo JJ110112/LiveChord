@@ -220,7 +220,7 @@ class TestGlobalChordArbiter(unittest.TestCase):
 
     def test_high_bpm_acoustic_half_bar_downbeats_are_joined(self):
         sheet = {
-            "bpm": 187.5,
+            "bpm": 93.75,
             "downbeats": [1.98, 3.90, 5.78, 7.68, 9.58, 11.48, 13.38, 15.28, 17.18, 19.08],
             "chords": [
                 {"time": 0.37, "end": 7.36, "chord": "Ab"},

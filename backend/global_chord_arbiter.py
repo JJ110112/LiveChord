@@ -1011,6 +1011,10 @@ def _stable_downbeat_gap(downbeats: List[float], bpm: float = 0.0) -> Optional[D
     # half-bar distance, treat two downbeat gaps as the musical 4/4 bar.
     if bpm >= 150.0 and 1.35 <= med <= 2.4:
         factor = 2
+    elif bpm >= 80.0 and 1.35 <= med <= 2.4:
+        beats_per_gap = bpm * med / 60.0
+        if 2.55 <= beats_per_gap <= 3.35:
+            factor = 2
     return {"raw_gap": med, "bar_gap": med * factor, "factor": factor, "cv": cv}
 
 
@@ -1046,6 +1050,24 @@ def _merge_same_root_full_bar_fragments(chords: List[Dict], bar_gap: float) -> T
     return out, merged
 
 
+def _looks_like_half_bar_downbeats(chords: List[Dict], raw_gap: float) -> bool:
+    if raw_gap <= 0:
+        return False
+    ratios = []
+    for c in chords:
+        start = _float(c.get("time"))
+        end = _float(c.get("end"), start)
+        dur = end - start
+        if dur <= 0.5:
+            continue
+        ratios.append(dur / raw_gap)
+    if len(ratios) < 8:
+        return False
+    full_bar_like = sum(1 for r in ratios if 1.65 <= r <= 2.35)
+    half_bar_like = sum(1 for r in ratios if 0.78 <= r <= 1.25)
+    return full_bar_like >= 8 and full_bar_like >= half_bar_like * 1.4
+
+
 def _split_stable_full_bar_holds(chords: List[Dict], bar_gap: float) -> Tuple[List[Dict], int]:
     out: List[Dict] = []
     split_count = 0
@@ -1078,6 +1100,8 @@ def _apply_downbeat_display_quantization(chords: List[Dict], downbeats: List[flo
     gap_info = _stable_downbeat_gap(downbeats, bpm)
     if not gap_info:
         return chords, None
+    if gap_info["factor"] == 1 and _looks_like_half_bar_downbeats(chords, gap_info["raw_gap"]):
+        gap_info = {**gap_info, "bar_gap": gap_info["raw_gap"] * 2, "factor": 2}
     bar_gap = gap_info["bar_gap"]
     out, merged = _merge_same_root_full_bar_fragments([dict(c) for c in chords], bar_gap)
     out, split_holds = _split_stable_full_bar_holds(out, bar_gap)
