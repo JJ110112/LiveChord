@@ -5,9 +5,9 @@ tail gaps, and obvious BPM mistakes. Some songs need a higher viewpoint. A
 free-time vocal intro can still carry a harmonic cycle, a chorus can use a
 2-beat card grammar, and a later verse can modulate the same grammar upward.
 
-This module records those song-level signals in ``global_arbiter_meta`` without
-rewriting the chart yet. The goal is to make the evidence visible and testable
-before we allow the arbiter to override chord boundaries.
+This module records those song-level signals in ``global_arbiter_meta`` and can
+apply a small set of high-confidence serve-time corrections. Stored chord JSON
+is not rewritten.
 """
 
 from __future__ import annotations
@@ -280,6 +280,216 @@ def _find_two_beat_grammar(chords: List[Dict], bpm: float) -> List[Dict]:
     return hints
 
 
+def _duration_by_name_after(chords: List[Dict], start_idx: int, names: List[str]) -> Dict[str, float]:
+    out: Dict[str, float] = {}
+    wanted = set(names)
+    for c in chords[start_idx:start_idx + max(8, len(names) * 3)]:
+        name = c["chord"]
+        if name not in wanted or name in out:
+            continue
+        dur = _float(c.get("end")) - _float(c.get("time"))
+        if 0.25 <= dur <= 12.0:
+            out[name] = dur
+        if len(out) == len(wanted):
+            break
+    return out
+
+
+def _expand_intro_cycle(chords: List[Dict], hint: Dict) -> Tuple[List[Dict], Optional[Dict]]:
+    if not hint or hint.get("type") != "free_time_long_intro":
+        return chords, None
+    cycle = [str(c) for c in (hint.get("suggested_cycle") or []) if c]
+    if len(cycle) < 3:
+        return chords, None
+    span = hint.get("long_span") or []
+    if len(span) != 2:
+        return chords, None
+    start, end = _float(span[0]), _float(span[1])
+    idx = None
+    for i, c in enumerate(chords):
+        if abs(_float(c.get("time")) - start) < 0.08 and abs(_float(c.get("end")) - end) < 0.08:
+            idx = i
+            break
+    if idx is None:
+        return chords, None
+
+    durations = _duration_by_name_after(chords, idx + 1, cycle)
+    fallback = statistics.median(durations.values()) if durations else (end - start) / max(1, len(cycle) * 4)
+    cursor = start
+    generated: List[Dict] = []
+    safety = 0
+    while cursor < end - 0.1 and safety < 128:
+        for name in cycle:
+            if cursor >= end - 0.1:
+                break
+            dur = durations.get(name, fallback)
+            item_end = min(end, cursor + dur)
+            generated.append({
+                "time": round(cursor, 3),
+                "end": round(item_end, 3),
+                "chord": name,
+                "display_beats": int(hint.get("suggested_card_beats") or 4),
+                "global_arbiter": "free-time-intro-cycle",
+            })
+            cursor = item_end
+            safety += 1
+
+    if len(generated) < 2:
+        return chords, None
+    out = chords[:idx] + generated + chords[idx + 1:]
+    return out, {
+        "type": "expand_intro_cycle",
+        "before": 1,
+        "after": len(generated),
+        "span": [round(start, 3), round(end, 3)],
+        "cycle": cycle,
+    }
+
+
+def _apply_two_beat_grammar(chords: List[Dict], candidates: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+    if not candidates:
+        return chords, []
+    out = [dict(c) for c in chords]
+    corrections: List[Dict] = []
+    used = set()
+    target_degrees = ["I", "III", "VIm", "I", "II", "V", "V7"]
+    for cand in candidates:
+        if cand.get("degrees") != target_degrees:
+            continue
+        names = cand.get("chords") or []
+        beats = cand.get("suggested_card_beats") or []
+        if len(names) != len(beats):
+            continue
+        start = _float(cand.get("start"))
+        end = _float(cand.get("end"))
+        match_idx = None
+        for i in range(0, len(out) - len(names) + 1):
+            if any(j in used for j in range(i, i + len(names))):
+                continue
+            if [c.get("chord") for c in out[i:i + len(names)]] != names:
+                continue
+            if abs(_float(out[i].get("time")) - start) < 0.08 and abs(_float(out[i + len(names) - 1].get("end")) - end) < 0.08:
+                match_idx = i
+                break
+        if match_idx is None:
+            continue
+        total_beats = sum(float(b) for b in beats)
+        if total_beats <= 0 or end <= start:
+            continue
+        sec_per_unit = (end - start) / total_beats
+        cursor = start
+        replacement = []
+        for name, b in zip(names, beats):
+            item_end = end if len(replacement) == len(names) - 1 else cursor + float(b) * sec_per_unit
+            replacement.append({
+                **out[match_idx + len(replacement)],
+                "time": round(cursor, 3),
+                "end": round(item_end, 3),
+                "chord": name,
+                "display_beats": int(b),
+                "global_arbiter": "two-beat-chorus-grammar",
+            })
+            cursor = item_end
+        out[match_idx:match_idx + len(names)] = replacement
+        used.update(range(match_idx, match_idx + len(names)))
+        corrections.append({
+            "type": "two_beat_grammar",
+            "span": [round(start, 3), round(end, 3)],
+            "chords": names,
+            "display_beats": beats,
+        })
+    return out, corrections
+
+
+def _protect_cycle_continuation(chords: List[Dict], start: float, end: float, label: str) -> Tuple[List[Dict], Optional[Dict]]:
+    out = [dict(c) for c in chords]
+    changed = 0
+    for c in out:
+        c_start = _float(c.get("time"))
+        c_end = _float(c.get("end"), c_start)
+        if c_start < start - 0.05 or c_start >= end - 0.05:
+            continue
+        if c.get("global_arbiter"):
+            continue
+        if c_end <= c_start:
+            continue
+        c["display_beats"] = 4
+        c["global_arbiter"] = label
+        changed += 1
+    if not changed:
+        return chords, None
+    return out, {"type": label, "span": [round(start, 3), round(end, 3)], "cards": changed, "display_beats": 4}
+
+
+def _apply_modulated_cycles(chords: List[Dict], candidates: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+    if not candidates:
+        return chords, []
+    out = [dict(c) for c in chords]
+    corrections = []
+    for cand in candidates:
+        names = cand.get("to_cycle") or []
+        if len(names) < 3:
+            continue
+        start = _float(cand.get("time"))
+        match_idx = None
+        for i in range(0, len(out) - len(names) + 1):
+            if [c.get("chord") for c in out[i:i + len(names)]] != names:
+                continue
+            if abs(_float(out[i].get("time")) - start) < 0.08:
+                match_idx = i
+                break
+        if match_idx is None:
+            continue
+        for j in range(match_idx, match_idx + len(names)):
+            out[j]["display_beats"] = 4
+            out[j]["global_arbiter"] = "modulated-verse-cycle"
+        corrections.append({
+            "type": "modulated_cycle",
+            "span": [round(_float(out[match_idx].get("time")), 3), round(_float(out[match_idx + len(names) - 1].get("end")), 3)],
+            "from_key": cand.get("from_key"),
+            "to_key": cand.get("to_key"),
+            "chords": names,
+            "display_beats": 4,
+        })
+    return out, corrections
+
+
+def apply_global_structure_corrections(chord_data: Dict, meta: Optional[Dict] = None) -> Dict:
+    """Apply high-confidence global corrections to the serve-time payload."""
+    if not isinstance(chord_data, dict):
+        return chord_data
+    meta = meta or analyze_global_structure(chord_data)
+    chords = _dedupe_names(chord_data.get("chords") or [])
+    corrections: List[Dict] = []
+    for hint in meta.get("hints") or []:
+        if hint.get("type") == "free_time_long_intro" and hint.get("confidence", 0) >= 0.75:
+            chords, corr = _expand_intro_cycle(chords, hint)
+            if corr:
+                corrections.append(corr)
+                target_degrees = ["I", "III", "VIm", "I", "II", "V", "V7"]
+                two_starts = [
+                    _float(c.get("start"))
+                    for c in (meta.get("two_beat_grammar_candidates") or [])
+                    if c.get("degrees") == target_degrees
+                ]
+                next_two = min(two_starts or [corr["span"][1]])
+                chords, cont = _protect_cycle_continuation(chords, corr["span"][1], next_two, "free-time-cycle-continuation")
+                if cont:
+                    corrections.append(cont)
+    chords, mod_corrections = _apply_modulated_cycles(chords, meta.get("modulated_cycle_candidates") or [])
+    corrections.extend(mod_corrections)
+    chords, grammar_corrections = _apply_two_beat_grammar(chords, meta.get("two_beat_grammar_candidates") or [])
+    corrections.extend(grammar_corrections)
+    if corrections:
+        chord_data["chords"] = chords
+        meta["corrections"] = corrections
+        meta["rewritten"] = True
+    else:
+        meta["rewritten"] = False
+    chord_data["global_arbiter_meta"] = meta
+    return chord_data
+
+
 def analyze_global_structure(chord_data: Dict) -> Dict:
     chords = _dedupe_names(chord_data.get("chords") or [])
     beats = [_float(v) for v in (chord_data.get("beats") or [])]
@@ -334,5 +544,4 @@ def analyze_global_structure(chord_data: Dict) -> Dict:
 def maybe_analyze_global_structure_for_serve(chord_data: Dict) -> Dict:
     if not isinstance(chord_data, dict):
         return chord_data
-    chord_data["global_arbiter_meta"] = analyze_global_structure(chord_data)
-    return chord_data
+    return apply_global_structure_corrections(chord_data, analyze_global_structure(chord_data))

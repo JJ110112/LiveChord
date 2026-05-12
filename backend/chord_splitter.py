@@ -468,6 +468,9 @@ def split_chords_at_bars(
     out: List[Dict] = []
 
     for chord in chords:
+        if chord.get("global_arbiter"):
+            out.append(dict(chord))
+            continue
         start = chord.get("time")
         end = chord.get("end")
         if start is None or end is None or end <= start:
@@ -542,6 +545,9 @@ def split_long_chords_at_bars(
         return list(chords)
     out: List[Dict] = []
     for chord in chords:
+        if chord.get("global_arbiter"):
+            out.append(dict(chord))
+            continue
         start = chord.get("time")
         end = chord.get("end")
         if start is None or end is None or end <= start:
@@ -568,6 +574,9 @@ def split_long_chords_evenly_by_bpm(
         return list(chords)
     out: List[Dict] = []
     for chord in chords:
+        if chord.get("global_arbiter"):
+            out.append(dict(chord))
+            continue
         start = chord.get("time")
         end = chord.get("end")
         if start is None or end is None or end <= start:

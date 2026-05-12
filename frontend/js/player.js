@@ -1782,7 +1782,7 @@
       }
       item.dataset.end = (c.time + durSec).toFixed(4);
 
-      const vb = _virtualBeats(durSec, c.time, c.auto_split);
+      const vb = _virtualBeats(durSec, c.time, c.auto_split, c.display_beats);
       const beatsEl = document.createElement("div");
       beatsEl.className = "rv-beats";
       let dotHtml = "";
@@ -4654,7 +4654,7 @@
   // get a 'chord-short' visual-degrade class. Dots carry absolute time so the
   // renderer can tag downbeats. Safety flag: localStorage.livechord_virtual_beats="0"
   // falls back to the legacy floor(durSec/secPerBeat).
-  function _virtualBeats(durSec, cStart, autoSplit) {
+  function _virtualBeats(durSec, cStart, autoSplit, displayBeats) {
     const off = (typeof localStorage !== "undefined"
                  && localStorage.getItem("livechord_virtual_beats") === "0");
     // _secPerBeatAt returns the BASE-rate beat duration (rubato-tracked
@@ -4670,6 +4670,15 @@
         tsBeats = window.CC.inferBeatsPerBar(chordData, spb) || 4;
       }
     } catch (e) { /* keep 4 */ }
+
+    const forcedBeats = Number(displayBeats || 0);
+    if (!off && forcedBeats >= 1 && forcedBeats <= 16 && Math.abs(_currentBpmMult - 1.0) <= 1e-3) {
+      return {
+        count: forcedBeats,
+        short: false,
+        dots: _buildVirtualDots(forcedBeats, durSec, cStart),
+      };
+    }
 
     // Backend auto_split: this card represents exactly one bar — the splitter
     // already did the math against arbitrated downbeats. Trust that and force

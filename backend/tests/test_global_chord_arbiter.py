@@ -1,6 +1,6 @@
 import unittest
 
-from backend.global_chord_arbiter import analyze_global_structure
+from backend.global_chord_arbiter import analyze_global_structure, apply_global_structure_corrections
 
 
 class TestGlobalChordArbiter(unittest.TestCase):
@@ -34,6 +34,20 @@ class TestGlobalChordArbiter(unittest.TestCase):
         self.assertEqual(meta["modulated_cycle_candidates"][0]["to_key"], "Ab")
         self.assertEqual(meta["modulated_cycle_candidates"][0]["shift_semitones"], 1)
 
+        apply_global_structure_corrections(sheet, meta)
+        self.assertTrue(sheet["global_arbiter_meta"]["rewritten"])
+        generated = [c for c in sheet["chords"] if c.get("global_arbiter") == "free-time-intro-cycle"]
+        self.assertGreaterEqual(len(generated), 4)
+        self.assertEqual([c["chord"] for c in generated[:4]], ["G", "Em", "Am", "D7"])
+        self.assertTrue(all(c["display_beats"] == 4 for c in generated[:4]))
+        self.assertGreater(generated[0]["end"] - generated[0]["time"], 2.5)
+        modulated = [c for c in sheet["chords"] if c.get("global_arbiter") == "modulated-verse-cycle"]
+        self.assertEqual([c["chord"] for c in modulated[:4]], ["Ab", "Fm", "Bbm", "Eb7"])
+        self.assertTrue(all(c["display_beats"] == 4 for c in modulated[:4]))
+
+        continuation = [c for c in sheet["chords"] if c.get("global_arbiter") == "free-time-cycle-continuation"]
+        self.assertTrue(all(c["display_beats"] == 4 for c in continuation))
+
     def test_detects_two_beat_chorus_grammar(self):
         sheet = {
             "bpm": 76.0,
@@ -56,6 +70,11 @@ class TestGlobalChordArbiter(unittest.TestCase):
         self.assertEqual(cand["chords"], ["G", "B", "Em", "G", "A", "D", "D7"])
         self.assertEqual(cand["local_key"]["key"], "G")
         self.assertEqual(cand["degrees"], ["I", "III", "VIm", "I", "II", "V", "V7"])
+
+        apply_global_structure_corrections(sheet, meta)
+        corrected = [c for c in sheet["chords"] if c.get("global_arbiter") == "two-beat-chorus-grammar"]
+        self.assertEqual([c["display_beats"] for c in corrected], [2, 2, 2, 2, 4, 2, 2])
+        self.assertEqual(corrected[4]["chord"], "A")
 
 
 if __name__ == "__main__":
