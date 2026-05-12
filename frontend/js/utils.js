@@ -128,6 +128,29 @@ function semitoneToNote(s, flat) {
   return flat ? NOTE_NAMES_FLAT[s] : NOTE_NAMES_SHARP[s];
 }
 
+function normalizeNoteForDisplay(note, preferFlat = true) {
+  if (typeof note !== "string") return note || "";
+  const m = note.toUpperCase().match(/^([A-G][b#]?)$/);
+  if (!m) return note;
+  const normalized = semitoneToNote(noteToSemitone(m[0]), preferFlat);
+  return note === note.toLowerCase() ? normalized.toLowerCase() : normalized;
+}
+
+function normalizeKeyForDisplay(key) {
+  return normalizeChordNameForDisplay(key);
+}
+
+function normalizeChordNameForDisplay(chord) {
+  if (!chord || typeof chord !== "string") return chord || "";
+  const m = chord.match(/^([A-G][b#]?)(.*?)(?:\/([A-G][b#]?))?$/i);
+  if (!m) return chord;
+
+  const root = normalizeNoteForDisplay(m[1], true);
+  const suffix = m[2] || "";
+  const slash = m[3] ? `/${normalizeNoteForDisplay(m[3], true)}` : "";
+  return `${root}${suffix}${slash}`;
+}
+
 function transposeChord(chord, semi) {
   if (!chord || semi === 0) return chord;
   const m = chord.match(/^([A-G][b#]?)(.*?)(?:\/([A-G][b#]?))?$/);

@@ -39,7 +39,7 @@
     if (uc >= 15) stars = 4;
     else if (uc >= 9) stars = 3;
     else if (uc >= 5) stars = 2;
-    const key = item.chord_key || "";
+    const key = normalizeKeyForDisplay(item.chord_key || "");
     return ` <span class="difficulty" style="font-size:0.65em;opacity:0.6;margin-left:6px;white-space:nowrap;letter-spacing:-1px">${"⭐".repeat(stars)}${key ? `<span style="margin-left:4px;letter-spacing:normal">${key}</span>` : ""}</span>`;
   }
 

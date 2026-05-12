@@ -1756,7 +1756,7 @@
 
       const nameEl = document.createElement("div");
       nameEl.className = "rv-chord-name";
-      nameEl.textContent = c.chord;
+      nameEl.textContent = _displayChordName(c.chord);
       item.appendChild(nameEl);
 
       const jp = document.createElement("div");
@@ -2363,6 +2363,14 @@
     }).join(" ");
   }
 
+  function _displayKey(key) {
+    return normalizeKeyForDisplay(key || "");
+  }
+
+  function _displayChordName(chord) {
+    return normalizeChordNameForDisplay(chord || "");
+  }
+
   function _currentKey() {
     if (!chordData || !chordData.key) return "C";
     const shift = transpose - capo;
@@ -2594,7 +2602,7 @@
       // chord name
       const nameEl = document.createElement("div");
       nameEl.className = "chord-name";
-      nameEl.textContent = chord.chord;
+      nameEl.textContent = _displayChordName(chord.chord);
       div.appendChild(nameEl);
 
       // chord jianpu
@@ -4275,7 +4283,8 @@
           const keyInfo = $("#chordKey");
           const _ma = { Mixolydian:"Mix", Dorian:"Dor", Lydian:"Lyd", Aeolian:"Aeo", Blues:"Blues" };
           const _ml = chordData.mode && _ma[chordData.mode] ? ` ${_ma[chordData.mode]}` : "";
-          if (keyInfo) keyInfo.textContent = `Key: ${chordData.key}${_ml}`;
+          const displayKey = _displayKey(chordData.key);
+          if (keyInfo) keyInfo.textContent = `Key: ${displayKey}${_ml}`;
         }
         if (chordData.capo) {
           capo = chordData.capo;
@@ -6526,18 +6535,20 @@
     const keyInfo = $("#chordKey");
     if (!keyInfo || !chordData || !chordData.key) return;
     const shift = transpose - capo;
-    const baseKey = shift === 0 ? chordData.key : transposeChord(chordData.key, shift);
+    const baseKeyRaw = shift === 0 ? chordData.key : transposeChord(chordData.key, shift);
+    const baseKey = _displayKey(baseKeyRaw);
 
     // Detect per-section key changes & mode
     if (sectionData && sectionData.sections) {
       const globalIsMajor = !baseKey.endsWith("m");
       const globalRoot = baseKey.replace(/m$/, "");
-      const rawRoot = k => k.replace(/m.*$/, "");
+      const rawRoot = k => (k || "").replace(/m.*$/, "");
+      const normKey = k => _displayKey(k);
       const normalize = k => {
-        if (!globalIsMajor || !/^[A-G][b#]?m$/.test(k)) return k;
+        if (!globalIsMajor || !/^[A-G][b#]?m$/.test(k || "")) return normKey(k);
         const mRoot = k.replace(/m$/, "");
         if (mRoot === globalRoot) return baseKey;
-        return transposeChord(mRoot, 3);
+        return normKey(transposeChord(mRoot, 3));
       };
 
       // Build per-section normalized key sequence
@@ -6643,7 +6654,7 @@
                 if (uc >= 15) stars = 4;
                 else if (uc >= 9) stars = 3;
                 else if (uc >= 5) stars = 2;
-                const key = r.chord_key || "";
+                const key = _displayKey(r.chord_key || "");
                 diffHtml = ` <span class="difficulty" style="font-size:0.8em;opacity:0.6;margin-left:6px">${"⭐".repeat(stars)}${key ? " " + key : ""}</span>`;
               }
               
@@ -6796,7 +6807,7 @@
           document.title = `${title} — LiveChord`;
           if (chordData.key) {
             const keyInfo = $("#chordKey");
-            if (keyInfo) keyInfo.textContent = `Key: ${chordData.key}`;
+            if (keyInfo) keyInfo.textContent = `Key: ${_displayKey(chordData.key)}`;
           }
           _updateChordQualityBadge(chordData, hashMode);
           await preloadChordInfo(chordData.chords);
