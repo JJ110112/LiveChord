@@ -43,6 +43,7 @@ from chord_cache import chord_file_for, song_hash  # noqa: E402
 from chord_noise_filter import maybe_filter_for_serve  # noqa: E402
 from chord_splitter import maybe_split_for_serve  # noqa: E402
 from chord_tail_extender import maybe_extend_tail_for_serve  # noqa: E402
+from global_chord_arbiter import maybe_analyze_global_structure_for_serve  # noqa: E402
 
 
 AUDIO_EXTS = {".flac", ".mp3", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".wma"}
@@ -143,6 +144,7 @@ def _apply_serve_pipeline(data: Dict[str, Any]) -> Dict[str, Any]:
     served = copy.deepcopy(data)
     maybe_apply_structural_bpm_correction_for_serve(served)
     maybe_correct_for_serve(served)
+    maybe_analyze_global_structure_for_serve(served)
     maybe_filter_for_serve(served)
     maybe_extend_tail_for_serve(served)
     maybe_split_for_serve(served)
@@ -181,6 +183,9 @@ def _display_dot_count(chord: Dict[str, Any], bpm: float, bpb: int = 4) -> int:
     downbeat that would have been a raw 1+3 split is not necessarily a visible
     failure anymore.
     """
+    forced = _float(chord.get("display_beats"))
+    if 1 <= forced <= 16:
+        return int(round(forced))
     if bpm <= 0 or bpb <= 0:
         return 0
     start = _float(chord.get("time"))
@@ -312,14 +317,17 @@ def _score_track(track: Track, data_root: Path) -> Dict[str, Any]:
     chords = served.get("chords") or []
     beats = served.get("beats") or []
     downbeats = served.get("downbeats") or []
-    bpm = _float(served.get("bpm"))
+    raw_bpm = _float(served.get("bpm"))
+    display_bpm = _float(served.get("display_bpm"))
+    bpm = display_bpm or raw_bpm
     source = served.get("source") or ""
     beats_source = served.get("beats_source") or ""
 
     row.update({
         "source": source,
         "key": served.get("key") or "",
-        "bpm": round(bpm, 2) if bpm else "",
+        "bpm": round(raw_bpm, 2) if raw_bpm else "",
+        "display_bpm": round(display_bpm, 2) if display_bpm else "",
         "beats_source": beats_source,
         "n_chords": len(chords),
         "n_beats": len(beats),
@@ -336,8 +344,8 @@ def _score_track(track: Track, data_root: Path) -> Dict[str, Any]:
         _issue(issues, "missing_downbeats", "severe", f"downbeats={len(downbeats)}")
     if beats_source and beats_source != "beat_this":
         _issue(issues, "weak_beat_source", "warn", f"beats_source={beats_source}")
-    if bpm and not (45 <= bpm <= 220):
-        _issue(issues, "bpm_outlier", "warn", f"bpm={bpm:.1f}")
+    if raw_bpm and not (45 <= raw_bpm <= 220):
+        _issue(issues, "bpm_outlier", "warn", f"bpm={raw_bpm:.1f}")
 
     metrics: Dict[str, Any] = {}
     beat_gap = _median_gap(beats)
@@ -495,7 +503,7 @@ def _summarize(rows: List[Dict[str, Any]], by_cat_counts: Dict[str, int], sample
 def _write_csv(path: Path, rows: List[Dict[str, Any]]) -> None:
     fields = [
         "status", "category", "path", "source", "key", "bpm", "beats_source",
-        "n_chords", "n_beats", "n_downbeats", "bpb", "beat_cv", "db_cv",
+        "display_bpm", "n_chords", "n_beats", "n_downbeats", "bpb", "beat_cv", "db_cv",
         "long_cards", "tiny_cards", "max_card_beats", "tail_gap_sec",
         "bad_fragments", "fragment_penalty", "fragment_patterns",
         "raw_bad_fragments", "raw_fragment_patterns",
