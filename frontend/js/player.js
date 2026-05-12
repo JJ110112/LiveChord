@@ -1580,6 +1580,14 @@
     // bpm_mult_default key — flipping BPM on song A would reappear on song B.
     const bpmPath = urlParamsBpm.get("path") || urlParamsBpm.get("hash") || "default";
     let bpmMult = parseFloat(localStorage.getItem(`bpm_mult_${bpmPath}`)) || 1.0;
+    const hasArbiterDisplayBpm = !!(chordData && Number(chordData.display_bpm || 0) > 0);
+    if (hasArbiterDisplayBpm && Math.abs(bpmMult - 1.0) > 1e-3) {
+        // Song-level arbitration has already chosen the musical display tempo.
+        // Drop stale per-song overrides so old half/double BPM experiments do
+        // not corrupt the corrected BPM label and beat-dot grammar on reload.
+        localStorage.removeItem(`bpm_mult_${bpmPath}`);
+        bpmMult = 1.0;
+    }
     _currentBpmMult = bpmMult;
 
     estimatedBpm = estimatedBpm * bpmMult;
@@ -4682,7 +4690,7 @@
     } catch (e) { /* keep 4 */ }
 
     const forcedBeats = Number(displayBeats || 0);
-    if (!off && forcedBeats >= 1 && forcedBeats <= 16 && Math.abs(_currentBpmMult - 1.0) <= 1e-3) {
+    if (!off && forcedBeats >= 1 && forcedBeats <= 16) {
       return {
         count: forcedBeats,
         short: false,
