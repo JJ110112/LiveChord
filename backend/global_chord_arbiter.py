@@ -1144,12 +1144,14 @@ def _split_stable_full_bar_holds(chords: List[Dict], bar_gap: float) -> Tuple[Li
             out.append(dict(chord))
             continue
         bars_float = dur / bar_gap if bar_gap > 0 else 0.0
-        if 1.38 <= bars_float <= 1.68:
-            first_end = start + (dur * 2.0 / 3.0)
-            for i, (seg_start, seg_end, beats) in enumerate((
+        if 1.22 <= bars_float <= 1.68:
+            first_end = start + bar_gap
+            tail = max(0.0, end - first_end)
+            tail_beats = max(1, min(3, int(round((tail / bar_gap) * 4.0)))) if tail > 0 else 1
+            for seg_start, seg_end, beats in (
                 (start, first_end, 4),
-                (first_end, end, 2),
-            )):
+                (first_end, end, tail_beats),
+            ):
                 item = dict(chord)
                 item["time"] = round(seg_start, 3)
                 item["end"] = round(seg_end, 3)

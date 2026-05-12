@@ -212,7 +212,7 @@ class TestGlobalChordArbiter(unittest.TestCase):
 
         apply_global_structure_corrections(sheet)
 
-        self.assertEqual([c.get("display_beats") for c in sheet["chords"]], [4, 4, 4, 2, 4])
+        self.assertEqual([c.get("display_beats") for c in sheet["chords"]], [4, 4, 4, 1, 2, 4, 1])
         self.assertEqual(
             sheet["global_arbiter_meta"]["corrections"][-1]["type"],
             "stable_downbeat_display_quantize",
@@ -301,6 +301,23 @@ class TestGlobalChordArbiter(unittest.TestCase):
             sheet["chords"][2].get("display_arbiter"),
             "stable-downbeat-bar-plus-half",
         )
+
+    def test_stable_five_beat_hold_splits_as_four_plus_tail(self):
+        sheet = {
+            "bpm": 95.0,
+            "downbeats": [0.0, 2.53, 5.06, 7.59, 10.12, 12.65, 15.18, 17.71, 20.24],
+            "chords": [
+                {"time": 0.0, "end": 2.53, "chord": "Bb"},
+                {"time": 2.53, "end": 5.72, "chord": "Cm7"},
+                {"time": 5.72, "end": 8.25, "chord": "Ab"},
+            ],
+        }
+
+        apply_global_structure_corrections(sheet)
+
+        self.assertEqual([c["chord"] for c in sheet["chords"]], ["Bb", "Cm7", "Cm7", "Ab"])
+        self.assertEqual([c.get("display_beats") for c in sheet["chords"]], [4, 4, 1, 4])
+        self.assertEqual(sheet["chords"][1].get("display_arbiter"), "stable-downbeat-bar-plus-half")
 
     def test_stable_quantize_does_not_force_three_beat_intro_cards_to_four(self):
         sheet = {

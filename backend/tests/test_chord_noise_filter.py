@@ -25,6 +25,30 @@ class TestChordNoiseFilter(unittest.TestCase):
         out = filter_noise_tails(chords, [0.0, 2.4, 4.8], 100.0)
         self.assertEqual([c["chord"] for c in out], ["C", "D7", "G"])
 
+    def test_preserves_global_arbiter_bar_tail_splits(self):
+        chords = [
+            {
+                "time": 10.286,
+                "end": 12.806,
+                "chord": "Cm7",
+                "display_beats": 4,
+                "global_arbiter": "stable-downbeat-quantize",
+            },
+            {
+                "time": 12.806,
+                "end": 13.700,
+                "chord": "Cm7",
+                "display_beats": 1,
+                "global_arbiter": "stable-downbeat-quantize",
+            },
+            {"time": 13.700, "end": 15.325, "chord": "Abmaj7"},
+        ]
+
+        out = filter_noise_tails(chords, [10.286, 12.806, 15.325], 93.8)
+
+        self.assertEqual(len(out), 3)
+        self.assertEqual([c.get("display_beats") for c in out[:2]], [4, 1])
+
 
 if __name__ == "__main__":
     unittest.main()

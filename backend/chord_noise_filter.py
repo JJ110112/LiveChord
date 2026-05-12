@@ -105,6 +105,10 @@ def merge_same_root_ornaments(chords: List[Dict], bpm: float) -> List[Dict]:
 
         left = dict(chords[i])
         right = dict(chords[i + 1])
+        if left.get("global_arbiter") or right.get("global_arbiter"):
+            out.append(left)
+            i += 1
+            continue
         try:
             left_start = float(left["time"])
             left_end = float(left["end"])
@@ -163,6 +167,8 @@ def filter_noise_tails(
     for i in range(len(out) - 2, 0, -1):
         c = out[i]
         prev = out[i - 1]
+        if c.get("global_arbiter") or prev.get("global_arbiter"):
+            continue
         if c.get("time") is None or c.get("end") is None:
             continue
         if prev.get("end") is None:

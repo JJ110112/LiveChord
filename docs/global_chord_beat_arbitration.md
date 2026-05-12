@@ -20,6 +20,7 @@ player API 目前的順序如下：
 
 4. `chord_noise_filter.maybe_filter_for_serve`
    - 吸收短雜訊和弦、1 拍尾巴、明顯不符合上下文的小碎片。
+   - 若卡片已帶有 `global_arbiter`，代表全局仲裁已做過讀譜切分；noise filter 不應再把這些卡片合併回 long card。
 
 5. `chord_tail_extender.maybe_extend_tail_for_serve`
    - 當歌曲後段仍有 beats 但和弦卡提前結束時，延伸或補足尾段。
@@ -27,6 +28,7 @@ player API 目前的順序如下：
 6. `chord_splitter.maybe_split_for_serve`
    - 依修正後 downbeats 切開超過一小節的和弦卡。
    - 若全局仲裁已給 `split_display_beats`，切割後保留每張卡應顯示的拍數。
+   - 同和弦合併只處理 detector 或舊 auto-split 造成的碎片；帶 `global_arbiter` 的 `4+tail` 切分必須保留，避免 `Cm7(4)+Cm7(1)` 又被黏回 `Cm7(5)`。
 
 前端 `player.js` 會優先尊重 `display_bpm` 與 `display_beats`。舊的 per-song BPM multiplier 不應覆蓋全局仲裁結果；若後端已有 `display_bpm`，player 會清掉 stale `bpm_mult_<song>`。
 
@@ -38,6 +40,7 @@ POP 目標先以 4/4 為主。常見規則：
 
 - 一張和弦卡預設代表 4 拍。
 - 同一和弦跨 8 拍以上時要切卡，避免小圓點過多或折行。
+- 約 5-6 拍的同和弦 hold 若落在穩定 4/4 downbeat grid，優先切成 `4+tail`，而不是顯示成一張 5 或 6 點卡；這讓小圓點速度維持一致，也保留後續樂句切割空間。
 - 2 拍和弦通常出現在固定文法中，例如 `G(2) D(2) C(4)` 或 `Fm(2) Eb(2) Db(2) Ab(2) ...`。
 - `1+3`、`3+1`、`4+1`、`1+4` 通常是 downbeat phase 或 chord boundary jitter，而不是音樂上的真實切分。
 

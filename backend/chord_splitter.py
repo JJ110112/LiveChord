@@ -389,6 +389,10 @@ def merge_same_chord_fragments(chords: List[Dict], bpm: float) -> tuple[List[Dic
             j += 1
 
         if len(run) > 1:
+            if any(seg.get("global_arbiter") for seg in run):
+                out.extend(run)
+                i = j
+                continue
             start = float(run[0].get("time", 0.0))
             end = float(run[-1].get("end", run[-1].get("time", start)))
             total_beats = (end - start) / spb

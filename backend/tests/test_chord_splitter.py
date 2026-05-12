@@ -268,6 +268,36 @@ class TestSplitChordsAtBars(unittest.TestCase):
         self.assertEqual(out[0]["end"], 15.83)
         self.assertNotIn("auto_split", out[0])
 
+    def test_same_chord_merge_preserves_global_arbiter_splits(self):
+        chords = [
+            {
+                "time": 0.0,
+                "end": 2.5,
+                "chord": "Cm7",
+                "display_beats": 4,
+                "global_arbiter": "stable-downbeat-quantize",
+            },
+            {
+                "time": 2.5,
+                "end": 3.2,
+                "chord": "Cm7",
+                "display_beats": 1,
+                "global_arbiter": "stable-downbeat-quantize",
+            },
+            {
+                "time": 3.2,
+                "end": 5.7,
+                "chord": "Ab",
+                "display_beats": 4,
+                "global_arbiter": "stable-downbeat-quantize",
+            },
+        ]
+        out, meta = merge_same_chord_fragments(chords, bpm=95.0)
+        self.assertFalse(meta["applied"])
+        self.assertEqual(meta["merged"], 0)
+        self.assertEqual(len(out), 3)
+        self.assertEqual([c.get("display_beats") for c in out[:2]], [4, 1])
+
     def test_merge_same_chord_one_bar_fragment_without_auto_split_flag(self):
         spb = 60.0 / 70.0
         chords = [
