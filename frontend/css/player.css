@@ -2544,7 +2544,7 @@ body.no-jianpu .melody-jianpu { display: none !important; }
    keep LiveChord text + full-screen button per user choice. The "LiveChord"
    wordmark hides too — the cyan LC icon (added 2026-04-25) carries the
    brand identity at small widths. */
-@media (max-width: 480px) {
+@media (max-width: 480px) and (orientation: portrait) {
   #chordSource { display: none; }
   .topbar-right {
     gap: 6px;
@@ -2560,33 +2560,21 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   }
   #chordKey.has-modulation {
     font-size: 0;
-    width: min(38vw, 148px);
+    width: auto;
+    min-width: 34px;
     padding: 2px 5px;
     border: 1px solid rgba(0, 229, 255, 0.22);
     border-radius: 999px;
     background: rgba(0, 229, 255, 0.08);
   }
-  #chordKey.has-modulation .key-marquee-inner {
-    display: inline-flex;
-    align-items: center;
-    white-space: nowrap;
-    will-change: transform;
-    animation: key-marquee-scroll 7s linear infinite;
-  }
-  #chordKey.has-modulation .key-marquee-item,
-  #chordKey.has-modulation .key-marquee-copy {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding-right: 28px;
+  #chordKey.has-modulation::after {
+    content: attr(data-mobile-key);
+    color: #00e5ff;
     font-size: 12px;
+    text-shadow: 0 0 8px rgba(0,229,255,0.5);
   }
-  #chordKey.has-modulation .key-marquee-copy {
-    display: inline-flex;
-  }
-  @keyframes key-marquee-scroll {
-    0%, 18% { transform: translateX(0); }
-    100% { transform: translateX(-50%); }
+  #chordKey.has-modulation .key-modulation-full {
+    display: none;
   }
   .btn-version {
     font-size: 11px;

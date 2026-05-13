@@ -6686,18 +6686,21 @@
         }).join(' <span style="opacity:0.3">→</span> ');
         const modeSuffix = curModeLabel ? ` <span style="color:#00e5ff;opacity:0.7;font-size:0.85em">${curModeLabel}</span>` : "";
         keyInfo.classList.add("has-modulation");
+        keyInfo.dataset.mobileKey = curRaw;
         const keyRun = `${display}${modeSuffix}`;
-        keyInfo.innerHTML = `Key: <span class="key-marquee-inner"><span class="key-marquee-item">${keyRun}</span><span class="key-marquee-copy">${keyRun}</span></span>`;
+        keyInfo.innerHTML = `Key: <span class="key-modulation-full">${keyRun}</span>`;
         return;
       }
       // No modulation — show single key with mode if non-standard
       if (curModeLabel) {
         keyInfo.classList.remove("has-modulation");
+        keyInfo.dataset.mobileKey = baseKey;
         keyInfo.innerHTML = `Key: ${baseKey} <span style="color:#00e5ff;opacity:0.7;font-size:0.85em">${curModeLabel}</span>`;
         return;
       }
     }
     keyInfo.classList.remove("has-modulation");
+    keyInfo.dataset.mobileKey = baseKey;
     keyInfo.textContent = `Key: ${baseKey}`;
   }
 
