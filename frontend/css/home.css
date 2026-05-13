@@ -508,6 +508,14 @@
 @media (max-width: 600px) {
   .home-intro { margin: 4px 0 18px; }
 }
+@media (orientation: landscape) and (max-height: 480px) {
+  .home-intro {
+    margin: 4px 0 12px;
+  }
+  .home-intro-cover {
+    width: min(360px, 70vw);
+  }
+}
 
 /* Public-mode homepage hero (Plan B 2026-05-04). Static markup so
    crawlers see the body content; app.js hides this for returning
@@ -545,8 +553,67 @@
   font-size: clamp(14px, 1.7vw, 16px);
   color: var(--text-dim);
   max-width: 720px;
-  margin: 0 auto 22px;
+  margin: 0 auto 18px;
   line-height: 1.6;
+}
+.home-hero-proof {
+  width: min(620px, 100%);
+  margin: 0 auto 14px;
+  padding: 12px 16px;
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 12px;
+  background: rgba(5, 45, 28, 0.72);
+  border: 1px solid rgba(93, 236, 170, 0.28);
+  border-radius: 8px;
+  text-align: left;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.hhp-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #d9fce8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.hhp-sequence {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: clamp(20px, 3.2vw, 30px);
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+.hhp-key {
+  color: #32e6f3;
+}
+.hhp-arrow {
+  color: rgba(217, 252, 232, 0.42);
+  font-weight: 700;
+}
+.hhp-note {
+  min-width: 0;
+  font-size: 13px;
+  color: rgba(217, 252, 232, 0.82);
+  line-height: 1.35;
+}
+.home-hero-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 auto 22px;
+}
+.home-hero-chips span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
 }
 .home-hero-cta-row {
   margin-bottom: 32px;
@@ -608,9 +675,34 @@
     padding: 22px 14px 18px;
     margin: 4px 0 28px;
   }
+  .home-hero-proof {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+    gap: 8px;
+    padding: 12px;
+  }
+  .home-hero-chips {
+    margin-bottom: 18px;
+  }
   .home-hero-features {
     grid-template-columns: 1fr;
     gap: 10px;
+  }
+}
+@media (orientation: landscape) and (max-height: 480px) {
+  .home-hero {
+    padding: 20px 24px 20px;
+    margin-bottom: 28px;
+  }
+  .home-hero-title {
+    font-size: 24px;
+  }
+  .home-hero-slogan {
+    margin-bottom: 10px;
+  }
+  .home-hero-tagline {
+    margin-bottom: 12px;
   }
 }
 

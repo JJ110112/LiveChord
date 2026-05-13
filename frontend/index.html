@@ -3,21 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LiveChord — AI Chord Recognition for Piano &amp; Guitar Practice</title>
-  <meta name="description" content="Upload your own audio file (MP3 / FLAC / WAV / OGG, up to 100 MB) and LiveChord generates a real-time chord chart with synced piano and guitar practice tools — transpose, A-B loop, slow-down. Free in your browser.">
+  <title>LiveChord - Open-source chord, beat, and key-change detection for practice</title>
+  <meta name="description" content="Upload your own audio file and LiveChord detects chords, beats, and key changes like Ab -> Db -> Ab, then turns them into synced piano, guitar, ukulele, accordion, and arranger practice views.">
   <link rel="canonical" href="https://livechord.org/">
   <link rel="alternate" hreflang="en" href="https://livechord.org/">
   <link rel="alternate" hreflang="zh-TW" href="https://livechord.org/?lang=zh-TW">
   <link rel="alternate" hreflang="x-default" href="https://livechord.org/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="LiveChord">
-  <meta property="og:title" content="LiveChord — AI Chord Recognition for Piano &amp; Guitar Practice">
-  <meta property="og:description" content="Upload an audio file, get a real-time chord chart. Piano and guitar practice tools — transpose, A-B loop, slow-down. Free.">
+  <meta property="og:title" content="LiveChord - Open-source chord, beat, and key-change detection">
+  <meta property="og:description" content="Upload audio and practice with synced chord, beat, and modulation views for piano, guitar, ukulele, accordion, and arranger workflows.">
   <meta property="og:url" content="https://livechord.org/">
   <meta property="og:image" content="https://livechord.org/img/livechord-icon-512.png">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="LiveChord — AI Chord Recognition for Piano &amp; Guitar Practice">
-  <meta name="twitter:description" content="Upload audio, get a real-time chord chart for piano and guitar practice.">
+  <meta name="twitter:title" content="LiveChord - Open-source chord, beat, and key-change detection">
+  <meta name="twitter:description" content="Upload audio and practice with synced chord, beat, and modulation views.">
   <meta name="twitter:image" content="https://livechord.org/img/livechord-icon-512.png">
   <script type="application/ld+json">
   {
@@ -25,7 +25,7 @@
     "@type": "WebApplication",
     "name": "LiveChord",
     "url": "https://livechord.org/",
-    "description": "Upload an audio file and get an AI-powered real-time chord chart. Practice piano and guitar with synced chord display, transpose, A-B loop, and slow-down playback. Free in your browser.",
+    "description": "Upload an audio file and get AI-powered chord, beat, and key-change detection for synced piano, guitar, ukulele, accordion, and arranger practice views. Free in your browser.",
     "applicationCategory": "MusicApplication",
     "operatingSystem": "Any (web)",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=22">
-  <link rel="stylesheet" href="/css/home.css?v=41">
+  <link rel="stylesheet" href="/css/home.css?v=42">
 
   <link rel="stylesheet" href="/css/help.css?v=5">
   <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
@@ -50,7 +50,7 @@
   <script src="/js/auth.js?v=6"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
-  <script src="/js/i18n.js?v=43"></script>
+  <script src="/js/i18n.js?v=44"></script>
   <script src="/js/analytics.js?v=1"></script>
 </head>
 <body>
@@ -159,22 +159,39 @@
        is JS-rendered cards which Googlebot can't see in first-paint).
        app.js hides this section once the visitor has at least one
        analyzed song so returning users aren't shown the marketing copy
-       repeatedly. Static (no data-i18n on H1 / hero p so the EN strings
-       are guaranteed to render even before i18n.js loads — these are
+       repeatedly. Static EN fallbacks are guaranteed to render even
+       before i18n.js loads — these are
        the SEO-critical strings). Sub-sections use data-i18n for the
        zh-TW switch. -->
   <section id="secHomeHero" class="home-hero" style="display:none">
-    <h1 class="home-hero-title">Turn your audio into a real-time chord chart</h1>
+    <h1 class="home-hero-title" data-i18n="home.hero.title">Open-source chord, beat, and key-change detection for real practice</h1>
     <p class="home-hero-slogan" data-i18n="home.hero.slogan">Your song is your music teacher!</p>
-    <p class="home-hero-tagline" data-i18n="home.hero.tagline">Upload your own audio file. AI detects chord progression, beats, and key. Practice with synced piano, guitar, ukulele, accordion, and arranger views — transpose, slow-down, A-B loop, all in your browser.</p>
+    <p class="home-hero-tagline" data-i18n="home.hero.tagline">Upload your own audio file. LiveChord detects chord progression, beat grid, and key changes, then turns them into synced piano, guitar, ukulele, accordion, and arranger practice views.</p>
+    <div class="home-hero-proof" aria-label="Key-change detection example">
+      <span class="hhp-label" data-i18n="home.hero.proof.label">Key-change aware</span>
+      <span class="hhp-sequence">
+        <span class="hhp-key">Ab</span>
+        <span class="hhp-arrow">-&gt;</span>
+        <span class="hhp-key">Db</span>
+        <span class="hhp-arrow">-&gt;</span>
+        <span class="hhp-key">Ab</span>
+      </span>
+      <span class="hhp-note" data-i18n="home.hero.proof.note">Practice the modulation instead of guessing the tonal center.</span>
+    </div>
+    <div class="home-hero-chips" aria-label="LiveChord capabilities">
+      <span data-i18n="home.hero.chip.opensource">Open source</span>
+      <span data-i18n="home.hero.chip.chords">Chord + beat alignment</span>
+      <span data-i18n="home.hero.chip.modulation">Key changes</span>
+      <span data-i18n="home.hero.chip.views">Piano / guitar / arranger</span>
+    </div>
     <div class="home-hero-cta-row">
       <button id="heroUploadBtn" class="home-hero-cta" data-i18n="home.hero.cta">Get started for free</button>
     </div>
     <div class="home-hero-features">
       <div class="home-hero-feature">
         <div class="hf-icon">🎵</div>
-        <h3 class="hf-title" data-i18n="home.hero.feat1.title">AI chord detection</h3>
-        <p class="hf-body" data-i18n="home.hero.feat1.body">Upload audio you have permission to use (MP3 / FLAC / WAV / OGG, up to 100 MB). Our model returns chord progression, beat grid, and key signature in 30 seconds to 2 minutes — depending on track length.</p>
+        <h3 class="hf-title" data-i18n="home.hero.feat1.title">Chord, beat, and key changes</h3>
+        <p class="hf-body" data-i18n="home.hero.feat1.body">Upload audio you have permission to use (MP3 / FLAC / WAV / OGG, up to 100 MB). The analysis returns chord progression, beat grid, and modulation points in 30 seconds to 2 minutes, depending on track length.</p>
       </div>
       <div class="home-hero-feature">
         <div class="hf-icon">🎹</div>
@@ -183,8 +200,8 @@
       </div>
       <div class="home-hero-feature">
         <div class="hf-icon">🎯</div>
-        <h3 class="hf-title" data-i18n="home.hero.feat3.title">Built for practice</h3>
-        <p class="hf-body" data-i18n="home.hero.feat3.body">Transpose to any key, slow playback to 0.5×, loop a single section A-B, and let the bar-aware splitter break long chords into one-bar cards. Designed for actual practice, not casual listening.</p>
+        <h3 class="hf-title" data-i18n="home.hero.feat3.title">Built for modulation-aware practice</h3>
+        <p class="hf-body" data-i18n="home.hero.feat3.body">Transpose to any key, slow playback to 0.5x, loop a single section A-B, and see when the song moves from one key center to another. Designed for actual practice, not casual listening.</p>
       </div>
       <div class="home-hero-feature">
         <div class="hf-icon">✨</div>
