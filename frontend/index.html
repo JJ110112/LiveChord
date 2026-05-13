@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=22">
-  <link rel="stylesheet" href="/css/home.css?v=42">
+  <link rel="stylesheet" href="/css/home.css?v=43">
 
   <link rel="stylesheet" href="/css/help.css?v=5">
   <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
@@ -50,7 +50,7 @@
   <script src="/js/auth.js?v=6"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
-  <script src="/js/i18n.js?v=44"></script>
+  <script src="/js/i18n.js?v=45"></script>
   <script src="/js/analytics.js?v=1"></script>
 </head>
 <body>
@@ -219,6 +219,7 @@
   <section id="secDemoSongsHero" class="home-demo-songs" style="display:none">
     <h2 class="home-demo-heading" data-i18n="home.demo.heading">Try a sample first — no upload needed</h2>
     <p class="home-demo-lede" data-i18n="home.demo.lede">Royalty-free tracks pre-analyzed so you can see the player in action right away.</p>
+    <div class="home-demo-featured" data-featured-demo></div>
     <!-- Category order: Easy → Pop → Folk → Jazz → Classical (most accessible first) -->
     <div class="demo-category" data-cat="easy">
       <h3 class="demo-cat-heading" data-i18n="home.demo.cat.easy">🎵 Easy</h3>
@@ -655,6 +656,6 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 }
 </script>
 
-<script src="/js/app.js?v=109"></script>
+<script src="/js/app.js?v=110"></script>
 </body>
 </html>

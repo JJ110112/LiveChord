@@ -774,6 +774,20 @@
     const byCat = { classical: [], folk: [], jazz: [], easy: [], pop: [] };
     demos.forEach(d => { (byCat[d.category] || byCat.easy).push(d); });
 
+    const openDemo = (d, source) => {
+      if (!d || !d.hash) return;
+      try { sessionStorage.setItem("livechord_from_demo", "1"); } catch (_) {}
+      if (window.API && API.trackEvent) {
+        API.trackEvent("demo_click", {
+          source,
+          demo_id: d.id || "",
+          song_hash: d.hash,
+          title: d.title || ""
+        });
+      }
+      goPlayer("", d.hash);
+    };
+
     const renderCard = (d) => {
       const cover = d.cover_url || "";
       const license = d.license || "";
@@ -796,6 +810,32 @@
     };
 
     let totalRendered = 0;
+    const featuredEl = sec.querySelector("[data-featured-demo]");
+    if (featuredEl) {
+      const featured = demos.find(d => d.id === "canon_in_d") || demos[0];
+      if (featured) {
+        const cover = featured.cover_url || "";
+        featuredEl.innerHTML = `
+          <button class="demo-featured-card" type="button" data-hash="${escapeHtml(featured.hash)}">
+            <span class="demo-featured-media">
+              ${cover
+                ? `<img src="${escapeHtml(cover)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                   <span class="demo-featured-placeholder" style="display:none">&#x1F3B5;</span>`
+                : `<span class="demo-featured-placeholder" style="display:flex">&#x1F3B5;</span>`}
+            </span>
+            <span class="demo-featured-copy">
+              <span class="demo-featured-kicker">${escapeHtml(_t("home.demo.featured.kicker", null, "Best first demo"))}</span>
+              <span class="demo-featured-title">${escapeHtml(featured.title || "")}</span>
+              <span class="demo-featured-body">${escapeHtml(_t("home.demo.featured.body", null, "Start with a familiar progression and see how LiveChord lines up chords, beats, and instrument views before you upload anything."))}</span>
+            </span>
+            <span class="demo-featured-action">${escapeHtml(_t("home.demo.featured.cta", null, "Open demo"))}</span>
+          </button>`;
+        featuredEl.querySelector(".demo-featured-card")?.addEventListener("click", () => openDemo(featured, "featured_demo"));
+      } else {
+        featuredEl.innerHTML = "";
+      }
+    }
+
     sec.querySelectorAll(".demo-category").forEach(catEl => {
       const cat = catEl.dataset.cat;
       const items = byCat[cat] || [];
@@ -816,8 +856,8 @@
     // instead of dropping them at the top of the marketing landing.
     sec.querySelectorAll(".demo-card").forEach(el => {
       el.addEventListener("click", () => {
-        try { sessionStorage.setItem("livechord_from_demo", "1"); } catch (_) {}
-        goPlayer("", el.dataset.hash);
+        const d = demos.find(x => x.hash === el.dataset.hash) || { hash: el.dataset.hash };
+        openDemo(d, "demo_grid");
       });
     });
 
@@ -1469,6 +1509,10 @@
   // instrument tab — picking here pre-seeds it). Skipping or closing
   // writes "piano" so the modal doesn't reappear.
   function _initInstrumentPicker() {
+    // Public logged-out visitors should reach the hero CTA / demo cards first.
+    // The picker is a preference, not a gate; show it only after sign-in.
+    if (!localStorage.getItem("livechord_token")) return;
+
     const SKIP_KEY = "livechord_tab";
     let saved;
     try { saved = localStorage.getItem(SKIP_KEY); } catch { saved = null; }

@@ -474,6 +474,7 @@
    demo strip at the top of the visible content area. */
 #secHomeIntro       { order: -50; }
 #secHomeHero        { order: -40; }
+#secDemoSongsHero   { order: -35; }
 #secHomeHowItWorks  { order: -30; }
 #secHomeOpenSource  { order: -20; }
 #secRecent          { order: 10; }
@@ -943,6 +944,86 @@
   margin: 0 0 14px;
   text-align: center;
 }
+.home-demo-featured {
+  margin: 18px auto 22px;
+  max-width: 760px;
+}
+.demo-featured-card {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 92px 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: 8px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 14%, var(--bg-card)),
+    color-mix(in srgb, #0b2c1d 20%, var(--bg-card)));
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+}
+.demo-featured-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+.demo-featured-media,
+.demo-featured-media img,
+.demo-featured-placeholder {
+  width: 92px;
+  height: 92px;
+  border-radius: 6px;
+}
+.demo-featured-media {
+  display: block;
+  overflow: hidden;
+  background: #111927;
+}
+.demo-featured-media img {
+  object-fit: cover;
+  display: block;
+}
+.demo-featured-placeholder {
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  color: var(--text-dim);
+}
+.demo-featured-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.demo-featured-kicker {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.demo-featured-title {
+  color: var(--text);
+  font-size: clamp(18px, 2.6vw, 24px);
+  font-weight: 800;
+  line-height: 1.2;
+}
+.demo-featured-body {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.demo-featured-action {
+  justify-self: end;
+  padding: 9px 13px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
 .demo-grid {
   /* Inherits .horizontal-scroll layout when both classes are present; this
      block exists so a future redesign can swap to grid without touching the
@@ -1055,6 +1136,23 @@
 [data-theme="sunny"] .demo-card .demo-credit .demo-license-link,
 [data-theme="sky"] .demo-card .demo-credit .demo-license-link {
   text-decoration-color: rgba(0, 0, 0, 0.25);
+}
+@media (max-width: 640px) {
+  .demo-featured-card {
+    grid-template-columns: 72px 1fr;
+    align-items: start;
+  }
+  .demo-featured-media,
+  .demo-featured-media img,
+  .demo-featured-placeholder {
+    width: 72px;
+    height: 72px;
+  }
+  .demo-featured-action {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    text-align: center;
+  }
 }
 
 /* ========== [COMPONENT: ADD-SONG MODAL] ========== */
