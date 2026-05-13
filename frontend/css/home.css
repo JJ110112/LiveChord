@@ -565,11 +565,13 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   padding: 10px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 14%, var(--bg-card)),
+    color-mix(in srgb, #0b2c1d 20%, var(--bg-card)));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
   border-radius: 8px;
   text-align: left;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
 }
 .hhp-item {
   min-width: 0;
