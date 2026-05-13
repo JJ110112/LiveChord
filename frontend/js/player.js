@@ -6685,15 +6685,18 @@
           return `<span style="opacity:0.35">${k}</span>`;
         }).join(' <span style="opacity:0.3">→</span> ');
         const modeSuffix = curModeLabel ? ` <span style="color:#00e5ff;opacity:0.7;font-size:0.85em">${curModeLabel}</span>` : "";
+        keyInfo.classList.add("has-modulation");
         keyInfo.innerHTML = `Key: ${display}${modeSuffix}`;
         return;
       }
       // No modulation — show single key with mode if non-standard
       if (curModeLabel) {
+        keyInfo.classList.remove("has-modulation");
         keyInfo.innerHTML = `Key: ${baseKey} <span style="color:#00e5ff;opacity:0.7;font-size:0.85em">${curModeLabel}</span>`;
         return;
       }
     }
+    keyInfo.classList.remove("has-modulation");
     keyInfo.textContent = `Key: ${baseKey}`;
   }
 
