@@ -2920,8 +2920,21 @@
       "bpm": 107.14
     }
   ],
-  "beats_source": "beat_this",
-  "beat_version": 1,
+  "beats_source": "demo_manual_3_4",
+  "beat_version": 2,
   "n_snapped": 134,
-  "bpm_correction": null
+  "bpm_correction": null,
+  "time_signature": "3/4",
+  "meter_note": "Scarborough Fair demo uses triple-meter practice beats: quarter-note pulse, 3 beats per bar. Traditional arrangements may also be notated as 3/8 or felt in 6/8.",
+  "beats_per_bar": 3,
+  "display_bpm": 107.14,
+  "meter_correction": {
+    "applied": true,
+    "reason": "demo-scarborough-fair-3-4-triple-meter",
+    "original_bpm": 107.14,
+    "display_bpm": 107.14,
+    "display_unit": "quarter-note",
+    "time_signature": "3/4",
+    "beats_per_bar": 3
+  }
 }
