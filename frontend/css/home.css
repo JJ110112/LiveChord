@@ -608,7 +608,7 @@
   color: var(--accent);
 }
 .hhp-capability {
-  color: var(--accent);
+  color: var(--text);
   font-size: clamp(18px, 2.6vw, 26px);
   font-weight: 850;
 }
