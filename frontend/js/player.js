@@ -1816,29 +1816,35 @@
       beatsEl.className = "rv-beats";
       const meterLabel = _meterLabel();
       const meterBeatsPerBar = _meterBeatsPerBar();
-      if (meterLabel && meterBeatsPerBar) {
+      if (meterLabel && meterBeatsPerBar && meterLabel !== "6/8") {
           beatsEl.classList.add("rv-beats-metered", `rv-meter-${meterLabel.replace("/", "-")}`);
           beatsEl.dataset.meter = meterLabel;
           beatsEl.dataset.beatsPerBar = String(meterBeatsPerBar);
           beatsEl.title = `${meterLabel}: ${meterBeatsPerBar} practice beats per bar`;
+      } else if (meterLabel === "6/8") {
+          beatsEl.classList.add("rv-beats-simple-6-8");
+          beatsEl.dataset.meter = meterLabel;
+          beatsEl.title = "6/8: three visual pulses for this chord";
       }
       let dotHtml = "";
-      if (meterLabel && meterBeatsPerBar) {
+      if (meterLabel && meterBeatsPerBar && meterLabel !== "6/8") {
           dotHtml += `<span class="rv-meter-badge">${meterLabel}</span>`;
       }
-      for (let b = 0; b < vb.dots.length; b++) {
-          const d = vb.dots[b];
+      const displayDots = meterLabel === "6/8"
+        ? _buildVirtualDots(3, durSec, c.time)
+        : vb.dots;
+      for (let b = 0; b < displayDots.length; b++) {
+          const d = displayDots[b];
           const cls = [
             "beat-dot",
             d.isDownbeat ? "is-downbeat" : "",
             d.beatInBar === 1 ? "is-meter-one" : "",
             d.startsBar ? "starts-bar" : "",
-            meterLabel === "6/8" ? "is-compound-beat" : "",
           ].filter(Boolean).join(" ");
           // data-time lets _updateBeatDots advance the highlight by real beat
           // times (not cardDur fraction × dotCount), so the dot pulses at the
           // tracker beat rate even when dot count diverges from elapsed beats.
-          const beatAttr = d.beatInBar ? ` data-beat="${d.beatInBar}"` : "";
+          const beatAttr = d.beatInBar && meterLabel !== "6/8" ? ` data-beat="${d.beatInBar}"` : "";
           dotHtml += `<span class="${cls}" data-time="${d.t.toFixed(4)}"${beatAttr}></span>`;
       }
       beatsEl.innerHTML = dotHtml;

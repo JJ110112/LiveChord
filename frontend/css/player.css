@@ -3101,29 +3101,26 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   box-shadow: 0 0 0 2px rgba(0, 255, 204, 0.20);
 }
 
-.rv-meter-6-8 .beat-dot.is-compound-beat {
-  border-radius: 999px;
-}
-
-.rv-meter-6-8 .beat-dot.is-compound-beat::after {
-  content: "";
-  position: absolute;
-  left: 10px;
-  top: 2px;
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.38);
-  box-shadow: 5px 0 0 rgba(255,255,255,0.26);
-}
-
-.rv-meter-6-8 .beat-dot.is-compound-beat:not(:last-child) {
-  margin-right: 9px;
-}
-
 .rv-meter-3-4 .beat-dot {
   margin-left: 1px;
   margin-right: 1px;
+}
+
+.rv-beats-simple-6-8 {
+  gap: 6px;
+  height: 8px;
+  margin-top: 7px;
+}
+
+.rv-beats-simple-6-8 .beat-dot {
+  width: 6px;
+  height: 6px;
+  background-color: rgba(255,255,255,0.72);
+}
+
+.rv-beats-simple-6-8 .beat-dot.is-downbeat {
+  width: 7px;
+  height: 7px;
 }
 
 .rv-beats-metered .beat-dot.beat-active::before {
