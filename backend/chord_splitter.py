@@ -72,7 +72,51 @@ def _explicit_meter_card_seconds(chord_data: Dict) -> float:
     return 0.0
 
 
+def _chord_at_time(chords: List[Dict], t: float) -> Dict:
+    if not chords:
+        return {}
+    for chord in chords:
+        start = float(chord.get("time") or 0.0)
+        end = float(chord.get("end") or start)
+        if start - _BOUNDARY_EPSILON_SEC <= t < end - _BOUNDARY_EPSILON_SEC:
+            return chord
+    for chord in reversed(chords):
+        if float(chord.get("time") or 0.0) <= t:
+            return chord
+    return chords[0]
+
+
+def _explicit_six_eight_pulse_cards(chords: List[Dict], chord_data: Dict) -> Optional[List[Dict]]:
+    if str(chord_data.get("time_signature") or "").strip() != "6/8":
+        return None
+    beats = [float(v) for v in (chord_data.get("beats") or [])]
+    if len(beats) < 2:
+        return None
+    song_end = max(float(c.get("end") or c.get("time") or 0.0) for c in chords) if chords else beats[-1]
+    out: List[Dict] = []
+    for i, start in enumerate(beats):
+        if start >= song_end - _BOUNDARY_EPSILON_SEC:
+            break
+        end = beats[i + 1] if i + 1 < len(beats) else song_end
+        if end <= start:
+            continue
+        if end > song_end:
+            end = song_end
+        source = _chord_at_time(chords, start + (end - start) * 0.5)
+        if not source:
+            continue
+        item = dict(source)
+        item["time"] = round(start, 3)
+        item["end"] = round(end, 3)
+        item["explicit_meter_split"] = True
+        out.append(item)
+    return out
+
+
 def _split_explicit_meter_long_cards(chords: List[Dict], chord_data: Dict) -> List[Dict]:
+    pulse_cards = _explicit_six_eight_pulse_cards(chords, chord_data)
+    if pulse_cards is not None:
+        return pulse_cards
     card_sec = _explicit_meter_card_seconds(chord_data)
     if not chords or card_sec <= 0:
         return chords

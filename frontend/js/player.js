@@ -1581,7 +1581,10 @@
     // Hash-mode players (livechord.org) have ?hash= but no ?path=, so the
     // old `get("path") || "default"` made every hash song share one
     // bpm_mult_default key — flipping BPM on song A would reappear on song B.
-    const bpmPath = urlParamsBpm.get("path") || urlParamsBpm.get("hash") || "default";
+    let bpmPath = urlParamsBpm.get("path") || urlParamsBpm.get("hash") || "default";
+    if (chordData && chordData.meter_correction && chordData.time_signature) {
+      bpmPath = `${bpmPath}_meter_${chordData.time_signature}_${chordData.beat_version || 0}`;
+    }
     let bpmMult = parseFloat(localStorage.getItem(`bpm_mult_${bpmPath}`)) || 1.0;
     _currentBpmMult = bpmMult;
 
@@ -1600,8 +1603,7 @@
         const globalBpm = !!(displayBpmMeta && displayBpm > 0);
         // ⓘ when either correction applied; tooltip composes both messages
         const showInfo = halved || barFixed || globalBpm;
-        const label = showInfo ? `BPM: ${Math.round(estimatedBpm)} ⓘ` : `BPM: ${Math.round(estimatedBpm)}`;
-        bpmEl.textContent = label;
+        bpmEl.textContent = _bpmLabelForTime(audio.currentTime || 0, estimatedBpm, showInfo);
         bpmEl.style.cursor = "pointer";
         const lines = [];
         if (halved) {
@@ -1621,6 +1623,9 @@
         }
         if (globalBpm) {
             lines.push(`Displayed BPM from song-level arbiter (${displayBpmMeta.source || "global"}). Stored BPM: ${Math.round(chordData.bpm || 0)}.`);
+        }
+        if (_meterLabel() === "6/8") {
+            lines.push("Dynamic BPM is shown as the eighth-note pulse for 6/8 practice.");
         }
         lines.push(_t("player.bpm.click_to_cycle"));
         bpmEl.title = lines.join("\n");
@@ -4892,6 +4897,42 @@
     return 0;
   }
 
+  function _rawTempoBpmAt(t) {
+    const curve = chordData && Array.isArray(chordData.tempo_curve) ? chordData.tempo_curve : [];
+    if (curve.length) {
+      let best = curve[0];
+      for (let i = 0; i < curve.length; i++) {
+        if (Number(curve[i].t) <= t + 0.001) best = curve[i];
+        else break;
+      }
+      const bpm = Number(best && best.bpm);
+      if (Number.isFinite(bpm) && bpm > 0) return bpm;
+    }
+    const spb = _secPerBeatAt(t);
+    return spb > 0 ? 60.0 / spb : 0;
+  }
+
+  function _practiceBpmAt(t) {
+    let bpm = _rawTempoBpmAt(t) * (_currentBpmMult || 1.0);
+    if (_meterLabel() === "6/8") bpm *= 3;
+    return bpm;
+  }
+
+  function _bpmLabelForTime(t, fallbackBpm, showInfo) {
+    const dynamicBpm = _practiceBpmAt(t);
+    const bpm = dynamicBpm > 0 ? dynamicBpm : fallbackBpm;
+    const prefix = (chordData && Array.isArray(chordData.tempo_curve) && chordData.tempo_curve.length)
+      ? "BPM~" : "BPM:";
+    return `${prefix} ${Math.round(bpm)}${showInfo ? " \u24D8" : ""}`;
+  }
+
+  function _updateDynamicBpmLabel(t) {
+    const bpmEl = document.getElementById("chordBpm");
+    if (!bpmEl) return;
+    const showInfo = bpmEl.textContent.indexOf("\u24D8") >= 0;
+    bpmEl.textContent = _bpmLabelForTime(t, 60.0 / Math.max(0.001, currentSecPerBeat), showInfo);
+  }
+
   // Pick beats that fall inside [start, end). Small epsilon so a beat exactly
   // on the boundary (chord/downbeat snapped to the same grid point) still
   // counts toward the chord that's about to start.
@@ -4985,6 +5026,7 @@
         t = abA;
       }
       _updateProgress(t);
+      _updateDynamicBpmLabel(t);
       updateActiveChord(t);
       _updateBeatDots(t);
       _updateKeyDisplay(t);
@@ -5008,6 +5050,7 @@
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     const t = audio.currentTime;
     _updateProgress(t);
+    _updateDynamicBpmLabel(t);
     updateActiveChord(t);
     _updateBeatDots(t);
     if (activeTab === "piano") { update88Piano(t); drawWaterfall(t); }
@@ -5016,6 +5059,7 @@
   audio.addEventListener("seeked", () => {
     const t = audio.currentTime;
     _updateProgress(t);
+    _updateDynamicBpmLabel(t);
     // forceScroll=true so rewind-to-start (and any scrub) re-centers the
     // ribbon even when paused. The default _isAnyPlaying gate suppresses
     // scrolling on a paused player which is correct for pause-without-seek

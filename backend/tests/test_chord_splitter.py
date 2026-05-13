@@ -431,6 +431,27 @@ class TestMaybeSplitForServe(unittest.TestCase):
         self.assertTrue(all(c["chord"] == "Am" for c in out["chords"]))
         self.assertLess(max(c["end"] - c["time"] for c in out["chords"]), 1.2)
 
+    def test_six_eight_explicit_meter_uses_pulse_grid(self):
+        data = {
+            "bpm": 47.62,
+            "display_bpm": 47.62,
+            "time_signature": "6/8",
+            "meter_correction": {"applied": True},
+            "beats": [1.10, 2.44, 3.74, 5.04, 6.32],
+            "chords": [
+                {"time": 1.10, "end": 2.44, "chord": "Am"},
+                {"time": 2.44, "end": 3.74, "chord": "C"},
+                {"time": 3.74, "end": 5.04, "chord": "G"},
+                {"time": 5.04, "end": 6.32, "chord": "Em"},
+            ],
+        }
+
+        out = maybe_split_for_serve(data)
+
+        self.assertEqual([c["chord"] for c in out["chords"]], ["Am", "C", "G", "Em"])
+        self.assertEqual([c["time"] for c in out["chords"]], [1.10, 2.44, 3.74, 5.04])
+        self.assertEqual(out["auto_split_meta"]["reason"], "explicit-meter-card-grid")
+
     def test_applied_path(self):
         data = {
             "chords": [{"time": 0.0, "end": 4.0, "chord": "C"}],
