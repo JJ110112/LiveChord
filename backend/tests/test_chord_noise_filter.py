@@ -1,6 +1,6 @@
 import unittest
 
-from backend.chord_noise_filter import filter_noise_tails
+from backend.chord_noise_filter import filter_noise_tails, maybe_filter_for_serve
 
 
 class TestChordNoiseFilter(unittest.TestCase):
@@ -48,6 +48,24 @@ class TestChordNoiseFilter(unittest.TestCase):
 
         self.assertEqual(len(out), 3)
         self.assertEqual([c.get("display_beats") for c in out[:2]], [4, 1])
+
+    def test_explicit_meter_skips_pop_noise_filter(self):
+        data = {
+            "time_signature": "6/8",
+            "meter_correction": {"applied": True},
+            "bpm": 47.62,
+            "downbeats": [1.10, 3.74, 6.32],
+            "chords": [
+                {"time": 1.10, "end": 3.74, "chord": "Am"},
+                {"time": 3.74, "end": 6.32, "chord": "C"},
+                {"time": 6.32, "end": 8.90, "chord": "G"},
+            ],
+        }
+
+        out = maybe_filter_for_serve(data)
+
+        self.assertEqual([c["chord"] for c in out["chords"]], ["Am", "C", "G"])
+        self.assertEqual(out["noise_filter_meta"]["reason"], "explicit-meter-card-grid")
 
 
 if __name__ == "__main__":

@@ -201,6 +201,14 @@ def maybe_filter_for_serve(chord_data: Dict) -> Dict:
     chords = chord_data.get("chords") or []
     bpm = float(chord_data.get("bpm") or 0)
     downbeats = chord_data.get("downbeats") or []
+    explicit_meter = chord_data.get("meter_correction") or {}
+
+    if explicit_meter.get("applied") and chord_data.get("time_signature"):
+        chord_data["noise_filter_meta"] = {
+            "applied": False, "reason": "explicit-meter-card-grid",
+            "before": len(chords), "after": len(chords), "absorbed": 0,
+        }
+        return chord_data
 
     if not chords or bpm <= 0 or len(downbeats) < 2:
         chord_data["noise_filter_meta"] = {
