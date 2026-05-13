@@ -95,27 +95,7 @@ class ArrangerInstrument {
     this._kbCache = null;
     this._lastWidth = 0;
     this._lastKbWidth = 0;
-    this._draggingSplit = false;
-
-    // Set up drag handlers on keyboard canvas (only once)
-    if (this._kbCanvas && !this._kbCanvas._arrDragBound) {
-      this._kbCanvas._arrDragBound = true;
-      const kb = this._kbCanvas;
-      kb.style.cursor = "default";
-      kb.addEventListener("mousedown", (e) => this._onSplitDragStart(e));
-      kb.addEventListener("mousemove", (e) => this._onSplitDragMove(e));
-      kb.addEventListener("mouseup", () => this._onSplitDragEnd());
-      kb.addEventListener("mouseleave", () => {
-        if (!this._draggingSplit) {
-          this._hoverSplit = false;
-          this._kbCanvas.style.cursor = "default";
-        }
-      });
-      // Touch support
-      kb.addEventListener("touchstart", (e) => this._onSplitDragStart(e), { passive: false });
-      kb.addEventListener("touchmove", (e) => this._onSplitDragMove(e), { passive: false });
-      kb.addEventListener("touchend", () => this._onSplitDragEnd());
-    }
+    if (this._kbCanvas) this._kbCanvas.style.cursor = "default";
 
     // ResizeObserver: re-render when flex layout changes canvas dimensions
     // (e.g. keyboard canvas sizing itself changes waterfall height)
@@ -159,27 +139,6 @@ class ArrangerInstrument {
     return this._cache[chordName + ":" + this._splitPoint] || null;
   }
 
-  /* ---- Split point drag on keyboard ---- */
-
-  _splitFromX(clientX) {
-    const cache = this._kbCache;
-    if (!cache) return this._splitPoint;
-    const rect = this._kbCanvas.getBoundingClientRect();
-    const x = clientX - rect.left;
-    // Find the nearest key boundary
-    let bestMidi = this._splitPoint;
-    let bestDist = Infinity;
-    const checkKey = (midi, ki) => {
-      const rightEdge = ki.x + ki.w;
-      const d = Math.abs(x - rightEdge);
-      if (d < bestDist) { bestDist = d; bestMidi = parseInt(midi); }
-    };
-    for (const m in cache.whiteXs) checkKey(m, cache.whiteXs[m]);
-    for (const m in cache.blackXs) checkKey(m, cache.blackXs[m]);
-    // Clamp to valid range (C2=48 ~ C3=60 Yamaha)
-    return Math.max(48, Math.min(60, bestMidi));
-  }
-
   _isNearSplitArrow(clientX, clientY) {
     const cache = this._kbCache;
     if (!cache) return false;
@@ -191,58 +150,6 @@ class ArrangerInstrument {
     const sx = splitKey.x + splitKey.w;
     // Wide hit area: ±20px horizontal, top 30px of keyboard
     return Math.abs(x - sx) < 20 && y < 30;
-  }
-
-  _onSplitDragStart(e) {
-    const pt = e.touches ? e.touches[0] : e;
-    if (this._isNearSplitArrow(pt.clientX, pt.clientY)) {
-      this._draggingSplit = true;
-      if (e.preventDefault) e.preventDefault();
-      // Attach to window so drag continues outside canvas
-      this._windowMoveHandler = (ev) => this._onSplitDragMove(ev);
-      this._windowUpHandler = () => this._onSplitDragEnd();
-      window.addEventListener("mousemove", this._windowMoveHandler);
-      window.addEventListener("mouseup", this._windowUpHandler);
-    }
-  }
-
-  _onSplitDragMove(e) {
-    const pt = e.touches ? e.touches[0] : e;
-    if (this._draggingSplit) {
-      if (e.preventDefault) e.preventDefault();
-      const newSplit = this._splitFromX(pt.clientX);
-      if (newSplit !== this._splitPoint) {
-        this._splitPoint = newSplit;
-        localStorage.setItem("livechord_arranger_split", String(newSplit));
-        this._cache = {};
-        this._pianoCache = null;
-        this._kbCache = null;
-        this._lastWidth = 0;
-        this._lastKbWidth = 0;
-        this._activeChordName = null;
-        this.prefetchData();
-      }
-      this._kbCanvas.style.cursor = "grabbing";
-    } else {
-      // Show grab cursor when hovering near the arrow
-      const near = this._isNearSplitArrow(pt.clientX, pt.clientY);
-      this._hoverSplit = near;
-      this._kbCanvas.style.cursor = near ? "grab" : "default";
-    }
-  }
-
-  _onSplitDragEnd() {
-    if (this._draggingSplit) {
-      this._draggingSplit = false;
-      this._kbCanvas.style.cursor = "default";
-      // Remove window-level drag listeners
-      if (this._windowMoveHandler) {
-        window.removeEventListener("mousemove", this._windowMoveHandler);
-        window.removeEventListener("mouseup", this._windowUpHandler);
-        this._windowMoveHandler = null;
-        this._windowUpHandler = null;
-      }
-    }
   }
 
   /* ---- Main update (called every frame) ---- */
@@ -562,32 +469,25 @@ class ArrangerInstrument {
       now: this._b.getAudio().currentTime || 0,
     });
 
-    // Split point: red downward arrow at top of keyboard (draggable)
+    // Split point: red equilateral marker centered on the selected key.
     const ctx = canvas.getContext("2d");
     // Re-apply DPI scaling — draw88Piano resets ctx.setTransform to identity
     ctx.scale(dpr, dpr);
     const splitMidi = this._splitPoint;
     const splitKey = cache.whiteXs[splitMidi] || cache.blackXs[splitMidi];
     if (splitKey) {
-      const sx = splitKey.x + splitKey.w;
-      const arrowW = Math.max(4, (cache.bKeyW || splitKey.w * 0.58) / 6);
-      const arrowH = Math.max(10, Math.min(14, (cache.bKeyH || 42) * 0.22));
-      // Draw a narrow filled red triangle pointing down (hover=brighter, drag=brightest)
-      const arrowColor = this._draggingSplit ? "rgba(255, 50, 50, 1)"
-        : this._hoverSplit ? "rgba(255, 70, 70, 1)"
-        : "rgba(255, 80, 80, 1)";
-      ctx.fillStyle = arrowColor;
-      if (this._draggingSplit || this._hoverSplit) {
-        ctx.shadowColor = "rgba(255, 50, 50, 0.6)";
-        ctx.shadowBlur = 8;
-      }
+      const sx = splitKey.x + splitKey.w / 2;
+      const blackThird = (cache.bKeyW || splitKey.w * 0.58) / 3;
+      const whiteFit = (cache.keyW || splitKey.w) * 0.2;
+      const triW = Math.max(4, Math.min(blackThird, whiteFit));
+      const triH = triW * Math.sqrt(3) / 2;
+      ctx.fillStyle = "rgba(255, 80, 80, 1)";
       ctx.beginPath();
-      ctx.moveTo(sx - arrowW, 0);
-      ctx.lineTo(sx + arrowW, 0);
-      ctx.lineTo(sx, arrowH);
+      ctx.moveTo(sx - triW / 2, 0.5);
+      ctx.lineTo(sx + triW / 2, 0.5);
+      ctx.lineTo(sx, 0.5 + triH);
       ctx.closePath();
       ctx.fill();
-      ctx.shadowBlur = 0;
     }
   }
 }
