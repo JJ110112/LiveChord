@@ -30,6 +30,10 @@
       }
     });
     var ref = document.referrer || '';
+    var stored = readStoredAttribution();
+    if (!found && Object.keys(stored).length) {
+      return stored;
+    }
     if (ref) attribution.referrer = ref.slice(0, 300);
     attribution.landing_path = (location.pathname + location.search).slice(0, 300);
     attribution.landing_ts = Date.now();
