@@ -3,21 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LiveChord - Open-source chord, beat, and key-change detection for practice</title>
-  <meta name="description" content="Upload your own audio file and LiveChord detects chords, beats, and key changes like Ab -> Db -> Ab, then turns them into synced piano, guitar, ukulele, accordion, and arranger practice views.">
+  <title>LiveChord - Open-source chord, dynamic BPM, and key-change detection for practice</title>
+  <meta name="description" content="Upload your own audio file and LiveChord detects chords, dynamic BPM for rubato or live tempo changes, and key changes like Ab -> Db -> Ab, then turns them into synced piano, guitar, ukulele, accordion, and arranger practice views.">
   <link rel="canonical" href="https://livechord.org/">
   <link rel="alternate" hreflang="en" href="https://livechord.org/">
   <link rel="alternate" hreflang="zh-TW" href="https://livechord.org/?lang=zh-TW">
   <link rel="alternate" hreflang="x-default" href="https://livechord.org/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="LiveChord">
-  <meta property="og:title" content="LiveChord - Open-source chord, beat, and key-change detection">
-  <meta property="og:description" content="Upload audio and practice with synced chord, beat, and modulation views for piano, guitar, ukulele, accordion, and arranger workflows.">
+  <meta property="og:title" content="LiveChord - Open-source chord, dynamic BPM, and key-change detection">
+  <meta property="og:description" content="Upload audio and practice with synced chord, dynamic BPM, and modulation views for piano, guitar, ukulele, accordion, and arranger workflows.">
   <meta property="og:url" content="https://livechord.org/">
   <meta property="og:image" content="https://livechord.org/img/livechord-icon-512.png">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="LiveChord - Open-source chord, beat, and key-change detection">
-  <meta name="twitter:description" content="Upload audio and practice with synced chord, beat, and modulation views.">
+  <meta name="twitter:title" content="LiveChord - Open-source chord, dynamic BPM, and key-change detection">
+  <meta name="twitter:description" content="Upload audio and practice with synced chord, dynamic BPM, and modulation views.">
   <meta name="twitter:image" content="https://livechord.org/img/livechord-icon-512.png">
   <script type="application/ld+json">
   {
@@ -25,7 +25,7 @@
     "@type": "WebApplication",
     "name": "LiveChord",
     "url": "https://livechord.org/",
-    "description": "Upload an audio file and get AI-powered chord, beat, and key-change detection for synced piano, guitar, ukulele, accordion, and arranger practice views. Free in your browser.",
+    "description": "Upload an audio file and get AI-powered chord, dynamic BPM, beat, and key-change detection for synced piano, guitar, ukulele, accordion, and arranger practice views. Free in your browser.",
     "applicationCategory": "MusicApplication",
     "operatingSystem": "Any (web)",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=22">
-  <link rel="stylesheet" href="/css/home.css?v=43">
+  <link rel="stylesheet" href="/css/home.css?v=44">
 
   <link rel="stylesheet" href="/css/help.css?v=5">
   <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
@@ -164,24 +164,36 @@
        the SEO-critical strings). Sub-sections use data-i18n for the
        zh-TW switch. -->
   <section id="secHomeHero" class="home-hero" style="display:none">
-    <h1 class="home-hero-title" data-i18n="home.hero.title">Open-source chord, beat, and key-change detection for real practice</h1>
+    <h1 class="home-hero-title" data-i18n="home.hero.title">Open-source chord, dynamic BPM, and key-change detection for real practice</h1>
     <p class="home-hero-slogan" data-i18n="home.hero.slogan">Your song is your music teacher!</p>
-    <p class="home-hero-tagline" data-i18n="home.hero.tagline">Upload your own audio file. LiveChord detects chord progression, beat grid, and key changes, then turns them into synced piano, guitar, ukulele, accordion, and arranger practice views.</p>
-    <div class="home-hero-proof" aria-label="Key-change detection example">
-      <span class="hhp-label" data-i18n="home.hero.proof.label">Key-change aware</span>
-      <span class="hhp-sequence">
-        <span class="hhp-key">Ab</span>
-        <span class="hhp-arrow">-&gt;</span>
-        <span class="hhp-key">Db</span>
-        <span class="hhp-arrow">-&gt;</span>
-        <span class="hhp-key">Ab</span>
-      </span>
-      <span class="hhp-note" data-i18n="home.hero.proof.note">Practice the modulation instead of guessing the tonal center.</span>
+    <p class="home-hero-tagline" data-i18n="home.hero.tagline">Upload your own audio file. LiveChord detects chord progression, beat grid, dynamic BPM, and key changes, then turns them into synced piano, guitar, ukulele, accordion, and arranger practice views.</p>
+    <div class="home-hero-proof" aria-label="Dynamic practice signals">
+      <div class="hhp-item">
+        <span class="hhp-label" data-i18n="home.hero.proof.key.label">Key changes</span>
+        <span class="hhp-sequence" aria-label="Key Ab to Db to Ab">
+          <span class="hhp-prefix">Key:</span>
+          <span class="hhp-key">Ab</span>
+          <span class="hhp-arrow">-&gt;</span>
+          <span class="hhp-key">Db</span>
+          <span class="hhp-arrow">-&gt;</span>
+          <span class="hhp-key">Ab</span>
+        </span>
+        <span class="hhp-note" data-i18n="home.hero.proof.key.note">Practice the modulation instead of guessing one tonal center.</span>
+      </div>
+      <div class="hhp-item">
+        <span class="hhp-label" data-i18n="home.hero.proof.bpm.label">Dynamic tempo</span>
+        <span class="hhp-sequence" aria-label="BPM 138 changing">
+          <span class="hhp-prefix">BPM:</span>
+          <span class="hhp-bpm">138~</span>
+        </span>
+        <span class="hhp-note" data-i18n="home.hero.proof.bpm.note">Follow rubato, live takes, and instrumental tempo drift while you practice.</span>
+      </div>
     </div>
     <div class="home-hero-chips" aria-label="LiveChord capabilities">
       <span data-i18n="home.hero.chip.opensource">Open source</span>
       <span data-i18n="home.hero.chip.chords">Chord + beat alignment</span>
       <span data-i18n="home.hero.chip.modulation">Key changes</span>
+      <span data-i18n="home.hero.chip.dynamic_bpm">Dynamic BPM</span>
       <span data-i18n="home.hero.chip.views">Piano / guitar / arranger</span>
     </div>
     <div class="home-hero-cta-row">
@@ -190,8 +202,8 @@
     <div class="home-hero-features">
       <div class="home-hero-feature">
         <div class="hf-icon">🎵</div>
-        <h3 class="hf-title" data-i18n="home.hero.feat1.title">Chord, beat, and key changes</h3>
-        <p class="hf-body" data-i18n="home.hero.feat1.body">Upload audio you have permission to use (MP3 / FLAC / WAV / OGG, up to 100 MB). The analysis returns chord progression, beat grid, and modulation points in 30 seconds to 2 minutes, depending on track length.</p>
+        <h3 class="hf-title" data-i18n="home.hero.feat1.title">Chord, beat, dynamic BPM, and key changes</h3>
+        <p class="hf-body" data-i18n="home.hero.feat1.body">Upload audio you have permission to use (MP3 / FLAC / WAV / OGG, up to 100 MB). The analysis returns chord progression, beat grid, changing tempo, and modulation points in 30 seconds to 2 minutes, depending on track length.</p>
       </div>
       <div class="home-hero-feature">
         <div class="hf-icon">🎹</div>
@@ -200,8 +212,8 @@
       </div>
       <div class="home-hero-feature">
         <div class="hf-icon">🎯</div>
-        <h3 class="hf-title" data-i18n="home.hero.feat3.title">Built for modulation-aware practice</h3>
-        <p class="hf-body" data-i18n="home.hero.feat3.body">Transpose to any key, slow playback to 0.5x, loop a single section A-B, and see when the song moves from one key center to another. Designed for actual practice, not casual listening.</p>
+        <h3 class="hf-title" data-i18n="home.hero.feat3.title">Built for real-performance practice</h3>
+        <p class="hf-body" data-i18n="home.hero.feat3.body">Transpose to any key, slow playback to 0.5x, loop a single section A-B, and see when the song changes key or tempo. Useful for live recordings, rubato ballads, folk tunes, and instrumental pieces where the pulse breathes.</p>
       </div>
       <div class="home-hero-feature">
         <div class="hf-icon">✨</div>
