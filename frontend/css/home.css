@@ -475,6 +475,7 @@
 #secHomeIntro       { order: -50; }
 #secHomeHero        { order: -40; }
 #secDemoSongsHero   { order: -35; }
+#secHomeTechCred    { order: -32; }
 #secHomeHowItWorks  { order: -30; }
 #secHomeOpenSource  { order: -20; }
 #secRecent          { order: 10; }
@@ -725,6 +726,72 @@
 
 /* "How it works" — 3-step explanation below the hero. Same accent
    tint pattern as .home-hero so light themes don't show flat grey. */
+.home-tech-cred {
+  margin: 0 0 40px;
+  padding: 28px 24px 24px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 7%, var(--bg-card)),
+    var(--bg-card));
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+  border-radius: var(--radius);
+}
+.htc-kicker {
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: center;
+  margin-bottom: 8px;
+}
+.htc-heading {
+  font-size: clamp(18px, 2.5vw, 23px);
+  font-weight: 800;
+  margin: 0 0 10px;
+  color: var(--text);
+  text-align: center;
+}
+.htc-lede {
+  max-width: 760px;
+  margin: 0 auto 20px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-dim);
+  text-align: center;
+}
+.htc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+.htc-item {
+  padding: 15px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.htc-item h3 {
+  margin: 0 0 7px;
+  font-size: 14px;
+  font-weight: 750;
+  color: var(--text);
+}
+.htc-item p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+@media (max-width: 600px) {
+  .home-tech-cred {
+    padding: 20px 14px 16px;
+    margin: 0 0 28px;
+  }
+  .htc-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .home-how-it-works {
   margin: 0 0 40px;
   padding: 28px 24px 24px;

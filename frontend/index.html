@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=22">
-  <link rel="stylesheet" href="/css/home.css?v=44">
+  <link rel="stylesheet" href="/css/home.css?v=45">
 
   <link rel="stylesheet" href="/css/help.css?v=5">
   <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
@@ -50,7 +50,7 @@
   <script src="/js/auth.js?v=6"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
-  <script src="/js/i18n.js?v=45"></script>
+  <script src="/js/i18n.js?v=46"></script>
   <script src="/js/analytics.js?v=1"></script>
 </head>
 <body>
@@ -263,6 +263,34 @@
        analyzed songs. Static markup so crawlers see the steps and the
        step body text — more long-tail SEO surface for queries like
        "how to get chords from audio" / "AI chord detection upload". -->
+  <section id="secHomeTechCred" class="home-tech-cred" style="display:none">
+    <div class="htc-kicker" data-i18n="home.tech.kicker">Music-tech details</div>
+    <h2 class="htc-heading" data-i18n="home.tech.heading">Built for musicians who listen for structure</h2>
+    <p class="htc-lede" data-i18n="home.tech.lede">LiveChord combines chord recognition, beat/bar alignment, melody extraction, arranger patterns, and synced instrument views so the screen follows how the music is actually played.</p>
+    <div class="htc-grid">
+      <div class="htc-item">
+        <h3 data-i18n="home.tech.chord.title">Chord recognition</h3>
+        <p data-i18n="home.tech.chord.body">A transformer-based pipeline turns audio into a chord timeline, then cleans short fragments so the result is readable for practice.</p>
+      </div>
+      <div class="htc-item">
+        <h3 data-i18n="home.tech.beat.title">Beat and bar alignment</h3>
+        <p data-i18n="home.tech.beat.body">Beat tracking and bar correction keep chord cards, dots, loops, and practice views locked to the musical pulse.</p>
+      </div>
+      <div class="htc-item">
+        <h3 data-i18n="home.tech.melody.title">Melody extraction</h3>
+        <p data-i18n="home.tech.melody.body">Melody-aware views help separate accompaniment from lead lines, useful when studying piano, guitar, or arranger-style parts.</p>
+      </div>
+      <div class="htc-item">
+        <h3 data-i18n="home.tech.arranger.title">Arranger patterns</h3>
+        <p data-i18n="home.tech.arranger.body">Backing styles translate the same harmony into playable rhythm patterns instead of leaving you with static chord names.</p>
+      </div>
+      <div class="htc-item">
+        <h3 data-i18n="home.tech.sync.title">Synced instrument views</h3>
+        <p data-i18n="home.tech.sync.body">Piano, guitar, ukulele, accordion, and arranger views share the same timing data, so fingering, voicing, and playback stay together.</p>
+      </div>
+    </div>
+  </section>
+
   <section id="secHomeHowItWorks" class="home-how-it-works" style="display:none">
     <h2 class="hiw-heading" data-i18n="home.how_it_works.heading">How LiveChord works</h2>
     <ol class="hiw-steps">
@@ -668,6 +696,6 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 }
 </script>
 
-<script src="/js/app.js?v=110"></script>
+<script src="/js/app.js?v=111"></script>
 </body>
 </html>

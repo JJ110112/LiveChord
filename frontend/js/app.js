@@ -126,6 +126,7 @@
         const headerEl = document.querySelector("header.header");
         const intro = $("#secHomeIntro");
         const heroSec = $("#secHomeHero");
+        const techSec = $("#secHomeTechCred");
         const hiwSec = $("#secHomeHowItWorks");
         const osSec = $("#secHomeOpenSource");
         const secBetaLocal = $("#secBetaLocalTracks");
@@ -137,6 +138,7 @@
           if (headerEl) headerEl.style.display = "";
           if (intro) intro.style.display = "none";
           if (heroSec) heroSec.style.display = "none";
+          if (techSec) techSec.style.display = "none";
           if (hiwSec) hiwSec.style.display = "none";
           if (osSec) osSec.style.display = "none";
           if (secBetaLocal) secBetaLocal.style.display = "";
@@ -151,6 +153,7 @@
           if (headerEl) headerEl.style.display = "none";
           if (intro) intro.style.display = "";
           if (heroSec) heroSec.style.display = "";
+          if (techSec) techSec.style.display = "";
           if (hiwSec) hiwSec.style.display = "";
           if (osSec) osSec.style.display = "";
           if (secBetaLocal) secBetaLocal.style.display = "none";
