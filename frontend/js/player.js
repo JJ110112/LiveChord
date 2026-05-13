@@ -4921,9 +4921,9 @@
   function _bpmLabelForTime(t, fallbackBpm, showInfo) {
     const dynamicBpm = _practiceBpmAt(t);
     const bpm = dynamicBpm > 0 ? dynamicBpm : fallbackBpm;
-    const prefix = (chordData && Array.isArray(chordData.tempo_curve) && chordData.tempo_curve.length)
-      ? "BPM~" : "BPM:";
-    return `${prefix} ${Math.round(bpm)}${showInfo ? " \u24D8" : ""}`;
+    const dynamicSuffix = (chordData && Array.isArray(chordData.tempo_curve) && chordData.tempo_curve.length)
+      ? "~" : "";
+    return `BPM: ${Math.round(bpm)}${dynamicSuffix}${showInfo ? " \u24D8" : ""}`;
   }
 
   function _updateDynamicBpmLabel(t) {
