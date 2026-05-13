@@ -6686,7 +6686,8 @@
         }).join(' <span style="opacity:0.3">→</span> ');
         const modeSuffix = curModeLabel ? ` <span style="color:#00e5ff;opacity:0.7;font-size:0.85em">${curModeLabel}</span>` : "";
         keyInfo.classList.add("has-modulation");
-        keyInfo.innerHTML = `Key: ${display}${modeSuffix}`;
+        const keyRun = `${display}${modeSuffix}`;
+        keyInfo.innerHTML = `Key: <span class="key-marquee-inner"><span class="key-marquee-item">${keyRun}</span><span class="key-marquee-copy">${keyRun}</span></span>`;
         return;
       }
       // No modulation — show single key with mode if non-standard

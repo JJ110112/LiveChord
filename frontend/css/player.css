@@ -2551,28 +2551,42 @@ body.no-jianpu .melody-jianpu { display: none !important; }
     min-width: 0;
   }
   #chordKey {
-    max-width: min(34vw, 132px);
-    overflow-x: auto;
+    max-width: min(38vw, 148px);
+    overflow-x: hidden;
     overflow-y: hidden;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
   }
   #chordKey::-webkit-scrollbar {
     display: none;
   }
   #chordKey.has-modulation {
     font-size: 0;
+    width: min(38vw, 148px);
     padding: 2px 5px;
     border: 1px solid rgba(0, 229, 255, 0.22);
     border-radius: 999px;
     background: rgba(0, 229, 255, 0.08);
   }
-  #chordKey.has-modulation span {
+  #chordKey.has-modulation .key-marquee-inner {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    will-change: transform;
+    animation: key-marquee-scroll 7s linear infinite;
+  }
+  #chordKey.has-modulation .key-marquee-item,
+  #chordKey.has-modulation .key-marquee-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding-right: 28px;
     font-size: 12px;
   }
-  #chordKey.has-modulation span[style*="opacity:0.3"] {
-    margin: 0 -2px;
-    font-size: 11px;
+  #chordKey.has-modulation .key-marquee-copy {
+    display: inline-flex;
+  }
+  @keyframes key-marquee-scroll {
+    0%, 18% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
   }
   .btn-version {
     font-size: 11px;
