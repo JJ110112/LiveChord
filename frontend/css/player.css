@@ -176,6 +176,14 @@
   white-space: nowrap;
 }
 
+.topbar-meter {
+  color: var(--text-dim);
+  padding: 2px 7px;
+  border: 1px solid rgba(0, 255, 204, 0.28);
+  border-radius: 6px;
+  background: rgba(0, 255, 204, 0.08);
+}
+
 #chordKey {
   display: inline-flex;
   align-items: center;
@@ -3043,6 +3051,87 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   margin-top: 6px;
   height: 6px;
   flex-wrap: wrap;
+}
+
+.rv-beats.rv-beats-metered {
+  gap: 5px;
+  height: 20px;
+  margin-top: 3px;
+  overflow: visible;
+}
+
+.rv-meter-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 14px;
+  padding: 0 4px;
+  border: 1px solid rgba(0, 255, 204, 0.35);
+  border-radius: 4px;
+  color: rgba(210, 255, 247, 0.95);
+  background: rgba(0, 255, 204, 0.10);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.rv-beats-metered .beat-dot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  margin-top: 9px;
+}
+
+.rv-beats-metered .beat-dot::before {
+  content: attr(data-beat);
+  position: absolute;
+  left: 50%;
+  top: -11px;
+  transform: translateX(-50%);
+  color: rgba(255,255,255,0.70);
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.rv-beats-metered .beat-dot.is-meter-one::before {
+  color: rgba(0, 255, 204, 0.95);
+}
+
+.rv-beats-metered .beat-dot.starts-bar {
+  box-shadow: 0 0 0 2px rgba(0, 255, 204, 0.20);
+}
+
+.rv-meter-6-8 .beat-dot.is-compound-beat {
+  border-radius: 999px;
+}
+
+.rv-meter-6-8 .beat-dot.is-compound-beat::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 2px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.38);
+  box-shadow: 5px 0 0 rgba(255,255,255,0.26);
+}
+
+.rv-meter-6-8 .beat-dot.is-compound-beat:not(:last-child) {
+  margin-right: 9px;
+}
+
+.rv-meter-3-4 .beat-dot {
+  margin-left: 1px;
+  margin-right: 1px;
+}
+
+.rv-beats-metered .beat-dot.beat-active::before {
+  color: rgba(233, 213, 255, 1);
+}
+
+.rv-beats-metered .beat-dot.beat-active::after {
+  opacity: 0.9;
 }
 .beat-dot {
   width: 5px;

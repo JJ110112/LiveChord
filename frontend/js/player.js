@@ -1633,6 +1633,22 @@
         };
     }
 
+    const meterEl = document.getElementById("chordMeter");
+    if (meterEl) {
+        const meterLabel = _meterLabel();
+        if (meterLabel) {
+            const beatsPerBar = _meterBeatsPerBar();
+            meterEl.textContent = `Meter: ${meterLabel}`;
+            meterEl.title = beatsPerBar
+              ? `${meterLabel}: ${beatsPerBar} practice beats per bar`
+              : `${meterLabel} meter`;
+            meterEl.style.display = "";
+        } else {
+            meterEl.textContent = "";
+            meterEl.style.display = "none";
+        }
+    }
+
     // Build in time-ascending order: earliest chord top, latest bottom.
     // Active chord therefore moves top→bottom as the song plays — matches
     // the "reading a score" direction (past above, future below).
@@ -1798,14 +1814,32 @@
       const vb = _virtualBeats(durSec, c.time, c.auto_split, c.display_beats);
       const beatsEl = document.createElement("div");
       beatsEl.className = "rv-beats";
+      const meterLabel = _meterLabel();
+      const meterBeatsPerBar = _meterBeatsPerBar();
+      if (meterLabel && meterBeatsPerBar) {
+          beatsEl.classList.add("rv-beats-metered", `rv-meter-${meterLabel.replace("/", "-")}`);
+          beatsEl.dataset.meter = meterLabel;
+          beatsEl.dataset.beatsPerBar = String(meterBeatsPerBar);
+          beatsEl.title = `${meterLabel}: ${meterBeatsPerBar} practice beats per bar`;
+      }
       let dotHtml = "";
+      if (meterLabel && meterBeatsPerBar) {
+          dotHtml += `<span class="rv-meter-badge">${meterLabel}</span>`;
+      }
       for (let b = 0; b < vb.dots.length; b++) {
           const d = vb.dots[b];
-          const cls = d.isDownbeat ? "beat-dot is-downbeat" : "beat-dot";
+          const cls = [
+            "beat-dot",
+            d.isDownbeat ? "is-downbeat" : "",
+            d.beatInBar === 1 ? "is-meter-one" : "",
+            d.startsBar ? "starts-bar" : "",
+            meterLabel === "6/8" ? "is-compound-beat" : "",
+          ].filter(Boolean).join(" ");
           // data-time lets _updateBeatDots advance the highlight by real beat
           // times (not cardDur fraction × dotCount), so the dot pulses at the
           // tracker beat rate even when dot count diverges from elapsed beats.
-          dotHtml += `<span class="${cls}" data-time="${d.t.toFixed(4)}"></span>`;
+          const beatAttr = d.beatInBar ? ` data-beat="${d.beatInBar}"` : "";
+          dotHtml += `<span class="${cls}" data-time="${d.t.toFixed(4)}"${beatAttr}></span>`;
       }
       beatsEl.innerHTML = dotHtml;
       item.appendChild(beatsEl);
@@ -4825,6 +4859,32 @@
     return { count, short: false, dots: _buildVirtualDots(count, durSec, cStart) };
   }
 
+  function _meterLabel() {
+    const raw = chordData && typeof chordData.time_signature === "string"
+      ? chordData.time_signature.trim()
+      : "";
+    if (/^\d+\s*\/\s*\d+$/.test(raw)) return raw.replace(/\s+/g, "");
+    const bpb = _meterBeatsPerBar();
+    return bpb ? `${bpb}/4` : "";
+  }
+
+  function _meterBeatsPerBar() {
+    const explicit = Number(chordData && chordData.beats_per_bar);
+    if (Number.isFinite(explicit) && explicit >= 1 && explicit <= 16) {
+      return Math.round(explicit);
+    }
+    const label = chordData && typeof chordData.time_signature === "string"
+      ? chordData.time_signature.trim().replace(/\s+/g, "")
+      : "";
+    if (label === "6/8") return 2;
+    const match = label.match(/^(\d+)\/\d+$/);
+    if (match) {
+      const n = Number(match[1]);
+      if (Number.isFinite(n) && n >= 1 && n <= 16) return n;
+    }
+    return 0;
+  }
+
   // Pick beats that fall inside [start, end). Small epsilon so a beat exactly
   // on the boundary (chord/downbeat snapped to the same grid point) still
   // counts toward the chord that's about to start.
@@ -4841,6 +4901,7 @@
 
   function _buildVirtualDots(count, durSec, cStart, explicitTimes) {
     const dbs = (chordData && Array.isArray(chordData.downbeats)) ? chordData.downbeats : [];
+    const meterBeatsPerBar = _meterBeatsPerBar();
     const step = durSec / count;
     const tol = Math.min(0.12, step * 0.35);
     const out = new Array(count);
@@ -4857,7 +4918,8 @@
           if (Math.abs(dbs[k] - t) < tol) { isDownbeat = true; break; }
         }
       }
-      out[i] = { t, isDownbeat };
+      const beatInBar = meterBeatsPerBar ? (i % meterBeatsPerBar) + 1 : 0;
+      out[i] = { t, isDownbeat, beatInBar, startsBar: meterBeatsPerBar ? beatInBar === 1 : false };
     }
     return out;
   }
