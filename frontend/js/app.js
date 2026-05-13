@@ -1172,6 +1172,38 @@
     });
   }
 
+  function _searchVisibleCards(q) {
+    const qLower = q.toLowerCase();
+    const tokens = qLower.split(/\W+/).filter(Boolean);
+    if (tokens.length === 0 && qLower) tokens.push(qLower);
+    if (tokens.length === 0) return [];
+    const seen = new Set();
+    const results = [];
+    document.querySelectorAll(".grid-item[data-path], .grid-item[data-hash]").forEach((el) => {
+      if (el.closest("#searchResults")) return;
+      const title = (el.querySelector(".title")?.textContent || "").trim();
+      if (!title) return;
+      const artist = (el.querySelector(".demo-credit")?.textContent || "").trim();
+      const searchable = `${title} ${artist}`.toLowerCase();
+      if (!tokens.every(tok => searchable.includes(tok))) return;
+      const hash = el.dataset.hash || "";
+      const path = el.dataset.path || (hash ? `__hash/${hash}` : "");
+      if (!path) return;
+      const key = hash || path;
+      if (seen.has(key)) return;
+      seen.add(key);
+      results.push({
+        path,
+        hash,
+        title,
+        artist,
+        album: hash ? "Sample / recent" : "",
+        has_chords: true,
+      });
+    });
+    return results.slice(0, 20);
+  }
+
   // Tracks the currently in-flight query so a stale response from a previous
   // keystroke doesn't paint over fresher results.
   let _searchEpoch = 0;
@@ -1182,12 +1214,26 @@
     if (epoch !== _searchEpoch) return; // user typed something else; bail
 
     if (lib && lib.error) {
+      const fallbackResults = _searchVisibleCards(q);
+      if (fallbackResults.length > 0) {
+        searchResults.innerHTML = _renderLibraryHtml(fallbackResults);
+        searchResults.classList.add("show");
+        _bindLibraryClicks();
+        return;
+      }
       searchResults.innerHTML = `<div style="padding:12px;color:var(--text-dim)">${escapeHtml(lib.error)}</div>`;
       searchResults.classList.add("show");
       return;
     }
     const libResults = (lib && lib.results) || [];
     if (libResults.length === 0) {
+      const fallbackResults = _searchVisibleCards(q);
+      if (fallbackResults.length > 0) {
+        searchResults.innerHTML = _renderLibraryHtml(fallbackResults);
+        searchResults.classList.add("show");
+        _bindLibraryClicks();
+        return;
+      }
       _renderEmptyState(q);
       searchResults.classList.add("show");
       return;
