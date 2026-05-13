@@ -1349,10 +1349,22 @@ def apply_global_structure_corrections(chord_data: Dict, meta: Optional[Dict] = 
     else:
         meta["rewritten"] = False
     display_bpm = _estimate_display_bpm(chords)
-    if display_bpm and corrections:
+    explicit_meter = chord_data.get("meter_correction") or {}
+    preserve_display_bpm = bool(
+        explicit_meter.get("applied")
+        and chord_data.get("display_bpm")
+        and chord_data.get("time_signature")
+    )
+    if display_bpm and corrections and not preserve_display_bpm:
         chord_data["display_bpm"] = display_bpm["bpm"]
         chord_data["bpm_label"] = f"BPM: {round(display_bpm['bpm'])}"
         meta["display_bpm"] = display_bpm
+    elif display_bpm and corrections and preserve_display_bpm:
+        meta["display_bpm_skipped"] = {
+            "reason": "explicit-meter-display-bpm",
+            "candidate": display_bpm,
+            "preserved_bpm": chord_data.get("display_bpm"),
+        }
     chord_data["global_arbiter_meta"] = meta
     return chord_data
 

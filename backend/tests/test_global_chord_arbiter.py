@@ -218,6 +218,33 @@ class TestGlobalChordArbiter(unittest.TestCase):
             "stable_downbeat_display_quantize",
         )
 
+    def test_preserves_explicit_meter_display_bpm(self):
+        sheet = {
+            "bpm": 47.62,
+            "display_bpm": 47.62,
+            "time_signature": "6/8",
+            "beats_per_bar": 2,
+            "meter_correction": {"applied": True, "reason": "manual-6-8"},
+            "downbeats": [1.1, 3.74, 6.32, 8.9, 11.58, 14.16, 16.74, 19.34, 21.94, 24.46],
+            "chords": [
+                {"time": 1.1, "end": 3.66, "chord": "Am"},
+                {"time": 3.66, "end": 6.2, "chord": "G"},
+                {"time": 6.2, "end": 8.72, "chord": "Am"},
+                {"time": 8.72, "end": 11.5, "chord": "E"},
+                {"time": 11.5, "end": 13.0, "chord": "Am"},
+                {"time": 13.0, "end": 16.62, "chord": "G"},
+                {"time": 16.62, "end": 19.4, "chord": "Am"},
+            ],
+        }
+
+        apply_global_structure_corrections(sheet)
+
+        self.assertEqual(sheet["display_bpm"], 47.62)
+        self.assertEqual(
+            sheet["global_arbiter_meta"]["display_bpm_skipped"]["reason"],
+            "explicit-meter-display-bpm",
+        )
+
     def test_high_bpm_acoustic_half_bar_downbeats_are_joined(self):
         sheet = {
             "bpm": 93.75,

@@ -1002,6 +1002,9 @@
   // beats_per_bar=[3, 4], so the median inter-downbeat distance in beats
   // collapses to one of those two.
   function inferBeatsPerBar(chordData, secPerBeat) {
+    const explicit = Number(chordData && chordData.beats_per_bar);
+    if (explicit >= 1 && explicit <= 16) return explicit;
+
     const db = chordData && chordData.downbeats;
     if (!Array.isArray(db) || db.length < 3 || !(secPerBeat > 0)) return null;
     const diffs = [];
@@ -1009,7 +1012,7 @@
     if (!diffs.length) return null;
     const med = median(diffs);
     const beats = Math.round(med / secPerBeat);
-    return (beats === 3 || beats === 4) ? beats : null;
+    return (beats === 2 || beats === 3 || beats === 4 || beats === 6) ? beats : null;
   }
 
   // Return the next downbeat time strictly greater than t, or null if the
