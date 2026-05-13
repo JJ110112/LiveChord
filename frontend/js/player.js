@@ -6669,17 +6669,37 @@
       const uniqueRoots = new Set(stable.map(rawRoot));
       if (uniqueRoots.size > 1) {
         let curRaw = curSec && curSec.key ? normalizeShifted(curSec.key) : "";
+        let activeStableIdx = -1;
         if (!curRaw && keyWindows.length) {
-          const curWindow = [...keyWindows].reverse().find(w => t >= w.start && t < w.end);
+          let curWindowIdx = keyWindows.findIndex(w => t >= w.start && t < w.end);
+          if (curWindowIdx < 0) curWindowIdx = keyWindows.findIndex(w => t < w.start);
+          if (curWindowIdx < 0) curWindowIdx = keyWindows.length - 1;
+          const curWindow = keyWindows[curWindowIdx];
           curRaw = curWindow ? curWindow.key : "";
+          for (let i = 0; i <= curWindowIdx; i++) {
+            if (i === 0 || rawRoot(keyWindows[i].key) !== rawRoot(keyWindows[i - 1].key)) {
+              activeStableIdx++;
+            }
+          }
         }
         if (!curRaw && modulationCandidates.length) {
-          const curCandidate = [...modulationCandidates].reverse().find(c => t >= c.time);
+          let curCandidateIdx = -1;
+          for (let i = modulationCandidates.length - 1; i >= 0; i--) {
+            if (t >= modulationCandidates[i].time) {
+              curCandidateIdx = i;
+              break;
+            }
+          }
+          const curCandidate = curCandidateIdx >= 0 ? modulationCandidates[curCandidateIdx] : null;
           curRaw = curCandidate ? curCandidate.to : "";
+          activeStableIdx = curCandidateIdx >= 0 ? curCandidateIdx + 1 : 0;
         }
         if (!curRaw) curRaw = baseKey;
-        const display = stable.map(k => {
-          if (rawRoot(k) === rawRoot(curRaw)) {
+        if (activeStableIdx < 0 || activeStableIdx >= stable.length || rawRoot(stable[activeStableIdx]) !== rawRoot(curRaw)) {
+          activeStableIdx = stable.findIndex(k => rawRoot(k) === rawRoot(curRaw));
+        }
+        const display = stable.map((k, idx) => {
+          if (idx === activeStableIdx) {
             return `<span style="color:#00e5ff;text-shadow:0 0 8px rgba(0,229,255,0.5)">${k}</span>`;
           }
           return `<span style="opacity:0.35">${k}</span>`;
