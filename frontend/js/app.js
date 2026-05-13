@@ -1221,6 +1221,11 @@
         _bindLibraryClicks();
         return;
       }
+      if (_isBetaMode) {
+        _renderEmptyState(q);
+        searchResults.classList.add("show");
+        return;
+      }
       searchResults.innerHTML = `<div style="padding:12px;color:var(--text-dim)">${escapeHtml(lib.error)}</div>`;
       searchResults.classList.add("show");
       return;
