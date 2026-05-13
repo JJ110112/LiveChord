@@ -59,7 +59,6 @@
   let piano88Canvas = null;
   let piano88Cache = null;
   let piano88ChordMidis = [];
-  let piano88SustainNotes = [];
   // Waterfall hit-spark particles (Sheet Music Boss style).
   // Array of { x, y, vx, vy, life, maxLife, r, g, b, size }.
   let _waterfallParticles = [];
@@ -148,8 +147,8 @@
       panelOverlayHeavy: "rgba(5, 26, 15, 0.78)",
       noteEmphasis: "rgba(209,250,229,0.88)",
       noteEdge: "rgba(255,107,53,0.50)",
-      pianoLH: "rgba(255, 107, 53, 0.92)",
-      pianoRH: "rgba(6, 182, 212, 0.92)",
+      pianoLH: "rgba(6, 182, 212, 0.92)",         // cyan for LH (matches waterfall LH)
+      pianoRH: "rgba(255, 107, 53, 0.92)",        // orange for RH (matches waterfall RH)
       chordOutline: "rgba(167, 139, 250, 0.85)",
       chordTint: "#06b6d4",
     },
@@ -194,8 +193,8 @@
       panelOverlayHeavy: "rgba(254,240,200,0.88)",
       noteEmphasis: "rgba(30,58,77,0.80)",
       noteEdge: "rgba(8,145,178,0.45)",
-      pianoLH: "rgba(180, 83, 9, 0.95)",          // burnt amber on cream
-      pianoRH: "rgba(7, 89, 133, 0.95)",          // deeper teal
+      pianoLH: "rgba(7, 89, 133, 0.95)",          // deeper teal for LH (matches waterfall LH)
+      pianoRH: "rgba(180, 83, 9, 0.95)",          // burnt amber for RH (matches waterfall RH)
       chordOutline: "rgba(126, 34, 206, 0.85)",
       chordTint: "rgba(180, 83, 9, 0.65)",
     },
@@ -217,8 +216,8 @@
       panelOverlayHeavy: "rgba(198,220,253,0.88)",
       noteEmphasis: "rgba(30,58,138,0.80)",
       noteEdge: "rgba(37,99,235,0.45)",
-      pianoLH: "rgba(217, 119, 6, 0.95)",         // amber against sky-blue
-      pianoRH: "rgba(29, 78, 216, 0.95)",         // deeper azure
+      pianoLH: "rgba(29, 78, 216, 0.95)",         // deeper azure for LH (matches waterfall LH)
+      pianoRH: "rgba(217, 119, 6, 0.95)",         // amber for RH (matches waterfall RH)
       chordOutline: "rgba(126, 34, 206, 0.85)",
       chordTint: "rgba(217, 119, 6, 0.65)",
     },
@@ -2667,13 +2666,7 @@
       if (currentTime >= chords[i].time) { newIdx = i; break; }
     }
 
-    // on chord change, move old notes to sustain list
     if (newIdx !== piano88LastIdx) {
-      if (piano88ChordMidis.length > 0) {
-        for (const m of piano88ChordMidis) {
-          piano88SustainNotes.push({ midi: m, release: currentTime });
-        }
-      }
       piano88LastIdx = newIdx;
 
       // highlight active ribbon item
@@ -2695,9 +2688,6 @@
         piano88ChordMidis = [];
       }
     }
-
-    // prune old sustain notes
-    piano88SustainNotes = piano88SustainNotes.filter(n => currentTime - n.release < 0.5);
 
     // determine actual played notes + fingering from accData
     // fingeringMap includes lookahead: current + next 1s of notes
@@ -2798,7 +2788,6 @@
 
     ChordRender.draw88Piano(piano88Canvas, piano88Cache, activeLh, activeRh, {
       chordTones: chordTones,
-      sustainNotes: activeHand === "right" ? [] : piano88SustainNotes,
       now: currentTime,
       fingeringMap: showFingering ? fingeringMap : null,
       pedalActive: pedalActive,
