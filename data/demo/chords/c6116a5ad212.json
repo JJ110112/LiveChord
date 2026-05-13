@@ -13,99 +13,204 @@
   "chords": [
     {
       "time": 1.1,
-      "end": 3.74,
+      "end": 2.44,
       "chord": "Am",
-      "manual_harmony": "greensleeves-traditional-first-16-bars"
+      "manual_harmony": "greensleeves-traditional-first-phrase-dotted-quarter-grid"
+    },
+    {
+      "time": 2.44,
+      "end": 3.74,
+      "chord": "C",
+      "manual_harmony": "greensleeves-traditional-first-phrase-dotted-quarter-grid"
     },
     {
       "time": 3.74,
+      "end": 5.04,
+      "chord": "G",
+      "manual_harmony": "greensleeves-traditional-first-phrase-dotted-quarter-grid"
+    },
+    {
+      "time": 5.04,
       "end": 6.32,
-      "chord": "C",
-      "manual_harmony": "greensleeves-traditional-first-16-bars"
+      "chord": "Em",
+      "manual_harmony": "greensleeves-traditional-first-phrase-dotted-quarter-grid"
     },
     {
       "time": 6.32,
+      "end": 7.62,
+      "chord": "Am",
+      "manual_harmony": "greensleeves-traditional-first-phrase-dotted-quarter-grid"
+    },
+    {
+      "time": 7.62,
       "end": 8.9,
-      "chord": "G",
-      "manual_harmony": "greensleeves-traditional-first-16-bars"
+      "chord": "Am",
+      "manual_harmony": "greensleeves-traditional-first-phrase-dotted-quarter-grid"
     },
     {
       "time": 8.9,
+      "end": 10.24,
+      "chord": "E",
+      "manual_harmony": "greensleeves-traditional-first-phrase-dotted-quarter-grid"
+    },
+    {
+      "time": 10.24,
       "end": 11.58,
-      "chord": "Em",
-      "manual_harmony": "greensleeves-traditional-first-16-bars"
+      "chord": "E",
+      "manual_harmony": "greensleeves-traditional-first-phrase-dotted-quarter-grid"
     },
     {
       "time": 11.58,
-      "end": 14.16,
+      "end": 12.9,
       "chord": "Am",
-      "manual_harmony": "greensleeves-traditional-first-16-bars"
+      "manual_harmony": "greensleeves-traditional-first-phrase-dotted-quarter-grid"
+    },
+    {
+      "time": 12.9,
+      "end": 14.16,
+      "chord": "C",
+      "manual_harmony": "greensleeves-traditional-first-phrase-dotted-quarter-grid"
     },
     {
       "time": 14.16,
+      "end": 15.44,
+      "chord": "G",
+      "manual_harmony": "greensleeves-traditional-first-phrase-dotted-quarter-grid"
+    },
+    {
+      "time": 15.44,
       "end": 16.74,
-      "chord": "Am",
-      "manual_harmony": "greensleeves-traditional-first-16-bars"
+      "chord": "Em",
+      "manual_harmony": "greensleeves-traditional-first-phrase-dotted-quarter-grid"
     },
     {
       "time": 16.74,
+      "end": 18.04,
+      "chord": "Am",
+      "manual_harmony": "greensleeves-traditional-first-phrase-dotted-quarter-grid"
+    },
+    {
+      "time": 18.04,
       "end": 19.34,
-      "chord": "E",
-      "manual_harmony": "greensleeves-traditional-first-16-bars"
+      "chord": "E7",
+      "manual_harmony": "greensleeves-traditional-first-phrase-dotted-quarter-grid"
     },
     {
       "time": 19.34,
+      "end": 20.68,
+      "chord": "Am",
+      "manual_harmony": "greensleeves-traditional-first-phrase-dotted-quarter-grid"
+    },
+    {
+      "time": 20.68,
       "end": 21.98,
-      "chord": "E",
-      "manual_harmony": "greensleeves-traditional-first-16-bars"
+      "chord": "Am",
+      "manual_harmony": "greensleeves-traditional-first-phrase-dotted-quarter-grid"
     },
     {
       "time": 21.98,
-      "end": 24.48,
-      "chord": "Am",
-      "manual_harmony": "greensleeves-traditional-first-16-bars"
+      "end": 22.4,
+      "chord": "Am"
     },
     {
-      "time": 24.48,
-      "end": 27.02,
-      "chord": "C",
-      "manual_harmony": "greensleeves-traditional-first-16-bars"
+      "time": 22.4,
+      "end": 23.66,
+      "chord": "C"
     },
     {
-      "time": 27.02,
+      "time": 23.66,
+      "end": 24.5,
+      "chord": "G"
+    },
+    {
+      "time": 24.5,
+      "end": 25.76,
+      "chord": "G"
+    },
+    {
+      "time": 25.76,
+      "end": 26.58,
+      "chord": "G"
+    },
+    {
+      "time": 26.58,
+      "end": 27,
+      "chord": "Am"
+    },
+    {
+      "time": 27,
+      "end": 28.26,
+      "chord": "Am"
+    },
+    {
+      "time": 28.26,
+      "end": 29.12,
+      "chord": "Am"
+    },
+    {
+      "time": 29.12,
       "end": 29.54,
-      "chord": "G",
-      "manual_harmony": "greensleeves-traditional-first-16-bars"
+      "chord": "E"
     },
     {
       "time": 29.54,
+      "end": 30.8,
+      "chord": "E"
+    },
+    {
+      "time": 30.8,
       "end": 32.1,
-      "chord": "Em",
-      "manual_harmony": "greensleeves-traditional-first-16-bars"
+      "chord": "E"
     },
     {
       "time": 32.1,
-      "end": 34.58,
-      "chord": "Am",
-      "manual_harmony": "greensleeves-traditional-first-16-bars"
+      "end": 33.36,
+      "chord": "C"
     },
     {
-      "time": 34.58,
-      "end": 37.04,
-      "chord": "E7",
-      "manual_harmony": "greensleeves-traditional-first-16-bars"
+      "time": 33.36,
+      "end": 34.14,
+      "chord": "C"
     },
     {
-      "time": 37.04,
-      "end": 39.54,
-      "chord": "Am",
-      "manual_harmony": "greensleeves-traditional-first-16-bars"
+      "time": 34.14,
+      "end": 34.56,
+      "chord": "G"
     },
     {
-      "time": 39.54,
+      "time": 34.56,
+      "end": 35.82,
+      "chord": "G"
+    },
+    {
+      "time": 35.82,
+      "end": 36.22,
+      "chord": "G"
+    },
+    {
+      "time": 36.22,
+      "end": 37.06,
+      "chord": "Am"
+    },
+    {
+      "time": 37.06,
+      "end": 38.32,
+      "chord": "Am"
+    },
+    {
+      "time": 38.32,
+      "end": 39.58,
+      "chord": "Am"
+    },
+    {
+      "time": 39.58,
+      "end": 40.84,
+      "chord": "Am"
+    },
+    {
+      "time": 40.84,
       "end": 42.1,
-      "chord": "Am",
-      "manual_harmony": "greensleeves-traditional-first-16-bars"
+      "chord": "Am"
     },
     {
       "time": 42.1,
@@ -134,11 +239,11 @@
     },
     {
       "time": 46.58,
-      "end": 47.0,
+      "end": 47,
       "chord": "Am"
     },
     {
-      "time": 47.0,
+      "time": 47,
       "end": 48.26,
       "chord": "Am"
     },
@@ -159,11 +264,11 @@
     },
     {
       "time": 50.74,
-      "end": 52.0,
+      "end": 52,
       "chord": "E7"
     },
     {
-      "time": 52.0,
+      "time": 52,
       "end": 52.3,
       "chord": "E7"
     },
@@ -189,11 +294,11 @@
     },
     {
       "time": 55.62,
-      "end": 56.0,
+      "end": 56,
       "chord": "G"
     },
     {
-      "time": 56.0,
+      "time": 56,
       "end": 56.84,
       "chord": "Am"
     },
@@ -359,11 +464,11 @@
     },
     {
       "time": 86.74,
-      "end": 88.0,
+      "end": 88,
       "chord": "Am"
     },
     {
-      "time": 88.0,
+      "time": 88,
       "end": 88.46,
       "chord": "Am"
     },
@@ -623,7 +728,7 @@
     75.22,
     76.44,
     77.72,
-    79.0,
+    79,
     80.28,
     81.6,
     82.9,
@@ -642,11 +747,11 @@
     99.24,
     100.42,
     101.72,
-    103.0,
+    103,
     104.24,
     105.5,
     106.74,
-    108.0,
+    108,
     109.3,
     110.54,
     111.82,
@@ -690,7 +795,7 @@
     71.52,
     74.02,
     76.44,
-    79.0,
+    79,
     81.6,
     84.18,
     86.76,
@@ -847,7 +952,7 @@
     },
     {
       "t": 44.56,
-      "bpm": 50.0
+      "bpm": 50
     },
     {
       "t": 45.76,
@@ -943,7 +1048,7 @@
     },
     {
       "t": 74.02,
-      "bpm": 50.0
+      "bpm": 50
     },
     {
       "t": 75.22,
@@ -958,7 +1063,7 @@
       "bpm": 46.87
     },
     {
-      "t": 79.0,
+      "t": 79,
       "bpm": 46.87
     },
     {
@@ -1034,7 +1139,7 @@
       "bpm": 46.87
     },
     {
-      "t": 103.0,
+      "t": 103,
       "bpm": 48.39
     },
     {
@@ -1050,7 +1155,7 @@
       "bpm": 47.62
     },
     {
-      "t": 108.0,
+      "t": 108,
       "bpm": 46.15
     },
     {
@@ -1109,13 +1214,15 @@
   },
   "manual_harmony_correction": {
     "applied": true,
-    "reason": "greensleeves-traditional-first-16-bars",
+    "reason": "greensleeves-traditional-first-phrase-dotted-quarter-grid",
     "span": [
       1.1,
-      42.1
+      21.98
     ],
-    "source": "user-provided traditional chord outline",
-    "bars": 16,
+    "source": "user-provided traditional chord outline retimed to dotted-quarter beat grid",
+    "timing_note": "User clarified approximately 0:01-0:05 contains Am C G Em; chords are placed on the demo dotted-quarter beat grid.",
+    "pulse_unit": "dotted-quarter",
+    "cards": 16,
     "progression": [
       "Am",
       "C",
