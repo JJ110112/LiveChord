@@ -477,7 +477,7 @@
 #secDemoSongsHero   { order: -35; }
 #secHomeTechCred    { order: -32; }
 #secHomeHowItWorks  { order: -30; }
-#secHomeOpenSource  { order: -20; }
+#secHomeOpenSource  { order: 90; }
 #secRecent          { order: 10; }
 #secBetaRecent      { order: 20; }
 #secBetaLocalTracks { order: 30; }
@@ -565,8 +565,8 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   padding: 10px;
-  background: rgba(5, 45, 28, 0.72);
-  border: 1px solid rgba(93, 236, 170, 0.28);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
   border-radius: 8px;
   text-align: left;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
@@ -581,7 +581,7 @@
 .hhp-label {
   font-size: 12px;
   font-weight: 700;
-  color: #d9fce8;
+  color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -595,24 +595,29 @@
   white-space: nowrap;
 }
 .hhp-prefix {
-  color: rgba(217, 252, 232, 0.68);
+  color: var(--text-dim);
   font-size: 0.72em;
   font-weight: 750;
 }
 .hhp-key {
-  color: #32e6f3;
+  color: var(--accent);
 }
 .hhp-bpm {
-  color: #32e6f3;
+  color: var(--accent);
+}
+.hhp-capability {
+  color: var(--accent);
+  font-size: clamp(18px, 2.6vw, 26px);
+  font-weight: 850;
 }
 .hhp-arrow {
-  color: rgba(217, 252, 232, 0.42);
+  color: var(--text-dim);
   font-weight: 700;
 }
 .hhp-note {
   min-width: 0;
   font-size: 13px;
-  color: rgba(217, 252, 232, 0.82);
+  color: var(--text-dim);
   line-height: 1.35;
 }
 .home-hero-chips {
