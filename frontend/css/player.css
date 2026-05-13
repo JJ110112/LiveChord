@@ -2559,18 +2559,18 @@ body.no-jianpu .melody-jianpu { display: none !important; }
     display: none;
   }
   #chordKey.has-modulation {
-    font-size: 0;
+    font-size: 12px;
     width: auto;
-    min-width: 34px;
-    padding: 2px 5px;
-    border: 1px solid rgba(0, 229, 255, 0.22);
-    border-radius: 999px;
-    background: rgba(0, 229, 255, 0.08);
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
   }
   #chordKey.has-modulation::after {
     content: attr(data-mobile-key);
     color: #00e5ff;
-    font-size: 12px;
+    font-size: inherit;
     text-shadow: 0 0 8px rgba(0,229,255,0.5);
   }
   #chordKey.has-modulation .key-modulation-full {
