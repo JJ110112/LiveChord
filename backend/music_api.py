@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, StreamingResponse, Response
 
 from mutagen.flac import FLAC
 
-from config import get_music_root, get_music_roots, set_music_roots, resolve_path, is_beta_mode, is_personal_mode, is_public_mode
+from config import get_music_root, get_music_roots, set_music_roots, resolve_path, is_beta_mode, is_personal_mode
 from batch_state import BatchState
 from task_lock import get_task_lock
 
@@ -310,21 +310,15 @@ def search(q: str = Query(default=""), authorization: str = Header(None)):
         except Exception:
             pass  # never fail the whole search over a user-uploads lookup error
 
-    # Beta/public non-admin: restrict search to user's own uploads / YT analyses.
+    # Beta non-admin: restrict search to user's own uploads / YT analyses.
     # NAS library tracks were chord-analyzed from album masters while users
-    # searching on beta/public are almost always looking for YouTube MV versions;
+    # searching on beta are almost always looking for YouTube MV versions;
     # surfacing the library match leads to a "same title, wrong audio
     # length" mismatch that confuses the chord player. Personal (LAN) and
-    # beta admins still get full library search below.
-    if not is_personal_mode() and not _is_admin_request(authorization):
-        return {"results": user_uploads}
-
-    # Public mode (VPS): NAS volume isn't mounted, library_cache.json doesn't
-    # exist and never will. Admin in public mode would otherwise fall through
-    # to the "索引尚未建立, 請點掃描" error path below — misleading because the
-    # frontend's parallel YouTube search would have surfaced viable hits.
-    # Bypass the library code path entirely here so the YT side gets to render.
-    if is_public_mode():
+    # beta admins still get full library search below. Public keeps searching
+    # the deployed cache because those cards are visible/playable on
+    # livechord.org; paths are hash-masked below.
+    if is_beta_mode() and not _is_admin_request(authorization):
         return {"results": user_uploads}
 
     # ─── Library results ────────────────────────────────────────────────────

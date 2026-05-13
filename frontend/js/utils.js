@@ -23,9 +23,9 @@ function _applySearchMarqueeText(text) {
 function _marqueeStrings(isPublic) {
   const t = (window.LiveChordI18n && window.LiveChordI18n.t) || null;
   const SHORT_FB        = "Paste a YouTube URL...";
-  const LONG_FB         = "Search a song, album, artist, or paste a YouTube URL...";
-  const SHORT_FB_PUB    = "Upload an audio file...";
-  const LONG_FB_PUB     = "Search your analyzed songs, or upload an audio file...";
+  const LONG_FB         = "Search a song...";
+  const SHORT_FB_PUB    = "Search a song...";
+  const LONG_FB_PUB     = "Search a song...";
   const shortKey = isPublic ? "common.search_placeholder_short_public" : "common.search_placeholder_short";
   const longKey  = isPublic ? "common.search_placeholder_public"        : "common.search_placeholder";
   const shortFb  = isPublic ? SHORT_FB_PUB : SHORT_FB;

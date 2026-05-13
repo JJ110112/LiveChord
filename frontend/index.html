@@ -50,7 +50,7 @@
   <script src="/js/auth.js?v=6"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
-  <script src="/js/i18n.js?v=42"></script>
+  <script src="/js/i18n.js?v=43"></script>
   <script src="/js/analytics.js?v=1"></script>
 </head>
 <body>
@@ -64,8 +64,8 @@
   <div class="search-box">
     <input id="searchInput" type="text"
            data-i18n-attr="placeholder=common.search_placeholder_short"
-           placeholder="Upload an audio file..." autocomplete="off">
-    <div class="search-marquee" aria-hidden="true"><span class="search-marquee-text" data-i18n="common.search_placeholder_short">Upload an audio file...</span></div>
+           placeholder="Search a song..." autocomplete="off">
+    <div class="search-marquee" aria-hidden="true"><span class="search-marquee-text" data-i18n="common.search_placeholder_short">Search a song...</span></div>
     <div id="searchResults" class="search-results"></div>
   </div>
   <a href="/sponsor" class="header-coffee-btn" id="btnHeaderCoffee"
@@ -435,7 +435,7 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="/js/utils.js?v=10"></script>
+<script src="/js/utils.js?v=11"></script>
 <script src="/js/api.js?v=58"></script>
 <script>
   // (Fetch wrapper + 401 handler are installed by /js/auth.js — see <head>.)
@@ -638,6 +638,6 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 }
 </script>
 
-<script src="/js/app.js?v=106"></script>
+<script src="/js/app.js?v=107"></script>
 </body>
 </html>
