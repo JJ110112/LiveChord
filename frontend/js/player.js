@@ -6587,7 +6587,8 @@
     const baseKeyRaw = shift === 0 ? chordData.key : transposeChord(chordData.key, shift);
     const baseKey = _displayKey(baseKeyRaw);
 
-    // Detect per-section key changes & mode
+    // Detect per-section key changes & mode. Human section annotations often
+    // do not carry keys, so fall back to the global arbiter's key windows.
     if (sectionData && sectionData.sections) {
       const globalIsMajor = !baseKey.endsWith("m");
       const globalRoot = baseKey.replace(/m$/, "");
@@ -6599,25 +6600,62 @@
         if (mRoot === globalRoot) return baseKey;
         return normKey(transposeChord(mRoot, 3));
       };
+      const normalizeShifted = k => normalize(shift === 0 ? k : transposeChord(k, shift));
+      const pushUniqueRoot = (arr, key) => {
+        const r = rawRoot(key);
+        if (r && (arr.length === 0 || rawRoot(arr[arr.length - 1]) !== r)) arr.push(key);
+      };
 
-      // Build per-section normalized key sequence
-      const secKeys = sectionData.sections
+      const sectionKeyWindows = sectionData.sections
         .filter(s => s.key)
-        .map(s => normalize(shift === 0 ? s.key : transposeChord(s.key, shift)));
+        .map(s => ({
+          start: Number(s.start) || 0,
+          end: Number(s.end) || Infinity,
+          key: normalizeShifted(s.key),
+        }))
+        .filter(w => w.key);
+      const arbiter = chordData && chordData.global_arbiter_meta;
+      const arbiterKeyWindows = (arbiter && Array.isArray(arbiter.local_key_windows))
+        ? arbiter.local_key_windows
+          .filter(w => w && w.key)
+          .map(w => ({
+            start: Number(w.start) || 0,
+            end: Number(w.end) || Infinity,
+            key: normalizeShifted(w.key),
+          }))
+          .filter(w => w.key)
+        : [];
+      const modulationCandidates = (arbiter && Array.isArray(arbiter.modulation_candidates))
+        ? arbiter.modulation_candidates
+          .filter(c => c && c.to)
+          .map(c => ({
+            time: Number(c.time) || 0,
+            from: c.from ? normalizeShifted(c.from) : "",
+            to: normalizeShifted(c.to),
+          }))
+        : [];
+      const keyWindows = sectionKeyWindows.length ? sectionKeyWindows : arbiterKeyWindows;
 
-      // Filter: only keep sustained modulations (key must persist 2+ consecutive sections)
-      // Single-section deviations = modal borrowing, not modulation
+      // Filter section-derived keys: key must persist 2+ consecutive sections.
+      // Arbiter windows are already sustained song-level key regions.
       const stable = [];
-      for (let i = 0; i < secKeys.length; i++) {
-        const r = rawRoot(secKeys[i]);
-        const prevR = i > 0 ? rawRoot(secKeys[i - 1]) : null;
-        const nextR = i < secKeys.length - 1 ? rawRoot(secKeys[i + 1]) : null;
-        // Keep if: same as previous OR same as next (sustained)
-        if (r === prevR || r === nextR) {
-          if (stable.length === 0 || rawRoot(stable[stable.length - 1]) !== r) {
-            stable.push(secKeys[i]);
+      if (sectionKeyWindows.length) {
+        const secKeys = sectionKeyWindows.map(w => w.key);
+        for (let i = 0; i < secKeys.length; i++) {
+          const r = rawRoot(secKeys[i]);
+          const prevR = i > 0 ? rawRoot(secKeys[i - 1]) : null;
+          const nextR = i < secKeys.length - 1 ? rawRoot(secKeys[i + 1]) : null;
+          // Keep if: same as previous OR same as next (sustained)
+          if (r === prevR || r === nextR) {
+            pushUniqueRoot(stable, secKeys[i]);
           }
         }
+      } else if (arbiterKeyWindows.length) {
+        arbiterKeyWindows.forEach(w => pushUniqueRoot(stable, w.key));
+      } else if (modulationCandidates.length) {
+        const first = modulationCandidates[0];
+        pushUniqueRoot(stable, first.from || baseKey);
+        modulationCandidates.forEach(c => pushUniqueRoot(stable, c.to));
       }
       // Fallback: if nothing survived, use global key
       if (stable.length === 0) stable.push(baseKey);
@@ -6630,7 +6668,16 @@
 
       const uniqueRoots = new Set(stable.map(rawRoot));
       if (uniqueRoots.size > 1) {
-        const curRaw = curSec && curSec.key ? normalize(shift === 0 ? curSec.key : transposeChord(curSec.key, shift)) : baseKey;
+        let curRaw = curSec && curSec.key ? normalizeShifted(curSec.key) : "";
+        if (!curRaw && keyWindows.length) {
+          const curWindow = [...keyWindows].reverse().find(w => t >= w.start && t < w.end);
+          curRaw = curWindow ? curWindow.key : "";
+        }
+        if (!curRaw && modulationCandidates.length) {
+          const curCandidate = [...modulationCandidates].reverse().find(c => t >= c.time);
+          curRaw = curCandidate ? curCandidate.to : "";
+        }
+        if (!curRaw) curRaw = baseKey;
         const display = stable.map(k => {
           if (rawRoot(k) === rawRoot(curRaw)) {
             return `<span style="color:#00e5ff;text-shadow:0 0 8px rgba(0,229,255,0.5)">${k}</span>`;
