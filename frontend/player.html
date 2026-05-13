@@ -16,12 +16,12 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=21">
-  <link rel="stylesheet" href="/css/player.css?v=121">
+  <link rel="stylesheet" href="/css/player.css?v=122">
   <!-- Phase A: shared auth + fetch wrapper (see frontend/js/auth.js). Must
        load before any /api/ call so anon X-Anon-Id is injected from the
        first request. Replaces the inline blind-redirect block. -->
   <script src="/js/auth.js?v=6"></script>
-  <script src="/js/i18n.js?v=42"></script>
+  <script src="/js/i18n.js?v=43"></script>
   <script src="/js/analytics.js?v=1"></script>
 </head>
 <body>
@@ -696,38 +696,64 @@
     <button class="tb-trigger" title="Tools" data-i18n-attr="title=player.toolbar.tools,aria-label=player.toolbar.tools" aria-label="Tools" aria-haspopup="true">
       <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
     </button>
-    <div class="tb-popup">
+    <div class="tb-popup tb-popup-wide tb-popup-tools">
       <div class="tb-popup-title" data-i18n="player.tools.title">Tools</div>
-      <button id="btnChordCalibrate" class="tb-popup-btn" title="Calibrate chord beats / start / BPM with keys 1/2/3/4" data-i18n-attr="title=player.tools.calibrate_title,aria-label=player.tools.calibrate" aria-label="Chord &amp; beat calibration">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-        <span data-i18n="player.tools.calibrate">Chord &amp; beat calibration</span>
-      </button>
-      <button id="btnAutoSplit" class="tb-popup-btn" title="Auto-split long chords (custom beat threshold + ratio)" data-i18n-attr="title=player.tools.auto_split_title,aria-label=player.tools.auto_split" aria-label="Auto split">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/></svg>
-        <span data-i18n="player.tools.auto_split">Auto split</span>
-      </button>
-      <div class="tb-separator"></div>
-      <button id="btnSaveCorrected" class="tb-popup-btn" style="display:none;color:#4caf50" title="Save corrected chords" data-i18n-attr="title=player.tools.save_corrected_title,aria-label=player.tools.save_corrected" aria-label="Save corrections">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-        <span data-i18n="player.tools.save_corrected">Save corrections</span>
-      </button>
-      <button id="btnRevertCorrection" class="tb-popup-btn" style="display:none;color:#f44336" title="Revert to before correction" data-i18n-attr="title=player.tools.revert_title,aria-label=player.tools.revert" aria-label="Revert">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
-        <span data-i18n="player.tools.revert">Revert</span>
-      </button>
-      <div class="tb-separator"></div>
-      <button id="btnDetect" class="tb-popup-btn" title="Detect chords" data-i18n-attr="title=player.tools.detect_title,aria-label=player.tools.detect" aria-label="Detect">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <span data-i18n="player.tools.detect">Detect</span>
-      </button>
-      <button id="btnUpgradeBeats" class="tb-popup-btn" title="Re-detect beats to follow tempo drift in live / vintage recordings (rubato). Background ~30s, you'll be notified when done." data-i18n-attr="title=player.tools.upgrade_beats_title,aria-label=player.tools.upgrade_beats" aria-label="Dynamic beat detection">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg>
-        <span data-i18n="player.tools.upgrade_beats">Dynamic beat detection</span>
-      </button>
-      <button id="btnBarArbitrate" class="tb-popup-btn" title="AI re-arbitrates bar / downbeat phase (force: skip raw-already-regular and low-confidence gates). Click again to revert." data-i18n-attr="title=player.tools.bar_arbitrate_title,aria-label=player.tools.bar_arbitrate" aria-label="Auto bar correction">
-        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-9 4 18 3-9h4"/></svg>
-        <span id="btnBarArbitrateLabel" data-i18n="player.tools.bar_arbitrate">Auto bar correction</span>
-      </button>
+      <div class="tb-subgroup">
+        <div class="tb-subgroup-label" data-i18n="player.tools.primary_label">Main actions — chord and beat repair</div>
+        <div class="tb-subgroup-row">
+          <button id="btnChordCalibrate" class="tb-popup-btn" title="Calibrate chord beats / start / BPM with keys 1/2/3/4" data-i18n-attr="title=player.tools.calibrate_title,aria-label=player.tools.calibrate" aria-label="Chord &amp; beat calibration">
+            <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+            <span data-i18n="player.tools.calibrate">Chord &amp; beat calibration</span>
+          </button>
+          <button id="btnAutoSplit" class="tb-popup-btn" title="Auto-split long chords (custom beat threshold + ratio)" data-i18n-attr="title=player.tools.auto_split_title,aria-label=player.tools.auto_split" aria-label="Auto split">
+            <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/></svg>
+            <span data-i18n="player.tools.auto_split">Auto split</span>
+          </button>
+          <button id="btnSaveCorrected" class="tb-popup-btn is-success" style="display:none" title="Save corrected chords" data-i18n-attr="title=player.tools.save_corrected_title,aria-label=player.tools.save_corrected" aria-label="Save corrections">
+            <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            <span data-i18n="player.tools.save_corrected">Save corrections</span>
+          </button>
+          <button id="btnRevertCorrection" class="tb-popup-btn is-danger" style="display:none" title="Revert to before correction" data-i18n-attr="title=player.tools.revert_title,aria-label=player.tools.revert" aria-label="Revert">
+            <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
+            <span data-i18n="player.tools.revert">Revert</span>
+          </button>
+          <button id="btnDetect" class="tb-popup-btn" title="Detect chords" data-i18n-attr="title=player.tools.detect_title,aria-label=player.tools.detect" aria-label="Detect">
+            <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <span data-i18n="player.tools.detect">Detect</span>
+          </button>
+          <button id="btnUpgradeBeats" class="tb-popup-btn" title="Re-detect beats to follow tempo drift in live / vintage recordings (rubato). Background ~30s, you'll be notified when done." data-i18n-attr="title=player.tools.upgrade_beats_title,aria-label=player.tools.upgrade_beats" aria-label="Dynamic beat detection">
+            <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v4"/><path d="M12 18v4"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/></svg>
+            <span data-i18n="player.tools.upgrade_beats">Dynamic beat detection</span>
+          </button>
+          <button id="btnBarArbitrate" class="tb-popup-btn" title="AI re-arbitrates bar / downbeat phase (force: skip raw-already-regular and low-confidence gates). Click again to revert." data-i18n-attr="title=player.tools.bar_arbitrate_title,aria-label=player.tools.bar_arbitrate" aria-label="Auto bar correction">
+            <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-9 4 18 3-9h4"/></svg>
+            <span id="btnBarArbitrateLabel" data-i18n="player.tools.bar_arbitrate">Auto bar correction</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="tb-subgroup">
+        <div class="tb-subgroup-label" data-i18n="player.tools.arranger_label">Arranger keyboard — split point</div>
+        <div class="tb-subgroup-row arranger-split-row">
+          <button id="btnArrangerSplitDown" class="tb-popup-btn arranger-split-step" title="Move arranger split point left" data-i18n-attr="title=player.tools.arranger_split_down_title,aria-label=player.tools.arranger_split_down" aria-label="Split down">
+            <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+            <span data-i18n="player.tools.arranger_split_down">Lower</span>
+          </button>
+          <div id="arrangerSplitValue" class="arranger-split-value" aria-live="polite">G#3</div>
+          <button id="btnArrangerSplitUp" class="tb-popup-btn arranger-split-step" title="Move arranger split point right" data-i18n-attr="title=player.tools.arranger_split_up_title,aria-label=player.tools.arranger_split_up" aria-label="Split up">
+            <span data-i18n="player.tools.arranger_split_up">Higher</span>
+            <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+          <button id="btnArrangerSplitReset" class="tb-popup-btn" title="Reset arranger split point" data-i18n-attr="title=player.tools.arranger_split_reset_title,aria-label=player.tools.arranger_split_reset" aria-label="Reset split">
+            <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            <span data-i18n="player.tools.arranger_split_reset">Reset</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="tb-subgroup">
+        <div class="tb-subgroup-label" data-i18n="player.tools.other_label">Other — data and display</div>
+        <div class="tb-subgroup-row">
       <!-- Personal-only (8800): bidirectional beat-source toggle. JS hides on beta. -->
       <button id="btnBeatLibrosa" class="tb-popup-btn" style="display:none" title="Use librosa beats (fast legacy tracker)" data-i18n-attr="title=player.tools.beat_librosa_title,aria-label=player.tools.beat_librosa" aria-label="Beats: librosa">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
@@ -741,11 +767,11 @@
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m13 2-3 7h6l-3 7"/><circle cx="12" cy="12" r="10"/></svg>
         <span data-i18n="player.tools.beat_beat_this">Beats: beat_this</span>
       </button>
-      <a id="btnEdit" class="tb-popup-btn" style="text-decoration:none" title="Edit chord chart" data-i18n-attr="title=player.tools.edit_title,aria-label=player.tools.edit" aria-label="Edit">
+      <a id="btnEdit" class="tb-popup-btn tb-popup-link" title="Edit chord chart" data-i18n-attr="title=player.tools.edit_title,aria-label=player.tools.edit" aria-label="Edit">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
         <span data-i18n="player.tools.edit">Edit</span>
       </a>
-      <button id="btnAiSuggest" class="tb-popup-btn" style="color:#4caf50" title="AI suggests the next chord" data-i18n-attr="title=player.tools.ai_suggest_title,aria-label=player.tools.ai_suggest" aria-label="AI suggest">
+      <button id="btnAiSuggest" class="tb-popup-btn is-success" title="AI suggests the next chord" data-i18n-attr="title=player.tools.ai_suggest_title,aria-label=player.tools.ai_suggest" aria-label="AI suggest">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
         <span data-i18n="player.tools.ai_suggest">AI suggest</span>
       </button>
@@ -757,6 +783,8 @@
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 17V5l10-2v12"/><circle cx="6" cy="17" r="3"/><circle cx="16" cy="15" r="3"/></svg>
         <span id="btnToggleJianpuLabel" data-i18n="player.tools.jianpu_on">Jianpu: On</span>
       </button>
+        </div>
+      </div>
       <!-- Theme picker moved to homepage gear menu (global setting). The
            player still respects the persisted livechord_theme value. -->
     </div>
@@ -857,13 +885,13 @@
 <script src="/js/string-instrument.js?v=15"></script>
 <script src="/js/instrument-registry.js?v=1"></script>
 <script src="/js/accordion-instrument.js?v=8"></script>
-<script src="/js/arranger-instrument.js?v=3"></script>
+<script src="/js/arranger-instrument.js?v=4"></script>
 <script src="/js/midi-exporter.js?v=2"></script>
 <script src="/js/beat-sync.js?v=1"></script>
 <script src="/js/chord-correction.js?v=15"></script>
 <!-- Phase A: fetch wrapper installed by /js/auth.js at <head>; the inline
      duplicate block was removed. -->
-<script src="/js/player.js?v=299"></script>
+<script src="/js/player.js?v=300"></script>
 <script>
   // Toolbar gear theme picker — mirrors the homepage gear handler so the
   // user's theme choice is honored on either entry point. Active state on

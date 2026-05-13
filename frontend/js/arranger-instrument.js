@@ -41,7 +41,36 @@ class ArrangerInstrument {
   static NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
   static midiToName(midi) {
-    return ArrangerInstrument.NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 2);
+    return ArrangerInstrument.NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
+  }
+
+  getSplitPoint() {
+    return this._splitPoint;
+  }
+
+  setSplitPoint(midi) {
+    const next = Math.max(48, Math.min(60, parseInt(midi, 10)));
+    if (!Number.isFinite(next) || next === this._splitPoint) return this._splitPoint;
+    this._splitPoint = next;
+    localStorage.setItem("livechord_arranger_split", String(next));
+    this._cache = {};
+    this._pianoCache = null;
+    this._kbCache = null;
+    this._lastWidth = 0;
+    this._lastKbWidth = 0;
+    this._activeChordName = null;
+    this.prefetchData();
+    const t = this._b.getAudio().currentTime || 0;
+    this.update(t);
+    return this._splitPoint;
+  }
+
+  stepSplitPoint(delta) {
+    return this.setSplitPoint(this._splitPoint + delta);
+  }
+
+  resetSplitPoint() {
+    return this.setSplitPoint(ArrangerInstrument.DEFAULT_SPLIT);
   }
 
   /* ---- Interface methods ---- */
@@ -541,12 +570,12 @@ class ArrangerInstrument {
     const splitKey = cache.whiteXs[splitMidi] || cache.blackXs[splitMidi];
     if (splitKey) {
       const sx = splitKey.x + splitKey.w;
-      const arrowW = 10;
-      const arrowH = 14;
-      // Draw filled red triangle pointing down (hover=brighter, drag=brightest)
+      const arrowW = Math.max(4, (cache.bKeyW || splitKey.w * 0.58) / 6);
+      const arrowH = Math.max(10, Math.min(14, (cache.bKeyH || 42) * 0.22));
+      // Draw a narrow filled red triangle pointing down (hover=brighter, drag=brightest)
       const arrowColor = this._draggingSplit ? "rgba(255, 50, 50, 1)"
-        : this._hoverSplit ? "rgba(255, 70, 70, 0.95)"
-        : "rgba(255, 80, 80, 0.65)";
+        : this._hoverSplit ? "rgba(255, 70, 70, 1)"
+        : "rgba(255, 80, 80, 1)";
       ctx.fillStyle = arrowColor;
       if (this._draggingSplit || this._hoverSplit) {
         ctx.shadowColor = "rgba(255, 50, 50, 0.6)";

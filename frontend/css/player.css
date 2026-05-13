@@ -1459,6 +1459,19 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   color: #fff;
   border-color: var(--accent);
 }
+.tb-popup-btn > *,
+.tb-popup-btn svg {
+  pointer-events: none;
+}
+.tb-popup-btn.is-success {
+  color: #4caf50;
+}
+.tb-popup-btn.is-danger {
+  color: #f44336;
+}
+.tb-popup-link {
+  text-decoration: none;
+}
 
 /* Section sub-label inside a Tools popup — small uppercase row separator
    used by the theme picker (and reusable by future grouped controls). */
@@ -1538,6 +1551,14 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   flex-wrap: wrap;
   justify-content: center;
   max-width: min(720px, 92vw);
+}
+
+.tb-popup-tools {
+  align-items: stretch;
+  white-space: normal;
+}
+.tb-popup-tools .tb-popup-btn {
+  min-height: 44px;
 }
 
 /* Settings gear popup — mirrors the homepage .header-nav scope with
@@ -1665,6 +1686,29 @@ body.no-jianpu .melody-jianpu { display: none !important; }
 }
 .tb-subgroup-row .tb-popup-btn {
   flex: 0 1 auto;
+}
+.arranger-split-row {
+  display: grid;
+  grid-template-columns: minmax(76px, 1fr) minmax(64px, 0.8fr) minmax(76px, 1fr) minmax(76px, 1fr);
+  width: 100%;
+}
+.arranger-split-row .tb-popup-btn {
+  justify-content: center;
+  min-height: 44px;
+  min-width: 0;
+}
+.arranger-split-value {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.06);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 .tb-subgroup-row .tb-popup-btn.practice-opt {
   flex: 1 1 calc(33.333% - 4px);

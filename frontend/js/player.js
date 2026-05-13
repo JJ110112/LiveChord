@@ -5324,6 +5324,55 @@
   document.addEventListener("livechord:langchange", _applyJianpuVisibility);
   document.addEventListener("livechord:i18nready",  _applyJianpuVisibility);
 
+  const _arrangerSplitButtons = {
+    down: $("#btnArrangerSplitDown"),
+    up: $("#btnArrangerSplitUp"),
+    reset: $("#btnArrangerSplitReset"),
+    value: $("#arrangerSplitValue"),
+  };
+  function _arrangerSplitName(midi) {
+    const names = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+    return names[midi % 12] + (Math.floor(midi / 12) - 1);
+  }
+  function _getArrangerSplit() {
+    const inst = (typeof InstrumentRegistry !== "undefined") ? InstrumentRegistry.get("arranger") : null;
+    if (inst && typeof inst.getSplitPoint === "function") return inst.getSplitPoint();
+    const stored = parseInt(localStorage.getItem("livechord_arranger_split") || "56", 10);
+    return Number.isFinite(stored) ? Math.max(48, Math.min(60, stored)) : 56;
+  }
+  function _syncArrangerSplitUI() {
+    const split = _getArrangerSplit();
+    const note = (typeof ArrangerInstrument !== "undefined" && ArrangerInstrument.midiToName)
+      ? ArrangerInstrument.midiToName(split)
+      : _arrangerSplitName(split);
+    if (_arrangerSplitButtons.value) _arrangerSplitButtons.value.textContent = note;
+    if (_arrangerSplitButtons.down) _arrangerSplitButtons.down.disabled = split <= 48;
+    if (_arrangerSplitButtons.up) _arrangerSplitButtons.up.disabled = split >= 60;
+  }
+  function _setArrangerSplit(next) {
+    const inst = (typeof InstrumentRegistry !== "undefined") ? InstrumentRegistry.get("arranger") : null;
+    const split = inst && typeof inst.setSplitPoint === "function"
+      ? inst.setSplitPoint(next)
+      : Math.max(48, Math.min(60, parseInt(next, 10)));
+    if (!inst) localStorage.setItem("livechord_arranger_split", String(split));
+    _syncArrangerSplitUI();
+    const note = (typeof ArrangerInstrument !== "undefined" && ArrangerInstrument.midiToName)
+      ? ArrangerInstrument.midiToName(split)
+      : _arrangerSplitName(split);
+    showToast(_t("toast.arranger_split.changed", { note }), 1200);
+  }
+  if (_arrangerSplitButtons.down) {
+    _arrangerSplitButtons.down.addEventListener("click", () => _setArrangerSplit(_getArrangerSplit() - 1));
+  }
+  if (_arrangerSplitButtons.up) {
+    _arrangerSplitButtons.up.addEventListener("click", () => _setArrangerSplit(_getArrangerSplit() + 1));
+  }
+  if (_arrangerSplitButtons.reset) {
+    _arrangerSplitButtons.reset.addEventListener("click", () => _setArrangerSplit(56));
+  }
+  _syncArrangerSplitUI();
+  document.addEventListener("livechord:i18nready", _syncArrangerSplitUI);
+
   // Export-data lives inside the toolbar Tools popup (moved from homepage
   // header menu) so the user reaches it mid-practice, where they're most
   // likely to want a backup of their ratings/recents/favorites.
