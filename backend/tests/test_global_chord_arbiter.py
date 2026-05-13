@@ -234,6 +234,7 @@ class TestGlobalChordArbiter(unittest.TestCase):
                 {"time": 11.5, "end": 13.0, "chord": "Am"},
                 {"time": 13.0, "end": 16.62, "chord": "G"},
                 {"time": 16.62, "end": 19.4, "chord": "Am"},
+                {"time": 19.4, "end": 22.0, "chord": "Am"},
             ],
         }
 
@@ -241,9 +242,10 @@ class TestGlobalChordArbiter(unittest.TestCase):
 
         self.assertEqual(sheet["display_bpm"], 47.62)
         self.assertEqual(
-            sheet["global_arbiter_meta"]["display_bpm_skipped"]["reason"],
-            "explicit-meter-display-bpm",
+            sheet["global_arbiter_meta"]["display_quantization_skipped"]["reason"],
+            "explicit-meter-card-grid",
         )
+        self.assertEqual([c["time"] for c in sheet["chords"][-2:]], [16.62, 19.4])
 
     def test_high_bpm_acoustic_half_bar_downbeats_are_joined(self):
         sheet = {

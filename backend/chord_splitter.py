@@ -60,6 +60,41 @@ _SAME_CHORD_SLIVER_BEATS = 1.75
 _SAFE_LONG_SPLIT_MIN_BEATS = 5.5
 
 
+def _explicit_meter_card_seconds(chord_data: Dict) -> float:
+    meter = str(chord_data.get("time_signature") or "").strip()
+    bpm = float(chord_data.get("display_bpm") or chord_data.get("bpm") or 0)
+    if bpm <= 0:
+        return 0.0
+    if meter == "6/8":
+        return 60.0 / bpm
+    if meter == "3/4":
+        return 3.0 * 60.0 / bpm
+    return 0.0
+
+
+def _split_explicit_meter_long_cards(chords: List[Dict], chord_data: Dict) -> List[Dict]:
+    card_sec = _explicit_meter_card_seconds(chord_data)
+    if not chords or card_sec <= 0:
+        return chords
+    out: List[Dict] = []
+    for chord in chords:
+        start = float(chord.get("time") or 0.0)
+        end = float(chord.get("end") or start)
+        dur = end - start
+        if dur <= card_sec * 1.45:
+            out.append(chord)
+            continue
+        parts = max(2, int(round(dur / card_sec)))
+        step = dur / parts
+        for i in range(parts):
+            item = dict(chord)
+            item["time"] = round(start + step * i, 3)
+            item["end"] = round(end if i == parts - 1 else start + step * (i + 1), 3)
+            item["explicit_meter_split"] = True
+            out.append(item)
+    return out
+
+
 def _bpb_class(downbeats: List[float], bpm: float) -> float:
     """Median(downbeat_gap) / seconds_per_beat = beats per bar implied by the
     downbeats grid. 0 when not computable."""
@@ -619,6 +654,18 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
     the result to the response without affecting on-disk data.
     """
     chords = chord_data.get("chords") or []
+    explicit_meter = chord_data.get("meter_correction") or {}
+    if explicit_meter.get("applied") and chord_data.get("time_signature"):
+        normalized = _split_explicit_meter_long_cards(chords, chord_data)
+        chord_data["chords"] = normalized
+        chord_data["auto_split_meta"] = {
+            "applied": len(normalized) != len(chords),
+            "reason": "explicit-meter-card-grid",
+            "before": len(chords),
+            "after": len(normalized),
+        }
+        return chord_data
+
     bpm = float(chord_data.get("bpm") or 0)
     if chords and bpm > 0:
         merged_chords, merge_meta = merge_same_chord_fragments(chords, bpm)

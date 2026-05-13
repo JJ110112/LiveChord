@@ -387,6 +387,50 @@ class TestConfidenceGate(unittest.TestCase):
 
 
 class TestMaybeSplitForServe(unittest.TestCase):
+    def test_explicit_meter_preserves_manual_cards(self):
+        data = {
+            "bpm": 47.62,
+            "display_bpm": 47.62,
+            "time_signature": "6/8",
+            "meter_correction": {"applied": True},
+            "chords": [
+                {"time": 16.30, "end": 16.72, "chord": "Am"},
+                {"time": 16.72, "end": 17.98, "chord": "Am"},
+                {"time": 17.98, "end": 19.24, "chord": "Am"},
+                {"time": 19.24, "end": 20.50, "chord": "Am"},
+            ],
+            "downbeats": [16.3, 18.82, 21.34],
+            "beats_source": "demo_manual_6_8",
+        }
+
+        out = maybe_split_for_serve(data)
+
+        self.assertEqual(len(out["chords"]), 4)
+        self.assertEqual([c["time"] for c in out["chords"]], [16.30, 16.72, 17.98, 19.24])
+        self.assertFalse(out["auto_split_meta"]["applied"])
+        self.assertEqual(out["auto_split_meta"]["reason"], "explicit-meter-card-grid")
+
+    def test_explicit_meter_splits_long_served_cards(self):
+        data = {
+            "bpm": 47.62,
+            "display_bpm": 47.62,
+            "time_signature": "6/8",
+            "meter_correction": {"applied": True},
+            "chords": [
+                {"time": 16.72, "end": 22.40, "chord": "Am"},
+            ],
+            "downbeats": [16.3, 18.82, 21.34],
+            "beats_source": "demo_manual_6_8",
+        }
+
+        out = maybe_split_for_serve(data)
+
+        self.assertEqual(len(out["chords"]), 5)
+        self.assertTrue(out["auto_split_meta"]["applied"])
+        self.assertEqual(out["auto_split_meta"]["reason"], "explicit-meter-card-grid")
+        self.assertTrue(all(c["chord"] == "Am" for c in out["chords"]))
+        self.assertLess(max(c["end"] - c["time"] for c in out["chords"]), 1.2)
+
     def test_applied_path(self):
         data = {
             "chords": [{"time": 0.0, "end": 4.0, "chord": "C"}],

@@ -104,16 +104,20 @@ def _beat_stats(values: List[float], start: float, end: float) -> Dict:
     }
 
 
-def _dedupe_names(chords: List[Dict]) -> List[Dict]:
+def _dedupe_names(chords: List[Dict], merge_consecutive: bool = True) -> List[Dict]:
     out: List[Dict] = []
     for c in chords:
         name = str(c.get("chord") or "").strip()
         if not name:
             continue
-        if out and out[-1]["chord"] == name:
+        if merge_consecutive and out and out[-1]["chord"] == name:
             out[-1]["end"] = c.get("end", out[-1].get("end"))
         else:
-            out.append({"time": _float(c.get("time")), "end": _float(c.get("end"), _float(c.get("time"))), "chord": name})
+            item = dict(c)
+            item["time"] = _float(c.get("time"))
+            item["end"] = _float(c.get("end"), item["time"])
+            item["chord"] = name
+            out.append(item)
     return out
 
 
@@ -1304,7 +1308,16 @@ def apply_global_structure_corrections(chord_data: Dict, meta: Optional[Dict] = 
     if not isinstance(chord_data, dict):
         return chord_data
     meta = meta or analyze_global_structure(chord_data)
-    chords = _dedupe_names(chord_data.get("chords") or [])
+    explicit_meter = chord_data.get("meter_correction") or {}
+    preserve_explicit_meter_cards = bool(
+        explicit_meter.get("applied")
+        and chord_data.get("time_signature")
+        and chord_data.get("display_bpm")
+    )
+    chords = _dedupe_names(
+        chord_data.get("chords") or [],
+        merge_consecutive=not preserve_explicit_meter_cards,
+    )
     corrections: List[Dict] = []
     for hint in meta.get("hints") or []:
         if hint.get("type") == "free_time_long_intro" and hint.get("confidence", 0) >= 0.75:
@@ -1335,17 +1348,26 @@ def apply_global_structure_corrections(chord_data: Dict, meta: Optional[Dict] = 
     corrections.extend(repeat_corrections)
     chords, grid_corrections = _apply_modulated_grid_repairs(chords, meta.get("modulated_cycle_candidates") or [])
     corrections.extend(grid_corrections)
-    chords, quant_correction = _apply_downbeat_display_quantization(
-        chords,
-        [_float(v) for v in (chord_data.get("downbeats") or [])],
-        _float(chord_data.get("bpm")),
-    )
-    if quant_correction:
-        corrections.append(quant_correction)
+    if preserve_explicit_meter_cards:
+        meta["display_quantization_skipped"] = {
+            "reason": "explicit-meter-card-grid",
+            "time_signature": chord_data.get("time_signature"),
+        }
+    else:
+        chords, quant_correction = _apply_downbeat_display_quantization(
+            chords,
+            [_float(v) for v in (chord_data.get("downbeats") or [])],
+            _float(chord_data.get("bpm")),
+        )
+        if quant_correction:
+            corrections.append(quant_correction)
     if corrections:
         chord_data["chords"] = chords
         meta["corrections"] = corrections
         meta["rewritten"] = True
+    elif preserve_explicit_meter_cards:
+        chord_data["chords"] = chords
+        meta["rewritten"] = False
     else:
         meta["rewritten"] = False
     display_bpm = _estimate_display_bpm(chords)
