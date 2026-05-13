@@ -4306,6 +4306,21 @@
       if(listEl) listEl.addEventListener("click", e => e.stopPropagation());
   }
 
+  function _trackPlayerLoaded(mode, key) {
+    if (!window.LiveChordAnalytics || !chordData) return;
+    window.LiveChordAnalytics.track("player_loaded", {
+      mode,
+      song_hash: mode === "hash" ? key : "",
+      path: mode === "path" ? key : "",
+      title: chordData.title || document.title.replace(/ — LiveChord$/, ""),
+      has_demo_audio: !!chordData.demo_audio_url,
+      chord_count: Array.isArray(chordData.chords) ? chordData.chords.length : 0,
+      key: chordData.key || "",
+      time_signature: chordData.time_signature || "",
+      has_tempo_curve: Array.isArray(chordData.tempo_curve) && chordData.tempo_curve.length > 1
+    });
+  }
+
   async function loadChords(path, version = null) {
     try {
       chordData = await API.get(_chordsByPathUrl(path, version));
@@ -4328,6 +4343,7 @@
         }
         await preloadChordInfo(chordData.chords);
         buildChordDOM();
+        _trackPlayerLoaded("path", path);
         try { _updateBarArbitrateLabel && _updateBarArbitrateLabel(); } catch {}
         // Re-init active instrument so it picks up new chord data
         if (activeTab !== "piano") {
@@ -7037,6 +7053,7 @@
           _updateChordQualityBadge(chordData, hashMode);
           await preloadChordInfo(chordData.chords);
           buildChordDOM();
+          _trackPlayerLoaded("hash", hashMode);
 
           // Hash mode parity with DB-path mode: kick off AI accompaniment fetch
           // so LH/RH bars + fingering come from the real algorithm instead of

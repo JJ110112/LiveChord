@@ -174,6 +174,13 @@
           cta._lcWired = true;
           cta.addEventListener("click", () => {
             const tokenNow = !!localStorage.getItem("livechord_token");
+            if (window.LiveChordAnalytics) {
+              window.LiveChordAnalytics.track("hero_cta_click", {
+                logged_in: tokenNow,
+                destination: tokenNow ? "upload_modal" : "login",
+                page_path: location.pathname
+              });
+            }
             if (tokenNow) {
               const panel = $("#betaFabPanel");
               const backdrop = $("#betaFabBackdrop");
@@ -530,6 +537,12 @@
     pct.textContent = "10%";
 
     try {
+      if (window.LiveChordAnalytics) {
+        window.LiveChordAnalytics.track("upload_start", {
+          file_ext: ((_betaSelectedFile.name || "").split(".").pop() || "").toLowerCase(),
+          file_size_mb: Math.round((_betaSelectedFile.size || 0) / 10485.76) / 100
+        });
+      }
       const form = new FormData();
       form.append("file", _betaSelectedFile);
       const res = await fetch("/api/process/upload", { method: "POST", body: form });
@@ -606,6 +619,12 @@
           // Flag this hash as freshly-analyzed so the player can show a
           // "旋律擷取中" banner while the melody worker finishes in the background.
           try { sessionStorage.setItem("livechord_fresh_hash", `${d.result_hash}|${Date.now()}`); } catch {}
+          if (window.LiveChordAnalytics) {
+            window.LiveChordAnalytics.track("upload_success", {
+              job_id: jobId,
+              song_hash: d.result_hash
+            });
+          }
           // If this job came from a local-tracks-list entry, stamp the
           // analyzedHash back onto it so next click goes straight to play.
           if (_currentAnalyzingLocalId) {
@@ -782,6 +801,14 @@
       try { sessionStorage.setItem("livechord_from_demo", "1"); } catch (_) {}
       if (window.API && API.trackEvent) {
         API.trackEvent("demo_click", {
+          source,
+          demo_id: d.id || "",
+          song_hash: d.hash,
+          title: d.title || ""
+        });
+      }
+      if (window.LiveChordAnalytics) {
+        window.LiveChordAnalytics.track("demo_click", {
           source,
           demo_id: d.id || "",
           song_hash: d.hash,
