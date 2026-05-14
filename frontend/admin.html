@@ -320,8 +320,6 @@
           <option value="has_chords" data-i18n="admin.chords.status_done">Detected</option>
         </select>
         <button id="btnRefreshTracks" data-i18n="admin.btn.refresh_tracks">Refresh</button>
-        <button id="btnBatchMidi" title="Scan the MIDI directory and auto-import chords for undetected tracks" data-i18n-attr="title=admin.chords.batch_midi_tip" data-i18n="admin.btn.batch_midi">Auto-match MIDI</button>
-        <span id="midiStatus" style="font-size:11px;color:var(--text-dim);margin-left:auto"></span>
       </div>
       <div class="actions" style="margin-bottom:8px; display:flex; gap:6px; align-items:center; padding:6px; border:1px dashed var(--border); border-radius:4px;">
         <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;" data-i18n="admin.bpm.label">📐 BPM</span>
@@ -511,7 +509,7 @@ Auto-snapshots to every target before each settings save (keeps newest 30 per ta
     return originalFetch(resource, config);
   };
 </script>
-<script src="/js/api.js?v=57"></script>
+<script src="/js/api.js?v=58"></script>
 <script>
 // Synchronous beta-instance detection (URL-based, available before any API call).
 // Beta instance (8801 / Cloudflare tunnel) must skip all personal-only polling
@@ -949,8 +947,7 @@ window._lcIsBeta = (function() {
 
   // ---- 和弦管理 ----
   const trackList = $("#trackList");
-  const midiStatus = $("#midiStatus");
-  
+
   let currentPage = 1;
   let currentTotalPages = 1;
 
@@ -973,41 +970,15 @@ window._lcIsBeta = (function() {
       if (!tracks.length) { trackList.innerHTML = `<span style="color:var(--text-dim);font-size:12px">${_t("admin.chords.no_tracks")}</span>`; return; }
       trackList.innerHTML = tracks.map((t, i) => {
         const src = t.source || "";
-        const badgeCls = src === "midi" ? "b-midi" : src === "chordify" ? "b-chordify" : src === "btc" ? "b-btc" : "b-none";
+        const badgeCls = src === "btc" ? "b-btc" : "b-none";
         const badgeText = t.has_chords ? `${src || "btc"} ${t.chord_count || ""}` : "—";
         const name = t.title || t.path.replace(/\.flac$/i, "");
         return `<div class="trk" data-path="${esc(t.path)}">
           <span class="trk-name" title="${esc(t.path)}">${esc(name)}</span>
           <span class="trk-artist">${esc(t.artist || "")}</span>
           <span class="trk-badge ${badgeCls}">${badgeText}</span>
-          ${t.has_chords ? "" : `<button class="btn-midi-search" data-path="${esc(t.path)}">MIDI</button>`}
         </div>`;
       }).join("");
-
-      trackList.querySelectorAll(".btn-midi-search").forEach(btn => {
-        btn.addEventListener("click", async (e) => {
-          e.stopPropagation();
-          const path = btn.dataset.path;
-          btn.textContent = "...";
-          btn.disabled = true;
-          try {
-            const sr = await API.midiSearch(path);
-            if (sr.results && sr.results.length > 0) {
-              btn.textContent = _t("admin.track.midi_btn_importing");
-              const r = await API.midiImport(path, sr.results[0].path);
-              showToast(_t("admin.chords.midi_imported", {count: r.chord_count}));
-              loadTrackList();
-            } else {
-              btn.textContent = _t("admin.track.midi_btn_none");
-              setTimeout(() => { btn.textContent = _t("admin.track.midi_btn"); btn.disabled = false; }, 2000);
-            }
-          } catch (err) {
-            showToast(_t("admin.toast.midi_search_failed", {err: err.message}));
-            btn.textContent = _t("admin.track.midi_btn");
-            btn.disabled = false;
-          }
-        });
-      });
 
       // 點擊曲目跳到 player
       trackList.querySelectorAll(".trk").forEach(row => {
@@ -1026,22 +997,13 @@ window._lcIsBeta = (function() {
   $("#btnRefreshTracks").addEventListener("click", () => loadTrackList(1));
   $("#btnPrevPage").addEventListener("click", () => loadTrackList(currentPage - 1));
   $("#btnNextPage").addEventListener("click", () => loadTrackList(currentPage + 1));
-  
+
   let trackSearchTimer;
   $("#trackSearch").addEventListener("input", () => {
     clearTimeout(trackSearchTimer);
     trackSearchTimer = setTimeout(() => loadTrackList(1), 500);
   });
   $("#trackStatus").addEventListener("change", () => loadTrackList(1));
-
-  $("#btnBatchMidi").addEventListener("click", async () => {
-    midiStatus.textContent = _t("admin.toast.batch_midi_running");
-    try {
-      const r = await API.batchMidiImport();
-      midiStatus.textContent = _t("admin.toast.batch_midi_done", {imported: r.imported, skipped: r.skipped});
-      if (r.imported > 0) loadTrackList();
-    } catch (e) { midiStatus.textContent = _t("admin.toast.batch_midi_failed", {err: e.message}); }
-  });
 
   // Parse user-pasted song identifier into {hash} or {path}.
   // Accepts 4 forms so admins can paste whatever the browser gave them:

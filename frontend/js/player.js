@@ -6144,37 +6144,8 @@
     detectDetail.textContent = _t("detect.progress.ai_analyzing_detail");
 
     try {
-      // MIDI auto-import is disabled here; Detect should re-analyze audio via BTC.
-      const midiResult = { results: [] };
-
-      if (midiResult.results && midiResult.results.length > 0) {
-        // 找同名 MIDI（檔名去副檔名 = FLAC 檔名去副檔名）
-        const flacName = trackPath.split("/").pop().replace(/\.flac$/i, "");
-        const exactMatch = midiResult.results.find(m =>
-          m.name.replace(/\.(mid|midi)$/i, "") === flacName
-        );
-
-        if (exactMatch) {
-          detectMsg.textContent = _t("detect.progress.midi_importing");
-          detectDetail.textContent = exactMatch.name;
-          const result = await API.midiImport(trackPath, exactMatch.path);
-          if (result.warning) {
-            showToast(_t("toast.detect.warning", { warning: result.warning }), 6000);
-          } else {
-            showToast(_t("toast.detect.midi_imported", { count: result.chord_count, key: result.key }), 3000);
-          }
-          chordCache = {};
-          await loadChords(trackPath);
-          updateActiveChord(audio.currentTime || -1);
-          detectOverlay.style.display = "none";
-          return;
-        }
-        // 無精確匹配 → 不自動匯入模糊結果，改用 BTC 偵測
-      }
-
-      // 無 MIDI → BTC 偵測
-      detectMsg.textContent = _t("detect.progress.ai_analyzing");
-      detectDetail.textContent = _t("detect.progress.ai_analyzing_detail");
+      // BTC-only detection — MIDI auto-import was retired after fuzzy
+      // substring matches polluted 10k chord JSONs (LiveChord-a7c).
       const result = await API.detectChords(trackPath);
       if (result.chord_count === 0) {
         showToast(_t("toast.detect.no_chords"), 5000);

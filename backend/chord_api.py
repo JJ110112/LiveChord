@@ -22,15 +22,6 @@ def _normalize_name(name: str) -> str:
     return name
 
 
-# Hardened track-name ↔ MIDI matcher lives in backend.midi_match — kept
-# in a dep-free module so it can be unit-tested without standing up the
-# whole API. The old loose substring matcher caused 10k false-positive
-# auto-imports (LiveChord-a7c); see backend/midi_match.py for the rules.
-from midi_match import (  # noqa: E402  — import below normalize helper
-    _midi_matches,
-    _extract_keywords,
-)
-
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends, Header, Request
 from pydantic import BaseModel
 
@@ -1217,164 +1208,12 @@ async def detect_chords_api(path: str = Query(...)):
     }
 
 
-# ---------------------------------------------------------------------------
-# MIDI 匯入
-# ---------------------------------------------------------------------------
-
-@router.get("/chords/midi-search")
-def midi_search(path: str = Query(...)):
-    """搜尋 X:\\ 中與此曲目名稱相符的 MIDI 檔案"""
-    from config import get_midi_root
-    midi_root = get_midi_root()
-
-    song_name = os.path.splitext(os.path.basename(path))[0]
-
-    results = []
-    if os.path.isdir(midi_root):
-        for dirpath, dirnames, filenames in os.walk(midi_root):
-            # 跳過回收站等隱藏資料夾
-            dirnames[:] = [d for d in dirnames if not d.startswith(('#', '.', '@'))]
-            for fname in filenames:
-                if not fname.lower().endswith(('.mid', '.midi')):
-                    continue
-                if _midi_matches(song_name, fname):
-                    rel = os.path.relpath(os.path.join(dirpath, fname), midi_root).replace("\\", "/")
-                    results.append({"name": fname, "path": rel})
-
-    return {"song": song_name, "midi_root": midi_root, "results": results}
-
-
-@router.post("/chords/midi-import")
-def midi_import(path: str = Query(...), midi_path: str = Query(...)):
-    """從 MIDI 檔案匯入和弦，儲存到 chords/{hash}.json"""
-    from config import get_midi_root
-    import sys
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'tools'))
-    from midi_to_lab import midi_to_lab
-
-    midi_root = get_midi_root()
-    full_midi = os.path.normpath(os.path.join(midi_root, midi_path))
-
-    if not os.path.isfile(full_midi):
-        raise HTTPException(status_code=404, detail=f"MIDI 檔案不存在: {midi_path}")
-
-    try:
-        entries = midi_to_lab(full_midi, verbose=False)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"MIDI 解析失敗: {e}")
-
-    if not entries:
-        raise HTTPException(status_code=400, detail="MIDI 無法解析出和弦")
-
-    # 推導 key
-    from collections import Counter
-    roots = []
-    for e in entries:
-        c = e["chord"]
-        if c and c[0] in "ABCDEFG":
-            root = c[0]
-            if len(c) > 1 and c[1] in '#b':
-                root += c[1]
-            roots.append(root)
-    key = Counter(roots).most_common(1)[0][0] if roots else ""
-
-    # 驗證：比對 MIDI key 與音檔 key 是否一致
-    key_mismatch = False
-    audio_key = ""
-    try:
-        full_audio = resolve_path(path)
-        if os.path.isfile(full_audio):
-            from chord_detect import detect_chords_and_key_isolated
-            btc_chords, audio_key = detect_chords_and_key_isolated(full_audio)
-            if audio_key and key:
-                from .preprocess import NOTE_TO_SEMI
-                midi_semi = NOTE_TO_SEMI.get(key.rstrip("m"), -1)
-                audio_semi = NOTE_TO_SEMI.get(audio_key.rstrip("m"), -1)
-                if midi_semi >= 0 and audio_semi >= 0 and midi_semi != audio_semi:
-                    key_mismatch = True
-    except Exception:
-        btc_chords = []
-
-    # key 不一致 → fallback BTC（已在上面一併偵測，不需再跑一次）
-    if key_mismatch and btc_chords:
-        sheet = {"path": path, "key": audio_key, "capo": 0,
-                 "source": "btc", "chords": btc_chords}
-        CHORDS_DIR.mkdir(parents=True, exist_ok=True)
-        chords_file = chord_file_for(song_hash(path))
-        chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
-        cache_update_entry(path)
-        return {
-            "ok": True, "path": path, "key": audio_key,
-            "chord_count": len(btc_chords), "source": "btc",
-            "warning": f"MIDI 調性不符（MIDI={key}, 音檔={audio_key}），已改用 BTC 偵測",
-        }
-
-    # 儲存 MIDI 結果
-    sheet = {
-        "path": path, "key": key, "capo": 0,
-        "source": "midi", "chords": entries,
-    }
-    CHORDS_DIR.mkdir(parents=True, exist_ok=True)
-    chords_file = chord_file_for(song_hash(path))
-    chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
-    cache_update_entry(path)
-
-    return {
-        "ok": True, "path": path, "key": key,
-        "chord_count": len(entries), "source": "midi",
-        "midi_file": midi_path,
-    }
-
-
-@router.post("/chords/midi-upload")
-async def midi_upload(path: str = Query(...), file: UploadFile = File(...)):
-    """使用者上傳 MIDI 檔案 → 儲存到 X:\\ → 匯入和弦"""
-    from config import get_midi_root
-    import sys
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'tools'))
-    from midi_to_lab import midi_to_lab
-    from collections import Counter
-
-    midi_root = get_midi_root()
-    os.makedirs(midi_root, exist_ok=True)
-
-    # 儲存上傳的 MIDI 到 X:\
-    fname = file.filename or "uploaded.mid"
-    dest = os.path.join(midi_root, fname)
-    content = await file.read()
-    with open(dest, "wb") as f:
-        f.write(content)
-
-    # 解析和弦
-    try:
-        entries = midi_to_lab(dest, verbose=False)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"MIDI 解析失敗: {e}")
-
-    if not entries:
-        raise HTTPException(status_code=400, detail="MIDI 無法解析出和弦")
-
-    roots = []
-    for e in entries:
-        c = e["chord"]
-        if c and c[0] in "ABCDEFG":
-            root = c[0]
-            if len(c) > 1 and c[1] in '#b':
-                root += c[1]
-            roots.append(root)
-    key = Counter(roots).most_common(1)[0][0] if roots else ""
-
-    sheet = {"path": path, "key": key, "capo": 0, "source": "midi", "chords": entries}
-    CHORDS_DIR.mkdir(parents=True, exist_ok=True)
-    chords_file = chord_file_for(song_hash(path))
-    chords_file.write_text(json.dumps(sheet, ensure_ascii=False, indent=2), encoding="utf-8")
-    cache_update_entry(path)
-
-    return {
-        "ok": True, "path": path, "key": key,
-        "chord_count": len(entries), "source": "midi",
-        "midi_file": fname,
-    }
+# MIDI matching, MIDI search, MIDI import, and MIDI upload were all
+# removed 2026-05-14 after `_midi_matches` substring false-positives
+# tagged 10k chord JSONs with source=midi pointing at the wrong song
+# (LiveChord-a7c / LiveChord-ebx). Auto chord detection is BTC-only;
+# manual MIDI workflows are dropped entirely per user request.
+# To re-introduce them, restore commit b45c7e8/7dd2e6e from git.
 
 
 # 批次偵測、批次 MIDI 匯入、和弦曲目管理、和弦統計 → chord_batch.py

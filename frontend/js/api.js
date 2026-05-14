@@ -45,17 +45,7 @@ const API = {
   rateChordVersion: (path, version, score) => API.post("/api/chords/rate", { path, version, score }),
   saveChords: (data) => API.post("/api/chords", data),
   detectChords: (path) => API.post(`/api/chords/detect?path=${encodeURIComponent(path)}`),
-  midiSearch: (path) => API.get(`/api/chords/midi-search?path=${encodeURIComponent(path)}`),
-  midiImport: (path, midiPath) => API.post(`/api/chords/midi-import?path=${encodeURIComponent(path)}&midi_path=${encodeURIComponent(midiPath)}`),
-  midiUpload: async (path, file) => {
-    const form = new FormData();
-    form.append("file", file);
-    const res = await fetch(`/api/chords/midi-upload?path=${encodeURIComponent(path)}`, { method: "POST", body: form });
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-    return res.json();
-  },
   chordTracks: (page = 1, limit = 100, query = "", status = "all") => API.get(`/api/chords/tracks?page=${page}&limit=${limit}&query=${encodeURIComponent(query)}&status=${status}`),
-  batchMidiImport: () => API.post("/api/chords/batch-midi-import"),
   batchDetect: (groupId = "") => API.post(`/api/chords/batch-detect${groupId ? `?group_id=${encodeURIComponent(groupId)}` : ""}`),
   batchDetectStatus: () => API.get("/api/chords/batch-detect/status"),
   libraryGroups: () => API.get("/api/library/groups"),
