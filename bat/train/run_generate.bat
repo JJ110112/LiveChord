@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0..\.." || (echo ERROR: cannot resolve repo root from %~dp0 & pause & exit /b 1)
 title AI Arranger - Generation Pipeline
 
 set ROLE=BASS

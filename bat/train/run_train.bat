@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0..\.." || (echo ERROR: cannot resolve repo root from %~dp0 & pause & exit /b 1)
 title Neural Arranger Training
 
 set DATA_DIR=F:\MIDI-Library

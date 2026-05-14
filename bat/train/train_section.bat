@@ -1,5 +1,6 @@
 @echo off
 chcp 65001 >nul
+cd /d "%~dp0..\.." || (echo ERROR: cannot resolve repo root from %~dp0 & pause & exit /b 1)
 :: ===================================================
 ::    LiveChord Phase 13.2: DL Section Tagger Trainer
 :: ===================================================

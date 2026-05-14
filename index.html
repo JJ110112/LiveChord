@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LiveChord — 專案資料夾總覽</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --panel: #1a2129;
+    --panel-2: #232b35;
+    --text: #e6edf3;
+    --muted: #8b98a5;
+    --accent: #58a6ff;
+    --pc: #f78166;
+    --nuc: #56d364;
+    --local: #d29922;
+    --both: #a371f7;
+    --border: #2d3a47;
+    --code-bg: #0a0d11;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+  }
+  header {
+    background: linear-gradient(135deg, #1f6feb 0%, #8957e5 100%);
+    padding: 24px 32px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { margin: 0 0 6px; font-size: 22px; }
+  header .sub { color: rgba(255,255,255,0.85); font-size: 13px; }
+  header .meta { color: rgba(255,255,255,0.6); font-size: 12px; margin-top: 6px; }
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    padding: 10px 32px; display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  nav a {
+    color: var(--text); text-decoration: none;
+    padding: 6px 12px; border-radius: 6px; font-size: 13px;
+    background: var(--panel-2);
+  }
+  nav a:hover { background: #2d3a47; color: var(--accent); }
+  main { padding: 28px 32px; max-width: 1400px; margin: 0 auto; }
+  section { margin-bottom: 44px; }
+  section h2 {
+    font-size: 18px; margin: 0 0 14px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  section h2 .count {
+    font-size: 11px; color: var(--muted); font-weight: normal;
+    background: var(--panel-2); padding: 2px 8px; border-radius: 10px;
+  }
+  section h3 { font-size: 14px; color: var(--muted); margin: 20px 0 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table th, table td {
+    text-align: left; padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  table th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  table tr:hover { background: var(--panel-2); }
+  code, kbd, .mono {
+    font-family: "Consolas", "Cascadia Code", "SF Mono", monospace;
+    font-size: 12px;
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: #c9d1d9;
+  }
+  a { color: var(--accent); }
+  .badge {
+    display: inline-block;
+    font-size: 10px; font-weight: 700;
+    padding: 2px 7px; border-radius: 10px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    color: #0f1419;
+  }
+  .badge.pc { background: var(--pc); }
+  .badge.nuc { background: var(--nuc); }
+  .badge.both { background: var(--both); }
+  .badge.local { background: var(--local); }
+  .badge.outline {
+    background: transparent;
+    border: 1px solid var(--muted);
+    color: var(--muted);
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .card h4 { margin: 0 0 6px; font-size: 13px; }
+  .card .desc { font-size: 12px; color: var(--muted); line-height: 1.45; }
+  .card .path { font-size: 11px; color: #6b7785; margin-top: 8px; font-family: "Consolas", monospace; }
+  .filter-bar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+  .filter-bar button {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); padding: 5px 12px;
+    border-radius: 14px; cursor: pointer; font-size: 12px;
+  }
+  .filter-bar button.active { background: var(--accent); color: #0f1419; border-color: var(--accent); }
+  .filter-bar input[type=search] {
+    background: var(--code-bg); color: var(--text);
+    border: 1px solid var(--border); padding: 5px 10px;
+    border-radius: 14px; font-size: 12px; min-width: 200px;
+  }
+  .legend { font-size: 11px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: 4px; }
+  details { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px 14px; margin-bottom: 10px; }
+  details summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+  details[open] summary { margin-bottom: 8px; }
+  .env-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .env-card h3 { margin: 0 0 10px; font-size: 13px; color: var(--text); text-transform: none; letter-spacing: 0; }
+  .env-card .role { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+  .env-card dl { margin: 0; font-size: 12px; }
+  .env-card dt { color: var(--muted); margin-top: 6px; }
+  .env-card dd { margin: 0 0 0 0; color: var(--text); font-family: "Consolas", monospace; }
+  footer { padding: 20px 32px; color: var(--muted); font-size: 11px; text-align: center; border-top: 1px solid var(--border); }
+  .note { font-size: 12px; color: var(--muted); margin-bottom: 12px; font-style: italic; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>LiveChord — 專案資料夾總覽</h1>
+  <div class="sub">把音檔變成可隨時跟著彈的即時和弦譜。 NUC（生產 8800）＋ PC（開發 + GPU 重運算）雙機分工。</div>
+  <div class="meta">本檔產生日期 2026-05-14 ｜ 對應 commit <span class="mono">7759b0e</span> ｜ 純本機開啟（無需 server）</div>
+</header>
+
+<nav>
+  <a href="#overview">總覽</a>
+  <a href="#bats">批次檔（40）</a>
+  <a href="#tools">tools/ 工具</a>
+  <a href="#docs">專案文件</a>
+  <a href="#specs">規格</a>
+  <a href="#data">測試資料</a>
+  <a href="#env">執行環境</a>
+  <a href="#cleanup">清理規約</a>
+</nav>
+
+<main>
+
+<!-- =================== OVERVIEW =================== -->
+<section id="overview">
+  <h2>專案總覽</h2>
+  <p style="font-size:13px;color:var(--muted);max-width:900px;">
+    LiveChord 是個人 + 公眾共構的吉他／鋼琴／烏克麗麗 AI 教學工具。
+    使用者上傳音檔 → BTC Transformer 偵測和弦 + beat_this 偵測節拍 + section detector 分段 →
+    前端以瀑布流和弦條、88 鍵 / 吉他指板 / 手風琴等多視圖同步播放。
+    Beta 期 2026-04-16 → 2026-04-26 已結束；目前 NUC 跑個人版（LAN 8800），VPS Hetzner 跑公眾版（<a href="https://livechord.org">livechord.org</a>）。
+  </p>
+  <div class="grid">
+    <div class="card">
+      <h4>後端 <code>backend/</code></h4>
+      <div class="desc">FastAPI + uvicorn。<code>main:app</code> 為單一進入點。BTC 和弦偵測跑 ProcessPoolExecutor 隔離 GIL；批次運算用 ThreadPoolExecutor + Semaphore 控 GPU。</div>
+    </div>
+    <div class="card">
+      <h4>前端 <code>frontend/</code></h4>
+      <div class="desc">純 vanilla JS + HTML + CSS（無框架）。Jetpack Compose 否認，這是純 web。<code>player.html</code> + <code>js/player.js</code> 是核心，OSMDroid 不存在於此專案。</div>
+    </div>
+    <div class="card">
+      <h4>批次工具 <code>scripts/</code></h4>
+      <div class="desc">訓練、評測、品質審計、demo 建置等 Python 腳本。從 <code>.bat</code> 啟動以對應到正確環境的 Python venv。</div>
+    </div>
+    <div class="card">
+      <h4>研發工具 <code>tools/</code></h4>
+      <div class="desc">Chordify OCR 對拍、async handler lint、健康監控（Telegram 警報）、capture／screenshot helper。屬於非生產但長存的小工具。</div>
+    </div>
+    <div class="card">
+      <h4>運行資料 <code>data/</code></h4>
+      <div class="desc">和弦 JSON（分桶 <code>data/chords/{hash[:2]}/</code>）、伴奏快取、SQLite DB、模型權重、cover art、demo 音檔。多數子路徑 gitignored。</div>
+    </div>
+    <div class="card">
+      <h4>佈署 <code>deploy/</code></h4>
+      <div class="desc">VPS systemd unit (<code>livechord.service</code>) + Cloudflare Tunnel 設定（<code>cloudflared.yml</code>）。NUC 用 install-service.bat，不在這。</div>
+    </div>
+  </div>
+</section>
+
+<!-- =================== BATCH FILES =================== -->
+<section id="bats">
+  <h2>批次檔 <span class="count" id="batCount">40 個</span></h2>
+  <p class="note">
+    日常用的 <code>start*.bat</code>、<code>restart*.bat</code>、<code>install-service.bat</code>、<code>scan.bat</code>、<code>train_refiner_*.bat</code>、以及用 <code>%~dp0</code> 綁根目錄的批次留在 root。
+    特化的「跑一次就好」批次搬進 <code>bat/batch/</code>、<code>bat/train/</code>、<code>bat/sync/</code>。
+  </p>
+  <div class="legend" style="margin-bottom: 14px;">
+    <span><span class="badge nuc">NUC</span> 生產主機，跑 uvicorn 8800、伴奏批次工廠、系統服務</span>
+    <span><span class="badge pc">PC</span> 開發機，有 RTX 5080，跑 BTC GPU 偵測、模型訓練、節拍器批次</span>
+    <span><span class="badge both">PC+NUC</span> 兩邊皆可（多半看當下哪台機器空閒）</span>
+    <span><span class="badge local">LOCAL</span> 機器專屬 scratch，<code>.gitignore</code> 內，僅作者本機用</span>
+  </div>
+  <div class="filter-bar">
+    <button class="active" data-filter="all">全部</button>
+    <button data-filter="NUC">NUC</button>
+    <button data-filter="PC">PC</button>
+    <button data-filter="PC+NUC">兩邊</button>
+    <button data-filter="local-only">本機 scratch</button>
+    <input type="search" id="batSearch" placeholder="搜尋檔名或用途…">
+  </div>
+
+  <h3>啟動 / 重啟 / 系統服務</h3>
+  <table id="bats-startup">
+    <thead><tr><th>檔名</th><th>環境</th><th>用途</th></tr></thead>
+    <tbody></tbody>
+  </table>
+
+  <h3>同步 / 部署</h3>
+  <table id="bats-sync">
+    <thead><tr><th>檔名</th><th>環境</th><th>用途</th></tr></thead>
+    <tbody></tbody>
+  </table>
+
+  <h3>批次處理（和弦 / 節拍 / 旋律 / 伴奏 / Hybrid）</h3>
+  <table id="bats-batch">
+    <thead><tr><th>檔名</th><th>環境</th><th>用途</th></tr></thead>
+    <tbody></tbody>
+  </table>
+
+  <h3>模型訓練</h3>
+  <table id="bats-train">
+    <thead><tr><th>檔名</th><th>環境</th><th>用途</th></tr></thead>
+    <tbody></tbody>
+  </table>
+
+  <h3>測試 / 評測 / 其他</h3>
+  <table id="bats-misc">
+    <thead><tr><th>檔名</th><th>環境</th><th>用途</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<!-- =================== TOOLS =================== -->
+<section id="tools">
+  <h2>tools/ 工具集 <span class="count">8 個 Python + 1 子系統</span></h2>
+  <p class="note">不屬於 backend / scripts 的長存研發小工具。Chordify Ground-Truth 擷取那一支 pipeline 已於 2026-05-14 刪除（共 10 檔，git history 仍可追）。</p>
+
+  <h3>健康監控（已排程跑）</h3>
+  <div class="grid">
+    <div class="card">
+      <h4><span class="badge nuc">NUC + VPS</span> <a href="tools/health_monitor/">tools/health_monitor/</a></h4>
+      <div class="desc">每小時透過 Windows Task Scheduler 跑 <code>run-once.bat</code> → <code>check.py</code> 探測 NUC 8800 + livechord.org。Tier 1 純規則（HTTP + log tail），Tier 2 才丟 Ollama <code>hermes3:8b</code> 摘要，超門檻才推 Telegram（chat 8422763333）。Token 自動從 <code>~/.claude/channels/telegram/.env</code> 讀。</div>
+      <div class="path">README · config.json · check.py · state.json (cooldown fingerprint)</div>
+    </div>
+  </div>
+  <details style="margin-top: 12px;">
+    <summary>常用命令 — disable / enable / 測試 / 強制 alert</summary>
+    <table style="margin-top: 10px;">
+      <thead><tr><th>情境</th><th>命令 / 步驟</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>暫停（NUC 停機跑批次時）</td>
+          <td><code>schtasks /Change /TN "LiveChord-Health-Monitor" /DISABLE</code></td>
+        </tr>
+        <tr>
+          <td>恢復</td>
+          <td>
+            <code>schtasks /Change /TN "LiveChord-Health-Monitor" /ENABLE</code><br>
+            建議先 <code>del C:\Users\hitea\Claude\LiveChord\tools\health_monitor\state.json</code> 清 cooldown 指紋
+          </td>
+        </tr>
+        <tr>
+          <td>查目前狀態 / 下次執行時間</td>
+          <td><code>schtasks /Query /TN "LiveChord-Health-Monitor" /FO LIST | findstr "Status Next"</code></td>
+        </tr>
+        <tr>
+          <td>手動跑一次（不送 TG）</td>
+          <td><code>cd tools\health_monitor &amp;&amp; python check.py --target both --dry-run</code></td>
+        </tr>
+        <tr>
+          <td>手動跑一次（會送 TG）</td>
+          <td><code>cd tools\health_monitor &amp;&amp; python check.py --target both</code></td>
+        </tr>
+        <tr>
+          <td>強制觸發一次 alert 驗證推送管道</td>
+          <td>
+            <code>del tools\health_monitor\state.json</code><br>
+            <code>cd tools\health_monitor &amp;&amp; python check.py --target nuc --inject-error</code>
+          </td>
+        </tr>
+        <tr>
+          <td>看最近一次跑的結果</td>
+          <td><code>type tools\health_monitor\run.log</code>（rolling 1MB×2，較新的在末段）</td>
+        </tr>
+        <tr>
+          <td>調整門檻 / quiet hours / 切換模型</td>
+          <td>編 <a href="tools/health_monitor/config.json">tools/health_monitor/config.json</a>（無須重啟，下次 tick 生效）</td>
+        </tr>
+        <tr>
+          <td>整條任務移除</td>
+          <td><code>schtasks /Delete /TN "LiveChord-Health-Monitor" /F</code> — 重新註冊見 <a href="tools/health_monitor/README.md">README quick start §7</a></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="note" style="margin-top: 10px;">
+      <b>觸發條件（任一 fire Tier 2）</b>：liveness fail / traceback ≥ 1 / error_count ≥ 3 / last_error_age &lt; 5min / 5xx_count ≥ 1。<br>
+      <b>Cooldown</b> 30 min by SHA256(last-error-line) — 同一 bug flap 不會狂 ping。<br>
+      <b>Quiet hours</b> 預設 23:00–08:00 Asia/Taipei；severity=critical 仍會穿透。
+    </p>
+  </details>
+
+  <h3>下載自動化</h3>
+  <div class="grid">
+    <div class="card">
+      <h4><span class="badge pc">PC</span> <code>auto_click.pyw</code></h4>
+      <div class="desc">Stay-on-top GUI：自動點 Chordify 下載 MIDI（pic1/pic2 匹配）+ yt-dlp 抓 FLAC + 以 FLAC 檔名改 .mid → 推到 X:\、Y:\。</div>
+    </div>
+  </div>
+
+  <h3>MIDI 反向識別 / Chroma 索引</h3>
+  <div class="grid">
+    <div class="card">
+      <h4><span class="badge pc">PC</span> <code>build_chroma_index.py</code></h4>
+      <div class="desc">為 LiveChord Phase 4 反向識別建 chroma CQT 索引。Restart-safe + RAM-bounded；資料丟到 <code>AppData/Local/Temp</code>（data/tmp 會被 Defender 誤刪 .py）。輸出 <code>V:/Database/Chroma_Index/</code>。</div>
+    </div>
+    <div class="card">
+      <h4><span class="badge pc">PC</span> <code>build_tempo_cache.py</code></h4>
+      <div class="desc">為 manifest.jsonl 中每筆建 <code>tempo_cache.json = {hash: BPM}</code>，給 identify_midi.py tempo gate 用。Z:\ 上 22k 檔約 9 小時。Resume-safe。</div>
+    </div>
+    <div class="card">
+      <h4><span class="badge pc">PC</span> <code>identify_midi.py</code></h4>
+      <div class="desc">用 chroma 索引 + DTW 把不知名 MIDI 反查回 artist/title。Pipeline：artist gate → chroma DTW → tempo 檢驗。</div>
+    </div>
+    <div class="card">
+      <h4><span class="badge pc">PC</span> <code>chroma_feat.py</code></h4>
+      <div class="desc">索引建立端與 query 端共用的 chroma-CQT 特徵抽取，確保兩邊參數一致（否則 DTW 距離無意義）。</div>
+    </div>
+    <div class="card">
+      <h4><span class="badge pc">PC</span> <code>analyze_dryrun.py</code></h4>
+      <div class="desc">分析 identify_midi.py --dry-run 產出的 midi_catalog.jsonl：normalized_cost / warp_r2 直方圖 + 「fail 但其實是真陽性」候選排名。</div>
+    </div>
+    <div class="card">
+      <h4><span class="badge pc">PC</span> <code>midi_to_lab.py</code></h4>
+      <div class="desc">MIDI → <code>.lab</code> 和弦 + 時間軸轉換。</div>
+    </div>
+  </div>
+
+  <h3>CI / Lint</h3>
+  <div class="grid">
+    <div class="card">
+      <h4><span class="badge both">PC+NUC</span> <code>lint_async_handlers.py</code> + <code>async_handler_baseline.txt</code></h4>
+      <div class="desc">抓沒 <code>await</code> 的 FastAPI <code>async def</code> handler — 過去咬了三次（<code>/api/ai/evaluate</code>、<code>/api/ai/retrain</code>、<code>/api/ai/sections</code>），這些 async def 在 event loop 上跑同步重活。Baseline 已收 62 個既存違規，CI 只擋新增的。提交後端前要跑。</div>
+    </div>
+  </div>
+
+  <h3>其他</h3>
+  <div class="grid">
+    <div class="card">
+      <h4><code>dist/auto_click.exe</code></h4>
+      <div class="desc">auto_click 的 PyInstaller 打包輸出（~100 MB）。要重新打包見 PyInstaller 文件。</div>
+    </div>
+  </div>
+</section>
+
+<!-- =================== DOCS =================== -->
+<section id="docs">
+  <h2>專案文件 <span class="count">31 個</span></h2>
+  <p class="note">所有路徑都是相對於 repo 根目錄。架構導引主入口為 <a href="CLAUDE.md">CLAUDE.md</a> + <a href="doc/QA.md">doc/QA.md</a>。</p>
+
+  <h3>核心 / 必讀</h3>
+  <div class="grid">
+    <div class="card"><h4><a href="CLAUDE.md">CLAUDE.md</a></h4><div class="desc">AI 協作主導文件，含後端規則、部署同步、UI 鐵律、Beta 歷史。</div><div class="path">/CLAUDE.md</div></div>
+    <div class="card"><h4><a href="README.md">README.md</a></h4><div class="desc">對外公開的 quick-start + 專案定位。</div><div class="path">/README.md</div></div>
+    <div class="card"><h4><a href="doc/QA.md">doc/QA.md</a></h4><div class="desc">完整品管文件 v3.9 — 防線 1~5、UI 架構鐵律、Playwright 限制、測試資料目錄規約。</div><div class="path">/doc/QA.md</div></div>
+    <div class="card"><h4><a href="doc/SPEC.md">doc/SPEC.md</a></h4><div class="desc">系統規格書 v2.0。</div><div class="path">/doc/SPEC.md</div></div>
+    <div class="card"><h4><a href="doc/UX_CONVENTION.md">doc/UX_CONVENTION.md</a></h4><div class="desc">UX 共識（強制） — Toast、Popup、optgroup、主題、saturated color helper。</div><div class="path">/doc/UX_CONVENTION.md</div></div>
+    <div class="card"><h4><a href="doc/TODOS.md">doc/TODOS.md</a></h4><div class="desc">當前 active 工作清單。</div><div class="path">/doc/TODOS.md</div></div>
+  </div>
+
+  <h3>戰史 / 經驗教訓</h3>
+  <div class="grid">
+    <div class="card"><h4><a href="doc/QA_BATTLE_STORY.md">QA_BATTLE_STORY.md</a></h4><div class="desc">每個番外篇都對應一次 production bug 教訓。新 AI 工程師上工前必讀其中與本次任務相關章節。</div></div>
+    <div class="card"><h4><a href="doc/walkthrough.md">walkthrough.md</a></h4><div class="desc">系統概覽 walkthrough，補 CLAUDE.md 講不到的細節。</div></div>
+    <div class="card"><h4><a href="doc/stress-test-2026-04-19.md">stress-test-2026-04-19.md</a></h4><div class="desc">Beta 壓測紀錄。</div></div>
+    <div class="card"><h4><a href="doc/shadow_stress_test_prompt.md">shadow_stress_test_prompt.md</a></h4><div class="desc">Shadow stress test prompt 模板。</div></div>
+  </div>
+
+  <h3>佈署 / 運維</h3>
+  <div class="grid">
+    <div class="card"><h4><a href="doc/OPS.md">OPS.md</a></h4><div class="desc">VPS 運維 runbook — 部署、Tunnel cutover、yt-dlp cookies、gotchas。</div></div>
+    <div class="card"><h4><a href="doc/MODAL_DEPLOY.md">MODAL_DEPLOY.md</a></h4><div class="desc">VPS 把 BTC / beat_this 派到 Modal 雲端 GPU 的設定。</div></div>
+    <div class="card"><h4><a href="doc/R2_DEPLOY.md">R2_DEPLOY.md</a></h4><div class="desc">Cloudflare R2 cover art 儲存設定。</div></div>
+    <div class="card"><h4><a href="doc/SCALING.md">SCALING.md</a></h4><div class="desc">公眾／個人分割、GPU 雲端、DB 擴展、i18n 規劃。</div></div>
+    <div class="card"><h4><a href="doc/SEO.md">SEO.md</a></h4><div class="desc">GSC 狀態、Phase 1~5 SEO 路線圖。</div></div>
+    <div class="card"><h4><a href="doc/HF_RELEASE.md">HF_RELEASE.md</a></h4><div class="desc">HF Hub + PyPI 開源套件發佈（livechord-beat-refiner + livechord-bar-arbitrator）。</div></div>
+    <div class="card"><h4><a href="doc/beat_refiner_metrics.md">beat_refiner_metrics.md</a></h4><div class="desc">beat_refiner held-out metrics。</div></div>
+  </div>
+
+  <h3>產品策略</h3>
+  <div class="grid">
+    <div class="card"><h4><a href="doc/PRODUCTIZATION.md">PRODUCTIZATION.md</a></h4><div class="desc">Beta 能跑起來的產品化路線。</div></div>
+    <div class="card"><h4><a href="doc/PRODUCT_STRATEGY.md">PRODUCT_STRATEGY.md</a></h4><div class="desc">產品策略大方向。</div></div>
+  </div>
+
+  <h3>Implementation Plans</h3>
+  <div class="grid">
+    <div class="card"><h4><a href="doc/implementation_plan.md">implementation_plan.md</a></h4><div class="desc">歷史總體實作計畫。</div></div>
+    <div class="card"><h4><a href="doc/midi_arranger_implementation_plan.md">midi_arranger_implementation_plan.md</a></h4><div class="desc">Phase 2 Neural Arranger 實作計畫。</div></div>
+    <div class="card"><h4><a href="doc/phase14_plan.md">phase14_plan.md</a></h4><div class="desc">Phase 14 計畫。</div></div>
+    <div class="card"><h4><a href="doc/plans/">doc/plans/</a></h4><div class="desc">歷史 plans 收納處。</div></div>
+  </div>
+
+  <h3>學術 / 演算法參考（<code>docs/</code> 小寫）</h3>
+  <div class="grid">
+    <div class="card"><h4><a href="docs/academic_theories.md">academic_theories.md</a></h4><div class="desc">和聲、節奏、分段相關 paper 摘錄。</div></div>
+    <div class="card"><h4><a href="docs/global_chord_beat_arbitration.md">global_chord_beat_arbitration.md</a></h4><div class="desc">全曲層級的和弦／節拍仲裁設計。</div></div>
+    <div class="card"><h4><a href="docs/pop_quality_gate_plan.md">pop_quality_gate_plan.md</a></h4><div class="desc">流行樂 quality gate 規劃。</div></div>
+    <div class="card"><h4><a href="docs/song_sections.md">song_sections.md</a></h4><div class="desc">段落偵測理論與經驗。</div></div>
+  </div>
+
+  <h3>NotebookLM 餵食 hand-off</h3>
+  <p class="note"><a href="doc/for-notebooklm/">doc/for-notebooklm/</a> — 給 Google NotebookLM 上傳用的自包文，每檔需獨立可讀。命名 <code>YYYY-MM-DD-&lt;topic&gt;.md</code>。</p>
+</section>
+
+<!-- =================== SPECS =================== -->
+<section id="specs">
+  <h2>規格 / 計畫 / PRD</h2>
+  <div class="grid">
+    <div class="card"><h4><a href="doc/SPEC.md">SPEC.md v2.0</a></h4><div class="desc">系統規格主文。</div></div>
+    <div class="card"><h4><a href="doc/CAPTURE_V2_SPEC.md">CAPTURE_V2_SPEC.md</a></h4><div class="desc">Chordify 螢幕擷取／OCR 對拍系統 v2 規格。</div></div>
+    <div class="card"><h4><a href="doc/HYBRID_GENERATION_SPEC.md">HYBRID_GENERATION_SPEC.md</a></h4><div class="desc">Hybrid（Demucs + Basic Pitch）旋律／低音線生成規格。</div></div>
+    <div class="card"><h4><a href="doc/JAZZIFY_PRD.md">JAZZIFY_PRD.md</a></h4><div class="desc">Jazzify 即興爵士重新和聲化 PRD。</div></div>
+    <div class="card"><h4><a href="doc/PHASE2_ARRANGEMENT_PLAN.md">PHASE2_ARRANGEMENT_PLAN.md</a></h4><div class="desc">Phase 2 Neural Arranger 計畫。</div></div>
+    <div class="card"><h4><a href="doc/PHASE_4_HYBRID_MELODY.md">PHASE_4_HYBRID_MELODY.md</a></h4><div class="desc">Phase 4 Hybrid 旋律擷取計畫。</div></div>
+    <div class="card"><h4><a href="doc/PHASE_13_DEEP_LEARNING_SPEC.md">PHASE_13_DEEP_LEARNING_SPEC.md</a></h4><div class="desc">Phase 13 DL Section Tagger 規格（BiLSTM）。</div></div>
+    <div class="card"><h4><a href="doc/PHASE_13.3_RLHF_SPEC.md">PHASE_13.3_RLHF_SPEC.md</a></h4><div class="desc">Phase 13.3 RLHF 規格。</div></div>
+    <div class="card"><h4><a href="doc/AI_PIANO_TEACHER_V2.md">AI_PIANO_TEACHER_V2.md</a></h4><div class="desc">AI 鋼琴老師 v2（Generator-Critic 雙環）。</div></div>
+    <div class="card"><h4><a href="doc/AI_CHORD_LEARNING_STRATEGY.md">AI_CHORD_LEARNING_STRATEGY.md</a></h4><div class="desc">和弦學習策略。</div></div>
+    <div class="card"><h4><a href="doc/AI_MIGRATION_REPORT.md">AI_MIGRATION_REPORT.md</a></h4><div class="desc">AI 模型 migration 紀錄。</div></div>
+    <div class="card"><h4><a href="ai_migration_plan.md">ai_migration_plan.md</a></h4><div class="desc">AI 遷移計畫（root 級）。</div></div>
+  </div>
+</section>
+
+<!-- =================== TEST DATA =================== -->
+<section id="data">
+  <h2>測試資料與暫存產出</h2>
+  <p class="note">完整規約見 <a href="doc/QA.md">doc/QA.md §1.3</a>。下方為當前資料夾現況快照。</p>
+
+  <div class="grid">
+    <div class="card">
+      <h4><span class="badge outline">scratch</span> <code>tmp/</code></h4>
+      <div class="desc">短期 log / smoke / 對拍紀錄。<b>&gt;14 天可清</b>。已 gitignore（<code>/tmp/</code>）。</div>
+      <div class="path">當前內容：<br>format_smoke/ ── 2026-05-12 honey 轉檔對拍 (51 MB)</div>
+    </div>
+    <div class="card">
+      <h4><span class="badge outline">reports</span> <code>reports/quality_gate_*/</code></h4>
+      <div class="desc">Quality gate 評測產出（HTML + CSV + JSON）。<b>&gt;30 天可清</b>，近 1 週可能在 investigation。</div>
+      <div class="path">當前 28 個資料夾，最新批次：<br>quality_gate_jazz_*_20260514（4 個）</div>
+    </div>
+    <div class="card">
+      <h4><span class="badge outline">test corpus</span> <code>data/test_songs/</code></h4>
+      <div class="desc">QA.md §2.2 的 Lv1~Lv5 測試曲庫（FLAC、AVI、results.json）。音檔本身 gitignored，目錄結構保留。</div>
+    </div>
+    <div class="card">
+      <h4><span class="badge outline">qa screenshots</span> root <code>qa-*.png</code> / <code>.playwright-mcp/</code></h4>
+      <div class="desc">Playwright MCP 截圖必須帶 prefix 之一：<code>qa-</code>, <code>mobile-</code>, <code>editor-</code>, <code>page-</code>, <code>screenshot-</code>, <code>ghost-keys-qa-</code>。全部 gitignore。</div>
+      <div class="path">當前 1 張：qa-livechord-vps-deploy-home.png</div>
+    </div>
+    <div class="card">
+      <h4><span class="badge outline">eval</span> <code>eval_output/</code></h4>
+      <div class="desc">Neural Arranger 端對端 MIDI + WAV 產出（<code>run_generate.bat</code> 產）。<b>&gt;30 天可清</b>。</div>
+      <div class="path">當前 2 檔：ai_bass.mid / ai_bass.wav（2026-05-05）</div>
+    </div>
+    <div class="card">
+      <h4><span class="badge outline">unit / e2e</span> <code>tests/</code></h4>
+      <div class="desc">正式 pytest 測試。 conftest.py + <code>test_*.py</code> 66+ cases。包含 phase 1~5 player / homepage / editor 全套。</div>
+    </div>
+    <div class="card">
+      <h4><span class="badge outline">demo songs</span> <code>data/demo/</code></h4>
+      <div class="desc">15 首 PD / CC 預分析示範曲（4 分類），<b>進 git，共 ~85 MB</b>。建置用 <code>scripts/build_demo.py</code>。</div>
+    </div>
+    <div class="card">
+      <h4><span class="badge outline">scratch scripts</span> <code>scripts_test/</code></h4>
+      <div class="desc">一次性實驗腳本區，gitignore。當前僅有 1 個 bait file。</div>
+    </div>
+  </div>
+</section>
+
+<!-- =================== ENV =================== -->
+<section id="env">
+  <h2>執行環境 (機器 / 磁碟)</h2>
+
+  <div class="grid">
+    <div class="env-card">
+      <h3><span class="badge nuc">NUC</span> 生產主機</h3>
+      <div class="role">家中 LAN 192.168.50.6 — 單 uvicorn 個人版 8800 ｜ <code>LIVECHORD_MODE=personal</code></div>
+      <dl>
+        <dt>後端</dt><dd>C:\LiveChord\backend (NUC 本機)</dd>
+        <dt>前端</dt><dd>C:\LiveChord\frontend</dd>
+        <dt>資料</dt><dd>C:\LiveChord\data (含 SQLite, chords/, models/)</dd>
+        <dt>音樂庫</dt><dd>本機掛 NAS 為 Y:\ 與 Z:\</dd>
+        <dt>啟動</dt><dd>start.bat (PowerShell + uvicorn) → 開機由 install-service.bat 自動跑</dd>
+        <dt>無</dt><dd>無 discrete GPU、無 CUDA — 重運算丟給 PC</dd>
+      </dl>
+    </div>
+    <div class="env-card">
+      <h3><span class="badge pc">PC</span> 開發機 / 超級節點</h3>
+      <div class="role">本機開發 + RTX 5080 跑 BTC / beat_this / 模型訓練</div>
+      <dl>
+        <dt>Dev repo</dt><dd>c:\Users\hitea\Claude\LiveChord (Git 本源)</dd>
+        <dt>NUC mount</dt><dd>V:\ ⇨ NUC C:\LiveChord（部署目標）</dd>
+        <dt>暫存 SSD</dt><dd>G:\stage (madmom / beat_this 本地批次工作區)</dd>
+        <dt>MIDI 庫</dt><dd>F:\MIDI-Library（Neural Arranger 訓練資料）</dd>
+        <dt>NAS 直連</dt><dd>Y:\ + Z:\（音樂庫，與 NUC 看到的是同一掛載點）</dd>
+        <dt>QA local</dt><dd>start_personal_local.bat 8803 ｜ start_prod_local.bat 8803（public 模式 QA）</dd>
+      </dl>
+    </div>
+    <div class="env-card">
+      <h3><span class="badge outline">VPS</span> 公眾版 livechord.org</h3>
+      <div class="role">Hetzner CPX21 Hillsboro OR ｜ 5.78.135.8 ｜ <code>LIVECHORD_MODE=public</code></div>
+      <dl>
+        <dt>Repo</dt><dd>/srv/livechord（與 dev repo 獨立 clone）</dd>
+        <dt>Service</dt><dd>systemd unit deploy/livechord.service</dd>
+        <dt>Tunnel</dt><dd>Cloudflare Tunnel d182dd0a-...-aee428</dd>
+        <dt>GPU</dt><dd>透過 Modal 派 BTC + beat_this（VPS 本機無 GPU）</dd>
+        <dt>儲存</dt><dd>Cover art 走 R2；其餘走本機磁碟</dd>
+        <dt>限制</dt><dd>Upload-only — YouTube ingest 已永久移除（2026-05-04 Plan B）</dd>
+      </dl>
+    </div>
+    <div class="env-card">
+      <h3><span class="badge outline">drives</span> 磁碟對應</h3>
+      <dl>
+        <dt>C:\ (PC)</dt><dd>PC 本機作業系統 / 通用</dd>
+        <dt>C:\ (NUC)</dt><dd>NUC 本機 runtime（LiveChord 跑這）</dd>
+        <dt>V:\ (PC)</dt><dd>NUC C:\LiveChord 的網路掛載</dd>
+        <dt>W:\ (PC)</dt><dd>備份目標 — <b>非</b> runtime，編輯這裡形同 no-op</dd>
+        <dt>Y:\ + Z:\</dt><dd>NAS 音樂庫（PC + NUC 共看）</dd>
+        <dt>F:\ (PC)</dt><dd>MIDI-Library + Hybrid 中間檔</dd>
+        <dt>G:\ (PC)</dt><dd>批次 staging SSD</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- =================== CLEANUP =================== -->
+<section id="cleanup">
+  <h2>清理規約 (避免亂丟暫存)</h2>
+  <p class="note">完整規約：<a href="doc/QA.md#13-測試暫存產出檔的固定存放位置">doc/QA.md §1.3</a></p>
+  <table>
+    <thead><tr><th>用途</th><th>固定路徑</th><th>命名</th><th>清理策略</th></tr></thead>
+    <tbody>
+      <tr><td>短期 scratch / log</td><td><code>tmp/&lt;topic&gt;/</code></td><td>topic_YYYYMMDD.log</td><td>&gt;14 天可清</td></tr>
+      <tr><td>Quality gate 報告</td><td><code>reports/quality_gate_&lt;topic&gt;_&lt;date&gt;/</code></td><td>必含 topic + 日期</td><td>&gt;30 天可清 / 近 1 週鎖</td></tr>
+      <tr><td>Playwright 截圖</td><td>root <code>qa-*.png</code> 等 / <code>.playwright-mcp/</code></td><td>必有 prefix + 日期</td><td>任務結束即清</td></tr>
+      <tr><td>Neural Arranger 評估</td><td><code>eval_output/&lt;date&gt;_&lt;topic&gt;/</code></td><td>同上</td><td>&gt;30 天可清</td></tr>
+      <tr><td>NotebookLM 餵食</td><td><code>doc/for-notebooklm/</code></td><td>YYYY-MM-DD-topic.md</td><td>使用者管理，不自動清</td></tr>
+    </tbody>
+  </table>
+  <p class="note">
+    <b>禁止</b>：root 級 <code>log.txt</code> / <code>output.txt</code> / <code>diff.txt</code>（雖 <code>*.txt</code> gitignore 但會在 IDE 檔案樹常駐占視覺）｜
+    在 <code>backend/</code> / <code>scripts/</code> 旁邊放 <code>test_xxx.py</code> ad-hoc 驗證腳本 ｜
+    Playwright 截圖未指定 <code>filename</code> 就 take screenshot
+  </p>
+</section>
+
+</main>
+
+<footer>
+  靜態頁，無 server。修改 <code>index.html</code> 直接 reload 即可。新增批次檔請同步維護下方 <code>BATS</code> 陣列。
+</footer>
+
+<script>
+const BATS = [
+  // startup / restart / service
+  {name:"start.bat", env:"NUC", purpose:"NUC 生產主機啟動腳本：固定 LIVECHORD_MODE=personal、設防火牆並啟動 uvicorn 8800", group:"startup"},
+  {name:"restart.bat", env:"NUC", purpose:"在 NUC 上重啟單一 uvicorn 實例（8800，public mode），清掉 8800/8801/8802 殘留並重設防火牆規則", group:"startup"},
+  {name:"start_dual.bat", env:"NUC", purpose:"舊雙實例啟動腳本，現在於 NUC 上只啟 8800 personal+Cloudflare Tunnel（檔名留作肌肉記憶，archival）", group:"startup"},
+  {name:"restart_dual.bat", env:"NUC", purpose:"舊雙實例重啟腳本，現在僅在 NUC 上停掉 Cloudflare Tunnel、清 8800/8801/8802 後重啟（archival，post-beta 已退役）", group:"startup"},
+  {name:"start_local.bat", env:"PC", purpose:"在 PC 開發機本地啟動 LiveChord 並指向使用者輸入的本機音樂資料夾（拖放路徑進視窗）", group:"startup"},
+  {name:"start_personal_local.bat", env:"PC", purpose:"在 PC 本地以 personal 模式啟動 8803（僅綁 127.0.0.1，dev repo data\\），用於 QA admin/auto-worker/library 等個人專屬功能", group:"startup"},
+  {name:"start_prod_local.bat", env:"PC", purpose:"在 PC 本地以 public 模式啟動 8803，用於 QA 公眾版首頁/登出 demo/guest upload/i18n/SEO", group:"startup"},
+  {name:"start_beta_local.bat", env:"PC", purpose:"在 PC 本地以 beta 模式啟動 8802（強制登入、雜湊 NAS 路徑），用 dev repo 自己的 data\\（archival）", group:"startup"},
+  {name:"install-service.bat", env:"NUC", purpose:"在 NUC 上建立隱藏 VBS 啟動器與 Startup 捷徑，讓 uvicorn 8800 開機自動啟動", group:"startup"},
+  {name:"uninstall-service.bat", env:"NUC", purpose:"在 NUC 上移除 install-service.bat 建立的 Startup 捷徑與隱藏 VBS 啟動器", group:"startup"},
+
+  // sync / deploy
+  {name:"bat/sync/_sync_acc_to_v.bat", env:"local-only", purpose:"用 robocopy 把 PC 本地 data\\accompaniments 的 *_v2.json 同步到 V:\\（NUC runtime）", group:"sync"},
+  {name:"bat/sync/_sync_acc_v3_to_v.bat", env:"local-only", purpose:"用 robocopy 把 PC 本地 data\\accompaniments 的 *_v3.json 同步到 V:\\", group:"sync"},
+  {name:"bat/sync/stage_madmom_pull.bat", env:"PC", purpose:"在 PC 上用 robocopy /MIR 把 V:\\data\\chords 拉到 G:\\stage 本地 SSD（madmom 流程步驟 1/3）", group:"sync"},
+  {name:"stage_madmom_push.bat", env:"PC", purpose:"在 PC 上用 robocopy /MIR 把 G:\\stage 分桶後的 chord JSONs 推回 V:\\data\\chords（前提：NUC 8800 已停）", group:"sync"},
+  {name:"migrate_shard_after_batch.bat", env:"PC", purpose:"在 PC 上把扁平 chord JSON 目錄（G:\\stage + dev repo data\\chords）原子搬入兩位元前綴分桶結構", group:"sync"},
+  {name:"backup_after_migration.bat", env:"PC", purpose:"分片遷移完後在 PC 端觸發 NUC 8800 跑一次 tier2 備份，建立分桶版本的第一個還原點", group:"sync"},
+
+  // batch processing
+  {name:"bat/batch/Run-ChordWorker-PC.bat", env:"PC", purpose:"在 PC（RTX 5080）上跑 BTC GPU 和弦偵測批次，掃 Y:\\ 與 Z:\\ 音樂庫（24 執行緒、6 GPU 並發）", group:"batch"},
+  {name:"bat/batch/Run-MelodyWorker-NUC.bat", env:"NUC", purpose:"在 NUC 上用 CPU pYIN 跑旋律擷取批次，掃 Y:\\ 與 Z:\\（4 執行緒，與 PC 和弦偵測分工）", group:"batch"},
+  {name:"bat/batch/Run-SuperWorker.bat", env:"PC", purpose:"在 PC 上跑 Phase 11 fast_mode 超級批次 worker（和弦+旋律一條龍），掃 Y:\\ 與 Z:\\", group:"batch"},
+  {name:"batch_beat_this_pc_startup.bat", env:"PC", purpose:"PC 開機後延遲 10 分鐘，用 RTX 5080 跑 beat_this 批次補齊 V:\\data\\chords 缺 beats_source=beat_this 的歌曲", group:"batch"},
+  {name:"run_beat_parallel.bat", env:"PC", purpose:"在 PC 上以 4 個 GPU worker 並行跑 beat_this 處理 F:\\MIDI-Library（實驗）", group:"batch"},
+  {name:"run_beat_this_local.bat", env:"PC", purpose:"在 PC 上對 G:\\stage 本地 SSD 的 chord JSONs 跑 beat_this（CPJKU 2024 GPU 節拍器，比 madmom 快 5-10×）", group:"batch"},
+  {name:"bat/batch/run_madmom_local.bat", env:"PC", purpose:"在 PC 上對 G:\\stage 本地 SSD 的 chord JSONs 跑 madmom 節拍器（音檔仍走 Y:\\/Z:\\ 本地碟）", group:"batch"},
+  {name:"bat/batch/run_madmom_z_drive.bat", env:"PC", purpose:"在 PC 上跑單一低優先序 madmom worker，僅處理 Z:\\ 音樂庫（chord JSONs 走 V:\\backend）", group:"batch"},
+  {name:"bat/batch/run_accompaniment_factory.bat", env:"NUC", purpose:"在 NUC 上跑伴奏批次工廠（Phase 11，含 Section/Pedal/Dynamics，L1+L2、Arpeggio+Block，12 執行緒）", group:"batch"},
+  {name:"bat/batch/run_accompaniment_fast.bat", env:"NUC", purpose:"在 NUC 上跑輕量伴奏批次（關 Pedal/Dynamics，L1+L2，Arpeggio+Block，16 執行緒）", group:"batch"},
+  {name:"bat/batch/run_accompaniment_full.bat", env:"NUC", purpose:"在 NUC 上跑全規格伴奏批次（L1+L2+L3 × 5 種風格 = 每首 15 檔，8 執行緒）", group:"batch"},
+  {name:"bat/batch/run_accompaniment_local.bat", env:"local-only", purpose:"在 PC 本地（c:\\Users\\hitea\\Claude\\LiveChord）跑 v2 伴奏引擎批次（12 執行緒），完成後再同步到 V:\\", group:"batch"},
+  {name:"run_hybrid_extraction.bat", env:"PC+NUC", purpose:"跑 Phase 12 Hybrid 擷取批次（Demucs 分軌 + Basic Pitch），補出有 chords.json 但缺 hybrid MIDI 的歌曲", group:"batch"},
+  {name:"run_rendering.bat", env:"PC", purpose:"在 PC 上用 FluidSynth 或 Keyscape 把 F:\\MIDI-Library 渲染成高解析 WAV", group:"batch"},
+  {name:"run_midi_filter.bat", env:"PC", purpose:"在 PC 上跑 Phase 0.5 MIDI 品質評分，把 F:\\MIDI-Library 中低於 60 分的檔案移到 F:\\MIDI-Trash", group:"batch"},
+  {name:"scan.bat", env:"PC+NUC", purpose:"執行 scan.py 對音樂庫做增量或全量掃描（預設增量）", group:"batch"},
+
+  // training
+  {name:"bat/train/train_ai.bat", env:"PC", purpose:"在 PC 上跑 Phase 13 Transformer 訓練（Tokenizer + Chord2Vec + Transformer，輸入 V:\\data\\chords）", group:"train"},
+  {name:"bat/train/train_section.bat", env:"PC", purpose:"在 PC 上跑 Phase 13.2 DL Section Tagger（BiLSTM）訓練", group:"train"},
+  {name:"bat/train/run_train.bat", env:"PC", purpose:"在 PC（CUDA）上訓練 Phase 2 Neural Arranger（F:\\MIDI-Library，50 epochs，batch 4）", group:"train"},
+  {name:"bat/train/run_generate.bat", env:"PC", purpose:"在 PC 上跑 AI Neural Arranger 端對端產生流程：依角色/和弦條件產 MIDI 並渲染 WAV", group:"train"},
+  {name:"train_refiner_1_extract.bat", env:"PC", purpose:"beat_refiner 訓練步驟 1/3：從 V:\\data\\chords 與 Y:\\/Z:\\ 音檔抽特徵到 G:\\livechord\\features（~60 GB）", group:"train"},
+  {name:"train_refiner_2_train.bat", env:"PC", purpose:"beat_refiner 訓練步驟 2/3：用 G:\\livechord\\features 訓 Compact Transformer，產 beat_refiner.pt", group:"train"},
+  {name:"train_refiner_3_deploy.bat", env:"PC", purpose:"beat_refiner 訓練步驟 3/3：把 G:\\livechord\\models 的權重複製到 V:\\data\\models（與 dev repo data\\models）", group:"train"},
+  {name:"bat/train/run_retrain_models.bat", env:"NUC", purpose:"在 NUC 端透過 HTTP POST 觸發 8800 的 /api/ai/retrain 重訓 Markov+Chord2Vec+Groove+Emission+Trans", group:"train"},
+
+  // misc / qa
+  {name:"bat/batch/run_qa_test.bat", env:"NUC", purpose:"在 NUC 的 V:\\backend 跑 qa_benchmark.py QA 戰測", group:"misc"},
+];
+
+function envBadge(env) {
+  const map = {"NUC":"nuc","PC":"pc","PC+NUC":"both","local-only":"local"};
+  const cls = map[env] || "outline";
+  return `<span class="badge ${cls}">${env}</span>`;
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
+function render() {
+  const groups = {startup:"bats-startup", sync:"bats-sync", batch:"bats-batch", train:"bats-train", misc:"bats-misc"};
+  const filter = document.querySelector(".filter-bar button.active").dataset.filter;
+  const q = (document.getElementById("batSearch").value || "").toLowerCase().trim();
+  let total = 0;
+  for (const k of Object.keys(groups)) {
+    const tbody = document.querySelector("#" + groups[k] + " tbody");
+    tbody.innerHTML = "";
+    const rows = BATS.filter(b => b.group === k)
+      .filter(b => filter === "all" || b.env === filter)
+      .filter(b => !q || b.name.toLowerCase().includes(q) || b.purpose.toLowerCase().includes(q));
+    rows.forEach(b => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td><code>${escapeHtml(b.name)}</code></td><td>${envBadge(b.env)}</td><td>${escapeHtml(b.purpose)}</td>`;
+      tbody.appendChild(tr);
+    });
+    total += rows.length;
+  }
+  document.getElementById("batCount").textContent = total + " 個（共 " + BATS.length + "）";
+}
+
+document.querySelectorAll(".filter-bar button").forEach(b => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll(".filter-bar button").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    render();
+  });
+});
+document.getElementById("batSearch").addEventListener("input", render);
+render();
+</script>
+
+</body>
+</html>

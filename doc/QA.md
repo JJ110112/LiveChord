@@ -71,6 +71,27 @@ Playwright（Chromium headless / MCP）預設**不 emulate `pointer: coarse`**�
 
 人工測手機時這些 media query **會正確 fire**，所以 Playwright QA 通過後仍要**真機 smoke test**（尤其動到 toolbar / chord-display-area / progress bar 位置時）。
 
+### 1.3 測試／暫存產出檔的固定存放位置
+
+> **動機**：過去測試輸出、smoke 結果、Playwright 截圖、ad-hoc 對拍紀錄等散落在 repo 根目錄、`backend/`、`scripts/` 旁邊，又沒有定期清理；既污染 `git status` 也讓人找不到正在用的測試證據。
+> **規則**：所有臨時／測試產出**只准進下列五個目錄**，每一條 path 都在 `.gitignore` 內（除少數 demo 範例例外）。AI 不得把暫存檔丟到 repo 根目錄或 source 樹其他位置。
+
+| 用途 | 固定路徑 | 命名規則 | 清理策略 |
+|------|----------|----------|----------|
+| 短期 scratch（log、smoke、單檔 JSON 對拍） | `tmp/<topic>/` 或 `tmp/<topic>_<YYYYMMDD>.log` | topic 用小寫底線分詞（`chroma_batch3`, `beat_spike`） | **>14 天**可清；新進 session 看到舊內容預設視為過期 |
+| Quality gate / 批次評測報告 | `reports/quality_gate_<topic>_<YYYYMMDD>/` | topic 必含**情境關鍵字**（`pop_longcard`, `jazz_threebeat`），結尾日期是必填 | **>30 天**可清；近 1 週的不可動，可能是當前 investigation |
+| Playwright / 人工 QA 截圖 | repo 根目錄，檔名 prefix 之一：`qa-*.png`、`mobile-*.png`、`editor-*.png`、`page-*.png`、`screenshot-*.png`、`ghost-keys-qa-*.png`；或 `.playwright-mcp/` | 必含日期 + 議題（`qa-jazz-bar-align-20260514.png`） | 任務結束 / PR 合併後即清；勿讓累積到根目錄超過 10 張 |
+| Neural arranger / 模型評估的 audio + MIDI | `eval_output/<YYYYMMDD>_<topic>/` | 同上 | **>30 天**可清 |
+| **NotebookLM hand-off** | `doc/for-notebooklm/YYYY-MM-DD-<topic>.md` | 用本系統日期前綴（見 CLAUDE.md「NotebookLM hand-off」） | 不自動清，使用者管理 |
+
+**反例（禁止）**：
+- 在 repo 根目錄丟 `log.txt`、`diff.txt`、`output.txt`、`test_out.txt` 等籠統檔名 —— 雖然 `*.txt` 已被 `.gitignore` 攔下，但會在 IDE 檔案樹永久浮著占視覺。要 dump 就進 `tmp/<topic>_<date>.log`
+- 在 `backend/` 或 `scripts/` 旁邊放 `test_xxx.py` ad-hoc 驗證腳本 —— 正式 unit test 進 `tests/`，一次性實驗腳本進 `scripts_test/`（已 gitignore）
+- Playwright MCP 截圖未加 prefix 就 `Take screenshot` —— 會以隨機檔名留在根目錄。**先設好 `filename` 參數**再呼叫
+- `reports/quality_gate/` 不帶 topic + 日期 —— 之後比較不同實驗條件時根本對不上來源
+
+**清理 SOP**：每次工作 session 開始時，AI 可以列出 `tmp/` 與 `reports/quality_gate_*` 過期清單，**請使用者確認後再刪**（這些雖 gitignored，但可能是進行中的 investigation 證據）。例外：明確標 `_smoke` / `_tmp_` / 早於今日 14 天的 log，可直接無徵詢刪除。
+
 ---
 
 ## 2. 和弦偵測準確度（核心 KPI）
