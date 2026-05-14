@@ -29,6 +29,7 @@ Prerequisites:
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import os
 import sys
@@ -149,13 +150,16 @@ def _detect_one(track_path: str, settings: dict) -> dict:
 
 
 def _missing_track_paths(from_manifest: str | None) -> list[str]:
-    """Resolve the work list — either every library track missing a chord
-    JSON, or the exact hashes recorded in a quarantine manifest."""
+    """Resolve the work list — every library track missing a chord JSON,
+    minus any persistent quarantine entries (so tracks that fail every
+    chunk don't loop forever)."""
     from chord_cache import song_hash
     from data_cache import get_library_tracks, get_chord_hash_set
+    from auto_worker import _load_quarantine
 
     library = get_library_tracks()
     have = get_chord_hash_set()
+    quarantined = set(_load_quarantine().keys())
 
     if from_manifest:
         manifest = json.loads(Path(from_manifest).read_text(encoding="utf-8"))
@@ -164,6 +168,8 @@ def _missing_track_paths(from_manifest: str | None) -> list[str]:
         for t in library:
             p = t.get("path")
             if not p:
+                continue
+            if p in quarantined:
                 continue
             h = song_hash(p)
             if h in target_hashes and h not in have:
@@ -174,6 +180,8 @@ def _missing_track_paths(from_manifest: str | None) -> list[str]:
     for t in library:
         p = t.get("path")
         if not p:
+            continue
+        if p in quarantined:
             continue
         h = song_hash(p)
         if h not in have:
@@ -237,17 +245,41 @@ def main() -> int:
                 tag = f" BPM {r['bpm']}" if r.get("bpm") else ""
                 snap_warn = " (no beat_snap)" if r.get("snap_error") else ""
                 print(f"[{i:>5}/{len(work)}] {elapsed_one:5.1f}s  OK "
-                      f"{r['n_chords']:>3} chords  key={r['key']:<3}{tag}{snap_warn}  {path}")
+                      f"{r['n_chords']:>3} chords  key={r['key']:<3}{tag}{snap_warn}  {path}",
+                      flush=True)
             else:
                 failed += 1
                 reason = r.get("reason", "")
-                print(f"[{i:>5}/{len(work)}] {elapsed_one:5.1f}s  FAIL {reason}  {path}")
-                if "no audio frames" in reason.lower() or "too short" in reason.lower():
-                    quarantined.append(path)
+                print(f"[{i:>5}/{len(work)}] {elapsed_one:5.1f}s  FAIL {reason}  {path}",
+                      flush=True)
+                # Persistent quarantine for known "this file will never
+                # decode" classes — otherwise the same broken track is the
+                # first item of every wrapper-loop chunk forever.
+                low = reason.lower()
+                if ("too short" in low and ("cqt" in low or "audio" in low)) \
+                   or "0 bytes" in low or "no audio frames" in low \
+                   or "lost sync" in low or "format not recognised" in low \
+                   or "format not recognized" in low \
+                   or "libsndfileerror" in low or "flac decoder" in low \
+                   or "file does not contain" in low:
+                    try:
+                        from auto_worker import _add_to_quarantine, _SHORT_AUDIO_REASON
+                        _add_to_quarantine(path, reason or _SHORT_AUDIO_REASON)
+                        quarantined.append(path)
+                    except Exception as qe:
+                        print(f"        (quarantine write failed: {qe})", flush=True)
 
             if progress_fp:
                 progress_fp.write(json.dumps(r, ensure_ascii=False) + "\n")
                 progress_fp.flush()
+
+            # In-chunk RAM hygiene. librosa / numpy / madmom accumulate
+            # internal buffers in the main process; without periodic GC
+            # we hit MemoryError on the host (not GPU) around ~2k tracks.
+            # gc.collect() alone is not always enough — the wrapper
+            # loop's --limit-based restart is the bulletproof safety net.
+            if i % 25 == 0:
+                gc.collect()
 
             if i % 25 == 0 or i == len(work):
                 elapsed = time.time() - t0
@@ -255,10 +287,36 @@ def main() -> int:
                 eta_s = (len(work) - i) / rate if rate > 0 else 0
                 print(f"--- {i}/{len(work)}  ok={ok} fail={failed}  "
                       f"{elapsed/60:.1f}min elapsed  {rate:.2f}/s  "
-                      f"ETA {eta_s/60:.1f}min ---")
+                      f"ETA {eta_s/60:.1f}min ---", flush=True)
+            # Coarse milestone every 250 tracks for external monitors / chat
+            # notifications. Use a distinct prefix so a grep filter on the
+            # log can pick these out without picking up per-25 lines.
+            if i % 250 == 0 or i == len(work):
+                elapsed = time.time() - t0
+                rate = i / elapsed if elapsed > 0 else 0
+                eta_s = (len(work) - i) / rate if rate > 0 else 0
+                print(f"=== MILESTONE {i}/{len(work)} ok={ok} fail={failed} "
+                      f"elapsed={elapsed/60:.1f}min rate={rate:.2f}/s "
+                      f"eta={eta_s/60:.0f}min ===", flush=True)
     finally:
         if progress_fp:
             progress_fp.close()
+
+    # Persist the chord_index changes — update_entry_from_file only
+    # touches the in-memory cache and relies on a final ensure_synced
+    # call to flush the dirty entries to disk. Without this, all
+    # accumulated index updates get discarded at interpreter exit
+    # (the atexit hook only saves when _save_state.dirty is True, and
+    # update_entry_from_file deliberately does not set that flag).
+    try:
+        import chord_cache as _cc
+        _cc.ensure_synced(force=True)
+        _cc._save_chord_index(force=True)
+        print(f"chord_index.json flushed ({len(_cc._chord_index_cache)} entries)",
+              flush=True)
+    except Exception as e:
+        print(f"WARN: chord_index flush failed: {type(e).__name__}: {e}",
+              flush=True)
 
     elapsed = time.time() - t0
     print()
