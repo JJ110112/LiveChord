@@ -22,30 +22,14 @@ def _normalize_name(name: str) -> str:
     return name
 
 
-def _extract_keywords(name: str) -> set:
-    """提取名稱中有意義的關鍵字（去掉短詞和常見噪音詞）"""
-    stop = {"the", "a", "an", "of", "in", "at", "on", "and", "or", "for",
-            "live", "official", "video", "music", "lyric", "remaster", "remastered",
-            "version", "studio", "mtv", "time", "aligned", "bpm", "chordify"}
-    words = set(_normalize_name(name).split())
-    return {w for w in words if len(w) > 1 and w not in stop and not w.isdigit()}
-
-
-def _midi_matches(song_name: str, midi_fname: str) -> bool:
-    """比對歌曲名與 MIDI 檔名是否匹配"""
-    sn = _normalize_name(song_name)
-    mn = _normalize_name(midi_fname.replace(".mid", "").replace(".midi", ""))
-    # 雙向子字串包含（兩邊都必須非空才比對）
-    if sn and mn and (sn in mn or mn in sn):
-        return True
-    # 關鍵字交集 >= 60% 的較短方
-    sk = _extract_keywords(song_name)
-    mk = _extract_keywords(midi_fname)
-    if not sk or not mk:
-        return False
-    overlap = len(sk & mk)
-    min_len = min(len(sk), len(mk))
-    return overlap >= max(2, min_len * 0.6)
+# Hardened track-name ↔ MIDI matcher lives in backend.midi_match — kept
+# in a dep-free module so it can be unit-tested without standing up the
+# whole API. The old loose substring matcher caused 10k false-positive
+# auto-imports (LiveChord-a7c); see backend/midi_match.py for the rules.
+from midi_match import (  # noqa: E402  — import below normalize helper
+    _midi_matches,
+    _extract_keywords,
+)
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends, Header, Request
 from pydantic import BaseModel
