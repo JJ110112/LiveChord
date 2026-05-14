@@ -1,6 +1,11 @@
 import unittest
 
-from backend.global_chord_arbiter import analyze_global_structure, apply_global_structure_corrections
+from backend.global_chord_arbiter import (
+    _viterbi_smooth_keys,
+    _window_key_map,
+    analyze_global_structure,
+    apply_global_structure_corrections,
+)
 
 
 class TestGlobalChordArbiter(unittest.TestCase):
@@ -457,6 +462,50 @@ class TestGlobalChordArbiter(unittest.TestCase):
         self.assertEqual(by_chord["C"], 4)
         self.assertIsNone(by_chord["D"])
         self.assertIsNone(by_chord["Gm"])
+
+
+class TestWindowKeySmoothing(unittest.TestCase):
+    def test_viterbi_absorbs_single_window_flicker(self):
+        # Three windows: prefer key 0 strongly at edges, key 5 marginally
+        # in the middle. With penalty=0.30 the middle window should be
+        # absorbed into key 0 (otherwise two transitions cost 0.60).
+        em = [
+            [1.20 if k == 0 else 0.50 for k in range(12)],
+            [0.95 if k == 0 else (1.00 if k == 5 else 0.40) for k in range(12)],
+            [1.20 if k == 0 else 0.50 for k in range(12)],
+        ]
+        path = _viterbi_smooth_keys(em, penalty=0.30)
+        self.assertEqual(path, [0, 0, 0])
+
+    def test_viterbi_keeps_sustained_modulation(self):
+        # First two windows in key 0, next two in key 5. Each transition
+        # costs 0.30; the sustained 5-window pair (2 × 1.20 = 2.40) beats
+        # staying in 0 (2 × 0.40 = 0.80) by a wide margin.
+        em = [
+            [1.20 if k == 0 else 0.40 for k in range(12)],
+            [1.20 if k == 0 else 0.40 for k in range(12)],
+            [0.40 if k == 0 else (1.20 if k == 5 else 0.30) for k in range(12)],
+            [0.40 if k == 0 else (1.20 if k == 5 else 0.30) for k in range(12)],
+        ]
+        path = _viterbi_smooth_keys(em, penalty=0.30)
+        self.assertEqual(path, [0, 0, 5, 5])
+
+    def test_bossa_progression_does_not_over_segment(self):
+        # Vem-style: 24s windows full of C#m / G#7 / F#m / B7 / Em / A / D
+        # vocabulary. Each window touches secondary dominants of different
+        # scale degrees, but the song is fundamentally in one key
+        # neighborhood. The smoothed output must not show one new key per
+        # 24s window — collapse to at most a handful.
+        chords = []
+        t = 0.0
+        # Eight 24s windows, each cycling through bossa vocabulary.
+        cycle = ["C#m", "G#7", "F#m", "B7", "Em", "A", "D", "C#m"]
+        while t < 192.0:
+            for i, name in enumerate(cycle):
+                chords.append({"time": t + i * 3.0, "end": t + (i + 1) * 3.0, "chord": name})
+            t += 24.0
+        wins = _window_key_map(chords)
+        self.assertLessEqual(len(wins), 3, f"bossa over-segmented: {wins}")
 
 
 if __name__ == "__main__":

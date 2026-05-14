@@ -28,6 +28,13 @@ _LOW_CONF_CV = 0.45
 _LOW_CONF_MIN_GAP_SEC = 0.9
 _DISPLAY_BPM_MIN = 40.0
 _DISPLAY_BPM_MAX = 220.0
+_KEY_WINDOW_SEC = 24.0
+# Viterbi transition penalty for windowed key smoothing. Each key change
+# must be justified by ≥this much extra emission score; otherwise the
+# window is absorbed into the surrounding key. Tuned so genuine
+# modulations (≥30s in a new key) survive while bossa/jazz tonicizations
+# in a single 24s window collapse to the home key. See bd:LiveChord-x19.
+_KEY_VITERBI_PENALTY = 0.30
 
 
 def _float(v, default: float = 0.0) -> float:
@@ -218,22 +225,81 @@ def _local_key(chord_names: List[str]) -> Optional[Dict]:
     return {"key": _root_name(best[0], prefer_flats), "score": round(best[1], 3)}
 
 
-def _window_key_map(chords: List[Dict], window_sec: float = 24.0) -> List[Dict]:
+def _window_key_emissions(chord_names: List[str]) -> List[float]:
+    """Score each of 12 candidate roots (interpreted as major key) for one window."""
+    return [_key_score(chord_names, pc) + _template_bonus(chord_names, pc) for pc in range(12)]
+
+
+def _viterbi_smooth_keys(emissions: List[List[float]], penalty: float) -> List[int]:
+    """Pick the pc-per-window path maximizing sum(emissions) - penalty * transitions.
+
+    Windowed key estimation taken alone over-segments jazz/bossa vocabulary
+    (every secondary dominant tonicizes a different scale degree). Viterbi
+    smoothing with a transition penalty collapses unstable single-window
+    flickers into the surrounding stable key while still admitting genuine
+    modulations that persist for multiple windows.
+    """
+    if not emissions:
+        return []
+    n = len(emissions)
+    INF = float("-inf")
+    dp = [[INF] * 12 for _ in range(n)]
+    bp = [[0] * 12 for _ in range(n)]
+    for k in range(12):
+        dp[0][k] = emissions[0][k]
+    for i in range(1, n):
+        for k in range(12):
+            best = INF
+            arg = 0
+            for j in range(12):
+                v = dp[i - 1][j] + (0.0 if j == k else -penalty)
+                if v > best:
+                    best = v
+                    arg = j
+            dp[i][k] = best + emissions[i][k]
+            bp[i][k] = arg
+    last = max(range(12), key=lambda k: dp[-1][k])
+    path = [0] * n
+    path[-1] = last
+    for i in range(n - 1, 0, -1):
+        last = bp[i][last]
+        path[i - 1] = last
+    return path
+
+
+def _window_key_map(chords: List[Dict], window_sec: float = _KEY_WINDOW_SEC,
+                    penalty: float = _KEY_VITERBI_PENALTY) -> List[Dict]:
     if not chords:
         return []
     end = max(_float(c.get("end"), _float(c.get("time"))) for c in chords)
-    windows: List[Dict] = []
+    raw: List[Dict] = []
     t = 0.0
     while t < end:
         names = [c["chord"] for c in chords if t <= _float(c.get("time")) < t + window_sec]
         if len(names) >= 3:
-            lk = _local_key(names)
-            if lk:
-                windows.append({"start": round(t, 3), "end": round(min(end, t + window_sec), 3), **lk})
+            raw.append({
+                "start": round(t, 3),
+                "end": round(min(end, t + window_sec), 3),
+                "emissions": _window_key_emissions(names),
+                "prefer_flats": any("b" in n[:2] for n in names),
+            })
         t += window_sec
-    # Merge adjacent same-key windows.
+    if not raw:
+        return []
+    if len(raw) >= 2:
+        path = _viterbi_smooth_keys([w["emissions"] for w in raw], penalty)
+    else:
+        path = [max(range(12), key=lambda k: raw[0]["emissions"][k])]
+    smoothed: List[Dict] = []
+    for w, pc in zip(raw, path):
+        smoothed.append({
+            "start": w["start"],
+            "end": w["end"],
+            "key": _root_name(pc, w["prefer_flats"]),
+            "score": round(w["emissions"][pc], 3),
+        })
     merged: List[Dict] = []
-    for w in windows:
+    for w in smoothed:
         if merged and merged[-1]["key"] == w["key"]:
             merged[-1]["end"] = w["end"]
             merged[-1]["score"] = round((merged[-1]["score"] + w["score"]) / 2, 3)
@@ -1441,7 +1507,12 @@ def analyze_global_structure(chord_data: Dict) -> Dict:
     if intro:
         meta["hints"].append(intro)
 
-    meta["local_key_windows"] = _window_key_map(chords)
+    # Key estimation weights each chord occurrence equally — pass the raw
+    # un-deduped list so long-held chords carry their full musical weight.
+    # Other arbiter probes (intro cycle, modulated cycles, two-beat grammar)
+    # still use the deduped `chords` because they're shape-matchers, not
+    # statistical estimators.
+    meta["local_key_windows"] = _window_key_map(chord_data.get("chords") or [])
     if len(meta["local_key_windows"]) >= 2:
         changes = []
         prev = meta["local_key_windows"][0]
