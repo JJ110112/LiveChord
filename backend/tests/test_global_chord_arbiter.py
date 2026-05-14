@@ -218,6 +218,28 @@ class TestGlobalChordArbiter(unittest.TestCase):
             "stable_downbeat_display_quantize",
         )
 
+    def test_jazz_three_beat_grid_quantizes_to_three_dot_cards(self):
+        sheet = {
+            "path": "Jazz/Artist/Three Beat Tune.flac",
+            "bpm": 115.4,
+            "downbeats": [0.0, 1.58, 3.16, 4.74, 6.32, 7.90, 9.48, 11.06, 12.64, 14.22],
+            "chords": [
+                {"time": 0.0, "end": 1.58, "chord": "Bbmaj7"},
+                {"time": 1.58, "end": 3.16, "chord": "Eb7"},
+                {"time": 3.16, "end": 4.74, "chord": "Am7b5"},
+                {"time": 4.74, "end": 6.32, "chord": "D7"},
+            ],
+        }
+
+        apply_global_structure_corrections(sheet)
+
+        self.assertEqual([c["chord"] for c in sheet["chords"]], ["Bbmaj7", "Eb7", "Am7b5", "D7"])
+        self.assertEqual([c.get("display_beats") for c in sheet["chords"]], [3, 3, 3, 3])
+        corr = sheet["global_arbiter_meta"]["corrections"][-1]
+        self.assertEqual(corr["display_beats"], 3)
+        self.assertEqual(corr["gap_factor"], 1)
+        self.assertAlmostEqual(corr["beats_per_gap"], 3.0, places=1)
+
     def test_preserves_explicit_meter_display_bpm(self):
         sheet = {
             "bpm": 47.62,

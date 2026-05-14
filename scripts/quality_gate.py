@@ -600,6 +600,12 @@ def main() -> int:
     ap.add_argument("--sample", type=int, default=1000, help="Total sample size; <=0 audits all")
     ap.add_argument("--seed", type=int, default=20260511)
     ap.add_argument("--exclude", nargs="*", default=sorted(DEFAULT_EXCLUDE))
+    ap.add_argument(
+        "--include-category",
+        nargs="*",
+        default=None,
+        help="Optional first-level library categories to audit, e.g. Jazz POP. Names are normalized like report categories.",
+    )
     args = ap.parse_args()
 
     library_root = Path(args.library_root)
@@ -609,6 +615,9 @@ def main() -> int:
 
     rng = random.Random(args.seed)
     by_cat = _iter_audio_by_category(library_root, {x.lower() for x in args.exclude})
+    if args.include_category:
+        wanted = {_norm_category(x) for x in args.include_category}
+        by_cat = {cat: tracks for cat, tracks in by_cat.items() if cat in wanted}
     counts = {cat: len(tracks) for cat, tracks in by_cat.items()}
     sample = _allocate_sample(by_cat, args.sample, rng)
 
@@ -618,6 +627,7 @@ def main() -> int:
     summary["library_root"] = str(library_root)
     summary["data_root"] = str(data_root)
     summary["excluded_categories"] = args.exclude
+    summary["included_categories"] = args.include_category or []
     summary["category_counts"] = counts
 
     (out_dir / "quality_summary.json").write_text(

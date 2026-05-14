@@ -997,7 +997,7 @@ def _apply_modulated_grid_repairs(chords: List[Dict], candidates: List[Dict]) ->
     return out, corrections
 
 
-def _stable_downbeat_gap(downbeats: List[float], bpm: float = 0.0) -> Optional[Dict]:
+def _stable_downbeat_gap(downbeats: List[float], bpm: float = 0.0, path: str = "") -> Optional[Dict]:
     pts = sorted(float(v) for v in downbeats if v is not None)
     gaps = [pts[i + 1] - pts[i] for i in range(len(pts) - 1) if pts[i + 1] - pts[i] > 0.5]
     if len(gaps) < 8:
@@ -1010,16 +1010,35 @@ def _stable_downbeat_gap(downbeats: List[float], bpm: float = 0.0) -> Optional[D
     if cv > 0.18:
         return None
     factor = 1
+    beats_per_gap = (bpm * med / 60.0) if bpm > 0 else 0.0
+    is_jazz_path = str(path or "").replace("\\", "/").lower().startswith("jazz/")
     # Acoustic guitar ballads often make beat trackers lock to triplet/sub-beat
     # pulses. When stored BPM is implausibly high but downbeats are steady at a
     # half-bar distance, treat two downbeat gaps as the musical 4/4 bar.
-    if bpm >= 150.0 and 1.35 <= med <= 2.4:
+    if is_jazz_path and 2.55 <= beats_per_gap <= 3.35:
+        factor = 1
+    elif bpm >= 150.0 and 1.35 <= med <= 2.4:
         factor = 2
     elif bpm >= 80.0 and 1.35 <= med <= 2.4:
-        beats_per_gap = bpm * med / 60.0
         if 2.55 <= beats_per_gap <= 3.35:
             factor = 2
-    return {"raw_gap": med, "bar_gap": med * factor, "factor": factor, "cv": cv}
+    bar_gap = med * factor
+    card_beats = 4
+    beats_per_bar = (bpm * bar_gap / 60.0) if bpm > 0 else 0.0
+    # Jazz and waltz material often has a stable 3-beat downbeat grid. The
+    # POP quantizer used to stamp those cards as 4-dot bars, which made the
+    # quality gate report hundreds of visible one-bar fragments.
+    if factor == 1 and 2.55 <= beats_per_gap <= 3.35:
+        card_beats = 3
+    return {
+        "raw_gap": med,
+        "bar_gap": bar_gap,
+        "factor": factor,
+        "cv": cv,
+        "card_beats": card_beats,
+        "beats_per_gap": beats_per_gap,
+        "beats_per_bar": beats_per_bar,
+    }
 
 
 def _compound_12_8_half_bar_gap(chords: List[Dict], downbeats: List[float], bpm: float = 0.0) -> Optional[Dict]:
@@ -1087,7 +1106,7 @@ def _compound_12_8_half_bar_gap(chords: List[Dict], downbeats: List[float], bpm:
     }
 
 
-def _merge_same_root_full_bar_fragments(chords: List[Dict], bar_gap: float) -> Tuple[List[Dict], int]:
+def _merge_same_root_full_bar_fragments(chords: List[Dict], bar_gap: float, card_beats: int = 4) -> Tuple[List[Dict], int]:
     out: List[Dict] = []
     idx = 0
     merged = 0
@@ -1107,7 +1126,7 @@ def _merge_same_root_full_bar_fragments(chords: List[Dict], bar_gap: float) -> T
             and cur_end <= _float(nxt.get("time")) + 0.08
         ):
             cur["end"] = round(next_end, 3)
-            cur["display_beats"] = 4
+            cur["display_beats"] = card_beats
             cur["display_arbiter"] = "stable-downbeat-merge"
             cur["global_arbiter"] = cur.get("global_arbiter") or "stable-downbeat-quantize"
             out.append(cur)
@@ -1137,7 +1156,7 @@ def _looks_like_half_bar_downbeats(chords: List[Dict], raw_gap: float) -> bool:
     return full_bar_like >= 8 and full_bar_like >= half_bar_like * 1.4
 
 
-def _split_stable_full_bar_holds(chords: List[Dict], bar_gap: float) -> Tuple[List[Dict], int]:
+def _split_stable_full_bar_holds(chords: List[Dict], bar_gap: float, card_beats: int = 4) -> Tuple[List[Dict], int]:
     repeated_near_bar_one_beat_tails = 0
     if bar_gap > 0:
         for chord in chords:
@@ -1152,7 +1171,7 @@ def _split_stable_full_bar_holds(chords: List[Dict], bar_gap: float) -> Tuple[Li
             tail = max(0.0, end - (start + bar_gap))
             if tail <= 0:
                 continue
-            tail_beats = max(1, min(3, int(round((tail / bar_gap) * 4.0))))
+            tail_beats = max(1, min(max(1, card_beats - 1), int(round((tail / bar_gap) * float(card_beats)))))
             if tail_beats == 1:
                 repeated_near_bar_one_beat_tails += 1
 
@@ -1188,13 +1207,13 @@ def _split_stable_full_bar_holds(chords: List[Dict], bar_gap: float) -> Tuple[Li
                 )
             ):
                 item = dict(chord)
-                item["display_beats"] = 4
+                item["display_beats"] = card_beats
                 item["display_arbiter"] = "stable-downbeat-near-bar-hold"
                 item["global_arbiter"] = item.get("global_arbiter") or "stable-downbeat-quantize"
                 out.append(item)
                 continue
             for seg_start, seg_end, beats in (
-                (start, first_end, 4),
+                (start, first_end, card_beats),
                 (first_end, end, tail_beats),
             ):
                 item = dict(chord)
@@ -1215,7 +1234,7 @@ def _split_stable_full_bar_holds(chords: List[Dict], bar_gap: float) -> Tuple[Li
             item = dict(chord)
             item["time"] = round(start + step * i, 3)
             item["end"] = round(end if i == bars - 1 else start + step * (i + 1), 3)
-            item["display_beats"] = 4
+            item["display_beats"] = card_beats
             item["display_arbiter"] = "stable-downbeat-long-hold"
             item["global_arbiter"] = item.get("global_arbiter") or "stable-downbeat-quantize"
             out.append(item)
@@ -1223,8 +1242,8 @@ def _split_stable_full_bar_holds(chords: List[Dict], bar_gap: float) -> Tuple[Li
     return out, split_count
 
 
-def _apply_downbeat_display_quantization(chords: List[Dict], downbeats: List[float], bpm: float = 0.0) -> Tuple[List[Dict], Optional[Dict]]:
-    gap_info = _stable_downbeat_gap(downbeats, bpm)
+def _apply_downbeat_display_quantization(chords: List[Dict], downbeats: List[float], bpm: float = 0.0, path: str = "") -> Tuple[List[Dict], Optional[Dict]]:
+    gap_info = _stable_downbeat_gap(downbeats, bpm, path)
     if not gap_info:
         gap_info = _compound_12_8_half_bar_gap(chords, downbeats, bpm)
     if not gap_info:
@@ -1232,8 +1251,9 @@ def _apply_downbeat_display_quantization(chords: List[Dict], downbeats: List[flo
     if gap_info["factor"] == 1 and _looks_like_half_bar_downbeats(chords, gap_info["raw_gap"]):
         gap_info = {**gap_info, "bar_gap": gap_info["raw_gap"] * 2, "factor": 2}
     bar_gap = gap_info["bar_gap"]
-    out, merged = _merge_same_root_full_bar_fragments([dict(c) for c in chords], bar_gap)
-    out, split_holds = _split_stable_full_bar_holds(out, bar_gap)
+    card_beats = int(gap_info.get("card_beats") or 4)
+    out, merged = _merge_same_root_full_bar_fragments([dict(c) for c in chords], bar_gap, card_beats)
+    out, split_holds = _split_stable_full_bar_holds(out, bar_gap, card_beats)
     changed = 0
     for c in out:
         if c.get("display_beats"):
@@ -1248,7 +1268,7 @@ def _apply_downbeat_display_quantization(chords: List[Dict], downbeats: List[flo
         if 0.32 <= ratio <= 0.70:
             beat_count = 2
         elif 0.80 <= ratio <= 1.36:
-            beat_count = 4
+            beat_count = card_beats
         if beat_count:
             c["display_beats"] = beat_count
             c["display_arbiter"] = "stable-downbeat-quantize"
@@ -1261,6 +1281,9 @@ def _apply_downbeat_display_quantization(chords: List[Dict], downbeats: List[flo
         "bar_gap": round(bar_gap, 3),
         "raw_gap": round(gap_info["raw_gap"], 3),
         "gap_factor": gap_info["factor"],
+        "display_beats": card_beats,
+        "beats_per_gap": round(gap_info.get("beats_per_gap") or 0.0, 3),
+        "beats_per_bar": round(gap_info.get("beats_per_bar") or 0.0, 3),
         "cards": changed,
         "merged_cards": merged,
         "split_long_holds": split_holds,
@@ -1358,6 +1381,7 @@ def apply_global_structure_corrections(chord_data: Dict, meta: Optional[Dict] = 
             chords,
             [_float(v) for v in (chord_data.get("downbeats") or [])],
             _float(chord_data.get("bpm")),
+            str(chord_data.get("path") or ""),
         )
         if quant_correction:
             corrections.append(quant_correction)
