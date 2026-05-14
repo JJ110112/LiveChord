@@ -78,6 +78,60 @@ RATINGS_FILE = DATA_DIR / "ratings.json"
 _ratings_lock = Lock()
 
 
+def _float(v, default: float = 0.0) -> float:
+    try:
+        return float(v)
+    except Exception:
+        return default
+
+
+def _audio_duration_for_path(path: str) -> float:
+    if not path or path.startswith("__"):
+        return 0.0
+    try:
+        full = resolve_path(path)
+        if not full or not os.path.isfile(full):
+            return 0.0
+        from mutagen import File as MutagenFile
+        audio = MutagenFile(full)
+        if audio is not None and hasattr(audio, "info") and hasattr(audio.info, "length"):
+            return float(audio.info.length or 0.0)
+    except Exception:
+        return 0.0
+    return 0.0
+
+
+def _suppress_stale_legacy_timeline_for_serve(data: dict, request_path: str = "") -> bool:
+    """Hide legacy chord charts whose timeline plainly belongs to another file."""
+    source = str(data.get("source") or "").lower()
+    if source not in {"midi", "chordify"}:
+        return False
+    chords = data.get("chords") or []
+    if not chords:
+        return False
+    max_end = max(
+        _float(c.get("end"), _float(c.get("time")))
+        for c in chords
+        if isinstance(c, dict)
+    )
+    path = request_path or str(data.get("path") or "")
+    duration = _float(data.get("duration")) or _audio_duration_for_path(path)
+    if duration <= 0 or max_end <= max(duration + 8.0, duration * 1.35):
+        return False
+    data["stale_timeline_meta"] = {
+        "applied": True,
+        "reason": "legacy-source-exceeds-audio-duration",
+        "source": source,
+        "audio_duration": round(duration, 3),
+        "max_chord_end": round(max_end, 3),
+        "original_chord_count": len(chords),
+    }
+    data["chords"] = []
+    data["key_changes"] = None
+    data["keys"] = None
+    return True
+
+
 def _load_ratings() -> dict:
     if not RATINGS_FILE.is_file():
         return {}
@@ -270,6 +324,8 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
     _apply_requested_beat_source(data, official_file, beat_source)
     data["exists"] = True
     data["current_version"] = "official" if is_fallback or not version else version
+    if _suppress_stale_legacy_timeline_for_serve(data, path):
+        return data
     maybe_apply_structural_bpm_correction_for_serve(data)
     maybe_phase_correct_for_serve(data) # rewrite irregular downbeats[] to regular grid
     maybe_analyze_global_structure_for_serve(data) # section-level diagnostic hints
@@ -289,6 +345,8 @@ async def get_chords_by_hash(hash: str = Query(..., min_length=8, max_length=16)
     data = json.loads(chords_file.read_text(encoding="utf-8"))
     _apply_requested_beat_source(data, chords_file, beat_source)
     data["exists"] = True
+    if _suppress_stale_legacy_timeline_for_serve(data):
+        return data
     maybe_apply_structural_bpm_correction_for_serve(data)
     maybe_phase_correct_for_serve(data)
     maybe_analyze_global_structure_for_serve(data)

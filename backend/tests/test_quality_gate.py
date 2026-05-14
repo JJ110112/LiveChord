@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.quality_gate import _visible_fragment_risk, _display_dot_count
+from scripts.quality_gate import _visible_fragment_risk, _display_dot_count, _is_stale_legacy_timeline
 
 
 class TestQualityGate(unittest.TestCase):
@@ -34,6 +34,12 @@ class TestQualityGate(unittest.TestCase):
         chord = {"time": 0.0, "end": 12.0, "chord": "Bm", "display_beats": 4}
 
         self.assertEqual(_display_dot_count(chord, bpm, 4), 4)
+
+    def test_legacy_timeline_beyond_audio_duration_is_stale(self):
+        chords = [{"time": 442.7, "end": 444.48, "chord": "Dmaj7"}]
+
+        self.assertTrue(_is_stale_legacy_timeline("midi", chords, 153.88))
+        self.assertFalse(_is_stale_legacy_timeline("btc", chords, 153.88))
 
 
 if __name__ == "__main__":

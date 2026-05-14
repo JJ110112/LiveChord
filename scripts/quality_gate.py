@@ -176,6 +176,31 @@ def _float(v: Any, default: float = 0.0) -> float:
         return default
 
 
+def _audio_duration(path: Path) -> float:
+    try:
+        from mutagen import File as MutagenFile
+        audio = MutagenFile(path)
+        if audio is not None and hasattr(audio, "info") and hasattr(audio.info, "length"):
+            return float(audio.info.length or 0.0)
+    except Exception:
+        return 0.0
+    return 0.0
+
+
+def _max_chord_end(chords: List[Dict[str, Any]]) -> float:
+    return max(
+        (_float(c.get("end"), _float(c.get("time"))) for c in chords if isinstance(c, dict)),
+        default=0.0,
+    )
+
+
+def _is_stale_legacy_timeline(source: str, chords: List[Dict[str, Any]], duration: float) -> bool:
+    if source not in {"midi", "chordify"} or duration <= 0 or not chords:
+        return False
+    max_end = _max_chord_end(chords)
+    return max_end > max(duration + 8.0, duration * 1.35)
+
+
 def _display_dot_count(chord: Dict[str, Any], bpm: float, bpb: int = 4) -> int:
     """Approximate player.js _virtualBeats for quality scoring.
 
@@ -320,6 +345,32 @@ def _score_track(track: Track, data_root: Path) -> Dict[str, Any]:
     raw = _load_json(chord_path)
     if not raw:
         _issue(issues, "invalid_json", "severe", "failed to parse chord json")
+        row.update(_finalize(row, issues, {}))
+        return row
+
+    raw_chords = raw.get("chords") or []
+    raw_source = raw.get("source") or ""
+    duration = _audio_duration(track.abs_path)
+    if _is_stale_legacy_timeline(raw_source, raw_chords, duration):
+        max_end = _max_chord_end(raw_chords)
+        row.update({
+            "source": raw_source,
+            "key": raw.get("key") or "",
+            "bpm": round(_float(raw.get("bpm")), 2) if raw.get("bpm") else "",
+            "display_bpm": "",
+            "beats_source": raw.get("beats_source") or "",
+            "n_chords": len(raw_chords),
+            "n_beats": len(raw.get("beats") or []),
+            "n_downbeats": len(raw.get("downbeats") or []),
+            "max_card_beats": "",
+        })
+        _issue(issues, "legacy_source", "warn", f"source={raw_source}")
+        _issue(
+            issues,
+            "stale_timeline",
+            "severe",
+            f"legacy chord timeline ends at {max_end:.1f}s but audio is {duration:.1f}s",
+        )
         row.update(_finalize(row, issues, {}))
         return row
 

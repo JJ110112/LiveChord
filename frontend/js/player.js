@@ -6705,8 +6705,9 @@
     const baseKeyRaw = shift === 0 ? chordData.key : transposeChord(chordData.key, shift);
     const baseKey = _displayKey(baseKeyRaw);
 
-    // Detect per-section key changes & mode. Human section annotations often
-    // do not carry keys, so fall back to the global arbiter's key windows.
+    // Detect per-section key changes & mode. The global arbiter's
+    // local_key_windows are diagnostic key-estimation windows, not confirmed
+    // modulations; do not display them as a key-change run.
     if (sectionData && sectionData.sections) {
       const globalIsMajor = !baseKey.endsWith("m");
       const globalRoot = baseKey.replace(/m$/, "");
@@ -6733,16 +6734,6 @@
         }))
         .filter(w => w.key);
       const arbiter = chordData && chordData.global_arbiter_meta;
-      const arbiterKeyWindows = (arbiter && Array.isArray(arbiter.local_key_windows))
-        ? arbiter.local_key_windows
-          .filter(w => w && w.key)
-          .map(w => ({
-            start: Number(w.start) || 0,
-            end: Number(w.end) || Infinity,
-            key: normalizeShifted(w.key),
-          }))
-          .filter(w => w.key)
-        : [];
       const modulationCandidates = (arbiter && Array.isArray(arbiter.modulation_candidates))
         ? arbiter.modulation_candidates
           .filter(c => c && c.to)
@@ -6752,7 +6743,7 @@
             to: normalizeShifted(c.to),
           }))
         : [];
-      const keyWindows = sectionKeyWindows.length ? sectionKeyWindows : arbiterKeyWindows;
+      const keyWindows = sectionKeyWindows;
 
       // Filter section-derived keys: key must persist 2+ consecutive sections.
       // Arbiter windows are already sustained song-level key regions.
@@ -6768,8 +6759,6 @@
             pushUniqueRoot(stable, secKeys[i]);
           }
         }
-      } else if (arbiterKeyWindows.length) {
-        arbiterKeyWindows.forEach(w => pushUniqueRoot(stable, w.key));
       } else if (modulationCandidates.length) {
         const first = modulationCandidates[0];
         pushUniqueRoot(stable, first.from || baseKey);
