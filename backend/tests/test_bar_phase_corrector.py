@@ -121,5 +121,49 @@ class TestPhaseCorrectorFragmentGuard(unittest.TestCase):
         self.assertEqual(res["bpb_after"], 3)
 
 
+    def test_rejects_marginal_3beat_candidate_for_noisy_4_4(self):
+        # Mirrors a Beegie Adair / Diana Krall failure case from the
+        # 2026-05-15 jazz quality gate. The current downbeat track
+        # has median 4-beat gaps (so the song is really in 4/4), but
+        # beat_this noise drove cv above the old stable_4_4 cv<0.08
+        # threshold. The search would find a 3-beat candidate that
+        # gains only a fraction over the current alignment — the
+        # cross-meter gate must require ≥0.12 gain, so anything below
+        # that should NOT flip the song to 3/4.
+        # Verified against the actual production chord JSON for
+        # "Why Don't You Do Right" (hash 7a63a04e280e):
+        #   current_bpb_est=4.04, candidate bpb=3, align +0.055.
+        # That song must stay 4/4.
+        bpm = 130.4
+        spb = 60.0 / bpm
+        bar4 = 4 * spb
+        beats = [round(i * spb, 3) for i in range(256)]
+        # Build downbeats whose median gap is solidly 4-beat (1.84s),
+        # but with several intra-bar entries that bump cv above 0.08
+        # AND lower the current alignment to ~0.23 (matching prod).
+        clean = [round(i * bar4, 3) for i in range(56)]
+        # Inject mostly-near-bar drift so search finds a 3-beat phase
+        # that aligns marginally better but not by much.
+        noise = [round(c + 0.32, 3) for c in clean[8:16]]
+        downbeats = sorted(set(clean + noise))
+        # Chords drift just enough to make 3-beat phase tempting but
+        # not overwhelming.
+        chords = []
+        for i, t in enumerate(clean):
+            chords.append({
+                "time": t,
+                "end": round(t + bar4, 3),
+                "chord": ["Dm", "G7", "C", "A7"][i % 4],
+            })
+        data = {"chords": chords, "beats": beats, "downbeats": downbeats, "bpm": bpm}
+
+        res = correct_phase(data)
+
+        if res.get("bpb_after") == 3 and res.get("applied"):
+            self.fail(
+                f"3-beat candidate adopted for what should be a 4/4 grid: {res['reason']}"
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

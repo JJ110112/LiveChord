@@ -33,6 +33,17 @@ _ALIGN_TOL_SEC = 0.10
 # already roughly correct.
 _MIN_GAIN = 0.05
 
+# When the candidate proposes switching the *meter class* (4-beat bar ↔
+# 3-beat bar ↔ 6-beat bar), require a much larger gain. ~22% of Jazz
+# quality-gate failures (2026-05-15 report) came from this gate being
+# too loose: noisy beat_this downbeats inflated cv on real 4/4 jazz
+# tracks (Beegie Adair, Diana Krall, Acoustic Alchemy) until
+# stable_current_4_4's cv<0.08 check failed, then a 3-beat candidate
+# squeaked past _MIN_GAIN=0.05 with align gains as small as 0.028 and
+# rewrote the whole song's downbeats to a 3/4 grid. Phase-only fixes
+# within the same meter still use the lower threshold.
+_CROSS_METER_MIN_GAIN = 0.12
+
 # Pre-flight gates — these mirror bar_arbitrator's gates so behaviour is
 # consistent across the two layers.
 _MIN_CHORD_CHANGES = 8       # need enough boundary signal to score reliably
@@ -384,6 +395,31 @@ def correct_phase(chord_data: Dict) -> Dict:
         )
         return result
 
+    # Meter-class classifier driven by the MEDIAN downbeat gap. Robust to
+    # noisy intra-bar downbeats from beat_this (jazz piano often gets
+    # phantom half-bar / 1-beat downbeats that wreck cv but leave the
+    # median solidly on the true bar). When the median says "current grid
+    # is class N" and the candidate proposes class M ≠ N, raise the gain
+    # bar significantly so a 0.05 trickle can't flip a 4/4 jazz tune to
+    # 3/4 (the failure mode behind ~22% of Jazz quality-gate failures on
+    # 2026-05-15: Beegie Adair, Diana Krall, Acoustic Alchemy etc.).
+    def _meter_class(est: float) -> int:
+        if 3.5 <= est <= 4.5:
+            return 4
+        if 2.6 <= est < 3.5:
+            return 3
+        if 5.5 <= est <= 6.5:
+            return 6
+        return 0  # ambiguous / out-of-range
+
+    current_meter_class = _meter_class(current_bpb_est)
+    candidate_meter_class = _meter_class(float(bpb))
+    cross_meter = (
+        current_meter_class != 0
+        and candidate_meter_class != 0
+        and current_meter_class != candidate_meter_class
+    )
+
     # Candidate grids do not need to be perfect when the current grid is
     # obviously worse. This is common in POP songs where beat_this found stable
     # beats but the downbeat phase is one beat late: rejecting the candidate
@@ -398,13 +434,17 @@ def correct_phase(chord_data: Dict) -> Dict:
         and best_align >= _MIN_BEST_ALIGN
     )
 
-    # Path A — clear alignment improvement
-    if align_gain >= _MIN_GAIN and fragment_ok:
+    # Path A — clear alignment improvement.
+    # Cross-meter switches must clear the higher bar; same-meter phase
+    # fixes still go through with the original _MIN_GAIN.
+    required_gain = _CROSS_METER_MIN_GAIN if cross_meter else _MIN_GAIN
+    if align_gain >= required_gain and fragment_ok:
         new_grid = _grid_from_phase(beats, phase, bpb)
         result["applied"] = True
         result["downbeats_after"] = new_grid
+        gain_tag = "cross-meter" if cross_meter else "phase-fix"
         result["reason"] = (
-            f"phase-fix-gain bpb={bpb} phase={phase} "
+            f"{gain_tag}-gain bpb={bpb} phase={phase} "
             f"align {current_align:.2f}->{best_align:.2f}"
         )
         return result
@@ -423,7 +463,19 @@ def correct_phase(chord_data: Dict) -> Dict:
         )
         return result
 
-    # Path B — current is messy, regular grid is similarly aligned
+    # Path B — current is messy, regular grid is similarly aligned.
+    # Cross-meter switches are NOT allowed via Path B: the messy-cv
+    # gate fires too easily for noisy jazz downbeats whose median is
+    # still solidly in one meter class. Stay in-class here; if the
+    # actual meter is different, Path A's higher-gain requirement is
+    # the right place to clear that bar.
+    if cross_meter:
+        result["reason"] = (
+            f"cross-meter-rejected cur~{current_bpb_est:.2f}/{current_meter_class}-beat "
+            f"candidate {bpb}-beat, gain {align_gain:+.3f} below "
+            f"{_CROSS_METER_MIN_GAIN}"
+        )
+        return result
     if (current_cv is not None and current_cv >= _CV_MESSY
             and align_gain >= -_ALIGN_DROP_TOL
             and best_align >= _MIN_BEST_ALIGN
