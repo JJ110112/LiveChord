@@ -1839,7 +1839,7 @@
           beatsEl.title = `${meterLabel}: ${meterBeatsPerBar} practice beats per bar`;
       }
       let dotHtml = "";
-      if (meterLabel && meterBeatsPerBar && !simpleTripleMeter) {
+      if (meterLabel && meterBeatsPerBar && !simpleTripleMeter && !compoundSixEight) {
           dotHtml += `<span class="rv-meter-badge">${meterLabel}</span>`;
       }
       const displayDots = simpleTripleMeter
@@ -4761,7 +4761,29 @@
       };
     }
 
-    // Backend auto_split: this card represents exactly one bar — the splitter
+    // 6/8 cards render eighth-note subdivisions: half-bar = 3 dots, full bar = 6.
+    if (!off && _meterLabel() === "6/8") {
+      const subdivisions = Number(chordData && chordData.display_subdivisions_per_bar) || tsBeats;
+      const songBpm = (chordData && typeof chordData.bpm === "number" && chordData.bpm > 0)
+        ? chordData.bpm : (60.0 / Math.max(0.001, currentSecPerBeat));
+      const songSpb = (60.0 / songBpm) / (_currentBpmMult || 1.0);
+      const nominalBeats = songSpb > 0 ? (durSec / songSpb) : rawBeats;
+      const compoundTargets = [subdivisions / 2, subdivisions, subdivisions * 1.5, subdivisions * 2]
+        .filter(v => v >= 1 && v <= 16);
+      for (const target of compoundTargets) {
+        const tol = target === subdivisions / 2 ? 0.55 : 0.70;
+        if (Math.abs(nominalBeats - target) <= tol) {
+          const n = Math.round(target);
+          return {
+            count: n,
+            short: false,
+            dots: _buildVirtualDots(n, durSec, cStart),
+          };
+        }
+      }
+    }
+
+    // Backend auto_split: this card represents exactly one bar. The splitter
     // already did the math against arbitrated downbeats. Trust that and force
     // tsBeats dots, regardless of what spb / beats[] heuristics would compute.
     // This is the authoritative path: when the player's local BPM estimate is
