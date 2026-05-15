@@ -519,7 +519,8 @@ def evaluate(model, val_records: List[SongRecord], device, max_frames: int,
     n = 0
     sums = {"beat_f1": 0.0, "downbeat_f1": 0.0, "cb_f1": 0.0}
     model.eval()
-    for r in records:
+    import gc as _gc
+    for i, r in enumerate(records):
         song = _load_song(r)
         if song is None:
             continue
@@ -528,6 +529,9 @@ def evaluate(model, val_records: List[SongRecord], device, max_frames: int,
         sums["downbeat_f1"] += m["downbeat"][0]
         sums["cb_f1"] += m["cb"][0]
         n += 1
+        del song, m
+        if (i + 1) % 100 == 0:
+            _gc.collect()
     if n == 0:
         return {"n_songs": 0, "beat_f1": 0.0, "downbeat_f1": 0.0, "cb_f1": 0.0}
     return {
@@ -663,7 +667,14 @@ def train(args):
                     avg["total"], avg["beat"], avg["downbeat"], avg["cb"], cur_lr,
                 )
 
-        # Epoch-end eval
+        # Epoch-end eval. Clear the training batch generator's caches +
+        # force GC before validation; the val pass loads every song's
+        # full-length feature tensor sequentially, and without this hint
+        # the host process holds ~30-40 GB of accumulated float32 buffers
+        # by ep2 and dies on a 1 MiB allocation (2026-05-15 incident).
+        import gc as _gc
+        del batch_iter
+        _gc.collect()
         ep_dt = time.time() - ep_t0
         logger.info("ep%d done in %.1fs — running val…", epoch, ep_dt)
         v = evaluate(model, val_records, device, args.eval_max_frames,
@@ -702,6 +713,11 @@ def train(args):
                     no_improve, best_f1, epoch - no_improve,
                 )
                 break
+
+        # Drop the val cache + reclaim Python-held memory between epochs.
+        # On Windows the next epoch's batch_iter would otherwise inherit
+        # ~30 GB of unreclaimed numpy arrays and fail mid-stream.
+        _gc.collect()
 
     (args.out / "history.json").write_text(
         json.dumps(history, indent=2), encoding="utf-8"
