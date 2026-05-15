@@ -4768,19 +4768,13 @@
         ? chordData.bpm : (60.0 / Math.max(0.001, currentSecPerBeat));
       const songSpb = (60.0 / songBpm) / (_currentBpmMult || 1.0);
       const nominalBeats = songSpb > 0 ? (durSec / songSpb) : rawBeats;
-      const compoundTargets = [subdivisions / 2, subdivisions, subdivisions * 1.5, subdivisions * 2]
-        .filter(v => v >= 1 && v <= 16);
-      for (const target of compoundTargets) {
-        const tol = target === subdivisions / 2 ? 0.55 : 0.70;
-        if (Math.abs(nominalBeats - target) <= tol) {
-          const n = Math.round(target);
-          return {
-            count: n,
-            short: false,
-            dots: _buildVirtualDots(n, durSec, cStart),
-          };
-        }
-      }
+      const halfBar = subdivisions / 2;
+      const n = nominalBeats <= (halfBar + subdivisions) / 2 ? Math.round(halfBar) : Math.round(subdivisions);
+      return {
+        count: n,
+        short: false,
+        dots: _buildVirtualDots(n, durSec, cStart),
+      };
     }
 
     // Backend auto_split: this card represents exactly one bar. The splitter
@@ -5016,7 +5010,9 @@
         ? explicitTimes[i]
         : cStart + i * step;
       let isDownbeat = false;
-      if (dbs.length > 0) {
+      if (_meterLabel() === "6/8") {
+        isDownbeat = (i === 0 || (count === 6 && i === 3));
+      } else if (dbs.length > 0) {
         for (let k = 0; k < dbs.length; k++) {
           if (Math.abs(dbs[k] - t) < tol) { isDownbeat = true; break; }
         }

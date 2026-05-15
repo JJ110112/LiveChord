@@ -234,6 +234,12 @@ class ChordSheet(BaseModel):
 
 _BEAT_FIELDS = ("bpm", "beats", "downbeats", "tempo_curve",
                 "beats_source", "beat_version", "bpm_correction")
+_STRUCTURAL_METER_FIELDS = (
+    "time_signature",
+    "display_subdivisions_per_bar",
+    "practice_pulses_per_bar",
+    "beats_per_bar",
+)
 _BEAT_SOURCE_MODES = {"librosa", "madmom", "beat_this"}
 
 
@@ -273,6 +279,37 @@ def _apply_requested_beat_source(data: dict, base_file: Path, beat_source: Optio
             data.pop(key, None)
 
 
+def _merge_official_timing_fields_for_serve(data: dict, official_file: Path,
+                                            beat_source: Optional[str]) -> None:
+    """Fill timing-grid fields stripped from personal chord saves.
+
+    User chord versions own the chord names/times, but ChordSheet historically
+    did not persist beat arrays or meter metadata. Without these fields a
+    personal edit can shadow the official 6/8 grid and make the player render
+    1/2/4/8-dot phase drift again.
+    """
+    if not official_file.is_file():
+        return
+    try:
+        official = json.loads(official_file.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    _apply_requested_beat_source(official, official_file, beat_source)
+
+    data_has_grid = bool(data.get("beats")) or bool(data.get("downbeats"))
+    official_has_grid = bool(official.get("beats")) or bool(official.get("downbeats"))
+    if official_has_grid and not data_has_grid:
+        for key in _BEAT_FIELDS:
+            if key in official:
+                data[key] = official[key]
+            else:
+                data.pop(key, None)
+
+    for key in _STRUCTURAL_METER_FIELDS:
+        if data.get(key) in (None, "", 0) and official.get(key) not in (None, "", 0):
+            data[key] = official[key]
+
+
 @router.get("/chords")
 async def get_chords(path: str = Query(...), version: str = Query(None),
                      beat_source: str = Query(None),
@@ -297,6 +334,8 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
 
     data = json.loads(chords_file.read_text(encoding="utf-8"))
     _apply_requested_beat_source(data, official_file, beat_source)
+    if chords_file != official_file:
+        _merge_official_timing_fields_for_serve(data, official_file, beat_source)
     data["exists"] = True
     data["current_version"] = "official" if is_fallback or not version else version
     if _suppress_stale_legacy_timeline_for_serve(data, path):
