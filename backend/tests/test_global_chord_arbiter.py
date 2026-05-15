@@ -245,6 +245,31 @@ class TestGlobalChordArbiter(unittest.TestCase):
         self.assertEqual(corr["gap_factor"], 1)
         self.assertAlmostEqual(corr["beats_per_gap"], 3.0, places=1)
 
+    def test_compound_six_eight_metadata_is_stamped(self):
+        beats = [round(0.38 + i * 0.44, 2) for i in range(72)]
+        downbeats = [beats[i] for i in range(0, len(beats), 6)]
+        sheet = {
+            "path": "POP/E-POP/BEST LOVE  DUETS/A Thousand Years Pt. 2.flac",
+            "bpm": 136.4,
+            "beats": beats,
+            "downbeats": downbeats,
+            "chords": [
+                {"time": downbeats[0], "end": downbeats[1], "chord": "Bb"},
+                {"time": downbeats[1], "end": downbeats[2], "chord": "Gm7"},
+                {"time": downbeats[2], "end": downbeats[3], "chord": "Eb"},
+                {"time": downbeats[3], "end": downbeats[4], "chord": "Bb"},
+            ],
+        }
+
+        apply_global_structure_corrections(sheet)
+
+        self.assertEqual(sheet["time_signature"], "6/8")
+        self.assertEqual(sheet["display_subdivisions_per_bar"], 6)
+        self.assertEqual(sheet["practice_pulses_per_bar"], 2)
+        compound = sheet["global_arbiter_meta"]["compound_meter"]
+        self.assertEqual(compound["type"], "compound_6_8")
+        self.assertAlmostEqual(compound["inferred_bpb"], 6.0, places=1)
+
     def test_preserves_explicit_meter_display_bpm(self):
         sheet = {
             "bpm": 47.62,

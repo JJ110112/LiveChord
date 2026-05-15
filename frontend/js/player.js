@@ -1821,11 +1821,17 @@
       beatsEl.className = "rv-beats";
       const meterLabel = _meterLabel();
       const meterBeatsPerBar = _meterBeatsPerBar();
-      const simpleTripleMeter = meterLabel === "3/4" || meterLabel === "6/8";
+      const simpleTripleMeter = meterLabel === "3/4";
+      const compoundSixEight = meterLabel === "6/8";
       if (simpleTripleMeter) {
           beatsEl.classList.add("rv-beats-simple-triple", `rv-meter-${meterLabel.replace("/", "-")}`);
           beatsEl.dataset.meter = meterLabel;
           beatsEl.title = `${meterLabel}: three visual pulses for this chord`;
+      } else if (compoundSixEight) {
+          beatsEl.classList.add("rv-beats-metered", "rv-meter-6-8", "rv-beats-compound");
+          beatsEl.dataset.meter = meterLabel;
+          beatsEl.dataset.beatsPerBar = String(meterBeatsPerBar || 6);
+          beatsEl.title = `${meterLabel}: six eighth-note subdivisions, grouped as two pulses`;
       } else if (meterLabel && meterBeatsPerBar) {
           beatsEl.classList.add("rv-beats-metered", `rv-meter-${meterLabel.replace("/", "-")}`);
           beatsEl.dataset.meter = meterLabel;
@@ -1845,6 +1851,7 @@
             "beat-dot",
             d.isDownbeat ? "is-downbeat" : "",
             d.beatInBar === 1 ? "is-meter-one" : "",
+            compoundSixEight && d.beatInBar === 4 ? "is-compound-pulse" : "",
             d.startsBar ? "starts-bar" : "",
           ].filter(Boolean).join(" ");
           // data-time lets _updateBeatDots advance the highlight by real beat
@@ -4897,6 +4904,10 @@
   }
 
   function _meterBeatsPerBar() {
+    const displaySubdivisions = Number(chordData && chordData.display_subdivisions_per_bar);
+    if (Number.isFinite(displaySubdivisions) && displaySubdivisions >= 1 && displaySubdivisions <= 16) {
+      return Math.round(displaySubdivisions);
+    }
     const explicit = Number(chordData && chordData.beats_per_bar);
     if (Number.isFinite(explicit) && explicit >= 1 && explicit <= 16) {
       return Math.round(explicit);
@@ -4930,7 +4941,13 @@
 
   function _practiceBpmAt(t) {
     let bpm = _rawTempoBpmAt(t) * (_currentBpmMult || 1.0);
-    if (_meterLabel() === "6/8") bpm *= 3;
+    if (_meterLabel() === "6/8") {
+      const subdivisions = Number(chordData && chordData.display_subdivisions_per_bar);
+      const pulses = Number(chordData && chordData.practice_pulses_per_bar);
+      if (Number.isFinite(subdivisions) && subdivisions > 0 && Number.isFinite(pulses) && pulses > 0) {
+        bpm *= pulses / subdivisions;
+      }
+    }
     return bpm;
   }
 

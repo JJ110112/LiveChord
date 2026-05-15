@@ -35,6 +35,8 @@ _KEY_WINDOW_SEC = 24.0
 # modulations (≥30s in a new key) survive while bossa/jazz tonicizations
 # in a single 24s window collapse to the home key. See bd:LiveChord-x19.
 _KEY_VITERBI_PENALTY = 0.30
+_COMPOUND_68_BPB_MIN = 5.5
+_COMPOUND_68_BPB_MAX = 6.5
 
 
 def _float(v, default: float = 0.0) -> float:
@@ -42,6 +44,24 @@ def _float(v, default: float = 0.0) -> float:
         return float(v)
     except Exception:
         return default
+
+
+def _positive_gaps(values: List[float], min_gap: float = 0.05) -> List[float]:
+    pts = sorted(float(v) for v in values if v is not None)
+    return [pts[i + 1] - pts[i] for i in range(len(pts) - 1) if pts[i + 1] - pts[i] > min_gap]
+
+
+def _trimmed_cv(values: List[float], center: Optional[float] = None, tolerance: float = 0.35) -> Optional[float]:
+    if not values:
+        return None
+    med = center if center and center > 0 else statistics.median(values)
+    if med <= 0:
+        return None
+    kept = [v for v in values if abs(v - med) <= med * tolerance]
+    if len(kept) < max(3, int(len(values) * 0.35)):
+        kept = values
+    mean = statistics.mean(kept)
+    return statistics.pstdev(kept) / mean if mean > 0 and len(kept) > 1 else 0.0
 
 
 def _root_quality(chord: str) -> Tuple[Optional[int], str]:
@@ -1107,6 +1127,54 @@ def _stable_downbeat_gap(downbeats: List[float], bpm: float = 0.0, path: str = "
     }
 
 
+def _compound_6_8_meter_info(beats: List[float], downbeats: List[float], bpm: float = 0.0) -> Optional[Dict]:
+    """Detect real 6/8 when beat ticks represent eighth-note subdivisions.
+
+    This metadata is intentionally separate from category. A track can be POP,
+    Jazz, or anything else and still need compound-meter rendering: six visual
+    eighth-note dots per bar, but two dotted-quarter practice pulses.
+    """
+    beat_gaps = _positive_gaps(beats, 0.05)
+    downbeat_gaps = _positive_gaps(downbeats, 0.5)
+    if len(beat_gaps) < 16 or len(downbeat_gaps) < 8:
+        return None
+    beat_gap = statistics.median(beat_gaps)
+    downbeat_gap = statistics.median(downbeat_gaps)
+    if beat_gap <= 0 or downbeat_gap <= 0:
+        return None
+    inferred_bpb = downbeat_gap / beat_gap
+    if not (_COMPOUND_68_BPB_MIN <= inferred_bpb <= _COMPOUND_68_BPB_MAX):
+        return None
+
+    beat_cv = _trimmed_cv(beat_gaps, beat_gap, 0.35)
+    downbeat_cv = _trimmed_cv(downbeat_gaps, downbeat_gap, 0.45)
+    if beat_cv is None or downbeat_cv is None:
+        return None
+    # Natural tempo drift is allowed, but a wildly unstable subdivision stream
+    # is not enough evidence to stamp a meter.
+    if beat_cv > 0.18 or downbeat_cv > 0.28:
+        return None
+
+    # Exclude quarter-note 3/4: in that case the detected beat itself is the
+    # quarter pulse and a bar is about three detected beats, not six.
+    quarter_bpb = (bpm * downbeat_gap / 60.0) if bpm > 0 else inferred_bpb
+    if 2.5 <= quarter_bpb <= 3.5 and inferred_bpb < 5.2:
+        return None
+
+    return {
+        "applied": True,
+        "type": "compound_6_8",
+        "time_signature": "6/8",
+        "display_subdivisions_per_bar": 6,
+        "practice_pulses_per_bar": 2,
+        "inferred_bpb": round(inferred_bpb, 3),
+        "median_beat_gap": round(beat_gap, 4),
+        "median_downbeat_gap": round(downbeat_gap, 4),
+        "beat_cv_trimmed": round(beat_cv, 4),
+        "downbeat_cv_trimmed": round(downbeat_cv, 4),
+    }
+
+
 def _compound_12_8_half_bar_gap(chords: List[Dict], downbeats: List[float], bpm: float = 0.0) -> Optional[Dict]:
     """Detect slow 12/8 ballads tracked at triplet-subdivision BPM.
 
@@ -1397,6 +1465,11 @@ def apply_global_structure_corrections(chord_data: Dict, meta: Optional[Dict] = 
     if not isinstance(chord_data, dict):
         return chord_data
     meta = meta or analyze_global_structure(chord_data)
+    compound_meter = meta.get("compound_meter") or {}
+    if compound_meter.get("type") == "compound_6_8":
+        chord_data.setdefault("time_signature", "6/8")
+        chord_data.setdefault("display_subdivisions_per_bar", 6)
+        chord_data.setdefault("practice_pulses_per_bar", 2)
     explicit_meter = chord_data.get("meter_correction") or {}
     preserve_explicit_meter_cards = bool(
         explicit_meter.get("applied")
@@ -1491,6 +1564,10 @@ def analyze_global_structure(chord_data: Dict) -> Dict:
         meta["reason"] = "too-few-chords"
         return meta
 
+    compound_meter = _compound_6_8_meter_info(beats, downbeats, bpm)
+    if compound_meter:
+        meta["compound_meter"] = compound_meter
+
     first_end = _float(chords[0].get("end"))
     intro_beat = _beat_stats(beats, 0.0, first_end)
     intro_downbeat = _beat_stats(downbeats, 0.0, first_end)
@@ -1541,6 +1618,7 @@ def analyze_global_structure(chord_data: Dict) -> Dict:
         or meta.get("modulation_candidates")
         or meta.get("two_beat_grammar_candidates")
         or meta.get("minor_pop_loop_candidates")
+        or meta.get("compound_meter")
     )
     meta["reason"] = "ok" if meta["applied"] else "no-global-pattern"
     return meta

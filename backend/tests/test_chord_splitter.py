@@ -452,6 +452,31 @@ class TestMaybeSplitForServe(unittest.TestCase):
         self.assertEqual([c["time"] for c in out["chords"]], [1.10, 2.44, 3.74, 5.04])
         self.assertEqual(out["auto_split_meta"]["reason"], "explicit-meter-card-grid")
 
+    def test_compound_six_eight_absorbs_one_tick_card_and_resyncs_next_bar(self):
+        data = {
+            "bpm": 136.4,
+            "time_signature": "6/8",
+            "display_subdivisions_per_bar": 6,
+            "practice_pulses_per_bar": 2,
+            "beats": [18.40, 18.84, 19.28, 19.70, 20.12, 20.56, 20.98, 21.42, 21.86, 22.30, 22.74, 23.16, 23.56],
+            "downbeats": [18.40, 20.98, 23.56],
+            "beats_source": "beat_this",
+            "chords": [
+                {"time": 18.40, "end": 20.12, "chord": "Bb"},
+                {"time": 20.12, "end": 20.56, "chord": "F"},
+                {"time": 20.56, "end": 23.56, "chord": "Eb"},
+            ],
+        }
+
+        out = maybe_split_for_serve(data)
+
+        self.assertEqual([c["chord"] for c in out["chords"]], ["Bb", "Eb"])
+        self.assertEqual([c["time"] for c in out["chords"]], [18.40, 20.98])
+        self.assertEqual([c["end"] for c in out["chords"]], [20.98, 23.56])
+        cleanup = out["auto_split_meta"]["fragment_guard"]["compound_cleanup"]
+        self.assertTrue(cleanup["applied"])
+        self.assertEqual(cleanup["merged"], 1)
+
     def test_applied_path(self):
         data = {
             "chords": [{"time": 0.0, "end": 4.0, "chord": "C"}],

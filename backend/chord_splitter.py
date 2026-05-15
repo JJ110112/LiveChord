@@ -12,7 +12,7 @@ serve-time copy is what the player consumes.
 
 import math
 import statistics
-from typing import Iterable, List, Dict, Optional
+from typing import Iterable, List, Dict, Optional, Tuple
 
 try:
     from bar_phase_corrector import fragmentation_risk
@@ -255,6 +255,104 @@ def _median_bar_gap(downbeats: List[float]) -> Optional[float]:
     if not gaps:
         return None
     return statistics.median(gaps)
+
+
+def _median_beat_gap(beats: List[float]) -> Optional[float]:
+    if len(beats) < 2:
+        return None
+    gaps = [beats[i + 1] - beats[i] for i in range(len(beats) - 1)]
+    gaps = [g for g in gaps if g > 0.05]
+    if not gaps:
+        return None
+    return statistics.median(gaps)
+
+
+def _compound_six_eight_cleanup(chords: List[Dict], chord_data: Dict) -> Tuple[List[Dict], Dict]:
+    """Absorb accidental one-tick cards in detected 6/8 material.
+
+    In compound meter, a single eighth-note card is usually a boundary jitter
+    artifact unless it is an explicitly authored pickup. Absorbing it into the
+    previous card when it resolves onto a downbeat keeps the following 6-dot
+    card phase-aligned instead of letting one tiny card shift the visual grid.
+    """
+    if str(chord_data.get("time_signature") or "").strip() != "6/8":
+        return chords, {"applied": False, "merged": 0}
+    if int(chord_data.get("display_subdivisions_per_bar") or 0) != 6:
+        return chords, {"applied": False, "merged": 0}
+    beats = [float(v) for v in (chord_data.get("beats") or []) if v is not None]
+    beat_gap = _median_beat_gap(beats)
+    if not beat_gap or beat_gap <= 0:
+        bpm = float(chord_data.get("bpm") or 0)
+        beat_gap = 60.0 / bpm if bpm > 0 else 0.0
+    if beat_gap <= 0 or len(chords) < 2:
+        return chords, {"applied": False, "merged": 0}
+    downbeats = [float(v) for v in (chord_data.get("downbeats") or []) if v is not None]
+    out: List[Dict] = []
+    merged = 0
+    examples = []
+
+    def near_downbeat(t: float) -> bool:
+        return any(abs(d - t) <= max(0.08, beat_gap * 0.30) for d in downbeats)
+
+    def next_downbeat_after(t: float) -> Optional[float]:
+        for d in downbeats:
+            if d > t + 0.03:
+                return d
+        return None
+
+    idx = 0
+    while idx < len(chords):
+        cur = dict(chords[idx])
+        start = float(cur.get("time") or 0.0)
+        end = float(cur.get("end") or start)
+        dur_ticks = (end - start) / beat_gap if end > start else 0.0
+        is_one_tick = 0 < dur_ticks < 1.55 and not cur.get("explicit_pickup")
+        upcoming_downbeat = next_downbeat_after(end)
+        if (
+            is_one_tick
+            and out
+            and idx + 1 < len(chords)
+            and upcoming_downbeat is not None
+            and 0.35 <= (upcoming_downbeat - end) / beat_gap <= 1.35
+        ):
+            nxt = dict(chords[idx + 1])
+            out[-1]["end"] = round(upcoming_downbeat, 3)
+            out[-1]["compound_meter_absorbed_tail"] = True
+            nxt["time"] = round(upcoming_downbeat, 3)
+            nxt["compound_meter_resynced_start"] = True
+            out.append(nxt)
+            merged += 1
+            if len(examples) < 5:
+                examples.append({
+                    "time": round(start, 3),
+                    "end": round(end, 3),
+                    "chord": cur.get("chord"),
+                    "into": "previous",
+                    "resync_next_to": round(upcoming_downbeat, 3),
+                })
+            idx += 2
+            continue
+        if is_one_tick and out and near_downbeat(end):
+            out[-1]["end"] = round(end, 3)
+            out[-1]["compound_meter_absorbed_tail"] = True
+            merged += 1
+            if len(examples) < 5:
+                examples.append({"time": round(start, 3), "end": round(end, 3), "chord": cur.get("chord"), "into": "previous"})
+            idx += 1
+            continue
+        if is_one_tick and idx + 1 < len(chords) and near_downbeat(start):
+            nxt = dict(chords[idx + 1])
+            nxt["time"] = round(start, 3)
+            nxt["compound_meter_absorbed_head"] = True
+            out.append(nxt)
+            merged += 1
+            if len(examples) < 5:
+                examples.append({"time": round(start, 3), "end": round(end, 3), "chord": cur.get("chord"), "into": "next"})
+            idx += 2
+            continue
+        out.append(cur)
+        idx += 1
+    return out, {"applied": merged > 0, "merged": merged, "examples": examples}
 
 
 def _interpolate_oversized_gaps(boundaries: List[float], bar_gap: float) -> List[float]:
@@ -784,6 +882,7 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
 
     new_chords = split_chords_at_bars(chords, resolved)
     new_chords, post_merge_meta = merge_same_chord_fragments(new_chords, bpm)
+    new_chords, compound_cleanup = _compound_six_eight_cleanup(new_chords, chord_data)
     chord_data["chords"] = new_chords
     chord_data["auto_split_meta"] = {
         "applied": True,
@@ -795,6 +894,7 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
             "penalty": frag.get("penalty", 0.0),
             "patterns": frag.get("patterns", {}),
             "post_merge": post_merge_meta,
+            "compound_cleanup": compound_cleanup,
         },
     }
     return chord_data

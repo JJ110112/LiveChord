@@ -3097,6 +3097,16 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   color: rgba(0, 255, 204, 0.95);
 }
 
+.rv-beats-compound .beat-dot.is-compound-pulse::before {
+  color: rgba(255,255,255,0.88);
+}
+
+.rv-beats-compound .beat-dot.is-meter-one,
+.rv-beats-compound .beat-dot.is-compound-pulse {
+  width: 8px;
+  height: 8px;
+}
+
 .rv-beats-metered .beat-dot.starts-bar {
   box-shadow: 0 0 0 2px rgba(0, 255, 204, 0.20);
 }
