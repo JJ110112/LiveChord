@@ -1008,6 +1008,8 @@ def phase1_refine(chord_data: Dict, audio_path: str, *,
         downbeats_after=list(raw_downbeats),
         beats_before=list(beats),
         beats_after=list(beats),
+        beat_probs=[],
+        downbeat_probs=[],
         beats_per_bar=4,  # phase1 model doesn't predict bpb
         phase_offset_sec=0.0,
         raw_regularity_cv=None,
@@ -1120,6 +1122,8 @@ def phase1_refine(chord_data: Dict, audio_path: str, *,
     # ------------------------------------------------------------------
     result["downbeats_after"] = refined_downbeats
     result["beats_after"] = refined_beats
+    result["beat_probs"] = list(refine_out.get("beat_probs") or [])
+    result["downbeat_probs"] = list(refine_out.get("downbeat_probs") or [])
     result["phase_offset_sec"] = (
         round(refined_downbeats[0], 4) if refined_downbeats else 0.0
     )

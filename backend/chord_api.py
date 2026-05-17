@@ -272,11 +272,121 @@ def _apply_requested_beat_source(data: dict, base_file: Path, beat_source: Optio
         snapshot = json.loads(Path(bak_path).read_text(encoding="utf-8"))
     except Exception:
         return
+    # Refuse to overlay an empty/degenerate sidecar — some songs have a
+    # `.bak.librosa` left over from an `analyze_and_snap_dynamic` librosa-
+    # fallback that produced bpm but zero beats/downbeats. Overlaying it would
+    # wipe the active source's working beat data, blank out time_signature,
+    # and break downbeat rendering. Bail silently — caller keeps the data it
+    # had before the overlay request, and the meter-fallback helper below
+    # will still try to stamp time_signature from a usable sidecar.
+    if not snapshot.get("beats") and not snapshot.get("downbeats"):
+        return
     for key in _BEAT_FIELDS:
         if key in snapshot:
             data[key] = snapshot[key]
         else:
             data.pop(key, None)
+    # Phase 1: the canonical chord JSON may carry beat_probs / downbeat_probs /
+    # bar_probs aligned with its OWN beats/downbeats. Sidecars have neither
+    # field nor index alignment with the canonical grid, so any retained probs
+    # would silently mis-gate the splitter. Strip them — non-canonical beat
+    # sources fall back to Phase 0 unconditional snap (= today's behavior).
+    data.pop("beat_probs", None)
+    data.pop("downbeat_probs", None)
+    data.pop("bar_probs", None)
+
+
+# Sidecar load order for compound 6/8 fallback. librosa is densest/most
+# reliable for downbeat detection; madmom second; beat_this last (it is
+# the most likely source to have produced the sparse downbeats[] that
+# caused the original detection failure).
+_METER_FALLBACK_SIDECAR_ORDER = ("librosa", "madmom", "beat_this")
+_METER_FIELDS_FROM_COMPOUND = (
+    "time_signature",
+    "display_subdivisions_per_bar",
+    "practice_pulses_per_bar",
+)
+
+
+def _maybe_meter_fallback_from_sidecars(data: dict, official_file: Path) -> None:
+    """If serve payload lacks time_signature, try to detect 6/8 from sidecars.
+
+    Read-only: never writes to any chord JSON. Mutates the in-memory `data`
+    dict only. Cheap for the common case (skips entirely when time_signature
+    is already present).
+    """
+    if data.get("time_signature"):
+        return
+    if not data.get("beats") and not data.get("downbeats"):
+        # Nothing to seed bpm from either; classifier won't work even on sidecars
+        # for songs with completely degenerate beat data. Beats-only path also
+        # requires beats[]. Bail quietly.
+        pass
+
+    # Lazy import to avoid circular import at module load
+    try:
+        from global_chord_arbiter import (
+            _compound_6_8_meter_info_from_payload,
+            _compound_6_8_meter_info_beats_only,
+            _simple_3_4_meter_info_from_payload,
+        )
+    except ImportError:
+        from backend.global_chord_arbiter import (
+            _compound_6_8_meter_info_from_payload,
+            _compound_6_8_meter_info_beats_only,
+            _simple_3_4_meter_info_from_payload,
+        )
+
+    base_path = str(official_file)
+    info = None
+    for mode in _METER_FALLBACK_SIDECAR_ORDER:
+        sidecar_path = base_path + f".bak.{mode}"
+        if not os.path.isfile(sidecar_path):
+            continue
+        try:
+            snapshot = json.loads(Path(sidecar_path).read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        # Try 6/8 first, then 3/4 (disjoint by beat_gap so order doesn't
+        # matter for correctness, only marginally for performance).
+        info = _compound_6_8_meter_info_from_payload(snapshot)
+        if not info:
+            info = _simple_3_4_meter_info_from_payload(snapshot)
+        if info:
+            info["_fallback_source"] = f"sidecar:{mode}"
+            break
+
+    if not info:
+        # Beats-only fallback is intentionally a LAST resort. Only fire when
+        # downbeats[] is truly absent or too sparse for the standard classifier
+        # to have produced a verdict. If downbeats[] are present (≥4 entries)
+        # but the sidecar classifier rejected, trust that rejection — beats-only
+        # has no way to verify bar structure and would false-positive on 4/4
+        # songs with very regular eighth-note beats (verified on "Breakaway"
+        # by Kelly Clarkson — 4/4 with downbeat-to-beat ratio 4.05, not 6/8).
+        downbeats_present = len([v for v in (data.get("downbeats") or []) if v is not None])
+        if downbeats_present < 4:
+            info = _compound_6_8_meter_info_beats_only(
+                [float(v) for v in (data.get("beats") or [])],
+                float(data.get("bpm") or 0.0),
+            )
+            if info:
+                info["_fallback_source"] = "beats-only"
+
+    if not info:
+        return
+
+    for key in _METER_FIELDS_FROM_COMPOUND:
+        if info.get(key) is not None:
+            data[key] = info[key]
+    if info.get("bars"):
+        data.setdefault("bars", info["bars"])
+    # Breadcrumb at TOP-LEVEL so apply_global_structure_corrections (which
+    # later replaces global_arbiter_meta wholesale) can't clobber it.
+    data["serve_time_meter_fallback"] = {
+        "source": info.get("_fallback_source"),
+        "type": info.get("type"),
+    }
 
 
 def _merge_official_timing_fields_for_serve(data: dict, official_file: Path,
@@ -342,6 +452,7 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
         return data
     maybe_apply_structural_bpm_correction_for_serve(data)
     maybe_phase_correct_for_serve(data) # rewrite irregular downbeats[] to regular grid
+    _maybe_meter_fallback_from_sidecars(data, official_file)  # stamp 6/8 from sidecars when active source can't detect
     maybe_analyze_global_structure_for_serve(data) # section-level diagnostic hints
     maybe_noise_filter_for_serve(data)  # absorb 1-beat noise tails
     maybe_extend_tail_for_serve(data)   # fill missing outro cards from beat tail
@@ -363,6 +474,7 @@ async def get_chords_by_hash(hash: str = Query(..., min_length=8, max_length=16)
         return data
     maybe_apply_structural_bpm_correction_for_serve(data)
     maybe_phase_correct_for_serve(data)
+    _maybe_meter_fallback_from_sidecars(data, chords_file)
     maybe_analyze_global_structure_for_serve(data)
     maybe_noise_filter_for_serve(data)
     maybe_extend_tail_for_serve(data)

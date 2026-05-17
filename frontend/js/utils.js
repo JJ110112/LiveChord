@@ -102,8 +102,20 @@ function escapeHtml(str) {
 
 // ---- 時間格式 ----
 
-function formatTime(sec) {
+function formatTime(sec, mode) {
   if (sec == null) return "";
+  if (mode === "centi") {
+    // m:ss.cc — chord-card label precision so users can cite exact chord
+    // boundaries when reporting issues. Card labels render once per
+    // build, not 100x/sec, so the extra precision is cheap.
+    let totalCs = Math.round(sec * 100);
+    if (totalCs < 0) totalCs = 0;
+    let cs = totalCs % 100;
+    let totalS = Math.floor(totalCs / 100);
+    let s = totalS % 60;
+    let m = Math.floor(totalS / 60);
+    return `${m}:${s.toString().padStart(2, "0")}.${cs.toString().padStart(2, "0")}`;
+  }
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;

@@ -411,7 +411,7 @@ const ChordRender = {
     div.innerHTML = `
       <div class="chord-name">${escapeHtml(chord.chord)}</div>
       <div class="chord-jianpu">${ChordRender.jianpuToHtml(jianpu)}</div>
-      <div class="chord-time">${formatTime(chord.time)}</div>`;
+      <div class="chord-time">${formatTime(chord.time, "centi")}</div>`;
     return div;
   },
 
@@ -442,7 +442,7 @@ const ChordRender = {
 
     const timeEl = document.createElement("div");
     timeEl.className = "chord-time";
-    timeEl.textContent = formatTime(chord.time);
+    timeEl.textContent = formatTime(chord.time, "centi");
     div.appendChild(timeEl);
 
     return div;

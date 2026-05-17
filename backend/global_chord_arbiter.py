@@ -38,6 +38,19 @@ _KEY_VITERBI_PENALTY = 0.30
 _COMPOUND_68_BPB_MIN = 5.5
 _COMPOUND_68_BPB_MAX = 6.5
 
+# 3/4 (waltz) detection thresholds. Beat tracker emits one beat per quarter
+# pulse, with 3 beats per bar.
+_SIMPLE_34_BPB_MIN = 2.7
+_SIMPLE_34_BPB_MAX = 3.3
+# beat_gap >= 0.45s distinguishes quarter-pulse from compound 6/8's eighth
+# pulse (which is < 0.55s by the secondary-path gate). Allows up to ~133 BPM
+# quarter, which covers nearly all pop waltzes (Moon River ~94, Lover ~70,
+# faster pop waltzes <130).
+_SIMPLE_34_BG_MIN = 0.45
+_SIMPLE_34_BG_MAX = 1.10
+_SIMPLE_34_BPM_MIN = 50.0
+_SIMPLE_34_BPM_MAX = 180.0
+
 
 def _float(v, default: float = 0.0) -> float:
     try:
@@ -1127,7 +1140,8 @@ def _stable_downbeat_gap(downbeats: List[float], bpm: float = 0.0, path: str = "
     }
 
 
-def _compound_6_8_meter_info(beats: List[float], downbeats: List[float], bpm: float = 0.0) -> Optional[Dict]:
+def _compound_6_8_meter_info(beats: List[float], downbeats: List[float], bpm: float = 0.0,
+                             downbeat_probs: Optional[List[float]] = None) -> Optional[Dict]:
     """Detect real 6/8 when beat ticks represent eighth-note subdivisions.
 
     This metadata is intentionally separate from category. A track can be POP,
@@ -1138,12 +1152,35 @@ def _compound_6_8_meter_info(beats: List[float], downbeats: List[float], bpm: fl
     downbeat_gaps = _positive_gaps(downbeats, 0.5)
     if len(beat_gaps) < 16 or len(downbeat_gaps) < 8:
         return None
+    # Phase 1: per-bar confidence — only honor parallel probs array when its
+    # length matches downbeats[] exactly. Mismatched / missing → no bar_probs.
+    if downbeat_probs is not None and len(downbeat_probs) != len(downbeats):
+        downbeat_probs = None
     beat_gap = statistics.median(beat_gaps)
     downbeat_gap = statistics.median(downbeat_gaps)
     if beat_gap <= 0 or downbeat_gap <= 0:
         return None
     inferred_bpb = downbeat_gap / beat_gap
-    if not (_COMPOUND_68_BPB_MIN <= inferred_bpb <= _COMPOUND_68_BPB_MAX):
+
+    # Primary detection: ratio ~6 — beat tracker emits true bars (mixed with
+    # half-bar pulses is OK; greedy-keep below extracts the full-bar subset).
+    primary_ok = _COMPOUND_68_BPB_MIN <= inferred_bpb <= _COMPOUND_68_BPB_MAX
+
+    # Secondary detection: ratio ~3 — beat tracker emits dotted-quarter
+    # downbeats UNIFORMLY (no full-bar entries to greedy-keep from). Common
+    # with madmom on slow compound 6/8 ballads. Distinguish from a true 3/4
+    # waltz via beat_gap: 6/8 has eighth-note beats (bg < 0.55s typical, since
+    # eighth pulse rarely falls below 100 BPM ≈ 0.6s); 3/4 has quarter beats
+    # (bg ≥ 0.55s typical for waltz tempos). Verified on Alicia Keys "If I
+    # Ain't Got You" (bg=0.47, ratio=3.04 → 6/8 ✓) vs Moon River waltz
+    # (bg=0.63, ratio=3.00 → not 6/8, defer to 3/4 detector).
+    secondary_ok = (
+        2.7 <= inferred_bpb <= 3.3
+        and beat_gap < 0.55
+        and (bpm <= 0 or bpm >= 100.0)
+    )
+
+    if not (primary_ok or secondary_ok):
         return None
 
     beat_cv = _trimmed_cv(beat_gaps, beat_gap, 0.35)
@@ -1155,11 +1192,57 @@ def _compound_6_8_meter_info(beats: List[float], downbeats: List[float], bpm: fl
     if beat_cv > 0.18 or downbeat_cv > 0.28:
         return None
 
-    # Exclude quarter-note 3/4: in that case the detected beat itself is the
-    # quarter pulse and a bar is about three detected beats, not six.
-    quarter_bpb = (bpm * downbeat_gap / 60.0) if bpm > 0 else inferred_bpb
-    if 2.5 <= quarter_bpb <= 3.5 and inferred_bpb < 5.2:
-        return None
+    if primary_ok:
+        # Exclude quarter-note 3/4: in that case the detected beat itself is
+        # the quarter pulse and a bar is about three detected beats, not six.
+        # (Secondary path is already gated by beat_gap < 0.55s — too fast for
+        # a quarter-note pulse — so this exclusion only applies to primary.)
+        quarter_bpb = (bpm * downbeat_gap / 60.0) if bpm > 0 else inferred_bpb
+        if 2.5 <= quarter_bpb <= 3.5 and inferred_bpb < 5.2:
+            return None
+
+    bars: List[float] = []
+    bar_probs: List[float] = []
+    if primary_ok:
+        # Derive a bar-only subset of downbeats[]. beat_this often emits BOTH
+        # bar starts (gap ≈ 6 × beat_gap) AND mid-bar dotted-quarter pulses
+        # (gap ≈ 3 × beat_gap) in the downbeats[] array. Downstream code
+        # (chord_splitter) treats every entry as a bar boundary, which
+        # produces short ~half-bar cards. Greedy-keep entries whose gap to
+        # the previously kept bar is closer to the full-bar target than to a
+        # half-bar pulse.
+        full_bar_target = beat_gap * 6.0
+        half_bar_target = beat_gap * 3.0
+        last_kept: Optional[float] = None
+        for orig_idx, d in enumerate(downbeats):
+            if last_kept is None:
+                bars.append(d)
+                if downbeat_probs is not None:
+                    bar_probs.append(downbeat_probs[orig_idx])
+                last_kept = d
+                continue
+            gap = d - last_kept
+            if gap <= 0:
+                continue
+            if abs(gap - full_bar_target) <= abs(gap - half_bar_target):
+                bars.append(d)
+                if downbeat_probs is not None:
+                    bar_probs.append(downbeat_probs[orig_idx])
+                last_kept = d
+            # else: half-bar pulse — skip; do NOT advance last_kept
+    else:
+        # Secondary path: every downbeat is a dotted-quarter pulse, so true
+        # bars are at every other entry. Phase is approximate (we can't tell
+        # whether downbeats[0] is bar-start or half-bar-mark without further
+        # evidence) but the chord_splitter snaps to chord boundaries anyway,
+        # so a half-bar phase shift in bars[] is forgiving.
+        bars = [float(d) for d in downbeats[::2]]
+        if downbeat_probs is not None:
+            bar_probs = list(downbeat_probs[::2])
+
+    # Report effective bpb (6) regardless of detection path so downstream
+    # consumers don't think this is a 3-beat song.
+    reported_bpb = inferred_bpb * (2.0 if secondary_ok else 1.0)
 
     return {
         "applied": True,
@@ -1167,12 +1250,156 @@ def _compound_6_8_meter_info(beats: List[float], downbeats: List[float], bpm: fl
         "time_signature": "6/8",
         "display_subdivisions_per_bar": 6,
         "practice_pulses_per_bar": 2,
+        "inferred_bpb": round(reported_bpb, 3),
+        "raw_inferred_bpb": round(inferred_bpb, 3),
+        "median_beat_gap": round(beat_gap, 4),
+        "median_downbeat_gap": round(downbeat_gap, 4),
+        "beat_cv_trimmed": round(beat_cv, 4),
+        "downbeat_cv_trimmed": round(downbeat_cv, 4),
+        "bars": bars,
+        "bar_count": len(bars),
+        "bar_probs": bar_probs,
+        "halved_downbeat_pulse_path": secondary_ok,
+    }
+
+
+def _compound_6_8_meter_info_from_payload(payload: Dict) -> Optional[Dict]:
+    """Run the 6/8 classifier against a sidecar / snapshot dict.
+
+    Mirrors `analyze_global_structure`'s call site but operates on a foreign
+    payload (e.g. a `.bak.{mode}` sidecar JSON) instead of the live
+    chord_data. Used by chord_api's serve-time fallback when the active beat
+    source produced too-sparse downbeats to detect.
+    """
+    if not isinstance(payload, dict):
+        return None
+    raw_probs = payload.get("downbeat_probs")
+    db_probs = (
+        [_float(v) for v in raw_probs] if isinstance(raw_probs, list) else None
+    )
+    return _compound_6_8_meter_info(
+        [_float(v) for v in (payload.get("beats") or [])],
+        [_float(v) for v in (payload.get("downbeats") or [])],
+        _float(payload.get("bpm")),
+        downbeat_probs=db_probs,
+    )
+
+
+def _compound_6_8_meter_info_beats_only(beats: List[float], bpm: float) -> Optional[Dict]:
+    """Best-effort 6/8 detection from beats[] alone (no downbeats[]).
+
+    Reserved for the rare song where every sidecar lacks downbeats but the
+    beats[] stream is dense and regular. Tighter thresholds than the standard
+    classifier (CV <= 0.10, BPM in [100, 230], 24+ beat gaps, beat_gap/spb
+    near 1.0) so a 4/4 song with regular beats doesn't get falsely stamped.
+    """
+    if bpm <= 0 or bpm < 100.0 or bpm > 230.0:
+        return None
+    beat_gaps = _positive_gaps(beats, 0.05)
+    if len(beat_gaps) < 24:
+        return None
+    beat_gap = statistics.median(beat_gaps)
+    if beat_gap <= 0:
+        return None
+    cv = _trimmed_cv(beat_gaps, beat_gap, 0.20)
+    if cv is None or cv > 0.10:
+        return None
+    spb = 60.0 / bpm
+    if not (0.85 <= (beat_gap / spb) <= 1.18):
+        return None
+    return {
+        "applied": True,
+        "type": "compound_6_8",
+        "time_signature": "6/8",
+        "display_subdivisions_per_bar": 6,
+        "practice_pulses_per_bar": 2,
+        "inferred_bpb": 6.0,
+        "median_beat_gap": round(beat_gap, 4),
+        "beat_cv_trimmed": round(cv, 4),
+        "source": "beats-only-fallback",
+    }
+
+
+def _simple_3_4_meter_info(beats: List[float], downbeats: List[float], bpm: float = 0.0) -> Optional[Dict]:
+    """Detect simple 3/4 (waltz) when beat ticks represent quarter pulses.
+
+    Disjoint from `_compound_6_8_meter_info`'s secondary path by the
+    `beat_gap >= 0.45s` gate (compound 6/8 secondary requires bg < 0.55s on
+    eighth pulse). Verified on Moon River (Remastered 2015): bpm=94,
+    beat_gap=0.63s, downbeat_gap=1.89s, ratio=3.00 — textbook slow waltz.
+
+    Frontend rendering already handles 3/4 via the simpleTripleMeter branch
+    in player.js (3-dot cards). Stamping `time_signature='3/4'` is sufficient
+    to activate it.
+    """
+    beat_gaps = _positive_gaps(beats, 0.05)
+    downbeat_gaps = _positive_gaps(downbeats, 0.5)
+    if len(beat_gaps) < 16 or len(downbeat_gaps) < 8:
+        return None
+    beat_gap = statistics.median(beat_gaps)
+    downbeat_gap = statistics.median(downbeat_gaps)
+    if beat_gap <= 0 or downbeat_gap <= 0:
+        return None
+
+    # Distinguish 3/4 from compound 6/8 (which has eighth-note beats):
+    # waltzes have quarter-pulse beats, typically >= 0.45s.
+    if beat_gap < _SIMPLE_34_BG_MIN or beat_gap > _SIMPLE_34_BG_MAX:
+        return None
+
+    inferred_bpb = downbeat_gap / beat_gap
+    if not (_SIMPLE_34_BPB_MIN <= inferred_bpb <= _SIMPLE_34_BPB_MAX):
+        return None
+
+    # BPM sanity: waltzes typically 50-180 quarter BPM. Outside that range,
+    # the detected beat is likely something else (e.g. eighth-pulse 6/8 with
+    # very fast tempo, or a misdetection).
+    if bpm > 0 and (bpm < _SIMPLE_34_BPM_MIN or bpm > _SIMPLE_34_BPM_MAX):
+        return None
+    # Cross-check: bpm × beat_gap should be ≈ 60 (beats are at the BPM pulse).
+    # Allow ±15% drift for tracker jitter.
+    if bpm > 0:
+        ratio_to_pulse = bpm * beat_gap / 60.0
+        if not (0.85 <= ratio_to_pulse <= 1.18):
+            return None
+
+    beat_cv = _trimmed_cv(beat_gaps, beat_gap, 0.35)
+    downbeat_cv = _trimmed_cv(downbeat_gaps, downbeat_gap, 0.45)
+    if beat_cv is None or downbeat_cv is None:
+        return None
+    if beat_cv > 0.18 or downbeat_cv > 0.28:
+        return None
+
+    # bars[] for 3/4: downbeats[] is already the bar grid (no half-bar pulses
+    # in simple meters). Pass through.
+    bars = [float(d) for d in downbeats]
+
+    return {
+        "applied": True,
+        "type": "simple_3_4",
+        "time_signature": "3/4",
+        "display_subdivisions_per_bar": 3,
+        "practice_pulses_per_bar": 3,
         "inferred_bpb": round(inferred_bpb, 3),
         "median_beat_gap": round(beat_gap, 4),
         "median_downbeat_gap": round(downbeat_gap, 4),
         "beat_cv_trimmed": round(beat_cv, 4),
         "downbeat_cv_trimmed": round(downbeat_cv, 4),
+        "bars": bars,
+        "bar_count": len(bars),
     }
+
+
+def _simple_3_4_meter_info_from_payload(payload: Dict) -> Optional[Dict]:
+    """Run the 3/4 classifier against a sidecar / snapshot dict (mirror of
+    `_compound_6_8_meter_info_from_payload`). Used by chord_api's serve-time
+    fallback when the active beat source's data couldn't classify."""
+    if not isinstance(payload, dict):
+        return None
+    return _simple_3_4_meter_info(
+        [_float(v) for v in (payload.get("beats") or [])],
+        [_float(v) for v in (payload.get("downbeats") or [])],
+        _float(payload.get("bpm")),
+    )
 
 
 def _compound_12_8_half_bar_gap(chords: List[Dict], downbeats: List[float], bpm: float = 0.0) -> Optional[Dict]:
@@ -1470,6 +1697,26 @@ def apply_global_structure_corrections(chord_data: Dict, meta: Optional[Dict] = 
         chord_data.setdefault("time_signature", "6/8")
         chord_data.setdefault("display_subdivisions_per_bar", 6)
         chord_data.setdefault("practice_pulses_per_bar", 2)
+        # bar-only downbeats subset for the splitter (raw downbeats[] mixes
+        # bar starts and half-bar pulses for compound 6/8).
+        bars = compound_meter.get("bars") or []
+        if bars and not chord_data.get("bars"):
+            chord_data["bars"] = bars
+            # Phase 1: parallel per-bar confidence. Only write when length
+            # matches bars — defense against schema drift. When missing,
+            # downstream chord_splitter falls back to Phase 0 unconditional
+            # snap (no regression on legacy chord JSONs).
+            bar_probs = compound_meter.get("bar_probs") or []
+            if bar_probs and len(bar_probs) == len(bars):
+                chord_data["bar_probs"] = bar_probs
+    simple_meter = meta.get("simple_meter") or {}
+    if simple_meter.get("type") == "simple_3_4":
+        chord_data.setdefault("time_signature", "3/4")
+        chord_data.setdefault("display_subdivisions_per_bar", 3)
+        chord_data.setdefault("practice_pulses_per_bar", 3)
+        bars = simple_meter.get("bars") or []
+        if bars and not chord_data.get("bars"):
+            chord_data["bars"] = bars
     explicit_meter = chord_data.get("meter_correction") or {}
     preserve_explicit_meter_cards = bool(
         explicit_meter.get("applied")
@@ -1510,9 +1757,30 @@ def apply_global_structure_corrections(chord_data: Dict, meta: Optional[Dict] = 
     corrections.extend(repeat_corrections)
     chords, grid_corrections = _apply_modulated_grid_repairs(chords, meta.get("modulated_cycle_candidates") or [])
     corrections.extend(grid_corrections)
-    if preserve_explicit_meter_cards:
+    # Skip 4/4-assuming downbeat display quantization when:
+    #  (a) explicit user meter override is active (preserve_explicit_meter_cards), or
+    #  (b) the song is auto-classified as compound 6/8 (display_subdivisions_per_bar=6).
+    # Without this guard, the quantizer treats compound 6/8 as a 4/4 song and
+    # stamps display_beats=4 on cards, which forces _virtualBeats's forcedBeats
+    # branch to 4 dots, bypassing the 6/8-aware path entirely. Frontend then
+    # shows 4-dot cards in a 6/8 song and downbeat markers wander.
+    auto_compound_6_8 = (
+        str(chord_data.get("time_signature") or "").strip() == "6/8"
+        and int(chord_data.get("display_subdivisions_per_bar") or 0) == 6
+    )
+    auto_simple_3_4 = (
+        str(chord_data.get("time_signature") or "").strip() == "3/4"
+        and int(chord_data.get("display_subdivisions_per_bar") or 0) == 3
+    )
+    if preserve_explicit_meter_cards or auto_compound_6_8 or auto_simple_3_4:
+        if preserve_explicit_meter_cards:
+            reason = "explicit-meter-card-grid"
+        elif auto_compound_6_8:
+            reason = "auto-detected-6-8"
+        else:
+            reason = "auto-detected-3-4"
         meta["display_quantization_skipped"] = {
-            "reason": "explicit-meter-card-grid",
+            "reason": reason,
             "time_signature": chord_data.get("time_signature"),
         }
     else:
@@ -1558,15 +1826,28 @@ def analyze_global_structure(chord_data: Dict) -> Dict:
     chords = _dedupe_names(chord_data.get("chords") or [])
     beats = [_float(v) for v in (chord_data.get("beats") or [])]
     downbeats = [_float(v) for v in (chord_data.get("downbeats") or [])]
+    raw_db_probs = chord_data.get("downbeat_probs")
+    downbeat_probs = (
+        [_float(v) for v in raw_db_probs]
+        if isinstance(raw_db_probs, list) else None
+    )
     bpm = _float(chord_data.get("bpm"))
     meta: Dict = {"applied": False, "version": "global-arbiter-v0", "hints": []}
     if len(chords) < 4:
         meta["reason"] = "too-few-chords"
         return meta
 
-    compound_meter = _compound_6_8_meter_info(beats, downbeats, bpm)
+    compound_meter = _compound_6_8_meter_info(
+        beats, downbeats, bpm, downbeat_probs=downbeat_probs,
+    )
     if compound_meter:
         meta["compound_meter"] = compound_meter
+    else:
+        # 3/4 (waltz) detection — disjoint from 6/8 by the beat_gap >= 0.45s
+        # gate, so it's safe to try only when 6/8 didn't fire.
+        simple_meter = _simple_3_4_meter_info(beats, downbeats, bpm)
+        if simple_meter:
+            meta["simple_meter"] = simple_meter
 
     first_end = _float(chords[0].get("end"))
     intro_beat = _beat_stats(beats, 0.0, first_end)

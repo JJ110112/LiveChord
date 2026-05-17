@@ -1,6 +1,8 @@
 import unittest
 
 from backend.global_chord_arbiter import (
+    _compound_6_8_meter_info_beats_only,
+    _compound_6_8_meter_info_from_payload,
     _viterbi_smooth_keys,
     _window_key_map,
     analyze_global_structure,
@@ -531,6 +533,197 @@ class TestWindowKeySmoothing(unittest.TestCase):
             t += 24.0
         wins = _window_key_map(chords)
         self.assertLessEqual(len(wins), 3, f"bossa over-segmented: {wins}")
+
+
+class TestCompound68FallbackHelpers(unittest.TestCase):
+    """Tests for the serve-time meter-fallback helpers used by chord_api.
+
+    Both helpers are designed to be called when the active beat source's
+    chord_data couldn't classify as compound 6/8 — they let the serve
+    pipeline still stamp time_signature when a richer sidecar exists or
+    when beats[] alone is regular enough.
+    """
+
+    @staticmethod
+    def _synth_6_8_payload(num_bars: int = 30, beat_gap: float = 0.44, bpm: float = 136.4):
+        beats = [round(beat_gap * i + 0.05, 3) for i in range(num_bars * 6)]
+        downbeats = [round(beat_gap * 6 * i + 0.05, 3) for i in range(num_bars)]
+        return {"beats": beats, "downbeats": downbeats, "bpm": bpm}
+
+    def test_from_payload_succeeds_on_compound_6_8_sidecar(self):
+        info = _compound_6_8_meter_info_from_payload(self._synth_6_8_payload())
+        self.assertIsNotNone(info)
+        self.assertEqual(info["type"], "compound_6_8")
+        self.assertEqual(info["time_signature"], "6/8")
+        self.assertEqual(info["display_subdivisions_per_bar"], 6)
+        self.assertGreater(len(info.get("bars", [])), 0)
+
+    def test_from_payload_returns_none_for_non_dict(self):
+        self.assertIsNone(_compound_6_8_meter_info_from_payload(None))
+        self.assertIsNone(_compound_6_8_meter_info_from_payload([]))
+
+    def test_from_payload_returns_none_for_empty_sidecar(self):
+        self.assertIsNone(_compound_6_8_meter_info_from_payload({"beats": [], "downbeats": [], "bpm": 92.3}))
+
+    def test_beats_only_succeeds_on_dense_regular_eighth_grid(self):
+        # 30 bars of 6/8 at 136.4 BPM — eighth-note pulse, very regular
+        beats = [round(0.44 * i + 0.05, 3) for i in range(180)]
+        info = _compound_6_8_meter_info_beats_only(beats, 136.4)
+        self.assertIsNotNone(info)
+        self.assertEqual(info["time_signature"], "6/8")
+        self.assertEqual(info["source"], "beats-only-fallback")
+        # No bars[] in beats-only path — splitter degrades to non-6/8 path
+        self.assertNotIn("bars", info)
+
+    def test_beats_only_rejects_when_bpm_out_of_range(self):
+        beats = [round(0.44 * i + 0.05, 3) for i in range(180)]
+        # 90 BPM is below the [100, 230] window
+        self.assertIsNone(_compound_6_8_meter_info_beats_only(beats, 90.0))
+        # 240 BPM is above
+        self.assertIsNone(_compound_6_8_meter_info_beats_only(beats, 240.0))
+
+    def test_beats_only_rejects_when_beats_too_few(self):
+        # Only 20 beat gaps — gate requires >= 24
+        beats = [round(0.44 * i + 0.05, 3) for i in range(20)]
+        self.assertIsNone(_compound_6_8_meter_info_beats_only(beats, 136.4))
+
+    def test_beats_only_rejects_4_4_song_with_irregular_beats(self):
+        # Quarter-note grid at 90 BPM (wrong tempo for 6/8 detection) with jitter
+        # — designed to NOT cross the strict beats-only thresholds
+        import random
+        random.seed(42)
+        beats = []
+        t = 0.0
+        for _ in range(60):
+            t += 0.667 + random.uniform(-0.08, 0.08)  # 90 BPM quarter with jitter
+            beats.append(round(t, 3))
+        self.assertIsNone(_compound_6_8_meter_info_beats_only(beats, 90.0))
+
+    def test_beats_only_rejects_when_beat_gap_doesnt_match_eighth_pulse(self):
+        # bpm says 136 (eighth) but the beats are quarter-spaced (≈0.88s)
+        # → beat_gap/spb ratio is ~2.0, outside [0.85, 1.18]
+        beats = [round(0.88 * i + 0.05, 3) for i in range(60)]
+        self.assertIsNone(_compound_6_8_meter_info_beats_only(beats, 136.4))
+
+
+class TestCompound68HalvedDownbeatPath(unittest.TestCase):
+    """Tests for the secondary detection path: ratio ≈ 3 (madmom emits
+    dotted-quarter downbeats uniformly) gated by beat_gap < 0.55s.
+
+    Verified on Alicia Keys "If I Ain't Got You" (bpm=118, bg=0.47, db=1.43,
+    ratio=3.04) — true 6/8 that madmom labels with half-bar downbeats.
+    """
+
+    def _synth(self, *, beat_gap: float, db_gap: float, bpm: float, num_db: int = 30):
+        # Beats fill the same time span as downbeats, at the eighth rate.
+        total = num_db * db_gap
+        beats = [round(beat_gap * i + 0.05, 3) for i in range(int(total / beat_gap) + 1)]
+        downbeats = [round(db_gap * i + 0.05, 3) for i in range(num_db)]
+        return beats, downbeats, bpm
+
+    def test_secondary_path_accepts_compound_6_8_with_dotted_quarter_downbeats(self):
+        # Alicia Keys "If I Ain't Got You" signature
+        beats, db, bpm = self._synth(beat_gap=0.47, db_gap=1.43, bpm=118.0)
+        from backend.global_chord_arbiter import _compound_6_8_meter_info
+        info = _compound_6_8_meter_info(beats, db, bpm)
+        self.assertIsNotNone(info, "ratio-3 path should accept eighth-pulse 6/8")
+        self.assertEqual(info["time_signature"], "6/8")
+        self.assertTrue(info.get("halved_downbeat_pulse_path"))
+        self.assertAlmostEqual(info["inferred_bpb"], 6.09, places=1)
+        # bars[] should be approximately every other downbeat
+        self.assertGreater(len(info["bars"]), 10)
+
+    def test_secondary_path_rejects_3_4_waltz_with_quarter_beats(self):
+        # Moon River signature: bpm 94, bg 0.63, db 1.89, ratio 3.0
+        # bg ≥ 0.55 → quarter-pulse → not 6/8
+        beats, db, bpm = self._synth(beat_gap=0.63, db_gap=1.89, bpm=94.0)
+        from backend.global_chord_arbiter import _compound_6_8_meter_info
+        info = _compound_6_8_meter_info(beats, db, bpm)
+        self.assertIsNone(info, "3/4 waltz should not be falsely stamped 6/8")
+
+    def test_secondary_path_rejects_4_4_with_quarter_beats_and_ratio_4(self):
+        # Breakaway signature: bpm 159, bg 0.37, db 1.50, ratio 4.05
+        # ratio outside [2.7, 3.3] → not secondary-eligible
+        beats, db, bpm = self._synth(beat_gap=0.37, db_gap=1.50, bpm=159.3)
+        from backend.global_chord_arbiter import _compound_6_8_meter_info
+        info = _compound_6_8_meter_info(beats, db, bpm)
+        self.assertIsNone(info, "4/4 song with ratio 4.0 should not be stamped 6/8")
+
+    def test_primary_path_still_succeeds_on_clean_full_bar_downbeats(self):
+        # Existing behavior: ratio ≈ 6 with full-bar downbeats
+        beats, db, bpm = self._synth(beat_gap=0.44, db_gap=2.64, bpm=136.4)
+        from backend.global_chord_arbiter import _compound_6_8_meter_info
+        info = _compound_6_8_meter_info(beats, db, bpm)
+        self.assertIsNotNone(info)
+        self.assertFalse(info.get("halved_downbeat_pulse_path"))
+        self.assertEqual(info["time_signature"], "6/8")
+
+
+class TestSimple34MeterInfo(unittest.TestCase):
+    """Tests for the 3/4 (waltz) detector."""
+
+    def _synth(self, *, beat_gap: float, db_gap: float, bpm: float, num_db: int = 30):
+        total = num_db * db_gap
+        beats = [round(beat_gap * i + 0.05, 3) for i in range(int(total / beat_gap) + 1)]
+        downbeats = [round(db_gap * i + 0.05, 3) for i in range(num_db)]
+        return beats, downbeats, bpm
+
+    def test_accepts_moon_river_signature(self):
+        # Moon River (Remastered 2015): bpm=94, bg=0.63, db=1.89, ratio=3.00
+        beats, db, bpm = self._synth(beat_gap=0.63, db_gap=1.89, bpm=94.0)
+        from backend.global_chord_arbiter import _simple_3_4_meter_info
+        info = _simple_3_4_meter_info(beats, db, bpm)
+        self.assertIsNotNone(info, "Moon River-style waltz should detect as 3/4")
+        self.assertEqual(info["time_signature"], "3/4")
+        self.assertEqual(info["display_subdivisions_per_bar"], 3)
+        self.assertEqual(info["practice_pulses_per_bar"], 3)
+        self.assertGreater(len(info["bars"]), 10)
+
+    def test_rejects_compound_6_8_eighth_pulse(self):
+        # Compound 6/8 has eighth-note beats (bg < 0.45s typical at slow tempos
+        # OR bg < 0.55s with strict gate). 3/4 detector should NOT fire.
+        beats, db, bpm = self._synth(beat_gap=0.44, db_gap=1.32, bpm=136.4)
+        from backend.global_chord_arbiter import _simple_3_4_meter_info
+        info = _simple_3_4_meter_info(beats, db, bpm)
+        self.assertIsNone(info, "6/8 eighth-pulse should not be classified as 3/4")
+
+    def test_rejects_4_4_song_with_quarter_beats(self):
+        # 4/4 at 120 BPM quarter — bg=0.5s, db_gap should be ~2.0s (4 quarters/bar)
+        # ratio = 2.0/0.5 = 4.0 — outside [2.7, 3.3]
+        beats, db, bpm = self._synth(beat_gap=0.50, db_gap=2.00, bpm=120.0)
+        from backend.global_chord_arbiter import _simple_3_4_meter_info
+        info = _simple_3_4_meter_info(beats, db, bpm)
+        self.assertIsNone(info, "4/4 with ratio 4.0 should not classify as 3/4")
+
+    def test_rejects_when_bpm_outside_waltz_range(self):
+        # 200 BPM — too fast for a waltz
+        beats, db, bpm = self._synth(beat_gap=0.30, db_gap=0.90, bpm=200.0)
+        from backend.global_chord_arbiter import _simple_3_4_meter_info
+        info = _simple_3_4_meter_info(beats, db, bpm)
+        # bg=0.30 is below _SIMPLE_34_BG_MIN (0.45) too
+        self.assertIsNone(info)
+
+    def test_apply_corrections_stamps_3_4_when_simple_meter_detected(self):
+        beats, db, bpm = self._synth(beat_gap=0.63, db_gap=1.89, bpm=94.0)
+        sheet = {"chords": [{"time": 0.0, "end": 1.89, "chord": "C"},
+                            {"time": 1.89, "end": 3.78, "chord": "F"},
+                            {"time": 3.78, "end": 5.67, "chord": "G"},
+                            {"time": 5.67, "end": 7.56, "chord": "C"}],
+                 "beats": beats, "downbeats": db, "bpm": bpm}
+        from backend.global_chord_arbiter import (
+            analyze_global_structure, apply_global_structure_corrections)
+        meta = analyze_global_structure(sheet)
+        self.assertIn("simple_meter", meta)
+        self.assertEqual(meta["simple_meter"]["type"], "simple_3_4")
+        apply_global_structure_corrections(sheet, meta)
+        self.assertEqual(sheet["time_signature"], "3/4")
+        self.assertEqual(sheet["display_subdivisions_per_bar"], 3)
+        self.assertEqual(sheet["practice_pulses_per_bar"], 3)
+        self.assertGreater(len(sheet.get("bars", [])), 0)
+        # Quantization should be skipped for 3/4
+        skipped = sheet["global_arbiter_meta"].get("display_quantization_skipped")
+        self.assertIsNotNone(skipped)
+        self.assertEqual(skipped["reason"], "auto-detected-3-4")
 
 
 if __name__ == "__main__":

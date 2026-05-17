@@ -61,12 +61,24 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import threading
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
+
+
+def _safe_round(p, ndigits: int = 4) -> float:
+    """Round a sigmoid probability, clamping NaN/Inf to 0.0.
+
+    Defense at every persistence boundary — the model can emit non-finite
+    values on pathological audio (silence/clipping) which would serialize as
+    invalid JSON downstream.
+    """
+    p = float(p)
+    return round(p, ndigits) if math.isfinite(p) else 0.0
 
 logger = logging.getLogger(__name__)
 
@@ -165,14 +177,20 @@ def _get_model(checkpoint_path: Optional[Path] = None):
 # ---------------------------------------------------------------------------
 
 def _peak_pick(probs: np.ndarray, threshold: float, min_distance: int
-               ) -> List[int]:
+               ) -> Tuple[List[int], List[float]]:
     """Local-maximum peak picking. A frame is a peak if:
       - prob > threshold
       - prob > prev frame and >= next frame (strict-then-non-strict to
         avoid plateaus producing two peaks)
       - at least ``min_distance`` frames since the last accepted peak
+
+    Returns ``(peaks, peak_probs)`` — the accepted frame indices and the
+    sigmoid probability at each peak (NaN/Inf clamped to 0.0). Phase 1
+    propagates ``peak_probs`` downstream so chord_splitter can gate
+    bar-snap on per-bar confidence.
     """
     peaks: List[int] = []
+    peak_probs: List[float] = []
     last = -10 ** 9
     n = len(probs)
     for i in range(1, n - 1):
@@ -183,8 +201,16 @@ def _peak_pick(probs: np.ndarray, threshold: float, min_distance: int
         if i - last < min_distance:
             continue
         peaks.append(i)
+        # Defensive: loop bounds guarantee i<len(probs), but the explicit
+        # guard + NaN/Inf clamp protects against future refactors and
+        # against the model emitting non-finite values on pathological
+        # audio (extreme silence, clipping).
+        val = float(probs[i]) if i < len(probs) else 0.0
+        if not math.isfinite(val):
+            val = 0.0
+        peak_probs.append(val)
         last = i
-    return peaks
+    return peaks, peak_probs
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +242,9 @@ def refine(audio_path: Union[str, Path],
     Returns a dict:
       refined_beats: list[float]      — same as input on failure
       refined_downbeats: list[float]
+      beat_probs: list[float]         — sigmoid prob at each refined beat;
+                                        empty on failure or bail
+      downbeat_probs: list[float]     — parallel to refined_downbeats
       applied: bool                   — True only if we actually ran
       reason: str                     — short status / failure reason
       n_beats_in / n_beats_out
@@ -226,6 +255,8 @@ def refine(audio_path: Union[str, Path],
     out: Dict = {
         "refined_beats": list(beats),
         "refined_downbeats": list(downbeats),
+        "beat_probs": [],
+        "downbeat_probs": [],
         "applied": False,
         "reason": "",
         "n_beats_in": len(beats),
@@ -289,14 +320,20 @@ def refine(audio_path: Union[str, Path],
         logger.warning("refine forward failed: %s", e)
         return out
 
-    beat_frames = _peak_pick(beat_probs, threshold, min_distance_beat)
-    db_frames = _peak_pick(db_probs, threshold, min_distance_downbeat)
+    beat_frames, beat_peak_probs = _peak_pick(
+        beat_probs, threshold, min_distance_beat,
+    )
+    db_frames, db_peak_probs = _peak_pick(
+        db_probs, threshold, min_distance_downbeat,
+    )
 
     refined_beats = [round(f / FRAMES_PER_SEC, 4) for f in beat_frames]
     refined_downbeats = [round(f / FRAMES_PER_SEC, 4) for f in db_frames]
 
     out["refined_beats"] = refined_beats
     out["refined_downbeats"] = refined_downbeats
+    out["beat_probs"] = [_safe_round(p) for p in beat_peak_probs]
+    out["downbeat_probs"] = [_safe_round(p) for p in db_peak_probs]
     out["n_beats_out"] = len(refined_beats)
     out["n_downbeats_out"] = len(refined_downbeats)
     out["applied"] = True

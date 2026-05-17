@@ -10,6 +10,7 @@ The original chord array (incl. user manual edits) stays in storage; the
 serve-time copy is what the player consumes.
 """
 
+import bisect
 import math
 import statistics
 from typing import Iterable, List, Dict, Optional, Tuple
@@ -58,6 +59,26 @@ _SAME_CHORD_MERGE_TOTAL_BEATS = (3.3, 5.5)
 _SAME_CHORD_FULL_BAR_BEATS = 3.35
 _SAME_CHORD_SLIVER_BEATS = 1.75
 _SAFE_LONG_SPLIT_MIN_BEATS = 5.5
+
+# Phase 1 confidence gate for compound 6/8 bar-snap. When chord_data carries
+# a per-bar `bar_probs[]` (Phase 1 beat_refiner output), each candidate snap
+# requires `bar_probs[nearest_idx] >= _BAR_SNAP_MIN_CONFIDENCE`. Legacy
+# chord JSONs without `bar_probs[]` keep Phase 0 unconditional-snap
+# behavior — gate only fires when data is available.
+# 0.7 = BCE-trained sigmoid's natural break (0.5) + 0.2 safety margin.
+# Tune empirically via tools/measure_bar_prob_distribution.py once backfill
+# populates the corpus.
+_BAR_SNAP_MIN_CONFIDENCE = 0.7
+
+
+def _coerce_prob(p) -> float:
+    """Defensively coerce a stored prob value. Returns 0.0 for non-finite or
+    non-numeric entries so a corrupted JSON can't poison the snap gate."""
+    try:
+        v = float(p)
+        return v if math.isfinite(v) else 0.0
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _explicit_meter_card_seconds(chord_data: Dict) -> float:
@@ -170,6 +191,19 @@ def _resolve_split_downbeats(chord_data: Dict) -> Optional[List[float]]:
     song really IS 4/4; the tracker just emitted twice the rate. Without
     this, every slow pop ballad bypasses auto-split.
     """
+    # Compound 6/8 fast path: prefer the bar-only subset stamped by
+    # global_chord_arbiter._compound_6_8_meter_info. Raw downbeats[] in
+    # detected 6/8 mixes bar starts (≈2.56s gap) with mid-bar dotted-quarter
+    # pulses (≈1.28s gap); using it directly causes the splitter to chop
+    # bars at half-bar pulses and produce ~2.13s "bar" cards.
+    if str(chord_data.get("time_signature") or "").strip() == "6/8":
+        bars = chord_data.get("bars") or []
+        if len(bars) >= 2:
+            return [float(b) for b in bars]
+        # Falls through to the legacy downbeats[] path when bars[] is missing
+        # (e.g. arbiter hasn't run yet) — splitter still works, just without
+        # the bar-snap improvement.
+
     raw = chord_data.get("downbeats") or []
     if len(raw) < 2:
         return None
@@ -353,6 +387,109 @@ def _compound_six_eight_cleanup(chords: List[Dict], chord_data: Dict) -> Tuple[L
         out.append(cur)
         idx += 1
     return out, {"applied": merged > 0, "merged": merged, "examples": examples}
+
+
+def _compound_six_eight_bar_snap(chords: List[Dict], chord_data: Dict) -> Tuple[List[Dict], Dict]:
+    """Phase 0 visual cleanup: snap chord boundaries within ±1 eighth of a
+    true bar to that bar, IF both resulting cards stay >= 2 eighths.
+
+    Eliminates 5-eighth and 7-eighth cards that arise when the BTC detector
+    places a chord change near (but not exactly on) a bar — trades up to 1
+    eighth of chord-onset accuracy for visual bar-alignment.
+
+    Conservative gates so V->I cadential pickups survive:
+      - never shrink a card below 2 eighths (a real 2-eighth pickup chord
+        next to a bar will be 0.87s from the bar, which exceeds the 1-eighth
+        snap_tol → no snap)
+      - skip snaps that would invert / collapse a card
+
+    Requires ``bars[]`` (true bar grid) stamped by global_chord_arbiter's
+    compound 6/8 path. Returns unchanged when bars[] missing or meter
+    isn't 6/8.
+    """
+    if str(chord_data.get("time_signature") or "").strip() != "6/8":
+        return chords, {"applied": False, "snapped": 0}
+    bars = [float(b) for b in (chord_data.get("bars") or [])]
+    if len(bars) < 2 or len(chords) < 2:
+        return chords, {"applied": False, "snapped": 0}
+    beat_gap = _median_beat_gap([float(v) for v in (chord_data.get("beats") or []) if v is not None])
+    if not beat_gap or beat_gap <= 0:
+        bpm = float(chord_data.get("bpm") or 0)
+        beat_gap = 60.0 / bpm if bpm > 0 else 0.0
+    if beat_gap <= 0:
+        return chords, {"applied": False, "snapped": 0}
+
+    # Phase 1: per-bar confidence gate. When length matches, each candidate
+    # snap requires bar_probs[nearest_idx] >= _BAR_SNAP_MIN_CONFIDENCE. When
+    # absent / empty / mismatched, fall back to Phase 0 unconditional snap.
+    bar_probs = [_coerce_prob(p) for p in (chord_data.get("bar_probs") or [])]
+    use_probs = len(bar_probs) == len(bars)
+
+    snap_tol = beat_gap * 1.0       # +/- 1 eighth
+    min_card_eighths = 2.0          # preserve 2-eighth V->I pickups
+
+    out = [dict(c) for c in chords]
+    snapped = 0
+    confidence_gated_skips = 0
+    examples: List[Dict] = []
+
+    for i in range(len(out) - 1):
+        boundary = float(out[i].get("end") or 0.0)
+        cur_start = float(out[i].get("time") or 0.0)
+        nxt_end = float(out[i + 1].get("end") or 0.0)
+        if boundary <= cur_start or nxt_end <= boundary:
+            continue
+        # bars[] is monotonically increasing (downbeat times in seconds), so
+        # bisect gives O(log N) nearest-bar lookup. The naive min() over
+        # bars[] is O(N) per boundary → O(M·N) per song, which is fine for
+        # 100-300 bar pop but degrades on 1000+ bar classical works during
+        # tools/backfill_beat_probs.py full-corpus validation.
+        ins = bisect.bisect_left(bars, boundary)
+        candidates: List[int] = []
+        if ins > 0:
+            candidates.append(ins - 1)
+        if ins < len(bars):
+            candidates.append(ins)
+        nearest_idx = min(candidates, key=lambda k: abs(bars[k] - boundary))
+        nearest = bars[nearest_idx]
+        delta = nearest - boundary
+        if abs(delta) > snap_tol or abs(delta) < 1e-3:
+            continue
+        new_cur_dur = nearest - cur_start
+        new_nxt_dur = nxt_end - nearest
+        if new_cur_dur < min_card_eighths * beat_gap:
+            continue
+        if new_nxt_dur < min_card_eighths * beat_gap:
+            continue
+        # NaN/Inf-safe gate. Python's `NaN < x` is False, which would let a
+        # NaN bar incorrectly snap — _coerce_prob already clamps to 0.0 but
+        # check explicitly so any future bypass of coerce still fails closed.
+        if use_probs:
+            prob = bar_probs[nearest_idx]
+            if not math.isfinite(prob) or prob < _BAR_SNAP_MIN_CONFIDENCE:
+                confidence_gated_skips += 1
+                continue
+        out[i]["end"] = round(nearest, 3)
+        out[i + 1]["time"] = round(nearest, 3)
+        out[i]["compound_meter_bar_snapped_end"] = True
+        out[i + 1]["compound_meter_bar_snapped_start"] = True
+        snapped += 1
+        if len(examples) < 5:
+            examples.append({
+                "old_boundary": round(boundary, 3),
+                "new_boundary": round(nearest, 3),
+                "delta": round(delta, 3),
+                "cur_chord": out[i].get("chord"),
+                "nxt_chord": out[i + 1].get("chord"),
+            })
+
+    return out, {
+        "applied": snapped > 0,
+        "snapped": snapped,
+        "examples": examples,
+        "confidence_gated_skips": confidence_gated_skips,
+        "confidence_gate_active": use_probs,
+    }
 
 
 def _interpolate_oversized_gaps(boundaries: List[float], bar_gap: float) -> List[float]:
@@ -883,6 +1020,7 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
     new_chords = split_chords_at_bars(chords, resolved)
     new_chords, post_merge_meta = merge_same_chord_fragments(new_chords, bpm)
     new_chords, compound_cleanup = _compound_six_eight_cleanup(new_chords, chord_data)
+    new_chords, compound_bar_snap = _compound_six_eight_bar_snap(new_chords, chord_data)
     chord_data["chords"] = new_chords
     chord_data["auto_split_meta"] = {
         "applied": True,
@@ -895,6 +1033,7 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
             "patterns": frag.get("patterns", {}),
             "post_merge": post_merge_meta,
             "compound_cleanup": compound_cleanup,
+            "compound_bar_snap": compound_bar_snap,
         },
     }
     return chord_data

@@ -21,6 +21,8 @@ from backend.chord_splitter import (
     _drop_small_segment_boundaries,
     _interpolate_oversized_gaps,
     _resolve_split_downbeats,
+    _compound_six_eight_bar_snap,
+    _BAR_SNAP_MIN_CONFIDENCE,
 )
 
 
@@ -622,6 +624,133 @@ class TestMaybeSplitForServe(unittest.TestCase):
         self.assertEqual(len(out["chords"]), 2)
         self.assertEqual(out["chords"][0]["time"], 0.0)
         self.assertEqual(out["chords"][0]["end"], 2.0)
+
+
+class TestCompoundBarSnapConfidenceGate(unittest.TestCase):
+    """Phase 1: per-bar Sigmoid confidence gates _compound_six_eight_bar_snap.
+
+    Fixture: 6/8 at eighth-pulse 120 BPM (beat_gap = 0.5s, bar = 3.0s).
+    Three chord cards each ending 0.1s past a bar — both interior boundaries
+    are snap candidates within the ±1-eighth (±0.5s) tolerance, and both
+    resulting cards stay above the 2-eighth (1.0s) minimum, so Phase 0
+    unconditionally snaps both.
+    """
+
+    def _fixture(self, *, bar_probs=None, omit_key=False):
+        # bars at 0/3/6/9; chords each end 0.1s past a bar → 2 snap candidates
+        data = {
+            "time_signature": "6/8",
+            "bars": [0.0, 3.0, 6.0, 9.0],
+            "beats": [i * 0.5 for i in range(20)],  # 10s of eighth pulses
+            "bpm": 120.0,
+            "chords": [
+                {"time": 0.0, "end": 3.1, "chord": "C"},
+                {"time": 3.1, "end": 6.1, "chord": "G"},
+                {"time": 6.1, "end": 9.0, "chord": "F"},
+            ],
+        }
+        if not omit_key:
+            data["bar_probs"] = bar_probs if bar_probs is not None else []
+        return data
+
+    def test_high_conf_snaps_both_boundaries(self):
+        data = self._fixture(bar_probs=[0.9, 0.9, 0.9, 0.9])
+        out, meta = _compound_six_eight_bar_snap(data["chords"], data)
+        self.assertEqual(meta["snapped"], 2)
+        self.assertTrue(meta["applied"])
+        self.assertEqual(meta["confidence_gated_skips"], 0)
+        self.assertTrue(meta["confidence_gate_active"])
+        self.assertAlmostEqual(out[0]["end"], 3.0, places=3)
+        self.assertAlmostEqual(out[1]["time"], 3.0, places=3)
+        self.assertAlmostEqual(out[1]["end"], 6.0, places=3)
+        self.assertAlmostEqual(out[2]["time"], 6.0, places=3)
+
+    def test_low_conf_skips_all_snaps(self):
+        data = self._fixture(bar_probs=[0.3, 0.3, 0.3, 0.3])
+        out, meta = _compound_six_eight_bar_snap(data["chords"], data)
+        self.assertEqual(meta["snapped"], 0)
+        self.assertFalse(meta["applied"])
+        self.assertEqual(meta["confidence_gated_skips"], 2)
+        self.assertTrue(meta["confidence_gate_active"])
+        # Original boundaries preserved
+        self.assertAlmostEqual(out[0]["end"], 3.1, places=3)
+        self.assertAlmostEqual(out[1]["time"], 3.1, places=3)
+
+    def test_mixed_conf_only_high_snaps(self):
+        # bars[1]=3.0 high-conf → first snap fires; bars[2]=6.0 low-conf →
+        # second snap gated. bars[0] and bars[3] are not lookup targets.
+        data = self._fixture(bar_probs=[0.5, 0.9, 0.3, 0.5])
+        out, meta = _compound_six_eight_bar_snap(data["chords"], data)
+        self.assertEqual(meta["snapped"], 1)
+        self.assertEqual(meta["confidence_gated_skips"], 1)
+        self.assertAlmostEqual(out[0]["end"], 3.0, places=3)
+        self.assertAlmostEqual(out[1]["time"], 3.0, places=3)
+        # Second boundary NOT snapped
+        self.assertAlmostEqual(out[1]["end"], 6.1, places=3)
+        self.assertAlmostEqual(out[2]["time"], 6.1, places=3)
+
+    def test_threshold_edge_just_below_skips(self):
+        # 0.69 is just below 0.70 threshold → skip; 0.71 is above → snap
+        data = self._fixture(bar_probs=[0.5, 0.69, 0.71, 0.5])
+        self.assertEqual(_BAR_SNAP_MIN_CONFIDENCE, 0.7)
+        out, meta = _compound_six_eight_bar_snap(data["chords"], data)
+        self.assertEqual(meta["snapped"], 1)
+        self.assertEqual(meta["confidence_gated_skips"], 1)
+        # First boundary (looks up bars[1]=0.69) gated; second snaps on bars[2]=0.71
+        self.assertAlmostEqual(out[0]["end"], 3.1, places=3)
+        self.assertAlmostEqual(out[1]["end"], 6.0, places=3)
+
+    def test_legacy_no_probs_key_keeps_phase0_behavior(self):
+        # No bar_probs key at all → Phase 0 unconditional snap
+        data = self._fixture(omit_key=True)
+        out, meta = _compound_six_eight_bar_snap(data["chords"], data)
+        self.assertEqual(meta["snapped"], 2)
+        self.assertEqual(meta["confidence_gated_skips"], 0)
+        self.assertFalse(meta["confidence_gate_active"])
+
+    def test_mismatched_prob_length_falls_back_to_phase0(self):
+        # 4 bars but only 2 probs → mismatched → ignore, Phase 0 behavior
+        data = self._fixture(bar_probs=[0.9, 0.9])
+        out, meta = _compound_six_eight_bar_snap(data["chords"], data)
+        self.assertEqual(meta["snapped"], 2)
+        self.assertFalse(meta["confidence_gate_active"])
+        self.assertEqual(meta["confidence_gated_skips"], 0)
+
+    def test_empty_probs_falls_back_to_phase0(self):
+        data = self._fixture(bar_probs=[])
+        out, meta = _compound_six_eight_bar_snap(data["chords"], data)
+        self.assertEqual(meta["snapped"], 2)
+        self.assertFalse(meta["confidence_gate_active"])
+
+    def test_simple_3_4_unaffected_by_phase1(self):
+        # time_signature="3/4" hits early return at function entry; bar_probs
+        # presence must not change that gate.
+        data = self._fixture(bar_probs=[0.9, 0.9, 0.9, 0.9])
+        data["time_signature"] = "3/4"
+        out, meta = _compound_six_eight_bar_snap(data["chords"], data)
+        self.assertEqual(meta["snapped"], 0)
+        self.assertFalse(meta["applied"])
+        # Should NOT carry phase1 keys when early-returning
+        self.assertNotIn("confidence_gate_active", meta)
+
+    def test_nan_or_inf_probs_treated_as_below_threshold(self):
+        # _coerce_prob clamps NaN/Inf to 0.0; gate then rejects (< 0.7).
+        # Mix in valid high-conf entries to verify the rest of the array
+        # still drives snaps normally.
+        import json
+        data = self._fixture(bar_probs=[
+            0.9,                  # bars[0] (unused as snap target)
+            float("nan"),         # bars[1] → coerced to 0.0 → skip
+            float("inf"),         # bars[2] → coerced to 0.0 → skip
+        ])
+        # Pad to 4 to match bars length
+        data["bar_probs"].append(0.9)
+        out, meta = _compound_six_eight_bar_snap(data["chords"], data)
+        # Both snap candidates gated by NaN/Inf entries
+        self.assertEqual(meta["snapped"], 0)
+        self.assertEqual(meta["confidence_gated_skips"], 2)
+        # Meta must serialize cleanly to JSON despite originally-bad inputs
+        json.dumps(meta)
 
 
 if __name__ == "__main__":

@@ -445,6 +445,12 @@ def _run_beat_refiner_into_sheet(sheet: dict, audio_path: str, job_id: str):
     """
     from ai.bar_arbitrator import phase1_refine
     res = phase1_refine(sheet, audio_path)
+    beat_probs = res.get("beat_probs") or []
+    downbeat_probs = res.get("downbeat_probs") or []
+    mean_db_prob = (
+        round(sum(downbeat_probs) / len(downbeat_probs), 3)
+        if downbeat_probs else 0.0
+    )
     sheet["beat_refiner"] = {
         "applied": res["applied"],
         "reason": res["reason"],
@@ -455,16 +461,22 @@ def _run_beat_refiner_into_sheet(sheet: dict, audio_path: str, job_id: str):
         "n_beats_after": len(res.get("beats_after") or []),
         "n_downbeats_before": len(res.get("downbeats_before") or []),
         "n_downbeats_after": len(res.get("downbeats_after") or []),
+        "n_beat_probs": len(beat_probs),
+        "n_downbeat_probs": len(downbeat_probs),
+        "mean_downbeat_prob": mean_db_prob,
     }
     if res["applied"]:
         sheet["beats"] = res["beats_after"]
         sheet["downbeats"] = res["downbeats_after"]
+        sheet["beat_probs"] = list(beat_probs)
+        sheet["downbeat_probs"] = list(downbeat_probs)
         logger.info(
             "[beat_refiner] %s replaced beats: align %.2f->%.2f, "
-            "n_beats %d->%d, n_downbeats %d->%d",
+            "n_beats %d->%d, n_downbeats %d->%d, mean_db_prob=%.2f",
             job_id, res.get("score_before", 0.0), res.get("score_after", 0.0),
             len(res["beats_before"]), len(res["beats_after"]),
             len(res["downbeats_before"]), len(res["downbeats_after"]),
+            mean_db_prob,
         )
     else:
         logger.info("[beat_refiner] %s skipped: %s", job_id, res["reason"])
@@ -482,6 +494,12 @@ def _run_bar_arbitrator_into_sheet(sheet: dict, job_id: str):
     res = arbitrate(sheet, model_path=model_path)
     apply_to_chord_json(sheet, res)
     if res["applied"]:
+        # beat_probs[] left intact: apply_to_chord_json only rewrites downbeats.
+        # If that ever changes, also pop beat_probs here.
+        if sheet.pop("downbeat_probs", None) is not None:
+            bar = sheet.get("bar_correction") or {}
+            bar["downbeat_probs_cleared_reason"] = "rule-arbitrator-replaced-grid"
+            sheet["bar_correction"] = bar
         logger.info(
             "[bar_arbitrator] %s replaced downbeats: bpb=%d conf=%.2f model=%s n_db %d->%d",
             job_id, res["beats_per_bar"], res["score_after"], res["model_version"],

@@ -5,7 +5,7 @@ usually because they're blocked on a larger initiative (Phase 4, MIDI catalog,
 model retrain). Items listed here should have **diagnosis + blocker + expected
 resolution path**, not just a vague wish.
 
-Last updated: 2026-04-28
+Last updated: 2026-05-16
 
 ---
 
@@ -24,6 +24,11 @@ Beta wound down 2026-04-26. Going forward the project's main engineering bandwid
 - Push `bar_arbitrator` Phase 1 model false-positive rate down. Conservative `_MIN_CANDIDATE_F1` gate is intentional but means many genuinely-broken songs fall through to the rule-based fallback.
 - Edge genres still poor: slow ballads where the BPM ballad-halving heuristic fights the refiner, rubato, intros with long silence, songs with tempo-curve breaks (rallentando endings).
 - `beat_refiner` chunked-overlap inference for >15 min songs (currently truncated at `MAX_FRAMES`).
+- **Compound 6/8 + simple 3/4 meter classification** (shipped 2026-05-16, see [QA_BATTLE_STORY 番外篇 IX](QA_BATTLE_STORY.md)): serve-time sidecar fallback + secondary ratio-3 path + 3/4 detector. Open follow-ups:
+  - Phase 1: propagate `beat_refiner` sigmoid confidences (`beat_logits` / `downbeat_logits`) into the bar-snap so high-confidence downbeats override the gate.
+  - Phase 2: activate `beat_refiner`'s `chord_boundary_logits` head + train on feedback.db corrections.
+  - Admin UI tool to surface degenerate-beat songs ([tools/backfill_degenerate_beats.py](../tools/backfill_degenerate_beats.py) is the CLI; UI wrap pending).
+  - Backfill batch (PC-compute, madmom, ~93k JSONs) currently in progress 2026-05-16; expect ~10k+ degenerate songs upgraded to densely-sampled beats[]/downbeats[].
 
 ### Track 2 — Chord accuracy
 

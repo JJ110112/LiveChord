@@ -1798,7 +1798,7 @@
 
       const timeEl = document.createElement("div");
       timeEl.className = "rv-time";
-      timeEl.textContent = formatTime(c.time);
+      timeEl.textContent = formatTime(c.time, "centi");
       item.appendChild(timeEl);
 
       // 動態節拍指示器 (Dynamic Beat Indicator)
@@ -4762,18 +4762,30 @@
     }
 
     // 6/8 cards render eighth-note subdivisions: half-bar = 3 dots, full bar = 6.
+    // Subdivisions per bar is a META property (always 6 for 6/8), NOT a tempo
+    // property — must stay invariant to the BPM dropdown (_currentBpmMult)
+    // so the half-bar vs full-bar dot count doesn't flip when the user
+    // cycles practice tempo. _secPerBeatAt returns the BASE-rate spb that
+    // tracks tempo_curve rubato but ignores _currentBpmMult — exactly what
+    // we want here.
     if (!off && _meterLabel() === "6/8") {
       const subdivisions = Number(chordData && chordData.display_subdivisions_per_bar) || tsBeats;
-      const songBpm = (chordData && typeof chordData.bpm === "number" && chordData.bpm > 0)
-        ? chordData.bpm : (60.0 / Math.max(0.001, currentSecPerBeat));
-      const songSpb = (60.0 / songBpm) / (_currentBpmMult || 1.0);
-      const nominalBeats = songSpb > 0 ? (durSec / songSpb) : rawBeats;
       const halfBar = subdivisions / 2;
-      const n = nominalBeats <= (halfBar + subdivisions) / 2 ? Math.round(halfBar) : Math.round(subdivisions);
+      const baseSpb = _secPerBeatAt(cStart);
+      const nominalEighths = baseSpb > 0 ? (durSec / baseSpb) : rawBeats;
+      const n = nominalEighths <= (halfBar + subdivisions) / 2
+        ? Math.round(halfBar)
+        : Math.round(subdivisions);
+      // Anchor dots on real eighth-note beats from chordData.beats[] when
+      // available, so the highlight ticks at the song's actual eighth rate
+      // regardless of card duration. For sub-bar cards (e.g. a 2.13s "bar"
+      // with only 5 real eighths inside), reconcile via off-by-one or
+      // stride-resample so the visual count still matches `n`.
+      const explicitTimes = _explicitTimesFor68(cStart, durSec, n);
       return {
         count: n,
         short: false,
-        dots: _buildVirtualDots(n, durSec, cStart),
+        dots: _buildVirtualDots(n, durSec, cStart, explicitTimes),
       };
     }
 
@@ -4996,6 +5008,47 @@
     return out;
   }
 
+  // Pull `n` real eighth-note times out of chordData.beats[] for the card at
+  // [cStart, cStart+durSec] in compound 6/8 rendering. Reconciles common
+  // off-by-one cases so dots still anchor on real ticks even when a card's
+  // real-beat count doesn't perfectly match the desired dot count.
+  // Returns null when chordData.beats[] is unavailable or too far off — caller
+  // falls back to even spacing inside _buildVirtualDots.
+  function _explicitTimesFor68(cStart, durSec, n) {
+    if (!Array.isArray(chordData && chordData.beats) || !chordData.beats.length) return null;
+    if (!(n >= 1)) return null;
+    const realBeats = _beatsInRange(chordData.beats, cStart, cStart + durSec);
+    if (!realBeats.length) return null;
+    if (realBeats.length === n) return realBeats;
+    if (realBeats.length === n + 1) {
+      // boundary epsilon: drop the side closer to card edge
+      const headSlack = realBeats[0] - cStart;
+      const tailSlack = (cStart + durSec) - realBeats[realBeats.length - 1];
+      return tailSlack < headSlack ? realBeats.slice(0, n) : realBeats.slice(1);
+    }
+    if (realBeats.length === n - 1) {
+      // synthesize the missing terminal eighth from the local beat step
+      const last = realBeats[realBeats.length - 1];
+      const step = realBeats.length >= 2
+        ? (last - realBeats[0]) / (realBeats.length - 1)
+        : (durSec / n);
+      return realBeats.concat([Math.min(cStart + durSec - 0.01, last + step)]);
+    }
+    if (Math.abs(realBeats.length - n) <= 2) {
+      // stride-resample so anchors at least land on real ticks (better than
+      // even-spacing when realBeats has 4 ticks but card wants 6 dots)
+      const out = new Array(n);
+      const denom = Math.max(1, n - 1);
+      for (let i = 0; i < n; i++) {
+        const src = Math.min(realBeats.length - 1,
+          Math.round(i * (realBeats.length - 1) / denom));
+        out[i] = realBeats[src];
+      }
+      return out;
+    }
+    return null;
+  }
+
   function _buildVirtualDots(count, durSec, cStart, explicitTimes) {
     const dbs = (chordData && Array.isArray(chordData.downbeats)) ? chordData.downbeats : [];
     const meterBeatsPerBar = _meterBeatsPerBar();
@@ -5012,6 +5065,13 @@
       let isDownbeat = false;
       if (_meterLabel() === "6/8") {
         isDownbeat = (i === 0 || (count === 6 && i === 3));
+      } else if (_meterLabel() === "3/4") {
+        // 3/4 cards are bar-anchored by chord_splitter (using bars[] from
+        // _simple_3_4_meter_info). Always mark dot 0 as the downbeat to
+        // match the 6/8 convention — relying on dbs[] proximity matching
+        // misses cards whose chord boundary lands one tick off the nearest
+        // downbeat (verified on Moon River: 25/84 cards lost the marker).
+        isDownbeat = (i === 0);
       } else if (dbs.length > 0) {
         for (let k = 0; k < dbs.length; k++) {
           if (Math.abs(dbs[k] - t) < tol) { isDownbeat = true; break; }

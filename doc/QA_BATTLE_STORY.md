@@ -1031,4 +1031,198 @@ bf38929  feat(beats+melody): YT re-download fallback + start/done toasts    (Pha
 
 > **後記**：番外篇 VII 解架構債（靜態 BPM 假設）；番外篇 VIII 解 UX 債（同步阻塞、死按鈕、視覺重複）。架構債要一次性大手術，UX 債要小步快跑。但兩種都有同樣的反思：**「先做出來再優化」是 polite fiction**。Phase 1 那個版本如果用單元測試嚴格驗過、文件全寫好，照樣會在使用者第一次按到的瞬間翻車——因為 production 的 latency / 來源分佈 / 心理期待，跟 PC localhost 的 happy path 是兩個世界。CLAUDE.md 那條 loose-coupling 規則，是這天最大的產出——比所有 commit 加起來都重要。
 
+---
+
+## 🥁 番外篇 IX：一首民謠裡的「消失的下拍」——從 Christina Perri 追到 9 萬首歌的歷史包袱（2026-05-16）
+
+### 起因：一個少了下拍標記的 6/8 歌
+
+使用者報告：Christina Perri 的「A Thousand Years」在 player 裡和弦卡片有渲染、節拍卡也都在——但**第一拍那個應該變大、變亮、加 ring 的 downbeat 標記消失了**。整首歌每一小節的卡片都缺少視覺重音，像是節拍儀失去了「強拍位置感」。
+
+更詭異的是使用者發現的 workaround：
+> 把 beat source 從 `beat_this` 切到 `librosa`，再切回 `beat_this`，downbeat 標記就會出現，而且永久保留。
+
+代理第一直覺：**「這不是 frontend bug，這是 state-persistence bug**。」如果切到 librosa 能解決，代表 librosa 那條路徑會 stamp 一個 `beat_this` 路徑沒 stamp 的欄位；而且這個欄位被切回 beat_this 時保留了下來——那一定是 `setdefault` 之類的「只寫不覆蓋」語意。
+
+### 第一次拆解：兩個共謀的程式碼點
+
+代理 grep 出兩個關鍵位置：
+
+1. [global_chord_arbiter.py `_compound_6_8_meter_info`](backend/global_chord_arbiter.py#L1130) 要求 `len(downbeat_gaps) >= 8`。Christina Perri 的 beat_this 結果只有 0~7 個 downbeats（太稀疏），整個 6/8 分類器啞火，`time_signature` 不被 stamp。
+
+2. [global_chord_arbiter.py `apply_global_structure_corrections`](backend/global_chord_arbiter.py#L1495) 用 `chord_data.setdefault("time_signature", "6/8")`。**只有當 key 不存在才寫入**。
+
+3. 切換 source 觸發 `/api/process/beats/switch`，librosa 的密集 downbeats 通過 `>= 8` gate，`time_signature="6/8"` 被寫到磁碟。
+
+4. 切回 beat_this：再分析又失敗，但 `setdefault` 看到欄位已存在 → 不覆寫 → **librosa 寫的標記留著**。
+
+5. 前端 [player.js `_buildVirtualDots`](frontend/js/player.js#L5063) 用 `_meterLabel() === "6/8"` 決定要不要把 dot 0 + dot 3 標成 downbeat。讀的就是這個 `time_signature`。
+
+5 個鏈條一一對上。**「workaround 永久有效」反而是這個 bug 自我修復的最大線索**——使用者一句「切過去再切回來」就比代理 grep 半小時更精準地把 setdefault 揪出來。
+
+### 設計決策：原地放寬閾值，還是走別條路？
+
+最直覺的修法是 `_compound_6_8_meter_info` 把 `>= 8` 放寬成 `>= 4`。但這會把所有 jazz waltz、3/4 民謠、開場安靜的 4/4 慢板都拉進 6/8 候選池。**閾值放寬等於拉低判別精度**——可能修一首壞五首。
+
+代理選了「換食材，不換廚師」：當前 source 自己分類失敗，**回頭問另一個 source 的 sidecar**。
+
+```
+.bak.librosa  ← librosa 的快照（密集 downbeats）
+.bak.madmom   ← madmom 的快照
+.bak.beat_this ← beat_this 的快照（當前 active 的舊備份）
+```
+
+每次切 source，舊資料會被存成 `.bak.<prev>`。所以即使 active 是 beat_this，磁碟上常常還躺著 librosa / madmom 的 sidecar——拿來餵 `_compound_6_8_meter_info` 就能在不修改分類器的前提下救回判別。
+
+寫了兩個新 helper：
+
+- `_compound_6_8_meter_info_from_payload(payload)` — 從 sidecar dict 拆 beats / downbeats / bpm 後跑同一個分類器
+- `_maybe_meter_fallback_from_sidecars(data, official_file)` — 在 serve time 巡 `.bak.{librosa, madmom, beat_this}` 三個 sidecar，第一個成功就 stamp 結果到 in-memory response（**完全不寫磁碟**）
+
+這條路的好處：
+- 分類器一行不改 → 沒有 false positive 風險
+- in-memory only → 沒有 race condition、沒有 ingest provenance 污染
+- 早期出口 `if data.get("time_signature"): return` → 99% 請求 cost = 0
+- breadcrumb 寫到 `data["serve_time_meter_fallback"]` → 觀測友善
+
+### 陷阱一：空 sidecar 會把好資料蓋掉
+
+寫到一半才發現：Christina Perri 的 `.bak.librosa` 裡面 `bpm=92.3` 但 `beats=[]`、`downbeats=[]`。這是某次切 source 留下的損壞快照——librosa 那次跑壞了，但 sidecar 還是寫下去了。
+
+如果使用者請求 `?beat_source=librosa`，`_apply_requested_beat_source` 會把這個空 overlay 蓋上去——當下他們會看到完全沒節拍的 player。
+
+修法是在 `_apply_requested_beat_source` 加一道防線：**snapshot 同時 beats 為空 AND downbeats 為空時，視為損壞，拒絕套用**，回退到當前 active source。
+
+### 陷阱二：「If I Ain't Got You」也是 6/8，但被 fallback 漏掉
+
+把 fix 部署到 NUC 後，使用者抓到 5 首 regression 測試樣本：
+
+| 歌 | 預期 | 修前結果 |
+| --- | --- | --- |
+| If I Ain't Got You | 6/8 | ❌ 沒分類 |
+| Breakaway | 4/4（不要誤判） | ❌ 變成 6/8（false positive） |
+| Lover | 6/8 | ✅ |
+| Moon River | 3/4 | ❌ 沒分類 |
+| Shiver | 6/8 | ✅ |
+
+兩個方向同時失準：
+- **Breakaway** 是 false positive。代理寫的 `_compound_6_8_meter_info_beats_only`（最後手段：純從 beats[] + bpm 推 6/8）把 4/4 中速搖滾誤判成 6/8。修法是再加一道 gate：**只有當 active source 的 downbeats 數量 < 4 才考慮 beats-only fallback**——有正常 downbeats 但分類沒過，代表它真的不像 6/8，別硬塞。
+- **If I Ain't Got You** 是 false negative。`_compound_6_8_meter_info` 預期 `downbeat_gap / beat_gap ≈ 6`（每個下拍包 6 個八分音）。但 madmom 對 6/8 慢歌常常 emit「半小節 downbeats」（每 3 個八分音一次）→ ratio 變成 3。
+
+代理在 `_compound_6_8_meter_info` 加了 surgical 的 secondary path：
+
+```python
+secondary_ok = (
+    2.7 <= inferred_bpb <= 3.3   # ratio≈3 而不是≈6
+    and beat_gap < 0.55          # 但每拍夠短，是八分音不是四分音
+    and (bpm <= 0 or bpm >= 100.0)  # BPM 也偏快，排除真 3/4
+)
+```
+
+`bg < 0.55s` 是關鍵——3/4 歌的「拍」是四分音（bg ≈ 0.6~1.0s），6/8 的「拍」是八分音（bg ≈ 0.3~0.5s）。同樣是 ratio≈3，bg 是判別 3/4 vs「半小節 6/8」的決定性 feature。
+
+### 第三條路：那 Moon River 怎麼辦？
+
+Moon River 是真 3/4。`_compound_6_8_meter_info` 怎麼放寬都不該把它分類成 6/8——它就不是。
+
+代理寫了 `_simple_3_4_meter_info`：
+
+```python
+_SIMPLE_34_BPB_MIN = 2.7        # ratio 也是≈3
+_SIMPLE_34_BPB_MAX = 3.3
+_SIMPLE_34_BG_MIN = 0.45        # 但 bg ≥ 0.45s（四分音）
+_SIMPLE_34_BG_MAX = 1.20
+_SIMPLE_34_BPM_MIN = 50         # 慢板~中板
+_SIMPLE_34_BPM_MAX = 130
+```
+
+`_simple_3_4` 跟 `_compound_6_8`（secondary path）用 ratio 判型相同，但用 **bg 與 BPM 範圍** 區分這是 3/4 民謠還是 6/8 ballad 的半小節下拍。
+
+`analyze_global_structure` 流程改為：先試 6/8，沒過再試 3/4，都沒過就維持 4/4 預設。
+
+### 陷阱三：`display_beats=4` 把 6/8 給 hardcode 蓋掉
+
+修完後 Lover 還是渲染成 4 拍。Grep `display_beats` 才發現：[global_chord_arbiter.py `_apply_downbeat_display_quantization`](backend/global_chord_arbiter.py) 一律 stamp `display_beats=4`，因為那條 quantization 是寫給 4/4 用的。前端 `_buildVirtualDots` 看到 `forcedBeats=4` 就直接 early-return，6/8 路徑連跑都跑不到。
+
+修法很簡單——在那個 stamp 加一道 gate：
+
+```python
+if data.get("time_signature") == "6/8" and data.get("display_subdivisions_per_bar") == 6:
+    return  # 6/8 自己有 6 個 dot，不要被 4/4 quantizer 強壓
+```
+
+3/4 後來也加進來。**「4/4 預設是好設計」**這句話的另一面是：**任何不是 4/4 的 code path 都得明確檢查並繞過 4/4 預設**——hardcode 的隱性假設不會讓自己被看見，得 grep 全 codebase 才能挖出來。
+
+### 副產物：centisecond 卡片時間戳
+
+debug 過程中使用者抱怨：「卡片寫 0:20，到底是 0:20.0 還是 0:20.9？我不知道哪張卡片該對哪個 downbeat。」
+
+代理在 `formatTime(sec, mode="centi")` 加了第二種模式，把 `0:20` 顯示成 `0:20.98`。chord ribbon 卡片跟 chord-render canvas 都改成 centi 模式。整個 debug 流程從「**模糊指認**」變「**精確時碼**」——使用者可以直接報「0:20.98 → 0:23.99 之間少一個 downbeat」，再也不用代理猜。
+
+這個 helper 只是 debug 輔助，沒有計畫拿掉——精度高一個位數但沒有任何負作用，**「永遠加上去」比「之後拿掉」更省心**。
+
+### 最終議題：那庫裡其他 9 萬首歌呢？
+
+這個 fix 是 serve-time fallback——只在使用者打開歌時、且該歌的 active source 沒分類成功時，才從 sidecar 救回。問題：**很多歷史包袱歌曲根本沒 sidecar**。
+
+那些歌是早期版本 ingest 的，當時只跑 librosa fallback（快但精度差），沒有 beat_this / madmom 的 `.bak.*` 沒有 backfill 流程把它們重跑過。**fallback 拿不到食材** → 一輩子顯示為「沒 6/8 emphasis」。
+
+代理寫了 `tools/backfill_degenerate_beats.py`：
+
+- 兩段掃描：第一遍用字串 prefilter 跳過明顯 OK 的檔案（看 `"beats_source": "librosa-fallback"` 或 `"beats": []`）。第二遍才 JSON parse 可疑的——93,305 個檔案 ~12 分鐘掃完
+- 真正的 backfill：對每首 degenerate 歌，跑一次 madmom（本機 CPU，~30s/song），把結果寫回 chord JSON
+- 安全網：原檔先存 `.bak.<prev_source>` sidecar、bumps `beat_version` invalidate stale-acc cache、atomic write（`.tmp` + `os.replace`）→ Ctrl+C 安全
+- 進度可監督：每 1000 個 scan 一行、每首 backfill 一行、錯誤 log 寫到 `tools/backfill_errors_<ts>.log` 帶 traceback
+
+預估數字：93k chord JSONs 中約 ~3,500 度估會被 flag 為 degenerate，~7-8 小時跑完。實際跑下去掃到 60,000 時 degenerate 已 6,618——接近兩倍預估。**估計從來不準，所以做進度條與 ETA 比預測更重要**。
+
+最終結果（28.9 小時跑完 2026-05-17 15:45）：
+
+| 結果 | 數量 | 比例 |
+| --- | --- | --- |
+| ✓ OK（madmom 升級成功） | **10,048** | 75.0% |
+| SKIP_AUDIO_MISSING（孤兒 JSON） | 2,601 | 19.4% |
+| SKIP_NO_CHORDS（chord 陣列空） | 574 | 4.3% |
+| FAIL_NO_BEATS_DETECTED（音檔太靜） | 187 | 1.4% |
+| **硬錯誤（WRITE / READ / TRACKER）** | **0** | 0% |
+
+**10,048 首歌從 librosa-fallback 升級到 madmom 密集 beats/downbeats**——這些歌之後第一次被打開時，serve-time 的 6/8 secondary path 與 3/4 detector 都能跑起來。Zero hard errors 驗證了 `.tmp` + `os.replace` + `.bak.<prev_source>` sidecar 這套寫入流程，**SMB 路徑下、跑 29 小時、跨一次 NUC 重啟，都沒撕裂任何一個檔案**。
+
+### 🎓 這次的五條
+
+1. **Workaround 是最好的線索**。使用者一句「切過去再切回來就好」三秒鐘標出 setdefault persistence 這個 root cause，比代理 grep 半小時的「猜想」精準。**遇到 workaround 不要直接 patch workaround——順著 workaround 反推為什麼它有效**，原因往往就是 root cause。
+
+2. **「閾值放寬」是最後選項，不是第一選項**。`>= 8` 被改成 `>= 4` 等於把分類器精度直接打折——可能修一首壞五首。如果有第二個資料源（sidecar）可以餵同一個分類器，**換食材永遠優先於改廚師**。
+
+3. **Hardcode 的隱性假設要 grep 才看得到**。`display_beats=4` 是寫在 quantization 裡的「合理預設」——4/4 是大宗。但 6/8 / 3/4 加進來時，這個 hardcode 變成被動 bug，必須在每個 non-4/4 出口加 gate。**任何「合理預設」未來都要當作「特例假設」對待**——它在原作者寫下時是「99% 場景的 default」，加新場景後變成「99% 場景的特例」。
+
+4. **空 sidecar 會主動造成傷害**。`_apply_requested_beat_source` 沒檢查 snapshot 完整性，會把空 overlay 蓋掉好資料。**任何「載入舊資料」的 code path 都要先驗證資料完整性**——loading garbage 比 loading nothing 更糟，因為它看起來像有效但行為錯亂。
+
+5. **Backfill 腳本是「Phase 4 之後永遠的清掃工」**。架構升級了 → 規格變了 → 庫裡舊資料不符合新規格。**每次重大架構變動都要附帶一個 backfill 腳本**，否則新功能只對「未來歌」生效，「歷史包袱」永遠是 long tail。腳本要有：兩段掃描、進度條、錯誤 log、atomic write、sidecar backup、Ctrl+C 安全——這些不是 nice-to-have，是 9 萬首歌跑 8 小時時你會感激的東西。
+
+### 🧵 commit 序列（待 commit）
+
+```
+[ ] feat(meter): serve-time 6/8 sidecar fallback + bars[] derivation
+[ ] feat(meter): _compound_6_8 secondary path (ratio≈3 + bg<0.55s)
+[ ] feat(meter): _simple_3_4_meter_info detector + serve-time fallback
+[ ] fix(arbiter): skip 4/4 display quantization for 6/8 / 3/4
+[ ] fix(serve): refuse empty sidecar overlays in _apply_requested_beat_source
+[ ] feat(player): centisecond mode in formatTime() for chord card timestamps
+[ ] feat(player): _explicitTimesFor68 + 3/4 hardcoded dot-0 downbeat
+[ ] tools: backfill_degenerate_beats.py — PC-compute madmom upgrade for legacy songs
+[ ] tests: 12 new tests across TestCompound68Fallback / Halved / Simple34
+```
+
+### 📌 待辦
+
+- 等 backfill batch 跑完（~7-8 hr，~10k+ degenerate songs 估計）→ 統計 madmom upgrade 後的 6/8 / 3/4 分類率變化
+- bd issue Phase 1：propagate beat_refiner sigmoid confidences (`beat_logits` / `downbeat_logits`) for prob-weighted bar-snap
+- bd issue Phase 2：activate beat_refiner's `chord_boundary_logits` head + train on feedback.db corrections
+- bd issue：admin UI tool to surface degenerate-beat songs（CLI 是 backfill_degenerate_beats.py，UI wrap 還沒）
+
+---
+
+> **後記**：番外篇 IX 跟 VII 是同一條主線——「節拍 / 拍號」的長尾追擊。VII 解決了「同一首歌內」的 BPM 動態（rubato），IX 解決了「同一首歌跨 source」的拍號穩定性。但 IX 多了一層 VII 沒有的議題：**歷史包袱**。LiveChord 從 v0 跑到現在累積了 ~93k 首 chord JSONs，每次架構升級就會留下一批「按舊規格 ingest 的歌」。這次的 backfill 腳本會是未來每次「節拍 / 拍號」相關升級的範本——掃描、過濾、原地升級、原地驗證、atomic 寫回。**架構債永遠還不完，但能一次還 1 萬筆就值得寫腳本**。
+
 
