@@ -1,6 +1,6 @@
-"""Demo-songs builder — runs BTC chord detection, beat tracking, and melody
-extraction directly against the curated MP3s under ``data/demo/`` and writes
-out everything the VPS needs to serve them.
+"""Demo-songs builder — runs BTC chord detection, beat tracking, bar
+arbitration, and melody extraction directly against the curated MP3s under
+``data/demo/`` and writes out everything the VPS needs to serve them.
 
 Calls the backend's analysis functions in-process — no running uvicorn needed.
 Run from the repo root:
@@ -279,6 +279,14 @@ def _infer_beats_per_bar(chord_data: dict, sec_per_beat: float) -> int:
     """Mirror frontend chord-correction.js:inferBeatsPerBar — median of inter-
     downbeat gaps in beats, snapped to 3 or 4. Defaults to 4 if no usable
     downbeats[]."""
+    display_subdivisions = chord_data.get("display_subdivisions_per_bar")
+    if isinstance(display_subdivisions, (int, float)) and 1 <= display_subdivisions <= 16:
+        return int(round(display_subdivisions))
+    explicit_bpb = chord_data.get("beats_per_bar")
+    if isinstance(explicit_bpb, (int, float)) and 1 <= explicit_bpb <= 16:
+        return int(round(explicit_bpb))
+    if str(chord_data.get("time_signature") or "").strip().replace(" ", "") == "6/8":
+        return 6
     db = chord_data.get("downbeats") or []
     if len(db) < 3 or sec_per_beat <= 0:
         return 4
@@ -465,6 +473,34 @@ def _beat_this_local(audio_path: str, chords: list) -> dict:
         "beat_version": 1,
         "bpm_correction": bpm_correction_record,
     }
+
+
+def _apply_bar_arbitrator(chord_data: dict) -> dict:
+    """Apply the same audio-free bar/downbeat arbitration used by production.
+
+    Demo rebuilds are explicit maintenance jobs, so this uses ``force=True``
+    like the admin backfill endpoint. Manual per-track overrides are applied
+    after this step and remain the final authority for known special cases.
+    """
+    from ai.bar_arbitrator import arbitrate, apply_to_chord_json
+
+    model_file = DATA_DIR / "models" / "bar_arbitrator_v1.onnx"
+    model_path = str(model_file) if model_file.is_file() else None
+    result = arbitrate(chord_data, model_path=model_path, force=True)
+    apply_to_chord_json(chord_data, result)
+    return result
+
+
+def _stamp_player_meter(chord_data: dict, beats_per_bar: int | None) -> None:
+    """Write the meter fields that player.js uses for visible chord cards."""
+    if beats_per_bar == 6:
+        chord_data["time_signature"] = "6/8"
+        chord_data["display_subdivisions_per_bar"] = 6
+        chord_data["practice_pulses_per_bar"] = 2
+    elif beats_per_bar == 3:
+        chord_data["time_signature"] = "3/4"
+        chord_data["display_subdivisions_per_bar"] = 3
+        chord_data["practice_pulses_per_bar"] = 3
 
 
 def _probe_audio_duration(audio_path: str) -> float:
@@ -688,6 +724,17 @@ def analyze_track(track: dict) -> dict | None:
         if k in beats_info:
             cdata[k] = beats_info[k]
 
+    # Apply the current bar/downbeat arbitrator before pre-splitting demo chord
+    # cards. This keeps demo JSONs aligned with production's post-BTC pipeline.
+    bar_res = _apply_bar_arbitrator(cdata)
+    arb_bpb = bar_res.get("beats_per_bar") if bar_res.get("applied") else None
+    _stamp_player_meter(cdata, arb_bpb)
+    print(f"  [arb ] applied={bar_res.get('applied')} "
+          f"bpb={bar_res.get('beats_per_bar')} "
+          f"reason={bar_res.get('reason')} "
+          f"downbeats={len(bar_res.get('downbeats_before') or [])}"
+          f"->{len(bar_res.get('downbeats_after') or [])}")
+
     # Per-track override: lets us hand-correct cases where beat_this got the
     # meter / tempo wrong (e.g. compound-triple Nocturne pulse-tracked as
     # straight 4/4). Rebuilds downbeats[] from beats[] taking every Nth and
@@ -709,6 +756,7 @@ def analyze_track(track: dict) -> dict | None:
             "bpm_set": bpm_ovr,
             "reason": "manual override in scripts/build_demo.py TRACKS",
         }
+        _stamp_player_meter(cdata, int(bpb_ovr) if bpb_ovr else None)
         print(f"  [ovr ] bpm={cdata['bpm']} beats_per_bar={bpb_ovr} "
               f"(downbeats now {len(cdata.get('downbeats',[]))})")
 

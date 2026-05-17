@@ -9,7 +9,7 @@
   "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
   "source_url": "https://commons.wikimedia.org/wiki/File:Frere_Jacques_-_canon.ogg",
   "category": "easy",
-  "demo_audio_url": "/static/demo/frere_jacques.mp3?v=4",
+  "demo_audio_url": "/static/demo/frere_jacques.mp3",
   "chords": [
     {
       "time": 1.5,
@@ -83,7 +83,7 @@
     17.0,
     18.0,
     19.0,
-    20.01,
+    20.0,
     21.0,
     22.02,
     23.0,
@@ -121,7 +121,7 @@
     17.0,
     18.0,
     19.0,
-    20.01,
+    20.0,
     21.0,
     22.02,
     23.0,
@@ -202,7 +202,7 @@
       "bpm": 60.0
     },
     {
-      "t": 20.01,
+      "t": 20.0,
       "bpm": 60.0
     },
     {
@@ -305,5 +305,17 @@
   "beats_source": "beat_this",
   "beat_version": 1,
   "n_snapped": 1,
-  "bpm_correction": null
+  "bpm_correction": null,
+  "bar_correction": {
+    "applied": false,
+    "reason": "too-few-chords",
+    "model_version": "model_v1",
+    "beats_per_bar": 4,
+    "phase_offset_sec": 0.0,
+    "raw_regularity_cv": null,
+    "score_before": 0.0,
+    "score_after": 0.0,
+    "n_downbeats_before": 36,
+    "n_downbeats_after": 36
+  }
 }
