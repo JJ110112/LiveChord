@@ -1,5 +1,6 @@
 """Process API — 上傳音檔 和弦偵測"""
 
+import hashlib
 import os
 import queue
 import logging
@@ -159,13 +160,23 @@ def _get_demo_cover_map() -> dict[str, "Path"]:
         try:
             for entry in _json.loads(manifest.read_text(encoding="utf-8")):
                 h = entry.get("hash")
-                cover_url = entry.get("cover_url") or ""
+                demo_id = entry.get("id")
+                cover_url = (entry.get("cover_url") or "").split("?", 1)[0]
                 # cover_url shape: /static/demo/covers/<id>.jpg → resolve to disk
                 if h and cover_url.startswith("/static/demo/"):
                     rel = cover_url[len("/static/demo/"):]
                     p = Path(__file__).parent.parent / "data" / "demo" / rel
                     if p.is_file():
                         out[h] = p
+                        if demo_id:
+                            for alias in (
+                                f"demo/{demo_id}.mp3",
+                                f"Y:/demo/{demo_id}.mp3",
+                            ):
+                                alias_hash = hashlib.md5(
+                                    alias.encode("utf-8")
+                                ).hexdigest()[:12]
+                                out[alias_hash] = p
         except Exception:
             pass
     _DEMO_COVER_MAP = out

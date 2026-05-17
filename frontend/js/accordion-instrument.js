@@ -576,15 +576,15 @@ class AccordionInstrument {
       ctx.textBaseline = "bottom";
       ctx.font = "11px sans-serif";
       for (let ci = 0; ci < chords.length; ci++) {
-        const gc = chords[ci];
-        const gcEnd = (ci + 1 < chords.length) ? chords[ci + 1].time : gc.time + 4;
-        const gcDur = gcEnd - gc.time;
-        for (let b = 0; b < 4; b++) {
-          const bt = gc.time + (b / 4) * gcDur;
+        const gridLines = this._b.getWaterfallBeatGrid
+          ? this._b.getWaterfallBeatGrid(chords, ci)
+          : [];
+        for (const line of gridLines) {
+          const bt = line.time;
           if (bt < currentTime - 0.1 || bt > currentTime + lookAhead) continue;
           const y = waterfallH - (bt - currentTime) * pxPerSec;
           if (y < 0 || y > waterfallH) continue;
-          const isBarLine = (b === 0);
+          const isBarLine = !!line.isBarLine;
           ctx.strokeStyle = isBarLine ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.08)";
           ctx.lineWidth = isBarLine ? 2 : 1;
           ctx.beginPath();
@@ -592,7 +592,7 @@ class AccordionInstrument {
           ctx.lineTo(W, y);
           ctx.stroke();
           ctx.fillStyle = isBarLine ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.3)";
-          ctx.fillText(b + 1, 8, y - 2);
+          ctx.fillText(line.label, 8, y - 2);
         }
       }
     }

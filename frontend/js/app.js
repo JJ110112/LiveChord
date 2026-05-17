@@ -7,6 +7,7 @@
   let currentPath = localStorage.getItem("livechord_home_path") || "";
   let currentTab = localStorage.getItem("livechord_home_tab") || "recent";
   let searchTimer = null;
+  let _betaActiveAnalysis = null;
 
   // ---- DOM refs ----
   const $ = (sel) => document.querySelector(sel);
@@ -30,6 +31,52 @@
     } else {
       window.location.href = `/player?path=${encodeURIComponent(path)}&autoplay=1`;
     }
+  }
+
+  function _hideAddSongPanelOnly() {
+    const p = $("#betaFabPanel");
+    const backdrop = $("#betaFabBackdrop");
+    if (p) {
+      p.classList.remove("open");
+      p.classList.remove("file-only");
+      p.classList.remove("analyzing");
+    }
+    if (backdrop) backdrop.classList.remove("open");
+  }
+
+  function _fileTitle(file) {
+    return ((file && file.name) || "").replace(/\.[^.]+$/, "") || "Untitled";
+  }
+
+  function _beginBetaActiveAnalysis(file, localId) {
+    _betaActiveAnalysis = {
+      jobId: "",
+      localId: localId || "",
+      title: _fileTitle(file),
+      sizeMb: file && file.size ? (file.size / 1048576).toFixed(1) : "",
+      progress: 10,
+      status: "uploading",
+      statusText: _t("home.progress.uploading"),
+    };
+    _renderLocalTracks();
+  }
+
+  function _updateBetaActiveAnalysis(jobId, patch) {
+    if (!_betaActiveAnalysis) return;
+    if (jobId && _betaActiveAnalysis.jobId && _betaActiveAnalysis.jobId !== jobId) return;
+    Object.assign(_betaActiveAnalysis, patch || {});
+    if (jobId && !_betaActiveAnalysis.jobId) _betaActiveAnalysis.jobId = jobId;
+    _renderLocalTracks();
+  }
+
+  function _clearBetaActiveAnalysis(jobId, delayMs = 0) {
+    const clear = () => {
+      if (jobId && _betaActiveAnalysis && _betaActiveAnalysis.jobId && _betaActiveAnalysis.jobId !== jobId) return;
+      _betaActiveAnalysis = null;
+      _renderLocalTracks();
+    };
+    if (delayMs > 0) setTimeout(clear, delayMs);
+    else clear();
   }
 
   function getDifficultyHtml(item) {
@@ -80,6 +127,7 @@
         const closeBtn = $("#betaFabClose");
         const backdrop = $("#betaFabBackdrop");
         const closeAddSongModal = () => {
+          const keepAnalysisAlive = !!_betaActiveAnalysis;
           const p = $("#betaFabPanel");
           if (p) {
             p.classList.remove("open");
@@ -99,12 +147,14 @@
           // stuck-disabled 分析 button + null _betaSelectedFile + hidden
           // file-info row, which is what the user hit when dismissing
           // mid-upload then clicking the per-track 分析 again.
-          if (_betaActivePollTimer) {
-            clearInterval(_betaActivePollTimer);
-            _betaActivePollTimer = null;
+          if (!keepAnalysisAlive) {
+            if (_betaActivePollTimer) {
+              clearInterval(_betaActivePollTimer);
+              _betaActivePollTimer = null;
+            }
+            _betaSelectedFile = null;
+            _currentAnalyzingLocalId = null;
           }
-          _betaSelectedFile = null;
-          _currentAnalyzingLocalId = null;
           const fi = $("#betaFileInfo"); if (fi) fi.style.display = "none";
           const ub = $("#betaUploadBtn"); if (ub) ub.disabled = false;
           const yb = $("#betaYtBtn"); if (yb) yb.disabled = false;
@@ -363,9 +413,11 @@
     const analyzedRow = $("#betaLocalAnalyzedRow");
     const pendingList = $("#betaLocalTrackList");
     if (!section || !analyzedRow || !pendingList) return;
+    if (_betaActiveAnalysis) section.style.display = "";
     const tracks = _getLocalTracks();
     const analyzed = tracks.filter(t => t.analyzedHash);
-    const pending = tracks.filter(t => !t.analyzedHash);
+    const activeLocalId = _betaActiveAnalysis && _betaActiveAnalysis.localId;
+    const pending = tracks.filter(t => !t.analyzedHash && t.id !== activeLocalId);
 
     // Analyzed: horizontal grid-item cards (like 最近播放). Backend extracts
     // an embedded cover at upload time (process_queue.py _extract_cover) and
@@ -400,14 +452,36 @@
       });
     });
 
+    const activeHtml = _betaActiveAnalysis ? (() => {
+      const a = _betaActiveAnalysis;
+      const pct = Math.max(0, Math.min(100, Number(a.progress) || 0));
+      const safeTitle = escapeHtml(a.title || "");
+      const metaParts = [];
+      metaParts.push(`<span class="lt-state lt-analyzing-state">${escapeHtml(a.statusText || _t("home.progress.queued_analyzing"))}</span>`);
+      if (a.sizeMb) metaParts.push(`${escapeHtml(a.sizeMb)} ${_t("home.local.mb")}`);
+      return `
+        <div class="local-track-item lt-analyzing" data-job-id="${escapeHtml(a.jobId || "")}">
+          <div class="lt-analysis-head">
+            <div class="lt-info">
+              <div class="lt-name" title="${safeTitle}">${safeTitle}</div>
+              <div class="lt-meta">${metaParts.join(" · ")}</div>
+            </div>
+            <div class="lt-analysis-pct">${pct}%</div>
+          </div>
+          <div class="lt-progress-track" aria-hidden="true">
+            <div class="lt-progress-fill" style="width:${pct}%"></div>
+          </div>
+        </div>`;
+    })() : "";
+
     // Pending: current vertical list layout
-    if (pending.length === 0 && analyzed.length === 0) {
+    if (pending.length === 0 && analyzed.length === 0 && !activeHtml) {
       pendingList.innerHTML = `<div style="color:var(--text-dim); font-size:13px; padding:8px 0">
         ${_t("home.local.empty_hint")}
       </div>`;
       return;
     }
-    pendingList.innerHTML = pending.map(t => {
+    const pendingHtml = pending.map(t => {
       const sizeMb = (t.size / 1048576).toFixed(1);
       const safeName = escapeHtml(t.name);
       return `
@@ -420,6 +494,7 @@
           <button class="lt-remove" data-action="remove" data-id="${escapeHtml(t.id)}" title="${_t("home.local.remove_btn")}" aria-label="${_t("home.local.remove_btn")}">&times;</button>
         </div>`;
     }).join("");
+    pendingList.innerHTML = activeHtml + pendingHtml;
     pendingList.querySelectorAll("[data-action='play-or-analyze']").forEach(btn => {
       btn.addEventListener("click", () => _onLocalTrackAction(btn.dataset.id));
     });
@@ -523,6 +598,8 @@
 
   window._betaStartUpload = async function() {
     if (!_betaSelectedFile) return;
+    const selectedFile = _betaSelectedFile;
+    const selectedLocalId = _currentAnalyzingLocalId;
     const btn = $("#betaUploadBtn");
     btn.disabled = true;
     const prog = $("#betaUploadProgress");
@@ -535,8 +612,10 @@
     // .beta-file-info row is hidden by the .analyzing class. Pre-pic3
     // bug: only the rights-notice + spinner showed, no song identity.
     if (titleEl) {
-      titleEl.textContent = (_betaSelectedFile.name || "").replace(/\.[^.]+$/, "");
+      titleEl.textContent = (selectedFile.name || "").replace(/\.[^.]+$/, "");
     }
+    _beginBetaActiveAnalysis(selectedFile, selectedLocalId);
+    _hideAddSongPanelOnly();
     prog.style.display = "";
     // Hide drop-zone + YT URL row while analyzing — reduces modal clutter
     // and prevents a second concurrent submit mid-run.
@@ -548,22 +627,22 @@
     try {
       if (window.LiveChordAnalytics) {
         window.LiveChordAnalytics.track("upload_start", {
-          file_ext: ((_betaSelectedFile.name || "").split(".").pop() || "").toLowerCase(),
-          file_size_mb: Math.round((_betaSelectedFile.size || 0) / 10485.76) / 100,
+          file_ext: ((selectedFile.name || "").split(".").pop() || "").toLowerCase(),
+          file_size_mb: Math.round((selectedFile.size || 0) / 10485.76) / 100,
           source: "upload",
           is_demo: false
         });
       }
       if (window.API && API.trackEvent) {
         API.trackEvent("upload_start", {
-          file_ext: ((_betaSelectedFile.name || "").split(".").pop() || "").toLowerCase(),
-          file_size_mb: Math.round((_betaSelectedFile.size || 0) / 10485.76) / 100,
+          file_ext: ((selectedFile.name || "").split(".").pop() || "").toLowerCase(),
+          file_size_mb: Math.round((selectedFile.size || 0) / 10485.76) / 100,
           source: "upload",
           is_demo: false
         });
       }
       const form = new FormData();
-      form.append("file", _betaSelectedFile);
+      form.append("file", selectedFile);
       const res = await fetch("/api/process/upload", { method: "POST", body: form });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -573,15 +652,28 @@
       if (window.API && API.trackEvent) {
         API.trackEvent("upload_queued", { job_id: data.job_id || "", source: "upload", is_demo: false });
       }
-      _betaPendingFiles[data.job_id] = _betaSelectedFile;
+      _betaPendingFiles[data.job_id] = selectedFile;
       fill.style.width = "30%";
       text.textContent = _t("home.progress.queued_analyzing");
       pct.textContent = "30%";
+      _updateBetaActiveAnalysis(data.job_id, {
+        jobId: data.job_id || "",
+        progress: 30,
+        status: "queued",
+        statusText: _t("home.progress.queued_analyzing"),
+      });
       _betaPollJob(data.job_id, fill, text, pct);
     } catch (e) {
       text.textContent = _t("home.progress.failed_prefix") + e.message;
       fill.style.width = "0%";
       btn.disabled = false;
+      _updateBetaActiveAnalysis("", {
+        progress: 0,
+        status: "error",
+        statusText: _t("home.progress.failed_prefix") + e.message,
+      });
+      _clearBetaActiveAnalysis("", 5000);
+      _currentAnalyzingLocalId = null;
       // Unhide inputs so the user can retry with a different file/URL.
       $("#betaFabPanel")?.classList.remove("analyzing");
     }
@@ -602,7 +694,7 @@
         const res = await fetch(`/api/process/status/${jobId}`);
         if (!res.ok) { clearInterval(timer); _betaActivePollTimer = null; return; }
         const d = await res.json();
-        maxProgress = Math.max(maxProgress, d.progress);
+        maxProgress = Math.max(maxProgress, Number(d.progress) || 0);
         if (fill) fill.style.width = maxProgress + "%";
         if (pctText) pctText.textContent = maxProgress + "%";
         // 細分狀態標籤：有 stage 時以 stage 為準，否則 fallback 到 status
@@ -612,6 +704,14 @@
           done: _t("home.status.done"),
           error: _t("home.status.error"),
         };
+        let stageDisplay = d.stage;
+        if (stageDisplay && typeof stageDisplay === "string"
+            && stageDisplay.startsWith("home.job_stage.")) {
+          stageDisplay = _t(stageDisplay);
+        }
+        let activeStatusText = (stageDisplay && d.status === "processing")
+            ? stageDisplay
+            : (labels[d.status] || d.status);
         if (statusText) {
           // Backend stages travel as i18n keys (home.job_stage.*) so the
           // same /api/process/status response renders correctly in en + zh-TW
@@ -629,9 +729,20 @@
           statusText.textContent = txt;
         }
 
+        _updateBetaActiveAnalysis(jobId, {
+          progress: maxProgress,
+          status: d.status || "",
+          statusText: activeStatusText,
+        });
+
         if (d.status === "done" && d.result_hash) {
           clearInterval(timer);
           _betaActivePollTimer = null;
+          _updateBetaActiveAnalysis(jobId, {
+            progress: 100,
+            status: "done",
+            statusText: _t("home.status.done"),
+          });
           // Store audio blob in IndexedDB for auto-play
           const pendingFile = _betaPendingFiles[jobId];
           if (pendingFile) {
@@ -660,8 +771,11 @@
           }
           // If this job came from a local-tracks-list entry, stamp the
           // analyzedHash back onto it so next click goes straight to play.
-          if (_currentAnalyzingLocalId) {
-            _markLocalTrackAnalyzed(_currentAnalyzingLocalId, d.result_hash);
+          const finishedLocalId = (_betaActiveAnalysis && _betaActiveAnalysis.jobId === jobId && _betaActiveAnalysis.localId)
+              ? _betaActiveAnalysis.localId
+              : _currentAnalyzingLocalId;
+          if (finishedLocalId) {
+            _markLocalTrackAnalyzed(finishedLocalId, d.result_hash);
             _currentAnalyzingLocalId = null;
           }
           // Same for playlist videos — mark existing_hash so the card's list
@@ -682,6 +796,13 @@
             });
           }
           if (statusText) statusText.textContent = _t("home.progress.failed_prefix") + (d.error || "Unknown");
+          _updateBetaActiveAnalysis(jobId, {
+            progress: maxProgress,
+            status: "error",
+            statusText: _t("home.progress.failed_prefix") + (d.error || "Unknown"),
+          });
+          _clearBetaActiveAnalysis(jobId, 5000);
+          _currentAnalyzingLocalId = null;
           $("#betaUploadBtn") && ($("#betaUploadBtn").disabled = false);
           $("#betaYtBtn") && ($("#betaYtBtn").disabled = false);
           // Unhide inputs so the user can retry.

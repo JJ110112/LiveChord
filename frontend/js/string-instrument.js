@@ -670,15 +670,15 @@ class StringInstrument {
     const _gridChords = this._b.getDisplayChords();
     if (_gridChords && _gridChords.length > 0) {
       for (let ci = 0; ci < _gridChords.length; ci++) {
-        const gc = _gridChords[ci];
-        const gcEnd = (ci + 1 < _gridChords.length) ? _gridChords[ci + 1].time : gc.time + 4;
-        const gcDur = gcEnd - gc.time;
-        for (let b = 0; b < 4; b++) {
-          const bt = gc.time + (b / 4) * gcDur;
+        const gridLines = this._b.getWaterfallBeatGrid
+          ? this._b.getWaterfallBeatGrid(_gridChords, ci)
+          : [];
+        for (const line of gridLines) {
+          const bt = line.time;
           if (bt < currentTime - 0.1 || bt > currentTime + lookAhead) continue;
           const y = h - (bt - currentTime) * pxPerSec;
           if (y < 0 || y > h) continue;
-          const isBar = (b === 0);
+          const isBar = !!line.isBarLine;
           ctx.strokeStyle = isBar ? _rhInk(0.30) : _rhInk(0.10);
           ctx.lineWidth = isBar ? 1 : 0.5;
           ctx.beginPath(); ctx.moveTo(padL - 8, y); ctx.lineTo(w - padR + 8, y); ctx.stroke();

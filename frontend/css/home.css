@@ -317,6 +317,7 @@
 .local-track-item .lt-state { font-weight: 600; }
 .local-track-item .lt-state.lt-done { color: #4caf50; }
 .local-track-item .lt-state.lt-pending { color: #ff9800; }
+.local-track-item .lt-state.lt-analyzing-state { color: var(--accent, #2196f3); }
 .local-track-item .lt-action {
   flex-shrink: 0;
   font-size: 12px;
@@ -333,6 +334,38 @@
   line-height: 1;
 }
 .local-track-item .lt-remove:hover { color: #f44336; }
+
+.local-track-item.lt-analyzing {
+  display: block;
+  padding: 12px 16px;
+}
+.lt-analysis-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.lt-analysis-pct {
+  flex-shrink: 0;
+  min-width: 42px;
+  text-align: right;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 700;
+}
+.lt-progress-track {
+  height: 6px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.lt-progress-fill {
+  height: 100%;
+  min-width: 6px;
+  border-radius: inherit;
+  background: var(--accent, #2196f3);
+  transition: width 0.25s ease;
+}
 
 /* Analyzed-local-track cards: small × overlay (match grid-item layout) */
 .grid-item.local-analyzed-card .la-remove {

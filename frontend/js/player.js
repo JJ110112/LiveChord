@@ -2483,7 +2483,7 @@
     const dir = parts.join("/");
     try {
       const data = await API.browse(dir);
-      siblingTracks = data.entries.filter((e) => !e.is_dir && e.name.toLowerCase().endsWith(".flac"));
+      siblingTracks = data.entries.filter((e) => !e.is_dir && /\.(flac|mp3|wav|ogg)$/i.test(e.name));
       currentIndex = siblingTracks.findIndex((t) => t.path === path);
     } catch {}
   }
@@ -3150,15 +3150,13 @@
     ctx.font = "11px sans-serif";
     if (_gridChords && _gridChords.length > 0) {
       for (let ci = 0; ci < _gridChords.length; ci++) {
-        const gc = _gridChords[ci];
-        const gcEnd = (ci + 1 < _gridChords.length) ? _gridChords[ci + 1].time : gc.time + 4;
-        const gcDur = gcEnd - gc.time;
-        for (let b = 0; b < 4; b++) {
-          const bt = gc.time + (b / 4) * gcDur;
+        const gridLines = _waterfallBeatGrid(_gridChords, ci);
+        for (const line of gridLines) {
+          const bt = line.time;
           if (bt < currentTime - 0.1 || bt > currentTime + lookAhead) continue;
           const y = h - (bt - currentTime) * pxPerSec;
           if (y < 0 || y > h) continue;
-          const isBarLine = (b === 0);
+          const isBarLine = !!line.isBarLine;
           ctx.strokeStyle = isBarLine ? _palette().barLineMajor : _palette().barLineMinor;
           ctx.lineWidth = isBarLine ? 2 : 1;
           ctx.beginPath();
@@ -3167,7 +3165,7 @@
           ctx.stroke();
           // Beat number at left edge
           ctx.fillStyle = isBarLine ? _palette().barLabel : _palette().barLineMinor;
-          ctx.fillText(b + 1, 8, y - 2);
+          ctx.fillText(line.label, 8, y - 2);
         }
       }
     }
@@ -5029,6 +5027,44 @@
     const bars = Math.max(1, Math.round(rawBeats / tsBeats));
     const count = Math.min(16, bars * tsBeats);
     return { count, short: false, dots: _buildVirtualDots(count, durSec, cStart) };
+  }
+
+  function _chordVisualEnd(chords, idx, fallbackDur = 4.0) {
+    const c = Array.isArray(chords) ? chords[idx] : null;
+    if (!c) return 0;
+    const start = Number(c.time);
+    if (!Number.isFinite(start)) return 0;
+    const explicitEnd = Number(c.end);
+    if (Number.isFinite(explicitEnd) && explicitEnd > start + 0.001) return explicitEnd;
+    const nextStart = Number(chords[idx + 1] && chords[idx + 1].time);
+    if (Number.isFinite(nextStart) && nextStart > start + 0.001) return nextStart;
+    return start + fallbackDur;
+  }
+
+  function _waterfallBeatGrid(chords, idx) {
+    const c = Array.isArray(chords) ? chords[idx] : null;
+    if (!c) return [];
+    const start = Number(c.time);
+    if (!Number.isFinite(start)) return [];
+    const end = _chordVisualEnd(chords, idx, 4.0);
+    const durSec = end - start;
+    if (!(durSec > 0)) return [];
+
+    const dots = (_meterLabel() === "3/4")
+      ? _buildVirtualDots(3, durSec, start)
+      : ((_virtualBeats(durSec, start, c.auto_split, c.display_beats) || {}).dots || []);
+
+    const count = dots.length || 4;
+    const fallbackStep = durSec / count;
+    return (dots.length ? dots : _buildVirtualDots(count, durSec, start)).map((d, i) => {
+      const t = Number(d && d.t);
+      const label = Number(d && d.beatInBar);
+      return {
+        time: Number.isFinite(t) ? t : start + i * fallbackStep,
+        label: Number.isFinite(label) && label > 0 ? String(label) : String(i + 1),
+        isBarLine: i === 0,
+      };
+    });
   }
 
   function _meterLabel() {
@@ -8217,6 +8253,7 @@
     $,
     getChordData: () => chordData,
     getDisplayChords: () => _displayChords(),
+    getWaterfallBeatGrid: (chords, idx) => _waterfallBeatGrid(chords, idx),
     getAudio: () => audio,
     getChordCache: () => chordCache,
     getCurrentKey: () => _currentKey(),
