@@ -470,6 +470,7 @@ def _run_beat_refiner_into_sheet(sheet: dict, audio_path: str, job_id: str):
         sheet["downbeats"] = res["downbeats_after"]
         sheet["beat_probs"] = list(beat_probs)
         sheet["downbeat_probs"] = list(downbeat_probs)
+        sheet["prob_source"] = "peak_pick"
         logger.info(
             "[beat_refiner] %s replaced beats: align %.2f->%.2f, "
             "n_beats %d->%d, n_downbeats %d->%d, mean_db_prob=%.2f",
@@ -480,6 +481,40 @@ def _run_beat_refiner_into_sheet(sheet: dict, audio_path: str, job_id: str):
         )
     else:
         logger.info("[beat_refiner] %s skipped: %s", job_id, res["reason"])
+        # Phase 1b ingest hook: sample probs at the existing beat grid when
+        # the refiner is rejected. Default OFF — flip on after backfill
+        # telemetry shows whether sampled probs improve the 6/8 gate.
+        try:
+            from auto_worker import load_settings
+            if load_settings().get("beat_refiner_sample_on_reject", False):
+                from ai.beat_refiner_infer import sample_probs_at_grid
+                sres = sample_probs_at_grid(
+                    audio_path,
+                    sheet.get("beats") or [],
+                    sheet.get("downbeats") or [],
+                )
+                if sres.get("applied"):
+                    sheet["beat_probs"] = list(sres["beat_probs"])
+                    sheet["downbeat_probs"] = list(sres["downbeat_probs"])
+                    sheet["prob_source"] = "sample_at_grid"
+                    sheet["beat_refiner"]["sample_at_grid"] = {
+                        "applied": True,
+                        "n_frames": sres.get("n_frames", 0),
+                        "elapsed_sec": sres.get("elapsed_sec", 0.0),
+                    }
+                    logger.info(
+                        "[beat_refiner] %s sample_at_grid populated probs "
+                        "(n_beats=%d n_downbeats=%d frames=%d)",
+                        job_id,
+                        len(sres["beat_probs"]),
+                        len(sres["downbeat_probs"]),
+                        sres.get("n_frames", 0),
+                    )
+        except Exception as e:
+            logger.warning(
+                "[beat_refiner] %s sample_at_grid hook failed: %s",
+                job_id, e,
+            )
 
 
 def _run_bar_arbitrator_into_sheet(sheet: dict, job_id: str):
@@ -497,6 +532,9 @@ def _run_bar_arbitrator_into_sheet(sheet: dict, job_id: str):
         # beat_probs[] left intact: apply_to_chord_json only rewrites downbeats.
         # If that ever changes, also pop beat_probs here.
         if sheet.pop("downbeat_probs", None) is not None:
+            # prob_source describes provenance of the (now-cleared) prob arrays,
+            # so it goes with them.
+            sheet.pop("prob_source", None)
             bar = sheet.get("bar_correction") or {}
             bar["downbeat_probs_cleared_reason"] = "rule-arbitrator-replaced-grid"
             sheet["bar_correction"] = bar

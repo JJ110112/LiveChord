@@ -88,6 +88,7 @@ DEFAULT_CHORDS_DIR = DATA_DIR / "chords"
 S_OK = "OK"
 S_DRY = "DRY_RUN"
 S_SKIP_ALREADY_POPULATED = "SKIP_HAS_PROBS"
+S_SKIP_PROTECTED_PEAK_PICK = "SKIP_PROTECTED_PEAK_PICK"
 S_SKIP_NO_PATH = "SKIP_NO_PATH"
 S_SKIP_NO_AUDIO = "SKIP_AUDIO_MISSING"
 S_SKIP_NO_BEATS = "SKIP_NO_BEATS"
@@ -96,6 +97,9 @@ S_SKIP_LENGTH_MISMATCH = "SKIP_LENGTH_MISMATCH"
 S_FAIL_READ = "FAIL_READ"
 S_FAIL_REFINER = "FAIL_REFINER_EXCEPTION"
 S_FAIL_WRITE = "FAIL_WRITE"
+
+MODE_GRID = "grid"
+MODE_PEAK_PICK = "peak_pick"
 
 
 def _has_aligned_probs(sheet: dict) -> bool:
@@ -110,7 +114,8 @@ def _has_aligned_probs(sheet: dict) -> bool:
     )
 
 
-def _process_one(json_path: Path, *, dry_run: bool, force: bool
+def _process_one(json_path: Path, *, dry_run: bool, force: bool,
+                 mode: str, force_overwrite_peak_pick: bool,
                  ) -> Tuple[str, str, Optional[str]]:
     """Return (status_key, summary, error_trace)."""
     try:
@@ -123,6 +128,21 @@ def _process_one(json_path: Path, *, dry_run: bool, force: bool
         return (S_SKIP_ALREADY_POPULATED,
                 f"beats={len(sheet.get('beats', []))} "
                 f"downbeats={len(sheet.get('downbeats', []))}",
+                None)
+
+    # Belt-and-braces: even with --force, refuse to downgrade Phase 1
+    # peak_pick probs to sampled probs unless the operator explicitly opts
+    # in via --force-overwrite-peak-pick. Peak-pick probs are sigmoid local
+    # maxima above 0.5; sampled probs land wherever the beat_this grid puts
+    # them and typically distribute lower. Replacing them blindly would be
+    # a silent quality regression on the 75% of the corpus that Phase 1
+    # already covered.
+    if (force and mode == MODE_GRID
+            and not force_overwrite_peak_pick
+            and sheet.get("prob_source") == "peak_pick"):
+        return (S_SKIP_PROTECTED_PEAK_PICK,
+                "Phase 1 peak_pick probs present; pass "
+                "--force-overwrite-peak-pick to replace",
                 None)
 
     beats = sheet.get("beats") or []
@@ -147,13 +167,18 @@ def _process_one(json_path: Path, *, dry_run: bool, force: bool
                 f"missing: {audio_path or '(unresolved)'}", None)
 
     try:
-        from ai.beat_refiner_infer import refine  # noqa: WPS433
+        from ai.beat_refiner_infer import (  # noqa: WPS433
+            refine, sample_probs_at_grid,
+        )
     except Exception as exc:
         return (S_FAIL_REFINER, f"refine import: {exc}",
                 traceback.format_exc())
 
     try:
-        res = refine(audio_path, beats, downbeats)
+        if mode == MODE_GRID:
+            res = sample_probs_at_grid(audio_path, beats, downbeats)
+        else:
+            res = refine(audio_path, beats, downbeats)
     except Exception as exc:
         return (S_FAIL_REFINER, f"{type(exc).__name__}: {exc}",
                 traceback.format_exc())
@@ -164,16 +189,21 @@ def _process_one(json_path: Path, *, dry_run: bool, force: bool
     beat_probs = res.get("beat_probs") or []
     downbeat_probs = res.get("downbeat_probs") or []
 
-    # CRITICAL length guarantee: only persist when refiner's re-picked peaks
-    # match the existing beats/downbeats arrays count-for-count. Anything
-    # else would silently desync the parallel arrays downstream.
+    # CRITICAL length guarantee: only persist when prob counts exactly match
+    # the existing beats/downbeats arrays. In MODE_GRID this is guaranteed
+    # by construction (sample_probs_at_grid output lengths = input lengths);
+    # if it ever fires we want the loud signal that something is wrong with
+    # _sample(). In MODE_PEAK_PICK this is the original Phase 1 skip branch
+    # that triggered the need for Phase 1b in the first place.
     if len(beat_probs) != len(beats) or len(downbeat_probs) != len(downbeats):
         return (S_SKIP_LENGTH_MISMATCH,
                 f"refiner re-picked {len(beat_probs)}/{len(downbeat_probs)} "
                 f"vs existing {len(beats)}/{len(downbeats)}",
                 None)
 
-    summary = (f"applied beats={len(beats)} downbeats={len(downbeats)} "
+    prob_source = ("sample_at_grid" if mode == MODE_GRID else "peak_pick")
+    summary = (f"applied mode={mode} beats={len(beats)} "
+               f"downbeats={len(downbeats)} "
                f"elapsed={res.get('elapsed_sec', 0):.2f}s")
 
     if dry_run:
@@ -182,6 +212,7 @@ def _process_one(json_path: Path, *, dry_run: bool, force: bool
     try:
         sheet["beat_probs"] = list(beat_probs)
         sheet["downbeat_probs"] = list(downbeat_probs)
+        sheet["prob_source"] = prob_source
         tmp = json_path.with_suffix(json_path.suffix + ".tmp")
         tmp.write_text(json.dumps(sheet, ensure_ascii=False, indent=2),
                        encoding="utf-8")
@@ -194,9 +225,10 @@ def _process_one(json_path: Path, *, dry_run: bool, force: bool
 
 
 def _worker_entry(args_tuple):
-    json_path, dry_run, force = args_tuple
+    json_path, dry_run, force, mode, force_overwrite_peak_pick = args_tuple
     status, summary, err = _process_one(
-        json_path, dry_run=dry_run, force=force,
+        json_path, dry_run=dry_run, force=force, mode=mode,
+        force_overwrite_peak_pick=force_overwrite_peak_pick,
     )
     return (json_path.name, status, summary, err)
 
@@ -230,6 +262,19 @@ def main():
     ap.add_argument("--force", action="store_true",
                     help="Re-process even when probs are already populated "
                          "and aligned with beats/downbeats.")
+    ap.add_argument("--mode", choices=[MODE_GRID, MODE_PEAK_PICK],
+                    default=MODE_GRID,
+                    help="grid (default, Phase 1b): sample sigmoid probs at "
+                         "the existing beats/downbeats grid — length match "
+                         "guaranteed by construction. peak_pick (Phase 1 "
+                         "legacy): re-run peak picking; trips "
+                         "SKIP_LENGTH_MISMATCH for ~25%% of the corpus.")
+    ap.add_argument("--force-overwrite-peak-pick", action="store_true",
+                    help="With --force --mode grid, also overwrite chord "
+                         "JSONs whose prob_source is already 'peak_pick'. "
+                         "Off by default: sampled probs typically distribute "
+                         "lower than peak-picked probs, so replacing them "
+                         "is a silent quality regression unless intentional.")
     ap.add_argument("--gpu", action="store_true",
                     help="Allow GPU usage. Default is CPU-only to keep "
                          "multi-worker runs safe from CUDA OOM. With --gpu, "
@@ -260,12 +305,19 @@ def main():
     print(f"Queued {len(files)} chord JSONs", flush=True)
     if args.dry_run:
         print("DRY RUN — no writes", flush=True)
-    print(f"GPU enabled: {args.gpu}  Workers: {args.workers}", flush=True)
+    print(f"Mode: {args.mode}  GPU enabled: {args.gpu}  "
+          f"Workers: {args.workers}", flush=True)
+    if args.force and args.mode == MODE_GRID and not args.force_overwrite_peak_pick:
+        print("(--force will skip prob_source='peak_pick' JSONs; pass "
+              "--force-overwrite-peak-pick to override)", flush=True)
 
     counts: dict[str, int] = {}
     t0 = time.time()
     total_n = len(files)
-    payload = [(f, args.dry_run, args.force) for f in files]
+    payload = [
+        (f, args.dry_run, args.force, args.mode, args.force_overwrite_peak_pick)
+        for f in files
+    ]
 
     def emit(idx: int, fname: str, status: str, summary: str,
              err: Optional[str]):

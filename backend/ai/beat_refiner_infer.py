@@ -214,6 +214,72 @@ def _peak_pick(probs: np.ndarray, threshold: float, min_distance: int
 
 
 # ---------------------------------------------------------------------------
+# Shared sigmoid-frame extraction
+# ---------------------------------------------------------------------------
+
+def _extract_sigmoid_frames(
+    audio_path: Union[str, Path],
+    beats: List[float],
+    downbeats: List[float],
+    *,
+    checkpoint_path: Optional[Union[str, Path]] = None,
+) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], int, str]:
+    """Run the audio → features → model-forward pipeline once.
+
+    Returns ``(beat_probs, db_probs, T, reason)``. On any failure, both
+    prob arrays are ``None``, ``T=0``, and ``reason`` carries a short bail
+    code matching ``refine()``'s failure modes. Empty string reason on
+    success.
+
+    Single source of truth for the heavy path so ``refine()`` (which
+    peak-picks) and ``sample_probs_at_grid()`` (which samples at given
+    timestamps) can't drift apart on audio decode, MAX_FRAMES truncation,
+    or model load.
+    """
+    model = _get_model(Path(checkpoint_path) if checkpoint_path else None)
+    if model is None:
+        return None, None, 0, "no-model"
+
+    try:
+        import torch
+        from backend.ai.beat_refiner_features import (
+            extract_features, build_initial_grid_channels,
+        )
+        from backend.ai.beat_refiner_model import MAX_FRAMES
+    except ImportError as e:
+        return None, None, 0, f"import-failed: {e}"
+
+    try:
+        feat_dict = extract_features(audio_path)
+    except Exception as e:
+        logger.warning("refine extract failed: %s", e)
+        return None, None, 0, f"audio-extract-failed: {type(e).__name__}: {e}"
+
+    audio_feat = feat_dict["features"]
+    full_input = build_initial_grid_channels(audio_feat, beats, downbeats)
+    T = full_input.shape[0]
+
+    if T > MAX_FRAMES:
+        # v1: truncate. Songs > 15 min are vanishingly rare in this corpus.
+        logger.info("refine truncating long song: %d -> %d frames", T, MAX_FRAMES)
+        full_input = full_input[:MAX_FRAMES]
+        T = MAX_FRAMES
+
+    try:
+        with torch.no_grad():
+            x = torch.from_numpy(full_input).unsqueeze(0)
+            pad_mask = torch.zeros(1, T, dtype=torch.bool)
+            res = model(x, padding_mask=pad_mask)
+            beat_probs = torch.sigmoid(res["beat_logits"][0]).cpu().numpy()
+            db_probs = torch.sigmoid(res["downbeat_logits"][0]).cpu().numpy()
+    except Exception as e:
+        logger.warning("refine forward failed: %s", e)
+        return None, None, 0, f"inference-failed: {type(e).__name__}: {e}"
+
+    return beat_probs, db_probs, T, ""
+
+
+# ---------------------------------------------------------------------------
 # Public refine()
 # ---------------------------------------------------------------------------
 
@@ -271,54 +337,15 @@ def refine(audio_path: Union[str, Path],
         out["elapsed_sec"] = round(time.perf_counter() - t0, 3)
         return out
 
-    model = _get_model(Path(checkpoint_path) if checkpoint_path else None)
-    if model is None:
-        out["reason"] = "no-model"
+    beat_probs, db_probs, T, reason = _extract_sigmoid_frames(
+        audio_path, beats, downbeats, checkpoint_path=checkpoint_path,
+    )
+    if reason or beat_probs is None:
+        out["reason"] = reason or "extraction-failed"
         out["elapsed_sec"] = round(time.perf_counter() - t0, 3)
         return out
 
-    # Lazy-import the heavy modules only when we actually run.
-    try:
-        import torch
-        from backend.ai.beat_refiner_features import (
-            extract_features, build_initial_grid_channels, FRAMES_PER_SEC,
-        )
-        from backend.ai.beat_refiner_model import MAX_FRAMES
-    except ImportError as e:
-        out["reason"] = f"import-failed: {e}"
-        return out
-
-    # Audio features
-    try:
-        feat_dict = extract_features(audio_path)
-    except Exception as e:
-        out["reason"] = f"audio-extract-failed: {type(e).__name__}: {e}"
-        out["elapsed_sec"] = round(time.perf_counter() - t0, 3)
-        logger.warning("refine extract failed: %s", e)
-        return out
-
-    audio_feat = feat_dict["features"]
-    full_input = build_initial_grid_channels(audio_feat, beats, downbeats)
-    T = full_input.shape[0]
-
-    if T > MAX_FRAMES:
-        # v1: truncate. Songs > 15 min are vanishingly rare in this corpus.
-        logger.info("refine truncating long song: %d -> %d frames", T, MAX_FRAMES)
-        full_input = full_input[:MAX_FRAMES]
-        T = MAX_FRAMES
-
-    try:
-        with torch.no_grad():
-            x = torch.from_numpy(full_input).unsqueeze(0)
-            pad_mask = torch.zeros(1, T, dtype=torch.bool)
-            res = model(x, padding_mask=pad_mask)
-            beat_probs = torch.sigmoid(res["beat_logits"][0]).cpu().numpy()
-            db_probs = torch.sigmoid(res["downbeat_logits"][0]).cpu().numpy()
-    except Exception as e:
-        out["reason"] = f"inference-failed: {type(e).__name__}: {e}"
-        out["elapsed_sec"] = round(time.perf_counter() - t0, 3)
-        logger.warning("refine forward failed: %s", e)
-        return out
+    from backend.ai.beat_refiner_features import FRAMES_PER_SEC
 
     beat_frames, beat_peak_probs = _peak_pick(
         beat_probs, threshold, min_distance_beat,
@@ -338,6 +365,85 @@ def refine(audio_path: Union[str, Path],
     out["n_downbeats_out"] = len(refined_downbeats)
     out["applied"] = True
     out["reason"] = "ok"
+    out["elapsed_sec"] = round(time.perf_counter() - t0, 3)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Public sample_probs_at_grid() — Phase 1b
+# ---------------------------------------------------------------------------
+
+def sample_probs_at_grid(
+    audio_path: Union[str, Path],
+    beats: List[float],
+    downbeats: List[float],
+    *,
+    checkpoint_path: Optional[Union[str, Path]] = None,
+) -> Dict:
+    """Run the beat_refiner forward and sample sigmoid probs at the
+    EXISTING ``beats[]`` / ``downbeats[]`` timestamps — does NOT peak-pick.
+
+    Phase 1b: legacy chord JSONs already have a beat grid from beat_this
+    (or madmom/librosa fallback). Re-peak-picking via ``refine()`` lands
+    on a different count of peaks for ~25% of the corpus, tripping
+    ``SKIP_LENGTH_MISMATCH`` in the backfill. This entry point sidesteps
+    the count problem by mapping each input timestamp to its nearest
+    sigmoid frame: output lengths exactly match input lengths by
+    construction.
+
+    Returns a dict:
+      beat_probs: list[float]     — length == len(beats)
+      downbeat_probs: list[float] — length == len(downbeats)
+      applied: bool               — True when we actually sampled
+      reason: str                 — short status / failure reason
+      elapsed_sec: float
+      n_frames: int               — T from the model forward pass
+      prob_source: str            — "sample_at_grid" (constant)
+    """
+    t0 = time.perf_counter()
+    out: Dict = {
+        "beat_probs": [],
+        "downbeat_probs": [],
+        "applied": False,
+        "reason": "",
+        "elapsed_sec": 0.0,
+        "n_frames": 0,
+        "prob_source": "sample_at_grid",
+    }
+
+    if not beats:
+        out["reason"] = "no-input-beats"
+        out["elapsed_sec"] = round(time.perf_counter() - t0, 3)
+        return out
+
+    beat_probs_arr, db_probs_arr, T, reason = _extract_sigmoid_frames(
+        audio_path, beats, downbeats, checkpoint_path=checkpoint_path,
+    )
+    if reason or beat_probs_arr is None or T <= 0:
+        out["reason"] = reason or "extraction-failed"
+        out["elapsed_sec"] = round(time.perf_counter() - t0, 3)
+        return out
+
+    from backend.ai.beat_refiner_features import FRAMES_PER_SEC
+
+    def _sample(times: List[float], probs_array: np.ndarray) -> List[float]:
+        sampled: List[float] = []
+        for t in times:
+            idx = int(round(float(t) * FRAMES_PER_SEC))
+            if idx < 0:
+                idx = 0
+            elif idx >= T:
+                # Clamp — dropping a beat would silently desync the parallel
+                # arrays, defeating the whole point of sample-at-grid.
+                idx = T - 1
+            sampled.append(_safe_round(probs_array[idx]))
+        return sampled
+
+    out["beat_probs"] = _sample(beats, beat_probs_arr)
+    out["downbeat_probs"] = _sample(downbeats, db_probs_arr)
+    out["applied"] = True
+    out["reason"] = "ok"
+    out["n_frames"] = int(T)
     out["elapsed_sec"] = round(time.perf_counter() - t0, 3)
     return out
 

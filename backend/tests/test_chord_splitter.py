@@ -752,6 +752,33 @@ class TestCompoundBarSnapConfidenceGate(unittest.TestCase):
         # Meta must serialize cleanly to JSON despite originally-bad inputs
         json.dumps(meta)
 
+    # Phase 1b: prob_source provenance tag must not influence splitter
+    # behavior — gate decisions are driven purely by bar_probs[] values.
+    # These tests pin that invariant so future code can't accidentally
+    # special-case 'sample_at_grid' probs (e.g. with a higher threshold)
+    # without an explicit, named code change.
+
+    def test_compound_bar_snap_sampled_probs_low_conf_skip(self):
+        data = self._fixture(bar_probs=[0.4, 0.4, 0.4, 0.4])
+        data["prob_source"] = "sample_at_grid"
+        out, meta = _compound_six_eight_bar_snap(data["chords"], data)
+        self.assertEqual(meta["snapped"], 0)
+        self.assertFalse(meta["applied"])
+        self.assertEqual(meta["confidence_gated_skips"], 2)
+        self.assertTrue(meta["confidence_gate_active"])
+        # Boundaries preserved exactly like peak_pick low-conf case
+        self.assertAlmostEqual(out[0]["end"], 3.1, places=3)
+
+    def test_compound_bar_snap_sampled_probs_high_conf_snap(self):
+        data = self._fixture(bar_probs=[0.9, 0.9, 0.9, 0.9])
+        data["prob_source"] = "sample_at_grid"
+        out, meta = _compound_six_eight_bar_snap(data["chords"], data)
+        self.assertEqual(meta["snapped"], 2)
+        self.assertTrue(meta["applied"])
+        self.assertEqual(meta["confidence_gated_skips"], 0)
+        self.assertAlmostEqual(out[0]["end"], 3.0, places=3)
+        self.assertAlmostEqual(out[1]["end"], 6.0, places=3)
+
 
 if __name__ == "__main__":
     unittest.main()
