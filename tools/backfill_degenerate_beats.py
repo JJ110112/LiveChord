@@ -369,6 +369,11 @@ def main():
                          "Default behavior keeps the backup so you can roll back.")
     ap.add_argument("--error-log", type=str, default="",
                     help="Path for the error trace log (default: tools/backfill_errors_<ts>.log).")
+    ap.add_argument("--progress-file", type=str, default="",
+                    help="If set, write {pid, started_at, total, processed, current_hash, "
+                         "counts, last_error, completed_at} JSON snapshot after each file "
+                         "(atomic .tmp + os.replace). Consumed by the admin UI status "
+                         "endpoint to surface bulk-run progress.")
     args = ap.parse_args()
 
     if args.tracker == "madmom" and not HAS_MADMOM:
@@ -427,6 +432,40 @@ def main():
     backup = not args.no_backup
     payload = [(f, args.dry_run, args.tracker, backup) for f in files]
 
+    progress_path: Optional[Path] = None
+    if args.progress_file:
+        progress_path = Path(args.progress_file).resolve()
+        progress_path.parent.mkdir(parents=True, exist_ok=True)
+
+    started_at_iso = datetime.now().isoformat()
+
+    def _write_progress(processed: int, current_hash: str, last_error: str = "",
+                        completed: bool = False) -> None:
+        if not progress_path:
+            return
+        try:
+            snapshot = {
+                "pid": os.getpid(),
+                "started_at": started_at_iso,
+                "total": total_n,
+                "processed": processed,
+                "current_hash": current_hash,
+                "counts": dict(counts),
+                "last_error": last_error,
+                "tracker": args.tracker,
+                "dry_run": bool(args.dry_run),
+                "completed_at": (datetime.now().isoformat() if completed else None),
+            }
+            tmp = progress_path.with_suffix(progress_path.suffix + ".tmp")
+            tmp.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2),
+                           encoding="utf-8")
+            os.replace(tmp, progress_path)
+        except Exception:
+            # Progress file is best-effort — never let it kill the backfill.
+            pass
+
+    _write_progress(processed=0, current_hash="")
+
     def emit(idx: int, fname: str, status: str, summary: str, err: Optional[str]):
         counts[status] = counts.get(status, 0) + 1
         elapsed = time.time() - t0
@@ -444,6 +483,8 @@ def main():
             error_log_fp.write(err)
             error_log_fp.write("\n" + "-" * 78 + "\n\n")
             error_log_fp.flush()
+        _write_progress(processed=idx, current_hash=Path(fname).stem,
+                        last_error=(summary if err else ""))
 
     if args.workers <= 1:
         for i, p in enumerate(payload, 1):
@@ -461,6 +502,8 @@ def main():
     error_log_fp.write(f"\nFinished {datetime.now().isoformat()}\n")
     error_log_fp.write(f"Counts: {counts}\n")
     error_log_fp.close()
+
+    _write_progress(processed=total_n, current_hash="", completed=True)
 
     print()
     print("=" * 60)

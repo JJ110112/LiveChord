@@ -365,6 +365,67 @@
     </div>
   </div>
 
+  <!-- ======== Card 4b: 節拍升級 g1k（收摺）======== -->
+  <div class="card" id="g1kCard">
+    <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show');if(this.classList.contains('open'))window._g1kLazyLoad&&window._g1kLazyLoad()">🥁 節拍升級 (degenerate beat data backfill)</h2>
+    <div class="collapse-content">
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px">
+        Scans chord JSONs for degenerate beat data (no beats[]/downbeats[] or librosa-fallback) and bulk-triggers re-analysis via madmom (or beat_this via Modal). Phase 1b shipped sample-at-grid confidences for songs with valid beats; this is the gating prerequisite to give the rest of the corpus a beat grid so every meter-aware feature (bar_arbitrator, compound 6/8 splitter, beat_refiner) can apply.
+      </div>
+
+      <div id="g1kScanRow" class="actions" style="margin-bottom:10px;display:flex;gap:6px;align-items:center;padding:6px;border:1px dashed var(--border);border-radius:4px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--text-dim);white-space:nowrap">📊 掃描</span>
+        <span id="g1kScanCount" style="font-size:12px;color:var(--text-dim);flex:1">尚未掃描</span>
+        <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:4px">
+          <input type="checkbox" id="g1kIncludeOldVersion" style="margin:0"> include beat_version&lt;=1
+        </label>
+        <button id="btnG1kScan" title="Walk the corpus and count degenerate songs. ~30-60s for ~50k JSONs.">Rescan</button>
+        <span id="g1kScanStatus" style="font-size:11px;color:var(--text-dim)"></span>
+      </div>
+
+      <div id="g1kSampleBox" style="font-size:11px;max-height:240px;overflow-y:auto;padding:6px 8px;background:var(--bg);border-radius:3px;margin-bottom:10px;font-family:monospace;color:var(--text-dim)">
+        Expand to scan
+      </div>
+
+      <div id="g1kUpgradeRow" class="actions" style="margin-bottom:10px;display:flex;gap:6px;align-items:center;padding:6px;border:1px dashed var(--border);border-radius:4px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--text-dim);white-space:nowrap">🚀 升級</span>
+        <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:4px">
+          tracker
+          <select id="g1kTracker" class="num-input" style="width:auto;font-size:11px">
+            <option value="madmom" selected>madmom</option>
+            <option value="beat_this">beat_this (Modal)</option>
+          </select>
+        </label>
+        <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:4px">
+          workers
+          <select id="g1kWorkers" class="num-input" style="width:auto;font-size:11px">
+            <option>1</option><option>2</option><option selected>4</option>
+          </select>
+        </label>
+        <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:4px">
+          limit
+          <input type="number" id="g1kLimit" min="0" value="0" style="width:60px;font-size:11px;padding:2px 4px" title="0 = all">
+        </label>
+        <button id="btnG1kUpgrade" title="Spawn detached subprocess to bulk-upgrade. Returns immediately; poll status for progress.">開始升級</button>
+        <span id="g1kUpgradeStatus" style="font-size:11px;color:var(--text-dim)"></span>
+      </div>
+
+      <div id="g1kProgressBox" style="font-size:12px;padding:8px;background:var(--bg);border-radius:3px;margin-bottom:10px;display:none">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span><strong>Status:</strong> <span id="g1kStateLabel">—</span></span>
+          <span id="g1kProgressPct" style="font-family:monospace">—</span>
+        </div>
+        <div style="background:var(--border);height:6px;border-radius:3px;overflow:hidden;margin-bottom:6px">
+          <div id="g1kProgressBar" style="background:#50c878;height:100%;width:0%;transition:width 0.3s"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-dim);font-family:monospace" id="g1kProgressDetail">—</div>
+      </div>
+
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Log tail (last 20 lines)</div>
+      <pre id="g1kLogTail" style="font-size:10px;font-family:monospace;max-height:160px;overflow-y:auto;padding:6px 8px;background:var(--bg);border-radius:3px;margin:0;white-space:pre-wrap;color:var(--text-dim)">(no log)</pre>
+    </div>
+  </div>
+
   <!-- ======== Card 5: 分散式萃取（收摺）======== -->
   <div class="card" id="extractionCard" style="padding-bottom:0; overflow:hidden;">
     <h2 class="collapse-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('show')" data-i18n="admin.cluster.title">🛰️ Distributed extraction cluster</h2>
@@ -1924,6 +1985,172 @@ window._lcIsBeta = (function() {
       }
     });
   }
+})();
+</script>
+
+<script>
+// ---------------------------------------------------------------------------
+// g1k card — bulk degenerate-beat-data scan + upgrade (LiveChord-g1k)
+//
+// Lazy-loads scan count on first card expand. Once an upgrade is running,
+// polls /status every 3s and renders progress + log tail. Uses plain fetch
+// + res.json().catch(() => ({})) so the backend's HTTPException(detail=…)
+// surfaces in the UI (API.post drops detail per CLAUDE.md gotcha).
+// ---------------------------------------------------------------------------
+(function() {
+  const $ = id => document.getElementById(id);
+  let _g1kPolling = false;
+  let _g1kScanRunning = false;
+
+  function _esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+      ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  async function _fetchJson(url, opts) {
+    const res = await fetch(url, opts || {});
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data.detail || res.statusText || (`HTTP ${res.status}`);
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  async function runScan() {
+    if (_g1kScanRunning) return;
+    _g1kScanRunning = true;
+    const countEl = $("g1kScanCount");
+    const statusEl = $("g1kScanStatus");
+    const sampleEl = $("g1kSampleBox");
+    countEl.textContent = "掃描中...";
+    statusEl.textContent = "running";
+    try {
+      const includeOld = $("g1kIncludeOldVersion").checked;
+      const url = `/api/admin/beats/degenerate?limit=30&include_old_version=${includeOld}`;
+      const data = await _fetchJson(url);
+      const n = data.count || 0;
+      countEl.textContent = `${n.toLocaleString()} songs need beat upgrade (scan ${data.elapsed_sec || 0}s)`;
+      statusEl.textContent = "ok";
+      if (!n) {
+        sampleEl.innerHTML = '<span style="color:#50c878">🎉 no degenerate songs found</span>';
+      } else {
+        const rows = (data.sample || []).map(s => {
+          if (s.error) return `<div>${_esc(s.hash)}  ERROR: ${_esc(s.error)}</div>`;
+          const p = (s.path || "").length > 80 ? "…" + s.path.slice(-80) : s.path;
+          const bsrc = s.beats_source || "(empty)";
+          return `<div title="${_esc(s.path)}">${_esc(s.hash)}  bsrc=${_esc(bsrc)}  bv=${s.beat_version || 0}  nc=${s.n_chords || 0}  nb=${s.n_beats || 0}/${s.n_downbeats || 0}  ${_esc(p)}</div>`;
+        }).join("");
+        const more = n > (data.sample || []).length
+          ? `<div style="color:var(--text-dim);margin-top:6px">…and ${(n - data.sample.length).toLocaleString()} more</div>`
+          : "";
+        sampleEl.innerHTML = rows + more;
+      }
+    } catch (e) {
+      countEl.textContent = `scan failed: ${e.message}`;
+      statusEl.textContent = "error";
+      sampleEl.innerHTML = `<span style="color:#f66">${_esc(e.message)}</span>`;
+    } finally {
+      _g1kScanRunning = false;
+    }
+  }
+
+  async function startUpgrade() {
+    const btn = $("btnG1kUpgrade");
+    const statusEl = $("g1kUpgradeStatus");
+    btn.disabled = true;
+    statusEl.textContent = "starting...";
+    try {
+      const body = {
+        tracker: $("g1kTracker").value,
+        workers: parseInt($("g1kWorkers").value, 10) || 4,
+        limit: parseInt($("g1kLimit").value, 10) || 0,
+        include_old_version: $("g1kIncludeOldVersion").checked,
+        no_backup: false,
+      };
+      const data = await _fetchJson("/api/admin/beats/degenerate/upgrade", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body),
+      });
+      statusEl.textContent = `started pid=${data.pid}`;
+      showToast && showToast(`節拍升級已啟動 (pid=${data.pid})`);
+      pollStatus();
+    } catch (e) {
+      statusEl.textContent = `failed: ${e.message}`;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function pollStatus() {
+    try {
+      const data = await _fetchJson("/api/admin/beats/degenerate/status");
+      const prog = data.progress || {};
+      const box = $("g1kProgressBox");
+      const showBox = !!(prog.pid || prog.processed || prog.total);
+      box.style.display = showBox ? "block" : "none";
+
+      const label = data.running ? "🟢 running"
+                    : (data.completed ? "✓ completed"
+                       : (prog.pid ? "✗ exited (no completion)" : "—"));
+      $("g1kStateLabel").textContent = label;
+
+      const total = prog.total || 0;
+      const processed = prog.processed || 0;
+      const pct = total > 0 ? Math.round((processed / total) * 1000) / 10 : 0;
+      $("g1kProgressPct").textContent = total > 0
+        ? `${processed.toLocaleString()} / ${total.toLocaleString()} (${pct}%)`
+        : "—";
+      $("g1kProgressBar").style.width = `${pct}%`;
+
+      const counts = prog.counts || {};
+      const countsStr = Object.keys(counts).sort().map(k => `${k}=${counts[k]}`).join(" ");
+      $("g1kProgressDetail").textContent = [
+        prog.tracker ? `tracker=${prog.tracker}` : "",
+        prog.dry_run ? "DRY_RUN" : "",
+        countsStr,
+        prog.current_hash ? `current=${prog.current_hash}` : "",
+        prog.last_error ? `last_error=${prog.last_error}` : "",
+      ].filter(Boolean).join(" · ") || "—";
+
+      const tail = data.log_tail || [];
+      $("g1kLogTail").textContent = tail.length
+        ? tail.join("\n")
+        : (data.log_name ? `(empty: ${data.log_name})` : "(no log)");
+
+      if (data.running) {
+        if (!_g1kPolling) {
+          _g1kPolling = true;
+          setTimeout(() => { _g1kPolling = false; pollStatus(); }, 3000);
+        }
+      } else if (data.completed && !_g1kCompletionToasted && prog.completed_at) {
+        _g1kCompletionToasted = true;
+        showToast && showToast("節拍升級完成");
+        // Refresh scan count after completion
+        setTimeout(runScan, 500);
+      }
+    } catch (e) {
+      // Status endpoint failed — surface to log tail and stop polling
+      $("g1kLogTail").textContent = `status fetch failed: ${e.message}`;
+    }
+  }
+
+  let _g1kCompletionToasted = false;
+  let _g1kInitialLoaded = false;
+
+  window._g1kLazyLoad = function() {
+    if (_g1kInitialLoaded) {
+      pollStatus();
+      return;
+    }
+    _g1kInitialLoaded = true;
+    runScan();
+    pollStatus();
+  };
+
+  $("btnG1kScan").addEventListener("click", runScan);
+  $("btnG1kUpgrade").addEventListener("click", startUpgrade);
 })();
 </script>
 </body>

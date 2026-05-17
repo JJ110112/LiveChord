@@ -1257,6 +1257,288 @@ def admin_chord_quarantine_clear(username: str = Depends(get_admin_user)):
 
 
 # ---------------------------------------------------------------------------
+# admin: bulk degenerate-beat-data scan + upgrade (LiveChord-g1k)
+#
+# Phase 1b (LiveChord-cyz) revealed that ~98.5% of chord JSONs in the corpus
+# (>53,000 songs) are pre-beat-tracker btc_batch ingests with chords[] but
+# beats[]=downbeats=[]. Without beats[]/downbeats[] no meter-aware feature
+# (Phase 1b sample-at-grid, bar_arbitrator, compound 6/8 splitter,
+# beat_refiner) can do anything. g1k is the gating prerequisite.
+#
+# Design: thin wrapper around the existing CLI tool
+# (tools/backfill_degenerate_beats.py) — the scan logic is reused
+# directly, the bulk upgrade is a detached subprocess that writes a JSON
+# progress file the status endpoint polls. Subprocess approach keeps the
+# multi-day batch isolated from the FastAPI event loop and lets the CLI
+# tool's --workers parallelism work unchanged.
+# ---------------------------------------------------------------------------
+
+import subprocess as _g1k_subprocess
+import sys as _g1k_sys
+from datetime import datetime as _g1k_datetime
+
+_REPO_ROOT_PATH = Path(__file__).parent.parent
+_G1K_PROGRESS_FILE = DATA_DIR / "g1k_progress.json"
+_G1K_LOG_DIR = _REPO_ROOT_PATH / "tools" / "logs"
+_G1K_CLI = _REPO_ROOT_PATH / "tools" / "backfill_degenerate_beats.py"
+
+
+def _g1k_pid_alive(pid: int) -> bool:
+    """Cross-platform PID liveness check. Returns False on any failure
+    so a stale progress file with a dead PID doesn't block new runs."""
+    if not pid or pid <= 0:
+        return False
+    try:
+        if os.name == "nt":
+            res = _g1k_subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                capture_output=True, text=True, timeout=5,
+                encoding="utf-8", errors="replace",
+            )
+            return f'"{pid}"' in (res.stdout or "")
+        else:
+            os.kill(pid, 0)
+            return True
+    except Exception:
+        return False
+
+
+def _g1k_read_progress() -> Optional[dict]:
+    if not _G1K_PROGRESS_FILE.is_file():
+        return None
+    try:
+        return json.loads(_G1K_PROGRESS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+@router.get("/admin/beats/degenerate")
+def admin_beats_degenerate_scan(
+    limit: int = Query(20, ge=0, le=500),
+    include_old_version: bool = Query(False),
+    include_version_2: bool = Query(False),
+    _: str = Depends(get_admin_user),
+):
+    """Walk the chord JSON corpus and return count + sample of songs
+    with degenerate beat data.
+
+    Degenerate = beats[] empty OR downbeats[] empty OR beats_source
+    contains 'librosa'. Optional flags expand the set to include older
+    schema versions.
+
+    Sync def so FastAPI dispatches to thread pool. Walk takes ~30-60s
+    for ~50k JSONs on local SSD via the two-pass prefilter; admin UI
+    should show a loading indicator and lazy-load on card expand.
+    """
+    tools_dir = _REPO_ROOT_PATH / "tools"
+    if str(tools_dir) not in _g1k_sys.path:
+        _g1k_sys.path.insert(0, str(tools_dir))
+    from backfill_degenerate_beats import scan_degenerate
+
+    t0 = time.time()
+    files = scan_degenerate(
+        CHORDS_DIR,
+        include_old_version=include_old_version,
+        include_version_2=include_version_2,
+    )
+    elapsed_sec = round(time.time() - t0, 2)
+    count = len(files)
+
+    # Build sample by reading metadata from the first N matched files.
+    # The scan already touched each file so OS cache makes this cheap.
+    sample = []
+    sample_target = min(limit, count)
+    for f in files[:sample_target]:
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+            sample.append({
+                "hash": f.stem,
+                "path": d.get("path", ""),
+                "beats_source": d.get("beats_source", ""),
+                "beat_version": d.get("beat_version", 0),
+                "n_chords": len(d.get("chords") or []),
+                "n_beats": len(d.get("beats") or []),
+                "n_downbeats": len(d.get("downbeats") or []),
+            })
+        except Exception as e:
+            sample.append({"hash": f.stem, "error": f"{type(e).__name__}: {e}"})
+
+    return {
+        "ok": True,
+        "count": count,
+        "sample": sample,
+        "elapsed_sec": elapsed_sec,
+        "filter": {
+            "include_old_version": include_old_version,
+            "include_version_2": include_version_2,
+        },
+    }
+
+
+class G1kUpgradeRequest(BaseModel):
+    workers: int = 4
+    tracker: str = "madmom"  # "madmom" | "beat_this"
+    limit: int = 0  # 0 = all degenerate songs
+    include_old_version: bool = False
+    no_backup: bool = False
+
+
+@router.post("/admin/beats/degenerate/upgrade")
+def admin_beats_degenerate_upgrade(
+    req: G1kUpgradeRequest,
+    _: str = Depends(get_admin_user),
+):
+    """Spawn the backfill_degenerate_beats CLI as a detached subprocess
+    to bulk-upgrade chord JSONs with degenerate beat data.
+
+    Pre-flight (sync):
+    - Refuse if a previous upgrade is still running (progress file + PID
+      liveness check)
+    - Validate tracker; if madmom, verify HAS_MADMOM on this server
+    - Validate workers in [1, 8]
+
+    Returns immediately with {ok, pid, log_path, started_at, cmd}.
+    Subprocess writes progress to data/g1k_progress.json after each file;
+    poll GET /admin/beats/degenerate/status for state. Multi-day batches
+    are expected — the subprocess survives uvicorn restarts on Windows
+    via DETACHED_PROCESS + CREATE_NEW_PROCESS_GROUP creation flags.
+    """
+    prev = _g1k_read_progress()
+    if prev and not prev.get("completed_at"):
+        if _g1k_pid_alive(int(prev.get("pid") or 0)):
+            raise HTTPException(
+                status_code=409,
+                detail=(f"upgrade already running (pid={prev.get('pid')}, "
+                        f"processed={prev.get('processed', 0)}/"
+                        f"{prev.get('total', 0)}); poll /status or wait for "
+                        f"completion"),
+            )
+        # Stale progress file with dead PID — leave it; new run will
+        # overwrite it after spawning.
+
+    if req.tracker not in ("madmom", "beat_this"):
+        raise HTTPException(status_code=400,
+                            detail=f"invalid tracker: {req.tracker!r}")
+    if req.tracker == "madmom":
+        try:
+            from beat_snap import HAS_MADMOM as _has_madmom
+        except Exception:
+            _has_madmom = False
+        if not _has_madmom:
+            raise HTTPException(
+                status_code=503,
+                detail=("madmom not installed on this server; install per "
+                        "CLAUDE.md 'madmom install on Windows' or use "
+                        "tracker='beat_this' (requires Modal)"),
+            )
+    if req.workers < 1 or req.workers > 8:
+        raise HTTPException(status_code=400,
+                            detail="workers must be in [1, 8]")
+
+    _G1K_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    log_path = _G1K_LOG_DIR / f"g1k_{ts}.log"
+    cmd = [
+        _g1k_sys.executable,
+        str(_G1K_CLI),
+        "--workers", str(req.workers),
+        "--tracker", req.tracker,
+        "--progress-file", str(_G1K_PROGRESS_FILE),
+    ]
+    if req.limit > 0:
+        cmd.extend(["--limit", str(req.limit)])
+    if req.include_old_version:
+        cmd.append("--include-old-version")
+    if req.no_backup:
+        cmd.append("--no-backup")
+
+    # PYTHONIOENCODING forces the subprocess's stdout to UTF-8 so CJK
+    # song paths in the log don't get cp950-mangled (CLAUDE.md
+    # subprocess-encoding gotcha).
+    env = dict(os.environ)
+    env["PYTHONIOENCODING"] = "utf-8"
+
+    log_fp = open(log_path, "wb")  # bytes-mode so subprocess UTF-8 bytes pass through
+    if os.name == "nt":
+        DETACHED_PROCESS = 0x00000008
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
+        popen_kwargs = {
+            "creationflags": DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+        }
+    else:
+        popen_kwargs = {"start_new_session": True}
+
+    try:
+        proc = _g1k_subprocess.Popen(
+            cmd,
+            stdout=log_fp,
+            stderr=_g1k_subprocess.STDOUT,
+            stdin=_g1k_subprocess.DEVNULL,
+            cwd=str(_REPO_ROOT_PATH),
+            env=env,
+            **popen_kwargs,
+        )
+    except Exception as e:
+        log_fp.close()
+        raise HTTPException(status_code=500,
+                            detail=f"failed to spawn: {type(e).__name__}: {e}")
+
+    return {
+        "ok": True,
+        "pid": proc.pid,
+        "log_path": str(log_path),
+        "started_at": _g1k_datetime.now().isoformat(),
+        "cmd": cmd,
+    }
+
+
+@router.get("/admin/beats/degenerate/status")
+def admin_beats_degenerate_status(_: str = Depends(get_admin_user)):
+    """Return current bulk-upgrade progress. Reads g1k_progress.json
+    and checks PID liveness; tails the last 20 lines of the most recent
+    g1k_*.log."""
+    prev = _g1k_read_progress()
+    if not prev:
+        return {"running": False, "progress": None, "log_tail": []}
+
+    pid = int(prev.get("pid") or 0)
+    pid_alive = _g1k_pid_alive(pid)
+    completed = bool(prev.get("completed_at"))
+    running = pid_alive and not completed
+
+    log_tail = []
+    log_name = ""
+    if _G1K_LOG_DIR.is_dir():
+        try:
+            logs = sorted(
+                _G1K_LOG_DIR.glob("g1k_*.log"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if logs:
+                log_name = logs[0].name
+                # Read last ~8KB; decode with replace so cp950-mangled bytes
+                # (in case PYTHONIOENCODING wasn't honored) don't crash.
+                with open(logs[0], "rb") as f:
+                    f.seek(0, 2)
+                    size = f.tell()
+                    f.seek(max(0, size - 8192))
+                    tail = f.read().decode("utf-8", errors="replace")
+                log_tail = tail.splitlines()[-20:]
+        except Exception:
+            pass
+
+    return {
+        "running": running,
+        "pid_alive": pid_alive,
+        "completed": completed,
+        "progress": prev,
+        "log_name": log_name,
+        "log_tail": log_tail,
+    }
+
+
+# ---------------------------------------------------------------------------
 # auto-detect (Phase 4)
 # ---------------------------------------------------------------------------
 
