@@ -178,6 +178,15 @@
               window.LiveChordAnalytics.track("hero_cta_click", {
                 logged_in: tokenNow,
                 destination: tokenNow ? "upload_modal" : "login",
+                source: "homepage",
+                page_path: location.pathname
+              });
+            }
+            if (window.API && API.trackEvent) {
+              API.trackEvent("hero_cta_click", {
+                logged_in: tokenNow,
+                destination: tokenNow ? "upload_modal" : "login",
+                source: "homepage",
                 page_path: location.pathname
               });
             }
@@ -540,7 +549,17 @@
       if (window.LiveChordAnalytics) {
         window.LiveChordAnalytics.track("upload_start", {
           file_ext: ((_betaSelectedFile.name || "").split(".").pop() || "").toLowerCase(),
-          file_size_mb: Math.round((_betaSelectedFile.size || 0) / 10485.76) / 100
+          file_size_mb: Math.round((_betaSelectedFile.size || 0) / 10485.76) / 100,
+          source: "upload",
+          is_demo: false
+        });
+      }
+      if (window.API && API.trackEvent) {
+        API.trackEvent("upload_start", {
+          file_ext: ((_betaSelectedFile.name || "").split(".").pop() || "").toLowerCase(),
+          file_size_mb: Math.round((_betaSelectedFile.size || 0) / 10485.76) / 100,
+          source: "upload",
+          is_demo: false
         });
       }
       const form = new FormData();
@@ -551,6 +570,9 @@
         throw new Error(err.detail || res.statusText);
       }
       const data = await res.json();
+      if (window.API && API.trackEvent) {
+        API.trackEvent("upload_queued", { job_id: data.job_id || "", source: "upload", is_demo: false });
+      }
       _betaPendingFiles[data.job_id] = _betaSelectedFile;
       fill.style.width = "30%";
       text.textContent = _t("home.progress.queued_analyzing");
@@ -622,7 +644,18 @@
           if (window.LiveChordAnalytics) {
             window.LiveChordAnalytics.track("upload_success", {
               job_id: jobId,
-              song_hash: d.result_hash
+              song_hash: d.result_hash,
+              source: "upload",
+              is_demo: false
+            });
+          }
+          if (window.API && API.trackEvent) {
+            API.trackEvent("upload_success", {
+              job_id: jobId,
+              song_hash: d.result_hash,
+              title: d.title || "",
+              source: "upload",
+              is_demo: false
             });
           }
           // If this job came from a local-tracks-list entry, stamp the
@@ -640,6 +673,14 @@
         } else if (d.status === "error") {
           clearInterval(timer);
           _betaActivePollTimer = null;
+          if (window.API && API.trackEvent) {
+            API.trackEvent("upload_error", {
+              job_id: jobId,
+              error: d.error || "Unknown",
+              source: "upload",
+              is_demo: false
+            });
+          }
           if (statusText) statusText.textContent = _t("home.progress.failed_prefix") + (d.error || "Unknown");
           $("#betaUploadBtn") && ($("#betaUploadBtn").disabled = false);
           $("#betaYtBtn") && ($("#betaYtBtn").disabled = false);
@@ -802,6 +843,7 @@
       if (window.API && API.trackEvent) {
         API.trackEvent("demo_click", {
           source,
+          is_demo: true,
           demo_id: d.id || "",
           song_hash: d.hash,
           title: d.title || ""
@@ -810,6 +852,7 @@
       if (window.LiveChordAnalytics) {
         window.LiveChordAnalytics.track("demo_click", {
           source,
+          is_demo: true,
           demo_id: d.id || "",
           song_hash: d.hash,
           title: d.title || ""

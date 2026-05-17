@@ -345,6 +345,15 @@
     pct.textContent = '10%';
 
     try {
+      if (window.API && API.trackEvent) {
+        API.trackEvent('upload_start', {
+          file_ext: ((selectedFile.name || '').split('.').pop() || '').toLowerCase(),
+          file_size_mb: Math.round((selectedFile.size || 0) / 10485.76) / 100,
+          source: 'upload',
+          is_demo: false,
+          page: 'process'
+        });
+      }
       const form = new FormData();
       form.append('file', selectedFile);
       const res = await fetch('/api/process/upload', { method: 'POST', body: form });
@@ -353,12 +362,28 @@
         throw new Error(err.detail || res.statusText);
       }
       const data = await res.json();
+      if (window.API && API.trackEvent) {
+        API.trackEvent('upload_queued', {
+          job_id: data.job_id || '',
+          source: 'upload',
+          is_demo: false,
+          page: 'process'
+        });
+      }
       pendingFiles[data.job_id] = selectedFile;
       fill.style.width = '30%';
       text.textContent = _tr('process.upload.queued_msg', 'Added to queue');
       pct.textContent = '30%';
       trackJob(data.job_id, selectedFile.name.replace(/\.[^.]+$/, ''), fill, text, pct);
     } catch (e) {
+      if (window.API && API.trackEvent) {
+        API.trackEvent('upload_error', {
+          error: e.message || String(e),
+          source: 'upload',
+          is_demo: false,
+          page: 'process'
+        });
+      }
       text.textContent = _tr('process.status.failed_prefix', 'Failed: ') + e.message;
       fill.style.width = '0%';
       pct.textContent = '';
@@ -410,9 +435,30 @@
               try { await audioDBStore(d.result_hash, pf); } catch (e) {}
               delete pendingFiles[jobId];
             }
+            if (window.API && API.trackEvent) {
+              API.trackEvent('upload_success', {
+                job_id: jobId,
+                song_hash: d.result_hash || '',
+                title: d.title || entry.title || '',
+                source: 'upload',
+                is_demo: false,
+                page: 'process'
+              });
+            }
             if (statusText) statusText.textContent = _tr('process.status.complete_excl', 'Done!');
           }
-          if (d.status === 'error' && statusText) statusText.textContent = _tr('process.status.failed_prefix', 'Failed: ') + (d.error || 'Unknown');
+          if (d.status === 'error') {
+            if (window.API && API.trackEvent) {
+              API.trackEvent('upload_error', {
+                job_id: jobId,
+                error: d.error || 'Unknown',
+                source: 'upload',
+                is_demo: false,
+                page: 'process'
+              });
+            }
+            if (statusText) statusText.textContent = _tr('process.status.failed_prefix', 'Failed: ') + (d.error || 'Unknown');
+          }
           document.getElementById('btnUpload').disabled = !selectedFile;
           document.getElementById('btnYoutube').disabled = false;
         }

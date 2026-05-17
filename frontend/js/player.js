@@ -4315,20 +4315,126 @@
       if(listEl) listEl.addEventListener("click", e => e.stopPropagation());
   }
 
-  function _trackPlayerLoaded(mode, key) {
-    if (!window.LiveChordAnalytics || !chordData) return;
-    window.LiveChordAnalytics.track("player_loaded", {
+  function _telemetrySource() {
+    if (!chordData) return "unknown";
+    const p = String(chordData.path || "");
+    if (chordData.demo_audio_url || p.startsWith("__demo/")) return "demo";
+    if (p.startsWith("__upload/")) return "upload";
+    if (hashMode) return "upload";
+    return "library";
+  }
+
+  function _baseSongTelemetry(mode, key) {
+    const source = _telemetrySource();
+    const bar = chordData && chordData.bar_correction;
+    return {
       mode,
-      song_hash: mode === "hash" ? key : "",
-      path: mode === "path" ? key : "",
+      song_hash: mode === "hash" ? key : (hashMode || ""),
+      path: mode === "path" ? key : (trackPath || ""),
       title: chordData.title || document.title.replace(/ — LiveChord$/, ""),
+      song_title: chordData.title || (songTitle ? songTitle.textContent : ""),
       has_demo_audio: !!chordData.demo_audio_url,
+      is_demo: source === "demo",
+      source,
       chord_count: Array.isArray(chordData.chords) ? chordData.chords.length : 0,
       key: chordData.key || "",
       time_signature: chordData.time_signature || "",
-      has_tempo_curve: Array.isArray(chordData.tempo_curve) && chordData.tempo_curve.length > 1
+      has_tempo_curve: Array.isArray(chordData.tempo_curve) && chordData.tempo_curve.length > 1,
+      bar_correction_applied: !!(bar && bar.applied),
+      bar_correction_score: bar && typeof bar.score_after === "number" ? bar.score_after : null,
+      beats_per_bar: bar && bar.beats_per_bar ? bar.beats_per_bar : (chordData.beats_per_bar || null)
+    };
+  }
+
+  function _trackPlayerLoaded(mode, key) {
+    if (!chordData) return;
+    const payload = _baseSongTelemetry(mode, key);
+    if (window.LiveChordAnalytics) window.LiveChordAnalytics.track("player_loaded", payload);
+    if (window.API && API.trackEvent) API.trackEvent("player_loaded", payload);
+  }
+
+  let _playerQualityTrackedKey = "";
+  function _trackPlayerQualityView(mode, key) {
+    if (!chordData) return;
+    const songKey = `${mode}:${key || ""}:${chordData.beat_version || ""}:${chordData.updated_at || ""}`;
+    if (_playerQualityTrackedKey === songKey) return;
+    _playerQualityTrackedKey = songKey;
+
+    requestAnimationFrame(() => {
+      const cards = Array.from(document.querySelectorAll("#unifiedRibbonTrack .rv-item"));
+      const expected = Array.isArray(chordData.chords) ? chordData.chords.length : 0;
+      const rendered = cards.length;
+      const blankNames = cards.filter((card) => {
+        const text = (card.querySelector(".rv-chord-name")?.textContent || "").trim();
+        return !text || text === "—" || text === "--";
+      }).length;
+      const beatRows = cards.filter((card) => card.querySelector(".rv-beats")).length;
+      const beatDotCount = document.querySelectorAll("#unifiedRibbonTrack .beat-dot").length;
+      const downbeatCards = cards.filter((card) => card.classList.contains("chord-at-downbeat")).length;
+      const shortCards = cards.filter((card) => card.classList.contains("chord-short")).length;
+      const meterText = (document.getElementById("chordMeter")?.textContent || "").trim();
+      const bpmText = (document.getElementById("chordBpm")?.textContent || "").trim();
+      const sourceBadge = (document.getElementById("chordSource")?.textContent || "").trim();
+      const issues = [];
+
+      if (expected > 0 && rendered === 0) issues.push("no_chord_cards");
+      if (expected > 0 && rendered > 0 && Math.abs(rendered - expected) > Math.max(2, Math.ceil(expected * 0.1))) {
+        issues.push("card_count_mismatch");
+      }
+      if (blankNames > 0) issues.push("blank_chord_names");
+      if (rendered > 0 && beatRows < Math.ceil(rendered * 0.5)) issues.push("few_beat_rows");
+      if (expected >= 4 && beatDotCount === 0) issues.push("no_beat_dots");
+      if (!bpmText) issues.push("missing_bpm_label");
+
+      const severe = ["no_chord_cards", "card_count_mismatch", "blank_chord_names", "no_beat_dots"];
+      const qualityStatus = issues.some((issue) => severe.includes(issue)) ? "bad" : (issues.length ? "warn" : "ok");
+      const payload = {
+        ..._baseSongTelemetry(mode, key),
+        quality_status: qualityStatus,
+        quality_issues: issues,
+        expected_chords: expected,
+        rendered_cards: rendered,
+        blank_chord_names: blankNames,
+        beat_row_count: beatRows,
+        beat_dot_count: beatDotCount,
+        downbeat_card_count: downbeatCards,
+        short_card_count: shortCards,
+        meter_label_visible: !!meterText,
+        bpm_label_visible: !!bpmText,
+        source_badge_visible: !!sourceBadge
+      };
+      if (window.LiveChordAnalytics) window.LiveChordAnalytics.track("player_quality_view", payload);
+      if (window.API && API.trackEvent) API.trackEvent("player_quality_view", payload);
     });
   }
+
+  function _trackQualityFeedback(action) {
+    if (!chordData) return;
+    const payload = {
+      ..._baseSongTelemetry(hashMode ? "hash" : "path", hashMode || trackPath || ""),
+      action
+    };
+    if (window.LiveChordAnalytics) window.LiveChordAnalytics.track("quality_feedback", payload);
+    if (window.API && API.trackEvent) API.trackEvent("quality_feedback", payload);
+  }
+
+  let _songPlayTracked = false;
+  function _trackSongPlay() {
+    if (_songPlayTracked || !chordData) return;
+    _songPlayTracked = true;
+    const source = _telemetrySource();
+    const payload = {
+      song_hash: hashMode || "",
+      path: trackPath || "",
+      song_title: chordData.title || (songTitle ? songTitle.textContent : ""),
+      source,
+      is_demo: source === "demo",
+      chord_count: Array.isArray(chordData.chords) ? chordData.chords.length : 0
+    };
+    if (window.LiveChordAnalytics) window.LiveChordAnalytics.track("song_play", payload);
+    if (window.API && API.trackEvent) API.trackEvent("song_play", payload);
+  }
+  if (audio) audio.addEventListener("play", _trackSongPlay);
 
   async function loadChords(path, version = null) {
     try {
@@ -4353,6 +4459,7 @@
         await preloadChordInfo(chordData.chords);
         buildChordDOM();
         _trackPlayerLoaded("path", path);
+        _trackPlayerQualityView("path", path);
         try { _updateBarArbitrateLabel && _updateBarArbitrateLabel(); } catch {}
         // Re-init active instrument so it picks up new chord data
         if (activeTab !== "piano") {
@@ -7111,6 +7218,7 @@
           await preloadChordInfo(chordData.chords);
           buildChordDOM();
           _trackPlayerLoaded("hash", hashMode);
+          _trackPlayerQualityView("hash", hashMode);
 
           // Hash mode parity with DB-path mode: kick off AI accompaniment fetch
           // so LH/RH bars + fingering come from the real algorithm instead of
@@ -7520,6 +7628,7 @@
   if (btnRlhfGood) {
       btnRlhfGood.addEventListener("click", () => {
           showToast(_t("toast.rlhf.thanks_good"));
+          _trackQualityFeedback("good");
           const urlParams = new URLSearchParams(window.location.search);
           const path = urlParams.get('path');
           if (path) {
@@ -7535,6 +7644,7 @@
   if (btnRlhfBad) {
       btnRlhfBad.addEventListener("click", () => {
           showToast(_t("toast.rlhf.thanks_bad"));
+          _trackQualityFeedback("bad");
           const urlParams = new URLSearchParams(window.location.search);
           const path = urlParams.get('path');
           if (path) {
@@ -8219,15 +8329,6 @@
       if (cfg.deployment_mode !== "beta") return;
       _betaMode = true;
 
-      // Analytics: track page view
-      API.trackEvent("page_view", { page: "player", song_hash: trackPath });
-
-      // Analytics: track song play
-      audio.addEventListener("play", () => {
-        const title = songTitle ? songTitle.textContent : "";
-        API.trackEvent("song_play", { song_hash: trackPath, song_title: title });
-      }, { once: true }); // only first play per session
-
       // Show bug report button in toolbar
       const tbBug = document.getElementById("tbBugReport");
       if (tbBug) tbBug.style.display = "";
@@ -8293,6 +8394,7 @@
         try {
           const title = songTitle ? songTitle.textContent : "";
           await API.submitRating(trackPath, _betaRating, betaComment.value.trim(), title);
+          _trackQualityFeedback(`rating_${_betaRating}`);
           showToast(_t("toast.beta.rated", { stars: "★".repeat(_betaRating) + "☆".repeat(5 - _betaRating) }));
           if (betaPopup) betaPopup.style.display = "none";
         } catch (e) { showToast(_t("toast.beta.rate_failed", { err: e.message })); }
