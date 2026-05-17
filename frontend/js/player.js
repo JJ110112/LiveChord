@@ -761,6 +761,8 @@
   // still gets a valid object.
   let aiSynth = _ensureSynth(_resolveActiveSoundId());
   let lastScheduledTime = 0;
+  let _melodyPollAbort = null;
+  let _melodyPollTimeout = null;
 
   function _stopMelodyPolling() {
     if (_melodyPollAbort) { try { _melodyPollAbort.abort(); } catch {} _melodyPollAbort = null; }
