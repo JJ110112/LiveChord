@@ -33,7 +33,7 @@ class TestUserRecentDelete(unittest.TestCase):
         user_api.DATA_DIR = self._orig_data_dir
         self.tmp.cleanup()
 
-    def test_delete_recent_record_keeps_matching_favorite(self):
+    def test_delete_recent_record_removes_matching_favorite_record(self):
         user_dir = self.root / "users" / "alice"
         user_dir.mkdir(parents=True, exist_ok=True)
         demo_path = "__hash/demo123"
@@ -55,7 +55,10 @@ class TestUserRecentDelete(unittest.TestCase):
 
         res = self.client.delete("/api/recent", params={"path": demo_path})
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json(), {"ok": True})
+        self.assertEqual(
+            res.json(),
+            {"ok": True, "removed_recent": 1, "removed_favorites": 1},
+        )
 
         recent = json.loads((user_dir / "recent.json").read_text(encoding="utf-8"))[
             "recent"
@@ -64,7 +67,7 @@ class TestUserRecentDelete(unittest.TestCase):
             (user_dir / "favorites.json").read_text(encoding="utf-8")
         )["favorites"]
         self.assertEqual([r["path"] for r in recent], ["library/song.flac"])
-        self.assertEqual([f["path"] for f in favorites], [demo_path])
+        self.assertEqual([f["path"] for f in favorites], [])
 
 
 if __name__ == "__main__":

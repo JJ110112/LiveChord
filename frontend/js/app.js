@@ -1011,6 +1011,7 @@
     const tasks = [];
     if (_isBetaMode) tasks.push(_loadBetaHistory());
     else if ($("#recentList")) tasks.push(loadRecent());
+    if ($("#secFavorites")) tasks.push(loadFavorites());
     const q = searchInput ? searchInput.value.trim() : "";
     if (q && searchResults && searchResults.classList.contains("show")) {
       tasks.push(doSearch(q));
@@ -1061,7 +1062,9 @@
         e.stopPropagation();
         btn.disabled = true;
         try {
-          await API.removeRecent(btn.dataset.path || "");
+          const path = btn.dataset.path || "";
+          await API.removeRecent(path);
+          await API.removeFavorite(path).catch(() => {});
           await _refreshAfterRecentRecordRemove();
         } catch (err) {
           btn.disabled = false;

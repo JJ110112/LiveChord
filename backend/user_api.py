@@ -169,9 +169,23 @@ async def add_recent(item: RecentItem, username: str = Depends(get_current_user)
 async def remove_recent(path: str = Query(...), username: str = Depends(get_current_user)):
     recent_file = _get_user_file(username, "recent.json")
     data = _read_json(recent_file, {"recent": []})
-    data["recent"] = [r for r in data["recent"] if r.get("path") != path]
+    before_recent = len(data.get("recent", []))
+    data["recent"] = [r for r in data.get("recent", []) if r.get("path") != path]
     _write_json(recent_file, data)
-    return {"ok": True}
+
+    fav_file = _get_user_file(username, "favorites.json")
+    fav_data = _read_json(fav_file, {"favorites": []})
+    before_favorites = len(fav_data.get("favorites", []))
+    fav_data["favorites"] = [
+        f for f in fav_data.get("favorites", []) if f.get("path") != path
+    ]
+    _write_json(fav_file, fav_data)
+
+    return {
+        "ok": True,
+        "removed_recent": before_recent - len(data["recent"]),
+        "removed_favorites": before_favorites - len(fav_data["favorites"]),
+    }
 
 from fastapi.responses import FileResponse
 import shutil
