@@ -11,6 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Query
 from fastapi.responses import FileResponse, StreamingResponse, Response
 
+from mutagen import File as MutagenFile
 from mutagen.flac import FLAC
 
 from config import get_music_root, get_music_roots, set_music_roots, resolve_path, is_beta_mode, is_personal_mode
@@ -20,6 +21,20 @@ from task_lock import get_task_lock
 router = APIRouter(prefix="/api", tags=["music"])
 DATA_DIR = Path(__file__).parent.parent / "data"
 CACHE_FILE = DATA_DIR / "library_cache.json"
+
+# Supported audio formats — keep in sync with backend/process_api.py ALLOWED_MIME_TYPES.
+# m4a deliberately excluded: Modal libsndfile cannot decode it (LiveChord-735, commit e102564).
+SUPPORTED_AUDIO_EXTS = (".flac", ".mp3", ".wav", ".ogg")
+AUDIO_MIME = {
+    ".flac": "audio/flac",
+    ".mp3":  "audio/mpeg",
+    ".wav":  "audio/wav",
+    ".ogg":  "audio/ogg",
+}
+
+
+def _is_supported_audio(name: str) -> bool:
+    return name.lower().endswith(SUPPORTED_AUDIO_EXTS)
 
 # ---------------------------------------------------------------------------
 # 掃描狀態（背景執行緒共享）
@@ -62,24 +77,26 @@ def _safe_path(path: str) -> str:
     raise HTTPException(status_code=403, detail="路徑不允許 (SafePath check failed)")
 
 
-def _read_flac_meta(filepath: str) -> dict:
-    """讀取 FLAC metadata"""
+def _read_audio_meta(filepath: str) -> dict:
+    """讀取音訊 metadata（FLAC/MP3/WAV/OGG 通用，靠 mutagen 自動分派）"""
+    fallback_title = os.path.splitext(os.path.basename(filepath))[0]
     try:
-        audio = FLAC(filepath)
+        audio = MutagenFile(filepath, easy=True)
+        if audio is None or audio.info is None:
+            raise ValueError("unrecognized format")
         return {
-            "title": (audio.get("title") or [""])[0],
+            "title":  (audio.get("title")  or [fallback_title])[0],
             "artist": (audio.get("artist") or [""])[0],
-            "album": (audio.get("album") or [""])[0],
-            "genre": (audio.get("genre") or [""])[0],
-            "duration": round(audio.info.length, 2) if audio.info else 0,
-            "sample_rate": audio.info.sample_rate if audio.info else 0,
-            "bits_per_sample": audio.info.bits_per_sample if audio.info else 0,
-            "channels": audio.info.channels if audio.info else 0,
+            "album":  (audio.get("album")  or [""])[0],
+            "genre":  (audio.get("genre")  or [""])[0],
+            "duration":        round(audio.info.length, 2),
+            "sample_rate":     getattr(audio.info, "sample_rate", 0) or 0,
+            "bits_per_sample": getattr(audio.info, "bits_per_sample", 0) or 0,
+            "channels":        getattr(audio.info, "channels", 0) or 0,
         }
     except Exception:
-        name = os.path.splitext(os.path.basename(filepath))[0]
         return {
-            "title": name, "artist": "", "album": "",
+            "title": fallback_title, "artist": "", "album": "",
             "genre": "", "duration": 0, "sample_rate": 0,
             "bits_per_sample": 0, "channels": 0,
         }
@@ -99,6 +116,7 @@ def _has_cover(filepath: str) -> bool:
     """檢查是否有封面（檔案或內嵌）"""
     if _find_cover(filepath):
         return True
+    # TODO: mp3 ID3 APIC / ogg METADATA_BLOCK_PICTURE — follow-up
     if filepath.lower().endswith(".flac"):
         try:
             audio = FLAC(filepath)
@@ -198,7 +216,7 @@ def browse(path: str = Query(default=""), _=Depends(_check_browse_access)):
                 "name": name, "path": rel, "is_dir": True,
                 "has_cover": cover,
             })
-        elif name.lower().endswith(".flac"):
+        elif _is_supported_audio(name):
             summary = _get_chord_summary(rel)
             entries.append({
                 "name": name, "path": rel, "is_dir": False,
@@ -366,10 +384,10 @@ def track_info(path: str = Query(...)):
     full = _safe_path(resolve_path(path))
     if not os.path.isfile(full):
         raise HTTPException(status_code=404, detail="檔案不存在")
-    if not full.lower().endswith(".flac"):
-        raise HTTPException(status_code=400, detail="僅支援 FLAC 檔案")
+    if not _is_supported_audio(full):
+        raise HTTPException(status_code=400, detail="不支援的音訊格式")
 
-    meta = _read_flac_meta(full)
+    meta = _read_audio_meta(full)
     meta["path"] = path
     meta["has_cover"] = _find_cover(full) is not None
 
@@ -383,13 +401,14 @@ def track_info(path: str = Query(...)):
 
 @router.get("/track/stream")
 def track_stream(request: Request, path: str = Query(...)):
-    """串流 FLAC 音訊（支援 HTTP Range — 相容平板瀏覽器）"""
+    """串流音訊（支援 HTTP Range — 相容平板瀏覽器）"""
     full = _safe_path(resolve_path(path))
     if not os.path.isfile(full):
         raise HTTPException(status_code=404, detail="檔案不存在")
-    if not full.lower().endswith(".flac"):
-        raise HTTPException(status_code=400, detail="僅支援 FLAC 檔案")
+    if not _is_supported_audio(full):
+        raise HTTPException(status_code=400, detail="不支援的音訊格式")
 
+    mime = AUDIO_MIME.get(os.path.splitext(full)[1].lower(), "application/octet-stream")
     file_size = os.path.getsize(full)
     range_header = request.headers.get("range")
 
@@ -421,7 +440,7 @@ def track_stream(request: Request, path: str = Query(...)):
         return StreamingResponse(
             iter_range(),
             status_code=206,
-            media_type="audio/flac",
+            media_type=mime,
             headers={
                 "Content-Range": f"bytes {start}-{end}/{file_size}",
                 "Content-Length": str(content_length),
@@ -442,7 +461,7 @@ def track_stream(request: Request, path: str = Query(...)):
     return StreamingResponse(
         iter_file(),
         status_code=200,
-        media_type="audio/flac",
+        media_type=mime,
         headers={
             "Content-Length": str(file_size),
             "Accept-Ranges": "bytes",
@@ -594,7 +613,7 @@ def _scan_worker(mode: str = "incremental"):
                     if entry.name in exclude_dirs:
                         continue
                     dirs.append(entry)
-                elif entry.is_file() and entry.name.lower().endswith(".flac"):
+                elif entry.is_file() and _is_supported_audio(entry.name):
                     full = entry.path
                     rel = current_rel_prefix + entry.name
                     seen_paths.add(rel)
@@ -617,7 +636,7 @@ def _scan_worker(mode: str = "incremental"):
                     else:
                         _scan_state["new_tracks"] += 1
 
-                    meta = _read_flac_meta(full)
+                    meta = _read_audio_meta(full)
                     meta["path"] = rel
 
                     try:
