@@ -946,6 +946,12 @@
     return `<button class="history-remove" data-action="history-delete" data-id="${escapeHtml(id)}" title="${label}" aria-label="${label}">&times;</button>`;
   }
 
+  function _buildRecentRecordRemoveButton(path) {
+    if (!path) return "";
+    const label = escapeHtml(_t("home.local.remove_btn"));
+    return `<button class="history-remove" data-action="recent-delete" data-path="${escapeHtml(path)}" title="${label}" aria-label="${label}">&times;</button>`;
+  }
+
   function _cssAttrValue(value) {
     return String(value || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   }
@@ -992,6 +998,18 @@
     _repositionDemoSection();
   }
 
+  async function _refreshAfterRecentRecordRemove() {
+    const tasks = [];
+    if (_isBetaMode) tasks.push(_loadBetaHistory());
+    else if ($("#recentList")) tasks.push(loadRecent());
+    const q = searchInput ? searchInput.value.trim() : "";
+    if (q && searchResults && searchResults.classList.contains("show")) {
+      tasks.push(doSearch(q));
+    }
+    await Promise.allSettled(tasks);
+    _repositionDemoSection();
+  }
+
   async function _deleteAnalyzedHistory(id) {
     if (!id) return;
     const res = await fetch(`/api/process/my-history/${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -1008,7 +1026,7 @@
     if (!container) return;
     container.querySelectorAll(".grid-item").forEach(el => {
       el.addEventListener("click", (e) => {
-        if (e.target.closest("[data-action='history-delete']")) return;
+        if (e.target.closest("[data-action='history-delete'],[data-action='recent-delete']")) return;
         if (el.dataset.path) goPlayer(el.dataset.path);
         else if (el.dataset.hash) goPlayer("", el.dataset.hash);
       });
@@ -1026,6 +1044,21 @@
           const msg = err && err.message ? err.message : _t("home.history.delete_failed");
           if (typeof showToast === "function") showToast(msg, 3000);
           else alert(msg);
+        }
+      });
+    });
+    container.querySelectorAll("[data-action='recent-delete']").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        btn.disabled = true;
+        try {
+          await API.removeRecent(btn.dataset.path || "");
+          await _refreshAfterRecentRecordRemove();
+        } catch (err) {
+          btn.disabled = false;
+          const msg = err && err.message ? err.message : String(err || "");
+          if (typeof showToast === "function") showToast(msg, 3000);
         }
       });
     });
@@ -1056,6 +1089,7 @@
             return {
               ...audit,
               _isLibrary: false,
+              path: r.path,
               result_hash: resultHash,
               title: (r.title || audit.title || _t("home.label.analysis_result")),
               source_type: "upload",
@@ -1099,23 +1133,27 @@
         recentContainer.innerHTML = mergedRecent.slice(0, 8).map(h => {
           if (h._isLibrary) {
             const coverUrl = API.trackCoverUrl(h.path);
-            return `<div class="grid-item" data-path="${escapeHtml(h.path)}" style="cursor:pointer">
+            return `<div class="grid-item history-card" data-path="${escapeHtml(h.path)}" style="cursor:pointer">
               <img class="cover" src="${coverUrl}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
               <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
               <div class="info">
                 <div class="title">${escapeHtml(h.title)}</div>
                 ${getDifficultyHtml(h)}
               </div>
+              ${_buildRecentRecordRemoveButton(h.path)}
             </div>`;
           }
           const title = h.title || _t("home.label.analysis_result");
+          const removeButton = h.id
+            ? _buildHistoryDeleteButton(h)
+            : _buildRecentRecordRemoveButton(h.path || (h.result_hash ? `__hash/${h.result_hash}` : ""));
           return `<div class="grid-item history-card" data-hash="${escapeHtml(h.result_hash)}" style="cursor:pointer">
             ${_buildCoverHtml(h)}
             <div class="info">
               <div class="title">${escapeHtml(title)}</div>
               ${getDifficultyHtml(h)}
             </div>
-            ${_buildHistoryDeleteButton(h)}
+            ${removeButton}
           </div>`;
         }).join("");
         _wireHistoryCards(recentContainer);
@@ -1807,32 +1845,31 @@
           const coverUrl = `/api/process/cover/${encodeURIComponent(hash)}`;
           const title = r.title || _t("home.label.analysis_result");
           html += `
-            <div class="grid-item" data-hash="${escapeHtml(hash)}">
+            <div class="grid-item history-card" data-hash="${escapeHtml(hash)}">
               <img class="cover" src="${coverUrl}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
               <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
               <div class="info">
                 <div class="title">${escapeHtml(title)}</div>
               </div>
+              ${_buildRecentRecordRemoveButton(r.path)}
             </div>`;
           return;
         }
         const name = r.path.split("/").pop().replace(/\.flac$/i, "");
         const coverUrl = API.trackCoverUrl(r.path);
         html += `
-          <div class="grid-item" data-path="${escapeHtml(r.path)}">
+          <div class="grid-item history-card" data-path="${escapeHtml(r.path)}">
             <img class="cover" src="${coverUrl}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
             <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
             <div class="info">
               <div class="title">${escapeHtml(name)}</div>
               ${getDifficultyHtml(r)}
             </div>
+            ${_buildRecentRecordRemoveButton(r.path)}
           </div>`;
       });
       container.innerHTML = html;
-      container.querySelectorAll(".grid-item").forEach((el) => {
-        if (el.dataset.hash) el.addEventListener("click", () => goPlayer("", el.dataset.hash));
-        else el.addEventListener("click", () => goPlayer(el.dataset.path));
-      });
+      _wireHistoryCards(container);
     } catch (err) {
       section.style.display = "none";
     }

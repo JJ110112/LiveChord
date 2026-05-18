@@ -164,6 +164,15 @@ async def add_recent(item: RecentItem, username: str = Depends(get_current_user)
     _write_json(recent_file, data)
     return {"ok": True}
 
+
+@router.delete("/recent")
+async def remove_recent(path: str = Query(...), username: str = Depends(get_current_user)):
+    recent_file = _get_user_file(username, "recent.json")
+    data = _read_json(recent_file, {"recent": []})
+    data["recent"] = [r for r in data["recent"] if r.get("path") != path]
+    _write_json(recent_file, data)
+    return {"ok": True}
+
 from fastapi.responses import FileResponse
 import shutil
 import tempfile

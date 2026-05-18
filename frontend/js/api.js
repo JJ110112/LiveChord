@@ -86,4 +86,5 @@ const API = {
   removeFavorite: (path) => API.del(`/api/favorites?path=${encodeURIComponent(path)}`),
   getRecent: () => API.get("/api/recent"),
   addRecent: (path) => API.post("/api/recent", { path }),
+  removeRecent: (path) => API.del(`/api/recent?path=${encodeURIComponent(path)}`),
 };
