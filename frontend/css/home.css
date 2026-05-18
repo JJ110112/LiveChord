@@ -367,8 +367,9 @@
   transition: width 0.25s ease;
 }
 
-/* Analyzed-local-track cards: small × overlay (match grid-item layout) */
-.grid-item.local-analyzed-card .la-remove {
+/* Analyzed cards: small x overlay (match grid-item layout) */
+.grid-item.local-analyzed-card .la-remove,
+.grid-item.history-card .history-remove {
   position: absolute;
   top: 4px;
   right: 4px;
@@ -386,8 +387,17 @@
   transition: opacity 0.15s;
   z-index: 2;
 }
-.grid-item.local-analyzed-card:hover .la-remove { opacity: 1; }
-.grid-item.local-analyzed-card .la-remove:hover { background: #f44336; }
+.grid-item.local-analyzed-card:hover .la-remove,
+.grid-item.history-card:hover .history-remove,
+.grid-item.history-card .history-remove:focus-visible { opacity: 1; }
+.grid-item.local-analyzed-card .la-remove:hover,
+.grid-item.history-card .history-remove:hover { background: #f44336; }
+.grid-item.history-card { position: relative; }
+.grid-item.history-card .history-remove:disabled { opacity: 0.55; cursor: default; }
+@media (hover: none) {
+  .grid-item.local-analyzed-card .la-remove,
+  .grid-item.history-card .history-remove { opacity: 1; }
+}
 
 /* YouTube playlist cards (beta homepage) */
 .yt-playlist-list { display: flex; flex-direction: column; gap: 10px; }

@@ -47,6 +47,7 @@ def _audit_conn():
 DATA_DIR = Path(__file__).parent.parent / "data"
 CHORDS_DIR = DATA_DIR / "chords"
 MELODIES_DIR = DATA_DIR / "melodies"
+ACCOMP_DIR = DATA_DIR / "accompaniments"
 TMP_DIR = DATA_DIR / "tmp"
 AUDIT_DB_PATH = DATA_DIR / "audit.db"
 
@@ -722,6 +723,58 @@ def _purge_user_hash_refs(hashes: set[str]) -> None:
 _purge_recent_entries = _purge_user_hash_refs
 
 
+def _audit_row_result_hash(row: sqlite3.Row) -> str:
+    rh = row["result_hash"] or ""
+    if not rh and row["status"] == "done":
+        rh = hashlib.md5(
+            f"__upload/{row['job_id']}".encode("utf-8")
+        ).hexdigest()[:12]
+    return rh
+
+
+def _unlink_artifact(path: Path) -> None:
+    try:
+        if path.is_file():
+            path.unlink(missing_ok=True)
+    except OSError as e:
+        logger.warning("Failed to delete artifact %s: %s", path, e)
+
+
+def _delete_result_artifacts(result_hash: str) -> None:
+    if not result_hash:
+        return
+    for path in [
+        chord_file_for(result_hash),
+        COVERS_DIR / f"{result_hash}.jpg",
+        MELODIES_DIR / f"{result_hash}.json",
+    ]:
+        _unlink_artifact(path)
+
+    chord_bucket = chord_file_for(result_hash).parent
+    if chord_bucket.is_dir():
+        for bak in chord_bucket.glob(f"{result_hash}.json.bak.*"):
+            _unlink_artifact(bak)
+
+    if ACCOMP_DIR.is_dir():
+        for acc in ACCOMP_DIR.glob(f"{result_hash}_*.json"):
+            _unlink_artifact(acc)
+
+    users_root = DATA_DIR / "users"
+    if users_root.is_dir():
+        for user_dir in users_root.iterdir():
+            if not user_dir.is_dir():
+                continue
+            for subdir in ("chords", "human_sections"):
+                _unlink_artifact(user_dir / subdir / f"{result_hash}.json")
+
+    try:
+        from r2_storage import is_r2_enabled, delete_cover
+        if is_r2_enabled():
+            delete_cover(result_hash)
+    except Exception as e:
+        logger.warning("R2 cover delete failed for %s: %s", result_hash, e)
+
+
 def delete_audit_entries(ids: list[int]) -> int:
     """Delete audit entries by ID and clean up associated chord/cover files."""
     if not ids:
@@ -730,25 +783,16 @@ def delete_audit_entries(ids: list[int]) -> int:
         conn.row_factory = sqlite3.Row
         placeholders = ",".join("?" for _ in ids)
         rows = conn.execute(
-            f"SELECT id, result_hash FROM process_audit WHERE id IN ({placeholders})",
+            f"SELECT id, job_id, status, result_hash FROM process_audit WHERE id IN ({placeholders})",
             ids,
         ).fetchall()
         deleted_hashes: set[str] = set()
         # Delete associated files
         for r in rows:
-            rh = r["result_hash"] or ""
+            rh = _audit_row_result_hash(r)
             if rh:
                 deleted_hashes.add(rh)
-                for path in [
-                    chord_file_for(rh),
-                    COVERS_DIR / f"{rh}.jpg",
-                    MELODIES_DIR / f"{rh}.json",
-                ]:
-                    if path.is_file():
-                        path.unlink(missing_ok=True)
-                # Also drop any sidecar .bak.<src> snapshots for this hash
-                for bak in chord_file_for(rh).parent.glob(f"{rh}.json.bak.*"):
-                    bak.unlink(missing_ok=True)
+                _delete_result_artifacts(rh)
         conn.execute(
             f"DELETE FROM process_audit WHERE id IN ({placeholders})",
             ids,
@@ -757,6 +801,31 @@ def delete_audit_entries(ids: list[int]) -> int:
     # Cascade: prune dangling __hash/<h> entries from every user's recent.json + favorites.json
     _purge_user_hash_refs(deleted_hashes)
     return len(rows)
+
+
+def delete_user_audit_entry(entry_id: int, username: str) -> Optional[dict]:
+    """Delete one audit entry owned by `username` and clean its artifacts."""
+    with _audit_conn() as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            """SELECT id, job_id, status, result_hash
+               FROM process_audit
+               WHERE id=? AND username=?""",
+            (entry_id, username),
+        ).fetchone()
+        if row is None:
+            return None
+        result_hash = _audit_row_result_hash(row)
+        if result_hash:
+            _delete_result_artifacts(result_hash)
+        conn.execute(
+            "DELETE FROM process_audit WHERE id=? AND username=?",
+            (entry_id, username),
+        )
+        conn.commit()
+    if result_hash:
+        _purge_user_hash_refs({result_hash})
+    return {"id": entry_id, "result_hash": result_hash}
 
 
 def get_audit_log(limit: int = 50, offset: int = 0) -> list[dict]:

@@ -18,7 +18,7 @@ from process_queue import (
     ProcessJob, JobStatus, TMP_DIR, COVERS_DIR,
     submit_job, get_job, generate_job_id, compute_file_hash,
     check_quota, get_user_daily_count, get_audit_log, get_user_audit_log,
-    delete_audit_entries,
+    delete_audit_entries, delete_user_audit_entry,
     CHORDS_DIR,
 )
 from chord_cache import chord_file_for, chord_bak_for, ensure_chord_bucket
@@ -660,9 +660,18 @@ def switch_beats(
 # ---------------------------------------------------------------------------
 
 @router.get("/my-history", dependencies=[Depends(_require_user_facing)])
-def my_history(limit: int = 20, username: str = Depends(get_current_user)):
-    """Get current user's own process history from audit log."""
+def my_history(limit: int = 20, username: str = Depends(get_user_or_anon)):
+    """Get current identity's own process history from audit log."""
     return {"history": get_user_audit_log(username, limit)}
+
+
+@router.delete("/my-history/{entry_id}", dependencies=[Depends(_require_user_facing)])
+def delete_my_history_entry(entry_id: int, username: str = Depends(get_user_or_anon)):
+    """Delete one processed upload owned by the current identity."""
+    deleted = delete_user_audit_entry(entry_id, username)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    return {"deleted": 1, **deleted}
 
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@
   <title data-i18n="process.title_tag">LiveChord — Analyze new song</title>
   <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
-  <script src="/js/i18n.js?v=47"></script>
+  <script src="/js/i18n.js?v=48"></script>
   <link rel="stylesheet" href="/css/base.css?v=4">
   <script>
     if (!localStorage.getItem("livechord_token")) {
@@ -157,6 +157,15 @@
       text-decoration: none;
       white-space: nowrap;
     }
+    .job-card .actions { display: flex; align-items: center; gap: 10px; }
+    .job-card button.action-link {
+      border: 0;
+      background: transparent;
+      padding: 0;
+      cursor: pointer;
+      font: inherit;
+    }
+    .job-card .danger-link { color: #f44336; }
     .job-card .action-link:hover { text-decoration: underline; }
     .empty-msg { color: var(--text-dim); font-size: 0.85rem; text-align: center; padding: 20px; }
 
@@ -288,8 +297,9 @@
       const data = await res.json();
       if (!data.history || data.history.length === 0) return;
       for (const h of data.history) {
-        if (jobs.some(j => j.job_id === h.job_id)) continue;
-        jobs.push({
+        const existing = jobs.find(j => j.job_id === h.job_id);
+        const item = {
+          id: h.id || null,
           job_id: h.job_id,
           title: h.title || 'Unknown',
           status: h.status,
@@ -297,7 +307,9 @@
           result_hash: h.result_hash || null,
           error: h.status === 'error' ? 'Failed' : '',
           source_type: h.source_type || '',
-        });
+        };
+        if (existing) Object.assign(existing, item);
+        else jobs.push(item);
       }
       renderJobs();
     } catch (e) {}
@@ -446,6 +458,7 @@
               });
             }
             if (statusText) statusText.textContent = _tr('process.status.complete_excl', 'Done!');
+            await loadHistory();
           }
           if (d.status === 'error') {
             if (window.API && API.trackEvent) {
@@ -484,18 +497,42 @@
       error:      _tr('process.status.error',        'Failed'),
     };
     const viewLabel = _tr('process.history.view_chords', 'View chords');
+    const deleteLabel = _tr('process.history.delete', 'Delete');
     el.innerHTML = jobs.map(j => {
       const badge = `<span class="status-badge badge-${j.status}">${
         badgeLabels[j.status] || j.status
       }${j.status === 'processing' ? ' ' + j.progress + '%' : ''}</span>`;
-      let action = '';
+      const deleteAction = j.id
+        ? `<button class="action-link danger-link" data-action="delete-job" data-id="${esc(j.id)}">${esc(deleteLabel)}</button>`
+        : '';
+      let action = deleteAction ? `<span class="actions">${deleteAction}</span>` : '';
       if (j.status === 'done' && j.result_hash) {
-        action = `<a class="action-link" href="/player?hash=${j.result_hash}">${esc(viewLabel)}</a>`;
+        action = `<span class="actions"><a class="action-link" href="/player?hash=${j.result_hash}">${esc(viewLabel)}</a>${deleteAction}</span>`;
       } else if (j.status === 'error' && j.error) {
-        action = `<span style="font-size:0.8rem;color:#f44336">${esc(j.error.slice(0, 60))}</span>`;
+        action = `<span class="actions"><span style="font-size:0.8rem;color:#f44336">${esc(j.error.slice(0, 60))}</span>${deleteAction}</span>`;
       }
       return `<div class="job-card">${badge}<span class="title">${esc(j.title)}</span>${action}</div>`;
     }).join('');
+    el.querySelectorAll('[data-action="delete-job"]').forEach(btn => {
+      btn.addEventListener('click', () => deleteJob(btn.dataset.id));
+    });
+  }
+
+  async function deleteJob(id) {
+    if (!id) return;
+    if (!confirm(_tr('process.history.delete_confirm', 'Delete this analysis result?'))) return;
+    try {
+      const res = await fetch(`/api/process/my-history/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || res.statusText);
+      }
+      const idx = jobs.findIndex(j => String(j.id || '') === String(id));
+      if (idx >= 0) jobs.splice(idx, 1);
+      renderJobs();
+    } catch (e) {
+      alert(_tr('process.history.delete_failed', 'Delete failed: ') + (e.message || String(e)));
+    }
   }
 
   function esc(s) {

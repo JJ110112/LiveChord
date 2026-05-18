@@ -914,6 +914,51 @@
       <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>`;
   }
 
+  function _buildHistoryDeleteButton(h) {
+    const id = h && h.id != null ? String(h.id) : "";
+    if (!id) return "";
+    const label = escapeHtml(_t("home.history.delete_btn"));
+    return `<button class="history-remove" data-action="history-delete" data-id="${escapeHtml(id)}" title="${label}" aria-label="${label}">&times;</button>`;
+  }
+
+  async function _deleteAnalyzedHistory(id) {
+    if (!id) return;
+    const res = await fetch(`/api/process/my-history/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || _t("home.history.delete_failed"));
+    }
+    if (typeof showToast === "function") showToast(_t("home.history.deleted"), 1800);
+    await _loadBetaHistory();
+  }
+
+  function _wireHistoryCards(container) {
+    if (!container) return;
+    container.querySelectorAll(".grid-item").forEach(el => {
+      el.addEventListener("click", (e) => {
+        if (e.target.closest("[data-action='history-delete']")) return;
+        if (el.dataset.path) goPlayer(el.dataset.path);
+        else if (el.dataset.hash) goPlayer("", el.dataset.hash);
+      });
+    });
+    container.querySelectorAll("[data-action='history-delete']").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!confirm(_t("home.confirm.delete_analysis"))) return;
+        btn.disabled = true;
+        try {
+          await _deleteAnalyzedHistory(btn.dataset.id);
+        } catch (err) {
+          btn.disabled = false;
+          const msg = err && err.message ? err.message : _t("home.history.delete_failed");
+          if (typeof showToast === "function") showToast(msg, 3000);
+          else alert(msg);
+        }
+      });
+    });
+  }
+
   async function _loadBetaHistory() {
     const grid = $("#historyGrid");
     const recentContainer = $("#betaRecentList");
@@ -923,6 +968,9 @@
       if (!res.ok) return;
       const data = await res.json();
       const items = (data.history || []).filter(h => h.status === "done" && h.result_hash);
+      const auditByHash = new Map(items.map(h => [h.result_hash, h]));
+      if (recentContainer) recentContainer.innerHTML = "";
+      if (recentSection) recentSection.style.display = "none";
 
       // Also fetch NAS library recent plays and merge into the recent section
       let recentItems = [];
@@ -931,10 +979,13 @@
         recentItems = (recentData.recent || []).map(r => {
           // __hash/ 項目是上傳分析的處理結果，當成 hash-card 處理，不走 library path
           if (typeof r.path === "string" && r.path.startsWith("__hash/")) {
+            const resultHash = r.path.slice(7);
+            const audit = auditByHash.get(resultHash) || {};
             return {
+              ...audit,
               _isLibrary: false,
-              result_hash: r.path.slice(7),
-              title: (r.title || _t("home.label.analysis_result")),
+              result_hash: resultHash,
+              title: (r.title || audit.title || _t("home.label.analysis_result")),
               source_type: "upload",
             };
           }
@@ -986,18 +1037,16 @@
             </div>`;
           }
           const title = h.title || _t("home.label.analysis_result");
-          return `<div class="grid-item" data-hash="${escapeHtml(h.result_hash)}" style="cursor:pointer">
+          return `<div class="grid-item history-card" data-hash="${escapeHtml(h.result_hash)}" style="cursor:pointer">
             ${_buildCoverHtml(h)}
             <div class="info">
               <div class="title">${escapeHtml(title)}</div>
               ${getDifficultyHtml(h)}
             </div>
+            ${_buildHistoryDeleteButton(h)}
           </div>`;
         }).join("");
-        recentContainer.querySelectorAll(".grid-item").forEach(el => {
-          if (el.dataset.path) el.addEventListener("click", () => goPlayer(el.dataset.path));
-          else el.addEventListener("click", () => goPlayer("", el.dataset.hash));
-        });
+        _wireHistoryCards(recentContainer);
         if (recentSection) recentSection.style.display = "";
       }
 
@@ -1009,17 +1058,16 @@
         }
         grid.innerHTML = items.map(h => {
           const title = h.title || _t("home.label.analysis_result");
-          return `<div class="grid-item" data-hash="${escapeHtml(h.result_hash)}" style="cursor:pointer">
+          return `<div class="grid-item history-card" data-hash="${escapeHtml(h.result_hash)}" style="cursor:pointer">
             ${_buildCoverHtml(h)}
             <div class="info">
               <div class="title">${escapeHtml(title)}</div>
               ${getDifficultyHtml(h)}
             </div>
+            ${_buildHistoryDeleteButton(h)}
           </div>`;
         }).join("");
-        grid.querySelectorAll(".grid-item").forEach(el => {
-          el.addEventListener("click", () => goPlayer("", el.dataset.hash));
-        });
+        _wireHistoryCards(grid);
       }
     } catch (e) {
       console.error("loadBetaHistory error:", e);
