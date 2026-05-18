@@ -8,6 +8,8 @@
   let currentTab = localStorage.getItem("livechord_home_tab") || "recent";
   let searchTimer = null;
   let _betaActiveAnalysis = null;
+  const ACTIVE_UPLOAD_KEY = "livechord_active_upload_job";
+  const ACTIVE_UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
 
   // ---- DOM refs ----
   const $ = (sel) => document.querySelector(sel);
@@ -48,6 +50,73 @@
     return ((file && file.name) || "").replace(/\.[^.]+$/, "") || "Untitled";
   }
 
+  function _uploadBlobKey(jobId) {
+    return jobId ? `upload_job_${jobId}` : "";
+  }
+
+  function _persistBetaActiveAnalysis() {
+    if (!_betaActiveAnalysis || !_betaActiveAnalysis.jobId) return;
+    try {
+      _betaActiveAnalysis.updatedAt = Date.now();
+      localStorage.setItem(ACTIVE_UPLOAD_KEY, JSON.stringify(_betaActiveAnalysis));
+    } catch {}
+  }
+
+  function _forgetPersistedBetaAnalysis() {
+    try { localStorage.removeItem(ACTIVE_UPLOAD_KEY); } catch {}
+  }
+
+  function _readPersistedBetaAnalysis() {
+    try {
+      const raw = localStorage.getItem(ACTIVE_UPLOAD_KEY);
+      if (!raw) return null;
+      const saved = JSON.parse(raw);
+      if (!saved || !saved.jobId) return null;
+      const updatedAt = Number(saved.updatedAt || saved.startedAt || 0);
+      if (updatedAt && Date.now() - updatedAt > ACTIVE_UPLOAD_TTL_MS) {
+        _forgetPersistedBetaAnalysis();
+        return null;
+      }
+      return saved;
+    } catch {
+      _forgetPersistedBetaAnalysis();
+      return null;
+    }
+  }
+
+  function _ensureActiveAnalysisVisible() {
+    setTimeout(() => {
+      const row = document.querySelector(".local-track-item.lt-analyzing");
+      if (!row) return;
+      const rect = row.getBoundingClientRect();
+      if (rect.top >= 0 && rect.bottom <= window.innerHeight) return;
+      row.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
+  }
+
+  function _resumeBetaActiveAnalysis() {
+    const saved = _readPersistedBetaAnalysis();
+    if (!saved) return;
+    if (_betaActiveAnalysis && _betaActiveAnalysis.jobId
+        && _betaActiveAnalysis.jobId !== saved.jobId) return;
+    _betaActiveAnalysis = {
+      ...saved,
+      statusText: saved.statusText || _t("home.progress.queued_analyzing"),
+    };
+    if (_betaActiveAnalysis.localId) {
+      _currentAnalyzingLocalId = _betaActiveAnalysis.localId;
+    }
+    _renderLocalTracks();
+    _ensureActiveAnalysisVisible();
+    if (_betaActiveAnalysis.jobId) {
+      if (_betaActivePollTimer) {
+        clearInterval(_betaActivePollTimer);
+        _betaActivePollTimer = null;
+      }
+      _betaPollJob(_betaActiveAnalysis.jobId, null, null, null, { immediate: true });
+    }
+  }
+
   function _beginBetaActiveAnalysis(file, localId) {
     _betaActiveAnalysis = {
       jobId: "",
@@ -57,8 +126,12 @@
       progress: 10,
       status: "uploading",
       statusText: _t("home.progress.uploading"),
+      uploadBlobKey: "",
+      startedAt: Date.now(),
+      updatedAt: Date.now(),
     };
     _renderLocalTracks();
+    _ensureActiveAnalysisVisible();
   }
 
   function _updateBetaActiveAnalysis(jobId, patch) {
@@ -66,6 +139,7 @@
     if (jobId && _betaActiveAnalysis.jobId && _betaActiveAnalysis.jobId !== jobId) return;
     Object.assign(_betaActiveAnalysis, patch || {});
     if (jobId && !_betaActiveAnalysis.jobId) _betaActiveAnalysis.jobId = jobId;
+    _persistBetaActiveAnalysis();
     _renderLocalTracks();
   }
 
@@ -73,6 +147,7 @@
     const clear = () => {
       if (jobId && _betaActiveAnalysis && _betaActiveAnalysis.jobId && _betaActiveAnalysis.jobId !== jobId) return;
       _betaActiveAnalysis = null;
+      _forgetPersistedBetaAnalysis();
       _renderLocalTracks();
     };
     if (delayMs > 0) setTimeout(clear, delayMs);
@@ -652,17 +727,22 @@
       if (window.API && API.trackEvent) {
         API.trackEvent("upload_queued", { job_id: data.job_id || "", source: "upload", is_demo: false });
       }
-      _betaPendingFiles[data.job_id] = selectedFile;
+      const jobId = data.job_id || "";
+      if (!jobId) throw new Error("Missing upload job id");
+      const uploadBlobKey = _uploadBlobKey(jobId);
+      await audioDBStore(uploadBlobKey, selectedFile);
+      _betaPendingFiles[jobId] = selectedFile;
       fill.style.width = "30%";
       text.textContent = _t("home.progress.queued_analyzing");
       pct.textContent = "30%";
-      _updateBetaActiveAnalysis(data.job_id, {
-        jobId: data.job_id || "",
+      _updateBetaActiveAnalysis(jobId, {
+        jobId,
         progress: 30,
         status: "queued",
         statusText: _t("home.progress.queued_analyzing"),
+        uploadBlobKey,
       });
-      _betaPollJob(data.job_id, fill, text, pct);
+      _betaPollJob(jobId, fill, text, pct, { immediate: true });
     } catch (e) {
       text.textContent = _t("home.progress.failed_prefix") + e.message;
       fill.style.width = "0%";
@@ -682,14 +762,15 @@
     $("#betaFileInput").value = "";
   };
 
-  function _betaPollJob(jobId, fill, statusText, pctText) {
+  function _betaPollJob(jobId, fill, statusText, pctText, opts = {}) {
     // Seed with the current visual width (already set by caller to 20–30%) so the
     // bar never jumps backwards when the first poll returns a lower backend value.
     let maxProgress = fill ? parseInt((fill.style.width || "0").replace("%", "")) || 0 : 0;
     // Cancel any prior poll so two analyses can't race their progress
     // updates against the same DOM elements.
     if (_betaActivePollTimer) { clearInterval(_betaActivePollTimer); _betaActivePollTimer = null; }
-    const timer = setInterval(async () => {
+    let timer = null;
+    const pollOnce = async () => {
       try {
         const res = await fetch(`/api/process/status/${jobId}`);
         if (!res.ok) { clearInterval(timer); _betaActivePollTimer = null; return; }
@@ -743,11 +824,24 @@
             status: "done",
             statusText: _t("home.status.done"),
           });
+          const activeSnapshot = _betaActiveAnalysis && _betaActiveAnalysis.jobId === jobId
+              ? { ..._betaActiveAnalysis }
+              : {};
+          const finishedLocalId = activeSnapshot.localId || _currentAnalyzingLocalId;
           // Store audio blob in IndexedDB for auto-play
-          const pendingFile = _betaPendingFiles[jobId];
+          let pendingFile = _betaPendingFiles[jobId];
+          if (!pendingFile && activeSnapshot.uploadBlobKey) {
+            pendingFile = await audioDBLoad(activeSnapshot.uploadBlobKey);
+          }
+          if (!pendingFile && finishedLocalId) {
+            pendingFile = await audioDBLoad(finishedLocalId);
+          }
           if (pendingFile) {
             await audioDBStore(d.result_hash, pendingFile);
             delete _betaPendingFiles[jobId];
+          }
+          if (activeSnapshot.uploadBlobKey) {
+            try { await audioDBDelete(activeSnapshot.uploadBlobKey); } catch {}
           }
           // Flag this hash as freshly-analyzed so the player can show a
           // "旋律擷取中" banner while the melody worker finishes in the background.
@@ -771,13 +865,11 @@
           }
           // If this job came from a local-tracks-list entry, stamp the
           // analyzedHash back onto it so next click goes straight to play.
-          const finishedLocalId = (_betaActiveAnalysis && _betaActiveAnalysis.jobId === jobId && _betaActiveAnalysis.localId)
-              ? _betaActiveAnalysis.localId
-              : _currentAnalyzingLocalId;
           if (finishedLocalId) {
             _markLocalTrackAnalyzed(finishedLocalId, d.result_hash);
             _currentAnalyzingLocalId = null;
           }
+          _clearBetaActiveAnalysis(jobId);
           // Same for playlist videos — mark existing_hash so the card's list
           // shows ▶ 播放 next time user opens it.
           // Navigate to player
@@ -809,8 +901,10 @@
           $("#betaFabPanel")?.classList.remove("analyzing");
         }
       } catch (e) {}
-    }, POLL_MS);
+    };
+    timer = setInterval(pollOnce, POLL_MS);
     _betaActivePollTimer = timer;
+    if (opts.immediate) pollOnce();
   }
 
   // ---- beta history ----
@@ -1166,6 +1260,7 @@
         }
       }
       await Promise.allSettled(tasks);
+      _resumeBetaActiveAnalysis();
       _repositionDemoSection();
       _scrollToDemoIfFromPlayer();
     } finally {
@@ -1178,6 +1273,7 @@
     // show up in 最近播放 until some other trigger reflowed the list. Rerun
     // the beta history fetch whenever we're restored from bfcache.
     window.addEventListener("pageshow", (ev) => {
+      _resumeBetaActiveAnalysis();
       if (!ev.persisted) {
         // First-render path or full reload — initDashboard's bottom call
         // already covered the scroll; nothing to do here.
@@ -1190,6 +1286,10 @@
       // async render.
       _scrollToDemoIfFromPlayer();
     });
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) _resumeBetaActiveAnalysis();
+    });
+    window.addEventListener("focus", () => _resumeBetaActiveAnalysis());
   }
 
   // ---- browse ----
