@@ -946,6 +946,52 @@
     return `<button class="history-remove" data-action="history-delete" data-id="${escapeHtml(id)}" title="${label}" aria-label="${label}">&times;</button>`;
   }
 
+  function _cssAttrValue(value) {
+    return String(value || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  }
+
+  function _pruneVisibleDeletedHashCards(resultHash) {
+    const hash = String(resultHash || "");
+    if (!hash) return;
+    const hashSel = _cssAttrValue(hash);
+    const pathSel = _cssAttrValue(`__hash/${hash}`);
+    const selectors = [
+      `.grid-item[data-hash="${hashSel}"]`,
+      `.result-item[data-hash="${hashSel}"]`,
+      `.grid-item[data-path="${pathSel}"]`,
+      `.result-item[data-path="${pathSel}"]`,
+      `li[data-path="${pathSel}"]`,
+    ];
+    document.querySelectorAll(selectors.join(",")).forEach((el) => {
+      if (el.closest("#secDemoSongs, #secDemoSongsHero")) return;
+      el.remove();
+    });
+
+    [
+      ["#secBetaRecent", "#betaRecentList"],
+      ["#secRecent", "#recentList"],
+      ["#secFavorites", "#favList"],
+    ].forEach(([sectionSel, listSel]) => {
+      const section = $(sectionSel);
+      const list = $(listSel);
+      if (section && list && !list.querySelector(".grid-item")) {
+        section.style.display = "none";
+      }
+    });
+  }
+
+  async function _refreshAfterAnalysisDelete(resultHash) {
+    _pruneVisibleDeletedHashCards(resultHash);
+    const tasks = [_loadBetaHistory()];
+    if ($("#secFavorites")) tasks.push(loadFavorites());
+    const q = searchInput ? searchInput.value.trim() : "";
+    if (q && searchResults && searchResults.classList.contains("show")) {
+      tasks.push(doSearch(q));
+    }
+    await Promise.allSettled(tasks);
+    _repositionDemoSection();
+  }
+
   async function _deleteAnalyzedHistory(id) {
     if (!id) return;
     const res = await fetch(`/api/process/my-history/${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -953,8 +999,9 @@
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || _t("home.history.delete_failed"));
     }
+    const deleted = await res.json().catch(() => ({}));
     if (typeof showToast === "function") showToast(_t("home.history.deleted"), 1800);
-    await _loadBetaHistory();
+    await _refreshAfterAnalysisDelete(deleted.result_hash || "");
   }
 
   function _wireHistoryCards(container) {
