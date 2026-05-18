@@ -1657,33 +1657,56 @@
       data.favorites.forEach((f) => {
         const isHash = f.path.startsWith("__hash/");
         const hash = isHash ? f.path.replace("__hash/", "") : "";
+        const removeLabel = escapeHtml(_t("home.local.remove_btn"));
+        const removeBtn = `<button class="favorite-remove" data-action="favorite-remove" data-path="${escapeHtml(f.path)}" title="${removeLabel}" aria-label="${removeLabel}">&times;</button>`;
         if (isHash) {
           const info = hashTitles[hash] || { title: hash };
           html += `
-            <div class="grid-item" data-hash="${escapeHtml(hash)}">
+            <div class="grid-item favorite-card" data-hash="${escapeHtml(hash)}">
               <img class="cover" src="/api/process/cover/${escapeHtml(hash)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
               <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
               <div class="info"><div class="title">${escapeHtml(info.title)}</div></div>
+              ${removeBtn}
             </div>`;
         } else {
           const name = f.path.split("/").pop().replace(/\.flac$/i, "");
           const coverUrl = API.trackCoverUrl(f.path);
           html += `
-            <div class="grid-item" data-path="${escapeHtml(f.path)}">
+            <div class="grid-item favorite-card" data-path="${escapeHtml(f.path)}">
               <img class="cover" src="${coverUrl}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
               <div class="cover-placeholder" style="display:none">&#x1F3B5;</div>
               <div class="info">
                 <div class="title">${escapeHtml(name)}</div>
                 ${getDifficultyHtml(f)}
               </div>
+              ${removeBtn}
             </div>`;
         }
       });
       container.innerHTML = html;
       container.querySelectorAll(".grid-item").forEach((el) => {
-        el.addEventListener("click", () => {
+        el.addEventListener("click", (e) => {
+          if (e.target.closest("[data-action='favorite-remove']")) return;
           if (el.dataset.hash) goPlayer("", el.dataset.hash);
           else goPlayer(el.dataset.path);
+        });
+      });
+      container.querySelectorAll("[data-action='favorite-remove']").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          btn.disabled = true;
+          try {
+            await API.removeFavorite(btn.dataset.path || "");
+            if (typeof showToast === "function") showToast(_t("toast.fav.removed"), 1800);
+            await loadFavorites();
+          } catch (err) {
+            btn.disabled = false;
+            const msg = err && err.message ? err.message : String(err || "");
+            if (typeof showToast === "function") {
+              showToast(_t("toast.fav.failed", { err: msg }), 3000);
+            }
+          }
         });
       });
     } catch (err) {
