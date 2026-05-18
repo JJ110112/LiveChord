@@ -238,6 +238,12 @@ def _walk_chord_jsons(chords_dir: Path,
     files = sorted(chords_dir.glob("*/*.json"))
     if not files:
         files = sorted(chords_dir.glob("*.json"))
+    # Exclude sidecar snapshots like ``<hash>.json.bak.beat_refiner.json``
+    # whose trailing .json matches the glob. They share their parent song's
+    # audio path, so processing them duplicates work and pollutes the
+    # alternative-beat-source snapshot with sampled probs that don't align
+    # with the sidecar's beats[]/downbeats[] arrays.
+    files = [f for f in files if ".bak." not in f.name]
     if only_hash:
         files = [f for f in files if f.stem == only_hash]
     return files
@@ -347,10 +353,22 @@ def main():
             multiprocessing.set_start_method("spawn", force=False)
         except RuntimeError:
             pass  # already set
-        with ProcessPoolExecutor(max_workers=args.workers) as ex:
-            futures = [ex.submit(_worker_entry, p) for p in payload]
-            for i, fut in enumerate(as_completed(futures), 1):
-                fname, status, summary, err = fut.result()
+        # multiprocessing.Pool(maxtasksperchild=N) over ProcessPoolExecutor
+        # because the latter's Python 3.11 `max_tasks_per_child` parameter
+        # hangs on Windows + spawn — workers exit after N tasks but the pool
+        # doesn't reliably spawn replacements, leaving the parent stuck.
+        # Pool.imap_unordered with maxtasksperchild is the battle-tested
+        # pattern. 300 is conservative — workers handled 800+ files before
+        # NumPy/torch/audio-decoder memory fragmentation surfaced as
+        # MemoryError on modest contiguous allocations.
+        with multiprocessing.Pool(
+            processes=args.workers,
+            maxtasksperchild=300,
+        ) as pool:
+            for i, result in enumerate(
+                pool.imap_unordered(_worker_entry, payload), 1
+            ):
+                fname, status, summary, err = result
                 emit(i, fname, status, summary, err)
 
     print()

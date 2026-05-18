@@ -294,6 +294,11 @@ def scan_degenerate(chords_dir: Path, *, include_old_version: bool,
     files = sorted(chords_dir.glob("*/*.json"))
     if not files:
         files = sorted(chords_dir.glob("*.json"))
+    # Exclude sidecar snapshots like ``<hash>.json.bak.beat_refiner.json`` —
+    # their trailing .json matches the glob but they share their parent
+    # song's audio path. Processing them would re-run the tracker on the
+    # same audio and overwrite the alternative-beat-source snapshot.
+    files = [f for f in files if ".bak." not in f.name]
     if only_hash:
         files = [f for f in files if f.stem == only_hash]
     total = len(files)
@@ -491,12 +496,26 @@ def main():
             fname, status, summary, err = _worker_entry(p)
             emit(i, fname, status, summary, err)
     else:
+        import multiprocessing as _mp
         print(f"Using {args.workers} worker processes "
               f"(~{args.workers * 500}MB RAM expected)", flush=True)
-        with ProcessPoolExecutor(max_workers=args.workers) as ex:
-            futures = [ex.submit(_worker_entry, p) for p in payload]
-            for i, fut in enumerate(as_completed(futures), 1):
-                fname, status, summary, err = fut.result()
+        # multiprocessing.Pool over ProcessPoolExecutor because the latter's
+        # 3.11 max_tasks_per_child hangs on Windows + spawn (workers exit
+        # after N tasks but pool doesn't reliably spawn replacements).
+        # Pool.imap_unordered with maxtasksperchild is battle-tested.
+        # 200 is conservative for madmom — ~500MB+/worker.
+        try:
+            _mp.set_start_method("spawn", force=False)
+        except RuntimeError:
+            pass
+        with _mp.Pool(
+            processes=args.workers,
+            maxtasksperchild=200,
+        ) as pool:
+            for i, result in enumerate(
+                pool.imap_unordered(_worker_entry, payload), 1
+            ):
+                fname, status, summary, err = result
                 emit(i, fname, status, summary, err)
 
     error_log_fp.write(f"\nFinished {datetime.now().isoformat()}\n")
