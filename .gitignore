@@ -196,3 +196,18 @@ screenshot-*.png
 # Beat refiner training corpus (reproducible from scripts/build_training_corpus.py — too large for git)
 backend/ai/splits/
 
+# Codex agent local config (parallel to .claude/)
+.codex/
+
+# Runtime state files under data/ (locks, progress trackers, quarantine)
+data/.__server.lock
+data/chord_detect_quarantine.json
+data/g1k_progress.json
+
+# Backfill / QA logs under tools/
+tools/backfill_errors_*.log
+tools/logs/
+
+# Local QA + backfill reports (waterfall screenshots, run summaries, case studies)
+reports/
+
