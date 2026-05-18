@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=22">
-  <link rel="stylesheet" href="/css/home.css?v=50">
+  <link rel="stylesheet" href="/css/home.css?v=51">
 
   <link rel="stylesheet" href="/css/help.css?v=5">
   <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
@@ -360,20 +360,27 @@
 
   <!-- beta recent plays (hidden by default) -->
   <section id="secBetaRecent" class="dash-section" style="display:none">
-    <h2 class="dash-title" data-i18n="home.section.recent">Recently played</h2>
+    <h2 class="dash-title dash-title-tools">
+      <span data-i18n="home.section.recent">Recently played</span>
+      <button class="section-edit-btn" type="button" data-card-edit-target="#secBetaRecent" title="Edit" aria-label="Edit" aria-pressed="false">✎</button>
+    </h2>
     <div id="betaRecentList" class="horizontal-scroll"></div>
   </section>
 
   <!-- favorites section -->
   <section id="secFavorites" class="dash-section" style="display:none">
-    <h2 class="dash-title" data-i18n="home.section.favorites">Favorites</h2>
+    <h2 class="dash-title dash-title-tools">
+      <span data-i18n="home.section.favorites">Favorites</span>
+      <button class="section-edit-btn" type="button" data-card-edit-target="#secFavorites" title="Edit" aria-label="Edit" aria-pressed="false">✎</button>
+    </h2>
     <div id="favList" class="horizontal-scroll"></div>
   </section>
 
   <!-- beta local music — user-picked files, persisted via IndexedDB + localStorage metadata -->
   <section id="secBetaLocalTracks" class="dash-section" style="display:none">
-    <h2 class="dash-title" style="display:flex; align-items:center; gap:12px">
+    <h2 class="dash-title dash-title-tools" style="display:flex; align-items:center; gap:12px">
       <span data-i18n="home.section.local_tracks">Local music</span>
+      <button class="section-edit-btn" type="button" data-card-edit-target="#secBetaLocalTracks" title="Edit" aria-label="Edit" aria-pressed="false">✎</button>
       <button id="betaBrowseLocalBtn" class="btn-small"
               style="font-size:0.75rem; padding:4px 10px"
               data-i18n="home.section.local_pick_btn">+ Pick local audio</button>
@@ -690,6 +697,6 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 }
 </script>
 
-<script src="/js/app.js?v=118"></script>
+<script src="/js/app.js?v=119"></script>
 </body>
 </html>

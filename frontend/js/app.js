@@ -27,6 +27,31 @@
     loading.style.display = show ? "" : "none";
   }
 
+  function _initCardRemovalEditToggles() {
+    $$("[data-card-edit-target]").forEach((btn) => {
+      if (btn.dataset.cardEditBound === "1") return;
+      const section = document.querySelector(btn.getAttribute("data-card-edit-target") || "");
+      if (!section) return;
+      btn.dataset.cardEditBound = "1";
+
+      function sync() {
+        const isEditing = section.classList.contains("card-removal-edit");
+        btn.classList.toggle("active", isEditing);
+        btn.setAttribute("aria-pressed", isEditing ? "true" : "false");
+        btn.setAttribute("aria-label", isEditing ? "Done" : "Edit");
+        btn.setAttribute("title", isEditing ? "Done" : "Edit");
+      }
+
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        section.classList.toggle("card-removal-edit");
+        sync();
+      });
+      sync();
+    });
+  }
+
   function goPlayer(path, hash) {
     if (hash) {
       window.location.href = `/player?hash=${encodeURIComponent(hash)}`;
@@ -1907,6 +1932,7 @@
     backdrop.addEventListener("click", () => close("piano"));
   }
   _initInstrumentPicker();
+  _initCardRemovalEditToggles();
 
   // 啟動 Dashboard (Lazy + Parallel)
   initDashboard();

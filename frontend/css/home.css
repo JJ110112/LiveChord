@@ -367,7 +367,46 @@
   transition: width 0.25s ease;
 }
 
-/* Analyzed cards: small x overlay (match grid-item layout) */
+.dash-title-tools {
+  gap: 8px;
+}
+
+.section-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  margin-left: 4px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bg-card) 78%, transparent);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
+}
+.section-edit-btn:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  color: var(--text);
+}
+.section-edit-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 65%, #fff);
+  outline-offset: 2px;
+}
+.section-edit-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.section-edit-btn:active {
+  transform: scale(0.96);
+}
+
+/* Analyzed cards: small x overlay, visible only in section edit mode */
 .grid-item.local-analyzed-card .la-remove,
 .grid-item.history-card .history-remove,
 .grid-item.favorite-card .favorite-remove {
@@ -384,15 +423,20 @@
   font-size: 13px;
   line-height: 1;
   padding: 0;
-  opacity: 1;
-  transition: opacity 0.15s;
+  display: none;
+  transition: background 0.15s, opacity 0.15s;
   z-index: 2;
 }
+.card-removal-edit .grid-item.local-analyzed-card .la-remove,
+.card-removal-edit .grid-item.history-card .history-remove,
+.card-removal-edit .grid-item.favorite-card .favorite-remove { display: block; }
 .grid-item.local-analyzed-card .la-remove:hover,
 .grid-item.history-card .history-remove:hover,
 .grid-item.favorite-card .favorite-remove:hover { background: #f44336; }
+.grid-item.local-analyzed-card { position: relative; }
 .grid-item.history-card { position: relative; }
 .grid-item.favorite-card { position: relative; }
+.grid-item.local-analyzed-card .la-remove:disabled,
 .grid-item.history-card .history-remove:disabled,
 .grid-item.favorite-card .favorite-remove:disabled { opacity: 0.55; cursor: default; }
 
