@@ -19,7 +19,15 @@ const API = {
 
   async del(url) {
     const res = await fetch(url, { method: "DELETE" });
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    if (!res.ok) {
+      let detail = "";
+      try {
+        const data = await res.json();
+        detail = data && data.detail ? String(data.detail) : "";
+      } catch {}
+      const status = `${res.status} ${res.statusText}`;
+      throw new Error(detail ? `${status}: ${detail}` : status);
+    }
     return res.json();
   },
 

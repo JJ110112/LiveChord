@@ -952,6 +952,15 @@
     return `<button class="history-remove" data-action="recent-delete" data-path="${escapeHtml(path)}" title="${label}" aria-label="${label}">&times;</button>`;
   }
 
+  function _showDeleteError(err, fallback) {
+    const raw = err && err.message ? String(err.message) : String(err || "");
+    const msg = raw.includes("405")
+      ? "刪除功能尚未在後端啟用，請重新啟動 LiveChord 服務後再試。"
+      : (raw || fallback || "刪除失敗");
+    if (typeof showToast === "function") showToast(msg, 3600);
+    else alert(msg);
+  }
+
   function _cssAttrValue(value) {
     return String(value || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   }
@@ -1042,8 +1051,7 @@
         } catch (err) {
           btn.disabled = false;
           const msg = err && err.message ? err.message : _t("home.history.delete_failed");
-          if (typeof showToast === "function") showToast(msg, 3000);
-          else alert(msg);
+          _showDeleteError(err, msg);
         }
       });
     });
@@ -1058,7 +1066,7 @@
         } catch (err) {
           btn.disabled = false;
           const msg = err && err.message ? err.message : String(err || "");
-          if (typeof showToast === "function") showToast(msg, 3000);
+          _showDeleteError(err, msg);
         }
       });
     });
@@ -1815,9 +1823,7 @@
           } catch (err) {
             btn.disabled = false;
             const msg = err && err.message ? err.message : String(err || "");
-            if (typeof showToast === "function") {
-              showToast(_t("toast.fav.failed", { err: msg }), 3000);
-            }
+            _showDeleteError(err, _t("toast.fav.failed", { err: msg }));
           }
         });
       });
