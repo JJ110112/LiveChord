@@ -1192,6 +1192,8 @@
   // visitors are the primary audience. Silent failure (empty manifest, missing
   // endpoint, 404) is fine: the section just stays hidden.
   async function _loadDemoSongs() {
+    if (!_isPublicMode) return;
+
     let demos = [];
     try {
       const res = await fetch("/api/demo/list");
