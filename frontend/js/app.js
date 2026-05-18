@@ -1201,7 +1201,7 @@
     if (!Array.isArray(demos) || demos.length === 0) return;
 
     const isLoggedIn = !!localStorage.getItem("livechord_token");
-    const targetId = isLoggedIn ? "#secDemoSongs" : "#secDemoSongsHero";
+    const targetId = (!_isPublicMode || isLoggedIn) ? "#secDemoSongs" : "#secDemoSongsHero";
     const sec = $(targetId);
     if (!sec) return;
 

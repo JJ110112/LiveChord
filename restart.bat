@@ -2,7 +2,7 @@
 
 REM Post-beta deployment mode pin (see start.bat for rationale). The `set`
 REM here propagates into the `start` child process below.
-set LIVECHORD_MODE=public
+set LIVECHORD_MODE=personal
 set LIVECHORD_ADMIN_EMAILS=hiteacherwu@gmail.com
 
 REM Ensure firewall allows port 8800

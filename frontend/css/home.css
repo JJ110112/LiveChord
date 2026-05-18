@@ -553,9 +553,9 @@
 /* Section ordering — flex order overrides DOM order so we can keep the
    marketing landing top-of-document for SEO while putting user-content
    sections (recent / favorites / local-music) above the demo strip on
-   the logged-in dashboard. Empty sections are display:none and collapse,
-   so a fresh logged-in user with nothing of their own still sees the
-   demo strip at the top of the visible content area. */
+   the logged-in dashboard. Personal mode should keep the NAS library ahead
+   of demos; public anonymous users still get the demo hero via
+   #secDemoSongsHero. */
 #secHomeIntro       { order: -50; }
 #secHomeHero        { order: -40; }
 #secDemoSongsHero   { order: -35; }
@@ -566,8 +566,8 @@
 #secBetaRecent      { order: 20; }
 #secBetaLocalTracks { order: 30; }
 #secFavorites       { order: 40; }
+#secBrowse          { order: 45; }
 #secDemoSongs       { order: 50; }
-#secBrowse          { order: 60; }
 .site-footer        { order: 100; }
 
 /* Marketing intro — standalone cover image at the top of the logged-out
