@@ -86,6 +86,83 @@ class TestGlobalChordArbiter(unittest.TestCase):
         self.assertLess(sheet["display_bpm"], 77)
         self.assertEqual(sheet["global_arbiter_meta"]["display_bpm"]["source"], "global-arbiter-display-beats")
 
+    def test_sanitizes_stable_four_four_two_chord_loop_noise(self):
+        downbeats = [0.33 + i * 2.45 for i in range(40)]
+        sheet = {
+            "path": "POP/C-POP/CoCo Lee - CoCo Lee You & I  25th Anniversary Album/Ai Wo Jiu Yi Dian.flac",
+            "bpm": 97.8,
+            "downbeats": downbeats,
+            "chords": [
+                {"time": 2.81, "end": 8.06, "chord": "Gmaj7"},
+                {"time": 8.06, "end": 12.58, "chord": "Gbm7"},
+                {"time": 12.58, "end": 17.22, "chord": "Gmaj7"},
+                {"time": 17.22, "end": 22.38, "chord": "Gbm7"},
+                {"time": 22.38, "end": 24.23, "chord": "Gmaj7"},
+                {"time": 24.23, "end": 24.83, "chord": "D"},
+                {"time": 24.83, "end": 27.28, "chord": "Gmaj7"},
+                {"time": 27.28, "end": 32.17, "chord": "Gbm7"},
+                {"time": 32.17, "end": 37.07, "chord": "Gmaj7"},
+                {"time": 37.07, "end": 41.97, "chord": "Gbm7"},
+                {"time": 41.97, "end": 45.93, "chord": "Gmaj7"},
+                {"time": 45.93, "end": 46.26, "chord": "D"},
+                {"time": 46.26, "end": 48.43, "chord": "Gbm7"},
+                {"time": 48.43, "end": 48.71, "chord": "A"},
+                {"time": 48.71, "end": 50.53, "chord": "Gbm7"},
+                {"time": 50.53, "end": 51.75, "chord": "Bm7"},
+                {"time": 51.75, "end": 56.64, "chord": "Gmaj7"},
+                {"time": 56.64, "end": 61.55, "chord": "Gbm7"},
+                {"time": 61.55, "end": 66.44, "chord": "Gmaj7"},
+                {"time": 66.44, "end": 70.12, "chord": "Gbm7"},
+                {"time": 70.12, "end": 70.74, "chord": "Bm7"},
+                {"time": 70.74, "end": 71.34, "chord": "Em7"},
+                {"time": 71.34, "end": 75.93, "chord": "Gmaj7"},
+                {"time": 75.93, "end": 80.51, "chord": "Gbm7"},
+                {"time": 80.51, "end": 85.4, "chord": "Em7"},
+            ],
+        }
+
+        apply_global_structure_corrections(sheet, {"applied": False, "version": "test", "hints": []})
+
+        self.assertTrue(sheet["loop_sanitizer_applied"])
+        meta = sheet["sanitizer_meta"]
+        self.assertEqual(meta["ch_a"], "Gmaj7")
+        self.assertEqual(meta["ch_b"], "Gbm7")
+        self.assertEqual(meta["suppressed_noises"], 4)
+        suppressed = {ex["chord"] for ex in meta["examples"]}
+        self.assertEqual(suppressed, {"D", "A", "Bm7"})
+
+        early = [
+            c for c in sheet["chords"]
+            if c["time"] < 70.12 and c["chord"] not in ("Gmaj7", "Gbm7")
+        ]
+        self.assertEqual(early, [])
+        boundary = [c for c in sheet["chords"] if 70.0 <= c["time"] < 71.0]
+        self.assertEqual([c["chord"] for c in boundary], ["Bm7", "Em7"])
+
+    def test_four_four_loop_sanitizer_requires_stable_downbeats(self):
+        downbeats = [0.0, 2.45, 4.8, 7.5, 9.55, 12.4, 14.6, 17.4, 19.5, 22.2]
+        sheet = {
+            "bpm": 97.8,
+            "downbeats": downbeats,
+            "chords": [
+                {"time": 0.0, "end": 4.9, "chord": "Gmaj7"},
+                {"time": 4.9, "end": 9.8, "chord": "Gbm7"},
+                {"time": 9.8, "end": 12.0, "chord": "Gmaj7"},
+                {"time": 12.0, "end": 12.4, "chord": "D"},
+                {"time": 12.4, "end": 14.7, "chord": "Gmaj7"},
+                {"time": 14.7, "end": 19.6, "chord": "Gbm7"},
+                {"time": 19.6, "end": 24.5, "chord": "Gmaj7"},
+                {"time": 24.5, "end": 29.4, "chord": "Gbm7"},
+                {"time": 29.4, "end": 34.3, "chord": "Gmaj7"},
+                {"time": 34.3, "end": 39.2, "chord": "Gbm7"},
+            ],
+        }
+
+        apply_global_structure_corrections(sheet, {"applied": False, "version": "test", "hints": []})
+
+        self.assertNotIn("loop_sanitizer_applied", sheet)
+        self.assertIn("D", [c["chord"] for c in sheet["chords"]])
+
     def test_protects_modulation_transition_and_repeated_ab_cycle(self):
         sheet = {
             "bpm": 76.0,

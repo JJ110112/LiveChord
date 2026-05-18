@@ -38,6 +38,16 @@ _KEY_VITERBI_PENALTY = 0.30
 _COMPOUND_68_BPB_MIN = 5.5
 _COMPOUND_68_BPB_MAX = 6.5
 
+# Stable 4/4 loop sanitizer. This is intentionally stricter than the generic
+# display quantizer: it only runs on very steady grids and only removes isolated
+# short foreign chords inside a proven two-chord loop.
+_FOUR_FOUR_LOOP_MAX_DOWNBEAT_CV = 0.01
+_FOUR_FOUR_LOOP_MIN_SUPPORT_CARDS = 8
+_FOUR_FOUR_LOOP_SUPPORT_BAR_FRAC = 0.65
+_FOUR_FOUR_LOOP_MIN_DOMINANCE = 0.72
+_FOUR_FOUR_LOOP_NOISE_MAX_BEATS = 2.05
+_FOUR_FOUR_LOOP_MAX_FOREIGN_NAME_COUNT = 3
+
 # 3/4 (waltz) detection thresholds. Beat tracker emits one beat per quarter
 # pulse, with 3 beats per bar.
 _SIMPLE_34_BPB_MIN = 2.7
@@ -1603,6 +1613,205 @@ def _split_stable_full_bar_holds(chords: List[Dict], bar_gap: float, card_beats:
     return out, split_count
 
 
+def _chord_name(chord: Dict) -> str:
+    return str(chord.get("chord") or chord.get("name") or "").strip()
+
+
+def _compact_adjacent_same_chords(chords: List[Dict]) -> List[Dict]:
+    out: List[Dict] = []
+    for chord in chords:
+        item = dict(chord)
+        name = _chord_name(item)
+        start = _float(item.get("time"))
+        end = _float(item.get("end"), start)
+        if (
+            out
+            and name
+            and _chord_name(out[-1]) == name
+            and abs(_float(out[-1].get("end"), _float(out[-1].get("time"))) - start) <= 0.08
+        ):
+            out[-1]["end"] = round(end, 3)
+            continue
+        out.append(item)
+    return out
+
+
+def _find_stable_two_chord_loop_zone(chords: List[Dict], bar_gap: float) -> Optional[Dict]:
+    support: List[Dict] = []
+    min_support = bar_gap * _FOUR_FOUR_LOOP_SUPPORT_BAR_FRAC
+    for idx, chord in enumerate(chords):
+        name = _chord_name(chord)
+        start = _float(chord.get("time"))
+        end = _float(chord.get("end"), start)
+        dur = end - start
+        if name and dur >= min_support:
+            support.append({"idx": idx, "name": name, "start": start, "end": end, "dur": dur})
+    if len(support) < _FOUR_FOUR_LOOP_MIN_SUPPORT_CARDS:
+        return None
+
+    compressed: List[Dict] = []
+    for item in support:
+        if compressed and compressed[-1]["name"] == item["name"]:
+            compressed[-1]["end"] = item["end"]
+            compressed[-1]["dur"] += item["dur"]
+            compressed[-1]["last_idx"] = item["idx"]
+        else:
+            compressed.append({**item, "last_idx": item["idx"]})
+    if len(compressed) < _FOUR_FOUR_LOOP_MIN_SUPPORT_CARDS:
+        return None
+
+    best: Optional[Dict] = None
+    for start_idx in range(len(compressed) - 1):
+        a = compressed[start_idx]["name"]
+        b = compressed[start_idx + 1]["name"]
+        if not a or not b or a == b:
+            continue
+        end_idx = start_idx + 2
+        while end_idx < len(compressed):
+            expected = a if (end_idx - start_idx) % 2 == 0 else b
+            if compressed[end_idx]["name"] != expected:
+                break
+            end_idx += 1
+        run_len = end_idx - start_idx
+        if run_len < _FOUR_FOUR_LOOP_MIN_SUPPORT_CARDS:
+            continue
+        candidate = {
+            "start_idx": start_idx,
+            "end_idx": end_idx - 1,
+            "run_len": run_len,
+            "ch_a": a,
+            "ch_b": b,
+            "start": compressed[start_idx]["start"],
+            "end": compressed[end_idx - 1]["end"],
+        }
+        if best is None or candidate["run_len"] > best["run_len"]:
+            best = candidate
+
+    if not best:
+        return None
+
+    zone_start = best["start"]
+    zone_end = best["end"]
+    loop_names = {best["ch_a"], best["ch_b"]}
+    total_dur = 0.0
+    loop_dur = 0.0
+    foreign_counts: Counter = Counter()
+    for chord in chords:
+        name = _chord_name(chord)
+        start = _float(chord.get("time"))
+        end = _float(chord.get("end"), start)
+        overlap = max(0.0, min(end, zone_end) - max(start, zone_start))
+        if overlap <= 0:
+            continue
+        total_dur += overlap
+        if name in loop_names:
+            loop_dur += overlap
+        elif name:
+            foreign_counts[name] += 1
+    dominance = (loop_dur / total_dur) if total_dur > 0 else 0.0
+    if dominance < _FOUR_FOUR_LOOP_MIN_DOMINANCE:
+        return None
+
+    best["dominance"] = dominance
+    best["foreign_counts"] = foreign_counts
+    return best
+
+
+def _sanitize_stable_four_four_loops(
+    chords: List[Dict],
+    downbeats: List[float],
+    bpm: float = 0.0,
+    path: str = "",
+) -> Tuple[List[Dict], Optional[Dict]]:
+    if not chords or bpm <= 0:
+        return chords, None
+    gap_info = _stable_downbeat_gap(downbeats, bpm, path)
+    if not gap_info:
+        return chords, None
+    if int(gap_info.get("card_beats") or 0) != 4:
+        return chords, None
+    if float(gap_info.get("cv") or 0.0) > _FOUR_FOUR_LOOP_MAX_DOWNBEAT_CV:
+        return chords, None
+    beats_per_bar = float(gap_info.get("beats_per_bar") or 0.0)
+    if not (3.55 <= beats_per_bar <= 4.45):
+        return chords, None
+    bar_gap = float(gap_info.get("bar_gap") or 0.0)
+    if bar_gap <= 0:
+        return chords, None
+
+    zone = _find_stable_two_chord_loop_zone(chords, bar_gap)
+    if not zone:
+        return chords, None
+    loop_names = {zone["ch_a"], zone["ch_b"]}
+    spb = 60.0 / bpm
+    max_noise_dur = spb * _FOUR_FOUR_LOOP_NOISE_MAX_BEATS
+
+    out = [dict(c) for c in chords]
+    remove_indices = set()
+    suppressed: List[Dict] = []
+    foreign_counts: Counter = zone["foreign_counts"]
+
+    for idx, chord in enumerate(chords):
+        name = _chord_name(chord)
+        start = _float(chord.get("time"))
+        end = _float(chord.get("end"), start)
+        dur = end - start
+        if (
+            idx == 0
+            or idx >= len(chords) - 1
+            or name in loop_names
+            or start < zone["start"] - 0.05
+            or end > zone["end"] + 0.05
+            or dur <= 0
+            or dur > max_noise_dur
+            or foreign_counts.get(name, 0) > _FOUR_FOUR_LOOP_MAX_FOREIGN_NAME_COUNT
+        ):
+            continue
+
+        prev = chords[idx - 1]
+        nxt = chords[idx + 1]
+        prev_name = _chord_name(prev)
+        next_name = _chord_name(nxt)
+        if prev_name not in loop_names or next_name not in loop_names:
+            continue
+        prev_end = _float(prev.get("end"), _float(prev.get("time")))
+        next_start = _float(nxt.get("time"))
+        if abs(prev_end - start) > 0.08 or abs(end - next_start) > 0.08:
+            continue
+
+        # In these stable loop failures BTC usually emits the foreign chord as
+        # a tail ornament before the next stable card. Absorb into the left
+        # loop chord so section pickups made of multiple foreign cards remain
+        # visible instead of pulling the next section early.
+        out[idx - 1]["end"] = round(end, 3)
+        absorbed_into = prev_name
+        remove_indices.add(idx)
+        suppressed.append({
+            "time": round(start, 3),
+            "end": round(end, 3),
+            "chord": name,
+            "into": absorbed_into,
+        })
+
+    if not suppressed:
+        return chords, None
+
+    cleaned = [item for idx, item in enumerate(out) if idx not in remove_indices]
+    cleaned = _compact_adjacent_same_chords(cleaned)
+    meta = {
+        "type": "stable_four_four_loop_sanitizer",
+        "ch_a": zone["ch_a"],
+        "ch_b": zone["ch_b"],
+        "zone": [round(zone["start"], 3), round(zone["end"], 3)],
+        "bar_gap": round(bar_gap, 3),
+        "downbeat_cv": round(float(gap_info.get("cv") or 0.0), 5),
+        "dominance": round(float(zone["dominance"]), 3),
+        "suppressed_noises": len(suppressed),
+        "examples": suppressed[:8],
+    }
+    return cleaned, meta
+
+
 def _apply_downbeat_display_quantization(chords: List[Dict], downbeats: List[float], bpm: float = 0.0, path: str = "") -> Tuple[List[Dict], Optional[Dict]]:
     gap_info = _stable_downbeat_gap(downbeats, bpm, path)
     if not gap_info:
@@ -1784,9 +1993,20 @@ def apply_global_structure_corrections(chord_data: Dict, meta: Optional[Dict] = 
             "time_signature": chord_data.get("time_signature"),
         }
     else:
+        downbeat_values = [_float(v) for v in (chord_data.get("downbeats") or [])]
+        chords, loop_sanitizer = _sanitize_stable_four_four_loops(
+            chords,
+            downbeat_values,
+            _float(chord_data.get("bpm")),
+            str(chord_data.get("path") or ""),
+        )
+        if loop_sanitizer:
+            corrections.append(loop_sanitizer)
+            chord_data["loop_sanitizer_applied"] = True
+            chord_data["sanitizer_meta"] = loop_sanitizer
         chords, quant_correction = _apply_downbeat_display_quantization(
             chords,
-            [_float(v) for v in (chord_data.get("downbeats") or [])],
+            downbeat_values,
             _float(chord_data.get("bpm")),
             str(chord_data.get("path") or ""),
         )
