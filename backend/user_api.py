@@ -166,7 +166,7 @@ async def add_recent(item: RecentItem, username: str = Depends(get_current_user)
 
 
 @router.delete("/recent")
-async def remove_recent(path: str = Query(...), username: str = Depends(get_current_user)):
+def remove_recent(path: str = Query(...), username: str = Depends(get_current_user)):
     recent_file = _get_user_file(username, "recent.json")
     data = _read_json(recent_file, {"recent": []})
     before_recent = len(data.get("recent", []))
