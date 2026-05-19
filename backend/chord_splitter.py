@@ -53,6 +53,23 @@ _MIN_SEG_BAR_FRAC = 0.20
 _GAP_INTERPOLATION_THRESHOLD = 1.5
 _ONE_BAR_NO_SPLIT_MAX_FRAC = 1.30
 _FRAGMENT_GUARD_PENALTY = 0.18
+
+# Layer 3 phase-slip recovery. When fragment-guard rejects normal splitting
+# because BTC's chord boundaries are off-bar in too many places, distrust
+# BTC's boundaries and snap each interior boundary to the nearest downbeat
+# (within a generous tolerance). The premise: at this fragmentation density
+# BTC's onset times have drifted out of phase with the song's bar grid, so
+# the bar grid (madmom/beat_this downbeats) is the more reliable source of
+# truth. Triggered only when fragmentation is bad enough that the existing
+# safe-long-split path can't recover. Confirmed via 2026-05-19 cross-genre
+# audit: 94% of library songs have chord-to-beat alignment within 50ms, so
+# this code path is dormant for the vast majority — it's a targeted rescue
+# for the ~5% with structural phase slip (e.g. CoCo Lee 愛我久一點, which
+# emits 17 bad-fragment patterns 1+3 / 3+1 / 4+1 that block the splitter).
+_PHASE_SLIP_TRIGGER_FRAGMENTS = 10
+_PHASE_SLIP_TOL_BARS = 0.5
+_PHASE_SLIP_MIN_SEG_BEATS = 0.5
+
 _SAME_CHORD_FRAGMENT_BEATS = 1.35
 _SAME_CHORD_ONE_BAR_EDGE_BEATS = 2.35
 _SAME_CHORD_MERGE_TOTAL_BEATS = (3.3, 5.5)
@@ -924,6 +941,102 @@ def split_long_chords_evenly_by_bpm(
     return out
 
 
+def _snap_chord_boundaries_to_downbeats(
+    chords: List[Dict],
+    downbeats: List[float],
+    bpm: float,
+    bpb: int,
+) -> Tuple[List[Dict], Dict]:
+    """Force each interior chord boundary to the nearest downbeat.
+
+    Layer 3 grid-shelter: only call this after fragment-guard has confirmed
+    that BTC's boundaries are off-bar enough to block the regular splitter
+    (bad_fragments > _PHASE_SLIP_TRIGGER_FRAGMENTS). Tolerance is generous
+    (±0.5 bar) because the whole point is to override BTC's onset drift.
+
+    Reject individual snaps that would collapse either neighbour chord to
+    shorter than ``_PHASE_SLIP_MIN_SEG_BEATS × spb`` — chord intervals
+    smaller than half a beat are sub-beat slivers that no rendering path
+    handles cleanly and that no human-perceived chord change would produce.
+
+    First chord's ``time`` (song start) and last chord's ``end`` (song end)
+    are never moved — they anchor the song timeline. Returns (new_chords,
+    meta) where meta records how many boundaries actually moved.
+    """
+    if len(chords) < 2 or len(downbeats) < 2 or bpm <= 0 or bpb <= 0:
+        return chords, {"applied": False, "reason": "insufficient-data"}
+    spb = 60.0 / float(bpm)
+    bar_dur = float(bpb) * spb
+    tol = bar_dur * _PHASE_SLIP_TOL_BARS
+    min_seg = spb * _PHASE_SLIP_MIN_SEG_BEATS
+    dbs = sorted(float(d) for d in downbeats if d is not None)
+    if not dbs:
+        return chords, {"applied": False, "reason": "no-downbeats"}
+
+    out = [dict(c) for c in chords]
+    snapped = 0
+    examples: List[Dict] = []
+    for i in range(len(out) - 1):
+        orig_time = out[i + 1].get("time")
+        if orig_time is None:
+            continue
+        try:
+            orig_b = float(orig_time)
+        except (TypeError, ValueError):
+            continue
+        # Nearest downbeat via bisect for stable O(log n).
+        from bisect import bisect_left
+        j = bisect_left(dbs, orig_b)
+        cands = []
+        if j > 0:
+            cands.append(dbs[j - 1])
+        if j < len(dbs):
+            cands.append(dbs[j])
+        if not cands:
+            continue
+        nearest = min(cands, key=lambda d: abs(d - orig_b))
+        delta = nearest - orig_b
+        if abs(delta) < 1e-3 or abs(delta) >= tol:
+            continue
+        prev_start = float(out[i].get("time", orig_b))
+        next_end_raw = out[i + 1].get("end")
+        try:
+            next_end = float(next_end_raw) if next_end_raw is not None else None
+        except (TypeError, ValueError):
+            next_end = None
+        # If next chord has no explicit end, peek at out[i+2].time for a bound.
+        if next_end is None and i + 2 < len(out):
+            try:
+                next_end = float(out[i + 2].get("time", nearest + min_seg + 1))
+            except (TypeError, ValueError):
+                next_end = nearest + min_seg + 1
+        if next_end is None:
+            next_end = nearest + min_seg + 1
+        prev_dur_after = nearest - prev_start
+        next_dur_after = next_end - nearest
+        if prev_dur_after < min_seg or next_dur_after < min_seg:
+            continue
+        out[i]["end"] = round(nearest, 3)
+        out[i + 1]["time"] = round(nearest, 3)
+        snapped += 1
+        if len(examples) < 8:
+            examples.append({
+                "boundary_before": round(orig_b, 3),
+                "boundary_after": round(nearest, 3),
+                "offset": round(delta, 3),
+                "chords": f"{out[i].get('chord', '?')}→{out[i + 1].get('chord', '?')}",
+            })
+
+    return out, {
+        "applied": snapped > 0,
+        "snapped": snapped,
+        "considered": len(out) - 1,
+        "tolerance_s": round(tol, 3),
+        "tolerance_bars": _PHASE_SLIP_TOL_BARS,
+        "examples": examples,
+    }
+
+
 def maybe_split_for_serve(chord_data: Dict) -> Dict:
     """Apply splitter to ``chord_data["chords"]`` if confidence gate passes.
 
@@ -997,6 +1110,53 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
         reason = "fragment-guard"
         if stale_merge_risk:
             reason = "fragment-guard-after-stale-merge"
+
+        # ── Layer 3 phase-slip recovery ──
+        # When BTC's chord boundaries are off-bar in too many places, the
+        # fragment-guard refuses to split (correct defence) but the song
+        # then renders with carry-over phase slip — every chord card looks
+        # 1+3/3+1/4+1 instead of clean integer bars. Override here: distrust
+        # BTC and snap each interior boundary to the nearest downbeat
+        # (tolerance = ±0.5 bar). If snapping reduces fragmentation below
+        # the guard threshold, run the regular bar-split path; otherwise
+        # keep the snapped chords as input to the existing safe-long-split
+        # fallback (still better than original since at least boundaries
+        # now sit on downbeats).
+        bad_count = int(frag.get("bad_fragments", 0) or 0)
+        phase_slip_meta: Optional[Dict] = None
+        if bad_count > _PHASE_SLIP_TRIGGER_FRAGMENTS:
+            snapped_chords, slip_meta = _snap_chord_boundaries_to_downbeats(
+                chords, resolved, bpm, bpb)
+            if slip_meta.get("applied"):
+                post_frag = fragmentation_risk(snapped_chords, resolved, bpm, bpb)
+                slip_meta["post_penalty"] = round(float(post_frag.get("penalty", 0.0)), 4)
+                slip_meta["post_bad_fragments"] = int(post_frag.get("bad_fragments", 0) or 0)
+                if float(post_frag.get("penalty", 0.0)) < _FRAGMENT_GUARD_PENALTY:
+                    # Phase-slip recovery cleared the guard — run the
+                    # full bar-split path on snapped boundaries.
+                    new_chords = split_chords_at_bars(snapped_chords, resolved)
+                    new_chords, post_merge_meta = merge_same_chord_fragments(new_chords, bpm)
+                    chord_data["chords"] = new_chords
+                    chord_data["auto_split_meta"] = {
+                        "applied": len(new_chords) != len(chords),
+                        "reason": f"{reason}-phase-slip-recovered",
+                        "before": len(chords),
+                        "after": len(new_chords),
+                        "fragment_guard": {
+                            "skipped": frag.get("bad_fragments", 0),
+                            "penalty": frag.get("penalty", 0.0),
+                            "patterns": frag.get("patterns", {}),
+                            "examples": frag.get("examples", []),
+                            "phase_slip_recovery": slip_meta,
+                            "post_merge": post_merge_meta,
+                        },
+                    }
+                    return chord_data
+                # Snap helped but not enough — keep snapped chords for the
+                # safe-long-split path so at least boundaries are on-grid.
+                chords = snapped_chords
+            phase_slip_meta = slip_meta
+
         safe_chords = split_long_chords_at_bars(chords, resolved, bpm)
         safe_chords, post_merge_meta = merge_same_chord_fragments(safe_chords, bpm)
         chord_data["chords"] = safe_chords
@@ -1012,6 +1172,7 @@ def maybe_split_for_serve(chord_data: Dict) -> Dict:
                 "patterns": frag.get("patterns", {}),
                 "examples": frag.get("examples", []),
                 "safe_long_split": safe_applied,
+                "phase_slip_recovery": phase_slip_meta,
                 "post_merge": post_merge_meta,
             },
         }
