@@ -48,6 +48,9 @@ Each tick:
 - Reads last 200 lines of the target's log:
   - **NUC**: direct file read of `V:/data/server.log` (V:\ is mounted from the NUC; reads happen on PC, no network)
   - **VPS**: `ssh livechord-vps "journalctl -u livechord -n 200 --no-pager"`
+- For the VPS, reads `/srv/livechord/data/feedback.db` over SSH and watches for
+  new in-site problem reports. This keeps Telegram credentials on the PC; the
+  public VPS only stores the report rows.
 - Counts `[ERROR]`, `[WARN]`, `Traceback (most recent call last):`, and `HTTP/1.1" 5xx` matches
 - Computes `last_error_age_min` from the timestamp of the most recent `[ERROR]` line
 
@@ -76,6 +79,10 @@ If Ollama is down or returns garbage, falls back to `severity=warning` + raw ind
 ### Tier 3 — Telegram
 
 Sends a markdown message to your TG chat. Suppresses by **fingerprint** (sha256 of the dominant error line) for `cooldown_minutes` (default 30). Re-alerts with the same fingerprint return `suppressed=True` and write nothing to TG.
+
+New problem reports use a separate `feedback_last_id` cursor in `state.json`.
+They are sent as a short inbox summary and do not trigger any automatic email
+reply workflow.
 
 ### Quiet hours
 

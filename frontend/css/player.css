@@ -3490,6 +3490,41 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   font-weight: 600;
   font-style: normal;
 }
+.bug-honeypot {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.bug-fallback-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+.bug-link-btn {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.04);
+  color: var(--text-dim);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.bug-link-btn:hover,
+.bug-link-btn:focus-visible {
+  color: var(--text);
+  border-color: var(--accent-dim);
+  outline: none;
+}
 
 /* YT fallback panel — Type B modal (composes .lc-modal-backdrop + .lc-modal).
    YT desync banner — uses shared .lc-banner .lc-banner--warn (no CSS needed here). */

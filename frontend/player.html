@@ -16,12 +16,12 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=21">
-  <link rel="stylesheet" href="/css/player.css?v=133">
+  <link rel="stylesheet" href="/css/player.css?v=134">
   <!-- Phase A: shared auth + fetch wrapper (see frontend/js/auth.js). Must
        load before any /api/ call so anon X-Anon-Id is injected from the
        first request. Replaces the inline blind-redirect block. -->
   <script src="/js/auth.js?v=6"></script>
-  <script src="/js/i18n.js?v=51"></script>
+  <script src="/js/i18n.js?v=52"></script>
   <script src="/js/analytics.js?v=3"></script>
 </head>
 <body>
@@ -285,10 +285,18 @@
         <option value="accuracy" data-i18n="player.bug.category.accuracy">Chord accuracy</option>
         <option value="ui" data-i18n="player.bug.category.ui">UI issue</option>
         <option value="performance" data-i18n="player.bug.category.performance">Performance</option>
+        <option value="upload" data-i18n="player.bug.category.upload">Upload problem</option>
+        <option value="login" data-i18n="player.bug.category.login">Login problem</option>
         <option value="feature_request" data-i18n="player.bug.category.feature_request">Feature request</option>
         <option value="other" data-i18n="player.bug.category.other">Other</option>
       </select>
       <textarea id="bugDescription" class="bug-input" rows="4" placeholder="Describe the issue or suggestion…" data-i18n-attr="placeholder=player.bug.description_placeholder"></textarea>
+      <input id="bugContact" class="bug-input" type="text" autocomplete="email" inputmode="email" placeholder="Email or contact (optional)" data-i18n-attr="placeholder=player.bug.contact_placeholder">
+      <input id="bugWebsite" class="bug-honeypot" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="bug-fallback-row">
+        <button id="btnBugCopyEmail" class="bug-link-btn" type="button" data-i18n="player.bug.copy_email">Copy email</button>
+        <a class="bug-link-btn" href="https://mail.google.com/mail/?view=cm&fs=1&to=hiteacherwu@gmail.com&su=LiveChord%20bug%20report" target="_blank" rel="noopener noreferrer" data-i18n="player.bug.open_gmail">Open Gmail</a>
+      </div>
       <div class="beta-rate-actions lc-modal-actions">
         <button id="btnBugSubmit" class="beta-rate-submit" data-i18n="player.bug.submit">Submit</button>
         <button id="btnBugCancel" class="beta-rate-cancel" data-i18n="player.bug.cancel">Cancel</button>
@@ -885,7 +893,7 @@
 </div>
 
 <script src="/js/utils.js?v=11"></script>
-<script src="/js/api.js?v=58"></script>
+<script src="/js/api.js?v=63"></script>
 <script src="/js/chord-render.js?v=62"></script>
 <script src="/js/arpeggio-patterns.js?v=2"></script>
 <script src="/js/string-instrument.js?v=16"></script>
@@ -898,7 +906,7 @@
 <script src="/js/chord-correction.js?v=16"></script>
 <!-- Phase A: fetch wrapper installed by /js/auth.js at <head>; the inline
      duplicate block was removed. -->
-<script src="/js/player.js?v=330"></script>
+<script src="/js/player.js?v=331"></script>
 <script>
   // Toolbar gear theme picker — mirrors the homepage gear handler so the
   // user's theme choice is honored on either entry point. Active state on

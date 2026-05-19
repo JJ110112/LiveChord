@@ -72,8 +72,8 @@ const API = {
     API.post("/api/feedback/rating", { song_hash, song_title, rating, comment }),
   getMyRating: (song_hash) => API.get(`/api/feedback/rating?song_hash=${encodeURIComponent(song_hash)}`),
   getRatingSummary: (song_hash) => API.get(`/api/feedback/ratings/summary?song_hash=${encodeURIComponent(song_hash)}`),
-  submitBug: (category, description, page_url = "", browser_info = "") =>
-    API.post("/api/feedback/bug", { category, description, page_url, browser_info }),
+  submitBug: (category, description, page_url = "", browser_info = "", extra = {}) =>
+    API.post("/api/feedback/bug", { category, description, page_url, browser_info, ...extra }),
   trackEvent: (event_type, payload = {}) =>
     API.post("/api/analytics/event", { event_type, payload }).catch(() => {}),
 

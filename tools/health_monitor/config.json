@@ -24,6 +24,7 @@
       "url": "https://livechord.org/api/recent",
       "ssh_host": "livechord-vps",
       "journal_unit": "livechord",
+      "feedback_db_path": "/srv/livechord/data/feedback.db",
       "log_tail_lines": 200
     }
   ]

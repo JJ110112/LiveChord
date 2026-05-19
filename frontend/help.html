@@ -14,9 +14,9 @@
   <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <script src="/js/auth.js?v=6"></script>
-  <script src="/js/i18n.js?v=51"></script>
+  <script src="/js/i18n.js?v=52"></script>
   <link rel="stylesheet" href="/css/base.css?v=5">
-  <link rel="stylesheet" href="/css/help.css?v=7">
+  <link rel="stylesheet" href="/css/help.css?v=8">
 <script src="/js/analytics.js?v=3"></script>
 </head>
 <body class="help-body">
@@ -224,9 +224,9 @@
         </details>
         <details class="help-q" id="report-bug">
           <summary data-i18n="help.q.report_bug">How do I report a bug?</summary>
-          <p data-i18n="help.a.report_bug">In the player, open Settings ⚙ → Report a problem. You can also email hiteacherwu@gmail.com directly. Please include the song link and the specific behaviour you saw.</p>
+          <p data-i18n="help.a.report_bug">In the player, open Settings ⚙ → Report a problem. You can also send a report here. Please include the song link and the specific behaviour you saw.</p>
           <p class="help-action-row">
-            <a class="help-action-btn" href="mailto:hiteacherwu@gmail.com?subject=LiveChord%20bug%20report" data-i18n="help.report_bug.email_cta">Email a report</a>
+            <a class="help-action-btn" href="#report-problem" data-report-problem data-i18n="help.report_bug.email_cta">Report a problem</a>
           </p>
         </details>
       </div>
@@ -304,5 +304,6 @@
   })();
 </script>
 
+<script src="/js/report-problem.js?v=1"></script>
 </body>
 </html>

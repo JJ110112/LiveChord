@@ -1,15 +1,20 @@
-"""Beta Feedback API — 和弦評價、留言、Bug 回報"""
+"""Feedback API — chord ratings, user reports, and human correction signal."""
 
 import html
+import hashlib
+import os
+import re
 import sqlite3
 import time
+from collections import defaultdict
+from contextlib import contextmanager
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import Optional
 
-from auth_api import get_current_user, get_admin_user
+from auth_api import get_current_user, get_admin_user, get_user_or_anon
 from config import is_beta_mode, is_public_mode
 
 
@@ -29,13 +34,29 @@ router = APIRouter(prefix="/api/feedback", tags=["feedback"])
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 DB_PATH = DATA_DIR / "feedback.db"
+_REPORT_CATEGORY_RE = r"^(accuracy|ui|performance|upload|login|feature_request|other)$"
+_REPORT_WINDOW_SECONDS = 10 * 60
+_REPORT_WINDOW_MAX_PER_IDENTITY = 5
+_REPORT_WINDOW_MAX_PER_IP = 10
+_REPORT_DAY_SECONDS = 24 * 60 * 60
+_REPORT_DAY_MAX_PER_IP = 60
+_REPORT_GLOBAL_WINDOW_MAX = 120
+_REPORT_DUP_WINDOW_SECONDS = 24 * 60 * 60
+_REPORT_TEXT_MAX = 2000
+_REPORT_CONTACT_MAX = 254
+_REPORT_BROWSER_MAX = 500
+_report_rate_store: dict[str, list[float]] = defaultdict(list)
 
 
+@contextmanager
 def _get_conn():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def init_feedback_db():
@@ -60,11 +81,35 @@ def init_feedback_db():
                 description TEXT NOT NULL,
                 page_url TEXT DEFAULT '',
                 browser_info TEXT DEFAULT '',
+                song_hash TEXT DEFAULT '',
+                song_title TEXT DEFAULT '',
+                contact TEXT DEFAULT '',
+                ip_hash TEXT DEFAULT '',
+                fingerprint TEXT DEFAULT '',
+                duplicate_count INTEGER DEFAULT 1,
+                last_seen_at TEXT DEFAULT '',
                 status TEXT DEFAULT 'open',
                 admin_note TEXT DEFAULT '',
                 created_at TEXT NOT NULL
             )
         """)
+        for col, decl in (
+            ("song_hash", "TEXT DEFAULT ''"),
+            ("song_title", "TEXT DEFAULT ''"),
+            ("contact", "TEXT DEFAULT ''"),
+            ("ip_hash", "TEXT DEFAULT ''"),
+            ("fingerprint", "TEXT DEFAULT ''"),
+            ("duplicate_count", "INTEGER DEFAULT 1"),
+            ("last_seen_at", "TEXT DEFAULT ''"),
+        ):
+            try:
+                conn.execute(f"ALTER TABLE bug_reports ADD COLUMN {col} {decl}")
+            except sqlite3.OperationalError:
+                pass
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_bug_reports_status ON bug_reports(status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_bug_reports_created ON bug_reports(created_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_bug_reports_ip_hash ON bug_reports(ip_hash)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_bug_reports_fingerprint ON bug_reports(fingerprint)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS chord_corrections (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -150,10 +195,14 @@ class RatingRequest(BaseModel):
 
 
 class BugReportRequest(BaseModel):
-    category: str = Field(pattern=r"^(accuracy|ui|performance|feature_request|other)$")
-    description: str = Field(min_length=1, max_length=2000)
+    category: str = Field(pattern=_REPORT_CATEGORY_RE)
+    description: str = Field(min_length=1, max_length=_REPORT_TEXT_MAX)
     page_url: str = ""
     browser_info: str = ""
+    song_hash: str = ""
+    song_title: str = ""
+    contact: str = ""
+    website: str = ""  # honeypot; real users never see/fill this
 
 
 class BugStatusUpdate(BaseModel):
@@ -220,19 +269,145 @@ def rating_summary(song_hash: str):
 # Bug report endpoints
 # ---------------------------------------------------------------------------
 
+def _real_client_ip(request: Request) -> str:
+    return (
+        request.headers.get("cf-connecting-ip")
+        or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+        or (request.client.host if request.client else "unknown")
+    )
+
+
+def _hash_ip(ip: str) -> str:
+    salt = os.environ.get("LIVECHORD_IP_HASH_SALT", "livechord-feedback-v1")
+    return hashlib.sha256(f"{salt}:{ip}".encode("utf-8", errors="replace")).hexdigest()[:24]
+
+
+def _clean_text(value: str, *, max_len: int) -> str:
+    value = (value or "").strip()
+    value = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", value)
+    return value[:max_len]
+
+
+def _clean_contact(value: str) -> str:
+    value = _clean_text(value, max_len=_REPORT_CONTACT_MAX)
+    if not value:
+        return ""
+    # Keep this intentionally permissive: it can be an email address or a short
+    # "Discord @name" style handle. The admin handles follow-up manually.
+    if any(ch in value for ch in "\r\n<>"):
+        raise HTTPException(status_code=400, detail="invalid contact")
+    return value
+
+
+def _report_fingerprint(username: str, ip_hash: str, category: str, description: str, page_url: str, song_hash: str) -> str:
+    normalized = re.sub(r"\s+", " ", description.lower()).strip()[:500]
+    basis = "|".join([
+        username or "",
+        ip_hash or "",
+        category or "",
+        song_hash or "",
+        page_url.split("#", 1)[0][:240],
+        normalized,
+    ])
+    return hashlib.sha256(basis.encode("utf-8", errors="replace")).hexdigest()[:32]
+
+
+def _check_memory_rate_limit(key: str, max_count: int) -> None:
+    now = time.time()
+    window = [t for t in _report_rate_store[key] if now - t < _REPORT_WINDOW_SECONDS]
+    if len(window) >= max_count:
+        _report_rate_store[key] = window
+        raise HTTPException(status_code=429, detail="Too many reports. Please try again later.")
+    window.append(now)
+    _report_rate_store[key] = window
+
+
+def _check_report_rate_limit(conn: sqlite3.Connection, username: str, ip_hash: str) -> None:
+    _check_memory_rate_limit(f"user:{username}", _REPORT_WINDOW_MAX_PER_IDENTITY)
+    _check_memory_rate_limit(f"ip:{ip_hash}", _REPORT_WINDOW_MAX_PER_IP)
+
+    cutoff_window = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - _REPORT_WINDOW_SECONDS))
+    cutoff_day = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - _REPORT_DAY_SECONDS))
+    recent_user = conn.execute(
+        "SELECT COUNT(*) FROM bug_reports WHERE username=? AND created_at >= ?",
+        (username, cutoff_window),
+    ).fetchone()[0]
+    if recent_user >= _REPORT_WINDOW_MAX_PER_IDENTITY:
+        raise HTTPException(status_code=429, detail="Too many reports. Please try again later.")
+
+    recent_ip = conn.execute(
+        "SELECT COUNT(*) FROM bug_reports WHERE ip_hash=? AND created_at >= ?",
+        (ip_hash, cutoff_window),
+    ).fetchone()[0]
+    if recent_ip >= _REPORT_WINDOW_MAX_PER_IP:
+        raise HTTPException(status_code=429, detail="Too many reports from this network. Please try again later.")
+
+    day_ip = conn.execute(
+        "SELECT COUNT(*) FROM bug_reports WHERE ip_hash=? AND created_at >= ?",
+        (ip_hash, cutoff_day),
+    ).fetchone()[0]
+    if day_ip >= _REPORT_DAY_MAX_PER_IP:
+        raise HTTPException(status_code=429, detail="Daily report limit reached. Please try again tomorrow.")
+
+    global_recent = conn.execute(
+        "SELECT COUNT(*) FROM bug_reports WHERE created_at >= ?",
+        (cutoff_window,),
+    ).fetchone()[0]
+    if global_recent >= _REPORT_GLOBAL_WINDOW_MAX:
+        raise HTTPException(status_code=429, detail="Report volume is temporarily high. Please try again later.")
+
+
 @router.post("/bug", dependencies=[Depends(_require_beta)])
-def submit_bug(req: BugReportRequest, username: str = Depends(get_current_user)):
+def submit_bug(
+    req: BugReportRequest,
+    request: Request,
+    username: str = Depends(get_user_or_anon),
+):
+    if req.website:
+        return {"ok": True, "ignored": True}
     now = time.strftime("%Y-%m-%dT%H:%M:%S")
-    description = html.escape(req.description.strip())
-    page_url = html.escape(req.page_url.strip()) if req.page_url else ""
-    browser_info = html.escape(req.browser_info.strip()) if req.browser_info else ""
+    description = _clean_text(req.description, max_len=_REPORT_TEXT_MAX)
+    if not description:
+        raise HTTPException(status_code=400, detail="description required")
+    page_url = _clean_text(req.page_url, max_len=500)
+    browser_info = _clean_text(req.browser_info, max_len=_REPORT_BROWSER_MAX)
+    song_hash = _clean_text(req.song_hash, max_len=80)
+    song_title = _clean_text(req.song_title, max_len=300)
+    contact = _clean_contact(req.contact)
+    ip_hash = _hash_ip(_real_client_ip(request))
+    fp = _report_fingerprint(username, ip_hash, req.category, description, page_url, song_hash)
+    dup_cutoff = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - _REPORT_DUP_WINDOW_SECONDS))
     with _get_conn() as conn:
+        _check_report_rate_limit(conn, username, ip_hash)
+        existing = conn.execute(
+            """SELECT id, duplicate_count FROM bug_reports
+               WHERE fingerprint=? AND created_at >= ?
+                 AND status IN ('open','in_progress')
+               ORDER BY id DESC LIMIT 1""",
+            (fp, dup_cutoff),
+        ).fetchone()
+        if existing:
+            conn.execute(
+                """UPDATE bug_reports
+                   SET duplicate_count=?, last_seen_at=?, browser_info=?, contact=COALESCE(NULLIF(contact, ''), ?)
+                   WHERE id=?""",
+                ((existing["duplicate_count"] or 1) + 1, now, browser_info, contact, existing["id"]),
+            )
+            conn.commit()
+            return {"ok": True, "duplicate": True, "id": existing["id"]}
         conn.execute(
-            "INSERT INTO bug_reports (username, category, description, page_url, browser_info, created_at) VALUES (?,?,?,?,?,?)",
-            (username, req.category, description, page_url, browser_info, now)
+            """INSERT INTO bug_reports
+               (username, category, description, page_url, browser_info, song_hash, song_title,
+                contact, ip_hash, fingerprint, duplicate_count, last_seen_at, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                username, req.category, description, page_url, browser_info, song_hash, song_title,
+                contact, ip_hash, fp, 1, now, now,
+            ),
         )
+        bug_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         conn.commit()
-    return {"ok": True}
+    return {"ok": True, "id": bug_id}
 
 
 # ---------------------------------------------------------------------------

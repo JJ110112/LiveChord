@@ -32,6 +32,7 @@ import logging
 import logging.handlers
 import os
 import re
+import shlex
 import subprocess
 import sys
 import urllib.error
@@ -99,6 +100,7 @@ DEFAULT_CONFIG = {
             "url": "https://livechord.org/api/recent",
             "ssh_host": "livechord-vps",
             "journal_unit": "livechord",
+            "feedback_db_path": "/srv/livechord/data/feedback.db",
             "log_tail_lines": 200,
         },
     ],
@@ -258,6 +260,91 @@ def fetch_log_tail(target: dict) -> tuple[str, str]:
         return "", f"unknown target kind: {target['kind']}"
 
 
+def fetch_feedback_snapshot(target: dict) -> tuple[dict, str]:
+    """Return recent feedback report state for targets that opt in.
+
+    The VPS path is read over SSH so Telegram credentials stay on the PC health
+    monitor instead of being copied to the public server.
+    """
+    db_path = target.get("feedback_db_path")
+    if not db_path:
+        return {}, ""
+    script = r'''
+import json, sqlite3, sys, time
+from pathlib import Path
+
+path = Path(sys.argv[1])
+empty = {"max_id": 0, "open_count": 0, "recent_1h": 0, "latest": []}
+if not path.is_file():
+    print(json.dumps(empty))
+    raise SystemExit(0)
+
+cutoff = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - 3600))
+with sqlite3.connect(path, timeout=10) as conn:
+    conn.row_factory = sqlite3.Row
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(bug_reports)").fetchall()}
+    summary = conn.execute("""
+        SELECT COALESCE(MAX(id), 0) AS max_id,
+               SUM(CASE WHEN status IN ('open','in_progress') THEN 1 ELSE 0 END) AS open_count,
+               SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS recent_1h
+        FROM bug_reports
+    """, (cutoff,)).fetchone()
+    optional = {
+        "song_hash": "song_hash" if "song_hash" in cols else "'' AS song_hash",
+        "song_title": "song_title" if "song_title" in cols else "'' AS song_title",
+        "duplicate_count": "duplicate_count" if "duplicate_count" in cols else "1 AS duplicate_count",
+    }
+    latest = conn.execute(f"""
+        SELECT id, category, username, description, {optional['song_hash']}, {optional['song_title']},
+               {optional['duplicate_count']}, status, created_at
+        FROM bug_reports
+        ORDER BY id DESC LIMIT 8
+    """).fetchall()
+out = {
+    "max_id": int(summary["max_id"] or 0),
+    "open_count": int(summary["open_count"] or 0),
+    "recent_1h": int(summary["recent_1h"] or 0),
+    "latest": [
+        {
+            "id": int(r["id"]),
+            "category": r["category"] or "",
+            "username": r["username"] or "",
+            "description": (r["description"] or "")[:180],
+            "song_hash": r["song_hash"] or "",
+            "song_title": r["song_title"] or "",
+            "duplicate_count": int(r["duplicate_count"] or 1),
+            "status": r["status"] or "",
+            "created_at": r["created_at"] or "",
+        }
+        for r in latest
+    ],
+}
+print(json.dumps(out, ensure_ascii=False))
+'''
+    if target.get("kind") == "ssh-journal":
+        remote = (
+            "sudo -u livechord -H /srv/livechord/.venv/bin/python -c "
+            + shlex.quote(script)
+            + " "
+            + shlex.quote(str(db_path))
+        )
+        try:
+            out = subprocess.run(
+                ["ssh", target["ssh_host"], remote],
+                capture_output=True,
+                text=True,
+                timeout=20,
+                encoding="utf-8",
+                errors="replace",
+            )
+            if out.returncode != 0:
+                return {}, f"feedback ssh exit {out.returncode}: {out.stderr.strip()[:200]}"
+            return json.loads(out.stdout.strip() or "{}"), ""
+        except Exception as e:
+            return {}, f"{type(e).__name__}: {e}"
+    return {}, "feedback_db_path is only implemented for ssh-journal targets"
+
+
 def compute_indicators(log_text: str) -> dict:
     """Hard rule-based indicators from a log slice."""
     if not log_text:
@@ -343,11 +430,17 @@ def is_suppressed(state: dict, target_name: str, fp: str) -> bool:
 
 
 def mark_suppressed(state: dict, target_name: str, fp: str, cooldown_minutes: int) -> None:
-    state["per_target"][target_name] = {
+    rec = state["per_target"].setdefault(target_name, {})
+    rec.update({
         "fingerprint": fp,
         "suppressed_until": (dt.datetime.now(TZ) + dt.timedelta(minutes=cooldown_minutes))
             .isoformat(timespec="seconds"),
-    }
+    })
+
+
+def mark_feedback_seen(state: dict, target_name: str, max_id: int) -> None:
+    rec = state["per_target"].setdefault(target_name, {})
+    rec["feedback_last_id"] = int(max_id or 0)
 
 
 # ---------------------------------------------------------------------------
@@ -467,28 +560,12 @@ def call_hermes(cfg: dict, target_name: str, probe: dict, ind: dict, log_text: s
 SEVERITY_ICON = {"critical": "🚨", "warning": "⚠️", "info": "ℹ️"}
 
 
-def send_telegram(cfg: dict, target_name: str, verdict: dict, probe: dict, ind: dict) -> bool:
+def send_telegram_text(cfg: dict, text: str) -> bool:
     token = cfg.get("tg_token", "").strip()
     chat_id = cfg.get("tg_chat_id")
     if not token or not chat_id:
         logger.warning("telegram token/chat_id not configured; skipping send")
         return False
-    icon = SEVERITY_ICON.get(verdict["severity"], "•")
-    age = ind.get("last_error_age_min")
-    age_txt = f"{age:.1f} 分鐘前" if isinstance(age, (int, float)) else "—"
-    # HTML parse_mode (Telegram Bot API): more tolerant than Markdown, requires
-    # only <, >, & escaping in dynamic content. Avoids the parsing failures
-    # we hit when Hermes-generated text or log lines contain * / _ / [ chars.
-    e = html.escape  # short alias
-    text = (
-        f"{icon} <b>LiveChord {e(target_name)}</b> — {e(verdict['severity'])}\n"
-        f"{e(verdict['summary'])}\n\n"
-        f"<b>推測原因</b>: {e(verdict['root_cause_guess'])}\n"
-        f"<b>建議</b>: {e(verdict['suggested_action'])}\n\n"
-        f"<i>probe: status={e(str(probe.get('status')))} {e(str(probe.get('latency_ms')))}ms · "
-        f"err={ind['error_count']} tb={ind['traceback_count']} 5xx={ind['_5xx_count']} · "
-        f"last_err={e(age_txt)}</i>"
-    )
     payload = {
         "chat_id": chat_id,
         "text": text,
@@ -513,6 +590,49 @@ def send_telegram(cfg: dict, target_name: str, verdict: dict, probe: dict, ind: 
         return False
 
 
+def send_telegram(cfg: dict, target_name: str, verdict: dict, probe: dict, ind: dict) -> bool:
+    icon = SEVERITY_ICON.get(verdict["severity"], "•")
+    age = ind.get("last_error_age_min")
+    age_txt = f"{age:.1f} 分鐘前" if isinstance(age, (int, float)) else "—"
+    # HTML parse_mode (Telegram Bot API): more tolerant than Markdown, requires
+    # only <, >, & escaping in dynamic content. Avoids the parsing failures
+    # we hit when Hermes-generated text or log lines contain * / _ / [ chars.
+    e = html.escape  # short alias
+    text = (
+        f"{icon} <b>LiveChord {e(target_name)}</b> — {e(verdict['severity'])}\n"
+        f"{e(verdict['summary'])}\n\n"
+        f"<b>推測原因</b>: {e(verdict['root_cause_guess'])}\n"
+        f"<b>建議</b>: {e(verdict['suggested_action'])}\n\n"
+        f"<i>probe: status={e(str(probe.get('status')))} {e(str(probe.get('latency_ms')))}ms · "
+        f"err={ind['error_count']} tb={ind['traceback_count']} 5xx={ind['_5xx_count']} · "
+        f"last_err={e(age_txt)}</i>"
+    )
+    return send_telegram_text(cfg, text)
+
+
+def send_feedback_telegram(cfg: dict, target_name: str, feedback: dict, new_reports: list[dict]) -> bool:
+    severity = "critical" if int(feedback.get("recent_1h") or 0) >= 10 else "warning"
+    icon = SEVERITY_ICON.get(severity, "•")
+    e = html.escape
+    lines = [
+        f"{icon} <b>LiveChord {e(target_name)}</b> — {e(severity)}",
+        f"New in-site reports: {len(new_reports)} · open={e(str(feedback.get('open_count', 0)))} · 1h={e(str(feedback.get('recent_1h', 0)))}",
+        "",
+    ]
+    for r in new_reports[:5]:
+        dup = int(r.get("duplicate_count") or 1)
+        title = r.get("song_title") or r.get("song_hash") or ""
+        suffix = f" · {title}" if title else ""
+        if dup > 1:
+            suffix += f" · x{dup}"
+        lines.append(
+            f"#{e(str(r.get('id')))} [{e(r.get('category', ''))}] "
+            f"{e((r.get('description') or '')[:120])}{e(suffix)}"
+        )
+    lines.extend(["", "Open /admin to triage; no automatic email reply is sent."])
+    return send_telegram_text(cfg, "\n".join(lines))
+
+
 # ---------------------------------------------------------------------------
 # Per-target orchestration
 # ---------------------------------------------------------------------------
@@ -525,6 +645,9 @@ def check_target(cfg: dict, state: dict, target: dict, *, dry_run: bool, force_t
     ind = compute_indicators(log_text)
     if log_err:
         logger.warning(f"{name}: log fetch error: {log_err}")
+    feedback, feedback_err = fetch_feedback_snapshot(target)
+    if feedback_err:
+        logger.warning(f"{name}: feedback fetch error: {feedback_err}")
 
     reason = trigger_reason(probe, ind)
     if force_trigger and not reason:
@@ -540,7 +663,37 @@ def check_target(cfg: dict, state: dict, target: dict, *, dry_run: bool, force_t
     result: dict[str, Any] = {
         "name": name, "probe": probe, "indicators": ind,
         "reason": reason, "alerted": False, "verdict": None,
+        "feedback": feedback or None,
     }
+    if feedback:
+        rec = state["per_target"].get(name) or {}
+        last_feedback_id = int(rec.get("feedback_last_id") or 0)
+        max_feedback_id = int(feedback.get("max_id") or 0)
+        if max_feedback_id > 0 and last_feedback_id == 0:
+            logger.info(f"{name}: initializing feedback_last_id={max_feedback_id}")
+            if not dry_run:
+                mark_feedback_seen(state, name, max_feedback_id)
+        elif max_feedback_id > last_feedback_id:
+            new_reports = [
+                r for r in (feedback.get("latest") or [])
+                if int(r.get("id") or 0) > last_feedback_id
+            ]
+            new_reports.sort(key=lambda r: int(r.get("id") or 0))
+            logger.info(f"{name}: new feedback reports x{len(new_reports)} max_id={max_feedback_id}")
+            result["feedback_new_reports"] = len(new_reports)
+            severity = "critical" if int(feedback.get("recent_1h") or 0) >= 10 else "warning"
+            if dry_run:
+                logger.info(f"{name}: --dry-run set, skipping feedback TG send")
+            elif in_quiet_hours(cfg, severity):
+                logger.info(f"{name}: in quiet hours, skipping feedback TG (severity={severity})")
+                mark_feedback_seen(state, name, max_feedback_id)
+                result["feedback_quiet_hours_skip"] = True
+            else:
+                ok = send_feedback_telegram(cfg, name, feedback, new_reports)
+                result["feedback_alerted"] = ok
+                if ok:
+                    mark_feedback_seen(state, name, max_feedback_id)
+
     if not reason:
         return result
 

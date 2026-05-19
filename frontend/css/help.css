@@ -223,6 +223,144 @@
 .site-footer a:hover { color: var(--accent); text-decoration: underline; }
 .site-footer .footer-sep { margin: 0 8px; opacity: 0.5; }
 
+.site-report-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.56);
+}
+.site-report-box {
+  position: relative;
+  width: min(460px, 100%);
+  max-height: min(720px, calc(100vh - 32px));
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 18px 50px rgba(0,0,0,0.32);
+}
+.site-report-box h2 {
+  margin: 0 32px 14px 0;
+  font-size: 1.25rem;
+  letter-spacing: 0;
+}
+.site-report-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.site-report-input {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.site-report-input option {
+  background: var(--bg);
+  color: var(--text);
+}
+textarea.site-report-input {
+  min-height: 132px;
+  resize: vertical;
+}
+.site-report-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+.site-report-honeypot {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.site-report-fallbacks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0 10px;
+}
+.site-report-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.86rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+.site-report-link:hover,
+.site-report-link:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  text-decoration: none;
+  outline: none;
+}
+.site-report-status {
+  min-height: 20px;
+  margin: 0 0 10px;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+.site-report-status[data-kind="ok"] { color: #2e7d32; }
+.site-report-status[data-kind="error"] { color: #c62828; }
+.site-report-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.site-report-submit,
+.site-report-cancel {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+.site-report-submit {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.site-report-submit:disabled {
+  opacity: 0.65;
+  cursor: progress;
+}
+.site-report-cancel {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+}
+
 /* Upload-rights notice — shown next to file upload controls.
    Plan B 2026-05-04: prominent reminder so users self-gate on copyright. */
 .upload-rights-notice {

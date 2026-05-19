@@ -8421,9 +8421,12 @@
     const bugDialog = $("#bugReportDialog");
     const bugDesc = $("#bugDescription");
     const bugCat = $("#bugCategory");
+    const bugContact = $("#bugContact");
+    const bugWebsite = $("#bugWebsite");
     const btnBugSubmit = $("#btnBugSubmit");
     const btnBugCancel = $("#btnBugCancel");
     const btnBugClose = $("#btnBugClose");
+    const btnBugCopyEmail = $("#btnBugCopyEmail");
     const btnReportProblemSettings = $("#btnReportProblemSettings");
 
     let _betaRating = 0;
@@ -8517,11 +8520,16 @@
 
     function _openBugDialog() {
       document.querySelectorAll(".tb-item.open").forEach(i => i.classList.remove("open"));
-      if (window.LiveChordAuth && window.LiveChordAuth.isAnonymous && window.LiveChordAuth.isAnonymous()) {
-        showToast(_t("toast.login_required.bug"));
-        return;
-      }
       if (bugDialog) bugDialog.style.display = "flex";
+    }
+
+    function _bugReportContext() {
+      return {
+        song_hash: hashMode || "",
+        song_title: (chordData && chordData.title) || (songTitle ? songTitle.textContent : ""),
+        contact: bugContact ? bugContact.value.trim() : "",
+        website: bugWebsite ? bugWebsite.value.trim() : "",
+      };
     }
 
     // Bug report — close any open toolbar popup first so the bug modal isn't
@@ -8532,18 +8540,32 @@
       btnBugSubmit.addEventListener("click", async () => {
         const desc = bugDesc ? bugDesc.value.trim() : "";
         if (!desc) { showToast(_t("toast.bug.describe_first")); return; }
-        if (window.LiveChordAuth && window.LiveChordAuth.isAnonymous && window.LiveChordAuth.isAnonymous()) {
-          showToast(_t("toast.login_required.bug"));
-          return;
-        }
         try {
           const cat = bugCat ? bugCat.value : "other";
           const info = navigator.userAgent;
-          await API.submitBug(cat, desc, window.location.href, info);
+          await API.submitBug(cat, desc, window.location.href, info, _bugReportContext());
           showToast(_t("toast.bug.thanks"));
+          if (window.LiveChordAnalytics) {
+            window.LiveChordAnalytics.track("report_problem_submit", {
+              category: cat,
+              source: "player",
+              song_hash: hashMode || "",
+            });
+          }
           if (bugDialog) bugDialog.style.display = "none";
           if (bugDesc) bugDesc.value = "";
+          if (bugContact) bugContact.value = "";
         } catch (e) { showToast(_t("toast.bug.submit_failed", { err: e.message })); }
+      });
+    }
+    if (btnBugCopyEmail) {
+      btnBugCopyEmail.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText("hiteacherwu@gmail.com");
+          showToast(_t("toast.email_copied"));
+        } catch (_) {
+          showToast("hiteacherwu@gmail.com");
+        }
       });
     }
     if (btnBugCancel) {
