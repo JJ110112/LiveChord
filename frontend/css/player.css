@@ -764,8 +764,23 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   top: 0;
   bottom: 0;
   width: 14px;
-  background: rgba(0, 163, 224, 0.18);
-  border-left: 2px solid rgba(0, 163, 224, 0.55);
+  /* Two-tone fill: upper half = RH orange (matches the keyboard's RH
+     finger highlight), lower half = LH cyan (matches LH highlight). The
+     50 % hard stop sits on the visual midline between treble and bass
+     staves so each half visually owns "its" clef. Border-left mixes the
+     two via the same gradient + alpha. */
+  background:
+    linear-gradient(to bottom,
+      rgba(255, 152, 0, 0.18) 0%,
+      rgba(255, 152, 0, 0.18) 50%,
+      rgba(0, 163, 224, 0.18) 50%,
+      rgba(0, 163, 224, 0.18) 100%);
+  border-left: 2px solid transparent;
+  border-image: linear-gradient(to bottom,
+    rgba(255, 152, 0, 0.6) 0%,
+    rgba(255, 152, 0, 0.6) 50%,
+    rgba(0, 163, 224, 0.6) 50%,
+    rgba(0, 163, 224, 0.6) 100%) 1;
   pointer-events: none;
   transform: translateX(0);
   will-change: transform;
