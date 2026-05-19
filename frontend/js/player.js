@@ -4861,11 +4861,34 @@
 
     const forcedBeats = Number(displayBeats || 0);
     if (!off && forcedBeats >= 1 && forcedBeats <= 16) {
-      return {
-        count: forcedBeats,
-        short: false,
-        dots: _buildVirtualDots(forcedBeats, durSec, cStart),
-      };
+      // Sanity: backend stamps display_beats=N as "render this card as N
+      // beats". When the splitter is vetoed (fragment-guard on slow songs
+      // leaves a 2-bar card stamped display_beats=4), forcing N evenly-
+      // spaced dots over the actual duration yields cursor speed =
+      // (durSec / (N*spb))× the beat rate — visibly 2× on cards that span
+      // ~2 bars. Compare durSec against the expected N-beat duration:
+      //   • within ±25% → honor forcedBeats as-is
+      //   • outside that → fall through to the realBeats path below, which
+      //     already does bar-snap / half-bar / stride-resample correctly.
+      // Manual BPM override (_currentBpmMult != 1.0) always honors the
+      // hint — the user picked the practice rate.
+      const songBpm = (chordData && typeof chordData.bpm === "number" && chordData.bpm > 0)
+        ? chordData.bpm : (60.0 / Math.max(0.001, currentSecPerBeat));
+      const songSpb = (60.0 / songBpm) / (_currentBpmMult || 1.0);
+      const expectedDur = forcedBeats * songSpb;
+      const ratio = expectedDur > 0 ? durSec / expectedDur : 1;
+      const manualOverrideForced = Math.abs(_currentBpmMult - 1.0) > 1e-3;
+      if (manualOverrideForced || (ratio >= 0.75 && ratio <= 1.25)) {
+        // Anchor dots on real beats[] when the count matches (cursor's
+        // Path A advances by data-time, so this keeps highlight at the
+        // tracker's beat rate exactly).
+        const explicit = _explicitBeatTimes(cStart, durSec, forcedBeats);
+        return {
+          count: forcedBeats,
+          short: false,
+          dots: _buildVirtualDots(forcedBeats, durSec, cStart, explicit),
+        };
+      }
     }
 
     // 6/8 cards render eighth-note subdivisions: half-bar = 3 dots, full bar = 6.
@@ -4888,7 +4911,7 @@
       // regardless of card duration. For sub-bar cards (e.g. a 2.13s "bar"
       // with only 5 real eighths inside), reconcile via off-by-one or
       // stride-resample so the visual count still matches `n`.
-      const explicitTimes = _explicitTimesFor68(cStart, durSec, n);
+      const explicitTimes = _explicitBeatTimes(cStart, durSec, n);
       return {
         count: n,
         short: false,
@@ -4988,14 +5011,27 @@
             dots: _buildVirtualDots(halfBarBeats, durSec, cStart),
           };
         }
-        const barSnapTol = roundedBars === 1 ? 0.30 : 0.20;
+        // 1-bar tolerance used to be 0.30, which swallowed cards as short as
+        // 0.70 bar (e.g. a 0.745-bar passing chord with 3 real beats was
+        // forced to 4 dots — _explicitBeatTimes then synthesized a fake 4th
+        // beat at chord end, leaving cursor stepping through 4 dots in
+        // 3-beat time). Tighten to 0.15 so only cards genuinely close to
+        // a full bar (0.85–1.15) snap up; sub-bar cards fall through to
+        // the realBeats fallback (which displays the actual beat count).
+        const barSnapTol = roundedBars === 1 ? 0.15 : 0.20;
         const isBarAligned = roundedBars >= 1 && Math.abs(barsApprox - roundedBars) < barSnapTol;
         if (isBarAligned) {
           const targetBeats = Math.min(16, roundedBars * tsBeats);
+          // Anchor on real beats[] when count matches (cursor's Path A
+          // reads data-time, so every dot tick = a real audio beat instead
+          // of `durSec / N` even spacing). Without this, multi-bar cards
+          // accumulate drift as the song's tempo curve diverges from the
+          // card's nominal spb.
+          const explicit = _explicitBeatTimes(cStart, durSec, targetBeats);
           return {
             count: targetBeats,
             short: false,
-            dots: _buildVirtualDots(targetBeats, durSec, cStart),
+            dots: _buildVirtualDots(targetBeats, durSec, cStart, explicit),
           };
         }
         return {
@@ -5153,23 +5189,31 @@
     return out;
   }
 
-  // Pull `n` real eighth-note times out of chordData.beats[] for the card at
-  // [cStart, cStart+durSec] in compound 6/8 rendering. Reconciles common
-  // off-by-one cases so dots still anchor on real ticks even when a card's
-  // real-beat count doesn't perfectly match the desired dot count.
-  // Returns null when chordData.beats[] is unavailable or too far off — caller
-  // falls back to even spacing inside _buildVirtualDots.
-  function _explicitTimesFor68(cStart, durSec, n) {
+  // Pull `n` real beat times out of chordData.beats[] for the card at
+  // [cStart, cStart+durSec]. Used by 6/8 eighth-note dots and by the
+  // forcedBeats / bar-snap paths so dots anchor on the tracker's actual
+  // beats — keeps cursor (Path A in _updateBeatDots) aligned with each
+  // dot at audio-time precision. Reconciles common off-by-one cases:
+  // boundary epsilon (n+1), missing terminal beat (n-1), stride-resample
+  // (within ±2). Returns null when beats[] is unavailable or too far off
+  // — callers then fall back to even-spacing inside _buildVirtualDots.
+  function _explicitBeatTimes(cStart, durSec, n) {
     if (!Array.isArray(chordData && chordData.beats) || !chordData.beats.length) return null;
     if (!(n >= 1)) return null;
     const realBeats = _beatsInRange(chordData.beats, cStart, cStart + durSec);
     if (!realBeats.length) return null;
     if (realBeats.length === n) return realBeats;
     if (realBeats.length === n + 1) {
-      // boundary epsilon: drop the side closer to card edge
+      // boundary epsilon: realBeats[0] may sit slightly BEFORE cStart (the
+      // ±eps tolerance in _beatsInRange lets a beat just past the previous
+      // chord's end leak in). Drop it in that case so the visible first
+      // dot lands at the chord's actual start. Otherwise keep the head —
+      // a chord whose first dot is at/inside the start is more useful
+      // (highlight ticks at the chord change) than one that opens with a
+      // gap because we dropped a downbeat aligned with cStart.
       const headSlack = realBeats[0] - cStart;
-      const tailSlack = (cStart + durSec) - realBeats[realBeats.length - 1];
-      return tailSlack < headSlack ? realBeats.slice(0, n) : realBeats.slice(1);
+      if (headSlack < -0.01) return realBeats.slice(1);
+      return realBeats.slice(0, n);
     }
     if (realBeats.length === n - 1) {
       // synthesize the missing terminal eighth from the local beat step
@@ -5754,6 +5798,28 @@
       } catch (e) {
         showToast(_t("toast.export.failed", { err: e.message || _t("toast.export.network_error") }), 3000);
       }
+    });
+  }
+
+  const btnExportChords = $("#btnExportChords");
+  if (btnExportChords) {
+    btnExportChords.addEventListener("click", () => {
+      if (!chordData || !chordData.chords || chordData.chords.length === 0) {
+        showToast(_t("toast.error.no_chord_data"), 2000); return;
+      }
+      if (!window.ChordExporter || !window.ChordExporter.openModal) {
+        showToast("ChordExporter not loaded", 2000); return;
+      }
+      // Close any open Tools popup so the modal isn't covered by it.
+      document.querySelectorAll(".tb-item.open").forEach(i => i.classList.remove("open"));
+      window.ChordExporter.openModal({
+        chordData,
+        sectionData,
+        chordCache,
+        transpose,
+        capo,
+        title: (chordData && chordData.title) || (songTitle ? songTitle.textContent : ""),
+      });
     });
   }
 
