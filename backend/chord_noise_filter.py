@@ -53,6 +53,17 @@ _DB_TOL_SEC = 0.10
 # Tolerance for "are these two chords adjacent" check.
 _ADJ_TOL_SEC = 0.05
 
+# Isolated-short-chord filter constants. Two paths: P1 (same-root sandwich,
+# lenient duration) and P2 (different-neighbor extreme-short). See
+# C:\Users\hitea\.claude\plans\calm-juggling-octopus.md for the rule derivation
+# from the 愛我久一點 golden song.
+_ISOLATED_P1_ABS_DUR_SEC = 0.70
+_ISOLATED_P1_DUR_BEATS = 1.10
+_ISOLATED_P2_ABS_DUR_SEC = 0.40
+_ISOLATED_P2_DUR_BEATS = 0.60
+_ISOLATED_P2_REL_RATIO = 0.20
+_ISOLATED_RULE_VERSION = 1
+
 
 def _is_near(t: float, points: List[float], tol: float) -> bool:
     for p in points:
@@ -190,6 +201,149 @@ def filter_noise_tails(
     return merge_same_root_ornaments(out, bpm)
 
 
+def filter_isolated_short_chords(
+    chords: List[Dict],
+    downbeats: Iterable[float],
+    bpm: float,
+) -> Tuple[List[Dict], Dict]:
+    """Drop isolated short chord events sandwiched between same-root neighbors
+    or extreme-short between different-root neighbors. Beat-aware.
+
+    Returns (new_chords, meta). When the filter cannot run safely (missing
+    beat data, fewer than 3 chords) returns the input unchanged with
+    ``meta = {applied: False, reason: ...}``.
+
+    See ``calm-juggling-octopus.md`` plan for the rule derivation. Two paths:
+
+      Path 1 — same-root sandwich, lenient absolute duration
+        Fires on ``Gmaj7 — D(0.6s) — Gmaj7``, ``F#m7 — F#sus2(0.3s) — F#m7``
+      Path 2 — different-neighbor extreme-short with 5x duration gap
+        Fires on ``Gmaj7(3.96s) — D(0.33s) — Gbm7(2.17s)``
+
+    Both gated by adjacency + start-off-downbeat. Path 2 additionally requires
+    end-off-downbeat to disambiguate from the noise-tail pattern handled by
+    ``filter_noise_tails``.
+    """
+    if not bpm or bpm <= 0 or not chords or len(chords) < 3:
+        return list(chords), {"applied": False, "reason": "no_beat_data"}
+    db_list = sorted(float(d) for d in (downbeats or []) if d is not None)
+    if not db_list:
+        return list(chords), {"applied": False, "reason": "no_beat_data"}
+
+    spb = 60.0 / bpm
+
+    def is_near_db(t: float) -> bool:
+        return _is_near(t, db_list, _DB_TOL_SEC)
+
+    new_chords: List[Dict] = [dict(chords[0])]
+    removed_log: List[Dict] = []
+
+    i = 1
+    while i < len(chords) - 1:
+        prev = new_chords[-1]            # mutated prev sees Path-2 extensions
+        curr = chords[i]
+        nxt = chords[i + 1]
+
+        # global_arbiter splits are pre-baked downbeat-quantize artifacts —
+        # never touch them (matches filter_noise_tails policy).
+        if curr.get("global_arbiter") or prev.get("global_arbiter") or nxt.get("global_arbiter"):
+            new_chords.append(dict(curr))
+            i += 1
+            continue
+
+        try:
+            curr_time = float(curr["time"])
+            curr_end = float(curr["end"])
+            prev_end = float(prev["end"])
+            nxt_time = float(nxt["time"])
+            nxt_end = float(nxt["end"])
+            prev_start = float(prev["time"])
+        except (KeyError, TypeError, ValueError):
+            new_chords.append(dict(curr))
+            i += 1
+            continue
+
+        dur = curr_end - curr_time
+        prev_dur = prev_end - prev_start
+        nxt_dur = nxt_end - nxt_time
+
+        # Gate A — must hold for either path
+        is_adjacent = (abs(prev_end - curr_time) <= _ADJ_TOL_SEC
+                       and abs(curr_end - nxt_time) <= _ADJ_TOL_SEC)
+        is_short_a = 0 < dur <= min(_ISOLATED_P1_ABS_DUR_SEC, _ISOLATED_P1_DUR_BEATS * spb)
+        start_off_db = not is_near_db(curr_time)
+        if not (is_adjacent and is_short_a and start_off_db):
+            new_chords.append(dict(curr))
+            i += 1
+            continue
+
+        prev_root, _ = _root_quality(str(prev.get("chord") or ""))
+        nxt_root, _ = _root_quality(str(nxt.get("chord") or ""))
+        triggered = None
+        rel_ratio = None
+
+        if prev_root and prev_root == nxt_root:
+            triggered = "P1"
+        else:
+            is_short_p2 = dur <= min(_ISOLATED_P2_ABS_DUR_SEC, _ISOLATED_P2_DUR_BEATS * spb)
+            denom = min(prev_dur, nxt_dur)
+            is_rel_short = denom > 0 and dur < _ISOLATED_P2_REL_RATIO * denom
+            end_off_db = not is_near_db(curr_end)
+            if is_short_p2 and is_rel_short and end_off_db:
+                triggered = "P2"
+                rel_ratio = round(dur / denom, 3)
+
+        if triggered:
+            removed_log.append({
+                "time": round(curr_time, 3),
+                "end": round(curr_end, 3),
+                "chord": str(curr.get("chord") or ""),
+                "prev_chord": str(prev.get("chord") or ""),
+                "prev_end_original": round(prev_end, 3),
+                "next_chord": str(nxt.get("chord") or ""),
+                "next_time": round(nxt_time, 3),
+                "path": triggered,
+                "dur_sec": round(dur, 3),
+                "rel_short_ratio": rel_ratio,
+                "spb": round(spb, 3),
+            })
+            prev["end"] = nxt_time        # in-place mutation of new_chords[-1]
+            i += 1                         # drop curr; nxt becomes the next curr
+        else:
+            new_chords.append(dict(curr))
+            i += 1
+
+    new_chords.append(dict(chords[-1]))
+
+    # Idempotent same-name collapse (handles P1 -> identical neighbors)
+    final: List[Dict] = []
+    for ch in new_chords:
+        if (final and final[-1].get("chord") == ch.get("chord")
+                and abs(float(final[-1]["end"]) - float(ch["time"])) <= _ADJ_TOL_SEC):
+            final[-1]["end"] = ch["end"]
+        else:
+            final.append(dict(ch))
+
+    meta = {
+        "applied": len(removed_log) > 0,
+        "removed_count": len(removed_log),
+        "rule_version": _ISOLATED_RULE_VERSION,
+        "params": {
+            "p1_abs_dur_sec": _ISOLATED_P1_ABS_DUR_SEC,
+            "p1_dur_beats": _ISOLATED_P1_DUR_BEATS,
+            "p2_abs_dur_sec": _ISOLATED_P2_ABS_DUR_SEC,
+            "p2_dur_beats": _ISOLATED_P2_DUR_BEATS,
+            "p2_rel_ratio": _ISOLATED_P2_REL_RATIO,
+            "db_tol_sec": _DB_TOL_SEC,
+            "adj_tol_sec": _ADJ_TOL_SEC,
+        },
+        "removed": removed_log,
+    }
+    if not removed_log:
+        meta["reason"] = "no_noise_found"
+    return final, meta
+
+
 def maybe_filter_for_serve(chord_data: Dict) -> Dict:
     """Apply noise filter to ``chord_data["chords"]`` if data is sufficient.
 
@@ -219,7 +373,15 @@ def maybe_filter_for_serve(chord_data: Dict) -> Dict:
 
     before_n = len(chords)
     new_chords = filter_noise_tails(chords, downbeats, bpm)
-    absorbed = before_n - len(new_chords)
+    absorbed_tail = before_n - len(new_chords)
+
+    # Chain isolated-short filter after tail filter. Non-destructive — operates
+    # on the same in-memory list. The on-disk JSON is unchanged; the ingest
+    # pipeline writes its own meta when applied at process_queue time.
+    new_chords, iso_meta = filter_isolated_short_chords(new_chords, downbeats, bpm)
+    absorbed_iso = iso_meta.get("removed_count", 0)
+
+    absorbed = absorbed_tail + absorbed_iso
     chord_data["chords"] = new_chords
     chord_data["noise_filter_meta"] = {
         "applied": absorbed > 0,
@@ -227,5 +389,9 @@ def maybe_filter_for_serve(chord_data: Dict) -> Dict:
         "before": before_n,
         "after": len(new_chords),
         "absorbed": absorbed,
+        "tail_absorbed": absorbed_tail,
+        "isolated_absorbed": absorbed_iso,
     }
+    if iso_meta.get("applied"):
+        chord_data["isolated_chord_filter_serve"] = iso_meta
     return chord_data

@@ -372,6 +372,32 @@ def _save_chord_json(job: ProcessJob, chords: list, key: str,
     except Exception as e:
         logger.warning("ghost_chord_filter failed for %s: %s", job.job_id, e)
 
+    # Isolated short-chord noise filter — drops sub-beat chord events sandwiched
+    # between same-root neighbors (P1) or extreme-short between different-root
+    # neighbors (P2). Runs AFTER ghost filter so it sees the cleaned chord list,
+    # and BEFORE markov rescoring so quality-swap targets are already noise-free.
+    # Per-event audit (incl. prev_end_original) written to sheet["isolated_chord_filter"].
+    try:
+        from config import is_personal_mode, is_public_mode
+        if is_personal_mode() or is_public_mode():
+            from auto_worker import load_settings
+            if load_settings().get("isolated_short_filter_enabled", True):
+                from chord_noise_filter import filter_isolated_short_chords
+                iso_filtered, iso_meta = filter_isolated_short_chords(
+                    sheet.get("chords", []),
+                    sheet.get("downbeats", []),
+                    sheet.get("bpm"),
+                )
+                if iso_meta.get("applied"):
+                    sheet["chords"] = iso_filtered
+                    sheet["isolated_chord_filter"] = iso_meta
+                    logger.info(
+                        "[isolated_chord_filter] %s removed %d isolated short chord(s)",
+                        job.job_id, iso_meta["removed_count"],
+                    )
+    except Exception as e:
+        logger.warning("isolated_chord_filter failed for %s: %s", job.job_id, e)
+
     # Markov chord-progression rescoring — quality-only swaps when BTC's
     # predicted chord has very low Markov P given prior chord + key, AND a
     # same-root different-quality alternative is significantly more likely.

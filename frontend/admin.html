@@ -348,6 +348,12 @@
         <span id="accRecomputeStatus" style="font-size:11px;color:var(--text-dim);"></span>
       </div>
       <div class="actions" style="margin-bottom:8px; display:flex; gap:6px; align-items:center; padding:6px; border:1px dashed var(--border); border-radius:4px;">
+        <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;">🧹 短促雜訊</span>
+        <input type="text" id="isoFilterPath" placeholder="path / hash / player URL" class="num-input" style="flex:1; max-width:260px; text-align:left;">
+        <button id="btnIsoFilter" title="Drop isolated short chord events sandwiched between same-root neighbors (P1) or extreme-short between different-root neighbors (P2). Rewrites the chord JSON.">過濾</button>
+        <span id="isoFilterStatus" style="font-size:11px;color:var(--text-dim);"></span>
+      </div>
+      <div class="actions" style="margin-bottom:8px; display:flex; gap:6px; align-items:center; padding:6px; border:1px dashed var(--border); border-radius:4px;">
         <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;">🚫 隔離清單</span>
         <span id="quarantineSummary" style="font-size:12px; color:var(--text-dim); flex:1;">尚未載入</span>
         <button id="btnQuarantineRefresh" title="Show tracks skipped by auto chord detection due to short/corrupt audio">Refresh</button>
@@ -1173,6 +1179,44 @@ window._lcIsBeta = (function() {
       status.textContent = `✓ deleted ${data.deleted} cache files`;
     } catch (e) {
       status.textContent = _t("admin.toast.batch_midi_failed", {err: e.message || e});
+    }
+  });
+
+  $("#btnIsoFilter").addEventListener("click", async () => {
+    const ident = _parseSongIdentifier($("#isoFilterPath").value);
+    const status = $("#isoFilterStatus");
+    if (!ident) { status.textContent = _t("admin.recompute.parse_failed"); return; }
+    // Only run the new isolated-short pass — leave bar arbitrator, ghost,
+    // markov untouched so the user gets predictable "filter only" behaviour.
+    const body = {
+      ...ident,
+      apply_bar_arbitrator: false,
+      apply_ghost_filter: false,
+      apply_isolated_filter: true,
+      apply_markov_rescore: false,
+    };
+    status.textContent = _t("admin.recompute.processing");
+    try {
+      const res = await fetch("/api/admin/chord/postprocess", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        status.textContent = `失敗: ${res.status} ${data.detail || res.statusText}`;
+        return;
+      }
+      const iso = data.isolated_chord_filter || {};
+      const n = iso.removed_count || 0;
+      if (n > 0) {
+        const before = data.n_chords_before, after = data.n_chords_after;
+        status.textContent = `✓ 移除 ${n} 個雜訊和弦 (${before} → ${after})`;
+      } else {
+        status.textContent = "✓ 沒有偵測到雜訊和弦";
+      }
+    } catch (e) {
+      status.textContent = `失敗: ${e.message || e}`;
     }
   });
 

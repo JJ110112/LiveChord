@@ -59,6 +59,11 @@ DEFAULT_SETTINGS = {
                                         # currently BTC-self-trained so quality biases mirror
                                         # BTC's. Enable once Markov is retrained from human-
                                         # corrected versions (chord_corrections accumulation).
+    "isolated_short_filter_enabled": True,  # drop isolated sub-beat chord events sandwiched
+                                            # between same-root neighbors (P1) or extreme-short
+                                            # between different-root neighbors (P2). See
+                                            # chord_noise_filter.filter_isolated_short_chords —
+                                            # safe to leave on; conservative gates plus audit log.
 }
 
 

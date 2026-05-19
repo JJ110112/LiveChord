@@ -1059,6 +1059,7 @@ class ChordPostprocessRequest(BaseModel):
     force_arbitrator: bool = False  # passes through to arbitrate(force=...)
     ghost_mode: str = "strict"  # "strict" (default) or "loose" — see chord_detect.filter_ghost_boundary_chords
     apply_markov_rescore: bool = False  # post-BTC Markov quality swap (see ai/chord_markov_rescorer.py)
+    apply_isolated_filter: bool = True  # drop isolated short chord noise (chord_noise_filter.filter_isolated_short_chords)
 
 
 @router.post("/admin/chord/postprocess")
@@ -1109,6 +1110,7 @@ def admin_chord_postprocess(
         "hash": h,
         "bar_arbitrator": None,
         "ghost_chord_filter": None,
+        "isolated_chord_filter": None,
         "n_chords_before": len(data.get("chords") or []),
         "n_chords_after": None,
         "n_downbeats_before": len(data.get("downbeats") or []),
@@ -1147,6 +1149,21 @@ def admin_chord_postprocess(
             summary["ghost_chord_filter"] = ghost_meta
         except Exception as e:
             summary["ghost_chord_filter"] = {"applied": False, "error": f"{type(e).__name__}: {e}"}
+
+    if req.apply_isolated_filter:
+        try:
+            from chord_noise_filter import filter_isolated_short_chords
+            iso_filtered, iso_meta = filter_isolated_short_chords(
+                data.get("chords", []),
+                data.get("downbeats", []),
+                data.get("bpm"),
+            )
+            if iso_meta.get("applied"):
+                data["chords"] = iso_filtered
+                data["isolated_chord_filter"] = iso_meta
+            summary["isolated_chord_filter"] = iso_meta
+        except Exception as e:
+            summary["isolated_chord_filter"] = {"applied": False, "error": f"{type(e).__name__}: {e}"}
 
     if req.apply_markov_rescore:
         try:
