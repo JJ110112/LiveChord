@@ -689,6 +689,12 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   display: block;
   flex: 1 1 auto;        /* fill the space above the bottom-pinned piano */
   min-height: 120px;
+  max-width: 100%;       /* mirror #piano88Canvas so browser zoom + narrow
+                            parent caps both canvases identically — without
+                            this, zoom=1.5 left waterfall at full maxW while
+                            piano88 was scaled down to parent.clientWidth,
+                            misaligning bar-X vs key-X. */
+  margin: 0 auto;        /* match #piano88Canvas horizontal centering. */
 }
 
 /* ========== [END: PIANO TAB] ========== */

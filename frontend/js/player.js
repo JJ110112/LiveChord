@@ -3107,9 +3107,29 @@
     if (!waterfallCanvas || !waterfallCtx || !waterfallActive) return;
     if (!piano88Cache) return;
 
-    const w = waterfallCanvas.clientWidth;
+    // Self-heal: mirror piano88's sizing convention EXACTLY so bar-X and key-X
+    // share one coordinate system. piano88Cache is built with init88PianoCache
+    // (maxW) and its whiteXs[m].x values live in CSS px in [0, maxW]. The
+    // waterfall canvas must also render its CSS box at maxW, with internal
+    // pixel buffer maxW × dpr, AND inherit CSS `max-width: 100%` so the layout
+    // engine can scale BOTH canvases down identically when zoomed/narrow.
+    // Without this, browser zoom (Ctrl+/−) caused piano88 to be capped to
+    // parent.clientWidth by max-width:100% while waterfall stayed at full maxW
+    // — bars at column X stopped lining up with keys at column X.
+    const maxW = _get88PianoMaxWidth();
     const h = waterfallCanvas.clientHeight;
-    if (w < 10 || h < 10) return;
+    if (maxW < 10 || h < 10) return;
+    const dpr = window.devicePixelRatio || 1;
+    const expectedW = Math.round(maxW * dpr);
+    const expectedH = Math.round(h * dpr);
+    if (waterfallCanvas.width !== expectedW || waterfallCanvas.height !== expectedH ||
+        waterfallCanvas.style.width !== (maxW + "px")) {
+      waterfallCanvas.width = expectedW;
+      waterfallCanvas.height = expectedH;
+      waterfallCanvas.style.width = maxW + "px";
+      waterfallCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    const w = maxW;
 
     const ctx = waterfallCtx;
     ctx.clearRect(0, 0, w, h);
