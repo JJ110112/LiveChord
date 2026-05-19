@@ -148,6 +148,15 @@
     .gt-cat-stat { margin-left: auto; color: var(--text-dim); font-size: 11px; font-variant-numeric: tabular-nums; }
 
     /* Registered-users table (beta card) */
+    #betaUserList {
+      max-height: min(340px, 46vh);
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-gutter: stable;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 6px;
+      background: rgba(0,0,0,0.08);
+    }
     #betaUserList .user-row {
       display: grid;
       grid-template-columns: 32px minmax(0, 1fr) 70px 40px 100px;
@@ -164,6 +173,10 @@
       background: rgba(76,175,80,0.06);
     }
     #betaUserList .user-row-hdr {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: var(--bg-card);
       color: var(--text-dim);
       font-size: 10px;
       text-transform: uppercase;
@@ -181,6 +194,73 @@
     #betaUserList .u-col-rat { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 11px; text-align: right; }
     #betaUserList .u-col-last { font-size: 10px; color: #555; font-variant-numeric: tabular-nums; white-space: nowrap; }
     #betaUserList .u-col-last.recent { color: var(--text-dim); }
+    #betaAuditList {
+      max-height: min(340px, 48vh);
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-gutter: stable;
+    }
+    #betaAuditList .audit-row {
+      display: grid;
+      grid-template-columns: 26px 58px minmax(96px, 180px) minmax(0, 1fr) 92px;
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
+      padding: 6px 4px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    #betaAuditList .audit-row:hover {
+      background: rgba(255,255,255,0.03);
+    }
+    #betaAuditList .audit-cb {
+      justify-self: center;
+    }
+    #betaAuditList .audit-status {
+      font-size: 10px;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #betaAuditList .audit-user,
+    #betaAuditList .audit-title {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #betaAuditList .audit-user {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: "Consolas", monospace;
+    }
+    #betaAuditList .audit-title {
+      font-size: 12px;
+      color: var(--text);
+    }
+    #betaAuditList .audit-date {
+      color: #555;
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+      white-space: nowrap;
+    }
+    @media (max-width: 640px) {
+      #betaUserList .user-row {
+        grid-template-columns: 28px minmax(0, 1fr) 56px 32px 74px;
+        gap: 6px;
+      }
+      #betaAuditList .audit-row {
+        grid-template-columns: 24px 48px minmax(72px, 110px) minmax(0, 1fr) 68px;
+        gap: 6px;
+      }
+      #betaAuditList .audit-user {
+        font-size: 10px;
+      }
+      #betaAuditList .audit-date {
+        font-size: 9px;
+      }
+    }
   </style>
 <script src="/js/analytics.js?v=3"></script>
 </head>
@@ -471,17 +551,6 @@
         <div id="betaBugList" style="font-size:12px;max-height:200px;overflow-y:auto"></div>
       </div>
 
-      <!-- Invite code management -->
-      <div style="margin-bottom:12px">
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.invite_label">Invite code management</div>
-        <div class="actions" style="margin-bottom:8px">
-          <button onclick="createInvite()" data-i18n="admin.beta.invite_create">+ Generate invite code</button>
-          <button onclick="createInvite(5)" data-i18n="admin.beta.invite_create_5">+ 5-use invite code</button>
-          <button onclick="createInviteCustom()" data-i18n="admin.beta.invite_create_custom">+ Custom uses</button>
-        </div>
-        <div id="betaInviteList" style="font-size:12px"></div>
-      </div>
-
       <!-- User list -->
       <div style="margin-bottom:12px">
         <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px" data-i18n="admin.beta.user_list_label">Registered users</div>
@@ -497,7 +566,7 @@
           </label>
           <button id="btnDeleteSelected" onclick="deleteSelectedAudit()" style="display:none" data-i18n="admin.audit.delete_selected">🗑 Delete selected</button>
         </div>
-        <div id="betaAuditList" style="font-size:12px;max-height:300px;overflow-y:auto"></div>
+        <div id="betaAuditList" style="font-size:12px"></div>
       </div>
 
     </div>
@@ -1444,11 +1513,10 @@ window._lcIsBeta = (function() {
 
     async function loadBetaData() {
       try {
-        const [stats, bugs, analytics, invites, users, audit] = await Promise.all([
+        const [stats, bugs, analytics, users, audit] = await Promise.all([
           API.get("/api/feedback/admin/ratings/stats"),
           API.get("/api/feedback/admin/bugs?status=open&limit=20"),
           API.get("/api/analytics/admin/summary?days=7"),
-          API.get("/api/auth/admin/invites"),
           API.get("/api/auth/admin/users"),
           API.get("/api/process/admin/audit?limit=50"),
         ]);
@@ -1513,20 +1581,6 @@ window._lcIsBeta = (function() {
           bugEl.innerHTML = `<span style="color:#555">${_t("admin.beta.no_bugs")}</span>`;
         }
 
-        // Invites
-        const invEl = document.getElementById("betaInviteList");
-        if (invites.invites && invites.invites.length) {
-          const STATUS_ACTIVE = _t("admin.beta.invite_status_active");
-          invEl.innerHTML = invites.invites.map(i => {
-            const expired = i.expires_at && i.expires_at < new Date().toISOString().slice(0,19);
-            const status = i.revoked ? _t("admin.beta.invite_status_revoked") : expired ? _t("admin.beta.invite_status_expired") : i.use_count >= i.max_uses ? _t("admin.beta.invite_status_used_up") : STATUS_ACTIVE;
-            const color = status === STATUS_ACTIVE ? "#4caf50" : "#555";
-            return `<div style="padding:3px 0;display:flex;gap:8px;align-items:center;font-family:Consolas,monospace"><code style="color:${color}">${i.code}</code><span style="color:#555">${i.use_count}/${i.max_uses}</span><span style="color:#555;font-size:10px">${status}</span>${status === STATUS_ACTIVE ? `<button style="font-size:10px;padding:1px 6px;border:1px solid #f44;color:#f44;background:transparent;border-radius:3px;cursor:pointer" onclick="revokeInvite('${i.code}')">${_t("admin.beta.invite_revoke")}</button>` : ""}</div>`;
-          }).join("");
-        } else {
-          invEl.innerHTML = `<span style="color:#555">${_t("admin.beta.invite_no_codes")}</span>`;
-        }
-
         // Users — sorted newest-first (backend returns DESC by rowid), with
         // usage counters so admin can spot active vs dormant testers.
         const usrEl = document.getElementById("betaUserList");
@@ -1570,12 +1624,12 @@ window._lcIsBeta = (function() {
         if (audit.audit && audit.audit.length) {
           const statusColor = s => s === "done" ? "#4caf50" : s === "error" ? "#f44336" : "#ff9800";
           auditEl.innerHTML = audit.audit.map(a =>
-            `<div style="padding:4px 0;border-bottom:1px solid #1a1a1a;display:flex;gap:6px;align-items:center">` +
+            `<div class="audit-row">` +
             `<input type="checkbox" class="audit-cb" value="${a.id}">` +
-            `<span style="color:${statusColor(a.status)};width:36px;font-size:10px">${esc(a.status)}</span>` +
-            `<span style="width:50px;font-size:11px">${esc(a.username || "")}</span>` +
-            `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.title || "—")}</span>` +
-            `<span style="color:#555;font-size:10px;white-space:nowrap">${(a.created_at || "").slice(5,16)}</span>` +
+            `<span class="audit-status" style="color:${statusColor(a.status)}" title="${esc(a.status)}">${esc(a.status)}</span>` +
+            `<span class="audit-user" title="${esc(a.username || "")}">${esc(a.username || "")}</span>` +
+            `<span class="audit-title" title="${esc(a.title || "")}">${esc(a.title || "-")}</span>` +
+            `<span class="audit-date">${(a.created_at || "").slice(5,16)}</span>` +
             `</div>`
           ).join("");
           function _refreshAuditSelection() {
@@ -1636,30 +1690,6 @@ window._lcIsBeta = (function() {
     } catch (e) { showToast(_t("admin.preset.apply_failed", {err: e.message})); }
   };
 
-  window.createInvite = async function(maxUses = 1) {
-    try {
-      const res = await API.post("/api/auth/admin/invite", { max_uses: maxUses, expires_days: 30 });
-      if (res.code) {
-        showToast(_t("admin.invite.created_n", {uses: maxUses, code: res.code}));
-        // navigator.clipboard is undefined on HTTP (non-secure contexts).
-        // Guard before calling; clipboard copy is best-effort, the code is
-        // also visible in the toast and the refreshed list below.
-        if (navigator.clipboard && window.isSecureContext) {
-          try { await navigator.clipboard.writeText(res.code); } catch (_) {}
-        }
-        initBetaDashboard();
-      }
-    } catch (e) { showToast(_t("admin.invite.create_failed", {err: e.message})); }
-  };
-
-  window.createInviteCustom = async function() {
-    const raw = prompt(_t("admin.invite.prompt_max_uses"), "50");
-    if (raw === null) return;
-    const n = parseInt(raw, 10);
-    if (!Number.isFinite(n) || n < 1) { showToast(_t("admin.invite.prompt_positive_int")); return; }
-    await window.createInvite(n);
-  };
-
   window.deleteSelectedAudit = async function() {
     const cbs = document.querySelectorAll("#betaAuditList .audit-cb:checked");
     if (!cbs.length) return;
@@ -1667,18 +1697,10 @@ window._lcIsBeta = (function() {
     if (!confirm(_t("admin.confirm.delete_audit_n", {n: ids.length}))) return;
     try {
       const res = await API.post("/api/process/admin/audit/delete", { ids });
-      showToast(_t("admin.invite.deleted_n", {n: res.deleted}));
+      showToast(_t("admin.audit.delete_selected_n", {n: res.deleted}));
       document.getElementById("btnDeleteSelected").style.display = "none";
       initBetaDashboard();
-    } catch (e) { showToast(_t("admin.invite.delete_failed", {err: e.message})); }
-  };
-
-  window.revokeInvite = async function(code) {
-    try {
-      await fetch(`/api/auth/admin/invite/${encodeURIComponent(code)}`, { method: "DELETE" });
-      showToast(_t("admin.invite.revoked"));
-      initBetaDashboard();
-    } catch (e) { showToast(_t("admin.invite.revoke_failed", {err: e.message})); }
+    } catch (e) { showToast("Delete failed: " + e.message); }
   };
 
   window.updateBugReport = async function(id) {
