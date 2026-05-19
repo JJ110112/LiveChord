@@ -509,7 +509,12 @@ const ChordRender = {
     const bw = kw * 0.48;    // black key ~48% of white width
     const bh = kh * 0.62;    // black key ~62% of white height
     const bevelH = Math.round(kh * 0.06); // front face depth for 3D effect
-    const labelSpace = 16;
+    // Octave labels (C1/C2/...) used to live in a 16-px strip BELOW the keys,
+    // which on mobile landscape pushed against the progress-bar-mid track.
+    // Moved labels INSIDE the white-key body (near the bottom edge) so the
+    // canvas can end flush with the bevel — saves 16 px of vertical budget
+    // and eliminates the overlap risk on phones.
+    const labelSpace = 0;
     const totalH = kh + bevelH + labelSpace;
 
     const c = document.createElement("canvas");
@@ -672,26 +677,42 @@ const ChordRender = {
     const whiteXs = {};
     for (let i = 0; i < nw; i++) whiteXs[whites[i]] = { x: i * kw, w: kw - 1, h: kh };
 
-    // octave labels + middle-C marker
-    ctx.fillStyle = "#666";
-    ctx.font = `${Math.max(9, Math.min(11, kw * 0.9))}px sans-serif`;
+    // Octave labels — drawn at the TOP of each C white key, centered on
+    // the *visible* white area (NOT the full key width). C# black key
+    // covers the right ~24 % of a C white key at the top region, so
+    // centering on the full key would put the label half-under the
+    // black key. The visible top-area runs from x=0 to x=kw*0.76; its
+    // midpoint is at kw*0.38.
+    //   - Font shrunk (kw * 0.65, max 9 px) because the visible area is
+    //     narrow and labels are decorative reference markers, not
+    //     primary UI.
+    //   - Other Cs use #aaa (faint guide); C4 = #1a1a1a bold (the
+    //     "you are here" anchor).
+    //   - Finger numbers (①②③④⑤) live at the bottom of the key during
+    //     chord highlight; the top placement keeps them from colliding.
     ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    // Font scales linearly with key width: narrow keyboards (e.g. when
+    // the chord ribbon is open at 50/50 split on PC, kw ≈ 18) get a 7-8 px
+    // label; wide keyboards (full-width, kw ≈ 30) get the 9 px cap. The
+    // previous max-min sandwich clamped too aggressively at the floor and
+    // produced "too large" labels on narrow keyboards.
+    const _labelSize = Math.max(7, Math.min(9, kw * 0.42));
+    const _labelY = _labelSize + 3;        // baseline ~3 px below key top
+    const _labelXFrac = 0.38;              // center of visible white area
     for (let oct = 0; oct <= 8; oct++) {
       const midi = oct * 12 + 12; // C of this octave (C0=12, C1=24, ..., C8=108)
       if (midi < 21 || midi > 108) continue;
       const info = whiteXs[midi];
       if (!info) continue;
-      ctx.fillText("C" + oct, info.x + (info.w / 2), kh + bevelH + 13);
-    }
-    // middle C (C4=60) subtle marker line
-    const c4 = whiteXs[60];
-    if (c4) {
-      ctx.strokeStyle = "rgba(41, 182, 246, 0.6)"; // Cyan marker
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(c4.x + c4.w / 2, kh + bevelH - 3);
-      ctx.lineTo(c4.x + c4.w / 2, kh + bevelH + 2);
-      ctx.stroke();
+      const isMiddleC = midi === 60;
+      // C4 stays bold + darker as the "you are here" anchor, but uses
+      // the SAME font size as other Cs — emphasis through weight/color
+      // alone, not size. Avoids the visual jump when the eye scans
+      // along the keyboard row.
+      ctx.fillStyle = isMiddleC ? "#1a1a1a" : "#aaaaaa";
+      ctx.font = `${isMiddleC ? 800 : 500} ${_labelSize}px "Inter", system-ui, sans-serif`;
+      ctx.fillText("C" + oct, info.x + info.w * _labelXFrac, _labelY);
     }
 
     return { canvas: c, whiteXs, blackXs, keyW: kw, keyH: kh, bKeyW: bw, bKeyH: bh, bevelH, totalH };

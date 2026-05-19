@@ -697,6 +697,85 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   margin: 0 auto;        /* match #piano88Canvas horizontal centering. */
 }
 
+/* ========== [COMPONENT: SHEET MUSIC SCORE LAYER] ==========
+   Slots inside .chord-88-keys before the waterfall canvas. Uses
+   flex:0 0 auto + clamp() height so the waterfall+piano flex chain
+   below it (waterfall flex:1 1 auto; piano flex-shrink:0;
+   margin-top:auto) keeps working. Shown only when
+   body.score-eligible (width ≥ ~540px AND non-overview) AND
+   localStorage.livechord_show_score === "true" — toggle in
+   Tools popup. Lazy init: ScoreRender.init() is only called the
+   first time both gates evaluate true so portrait phones don't
+   pay the VexFlow memory cost. See CLAUDE.md "Player UI
+   invariants" + plan landscape-mode-hybrid-piano-* for full
+   rationale.                                                   */
+.score-layer {
+  position: relative;
+  flex: 0 0 auto;
+  /* VexFlow's Stave(x, y, w) reserves 40 px above-staff headroom + 40 px
+     staff lines + ~40 px below-headroom. PLUS ledger-line notes extending
+     further down (A1 = 110 px below stave.y), PLUS sharp/flat accidentals
+     adding another ~12 px (glyph is taller than the notehead it modifies).
+     Worst case for bass: A#1 / Ab1 with accidental → 122 px below stave.y.
+     Floor budget: chord-row 14 + treble.y 4 + bass.y >= 94 (gap)
+                   + bass visual 122 (A#1 + accidental glyph) = 234 px.
+     Min 240 keeps the score from squashing low-note accidentals at the
+     layer's overflow:hidden boundary. */
+  height: clamp(240px, 26vh, 300px);
+  background: #ffffff;
+  border-bottom: 1px solid rgba(0,0,0,0.18);
+  overflow: hidden;
+  contain: layout paint;
+}
+.score-stage {
+  position: absolute;
+  inset: 14px 0 0 0;
+  width: 100%;
+}
+.score-stage > svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.score-svg { display: block; }
+.score-chord-row {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 14px;
+  pointer-events: none;
+  font: 600 13px "Inter", system-ui, -apple-system, sans-serif;
+  color: #000;
+}
+.score-chord-row > span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 0 3px;
+  letter-spacing: 0.01em;
+}
+.score-chord-row > span[data-active="true"] {
+  color: #0277bd;
+  font-size: 14px;
+  font-weight: 700;
+}
+.score-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  background: rgba(0, 163, 224, 0.18);
+  border-left: 2px solid rgba(0, 163, 224, 0.55);
+  pointer-events: none;
+  transform: translateX(0);
+  will-change: transform;
+  /* No transition by default — RAF drives the position smoothly.
+     The page-flip code briefly explicitly disables transition
+     before resetting to translateX(0) to avoid rubber-banding
+     across the staff. */
+}
+body.no-score #scoreLayer { display: none !important; }
+
 /* ========== [END: PIANO TAB] ========== */
 
 
@@ -2763,18 +2842,25 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   .chord-ribbon-panel { display: none !important; }
   #instrumentPanel { width: 100% !important; flex: 1 1 100% !important; }
   .middle-split { padding-top: 0; }
-  /* Base `.chord-display-area { bottom: 49px }` assumes a 44px desktop
-     toolbar. On touch landscape the toolbar grows to ~64px (min-height 54
-     + safe-area/breathing 10) AND the progress-bar-mid floats 10px above
-     the toolbar at bottom:74px. Without raising chord-display-area's
-     bottom, (a) the bottom 15px of the 88-key canvas (incl. C1/C2/.../C7
-     labels) gets hidden behind the toolbar and (b) the progress bar
-     floats on top of the keyboard area instead of sitting in its own
-     reserved strip. Reserve 82px so labels clear the toolbar AND the
-     progress bar sits in the gap, not over the keys. */
+  /* Compact bottom strip on mobile landscape — glue the progress-bar-mid
+     to the toolbar's top edge (instead of floating it 10 px above) so the
+     score + waterfall + piano can claim back ~13 px of vertical space.
+     PC's normal layout is untouched. The hit-target risk (progress bar
+     abutting Tools/Bug button top edges) is acceptable because:
+       - .tb-trigger has min-height: 44 px (well above tap-target floor)
+       - Compact progress bar height (3 px) is a small accidental-tap target
+       - This media query only fires on actual touch + landscape combo,
+         not on PC mouse usage where precision is high
+     Reserve 5 px between the canvas bottom and toolbar top for the
+     glued progress bar itself (3 px nominal + 2 px breathing). */
   .chord-display-area {
-    bottom: calc(54px + max(env(safe-area-inset-bottom, 0px), 10px) + 18px) !important;
+    bottom: calc(54px + max(env(safe-area-inset-bottom, 0px), 10px) + 5px) !important;
   }
+  .progress-bar-mid {
+    bottom: calc(54px + max(env(safe-area-inset-bottom, 0px), 10px)) !important;
+    height: 3px;
+  }
+  .progress-bar-mid:hover { height: 5px; }
   /* (LiveChord brand hidden in all mobile orientations via the rule below.) */
   .tb-popup-5 .tb-popup-btn,
   .tb-popup-wide .tb-popup-btn,

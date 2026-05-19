@@ -2019,6 +2019,13 @@
           chordRibbonPanel.classList.remove("overview-mode");
         }
       }
+      // Score layer is hidden when ribbon is in overview-mode (overview itself
+      // is the "全曲一覽" view — no need to also show sheet music on the right).
+      // Forward-reference: defined further down with the other Score wiring.
+      // try/catch shields the initial sync invocation (during player.js load),
+      // when the Score block's const DOM refs are still in TDZ. The initial
+      // computation is handled separately by setTimeout(_recomputeScoreEligible, 0).
+      try { if (typeof _recomputeScoreEligible === "function") _recomputeScoreEligible(); } catch (_) {}
   }
   
   if (btnToggleOverview) {
@@ -2544,6 +2551,7 @@
       const data = await res.json();
       if (data.melody && data.melody.length > 0) {
         melodyData = _filterMelody(data.melody);
+        if (typeof _scoreRedraw === "function") _scoreRedraw();
         if (showUi && (Date.now() - t0) > 1000) {
           showToast(_t("toast.melody.done"), 4000);
         }
@@ -3016,6 +3024,7 @@
         _detectCrossings(data.left_hand, "left");
         _detectCrossings(data.right_hand, "right");
         accData = data;
+        if (typeof _scoreRedraw === "function") _scoreRedraw();
         // Phase 2: detect stale accompaniment cache. When the chord JSON
         // has been re-analyzed with dynamic beats (chordData.beat_version
         // bumped) but the acc cache was generated before that, LH/RH
@@ -4022,6 +4031,7 @@
         const names = { acc: _t("toast.rh.acc"), mel: _t("toast.rh.mel"), both: _t("toast.rh.both") };
         showToast(_t("toast.rh.content", { name: names[rhContentMode] }), 1500);
         update88Piano(audio.currentTime || 0);
+        if (typeof _scoreRedraw === "function") _scoreRedraw();
         // v6 follow-up: redraw the active string-instrument waterfall too,
         // so when the user toggles to "R melody" mode the strum/pluck bars
         // disappear immediately (instead of staying onscreen until next
@@ -5353,6 +5363,7 @@
       if (activeTab === "piano") {
         update88Piano(t);
         drawWaterfall(t);
+        if (typeof _updateScore === "function") _updateScore(t);
       } else {
         const _inst = InstrumentRegistry.get(activeTab);
         if (_inst) _inst.update(t);
@@ -5374,6 +5385,7 @@
     updateActiveChord(t);
     _updateBeatDots(t);
     if (activeTab === "piano") { update88Piano(t); drawWaterfall(t); }
+    if (typeof _updateScore === "function") _updateScore(t);
   });
 
   audio.addEventListener("seeked", () => {
@@ -5386,7 +5398,20 @@
     // but wrong for seek events — the user just moved the playhead and
     // expects the chord display to follow.
     updateActiveChord(t, true);
-    if (activeTab === "piano") { piano88LastIdx = -1; update88Piano(t); }
+    if (activeTab === "piano") { piano88LastIdx = -1; update88Piano(t); drawWaterfall(t); }
+    // Score: a large seek may land outside the current page → force a redraw
+    // so the new page renders before the cursor jumps. Without this the
+    // cursor falls behind by exactly (seek delta) until the next tickSync.
+    if (typeof _scoreRedraw === "function") _scoreRedraw(t);
+  });
+
+  // Also sync score on plain timeupdate events (covers paused-scrub via
+  // dragging the progress bar at a slow pace, which fires timeupdate but
+  // not seeked between snaps).
+  audio.addEventListener("timeupdate", () => {
+    if (audio.paused && typeof _updateScore === "function") {
+      _updateScore(audio.currentTime || 0);
+    }
   });
 
   // ---- 循環模式：off → single → favorites ----
@@ -5745,6 +5770,325 @@
   _applyJianpuVisibility();
   document.addEventListener("livechord:langchange", _applyJianpuVisibility);
   document.addEventListener("livechord:i18nready",  _applyJianpuVisibility);
+
+  // ===== Score (sheet music) layer =====
+  // Lazy-rendered VexFlow grand staff slotted above the waterfall canvas.
+  // Eligibility = (waterfall wrapper width ≥ SCORE_MIN_WIDTH) AND
+  // (chord ribbon is NOT in overview-mode while visible). User can also
+  // hard-disable via Tools popup "Score" toggle (persisted in
+  // livechord_show_score). When body.no-score is on, ScoreRender.destroy()
+  // is called so VexFlow SVG doesn't keep eating memory on hidden state.
+  const SCORE_MIN_WIDTH = 540;
+  // Minimum viewport height for the score to render. The grand staff
+  // (treble + bass) is 220 px tall by CSS; on phones in landscape with
+  // height < ~500 px, the 220 + waterfall (≥ 120) + piano (~178) total
+  // exceeds the viewport vertical budget and either piano gets cut or
+  // the treble half of the score gets clipped off-screen above by the
+  // flex:end anchor. Below this threshold, hide the score so the
+  // waterfall + piano stay fully visible (the user's primary practice
+  // surface). Threshold lets iPad landscape (744+) and tablet landscape
+  // through, blocks phone landscape.
+  const SCORE_MIN_HEIGHT = 500;
+  const _scoreStored = localStorage.getItem("livechord_show_score");
+  let _showScore = _scoreStored == null ? true : _scoreStored === "true";
+  let _scoreInited = false;
+  let _scoreCurrentRange = { start: 0, end: 0 };
+  let _scoreRangeDuration = 0;     // = end - start; cached on each _scoreRedraw
+  const _SCORE_BARS_PER_PAGE_WIDE = 4;
+  const _SCORE_BARS_PER_PAGE_NARROW = 2;
+  // Density gate — below this stage-width threshold, drop to 2 bars per
+  // page so each bar gets ~2× the horizontal pixel budget. Set high (1000)
+  // because even at 50/50 split on a 1920-wide viewport, stage width is
+  // ~900 px and 4 bars still pack densely with sharp accidentals + flags.
+  // Only kicks back to 4 bars on full-width waterfall (ribbon collapsed)
+  // or very wide viewports (≥ 2200 px where 50/50 gives stage > 1000).
+  const _SCORE_BARS_NARROW_WIDTH = 1000;
+  function _scoreBarsPerPage() {
+    const w = _scoreStageEl ? _scoreStageEl.clientWidth : 0;
+    return w < _SCORE_BARS_NARROW_WIDTH ? _SCORE_BARS_PER_PAGE_NARROW : _SCORE_BARS_PER_PAGE_WIDE;
+  }
+  const _scoreLayerEl = document.getElementById("scoreLayer");
+  const _scoreStageEl = document.getElementById("scoreStage");
+  const _scoreCursorEl = document.getElementById("scoreCursor");
+  const _scoreChordRowEl = document.getElementById("scoreChordRow");
+  const _pianoWaterfallViewEl = document.getElementById("pianoWaterfallView");
+
+  function _isOverviewActive() {
+    if (!chordRibbonPanel) return false;
+    const visible = getComputedStyle(chordRibbonPanel).display !== "none";
+    return visible && chordRibbonPanel.classList.contains("overview-mode");
+  }
+
+  function _scoreBeatSecs() {
+    const bpm = (chordData && +chordData.bpm) || 120;
+    return 60 / Math.max(40, bpm);
+  }
+  function _scoreBarSecs() {
+    const ts = (chordData && chordData.time_signature) || "4/4";
+    const beats = parseInt(String(ts).split("/")[0], 10) || 4;
+    return beats * _scoreBeatSecs();
+  }
+
+  function _gatherScoreNotes() {
+    const acc = accData || {};
+    if (rhContentMode === "mel" && Array.isArray(melodyData) && melodyData.length) {
+      // Melody is {start, end, midi, ...}. Normalize to {time, duration, pitch}.
+      const rh = melodyData
+        .filter(m => Number.isFinite(+m.midi) && +m.midi > 0)
+        .map(m => ({
+          time: +m.start,
+          duration: Math.max(0.05, +m.end - +m.start),
+          pitch: Math.round(+m.midi),
+        }));
+      return { rh, lh: acc.left_hand || [] };
+    }
+    return { rh: acc.right_hand || [], lh: acc.left_hand || [] };
+  }
+
+  function _scorePageRange(currentTime) {
+    const barSecs = _scoreBarSecs();
+    const barsPerPage = _scoreBarsPerPage();
+    const pageSecs = barsPerPage * barSecs;
+    // Anchor pages to downbeats[] when present so bar lines on the score
+    // match musical bars; fall back to "BPM × beats × N" grid otherwise.
+    const downs = (chordData && Array.isArray(chordData.downbeats)) ? chordData.downbeats : null;
+    if (downs && downs.length >= 2) {
+      // If currentTime is BEFORE the first downbeat (intro silence / pickup),
+      // anchor the page at t=0 with synthetic bar grid. Without this, the
+      // page snaps forward to downs[0] (~2.47s) and notes in the [0, downs[0])
+      // window get filtered out — silently disagreeing with the waterfall
+      // which is happily rendering them. Symptom: score shows fewer notes
+      // than waterfall AND lags by exactly the intro length.
+      if (currentTime < downs[0] - 0.01) {
+        // Back the page up to t=0 (or just enough to cover the pickup).
+        const start = 0;
+        // Bar boundaries from t=0 in pageSecs steps until we hit downs[0],
+        // then continue from downs onward. Caller doesn't see bar boundaries
+        // directly — it just needs {start, end}. So just use pageSecs.
+        return { start, end: start + pageSecs };
+      }
+      // Find page-aligned start (every 4th downbeat).
+      let idx = 0;
+      for (let i = 0; i < downs.length; i++) {
+        if (downs[i] > currentTime) { idx = Math.max(0, i - 1); break; }
+        if (i === downs.length - 1) idx = i;
+      }
+      const pageIdx = Math.floor(idx / barsPerPage);
+      const startI = pageIdx * barsPerPage;
+      const endI = Math.min(downs.length - 1, startI + barsPerPage);
+      const start = downs[startI];
+      const end = (endI < downs.length && endI > startI) ? downs[endI] : start + pageSecs;
+      return { start, end };
+    }
+    const pageIdx = Math.floor(Math.max(0, currentTime) / pageSecs);
+    return { start: pageIdx * pageSecs, end: (pageIdx + 1) * pageSecs };
+  }
+
+  function _scoreChordsInRange(range) {
+    const all = (chordData && Array.isArray(chordData.chords)) ? chordData.chords : [];
+    return all.filter(c => +c.time >= range.start - 0.001 && +c.time < range.end - 0.001);
+  }
+
+  function _scoreRenderChordRow(range, chordsInRange) {
+    if (!_scoreChordRowEl) return;
+    _scoreChordRowEl.innerHTML = "";
+    // Position labels using ScoreRender's bar-layout pixel coordinates so
+    // chord labels sit directly above the corresponding notation. Falls back
+    // to percentage-of-container if timeToX isn't available (defensive).
+    const useTimeToX = window.ScoreRender && typeof window.ScoreRender.timeToX === "function";
+    const span = Math.max(0.001, range.end - range.start);
+    for (const c of chordsInRange) {
+      const el = document.createElement("span");
+      el.textContent = c.chord || "";
+      if (useTimeToX) {
+        el.style.left = window.ScoreRender.timeToX(+c.time) + "px";
+      } else {
+        el.style.left = (((+c.time - range.start) / span) * 100) + "%";
+      }
+      _scoreChordRowEl.appendChild(el);
+    }
+  }
+
+  // Apply a fade + slight slide-from-right transition to the score stage and
+  // chord row. Triggered on page flips (range change), not on initial render
+  // or in-place redraws. Cursor is NOT animated — it must reflect the actual
+  // play time immediately. Stage + chord-row briefly mis-align with cursor
+  // during the 220 ms slide; acceptable since the animation is short and the
+  // alternative (animating cursor too) breaks the "this is where the music
+  // is right now" semantics.
+  let _scoreFlipCleanupTimer = null;
+  function _scoreApplyFlipAnimation() {
+    const els = [_scoreStageEl, _scoreChordRowEl].filter(Boolean);
+    if (!els.length) return;
+    // Reset starting state without animating (transition:none).
+    for (const el of els) {
+      el.style.transition = "none";
+      el.style.opacity = "0";
+      el.style.transform = "translateX(28px)";
+    }
+    // Force reflow once so the browser commits the starting state.
+    // eslint-disable-next-line no-unused-expressions
+    els[0].offsetWidth;
+    // Apply the actual transition.
+    for (const el of els) {
+      el.style.transition = "opacity 220ms ease-out, transform 220ms ease-out";
+      el.style.opacity = "1";
+      el.style.transform = "translateX(0)";
+    }
+    // Clear inline transition after settle so future tick-driven cursor
+    // updates aren't accidentally animated.
+    if (_scoreFlipCleanupTimer) clearTimeout(_scoreFlipCleanupTimer);
+    _scoreFlipCleanupTimer = setTimeout(() => {
+      for (const el of els) {
+        el.style.transition = "";
+        // Leave opacity:1 and transform:translateX(0) — they're the steady
+        // state; clearing them risks a flash on the next reset.
+      }
+      _scoreFlipCleanupTimer = null;
+    }, 260);
+  }
+
+  function _scoreRedraw(currentTime) {
+    if (!_scoreLayerEl) return;
+    if (document.body.classList.contains("no-score")) return;
+    if (!window.ScoreRender || !window.Vex || !window.Vex.Flow) return;
+    const t = (typeof currentTime === "number") ? currentTime : ((audio && audio.currentTime) || 0);
+    const range = _scorePageRange(t);
+    const { rh, lh } = _gatherScoreNotes();
+    if ((!rh || rh.length === 0) && (!lh || lh.length === 0)) {
+      // No data → hide layer rather than draw an empty staff.
+      _scoreLayerEl.setAttribute("hidden", "");
+      return;
+    }
+    _scoreLayerEl.removeAttribute("hidden");
+    if (!_scoreInited) {
+      const w = _scoreStageEl ? (_scoreStageEl.clientWidth || 600) : 600;
+      const h = _scoreStageEl ? (_scoreStageEl.clientHeight || 160) : 160;
+      _scoreInited = window.ScoreRender.init(_scoreStageEl, { width: w, height: h });
+      if (!_scoreInited) return;
+    }
+    // Page-flip detection: old range exists AND new range differs. First
+    // render (oldRange.end === 0) is NOT a flip — it's the initial display
+    // and should appear instantly without animation.
+    const oldRange = _scoreCurrentRange;
+    const hadOldRange = oldRange && oldRange.end > 0;
+    const isPageFlip = hadOldRange &&
+      (Math.abs(range.start - oldRange.start) > 0.05 ||
+       Math.abs(range.end - oldRange.end) > 0.05);
+
+    _scoreCurrentRange = range;
+    _scoreRangeDuration = range.end - range.start;
+    const key = (chordData && chordData.key) ? String(chordData.key).replace(/m$/, "") : "C";
+    window.ScoreRender.render({
+      timeRange: range,
+      timeSig: (chordData && chordData.time_signature) || "4/4",
+      key,
+      bpm: (chordData && +chordData.bpm) || 120,
+      rhNotes: rh,
+      lhNotes: lh,
+    });
+    _scoreRenderChordRow(range, _scoreChordsInRange(range));
+    // Cursor: position to current play time immediately (not 0), then force
+    // reflow without transition so it doesn't slide-back / rubber-band.
+    if (_scoreCursorEl) {
+      const cursorX = (window.ScoreRender && typeof window.ScoreRender.timeToX === "function")
+        ? window.ScoreRender.timeToX(t) : 0;
+      _scoreCursorEl.style.transition = "none";
+      _scoreCursorEl.style.transform = "translateX(" + cursorX + "px)";
+      // eslint-disable-next-line no-unused-expressions
+      _scoreCursorEl.offsetWidth;
+      _scoreCursorEl.style.transition = "";
+    }
+    if (isPageFlip) _scoreApplyFlipAnimation();
+  }
+
+  function _updateScore(currentTime) {
+    if (!_scoreLayerEl || document.body.classList.contains("no-score")) return;
+    if (!_scoreInited || !window.ScoreRender) return;
+    if (currentTime < _scoreCurrentRange.start || currentTime >= _scoreCurrentRange.end) {
+      _scoreRedraw(currentTime);
+      return;
+    }
+    // Cursor x is derived from ScoreRender's pre-cached _barLayout — no
+    // getBoundingClientRect() / clientWidth in the hot path.
+    const x = window.ScoreRender.timeToX(currentTime);
+    if (_scoreCursorEl) _scoreCursorEl.style.transform = "translateX(" + x + "px)";
+    // Highlight active chord pill in the chord row.
+    if (_scoreChordRowEl) {
+      const spans = _scoreChordRowEl.children;
+      const all = (chordData && Array.isArray(chordData.chords)) ? chordData.chords : [];
+      const visible = all.filter(c => +c.time >= _scoreCurrentRange.start - 0.001 && +c.time < _scoreCurrentRange.end - 0.001);
+      let activeI = -1;
+      for (let i = 0; i < visible.length; i++) {
+        if (+visible[i].time <= currentTime + 1e-3) activeI = i;
+      }
+      for (let i = 0; i < spans.length; i++) {
+        spans[i].setAttribute("data-active", i === activeI ? "true" : "false");
+      }
+    }
+  }
+
+  function _applyScoreVisibility() {
+    if (!_scoreLayerEl) return;
+    const eligible = document.body.classList.contains("score-eligible");
+    const shouldShow = eligible && _showScore;
+    document.body.classList.toggle("no-score", !shouldShow);
+    if (shouldShow) {
+      _scoreRedraw();
+    } else if (_scoreInited && window.ScoreRender) {
+      // Tear down so hidden state doesn't leak memory.
+      window.ScoreRender.destroy();
+      _scoreInited = false;
+      // Reset the range so the next render() (when score becomes visible
+      // again) is treated as a first render rather than a page flip — we
+      // want the score to appear instantly on toggle/re-eligible, not slide.
+      _scoreCurrentRange = { start: 0, end: 0 };
+    }
+    const lab = document.getElementById("btnToggleScoreLabel");
+    if (lab) {
+      const key = _showScore ? "player.tools.score_on" : "player.tools.score_off";
+      lab.textContent = (window.LiveChordI18n ? window.LiveChordI18n.t(key) : key) || (_showScore ? "Score: On" : "Score: Off");
+      if (lab.textContent === key) lab.textContent = _showScore ? "Score: On" : "Score: Off";
+    }
+    const btn = document.getElementById("btnToggleScore");
+    if (btn) btn.setAttribute("aria-pressed", _showScore ? "true" : "false");
+  }
+
+  function _recomputeScoreEligible() {
+    if (!_pianoWaterfallViewEl) return;
+    const w = _pianoWaterfallViewEl.getBoundingClientRect().width;
+    const h = window.innerHeight;
+    // Overview-mode no longer gates score visibility — on PC the chord
+    // ribbon (overview or card) and the waterfall are side-by-side, so
+    // the waterfall area's own width remains the only meaningful gate.
+    // The earlier rationale ("overview = song-overview, no need for
+    // score") was rejected by the user after seeing overview + score
+    // coexist comfortably side-by-side at 50/50 split.
+    const eligible = (w >= SCORE_MIN_WIDTH) && (h >= SCORE_MIN_HEIGHT) &&
+                     activeTab === "piano";
+    document.body.classList.toggle("score-eligible", eligible);
+    _applyScoreVisibility();
+  }
+
+  // ResizeObserver on the waterfall wrapper — reacts to ribbon collapse,
+  // window resize, and tab switches (since piano tab is the only active host).
+  if (typeof ResizeObserver !== "undefined" && _pianoWaterfallViewEl) {
+    try { new ResizeObserver(_recomputeScoreEligible).observe(_pianoWaterfallViewEl); } catch (_) {}
+  }
+  window.addEventListener("resize", _recomputeScoreEligible);
+
+  const btnToggleScore = $("#btnToggleScore");
+  if (btnToggleScore) {
+    btnToggleScore.addEventListener("click", () => {
+      _showScore = !_showScore;
+      try { localStorage.setItem("livechord_show_score", _showScore ? "true" : "false"); } catch (_) {}
+      _applyScoreVisibility();
+    });
+  }
+  document.addEventListener("livechord:langchange", _applyScoreVisibility);
+  document.addEventListener("livechord:i18nready",  _applyScoreVisibility);
+  // Initial gate — runs once layout is settled.
+  setTimeout(_recomputeScoreEligible, 0);
 
   const _arrangerSplitButtons = {
     down: $("#btnArrangerSplitDown"),
