@@ -1079,6 +1079,17 @@
     const grid = $("#historyGrid");
     const recentContainer = $("#betaRecentList");
     const recentSection = $("#secBetaRecent");
+    // Public-mode logged-out visitor: skip entirely. The marketing landing
+    // path hides #secBetaRecent on purpose, but _loadBetaHistory's "if data
+    // exists, un-hide it" branch (below) used to override that — leaking
+    // the browser's anonymous upload history (keyed by X-Anon-Id) onto the
+    // marketing landing. Worse on shared devices: prior anon visitor's
+    // uploads would surface to the next visitor sharing the browser profile.
+    if (_isPublicMode && !localStorage.getItem("livechord_token")) {
+      if (recentContainer) recentContainer.innerHTML = "";
+      if (recentSection) recentSection.style.display = "none";
+      return;
+    }
     try {
       const res = await fetch("/api/process/my-history?limit=30");
       if (!res.ok) return;
