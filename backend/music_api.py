@@ -112,18 +112,45 @@ def _find_cover(filepath: str) -> Optional[str]:
     return None
 
 
+def _extract_embedded_cover(filepath: str):
+    """回傳 (data, mime) 或 None — 支援 flac / mp3 (ID3 APIC) / ogg (METADATA_BLOCK_PICTURE)"""
+    ext = os.path.splitext(filepath)[1].lower()
+    try:
+        if ext == ".flac":
+            audio = FLAC(filepath)
+            if audio.pictures:
+                pic = audio.pictures[0]
+                return pic.data, pic.mime or "image/jpeg"
+        elif ext == ".mp3":
+            from mutagen.id3 import ID3, ID3NoHeaderError
+            try:
+                tags = ID3(filepath)
+            except ID3NoHeaderError:
+                return None
+            apics = tags.getall("APIC")
+            if apics:
+                pic = apics[0]
+                return pic.data, pic.mime or "image/jpeg"
+        elif ext == ".ogg":
+            from mutagen.oggvorbis import OggVorbis
+            from mutagen.flac import Picture
+            import base64
+            audio = OggVorbis(filepath)
+            b64s = audio.get("metadata_block_picture", [])
+            if b64s:
+                pic = Picture(base64.b64decode(b64s[0]))
+                return pic.data, pic.mime or "image/jpeg"
+        # wav 內嵌封面極少見，先不支援
+    except Exception:
+        pass
+    return None
+
+
 def _has_cover(filepath: str) -> bool:
-    """檢查是否有封面（檔案或內嵌）"""
+    """檢查是否有封面（同目錄檔案或內嵌）"""
     if _find_cover(filepath):
         return True
-    # TODO: mp3 ID3 APIC / ogg METADATA_BLOCK_PICTURE — follow-up
-    if filepath.lower().endswith(".flac"):
-        try:
-            audio = FLAC(filepath)
-            return bool(audio.pictures)
-        except Exception:
-            pass
-    return False
+    return _extract_embedded_cover(filepath) is not None
 
 
 from chord_cache import get_chord_summary as _get_chord_summary, song_hash, chord_file_for
@@ -472,7 +499,7 @@ def track_stream(request: Request, path: str = Query(...)):
 
 @router.get("/track/cover")
 def track_cover(path: str = Query(...)):
-    """取得專輯封面（優先同目錄 cover.jpg，fallback FLAC 內嵌圖片）"""
+    """取得專輯封面（優先同目錄 cover.jpg，fallback 內嵌封面 flac/mp3/ogg）"""
     full = _safe_path(resolve_path(path))
 
     # 1. 找同目錄的 cover.jpg
@@ -492,19 +519,16 @@ def track_cover(path: str = Query(...)):
     if cover:
         return FileResponse(cover, media_type="image/jpeg")
 
-    # 2. 從 FLAC 內嵌圖片提取
-    if os.path.isfile(full) and full.lower().endswith(".flac"):
-        try:
-            audio = FLAC(full)
-            if audio.pictures:
-                pic = audio.pictures[0]
-                return Response(
-                    content=pic.data,
-                    media_type=pic.mime or "image/jpeg",
-                    headers={"Cache-Control": "public, max-age=86400"},
-                )
-        except Exception:
-            pass
+    # 2. 從音檔內嵌封面提取
+    if os.path.isfile(full):
+        result = _extract_embedded_cover(full)
+        if result is not None:
+            data, mime = result
+            return Response(
+                content=data,
+                media_type=mime,
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
 
     raise HTTPException(status_code=404, detail="無封面圖片")
 
