@@ -1940,6 +1940,17 @@
     resizeHandle.addEventListener("pointerup", () => {
       _resizing = false;
       localStorage.setItem("livechord_ribbon_width", chordRibbonPanel.offsetWidth);
+      // Belt-and-braces relayout: chordDisplay88's ResizeObserver is debounced
+      // 100 ms, which can race the next paint after drag-end — leaving the
+      // waterfall buffer at pre-drag dimensions for a frame or two. Trigger an
+      // immediate sync for the piano tab; other tabs handle sizing per frame.
+      if (typeof activeTab !== "undefined" && activeTab === "piano") {
+        try {
+          _init88Piano();
+          _resizeWaterfall();
+          update88Piano(audio.currentTime || 0);
+        } catch (_) { /* swallow — observer + RAF will recover next tick */ }
+      }
     });
     resizeHandle.addEventListener("pointercancel", () => { _resizing = false; });
 
@@ -2576,13 +2587,15 @@
   function _get88PianoMaxWidth() {
     const container = chordDisplay88 || pianoWaterfallView;
     const w = (container && container.clientWidth) || 800;
-    // The .chord-88-keys CSS reserves min-height 200px specifically so the
-    // keyboard can render at full ratio. Cap key height so the cache + canvas
-    // never exceed that container — overshooting was the root cause of the
-    // "keyboard clipped, highlights spill above keys" bug. Bevel (~6%) +
-    // label strip (16px) eat ~22px of the container, leave 24px buffer.
-    const reservedH = 178; // 200 - 22
-    return Math.min(w, Math.round(reservedH / 5.1 * 52));  // 15% shorter keys
+    // Derive keyboard height share from actual container height instead of
+    // a hardcoded 178. The old constant capped width at ~1814 CSS px
+    // regardless of container, producing blank L/R margins at waterfall 100%.
+    // Floor 178 preserves the original min-height-200 clipping guarantee on
+    // narrow panels; ceiling 280 stops a 4K-tall container from making the
+    // keyboard visually dominate the waterfall (kh = kw*6).
+    const containerH = (container && container.clientHeight) || 200;
+    const reservedH = Math.max(178, Math.min(280, Math.round(containerH * 0.3)));
+    return Math.min(w, Math.round(reservedH / 5.1 * 52));
   }
 
   // var (not let) — _init88Piano is called from _switchTab during boot before

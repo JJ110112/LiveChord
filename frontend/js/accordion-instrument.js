@@ -542,6 +542,12 @@ class AccordionInstrument {
     const maxPianoH = Math.round(H * 0.25);
     const pianoH = Math.min(cache.totalH, maxPianoH);
     const waterfallH = H - pianoH;
+    // Cache is built at intrinsic totalH (~300 px) but drawn into pianoH
+    // (~100 px). Active-key highlight rects must shrink to match — otherwise
+    // they extend above the keyboard band into the waterfall area.
+    const _scaleY = pianoH / cache.totalH;
+    const dispKh = cache.keyH  * _scaleY;
+    const dispBh = cache.bKeyH * _scaleY;
 
     if (waterfallH < 20) {
       // Not enough space for waterfall, just draw the keyboard
@@ -752,10 +758,9 @@ class AccordionInstrument {
     ctx.drawImage(cache.canvas, 0, 0, cache.canvas.width, cache.canvas.height,
                   0, waterfallH, W, pianoH);
 
-    // Highlight active keys on the keyboard
+    // Highlight active keys on the keyboard. Use dispKh / dispBh (display-
+    // scaled key heights) so rects match the squashed visible band.
     if (activeKeys.size > 0) {
-      const kh = cache.keyH;
-      const bh = cache.bKeyH;
       const RH_COLOR = "rgba(255, 152, 0, 0.9)";
 
       // Pass 1: White key highlights
@@ -766,20 +771,20 @@ class AccordionInstrument {
         ctx.globalAlpha = 0.9;
         ctx.fillStyle = RH_COLOR;
         ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(wk.x + 0.5, waterfallH + 0.5, wk.w - 1, kh - 1, [0, 0, 4, 4]);
-        else ctx.rect(wk.x + 0.5, waterfallH + 0.5, wk.w - 1, kh - 1);
+        if (ctx.roundRect) ctx.roundRect(wk.x + 0.5, waterfallH + 0.5, wk.w - 1, dispKh - 1, [0, 0, 4, 4]);
+        else ctx.rect(wk.x + 0.5, waterfallH + 0.5, wk.w - 1, dispKh - 1);
         ctx.fill();
         // Top wash for 3D
-        const topWash = ctx.createLinearGradient(0, waterfallH, 0, waterfallH + kh * 0.5);
+        const topWash = ctx.createLinearGradient(0, waterfallH, 0, waterfallH + dispKh * 0.5);
         topWash.addColorStop(0, "rgba(255,255,255,0.25)");
         topWash.addColorStop(1, "rgba(255,255,255,0)");
         ctx.fillStyle = topWash;
-        ctx.fillRect(wk.x + 0.5, waterfallH + 0.5, wk.w - 1, kh * 0.5);
+        ctx.fillRect(wk.x + 0.5, waterfallH + 0.5, wk.w - 1, dispKh * 0.5);
         // Bottom glow
         ctx.shadowColor = RH_COLOR;
         ctx.shadowBlur = 15;
         ctx.fillStyle = RH_COLOR;
-        ctx.fillRect(wk.x + 2, waterfallH + kh - 6, wk.w - 4, 6);
+        ctx.fillRect(wk.x + 2, waterfallH + dispKh - 6, wk.w - 4, 6);
         ctx.restore();
       }
 
@@ -792,7 +797,7 @@ class AccordionInstrument {
       for (const m in cache.blackXs) {
         const bk = cache.blackXs[m];
         ctx.fillStyle = "#1a1a1a";
-        ctx.fillRect(bk.x - 1, waterfallH, bk.w + 2, bh + 4);
+        ctx.fillRect(bk.x - 1, waterfallH, bk.w + 2, dispBh + 4);
       }
       ctx.save();
       ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
@@ -801,9 +806,9 @@ class AccordionInstrument {
       for (const m in cache.blackXs) {
         const bk = cache.blackXs[m];
         ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(bk.x, waterfallH, bk.w, bh, [0, 0, 3, 3]);
-        else ctx.rect(bk.x, waterfallH, bk.w, bh);
-        const bgGrad = ctx.createLinearGradient(bk.x, waterfallH, bk.x, waterfallH + bh);
+        if (ctx.roundRect) ctx.roundRect(bk.x, waterfallH, bk.w, dispBh, [0, 0, 3, 3]);
+        else ctx.rect(bk.x, waterfallH, bk.w, dispBh);
+        const bgGrad = ctx.createLinearGradient(bk.x, waterfallH, bk.x, waterfallH + dispBh);
         bgGrad.addColorStop(0, "#111");
         bgGrad.addColorStop(1, "#2a2a2a");
         ctx.fillStyle = bgGrad;
@@ -819,20 +824,20 @@ class AccordionInstrument {
         ctx.globalAlpha = 0.9;
         ctx.fillStyle = RH_COLOR;
         ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(bk.x, waterfallH, bk.w, bh, [0, 0, 3, 3]);
-        else ctx.rect(bk.x, waterfallH, bk.w, bh);
+        if (ctx.roundRect) ctx.roundRect(bk.x, waterfallH, bk.w, dispBh, [0, 0, 3, 3]);
+        else ctx.rect(bk.x, waterfallH, bk.w, dispBh);
         ctx.fill();
         // Glossy highlight
-        const hlGrad = ctx.createLinearGradient(bk.x, waterfallH, bk.x, waterfallH + bh * 0.3);
+        const hlGrad = ctx.createLinearGradient(bk.x, waterfallH, bk.x, waterfallH + dispBh * 0.3);
         hlGrad.addColorStop(0, "rgba(255,255,255,0.3)");
         hlGrad.addColorStop(1, "rgba(255,255,255,0)");
         ctx.fillStyle = hlGrad;
-        ctx.fillRect(bk.x + bk.w * 0.1, waterfallH, bk.w * 0.8, bh * 0.3);
+        ctx.fillRect(bk.x + bk.w * 0.1, waterfallH, bk.w * 0.8, dispBh * 0.3);
         // Bottom glow
         ctx.shadowColor = RH_COLOR;
         ctx.shadowBlur = 12;
         ctx.fillStyle = RH_COLOR;
-        ctx.fillRect(bk.x + 1, waterfallH + bh - 4, bk.w - 2, 4);
+        ctx.fillRect(bk.x + 1, waterfallH + dispBh - 4, bk.w - 2, 4);
         ctx.restore();
       }
     }

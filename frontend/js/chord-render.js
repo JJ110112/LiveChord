@@ -735,8 +735,8 @@ const ChordRender = {
     const bw = kw * 0.48;
     const bh = kh * 0.62;
     const bevelH = Math.round(kh * 0.06);
-    const labelSpace = 16;
-    const totalH = kh + bevelH + labelSpace;
+    const labelSpace = 0;
+    const totalH = kh + bevelH;
 
     const c = document.createElement("canvas");
     c.width = Math.round(width * dpr);
@@ -831,26 +831,24 @@ const ChordRender = {
     const whiteXs = {};
     for (let i = 0; i < nw; i++) whiteXs[whites[i]] = { x: i * kw, w: kw - 1, h: kh };
 
-    // Octave labels (C2, C3, C4, C5, C6) for all C notes in range
-    ctx.fillStyle = "#666";
-    ctx.font = `${Math.max(9, Math.min(11, kw * 0.9))}px sans-serif`;
+    // Octave labels — inside white-key tops, matching init88PianoCache style.
+    // Unified across every keyboard instrument (piano / arranger / accordion).
+    // C4 stays bold + dark as the "you are here" anchor; other Cs are faint
+    // guide markers. Old below-bevel labels + cyan middle-C tick removed.
     ctx.textAlign = "center";
-    for (let oct = 1; oct <= 8; oct++) {
+    ctx.textBaseline = "alphabetic";
+    const _labelSize = Math.max(7, Math.min(9, kw * 0.42));
+    const _labelY = _labelSize + 3;
+    const _labelXFrac = 0.38;
+    for (let oct = 0; oct <= 8; oct++) {
       const midi = oct * 12 + 12;
       if (midi < MIDI_LO || midi > MIDI_HI) continue;
       const info = whiteXs[midi];
       if (!info) continue;
-      ctx.fillText("C" + oct, info.x + (info.w / 2), kh + bevelH + 13);
-    }
-    // Middle-C marker if in range
-    const c4 = whiteXs[60];
-    if (c4) {
-      ctx.strokeStyle = "rgba(41, 182, 246, 0.6)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(c4.x + c4.w / 2, kh + bevelH - 3);
-      ctx.lineTo(c4.x + c4.w / 2, kh + bevelH + 2);
-      ctx.stroke();
+      const isMiddleC = midi === 60;
+      ctx.fillStyle = isMiddleC ? "#1a1a1a" : "#aaaaaa";
+      ctx.font = `${isMiddleC ? 800 : 500} ${_labelSize}px "Inter", system-ui, sans-serif`;
+      ctx.fillText("C" + oct, info.x + info.w * _labelXFrac, _labelY);
     }
 
     return { canvas: c, whiteXs, blackXs, keyW: kw, keyH: kh, bKeyW: bw, bKeyH: bh, bevelH, totalH, midiLo: MIDI_LO, midiHi: MIDI_HI };
