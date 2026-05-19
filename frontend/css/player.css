@@ -1585,6 +1585,8 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   align-items: stretch;
   min-width: 280px;
   max-width: min(360px, 92vw);
+  max-height: min(560px, calc(100vh - 72px));
+  overflow-y: auto;
   white-space: normal;
   gap: 0;
   /* Match every other .tb-popup-btn at 13px so the gear popup doesn't
@@ -1612,6 +1614,8 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   align-items: center;
   justify-content: space-between;
   width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
   text-align: left;
   font: inherit;
   font-size: 0.95em;
@@ -3475,6 +3479,16 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   color: var(--text, #fff);
   font-size: 13px;
   margin-bottom: 10px;
+}
+.bug-input option {
+  background: var(--bg);
+  color: var(--text);
+}
+.bug-input optgroup {
+  background: var(--bg);
+  color: var(--text-dim);
+  font-weight: 600;
+  font-style: normal;
 }
 
 /* YT fallback panel — Type B modal (composes .lc-modal-backdrop + .lc-modal).

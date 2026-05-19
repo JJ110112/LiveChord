@@ -8423,6 +8423,8 @@
     const bugCat = $("#bugCategory");
     const btnBugSubmit = $("#btnBugSubmit");
     const btnBugCancel = $("#btnBugCancel");
+    const btnBugClose = $("#btnBugClose");
+    const btnReportProblemSettings = $("#btnReportProblemSettings");
 
     let _betaRating = 0;
     let _betaMode = false;
@@ -8509,18 +8511,31 @@
       });
     }
 
+    function _closeBugDialog() {
+      if (bugDialog) bugDialog.style.display = "none";
+    }
+
+    function _openBugDialog() {
+      document.querySelectorAll(".tb-item.open").forEach(i => i.classList.remove("open"));
+      if (window.LiveChordAuth && window.LiveChordAuth.isAnonymous && window.LiveChordAuth.isAnonymous()) {
+        showToast(_t("toast.login_required.bug"));
+        return;
+      }
+      if (bugDialog) bugDialog.style.display = "flex";
+    }
+
     // Bug report — close any open toolbar popup first so the bug modal isn't
     // sandwiched under a leftover Tools / AI teaching popup.
-    if (btnBug) {
-      btnBug.addEventListener("click", () => {
-        document.querySelectorAll(".tb-item.open").forEach(i => i.classList.remove("open"));
-        if (bugDialog) bugDialog.style.display = "flex";
-      });
-    }
+    if (btnBug) btnBug.addEventListener("click", _openBugDialog);
+    if (btnReportProblemSettings) btnReportProblemSettings.addEventListener("click", _openBugDialog);
     if (btnBugSubmit) {
       btnBugSubmit.addEventListener("click", async () => {
         const desc = bugDesc ? bugDesc.value.trim() : "";
         if (!desc) { showToast(_t("toast.bug.describe_first")); return; }
+        if (window.LiveChordAuth && window.LiveChordAuth.isAnonymous && window.LiveChordAuth.isAnonymous()) {
+          showToast(_t("toast.login_required.bug"));
+          return;
+        }
         try {
           const cat = bugCat ? bugCat.value : "other";
           const info = navigator.userAgent;
@@ -8532,10 +8547,19 @@
       });
     }
     if (btnBugCancel) {
-      btnBugCancel.addEventListener("click", () => {
-        if (bugDialog) bugDialog.style.display = "none";
+      btnBugCancel.addEventListener("click", _closeBugDialog);
+    }
+    if (btnBugClose) btnBugClose.addEventListener("click", _closeBugDialog);
+    if (bugDialog) {
+      bugDialog.addEventListener("click", (e) => {
+        if (e.target === bugDialog) _closeBugDialog();
       });
     }
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && bugDialog && bugDialog.style.display !== "none") {
+        _closeBugDialog();
+      }
+    });
   })();
 
   // Phrase / section labels follow the global LiveChordI18n picker. Listen

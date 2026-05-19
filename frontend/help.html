@@ -14,9 +14,9 @@
   <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <script src="/js/auth.js?v=6"></script>
-  <script src="/js/i18n.js?v=50"></script>
+  <script src="/js/i18n.js?v=51"></script>
   <link rel="stylesheet" href="/css/base.css?v=5">
-  <link rel="stylesheet" href="/css/help.css?v=6">
+  <link rel="stylesheet" href="/css/help.css?v=7">
 <script src="/js/analytics.js?v=3"></script>
 </head>
 <body class="help-body">
@@ -222,9 +222,12 @@
           <summary data-i18n="help.q.ios_install">How do I install it as an iOS app?</summary>
           <p data-i18n="help.a.ios_install">Open the home page in Safari → tap the Share button at the bottom → 'Add to Home Screen' → 'Add'. Launching from the home-screen icon will open in standalone fullscreen mode.</p>
         </details>
-        <details class="help-q">
+        <details class="help-q" id="report-bug">
           <summary data-i18n="help.q.report_bug">How do I report a bug?</summary>
-          <p data-i18n="help.a.report_bug">After signing in, tap '🐞 Report a problem' in the player's bottom toolbar, or email hiteacherwu@gmail.com directly. Please include the song link and the specific behaviour you saw.</p>
+          <p data-i18n="help.a.report_bug">In the player, open Settings ⚙ → Report a problem. You can also email hiteacherwu@gmail.com directly. Please include the song link and the specific behaviour you saw.</p>
+          <p class="help-action-row">
+            <a class="help-action-btn" href="mailto:hiteacherwu@gmail.com?subject=LiveChord%20bug%20report" data-i18n="help.report_bug.email_cta">Email a report</a>
+          </p>
         </details>
       </div>
     </details>

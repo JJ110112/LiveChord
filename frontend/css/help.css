@@ -162,6 +162,28 @@
   font-size: 0.95rem;
   line-height: 1.7;
 }
+.help-action-row {
+  padding-top: 0 !important;
+}
+.help-action-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.help-action-btn:hover,
+.help-action-btn:focus-visible {
+  background: var(--accent-dim);
+  color: #fff;
+  text-decoration: none;
+  outline: none;
+}
 
 .help-empty {
   text-align: center;
