@@ -47,7 +47,7 @@
        Authorization for logged-in users, mode-aware 401 handling. Replaces
        the inline blind-redirect block. Must load synchronously before any
        other /api/ call. -->
-  <script src="/js/auth.js?v=6"></script>
+  <script src="/js/auth.js?v=7"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
   <script src="/js/i18n.js?v=52"></script>
@@ -633,6 +633,11 @@
       // guest dashboard. Sign-in is still reachable via the intro CTA on
       // that page; users who pick guest can re-set the ack from /login.
       localStorage.removeItem("livechord_guest_acked");
+      // Rotate the anonymous browser id. Without this, the next anonymous
+      // visitor on this same browser inherits the previous user's anon
+      // identity and would see their anonymous upload history. Bit us once
+      // on a classroom demo where students used the guest flow afterwards.
+      try { window.LiveChordAuth && window.LiveChordAuth.rotateAnonId(); } catch (_) {}
       // All modes go to / on logout — public/beta show the marketing
       // landing for logged-out users; personal falls back to LAN bypass.
       window.location.href = "/";
@@ -704,6 +709,6 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 }
 </script>
 
-<script src="/js/app.js?v=127"></script>
+<script src="/js/app.js?v=128"></script>
 </body>
 </html>

@@ -52,6 +52,18 @@
     return id;
   }
 
+  // Drop the persisted anonymous id so the next getAnonId() mints a fresh
+  // one. Call on logout: the anon_id otherwise persists across logout, so a
+  // logged-in user demoing the site → logging out → handing the browser to
+  // someone else (e.g. classroom demo) would have the next anonymous visitor
+  // inherit the previous anon identity — and see their anonymous upload
+  // history at the /api/process/my-history endpoint. Same hazard when one
+  // person logs out and a different account logs in: their post-logout
+  // anonymous browsing still rides the previous user's anon_id until rotated.
+  function rotateAnonId() {
+    try { localStorage.removeItem(ANON_KEY); } catch (_) {}
+  }
+
   function getModeHint() {
     return localStorage.getItem(MODE_HINT_KEY) || "unknown";
   }
@@ -237,6 +249,7 @@
   // Expose for callers (rating prompts, etc.)
   window.LiveChordAuth = {
     getAnonId,
+    rotateAnonId,
     // In personal mode there is no anonymous-user concept: LAN clients are
     // auto-admin via the backend's LAN bypass (auth_api.get_current_user),
     // and non-LAN callers without a token will be redirected to /login by
