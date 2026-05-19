@@ -242,7 +242,9 @@
   padding: 22px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--panel);
+  background: var(--lc-popup-bg, var(--bg));
+  backdrop-filter: var(--lc-popup-blur, none);
+  -webkit-backdrop-filter: var(--lc-popup-blur, none);
   color: var(--text);
   box-shadow: 0 18px 50px rgba(0,0,0,0.32);
 }
