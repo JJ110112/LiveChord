@@ -282,7 +282,10 @@
       for (const p of points) {
         if (!unique.length || Math.abs(p - unique[unique.length - 1]) > 0.01) unique.push(p);
       }
-      if (unique.length >= 2) {
+      // Use explicit downbeats only when at least one usable bar line sits
+      // inside the current page. Empty downbeats must fall back to the
+      // uniform meter grid instead of turning the whole page into one bar.
+      if (unique.length > 2) {
         const windows = [];
         for (let i = 0; i < unique.length - 1; i++) {
           if (unique[i + 1] > unique[i] + 0.05) windows.push({ start: unique[i], end: unique[i + 1] });
