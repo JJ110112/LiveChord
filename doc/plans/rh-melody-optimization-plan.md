@@ -20,10 +20,12 @@ The frontend labels this event stream as RH melody because it is rendered and pl
 | Instrumental song or strong solo | Often follows instrument lead |
 | Backing vocals, high accompaniment, piano right hand, guitar riff, duet, dense harmony | Can jump to the wrong line |
 
-The optimization goal is not "replace pYIN with Basic Pitch" or "always use vocals". The goal is a **source-aware melody resolver** that:
+The optimization goal is not "replace pYIN with one neural model" or "always use vocals". The goal is a **source-aware melody resolver** that:
 
 1. First, classifies the song into a small set of song types (vocal pop, solo piano, jazz/multi-solo, MR/karaoke, ambient/no-lead, mixed-section)
-2. Routes each song type to an extractor path designed for that type
+2. Routes each song type to an extractor path designed for that type, with two explicit algorithm families added to cover pYIN's weakest cases:
+   - **Vocal-led**: FTANet-style singing melody extraction (CFP feature + frequency-temporal attention) on full mix and/or vocal stem
+   - **Solo piano**: polyphonic piano transcription (88-key onset/offset/frame/velocity) followed by RH/top-line selection
 3. Keeps the existing full-mix pYIN path as a guaranteed fallback
 4. Exposes enough metadata that the UI and admin tools can see what source was selected, and is allowed to return "no melody" as a confident outcome
 
@@ -57,7 +59,7 @@ RH melody should mean:
 3. For instrumental songs: the dominant lead line for that song's structure (see §3.1).
 4. A stable single melodic line, not a dense transcription of every high voice.
 5. **An empty result is allowed and is a valid resolver outcome** for ambient / drone / pure-percussion / jam tracks that have no playable RH line.
-6. A transparent source selection, so the UI and debugging tools can distinguish `full_mix_pyin`, `vocal_stem`, `solo_piano_polyphonic`, `instrument_lead`, `midi_aligned`, and fallback results.
+6. A transparent source selection, so the UI and debugging tools can distinguish `full_mix_pyin`, `vocal_lead_ftanet`, `vocal_stem_pyin`, `solo_piano_polyphonic`, `instrument_lead`, `midi_aligned`, and fallback results.
 
 ### 3.1 Instrumental is not a single category
 
@@ -79,7 +81,7 @@ Non-goals:
 |---|---|
 | Treat RH melody as a literal "right-hand instrument stem" | Most source audio is mixed commercial audio and has no RH stem |
 | Always use vocals | Many user songs are instrumental, and even vocal songs have piano/guitar intros |
-| Directly promote Basic Pitch V2 as a universal replacement | Prior shadow analysis showed polyphonic extras are architectural for vocal songs; but Basic Pitch is the **right tool for solo piano** specifically (its polyphony is a feature, not a bug, when paired with top-voice post-filtering) |
+| Directly promote Basic Pitch V2 as a universal replacement | Prior shadow analysis showed polyphonic extras are architectural for vocal songs. Piano needs a dedicated **polyphonic piano transcription** route, not generic monophonic F0; the model may be Basic Pitch-like, ByteDance/Melodfy-like, or another evaluated piano transcriber, but it must feed a top-line selector |
 | Break existing `V:\data\melodies` cache | Current user-visible behavior must remain available as fallback |
 | **Section-aware source switching in v1** | Section detection is currently on the rule-based fallback path for ~82% of the library; building section-aware melody routing on top of unreliable section data invites compound failure. Listed as future scope, see §11. |
 
@@ -105,16 +107,17 @@ Candidate priority is **type-specific**, not universal. The single global ladder
 
 | Priority | Candidate | Source |
 |---:|---|---|
-| 1 | `midi_aligned` | Curated MIDI (rare for vocal — usually a fallback miss) |
-| 2 | `vocal_stem_f0` | Demucs vocals + pitch tracker (pYIN or RMVPE if approved) |
-| 3 | `full_mix_pyin` | Existing baseline |
+| 1 | `vocal_lead_ftanet` | FTANet-style singing melody extraction on full mix and/or Demucs vocal stem |
+| 2 | `midi_aligned` | Curated MIDI (rare for vocal - usually a fallback miss) |
+| 3 | `vocal_stem_pyin` | Demucs vocals + pYIN as cheap backup if FTANet candidate is unavailable |
+| 4 | `full_mix_pyin` | Existing baseline |
 
 **Solo piano** (classical, jazz piano, lo-fi piano):
 
 | Priority | Candidate | Source |
 |---:|---|---|
-| 1 | `midi_aligned` | Curated MIDI — high hit rate for this sub-type |
-| 2 | `solo_piano_polyphonic` | Basic Pitch + top-voice-over-time post-filter |
+| 1 | `midi_aligned` | Curated MIDI - high hit rate for this sub-type |
+| 2 | `solo_piano_polyphonic` | Piano-transcription model + RH/top-line post-filter |
 | 3 | `full_mix_pyin` | Fallback only — known to fail on polyphonic piano |
 
 **Instrumental solo** (jazz combo, fingerstyle, sax/guitar lead):
@@ -122,7 +125,7 @@ Candidate priority is **type-specific**, not universal. The single global ladder
 | Priority | Candidate | Source |
 |---:|---|---|
 | 1 | `midi_aligned` | If available |
-| 2 | `instrument_lead` | Demucs `other` stem + pYIN (only if Demucs precompute is committed; see §4.2) |
+| 2 | `instrument_lead` | Demucs `other` stem + pYIN (only if Demucs precompute is committed; see §4.3) |
 | 3 | `full_mix_pyin` | Fallback |
 
 **MR / karaoke**:
@@ -143,18 +146,102 @@ Candidate priority is **type-specific**, not universal. The single global ladder
 |---|---|
 | `full_mix_pyin` | Conservative fallback |
 
-### 4.2 `instrument_lead` honesty clause
+### 4.2 Two algorithm families that fill the pYIN gap
+
+This revision makes the two non-pYIN paths explicit. They are not generic "better pitch trackers"; each solves a specific failure class found in RH melody extraction.
+
+#### 4.2.1 Vocal-led extraction: FTANet-style singing melody model
+
+Reference algorithm: `yushuai/FTANet-melodic`, based on "Frequency-Temporal Attention Network for Singing Melody Extraction" (ICASSP 2021).
+
+Intended LiveChord candidate:
+
+```text
+full mix and/or Demucs vocals stem
+-> CFP feature extraction
+   -> spectrum channel
+   -> generalized cepstrum channel
+   -> generalized cepstrum of spectrum channel
+-> frequency-temporal attention model
+-> per-frame pitch-bin distribution with unvoiced bin
+-> F0 curve
+-> vocal note segmentation + vibrato smoothing
+-> `vocal_lead_ftanet` candidate
+```
+
+Operational details:
+
+| Detail | Decision |
+|---|---|
+| Input sample rate | Evaluate the FTANet paper/repo setting first: 8 kHz |
+| CFP settings | Start with the repo's reproducibility note: window 768, hop 80, 60 bins/octave |
+| Pitch range | Vocal route starts with 31-1250 Hz, matching the vocal-mode CFP range in the reference code |
+| Input variants | Generate both `full_mix_ftanet` and `vocal_stem_ftanet` during shadow if runtime allows |
+| Final exported candidate id | Resolver-facing id remains `vocal_lead_ftanet`; metadata records whether full mix or vocal stem won |
+| Post-processing | Smooth vibrato into teachable notes, preserve phrase bends only as metadata, and reject extremely short voiced islands |
+| Confidence | Use model peak probability, voiced coverage, continuity, and agreement with vocal stem energy |
+
+Why this fills a real gap:
+
+- pYIN tracks the most stable monophonic F0, which may be backing vocal, guitar, piano, or bass.
+- FTANet-style models are trained for singing melody extraction and use frequency-temporal attention to follow the vocal melody source through accompaniment.
+- Running both full-mix and vocal-stem variants lets the resolver catch Demucs artifacts: stem extraction can clarify the voice, but it can also create edge noise and false voicing.
+
+This route is PC/precompute-first. It must not run in the NUC request path until runtime is measured and cache reads are proven file-speed.
+
+#### 4.2.2 Solo piano extraction: polyphonic piano transcription + RH/top-line selection
+
+Reference algorithm family: Melodfy's underlying direction, i.e. ByteDance/qiuqiangkong high-resolution piano transcription, not Melodfy's GUI wrapper.
+
+Intended LiveChord candidate:
+
+```text
+solo piano audio
+-> piano transcription model
+   -> 88-key onset probability
+   -> 88-key offset probability
+   -> 88-key frame probability
+   -> velocity
+   -> optional pedal
+-> polyphonic note events
+-> LH/RH split + top-line selection
+-> accompaniment/arpeggio suppression
+-> `solo_piano_polyphonic` candidate
+```
+
+Operational details:
+
+| Detail | Decision |
+|---|---|
+| Model target | 88-key polyphonic note transcription, not monophonic F0 |
+| Output retained | Keep full polyphonic note events for debug; export only selected RH/top-line as melody candidate |
+| Top-line selector | Prefer sustained/high-salience upper voice, not simply the highest note at every frame |
+| Arpeggio handling | Detect fast broken-chord patterns and avoid turning every highest arpeggio point into melody |
+| LH/RH split | Use range, hand-crossing tolerance, onset grouping, duration, and voice-leading continuity |
+| Pedal/overlap handling | Treat pedal-blurred harmony as texture unless an upper voice is stable across phrase time |
+| Confidence | Combine onset strength, duration salience, phrase continuity, density, and distance from LH/bass region |
+
+Why this fills a real gap:
+
+- Solo piano is polyphonic by definition; a monophonic tracker collapses multiple voices into one unstable F0 path.
+- A piano transcriber can recover simultaneous notes first, then the resolver can choose the teachable top line.
+- The "melody" target is not all right-hand notes. It is a pedagogical RH lead line extracted from the polyphonic transcription.
+
+This route is also PC/precompute-first. It is evaluated only for `solo_piano` / piano-led candidates and should not be offered as a universal full-mix replacement.
+
+### 4.3 `instrument_lead` honesty clause
 
 The previous draft listed `instrument_lead` as a candidate but described it as "full-mix harmonic pYIN plus optional Demucs other/harmonic route". The first half is identical to the current path — it would be relabeling, not a new technique. This plan commits explicitly:
 
 - **`instrument_lead` requires Demucs `other` stem precompute.** If Phase 2 does not commit Demucs precompute on PC-side, this candidate is **dropped**, not silently relabeled. Resolver simply falls through to `full_mix_pyin` for the instrumental-solo sub-type, with `quality_flags: ["instrument_lead_unavailable"]`.
 
-### 4.3 Cache layout
+### 4.4 Cache layout
 
 ```text
 V:\data\melodies\<hash>.json                         # existing full-mix pYIN, keep stable
 V:\data\melody_candidates\<hh>\<hash>\full_mix_pyin.json
-V:\data\melody_candidates\<hh>\<hash>\vocal_stem_f0.json
+V:\data\melody_candidates\<hh>\<hash>\vocal_lead_ftanet.json
+V:\data\melody_candidates\<hh>\<hash>\vocal_stem_pyin.json
 V:\data\melody_candidates\<hh>\<hash>\solo_piano_polyphonic.json
 V:\data\melody_candidates\<hh>\<hash>\instrument_lead.json
 V:\data\melodies_rh_v2\<hh>\<hash>.json              # selected resolver output, behind flag
@@ -164,7 +251,7 @@ V:\data\melodies_v4\<hh>\<hash>.json                 # existing Phase 4 precompu
 
 `<hh>` = first 2 chars of `<hash>`. **All new caches use the same sharding scheme as the chord-JSON migration (`abe6172`).** Flat-directory layouts (the previous draft's design) would put 100k+ files on SMB and regress the perf win we already paid for.
 
-### 4.4 Response shape (additive, schema v2)
+### 4.5 Response shape (additive, schema v2)
 
 `schema_version` stays at `2`. New fields are **additive optional metadata** — existing frontend works unchanged:
 
@@ -193,13 +280,13 @@ V:\data\melodies_v4\<hh>\<hash>.json                 # existing Phase 4 precompu
 
 Frontend can ignore new metadata initially. Debug UI, admin review, and future user-facing labels can use it later. `cache_version` follows the versioned cache family (`rhmelody-v2`, aligned with `melodies_rh_v2/`); rollout phase is stored separately as `phase`. `selected_by="legacy_primary"` means the current full-mix pYIN path produced the payload before any resolver decision existed. `selected_by="fallback"` is reserved for the future resolver choosing `full_mix_pyin` after comparing candidates.
 
-### 4.5 Deployment scope (server-mode matters)
+### 4.6 Deployment scope (server-mode matters)
 
 `/api/ai/melody` runs on three modes with very different constraints. The resolver must be explicit about what runs where:
 
 | Mode | Resolver behavior |
 |---|---|
-| **NUC `personal`** (LAN, 8800) | Full resolver. Demucs / Basic Pitch / RMVPE precompute on PC, candidates synced to V:\ |
+| **NUC `personal`** (LAN, 8800) | Full resolver. Demucs / FTANet-style vocal / piano-transcription candidates are precomputed on PC, then synced to V:\ |
 | **PC `personal_local`** (8803) | Full resolver. Same data as NUC via V:\ mount |
 | **VPS `public`** (livechord.org) | **`full_mix_pyin` only**, no resolver, no candidate generation. Demucs on CPX21 is too slow for upload-path latency; Modal dispatching melody extraction is out of scope for v1 |
 
@@ -339,9 +426,10 @@ Deliverables:
 | Candidate | Implementation note |
 |---|---|
 | `full_mix_pyin` | Wrap current `MelodyExtractor` output as a named candidate |
-| `vocal_stem_f0` | Demucs vocals + pYIN (RMVPE deferred unless explicitly approved as Tier 2 tracker; not auto-added) |
-| `solo_piano_polyphonic` | Basic Pitch + top-voice post-filter — **piano sub-type only**, not a universal candidate |
-| `instrument_lead` | Demucs `other` stem + pYIN — **only if Demucs precompute is committed**, else dropped per §4.2 |
+| `vocal_lead_ftanet` | FTANet-style singing melody extraction on full mix and/or Demucs vocal stem |
+| `vocal_stem_pyin` | Demucs vocals + pYIN as a cheap backup; RMVPE remains deferred unless explicitly approved |
+| `solo_piano_polyphonic` | Piano transcription + RH/top-line post-filter — **piano sub-type only**, not a universal candidate |
+| `instrument_lead` | Demucs `other` stem + pYIN — **only if Demucs precompute is committed**, else dropped per §4.3 |
 | `midi_aligned` | Read existing Phase 4 aligned JSON when present |
 
 Exit gate:
@@ -350,7 +438,7 @@ Exit gate:
 |---|---|
 | Shadow completeness | Candidate files can be generated without changing player output |
 | Observability | Candidate generation logs runtime, note count, failure reason, and cache path |
-| Sharded layout | New caches written to `<hh>/<hash>/` per §4.3, not flat |
+| Sharded layout | New caches written to `<hh>/<hash>/` per §4.4, not flat |
 
 ### Phase 3 - Song-type classifier, quality scoring, resolver
 
@@ -441,9 +529,11 @@ Likely backend additions:
 | `backend/ai/melody_candidate.py` | Candidate schema and normalization helpers |
 | `backend/ai/melody_quality.py` | Density/range/continuity/source-prior scoring + machine proxies |
 | `backend/ai/melody_post_filter.py` | Phase 1 octave-fold / bass-leakage / chord-tone post-filters |
+| `backend/ai/vocal_melody_ftanet.py` | PC-side FTANet-style vocal melody candidate wrapper; owns CFP feature config and F0-to-note segmentation |
+| `backend/ai/piano_melody_transcriber.py` | PC-side piano transcription candidate wrapper; owns polyphonic note extraction and RH/top-line selection |
 | `backend/ai_api.py` | Route `/api/ai/melody` through resolver behind flag; bypass in public mode |
 | `backend/process_queue.py` | Queue candidate generation after upload melody fallback (personal mode only) |
-| `backend/batch_hybrid_worker.py` or new PC worker | Generate precomputed vocal/solo-piano/instrument candidates |
+| `backend/batch_hybrid_worker.py` or new PC worker | Generate precomputed FTANet vocal, piano-transcription, and instrument candidates |
 
 Likely frontend additions:
 
@@ -480,7 +570,7 @@ Recommended golden review fields (the 165+ quota above is for later resolver-qua
 hash
 path
 sub_type: vocal_clean | vocal_quiet | backing_vocal | duet | piano_intro | solo_piano_classical | solo_piano_jazz | instrument_solo | fingerstyle | dense_rh | mr | ambient | reference
-expected_source: vocal_stem_f0 | solo_piano_polyphonic | instrument_lead | midi_aligned | full_mix_pyin | no_lead
+expected_source: vocal_lead_ftanet | vocal_stem_pyin | solo_piano_polyphonic | instrument_lead | midi_aligned | full_mix_pyin | no_lead
 current_pyin_grade: good | ok | bad
 resolver_grade: good | ok | bad
 selected_source
@@ -497,19 +587,21 @@ review_note
 
 | Risk / decision | Plan |
 |---|---|
-| Demucs + Basic Pitch vocal path has known extras | Treat as shadow evidence; vocal route uses Demucs vocal stem + pYIN, not Basic Pitch, unless explicitly approved |
-| RMVPE runtime and dependency weight | Keep PC-side only; do not put heavy ML on NUC request path or VPS at all |
+| Demucs + Basic Pitch vocal path has known extras | Treat as shadow evidence only; vocal route uses FTANet-style singing melody extraction as the primary non-pYIN vocal algorithm |
+| FTANet runtime and dependency weight | Keep PC-side only until benchmarked; do not put heavy ML on NUC request path or VPS |
+| Piano transcription runtime and dependency weight | Keep PC-side only; cache full polyphonic transcription plus selected RH/top-line result |
+| RMVPE runtime and dependency weight | Deferred backup tracker only; evaluate after FTANet-style vocal route and pYIN-on-vocal-stem baseline |
 | Vocal-only can drop piano/guitar intros | Acknowledged as v1 weakness; mixed-section songs may be tagged `quality_flags: ["mixed_section_single_source"]`. Section-aware switching is §11 future scope |
 | Cache version confusion | Never overwrite legacy `melodies` during rollout; write selected output to versioned `melodies_rh_v2`; `schema_version` stays at 2, new fields are additive metadata |
 | UI label confusion | Separate "RH melody lane" from "source = vocal/solo-piano/instrument/full mix" metadata |
 | Manual review cost | Stratified set (§8) fixed up-front; machine proxies (§6 Phase 3) reduce single-annotator dependence |
 | Manual review still takes too long | Phase 3 requires automated A/B diff replay, so review focuses on windows where resolver and pYIN disagree instead of full-song listening |
 | Audio quality masquerades as algorithm failure | Phase 0 taxonomy includes `audio_quality`; resolver confidence should be reduced rather than overfitting a new extractor to bad source audio |
-| `instrument_lead` becomes a relabel of `full_mix_pyin` | §4.2 commits the candidate is dropped if Demucs precompute is not committed — no silent relabeling |
+| `instrument_lead` becomes a relabel of `full_mix_pyin` | §4.3 commits the candidate is dropped if Demucs precompute is not committed — no silent relabeling |
 | Genre/library prior overfits to user's folder layout | Demoted to ≤5% scoring weight; never a routing gate |
 | Hand-tuned scoring regresses songs that were fine | Conservative decision rule (§5.1) — resolver only switches when candidate beats fallback by `MIN_MARGIN` and passes hard gates |
 | Score-render quantization mismatch | Phase 4 exit gate explicitly verifies VexFlow rendering after extractor swap |
-| VPS accidentally runs resolver | §4.5 + Phase 5 exit gate — resolver bypassed when `LIVECHORD_MODE=public` |
+| VPS accidentally runs resolver | §4.6 + Phase 5 exit gate — resolver bypassed when `LIVECHORD_MODE=public` |
 | Plan becomes a perpetual epic alongside neural_arranger | §6 Phase 5 includes a hard "definition of done" — 3-month admin-override usage rate |
 | Phase 4 hybrid_melody / `melodies_v4` is itself unshipped | `midi_aligned` Tier is gated on Phase 4 landing; if Phase 4 stays POC, resolver routes around it transparently |
 
@@ -523,8 +615,9 @@ review_note
 | 4 | Build stratified review-list manifest per §8 (sub-type counts fixed) |
 | 5 | Run current `full_mix_pyin` against the manifest + a MedleyDB-Melody / MIR-1K subset; record RPA/RCA + failure-mode tags |
 | 6 | **Decision branch**: classify failure modes. If >50% are post-filter-fixable, Phase 1 is the entire next sprint (post-filters only); if octave-jump dominates, prioritize the octave-fold filter first; if not, proceed to Phase 2 candidate builder |
-| 7 | If proceeding to Phase 2: decide on Demucs commitment (yes → `vocal_stem_f0` + `instrument_lead` are real candidates; no → drop `instrument_lead`, vocal candidate uses only what's already available via `batch_hybrid_worker`) |
-| 8 | If proceeding to Phase 2: confirm Basic Pitch + top-voice post-filter is approved as the solo-piano path before any PC backfill |
+| 7 | If proceeding to Phase 2: prototype `vocal_lead_ftanet` on a small vocal subset, testing both full-mix and vocal-stem CFP inputs against current pYIN |
+| 8 | If proceeding to Phase 2: prototype `solo_piano_polyphonic` on a small solo-piano subset, testing piano transcription + RH/top-line selection against current pYIN |
+| 9 | If proceeding to Phase 2: decide on Demucs commitment (yes → `vocal_stem_pyin` backup + `instrument_lead` are real candidates; no → drop `instrument_lead`) |
 
 ## 11. Explicit Future Scope (v2+)
 
@@ -535,7 +628,7 @@ The plan deliberately does not attempt these in v1. They are listed so they aren
 | **Section-aware source switching** | Requires reliable section detection. CLAUDE.md notes `section_detect` is on rule-based fallback for ~82% of the library. Building source-routing on top of unreliable section boundaries compounds failure. Revisit after section detection improves (Phase 3 of [doc/PHASE_4_HYBRID_MELODY.md](../PHASE_4_HYBRID_MELODY.md)) |
 | Multi-source blended output | Same as above — needs reliable section boundaries to splice sources without audible seams |
 | User per-song source override (UI control) | Admin override exists in Phase 5; user-facing override is a separate UX decision |
-| RMVPE as approved Tier 2 tracker | Deferred until runtime / dependency cost is evaluated against pYIN-on-vocal-stem |
+| RMVPE as approved Tier 2 tracker | Deferred until runtime / dependency cost is evaluated against FTANet-style vocal extraction and pYIN-on-vocal-stem |
 | Trained ML resolver (replacing rule-based scoring) | `bar_arbitrator` pattern: rule-based first (Phase 0), trained model later. Same applies here. No ML resolver in v1 |
 | VPS resolver path | VPS stays on `full_mix_pyin` until Modal-dispatched melody extraction is approved as a cost line |
 
