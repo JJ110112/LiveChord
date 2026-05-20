@@ -19,6 +19,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from ai.melody_review import (  # noqa: E402
+    collect_library_cache_candidates,
     collect_survey_candidates,
     sample_survey_candidates,
     write_survey_queue,
@@ -40,6 +41,14 @@ def main() -> int:
             "then V:\\data\\chords when present; repo data/chords is only a dev fallback."
         ),
     )
+    parser.add_argument(
+        "--library-cache",
+        default="",
+        help=(
+            "Optional library_cache.json used for fast playable-track filtering. "
+            "Defaults to <chords-root>/../library_cache.json when present."
+        ),
+    )
     parser.add_argument("--out", default=str(REPO_ROOT / "data" / "melody_reviews" / "phase0_survey_queue.jsonl"))
     parser.add_argument("--sample-size", type=int, default=200)
     parser.add_argument("--seed", type=int, default=20260520)
@@ -52,11 +61,24 @@ def main() -> int:
     parser.add_argument("--force", action="store_true", help="Overwrite existing output files.")
     args = parser.parse_args()
 
+    chords_root = Path(args.chords_root)
+    library_cache = _resolve_library_cache(args.library_cache, chords_root)
+    if not args.include_missing_audio and library_cache:
+        candidates, stats = collect_library_cache_candidates(library_cache)
+        stats["source"] = "library_cache"
+        print(f"Loaded {len(candidates)} playable survey candidates from {library_cache}")
+    else:
+        if not args.include_missing_audio:
+            print(
+                "[melody_survey] WARNING: no library_cache.json found; falling back to slower per-file audio checks.",
+                file=sys.stderr,
+            )
+        candidates, stats = collect_survey_candidates(
+            chords_root,
+            require_audio=not args.include_missing_audio,
+        )
+
     survey_id = args.survey_id or f"phase0_random_{args.sample_size}_seed_{args.seed}"
-    candidates, stats = collect_survey_candidates(
-        Path(args.chords_root),
-        require_audio=not args.include_missing_audio,
-    )
     sample = sample_survey_candidates(
         candidates,
         sample_size=max(0, args.sample_size),
@@ -77,6 +99,14 @@ def main() -> int:
     print(f"Wrote {summary['sample_size']} survey rows to {summary['output']}")
     print(f"Candidate stats: {summary['candidate_stats']}")
     return 0
+
+
+def _resolve_library_cache(raw: str, chords_root: Path) -> Path | None:
+    if raw:
+        p = Path(raw)
+        return p if p.is_file() else None
+    sibling = chords_root.parent / "library_cache.json"
+    return sibling if sibling.is_file() else None
 
 
 def _default_chords_root() -> str:

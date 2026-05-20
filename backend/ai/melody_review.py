@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -128,6 +129,7 @@ def collect_survey_candidates(
     *,
     require_audio: bool = True,
     resolve_audio_path: Optional[Callable[[str], str]] = None,
+    existing_audio_paths: Optional[set[str]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     """Collect reviewable chord-cache records for Phase 0 random sampling."""
 
@@ -152,8 +154,12 @@ def collect_survey_candidates(
         if not path:
             stats["missing_path"] += 1
             continue
-        audio_path = resolver(path)
-        audio_exists = bool(audio_path and os.path.isfile(audio_path))
+        if existing_audio_paths is not None:
+            audio_path = path
+            audio_exists = _normalize_library_path(path) in existing_audio_paths
+        else:
+            audio_path = resolver(path)
+            audio_exists = bool(audio_path and os.path.isfile(audio_path))
         if require_audio and not audio_exists:
             stats["missing_audio"] += 1
             continue
@@ -174,6 +180,67 @@ def collect_survey_candidates(
         })
     stats["candidates"] = len(candidates)
     return candidates, stats
+
+
+def collect_library_cache_candidates(cache_file: Path) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    """Collect playable survey candidates directly from library_cache tracks."""
+
+    from chord_cache import song_hash
+
+    data = json.loads(cache_file.read_text(encoding="utf-8"))
+    tracks = data.get("tracks") if isinstance(data, dict) else data
+    stats = {
+        "checked": 0,
+        "missing_path": 0,
+        "candidates": 0,
+    }
+    candidates: List[Dict[str, Any]] = []
+    if not isinstance(tracks, list):
+        return candidates, stats
+    for track in tracks:
+        stats["checked"] += 1
+        if not isinstance(track, dict):
+            stats["missing_path"] += 1
+            continue
+        path = str(track.get("path") or "").strip()
+        if not path:
+            stats["missing_path"] += 1
+            continue
+        candidates.append({
+            "hash": song_hash(path),
+            "path": path,
+            "chord_file": "",
+            "audio_path": path,
+            "audio_exists": True,
+            "source": "",
+            "beats_source": "",
+            "chord_count": 0,
+            "duration_s": _first_float(track.get("duration"), track.get("duration_s")),
+            "title": track.get("title") or "",
+            "artist": track.get("artist") or "",
+            "album": track.get("album") or "",
+            "genre": track.get("genre") or "",
+            "selection_source": "library_cache",
+        })
+    stats["candidates"] = len(candidates)
+    return candidates, stats
+
+
+def load_library_cache_paths(cache_file: Path) -> set[str]:
+    """Return normalized track paths from a LiveChord library cache."""
+
+    data = json.loads(cache_file.read_text(encoding="utf-8"))
+    tracks = data.get("tracks") if isinstance(data, dict) else data
+    paths = set()
+    if not isinstance(tracks, list):
+        return paths
+    for track in tracks:
+        if not isinstance(track, dict):
+            continue
+        path = str(track.get("path") or "").strip()
+        if path:
+            paths.add(_normalize_library_path(path))
+    return paths
 
 
 def sample_survey_candidates(
@@ -281,3 +348,9 @@ def _warn_once(key: str, message: str) -> None:
     print(message, file=sys.stderr)
     seen.add(key)
     setattr(_warn_once, "_seen", seen)
+
+
+def _normalize_library_path(path: str) -> str:
+    normalized = str(path or "").replace("\\", "/").strip()
+    normalized = re.sub(r"^@\d+/", "", normalized)
+    return normalized.lower()

@@ -295,7 +295,7 @@ Survey tooling:
 python tools/sample_melody_phase0_survey.py --sample-size 200 --seed 20260520 --force
 ```
 
-The script scans sharded chord cache files, keeps reviewable songs with resolvable audio by default, samples with equal probability, and writes `data/melody_reviews/phase0_survey_queue.jsonl` plus `phase0_survey_queue.summary.json`. `--chords-root` defaults to `LIVECHORD_CHORDS_DIR`, then `V:\data\chords` when present; repo-local `data/chords` is only a development fallback and prints a warning. Review tags are written through `POST /api/ai/melody/debug/tag` into `data/melody_reviews/phase0_tags.jsonl`; the endpoint reuses `/api/ai/melody/debug` metadata, validates the frozen taxonomy, stores the reviewer, `survey_id`, `failure_tag`, `secondary_flags`, `audio_quality_note`, optional segment, machine proxies, and current melody stats.
+The script samples `library_cache.json` tracks when that cache is available, because it is already the fastest auditable list of playable songs; if no library cache exists, it falls back to scanning sharded chord cache files and checking audio existence. It writes `data/melody_reviews/phase0_survey_queue.jsonl` plus `phase0_survey_queue.summary.json`. `--chords-root` defaults to `LIVECHORD_CHORDS_DIR`, then `V:\data\chords` when present; repo-local `data/chords` is only a development fallback and prints a warning. Review tags are written through `POST /api/ai/melody/debug/tag` into `data/melody_reviews/phase0_tags.jsonl`; the endpoint reuses `/api/ai/melody/debug` metadata, validates the frozen taxonomy, stores the reviewer, `survey_id`, `failure_tag`, `secondary_flags`, `audio_quality_note`, optional segment, machine proxies, and current melody stats.
 
 Exit gate:
 

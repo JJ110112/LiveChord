@@ -13,7 +13,9 @@ import tools.sample_melody_phase0_survey as survey_script
 from backend.ai.melody_extractor import MelodyExtractor
 from backend.ai.melody_extractor_v2 import MelodyExtractorV2
 from backend.ai.melody_review import (
+    collect_library_cache_candidates,
     collect_survey_candidates,
+    load_library_cache_paths,
     sample_survey_candidates,
     write_survey_queue,
 )
@@ -384,6 +386,68 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(len(candidates), 1)
             self.assertFalse(candidates[0]["audio_exists"])
             self.assertEqual(candidates[0]["source"], "")
+
+    def test_melody_phase0_survey_filters_with_library_cache_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            chord_root = root / "chords"
+            for h, path in {
+                "aa1111111111": "@1/POP/song-a.mp3",
+                "bb2222222222": "missing/song-b.mp3",
+            }.items():
+                bucket = chord_root / h[:2]
+                bucket.mkdir(parents=True, exist_ok=True)
+                (bucket / f"{h}.json").write_text(
+                    json.dumps({"path": path, "chords": [{"chord": "C"}]}),
+                    encoding="utf-8",
+                )
+            library_cache = root / "library_cache.json"
+            library_cache.write_text(
+                json.dumps({"tracks": [{"path": "POP/song-a.mp3"}]}),
+                encoding="utf-8",
+            )
+
+            existing = load_library_cache_paths(library_cache)
+            candidates, stats = collect_survey_candidates(
+                chord_root,
+                require_audio=True,
+                existing_audio_paths=existing,
+            )
+
+            self.assertEqual(existing, {"pop/song-a.mp3"})
+            self.assertEqual(stats["missing_audio"], 1)
+            self.assertEqual(len(candidates), 1)
+            self.assertEqual(candidates[0]["hash"], "aa1111111111")
+
+    def test_melody_phase0_survey_collects_library_cache_candidates(self):
+        import backend.chord_cache as chord_cache
+
+        with tempfile.TemporaryDirectory() as tmp:
+            library_cache = Path(tmp) / "library_cache.json"
+            library_cache.write_text(
+                json.dumps({
+                    "tracks": [
+                        {
+                            "path": "@1/POP/song-a.mp3",
+                            "title": "Song A",
+                            "artist": "Artist",
+                            "duration": 123.4,
+                        },
+                        {"path": ""},
+                    ]
+                }),
+                encoding="utf-8",
+            )
+
+            candidates, stats = collect_library_cache_candidates(library_cache)
+
+            self.assertEqual(stats["checked"], 2)
+            self.assertEqual(stats["missing_path"], 1)
+            self.assertEqual(stats["candidates"], 1)
+            self.assertEqual(candidates[0]["hash"], chord_cache.song_hash("@1/POP/song-a.mp3"))
+            self.assertEqual(candidates[0]["selection_source"], "library_cache")
+            self.assertTrue(candidates[0]["audio_exists"])
+            self.assertEqual(candidates[0]["duration_s"], 123.4)
 
     def test_melody_phase0_survey_write_queue_refuses_overwrite_without_force(self):
         with tempfile.TemporaryDirectory() as tmp:
