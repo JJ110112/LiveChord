@@ -22,6 +22,9 @@ MINOR_RELATIVE_MAJOR = {
     "A": "C", "E": "G", "B": "D", "F#": "A", "C#": "E", "G#": "B",
     "D#": "F#", "A#": "Db", "D": "F", "G": "Bb", "C": "Eb", "F": "Ab",
 }
+FLAT_TO_SHARP = {
+    "Bb": "A#", "Eb": "D#", "Ab": "G#", "Db": "C#", "Gb": "F#",
+}
 
 
 @dataclass(frozen=True)
@@ -241,13 +244,11 @@ def _normalize_major_key(key: str) -> str:
     cleaned = raw.replace("major", "").replace("Major", "").strip()
     lower = cleaned.lower()
     if lower.endswith("minor"):
-        tonic = cleaned[:-5].strip()
-        return MINOR_RELATIVE_MAJOR.get(_normalize_tonic(tonic), "C")
+        return _lookup_minor_relative(_normalize_tonic(cleaned[:-5].strip()))
     if lower.endswith("min"):
-        tonic = cleaned[:-3].strip()
-        return MINOR_RELATIVE_MAJOR.get(_normalize_tonic(tonic), "C")
+        return _lookup_minor_relative(_normalize_tonic(cleaned[:-3].strip()))
     if len(cleaned) >= 2 and cleaned[-1] == "m":
-        return MINOR_RELATIVE_MAJOR.get(_normalize_tonic(cleaned[:-1]), "C")
+        return _lookup_minor_relative(_normalize_tonic(cleaned[:-1]))
     return _normalize_tonic(cleaned)
 
 
@@ -262,6 +263,13 @@ def _normalize_tonic(value: str) -> str:
     if suffix.startswith("b"):
         return first + "b"
     return first
+
+
+def _lookup_minor_relative(tonic: str) -> str:
+    # MINOR_RELATIVE_MAJOR indexes sharp-named tonics for the 5 enharmonic pairs;
+    # collapse flats so Bb minor / Eb minor / Ab minor resolve correctly.
+    sharp = FLAT_TO_SHARP.get(tonic, tonic)
+    return MINOR_RELATIVE_MAJOR.get(sharp, "C")
 
 
 def _first_float(*values: Any) -> Optional[float]:

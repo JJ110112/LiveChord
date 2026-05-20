@@ -804,6 +804,66 @@ class TestMelodyPhase3(unittest.TestCase):
         self.assertEqual([event["midi"] for event in selected], [64, 65])
         self.assertTrue(all(event["confidence"] > 1.55 for event in selected))
 
+    def test_piano_rh_selector_handles_flat_named_minor_keys(self):
+        # Bb minor (= Db major). Db major scale: Db Eb F Gb Ab Bb C → pcs {1,3,5,6,8,10,0}.
+        # Pick midi values inside the scale (Bb=70 in C5, Db=73, F=77) so the key prior
+        # should fire positive. If Bb-minor falls back to C major like the pre-fix code,
+        # all three notes would be out-of-key (pcs 10,1,5 vs C major {0,2,4,5,7,9,11}
+        # → only F=5 in-key), and the key_score deltas would cut the total score.
+        notes = [
+            {"start": 0.0, "end": 0.5, "midi": 70, "velocity": 64},  # Bb4
+            {"start": 0.5, "end": 1.0, "midi": 73, "velocity": 64},  # Db5
+            {"start": 1.0, "end": 1.5, "midi": 77, "velocity": 64},  # F5
+        ]
+
+        in_key = select_right_hand_melody(notes, key="Bb minor", bpm=120)
+        fallback = select_right_hand_melody(notes, key="C", bpm=120)
+
+        self.assertEqual([event["midi"] for event in in_key], [70, 73, 77])
+        # Bb minor → Db major scale: Bb (pc 10), Db (pc 1), F (pc 5) all in-key.
+        # C major fallback: only F is in scale; Bb and Db each take a -0.08 penalty
+        # instead of +0.16, so 2 notes × 0.24 delta = 0.48 higher total for in-key.
+        in_key_total = sum(event["confidence"] for event in in_key)
+        fallback_total = sum(event["confidence"] for event in fallback)
+        self.assertGreater(in_key_total - fallback_total, 0.4)
+
+    def test_piano_rh_selector_handles_eb_minor_via_enharmonic(self):
+        # Eb minor (= Gb major). Reference smoke: F (pc 5) is the 7th of Gb major,
+        # in-key; if the lookup fell through to C major, it would still be in-key
+        # (C major has F=5), masking the bug. So use Cb (pc 11 → midi 71/83) which
+        # is the 4th of Gb major BUT out-of-key for C major (C major has B=11 wait
+        # actually 11 IS in C major). Pick Gb itself: midi 78 = Gb5, pc 6. In Gb
+        # major scale ✓, NOT in C major (C major has F=5 and G=7, not F#/Gb=6).
+        notes = [
+            {"start": 0.0, "end": 0.5, "midi": 78, "velocity": 64},  # Gb5
+            {"start": 0.5, "end": 1.0, "midi": 75, "velocity": 64},  # Eb5
+        ]
+
+        in_key = select_right_hand_melody(notes, key="Eb minor", bpm=120)
+        fallback = select_right_hand_melody(notes, key="C", bpm=120)
+
+        self.assertEqual([event["midi"] for event in in_key], [78, 75])
+        in_key_total = sum(event["confidence"] for event in in_key)
+        fallback_total = sum(event["confidence"] for event in fallback)
+        self.assertGreater(in_key_total - fallback_total, 0.2)
+
+    def test_piano_rh_selector_preserves_flat_named_major_keys(self):
+        # Regression guard: a previous draft normalized flats to sharps globally,
+        # which broke Bb major / Eb major lookups in KEY_MAJOR_PCS (it indexes by
+        # flat spelling for these). This test pins Bb major behavior.
+        notes = [
+            {"start": 0.0, "end": 0.5, "midi": 70, "velocity": 64},  # Bb4
+            {"start": 0.5, "end": 1.0, "midi": 74, "velocity": 64},  # D5
+        ]
+
+        in_key = select_right_hand_melody(notes, key="Bb major", bpm=120)
+        out_of_key = select_right_hand_melody(notes, key="E major", bpm=120)
+
+        self.assertEqual([event["midi"] for event in in_key], [70, 74])
+        in_key_total = sum(event["confidence"] for event in in_key)
+        out_total = sum(event["confidence"] for event in out_of_key)
+        self.assertGreater(in_key_total, out_total)
+
     def test_piano_candidate_payload_accepts_selector_output(self):
         selected = select_right_hand_melody(
             [
