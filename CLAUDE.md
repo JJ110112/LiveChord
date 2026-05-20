@@ -212,6 +212,52 @@ Post-beta, the active engineering track is **improving the upstream signal that 
 
 Open trade-offs and known issues for the active tracks live in [doc/TODOS.md](doc/TODOS.md) "Quality Tracks (active focus)".
 
+## Note Event Schema v2 (canonical duration contract)
+
+This contract applies to AI accompaniment, melody extraction, score rendering, playback, and MIDI export. It exists to fix the systemic "short notes + frequent rests" failure mode at the event-data layer, not just in notation.
+
+**Core rules**:
+- **`schema_version: 2` is a data-format version, independent from `ACC_ENGINE_VERSION`**. `ACC_ENGINE_VERSION` invalidates accompaniment-generation caches; `schema_version` describes the event payload shared by accompaniment and melody extraction. Do not tie the two version numbers together.
+- **`duration` means canonical musical duration**. It should express the readable/quantized note value that fills musical space. Do not shorten `duration` to create staccato, portato, humanized release, or playback-only articulation.
+- **Short-touch playback lives in `gate_ratio`**. `gate_ratio` defaults to `1.0` and is consumed by playback only. Optional `articulation` (`legato`, `normal`, `portato`, `staccato`) may describe intent, but it must not make score/MIDI consumers fragment the canonical duration.
+- **Readable MIDI is the first-version export policy**. `frontend/js/midi-exporter.js` and `frontend/js/chord-exporter.js` must export canonical `duration` and ignore `gate_ratio` until a separate Performance MIDI feature is approved. Do not add a UI switch in the first pass.
+- **`voice_lane` is generator-owned**. The generator must emit lanes such as `lh_bass`, `lh_chord`, `rh_accompaniment`, `rh_melody`, and instrument-specific lanes when it knows the source of the note. Continuity repair may infer a fallback only for legacy/cache data.
+- **Continuity repair is lane-local**. Extend a note to the next same-lane onset when the gap is small and musically empty; do not merge across different `voice_lane`, chord boundary, intentional phrase break, or user-edited note boundary.
+- **`strum_id` groups move as one unit**. Notes in the same strum/roll keep their intentional onset offsets, but their canonical end should align as a group, normally based on the last onset in the group and the next safe same-lane boundary. Never extend a strum group across the next `strum_id`.
+- **Phase gates are mandatory for this overhaul**. After each implementation phase, stop and report completed items for user review. Do not begin the next phase until the user approves.
+
+Recommended event shape:
+
+```json
+{
+  "schema_version": 2,
+  "time": 12.0,
+  "duration": 1.5,
+  "pitch": 64,
+  "velocity": 0.72,
+  "voice_lane": "rh_melody",
+  "gate_ratio": 0.88,
+  "articulation": "normal",
+  "strum_id": null,
+  "continuity_meta": {
+    "source_duration": 0.75,
+    "extended_by": 0.75,
+    "reason": "small_gap_same_voice"
+  }
+}
+```
+
+Playback must clamp release tails inside the canonical duration window so `gate_ratio` does not create overlap/click artifacts:
+
+```javascript
+const canonicalEnd = startTime + duration;
+let audioOff = startTime + duration * gateRatio;
+if (audioOff + releaseTail > canonicalEnd) {
+  audioOff = Math.max(startTime, canonicalEnd - releaseTail);
+}
+source.stop(audioOff + releaseTail);
+```
+
 ## AI Accompaniment (engine v7, deployed 2026-05-06)
 
 LH/RH accompaniment in [backend/ai/accompaniment_generator.py](backend/ai/accompaniment_generator.py) — 21 styles, 7 piano RH modes, multi-instrument (piano / guitar / ukulele / accordion / arranger). Output cached at `data/accompaniments/{hash}_{style}_{level}_{section_type}_{instrument}_{ACC_ENGINE_VERSION}.json`; engine version `v7` (bump to invalidate). Architectural detail in [doc/for-notebooklm/](doc/for-notebooklm/).
