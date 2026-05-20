@@ -22,6 +22,17 @@ from backend.ai.melody_review import (
     sample_survey_candidates,
     write_survey_queue,
 )
+from backend.ai.melody_candidate import (
+    MELODY_CANDIDATE_CACHE_VERSION,
+    SOLO_PIANO_POLYPHONIC,
+    VOCAL_STEM_CREPE,
+    build_candidate_payload,
+    candidate_path,
+    read_candidate_cache,
+    stem_path,
+    write_candidate_cache,
+)
+from backend.ai.piano_rh_selector import select_right_hand_melody
 from backend.ai.melody_schema import (
     MELODY_EVENT_SCHEMA_VERSION,
     MELODY_VOICE_LANE,
@@ -31,6 +42,8 @@ from backend.ai.melody_schema import (
     melody_review_taxonomy,
     melody_context_from_chord_cache,
 )
+from backend.ai.stem_separation import StemCache
+from backend.ai.vocal_melody_crepe import VocalStemCrepeExtractor
 
 
 class TestMelodyPhase3(unittest.TestCase):
@@ -671,6 +684,121 @@ class TestMelodyPhase3(unittest.TestCase):
                 {"schema_version": MELODY_EVENT_SCHEMA_VERSION},
             )
             self.assertFalse(path.with_suffix(path.suffix + ".tmp").exists())
+
+    def test_melody_candidate_cache_uses_sharded_layout_and_payload_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            payload = build_candidate_payload(
+                song_hash="abcdef123456",
+                path="POP/song.mp3",
+                candidate_id=VOCAL_STEM_CREPE,
+                melody=[{"start": 0.0, "end": 0.5, "midi": 64, "confidence": 0.8}],
+                stem="vocals",
+                algorithm="htdemucs.vocals+torchcrepe.full",
+                quality_flags=["shadow_candidate"],
+                bpm=120,
+            )
+
+            out = write_candidate_cache(root, "abcdef123456", VOCAL_STEM_CREPE, payload)
+            loaded = read_candidate_cache(root, "abcdef123456", VOCAL_STEM_CREPE)
+
+            self.assertEqual(out, root / "melody_candidates" / "ab" / "abcdef123456" / "vocal_stem_crepe.json")
+            self.assertEqual(candidate_path(root, "abcdef123456", VOCAL_STEM_CREPE), out)
+            self.assertEqual(loaded["melody_source"]["id"], VOCAL_STEM_CREPE)
+            self.assertEqual(loaded["melody_source"]["selected_by"], "shadow_candidate")
+            self.assertEqual(loaded["melody_source"]["cache_version"], MELODY_CANDIDATE_CACHE_VERSION)
+            self.assertEqual(loaded["melody"][0]["voice_lane"], MELODY_VOICE_LANE)
+
+    def test_stem_cache_reuses_existing_stems_and_copies_new_outputs(self):
+        class FakeSeparator:
+            def __init__(self, source_dir):
+                self.source_dir = source_dir
+                self.calls = 0
+
+            def separate(self, _audio_path):
+                self.calls += 1
+                return {
+                    "vocals": str(self.source_dir / "vocals.wav"),
+                    "other": str(self.source_dir / "other.wav"),
+                }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = root / "src"
+            src.mkdir()
+            (src / "vocals.wav").write_bytes(b"vocals")
+            (src / "other.wav").write_bytes(b"other")
+            audio = root / "song.wav"
+            audio.write_bytes(b"audio")
+            fake = FakeSeparator(src)
+            cache = StemCache(root, separator_factory=lambda: fake)
+
+            first = cache.ensure_stems(song_hash="abcdef123456", audio_path=str(audio))
+            second = cache.ensure_stems(song_hash="abcdef123456", audio_path=str(audio))
+
+            self.assertTrue(first.ok)
+            self.assertFalse(first.reused)
+            self.assertEqual(Path(first.stems["vocals"]), stem_path(root, "abcdef123456", "vocals"))
+            self.assertTrue(second.ok)
+            self.assertTrue(second.reused)
+            self.assertEqual(fake.calls, 1)
+
+    def test_piano_rh_selector_prefers_smooth_upper_voice_over_bass(self):
+        notes = [
+            {"start": 0.0, "end": 0.5, "midi": 40, "velocity": 96},
+            {"start": 0.0, "end": 0.5, "midi": 64, "velocity": 70},
+            {"start": 0.5, "end": 1.0, "midi": 43, "velocity": 96},
+            {"start": 0.5, "end": 1.0, "midi": 65, "velocity": 72},
+            {"start": 1.0, "end": 1.5, "midi": 47, "velocity": 96},
+            {"start": 1.0, "end": 1.5, "midi": 67, "velocity": 74},
+        ]
+
+        selected = select_right_hand_melody(notes, key="C", bpm=120)
+
+        self.assertEqual([event["midi"] for event in selected], [64, 65, 67])
+        self.assertTrue(all(event["voice_lane"] == MELODY_VOICE_LANE for event in selected))
+
+    def test_piano_candidate_payload_accepts_selector_output(self):
+        selected = select_right_hand_melody(
+            [
+                {"start": 0.0, "end": 0.5, "midi": 52, "velocity": 90},
+                {"start": 0.0, "end": 0.5, "midi": 72, "velocity": 65},
+            ],
+            key="C",
+            bpm=120,
+        )
+
+        payload = build_candidate_payload(
+            song_hash="fedcba654321",
+            path="Classics/piano.flac",
+            candidate_id=SOLO_PIANO_POLYPHONIC,
+            melody=selected,
+            stem="polyphonic_midi",
+            algorithm="magenta.onsets_frames+skyline_temperley",
+            bpm=120,
+            song_type="solo_piano",
+        )
+
+        self.assertEqual(payload["melody_source"]["id"], SOLO_PIANO_POLYPHONIC)
+        self.assertEqual(payload["melody_source"]["song_type"], "solo_piano")
+        self.assertEqual(payload["melody"][0]["midi"], 72)
+
+    def test_vocal_crepe_reports_missing_dependency_without_writing_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            stem = root / "vocals.wav"
+            stem.write_bytes(b"not really wav")
+            extractor = VocalStemCrepeExtractor(data_dir=root)
+            with patch.object(extractor, "_extract_events", side_effect=ImportError(name="torchcrepe")):
+                result = extractor.extract_to_cache(
+                    song_hash="abcdef123456",
+                    path="song.wav",
+                    vocal_stem_path=str(stem),
+                )
+
+            self.assertFalse(result.ok)
+            self.assertEqual(result.error, "missing_dependency:torchcrepe")
+            self.assertFalse(candidate_path(root, "abcdef123456", VOCAL_STEM_CREPE).exists())
 
 
 if __name__ == "__main__":

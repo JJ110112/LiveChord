@@ -1,7 +1,7 @@
 # RH Melody Optimization Plan
 
 **Date**: 2026-05-20 (revised after critical review; cleaned after Phase 0 instrumentation and sponsor removal)
-**Status**: Phase 0 instrumentation complete; listening survey and reference baseline pending
+**Status**: Phase 0 instrumentation complete; Phase 0.5 shadow-candidate foundation in progress
 **Tracking**: `LiveChord-2t5y` (active Phase 0/1), `LiveChord-zpu1` (review-log hardening follow-up)
 
 ## 1. Summary
@@ -690,20 +690,21 @@ review_note
 
 ## 10. Current Next Steps
 
-Phase 0 instrumentation is complete. Do not start Phase 1 post-filters or Phase 2 candidate builders until the Phase 0 exit gate has enough evidence.
+Phase 0 instrumentation is complete, but current RH quality is poor enough that a 200-song baseline-only survey would be hard to judge. Before the full listening survey, build a small **Phase 0.5 shadow-candidate foundation**: generate candidate caches without changing `/api/ai/melody`, then let the Admin review compare current `full_mix_pyin` against the new routes.
 
 | Order | Work | Status |
 |---:|---|---|
-| 1 | Finish the 200-song equal-probability listening survey through the Admin RH survey panel | Pending human review |
-| 2 | Add Phase 0 survey summary/report output: completion count, primary-tag distribution, post-filter-fixable ratio, secondary/audio-quality breakdown | Pending |
-| 3 | Run current `full_mix_pyin` against a MedleyDB-Melody / MIR-1K subset (≥20 songs); record RPA/RCA as the external floor for later phases | Pending |
-| 4 | **Decision branch**: classify failure modes. If >50% are post-filter-fixable, Phase 1 is the entire next sprint (post-filters only); if octave-jump dominates, prioritize the octave-fold filter first; if not, proceed to Phase 2 candidate builder | Pending Phase 0 data |
-| 5 | If proceeding to Phase 1: implement octave-fold / bass-leakage / chord-tone / coverage-gap post-filters, then re-run the survey comparison | Conditional |
-| 6 | If proceeding to Phase 2: commit to HTDemucs v4 precompute (shared by `vocal_stem_crepe` + `instrument_lead`); benchmark per-song separation runtime and stem cache size on the PC worker | Conditional |
-| 7 | If proceeding to Phase 2: prototype `vocal_stem_crepe` on a small vocal subset; compare against current pYIN on RPA/RCA and on the Phase 0 failure-tag distribution | Conditional |
-| 8 | If proceeding to Phase 2: prototype `solo_piano_polyphonic` on a small solo-piano subset using Magenta Onsets and Frames -> Skyline -> Temperley Viterbi end-to-end; compare against current pYIN | Conditional |
-| 9 | If proceeding to Phase 2: record pretrained-weight licenses (CREPE, Magenta MAESTRO, FTANet) in the repo as metadata. Non-commercial use is permissible across all deployments under current scope; the entry exists so a future monetization decision triggers a re-review | Conditional |
-| 10 | If `vocal_stem_crepe` underperforms on noisy stems: schedule the §11 RMVPE evaluation rather than re-opening FTANet as primary | Conditional |
+| 1 | Add shared shadow candidate cache helpers for `V:\data\melody_candidates\<hh>\<hash>\*.json` and `V:\data\stems\<hh>\<hash>\*.wav` | In progress |
+| 2 | Add persistent HTDemucs stem-cache wrapper so `vocals` and `other` are separated once and reused by `vocal_stem_crepe` / `instrument_lead` | In progress |
+| 3 | Add `vocal_stem_crepe` wrapper: vocals stem -> CREPE F0 -> vibrato smoothing -> note segmentation -> candidate cache | In progress |
+| 4 | Add `solo_piano_polyphonic` Stage-2 selector: Magenta/polyphonic notes -> Skyline candidates -> Temperley Viterbi -> candidate cache | In progress |
+| 5 | Add a one-song/batch shadow generation entry point for small A/B trials without changing formal RH playback | Pending |
+| 6 | Add Admin candidate compare/read endpoint and UI hook so review can switch `full_mix_pyin` vs shadow candidates | Pending |
+| 7 | Run a 20-30 song A/B smoke set (vocal, solo piano, instrumental) to see whether the new routes are worth scaling | Pending |
+| 8 | Finish the 200-song equal-probability listening survey through the Admin RH survey panel, using candidate comparison where available | Pending human review |
+| 9 | Add Phase 0 survey summary/report output: completion count, primary-tag distribution, post-filter-fixable ratio, secondary/audio-quality breakdown | Pending |
+| 10 | Run current `full_mix_pyin` against a MedleyDB-Melody / MIR-1K subset (≥20 songs); record RPA/RCA as the external floor for later phases | Pending |
+| 11 | **Decision branch**: classify failure modes. If cheap post-filters still dominate, Phase 1 is prioritized; if vocal/piano shadow routes clearly rescue the bad cases, proceed into Phase 2 candidate generation at larger scale | Pending Phase 0/0.5 data |
 
 Completed cleanup and instrumentation:
 
