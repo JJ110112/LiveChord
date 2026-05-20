@@ -353,6 +353,11 @@
 
       const notes = [];
       let prevEnd = barStart;
+      // Humanized accompaniment often leaves 10-30 ms overlaps/gaps between
+      // adjacent notes. Those are performance details, not readable rests; if
+      // we quantize them literally the voice can overfill to 4.125+ beats and
+      // VexFlow falls back to an all-rest bar.
+      const minVisualGap = Math.max(0.03, quarterSecs * 0.125);
       let cursor = 0;
       while (cursor < inBar.length) {
         const t0 = inBar[cursor].time;
@@ -361,14 +366,20 @@
           group.push(inBar[cursor]);
           cursor++;
         }
-        if (t0 > prevEnd + 0.01) {
+        const noteEndT = Math.min(barEnd, Math.max(...group.map(e => e.end)));
+        if (noteEndT <= prevEnd + minVisualGap) {
+          // Fully absorbed by the previous notated duration.
+          continue;
+        }
+        const effectiveStart = Math.max(t0, prevEnd);
+        if (t0 > prevEnd + minVisualGap) {
           notes.push(..._beatsToRests(_quantizeBeats(t0 - prevEnd, quarterSecs), makeRest));
+          prevEnd = t0;
         }
 
-        const noteEndT = Math.min(barEnd, Math.max(...group.map(e => e.end)));
         const noteBeats = Math.min(
           meter.quarterBeats,
-          _quantizeBeats(Math.max(quarterSecs * 0.125, noteEndT - t0), quarterSecs)
+          _quantizeBeats(Math.max(quarterSecs * 0.125, noteEndT - effectiveStart), quarterSecs)
         );
         const pitchSet = new Set();
         const items = [];
