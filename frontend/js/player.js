@@ -229,10 +229,33 @@
   // Resolve right-hand events according to rhContentMode. Single source of truth
   // consumed by waterfall rendering, audio scheduler, and MIDI export so the
   // three paths never disagree.
+  function _melodyDuration(m) {
+    const dur = Number(m && m.duration);
+    if (Number.isFinite(dur) && dur > 0) return dur;
+    const start = Number(m && m.start);
+    const end = Number(m && m.end);
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) return end - start;
+    return 0.25;
+  }
+
+  function _melodyNoteEvent(m) {
+    const time = Number(m && (m.time != null ? m.time : m.start));
+    const midi = Number(m && (m.pitch != null ? m.pitch : m.midi));
+    return {
+      time: Number.isFinite(time) ? time : 0,
+      duration: Math.max(0.05, _melodyDuration(m)),
+      pitch: Number.isFinite(midi) ? Math.round(midi) : 60,
+      finger: null,
+      gate_ratio: Number.isFinite(Number(m && m.gate_ratio)) ? Number(m.gate_ratio) : 1.0,
+      voice_lane: "rh_melody",
+      schema_version: 2,
+    };
+  }
+
   function _resolveRhEvents() {
     if (typeof accData === 'undefined' || !accData) {
       if (typeof melodyData !== 'undefined' && melodyData && rhContentMode !== "acc") {
-        return melodyData.map(m => ({ time: m.start, duration: m.end - m.start, pitch: m.midi, finger: null }));
+        return melodyData.map(_melodyNoteEvent);
       }
       return [];
     }
@@ -242,12 +265,7 @@
     const wantMel = rhContentMode === "mel" || rhContentMode === "both" || !hasAcc;
     let out = wantAcc ? accRh.slice() : [];
     if (wantMel && typeof melodyData !== 'undefined' && melodyData) {
-      out = out.concat(melodyData.map(m => ({
-        time: m.start,
-        duration: m.end - m.start,
-        pitch: m.midi,
-        finger: null,
-      })));
+      out = out.concat(melodyData.map(_melodyNoteEvent));
     }
     return out;
   }
@@ -3321,13 +3339,7 @@
       }
       if (activeHand === "both" || activeHand === "right") {
         if (typeof melodyData !== 'undefined' && melodyData) {
-          const rhEvents = melodyData.map(m => ({
-            time: m.start,
-            duration: m.end - m.start,
-            pitch: m.midi,
-            finger: null,
-            _hand: "right"
-          }));
+          const rhEvents = melodyData.map(m => ({ ..._melodyNoteEvent(m), _hand: "right" }));
           allEvents.push(...rhEvents);
         }
       }
@@ -5858,10 +5870,17 @@
     const bpm = (chordData && +chordData.bpm) || 120;
     return 60 / Math.max(40, bpm);
   }
+  function _scoreTimeSigParts() {
+    const raw = (chordData && chordData.time_signature) || "4/4";
+    const m = String(raw).replace(/\s+/g, "").match(/^(\d+)\/(\d+)$/);
+    if (!m) return { numerator: 4, denominator: 4 };
+    const numerator = Math.max(1, parseInt(m[1], 10) || 4);
+    const denominator = Math.max(1, parseInt(m[2], 10) || 4);
+    return { numerator, denominator };
+  }
   function _scoreBarSecs() {
-    const ts = (chordData && chordData.time_signature) || "4/4";
-    const beats = parseInt(String(ts).split("/")[0], 10) || 4;
-    return beats * _scoreBeatSecs();
+    const ts = _scoreTimeSigParts();
+    return (ts.numerator * (4 / ts.denominator)) * _scoreBeatSecs();
   }
 
   function _gatherScoreNotes() {
@@ -5870,11 +5889,7 @@
       // Melody is {start, end, midi, ...}. Normalize to {time, duration, pitch}.
       const rh = melodyData
         .filter(m => Number.isFinite(+m.midi) && +m.midi > 0)
-        .map(m => ({
-          time: +m.start,
-          duration: Math.max(0.05, +m.end - +m.start),
-          pitch: Math.round(+m.midi),
-        }));
+        .map(_melodyNoteEvent);
       return { rh, lh: acc.left_hand || [] };
     }
     return { rh: acc.right_hand || [], lh: acc.left_hand || [] };
@@ -6019,6 +6034,7 @@
       timeSig: (chordData && chordData.time_signature) || "4/4",
       key,
       bpm: (chordData && +chordData.bpm) || 120,
+      barLines: (chordData && Array.isArray(chordData.downbeats)) ? chordData.downbeats : [],
       rhNotes: rh,
       lhNotes: lh,
     });

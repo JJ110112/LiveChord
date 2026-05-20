@@ -236,8 +236,17 @@ def process_track(root_dir: str, rel_path: str):
         if do_melody and not melody_done:
             try:
                 extractor = _ensure_melody_extractor()
-                melody = extractor.extract_melody(full_path)
-                from ai.melody_schema import MELODY_EVENT_SCHEMA_VERSION
+                from ai.melody_schema import (
+                    MELODY_EVENT_SCHEMA_VERSION,
+                    melody_context_from_chord_cache,
+                )
+                context = melody_context_from_chord_cache(h)
+                melody = extractor.extract_melody(
+                    full_path,
+                    bpm=context["bpm"],
+                    tempo_curve=context["tempo_curve"],
+                    time_signature=context["time_signature"],
+                )
                 res = {
                     "path": rel_path.replace("\\", "/"),
                     "schema_version": MELODY_EVENT_SCHEMA_VERSION,

@@ -290,9 +290,9 @@ class ArrangerInstrument {
       if (melodyData && melodyData.length > 0) {
         if (!this._mappedMelody || this._mappedMelodySrc !== melodyData) {
           this._mappedMelody = melodyData.map(m => ({
-            time: m.start,
-            duration: m.end - m.start,
-            pitch: m.midi,
+            time: Number(m.time != null ? m.time : m.start) || 0,
+            duration: Math.max(0.05, Number(m.duration) || ((Number(m.end) || 0) - (Number(m.start) || 0)) || 0.25),
+            pitch: Math.round(Number(m.pitch != null ? m.pitch : m.midi) || 60),
             velocity: 80,
             finger: null,
           }));

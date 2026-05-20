@@ -1,5 +1,7 @@
 // frontend/js/midi-exporter.js
 window.MidiExporter = (function() {
+  const TPQ = 480;
+
   function writeVLQ(value) {
     let buffer = [value & 0x7F];
     while ((value >>= 7)) {
@@ -8,43 +10,93 @@ window.MidiExporter = (function() {
     return buffer.reverse();
   }
 
-  function createTrack(events, channel) {
+  function _safeBpm(bpm) {
+    const v = Number(bpm);
+    return Number.isFinite(v) && v > 0 ? v : 120;
+  }
+
+  function _secondsToTicks(seconds, bpm) {
+    return Math.max(0, Math.round(Number(seconds || 0) * _safeBpm(bpm) * TPQ / 60));
+  }
+
+  function _tempoMeta(bpm) {
+    const mpqn = Math.max(1, Math.round(60000000 / _safeBpm(bpm)));
+    return [0xFF, 0x51, 0x03, (mpqn >> 16) & 0xFF, (mpqn >> 8) & 0xFF, mpqn & 0xFF];
+  }
+
+  function _eventTime(e) {
+    const t = Number(e && (e.time != null ? e.time : e.start));
+    return Number.isFinite(t) ? t : 0;
+  }
+
+  function _eventDuration(e) {
+    const d = Number(e && e.duration);
+    if (Number.isFinite(d) && d > 0) return d;
+    const start = Number(e && (e.time != null ? e.time : e.start));
+    const end = Number(e && e.end);
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) return end - start;
+    return 0.5;
+  }
+
+  function _eventPitches(e) {
+    const raw = Array.isArray(e && e.pitches)
+      ? e.pitches
+      : [e && (e.pitch != null ? e.pitch : e.midi)];
+    return raw
+      .map(p => Math.round(Number(p)))
+      .filter(p => Number.isFinite(p) && p >= 0 && p <= 127);
+  }
+
+  function _eventVelocity(e) {
+    const raw = Number(e && e.velocity);
+    const scaled = Number.isFinite(raw) ? (raw <= 1 ? raw * 127 : raw) : 102;
+    return Math.min(127, Math.max(1, Math.round(scaled)));
+  }
+
+  function createTrack(events, channel, bpm, includeTempo) {
     let trackData = [];
     let lastTick = 0;
-
-    // Convert to absolute ticks first (1 sec = 960 ticks @ 120bpm)
     const midiEvents = [];
-    for (const e of events) {
-      if (!e.pitch || isNaN(e.time)) continue;
-      const startTick =     Math.round(e.time * 960);
-      const endTick =   Math.round((e.time + (e.duration || 0.5)) * 960);
-      const vel =       Math.round((e.velocity || 0.8) * 127);
-      midiEvents.push({ tick: startTick, type: 0x90 | channel, pitch: e.pitch, vel: vel });
-      midiEvents.push({ tick: endTick,   type: 0x80 | channel, pitch: e.pitch, vel: 0 });
+
+    if (includeTempo) {
+      midiEvents.push({ tick: 0, order: 0, bytes: _tempoMeta(bpm) });
+    }
+    midiEvents.push({ tick: 0, order: 1, bytes: [0xC0 | channel, 0x00] });
+
+    for (const e of events || []) {
+      const pitches = _eventPitches(e);
+      if (!pitches.length) continue;
+      const start = _eventTime(e);
+      const duration = _eventDuration(e); // canonical readable duration; gate_ratio is playback-only.
+      const startTick = _secondsToTicks(start, bpm);
+      const endTick = Math.max(startTick + 1, _secondsToTicks(start + duration, bpm));
+      const vel = _eventVelocity(e);
+      for (const pitch of pitches) {
+        midiEvents.push({ tick: startTick, order: 2, bytes: [0x90 | channel, pitch, vel] });
+        midiEvents.push({ tick: endTick, order: 1, bytes: [0x80 | channel, pitch, 0] });
+      }
     }
 
-    midiEvents.sort((a, b) => a.tick - b.tick);
+    midiEvents.sort((a, b) => a.tick - b.tick || a.order - b.order);
 
     for (const me of midiEvents) {
       const delta = Math.max(0, me.tick - lastTick);
       trackData.push(...writeVLQ(delta));
-      trackData.push(me.type, me.pitch, me.vel);
+      trackData.push(...me.bytes);
       lastTick = me.tick;
     }
 
-    // End of track: delta 0, FF 2F 00
     trackData.push(0x00, 0xFF, 0x2F, 0x00);
-    
-    // MTrk header
+
     const dataLen = trackData.length;
     const header = [
-      0x4D, 0x54, 0x72, 0x6B, // MTrk
+      0x4D, 0x54, 0x72, 0x6B,
       (dataLen >> 24) & 0xFF,
       (dataLen >> 16) & 0xFF,
       (dataLen >> 8) & 0xFF,
       dataLen & 0xFF
     ];
-    
+
     return header.concat(trackData);
   }
 
@@ -52,34 +104,33 @@ window.MidiExporter = (function() {
     if (!accData) return;
     opts = opts || {};
 
+    const bpm = _safeBpm(opts.bpm || accData.bpm);
+
     // Caller may supply pre-filtered left/right event arrays (e.g. to match
     // the user's current practice-mode selection). Fall back to accData.
     const leftEvents = (opts.leftEvents != null) ? opts.leftEvents : (accData.left_hand || []);
     const rightEvents = (opts.rightEvents != null) ? opts.rightEvents : (accData.right_hand || []);
 
-    const leftTrack = createTrack(leftEvents, 0);  // Ch 1
-    const rightTrack = createTrack(rightEvents, 1); // Ch 2
+    const leftTrack = createTrack(leftEvents, 0, bpm, true);
+    const rightTrack = createTrack(rightEvents, 1, bpm, false);
 
-    // Format 1, 2 tracks, 480 ticks per quarter
     const mthd = [
-      0x4D, 0x54, 0x68, 0x64, // MThd
-      0x00, 0x00, 0x00, 0x06, // Length
-      0x00, 0x01,             // Format 1
-      0x00, 0x02,             // 2 tracks
-      0x01, 0xE0              // 480 ticks
+      0x4D, 0x54, 0x68, 0x64,
+      0x00, 0x00, 0x00, 0x06,
+      0x00, 0x01,
+      0x00, 0x02,
+      (TPQ >> 8) & 0xFF, TPQ & 0xFF
     ];
 
     const midiFile = mthd.concat(leftTrack, rightTrack);
     const u8 = new Uint8Array(midiFile);
 
-    // 檔名: 曲名_伴奏型態_等級[_練習模式]
     const safeName = (title || 'AI_Accompaniment').replace(/[<>:"/\\|?*]+/g, '_');
     const sStyle = style || 'Accomp';
     const sLevel = level || 'L1';
     const modeSfx = opts.modeSuffix ? `_${opts.modeSuffix}` : "";
     const fileName = `${safeName}_${sStyle}_${sLevel}${modeSfx}.mid`;
 
-    // 使用 data URI 避免 blob: insecure connection 警告
     let binary = '';
     for (let i = 0; i < u8.length; i++) {
       binary += String.fromCharCode(u8[i]);

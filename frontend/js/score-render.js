@@ -38,44 +38,81 @@
     return table[pc] + "/" + oct;
   }
 
-  // ------- Duration helpers -------
-  // We assume denominator = 4 throughout (4/4, 3/4 etc). All beats expressed as
-  // "quarter-note equivalents". 1/16 is the finest grid VexFlow can render
-  // without dotted/tuplet complexity.
+  // ------- Duration / meter helpers -------
+  // Internal beat math uses quarter-note equivalents. VexFlow receives the
+  // actual meter denominator (e.g. 6/8 => Voice({ num_beats: 6, beat_value: 8 }))
+  // while durations are decomposed into readable plain/dotted notes.
 
+  const _EPS = 1e-6;
   const _DUR_BEATS = { w: 4, h: 2, q: 1, "8": 0.5, "16": 0.25, "32": 0.125 };
+  const _DUR_TIERS = [
+    ["w", 4],
+    ["hd", 3],
+    ["h", 2],
+    ["qd", 1.5],
+    ["q", 1],
+    ["8d", 0.75],
+    ["8", 0.5],
+    ["16d", 0.375],
+    ["16", 0.25],
+    ["32", 0.125],
+  ];
+
+  function _parseTimeSig(timeSig) {
+    const m = String(timeSig || "4/4").replace(/\s+/g, "").match(/^(\d+)\/(\d+)$/);
+    const numerator = m ? Math.max(1, parseInt(m[1], 10) || 4) : 4;
+    const denominator = m ? Math.max(1, parseInt(m[2], 10) || 4) : 4;
+    return {
+      numerator,
+      denominator,
+      quarterBeats: numerator * (4 / denominator),
+    };
+  }
 
   function _durToBeats(d) {
     const s = String(d || "");
-    const base = s.replace(/r/g, "").replace(/\./g, "");
+    const base = s.replace(/r/g, "").replace(/\./g, "").replace(/d/g, "");
     let b = _DUR_BEATS[base] || 0;
-    if (s.indexOf(".") >= 0) b *= 1.5;
+    if (s.indexOf(".") >= 0 || s.indexOf("d") >= 0) b *= 1.5;
     return b;
   }
 
-  // Snap raw seconds to nearest 1/16-beat, then choose the closest plain dur.
-  function _quantizeDur(secs, beatSecs) {
-    const beats = Math.max(0.0625, Math.round((secs / beatSecs) * 16) / 16);
-    if (beats >= 4)    return "w";
-    if (beats >= 2)    return "h";
-    if (beats >= 1)    return "q";
-    if (beats >= 0.5)  return "8";
-    if (beats >= 0.25) return "16";
-    return "32";
+  function _quantizeBeats(secs, quarterSecs) {
+    return Math.max(0.125, Math.round((secs / Math.max(0.001, quarterSecs)) * 8) / 8);
   }
 
-  // Greedy decomposition of a residual beat count into rest StaveNotes.
-  function _beatsToRests(beats, makeRest) {
+  function _beatsToDurations(beats) {
     const out = [];
-    let remain = beats;
-    const tiers = [["w", 4], ["h", 2], ["q", 1], ["8", 0.5], ["16", 0.25], ["32", 0.125]];
-    for (const [dur, b] of tiers) {
-      while (remain >= b - 1e-6) {
-        out.push(makeRest(dur));
+    let remain = Math.max(0, Math.round(beats * 8) / 8);
+    for (const [dur, b] of _DUR_TIERS) {
+      while (remain >= b - _EPS) {
+        out.push({ dur, beats: b });
         remain -= b;
+        remain = Math.round(remain * 1000) / 1000;
       }
     }
+    if (out.length === 0 && beats > _EPS) out.push({ dur: "32", beats: 0.125 });
     return out;
+  }
+
+  function _beatsToRests(beats, makeRest) {
+    const out = [];
+    for (const spec of _beatsToDurations(beats)) out.push(makeRest(spec));
+    return out;
+  }
+
+  function _eventTime(e) {
+    const t = Number(e && (e.time != null ? e.time : e.start));
+    return Number.isFinite(t) ? t : 0;
+  }
+
+  function _eventDuration(e, fallback) {
+    const d = Number(e && e.duration);
+    if (Number.isFinite(d) && d > 0) return d;
+    const start = Number(e && (e.time != null ? e.time : e.start));
+    const end = Number(e && e.end);
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) return end - start;
+    return fallback;
   }
 
   // ------- ScoreRender public API -------
@@ -113,7 +150,7 @@
       const VF = _VF();
       if (!VF || !this._ready || !this._host) return;
       this._opts = opts || {};
-      const { timeSig = "4/4", key = "C", bpm = 120, timeRange, lhNotes = [], rhNotes = [] } = this._opts;
+      const { timeSig = "4/4", key = "C", bpm = 120, timeRange, barLines = [], lhNotes = [], rhNotes = [] } = this._opts;
 
       // Recreate renderer + svg from scratch each render — VexFlow doesn't
       // expose a "clear" primitive and our pages re-flow on every page turn.
@@ -130,13 +167,13 @@
       }
       const ctx = this._context;
 
-      const tsBeats = parseInt(String(timeSig).split("/")[0], 10) || 4;
-      const beatSecs = 60 / Math.max(40, bpm);
-      const barSecs = tsBeats * beatSecs;
+      const meter = _parseTimeSig(timeSig);
+      const quarterSecs = 60 / Math.max(40, bpm);
+      const fallbackBarSecs = meter.quarterBeats * quarterSecs;
 
-      const range = timeRange || { start: 0, end: 4 * barSecs };
-      const rangeSecs = Math.max(0.001, range.end - range.start);
-      const numBars = Math.max(1, Math.round(rangeSecs / barSecs));
+      const range = timeRange || { start: 0, end: 4 * fallbackBarSecs };
+      const barWindows = this._barWindows(range, barLines, fallbackBarSecs);
+      const numBars = barWindows.length;
 
       // leftPad needs to clear the treble clef's flourish (it extends ~6 px
       // to the left of the staff line); rightPad keeps the last bar's notes
@@ -201,8 +238,8 @@
         this._barLayout.push({
           xStart: musicStartX,
           xEnd: x + w,
-          tStart: range.start + i * barSecs,
-          tEnd: range.start + (i + 1) * barSecs,
+          tStart: barWindows[i].start,
+          tEnd: barWindows[i].end,
         });
         x += w;
       }
@@ -216,131 +253,169 @@
       } catch (_) {}
 
       // Notes — per bar Voice with Padding Patch
+      this._pendingTies = {};
       for (let i = 0; i < numBars; i++) {
-        const barStart = range.start + i * barSecs;
-        const barEnd = barStart + barSecs;
-        const rhVexNotes = this._buildBarNotes(rhNotes, barStart, barEnd, beatSecs, tsBeats, key, "treble");
-        const lhVexNotes = this._buildBarNotes(lhNotes, barStart, barEnd, beatSecs, tsBeats, key, "bass");
-        this._drawVoice(rhVexNotes, trebleStaves[i], tsBeats);
-        this._drawVoice(lhVexNotes, bassStaves[i], tsBeats);
+        const barStart = barWindows[i].start;
+        const barEnd = barWindows[i].end;
+        const localQuarterSecs = Math.max(0.001, (barEnd - barStart) / meter.quarterBeats);
+        const rhVexNotes = this._buildBarNotesV2(rhNotes, barStart, barEnd, localQuarterSecs, meter, key, "treble");
+        const lhVexNotes = this._buildBarNotesV2(lhNotes, barStart, barEnd, localQuarterSecs, meter, key, "bass");
+        this._drawVoice(rhVexNotes, trebleStaves[i], meter);
+        this._drawVoice(lhVexNotes, bassStaves[i], meter);
       }
+      this._pendingTies = {};
 
       this._rangeStart = range.start;
       this._rangeEnd = range.end;
     },
 
-    _buildBarNotes(events, barStart, barEnd, beatSecs, tsBeats, key, clef) {
+    _barWindows(range, barLines, fallbackBarSecs) {
+      const start = Number(range && range.start) || 0;
+      const end = Number(range && range.end) || (start + fallbackBarSecs);
+      const points = [start, end];
+      for (const line of barLines || []) {
+        const t = Number(line);
+        if (Number.isFinite(t) && t > start + 0.01 && t < end - 0.01) points.push(t);
+      }
+      points.sort((a, b) => a - b);
+      const unique = [];
+      for (const p of points) {
+        if (!unique.length || Math.abs(p - unique[unique.length - 1]) > 0.01) unique.push(p);
+      }
+      if (unique.length >= 2) {
+        const windows = [];
+        for (let i = 0; i < unique.length - 1; i++) {
+          if (unique[i + 1] > unique[i] + 0.05) windows.push({ start: unique[i], end: unique[i + 1] });
+        }
+        if (windows.length) return windows;
+      }
+
+      const rangeSecs = Math.max(0.001, end - start);
+      const numBars = Math.max(1, Math.round(rangeSecs / Math.max(0.001, fallbackBarSecs)));
+      const barSecs = rangeSecs / numBars;
+      const windows = [];
+      for (let i = 0; i < numBars; i++) {
+        windows.push({ start: start + i * barSecs, end: start + (i + 1) * barSecs });
+      }
+      return windows;
+    },
+
+    _buildBarNotesV2(events, barStart, barEnd, quarterSecs, meter, key, clef) {
       const VF = _VF();
-      // Pitch-range filter per clef. Drop pitches well outside each
-      // clef's reasonable display window (the waterfall + keyboard still
-      // play them). Notes within the range are drawn at their actual
-      // pitch — ledger lines ARE allowed and expected for low bass /
-      // high treble.
-      //   Bass:   MIDI 33-72  (A1 → C5)   covers stride / walking-bass
-      //                                   + cross-staff middle voice
-      //   Treble: MIDI 53-100 (F3 → E7)   covers melody + chord voicings
       const pitchMin = clef === "bass" ? 33 : 53;
       const pitchMax = clef === "bass" ? 72 : 100;
-      const inBar = (events || []).filter(e => {
-        const t = +e.time;
-        const p = +e.pitch;
-        return t >= barStart - 1e-3 && t < barEnd - 1e-3
-               && Number.isFinite(p) && p >= pitchMin && p <= pitchMax;
-      }).sort((a, b) => +a.time - +b.time);
+      const fallbackDur = quarterSecs * 0.5;
+      const inBar = [];
+      for (const e of events || []) {
+        const t = _eventTime(e);
+        const p = Number(e && (e.pitch != null ? e.pitch : e.midi));
+        if (!Number.isFinite(p) || p < pitchMin || p > pitchMax) continue;
+        const dur = _eventDuration(e, fallbackDur);
+        const end = t + dur;
+        if (end <= barStart + 0.001 || t >= barEnd - 0.001) continue;
+        inBar.push({
+          time: Math.max(t, barStart),
+          sourceTime: t,
+          end,
+          pitch: Math.round(p),
+          crossesIn: t < barStart - 0.001,
+          crossesOut: end > barEnd + 0.001,
+        });
+      }
+      inBar.sort((a, b) => a.time - b.time || a.pitch - b.pitch);
 
-      const makeRest = (dur) => new VF.StaveNote({
-        keys: clef === "treble" ? ["b/4"] : ["d/3"],
-        duration: dur + "r",
-        clef,
-      });
+      const makeRest = (spec) => {
+        const sn = new VF.StaveNote({
+          keys: clef === "treble" ? ["b/4"] : ["d/3"],
+          duration: spec.dur + "r",
+          clef,
+        });
+        sn._lcBeats = spec.beats;
+        return sn;
+      };
+
+      const makeNote = (keys, spec, tieIn, tieOut) => {
+        const sn = new VF.StaveNote({ keys, duration: spec.dur, clef });
+        sn._lcBeats = spec.beats;
+        sn._lcTieIn = tieIn || [];
+        sn._lcTieOut = tieOut || [];
+        keys.forEach((k, idx) => {
+          const c = k.charAt(1);
+          if (c === "#" || c === "b") {
+            try { sn.addModifier(new VF.Accidental(c), idx); } catch (_) {}
+          }
+        });
+        return sn;
+      };
 
       const notes = [];
       let prevEnd = barStart;
       let cursor = 0;
       while (cursor < inBar.length) {
-        const t0 = +inBar[cursor].time;
+        const t0 = inBar[cursor].time;
         const group = [];
-        // Group same-onset (or near-same-onset within 30 ms) events into a chord StaveNote.
-        while (cursor < inBar.length && Math.abs(+inBar[cursor].time - t0) < 0.03) {
+        while (cursor < inBar.length && Math.abs(inBar[cursor].time - t0) < 0.03) {
           group.push(inBar[cursor]);
           cursor++;
         }
-        // Leading rest if gap from prevEnd to t0.
         if (t0 > prevEnd + 0.01) {
-          const gapBeats = (t0 - prevEnd) / beatSecs;
-          notes.push(..._beatsToRests(gapBeats, makeRest));
+          notes.push(..._beatsToRests(_quantizeBeats(t0 - prevEnd, quarterSecs), makeRest));
         }
-        const maxDur = Math.max(...group.map(e => +e.duration || beatSecs));
-        const noteEndT = Math.min(barEnd, t0 + maxDur);
-        const noteDurSecs = Math.max(beatSecs * 0.0625, noteEndT - t0);
-        const durStr = _quantizeDur(noteDurSecs, beatSecs);
-        // CRITICAL #1: dedup by pitch. AI accompaniment occasionally emits
-        // two events at the same time with the same MIDI pitch (e.g. a
-        // root reinforcement on top of a chord-tone). Visually we want one
-        // notehead, not stacked duplicates.
-        // CRITICAL #2: VexFlow requires keys[] sorted low→high — wrong
-        // order flips stem direction and stacks noteheads incorrectly.
+
+        const noteEndT = Math.min(barEnd, Math.max(...group.map(e => e.end)));
+        const noteBeats = Math.min(
+          meter.quarterBeats,
+          _quantizeBeats(Math.max(quarterSecs * 0.125, noteEndT - t0), quarterSecs)
+        );
         const pitchSet = new Set();
-        const pitches = [];
-        for (const e of group) {
-          const p = +e.pitch;
-          if (Number.isFinite(p) && !pitchSet.has(p)) {
-            pitchSet.add(p);
-            pitches.push(p);
+        const items = [];
+        for (const g of group) {
+          if (!pitchSet.has(g.pitch)) {
+            pitchSet.add(g.pitch);
+            items.push(g);
           }
         }
-        pitches.sort((a, b) => a - b);
-        const keys = pitches.map(p => _midiToVexKey(p, key));
-        if (keys.length === 0) {
-          notes.push(makeRest(durStr));
-        } else {
-          const sn = new VF.StaveNote({ keys, duration: durStr, clef });
-          // CRITICAL #3: VexFlow does NOT auto-render sharp/flat glyphs
-          // from the key string alone — keyProps.accidental gets set but
-          // no Accidental modifier is added. Without an explicit
-          // addModifier, "bb/3" draws at the B3 staff position WITHOUT the
-          // flat glyph → reads visually as B3 (or A3 if the eye snaps to
-          // the nearest ledger). Always emit explicit accidentals for any
-          // key containing # or b in position 1.
-          keys.forEach((k, idx) => {
-            const c = k.charAt(1);
-            if (c === "#" || c === "b") {
-              try { sn.addModifier(new VF.Accidental(c), idx); } catch (_) {}
-            }
+        items.sort((a, b) => a.pitch - b.pitch);
+        const keys = items.map(item => _midiToVexKey(item.pitch, key));
+        const durSpecs = _beatsToDurations(noteBeats);
+        for (let i = 0; i < durSpecs.length; i++) {
+          const tieIn = [];
+          const tieOut = [];
+          items.forEach((item, idx) => {
+            const id = `${clef}:${item.pitch}:${item.sourceTime.toFixed(4)}:${item.end.toFixed(4)}`;
+            if ((i === 0 && item.crossesIn) || i > 0) tieIn.push({ id, index: idx });
+            if ((i === durSpecs.length - 1 && item.crossesOut) || i < durSpecs.length - 1) tieOut.push({ id, index: idx });
           });
-          notes.push(sn);
+          notes.push(keys.length ? makeNote(keys, durSpecs[i], tieIn, tieOut) : makeRest(durSpecs[i]));
         }
-        prevEnd = noteEndT;
+        prevEnd = Math.max(prevEnd, t0 + noteBeats * quarterSecs);
       }
       if (prevEnd < barEnd - 0.01) {
-        const trailBeats = (barEnd - prevEnd) / beatSecs;
-        notes.push(..._beatsToRests(trailBeats, makeRest));
+        notes.push(..._beatsToRests(_quantizeBeats(barEnd - prevEnd, quarterSecs), makeRest));
       }
 
-      // ---- Padding Patch ----
-      // VexFlow strict-validates: sum(note durations) must equal num_beats.
-      // Off-by-1/16 → RhythmException → the whole layer crashes. Auto-balance
-      // by either appending rests (positive diff) or truncating the last note
-      // (negative diff). Last-resort fallback: replace bar with whole-bar rest.
-      const beatsOf = (n) => _durToBeats(n.getDuration ? n.getDuration() : n.duration);
+      const beatsOf = (n) => Number(n._lcBeats) || _durToBeats(n.getDuration ? n.getDuration() : n.duration);
       let filled = notes.reduce((s, n) => s + beatsOf(n), 0);
-      let diff = tsBeats - filled;
+      let diff = Math.round((meter.quarterBeats - filled) * 1000) / 1000;
       if (diff > 0.001) {
         notes.push(..._beatsToRests(diff, makeRest));
         filled = notes.reduce((s, n) => s + beatsOf(n), 0);
-        diff = tsBeats - filled;
+        diff = Math.round((meter.quarterBeats - filled) * 1000) / 1000;
       }
       if (Math.abs(diff) > 0.001) {
-        return [makeRest("w")];
+        return _beatsToRests(meter.quarterBeats, makeRest);
       }
       return notes;
     },
 
-    _drawVoice(stavenotes, stave, tsBeats) {
+    _drawVoice(stavenotes, stave, meter) {
       const VF = _VF();
       if (!stavenotes || !stavenotes.length) return;
       try {
-        const voice = new VF.Voice({ num_beats: tsBeats, beat_value: 4 });
+        const voice = new VF.Voice({
+          num_beats: meter.numerator,
+          beat_value: meter.denominator,
+        });
         voice.setStrict(false);
         voice.addTickables(stavenotes);
         // Format width target — pack notes into music area minus 44 px
@@ -359,8 +434,34 @@
         const musicW = Math.max(40, stEnd - stStart - 44);
         new VF.Formatter().joinVoices([voice]).format([voice], musicW);
         voice.draw(this._context, stave);
+        this._drawTiesForNotes(stavenotes);
       } catch (e) {
         console.warn("[score-render] voice draw failed", e);
+      }
+    },
+
+    _drawTiesForNotes(stavenotes) {
+      const VF = _VF();
+      if (!VF || !this._context) return;
+      this._pendingTies = this._pendingTies || {};
+      for (const sn of stavenotes || []) {
+        for (const tie of (sn._lcTieIn || [])) {
+          const from = this._pendingTies[tie.id];
+          if (!from) continue;
+          try {
+            new VF.StaveTie({
+              first_note: from.note,
+              last_note: sn,
+              first_indices: [from.index],
+              last_indices: [tie.index],
+            }).setContext(this._context).draw();
+          } catch (e) {
+            console.warn("[score-render] tie draw failed", e);
+          }
+        }
+        for (const tie of (sn._lcTieOut || [])) {
+          this._pendingTies[tie.id] = { note: sn, index: tie.index };
+        }
       }
     },
 

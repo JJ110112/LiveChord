@@ -8,6 +8,9 @@ schema used by accompaniment, score rendering, and MIDI export.
 from __future__ import annotations
 
 import copy
+import json
+import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .note_continuity import repair_note_continuity
@@ -29,7 +32,8 @@ def finalize_melody_events(
 
     ``start``/``end`` are preserved for legacy frontend consumers. ``time`` and
     ``duration`` are the canonical schema-v2 fields; after continuity repair,
-    ``end`` is synchronized to ``time + duration``.
+    ``end`` is synchronized to ``time + duration``. ``pitch`` and ``midi`` must
+    stay equal for melody events; call this finalizer again after any pitch edit.
     """
 
     normalized = [_normalize_event(event) for event in events or []]
@@ -82,6 +86,42 @@ def finalize_melody_payload(
         time_signature=time_signature,
     )
     return result
+
+
+def melody_context_from_chord_cache(song_hash: str) -> Dict[str, Any]:
+    """Best-effort BPM / tempo-curve / meter context from chord cache."""
+
+    context = {"bpm": 120.0, "tempo_curve": None, "time_signature": "4/4"}
+    if not song_hash:
+        return context
+    try:
+        try:
+            from chord_cache import chord_file_for
+        except ImportError:
+            from backend.chord_cache import chord_file_for  # type: ignore
+        chords_file = chord_file_for(song_hash)
+        if not chords_file.is_file():
+            return context
+        chord_data = json.loads(chords_file.read_text(encoding="utf-8"))
+        context["bpm"] = float(chord_data.get("bpm") or 120.0)
+        context["tempo_curve"] = chord_data.get("tempo_curve") or None
+        context["time_signature"] = (
+            chord_data.get("time_signature")
+            or chord_data.get("meter")
+            or "4/4"
+        )
+    except Exception:
+        return context
+    return context
+
+
+def atomic_write_json(path: Path, payload: Dict[str, Any]) -> None:
+    """Write a JSON cache file without exposing partial content to readers."""
+
+    content = json.dumps(payload, ensure_ascii=False)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(content, encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def _normalize_event(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:

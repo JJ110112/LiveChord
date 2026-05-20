@@ -1031,33 +1031,12 @@ def _worker_loop():
 _melody_pool = None
 
 
-def _melody_context_for_song_hash(song_hash):
-    context = {"bpm": 120.0, "tempo_curve": None, "time_signature": "4/4"}
-    if not song_hash:
-        return context
-    try:
-        from chord_cache import chord_file_for
-        chord_file = chord_file_for(song_hash)
-        if not chord_file.is_file():
-            return context
-        chord_data = json.loads(chord_file.read_text(encoding="utf-8"))
-        context["bpm"] = float(chord_data.get("bpm") or 120.0)
-        context["tempo_curve"] = chord_data.get("tempo_curve") or None
-        context["time_signature"] = (
-            chord_data.get("time_signature")
-            or chord_data.get("meter")
-            or "4/4"
-        )
-    except Exception:
-        return context
-    return context
-
-
 def _melody_subprocess_extract(audio_path, song_hash=None):
     """Run inside the worker subprocess. Imports lazily so the parent process
     doesn't pay for melody-extractor deps until we actually need them."""
     from ai.melody_extractor import MelodyExtractor
-    context = _melody_context_for_song_hash(song_hash)
+    from ai.melody_schema import melody_context_from_chord_cache
+    context = melody_context_from_chord_cache(song_hash)
     return MelodyExtractor().extract_melody(
         audio_path,
         bpm=context["bpm"],

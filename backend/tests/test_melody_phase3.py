@@ -2,6 +2,7 @@ import json
 import sys
 import tempfile
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,7 +11,10 @@ from backend.ai.melody_extractor_v2 import MelodyExtractorV2
 from backend.ai.melody_schema import (
     MELODY_EVENT_SCHEMA_VERSION,
     MELODY_VOICE_LANE,
+    atomic_write_json,
     finalize_melody_events,
+    finalize_melody_payload,
+    melody_context_from_chord_cache,
 )
 
 
@@ -107,6 +111,67 @@ class TestMelodyPhase3(unittest.TestCase):
             saved = json.loads(cache_file.read_text(encoding="utf-8"))
             self.assertEqual(saved["schema_version"], MELODY_EVENT_SCHEMA_VERSION)
             self.assertAlmostEqual(saved["melody"][0]["end"], 0.5)
+
+    def test_finalize_melody_payload_accepts_bare_list(self):
+        result = finalize_melody_payload(
+            [{"start": 0.0, "end": 0.25, "note": "C4", "midi": 60}],
+            path="song.mp3",
+            bpm=120,
+        )
+
+        self.assertEqual(result["schema_version"], MELODY_EVENT_SCHEMA_VERSION)
+        self.assertEqual(result["path"], "song.mp3")
+        self.assertEqual(result["melody"][0]["pitch"], 60)
+        self.assertEqual(result["melody"][0]["voice_lane"], MELODY_VOICE_LANE)
+
+    def test_melody_context_from_chord_cache_reads_bpm_curve_and_meter(self):
+        import backend.chord_cache as chord_cache
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            chord_root = root / "chords"
+            song_hash = "ab1234567890"
+            song_dir = chord_root / song_hash[:2]
+            song_dir.mkdir(parents=True)
+            (song_dir / f"{song_hash}.json").write_text(
+                json.dumps({
+                    "bpm": 85,
+                    "tempo_curve": [{"t": 0, "bpm": 85}, {"t": 10, "bpm": 78}],
+                    "time_signature": "6/8",
+                }),
+                encoding="utf-8",
+            )
+
+            patch_targets = [chord_cache]
+            try:
+                import chord_cache as top_level_chord_cache
+                if top_level_chord_cache is not chord_cache:
+                    patch_targets.append(top_level_chord_cache)
+            except ImportError:
+                pass
+
+            with ExitStack() as stack:
+                for target in patch_targets:
+                    stack.enter_context(patch.object(target, "CHORDS_DIR", chord_root))
+                    stack.enter_context(patch.object(target, "DEMO_CHORDS_DIR", root / "demo" / "chords"))
+                context = melody_context_from_chord_cache(song_hash)
+
+        self.assertEqual(context["bpm"], 85.0)
+        self.assertEqual(context["time_signature"], "6/8")
+        self.assertEqual(context["tempo_curve"][1]["bpm"], 78)
+
+    def test_atomic_write_json_replaces_cache_without_tmp_leftover(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "song.json"
+            path.write_text('{"old": true}', encoding="utf-8")
+
+            atomic_write_json(path, {"schema_version": MELODY_EVENT_SCHEMA_VERSION})
+
+            self.assertEqual(
+                json.loads(path.read_text(encoding="utf-8")),
+                {"schema_version": MELODY_EVENT_SCHEMA_VERSION},
+            )
+            self.assertFalse(path.with_suffix(path.suffix + ".tmp").exists())
 
 
 if __name__ == "__main__":

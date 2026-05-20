@@ -20,6 +20,32 @@ window.ChordExporter = (function () {
     return buffer.reverse();
   }
 
+  const TPQ = 480;
+
+  function _safeBpm(bpm) {
+    const v = Number(bpm);
+    return Number.isFinite(v) && v > 0 ? v : 120;
+  }
+
+  function _secondsToTicks(seconds, bpm) {
+    return Math.max(0, Math.round(Number(seconds || 0) * _safeBpm(bpm) * TPQ / 60));
+  }
+
+  function _tempoMeta(bpm) {
+    const mpqn = Math.max(1, Math.round(60000000 / _safeBpm(bpm)));
+    return [0xFF, 0x51, 0x03, (mpqn >> 16) & 0xFF, (mpqn >> 8) & 0xFF, mpqn & 0xFF];
+  }
+
+  function _chordEnd(chords, index, bpm) {
+    const c = chords[index] || {};
+    const explicit = Number(c.end);
+    if (Number.isFinite(explicit) && explicit > Number(c.time || 0)) return explicit;
+    const next = chords[index + 1];
+    const nextTime = Number(next && next.time);
+    if (Number.isFinite(nextTime) && nextTime > Number(c.time || 0)) return nextTime;
+    return Number(c.time || 0) + (60 / _safeBpm(bpm)) * 4;
+  }
+
   // Resolve displayed chords honoring transpose + capo (mirrors
   // player.js `_displayChords()` but is self-contained).
   function _displayChords(chords, transpose, capo) {
@@ -388,28 +414,27 @@ ${bodyHtml}
     return out;
   }
 
-  function _buildChordBlockTrack(chords, chordCache) {
-    const TPQ = 480;
-    const SEC_TO_TICK = TPQ * 2;   // 480 ticks/quarter @ 120 BPM default
+  function _buildChordBlockTrack(chords, chordCache, bpm) {
     // Build absolute-tick event list.
     const events = [];
+    events.push({ tick: 0, order: 0, bytes: _tempoMeta(bpm) });
     // Program change to acoustic piano on ch 0.
-    events.push({ tick: 0, bytes: [0xC0, 0x00] });
-    for (const c of chords) {
+    events.push({ tick: 0, order: 1, bytes: [0xC0, 0x00] });
+    for (let i = 0; i < chords.length; i++) {
+      const c = chords[i];
       const rawNotes = (chordCache[c.chord] && Array.isArray(chordCache[c.chord].notes)) ? chordCache[c.chord].notes : [];
       const midiNotes = _voiceChordToMidi(rawNotes);
       if (midiNotes.length === 0) continue;
-      const onTick = Math.round(c.time * SEC_TO_TICK);
-      const offTick = Math.round((c.end != null ? c.end : c.time + 1.0) * SEC_TO_TICK);
+      const onTick = _secondsToTicks(c.time, bpm);
+      const offTick = Math.max(onTick + 1, _secondsToTicks(_chordEnd(chords, i, bpm), bpm));
       const vel = 96;
       for (const p of midiNotes) {
         if (typeof p !== 'number' || p < 0 || p > 127) continue;
-        events.push({ tick: onTick,  bytes: [0x90, p, vel] });
-        events.push({ tick: offTick, bytes: [0x80, p, 0] });
+        events.push({ tick: onTick, order: 2, bytes: [0x90, p, vel] });
+        events.push({ tick: offTick, order: 1, bytes: [0x80, p, 0] });
       }
     }
-    // Stable sort by tick; note-off ordering doesn't matter within the same tick.
-    events.sort((a, b) => a.tick - b.tick);
+    events.sort((a, b) => a.tick - b.tick || a.order - b.order);
 
     // Emit delta-time + bytes.
     let trackData = [];
@@ -465,13 +490,13 @@ ${bodyHtml}
       return;
     }
 
-    const track = _buildChordBlockTrack(chords, chordCache);
+    const track = _buildChordBlockTrack(chords, chordCache, chordData.bpm);
     const mthd = [
       0x4D, 0x54, 0x68, 0x64,   // "MThd"
       0x00, 0x00, 0x00, 0x06,   // header length 6
       0x00, 0x00,               // Format 0
       0x00, 0x01,               // 1 track
-      0x01, 0xE0                // 480 ticks per quarter
+      (TPQ >> 8) & 0xFF, TPQ & 0xFF
     ];
     const bytes = new Uint8Array(mthd.concat(track));
     const blob = new Blob([bytes], { type: 'audio/midi' });
