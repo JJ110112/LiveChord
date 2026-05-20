@@ -184,13 +184,14 @@ V:\data\melodies_v4\<hh>\<hash>.json                 # existing Phase 4 precompu
     "selected_by": "fallback",
     "candidate_score": 0.62,
     "margin_over_fallback": 0.00,
-    "cache_version": "rhmelody-v2"
+    "cache_version": "rhmelody-v2",
+    "phase": "phase0"
   },
   "quality_flags": ["fallback_full_mix"]
 }
 ```
 
-Frontend can ignore new metadata initially. Debug UI, admin review, and future user-facing labels can use it later.
+Frontend can ignore new metadata initially. Debug UI, admin review, and future user-facing labels can use it later. `cache_version` follows the versioned cache family (`rhmelody-v2`, aligned with `melodies_rh_v2/`); rollout phase is stored separately as `phase`. `selected_by="legacy_primary"` means the current full-mix pYIN path produced the payload before any resolver decision existed. `selected_by="fallback"` is reserved for the future resolver choosing `full_mix_pyin` after comparing candidates.
 
 ### 4.5 Deployment scope (server-mode matters)
 
@@ -227,7 +228,7 @@ selected = full_mix_pyin
 
 | Feature | Purpose | Notes |
 |---|---|---|
-| Note density per second and per bar | Penalize dense accompaniment bleed and overly sparse failed extraction | |
+| Note density per second and per bar | Penalize dense accompaniment bleed and overly sparse failed extraction | Phase 0 exposes `density_when_active_per_s`, computed over the melody's active span. Full-song density requires known song duration and is a later scoring feature |
 | Median range and range span | Detect bass leakage, octave jumps, impossible RH lines | |
 | Continuity / jump rate | Prefer singable or lead-instrument-like motion | |
 | Confidence distribution | Detect weak F0 tracking or noisy transcription | |
@@ -265,7 +266,7 @@ Deliverables:
 | Add `melody_source` + `quality_flags` to `/api/ai/melody` (additive, optional) | Survey can record per-song selected source |
 | Admin/debug view shows current source + flags | Reproducible inspection; `quality_flags` should be visible in Phase 0, not after resolver tuning |
 | **Failure-mode taxonomy is frozen before listening review starts** | One primary tag per song/segment, optional secondary flags; avoids drifting standards across 200 songs |
-| **Failure-mode survey on 200 stratified random songs** | Tagged distribution of failures: `pyin_fine / wrong_line_backing_vocal / wrong_line_accompaniment / sparse_missing / no_lead_present / wrong_octave / audio_quality / no_issue_audible` |
+| **Failure-mode survey on 200 stratified random songs** | Tagged distribution of failures: `pyin_fine / wrong_octave / bass_leakage / wrong_line_backing_vocal / accompaniment_chord_tone / accompaniment_riff_lead / sparse_threshold / sparse_genuine_silence / duet_alternating / solo_piano_polyphonic_collapse / no_lead_present / audio_quality / no_issue_audible` |
 | Public reference dataset hook | Run current pYIN against MedleyDB-Melody / MIR-1K subset (≥20 songs), record RPA/RCA against ground truth |
 
 Phase 0 review taxonomy:
@@ -276,13 +277,17 @@ Phase 0 review taxonomy:
 | `wrong_octave` | Correct contour but octave is visibly/audibly displaced or jumps against the running median | Usually yes |
 | `bass_leakage` | pYIN follows bass/LH below the intended lead line | Usually yes |
 | `wrong_line_backing_vocal` | pYIN follows harmony/backing vocal above or beside the lead | Usually no; needs source routing |
-| `wrong_line_accompaniment` | pYIN follows piano RH, guitar riff, pad, or accompaniment texture instead of lead | Sometimes; often source routing |
-| `sparse_missing` | Lead exists but pYIN misses too many notes or large phrases | Maybe; depends on confidence/coverage |
+| `accompaniment_chord_tone` | pYIN follows accompaniment chord tones that a chord-tone/range gate can plausibly suppress | Yes |
+| `accompaniment_riff_lead` | pYIN follows a real riff or accompaniment lead line instead of the intended melody | No; needs source routing or section logic |
+| `sparse_threshold` | Lead exists but pYIN voiced/confidence thresholds miss too many notes | Yes |
+| `sparse_genuine_silence` | Sparse output reflects real vocal/lead rests rather than extractor failure | No |
+| `duet_alternating` | Two lead voices alternate and pYIN switches between them inconsistently | No; needs source or arrangement-aware routing |
+| `solo_piano_polyphonic_collapse` | Solo piano polyphony collapses into a mixed monophonic line | No; needs polyphonic/top-voice route |
 | `no_lead_present` | The audio genuinely has no stable RH lead line | No; correct output is empty melody |
 | `audio_quality` | Failure is mainly caused by the recording itself: heavy reverb, clipping, low bitrate/sample-rate artifacts, strong noise, live-room bleed, or bad source separation | Usually no; lower resolver confidence and surface the flag |
 | `no_issue_audible` | JSON/metric looks suspicious but playback is acceptable to a human reviewer | No action |
 
-Review rule: every reviewed song or highlighted segment gets exactly one primary tag, plus optional secondary flags such as `mixed_section_single_source`, `quantization_jitter`, `source_intro_missing`, or `needs_ab_replay`. The `audio_quality` tag is important because it separates algorithm defects from cases where every extractor is likely to be unstable.
+Review rule: every reviewed song or highlighted segment gets exactly one primary tag, plus optional secondary flags such as `mixed_section_single_source`, `quantization_jitter`, `source_intro_missing`, or `needs_ab_replay`. The `audio_quality` tag is important because it separates algorithm defects from cases where every extractor is likely to be unstable. Phase 0's post-filter decision uses all reviewed primary tags in the denominator: tags marked post-filter-fixable count toward Phase 1 post-filters; tags marked not fixable count against them.
 
 Exit gate:
 
@@ -476,6 +481,7 @@ machine_proxies: { vocal_alignment_ratio, chord_tone_distance_median, extreme_ra
 failure_tag
 secondary_flags: [audio_quality, quantization_jitter, mixed_section_single_source, source_intro_missing]
 audio_quality_note: none | reverb_high | clipped | noisy | low_bitrate | live_room_bleed | separation_artifact
+stats: { density_when_active_per_s, active_duration_s, midi_min, midi_max, midi_median }
 review_note
 ```
 

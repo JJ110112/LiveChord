@@ -1209,9 +1209,10 @@ window._lcIsBeta = (function() {
         `source: ${src.id || "—"} / ${src.algorithm || "—"} / ${src.selected_by || "—"}`,
         `song_type: ${src.song_type || "unknown"} (${src.song_type_confidence ?? "n/a"})`,
         `flags: ${flags.length ? flags.join(", ") : "—"}`,
-        `notes: ${stats.note_count || 0}, density: ${stats.density_notes_per_s || 0}/s, range: ${stats.midi_min ?? "—"}-${stats.midi_max ?? "—"}, median: ${stats.midi_median ?? "—"}`,
+        `notes: ${stats.note_count || 0}, active_density: ${stats.density_when_active_per_s || 0}/s, range: ${stats.midi_min ?? "—"}-${stats.midi_max ?? "—"}, median: ${stats.midi_median ?? "—"}`,
+        data.hash_recomputed ? `rehash: query ${data.query_hash || "—"} -> cache ${data.song_hash || "—"}` : "",
         `Phase 0 tags: ${primaryTags.join(", ")}`,
-      ].join("\n");
+      ].filter(Boolean).join("\n");
     } catch (e) {
       status.textContent = `Failed: ${e.message || e}`;
     }

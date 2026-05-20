@@ -231,6 +231,7 @@ def get_melody_debug(
     from ai.melody_schema import melody_review_taxonomy
 
     MELODY_DIR = DATA_DIR / "melodies"
+    query_hash = hash or ""
     target_hash = hash or ""
     target_path = path or ""
     cache_file = None
@@ -252,8 +253,9 @@ def get_melody_debug(
                         melody_hash = get_song_hash(target_path)
                         alt_file = MELODY_DIR / f"{melody_hash}.json"
                         if alt_file.is_file():
+                            target_hash = melody_hash
                             cache_file = alt_file
-                            lookup = "hash_via_chord_path"
+                            lookup = "hash_via_chord_path_rehash"
                 except Exception:
                     pass
     elif path:
@@ -266,27 +268,43 @@ def get_melody_debug(
     cache_exists = bool(cache_file and cache_file.is_file())
     payload = None
     if cache_exists and cache_file is not None:
-        payload = _read_finalized_melody_cache(
-            cache_file,
+        data = _json.loads(cache_file.read_text(encoding="utf-8"))
+        payload = _finalize_melody_response(data, path=target_path, song_hash=target_hash)
+    else:
+        payload = _finalize_melody_response(
+            {
+                "path": target_path,
+                "melody": [],
+                "melody_source": {
+                    "id": "no_cache",
+                    "stem": "",
+                    "algorithm": "",
+                    "song_type": "unknown",
+                    "selected_by": "no_cache",
+                },
+                "quality_flags": ["no_cache"],
+            },
             path=target_path,
             song_hash=target_hash,
         )
 
     return {
         "query": {"hash": hash, "path": path},
+        "query_hash": query_hash,
         "song_hash": target_hash,
+        "hash_recomputed": bool(query_hash and target_hash and query_hash != target_hash),
         "path": target_path,
         "lookup": lookup,
         "cache": {
             "exists": cache_exists,
             "file": str(cache_file) if cache_file else "",
         },
-        "melody_source": (payload or {}).get("melody_source"),
-        "quality_flags": (payload or {}).get("quality_flags", []),
-        "melody_stats": (payload or {}).get("melody_stats", {
+        "melody_source": payload.get("melody_source"),
+        "quality_flags": payload.get("quality_flags", []),
+        "melody_stats": payload.get("melody_stats", {
             "note_count": 0,
-            "duration_s": 0.0,
-            "density_notes_per_s": 0.0,
+            "active_duration_s": 0.0,
+            "density_when_active_per_s": 0.0,
         }),
         "taxonomy": melody_review_taxonomy(),
     }

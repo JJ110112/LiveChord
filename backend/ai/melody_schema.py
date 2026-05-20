@@ -18,7 +18,8 @@ from .note_continuity import repair_note_continuity
 
 MELODY_EVENT_SCHEMA_VERSION = 2
 MELODY_VOICE_LANE = "rh_melody"
-MELODY_CACHE_VERSION = "rhmelody-phase0"
+MELODY_CACHE_VERSION = "rhmelody-v2"
+MELODY_SCHEMA_PHASE = "phase0"
 MELODY_FAILURE_TAXONOMY = {
     "pyin_fine": {
         "description": "Current pYIN is musically usable; resolver should not switch away.",
@@ -36,13 +37,29 @@ MELODY_FAILURE_TAXONOMY = {
         "description": "pYIN follows harmony or backing vocal above/beside the lead.",
         "post_filter_fixable": False,
     },
-    "wrong_line_accompaniment": {
-        "description": "pYIN follows piano RH, guitar riff, pad, or accompaniment texture.",
-        "post_filter_fixable": None,
+    "accompaniment_chord_tone": {
+        "description": "pYIN follows accompaniment chord tones that a chord-tone/range gate can plausibly suppress.",
+        "post_filter_fixable": True,
     },
-    "sparse_missing": {
-        "description": "A lead exists but pYIN misses too many notes or phrases.",
-        "post_filter_fixable": None,
+    "accompaniment_riff_lead": {
+        "description": "pYIN follows a real riff or accompaniment lead line instead of the intended melody.",
+        "post_filter_fixable": False,
+    },
+    "sparse_threshold": {
+        "description": "A lead exists but pYIN voiced/confidence thresholds miss too many notes.",
+        "post_filter_fixable": True,
+    },
+    "sparse_genuine_silence": {
+        "description": "The sparse output reflects real vocal/lead rests rather than extractor failure.",
+        "post_filter_fixable": False,
+    },
+    "duet_alternating": {
+        "description": "Two lead voices alternate and pYIN switches between them inconsistently.",
+        "post_filter_fixable": False,
+    },
+    "solo_piano_polyphonic_collapse": {
+        "description": "Solo piano polyphony collapses into a mixed monophonic line.",
+        "post_filter_fixable": False,
     },
     "no_lead_present": {
         "description": "The audio genuinely has no stable RH lead line.",
@@ -149,7 +166,10 @@ def melody_review_taxonomy() -> Dict[str, Any]:
         "secondary_flags": list(MELODY_SECONDARY_FLAGS),
         "review_rule": (
             "Assign exactly one primary tag per reviewed song/segment; "
-            "secondary flags are optional."
+            "secondary flags are optional. Phase 0's post-filter decision "
+            "uses all reviewed primary tags in the denominator: "
+            "post_filter_fixable=true counts toward Phase 1 post-filters, "
+            "post_filter_fixable=false counts against them."
         ),
     }
 
@@ -249,6 +269,7 @@ def _default_melody_source(existing: Any) -> Dict[str, Any]:
     source.setdefault("candidate_score", None)
     source.setdefault("margin_over_fallback", 0.0)
     source.setdefault("cache_version", MELODY_CACHE_VERSION)
+    source.setdefault("phase", MELODY_SCHEMA_PHASE)
     return source
 
 
@@ -274,8 +295,8 @@ def _melody_stats(events: List[Dict[str, Any]]) -> Dict[str, Any]:
     if note_count == 0:
         return {
             "note_count": 0,
-            "duration_s": 0.0,
-            "density_notes_per_s": 0.0,
+            "active_duration_s": 0.0,
+            "density_when_active_per_s": 0.0,
             "midi_min": None,
             "midi_max": None,
             "midi_median": None,
@@ -290,7 +311,7 @@ def _melody_stats(events: List[Dict[str, Any]]) -> Dict[str, Any]:
     for event in events:
         if event.get("confidence") is None:
             continue
-        conf = _as_float(event.get("confidence"), None)
+        conf = _as_optional_float(event.get("confidence"))
         if conf is not None:
             confs.append(conf)
     median_idx = note_count // 2
@@ -300,8 +321,8 @@ def _melody_stats(events: List[Dict[str, Any]]) -> Dict[str, Any]:
         midi_median = (midis[median_idx - 1] + midis[median_idx]) / 2.0
     return {
         "note_count": note_count,
-        "duration_s": round(duration, 3),
-        "density_notes_per_s": round(note_count / duration, 4) if duration > 0 else 0.0,
+        "active_duration_s": round(duration, 3),
+        "density_when_active_per_s": round(note_count / duration, 4) if duration > 0 else 0.0,
         "midi_min": midis[0],
         "midi_max": midis[-1],
         "midi_median": round(midi_median, 2),
@@ -314,11 +335,18 @@ def _clamp_gate_ratio(value: Any, default: float = 1.0) -> float:
     return round(max(0.05, min(1.0, gate)), 4)
 
 
-def _as_float(value: Any, default: Any) -> Any:
+def _as_float(value: Any, default: float) -> float:
     try:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _as_optional_float(value: Any) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _as_int(value: Any, default: Optional[int]) -> Optional[int]:
