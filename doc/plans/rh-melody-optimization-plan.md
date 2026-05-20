@@ -1,8 +1,8 @@
 # RH Melody Optimization Plan
 
-**Date**: 2026-05-20 (revised after critical review)
-**Status**: planning
-**Tracking**: `LiveChord-jqnm`, `LiveChord-nfdz`
+**Date**: 2026-05-20 (revised after critical review; cleaned after Phase 0 instrumentation and sponsor removal)
+**Status**: Phase 0 instrumentation complete; listening survey and reference baseline pending
+**Tracking**: `LiveChord-2t5y` (active Phase 0/1), `LiveChord-zpu1` (review-log hardening follow-up)
 
 ## 1. Summary
 
@@ -34,7 +34,7 @@ Rationale for the algorithm choice (desk comparison lives in §4.2):
 - If Phase 2 adopts `vocal_stem_crepe`, **Demucs precompute becomes shared required infrastructure** for both `vocal_stem_crepe` and `instrument_lead`; the vocal-stem path then costs no extra separation pass. Given that, HTDemucs vocal stem → CREPE is engineering-simpler than FTANet on full mix, has MIT / Apache-style permissive licensing across the core code stack, and CREPE-on-stem is the benchmark hypothesis Phase 2 must prove against pYIN.
 - **Polyphonic AMT is mature enough to use as Stage 1; symbolic RH selection is the real risk.** The previous draft handwaved the Stage-2 selector as "prefer sustained/high-salience upper voice"; this revision commits to a named baseline (Skyline + Temperley Viterbi) so Phase 2 has a concrete deliverable rather than an unbounded research project.
 
-Project status for license and governance decisions: LiveChord is a personal hobby / non-commercial project. `livechord.org` currently has single-digit daily users, no ads, no paywall, no paid tier, no marketing, and no actual sponsorship revenue. The old Buy Me a Coffee / sponsor surface should be removed or hidden as part of the governance cleanup in §10 so the public presentation matches the actual hobby/non-commercial status.
+Project status for license and governance decisions: LiveChord is a personal hobby / non-commercial project. `livechord.org` currently has single-digit daily users, no ads, no paywall, no paid tier, no marketing, and no actual sponsorship revenue. The old Buy Me a Coffee / sponsor surface was removed on 2026-05-20 (`/sponsor` now returns 404), so the public presentation matches the actual hobby/non-commercial status.
 
 The plan is also constrained by a **prove-it-first** discipline. Before building 4-tier candidates + scoring + resolver, Phase 0 must show that the existing pYIN failure modes actually need a new audio source, not just better post-filtering.
 
@@ -410,13 +410,15 @@ The previous draft put "baseline metrics" first and added metadata second. This 
 
 Deliverables:
 
-| Item | Output |
-|---|---|
-| Add `melody_source` + `quality_flags` to `/api/ai/melody` (additive, optional) | Survey can record per-song selected source |
-| Admin/debug view shows current source + flags | Reproducible inspection; `quality_flags` should be visible in Phase 0, not after resolver tuning |
-| **Failure-mode taxonomy is frozen before listening review starts** | One primary tag per song/segment, optional secondary flags; avoids drifting standards across 200 songs |
-| **Failure-mode survey on 200 equal-probability random reviewable songs** | Tagged distribution of failures: `pyin_fine / wrong_octave / bass_leakage / wrong_line_backing_vocal / accompaniment_chord_tone / accompaniment_riff_lead / sparse_threshold / sparse_genuine_silence / duet_alternating / solo_piano_polyphonic_collapse / no_lead_present / audio_quality / no_issue_audible`; no subtype stratification, to avoid biasing the observed current fail rate |
-| Public reference dataset hook | Run current pYIN against MedleyDB-Melody / MIR-1K subset (≥20 songs), record RPA/RCA against ground truth |
+| Item | Output | Status |
+|---|---|---|
+| Add `melody_source` + `quality_flags` to `/api/ai/melody` (additive, optional) | Survey can record per-song selected source | Done |
+| Admin/debug view shows current source + flags | Reproducible inspection; `quality_flags` should be visible in Phase 0, not after resolver tuning | Done |
+| Admin survey panel | Load queue, open player, inspect, tag, and submit Phase 0 review entries | Done |
+| **Failure-mode taxonomy is frozen before listening review starts** | One primary tag per song/segment, optional secondary flags; avoids drifting standards across 200 songs | Done |
+| **Failure-mode survey on 200 equal-probability random reviewable songs** | Tagged distribution of failures: `pyin_fine / wrong_octave / bass_leakage / wrong_line_backing_vocal / accompaniment_chord_tone / accompaniment_riff_lead / sparse_threshold / sparse_genuine_silence / duet_alternating / solo_piano_polyphonic_collapse / no_lead_present / audio_quality / no_issue_audible`; no subtype stratification, to avoid biasing the observed current fail rate | Pending human listening review |
+| Phase 0 summary/report | Completion count, tag distribution, post-filter-fixable ratio, secondary/audio-quality breakdown | Pending |
+| Public reference dataset hook | Run current pYIN against MedleyDB-Melody / MIR-1K subset (≥20 songs), record RPA/RCA against ground truth | Pending |
 
 Phase 0 review taxonomy:
 
@@ -445,6 +447,16 @@ python tools/sample_melody_phase0_survey.py --sample-size 200 --seed 20260520 --
 ```
 
 The script samples `library_cache.json` tracks when that cache is available, because it is already the fastest auditable list of playable songs; if no library cache exists, it falls back to scanning sharded chord cache files and checking audio existence. It writes `data/melody_reviews/phase0_survey_queue.jsonl` plus `phase0_survey_queue.summary.json`. `--chords-root` defaults to `LIVECHORD_CHORDS_DIR`, then `V:\data\chords` when present; repo-local `data/chords` is only a development fallback and prints a warning. Review tags are written through `POST /api/ai/melody/debug/tag` into `data/melody_reviews/phase0_tags.jsonl`; the endpoint reuses `/api/ai/melody/debug` metadata, validates the frozen taxonomy, stores the reviewer, `survey_id`, `failure_tag`, `secondary_flags`, `audio_quality_note`, optional segment, machine proxies, and current melody stats.
+
+Current Phase 0 artifacts:
+
+| Artifact | Location / status |
+|---|---|
+| Survey queue | `V:\data\melody_reviews\phase0_survey_queue.jsonl`, 200 rows, seed `20260520` |
+| Survey summary | `V:\data\melody_reviews\phase0_survey_queue.summary.json` |
+| Review log | `V:\data\melody_reviews\phase0_tags.jsonl` |
+| Admin panel | `http://192.168.50.6:8800/admin` -> RH survey |
+| Public behavior | Unchanged; VPS remains `full_mix_pyin` only |
 
 Exit gate:
 
@@ -655,7 +667,7 @@ review_note
 | Risk / decision | Plan |
 |---|---|
 | Pretrained-weight licenses for CREPE / FTANet / Magenta MAESTRO / ByteDance hFT | Phase 2 commit-gate: each model's training-data + weight license is recorded but does **not** block deployment under the current LiveChord scope. LiveChord is non-commercial everywhere today: NUC personal, PC local, and the public livechord.org hobby service have no ads, no paywall, no paid tier, no marketing, single-digit daily users, and no actual sponsorship revenue. Notes: CREPE / torchcrepe MIT; Magenta code Apache 2.0 with MAESTRO-trained weights inheriting CC BY-NC-SA — fine under current non-commercial scope, **re-evaluate before any monetization**; FTANet weights from `yushuai/FTANet-melodic` still need explicit verification; ByteDance hFT MIT but maintenance is slow. ShareAlike re-licensing only becomes relevant if LiveChord distributes derivative *trained* weights — out of scope for v1 and gated by a separate review if it ever arises |
-| Public sponsor/donation surface creates avoidable license ambiguity | Add a cleanup task to remove or hide the Buy Me a Coffee / sponsor page and sponsor navigation. There has been zero sponsorship revenue, so removing it better reflects the hobby/non-commercial status and reduces NC-license ambiguity before Phase 2 model work |
+| Public sponsor/donation surface creates avoidable license ambiguity | Resolved 2026-05-20. The Buy Me a Coffee / sponsor page, navigation, sitemap/SEO references, i18n copy, README mention, and config-driven BMC CTA were removed or hidden; `/sponsor` now returns 404. Keep this surface removed unless a future monetization decision triggers a separate license/governance review |
 | HTDemucs runtime and dependency weight | PC-side precompute only; htdemucs full-quality model is ~80 MB; per-song separation ~2-6× realtime on CPU; cache stems once and reuse across `vocal_stem_crepe` + `instrument_lead` |
 | CREPE runtime | `torchcrepe.full` is ~96 MB and faster than realtime on CPU per vocal stem; `tiny` (~9 MB) reserved for any future NUC fallback. No on-NUC use in v1 |
 | FTANet runtime and dependency weight | Fallback path only; PC-side; runs only when `vocal_stem_crepe` is missing or hard-gate-failed |
@@ -676,22 +688,32 @@ review_note
 | Plan becomes a perpetual epic alongside neural_arranger | §6 Phase 5 includes a hard "definition of done" — 3-month admin-override usage rate |
 | Phase 4 hybrid_melody / `melodies_v4` is itself unshipped | `midi_aligned` Tier is gated on Phase 4 landing; if Phase 4 stays POC, resolver routes around it transparently |
 
-## 10. Immediate Next Steps
+## 10. Current Next Steps
 
-| Order | Work |
-|---:|---|
-| 1 | Freeze the Phase 0 failure-mode taxonomy before reviewing the 200-song sample; yes, this happens before listening review starts |
-| 2 | Add optional `melody_source` + `quality_flags` metadata to current `/api/ai/melody` output (Phase 0, no behavior change) |
-| 3 | Visualize source id, `quality_flags`, note density, and failure tag in Admin/debug UI immediately, so resolver weights can be tuned from inspected evidence |
-| 4 | Build stratified review-list manifest per §8 (sub-type counts fixed) |
-| 5 | Run current `full_mix_pyin` against the manifest + a MedleyDB-Melody / MIR-1K subset; record RPA/RCA + failure-mode tags |
-| 6 | **Decision branch**: classify failure modes. If >50% are post-filter-fixable, Phase 1 is the entire next sprint (post-filters only); if octave-jump dominates, prioritize the octave-fold filter first; if not, proceed to Phase 2 candidate builder |
-| 7 | If proceeding to Phase 2: commit to HTDemucs v4 precompute (shared by `vocal_stem_crepe` + `instrument_lead`); benchmark per-song separation runtime and stem cache size on the PC worker |
-| 8 | If proceeding to Phase 2: prototype `vocal_stem_crepe` on a small vocal subset; compare against current pYIN on RPA/RCA and on the Phase 0 failure-tag distribution |
-| 9 | If proceeding to Phase 2: prototype `solo_piano_polyphonic` on a small solo-piano subset using Magenta Onsets and Frames → Skyline → Temperley Viterbi end-to-end; compare against current pYIN |
-| 10 | If proceeding to Phase 2: record pretrained-weight licenses (CREPE, Magenta MAESTRO, FTANet) in the repo as metadata. Non-commercial use is permissible across all deployments under current scope; the entry exists so a future monetization decision triggers a re-review |
-| 11 | Remove or hide the Buy Me a Coffee / sponsor surface (`/sponsor`, header/menu links, sitemap/SEO references, i18n copy, README mention) before any NC-weight-backed candidate is promoted beyond shadow |
-| 12 | If `vocal_stem_crepe` underperforms on noisy stems: schedule the §11 RMVPE evaluation rather than re-opening FTANet as primary |
+Phase 0 instrumentation is complete. Do not start Phase 1 post-filters or Phase 2 candidate builders until the Phase 0 exit gate has enough evidence.
+
+| Order | Work | Status |
+|---:|---|---|
+| 1 | Finish the 200-song equal-probability listening survey through the Admin RH survey panel | Pending human review |
+| 2 | Add Phase 0 survey summary/report output: completion count, primary-tag distribution, post-filter-fixable ratio, secondary/audio-quality breakdown | Pending |
+| 3 | Run current `full_mix_pyin` against a MedleyDB-Melody / MIR-1K subset (≥20 songs); record RPA/RCA as the external floor for later phases | Pending |
+| 4 | **Decision branch**: classify failure modes. If >50% are post-filter-fixable, Phase 1 is the entire next sprint (post-filters only); if octave-jump dominates, prioritize the octave-fold filter first; if not, proceed to Phase 2 candidate builder | Pending Phase 0 data |
+| 5 | If proceeding to Phase 1: implement octave-fold / bass-leakage / chord-tone / coverage-gap post-filters, then re-run the survey comparison | Conditional |
+| 6 | If proceeding to Phase 2: commit to HTDemucs v4 precompute (shared by `vocal_stem_crepe` + `instrument_lead`); benchmark per-song separation runtime and stem cache size on the PC worker | Conditional |
+| 7 | If proceeding to Phase 2: prototype `vocal_stem_crepe` on a small vocal subset; compare against current pYIN on RPA/RCA and on the Phase 0 failure-tag distribution | Conditional |
+| 8 | If proceeding to Phase 2: prototype `solo_piano_polyphonic` on a small solo-piano subset using Magenta Onsets and Frames -> Skyline -> Temperley Viterbi end-to-end; compare against current pYIN | Conditional |
+| 9 | If proceeding to Phase 2: record pretrained-weight licenses (CREPE, Magenta MAESTRO, FTANet) in the repo as metadata. Non-commercial use is permissible across all deployments under current scope; the entry exists so a future monetization decision triggers a re-review | Conditional |
+| 10 | If `vocal_stem_crepe` underperforms on noisy stems: schedule the §11 RMVPE evaluation rather than re-opening FTANet as primary | Conditional |
+
+Completed cleanup and instrumentation:
+
+| Work | Status |
+|---|---|
+| Freeze the Phase 0 failure-mode taxonomy before reviewing the 200-song sample | Done |
+| Add optional `melody_source` + `quality_flags` metadata to current `/api/ai/melody` output (Phase 0, no behavior change) | Done |
+| Visualize source id, `quality_flags`, note density, and failure tag in Admin/debug UI | Done |
+| Generate the 200-song Phase 0 random survey queue | Done |
+| Remove the Buy Me a Coffee / sponsor surface (`/sponsor`, header/menu links, sitemap/SEO references, i18n copy, README mention) | Done |
 
 ## 11. Explicit Future Scope (v2+)
 
