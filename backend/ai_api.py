@@ -46,6 +46,54 @@ def _read_finalized_melody_cache(cache_file: Path, *, path: str = "",
     return finalized
 
 
+def _melody_debug_target(path: str = "", song_hash: str = "") -> Dict[str, Any]:
+    import json as _json
+
+    MELODY_DIR = DATA_DIR / "melodies"
+    query_hash = song_hash or ""
+    target_hash = song_hash or ""
+    target_path = path or ""
+    cache_file = None
+    lookup = "none"
+
+    if song_hash:
+        direct_file = MELODY_DIR / f"{song_hash}.json"
+        target_hash = song_hash
+        cache_file = direct_file
+        lookup = "hash"
+        if not direct_file.is_file():
+            chords_file = chord_file_for(song_hash)
+            if chords_file.is_file():
+                try:
+                    cd = _json.loads(chords_file.read_text(encoding="utf-8"))
+                    target_path = cd.get("path", "") or target_path
+                    if target_path:
+                        from chord_cache import song_hash as get_song_hash
+                        melody_hash = get_song_hash(target_path)
+                        alt_file = MELODY_DIR / f"{melody_hash}.json"
+                        if alt_file.is_file():
+                            target_hash = melody_hash
+                            cache_file = alt_file
+                            lookup = "hash_via_chord_path_rehash"
+                except Exception:
+                    pass
+    elif path:
+        from chord_cache import song_hash as get_song_hash
+        target_hash = get_song_hash(path)
+        target_path = path
+        cache_file = MELODY_DIR / f"{target_hash}.json"
+        lookup = "path"
+
+    return {
+        "query_hash": query_hash,
+        "song_hash": target_hash,
+        "path": target_path,
+        "lookup": lookup,
+        "cache_file": cache_file,
+        "cache_exists": bool(cache_file and cache_file.is_file()),
+    }
+
+
 @router.get("/suggest")
 async def suggest(
     chords: str = Query(..., description="最近和弦，逗號分隔，例如 C,F,G"),
@@ -242,42 +290,14 @@ def get_melody_debug(
 
     from ai.melody_schema import melody_review_taxonomy
 
-    MELODY_DIR = DATA_DIR / "melodies"
-    query_hash = hash or ""
-    target_hash = hash or ""
-    target_path = path or ""
-    cache_file = None
-    lookup = "none"
+    target = _melody_debug_target(path=path, song_hash=hash)
+    query_hash = target["query_hash"]
+    target_hash = target["song_hash"]
+    target_path = target["path"]
+    cache_file = target["cache_file"]
+    lookup = target["lookup"]
+    cache_exists = target["cache_exists"]
 
-    if hash:
-        direct_file = MELODY_DIR / f"{hash}.json"
-        target_hash = hash
-        cache_file = direct_file
-        lookup = "hash"
-        if not direct_file.is_file():
-            chords_file = chord_file_for(hash)
-            if chords_file.is_file():
-                try:
-                    cd = _json.loads(chords_file.read_text(encoding="utf-8"))
-                    target_path = cd.get("path", "") or target_path
-                    if target_path:
-                        from chord_cache import song_hash as get_song_hash
-                        melody_hash = get_song_hash(target_path)
-                        alt_file = MELODY_DIR / f"{melody_hash}.json"
-                        if alt_file.is_file():
-                            target_hash = melody_hash
-                            cache_file = alt_file
-                            lookup = "hash_via_chord_path_rehash"
-                except Exception:
-                    pass
-    elif path:
-        from chord_cache import song_hash as get_song_hash
-        target_hash = get_song_hash(path)
-        target_path = path
-        cache_file = MELODY_DIR / f"{target_hash}.json"
-        lookup = "path"
-
-    cache_exists = bool(cache_file and cache_file.is_file())
     payload = None
     if cache_exists and cache_file is not None:
         data = _json.loads(cache_file.read_text(encoding="utf-8"))
@@ -321,6 +341,112 @@ def get_melody_debug(
             "density_when_active_per_s": 0.0,
         }),
         "taxonomy": melody_review_taxonomy(),
+    }
+
+
+def _melody_candidate_debug_entry(candidate_id: str, *, song_hash: str, path: str) -> Dict[str, Any]:
+    import json as _json
+
+    from ai.melody_candidate import candidate_path
+
+    if not song_hash:
+        return {
+            "id": candidate_id,
+            "exists": False,
+            "file": "",
+            "melody_source": {"id": candidate_id, "selected_by": "not_available"},
+            "quality_flags": ["no_target_hash"],
+            "melody_stats": {"note_count": 0, "active_duration_s": 0.0, "density_when_active_per_s": 0.0},
+            "candidate": None,
+        }
+
+    cache_file = candidate_path(DATA_DIR, song_hash, candidate_id)
+    if not cache_file.is_file():
+        return {
+            "id": candidate_id,
+            "exists": False,
+            "file": str(cache_file),
+            "melody_source": {"id": candidate_id, "selected_by": "missing_candidate"},
+            "quality_flags": ["candidate_missing"],
+            "melody_stats": {"note_count": 0, "active_duration_s": 0.0, "density_when_active_per_s": 0.0},
+            "candidate": None,
+        }
+
+    try:
+        data = _json.loads(cache_file.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {
+            "id": candidate_id,
+            "exists": True,
+            "file": str(cache_file),
+            "error": f"invalid_json:{type(exc).__name__}",
+            "melody_source": {"id": candidate_id, "selected_by": "invalid_candidate"},
+            "quality_flags": ["candidate_invalid_json"],
+            "melody_stats": {"note_count": 0, "active_duration_s": 0.0, "density_when_active_per_s": 0.0},
+            "candidate": None,
+        }
+
+    payload = _finalize_melody_response(data, path=path, song_hash=song_hash)
+    return {
+        "id": candidate_id,
+        "exists": True,
+        "file": str(cache_file),
+        "melody_source": payload.get("melody_source", {}),
+        "quality_flags": payload.get("quality_flags", []),
+        "melody_stats": payload.get("melody_stats", {}),
+        "candidate": payload.get("candidate"),
+    }
+
+
+@router.get("/melody/debug/candidates")
+def get_melody_debug_candidates(
+    path: str = Query(default="", description="歌曲路徑"),
+    hash: str = Query(default="", description="直接用 hash 查詢"),
+    _: str = Depends(get_admin_user),
+):
+    """Admin-only read-only inspection for Phase 0.5 RH melody shadow candidates."""
+
+    from ai.melody_candidate import (
+        FULL_MIX_PYIN,
+        INSTRUMENT_LEAD,
+        MIDI_ALIGNED,
+        SOLO_PIANO_POLYPHONIC,
+        VOCAL_FULL_MIX_FTANET,
+        VOCAL_STEM_CREPE,
+        candidate_dir,
+    )
+
+    debug = get_melody_debug(path=path, hash=hash, _=_)
+    song_hash = debug.get("song_hash") or ""
+    target_path = debug.get("path") or path or ""
+    candidate_ids = [
+        FULL_MIX_PYIN,
+        VOCAL_STEM_CREPE,
+        SOLO_PIANO_POLYPHONIC,
+        VOCAL_FULL_MIX_FTANET,
+        INSTRUMENT_LEAD,
+        MIDI_ALIGNED,
+    ]
+    candidates = [
+        _melody_candidate_debug_entry(candidate_id, song_hash=song_hash, path=target_path)
+        for candidate_id in candidate_ids
+    ]
+    return {
+        "ok": True,
+        "query": debug.get("query", {"hash": hash, "path": path}),
+        "query_hash": debug.get("query_hash", ""),
+        "song_hash": song_hash,
+        "hash_recomputed": debug.get("hash_recomputed", False),
+        "path": target_path,
+        "lookup": debug.get("lookup", "none"),
+        "candidate_dir": str(candidate_dir(DATA_DIR, song_hash)) if song_hash else "",
+        "current": {
+            "cache": debug.get("cache", {}),
+            "melody_source": debug.get("melody_source", {}),
+            "quality_flags": debug.get("quality_flags", []),
+            "melody_stats": debug.get("melody_stats", {}),
+        },
+        "candidates": candidates,
     }
 
 

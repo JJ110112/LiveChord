@@ -356,6 +356,72 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(result["items"][0]["review_tag"]["failure_tag"], "pyin_fine")
             self.assertIn("pyin_fine", result["taxonomy"]["primary_tags"])
 
+    def test_ai_api_melody_debug_candidates_reports_shadow_cache(self):
+        backend_dir = Path(__file__).resolve().parents[1]
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        import ai_api
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            melodies = root / "melodies"
+            melodies.mkdir()
+            song_hash = "song123"
+            (melodies / f"{song_hash}.json").write_text(
+                json.dumps({
+                    "path": "song.mp3",
+                    "melody": [{"start": 0.0, "end": 0.5, "note": "C4", "midi": 60}],
+                }),
+                encoding="utf-8",
+            )
+            candidate_payload = build_candidate_payload(
+                song_hash=song_hash,
+                path="song.mp3",
+                candidate_id=VOCAL_STEM_CREPE,
+                melody=[
+                    {"start": 0.0, "end": 0.4, "note": "D4", "midi": 62},
+                    {"start": 0.4, "end": 0.8, "note": "E4", "midi": 64},
+                ],
+                stem="vocals",
+                algorithm="htdemucs+crepe",
+                quality_flags=["shadow_candidate"],
+            )
+            write_candidate_cache(root, song_hash, VOCAL_STEM_CREPE, candidate_payload)
+
+            with patch.object(ai_api, "DATA_DIR", root):
+                result = ai_api.get_melody_debug_candidates(path="", hash=song_hash, _="admin")
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["song_hash"], song_hash)
+            self.assertEqual(result["current"]["melody_stats"]["note_count"], 1)
+            by_id = {item["id"]: item for item in result["candidates"]}
+            self.assertTrue(by_id[VOCAL_STEM_CREPE]["exists"])
+            self.assertEqual(by_id[VOCAL_STEM_CREPE]["melody_stats"]["note_count"], 2)
+            self.assertEqual(by_id[VOCAL_STEM_CREPE]["melody_source"]["algorithm"], "htdemucs+crepe")
+            self.assertFalse(by_id[SOLO_PIANO_POLYPHONIC]["exists"])
+            self.assertIn("candidate_missing", by_id[SOLO_PIANO_POLYPHONIC]["quality_flags"])
+
+    def test_ai_api_melody_debug_candidates_reports_invalid_json(self):
+        backend_dir = Path(__file__).resolve().parents[1]
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        import ai_api
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            song_hash = "song123"
+            bad_path = candidate_path(root, song_hash, VOCAL_STEM_CREPE)
+            bad_path.parent.mkdir(parents=True, exist_ok=True)
+            bad_path.write_text("{bad json", encoding="utf-8")
+
+            with patch.object(ai_api, "DATA_DIR", root):
+                result = ai_api.get_melody_debug_candidates(path="", hash=song_hash, _="admin")
+
+            by_id = {item["id"]: item for item in result["candidates"]}
+            self.assertTrue(by_id[VOCAL_STEM_CREPE]["exists"])
+            self.assertIn("invalid_json", by_id[VOCAL_STEM_CREPE]["error"])
+            self.assertIn("candidate_invalid_json", by_id[VOCAL_STEM_CREPE]["quality_flags"])
+
     def test_ai_api_melody_debug_tag_rejects_unknown_labels(self):
         backend_dir = Path(__file__).resolve().parents[1]
         if str(backend_dir) not in sys.path:

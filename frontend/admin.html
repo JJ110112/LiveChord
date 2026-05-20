@@ -431,6 +431,7 @@
         <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;">🎹 RH melody</span>
         <input type="text" id="melodyDebugPath" placeholder="path / hash / player URL" class="num-input" style="flex:1; max-width:260px; text-align:left;">
         <button id="btnMelodyDebug" title="Inspect current RH melody source metadata and Phase 0 review flags">Inspect</button>
+        <button id="btnMelodyCandidates" title="Compare cached Phase 0.5 shadow candidates for this song">Candidates</button>
         <span id="melodyDebugStatus" style="font-size:11px;color:var(--text-dim);"></span>
       </div>
       <div id="melodyDebugOutput" style="display:none;margin:-2px 0 8px 0;padding:8px 10px;background:var(--bg);border-radius:4px;font-size:11px;line-height:1.5;color:var(--text-dim);font-family:Consolas,monospace;white-space:pre-wrap;word-break:break-word;"></div>
@@ -1213,14 +1214,18 @@ window._lcIsBeta = (function() {
     return { path: raw };
   }
 
+  function _songIdentifierQueryString(ident) {
+    return ident.hash
+      ? `hash=${encodeURIComponent(ident.hash)}`
+      : `path=${encodeURIComponent(ident.path || "")}`;
+  }
+
   $("#btnMelodyDebug").addEventListener("click", async () => {
     const ident = _parseSongIdentifier($("#melodyDebugPath").value);
     const status = $("#melodyDebugStatus");
     const output = $("#melodyDebugOutput");
     if (!ident) { status.textContent = _t("admin.recompute.parse_failed"); return; }
-    const qs = ident.hash
-      ? `hash=${encodeURIComponent(ident.hash)}`
-      : `path=${encodeURIComponent(ident.path || "")}`;
+    const qs = _songIdentifierQueryString(ident);
     status.textContent = "Inspecting…";
     output.style.display = "none";
     output.textContent = "";
@@ -1248,6 +1253,54 @@ window._lcIsBeta = (function() {
         data.hash_recomputed ? `rehash: query ${data.query_hash || "—"} -> cache ${data.song_hash || "—"}` : "",
         `Phase 0 tags: ${primaryTags.join(", ")}`,
       ].filter(Boolean).join("\n");
+    } catch (e) {
+      status.textContent = `Failed: ${e.message || e}`;
+    }
+  });
+
+  $("#btnMelodyCandidates").addEventListener("click", async () => {
+    const ident = _parseSongIdentifier($("#melodyDebugPath").value);
+    const status = $("#melodyDebugStatus");
+    const output = $("#melodyDebugOutput");
+    if (!ident) { status.textContent = _t("admin.recompute.parse_failed"); return; }
+    const qs = _songIdentifierQueryString(ident);
+    status.textContent = "Loading candidates...";
+    output.style.display = "none";
+    output.textContent = "";
+    try {
+      const res = await fetch(`/api/ai/melody/debug/candidates?${qs}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        status.textContent = `Failed: ${res.status} ${data.detail || res.statusText}`;
+        return;
+      }
+      const currentStats = (data.current && data.current.melody_stats) || {};
+      const currentSource = (data.current && data.current.melody_source) || {};
+      const headerLines = [
+        `hash: ${data.song_hash || "-"}`,
+        `path: ${data.path || "-"}`,
+        `candidate_dir: ${data.candidate_dir || "-"}`,
+        data.hash_recomputed ? `rehash: query ${data.query_hash || "-"} -> cache ${data.song_hash || "-"}` : "",
+        "",
+        `current: ${currentSource.id || "-"} / notes ${currentStats.note_count || 0} / active_density ${currentStats.density_when_active_per_s || 0}/s`,
+      ].filter(line => line !== null && line !== undefined).join("\n");
+      const candidateLines = (data.candidates || []).map(c => {
+        const src = c.melody_source || {};
+        const stats = c.melody_stats || {};
+        const flags = c.quality_flags || [];
+        const statusText = c.exists ? "cached" : "missing";
+        const err = c.error ? ` / ${c.error}` : "";
+        return [
+          `${c.id}: ${statusText}${err}`,
+          `  source: ${src.algorithm || src.id || "-"} / ${src.stem || "-"} / ${src.selected_by || "-"}`,
+          `  notes: ${stats.note_count || 0}, active_density: ${stats.density_when_active_per_s || 0}/s, range: ${stats.midi_min ?? "-"}-${stats.midi_max ?? "-"}, median: ${stats.midi_median ?? "-"}`,
+          `  flags: ${flags.length ? flags.join(", ") : "-"}`,
+          `  file: ${c.file || "-"}`,
+        ].join("\n");
+      });
+      status.textContent = `Candidates: ${(data.candidates || []).filter(c => c.exists).length}/${(data.candidates || []).length} cached`;
+      output.style.display = "block";
+      output.textContent = [headerLines, "", ...candidateLines].join("\n");
     } catch (e) {
       status.textContent = `Failed: ${e.message || e}`;
     }

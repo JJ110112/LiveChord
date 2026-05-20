@@ -1,7 +1,7 @@
 # RH Melody Optimization Plan
 
 **Date**: 2026-05-20 (revised after critical review; cleaned after Phase 0 instrumentation and sponsor removal)
-**Status**: Phase 0 instrumentation complete; Phase 0.5 shadow-candidate foundation in progress
+**Status**: Phase 0 instrumentation complete; Phase 0.5 shadow-candidate foundation ready for small A/B smoke tests
 **Tracking**: `LiveChord-2t5y` (active Phase 0/1), `LiveChord-zpu1` (review-log hardening follow-up)
 
 ## 1. Summary
@@ -699,7 +699,7 @@ Phase 0 instrumentation is complete, but current RH quality is poor enough that 
 | 3 | Add `vocal_stem_crepe` wrapper: vocals stem -> CREPE F0 -> vibrato smoothing -> note segmentation -> candidate cache | Done |
 | 4 | Add `solo_piano_polyphonic` Stage-2 selector: Magenta/polyphonic notes -> Skyline candidates -> Temperley Viterbi -> candidate cache | Done |
 | 5 | Add a one-song/batch shadow generation entry point for small A/B trials without changing formal RH playback | Done |
-| 6 | Add Admin candidate compare/read endpoint and UI hook so review can switch `full_mix_pyin` vs shadow candidates | Pending |
+| 6 | Add Admin candidate compare/read endpoint and UI hook so review can switch `full_mix_pyin` vs shadow candidates | Done |
 | 7 | Run a 20-30 song A/B smoke set (vocal, solo piano, instrumental) to see whether the new routes are worth scaling | Pending |
 | 8 | Finish the 200-song equal-probability listening survey through the Admin RH survey panel, using candidate comparison where available | Pending human review |
 | 9 | Add Phase 0 survey summary/report output: completion count, primary-tag distribution, post-filter-fixable ratio, secondary/audio-quality breakdown | Pending |
