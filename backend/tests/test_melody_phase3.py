@@ -6,8 +6,15 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
+from fastapi import HTTPException
+
 from backend.ai.melody_extractor import MelodyExtractor
 from backend.ai.melody_extractor_v2 import MelodyExtractorV2
+from backend.ai.melody_review import (
+    collect_survey_candidates,
+    sample_survey_candidates,
+    write_survey_queue,
+)
 from backend.ai.melody_schema import (
     MELODY_EVENT_SCHEMA_VERSION,
     MELODY_VOICE_LANE,
@@ -233,6 +240,125 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(result["query_hash"], old_hash)
             self.assertEqual(result["song_hash"], new_hash)
             self.assertTrue(result["hash_recomputed"])
+
+    def test_ai_api_melody_debug_tag_appends_phase0_jsonl(self):
+        backend_dir = Path(__file__).resolve().parents[1]
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        import ai_api
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            melodies = root / "melodies"
+            melodies.mkdir()
+            (melodies / "song123.json").write_text(
+                json.dumps({
+                    "path": "song.mp3",
+                    "melody": [{"start": 0.0, "end": 0.5, "note": "C4", "midi": 60}],
+                }),
+                encoding="utf-8",
+            )
+            body = ai_api.MelodyDebugTagRequest(
+                hash="song123",
+                failure_tag="wrong_octave",
+                secondary_flags=["needs_ab_replay", "needs_ab_replay"],
+                audio_quality_note="reverb_high",
+                review_note="octave is high in chorus",
+                survey_id="phase0_random_200_seed_20260520",
+            )
+
+            with patch.object(ai_api, "DATA_DIR", root):
+                result = ai_api.post_melody_debug_tag(body=body, reviewer="teacher")
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["entry"]["reviewer"], "teacher")
+            self.assertEqual(result["entry"]["failure_tag"], "wrong_octave")
+            self.assertTrue(result["entry"]["post_filter_fixable"])
+            self.assertEqual(result["entry"]["secondary_flags"], ["needs_ab_replay"])
+            self.assertEqual(result["entry"]["melody_stats"]["note_count"], 1)
+            log_file = root / "melody_reviews" / "phase0_tags.jsonl"
+            rows = [json.loads(line) for line in log_file.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["audio_quality_note"], "reverb_high")
+
+    def test_ai_api_melody_debug_tag_rejects_unknown_labels(self):
+        backend_dir = Path(__file__).resolve().parents[1]
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        import ai_api
+
+        body = ai_api.MelodyDebugTagRequest(
+            hash="song123",
+            failure_tag="not_a_real_tag",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(ai_api, "DATA_DIR", Path(tmp)):
+                with self.assertRaises(HTTPException) as ctx:
+                    ai_api.post_melody_debug_tag(body=body, reviewer="admin")
+
+        self.assertEqual(ctx.exception.status_code, 400)
+
+    def test_ai_api_melody_debug_tag_requires_target(self):
+        backend_dir = Path(__file__).resolve().parents[1]
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        import ai_api
+
+        body = ai_api.MelodyDebugTagRequest(failure_tag="pyin_fine")
+
+        with self.assertRaises(HTTPException) as ctx:
+            ai_api.post_melody_debug_tag(body=body, reviewer="admin")
+
+        self.assertEqual(ctx.exception.status_code, 400)
+
+    def test_melody_phase0_survey_sampling_filters_and_writes_queue(self):
+        backend_dir = Path(__file__).resolve().parents[1]
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            chord_root = root / "chords"
+            audio_root = root / "audio"
+            audio_root.mkdir()
+            (audio_root / "song-a.mp3").write_text("audio", encoding="utf-8")
+            for h, payload in {
+                "aa1111111111": {"path": "song-a.mp3", "source": "btc", "chords": [{"chord": "C"}]},
+                "bb2222222222": {"path": "song-b.mp3", "source": "midi", "chords": [{"chord": "G"}]},
+                "cc3333333333": {"source": "btc", "chords": [{"chord": "F"}]},
+            }.items():
+                bucket = chord_root / h[:2]
+                bucket.mkdir(parents=True, exist_ok=True)
+                (bucket / f"{h}.json").write_text(json.dumps(payload), encoding="utf-8")
+
+            def resolver(path):
+                return str(audio_root / path)
+
+            candidates, stats = collect_survey_candidates(
+                chord_root,
+                require_audio=True,
+                resolve_audio_path=resolver,
+            )
+            sample = sample_survey_candidates(candidates, sample_size=200, seed=7)
+            out = root / "melody_reviews" / "queue.jsonl"
+            summary = write_survey_queue(
+                out,
+                sample,
+                survey_id="phase0_random_200_seed_7",
+                seed=7,
+                candidate_stats=stats,
+            )
+
+            self.assertEqual(stats["checked"], 3)
+            self.assertEqual(stats["missing_audio"], 1)
+            self.assertEqual(stats["missing_path"], 1)
+            self.assertEqual(len(sample), 1)
+            self.assertEqual(sample[0]["hash"], "aa1111111111")
+            self.assertEqual(summary["sample_size"], 1)
+            row = json.loads(out.read_text(encoding="utf-8").strip())
+            self.assertEqual(row["status"], "pending")
+            self.assertEqual(row["survey_id"], "phase0_random_200_seed_7")
 
     def test_finalize_melody_payload_accepts_bare_list(self):
         result = finalize_melody_payload(

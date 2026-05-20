@@ -2,10 +2,10 @@
 
 import logging
 
-from fastapi import APIRouter, Query, Body, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, Query, Body, Depends, HTTPException
+from pydantic import BaseModel, Field
 from pathlib import Path
-from typing import Optional, List
+from typing import Any, Dict, Optional, List
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +93,18 @@ class JazzifyRequest(BaseModel):
     level: int = 1
     mode: str = "rule-based"
     bpm: Optional[float] = None
+
+
+class MelodyDebugTagRequest(BaseModel):
+    hash: str = ""
+    path: str = ""
+    failure_tag: str
+    secondary_flags: List[str] = Field(default_factory=list)
+    audio_quality_note: str = "none"
+    review_note: str = ""
+    survey_id: str = ""
+    segment: Optional[Dict[str, Any]] = None
+    machine_proxies: Dict[str, Any] = Field(default_factory=dict)
 
 
 @router.post("/jazzify")
@@ -309,6 +321,42 @@ def get_melody_debug(
             "density_when_active_per_s": 0.0,
         }),
         "taxonomy": melody_review_taxonomy(),
+    }
+
+
+@router.post("/melody/debug/tag")
+def post_melody_debug_tag(
+    body: MelodyDebugTagRequest,
+    reviewer: str = Depends(get_admin_user),
+):
+    """Admin-only Phase 0 review tagging for RH melody debug inspections."""
+
+    from ai.melody_review import append_review_entry, build_review_entry
+
+    if not body.hash and not body.path:
+        raise HTTPException(status_code=400, detail="hash or path is required")
+
+    debug_info = get_melody_debug(path=body.path, hash=body.hash, _=reviewer)
+    try:
+        entry = build_review_entry(
+            debug_info=debug_info,
+            reviewer=reviewer,
+            failure_tag=body.failure_tag,
+            secondary_flags=body.secondary_flags,
+            audio_quality_note=body.audio_quality_note,
+            review_note=body.review_note,
+            survey_id=body.survey_id,
+            segment=body.segment,
+            machine_proxies=body.machine_proxies,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    log_file = append_review_entry(DATA_DIR, entry)
+    return {
+        "ok": True,
+        "file": str(log_file),
+        "entry": entry,
     }
 
 

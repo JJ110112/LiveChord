@@ -266,7 +266,7 @@ Deliverables:
 | Add `melody_source` + `quality_flags` to `/api/ai/melody` (additive, optional) | Survey can record per-song selected source |
 | Admin/debug view shows current source + flags | Reproducible inspection; `quality_flags` should be visible in Phase 0, not after resolver tuning |
 | **Failure-mode taxonomy is frozen before listening review starts** | One primary tag per song/segment, optional secondary flags; avoids drifting standards across 200 songs |
-| **Failure-mode survey on 200 stratified random songs** | Tagged distribution of failures: `pyin_fine / wrong_octave / bass_leakage / wrong_line_backing_vocal / accompaniment_chord_tone / accompaniment_riff_lead / sparse_threshold / sparse_genuine_silence / duet_alternating / solo_piano_polyphonic_collapse / no_lead_present / audio_quality / no_issue_audible` |
+| **Failure-mode survey on 200 equal-probability random reviewable songs** | Tagged distribution of failures: `pyin_fine / wrong_octave / bass_leakage / wrong_line_backing_vocal / accompaniment_chord_tone / accompaniment_riff_lead / sparse_threshold / sparse_genuine_silence / duet_alternating / solo_piano_polyphonic_collapse / no_lead_present / audio_quality / no_issue_audible`; no subtype stratification, to avoid biasing the observed current fail rate |
 | Public reference dataset hook | Run current pYIN against MedleyDB-Melody / MIR-1K subset (≥20 songs), record RPA/RCA against ground truth |
 
 Phase 0 review taxonomy:
@@ -288,6 +288,14 @@ Phase 0 review taxonomy:
 | `no_issue_audible` | JSON/metric looks suspicious but playback is acceptable to a human reviewer | No action |
 
 Review rule: every reviewed song or highlighted segment gets exactly one primary tag, plus optional secondary flags such as `audio_quality_secondary`, `mixed_section_single_source`, `quantization_jitter`, `source_intro_missing`, or `needs_ab_replay`. The primary `audio_quality` tag is important because it separates algorithm defects from cases where every extractor is likely to be unstable; use `audio_quality_secondary` only when the main failure is another tag but source quality also affected confidence. Phase 0's post-filter decision uses all reviewed primary tags in the denominator: tags marked post-filter-fixable count toward Phase 1 post-filters; tags marked not fixable count against them.
+
+Survey tooling:
+
+```bash
+python tools/sample_melody_phase0_survey.py --sample-size 200 --seed 20260520 --force
+```
+
+The script scans sharded chord cache files, keeps reviewable songs with resolvable audio by default, samples with equal probability, and writes `data/melody_reviews/phase0_survey_queue.jsonl` plus `phase0_survey_queue.summary.json`. Review tags are written through `POST /api/ai/melody/debug/tag` into `data/melody_reviews/phase0_tags.jsonl`; the endpoint reuses `/api/ai/melody/debug` metadata, validates the frozen taxonomy, stores the reviewer, `survey_id`, `failure_tag`, `secondary_flags`, `audio_quality_note`, optional segment, machine proxies, and current melody stats.
 
 Exit gate:
 
@@ -466,7 +474,7 @@ Stratified review set, **not just "50-100 songs"** — distribution matters and 
 | Reference dataset cross-check (MedleyDB-Melody / MIR-1K) | 20+ | External RPA/RCA anchor |
 | **Total** | **165+** | |
 
-Recommended review fields:
+Recommended golden review fields (the 165+ quota above is for later resolver-quality expectations, not the unbiased 200-song Phase 0 failure-rate survey):
 
 ```text
 hash
