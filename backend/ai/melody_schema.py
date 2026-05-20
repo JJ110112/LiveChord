@@ -18,6 +18,52 @@ from .note_continuity import repair_note_continuity
 
 MELODY_EVENT_SCHEMA_VERSION = 2
 MELODY_VOICE_LANE = "rh_melody"
+MELODY_CACHE_VERSION = "rhmelody-phase0"
+MELODY_FAILURE_TAXONOMY = {
+    "pyin_fine": {
+        "description": "Current pYIN is musically usable; resolver should not switch away.",
+        "post_filter_fixable": False,
+    },
+    "wrong_octave": {
+        "description": "Correct contour but octave is displaced or jumps against the running median.",
+        "post_filter_fixable": True,
+    },
+    "bass_leakage": {
+        "description": "pYIN follows bass or left-hand material below the intended lead line.",
+        "post_filter_fixable": True,
+    },
+    "wrong_line_backing_vocal": {
+        "description": "pYIN follows harmony or backing vocal above/beside the lead.",
+        "post_filter_fixable": False,
+    },
+    "wrong_line_accompaniment": {
+        "description": "pYIN follows piano RH, guitar riff, pad, or accompaniment texture.",
+        "post_filter_fixable": None,
+    },
+    "sparse_missing": {
+        "description": "A lead exists but pYIN misses too many notes or phrases.",
+        "post_filter_fixable": None,
+    },
+    "no_lead_present": {
+        "description": "The audio genuinely has no stable RH lead line.",
+        "post_filter_fixable": False,
+    },
+    "audio_quality": {
+        "description": "Recording quality dominates the failure: reverb, clipping, noise, low bitrate, room bleed, or separation artifact.",
+        "post_filter_fixable": False,
+    },
+    "no_issue_audible": {
+        "description": "JSON or metrics look suspicious but playback is acceptable.",
+        "post_filter_fixable": False,
+    },
+}
+MELODY_SECONDARY_FLAGS = [
+    "audio_quality",
+    "quantization_jitter",
+    "mixed_section_single_source",
+    "source_intro_missing",
+    "needs_ab_replay",
+]
 
 
 def finalize_melody_events(
@@ -85,7 +131,27 @@ def finalize_melody_payload(
         tempo_curve=tempo_curve,
         time_signature=time_signature,
     )
+    result["melody_source"] = _default_melody_source(result.get("melody_source"))
+    result["quality_flags"] = _default_quality_flags(
+        result.get("quality_flags"),
+        result["melody"],
+        result["melody_source"],
+    )
+    result["melody_stats"] = _melody_stats(result["melody"])
     return result
+
+
+def melody_review_taxonomy() -> Dict[str, Any]:
+    """Return the frozen Phase 0 review taxonomy for admin/debug tools."""
+
+    return {
+        "primary_tags": copy.deepcopy(MELODY_FAILURE_TAXONOMY),
+        "secondary_flags": list(MELODY_SECONDARY_FLAGS),
+        "review_rule": (
+            "Assign exactly one primary tag per reviewed song/segment; "
+            "secondary flags are optional."
+        ),
+    }
 
 
 def melody_context_from_chord_cache(song_hash: str) -> Dict[str, Any]:
@@ -169,12 +235,86 @@ def _sync_legacy_bounds(event: Dict[str, Any]) -> None:
     event["gate_ratio"] = _clamp_gate_ratio(event.get("gate_ratio", 1.0))
 
 
+def _default_melody_source(existing: Any) -> Dict[str, Any]:
+    if isinstance(existing, dict):
+        source = copy.deepcopy(existing)
+    else:
+        source = {}
+    source.setdefault("id", "full_mix_pyin")
+    source.setdefault("stem", "full_mix")
+    source.setdefault("algorithm", "librosa.pyin")
+    source.setdefault("song_type", "unknown")
+    source.setdefault("song_type_confidence", None)
+    source.setdefault("selected_by", "legacy_primary")
+    source.setdefault("candidate_score", None)
+    source.setdefault("margin_over_fallback", 0.0)
+    source.setdefault("cache_version", MELODY_CACHE_VERSION)
+    return source
+
+
+def _default_quality_flags(
+    existing: Any,
+    events: List[Dict[str, Any]],
+    melody_source: Dict[str, Any],
+) -> List[str]:
+    flags: List[str] = []
+    if isinstance(existing, list):
+        flags.extend(str(flag) for flag in existing if flag)
+    elif isinstance(existing, str) and existing:
+        flags.append(existing)
+    if melody_source.get("id") == "full_mix_pyin" and "fallback_full_mix" not in flags:
+        flags.append("fallback_full_mix")
+    if not events and "empty_melody_cache" not in flags:
+        flags.append("empty_melody_cache")
+    return flags
+
+
+def _melody_stats(events: List[Dict[str, Any]]) -> Dict[str, Any]:
+    note_count = len(events or [])
+    if note_count == 0:
+        return {
+            "note_count": 0,
+            "duration_s": 0.0,
+            "density_notes_per_s": 0.0,
+            "midi_min": None,
+            "midi_max": None,
+            "midi_median": None,
+            "confidence_avg": None,
+        }
+
+    start = min(_as_float(event.get("time", event.get("start")), 0.0) for event in events)
+    end = max(_as_float(event.get("end"), _as_float(event.get("time", event.get("start")), 0.0)) for event in events)
+    duration = max(0.0, end - start)
+    midis = sorted(_as_int(event.get("midi", event.get("pitch")), 0) or 0 for event in events)
+    confs = []
+    for event in events:
+        if event.get("confidence") is None:
+            continue
+        conf = _as_float(event.get("confidence"), None)
+        if conf is not None:
+            confs.append(conf)
+    median_idx = note_count // 2
+    if note_count % 2:
+        midi_median = float(midis[median_idx])
+    else:
+        midi_median = (midis[median_idx - 1] + midis[median_idx]) / 2.0
+    return {
+        "note_count": note_count,
+        "duration_s": round(duration, 3),
+        "density_notes_per_s": round(note_count / duration, 4) if duration > 0 else 0.0,
+        "midi_min": midis[0],
+        "midi_max": midis[-1],
+        "midi_median": round(midi_median, 2),
+        "confidence_avg": round(sum(confs) / len(confs), 4) if confs else None,
+    }
+
+
 def _clamp_gate_ratio(value: Any, default: float = 1.0) -> float:
     gate = _as_float(value, default)
     return round(max(0.05, min(1.0, gate)), 4)
 
 
-def _as_float(value: Any, default: float) -> float:
+def _as_float(value: Any, default: Any) -> Any:
     try:
         return float(value)
     except (TypeError, ValueError):

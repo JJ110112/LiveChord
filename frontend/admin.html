@@ -428,6 +428,13 @@
         <span id="accRecomputeStatus" style="font-size:11px;color:var(--text-dim);"></span>
       </div>
       <div class="actions" style="margin-bottom:8px; display:flex; gap:6px; align-items:center; padding:6px; border:1px dashed var(--border); border-radius:4px;">
+        <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;">🎹 RH melody</span>
+        <input type="text" id="melodyDebugPath" placeholder="path / hash / player URL" class="num-input" style="flex:1; max-width:260px; text-align:left;">
+        <button id="btnMelodyDebug" title="Inspect current RH melody source metadata and Phase 0 review flags">Inspect</button>
+        <span id="melodyDebugStatus" style="font-size:11px;color:var(--text-dim);"></span>
+      </div>
+      <div id="melodyDebugOutput" style="display:none;margin:-2px 0 8px 0;padding:8px 10px;background:var(--bg);border-radius:4px;font-size:11px;line-height:1.5;color:var(--text-dim);font-family:Consolas,monospace;white-space:pre-wrap;word-break:break-word;"></div>
+      <div class="actions" style="margin-bottom:8px; display:flex; gap:6px; align-items:center; padding:6px; border:1px dashed var(--border); border-radius:4px;">
         <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;">🧹 短促雜訊</span>
         <input type="text" id="isoFilterPath" placeholder="path / hash / player URL" class="num-input" style="flex:1; max-width:260px; text-align:left;">
         <button id="btnIsoFilter" title="Drop isolated short chord events sandwiched between same-root neighbors (P1) or extreme-short between different-root neighbors (P2). Rewrites the chord JSON.">過濾</button>
@@ -1170,6 +1177,45 @@ window._lcIsBeta = (function() {
     // 4. Plain decoded path
     return { path: raw };
   }
+
+  $("#btnMelodyDebug").addEventListener("click", async () => {
+    const ident = _parseSongIdentifier($("#melodyDebugPath").value);
+    const status = $("#melodyDebugStatus");
+    const output = $("#melodyDebugOutput");
+    if (!ident) { status.textContent = _t("admin.recompute.parse_failed"); return; }
+    const qs = ident.hash
+      ? `hash=${encodeURIComponent(ident.hash)}`
+      : `path=${encodeURIComponent(ident.path || "")}`;
+    status.textContent = "Inspecting…";
+    output.style.display = "none";
+    output.textContent = "";
+    try {
+      const res = await fetch(`/api/ai/melody/debug?${qs}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        status.textContent = `Failed: ${res.status} ${data.detail || res.statusText}`;
+        return;
+      }
+      const src = data.melody_source || {};
+      const stats = data.melody_stats || {};
+      const flags = data.quality_flags || [];
+      const primaryTags = Object.keys((data.taxonomy && data.taxonomy.primary_tags) || {});
+      status.textContent = data.cache && data.cache.exists ? "✓ cache found" : "No cache yet";
+      output.style.display = "block";
+      output.textContent = [
+        `hash: ${data.song_hash || "—"}`,
+        `path: ${data.path || "—"}`,
+        `cache: ${data.cache && data.cache.exists ? data.cache.file : "missing"}`,
+        `source: ${src.id || "—"} / ${src.algorithm || "—"} / ${src.selected_by || "—"}`,
+        `song_type: ${src.song_type || "unknown"} (${src.song_type_confidence ?? "n/a"})`,
+        `flags: ${flags.length ? flags.join(", ") : "—"}`,
+        `notes: ${stats.note_count || 0}, density: ${stats.density_notes_per_s || 0}/s, range: ${stats.midi_min ?? "—"}-${stats.midi_max ?? "—"}, median: ${stats.midi_median ?? "—"}`,
+        `Phase 0 tags: ${primaryTags.join(", ")}`,
+      ].join("\n");
+    } catch (e) {
+      status.textContent = `Failed: ${e.message || e}`;
+    }
+  });
 
   $("#btnBarRecompute").addEventListener("click", async () => {
     const ident = _parseSongIdentifier($("#barRecomputePath").value);

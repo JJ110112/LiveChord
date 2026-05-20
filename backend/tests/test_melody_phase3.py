@@ -14,6 +14,7 @@ from backend.ai.melody_schema import (
     atomic_write_json,
     finalize_melody_events,
     finalize_melody_payload,
+    melody_review_taxonomy,
     melody_context_from_chord_cache,
 )
 
@@ -105,12 +106,45 @@ class TestMelodyPhase3(unittest.TestCase):
                 result = ai_api.get_melody(path="", hash="song123")
 
             self.assertEqual(result["schema_version"], MELODY_EVENT_SCHEMA_VERSION)
+            self.assertEqual(result["melody_source"]["id"], "full_mix_pyin")
+            self.assertIn("fallback_full_mix", result["quality_flags"])
+            self.assertEqual(result["melody_stats"]["note_count"], 2)
             self.assertAlmostEqual(result["melody"][0]["duration"], 0.5)
             self.assertEqual(result["melody"][0]["voice_lane"], MELODY_VOICE_LANE)
 
             saved = json.loads(cache_file.read_text(encoding="utf-8"))
             self.assertEqual(saved["schema_version"], MELODY_EVENT_SCHEMA_VERSION)
+            self.assertEqual(saved["melody_source"]["algorithm"], "librosa.pyin")
+            self.assertEqual(saved["melody_stats"]["note_count"], 2)
             self.assertAlmostEqual(saved["melody"][0]["end"], 0.5)
+
+    def test_ai_api_melody_debug_reports_metadata_without_extracting(self):
+        backend_dir = Path(__file__).resolve().parents[1]
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        import ai_api
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            melodies = root / "melodies"
+            melodies.mkdir()
+            cache_file = melodies / "song123.json"
+            cache_file.write_text(
+                json.dumps({
+                    "path": "song.mp3",
+                    "melody": [{"start": 0.0, "end": 0.5, "note": "C4", "midi": 60}],
+                }),
+                encoding="utf-8",
+            )
+
+            with patch.object(ai_api, "DATA_DIR", root):
+                result = ai_api.get_melody_debug(path="", hash="song123", _="admin")
+
+            self.assertTrue(result["cache"]["exists"])
+            self.assertEqual(result["melody_source"]["id"], "full_mix_pyin")
+            self.assertIn("fallback_full_mix", result["quality_flags"])
+            self.assertEqual(result["melody_stats"]["note_count"], 1)
+            self.assertIn("audio_quality", result["taxonomy"]["primary_tags"])
 
     def test_finalize_melody_payload_accepts_bare_list(self):
         result = finalize_melody_payload(
@@ -121,8 +155,36 @@ class TestMelodyPhase3(unittest.TestCase):
 
         self.assertEqual(result["schema_version"], MELODY_EVENT_SCHEMA_VERSION)
         self.assertEqual(result["path"], "song.mp3")
+        self.assertEqual(result["melody_source"]["selected_by"], "legacy_primary")
+        self.assertIn("fallback_full_mix", result["quality_flags"])
+        self.assertEqual(result["melody_stats"]["midi_median"], 60.0)
         self.assertEqual(result["melody"][0]["pitch"], 60)
         self.assertEqual(result["melody"][0]["voice_lane"], MELODY_VOICE_LANE)
+
+    def test_finalize_melody_payload_preserves_non_fallback_source(self):
+        result = finalize_melody_payload(
+            {
+                "melody_source": {
+                    "id": "midi_aligned",
+                    "algorithm": "dtw_midi_align",
+                    "selected_by": "resolver",
+                },
+                "quality_flags": ["alignment_high"],
+                "melody": [{"start": 0.0, "end": 0.5, "note": "E4", "midi": 64}],
+            },
+            bpm=120,
+        )
+
+        self.assertEqual(result["melody_source"]["id"], "midi_aligned")
+        self.assertIn("alignment_high", result["quality_flags"])
+        self.assertNotIn("fallback_full_mix", result["quality_flags"])
+
+    def test_melody_review_taxonomy_includes_audio_quality(self):
+        taxonomy = melody_review_taxonomy()
+
+        self.assertIn("audio_quality", taxonomy["primary_tags"])
+        self.assertIn("quantization_jitter", taxonomy["secondary_flags"])
+        self.assertIn("exactly one primary tag", taxonomy["review_rule"])
 
     def test_melody_context_from_chord_cache_reads_bpm_curve_and_meter(self):
         import backend.chord_cache as chord_cache

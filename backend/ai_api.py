@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, Query, Body
+from fastapi import APIRouter, Query, Body, Depends
 from pydantic import BaseModel
 from pathlib import Path
 from typing import Optional, List
@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
 from chord_cache import chord_file_for, chord_bak_for, ensure_chord_bucket
+from auth_api import get_admin_user
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 CHORDS_DIR = DATA_DIR / "chords"
@@ -216,6 +217,79 @@ def get_melody(
         return result
     except Exception as e:
         return {"error": str(e), "melody": []}
+
+
+@router.get("/melody/debug")
+def get_melody_debug(
+    path: str = Query(default="", description="歌曲路徑"),
+    hash: str = Query(default="", description="直接用 hash 查詢"),
+    _: str = Depends(get_admin_user),
+):
+    """Admin-only Phase 0 metadata inspection for the current RH melody cache."""
+    import json as _json
+
+    from ai.melody_schema import melody_review_taxonomy
+
+    MELODY_DIR = DATA_DIR / "melodies"
+    target_hash = hash or ""
+    target_path = path or ""
+    cache_file = None
+    lookup = "none"
+
+    if hash:
+        direct_file = MELODY_DIR / f"{hash}.json"
+        target_hash = hash
+        cache_file = direct_file
+        lookup = "hash"
+        if not direct_file.is_file():
+            chords_file = chord_file_for(hash)
+            if chords_file.is_file():
+                try:
+                    cd = _json.loads(chords_file.read_text(encoding="utf-8"))
+                    target_path = cd.get("path", "") or target_path
+                    if target_path:
+                        from chord_cache import song_hash as get_song_hash
+                        melody_hash = get_song_hash(target_path)
+                        alt_file = MELODY_DIR / f"{melody_hash}.json"
+                        if alt_file.is_file():
+                            cache_file = alt_file
+                            lookup = "hash_via_chord_path"
+                except Exception:
+                    pass
+    elif path:
+        from chord_cache import song_hash as get_song_hash
+        target_hash = get_song_hash(path)
+        target_path = path
+        cache_file = MELODY_DIR / f"{target_hash}.json"
+        lookup = "path"
+
+    cache_exists = bool(cache_file and cache_file.is_file())
+    payload = None
+    if cache_exists and cache_file is not None:
+        payload = _read_finalized_melody_cache(
+            cache_file,
+            path=target_path,
+            song_hash=target_hash,
+        )
+
+    return {
+        "query": {"hash": hash, "path": path},
+        "song_hash": target_hash,
+        "path": target_path,
+        "lookup": lookup,
+        "cache": {
+            "exists": cache_exists,
+            "file": str(cache_file) if cache_file else "",
+        },
+        "melody_source": (payload or {}).get("melody_source"),
+        "quality_flags": (payload or {}).get("quality_flags", []),
+        "melody_stats": (payload or {}).get("melody_stats", {
+            "note_count": 0,
+            "duration_s": 0.0,
+            "density_notes_per_s": 0.0,
+        }),
+        "taxonomy": melody_review_taxonomy(),
+    }
 
 
 @router.get("/emission")
