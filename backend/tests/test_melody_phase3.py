@@ -16,6 +16,9 @@ from backend.ai.melody_review import (
     collect_library_cache_candidates,
     collect_survey_candidates,
     load_library_cache_paths,
+    read_latest_review_tags,
+    read_survey_queue,
+    resolve_review_data_dir,
     sample_survey_candidates,
     write_survey_queue,
 )
@@ -255,6 +258,7 @@ class TestMelodyPhase3(unittest.TestCase):
             root = Path(tmp)
             melodies = root / "melodies"
             melodies.mkdir()
+            (root / "melody_reviews").mkdir()
             (melodies / "song123.json").write_text(
                 json.dumps({
                     "path": "song.mp3",
@@ -284,6 +288,58 @@ class TestMelodyPhase3(unittest.TestCase):
             rows = [json.loads(line) for line in log_file.read_text(encoding="utf-8").splitlines()]
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["audio_quality_note"], "reverb_high")
+
+    def test_ai_api_melody_debug_survey_reports_queue_and_latest_tags(self):
+        backend_dir = Path(__file__).resolve().parents[1]
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        import ai_api
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review_dir = root / "melody_reviews"
+            review_dir.mkdir()
+            queue = review_dir / "phase0_survey_queue.jsonl"
+            queue.write_text(
+                "\n".join([
+                    json.dumps({
+                        "survey_id": "phase0",
+                        "hash": "song123",
+                        "path": "song.mp3",
+                        "sample_order": 1,
+                    }),
+                    json.dumps({
+                        "survey_id": "other",
+                        "hash": "song999",
+                        "path": "other.mp3",
+                        "sample_order": 2,
+                    }),
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (review_dir / "phase0_survey_queue.summary.json").write_text(
+                json.dumps({"survey_id": "phase0", "sample_size": 1}),
+                encoding="utf-8",
+            )
+            (review_dir / "phase0_tags.jsonl").write_text(
+                json.dumps({
+                    "survey_id": "phase0",
+                    "song_hash": "song123",
+                    "path": "song.mp3",
+                    "failure_tag": "pyin_fine",
+                    "created_at": "2026-05-20T00:00:00+00:00",
+                }) + "\n",
+                encoding="utf-8",
+            )
+
+            with patch.object(ai_api, "DATA_DIR", root):
+                result = ai_api.get_melody_debug_survey(_="admin")
+
+            self.assertEqual(result["survey_id"], "phase0")
+            self.assertEqual(result["total"], 1)
+            self.assertEqual(result["completed"], 1)
+            self.assertEqual(result["items"][0]["review_tag"]["failure_tag"], "pyin_fine")
+            self.assertIn("pyin_fine", result["taxonomy"]["primary_tags"])
 
     def test_ai_api_melody_debug_tag_rejects_unknown_labels(self):
         backend_dir = Path(__file__).resolve().parents[1]
@@ -448,6 +504,43 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(candidates[0]["selection_source"], "library_cache")
             self.assertTrue(candidates[0]["audio_exists"])
             self.assertEqual(candidates[0]["duration_s"], 123.4)
+
+    def test_melody_phase0_review_data_dir_prefers_existing_local_then_production(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "melody_reviews").mkdir()
+
+            self.assertEqual(resolve_review_data_dir(root), root)
+
+    def test_melody_phase0_review_queue_helpers_read_latest_tag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review_dir = root / "melody_reviews"
+            review_dir.mkdir()
+            (review_dir / "phase0_survey_queue.jsonl").write_text(
+                json.dumps({"survey_id": "phase0", "hash": "abc", "path": "song.mp3"}) + "\n",
+                encoding="utf-8",
+            )
+            (review_dir / "phase0_survey_queue.summary.json").write_text(
+                json.dumps({"survey_id": "phase0"}),
+                encoding="utf-8",
+            )
+            (review_dir / "phase0_tags.jsonl").write_text(
+                "\n".join([
+                    json.dumps({"survey_id": "phase0", "song_hash": "abc", "failure_tag": "wrong_octave", "created_at": "1"}),
+                    json.dumps({"survey_id": "phase0", "song_hash": "abc", "failure_tag": "pyin_fine", "created_at": "2"}),
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            rows, summary, queue_file = read_survey_queue(root)
+            latest, tag_file = read_latest_review_tags(root, "phase0")
+
+            self.assertEqual(queue_file.name, "phase0_survey_queue.jsonl")
+            self.assertEqual(tag_file.name, "phase0_tags.jsonl")
+            self.assertEqual(summary["survey_id"], "phase0")
+            self.assertEqual(rows[0]["hash"], "abc")
+            self.assertEqual(latest["phase0|abc"]["failure_tag"], "pyin_fine")
 
     def test_melody_phase0_survey_write_queue_refuses_overwrite_without_force(self):
         with tempfile.TemporaryDirectory() as tmp:

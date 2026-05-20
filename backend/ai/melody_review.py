@@ -18,6 +18,9 @@ REVIEW_SCHEMA_VERSION = 1
 REVIEW_PHASE = "phase0"
 REVIEW_DIR_NAME = "melody_reviews"
 REVIEW_TAG_LOG_NAME = "phase0_tags.jsonl"
+REVIEW_QUEUE_NAME = "phase0_survey_queue.jsonl"
+REVIEW_SUMMARY_NAME = "phase0_survey_queue.summary.json"
+PRODUCTION_DATA_DIR = Path(r"V:\data")
 AUDIO_QUALITY_NOTES = {
     "none",
     "reverb_high",
@@ -122,6 +125,53 @@ def append_review_entry(data_dir: Path, entry: Dict[str, Any]) -> Path:
     with log_file.open("a", encoding="utf-8", newline="\n") as fh:
         fh.write(line + "\n")
     return log_file
+
+
+def resolve_review_data_dir(data_dir: Path) -> Path:
+    """Return the data root that owns the Phase 0 review queue/log."""
+
+    local_review_dir = data_dir / REVIEW_DIR_NAME
+    if local_review_dir.exists():
+        return data_dir
+    production_review_dir = PRODUCTION_DATA_DIR / REVIEW_DIR_NAME
+    if production_review_dir.exists():
+        return PRODUCTION_DATA_DIR
+    return data_dir
+
+
+def read_survey_queue(data_dir: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any], Path]:
+    """Read the Phase 0 survey queue and summary sidecar."""
+
+    review_dir = data_dir / REVIEW_DIR_NAME
+    queue_file = review_dir / REVIEW_QUEUE_NAME
+    summary_file = review_dir / REVIEW_SUMMARY_NAME
+    rows = _read_jsonl(queue_file)
+    summary: Dict[str, Any] = {}
+    if summary_file.is_file():
+        try:
+            loaded = json.loads(summary_file.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                summary = loaded
+        except Exception:
+            summary = {}
+    return rows, summary, queue_file
+
+
+def read_latest_review_tags(data_dir: Path, survey_id: str = "") -> Tuple[Dict[str, Dict[str, Any]], Path]:
+    """Read latest tag per (survey_id, song_hash/path) for admin display."""
+
+    log_file = data_dir / REVIEW_DIR_NAME / REVIEW_TAG_LOG_NAME
+    latest: Dict[str, Dict[str, Any]] = {}
+    for row in _read_jsonl(log_file):
+        if survey_id and row.get("survey_id") != survey_id:
+            continue
+        key = _review_key(row)
+        if not key:
+            continue
+        previous = latest.get(key)
+        if not previous or str(row.get("created_at") or "") >= str(previous.get("created_at") or ""):
+            latest[key] = row
+    return latest, log_file
 
 
 def collect_survey_candidates(
@@ -308,6 +358,32 @@ def write_survey_queue(
 
 def _clean_string(value: Any, max_len: int) -> str:
     return str(value or "").strip()[:max_len]
+
+
+def _read_jsonl(path: Path) -> List[Dict[str, Any]]:
+    if not path.is_file():
+        return []
+    rows: List[Dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+            except Exception:
+                continue
+            if isinstance(data, dict):
+                rows.append(data)
+    return rows
+
+
+def _review_key(row: Dict[str, Any]) -> str:
+    survey_id = str(row.get("survey_id") or "")
+    song_hash = str(row.get("song_hash") or row.get("hash") or "")
+    path = str(row.get("path") or "")
+    target = song_hash or path
+    return f"{survey_id}|{target}" if target else ""
 
 
 def _clean_segment(segment: Optional[Dict[str, Any]]) -> Dict[str, Optional[float]]:

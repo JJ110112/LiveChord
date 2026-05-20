@@ -331,7 +331,7 @@ def post_melody_debug_tag(
 ):
     """Admin-only Phase 0 review tagging for RH melody debug inspections."""
 
-    from ai.melody_review import append_review_entry, build_review_entry
+    from ai.melody_review import append_review_entry, build_review_entry, resolve_review_data_dir
 
     if not body.hash and not body.path:
         raise HTTPException(status_code=400, detail="hash or path is required")
@@ -352,11 +352,55 @@ def post_melody_debug_tag(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    log_file = append_review_entry(DATA_DIR, entry)
+    review_data_dir = resolve_review_data_dir(DATA_DIR)
+    log_file = append_review_entry(review_data_dir, entry)
     return {
         "ok": True,
         "file": str(log_file),
         "entry": entry,
+    }
+
+
+@router.get("/melody/debug/survey")
+def get_melody_debug_survey(
+    survey_id: str = Query(default="", description="Optional survey id filter"),
+    _: str = Depends(get_admin_user),
+):
+    """Admin-only Phase 0 survey queue and latest tag status."""
+
+    from ai.melody_review import (
+        read_latest_review_tags,
+        read_survey_queue,
+        resolve_review_data_dir,
+    )
+    from ai.melody_schema import melody_review_taxonomy
+
+    review_data_dir = resolve_review_data_dir(DATA_DIR)
+    items, summary, queue_file = read_survey_queue(review_data_dir)
+    if not isinstance(survey_id, str):
+        survey_id = ""
+    active_survey_id = survey_id or str(summary.get("survey_id") or "")
+    if active_survey_id:
+        items = [item for item in items if item.get("survey_id") == active_survey_id]
+    latest, tag_file = read_latest_review_tags(review_data_dir, active_survey_id)
+
+    for item in items:
+        key = f"{item.get('survey_id') or ''}|{item.get('hash') or item.get('path') or ''}"
+        item["review_tag"] = latest.get(key)
+
+    completed = sum(1 for item in items if item.get("review_tag"))
+    return {
+        "ok": True,
+        "data_dir": str(review_data_dir),
+        "queue_file": str(queue_file),
+        "tag_file": str(tag_file),
+        "summary": summary,
+        "survey_id": active_survey_id,
+        "items": items,
+        "total": len(items),
+        "completed": completed,
+        "pending": max(0, len(items) - completed),
+        "taxonomy": melody_review_taxonomy(),
     }
 
 

@@ -434,6 +434,41 @@
         <span id="melodyDebugStatus" style="font-size:11px;color:var(--text-dim);"></span>
       </div>
       <div id="melodyDebugOutput" style="display:none;margin:-2px 0 8px 0;padding:8px 10px;background:var(--bg);border-radius:4px;font-size:11px;line-height:1.5;color:var(--text-dim);font-family:Consolas,monospace;white-space:pre-wrap;word-break:break-word;"></div>
+      <div id="melodySurveyPanel" style="margin-bottom:8px;padding:8px;border:1px dashed var(--border);border-radius:4px;">
+        <div class="actions" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+          <span style="font-size:12px;color:var(--text-dim);white-space:nowrap;">RH survey</span>
+          <button id="btnMelodySurveyLoad" title="Load Phase 0 survey queue">Load queue</button>
+          <button id="btnMelodySurveyPrev" disabled>Previous</button>
+          <button id="btnMelodySurveyNext" disabled>Next</button>
+          <button id="btnMelodySurveyNextPending" disabled>Next pending</button>
+          <span id="melodySurveyCounter" style="font-size:11px;color:var(--text-dim);font-family:Consolas,monospace">not loaded</span>
+          <span id="melodySurveyStatus" style="font-size:11px;color:var(--text-dim);"></span>
+        </div>
+        <div id="melodySurveyCurrent" style="font-size:12px;line-height:1.45;color:var(--text-dim);word-break:break-word;margin-bottom:8px">Load the Phase 0 queue to begin.</div>
+        <div class="actions" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+          <button id="btnMelodySurveyOpenPlayer" disabled>Open player</button>
+          <button id="btnMelodySurveyInspect" disabled>Inspect</button>
+          <select id="melodySurveyTag" class="num-input" style="width:auto;min-width:190px"></select>
+          <select id="melodySurveyAudioNote" class="num-input" style="width:auto">
+            <option value="none">audio: none</option>
+            <option value="reverb_high">reverb_high</option>
+            <option value="clipped">clipped</option>
+            <option value="noisy">noisy</option>
+            <option value="low_bitrate">low_bitrate</option>
+            <option value="live_room_bleed">live_room_bleed</option>
+            <option value="separation_artifact">separation_artifact</option>
+          </select>
+          <label style="font-size:11px;color:var(--text-dim);display:flex;gap:4px;align-items:center"><input type="checkbox" class="melodySurveyFlag" value="audio_quality_secondary"> audio_secondary</label>
+          <label style="font-size:11px;color:var(--text-dim);display:flex;gap:4px;align-items:center"><input type="checkbox" class="melodySurveyFlag" value="quantization_jitter"> quant_jitter</label>
+          <label style="font-size:11px;color:var(--text-dim);display:flex;gap:4px;align-items:center"><input type="checkbox" class="melodySurveyFlag" value="mixed_section_single_source"> mixed_section</label>
+          <label style="font-size:11px;color:var(--text-dim);display:flex;gap:4px;align-items:center"><input type="checkbox" class="melodySurveyFlag" value="source_intro_missing"> intro_missing</label>
+          <label style="font-size:11px;color:var(--text-dim);display:flex;gap:4px;align-items:center"><input type="checkbox" class="melodySurveyFlag" value="needs_ab_replay"> ab_replay</label>
+        </div>
+        <div class="actions" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input type="text" id="melodySurveyNote" placeholder="review note" class="num-input" style="flex:1;min-width:220px;text-align:left">
+          <button id="btnMelodySurveySubmit" disabled>Submit tag</button>
+        </div>
+      </div>
       <div class="actions" style="margin-bottom:8px; display:flex; gap:6px; align-items:center; padding:6px; border:1px dashed var(--border); border-radius:4px;">
         <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;">🧹 短促雜訊</span>
         <input type="text" id="isoFilterPath" placeholder="path / hash / player URL" class="num-input" style="flex:1; max-width:260px; text-align:left;">
@@ -1217,6 +1252,176 @@ window._lcIsBeta = (function() {
       status.textContent = `Failed: ${e.message || e}`;
     }
   });
+
+  const melodySurveyState = { items: [], index: 0, surveyId: "", taxonomy: null };
+  const MELODY_REVIEW_TAGS = [
+    "pyin_fine",
+    "wrong_octave",
+    "bass_leakage",
+    "wrong_line_backing_vocal",
+    "accompaniment_chord_tone",
+    "accompaniment_riff_lead",
+    "sparse_threshold",
+    "sparse_genuine_silence",
+    "duet_alternating",
+    "solo_piano_polyphonic_collapse",
+    "no_lead_present",
+    "audio_quality",
+    "no_issue_audible",
+  ];
+
+  function _melodySurveyCurrent() {
+    return melodySurveyState.items[melodySurveyState.index] || null;
+  }
+
+  function _populateMelodySurveyTags(tags) {
+    const sel = $("#melodySurveyTag");
+    const names = tags && tags.length ? tags : MELODY_REVIEW_TAGS;
+    sel.innerHTML = names.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join("");
+  }
+
+  function _setMelodySurveyEnabled(enabled) {
+    ["btnMelodySurveyPrev", "btnMelodySurveyNext", "btnMelodySurveyNextPending", "btnMelodySurveyOpenPlayer", "btnMelodySurveyInspect", "btnMelodySurveySubmit"].forEach(id => {
+      const el = $("#" + id);
+      if (el) el.disabled = !enabled;
+    });
+  }
+
+  function _renderMelodySurveyCurrent() {
+    const item = _melodySurveyCurrent();
+    const counter = $("#melodySurveyCounter");
+    const current = $("#melodySurveyCurrent");
+    if (!item) {
+      counter.textContent = "not loaded";
+      current.textContent = "Load the Phase 0 queue to begin.";
+      _setMelodySurveyEnabled(false);
+      return;
+    }
+    const total = melodySurveyState.items.length;
+    const completed = melodySurveyState.items.filter(x => x.review_tag).length;
+    const tag = item.review_tag || null;
+    counter.textContent = `${melodySurveyState.index + 1}/${total} · tagged ${completed}/${total}`;
+    const title = item.title || item.path || item.hash || "";
+    const who = [item.artist, item.album].filter(Boolean).join(" · ");
+    current.innerHTML = [
+      `<div><strong>${esc(title)}</strong>${tag ? ` <span style="color:#50c878">tagged: ${esc(tag.failure_tag || "")}</span>` : ` <span style="color:#ffb74d">pending</span>`}</div>`,
+      who ? `<div>${esc(who)}</div>` : "",
+      `<div style="font-family:Consolas,monospace">${esc(item.path || "")}</div>`,
+      `<div style="font-family:Consolas,monospace">hash ${esc(item.hash || "")} · order ${item.sample_order || melodySurveyState.index + 1} · ${Math.round(item.duration_s || 0)}s</div>`,
+    ].filter(Boolean).join("");
+    $("#btnMelodySurveyPrev").disabled = melodySurveyState.index <= 0;
+    $("#btnMelodySurveyNext").disabled = melodySurveyState.index >= total - 1;
+    ["btnMelodySurveyNextPending", "btnMelodySurveyOpenPlayer", "btnMelodySurveyInspect", "btnMelodySurveySubmit"].forEach(id => { $("#" + id).disabled = false; });
+    if (tag) {
+      $("#melodySurveyTag").value = tag.failure_tag || $("#melodySurveyTag").value;
+      $("#melodySurveyAudioNote").value = tag.audio_quality_note || "none";
+      const flags = new Set(tag.secondary_flags || []);
+      document.querySelectorAll(".melodySurveyFlag").forEach(cb => { cb.checked = flags.has(cb.value); });
+      $("#melodySurveyNote").value = tag.review_note || "";
+    } else {
+      $("#melodySurveyAudioNote").value = "none";
+      document.querySelectorAll(".melodySurveyFlag").forEach(cb => { cb.checked = false; });
+      $("#melodySurveyNote").value = "";
+    }
+  }
+
+  async function _loadMelodySurvey() {
+    const status = $("#melodySurveyStatus");
+    status.textContent = "Loading queue...";
+    try {
+      const res = await fetch("/api/ai/melody/debug/survey");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        status.textContent = `Failed: ${res.status} ${data.detail || res.statusText}`;
+        return;
+      }
+      melodySurveyState.items = data.items || [];
+      melodySurveyState.index = 0;
+      melodySurveyState.surveyId = data.survey_id || "";
+      melodySurveyState.taxonomy = data.taxonomy || null;
+      _populateMelodySurveyTags(Object.keys((data.taxonomy && data.taxonomy.primary_tags) || {}));
+      status.textContent = `Loaded ${data.total || 0}; pending ${data.pending || 0}`;
+      _renderMelodySurveyCurrent();
+    } catch (e) {
+      status.textContent = `Failed: ${e.message || e}`;
+    }
+  }
+
+  function _gotoMelodySurveyIndex(index) {
+    if (!melodySurveyState.items.length) return;
+    melodySurveyState.index = Math.max(0, Math.min(melodySurveyState.items.length - 1, index));
+    _renderMelodySurveyCurrent();
+  }
+
+  function _gotoNextPendingMelodySurvey() {
+    if (!melodySurveyState.items.length) return;
+    for (let i = melodySurveyState.index + 1; i < melodySurveyState.items.length; i++) {
+      if (!melodySurveyState.items[i].review_tag) { _gotoMelodySurveyIndex(i); return; }
+    }
+    for (let i = 0; i <= melodySurveyState.index; i++) {
+      if (!melodySurveyState.items[i].review_tag) { _gotoMelodySurveyIndex(i); return; }
+    }
+    $("#melodySurveyStatus").textContent = "All queued songs are tagged";
+  }
+
+  function _openMelodySurveyPlayer() {
+    const item = _melodySurveyCurrent();
+    if (!item) return;
+    const url = item.path
+      ? `/player?path=${encodeURIComponent(item.path)}&autoplay=1`
+      : `/player?hash=${encodeURIComponent(item.hash || "")}&autoplay=1`;
+    window.open(url, "_blank");
+  }
+
+  function _inspectMelodySurveyCurrent() {
+    const item = _melodySurveyCurrent();
+    if (!item) return;
+    $("#melodyDebugPath").value = item.path || item.hash || "";
+    $("#btnMelodyDebug").click();
+  }
+
+  async function _submitMelodySurveyTag() {
+    const item = _melodySurveyCurrent();
+    if (!item) return;
+    const status = $("#melodySurveyStatus");
+    const secondary = Array.from(document.querySelectorAll(".melodySurveyFlag:checked")).map(cb => cb.value);
+    const body = {
+      path: item.path || "",
+      hash: item.hash || "",
+      survey_id: item.survey_id || melodySurveyState.surveyId || "",
+      failure_tag: $("#melodySurveyTag").value,
+      secondary_flags: secondary,
+      audio_quality_note: $("#melodySurveyAudioNote").value || "none",
+      review_note: $("#melodySurveyNote").value || "",
+    };
+    status.textContent = "Submitting...";
+    try {
+      const res = await fetch("/api/ai/melody/debug/tag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        status.textContent = `Failed: ${res.status} ${data.detail || res.statusText}`;
+        return;
+      }
+      item.review_tag = data.entry;
+      status.textContent = `Saved ${body.failure_tag}`;
+      _renderMelodySurveyCurrent();
+    } catch (e) {
+      status.textContent = `Failed: ${e.message || e}`;
+    }
+  }
+
+  _populateMelodySurveyTags(MELODY_REVIEW_TAGS);
+  $("#btnMelodySurveyLoad").addEventListener("click", _loadMelodySurvey);
+  $("#btnMelodySurveyPrev").addEventListener("click", () => _gotoMelodySurveyIndex(melodySurveyState.index - 1));
+  $("#btnMelodySurveyNext").addEventListener("click", () => _gotoMelodySurveyIndex(melodySurveyState.index + 1));
+  $("#btnMelodySurveyNextPending").addEventListener("click", _gotoNextPendingMelodySurvey);
+  $("#btnMelodySurveyOpenPlayer").addEventListener("click", _openMelodySurveyPlayer);
+  $("#btnMelodySurveyInspect").addEventListener("click", _inspectMelodySurveyCurrent);
+  $("#btnMelodySurveySubmit").addEventListener("click", _submitMelodySurveyTag);
 
   $("#btnBarRecompute").addEventListener("click", async () => {
     const ident = _parseSongIdentifier($("#barRecomputePath").value);
