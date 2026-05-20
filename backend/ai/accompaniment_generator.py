@@ -56,7 +56,12 @@ RH_LOW, RH_HIGH = 60, 84
 # "Arpeggio" → arpeggio, "Reggae" → offbeat, etc. v6 cache for guitar/uke
 # is invalidated; piano cache is unaffected by the bump (its events don't
 # change). Lazy regen on next playback per song+style+level+instrument.
-ACC_ENGINE_VERSION = "v7"
+# v8 (2026-05-20): canonical duration schema v2. Pattern durations no longer
+# reserve visual rests with 0.9/0.85 multipliers; short playback touch is stored
+# in gate_ratio and consumed by player.js. Cache bump forces lazy regeneration.
+ACC_ENGINE_VERSION = "v8"
+NOTE_EVENT_SCHEMA_VERSION = 2
+DEFAULT_PATTERN_GATE_RATIO = 0.9
 _V2_FLAG_CACHE: Optional[bool] = None
 
 
@@ -379,6 +384,40 @@ def _beat_weight(frac: float, style: str) -> float:
     return 0.92
 
 
+def _gate_ratio_from_duration(performed_duration: float, canonical_duration: float,
+                              default: float = 1.0) -> float:
+    """Encode old short-touch durations as playback gate_ratio metadata."""
+    try:
+        canonical = float(canonical_duration)
+        performed = float(performed_duration)
+    except (TypeError, ValueError):
+        return default
+    if canonical <= 0:
+        return default
+    ratio = performed / canonical
+    return round(max(0.05, min(1.0, ratio)), 4)
+
+
+def _left_voice_lane_for_pattern_index(idx: int) -> str:
+    return "lh_bass" if idx in (0, -1) else "lh_chord"
+
+
+def _finalize_event_schema(events: List[Dict], default_voice_lane: str) -> None:
+    """Stamp schema v2 fields on generated accompaniment events in place."""
+    for event in events:
+        event["schema_version"] = NOTE_EVENT_SCHEMA_VERSION
+        if not event.get("voice_lane"):
+            if event.get("string") is not None:
+                event["voice_lane"] = "string_strum" if event.get("strum_id") else "string_arpeggio"
+            else:
+                event["voice_lane"] = default_voice_lane
+        event["gate_ratio"] = _gate_ratio_from_duration(
+            event.get("gate_ratio", 1.0),
+            1.0,
+            default=1.0,
+        )
+
+
 def _emit_period_pattern(pattern, start_time, duration, period_beats,
                          bpm, tempo_curve, emit):
     """Tile a frac-based ``pattern`` at fixed beat-period across a chord.
@@ -411,7 +450,7 @@ def _emit_period_pattern(pattern, start_time, duration, period_beats,
             if event_time >= chord_end - 0.02:
                 continue
             next_frac = pattern[pi + 1][0] if pi + 1 < len(pattern) else 1.0
-            event_dur = (next_frac - frac) * period_dur * 0.9
+            event_dur = (next_frac - frac) * period_dur
             event_dur = min(event_dur, chord_end - event_time)
             if event_dur <= 0.001:
                 continue
@@ -551,9 +590,15 @@ def _build_string_rh(chord_evt: Dict, style: str, base_velocity: int,
     try:
         # chord_diagrams lives at backend/chord_diagrams.py — backend root is
         # already on sys.path (see top of this file).
+        backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        if backend_root not in sys.path:
+            sys.path.append(backend_root)
         from chord_diagrams import get_chord_diagram
     except Exception:
-        return []
+        try:
+            from backend.chord_diagrams import get_chord_diagram
+        except Exception:
+            return []
 
     chord_name = chord_evt.get("chord", "C")
     start_time = chord_evt.get("time", 0)
@@ -625,6 +670,8 @@ def _build_string_rh(chord_evt: Dict, style: str, base_velocity: int,
                 "pitch": int(pitch_of[s]),
                 "velocity": int(base_velocity * vel_ratio),
                 "hand": "right",
+                "voice_lane": "string_arpeggio",
+                "gate_ratio": DEFAULT_PATTERN_GATE_RATIO,
                 "chord_tone": True,
                 "string": int(s),
                 "finger": finger,
@@ -647,15 +694,18 @@ def _build_string_rh(chord_evt: Dict, style: str, base_velocity: int,
                 t = evt_time + k * stagger
                 if t >= chord_end - 0.005:
                     break
-                d = min(0.18, chord_end - t)
-                if d <= 0.001:
+                canonical_d = min(evt_dur, chord_end - t)
+                performed_d = min(0.18, canonical_d)
+                if canonical_d <= 0.001:
                     continue
                 events.append({
                     "time": round(t, 3),
-                    "duration": round(d, 3),
+                    "duration": round(canonical_d, 3),
                     "pitch": int(pitch_of[s]),
                     "velocity": int(base_velocity * vel_ratio),
                     "hand": "right",
+                    "voice_lane": "string_strum",
+                    "gate_ratio": _gate_ratio_from_duration(performed_d, canonical_d),
                     "chord_tone": True,
                     "string": int(s),
                     "strum_id": sid,
@@ -692,6 +742,8 @@ def _build_string_rh(chord_evt: Dict, style: str, base_velocity: int,
                 "pitch": int(pitch_of[s]),
                 "velocity": int(base_velocity * vel_ratio * vel_shape),
                 "hand": "right",
+                "voice_lane": "string_strum",
+                "gate_ratio": DEFAULT_PATTERN_GATE_RATIO,
                 "chord_tone": True,
                 "string": int(s),
                 "strum_id": sid,
@@ -1058,6 +1110,8 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
                 "pitch": int(pitch),
                 "velocity": velocity,
                 "hand": "left",
+                "voice_lane": _left_voice_lane_for_pattern_index(idx),
+                "gate_ratio": DEFAULT_PATTERN_GATE_RATIO,
             })
 
     _emit_period_pattern(pattern, start_time, duration, period_beats,
@@ -1088,13 +1142,15 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
                     passing = None
                 if passing is not None and LH_LOW <= passing <= LH_HIGH:
                     pt_time = start_time + duration * 0.875  # 最後 1/8 拍
-                    pt_dur = duration * 0.125 * 0.9
+                    pt_dur = duration * 0.125
                     events.append({
                         "time": round(pt_time, 3),
                         "duration": round(pt_dur, 3),
                         "pitch": int(passing),
                         "velocity": int(base_velocity * 0.6),
                         "hand": "left",
+                        "voice_lane": "lh_bass",
+                        "gate_ratio": DEFAULT_PATTERN_GATE_RATIO,
                     })
 
     return events, pitches
@@ -1163,20 +1219,22 @@ def _build_fill_notes(chord_notes: List[str], gap_start: float, gap_dur: float,
 
     if intense:
         # ── 激情段落: 複音 block chord fill ──
-        fill_dur = min(gap_dur * 0.8, gap_dur - 0.05)
+        canonical_dur = gap_dur
+        performed_dur = min(gap_dur * 0.8, gap_dur - 0.05)
         for p in pitches[:4]:
             events.append({
                 "time": round(gap_start, 3),
-                "duration": round(fill_dur, 3),
+                "duration": round(canonical_dur, 3),
                 "pitch": int(p),
                 "velocity": int(base_velocity * 0.75),
                 "hand": "right",
+                "gate_ratio": _gate_ratio_from_duration(performed_dur, canonical_dur),
                 "chord_tone": True,
             })
     else:
         # ── 一般段落: 1~2 個單音 fill ──
         n_notes = 2 if gap_dur > 0.8 and level != "L1" else 1
-        note_dur = gap_dur / n_notes * 0.85
+        note_dur = gap_dur / n_notes
         for i in range(min(n_notes, len(pitches))):
             events.append({
                 "time": round(gap_start + i * (gap_dur / n_notes), 3),
@@ -1184,6 +1242,7 @@ def _build_fill_notes(chord_notes: List[str], gap_start: float, gap_dur: float,
                 "pitch": int(pitches[i % len(pitches)]),
                 "velocity": int(base_velocity * 0.6),
                 "hand": "right",
+                "gate_ratio": 0.85,
                 "chord_tone": True,
             })
 
@@ -1258,7 +1317,8 @@ def _build_rh_1plus3(chord_name: str, start_time: float, duration: float,
         if v2 and density_mult < 1.0 and b > 0:
             if rng.random() > density_mult:
                 continue
-        note_dur = (duration * 0.9 if once else beat_dur * 0.85)  # once: 持續整個和弦
+        note_dur = (duration if once else min(beat_dur, start_time + duration - beat_time))
+        gate_ratio = 0.9 if once else 0.85
         vel_ratio = 1.0 if b == 0 else 0.75  # 第一拍稍重
         # Beat weight (v2): backbeat emphasis for pop/rock
         if v2:
@@ -1271,6 +1331,7 @@ def _build_rh_1plus3(chord_name: str, start_time: float, duration: float,
                 "pitch": int(p),
                 "velocity": int(base_velocity * vel_ratio),
                 "hand": "right",
+                "gate_ratio": gate_ratio,
                 "chord_tone": True,
             })
 
@@ -1332,24 +1393,26 @@ def _build_right_hand(chord_name: str, start_time: float, duration: float,
         def emit(pi, item, evt_time, _natural_dur):
             frac, vel_ratio = item[0], item[1]
             if evt_dur_fixed is not None:
-                dur = evt_dur_fixed
+                performed_dur = evt_dur_fixed
             else:
                 # cap by both factor-of-period and a hard ceiling
-                period_local = period_beats * (60.0 / bpm if not tempo_curve else 1.0)
-                dur = min(_natural_dur * (evt_dur_factor / 0.9), evt_dur_max)
-            dur = min(dur, chord_end - evt_time)
-            if dur <= 0.001:
+                performed_dur = min(_natural_dur * (evt_dur_factor / 0.9), evt_dur_max)
+            canonical_dur = min(_natural_dur, chord_end - evt_time)
+            performed_dur = min(performed_dur, canonical_dur)
+            if canonical_dur <= 0.001:
                 return
+            gate_ratio = _gate_ratio_from_duration(performed_dur, canonical_dur)
             for p in comp_pitches:
-                if _check_melody_conflict(p, evt_time, dur, melody_segment):
+                if _check_melody_conflict(p, evt_time, performed_dur, melody_segment):
                     if p - 12 >= RH_LOW:
                         p -= 12
                 events.append({
                     "time": round(evt_time, 3),
-                    "duration": round(dur, 3),
+                    "duration": round(canonical_dur, 3),
                     "pitch": int(p),
                     "velocity": int(base_velocity * vel_ratio),
                     "hand": "right",
+                    "gate_ratio": gate_ratio,
                     "chord_tone": True,
                 })
         return emit
@@ -1422,6 +1485,7 @@ def _build_right_hand(chord_name: str, start_time: float, duration: float,
                     "pitch": int(pitch),
                     "velocity": int(base_velocity * vel_ratio),
                     "hand": "right",
+                    "gate_ratio": DEFAULT_PATTERN_GATE_RATIO,
                     "chord_tone": True,
                 })
 
@@ -1531,7 +1595,8 @@ def generate_accompaniment(chords: List[Dict],
                            sections: List[Dict] = None,
                            humanize: float = 1.0,
                            tempo_curve: Optional[List[Dict]] = None,
-                           instrument: str = "piano") -> Dict[str, Any]:
+                           instrument: str = "piano",
+                           time_signature: str = "4/4") -> Dict[str, Any]:
     """
     主入口：根據和弦序列、旋律、風格與難度，生成左右手 MIDI 伴奏。
 
@@ -1548,6 +1613,7 @@ def generate_accompaniment(chords: List[Dict],
         tempo_curve: optional [{"t": float, "bpm": float}, ...] for rubato
             songs — beat-fraction calculations look up local BPM at each
             chord/event time instead of using the scalar bpm.
+        time_signature: meter hint for continuity repair thresholds.
 
     Returns:
         {
@@ -1692,7 +1758,40 @@ def generate_accompaniment(chords: List[Dict],
         _humanize(right_events, bpm=bpm, amount=humanize, seed=123, style=hstyle,
                   tempo_curve=tempo_curve)
 
+    # Schema v2 + continuity: humanize can introduce tiny gaps, so finalize
+    # lanes/gates first, then extend canonical durations after timing offsets.
+    _finalize_event_schema(left_events, "lh_accompaniment")
+    _finalize_event_schema(right_events, "rh_accompaniment")
+    chord_boundaries = [
+        float(ch.get("time", 0.0))
+        for ch in chords[1:]
+        if ch.get("time") is not None
+    ]
+    from .note_continuity import repair_note_continuity
+    left_events = repair_note_continuity(
+        left_events,
+        bpm=bpm,
+        tempo_curve=tempo_curve,
+        time_signature=time_signature,
+        hand="left",
+        role="accompaniment",
+        chord_boundaries=chord_boundaries,
+    )
+    right_events = repair_note_continuity(
+        right_events,
+        bpm=bpm,
+        tempo_curve=tempo_curve,
+        time_signature=time_signature,
+        hand="right",
+        role="accompaniment",
+        chord_boundaries=chord_boundaries,
+    )
+
+    left_events.sort(key=lambda e: (e["time"], e["pitch"]))
+    right_events.sort(key=lambda e: (e["time"], e["pitch"]))
+
     return {
+        "schema_version": NOTE_EVENT_SCHEMA_VERSION,
         "left_hand": left_events,
         "right_hand": right_events,
         "suggested_styles": suggest_style(genre, bpm),

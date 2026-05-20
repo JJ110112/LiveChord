@@ -624,16 +624,35 @@
       return vol * 0.75 * velGain * handBias;
     }
 
-    _playSampleNote(pitch, duration, startTime, peakGain) {
+    _gateWindow(duration, gateRatio, releaseTail) {
+      const canonicalDuration = Math.max(0.01, Number(duration) || 0.01);
+      const rawGate = Number(gateRatio);
+      const gate = Number.isFinite(rawGate) ? Math.max(0.05, Math.min(1.0, rawGate)) : 1.0;
+      const maxTail = Math.max(0.005, canonicalDuration * 0.5);
+      const tail = Math.min(Math.max(0.005, Number(releaseTail) || 0.05), maxTail);
+      let audioOffOffset = canonicalDuration * gate;
+      if (audioOffOffset + tail > canonicalDuration) {
+        audioOffOffset = Math.max(0, canonicalDuration - tail);
+      }
+      return {
+        canonicalDuration,
+        audioOffOffset,
+        releaseTail: tail,
+        stopOffset: Math.min(canonicalDuration, audioOffOffset + tail),
+      };
+    }
+
+    _playSampleNote(pitch, duration, startTime, peakGain, gateRatio) {
       const sampleNote = this._findClosestSample(pitch);
       if (sampleNote === null) {
         // Samples not yet decoded — fall through to oscillator
         this._playOscillatorNote(pitch, duration, startTime, peakGain, {
           oscType: pitch < 60 ? "triangle" : "sine",
           attack: 0.02, decay: duration * 0.5, sustainLevel: 0.3, release: 0.05,
-        });
+        }, gateRatio);
         return;
       }
+      const gate = this._gateWindow(duration, gateRatio, 0.15);
       const buffer = this.samples[sampleNote];
       const source = this.ctx.createBufferSource();
       source.buffer = buffer;
@@ -641,14 +660,16 @@
       const gain = this.ctx.createGain();
       source.connect(gain);
       gain.connect(this.masterGain);
+      const audioOff = startTime + gate.audioOffOffset;
+      const stopTime = startTime + gate.stopOffset;
       gain.gain.setValueAtTime(peakGain, startTime);
-      gain.gain.setValueAtTime(peakGain, startTime + Math.max(0, duration - 0.08));
-      gain.gain.linearRampToValueAtTime(0, startTime + duration + 0.1);
+      gain.gain.setValueAtTime(peakGain, Math.max(startTime, audioOff - Math.min(0.08, gate.audioOffOffset)));
+      gain.gain.linearRampToValueAtTime(0, stopTime);
       source.start(startTime);
-      source.stop(startTime + duration + 0.15);
+      source.stop(stopTime);
     }
 
-    _playOscillatorNote(pitch, duration, startTime, peakGain, specOverride) {
+    _playOscillatorNote(pitch, duration, startTime, peakGain, specOverride, gateRatio) {
       const spec = specOverride || this.spec;
       const freq = 440 * Math.pow(2, (pitch - 69) / 12);
       const osc = this.ctx.createOscillator();
@@ -690,30 +711,35 @@
       const S = (spec.sustainLevel != null) ? spec.sustainLevel : 0.5;
       const R = Math.max(0.01, spec.release || 0.1);
       const sustainPeak = peakGain * S;
+      const gate = this._gateWindow(duration, gateRatio, R);
+      const releaseStart = startTime + gate.audioOffOffset;
+      const stopTime = startTime + gate.stopOffset;
+      const attackEnd = Math.min(startTime + A, Math.max(startTime + 0.001, releaseStart));
+      const sustainStart = Math.min(startTime + A + D, releaseStart);
 
       gain.gain.setValueAtTime(0, startTime);
-      gain.gain.linearRampToValueAtTime(peakGain, startTime + A);
-      const sustainStart = startTime + A + D;
-      gain.gain.exponentialRampToValueAtTime(Math.max(sustainPeak, 0.001), sustainStart);
-      const releaseStart = Math.max(sustainStart, startTime + Math.max(A + D + 0.01, duration));
+      gain.gain.linearRampToValueAtTime(peakGain, attackEnd);
+      if (sustainStart > attackEnd + 0.001) {
+        gain.gain.exponentialRampToValueAtTime(Math.max(sustainPeak, 0.001), sustainStart);
+      }
       gain.gain.setValueAtTime(Math.max(sustainPeak, 0.001), releaseStart);
-      gain.gain.exponentialRampToValueAtTime(0.0001, releaseStart + R);
+      gain.gain.exponentialRampToValueAtTime(0.0001, stopTime);
 
       osc.start(startTime);
-      osc.stop(releaseStart + R + 0.05);
-      if (bellOsc) { bellOsc.start(startTime); bellOsc.stop(releaseStart + R + 0.05); }
-      if (tremoloLFO) { tremoloLFO.start(startTime); tremoloLFO.stop(releaseStart + R + 0.05); }
+      osc.stop(stopTime);
+      if (bellOsc) { bellOsc.start(startTime); bellOsc.stop(stopTime); }
+      if (tremoloLFO) { tremoloLFO.start(startTime); tremoloLFO.stop(stopTime); }
     }
 
-    playNote(pitch, duration, hand, startTime, velocity) {
+    playNote(pitch, duration, hand, startTime, velocity, gateRatio) {
       if (!this.ctx) return;
       if (typeof activeHand !== "undefined" && activeHand !== "both" && activeHand !== hand) return;
       const peakGain = this._peakGain(hand, velocity);
       if (peakGain <= 0) return;
       if (this.spec.type === "sample") {
-        this._playSampleNote(pitch, duration, startTime, peakGain);
+        this._playSampleNote(pitch, duration, startTime, peakGain, gateRatio);
       } else {
-        this._playOscillatorNote(pitch, duration, startTime, peakGain, null);
+        this._playOscillatorNote(pitch, duration, startTime, peakGain, null, gateRatio);
       }
     }
   }
@@ -7930,12 +7956,13 @@
                   const targetTime = aiSynth.ctx.currentTime + delay;
                   // e.velocity is MIDI 0-127 from backend; undefined falls back to 64 in playNote.
                   const vel = e.velocity;
+                  const gate = e.gate_ratio;
                   if (e.pitches) {
                       for (const p of e.pitches) {
-                          aiSynth.playNote(p, e.duration || 0.5, hand, targetTime, vel);
+                          aiSynth.playNote(p, e.duration || 0.5, hand, targetTime, vel, gate);
                       }
                   } else if (e.pitch) {
-                      aiSynth.playNote(e.pitch, e.duration || 0.5, hand, targetTime, vel);
+                      aiSynth.playNote(e.pitch, e.duration || 0.5, hand, targetTime, vel, gate);
                   }
               }
           }

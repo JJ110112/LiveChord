@@ -258,13 +258,14 @@ if (audioOff + releaseTail > canonicalEnd) {
 source.stop(audioOff + releaseTail);
 ```
 
-## AI Accompaniment (engine v7, deployed 2026-05-06)
+## AI Accompaniment (engine v8, deployed 2026-05-20)
 
-LH/RH accompaniment in [backend/ai/accompaniment_generator.py](backend/ai/accompaniment_generator.py) — 21 styles, 7 piano RH modes, multi-instrument (piano / guitar / ukulele / accordion / arranger). Output cached at `data/accompaniments/{hash}_{style}_{level}_{section_type}_{instrument}_{ACC_ENGINE_VERSION}.json`; engine version `v7` (bump to invalidate). Architectural detail in [doc/for-notebooklm/](doc/for-notebooklm/).
+LH/RH accompaniment in [backend/ai/accompaniment_generator.py](backend/ai/accompaniment_generator.py) — 21 styles, 7 piano RH modes, multi-instrument (piano / guitar / ukulele / accordion / arranger). Output cached at `data/accompaniments/{hash}_{style}_{level}_{section_type}_{instrument}_{ACC_ENGINE_VERSION}.json`; engine version `v8` (bump to invalidate). Architectural detail in [doc/for-notebooklm/](doc/for-notebooklm/).
 
 **Engineering invariants — don't break these**:
 - **`encodeURIComponent` on the style query param**. The "1+3" style has a literal `+` which decodes to a space in `application/x-www-form-urlencoded`; without encoding FastAPI receives `style=" 3"`, falls through `STYLE_DICT`, silently uses Block. Bit us once
-- **Cache filename includes instrument**. v6/v7 are `..._{instrument}_v{N}.json`. Never strip the instrument segment without bumping `ACC_ENGINE_VERSION`
+- **Cache filename includes instrument**. v6+ are `..._{instrument}_v{N}.json`. Never strip the instrument segment without bumping `ACC_ENGINE_VERSION`
+- **v8 accompaniment events use schema v2**. Canonical `duration` is readable musical duration; playback shortening lives in `gate_ratio`. `player.js` consumes `gate_ratio` with release tails clamped inside the canonical duration window.
 - **`_assign_fingering` is piano-only**. Skip Viterbi fingering for `instrument != "piano"` — string-family events already carry p/i/m/a labels the keyboard 1-5 pass would overwrite
 - **Per-string default finger for melody is by OPEN PITCH rank**, not string index. Guitar happens to match index order; ukulele reentrant doesn't. `_defaultMelodyFinger` ranks by `openMidi` ascending, then maps low→p/p/p/i/m/a (guitar) or p/i/m/a (ukulele)
 - **String idiom routing is by STYLE NAME** (`STRING_IDIOM_BY_STYLE`), not piano `rh_mode`. v6 routed by `rh_mode` and the literally-named "Arpeggio" style (`rh_mode="fill_only"`) became a strum on guitar. v7 explicit table: arpeggio = {Arpeggio, Alberti, 1+3, PopBallad, RockBallad, RnBNeoSoul} · offbeat = {Reggae, BossaNova, JazzCharleston, JazzWaltz} · strum (default) = the rest

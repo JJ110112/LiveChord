@@ -521,6 +521,7 @@ def get_accompaniment(
     # don't have these — generators fall back to scalar bpm.
     tempo_curve = chord_data.get("tempo_curve") or None
     beat_version = chord_data.get("beat_version", 0)
+    time_signature = chord_data.get("time_signature") or chord_data.get("meter") or "4/4"
 
     # 取得 BPM 與 genre。優先順序：chord JSON 的 bpm（經 ballad-halving 修正）
     # → library_cache → 120 預設。BPM_STYLE_MAP 閾值 80/120 決定 Slow Ballad
@@ -579,6 +580,7 @@ def get_accompaniment(
         section_type=section_type, sections=sections,
         tempo_curve=tempo_curve,
         instrument=instrument,
+        time_signature=time_signature,
     )
     result["path"] = path
     result["bpm"] = round(bpm, 1)

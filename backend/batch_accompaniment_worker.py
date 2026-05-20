@@ -78,6 +78,7 @@ def process_track(song_hash: str, levels: list, styles: list,
         # beat_snap.analyze_and_snap_dynamic — generators fall back to scalar bpm.
         tempo_curve = sheet_data.get("tempo_curve") or None
         beat_version = sheet_data.get("beat_version", 0)
+        time_signature = sheet_data.get("time_signature") or sheet_data.get("meter") or "4/4"
 
         # Phase 11: 段落偵測
         sections = _detect_sections_safe(chords, key, song_hash=song_hash)
@@ -102,6 +103,7 @@ def process_track(song_hash: str, levels: list, styles: list,
                     bpm=bpm, style=style, level=level, genre=genre,
                     section_type=dominant_section,
                     tempo_curve=tempo_curve,
+                    time_signature=time_signature,
                 )
                 acc["bpm"] = round(bpm, 1)
                 acc["genre"] = genre

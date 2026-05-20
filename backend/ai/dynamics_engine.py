@@ -17,7 +17,7 @@ Phase 11d
 
 Articulation 類型:
   - legato:   音符重疊 (overlap ~20ms)
-  - staccato: 音符縮短至 50% duration
+  - staccato: gate_ratio 50% (canonical duration 不縮短)
   - portato:  音符間微小間隙 (~20ms gap)
 """
 
@@ -263,9 +263,9 @@ def _apply_articulation(
 ) -> None:
     """
     套用 articulation 到事件 (原地修改)。
-    - legato:   增加 20ms overlap (不改 duration, 標記即可)
-    - staccato: duration 縮短為 50%
-    - portato:  duration 縮短約 20ms gap
+    - legato:   gate_ratio = 1.0
+    - staccato: gate_ratio = 0.5
+    - portato:  gate_ratio leaves roughly 20ms playback gap
     """
     for idx in phrase_indices:
         ev = events[idx]
@@ -274,13 +274,19 @@ def _apply_articulation(
         original_dur = _event_duration(ev)
 
         if articulation == "staccato":
-            ev["duration"] = round(original_dur * 0.5, 4)
+            target_gate = 0.5
         elif articulation == "portato":
             gap = 0.02  # 20ms
-            ev["duration"] = round(max(0.05, original_dur - gap), 4)
-        elif articulation == "legato":
-            # legato: 微小 overlap, 稍微延長
-            ev["duration"] = round(original_dur + 0.02, 4)
+            target_gate = max(0.05, min(1.0, (original_dur - gap) / original_dur)) if original_dur > 0 else 1.0
+        else:
+            target_gate = 1.0
+
+        existing_gate = ev.get("gate_ratio", 1.0)
+        try:
+            existing_gate = float(existing_gate)
+        except (TypeError, ValueError):
+            existing_gate = 1.0
+        ev["gate_ratio"] = round(max(0.05, min(1.0, min(existing_gate, target_gate))), 4)
 
 
 # ──────────────────────────────────────────
@@ -303,7 +309,7 @@ def generate_dynamics(
         section_type: 段落類型 "intro"|"verse"|"chorus"|"bridge"|"outro"
 
     Returns:
-        events (原地修改), 每個事件增加 'velocity' 和 'articulation' 欄位
+        events (原地修改), 每個事件增加 'velocity'、'articulation' 和 'gate_ratio' 欄位
     """
     if not events:
         return events
