@@ -17,6 +17,8 @@ import librosa
 import numpy as np
 from scipy.ndimage import median_filter
 
+from .melody_schema import finalize_melody_events
+
 
 class MelodyExtractor:
     """
@@ -46,7 +48,7 @@ class MelodyExtractor:
         self.adaptive_range = adaptive_range if not fast_mode else False
         self.fast_mode = fast_mode
 
-    def extract_melody(self, audio_path):
+    def extract_melody(self, audio_path, bpm=120.0, tempo_curve=None, time_signature="4/4"):
         """
         解析音檔並回傳音符區段。
 
@@ -101,6 +103,12 @@ class MelodyExtractor:
 
         # --- 後處理 ---
         melody_events = self._post_process(melody_events)
+        melody_events = finalize_melody_events(
+            melody_events,
+            bpm=bpm,
+            tempo_curve=tempo_curve,
+            time_signature=time_signature,
+        )
 
         return melody_events
 

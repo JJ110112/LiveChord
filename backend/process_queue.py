@@ -1031,11 +1031,39 @@ def _worker_loop():
 _melody_pool = None
 
 
-def _melody_subprocess_extract(audio_path):
+def _melody_context_for_song_hash(song_hash):
+    context = {"bpm": 120.0, "tempo_curve": None, "time_signature": "4/4"}
+    if not song_hash:
+        return context
+    try:
+        from chord_cache import chord_file_for
+        chord_file = chord_file_for(song_hash)
+        if not chord_file.is_file():
+            return context
+        chord_data = json.loads(chord_file.read_text(encoding="utf-8"))
+        context["bpm"] = float(chord_data.get("bpm") or 120.0)
+        context["tempo_curve"] = chord_data.get("tempo_curve") or None
+        context["time_signature"] = (
+            chord_data.get("time_signature")
+            or chord_data.get("meter")
+            or "4/4"
+        )
+    except Exception:
+        return context
+    return context
+
+
+def _melody_subprocess_extract(audio_path, song_hash=None):
     """Run inside the worker subprocess. Imports lazily so the parent process
     doesn't pay for melody-extractor deps until we actually need them."""
     from ai.melody_extractor import MelodyExtractor
-    return MelodyExtractor().extract_melody(audio_path)
+    context = _melody_context_for_song_hash(song_hash)
+    return MelodyExtractor().extract_melody(
+        audio_path,
+        bpm=context["bpm"],
+        tempo_curve=context["tempo_curve"],
+        time_signature=context["time_signature"],
+    )
 
 
 def _melody_worker_loop():
@@ -1070,14 +1098,22 @@ def _melody_worker_loop():
                     _melody_pool = ProcessPoolExecutor(max_workers=1)
                     logger.info("Melody ProcessPool created (max_workers=1)")
                 _v1_t0 = time.time()
-                future = _melody_pool.submit(_melody_subprocess_extract, audio_path)
+                future = _melody_pool.submit(_melody_subprocess_extract, audio_path, result_hash)
                 melody_data = future.result(timeout=600)
                 v1_time_s = round(time.time() - _v1_t0, 2)
                 if melody_data:
                     v1_notes_count = len(melody_data)
+                    from ai.melody_schema import MELODY_EVENT_SCHEMA_VERSION
                     mel_file = MELODIES_DIR / f"{result_hash}.json"
                     mel_file.write_text(
-                        json.dumps({"path": f"__upload/{job_id}", "melody": melody_data}, ensure_ascii=False),
+                        json.dumps(
+                            {
+                                "path": f"__upload/{job_id}",
+                                "schema_version": MELODY_EVENT_SCHEMA_VERSION,
+                                "melody": melody_data,
+                            },
+                            ensure_ascii=False,
+                        ),
                         encoding="utf-8"
                     )
                     logger.info("Job %s melody saved (bg worker)", job_id)

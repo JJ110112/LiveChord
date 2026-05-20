@@ -1,5 +1,6 @@
 """AI 和弦預測 + Jazzify + Phase 11 教學引擎 API"""
 
+import json
 import logging
 
 from fastapi import APIRouter, Query, Body
@@ -15,6 +16,53 @@ from chord_cache import chord_file_for, chord_bak_for, ensure_chord_bucket
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 CHORDS_DIR = DATA_DIR / "chords"
+
+
+def _melody_context_for_hash(song_hash: str) -> dict:
+    """Best-effort musical context for melody continuity repair."""
+    context = {"bpm": 120.0, "tempo_curve": None, "time_signature": "4/4"}
+    if not song_hash:
+        return context
+    try:
+        chords_file = chord_file_for(song_hash)
+        if not chords_file.is_file():
+            return context
+        chord_data = json.loads(chords_file.read_text(encoding="utf-8"))
+        context["bpm"] = float(chord_data.get("bpm") or 120.0)
+        context["tempo_curve"] = chord_data.get("tempo_curve") or None
+        context["time_signature"] = (
+            chord_data.get("time_signature")
+            or chord_data.get("meter")
+            or "4/4"
+        )
+    except Exception:
+        return context
+    return context
+
+
+def _finalize_melody_response(payload, *, path: str = "", song_hash: str = "") -> dict:
+    from ai.melody_schema import finalize_melody_payload
+
+    context = _melody_context_for_hash(song_hash)
+    return finalize_melody_payload(
+        payload,
+        path=path,
+        bpm=context["bpm"],
+        tempo_curve=context["tempo_curve"],
+        time_signature=context["time_signature"],
+    )
+
+
+def _read_finalized_melody_cache(cache_file: Path, *, path: str = "",
+                                 song_hash: str = "") -> dict:
+    data = json.loads(cache_file.read_text(encoding="utf-8"))
+    finalized = _finalize_melody_response(data, path=path, song_hash=song_hash)
+    if finalized != data:
+        try:
+            cache_file.write_text(json.dumps(finalized, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+    return finalized
 
 
 @router.get("/suggest")
@@ -130,7 +178,7 @@ def get_melody(
     if hash and not path:
         cache_file = MELODY_DIR / f"{hash}.json"
         if cache_file.is_file():
-            return _json.loads(cache_file.read_text(encoding="utf-8"))
+            return _read_finalized_melody_cache(cache_file, song_hash=hash)
         # Try to find path from chord data and derive melody hash
         chords_file = chord_file_for(hash)
         if chords_file.is_file():
@@ -141,7 +189,11 @@ def get_melody(
                     melody_hash = get_song_hash(cd["path"])
                     alt_file = MELODY_DIR / f"{melody_hash}.json"
                     if alt_file.is_file():
-                        return _json.loads(alt_file.read_text(encoding="utf-8"))
+                        return _read_finalized_melody_cache(
+                            alt_file,
+                            path=cd.get("path", ""),
+                            song_hash=hash,
+                        )
             except Exception:
                 pass
         return {"melody": []}
@@ -155,7 +207,7 @@ def get_melody(
 
     # 有快取直接回傳
     if cache_file.is_file():
-        return _json.loads(cache_file.read_text(encoding="utf-8"))
+        return _read_finalized_melody_cache(cache_file, path=path, song_hash=h)
 
     # 即時提取
     from config import resolve_path
@@ -165,10 +217,20 @@ def get_melody(
 
     try:
         from ai.melody_extractor import MelodyExtractor
+        context = _melody_context_for_hash(h)
         ext = MelodyExtractor()
-        melody = ext.extract_melody(full_path)
+        melody = ext.extract_melody(
+            full_path,
+            bpm=context["bpm"],
+            tempo_curve=context["tempo_curve"],
+            time_signature=context["time_signature"],
+        )
 
-        result = {"path": path, "melody": melody}
+        result = _finalize_melody_response(
+            {"path": path, "melody": melody},
+            path=path,
+            song_hash=h,
+        )
         cache_file.write_text(_json.dumps(result, ensure_ascii=False), encoding="utf-8")
         return result
     except Exception as e:

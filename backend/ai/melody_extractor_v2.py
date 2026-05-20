@@ -4,6 +4,8 @@ import time
 import librosa
 import numpy as np
 
+from .melody_schema import finalize_melody_events
+
 
 class MelodyExtractorV2:
     """
@@ -128,7 +130,15 @@ class MelodyExtractorV2:
     # ------------------------------------------------------------------
     # 主要 API
     # ------------------------------------------------------------------
-    def extract_melody(self, audio_path, filter_melody=True, min_confidence=0.3):
+    def extract_melody(
+        self,
+        audio_path,
+        filter_melody=True,
+        min_confidence=0.3,
+        bpm=120.0,
+        tempo_curve=None,
+        time_signature="4/4",
+    ):
         """
         解析音檔並回傳與 V1 pYIN 相同格式的音符區段。
 
@@ -178,6 +188,12 @@ class MelodyExtractorV2:
 
         if filter_melody:
             events = self._filter_to_melody(events, min_confidence=min_confidence)
+        events = finalize_melody_events(
+            events,
+            bpm=bpm,
+            tempo_curve=tempo_curve,
+            time_signature=time_signature,
+        )
 
         dt = time.time() - t0
         print(

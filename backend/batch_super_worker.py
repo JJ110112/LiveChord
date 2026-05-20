@@ -237,7 +237,12 @@ def process_track(root_dir: str, rel_path: str):
             try:
                 extractor = _ensure_melody_extractor()
                 melody = extractor.extract_melody(full_path)
-                res = {"path": rel_path.replace("\\", "/"), "melody": melody}
+                from ai.melody_schema import MELODY_EVENT_SCHEMA_VERSION
+                res = {
+                    "path": rel_path.replace("\\", "/"),
+                    "schema_version": MELODY_EVENT_SCHEMA_VERSION,
+                    "melody": melody,
+                }
                 with open(melody_file, "w", encoding="utf-8") as f:
                     json.dump(res, f, ensure_ascii=False, indent=2)
                 res_msgs.append(f"Melody:OK({len(melody)}notes)")
