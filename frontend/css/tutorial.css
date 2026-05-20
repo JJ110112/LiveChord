@@ -1,0 +1,131 @@
+/* LiveChord interactive tutorial coach marks.
+   Uses the shared popup tokens from base.css and stays outside page layout. */
+
+.lc-tutorial-root[hidden] {
+  display: none;
+}
+
+.lc-tutorial-spotlight {
+  position: fixed;
+  z-index: 9550;
+  box-sizing: border-box;
+  border: 2px solid var(--accent, #4fc3f7);
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 4px rgba(79, 195, 247, 0.18),
+    0 0 0 9999px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  transition: top 160ms ease, left 160ms ease, width 160ms ease, height 160ms ease;
+}
+
+.lc-tutorial-popover {
+  position: fixed;
+  z-index: 9560;
+  width: min(340px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  padding: 14px;
+  color: var(--text);
+  background: var(--lc-popup-bg, rgba(22, 27, 34, 0.96));
+  backdrop-filter: var(--lc-popup-blur, blur(12px));
+  -webkit-backdrop-filter: var(--lc-popup-blur, blur(12px));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--lc-popup-shadow, 0 8px 24px rgba(0, 0, 0, 0.5));
+}
+
+.lc-tutorial-kicker {
+  margin-bottom: 6px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.lc-tutorial-popover .lc-title {
+  margin: 0 0 6px;
+  padding: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.lc-tutorial-body {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.lc-tutorial-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.lc-tutorial-popover .tb-popup-btn {
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lc-tutorial-popover .tb-popup-btn:hover,
+.lc-tutorial-popover .tb-popup-btn:focus-visible {
+  outline: none;
+  background: var(--bg-card);
+}
+
+.lc-tutorial-popover .tb-popup-btn.active {
+  border-color: var(--accent);
+  color: #fff;
+  background: var(--accent);
+}
+
+.lc-tutorial-popover .lc-tutorial-back[hidden] {
+  display: none;
+}
+
+[data-theme="light"] .lc-tutorial-spotlight,
+[data-theme="sakura"] .lc-tutorial-spotlight,
+[data-theme="sunny"] .lc-tutorial-spotlight,
+[data-theme="sky"] .lc-tutorial-spotlight {
+  box-shadow:
+    0 0 0 4px rgba(2, 119, 189, 0.16),
+    0 0 0 9999px rgba(255, 255, 255, 0.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-tutorial-spotlight {
+    transition: none;
+  }
+}
+
+@media (max-width: 640px) and (orientation: portrait) {
+  .lc-tutorial-popover {
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    left: 12px;
+    width: auto;
+    max-width: none;
+  }
+
+  .lc-tutorial-actions {
+    justify-content: stretch;
+  }
+
+  .lc-tutorial-popover .tb-popup-btn {
+    flex: 1 1 0;
+    min-height: 44px;
+    padding: 10px 8px;
+  }
+}
+

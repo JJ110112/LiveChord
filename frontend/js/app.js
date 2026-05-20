@@ -1447,6 +1447,7 @@
       _scrollToDemoIfFromPlayer();
     } finally {
       showLoading(false);
+      if (window.LiveChordTutorial) window.LiveChordTutorial.maybeStart("home");
     }
 
     // bfcache refresh — mobile browsers snapshot this page when the user

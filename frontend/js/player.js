@@ -368,6 +368,11 @@
     cfg.deployment_mode === "beta" || cfg.deployment_mode === "public"
   );
 
+  function _maybeStartPlayerTutorial() {
+    if (!hasChords || !window.LiveChordTutorial) return;
+    window.LiveChordTutorial.maybeStart("player");
+  }
+
   // Show local-file toolbar button: always in hash mode, otherwise beta mode only
   if (hashMode && tbLocalFile) {
     tbLocalFile.style.display = "";
@@ -2492,6 +2497,7 @@
       loadSiblings(path);
     } finally {
       _setLoadingState(false);
+      _maybeStartPlayerTutorial();
     }
   }
 
@@ -7814,6 +7820,7 @@
         showToast(_t("toast.load.failed", { err: e.message }), 4000);
       } finally {
         _setLoadingState(false);
+        _maybeStartPlayerTutorial();
       }
     })();
   } else {

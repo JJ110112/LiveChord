@@ -17,11 +17,12 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=21">
   <link rel="stylesheet" href="/css/player.css?v=143">
+  <link rel="stylesheet" href="/css/tutorial.css?v=1">
   <!-- Phase A: shared auth + fetch wrapper (see frontend/js/auth.js). Must
        load before any /api/ call so anon X-Anon-Id is injected from the
        first request. Replaces the inline blind-redirect block. -->
   <script src="/js/auth.js?v=7"></script>
-  <script src="/js/i18n.js?v=53"></script>
+  <script src="/js/i18n.js?v=54"></script>
   <script src="/js/analytics.js?v=3"></script>
 </head>
 <body>
@@ -875,6 +876,7 @@
         </div>
         <div class="hn-section">
           <a href="/" class="hn-row" role="menuitem" data-i18n="help.nav.home">Home</a>
+          <button id="btnStartTutorialPlayer" class="hn-row" type="button" role="menuitem" data-i18n="tutorial.menu">Tutorial</button>
           <a href="/help" class="hn-row" role="menuitem" data-i18n="help.nav.help">Help</a>
           <button id="btnReportProblemSettings" class="hn-row" type="button" role="menuitem" data-i18n="common.report_problem">Report a problem</button>
           <a href="/sponsor" class="hn-row" role="menuitem" data-i18n="help.nav.sponsor">Sponsor</a>
@@ -923,9 +925,10 @@
 <script src="/js/chord-exporter.js?v=3"></script>
 <script src="/js/beat-sync.js?v=1"></script>
 <script src="/js/chord-correction.js?v=16"></script>
+<script src="/js/tutorial-tour.js?v=3"></script>
 <!-- Phase A: fetch wrapper installed by /js/auth.js at <head>; the inline
      duplicate block was removed. -->
-<script src="/js/player.js?v=342"></script>
+<script src="/js/player.js?v=344"></script>
 <script>
   // Toolbar gear theme picker — mirrors the homepage gear handler so the
   // user's theme choice is honored on either entry point. Active state on
