@@ -23,6 +23,7 @@ from backend.ai.melody_review import (
     write_survey_queue,
 )
 from backend.ai.melody_candidate import (
+    FULL_MIX_PYIN,
     MELODY_CANDIDATE_CACHE_VERSION,
     SOLO_PIANO_POLYPHONIC,
     VOCAL_STEM_CREPE,
@@ -32,6 +33,7 @@ from backend.ai.melody_candidate import (
     stem_path,
     write_candidate_cache,
 )
+from backend.ai.melody_shadow_generator import generate_shadow_candidates
 from backend.ai.piano_rh_selector import select_right_hand_melody
 from backend.ai.melody_schema import (
     MELODY_EVENT_SCHEMA_VERSION,
@@ -42,8 +44,8 @@ from backend.ai.melody_schema import (
     melody_review_taxonomy,
     melody_context_from_chord_cache,
 )
-from backend.ai.stem_separation import StemCache
-from backend.ai.vocal_melody_crepe import VocalStemCrepeExtractor
+from backend.ai.stem_separation import StemCache, StemCacheResult
+from backend.ai.vocal_melody_crepe import VocalCrepeResult, VocalStemCrepeExtractor
 
 
 class TestMelodyPhase3(unittest.TestCase):
@@ -922,6 +924,120 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertFalse(result.ok)
             self.assertEqual(result.error, "extraction_failed:RuntimeError:bad audio")
             self.assertFalse(candidate_path(root, "abcdef123456", VOCAL_STEM_CREPE).exists())
+
+    def test_shadow_generator_wraps_legacy_full_mix_pyin_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "melodies").mkdir()
+            (root / "melodies" / "abcdef123456.json").write_text(
+                json.dumps({
+                    "melody": [{"start": 0.0, "end": 0.5, "midi": 64, "confidence": 0.7}],
+                }),
+                encoding="utf-8",
+            )
+
+            result = generate_shadow_candidates(
+                data_dir=root,
+                song_hash="abcdef123456",
+                path="POP/song.mp3",
+                candidates=[FULL_MIX_PYIN],
+            )
+            payload = read_candidate_cache(root, "abcdef123456", FULL_MIX_PYIN)
+
+            self.assertTrue(result.ok)
+            self.assertEqual(result.results[0].status, "generated")
+            self.assertEqual(payload["melody_source"]["id"], FULL_MIX_PYIN)
+            self.assertEqual(payload["candidate"]["build_info"]["source"], "legacy_cache")
+            self.assertEqual(payload["melody"][0]["voice_lane"], MELODY_VOICE_LANE)
+
+    def test_shadow_generator_vocal_candidate_uses_stem_cache_and_extractor(self):
+        class FakeStemCache:
+            def ensure_stems(self, **_kwargs):
+                return StemCacheResult(
+                    ok=True,
+                    stems={"vocals": str(root / "vocals.wav"), "other": str(root / "other.wav")},
+                    cache_dir=str(root / "stems"),
+                    reused=True,
+                )
+
+        class FakeVocalExtractor:
+            def extract_to_cache(self, **kwargs):
+                payload = build_candidate_payload(
+                    song_hash=kwargs["song_hash"],
+                    path=kwargs["path"],
+                    candidate_id=VOCAL_STEM_CREPE,
+                    melody=[{"start": 0.0, "end": 0.5, "midi": 67}],
+                    stem="vocals",
+                    algorithm="fake-crepe",
+                    bpm=120,
+                )
+                out = write_candidate_cache(root, kwargs["song_hash"], VOCAL_STEM_CREPE, payload)
+                return VocalCrepeResult(ok=True, payload=payload, cache_file=str(out))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "vocals.wav").write_bytes(b"v")
+            (root / "other.wav").write_bytes(b"o")
+
+            result = generate_shadow_candidates(
+                data_dir=root,
+                song_hash="abcdef123456",
+                path="POP/song.mp3",
+                audio_path=str(root / "song.wav"),
+                candidates=[VOCAL_STEM_CREPE],
+                stem_cache=FakeStemCache(),
+                vocal_extractor=FakeVocalExtractor(),
+            )
+
+            self.assertTrue(result.ok)
+            self.assertEqual(result.results[0].candidate_id, VOCAL_STEM_CREPE)
+            self.assertEqual(result.results[0].details["reused"], True)
+            self.assertTrue(candidate_path(root, "abcdef123456", VOCAL_STEM_CREPE).exists())
+
+    def test_shadow_generator_solo_piano_from_polyphonic_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            notes_file = root / "poly.json"
+            notes_file.write_text(
+                json.dumps([
+                    {"start": 0.0, "end": 0.5, "midi": 40, "velocity": 100},
+                    {"start": 0.0, "end": 0.5, "midi": 72, "velocity": 64},
+                    {"start": 0.5, "end": 1.0, "midi": 43, "velocity": 100},
+                    {"start": 0.5, "end": 1.0, "midi": 74, "velocity": 64},
+                ]),
+                encoding="utf-8",
+            )
+
+            result = generate_shadow_candidates(
+                data_dir=root,
+                song_hash="abcdef123456",
+                path="Classics/piano.flac",
+                candidates=[SOLO_PIANO_POLYPHONIC],
+                polyphonic_json=str(notes_file),
+                key="C",
+            )
+            payload = read_candidate_cache(root, "abcdef123456", SOLO_PIANO_POLYPHONIC)
+
+            self.assertTrue(result.ok)
+            self.assertEqual(result.results[0].details["input_notes"], 4)
+            self.assertEqual([event["midi"] for event in payload["melody"]], [72, 74])
+            self.assertEqual(payload["melody_source"]["id"], SOLO_PIANO_POLYPHONIC)
+
+    def test_shadow_generator_solo_piano_requires_polyphonic_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            result = generate_shadow_candidates(
+                data_dir=root,
+                song_hash="abcdef123456",
+                path="Classics/piano.flac",
+                candidates=[SOLO_PIANO_POLYPHONIC],
+            )
+
+            self.assertFalse(result.ok)
+            self.assertEqual(result.results[0].candidate_id, SOLO_PIANO_POLYPHONIC)
+            self.assertTrue(result.results[0].error.startswith("polyphonic_load_failed:"))
+            self.assertFalse(candidate_path(root, "abcdef123456", SOLO_PIANO_POLYPHONIC).exists())
 
 
 if __name__ == "__main__":

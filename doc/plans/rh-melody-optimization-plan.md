@@ -694,11 +694,11 @@ Phase 0 instrumentation is complete, but current RH quality is poor enough that 
 
 | Order | Work | Status |
 |---:|---|---|
-| 1 | Add shared shadow candidate cache helpers for `V:\data\melody_candidates\<hh>\<hash>\*.json` and `V:\data\stems\<hh>\<hash>\*.wav` | In progress |
-| 2 | Add persistent HTDemucs stem-cache wrapper so `vocals` and `other` are separated once and reused by `vocal_stem_crepe` / `instrument_lead` | In progress |
-| 3 | Add `vocal_stem_crepe` wrapper: vocals stem -> CREPE F0 -> vibrato smoothing -> note segmentation -> candidate cache | In progress |
-| 4 | Add `solo_piano_polyphonic` Stage-2 selector: Magenta/polyphonic notes -> Skyline candidates -> Temperley Viterbi -> candidate cache | In progress |
-| 5 | Add a one-song/batch shadow generation entry point for small A/B trials without changing formal RH playback | Pending |
+| 1 | Add shared shadow candidate cache helpers for `V:\data\melody_candidates\<hh>\<hash>\*.json` and `V:\data\stems\<hh>\<hash>\*.wav` | Done |
+| 2 | Add persistent HTDemucs stem-cache wrapper so `vocals` and `other` are separated once and reused by `vocal_stem_crepe` / `instrument_lead` | Done |
+| 3 | Add `vocal_stem_crepe` wrapper: vocals stem -> CREPE F0 -> vibrato smoothing -> note segmentation -> candidate cache | Done |
+| 4 | Add `solo_piano_polyphonic` Stage-2 selector: Magenta/polyphonic notes -> Skyline candidates -> Temperley Viterbi -> candidate cache | Done |
+| 5 | Add a one-song/batch shadow generation entry point for small A/B trials without changing formal RH playback | Done |
 | 6 | Add Admin candidate compare/read endpoint and UI hook so review can switch `full_mix_pyin` vs shadow candidates | Pending |
 | 7 | Run a 20-30 song A/B smoke set (vocal, solo piano, instrumental) to see whether the new routes are worth scaling | Pending |
 | 8 | Finish the 200-song equal-probability listening survey through the Admin RH survey panel, using candidate comparison where available | Pending human review |
