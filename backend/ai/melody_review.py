@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
@@ -162,7 +163,7 @@ def collect_survey_candidates(
             "chord_file": str(chord_file),
             "audio_path": audio_path,
             "audio_exists": audio_exists,
-            "source": data.get("source") or "btc",
+            "source": data.get("source") or "",
             "beats_source": data.get("beats_source") or "",
             "chord_count": len(data.get("chords") or []),
             "duration_s": _first_float(
@@ -265,5 +266,18 @@ def _default_resolve_audio_path(path: str) -> str:
     try:
         from config import resolve_path
         return resolve_path(path)
-    except Exception:
+    except Exception as exc:
+        _warn_once(
+            "resolve_path_fallback",
+            f"[melody_review] WARNING: config.resolve_path failed; using raw path for audio lookup: {exc}",
+        )
         return path
+
+
+def _warn_once(key: str, message: str) -> None:
+    seen = getattr(_warn_once, "_seen", set())
+    if key in seen:
+        return
+    print(message, file=sys.stderr)
+    seen.add(key)
+    setattr(_warn_once, "_seen", seen)

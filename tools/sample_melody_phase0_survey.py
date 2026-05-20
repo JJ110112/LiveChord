@@ -7,6 +7,7 @@ Example:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,11 +25,21 @@ from ai.melody_review import (  # noqa: E402
 )
 
 
+DEFAULT_PRODUCTION_CHORDS_ROOT = Path(r"V:\data\chords")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Sample a Phase 0 RH melody survey queue from chord cache."
     )
-    parser.add_argument("--chords-root", default=str(REPO_ROOT / "data" / "chords"))
+    parser.add_argument(
+        "--chords-root",
+        default=_default_chords_root(),
+        help=(
+            "Chord cache root to sample. Defaults to LIVECHORD_CHORDS_DIR, "
+            "then V:\\data\\chords when present; repo data/chords is only a dev fallback."
+        ),
+    )
     parser.add_argument("--out", default=str(REPO_ROOT / "data" / "melody_reviews" / "phase0_survey_queue.jsonl"))
     parser.add_argument("--sample-size", type=int, default=200)
     parser.add_argument("--seed", type=int, default=20260520)
@@ -66,6 +77,21 @@ def main() -> int:
     print(f"Wrote {summary['sample_size']} survey rows to {summary['output']}")
     print(f"Candidate stats: {summary['candidate_stats']}")
     return 0
+
+
+def _default_chords_root() -> str:
+    env_root = os.environ.get("LIVECHORD_CHORDS_DIR", "").strip()
+    if env_root:
+        return env_root
+    if DEFAULT_PRODUCTION_CHORDS_ROOT.is_dir():
+        return str(DEFAULT_PRODUCTION_CHORDS_ROOT)
+    fallback = REPO_ROOT / "data" / "chords"
+    print(
+        "[melody_survey] WARNING: V:\\data\\chords not found and LIVECHORD_CHORDS_DIR is unset; "
+        f"falling back to dev chord cache {fallback}. Pass --chords-root for production survey.",
+        file=sys.stderr,
+    )
+    return str(fallback)
 
 
 if __name__ == "__main__":

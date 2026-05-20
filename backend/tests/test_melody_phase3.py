@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -8,6 +9,7 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
+import tools.sample_melody_phase0_survey as survey_script
 from backend.ai.melody_extractor import MelodyExtractor
 from backend.ai.melody_extractor_v2 import MelodyExtractorV2
 from backend.ai.melody_review import (
@@ -359,6 +361,63 @@ class TestMelodyPhase3(unittest.TestCase):
             row = json.loads(out.read_text(encoding="utf-8").strip())
             self.assertEqual(row["status"], "pending")
             self.assertEqual(row["survey_id"], "phase0_random_200_seed_7")
+
+    def test_melody_phase0_survey_include_missing_audio_and_preserves_blank_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            chord_root = root / "chords"
+            h = "aa1111111111"
+            bucket = chord_root / h[:2]
+            bucket.mkdir(parents=True, exist_ok=True)
+            (bucket / f"{h}.json").write_text(
+                json.dumps({"path": "missing.mp3", "chords": [{"chord": "C"}]}),
+                encoding="utf-8",
+            )
+
+            candidates, stats = collect_survey_candidates(
+                chord_root,
+                require_audio=False,
+                resolve_audio_path=lambda path: str(root / path),
+            )
+
+            self.assertEqual(stats["missing_audio"], 0)
+            self.assertEqual(len(candidates), 1)
+            self.assertFalse(candidates[0]["audio_exists"])
+            self.assertEqual(candidates[0]["source"], "")
+
+    def test_melody_phase0_survey_write_queue_refuses_overwrite_without_force(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "queue.jsonl"
+            out.write_text("existing\n", encoding="utf-8")
+
+            with self.assertRaises(FileExistsError):
+                write_survey_queue(
+                    out,
+                    [],
+                    survey_id="phase0",
+                    seed=1,
+                    candidate_stats={},
+                    force=False,
+                )
+
+    def test_sample_melody_phase0_default_chords_root_prefers_env(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"LIVECHORD_CHORDS_DIR": tmp}):
+                self.assertEqual(survey_script._default_chords_root(), tmp)
+
+    def test_sample_melody_phase0_default_chords_root_warns_before_dev_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fallback = Path(tmp) / "repo" / "data" / "chords"
+            fallback.mkdir(parents=True)
+            with ExitStack() as stack:
+                stack.enter_context(patch.dict(os.environ, {}, clear=True))
+                stack.enter_context(patch.object(survey_script, "REPO_ROOT", Path(tmp) / "repo"))
+                stack.enter_context(patch.object(survey_script, "DEFAULT_PRODUCTION_CHORDS_ROOT", Path(tmp) / "missing"))
+                with patch("sys.stderr") as stderr:
+                    result = survey_script._default_chords_root()
+
+            self.assertEqual(result, str(fallback))
+            self.assertTrue(stderr.write.called)
 
     def test_finalize_melody_payload_accepts_bare_list(self):
         result = finalize_melody_payload(
