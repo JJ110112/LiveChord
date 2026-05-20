@@ -950,6 +950,16 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(payload["candidate"]["build_info"]["source"], "legacy_cache")
             self.assertEqual(payload["melody"][0]["voice_lane"], MELODY_VOICE_LANE)
 
+            second = generate_shadow_candidates(
+                data_dir=root,
+                song_hash="abcdef123456",
+                path="POP/song.mp3",
+                candidates=[FULL_MIX_PYIN],
+            )
+
+            self.assertTrue(second.ok)
+            self.assertEqual(second.results[0].status, "cached")
+
     def test_shadow_generator_vocal_candidate_uses_stem_cache_and_extractor(self):
         class FakeStemCache:
             def ensure_stems(self, **_kwargs):
@@ -1022,6 +1032,61 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(result.results[0].details["input_notes"], 4)
             self.assertEqual([event["midi"] for event in payload["melody"]], [72, 74])
             self.assertEqual(payload["melody_source"]["id"], SOLO_PIANO_POLYPHONIC)
+
+    def test_shadow_generator_solo_piano_uses_chord_cache_key_when_cli_key_omitted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            song_hash = "abcdef123456"
+            chord_dir = root / "chords" / song_hash[:2]
+            chord_dir.mkdir(parents=True)
+            (chord_dir / f"{song_hash}.json").write_text(
+                json.dumps({"path": "Classics/piano.flac", "key": "Bb minor"}),
+                encoding="utf-8",
+            )
+            notes_file = root / "poly.json"
+            notes_file.write_text(
+                json.dumps([{"start": 0.0, "end": 0.5, "midi": 70, "velocity": 80}]),
+                encoding="utf-8",
+            )
+
+            result = generate_shadow_candidates(
+                data_dir=root,
+                song_hash=song_hash,
+                candidates=[SOLO_PIANO_POLYPHONIC],
+                polyphonic_json=str(notes_file),
+            )
+            payload = read_candidate_cache(root, song_hash, SOLO_PIANO_POLYPHONIC)
+
+            self.assertTrue(result.ok)
+            self.assertEqual(payload["candidate"]["build_info"]["key"], "Bb minor")
+
+    def test_shadow_generator_solo_piano_explicit_key_overrides_chord_cache_key(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            song_hash = "abcdef123456"
+            chord_dir = root / "chords" / song_hash[:2]
+            chord_dir.mkdir(parents=True)
+            (chord_dir / f"{song_hash}.json").write_text(
+                json.dumps({"path": "Classics/piano.flac", "key": "Bb minor"}),
+                encoding="utf-8",
+            )
+            notes_file = root / "poly.json"
+            notes_file.write_text(
+                json.dumps([{"start": 0.0, "end": 0.5, "midi": 70, "velocity": 80}]),
+                encoding="utf-8",
+            )
+
+            result = generate_shadow_candidates(
+                data_dir=root,
+                song_hash=song_hash,
+                candidates=[SOLO_PIANO_POLYPHONIC],
+                polyphonic_json=str(notes_file),
+                key="C",
+            )
+            payload = read_candidate_cache(root, song_hash, SOLO_PIANO_POLYPHONIC)
+
+            self.assertTrue(result.ok)
+            self.assertEqual(payload["candidate"]["build_info"]["key"], "C")
 
     def test_shadow_generator_solo_piano_requires_polyphonic_input(self):
         with tempfile.TemporaryDirectory() as tmp:

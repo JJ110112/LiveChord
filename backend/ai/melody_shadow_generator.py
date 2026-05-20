@@ -74,7 +74,7 @@ def generate_shadow_candidates(
     candidates: Sequence[str] = (FULL_MIX_PYIN,),
     polyphonic_json: str = "",
     polyphonic_midi: str = "",
-    key: str = "C",
+    key: Optional[str] = None,
     force: bool = False,
     resolve_audio_path: Optional[Callable[[str], str]] = None,
     melody_extractor_factory: Optional[Callable[[], MelodyExtractor]] = None,
@@ -121,7 +121,7 @@ def generate_shadow_candidates(
                 song_hash=resolved_hash,
                 path=resolved_path,
                 context=context,
-                key=key or str(context.get("key") or "C"),
+                key=key,
                 polyphonic_json=polyphonic_json,
                 polyphonic_midi=polyphonic_midi,
                 force=force,
@@ -255,7 +255,7 @@ def _generate_solo_piano_polyphonic(
     song_hash: str,
     path: str,
     context: Dict[str, Any],
-    key: str,
+    key: Optional[str],
     polyphonic_json: str,
     polyphonic_midi: str,
     force: bool,
@@ -272,9 +272,10 @@ def _generate_solo_piano_polyphonic(
             "failed",
             error=f"polyphonic_load_failed:{type(exc).__name__}:{exc}",
         )
+    resolved_key = key if key else str(context.get("key") or "C")
     selected = select_right_hand_melody(
         notes,
-        key=key or str(context.get("key") or "C"),
+        key=resolved_key,
         bpm=float(context.get("bpm") or 120.0),
         tempo_curve=context.get("tempo_curve"),
         time_signature=str(context.get("time_signature") or "4/4"),
@@ -298,7 +299,7 @@ def _generate_solo_piano_polyphonic(
         build_info={
             "polyphonic_json": polyphonic_json or "",
             "polyphonic_midi": polyphonic_midi or "",
-            "key": key or str(context.get("key") or "C"),
+            "key": resolved_key,
             "input_notes": len(notes),
         },
     )
@@ -336,11 +337,8 @@ def _resolve_audio(path: str, resolver: Optional[Callable[[str], str]]) -> str:
         return ""
     if resolver:
         return resolver(path)
-    try:
-        from config import resolve_path
-        return resolve_path(path)
-    except Exception:
-        return path
+    from .melody_review import _default_resolve_audio_path
+    return _default_resolve_audio_path(path)
 
 
 def _melody_context(data_dir: Path, song_hash: str) -> Dict[str, Any]:

@@ -37,7 +37,11 @@ def main() -> int:
     )
     parser.add_argument("--polyphonic-json", default="", help="Polyphonic note JSON for solo_piano_polyphonic.")
     parser.add_argument("--polyphonic-midi", default="", help="Polyphonic MIDI for solo_piano_polyphonic.")
-    parser.add_argument("--key", default="C", help="Key hint for solo_piano_polyphonic.")
+    parser.add_argument(
+        "--key",
+        default=None,
+        help="Key hint for solo_piano_polyphonic. Defaults to chord-cache detected key.",
+    )
     parser.add_argument("--force", action="store_true", help="Regenerate even if candidate cache exists.")
     args = parser.parse_args()
 
