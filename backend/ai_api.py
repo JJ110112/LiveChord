@@ -281,6 +281,8 @@ def get_melody_debug(
                     "algorithm": "",
                     "song_type": "unknown",
                     "selected_by": "no_cache",
+                    "cache_version": "",
+                    "phase": "phase0",
                 },
                 "quality_flags": ["no_cache"],
             },

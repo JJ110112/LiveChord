@@ -75,7 +75,7 @@ MELODY_FAILURE_TAXONOMY = {
     },
 }
 MELODY_SECONDARY_FLAGS = [
-    "audio_quality",
+    "audio_quality_secondary",
     "quantization_jitter",
     "mixed_section_single_source",
     "source_intro_missing",

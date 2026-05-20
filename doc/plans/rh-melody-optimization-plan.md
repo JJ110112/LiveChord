@@ -287,7 +287,7 @@ Phase 0 review taxonomy:
 | `audio_quality` | Failure is mainly caused by the recording itself: heavy reverb, clipping, low bitrate/sample-rate artifacts, strong noise, live-room bleed, or bad source separation | Usually no; lower resolver confidence and surface the flag |
 | `no_issue_audible` | JSON/metric looks suspicious but playback is acceptable to a human reviewer | No action |
 
-Review rule: every reviewed song or highlighted segment gets exactly one primary tag, plus optional secondary flags such as `mixed_section_single_source`, `quantization_jitter`, `source_intro_missing`, or `needs_ab_replay`. The `audio_quality` tag is important because it separates algorithm defects from cases where every extractor is likely to be unstable. Phase 0's post-filter decision uses all reviewed primary tags in the denominator: tags marked post-filter-fixable count toward Phase 1 post-filters; tags marked not fixable count against them.
+Review rule: every reviewed song or highlighted segment gets exactly one primary tag, plus optional secondary flags such as `audio_quality_secondary`, `mixed_section_single_source`, `quantization_jitter`, `source_intro_missing`, or `needs_ab_replay`. The primary `audio_quality` tag is important because it separates algorithm defects from cases where every extractor is likely to be unstable; use `audio_quality_secondary` only when the main failure is another tag but source quality also affected confidence. Phase 0's post-filter decision uses all reviewed primary tags in the denominator: tags marked post-filter-fixable count toward Phase 1 post-filters; tags marked not fixable count against them.
 
 Exit gate:
 
@@ -479,7 +479,7 @@ selected_source
 selected_song_type
 machine_proxies: { vocal_alignment_ratio, chord_tone_distance_median, extreme_range_excursion_rate, coverage_gap_fraction }
 failure_tag
-secondary_flags: [audio_quality, quantization_jitter, mixed_section_single_source, source_intro_missing]
+secondary_flags: [audio_quality_secondary, quantization_jitter, mixed_section_single_source, source_intro_missing]
 audio_quality_note: none | reverb_high | clipped | noisy | low_bitrate | live_room_bleed | separation_artifact
 stats: { density_when_active_per_s, active_duration_s, midi_min, midi_max, midi_median }
 review_note

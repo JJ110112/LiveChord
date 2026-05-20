@@ -164,6 +164,8 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertFalse(result["cache"]["exists"])
             self.assertEqual(result["melody_source"]["id"], "no_cache")
             self.assertEqual(result["melody_source"]["selected_by"], "no_cache")
+            self.assertEqual(result["melody_source"]["cache_version"], "")
+            self.assertEqual(result["melody_source"]["phase"], "phase0")
             self.assertIn("no_cache", result["quality_flags"])
             self.assertEqual(result["melody_stats"]["density_when_active_per_s"], 0.0)
 
@@ -274,6 +276,8 @@ class TestMelodyPhase3(unittest.TestCase):
         self.assertIn("audio_quality", taxonomy["primary_tags"])
         self.assertIn("duet_alternating", taxonomy["primary_tags"])
         self.assertIn("solo_piano_polyphonic_collapse", taxonomy["primary_tags"])
+        self.assertIn("audio_quality_secondary", taxonomy["secondary_flags"])
+        self.assertNotIn("audio_quality", taxonomy["secondary_flags"])
         self.assertIn("quantization_jitter", taxonomy["secondary_flags"])
         self.assertIn("all reviewed primary tags in the denominator", taxonomy["review_rule"])
 
