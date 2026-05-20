@@ -99,11 +99,11 @@
       panelOverlayHeavy: "rgba(10, 10, 10, 0.65)",
       noteEmphasis: "rgba(255,255,255,0.85)",
       noteEdge: "rgba(255,255,255,0.4)",
-      // Piano-specific (88-key + accordion). pianoLH/pianoRH paint key
-      // highlights; chordOutline traces non-played chord-tone hints; chordTint
-      // is the very faint background wash for chord-scale tones.
-      pianoLH: "rgba(41, 182, 246, 0.9)",
-      pianoRH: "rgba(255, 152, 0, 0.9)",
+      // chordOutline traces non-played chord-tone hints; chordTint is the very
+      // faint background wash for chord-scale tones. LH/RH active colors are
+      // intentionally NOT per-theme — they're fixed system colors (cyan/orange)
+      // sourced from the hardcoded fallback in ChordRender.draw88Piano so the
+      // "which hand plays now" cue stays consistent across themes.
       chordOutline: "rgba(182, 79, 255, 0.85)",
       chordTint: "#4fc3f7",
     },
@@ -124,8 +124,6 @@
       panelOverlayHeavy: "rgba(245, 243, 235, 0.85)",
       noteEmphasis: "rgba(0,0,0,0.78)",
       noteEdge: "rgba(0,0,0,0.40)",
-      pianoLH: "rgba(2, 119, 189, 0.95)",        // deeper blue for white-key contrast
-      pianoRH: "rgba(216, 67, 21, 0.95)",        // deep orange that reads on cream
       chordOutline: "rgba(106, 27, 154, 0.85)",  // deep purple
       chordTint: "rgba(2, 119, 189, 0.7)",
     },
@@ -147,8 +145,6 @@
       panelOverlayHeavy: "rgba(5, 26, 15, 0.78)",
       noteEmphasis: "rgba(209,250,229,0.88)",
       noteEdge: "rgba(255,107,53,0.50)",
-      pianoLH: "rgba(6, 182, 212, 0.92)",         // cyan for LH (matches waterfall LH)
-      pianoRH: "rgba(255, 107, 53, 0.92)",        // orange for RH (matches waterfall RH)
       chordOutline: "rgba(167, 139, 250, 0.85)",
       chordTint: "#06b6d4",
     },
@@ -170,8 +166,6 @@
       panelOverlayHeavy: "rgba(254, 230, 236, 0.88)",
       noteEmphasis: "rgba(74,29,63,0.80)",
       noteEdge: "rgba(236,72,153,0.45)",
-      pianoLH: "rgba(15, 118, 110, 0.95)",        // deeper teal for white-key contrast
-      pianoRH: "rgba(190, 24, 93, 0.95)",         // deep rose
       chordOutline: "rgba(126, 34, 206, 0.85)",
       chordTint: "rgba(15, 118, 110, 0.7)",
     },
@@ -193,8 +187,6 @@
       panelOverlayHeavy: "rgba(254,240,200,0.88)",
       noteEmphasis: "rgba(30,58,77,0.80)",
       noteEdge: "rgba(8,145,178,0.45)",
-      pianoLH: "rgba(7, 89, 133, 0.95)",          // deeper teal for LH (matches waterfall LH)
-      pianoRH: "rgba(180, 83, 9, 0.95)",          // burnt amber for RH (matches waterfall RH)
       chordOutline: "rgba(126, 34, 206, 0.85)",
       chordTint: "rgba(180, 83, 9, 0.65)",
     },
@@ -216,8 +208,6 @@
       panelOverlayHeavy: "rgba(198,220,253,0.88)",
       noteEmphasis: "rgba(30,58,138,0.80)",
       noteEdge: "rgba(37,99,235,0.45)",
-      pianoLH: "rgba(29, 78, 216, 0.95)",         // deeper azure for LH (matches waterfall LH)
-      pianoRH: "rgba(217, 119, 6, 0.95)",         // amber for RH (matches waterfall RH)
       chordOutline: "rgba(126, 34, 206, 0.85)",
       chordTint: "rgba(217, 119, 6, 0.65)",
     },
