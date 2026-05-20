@@ -23,11 +23,18 @@ The frontend labels this event stream as RH melody because it is rendered and pl
 The optimization goal is not "replace pYIN with one neural model" or "always use vocals". The goal is a **source-aware melody resolver** that:
 
 1. First, classifies the song into a small set of song types (vocal pop, solo piano, jazz/multi-solo, MR/karaoke, ambient/no-lead, mixed-section)
-2. Routes each song type to an extractor path designed for that type, with two explicit algorithm families added to cover pYIN's weakest cases:
-   - **Vocal-led**: FTANet-style singing melody extraction (CFP feature + frequency-temporal attention) on full mix and/or vocal stem
-   - **Solo piano**: polyphonic piano transcription (88-key onset/offset/frame/velocity) followed by RH/top-line selection
+2. Routes each song type to an extractor path designed for that type, with two explicit algorithm pipelines that fill pYIN's weakest cases:
+   - **Vocal-led**: HTDemucs v4 vocal stem → CREPE F0 tracking → vibrato smoothing → note segmentation. FTANet on full mix is kept as a fallback only when the stem is unusable.
+   - **Solo piano**: Magenta Onsets and Frames polyphonic transcription → velocity/density pre-filter → Skyline candidate set → Temperley Bayesian Viterbi (range / interval / key priors) → post-merge
 3. Keeps the existing full-mix pYIN path as a guaranteed fallback
 4. Exposes enough metadata that the UI and admin tools can see what source was selected, and is allowed to return "no melody" as a confident outcome
+
+Rationale for the algorithm choice (desk comparison lives in §4.2):
+
+- If Phase 2 adopts `vocal_stem_crepe`, **Demucs precompute becomes shared required infrastructure** for both `vocal_stem_crepe` and `instrument_lead`; the vocal-stem path then costs no extra separation pass. Given that, HTDemucs vocal stem → CREPE is engineering-simpler than FTANet on full mix, has MIT / Apache-style permissive licensing across the core code stack, and CREPE-on-stem is the benchmark hypothesis Phase 2 must prove against pYIN.
+- **Polyphonic AMT is mature enough to use as Stage 1; symbolic RH selection is the real risk.** The previous draft handwaved the Stage-2 selector as "prefer sustained/high-salience upper voice"; this revision commits to a named baseline (Skyline + Temperley Viterbi) so Phase 2 has a concrete deliverable rather than an unbounded research project.
+
+Project status for license and governance decisions: LiveChord is a personal hobby / non-commercial project. `livechord.org` currently has single-digit daily users, no ads, no paywall, no paid tier, no marketing, and no actual sponsorship revenue. The old Buy Me a Coffee / sponsor surface should be removed or hidden as part of the governance cleanup in §10 so the public presentation matches the actual hobby/non-commercial status.
 
 The plan is also constrained by a **prove-it-first** discipline. Before building 4-tier candidates + scoring + resolver, Phase 0 must show that the existing pYIN failure modes actually need a new audio source, not just better post-filtering.
 
@@ -59,7 +66,7 @@ RH melody should mean:
 3. For instrumental songs: the dominant lead line for that song's structure (see §3.1).
 4. A stable single melodic line, not a dense transcription of every high voice.
 5. **An empty result is allowed and is a valid resolver outcome** for ambient / drone / pure-percussion / jam tracks that have no playable RH line.
-6. A transparent source selection, so the UI and debugging tools can distinguish `full_mix_pyin`, `vocal_lead_ftanet`, `vocal_stem_pyin`, `solo_piano_polyphonic`, `instrument_lead`, `midi_aligned`, and fallback results.
+6. A transparent source selection, so the UI and debugging tools can distinguish `full_mix_pyin`, `vocal_stem_crepe`, `vocal_full_mix_ftanet`, `solo_piano_polyphonic`, `instrument_lead`, `midi_aligned`, and fallback results.
 
 ### 3.1 Instrumental is not a single category
 
@@ -81,7 +88,7 @@ Non-goals:
 |---|---|
 | Treat RH melody as a literal "right-hand instrument stem" | Most source audio is mixed commercial audio and has no RH stem |
 | Always use vocals | Many user songs are instrumental, and even vocal songs have piano/guitar intros |
-| Directly promote Basic Pitch V2 as a universal replacement | Prior shadow analysis showed polyphonic extras are architectural for vocal songs. Piano needs a dedicated **polyphonic piano transcription** route, not generic monophonic F0; the model may be Basic Pitch-like, ByteDance/Melodfy-like, or another evaluated piano transcriber, but it must feed a top-line selector |
+| Directly promote Basic Pitch V2 as a universal replacement | Prior shadow analysis showed polyphonic extras are architectural for vocal songs. Piano needs a dedicated **polyphonic piano transcription** route, not generic monophonic F0; the chosen Stage-1 model is Magenta Onsets and Frames (Apache 2.0, mature) with ByteDance hFT as a deferred alternative if license/runtime justify a switch |
 | Break existing `V:\data\melodies` cache | Current user-visible behavior must remain available as fallback |
 | **Section-aware source switching in v1** | Section detection is currently on the rule-based fallback path for ~82% of the library; building section-aware melody routing on top of unreliable section data invites compound failure. Listed as future scope, see §11. |
 
@@ -107,17 +114,17 @@ Candidate priority is **type-specific**, not universal. The single global ladder
 
 | Priority | Candidate | Source |
 |---:|---|---|
-| 1 | `vocal_lead_ftanet` | FTANet-style singing melody extraction on full mix and/or Demucs vocal stem |
-| 2 | `midi_aligned` | Curated MIDI (rare for vocal - usually a fallback miss) |
-| 3 | `vocal_stem_pyin` | Demucs vocals + pYIN as cheap backup if FTANet candidate is unavailable |
+| 1 | `vocal_stem_crepe` | HTDemucs v4 vocal stem → CREPE F0 → vibrato median filter → note segmentation |
+| 2 | `midi_aligned` | Curated MIDI (rare for vocal — usually a fallback miss) |
+| 3 | `vocal_full_mix_ftanet` | FTANet on full mix as a fallback when the Demucs stem is missing, empty, or visibly artifacted |
 | 4 | `full_mix_pyin` | Existing baseline |
 
 **Solo piano** (classical, jazz piano, lo-fi piano):
 
 | Priority | Candidate | Source |
 |---:|---|---|
-| 1 | `midi_aligned` | Curated MIDI - high hit rate for this sub-type |
-| 2 | `solo_piano_polyphonic` | Piano-transcription model + RH/top-line post-filter |
+| 1 | `midi_aligned` | Curated MIDI — high hit rate for this sub-type |
+| 2 | `solo_piano_polyphonic` | Magenta Onsets and Frames → velocity/density pre-filter → Skyline candidate set → Temperley Bayesian Viterbi → post-merge |
 | 3 | `full_mix_pyin` | Fallback only — known to fail on polyphonic piano |
 
 **Instrumental solo** (jazz combo, fingerstyle, sax/guitar lead):
@@ -146,66 +153,85 @@ Candidate priority is **type-specific**, not universal. The single global ladder
 |---|---|
 | `full_mix_pyin` | Conservative fallback |
 
-### 4.2 Two algorithm families that fill the pYIN gap
+### 4.2 Two pipelines that fill the pYIN gap
 
-This revision makes the two non-pYIN paths explicit. They are not generic "better pitch trackers"; each solves a specific failure class found in RH melody extraction.
+This revision makes the two non-pYIN paths explicit, comparison-driven, and named down to the algorithm and license. They are not generic "better pitch trackers"; each is a concrete two-stage pipeline that solves a specific failure class.
 
-#### 4.2.1 Vocal-led extraction: FTANet-style singing melody model
+The pipelines below are chosen from a desk review and must still be validated by Phase 2 benchmarks before promotion. The comparison table is in §4.2.3; it records the proposed baseline choices, not a completed audio benchmark.
 
-Reference algorithm: `yushuai/FTANet-melodic`, based on "Frequency-Temporal Attention Network for Singing Melody Extraction" (ICASSP 2021).
+#### 4.2.1 Vocal-led extraction: HTDemucs v4 vocal stem → CREPE
 
-Intended LiveChord candidate:
+Reference algorithms:
+- Separation: Rouard et al., "Hybrid Transformers for Music Source Separation" (ICASSP 2023). Package: `demucs` (Meta AI, MIT license).
+- F0 tracking: Kim et al., "CREPE: A Convolutional Representation for Pitch Estimation" (ICASSP 2018). Package: `crepe` / `torchcrepe` (MIT license).
+
+Pipeline:
 
 ```text
-full mix and/or Demucs vocals stem
--> CFP feature extraction
-   -> spectrum channel
-   -> generalized cepstrum channel
-   -> generalized cepstrum of spectrum channel
--> frequency-temporal attention model
--> per-frame pitch-bin distribution with unvoiced bin
--> F0 curve
--> vocal note segmentation + vibrato smoothing
--> `vocal_lead_ftanet` candidate
+mixed audio
+-> HTDemucs v4 (4-stem: vocals / bass / drums / other)
+-> vocal stem (16 kHz mono)
+-> CREPE F0 (10 ms hop, 'full' or 'tiny' model, viterbi voicing)
+-> vibrato median filter + voiced-island consolidation
+-> note segmentation (onset/offset from F0 derivative + energy)
+-> `vocal_stem_crepe` candidate
 ```
 
 Operational details:
 
 | Detail | Decision |
 |---|---|
-| Input sample rate | Evaluate the FTANet paper/repo setting first: 8 kHz |
-| CFP settings | Start with the repo's reproducibility note: window 768, hop 80, 60 bins/octave |
-| Pitch range | Vocal route starts with 31-1250 Hz, matching the vocal-mode CFP range in the reference code |
-| Input variants | Generate both `full_mix_ftanet` and `vocal_stem_ftanet` during shadow if runtime allows |
-| Final exported candidate id | Resolver-facing id remains `vocal_lead_ftanet`; metadata records whether full mix or vocal stem won |
-| Post-processing | Smooth vibrato into teachable notes, preserve phrase bends only as metadata, and reject extremely short voiced islands |
-| Confidence | Use model peak probability, voiced coverage, continuity, and agreement with vocal stem energy |
+| Separator model | HTDemucs v4 (`htdemucs` or `htdemucs_ft` per Phase 2 benchmark) |
+| Stem used | `vocals` (4-stem mode); `other` reused by `instrument_lead` so Demucs runs once per song |
+| Tracker model size | Default `crepe.full` (~96 MB) for PC precompute; `crepe.tiny` (~9 MB) reserved for any future on-NUC fallback |
+| Tracker sample rate | 16 kHz (CREPE native) — **no 8 kHz downsampling**, unlike FTANet; downstream confidence is directly comparable to LiveChord's existing pYIN at 22.05 kHz after sample-rate normalization |
+| Voicing decision | CREPE viterbi voicing + confidence threshold (default 0.5, tuned in Phase 3) |
+| Vibrato smoothing | Sliding median filter, window ~5 frames, applied before note segmentation; preserves phrase bends in metadata only |
+| Note segmentation | Onset where F0 derivative exceeds threshold OR voicing transitions; minimum note duration 80 ms (matches existing `MelodyExtractor` floor) |
+| Confidence | Per-note: mean CREPE confidence × voicing fraction × stem energy ratio at note time |
 
-Why this fills a real gap:
+Why HTDemucs + CREPE is the proposed Tier 1 vocal baseline:
 
-- pYIN tracks the most stable monophonic F0, which may be backing vocal, guitar, piano, or bass.
-- FTANet-style models are trained for singing melody extraction and use frequency-temporal attention to follow the vocal melody source through accompaniment.
-- Running both full-mix and vocal-stem variants lets the resolver catch Demucs artifacts: stem extraction can clarify the voice, but it can also create edge noise and false voicing.
+1. If `vocal_stem_crepe` is adopted, Demucs is shared required infrastructure for both `vocal_stem_crepe` and `instrument_lead` (§4.3), so the vocal stem is a byproduct of the same separation pass.
+2. CREPE on a clean vocal stem is expected to beat pYIN on RPA/RCA; Phase 2 must measure this on LiveChord's vocal subset rather than assume it.
+3. License stack is permissive (HTDemucs MIT, CREPE / torchcrepe MIT). Magenta's NC-inheriting weights are fine under LiveChord's current non-commercial scope, but the vocal route having no NC entanglement is still operationally simpler.
+4. No 8 kHz resampling — sample-rate confidence calibration is trivial.
+5. Two-stage pipeline is **simpler** than FTANet's CFP + frequency-temporal attention + per-frame distribution + post-decode chain.
+
+FTANet on full mix is retained as a Tier 3 fallback (`vocal_full_mix_ftanet`) for the edge case where Demucs fails or the vocal stem comes out empty/artifacted. This is a small fraction of the library but worth catching.
 
 This route is PC/precompute-first. It must not run in the NUC request path until runtime is measured and cache reads are proven file-speed.
 
-#### 4.2.2 Solo piano extraction: polyphonic piano transcription + RH/top-line selection
+#### 4.2.2 Solo piano extraction: Magenta Onsets and Frames → Skyline + Temperley Viterbi
 
-Reference algorithm family: Melodfy's underlying direction, i.e. ByteDance/qiuqiangkong high-resolution piano transcription, not Melodfy's GUI wrapper.
+Reference algorithms:
+- Stage 1 (AMT): Hawthorne et al., "Onsets and Frames: Dual-Objective Piano Transcription" (ISMIR 2018). Package: `magenta` / `tensorflow_magenta` (Apache 2.0). Pretrained weights from MAESTRO v3.0.0 (CC BY-NC-SA — see §9 license risk row).
+- Stage 2 (symbolic selection):
+  - Skyline: classic uppermost-voice heuristic (Uitdenbogerd & Zobel, 1999), implemented as a few-hundred-line custom Python pass over `pretty_midi` events.
+  - Temperley Bayesian model: Temperley, *The Cognition of Basic Musical Structures* (2001), Chapter 4. Reimplementable in ~150 lines via Viterbi over three priors (range, interval, key).
 
-Intended LiveChord candidate:
+Pipeline:
 
 ```text
 solo piano audio
--> piano transcription model
+-> Onsets and Frames inference
    -> 88-key onset probability
-   -> 88-key offset probability
    -> 88-key frame probability
-   -> velocity
-   -> optional pedal
--> polyphonic note events
--> LH/RH split + top-line selection
--> accompaniment/arpeggio suppression
+   -> 88-key offset probability
+   -> velocity regression
+   -> pedal estimation
+-> polyphonic note events (full MIDI, retained for debug)
+-> Stage 2 RH selection:
+   1. LH/RH split (range pivot ~C4, pedal-aware)
+   2. Velocity pre-filter: drop RH notes below median - 1.5*MAD
+   3. Density pre-filter: 0.25 s window, ≥5 simultaneous/near-onset notes tagged as `texture` (arpeggio / Alberti)
+   4. Skyline candidate set: per time step take highest non-`texture` RH note(s)
+   5. Temperley Viterbi on candidate set:
+        - State = previous selected pitch
+        - Transition prior: gaussian over semitone interval (σ ≈ 5 semitones)
+        - Emission prior: gaussian around running median pitch (σ ≈ 8 semitones)
+        - Key prior: Krumhansl-Kessler key profile, key auto-detected from full transcription
+   6. Post-merge: combine same-pitch notes across <120 ms gaps, drop notes <50 ms
 -> `solo_piano_polyphonic` candidate
 ```
 
@@ -213,21 +239,55 @@ Operational details:
 
 | Detail | Decision |
 |---|---|
-| Model target | 88-key polyphonic note transcription, not monophonic F0 |
-| Output retained | Keep full polyphonic note events for debug; export only selected RH/top-line as melody candidate |
-| Top-line selector | Prefer sustained/high-salience upper voice, not simply the highest note at every frame |
-| Arpeggio handling | Detect fast broken-chord patterns and avoid turning every highest arpeggio point into melody |
-| LH/RH split | Use range, hand-crossing tolerance, onset grouping, duration, and voice-leading continuity |
-| Pedal/overlap handling | Treat pedal-blurred harmony as texture unless an upper voice is stable across phrase time |
-| Confidence | Combine onset strength, duration salience, phrase continuity, density, and distance from LH/bass region |
+| Stage-1 model | Magenta Onsets and Frames (Apache 2.0 code; MAESTRO-trained weights inherit CC BY-NC-SA, permissible under LiveChord's non-commercial scope — see §9) |
+| Stage-1 alternative under evaluation | Kong et al. 2021 high-resolution piano transcription (`qiuqiangkong/piano_transcription_inference`, MIT). Only swap in if Phase 2 benchmark shows ≥3 pp F1 advantage AND maintenance status improves |
+| Full polyphonic MIDI kept for debug | Stored alongside `solo_piano_polyphonic.json`; helps admin diff RH selection against ground truth |
+| Stage-2 LH/RH split | Range pivot configurable per-song; defaults to C4 with hand-cross tolerance window of ±5 semitones over 250 ms |
+| Stage-2 Viterbi prior weights | Phase 2 ships rule-based defaults from Temperley 2001; admin can override per song; ML voice separator deferred to §11 |
+| Arpeggio detection | Inter-onset interval < 100 ms + interval cluster pattern recognition; arpeggio is suppressed but its uppermost endpoint is kept as a melody candidate |
+| Confidence | Combine Stage-1 onset confidence, Stage-2 Viterbi path probability, and the fraction of candidate set retained vs. dropped |
 
-Why this fills a real gap:
+Why this fills a real gap (and why this specific Stage 2 algorithm):
 
 - Solo piano is polyphonic by definition; a monophonic tracker collapses multiple voices into one unstable F0 path.
-- A piano transcriber can recover simultaneous notes first, then the resolver can choose the teachable top line.
-- The "melody" target is not all right-hand notes. It is a pedagogical RH lead line extracted from the polyphonic transcription.
+- **Stage 1 (multi-pitch AMT) is solved.** Magenta Onsets and Frames is 5+ years stable, broadly benchmarked, Apache 2.0 code, and has ONNX export paths. ByteDance hFT scores marginally higher on MAPS F1 but has lukewarm maintenance.
+- **Stage 2 (symbolic RH selection) is the actual research problem**, and the previous draft handwaved it. Skyline + Temperley Viterbi is the proposed rule-based baseline:
+  - Skyline alone fails when arpeggios spike above the melody — hence the velocity + density pre-filter that strips texture before skyline runs.
+  - Temperley's three priors (range, interval, key) are not arbitrary — they are the empirically validated cognitive priors humans use to follow melodic lines in polyphony. Piano RH satisfies these priors better than almost any other instrument.
+  - The whole Stage 2 fits in ~300 lines of `pretty_midi` + numpy. No model weights, no training data, no maintenance debt.
+
+ML-based symbolic voice separators (PiJAMA, FCN-over-piano-roll) are deferred to §11 — they may beat Temperley on Bach fugues, but the v1 hypothesis is that Temperley is strong enough for the LiveChord library mix (pop arrangements, classical Romantic, lo-fi piano).
 
 This route is also PC/precompute-first. It is evaluated only for `solo_piano` / piano-led candidates and should not be offered as a universal full-mix replacement.
+
+#### 4.2.3 Algorithm survey: what was compared before picking
+
+The choices in §4.2.1 / §4.2.2 are the result of a comparison, not a default. Summary of evaluated alternatives:
+
+**Vocal-led candidates considered:**
+
+| Candidate | Outcome | Primary reason |
+|---|---|---|
+| HTDemucs vocal stem → CREPE | **Selected as proposed Tier 1** | Clean permissive license stack (MIT); CREPE on a stem is the benchmark hypothesis; Demucs is shared with `instrument_lead` if this route is adopted |
+| HTDemucs vocal stem → RMVPE | Deferred to §11 | Better noise tolerance, but RMVPE weights are from the RVC voice-cloning community with ambiguous provenance; CREPE on a Demucs v4 stem is already sufficient |
+| HTDemucs vocal stem → pYIN | Dropped from ladder | Strictly worse than CREPE on the same stem; not worth a separate tier |
+| FTANet (full mix) | **Retained as Tier 3 fallback** | Useful when Demucs stem is missing/empty; not Tier 1 because the two-stage stem pipeline is engineer-cleaner and licensed cleaner |
+| FTANet (vocal stem) | Dropped | Duplicate cost to HTDemucs + CREPE with no measured advantage |
+| Omnizart vocal mode | Deferred to §11 | Apache 2.0 and one-stop, but TF 1.x dependency conflicts with LiveChord's PyTorch stack; maintenance has slowed |
+| CREPE (full mix, no separation) | Dropped | Monophonic assumption collapses on full mix, same failure mode as pYIN |
+| SPICE / JDC / DeepSalience | Dropped | None beat HTDemucs + CREPE on a clean stem; packaging and maintenance weaker than CREPE |
+
+**Solo piano candidates considered:**
+
+| Candidate | Outcome | Primary reason |
+|---|---|---|
+| Magenta Onsets and Frames + Skyline + Temperley | **Selected as proposed Tier 1** | Apache 2.0 code; mature; pedal-aware; Stage 2 is concrete and ~300 LOC |
+| ByteDance hFT (`qiuqiangkong`) + Skyline + Temperley | Phase 2 swap candidate | ~2-4 pp higher MAPS F1 but maintenance is slow; swap only if benchmark justifies |
+| Spotify Basic Pitch + symbolic selection | Dropped from primary | Generic polyphonic, not piano-specialized; overproduces ornaments |
+| Omnizart piano mode | Deferred to §11 | Stage 2 is built-in but lower accuracy than Magenta; TF 1.x burden |
+| ML symbolic voice separator (PiJAMA / FCN) | Deferred to §11 | Promising for jazz / fugue, but training data is sparse; compare later only if the Temperley baseline fails the solo-piano gate |
+| Skyline alone (music21) | Insufficient | Fails on arpeggio peaks; kept only as the candidate-set step inside the §4.2.2 pipeline |
+| Pure velocity filter | Insufficient | Classical mezza voce melody under ff arpeggio breaks the dynamic assumption |
 
 ### 4.3 `instrument_lead` honesty clause
 
@@ -238,15 +298,17 @@ The previous draft listed `instrument_lead` as a candidate but described it as "
 ### 4.4 Cache layout
 
 ```text
-V:\data\melodies\<hash>.json                         # existing full-mix pYIN, keep stable
+V:\data\melodies\<hash>.json                            # existing full-mix pYIN, keep stable
 V:\data\melody_candidates\<hh>\<hash>\full_mix_pyin.json
-V:\data\melody_candidates\<hh>\<hash>\vocal_lead_ftanet.json
-V:\data\melody_candidates\<hh>\<hash>\vocal_stem_pyin.json
+V:\data\melody_candidates\<hh>\<hash>\vocal_stem_crepe.json
+V:\data\melody_candidates\<hh>\<hash>\vocal_full_mix_ftanet.json
 V:\data\melody_candidates\<hh>\<hash>\solo_piano_polyphonic.json
+V:\data\melody_candidates\<hh>\<hash>\solo_piano_polyphonic_full.mid   # debug: full polyphonic transcription before Stage-2 selection
 V:\data\melody_candidates\<hh>\<hash>\instrument_lead.json
-V:\data\melodies_rh_v2\<hh>\<hash>.json              # selected resolver output, behind flag
-V:\data\midi_aligned\<hh>\<hash>.json                # curated Tier 1 output
-V:\data\melodies_v4\<hh>\<hash>.json                 # existing Phase 4 precomputed target
+V:\data\melodies_rh_v2\<hh>\<hash>.json                 # selected resolver output, behind flag
+V:\data\midi_aligned\<hh>\<hash>.json                   # curated Tier 1 output
+V:\data\melodies_v4\<hh>\<hash>.json                    # existing Phase 4 precomputed target
+V:\data\stems\<hh>\<hash>\{vocals,bass,drums,other}.wav # HTDemucs precomputed stems, shared by vocal_stem_crepe + instrument_lead
 ```
 
 `<hh>` = first 2 chars of `<hash>`. **All new caches use the same sharding scheme as the chord-JSON migration (`abe6172`).** Flat-directory layouts (the previous draft's design) would put 100k+ files on SMB and regress the perf win we already paid for.
@@ -426,11 +488,13 @@ Deliverables:
 | Candidate | Implementation note |
 |---|---|
 | `full_mix_pyin` | Wrap current `MelodyExtractor` output as a named candidate |
-| `vocal_lead_ftanet` | FTANet-style singing melody extraction on full mix and/or Demucs vocal stem |
-| `vocal_stem_pyin` | Demucs vocals + pYIN as a cheap backup; RMVPE remains deferred unless explicitly approved |
-| `solo_piano_polyphonic` | Piano transcription + RH/top-line post-filter — **piano sub-type only**, not a universal candidate |
+| `vocal_stem_crepe` | HTDemucs v4 vocal stem → CREPE (`torchcrepe.full`) → vibrato median filter → note segmentation; primary vocal-led path per §4.2.1 |
+| `vocal_full_mix_ftanet` | FTANet on full mix — fallback only, generated only when `vocal_stem_crepe` is missing or hard-gate-failed |
+| `solo_piano_polyphonic` | Magenta Onsets and Frames → Skyline pre-pass → Temperley Viterbi → post-merge per §4.2.2. Stores full polyphonic MIDI alongside the selected melody for debug. **Piano sub-type only.** |
 | `instrument_lead` | Demucs `other` stem + pYIN — **only if Demucs precompute is committed**, else dropped per §4.3 |
 | `midi_aligned` | Read existing Phase 4 aligned JSON when present |
+
+Demucs precompute is shared infrastructure: the same `htdemucs` invocation populates `vocals/` (consumed by `vocal_stem_crepe`), `other/` (consumed by `instrument_lead`), and is available to future candidates without re-running separation.
 
 Exit gate:
 
@@ -529,11 +593,14 @@ Likely backend additions:
 | `backend/ai/melody_candidate.py` | Candidate schema and normalization helpers |
 | `backend/ai/melody_quality.py` | Density/range/continuity/source-prior scoring + machine proxies |
 | `backend/ai/melody_post_filter.py` | Phase 1 octave-fold / bass-leakage / chord-tone post-filters |
-| `backend/ai/vocal_melody_ftanet.py` | PC-side FTANet-style vocal melody candidate wrapper; owns CFP feature config and F0-to-note segmentation |
-| `backend/ai/piano_melody_transcriber.py` | PC-side piano transcription candidate wrapper; owns polyphonic note extraction and RH/top-line selection |
+| `backend/ai/stem_separation.py` | PC-side HTDemucs v4 wrapper; shared stem cache at `V:\data\stems\<hh>\<hash>\` consumed by vocal-stem and instrument-lead candidates |
+| `backend/ai/vocal_melody_crepe.py` | PC-side vocal-stem → CREPE candidate wrapper; owns torchcrepe inference, vibrato filtering, and note segmentation |
+| `backend/ai/vocal_melody_ftanet.py` | PC-side FTANet fallback candidate wrapper for full-mix vocal extraction; runs only when stem path is unusable |
+| `backend/ai/piano_melody_transcriber.py` | PC-side Magenta Onsets and Frames wrapper; emits full polyphonic MIDI consumed by `piano_rh_selector` |
+| `backend/ai/piano_rh_selector.py` | Stage 2 symbolic selector: LH/RH split, velocity + density pre-filter, Skyline candidate set, Temperley Bayesian Viterbi, post-merge |
 | `backend/ai_api.py` | Route `/api/ai/melody` through resolver behind flag; bypass in public mode |
-| `backend/process_queue.py` | Queue candidate generation after upload melody fallback (personal mode only) |
-| `backend/batch_hybrid_worker.py` or new PC worker | Generate precomputed FTANet vocal, piano-transcription, and instrument candidates |
+| `backend/process_queue.py` | Queue candidate generation after upload melody fallback (personal mode only); writes a `candidate_generation_pending` marker for the PC worker to pick up |
+| `backend/batch_hybrid_worker.py` or new PC worker | Generate precomputed HTDemucs stems, CREPE vocal melody, FTANet fallback, piano transcription + RH selection, and instrument-lead candidates |
 
 Likely frontend additions:
 
@@ -570,7 +637,7 @@ Recommended golden review fields (the 165+ quota above is for later resolver-qua
 hash
 path
 sub_type: vocal_clean | vocal_quiet | backing_vocal | duet | piano_intro | solo_piano_classical | solo_piano_jazz | instrument_solo | fingerstyle | dense_rh | mr | ambient | reference
-expected_source: vocal_lead_ftanet | vocal_stem_pyin | solo_piano_polyphonic | instrument_lead | midi_aligned | full_mix_pyin | no_lead
+expected_source: vocal_stem_crepe | vocal_full_mix_ftanet | solo_piano_polyphonic | instrument_lead | midi_aligned | full_mix_pyin | no_lead
 current_pyin_grade: good | ok | bad
 resolver_grade: good | ok | bad
 selected_source
@@ -587,10 +654,14 @@ review_note
 
 | Risk / decision | Plan |
 |---|---|
-| Demucs + Basic Pitch vocal path has known extras | Treat as shadow evidence only; vocal route uses FTANet-style singing melody extraction as the primary non-pYIN vocal algorithm |
-| FTANet runtime and dependency weight | Keep PC-side only until benchmarked; do not put heavy ML on NUC request path or VPS |
-| Piano transcription runtime and dependency weight | Keep PC-side only; cache full polyphonic transcription plus selected RH/top-line result |
-| RMVPE runtime and dependency weight | Deferred backup tracker only; evaluate after FTANet-style vocal route and pYIN-on-vocal-stem baseline |
+| Pretrained-weight licenses for CREPE / FTANet / Magenta MAESTRO / ByteDance hFT | Phase 2 commit-gate: each model's training-data + weight license is recorded but does **not** block deployment under the current LiveChord scope. LiveChord is non-commercial everywhere today: NUC personal, PC local, and the public livechord.org hobby service have no ads, no paywall, no paid tier, no marketing, single-digit daily users, and no actual sponsorship revenue. Notes: CREPE / torchcrepe MIT; Magenta code Apache 2.0 with MAESTRO-trained weights inheriting CC BY-NC-SA — fine under current non-commercial scope, **re-evaluate before any monetization**; FTANet weights from `yushuai/FTANet-melodic` still need explicit verification; ByteDance hFT MIT but maintenance is slow. ShareAlike re-licensing only becomes relevant if LiveChord distributes derivative *trained* weights — out of scope for v1 and gated by a separate review if it ever arises |
+| Public sponsor/donation surface creates avoidable license ambiguity | Add a cleanup task to remove or hide the Buy Me a Coffee / sponsor page and sponsor navigation. There has been zero sponsorship revenue, so removing it better reflects the hobby/non-commercial status and reduces NC-license ambiguity before Phase 2 model work |
+| HTDemucs runtime and dependency weight | PC-side precompute only; htdemucs full-quality model is ~80 MB; per-song separation ~2-6× realtime on CPU; cache stems once and reuse across `vocal_stem_crepe` + `instrument_lead` |
+| CREPE runtime | `torchcrepe.full` is ~96 MB and faster than realtime on CPU per vocal stem; `tiny` (~9 MB) reserved for any future NUC fallback. No on-NUC use in v1 |
+| FTANet runtime and dependency weight | Fallback path only; PC-side; runs only when `vocal_stem_crepe` is missing or hard-gate-failed |
+| Magenta TF / LiveChord PyTorch coexistence | PC precompute uses an isolated venv OR ONNX-exported Onsets-and-Frames; avoid forcing TF into the main LiveChord backend image |
+| Stage-2 Temperley prior weights drift into endless tuning | Phase 2 ships rule-based defaults from Temperley 2001 verbatim; admin can override per song; an ML voice separator is §11, not v1 |
+| RMVPE runtime and dependency weight | Deferred to §11; evaluate only if `vocal_stem_crepe` fails on a measurable subset of noisy stems |
 | Vocal-only can drop piano/guitar intros | Acknowledged as v1 weakness; mixed-section songs may be tagged `quality_flags: ["mixed_section_single_source"]`. Section-aware switching is §11 future scope |
 | Cache version confusion | Never overwrite legacy `melodies` during rollout; write selected output to versioned `melodies_rh_v2`; `schema_version` stays at 2, new fields are additive metadata |
 | UI label confusion | Separate "RH melody lane" from "source = vocal/solo-piano/instrument/full mix" metadata |
@@ -615,9 +686,12 @@ review_note
 | 4 | Build stratified review-list manifest per §8 (sub-type counts fixed) |
 | 5 | Run current `full_mix_pyin` against the manifest + a MedleyDB-Melody / MIR-1K subset; record RPA/RCA + failure-mode tags |
 | 6 | **Decision branch**: classify failure modes. If >50% are post-filter-fixable, Phase 1 is the entire next sprint (post-filters only); if octave-jump dominates, prioritize the octave-fold filter first; if not, proceed to Phase 2 candidate builder |
-| 7 | If proceeding to Phase 2: prototype `vocal_lead_ftanet` on a small vocal subset, testing both full-mix and vocal-stem CFP inputs against current pYIN |
-| 8 | If proceeding to Phase 2: prototype `solo_piano_polyphonic` on a small solo-piano subset, testing piano transcription + RH/top-line selection against current pYIN |
-| 9 | If proceeding to Phase 2: decide on Demucs commitment (yes → `vocal_stem_pyin` backup + `instrument_lead` are real candidates; no → drop `instrument_lead`) |
+| 7 | If proceeding to Phase 2: commit to HTDemucs v4 precompute (shared by `vocal_stem_crepe` + `instrument_lead`); benchmark per-song separation runtime and stem cache size on the PC worker |
+| 8 | If proceeding to Phase 2: prototype `vocal_stem_crepe` on a small vocal subset; compare against current pYIN on RPA/RCA and on the Phase 0 failure-tag distribution |
+| 9 | If proceeding to Phase 2: prototype `solo_piano_polyphonic` on a small solo-piano subset using Magenta Onsets and Frames → Skyline → Temperley Viterbi end-to-end; compare against current pYIN |
+| 10 | If proceeding to Phase 2: record pretrained-weight licenses (CREPE, Magenta MAESTRO, FTANet) in the repo as metadata. Non-commercial use is permissible across all deployments under current scope; the entry exists so a future monetization decision triggers a re-review |
+| 11 | Remove or hide the Buy Me a Coffee / sponsor surface (`/sponsor`, header/menu links, sitemap/SEO references, i18n copy, README mention) before any NC-weight-backed candidate is promoted beyond shadow |
+| 12 | If `vocal_stem_crepe` underperforms on noisy stems: schedule the §11 RMVPE evaluation rather than re-opening FTANet as primary |
 
 ## 11. Explicit Future Scope (v2+)
 
@@ -628,7 +702,11 @@ The plan deliberately does not attempt these in v1. They are listed so they aren
 | **Section-aware source switching** | Requires reliable section detection. CLAUDE.md notes `section_detect` is on rule-based fallback for ~82% of the library. Building source-routing on top of unreliable section boundaries compounds failure. Revisit after section detection improves (Phase 3 of [doc/PHASE_4_HYBRID_MELODY.md](../PHASE_4_HYBRID_MELODY.md)) |
 | Multi-source blended output | Same as above — needs reliable section boundaries to splice sources without audible seams |
 | User per-song source override (UI control) | Admin override exists in Phase 5; user-facing override is a separate UX decision |
-| RMVPE as approved Tier 2 tracker | Deferred until runtime / dependency cost is evaluated against FTANet-style vocal extraction and pYIN-on-vocal-stem |
+| RMVPE as approved tracker for noisy stems | Deferred. Re-evaluate only if Phase 2/3 review shows `vocal_stem_crepe` failing on a measurable subset of Demucs-stem artifacts; CREPE on Demucs v4 stems is expected to be sufficient |
+| Omnizart as a one-stop vocal/piano/polyphonic candidate generator | Deferred. Apache 2.0 and one-stop, but TF 1.x conflicts with LiveChord's PyTorch stack and maintenance has slowed; revisit if the project's maintenance status improves |
+| ML symbolic voice separator (PiJAMA / FCN over piano-roll) replacing Temperley Viterbi | Deferred. Promising for fugues and dense jazz arrangements but training data and packaging are immature; Temperley Viterbi is the v1 baseline |
+| ByteDance hFT replacing Magenta Onsets and Frames | Phase 2 swap candidate. Only swap if a benchmark shows ≥3 pp MAPS F1 advantage on the LiveChord library AND repo maintenance status improves |
+| HTDemucs v4 alternatives (RoFormer / MDX-Net) | Deferred. v4 is current SOTA for vocal/other separation; switch only on a measured stem-quality gain |
 | Trained ML resolver (replacing rule-based scoring) | `bar_arbitrator` pattern: rule-based first (Phase 0), trained model later. Same applies here. No ML resolver in v1 |
 | VPS resolver path | VPS stays on `full_mix_pyin` until Modal-dispatched melody extraction is approved as a cost line |
 
