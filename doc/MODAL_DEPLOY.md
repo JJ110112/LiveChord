@@ -9,7 +9,7 @@ This doc is the operator runbook: register → push the model → deploy → fli
 - T4 GPU on Modal billed by the second. LiveChord does ~10-15 s of BTC inference per analyzed song.
 - `min_containers=1` keeps one warm container so the first uploader of the day doesn't pay the 15-20 s cold start. Modal charges this idle time at a discount (about $1-3/month for T4).
 - Variable cost: **0.000164 USD/GPU-second** on T4 → analyzing 100 songs/day ≈ **$5/month**. Free tier gives $30/month credit which covers ~600 analyses on its own.
-- Total expected: **$3-8/month** for the LiveChord traffic profile we've sized for. See `frontend/sponsor.html` "Where the money goes" for the user-facing version.
+- Total expected: **$3-8/month** for the LiveChord traffic profile we've sized for. Hosting is funded out-of-pocket by the maintainer; LiveChord is a non-commercial educational project with no sponsorship surface.
 
 ## One-time setup (do this on the host that will deploy — your PC is fine)
 

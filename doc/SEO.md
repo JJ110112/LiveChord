@@ -8,22 +8,22 @@ How `livechord.org` becomes findable on Google. Started 2026-05-03 with the firs
 |---|---|---|
 | Domain ownership in Google Search Console | ✅ verified | Property: `sc-domain:livechord.org` |
 | `<title>` + `<meta description>` on `/` | ✅ deployed | EN copy, NA-targeted (see [project_audience_geography](../../.claude/projects/c--Users-hitea-Claude-LiveChord/memory/project_audience_geography.md)) |
-| Open Graph + Twitter Card | ✅ on `/`, `/help`, `/sponsor` | OG image is the 512px app icon — replace with proper 1200×630 hero when designed |
-| `<link rel="canonical">` | ✅ on `/`, `/help`, `/sponsor` | `tos.html` has `noindex` (legal page) |
+| Open Graph + Twitter Card | ✅ on `/`, `/help` | OG image is the 512px app icon — replace with proper 1200×630 hero when designed |
+| `<link rel="canonical">` | ✅ on `/`, `/help` | `tos.html` has `noindex` (legal page) |
 | `hreflang` alternates (en + zh-TW + x-default) | ✅ on `/` | Other pages don't yet — add when language-specific content diverges |
 | JSON-LD `WebApplication` schema | ✅ on `/` | Declares `applicationCategory: MusicApplication`, `offers: free` |
-| `sitemap.xml` | ✅ at `/sitemap.xml` | Lists `/`, `/help`, `/sponsor` only |
+| `sitemap.xml` | ✅ at `/sitemap.xml` | Lists `/`, `/help` only (sponsor removed 2026-05-20 per non-commercial governance) |
 | `robots.txt` | ✅ updated | Sitemap line + blocks `/api/`, `/admin`, `/editor`, `/process`, `/share`, `/tos` |
 | GSC sitemap submission | ✅ accepted | "Sitemap 已順利處理完畢", 3 URLs discovered |
 | `/` URL Inspection → request indexing | ✅ done 2026-05-03 | Was already indexed (last crawl 2026-04-19, pre-SEO push); re-requested to refresh |
 | `/help` request indexing | ✅ done 2026-05-03 | Status: 已找到 - 目前尚未建立索引 → in priority queue |
-| `/sponsor` request indexing | ✅ done 2026-05-03 | Status: 已找到 - 目前尚未建立索引 → in priority queue |
+| `/sponsor` page | 🗑 removed 2026-05-20 | Project re-positioned as non-commercial educational; GSC will drop the URL on next crawl |
 | Backlinks (參照網頁) | ❌ **0 detected** | Single biggest blocker for ranking — see Phase 2 below |
 
 ## Where the meta lives
 
 - `frontend/index.html` head block — title, description, canonical, hreflang ×3, OG ×5, Twitter ×4, JSON-LD WebApplication
-- `frontend/help.html` / `frontend/sponsor.html` — description, canonical, OG ×5
+- `frontend/help.html` — description, canonical, OG ×5
 - `frontend/tos.html` — `<meta name="robots" content="noindex,follow">` only
 - `frontend/sitemap.xml` — static XML, served by `@app.api_route("/sitemap.xml", methods=["GET", "HEAD"])` in [backend/main.py](../backend/main.py)
 - `frontend/robots.txt` — served the same way
@@ -110,7 +110,7 @@ Pick up after Phases 1-3 are landing real traffic:
 
 | When | Realistic outcome |
 |---|---|
-| 2026-05-04 (next day) | `/help` and `/sponsor` indexed; `/` re-crawled with new meta |
+| 2026-05-04 (next day) | `/help` indexed; `/` re-crawled with new meta (`/sponsor` removed 2026-05-20) |
 | 2026-05-10 (1 week) | `site:livechord.org` Google search shows 3 results |
 | 2026-05-17 (2 weeks) | First long-tail organic visits (1-10/day) — only after at least one Phase 2 backlink lands |
 | 2026-06-03 (1 month) | If at least one Reddit/HN post landed: 50-200 visits/day. If no Phase 2 work happened: still <10/day |

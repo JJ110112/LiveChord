@@ -15,14 +15,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="/css/base.css?v=21">
+  <link rel="stylesheet" href="/css/base.css?v=22">
   <link rel="stylesheet" href="/css/player.css?v=143">
   <link rel="stylesheet" href="/css/tutorial.css?v=1">
   <!-- Phase A: shared auth + fetch wrapper (see frontend/js/auth.js). Must
        load before any /api/ call so anon X-Anon-Id is injected from the
        first request. Replaces the inline blind-redirect block. -->
   <script src="/js/auth.js?v=7"></script>
-  <script src="/js/i18n.js?v=54"></script>
+  <script src="/js/i18n.js?v=55"></script>
   <script src="/js/analytics.js?v=3"></script>
 </head>
 <body>
@@ -821,7 +821,7 @@
   </div>
 
     <!-- Settings gear — same global preferences as the homepage gear:
-         theme picker + lang picker + help/sponsor/install/signout.
+         theme picker + lang picker + help/install/signout.
          Reuses the .hn-section markup nested inside a .tb-popup so the
          dark/light themes pick it up via --lc-popup-bg. -->
     <div class="tb-item" id="tbGear">
@@ -879,7 +879,6 @@
           <button id="btnStartTutorialPlayer" class="hn-row" type="button" role="menuitem" data-i18n="tutorial.menu">Tutorial</button>
           <a href="/help" class="hn-row" role="menuitem" data-i18n="help.nav.help">Help</a>
           <button id="btnReportProblemSettings" class="hn-row" type="button" role="menuitem" data-i18n="common.report_problem">Report a problem</button>
-          <a href="/sponsor" class="hn-row" role="menuitem" data-i18n="help.nav.sponsor">Sponsor</a>
         </div>
       </div>
     </div>

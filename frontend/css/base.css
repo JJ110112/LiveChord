@@ -238,7 +238,7 @@ a:hover { text-decoration: underline; }
   padding: 0 4px 4px;
 }
 /* Uniform menu-row: links + buttons render as the same list-style row so
-   "Install" / "Sign out" stop looking indented relative to "Help" / "Sponsor". */
+   "Install" / "Sign out" stop looking indented relative to "Help". */
 .header .header-nav .hn-row {
   display: flex;
   align-items: center;
@@ -308,29 +308,6 @@ a:hover { text-decoration: underline; }
   border-radius: 50%;
   border: 1px solid var(--border);
 }
-/* Coffee/sponsor pill — sits to the immediate left of the gear so support is
-   one tap away. Warm amber tint signals "tip jar" without shouting. */
-.header-coffee-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  margin-left: auto;            /* push self + gear cluster to the right */
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: rgba(245, 158, 11, 0.10);   /* warm amber wash */
-  color: #d97706;                          /* coffee-ish brown — readable on both bgs */
-  text-decoration: none;
-  transition: background 0.15s, transform 0.2s;
-}
-.header-coffee-btn:hover {
-  background: rgba(245, 158, 11, 0.22);
-  transform: translateY(-1px);
-  text-decoration: none;
-}
-.header-coffee-btn + .header-nav { margin-left: 6px; }   /* tighten the gap to the gear */
-
 /* Gear trigger — visible on every viewport size */
 .header .header-settings-btn {
   display: inline-flex;
@@ -368,10 +345,8 @@ a:hover { text-decoration: underline; }
   margin: 0;
 }
 .header-brand-icon {
-  /* Match the 38px footprint of the sibling .header-coffee-btn and
-     .header-settings-btn so the brand mark doesn't look visibly smaller
-     than the buttons next to it. Earlier 28px made the LC icon read
-     as secondary against the 38px coffee + gear cluster on the right. */
+  /* Match the 38px footprint of the sibling .header-settings-btn so the
+     brand mark doesn't look visibly smaller than the gear next to it. */
   width: 38px;
   height: 38px;
   display: block;

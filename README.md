@@ -171,6 +171,8 @@ If AGPL doesn't fit your use case (e.g. proprietary commercial integration), ema
 
 ## Acknowledgments
 
-Built between 2024 and 2026 by one person who wanted a chord chart that scrolls in time with the music, then kept extending it because piano practice is more fun when the visuals are right. Thanks to everyone whose models and libraries are listed above — none of this would be possible without your work being open in the first place.
+Built in 2026 by one person who wanted a chord chart that scrolls in time with the music, then kept extending it because piano practice is more fun when the visuals are right.
 
-If LiveChord has been useful, the [sponsor page](https://livechord.org/sponsor) accepts coffee.
+LiveChord is a personal, non-profit, educational project. There are no ads, no paywall, no paid tier, and no sponsorship — it exists to help people learn music, not to make money. If you find it useful, the best thank-you is to share it with another learner.
+
+Thanks to everyone whose models and libraries are listed above — none of this would be possible without your work being open in the first place.

@@ -39,10 +39,10 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
-  <link rel="stylesheet" href="/css/base.css?v=22">
+  <link rel="stylesheet" href="/css/base.css?v=23">
   <link rel="stylesheet" href="/css/home.css?v=52">
 
-  <link rel="stylesheet" href="/css/help.css?v=9">
+  <link rel="stylesheet" href="/css/help.css?v=10">
   <link rel="stylesheet" href="/css/tutorial.css?v=1">
   <!-- Phase A: shared auth + fetch wrapper. Mints anon X-Anon-Id, injects
        Authorization for logged-in users, mode-aware 401 handling. Replaces
@@ -51,7 +51,7 @@
   <script src="/js/auth.js?v=7"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
-  <script src="/js/i18n.js?v=54"></script>
+  <script src="/js/i18n.js?v=55"></script>
   <script src="/js/analytics.js?v=3"></script>
 </head>
 <body>
@@ -69,16 +69,6 @@
     <div class="search-marquee" aria-hidden="true"><span class="search-marquee-text" data-i18n="common.search_placeholder_short">Search a song...</span></div>
     <div id="searchResults" class="search-results"></div>
   </div>
-  <a href="/sponsor" class="header-coffee-btn" id="btnHeaderCoffee"
-     data-i18n-attr="title=help.nav.sponsor,aria-label=help.nav.sponsor" title="Sponsor" aria-label="Sponsor">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="22" height="22">
-      <path d="M17 8h1a4 4 0 1 1 0 8h-1"/>
-      <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/>
-      <line x1="6" y1="2" x2="6" y2="4"/>
-      <line x1="10" y1="2" x2="10" y2="4"/>
-      <line x1="14" y1="2" x2="14" y2="4"/>
-    </svg>
-  </a>
   <nav class="header-nav" aria-label="Settings">
     <div class="header-nav-inner" role="menu">
       <div class="hn-greeting" id="userGreeting" aria-hidden="true"></div>
@@ -125,7 +115,6 @@
         <button id="btnStartTutorialHome" class="hn-row" type="button" role="menuitem" data-i18n="tutorial.menu">Tutorial</button>
         <a href="/help" class="hn-row" role="menuitem" data-i18n="help.nav.help">Help</a>
         <a href="#report-problem" class="hn-row" role="menuitem" data-report-problem data-i18n="common.report_problem">Report a problem</a>
-        <a href="/sponsor" class="hn-row" role="menuitem" data-i18n="help.nav.sponsor">Sponsor</a>
       </div>
       <div class="hn-section">
         <button class="hn-row" id="btnInstallApp" type="button" role="menuitem" data-i18n-attr="title=common.install_app_title" title="Install as app" data-i18n="common.install_app_label">📱 Install</button>

@@ -454,13 +454,8 @@ def library_genres_list(admin: str = Depends(auth_api.get_admin_user)):
 async def public_config():
     """回傳前端需要的非機密設定"""
     from config import get_deployment_mode
-    # Buy Me a Coffee URL is env-driven so we can flip it on/off without
-    # redeploying the static frontend. Empty string → /sponsor shows the
-    # "tipping setup pending" fallback message.
-    bmc_url = (_os.environ.get("LIVECHORD_BMC_URL") or "").strip()
     return {
         "deployment_mode": get_deployment_mode(),
-        "bmc_url": bmc_url,
     }
 
 
@@ -557,12 +552,6 @@ async def process_page():
 @app.get("/help.html")
 async def help_page():
     return FileResponse(FRONTEND_DIR / "help.html", headers=NO_CACHE_HEADERS)
-
-
-@app.get("/sponsor")
-@app.get("/sponsor.html")
-async def sponsor_page():
-    return FileResponse(FRONTEND_DIR / "sponsor.html", headers=NO_CACHE_HEADERS)
 
 
 @app.get("/disclaimer")

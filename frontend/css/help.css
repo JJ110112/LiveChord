@@ -1,4 +1,4 @@
-/* Help + Sponsor pages — content-first layout reusing base.css tokens. */
+/* Help page — content-first layout reusing base.css tokens. */
 
 .help-body {
   background: var(--bg);
@@ -377,69 +377,10 @@ textarea.site-report-input {
   line-height: 1.4;
 }
 
-/* Sponsor specifics */
-.support-hero { padding-bottom: 24px; }
-
-.support-block {
-  margin-top: 32px;
-  padding: 24px 28px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-.support-block h2 {
-  margin: 0 0 14px;
-  font-size: 1.3rem;
-  color: var(--text);
-}
-.support-block p {
-  margin: 0 0 14px;
-  color: var(--text-dim);
-  line-height: 1.7;
-}
-.support-block p:last-child { margin-bottom: 0; }
-
-.tip-wrap {
-  text-align: center;
-  margin: 28px 0 8px;
-}
-.tip-btn {
-  display: inline-block;
-  background: #FFDD00;
-  color: #000;
-  font-weight: 700;
-  font-size: 1.1rem;
-  padding: 14px 28px;
-  border-radius: 999px;
-  text-decoration: none;
-  box-shadow: 0 4px 14px rgba(255, 221, 0, 0.35);
-  transition: transform 0.15s, box-shadow 0.15s;
-}
-.tip-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(255, 221, 0, 0.45);
-}
-.tip-pending-msg {
-  text-align: center;
-  font-style: italic;
-  color: var(--text-dim);
-  font-size: 0.95rem;
-}
-
-.support-list {
-  padding-left: 1.2em;
-  margin: 0 0 16px;
-  color: var(--text-dim);
-}
-.support-list li { padding: 4px 0; line-height: 1.6; }
-.support-list strong { color: var(--text); }
-
 /* Responsive — single column on phones */
 @media (max-width: 640px) {
   .help-hero h1 { font-size: 1.6rem; }
   .help-main { padding: 16px 14px 64px; }
   .help-card > summary { padding: 14px 16px; font-size: 1.02rem; }
   .help-card-body { padding: 4px 16px 12px; }
-  .support-block { padding: 18px 16px; }
 }
