@@ -49,6 +49,12 @@ def candidate_path(data_dir: Path, song_hash: str, candidate_id: str) -> Path:
 
 
 def selected_path(data_dir: Path, song_hash: str) -> Path:
+    """Path reserved for the future resolver-selected cache.
+
+    Phase 0.5 writes shadow candidates only. The Phase 5 resolver promotion will
+    be the first writer for this path.
+    """
+
     clean = _clean_hash(song_hash)
     return Path(data_dir) / MELODY_SELECTED_DIR_NAME / shard_for_hash(clean) / f"{clean}.json"
 

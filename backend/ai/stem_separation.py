@@ -12,6 +12,7 @@ from .stem_separator import StemSeparator
 
 
 STEM_NAMES = ("vocals", "bass", "drums", "other")
+REQUIRED_STEMS = {"vocals", "other"}
 
 
 @dataclass
@@ -37,7 +38,7 @@ class StemCache:
     def ensure_stems(self, *, song_hash: str, audio_path: str, force: bool = False) -> StemCacheResult:
         out_dir = stem_dir(self.data_dir, song_hash)
         cached = self._read_cached(song_hash)
-        if cached and not force:
+        if REQUIRED_STEMS.issubset(cached) and not force:
             return StemCacheResult(ok=True, stems=cached, cache_dir=str(out_dir), reused=True)
 
         audio_file = Path(audio_path)
@@ -59,10 +60,15 @@ class StemCache:
             if not src_path.is_file():
                 continue
             dst = stem_path(self.data_dir, song_hash, name)
-            shutil.copy2(str(src_path), str(dst))
+            if src_path.resolve() == dst.resolve():
+                copied[name] = str(dst)
+                continue
+            shutil.move(str(src_path), str(dst))
             copied[name] = str(dst)
 
-        if "vocals" not in copied and "other" not in copied:
+        self._cleanup_source_dir(separated)
+
+        if not REQUIRED_STEMS.issubset(copied):
             return StemCacheResult(ok=False, stems=copied, cache_dir=str(out_dir), error="missing_required_stems")
         return StemCacheResult(ok=True, stems=copied, cache_dir=str(out_dir), reused=False)
 
@@ -73,3 +79,16 @@ class StemCache:
             if path.is_file():
                 found[name] = str(path)
         return found
+
+    def _cleanup_source_dir(self, separated: Dict[str, str]) -> None:
+        if not separated:
+            return
+        try:
+            source_dir = Path(next(iter(separated.values()))).parent
+            target_dir = source_dir.resolve()
+            cache_root = (self.data_dir / "stems").resolve()
+            if cache_root in target_dir.parents or target_dir == cache_root:
+                return
+            shutil.rmtree(source_dir, ignore_errors=True)
+        except Exception:
+            return

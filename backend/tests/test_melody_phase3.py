@@ -743,6 +743,41 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertTrue(second.reused)
             self.assertEqual(fake.calls, 1)
 
+    def test_stem_cache_partial_cache_does_not_report_reused_ok(self):
+        class FakeSeparator:
+            def __init__(self, source_dir):
+                self.source_dir = source_dir
+                self.calls = 0
+
+            def separate(self, _audio_path):
+                self.calls += 1
+                return {
+                    "vocals": str(self.source_dir / "fresh_vocals.wav"),
+                    "other": str(self.source_dir / "fresh_other.wav"),
+                }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            stem_path(root, "abcdef123456", "vocals").parent.mkdir(parents=True)
+            stem_path(root, "abcdef123456", "vocals").write_bytes(b"stale-vocals")
+            src = root / "src"
+            src.mkdir()
+            (src / "fresh_vocals.wav").write_bytes(b"fresh-vocals")
+            (src / "fresh_other.wav").write_bytes(b"fresh-other")
+            audio = root / "song.wav"
+            audio.write_bytes(b"audio")
+            fake = FakeSeparator(src)
+
+            result = StemCache(root, separator_factory=lambda: fake).ensure_stems(
+                song_hash="abcdef123456",
+                audio_path=str(audio),
+            )
+
+            self.assertTrue(result.ok)
+            self.assertFalse(result.reused)
+            self.assertEqual(fake.calls, 1)
+            self.assertIn("other", result.stems)
+
     def test_piano_rh_selector_prefers_smooth_upper_voice_over_bass(self):
         notes = [
             {"start": 0.0, "end": 0.5, "midi": 40, "velocity": 96},
@@ -757,6 +792,17 @@ class TestMelodyPhase3(unittest.TestCase):
 
         self.assertEqual([event["midi"] for event in selected], [64, 65, 67])
         self.assertTrue(all(event["voice_lane"] == MELODY_VOICE_LANE for event in selected))
+
+    def test_piano_rh_selector_ignores_confidence_as_velocity_fallback(self):
+        notes = [
+            {"start": 0.0, "end": 0.5, "midi": 64, "confidence": 0.01},
+            {"start": 0.5, "end": 1.0, "midi": 65, "confidence": 0.01},
+        ]
+
+        selected = select_right_hand_melody(notes, key="A minor", bpm=120)
+
+        self.assertEqual([event["midi"] for event in selected], [64, 65])
+        self.assertTrue(all(event["confidence"] > 1.55 for event in selected))
 
     def test_piano_candidate_payload_accepts_selector_output(self):
         selected = select_right_hand_melody(
@@ -798,6 +844,23 @@ class TestMelodyPhase3(unittest.TestCase):
 
             self.assertFalse(result.ok)
             self.assertEqual(result.error, "missing_dependency:torchcrepe")
+            self.assertFalse(candidate_path(root, "abcdef123456", VOCAL_STEM_CREPE).exists())
+
+    def test_vocal_crepe_general_extraction_failure_label_is_not_crepe_specific(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            stem = root / "vocals.wav"
+            stem.write_bytes(b"not really wav")
+            extractor = VocalStemCrepeExtractor(data_dir=root)
+            with patch.object(extractor, "_extract_events", side_effect=RuntimeError("bad audio")):
+                result = extractor.extract_to_cache(
+                    song_hash="abcdef123456",
+                    path="song.wav",
+                    vocal_stem_path=str(stem),
+                )
+
+            self.assertFalse(result.ok)
+            self.assertEqual(result.error, "extraction_failed:RuntimeError:bad audio")
             self.assertFalse(candidate_path(root, "abcdef123456", VOCAL_STEM_CREPE).exists())
 
 

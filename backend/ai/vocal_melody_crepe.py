@@ -63,7 +63,7 @@ class VocalStemCrepeExtractor:
         except ImportError as exc:
             return VocalCrepeResult(ok=False, error=f"missing_dependency:{exc.name}")
         except Exception as exc:
-            return VocalCrepeResult(ok=False, error=f"crepe_failed:{type(exc).__name__}:{exc}")
+            return VocalCrepeResult(ok=False, error=f"extraction_failed:{type(exc).__name__}:{exc}")
 
         flags = []
         if not events:
@@ -95,6 +95,7 @@ class VocalStemCrepeExtractor:
 
         audio = torch.tensor(y, dtype=torch.float32).unsqueeze(0)
         device = "cuda" if torch.cuda.is_available() else "cpu"
+        batch_size = 1024 if device == "cuda" else 32
         audio = audio.to(device)
         frequency, periodicity = torchcrepe.predict(
             audio,
@@ -103,7 +104,7 @@ class VocalStemCrepeExtractor:
             50.0,
             1100.0,
             model,
-            batch_size=1024,
+            batch_size=batch_size,
             device=device,
             return_periodicity=True,
         )
@@ -119,6 +120,7 @@ class VocalStemCrepeExtractor:
             "confidence_threshold": self.confidence_threshold,
             "model": model,
             "device": device,
+            "batch_size": batch_size,
             "frames": int(len(f0)),
         }
 

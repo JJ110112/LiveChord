@@ -18,6 +18,10 @@ KEY_MAJOR_PCS = {
     "C": 0, "G": 7, "D": 2, "A": 9, "E": 4, "B": 11,
     "F#": 6, "Db": 1, "Ab": 8, "Eb": 3, "Bb": 10, "F": 5,
 }
+MINOR_RELATIVE_MAJOR = {
+    "A": "C", "E": "G", "B": "D", "F#": "A", "C#": "E", "G#": "B",
+    "D#": "F#", "A#": "Db", "D": "F", "G": "Bb", "C": "Eb", "F": "Ab",
+}
 
 
 @dataclass(frozen=True)
@@ -89,7 +93,7 @@ def _normalize_notes(notes: Iterable[Dict[str, Any]]) -> List[PianoNote]:
             end = start + duration
         if end is None or end <= start:
             continue
-        velocity = _first_float(raw.get("velocity"), raw.get("confidence"), 64.0)
+        velocity = _first_float(raw.get("velocity"), 64.0)
         out.append(PianoNote(start=float(start), end=float(end), midi=int(midi), velocity=float(velocity or 64.0)))
     out.sort(key=lambda n: (n.start, -n.midi, -n.velocity))
     return out
@@ -226,8 +230,38 @@ def _post_merge(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _in_major_key(midi: int, key: str) -> bool:
-    tonic = KEY_MAJOR_PCS.get(str(key or "C").strip(), 0)
+    tonic = KEY_MAJOR_PCS.get(_normalize_major_key(key), 0)
     return ((midi % 12) - tonic) % 12 in {0, 2, 4, 5, 7, 9, 11}
+
+
+def _normalize_major_key(key: str) -> str:
+    raw = str(key or "C").strip()
+    if not raw:
+        return "C"
+    cleaned = raw.replace("major", "").replace("Major", "").strip()
+    lower = cleaned.lower()
+    if lower.endswith("minor"):
+        tonic = cleaned[:-5].strip()
+        return MINOR_RELATIVE_MAJOR.get(_normalize_tonic(tonic), "C")
+    if lower.endswith("min"):
+        tonic = cleaned[:-3].strip()
+        return MINOR_RELATIVE_MAJOR.get(_normalize_tonic(tonic), "C")
+    if len(cleaned) >= 2 and cleaned[-1] == "m":
+        return MINOR_RELATIVE_MAJOR.get(_normalize_tonic(cleaned[:-1]), "C")
+    return _normalize_tonic(cleaned)
+
+
+def _normalize_tonic(value: str) -> str:
+    token = str(value or "C").strip()
+    if not token:
+        return "C"
+    first = token[0].upper()
+    suffix = token[1:].replace("♭", "b").replace("♯", "#")
+    if suffix.startswith("#"):
+        return first + "#"
+    if suffix.startswith("b"):
+        return first + "b"
+    return first
 
 
 def _first_float(*values: Any) -> Optional[float]:
