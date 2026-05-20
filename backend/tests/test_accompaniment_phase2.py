@@ -20,6 +20,7 @@ class TestAccompanimentPhase2(unittest.TestCase):
 
         self.assertEqual(ACC_ENGINE_VERSION, "v8")
         self.assertEqual(result["schema_version"], 2)
+        self.assertEqual(result["continuity_observation"]["mode"], "shadow")
         all_events = result["left_hand"] + result["right_hand"]
         self.assertTrue(all_events)
         self.assertTrue(all(e.get("schema_version") == 2 for e in all_events))

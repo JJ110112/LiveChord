@@ -14,6 +14,7 @@ import os
 import math
 import json
 import random
+import logging
 import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -63,6 +64,9 @@ ACC_ENGINE_VERSION = "v8"
 NOTE_EVENT_SCHEMA_VERSION = 2
 DEFAULT_PATTERN_GATE_RATIO = 0.9
 _V2_FLAG_CACHE: Optional[bool] = None
+_CONTINUITY_MODE_CACHE: Optional[str] = None
+_CONTINUITY_MODES = {"off", "shadow", "active"}
+logger = logging.getLogger(__name__)
 
 
 def _load_v2_flag() -> bool:
@@ -79,6 +83,30 @@ def _load_v2_flag() -> bool:
         except Exception:
             _V2_FLAG_CACHE = True
     return _V2_FLAG_CACHE
+
+
+def _load_continuity_mode() -> str:
+    """Continuity rollout mode: off, shadow (dry-run metadata), or active."""
+    global _CONTINUITY_MODE_CACHE
+    if _CONTINUITY_MODE_CACHE is not None:
+        return _CONTINUITY_MODE_CACHE
+
+    mode = os.environ.get("LIVECHORD_NOTE_CONTINUITY_MODE", "").strip().lower()
+    if not mode:
+        try:
+            settings_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "settings.json"
+            )
+            with open(settings_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            mode = str(cfg.get("note_continuity_mode", "")).strip().lower()
+        except Exception:
+            mode = ""
+
+    if mode not in _CONTINUITY_MODES:
+        mode = "shadow"
+    _CONTINUITY_MODE_CACHE = mode
+    return mode
 
 # ==============================================================================
 # 貳、Pattern Dictionary (樣式字典)
@@ -395,7 +423,15 @@ def _gate_ratio_from_duration(performed_duration: float, canonical_duration: flo
     if canonical <= 0:
         return default
     ratio = performed / canonical
-    return round(max(0.05, min(1.0, ratio)), 4)
+    return _clamp_gate_ratio(ratio)
+
+
+def _clamp_gate_ratio(value: Any, default: float = 1.0) -> float:
+    try:
+        gate = float(value)
+    except (TypeError, ValueError):
+        gate = default
+    return round(max(0.05, min(1.0, gate)), 4)
 
 
 def _left_voice_lane_for_pattern_index(idx: int) -> str:
@@ -411,11 +447,85 @@ def _finalize_event_schema(events: List[Dict], default_voice_lane: str) -> None:
                 event["voice_lane"] = "string_strum" if event.get("strum_id") else "string_arpeggio"
             else:
                 event["voice_lane"] = default_voice_lane
-        event["gate_ratio"] = _gate_ratio_from_duration(
-            event.get("gate_ratio", 1.0),
-            1.0,
-            default=1.0,
-        )
+        event["gate_ratio"] = _clamp_gate_ratio(event.get("gate_ratio", 1.0))
+
+
+def _summarize_continuity(events: List[Dict], mode: str) -> Dict[str, Any]:
+    key = "would_extend_by" if mode == "shadow" else "extended_by"
+    candidates = []
+    lane_counts: Dict[str, int] = {}
+    reason_counts: Dict[str, int] = {}
+    strum_events = 0
+
+    for event in events:
+        meta = event.get("continuity_meta") or {}
+        if key not in meta:
+            continue
+        amount = float(meta.get(key) or 0.0)
+        candidates.append(amount)
+        lane = str(event.get("voice_lane") or "unknown")
+        reason = str(meta.get("reason") or "unknown")
+        lane_counts[lane] = lane_counts.get(lane, 0) + 1
+        reason_counts[reason] = reason_counts.get(reason, 0) + 1
+        if event.get("strum_id"):
+            strum_events += 1
+
+    return {
+        "mode": mode,
+        "event_count": len(events),
+        "candidate_events": len(candidates),
+        "total_extend_by": round(sum(candidates), 6),
+        "max_extend_by": round(max(candidates), 6) if candidates else 0.0,
+        "lane_counts": lane_counts,
+        "reason_counts": reason_counts,
+        "strum_events": strum_events,
+    }
+
+
+def _combine_continuity_observation(mode: str, left: Dict[str, Any],
+                                    right: Dict[str, Any]) -> Dict[str, Any]:
+    total_events = left["event_count"] + right["event_count"]
+    candidate_events = left["candidate_events"] + right["candidate_events"]
+    return {
+        "mode": mode,
+        "left_hand": left,
+        "right_hand": right,
+        "total": {
+            "event_count": total_events,
+            "candidate_events": candidate_events,
+            "candidate_ratio": round(candidate_events / total_events, 6) if total_events else 0.0,
+            "total_extend_by": round(left["total_extend_by"] + right["total_extend_by"], 6),
+            "max_extend_by": max(left["max_extend_by"], right["max_extend_by"]),
+            "strum_events": left["strum_events"] + right["strum_events"],
+        },
+    }
+
+
+def _repair_for_continuity_observation(
+    events: List[Dict],
+    *,
+    bpm: float,
+    tempo_curve: Optional[List[Dict]],
+    time_signature: str,
+    hand: str,
+    chord_boundaries: List[float],
+    mode: str,
+) -> Tuple[List[Dict], Dict[str, Any]]:
+    if mode == "off":
+        return events, _summarize_continuity(events, mode)
+
+    from .note_continuity import repair_note_continuity
+    repaired = repair_note_continuity(
+        events,
+        bpm=bpm,
+        tempo_curve=tempo_curve,
+        time_signature=time_signature,
+        hand=hand,
+        role="accompaniment",
+        chord_boundaries=chord_boundaries,
+        dry_run=(mode == "shadow"),
+    )
+    return repaired, _summarize_continuity(repaired, mode)
 
 
 def _emit_period_pattern(pattern, start_time, duration, period_beats,
@@ -1396,7 +1506,7 @@ def _build_right_hand(chord_name: str, start_time: float, duration: float,
                 performed_dur = evt_dur_fixed
             else:
                 # cap by both factor-of-period and a hard ceiling
-                performed_dur = min(_natural_dur * (evt_dur_factor / 0.9), evt_dur_max)
+                performed_dur = min(_natural_dur * evt_dur_factor, evt_dur_max)
             canonical_dur = min(_natural_dur, chord_end - evt_time)
             performed_dur = min(performed_dur, canonical_dur)
             if canonical_dur <= 0.001:
@@ -1758,8 +1868,8 @@ def generate_accompaniment(chords: List[Dict],
         _humanize(right_events, bpm=bpm, amount=humanize, seed=123, style=hstyle,
                   tempo_curve=tempo_curve)
 
-    # Schema v2 + continuity: humanize can introduce tiny gaps, so finalize
-    # lanes/gates first, then extend canonical durations after timing offsets.
+    # Schema v2 + continuity observation: humanize can introduce tiny gaps.
+    # Stamp lanes/gates before repair because continuity is lane-local.
     _finalize_event_schema(left_events, "lh_accompaniment")
     _finalize_event_schema(right_events, "rh_accompaniment")
     chord_boundaries = [
@@ -1767,31 +1877,50 @@ def generate_accompaniment(chords: List[Dict],
         for ch in chords[1:]
         if ch.get("time") is not None
     ]
-    from .note_continuity import repair_note_continuity
-    left_events = repair_note_continuity(
+    continuity_mode = _load_continuity_mode()
+    left_events, left_continuity = _repair_for_continuity_observation(
         left_events,
         bpm=bpm,
         tempo_curve=tempo_curve,
         time_signature=time_signature,
         hand="left",
-        role="accompaniment",
         chord_boundaries=chord_boundaries,
+        mode=continuity_mode,
     )
-    right_events = repair_note_continuity(
+    right_events, right_continuity = _repair_for_continuity_observation(
         right_events,
         bpm=bpm,
         tempo_curve=tempo_curve,
         time_signature=time_signature,
         hand="right",
-        role="accompaniment",
         chord_boundaries=chord_boundaries,
+        mode=continuity_mode,
     )
+    continuity_observation = _combine_continuity_observation(
+        continuity_mode,
+        left_continuity,
+        right_continuity,
+    )
+    total_obs = continuity_observation["total"]
+    if total_obs["candidate_events"] > 0:
+        logger.info(
+            "[note_continuity] mode=%s candidates=%d/%d ratio=%.4f max_extend=%.4f total_extend=%.4f style=%s instrument=%s",
+            continuity_mode,
+            total_obs["candidate_events"],
+            total_obs["event_count"],
+            total_obs["candidate_ratio"],
+            total_obs["max_extend_by"],
+            total_obs["total_extend_by"],
+            style,
+            instrument,
+        )
 
     left_events.sort(key=lambda e: (e["time"], e["pitch"]))
     right_events.sort(key=lambda e: (e["time"], e["pitch"]))
 
     return {
         "schema_version": NOTE_EVENT_SCHEMA_VERSION,
+        "continuity_observation": continuity_observation,
         "left_hand": left_events,
         "right_hand": right_events,
         "suggested_styles": suggest_style(genre, bpm),
