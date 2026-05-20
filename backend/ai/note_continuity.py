@@ -36,18 +36,18 @@ def repair_note_continuity(
     role: str = "accompaniment",
     chord_boundaries: Optional[List[float]] = None,
     max_gap_beats: float = 0.5,
-    preserve_articulations: bool = True,
     dry_run: bool = False,
 ) -> List[Dict[str, Any]]:
     """Return note events with small same-lane rests filled.
 
     ``duration`` is treated as the canonical musical duration. Short playback
-    touch is represented by ``gate_ratio``/``articulation`` and is preserved.
-    The input list and nested metadata are never mutated.
-    """
+    touch is represented by ``gate_ratio``/``articulation`` and is always
+    preserved. The input list and nested metadata are never mutated.
 
-    del time_signature  # Kept in the public API for meter-aware callers.
-    del preserve_articulations  # Articulation fields are preserved by design.
+    Callers should provide consistent ``voice_lane`` labels for every event in
+    a list, or omit them for every event and let the hand/role fallback group
+    the batch as a single lane.
+    """
 
     if not events:
         return []
@@ -78,7 +78,8 @@ def repair_note_continuity(
                 continue
 
             gap = target_end - group.end
-            max_gap = beat_duration_at(tempo_curve, group.start, fallback_bpm=fallback_bpm) * max_gap_beats
+            beat_duration = beat_duration_at(tempo_curve, group.start, fallback_bpm=fallback_bpm)
+            max_gap = _max_gap_seconds(time_signature, beat_duration, max_gap_beats)
             if gap > max_gap + _EPSILON:
                 continue
 
@@ -102,6 +103,36 @@ def _safe_bpm(bpm: float) -> float:
     return bpm if bpm > 0 else 120.0
 
 
+def _parse_time_signature(time_signature: str) -> Optional[Tuple[int, int]]:
+    try:
+        numerator_text, denominator_text = str(time_signature or "").split("/", 1)
+        numerator = int(numerator_text)
+        denominator = int(denominator_text)
+    except (TypeError, ValueError):
+        return None
+    if numerator <= 0 or denominator <= 0:
+        return None
+    return numerator, denominator
+
+
+def _max_gap_seconds(time_signature: str, beat_duration: float, max_gap_beats: float) -> float:
+    parsed = _parse_time_signature(time_signature)
+    half_beat = beat_duration * max_gap_beats
+
+    if parsed is None:
+        return min(0.25, half_beat)
+
+    numerator, denominator = parsed
+    if denominator == 8 and numerator in {6, 12}:
+        # In compound meters the project contract treats the default threshold
+        # as one eighth subdivision, not half of a dotted-quarter feel.
+        eighth_subdivision = beat_duration * (4.0 / denominator)
+        default_scale = max_gap_beats / 0.5 if max_gap_beats > 0 else 0.0
+        return eighth_subdivision * default_scale
+
+    return half_beat
+
+
 def _event_duration(event: Dict[str, Any]) -> float:
     return max(0.0, float(event.get("duration", 0.0) or 0.0))
 
@@ -111,7 +142,11 @@ def _event_end(event: Dict[str, Any]) -> float:
 
 
 def _event_pitch(event: Dict[str, Any]) -> int:
-    return int(event.get("pitch", event.get("note", 0)) or 0)
+    value = event.get("pitch", event.get("midi", event.get("note", 0)))
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _voice_lane(event: Dict[str, Any], *, hand: str, role: str) -> str:

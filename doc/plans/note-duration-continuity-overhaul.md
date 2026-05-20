@@ -189,7 +189,6 @@ def repair_note_continuity(
     role: str = "accompaniment",
     chord_boundaries: list[float] | None = None,
     max_gap_beats: float = 0.5,
-    preserve_articulations: bool = True,
     dry_run: bool = False,
 ) -> list[dict]:
     """Return a new repaired event list. The input list is not mutated."""
@@ -202,6 +201,7 @@ def repair_note_continuity(
 - lane-aware：只在同一 `voice_lane` 內修復。
 - role-aware：melody 可允許跨 chord boundary tie；accompaniment 預設不跨 chord boundary。
 - dry-run：只寫 `continuity_meta.would_extend_to` 與 diff 指標，不替換 `duration`。
+- articulation 固定保留：`gate_ratio` / `articulation` 永遠只代表 playback touch，不由 continuity core 移除。
 
 ### 通用修復規則
 

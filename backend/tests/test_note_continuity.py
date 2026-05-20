@@ -44,6 +44,23 @@ class TestNoteContinuity(unittest.TestCase):
         self.assertAlmostEqual(without_curve[0]["duration"], 0.2)
         self.assertAlmostEqual(with_curve[0]["duration"], 0.6)
 
+    def test_uses_event_onset_for_rubato_tempo_curve(self):
+        events = [
+            {"time": 0.0, "duration": 0.2, "pitch": 60, "voice_lane": "lh_bass"},
+            {"time": 0.6, "duration": 0.5, "pitch": 55, "voice_lane": "lh_bass"},
+            {"time": 10.0, "duration": 0.2, "pitch": 57, "voice_lane": "lh_bass"},
+            {"time": 10.6, "duration": 0.5, "pitch": 53, "voice_lane": "lh_bass"},
+        ]
+
+        repaired = repair_note_continuity(
+            events,
+            bpm=120,
+            tempo_curve=[{"t": 0.0, "bpm": 120.0}, {"t": 10.0, "bpm": 60.0}],
+        )
+
+        self.assertAlmostEqual(repaired[0]["duration"], 0.2)
+        self.assertAlmostEqual(repaired[2]["duration"], 0.6)
+
     def test_zero_bpm_uses_safe_fallback(self):
         events = [
             {"time": 0.0, "duration": 0.45, "pitch": 60, "voice_lane": "lh_bass"},
@@ -80,6 +97,18 @@ class TestNoteContinuity(unittest.TestCase):
         self.assertAlmostEqual(repaired[1]["duration"], 0.5)
         self.assertEqual(repaired[0]["continuity_meta"]["reason"], "small_gap_chord_group")
 
+    def test_humanized_onset_jitter_still_groups_chord_notes(self):
+        events = [
+            {"time": 0.0, "duration": 0.28, "pitch": 60, "voice_lane": "rh_accompaniment"},
+            {"time": 0.01, "duration": 0.27, "pitch": 64, "voice_lane": "rh_accompaniment"},
+            {"time": 0.5, "duration": 0.5, "pitch": 67, "voice_lane": "rh_accompaniment"},
+        ]
+
+        repaired = repair_note_continuity(events, bpm=120)
+
+        self.assertAlmostEqual(repaired[0]["time"] + repaired[0]["duration"], 0.5)
+        self.assertAlmostEqual(repaired[1]["time"] + repaired[1]["duration"], 0.5)
+
     def test_accompaniment_stops_at_chord_boundary(self):
         events = [
             {"time": 0.0, "duration": 0.9, "pitch": 48, "voice_lane": "lh_bass"},
@@ -110,6 +139,27 @@ class TestNoteContinuity(unittest.TestCase):
         )
 
         self.assertAlmostEqual(repaired[0]["duration"], 1.2)
+
+    def test_melody_large_phrase_silence_is_not_filled(self):
+        events = [
+            {"time": 0.0, "duration": 0.5, "pitch": 64, "voice_lane": "rh_melody"},
+            {"time": 2.5, "duration": 0.5, "pitch": 67, "voice_lane": "rh_melody"},
+        ]
+
+        repaired = repair_note_continuity(events, bpm=120, role="melody")
+
+        self.assertAlmostEqual(repaired[0]["duration"], 0.5)
+        self.assertNotIn("continuity_meta", repaired[0])
+
+    def test_melody_note_name_with_midi_field_does_not_crash(self):
+        events = [
+            {"time": 0.0, "duration": 0.45, "note": "C4", "midi": 60, "voice_lane": "rh_melody"},
+            {"time": 0.5, "duration": 0.5, "note": "D4", "midi": 62, "voice_lane": "rh_melody"},
+        ]
+
+        repaired = repair_note_continuity(events, bpm=120, role="melody")
+
+        self.assertAlmostEqual(repaired[0]["duration"], 0.5)
 
     def test_dry_run_records_would_extend_without_changing_duration(self):
         events = [
@@ -142,15 +192,22 @@ class TestNoteContinuity(unittest.TestCase):
         self.assertAlmostEqual(repaired[0]["gate_ratio"], 0.45)
         self.assertEqual(repaired[0]["articulation"], "staccato")
 
-    def test_six_eight_allows_eighth_note_gap_fill(self):
-        events = [
-            {"time": 0.0, "duration": 0.25, "pitch": 60, "voice_lane": "rh_accompaniment"},
-            {"time": 0.5, "duration": 0.5, "pitch": 64, "voice_lane": "rh_accompaniment"},
-        ]
+    def test_meter_thresholds_cover_waltz_compound_and_unknown_meter(self):
+        def first_duration(time_signature):
+            repaired = repair_note_continuity(
+                [
+                    {"time": 0.0, "duration": 0.6, "pitch": 60, "voice_lane": "rh_accompaniment"},
+                    {"time": 1.0, "duration": 0.5, "pitch": 64, "voice_lane": "rh_accompaniment"},
+                ],
+                bpm=60,
+                time_signature=time_signature,
+            )
+            return repaired[0]["duration"]
 
-        repaired = repair_note_continuity(events, bpm=120, time_signature="6/8")
-
-        self.assertAlmostEqual(repaired[0]["duration"], 0.5)
+        self.assertAlmostEqual(first_duration("3/4"), 1.0)
+        self.assertAlmostEqual(first_duration("6/8"), 1.0)
+        self.assertAlmostEqual(first_duration("12/8"), 1.0)
+        self.assertAlmostEqual(first_duration("unknown"), 0.6)
 
     def test_strum_group_aligns_end_and_stops_at_next_strum(self):
         events = [
