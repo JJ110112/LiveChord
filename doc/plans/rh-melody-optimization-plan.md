@@ -123,9 +123,11 @@ Phase 0.5 review result: `vocal_stem_crepe` beat `full_mix_pyin` on 12/12 vocal 
 
 Resolver v0 therefore requires:
 
-- `vocal_led` classifier precision measured on the 27-song Phase 0.5 smoke set before promotion. Precision must be at least as high as the observed vocal B-win rate target (>= 92%) before the route can become automatic.
+- `vocal_led` classifier precision measured on a held-out hand-labeled evaluation set before promotion. Precision must be at least as high as the observed vocal B-win rate target (>= 92%) before the route can become automatic.
 - Retreat-to-baseline hard gate: if `vocal_stem_crepe` active coverage / density is abnormally low relative to `full_mix_pyin` (initial rule: active duration or active density < 30% of baseline), select `full_mix_pyin` and stamp `quality_flags: ["vocal_candidate_retreat_low_coverage"]`.
 - Pre-ship residual audit on the 12 vocal smoke songs: quantify intro/interlude missing coverage and phrase-tail pitch-jump artifacts. If either appears in >30% of reviewed vocal songs, fix the post-filter before enabling resolver v0.
+
+Classifier short-circuit check (2026-05-22): no existing cache contains a real song-type prediction. `data/chords` only provides sparse genre/category hints, legacy `data/melodies` has no classifier metadata, and `data/melody_candidates` already has the right `melody_source.song_type` / `song_type_confidence` schema but the values are hardcoded as `"unknown"` / `None`. Therefore the next step is to build the classifier and stamp those fields, not to measure a nonexistent classifier.
 
 **Solo piano** (classical, jazz piano, lo-fi piano):
 
@@ -423,6 +425,21 @@ A small classifier picks the type before scoring:
 | Total onset density | `ambient` / `no_lead` detection |
 
 Classifier emits `song_type` + `song_type_confidence`. Low confidence → resolver routes to `unknown` → `full_mix_pyin`.
+
+Current implementation status: schema slots already exist under `melody_source`, but no classifier populates them yet. The Phase 0.5 smoke queue `group` field is a manual review label, not a model prediction, and must not be used as if it were classifier output.
+
+Phase 0.5 classifier plan:
+
+| Stage | Work | Exit condition |
+|---|---|---|
+| A1 | Hand-label 30-50 additional songs from `library_cache.json` as held-out `vocal_led` / `solo_piano` / `instrumental_lead` / `no_clear_lead` | Evaluation set is separate from the 27-song smoke set |
+| A2 | Build the first `classify_song_type()` hook using cheap available features: Demucs vocal-stem energy ratio where available, HPSS/spectral/onset features, weak path/category prior, curated MIDI presence | Emits `song_type`, `song_type_confidence`, and `song_type_source` |
+| A3 | Wire the prediction into shadow candidate generation so candidate caches stamp `melody_source.song_type` / `song_type_confidence` instead of `"unknown"` | Re-running the 27 smoke songs with `--force` backfills classifier metadata |
+| A4 | Add an admin/eval switch for prediction source: classifier output vs manual queue label | Resolver experiments can compare classifier-on and oracle/manual routing |
+| B1 | Compute predicted-vs-human confusion matrix on held-out labels | `vocal_led` precision >= 92% before automatic vocal routing |
+| B2 | Compute vocal residual metrics on the 12 smoke vocal songs | Intro/interlude missing coverage and phrase-tail jump artifacts each <= 30% |
+
+If a cheap LR/decision-tree classifier stays below 85% vocal precision, consider an ingest-time LLM metadata classifier as a fallback. That is acceptable only if it runs once per song, records the prompt/model/version in `song_type_source`, and still obeys the same held-out precision gate.
 
 ## 6. Implementation Phases
 
@@ -723,11 +740,13 @@ Phase 0 instrumentation is complete, but current RH quality is poor enough that 
 | 4 | Add `solo_piano_polyphonic` Stage-2 selector: Magenta/polyphonic notes -> Skyline candidates -> Temperley Viterbi -> candidate cache | Done |
 | 5 | Add a one-song/batch shadow generation entry point for small A/B trials without changing formal RH playback | Done |
 | 6 | Add Admin candidate compare/read endpoint and UI hook so review can switch `full_mix_pyin` vs shadow candidates | Done |
-| 7 | Run a 20-30 song A/B smoke set (vocal, solo piano, instrumental) to see whether the new routes are worth scaling | Partial run complete: 27-song queue built; `full_mix_pyin` 27/27, `vocal_stem_crepe` 12/12, instrumental baseline 6/6; `solo_piano_polyphonic` pending Stage-1 polyphonic JSON |
-| 8 | Finish the 200-song equal-probability listening survey through the Admin RH survey panel, using candidate comparison where available | Pending human review |
-| 9 | Add Phase 0 survey summary/report output: completion count, primary-tag distribution, post-filter-fixable ratio, secondary/audio-quality breakdown | Pending |
-| 10 | Run current `full_mix_pyin` against a MedleyDB-Melody / MIR-1K subset (≥20 songs); record RPA/RCA as the external floor for later phases | Pending |
-| 11 | **Decision branch**: classify failure modes. If cheap post-filters still dominate, Phase 1 is prioritized; if vocal/piano shadow routes clearly rescue the bad cases, proceed into Phase 2 candidate generation at larger scale | Pending Phase 0/0.5 data |
+| 7 | Run a 20-30 song A/B smoke set (vocal, solo piano, instrumental) to see whether the new routes are worth scaling | Done: 27-song queue reviewed. `vocal_stem_crepe` 12/12 B wins, `solo_piano_polyphonic` 7/9 B wins, `instrument_lead` 2/6 B wins with 4/6 marked not applicable/no clear lead |
+| 8 | Build the song-type classifier Stage A (§5.3): held-out label set, cheap-feature classifier, cache stamping into `melody_source.song_type`, classifier-vs-manual switch | Pending |
+| 9 | Vocal route ship audit Stage B: confusion matrix on held-out labels, `vocal_led` precision >= 92%, 30% retreat gate metrics, and 12-song vocal residual metrics | Pending |
+| 10 | Add Phase 0 survey summary/report output: completion count, primary-tag distribution, post-filter-fixable ratio, secondary/audio-quality breakdown | Pending |
+| 11 | Finish the 200-song equal-probability listening survey through the Admin RH survey panel, using candidate comparison where available | Pending human review |
+| 12 | Run current `full_mix_pyin` against a MedleyDB-Melody / MIR-1K subset (≥20 songs); record RPA/RCA as the external floor for later phases | Pending |
+| 13 | **Decision branch**: classify failure modes. If cheap post-filters still dominate, Phase 1 is prioritized; if vocal/piano shadow routes clearly rescue the bad cases and classifier gates pass, proceed into Phase 2 candidate generation at larger scale | Pending Phase 0/0.5 data |
 
 Completed cleanup and instrumentation:
 
