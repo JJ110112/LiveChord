@@ -1306,6 +1306,28 @@ window._lcIsBeta = (function() {
     }
   });
 
+  function _openChordManagementCard() {
+    const card = $("#chordMgmtCard");
+    if (!card) return;
+    const toggle = card.querySelector(".collapse-toggle");
+    const content = card.querySelector(".collapse-content");
+    if (toggle) toggle.classList.add("open");
+    if (content) content.classList.add("show");
+  }
+
+  function _handleMelodyDebugDeepLink() {
+    const params = new URLSearchParams(window.location.search);
+    const melody = params.get("melody") || params.get("melodyHash") || params.get("melodyPath") || "";
+    if (!melody) return;
+    _openChordManagementCard();
+    $("#melodyDebugPath").value = melody;
+    const shouldLoadCandidates = params.get("melodyCandidates") === "1";
+    setTimeout(() => {
+      $(shouldLoadCandidates ? "#btnMelodyCandidates" : "#btnMelodyDebug").click();
+    }, 0);
+  }
+  _handleMelodyDebugDeepLink();
+
   const melodySurveyState = { items: [], index: 0, surveyId: "", taxonomy: null };
   const MELODY_REVIEW_TAGS = [
     "pyin_fine",

@@ -33,6 +33,11 @@ from backend.ai.melody_candidate import (
     stem_path,
     write_candidate_cache,
 )
+from backend.ai.melody_ab_review_report import (
+    build_review_rows,
+    render_review_markdown,
+    write_review_markdown,
+)
 from backend.ai.melody_shadow_generator import ShadowCandidateResult, ShadowGenerationResult, generate_shadow_candidates
 from backend.ai.melody_shadow_smoke import (
     SMOKE_SURVEY_ID,
@@ -1346,6 +1351,53 @@ class TestMelodyPhase3(unittest.TestCase):
 
             with self.assertRaises(FileExistsError):
                 write_smoke_report([], {"survey_id": SMOKE_SURVEY_ID}, out, force=False)
+
+    def test_melody_ab_review_report_builds_clickable_vocal_rows(self):
+        rows = [
+            {
+                "sample_order": 2,
+                "group": "vocal",
+                "note": "soft lead",
+                "requested": {
+                    "hash": "abc123",
+                    "path": "A/B Song.flac",
+                    "title": "A|B Song",
+                    "artist": "Singer",
+                },
+                "result": {
+                    "song_hash": "abc123",
+                    "path": "A/B Song.flac",
+                    "results": [
+                        {"candidate_id": FULL_MIX_PYIN, "ok": True, "status": "cached"},
+                        {"candidate_id": VOCAL_STEM_CREPE, "ok": True, "status": "generated"},
+                    ],
+                },
+            },
+            {
+                "sample_order": 1,
+                "group": "solo_piano",
+                "requested": {"hash": "piano1", "path": "piano.flac"},
+                "result": {"results": []},
+            },
+        ]
+
+        review_rows = build_review_rows(rows, base_url="http://example.test")
+        markdown = render_review_markdown(review_rows)
+
+        self.assertEqual(len(review_rows), 1)
+        self.assertEqual(review_rows[0]["admin_url"], "http://example.test/admin?melody=abc123&melodyCandidates=1")
+        self.assertIn("A%2FB%20Song.flac", review_rows[0]["player_url"])
+        self.assertIn("Octave displacement", markdown)
+        self.assertIn("Singer - A\\|B Song", markdown)
+
+    def test_melody_ab_review_report_refuses_overwrite_without_force(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out = root / "review.md"
+            out.write_text("existing\n", encoding="utf-8")
+
+            with self.assertRaises(FileExistsError):
+                write_review_markdown("new\n", out, force=False)
 
 
 if __name__ == "__main__":
