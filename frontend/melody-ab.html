@@ -76,6 +76,22 @@
       align-items: center;
     }
 
+    .midi-progress {
+      height: 6px;
+      background: rgba(255,255,255,.08);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    .midi-progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      border-radius: inherit;
+      transition: width .08s linear;
+    }
+
     button,
     .choice {
       border: 1px solid var(--border);
@@ -326,7 +342,11 @@
     filtered: [],
     audioContext: null,
     scheduled: [],
-    activeButton: null
+    activeButton: null,
+    activeProgress: null,
+    progressTimer: 0,
+    playbackStartTime: 0,
+    playbackEndTime: 0
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -382,15 +402,38 @@
     return start + (Number.isFinite(duration) ? Math.max(duration, 0.04) : 0.18);
   }
 
-  function stopMidi() {
-    for (const node of state.scheduled) {
-      try { node.stop(); } catch (err) {}
-    }
-    state.scheduled = [];
+  function resetActiveUi({ complete = false } = {}) {
     if (state.activeButton) {
       state.activeButton.textContent = state.activeButton.dataset.label || state.activeButton.textContent;
       state.activeButton = null;
     }
+    if (state.activeProgress) {
+      state.activeProgress.style.width = complete ? "100%" : "0%";
+      state.activeProgress = null;
+    }
+  }
+
+  function updateMidiProgress() {
+    if (!state.audioContext || !state.activeProgress || !state.playbackEndTime) return;
+    const total = Math.max(0.05, state.playbackEndTime - state.playbackStartTime);
+    const elapsed = state.audioContext.currentTime - state.playbackStartTime;
+    const pct = Math.max(0, Math.min(100, (elapsed / total) * 100));
+    state.activeProgress.style.width = `${pct}%`;
+    if (pct >= 100) stopMidi({ complete: true });
+  }
+
+  function stopMidi(options = {}) {
+    if (state.progressTimer) {
+      clearInterval(state.progressTimer);
+      state.progressTimer = 0;
+    }
+    for (const node of state.scheduled) {
+      try { node.stop(); } catch (err) {}
+    }
+    state.scheduled = [];
+    state.playbackStartTime = 0;
+    state.playbackEndTime = 0;
+    resetActiveUi({ complete: !!options.complete });
   }
 
   function playCandidate(button, candidate) {
@@ -416,11 +459,13 @@
     const master = ctx.createGain();
     master.gain.value = 0.18;
     master.connect(ctx.destination);
+    let lastEnd = now;
     for (const item of usable) {
       const midi = midiFromEvent(item.event);
       const freq = 440 * Math.pow(2, (midi - 69) / 12);
       const start = now + Math.max(0, item.start - firstStart);
       const end = now + Math.max(0.06, item.end - firstStart);
+      lastEnd = Math.max(lastEnd, end);
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "triangle";
@@ -436,8 +481,14 @@
       state.scheduled.push(osc);
     }
     state.activeButton = button;
+    state.activeProgress = button.closest(".candidate")?.querySelector(".midi-progress-bar") || null;
+    state.playbackStartTime = now;
+    state.playbackEndTime = lastEnd;
     button.dataset.label = button.textContent;
-    button.textContent = "Playing";
+    button.textContent = "Stop MIDI";
+    if (state.activeProgress) state.activeProgress.style.width = "0%";
+    state.progressTimer = window.setInterval(updateMidiProgress, 80);
+    updateMidiProgress();
   }
 
   async function loadGroup() {
@@ -511,6 +562,7 @@
         <div class="button-row">
           <button class="play-midi" data-side="${side}" ${disabled ? "disabled" : ""}>Play ${side.toUpperCase()} MIDI</button>
         </div>
+        <div class="midi-progress" aria-hidden="true"><div class="midi-progress-bar"></div></div>
       </section>`;
   }
 
@@ -625,6 +677,10 @@
     }
     const play = event.target.closest(".play-midi");
     if (play) {
+      if (state.activeButton === play) {
+        stopMidi();
+        return;
+      }
       const item = findItem(article);
       const candidate = play.dataset.side === "a" ? item?.candidate_a : item?.candidate_b;
       playCandidate(play, candidate);
