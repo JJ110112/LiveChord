@@ -1174,6 +1174,7 @@ class TestMelodyPhase3(unittest.TestCase):
 
             self.assertFalse(result.ok)
             self.assertEqual(result.results[0].candidate_id, SOLO_PIANO_POLYPHONIC)
+            self.assertEqual(result.results[0].status, "polyphonic_load_failed")
             self.assertTrue(result.results[0].error.startswith("polyphonic_load_failed:"))
             self.assertFalse(candidate_path(root, "abcdef123456", SOLO_PIANO_POLYPHONIC).exists())
 
@@ -1317,7 +1318,7 @@ class TestMelodyPhase3(unittest.TestCase):
     def test_shadow_smoke_dry_run_surfaces_vocal_dependency_errors(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            with patch("backend.ai.melody_shadow_smoke._module_available", side_effect=lambda name: name != "torchcrepe"):
+            with patch("backend.ai.melody_shadow_smoke._module_available", side_effect=lambda name: False):
                 rows, summary = run_smoke_queue(
                     [SmokeQueueItem(hash="vocal1", group="vocal", candidates=[VOCAL_STEM_CREPE])],
                     data_dir=root,
@@ -1326,8 +1327,16 @@ class TestMelodyPhase3(unittest.TestCase):
 
             self.assertFalse(rows[0]["result"]["ok"])
             self.assertEqual(rows[0]["result"]["results"][0]["status"], "dependency_missing")
-            self.assertEqual(rows[0]["result"]["results"][0]["details"]["path"], "torchcrepe")
+            self.assertEqual(rows[0]["result"]["results"][0]["details"]["path"], "demucs,torchcrepe")
             self.assertEqual(summary["by_candidate"][VOCAL_STEM_CREPE]["by_status"]["dependency_missing"], 1)
+
+            with patch("backend.ai.melody_shadow_smoke._module_available", side_effect=lambda name: name == "torchcrepe"):
+                rows, _summary = run_smoke_queue(
+                    [SmokeQueueItem(hash="vocal2", group="vocal", candidates=[VOCAL_STEM_CREPE])],
+                    data_dir=root,
+                    dry_run=True,
+                )
+            self.assertEqual(rows[0]["result"]["results"][0]["details"]["path"], "demucs")
 
     def test_shadow_smoke_report_refuses_overwrite_without_force(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -269,7 +269,7 @@ def _generate_solo_piano_polyphonic(
         return ShadowCandidateResult(
             SOLO_PIANO_POLYPHONIC,
             False,
-            "failed",
+            "polyphonic_load_failed",
             error=f"polyphonic_load_failed:{type(exc).__name__}:{exc}",
         )
     resolved_key = key if key else str(context.get("key") or "C")

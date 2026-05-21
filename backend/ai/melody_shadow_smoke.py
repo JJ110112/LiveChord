@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import importlib.util
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -278,9 +279,8 @@ def _planned_failure(candidate_id: str, status: str, path: str) -> Dict[str, Any
 
 def _module_available(module_name: str) -> bool:
     try:
-        __import__(module_name)
-        return True
-    except Exception:
+        return importlib.util.find_spec(module_name) is not None
+    except (ImportError, ValueError):
         return False
 
 
