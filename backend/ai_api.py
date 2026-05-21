@@ -6,6 +6,8 @@ from fastapi import APIRouter, Query, Body, Depends, HTTPException
 from pydantic import BaseModel, Field
 from pathlib import Path
 from typing import Any, Dict, Optional, List
+from datetime import datetime, timezone
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +155,22 @@ class MelodyDebugTagRequest(BaseModel):
     survey_id: str = ""
     segment: Optional[Dict[str, Any]] = None
     machine_proxies: Dict[str, Any] = Field(default_factory=dict)
+
+
+class MelodyAbFeedbackRequest(BaseModel):
+    song_hash: str
+    path: str = ""
+    group: str = "unknown"
+    candidate_a: str = "full_mix_pyin"
+    candidate_b: str = ""
+    preferred: str = "pending"
+    octave: str = "na"
+    sustain: str = "na"
+    boundary: str = "na"
+    overall: str = "na"
+    review_note: str = ""
+    survey_id: str = "phase0_5_ab_smoke"
+    segment: Optional[Dict[str, Any]] = None
 
 
 @router.post("/jazzify")
@@ -344,13 +362,20 @@ def get_melody_debug(
     }
 
 
-def _melody_candidate_debug_entry(candidate_id: str, *, song_hash: str, path: str) -> Dict[str, Any]:
+def _melody_candidate_debug_entry(
+    candidate_id: str,
+    *,
+    song_hash: str,
+    path: str,
+    include_melody: bool = False,
+    data_dir: Optional[Path] = None,
+) -> Dict[str, Any]:
     import json as _json
 
     from ai.melody_candidate import candidate_path
 
     if not song_hash:
-        return {
+        entry = {
             "id": candidate_id,
             "exists": False,
             "file": "",
@@ -359,10 +384,13 @@ def _melody_candidate_debug_entry(candidate_id: str, *, song_hash: str, path: st
             "melody_stats": {"note_count": 0, "active_duration_s": 0.0, "density_when_active_per_s": 0.0},
             "candidate": None,
         }
+        if include_melody:
+            entry["melody"] = []
+        return entry
 
-    cache_file = candidate_path(DATA_DIR, song_hash, candidate_id)
+    cache_file = candidate_path(data_dir or DATA_DIR, song_hash, candidate_id)
     if not cache_file.is_file():
-        return {
+        entry = {
             "id": candidate_id,
             "exists": False,
             "file": str(cache_file),
@@ -371,11 +399,14 @@ def _melody_candidate_debug_entry(candidate_id: str, *, song_hash: str, path: st
             "melody_stats": {"note_count": 0, "active_duration_s": 0.0, "density_when_active_per_s": 0.0},
             "candidate": None,
         }
+        if include_melody:
+            entry["melody"] = []
+        return entry
 
     try:
         data = _json.loads(cache_file.read_text(encoding="utf-8"))
     except Exception as exc:
-        return {
+        entry = {
             "id": candidate_id,
             "exists": True,
             "file": str(cache_file),
@@ -385,9 +416,12 @@ def _melody_candidate_debug_entry(candidate_id: str, *, song_hash: str, path: st
             "melody_stats": {"note_count": 0, "active_duration_s": 0.0, "density_when_active_per_s": 0.0},
             "candidate": None,
         }
+        if include_melody:
+            entry["melody"] = []
+        return entry
 
     payload = _finalize_melody_response(data, path=path, song_hash=song_hash)
-    return {
+    entry = {
         "id": candidate_id,
         "exists": True,
         "file": str(cache_file),
@@ -396,6 +430,9 @@ def _melody_candidate_debug_entry(candidate_id: str, *, song_hash: str, path: st
         "melody_stats": payload.get("melody_stats", {}),
         "candidate": payload.get("candidate"),
     }
+    if include_melody:
+        entry["melody"] = payload.get("melody", [])
+    return entry
 
 
 @router.get("/melody/debug/candidates")
@@ -448,6 +485,261 @@ def get_melody_debug_candidates(
         },
         "candidates": candidates,
     }
+
+
+def _melody_ab_review_dir() -> Path:
+    from ai.melody_review import resolve_review_data_dir
+
+    return resolve_review_data_dir(DATA_DIR) / "melody_reviews"
+
+
+def _read_jsonl_dicts(path: Path) -> List[Dict[str, Any]]:
+    if not path.is_file():
+        return []
+    rows: List[Dict[str, Any]] = []
+    import json as _json
+
+    for raw in path.read_text(encoding="utf-8-sig").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            data = _json.loads(line)
+        except Exception:
+            continue
+        if isinstance(data, dict):
+            rows.append(data)
+    return rows
+
+
+def _candidate_pair_for_ab_group(group: str, resolved: List[str]) -> List[str]:
+    from ai.melody_candidate import FULL_MIX_PYIN, INSTRUMENT_LEAD, SOLO_PIANO_POLYPHONIC, VOCAL_STEM_CREPE
+
+    clean = str(group or "").strip()
+    if clean == "vocal":
+        return [FULL_MIX_PYIN, VOCAL_STEM_CREPE]
+    if clean in {"piano", "solo_piano"}:
+        return [FULL_MIX_PYIN, SOLO_PIANO_POLYPHONIC]
+    if clean == "instrumental":
+        return [FULL_MIX_PYIN, INSTRUMENT_LEAD]
+    candidates = [item for item in resolved if item]
+    if not candidates:
+        candidates = [FULL_MIX_PYIN]
+    if len(candidates) == 1:
+        candidates.append("")
+    return candidates[:2]
+
+
+def _candidate_label(candidate_id: str) -> str:
+    labels = {
+        "full_mix_pyin": "Full-mix pYIN",
+        "vocal_stem_crepe": "Vocal stem CREPE",
+        "solo_piano_polyphonic": "Piano RH polyphonic",
+        "instrument_lead": "Instrument lead",
+        "vocal_full_mix_ftanet": "Full-mix FTANet",
+        "midi_aligned": "MIDI aligned",
+    }
+    return labels.get(candidate_id, candidate_id or "Not available")
+
+
+def _blank_ab_candidate(candidate_id: str) -> Dict[str, Any]:
+    return {
+        "id": candidate_id,
+        "label": _candidate_label(candidate_id),
+        "exists": False,
+        "file": "",
+        "melody": [],
+        "melody_source": {"id": candidate_id, "selected_by": "not_available"},
+        "quality_flags": ["candidate_not_requested"],
+        "melody_stats": {"note_count": 0, "active_duration_s": 0.0, "density_when_active_per_s": 0.0},
+        "candidate": None,
+        "smoke_status": "",
+        "smoke_ok": False,
+        "smoke_error": "",
+    }
+
+
+def _latest_ab_feedback(feedback_file: Path) -> Dict[str, Dict[str, Any]]:
+    latest: Dict[str, Dict[str, Any]] = {}
+    for entry in _read_jsonl_dicts(feedback_file):
+        key = _ab_feedback_key(entry)
+        if key:
+            latest[key] = entry
+    return latest
+
+
+def _ab_feedback_key(data: Dict[str, Any]) -> str:
+    song_hash = str(data.get("song_hash") or "").strip()
+    if not song_hash:
+        return ""
+    group = str(data.get("group") or "").strip()
+    candidate_a = str(data.get("candidate_a") or "").strip()
+    candidate_b = str(data.get("candidate_b") or "").strip()
+    return "|".join([song_hash, group, candidate_a, candidate_b])
+
+
+def _title_from_audio_path(path: str) -> str:
+    name = Path(path or "").name
+    return name.rsplit(".", 1)[0] if "." in name else name
+
+
+@router.get("/melody/ab/review")
+def get_melody_ab_review(
+    group: str = Query(default="all", description="all, vocal, piano, solo_piano, instrumental"),
+    _: str = Depends(get_admin_user),
+):
+    """Admin-only temporary A/B review queue for RH melody extraction candidates."""
+
+    review_dir = _melody_ab_review_dir()
+    data_root = review_dir.parent
+    smoke_file = review_dir / "phase0_5_ab_smoke_results.jsonl"
+    summary_file = review_dir / "phase0_5_ab_smoke_results.jsonl.summary.json"
+    feedback_file = review_dir / "phase0_5_ab_feedback.jsonl"
+    rows = _read_jsonl_dicts(smoke_file)
+    latest_feedback = _latest_ab_feedback(feedback_file)
+    clean_group = str(group or "all").strip()
+    if clean_group == "piano":
+        clean_group = "solo_piano"
+
+    items = []
+    group_counts: Dict[str, int] = {}
+    for row in rows:
+        row_group = str(row.get("group") or "unknown").strip() or "unknown"
+        group_counts[row_group] = group_counts.get(row_group, 0) + 1
+        if clean_group != "all" and row_group != clean_group:
+            continue
+
+        result = row.get("result") or {}
+        requested = row.get("requested") or {}
+        song_hash = str(result.get("song_hash") or requested.get("hash") or "").strip()
+        path = str(result.get("path") or requested.get("path") or "").strip()
+        resolved_candidates = [str(item or "") for item in row.get("resolved_candidates") or []]
+        smoke_by_id = {
+            str(item.get("candidate_id") or ""): item
+            for item in result.get("results") or []
+            if isinstance(item, dict)
+        }
+        pair = _candidate_pair_for_ab_group(row_group, resolved_candidates)
+        candidate_entries = []
+        for candidate_id in pair:
+            if not candidate_id:
+                candidate_entries.append(_blank_ab_candidate(candidate_id))
+                continue
+            entry = _melody_candidate_debug_entry(
+                candidate_id,
+                song_hash=song_hash,
+                path=path,
+                include_melody=True,
+                data_dir=data_root,
+            )
+            smoke = smoke_by_id.get(candidate_id) or {}
+            entry["label"] = _candidate_label(candidate_id)
+            entry["smoke_status"] = str(smoke.get("status") or ("cached" if entry.get("exists") else ""))
+            entry["smoke_ok"] = bool(smoke.get("ok") if smoke else entry.get("exists"))
+            entry["smoke_error"] = str(smoke.get("error") or "")
+            candidate_entries.append(entry)
+
+        feedback_key = _ab_feedback_key({
+            "song_hash": song_hash,
+            "group": row_group,
+            "candidate_a": pair[0] if pair else "",
+            "candidate_b": pair[1] if len(pair) > 1 else "",
+        })
+        items.append({
+            "sample_order": row.get("sample_order"),
+            "group": row_group,
+            "hash": song_hash,
+            "path": path,
+            "title": str(requested.get("title") or _title_from_audio_path(path)),
+            "artist": str(requested.get("artist") or ""),
+            "note": str(row.get("note") or requested.get("note") or ""),
+            "warnings": row.get("warnings") or [],
+            "audio_url": f"/api/track/stream?path={quote(path, safe='')}" if path else "",
+            "candidate_a": candidate_entries[0] if candidate_entries else _blank_ab_candidate(""),
+            "candidate_b": candidate_entries[1] if len(candidate_entries) > 1 else _blank_ab_candidate(""),
+            "feedback": latest_feedback.get(feedback_key),
+        })
+
+    items.sort(key=lambda item: int(item.get("sample_order") or 0))
+    summary: Dict[str, Any] = {}
+    if summary_file.is_file():
+        import json as _json
+        try:
+            data = _json.loads(summary_file.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                summary = data
+        except Exception:
+            summary = {}
+
+    return {
+        "ok": True,
+        "group": group,
+        "smoke_file": str(smoke_file),
+        "feedback_file": str(feedback_file),
+        "summary": summary,
+        "group_counts": group_counts,
+        "total": len(items),
+        "items": items,
+    }
+
+
+@router.post("/melody/ab/feedback")
+def post_melody_ab_feedback(
+    body: MelodyAbFeedbackRequest,
+    reviewer: str = Depends(get_admin_user),
+):
+    """Append one temporary RH melody A/B review decision."""
+
+    from ai.melody_candidate import VALID_CANDIDATE_IDS
+
+    if not body.song_hash.strip():
+        raise HTTPException(status_code=400, detail="song_hash is required")
+    allowed_preferences = {"a", "b", "tie", "neither", "pending"}
+    if body.preferred not in allowed_preferences:
+        raise HTTPException(status_code=400, detail="preferred must be one of: a, b, tie, neither, pending")
+    allowed_axis = {"a", "b", "tie", "na"}
+    for field_name, value in {
+        "octave": body.octave,
+        "sustain": body.sustain,
+        "boundary": body.boundary,
+        "overall": body.overall,
+    }.items():
+        if value not in allowed_axis:
+            raise HTTPException(status_code=400, detail=f"{field_name} must be one of: a, b, tie, na")
+    for candidate_id in [body.candidate_a, body.candidate_b]:
+        clean_id = str(candidate_id or "").strip()
+        if clean_id and clean_id not in VALID_CANDIDATE_IDS:
+            allowed = ", ".join(sorted(VALID_CANDIDATE_IDS))
+            raise HTTPException(status_code=400, detail=f"candidate must be one of: {allowed}")
+
+    review_dir = _melody_ab_review_dir()
+    review_dir.mkdir(parents=True, exist_ok=True)
+    feedback_file = review_dir / "phase0_5_ab_feedback.jsonl"
+    entry = {
+        "schema_version": 1,
+        "phase": "phase0_5_ab",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "reviewer": reviewer,
+        "survey_id": body.survey_id.strip() or "phase0_5_ab_smoke",
+        "song_hash": body.song_hash.strip(),
+        "path": body.path,
+        "group": body.group.strip() or "unknown",
+        "candidate_a": body.candidate_a.strip(),
+        "candidate_b": body.candidate_b.strip(),
+        "preferred": body.preferred,
+        "octave": body.octave,
+        "sustain": body.sustain,
+        "boundary": body.boundary,
+        "overall": body.overall,
+        "segment": body.segment or {},
+        "review_note": body.review_note[:2000],
+    }
+    import json as _json
+
+    line = _json.dumps(entry, ensure_ascii=False, sort_keys=True)
+    with feedback_file.open("a", encoding="utf-8", newline="\n") as fh:
+        fh.write(line + "\n")
+    return {"ok": True, "file": str(feedback_file), "entry": entry}
 
 
 @router.post("/melody/debug/tag")

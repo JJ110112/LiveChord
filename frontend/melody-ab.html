@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiveChord RH Melody A/B</title>
+  <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
+  <script>
+    if (!localStorage.getItem("livechord_token")) {
+      fetch("/api/auth/is_admin").then(r => {
+        if (!r.ok) window.location.href = "/login";
+      }).catch(() => {
+        window.location.href = "/login";
+      });
+    }
+  </script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #11161d;
+      --panel: #171e27;
+      --panel-soft: #1d2632;
+      --border: #2b3544;
+      --text: #eef3f8;
+      --muted: #96a5b8;
+      --accent: #5fb3a8;
+      --accent-strong: #7dd6ca;
+      --warn: #e5ad4f;
+      --bad: #df7171;
+      --ok: #8bcf8b;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 22px;
+    }
+
+    header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-size: 26px;
+      line-height: 1.1;
+      margin: 0 0 6px;
+      font-weight: 760;
+    }
+
+    .subline {
+      color: var(--muted);
+      font-size: 13px;
+      word-break: break-word;
+    }
+
+    .tabs,
+    .top-actions,
+    .button-row,
+    .choice-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    button,
+    .choice {
+      border: 1px solid var(--border);
+      background: var(--panel-soft);
+      color: var(--text);
+      border-radius: 7px;
+      padding: 8px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      min-height: 36px;
+    }
+
+    button:hover,
+    .choice:hover { border-color: var(--accent); }
+    button:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+
+    .tab.active,
+    .choice.active {
+      background: rgba(95, 179, 168, .18);
+      border-color: var(--accent);
+      color: var(--accent-strong);
+    }
+
+    .top-actions input {
+      min-width: 210px;
+      flex: 1;
+      border: 1px solid var(--border);
+      background: #0d1218;
+      color: var(--text);
+      border-radius: 7px;
+      padding: 9px 12px;
+      font-size: 13px;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 14px;
+    }
+
+    #status {
+      color: var(--muted);
+      font-size: 13px;
+      min-height: 18px;
+    }
+
+    .song {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    .song-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: start;
+      margin-bottom: 12px;
+    }
+
+    .song-title {
+      font-size: 16px;
+      font-weight: 720;
+      margin-bottom: 4px;
+      overflow-wrap: anywhere;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 23px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .badge.ok { color: var(--ok); border-color: rgba(139, 207, 139, .45); }
+    .badge.warn { color: var(--warn); border-color: rgba(229, 173, 79, .45); }
+    .badge.bad { color: var(--bad); border-color: rgba(223, 113, 113, .45); }
+
+    audio {
+      width: 100%;
+      height: 38px;
+      margin-bottom: 12px;
+    }
+
+    .compare {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .candidate {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      background: #141b24;
+      min-width: 0;
+    }
+
+    .candidate h2 {
+      font-size: 14px;
+      margin: 0 0 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      margin: 8px 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .stat {
+      background: rgba(255,255,255,.035);
+      border-radius: 6px;
+      padding: 7px;
+      min-width: 0;
+    }
+
+    .stat strong {
+      display: block;
+      color: var(--text);
+      font-size: 14px;
+      margin-bottom: 2px;
+    }
+
+    .feedback {
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+    }
+
+    .feedback-grid {
+      display: grid;
+      grid-template-columns: 120px minmax(0, 1fr);
+      gap: 9px 12px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .feedback label {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 68px;
+      border: 1px solid var(--border);
+      background: #0d1218;
+      color: var(--text);
+      border-radius: 7px;
+      padding: 9px 10px;
+      resize: vertical;
+      font: inherit;
+      font-size: 13px;
+    }
+
+    .save-state {
+      color: var(--muted);
+      font-size: 12px;
+      margin-left: 8px;
+    }
+
+    .empty {
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      padding: 30px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    @media (max-width: 760px) {
+      main { padding: 14px; }
+      header,
+      .toolbar,
+      .song-head,
+      .compare,
+      .feedback-grid {
+        grid-template-columns: 1fr;
+      }
+      header { align-items: stretch; }
+      .top-actions input { min-width: 0; width: 100%; }
+      .choice-row { gap: 6px; }
+      button, .choice { padding: 8px 10px; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>RH Melody A/B 評比</h1>
+      <div class="subline" id="sourceLine">loading</div>
+    </div>
+    <div class="top-actions">
+      <input id="filterInput" type="search" placeholder="filter hash / title / path">
+      <button id="reloadBtn">Reload</button>
+      <button id="stopBtn">Stop</button>
+    </div>
+  </header>
+
+  <section class="toolbar">
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-group="vocal">Vocal</button>
+      <button class="tab" data-group="solo_piano">Piano</button>
+      <button class="tab" data-group="instrumental">Instrumental</button>
+      <button class="tab" data-group="all">All</button>
+    </div>
+    <div id="status">not loaded</div>
+  </section>
+
+  <section id="songList" aria-live="polite"></section>
+</main>
+
+<script>
+(function () {
+  const state = {
+    group: "vocal",
+    items: [],
+    filtered: [],
+    audioContext: null,
+    scheduled: [],
+    activeButton: null
+  };
+
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const list = $("#songList");
+  const status = $("#status");
+  const sourceLine = $("#sourceLine");
+
+  function fmt(value, digits = 2) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num.toFixed(digits) : "0";
+  }
+
+  function noteCount(candidate) {
+    return Number(candidate?.melody_stats?.note_count || candidate?.melody?.length || 0);
+  }
+
+  function candidateBadge(candidate) {
+    if (candidate?.exists) return `<span class="badge ok">${escapeHtml(candidate.smoke_status || "cached")}</span>`;
+    const label = candidate?.smoke_status || (candidate?.quality_flags || []).join(",") || "missing";
+    return `<span class="badge bad">${escapeHtml(label)}</span>`;
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, ch => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[ch]));
+  }
+
+  function midiFromEvent(event) {
+    const direct = Number(event.midi ?? event.pitch);
+    if (Number.isFinite(direct)) return direct;
+    const note = String(event.note || "").trim();
+    const match = /^([A-Ga-g])([#b]?)(-?\d+)$/.exec(note);
+    if (!match) return 60;
+    const base = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[match[1].toUpperCase()];
+    const accidental = match[2] === "#" ? 1 : (match[2] === "b" ? -1 : 0);
+    return 12 * (Number(match[3]) + 1) + base + accidental;
+  }
+
+  function eventStart(event) {
+    return Number(event.start ?? event.time ?? 0) || 0;
+  }
+
+  function eventEnd(event) {
+    const start = eventStart(event);
+    const end = Number(event.end);
+    if (Number.isFinite(end)) return Math.max(end, start + 0.04);
+    const duration = Number(event.duration);
+    return start + (Number.isFinite(duration) ? Math.max(duration, 0.04) : 0.18);
+  }
+
+  function stopMidi() {
+    for (const node of state.scheduled) {
+      try { node.stop(); } catch (err) {}
+    }
+    state.scheduled = [];
+    if (state.activeButton) {
+      state.activeButton.textContent = state.activeButton.dataset.label || state.activeButton.textContent;
+      state.activeButton = null;
+    }
+  }
+
+  function playCandidate(button, candidate) {
+    const melody = Array.isArray(candidate?.melody) ? candidate.melody : [];
+    if (!melody.length) return;
+    stopMidi();
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) {
+      alert("WebAudio unavailable");
+      return;
+    }
+    if (!state.audioContext) state.audioContext = new AudioCtx();
+    const ctx = state.audioContext;
+    if (ctx.state === "suspended") ctx.resume();
+    const usable = melody
+      .map(event => ({ event, start: eventStart(event), end: eventEnd(event) }))
+      .filter(item => Number.isFinite(item.start) && Number.isFinite(item.end) && item.end > item.start)
+      .sort((a, b) => a.start - b.start)
+      .slice(0, 900);
+    if (!usable.length) return;
+    const firstStart = usable[0].start;
+    const now = ctx.currentTime + 0.04;
+    const master = ctx.createGain();
+    master.gain.value = 0.18;
+    master.connect(ctx.destination);
+    for (const item of usable) {
+      const midi = midiFromEvent(item.event);
+      const freq = 440 * Math.pow(2, (midi - 69) / 12);
+      const start = now + Math.max(0, item.start - firstStart);
+      const end = now + Math.max(0.06, item.end - firstStart);
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.5, start + 0.012);
+      gain.gain.setValueAtTime(0.42, Math.max(start + 0.013, end - 0.035));
+      gain.gain.exponentialRampToValueAtTime(0.0001, end);
+      osc.connect(gain);
+      gain.connect(master);
+      osc.start(start);
+      osc.stop(end + 0.02);
+      state.scheduled.push(osc);
+    }
+    state.activeButton = button;
+    button.dataset.label = button.textContent;
+    button.textContent = "Playing";
+  }
+
+  async function loadGroup() {
+    status.textContent = "loading";
+    list.innerHTML = "";
+    const res = await fetch(`/api/ai/melody/ab/review?group=${encodeURIComponent(state.group)}`);
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.detail || data.error || res.statusText);
+    state.items = data.items || [];
+    sourceLine.textContent = `${data.total || 0} rows · ${data.smoke_file || ""}`;
+    applyFilter();
+    const counts = data.group_counts || {};
+    status.textContent = `vocal ${counts.vocal || 0} · piano ${counts.solo_piano || 0} · instrumental ${counts.instrumental || 0}`;
+  }
+
+  function applyFilter() {
+    const needle = $("#filterInput").value.trim().toLowerCase();
+    state.filtered = !needle ? state.items : state.items.filter(item => {
+      return [item.hash, item.title, item.artist, item.path, item.note].some(value =>
+        String(value || "").toLowerCase().includes(needle)
+      );
+    });
+    render();
+  }
+
+  function render() {
+    stopMidi();
+    if (!state.filtered.length) {
+      list.innerHTML = `<div class="empty">No review rows</div>`;
+      return;
+    }
+    list.innerHTML = state.filtered.map(renderSong).join("");
+    for (const item of state.filtered) hydrateFeedback(item);
+  }
+
+  function renderSong(item) {
+    const a = item.candidate_a || {};
+    const b = item.candidate_b || {};
+    const songLabel = [item.artist, item.title].filter(Boolean).join(" - ") || item.title || item.hash;
+    return `
+      <article class="song" data-hash="${escapeHtml(item.hash)}" data-group="${escapeHtml(item.group)}">
+        <div class="song-head">
+          <div>
+            <div class="song-title">${escapeHtml(item.sample_order || "")}. ${escapeHtml(songLabel)}</div>
+            <div class="meta">${escapeHtml(item.path || "")}</div>
+            <div class="meta">${escapeHtml(item.hash || "")}${item.note ? " · " + escapeHtml(item.note) : ""}</div>
+          </div>
+          <span class="badge warn">${escapeHtml(item.group || "unknown")}</span>
+        </div>
+        ${item.audio_url ? `<audio controls preload="none" src="${escapeHtml(item.audio_url)}"></audio>` : ""}
+        <div class="compare">
+          ${renderCandidate("a", a)}
+          ${renderCandidate("b", b)}
+        </div>
+        ${renderFeedback(item)}
+      </article>`;
+  }
+
+  function renderCandidate(side, candidate) {
+    const disabled = !candidate?.exists || !noteCount(candidate);
+    const stats = candidate?.melody_stats || {};
+    return `
+      <section class="candidate" data-side="${side}">
+        <h2><span>${side.toUpperCase()} · ${escapeHtml(candidate?.label || candidate?.id || "")}</span>${candidateBadge(candidate)}</h2>
+        <div class="stats">
+          <div class="stat"><strong>${noteCount(candidate)}</strong>notes</div>
+          <div class="stat"><strong>${fmt(stats.active_duration_s, 1)}</strong>active s</div>
+          <div class="stat"><strong>${fmt(stats.density_when_active_per_s, 2)}</strong>notes/s</div>
+        </div>
+        <div class="meta">${escapeHtml(candidate?.melody_source?.algorithm || "")}</div>
+        <div class="button-row">
+          <button class="play-midi" data-side="${side}" ${disabled ? "disabled" : ""}>Play ${side.toUpperCase()} MIDI</button>
+        </div>
+      </section>`;
+  }
+
+  function renderFeedback(item) {
+    return `
+      <section class="feedback">
+        ${choiceGroup("preferred", "Verdict", [["a", "A better"], ["b", "B better"], ["tie", "Tie"], ["neither", "Neither"], ["pending", "Pending"]])}
+        ${choiceGroup("octave", "Octave", [["a", "A"], ["b", "B"], ["tie", "Tie"], ["na", "N/A"]])}
+        ${choiceGroup("sustain", "Sustain", [["a", "A"], ["b", "B"], ["tie", "Tie"], ["na", "N/A"]])}
+        ${choiceGroup("boundary", "Boundary", [["a", "A"], ["b", "B"], ["tie", "Tie"], ["na", "N/A"]])}
+        <textarea data-field="review_note" placeholder="notes"></textarea>
+        <div class="button-row">
+          <button class="save-feedback">Save feedback</button>
+          <span class="save-state"></span>
+        </div>
+      </section>`;
+  }
+
+  function choiceGroup(field, label, choices) {
+    return `
+      <div class="feedback-grid" data-field="${field}">
+        <label>${label}</label>
+        <div class="choice-row">
+          ${choices.map(([value, text]) => `<button type="button" class="choice" data-value="${value}">${text}</button>`).join("")}
+        </div>
+      </div>`;
+  }
+
+  function findItem(article) {
+    const hash = article.dataset.hash;
+    const group = article.dataset.group;
+    return state.filtered.find(item => item.hash === hash && item.group === group);
+  }
+
+  function setChoice(article, field, value) {
+    const wrap = article.querySelector(`.feedback-grid[data-field="${field}"]`);
+    if (!wrap) return;
+    for (const button of wrap.querySelectorAll(".choice")) {
+      button.classList.toggle("active", button.dataset.value === value);
+    }
+  }
+
+  function getChoice(article, field, fallback) {
+    return article.querySelector(`.feedback-grid[data-field="${field}"] .choice.active`)?.dataset.value || fallback;
+  }
+
+  function hydrateFeedback(item) {
+    const article = list.querySelector(`.song[data-hash="${CSS.escape(item.hash)}"][data-group="${CSS.escape(item.group)}"]`);
+    if (!article) return;
+    const fb = item.feedback || {};
+    setChoice(article, "preferred", fb.preferred || "pending");
+    setChoice(article, "octave", fb.octave || "na");
+    setChoice(article, "sustain", fb.sustain || "na");
+    setChoice(article, "boundary", fb.boundary || "na");
+    const textarea = article.querySelector("textarea[data-field='review_note']");
+    if (textarea) textarea.value = fb.review_note || "";
+    const stateEl = article.querySelector(".save-state");
+    if (stateEl && fb.created_at) stateEl.textContent = `saved ${fb.created_at}`;
+  }
+
+  async function saveFeedback(article) {
+    const item = findItem(article);
+    if (!item) return;
+    const payload = {
+      song_hash: item.hash,
+      path: item.path,
+      group: item.group,
+      candidate_a: item.candidate_a?.id || "",
+      candidate_b: item.candidate_b?.id || "",
+      preferred: getChoice(article, "preferred", "pending"),
+      octave: getChoice(article, "octave", "na"),
+      sustain: getChoice(article, "sustain", "na"),
+      boundary: getChoice(article, "boundary", "na"),
+      overall: ["a", "b", "tie"].includes(getChoice(article, "preferred", "pending"))
+        ? getChoice(article, "preferred", "na")
+        : "na",
+      review_note: article.querySelector("textarea[data-field='review_note']")?.value || "",
+      survey_id: "phase0_5_ab_smoke"
+    };
+    const stateEl = article.querySelector(".save-state");
+    stateEl.textContent = "saving";
+    const res = await fetch("/api/ai/melody/ab/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.detail || data.error || res.statusText);
+    item.feedback = data.entry;
+    stateEl.textContent = `saved ${data.entry.created_at}`;
+  }
+
+  $("#tabs").addEventListener("click", event => {
+    const button = event.target.closest(".tab");
+    if (!button) return;
+    state.group = button.dataset.group;
+    for (const tab of document.querySelectorAll(".tab")) tab.classList.toggle("active", tab === button);
+    loadGroup().catch(err => {
+      status.textContent = `Failed: ${err.message}`;
+      list.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+    });
+  });
+
+  list.addEventListener("click", event => {
+    const article = event.target.closest(".song");
+    if (!article) return;
+    const choice = event.target.closest(".choice");
+    if (choice) {
+      const field = choice.closest(".feedback-grid")?.dataset.field;
+      if (field) setChoice(article, field, choice.dataset.value);
+      return;
+    }
+    const play = event.target.closest(".play-midi");
+    if (play) {
+      const item = findItem(article);
+      const candidate = play.dataset.side === "a" ? item?.candidate_a : item?.candidate_b;
+      playCandidate(play, candidate);
+      return;
+    }
+    const save = event.target.closest(".save-feedback");
+    if (save) {
+      saveFeedback(article).catch(err => {
+        const stateEl = article.querySelector(".save-state");
+        stateEl.textContent = `failed: ${err.message}`;
+      });
+    }
+  });
+
+  $("#filterInput").addEventListener("input", applyFilter);
+  $("#reloadBtn").addEventListener("click", () => loadGroup().catch(err => status.textContent = `Failed: ${err.message}`));
+  $("#stopBtn").addEventListener("click", stopMidi);
+  window.addEventListener("beforeunload", stopMidi);
+
+  loadGroup().catch(err => {
+    status.textContent = `Failed: ${err.message}`;
+    list.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+  });
+})();
+</script>
+</body>
+</html>

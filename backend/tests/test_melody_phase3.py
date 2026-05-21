@@ -434,6 +434,121 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertIn("invalid_json", by_id[VOCAL_STEM_CREPE]["error"])
             self.assertIn("candidate_invalid_json", by_id[VOCAL_STEM_CREPE]["quality_flags"])
 
+    def test_ai_api_melody_ab_review_lists_candidates_and_latest_feedback(self):
+        backend_dir = Path(__file__).resolve().parents[1]
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        import ai_api
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review_dir = root / "melody_reviews"
+            review_dir.mkdir()
+            song_hash = "song123"
+            smoke_row = {
+                "sample_order": 1,
+                "group": "vocal",
+                "requested": {"path": "song.mp3", "title": "Song", "artist": "Singer"},
+                "resolved_candidates": [FULL_MIX_PYIN, VOCAL_STEM_CREPE],
+                "result": {
+                    "song_hash": song_hash,
+                    "path": "song.mp3",
+                    "results": [
+                        {"candidate_id": FULL_MIX_PYIN, "ok": True, "status": "cached"},
+                        {"candidate_id": VOCAL_STEM_CREPE, "ok": True, "status": "generated"},
+                    ],
+                },
+            }
+            (review_dir / "phase0_5_ab_smoke_results.jsonl").write_text(
+                json.dumps(smoke_row) + "\n",
+                encoding="utf-8",
+            )
+            (review_dir / "phase0_5_ab_feedback.jsonl").write_text(
+                json.dumps({
+                    "song_hash": song_hash,
+                    "group": "vocal",
+                    "candidate_a": FULL_MIX_PYIN,
+                    "candidate_b": VOCAL_STEM_CREPE,
+                    "preferred": "b",
+                    "review_note": "stem is cleaner",
+                    "created_at": "2026-05-21T00:00:00+00:00",
+                }) + "\n",
+                encoding="utf-8",
+            )
+            write_candidate_cache(
+                root,
+                song_hash,
+                FULL_MIX_PYIN,
+                build_candidate_payload(
+                    song_hash=song_hash,
+                    path="song.mp3",
+                    candidate_id=FULL_MIX_PYIN,
+                    melody=[{"start": 0.0, "end": 0.5, "note": "C4", "midi": 60}],
+                    stem="full_mix",
+                    algorithm="pyin",
+                ),
+            )
+            write_candidate_cache(
+                root,
+                song_hash,
+                VOCAL_STEM_CREPE,
+                build_candidate_payload(
+                    song_hash=song_hash,
+                    path="song.mp3",
+                    candidate_id=VOCAL_STEM_CREPE,
+                    melody=[{"start": 0.0, "end": 0.4, "note": "D4", "midi": 62}],
+                    stem="vocals",
+                    algorithm="htdemucs+crepe",
+                ),
+            )
+
+            with patch.object(ai_api, "DATA_DIR", root):
+                result = ai_api.get_melody_ab_review(group="vocal", _="admin")
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["total"], 1)
+            item = result["items"][0]
+            self.assertEqual(item["title"], "Song")
+            self.assertIn("/api/track/stream?path=song.mp3", item["audio_url"])
+            self.assertEqual(item["candidate_a"]["id"], FULL_MIX_PYIN)
+            self.assertEqual(item["candidate_b"]["id"], VOCAL_STEM_CREPE)
+            self.assertEqual(item["candidate_a"]["melody"][0]["midi"], 60)
+            self.assertEqual(item["candidate_b"]["smoke_status"], "generated")
+            self.assertEqual(item["feedback"]["preferred"], "b")
+
+    def test_ai_api_melody_ab_feedback_appends_jsonl(self):
+        backend_dir = Path(__file__).resolve().parents[1]
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        import ai_api
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "melody_reviews").mkdir()
+            body = ai_api.MelodyAbFeedbackRequest(
+                song_hash="song123",
+                path="song.mp3",
+                group="vocal",
+                candidate_a=FULL_MIX_PYIN,
+                candidate_b=VOCAL_STEM_CREPE,
+                preferred="b",
+                octave="b",
+                sustain="tie",
+                boundary="b",
+                review_note="better phrase endings",
+            )
+
+            with patch.object(ai_api, "DATA_DIR", root):
+                result = ai_api.post_melody_ab_feedback(body=body, reviewer="teacher")
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["entry"]["reviewer"], "teacher")
+            self.assertEqual(result["entry"]["preferred"], "b")
+            log_file = root / "melody_reviews" / "phase0_5_ab_feedback.jsonl"
+            rows = [json.loads(line) for line in log_file.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["review_note"], "better phrase endings")
+
     def test_ai_api_melody_debug_tag_rejects_unknown_labels(self):
         backend_dir = Path(__file__).resolve().parents[1]
         if str(backend_dir) not in sys.path:

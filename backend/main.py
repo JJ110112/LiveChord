@@ -216,7 +216,7 @@ async def admin_lan_restriction(request: Request, call_next):
     path = request.url.path
     
     # We still keep _ADMIN_PREFIXES definition here for local use
-    _ADMIN_PREFIXES = ("/admin", "/api/auto/", "/api/tasks/", "/api/library/")
+    _ADMIN_PREFIXES = ("/admin", "/melody-ab", "/api/auto/", "/api/tasks/", "/api/library/")
     
     if is_beta_mode() and any(path.startswith(p) for p in _ADMIN_PREFIXES):
         # Check real client IP: CF-Connecting-IP (Cloudflare), X-Forwarded-For, or direct
@@ -530,6 +530,12 @@ async def editor():
 @app.get("/admin.html")
 async def admin():
     return FileResponse(FRONTEND_DIR / "admin.html", headers=NO_CACHE_HEADERS)
+
+
+@app.get("/melody-ab")
+@app.get("/melody-ab.html")
+async def melody_ab_page():
+    return FileResponse(FRONTEND_DIR / "melody-ab.html", headers=NO_CACHE_HEADERS)
 
 
 @app.get("/benchmark")
