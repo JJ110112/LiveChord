@@ -33,7 +33,15 @@ from backend.ai.melody_candidate import (
     stem_path,
     write_candidate_cache,
 )
-from backend.ai.melody_shadow_generator import generate_shadow_candidates
+from backend.ai.melody_shadow_generator import ShadowCandidateResult, ShadowGenerationResult, generate_shadow_candidates
+from backend.ai.melody_shadow_smoke import (
+    FULL_MIX_PYIN as SMOKE_FULL_MIX_PYIN,
+    SMOKE_SURVEY_ID,
+    SmokeQueueItem,
+    read_smoke_queue,
+    run_smoke_queue,
+    write_smoke_report,
+)
 from backend.ai.piano_rh_selector import select_right_hand_melody
 from backend.ai.melody_schema import (
     MELODY_EVENT_SCHEMA_VERSION,
@@ -1169,6 +1177,77 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(result.results[0].candidate_id, SOLO_PIANO_POLYPHONIC)
             self.assertTrue(result.results[0].error.startswith("polyphonic_load_failed:"))
             self.assertFalse(candidate_path(root, "abcdef123456", SOLO_PIANO_POLYPHONIC).exists())
+
+    def test_shadow_smoke_queue_defaults_candidates_by_group(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            queue = root / "queue.jsonl"
+            queue.write_text(
+                "\n".join([
+                    json.dumps({"hash": "vocal123", "group": "vocal"}),
+                    json.dumps({"hash": "piano123", "group": "solo_piano", "polyphonic_json": str(root / "notes.json")}),
+                    json.dumps({"hash": "inst123", "group": "instrumental"}),
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            items = read_smoke_queue(queue)
+
+            self.assertEqual(items[0].resolved_candidates(), [SMOKE_FULL_MIX_PYIN, VOCAL_STEM_CREPE])
+            self.assertEqual(items[1].resolved_candidates(), [FULL_MIX_PYIN, SOLO_PIANO_POLYPHONIC])
+            self.assertEqual(items[2].resolved_candidates(), [FULL_MIX_PYIN])
+
+    def test_shadow_smoke_runner_invokes_generator_and_writes_report(self):
+        calls = []
+
+        def fake_generator(**kwargs):
+            calls.append(kwargs)
+            candidate_id = kwargs["candidates"][0]
+            return ShadowGenerationResult(
+                ok=True,
+                song_hash=kwargs.get("song_hash") or "hash-from-path",
+                path=kwargs.get("path") or "",
+                audio_path=kwargs.get("audio_path") or "",
+                results=[
+                    ShadowCandidateResult(
+                        candidate_id=candidate_id,
+                        ok=True,
+                        status="generated",
+                        cache_file=f"/tmp/{candidate_id}.json",
+                    )
+                ],
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            items = [
+                SmokeQueueItem(hash="abc123", group="vocal", candidates=[VOCAL_STEM_CREPE]),
+                SmokeQueueItem(path="Classics/piano.flac", group="solo_piano", candidates=[SOLO_PIANO_POLYPHONIC], polyphonic_json="notes.json"),
+            ]
+
+            rows, summary = run_smoke_queue(items, data_dir=root, generator=fake_generator)
+            out = root / "reviews" / "smoke.jsonl"
+            written = write_smoke_report(rows, summary, out)
+
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(calls[0]["candidates"], [VOCAL_STEM_CREPE])
+            self.assertEqual(calls[1]["polyphonic_json"], "notes.json")
+            self.assertEqual(summary["survey_id"], SMOKE_SURVEY_ID)
+            self.assertEqual(summary["ok"], 2)
+            self.assertEqual(summary["by_candidate"][VOCAL_STEM_CREPE]["generated"], 1)
+            self.assertTrue(out.is_file())
+            self.assertTrue(Path(written["summary_output"]).is_file())
+            loaded_rows = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(loaded_rows[0]["survey_id"], SMOKE_SURVEY_ID)
+
+    def test_shadow_smoke_report_refuses_overwrite_without_force(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out = root / "smoke.jsonl"
+            out.write_text("existing\n", encoding="utf-8")
+
+            with self.assertRaises(FileExistsError):
+                write_smoke_report([], {"survey_id": SMOKE_SURVEY_ID}, out, force=False)
 
 
 if __name__ == "__main__":
