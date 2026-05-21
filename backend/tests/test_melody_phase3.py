@@ -10,6 +10,7 @@ from unittest.mock import patch
 from fastapi import HTTPException
 
 import tools.sample_melody_phase0_survey as survey_script
+import tools.run_basic_pitch_polyphonic_batch as polyphonic_script
 from backend.ai.melody_extractor import MelodyExtractor
 from backend.ai.melody_extractor_v2 import MelodyExtractorV2
 from backend.ai.melody_review import (
@@ -1466,6 +1467,44 @@ class TestMelodyPhase3(unittest.TestCase):
 
             with self.assertRaises(FileExistsError):
                 write_smoke_report([], {"survey_id": SMOKE_SURVEY_ID}, out, force=False)
+
+    def test_basic_pitch_polyphonic_events_to_notes(self):
+        notes = polyphonic_script.basic_pitch_events_to_notes([
+            (0.1, 0.5, 60.2, 0.5, []),
+            (0.1, 0.4, 72.0, 1.2, []),
+            ("bad", 1.0, 64, 0.1, []),
+        ])
+
+        self.assertEqual([note["midi"] for note in notes], [72, 60])
+        self.assertEqual(notes[0]["velocity"], 127)
+        self.assertEqual(notes[1]["velocity"], 64)
+        self.assertEqual(notes[1]["confidence"], 0.5)
+
+    def test_basic_pitch_polyphonic_batch_writes_queue_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            audio = root / "song.flac"
+            audio.write_text("audio", encoding="utf-8")
+            out = root / "polyphonic" / "aa" / "aa1111111111.json"
+            rows = [{
+                "sample_order": 13,
+                "group": "solo_piano",
+                "hash": "aa1111111111",
+                "path": "song.flac",
+                "polyphonic_json": str(out),
+            }]
+
+            summary = polyphonic_script.run_batch(
+                rows,
+                resolve_path=lambda path: str(audio),
+                transcribe=lambda path: [{"start": 0.0, "end": 0.5, "midi": 72, "velocity": 90}],
+            )
+
+            self.assertEqual(summary["ok"], 1)
+            self.assertEqual(summary["failed"], 0)
+            payload = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(payload["source"], "basic_pitch_polyphonic")
+            self.assertEqual(payload["notes"][0]["midi"], 72)
 
     def test_melody_ab_review_report_builds_clickable_vocal_rows(self):
         rows = [
