@@ -640,6 +640,7 @@
   function renderFeedback(item) {
     return `
       <section class="feedback">
+        ${choiceGroup("applicable", "Applicable", [["yes", "Yes"], ["no", "No"], ["na", "N/A"]])}
         ${choiceGroup("preferred", "Verdict", [["a", "A better"], ["b", "B better"], ["tie", "Tie"], ["neither", "Neither"], ["pending", "Pending"]])}
         ${choiceGroup("octave", "Octave", [["a", "A"], ["b", "B"], ["tie", "Tie"], ["na", "N/A"]])}
         ${choiceGroup("sustain", "Sustain", [["a", "A"], ["b", "B"], ["tie", "Tie"], ["na", "N/A"]])}
@@ -684,6 +685,7 @@
     const article = list.querySelector(`.song[data-hash="${CSS.escape(item.hash)}"][data-group="${CSS.escape(item.group)}"]`);
     if (!article) return;
     const fb = item.feedback || {};
+    setChoice(article, "applicable", fb.applicable === true ? "yes" : fb.applicable === false ? "no" : "na");
     setChoice(article, "preferred", fb.preferred || "pending");
     setChoice(article, "octave", fb.octave || "na");
     setChoice(article, "sustain", fb.sustain || "na");
@@ -697,12 +699,14 @@
   async function saveFeedback(article) {
     const item = findItem(article);
     if (!item) return;
+    const applicableChoice = getChoice(article, "applicable", "na");
     const payload = {
       song_hash: item.hash,
       path: item.path,
       group: item.group,
       candidate_a: item.candidate_a?.id || "",
       candidate_b: item.candidate_b?.id || "",
+      applicable: applicableChoice === "yes" ? true : applicableChoice === "no" ? false : null,
       preferred: getChoice(article, "preferred", "pending"),
       octave: getChoice(article, "octave", "na"),
       sustain: getChoice(article, "sustain", "na"),

@@ -163,6 +163,7 @@ class MelodyAbFeedbackRequest(BaseModel):
     group: str = "unknown"
     candidate_a: str = "full_mix_pyin"
     candidate_b: str = ""
+    applicable: Optional[bool] = None
     preferred: str = "pending"
     octave: str = "na"
     sustain: str = "na"
@@ -726,6 +727,7 @@ def post_melody_ab_feedback(
         "group": body.group.strip() or "unknown",
         "candidate_a": body.candidate_a.strip(),
         "candidate_b": body.candidate_b.strip(),
+        "applicable": body.applicable,
         "preferred": body.preferred,
         "octave": body.octave,
         "sustain": body.sustain,

@@ -471,6 +471,7 @@ class TestMelodyPhase3(unittest.TestCase):
                     "group": "vocal",
                     "candidate_a": FULL_MIX_PYIN,
                     "candidate_b": VOCAL_STEM_CREPE,
+                    "applicable": True,
                     "preferred": "b",
                     "review_note": "stem is cleaner",
                     "created_at": "2026-05-21T00:00:00+00:00",
@@ -517,6 +518,7 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(item["candidate_a"]["melody"][0]["midi"], 60)
             self.assertEqual(item["candidate_b"]["smoke_status"], "generated")
             self.assertEqual(item["feedback"]["preferred"], "b")
+            self.assertIs(item["feedback"]["applicable"], True)
 
     def test_ai_api_melody_ab_feedback_appends_jsonl(self):
         backend_dir = Path(__file__).resolve().parents[1]
@@ -533,6 +535,7 @@ class TestMelodyPhase3(unittest.TestCase):
                 group="vocal",
                 candidate_a=FULL_MIX_PYIN,
                 candidate_b=VOCAL_STEM_CREPE,
+                applicable=False,
                 preferred="b",
                 octave="b",
                 sustain="tie",
@@ -550,6 +553,7 @@ class TestMelodyPhase3(unittest.TestCase):
             rows = [json.loads(line) for line in log_file.read_text(encoding="utf-8").splitlines()]
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["review_note"], "better phrase endings")
+            self.assertIs(rows[0]["applicable"], False)
 
     def test_ai_api_melody_debug_tag_rejects_unknown_labels(self):
         backend_dir = Path(__file__).resolve().parents[1]

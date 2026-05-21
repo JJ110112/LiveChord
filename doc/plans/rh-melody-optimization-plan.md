@@ -119,6 +119,14 @@ Candidate priority is **type-specific**, not universal. The single global ladder
 | 3 | `vocal_full_mix_ftanet` | FTANet on full mix as a fallback when the Demucs stem is missing, empty, or visibly artifacted |
 | 4 | `full_mix_pyin` | Existing baseline |
 
+Phase 0.5 review result: `vocal_stem_crepe` beat `full_mix_pyin` on 12/12 vocal smoke songs. This is enough to promote the **candidate path**, but not enough to ship the **resolver route** by itself. The ship blocker is the song-type gate: if the classifier sends solo piano / instrumental songs into the vocal path, an empty vocal stem can produce an empty or near-empty melody, which is worse than the conservative pYIN fallback.
+
+Resolver v0 therefore requires:
+
+- `vocal_led` classifier precision measured on the 27-song Phase 0.5 smoke set before promotion. Precision must be at least as high as the observed vocal B-win rate target (>= 92%) before the route can become automatic.
+- Retreat-to-baseline hard gate: if `vocal_stem_crepe` active coverage / density is abnormally low relative to `full_mix_pyin` (initial rule: active duration or active density < 30% of baseline), select `full_mix_pyin` and stamp `quality_flags: ["vocal_candidate_retreat_low_coverage"]`.
+- Pre-ship residual audit on the 12 vocal smoke songs: quantify intro/interlude missing coverage and phrase-tail pitch-jump artifacts. If either appears in >30% of reviewed vocal songs, fix the post-filter before enabling resolver v0.
+
 **Solo piano** (classical, jazz piano, lo-fi piano):
 
 | Priority | Candidate | Source |
@@ -127,6 +135,15 @@ Candidate priority is **type-specific**, not universal. The single global ladder
 | 2 | `solo_piano_polyphonic` | Magenta Onsets and Frames → velocity/density pre-filter → Skyline candidate set → Temperley Bayesian Viterbi → post-merge |
 | 3 | `full_mix_pyin` | Fallback only — known to fail on polyphonic piano |
 
+Phase 0.5 review result: `solo_piano_polyphonic` beat `full_mix_pyin` on 7/9 solo-piano smoke songs; 2/9 were `neither` due to crossed/interleaved hands and accompaniment bleed. This is useful but not yet the 85% solo-piano gate.
+
+Stage 2.1 priority is **hand-state continuity**, not only stronger top-voice bias:
+
+- Track the recent selected melody trajectory and penalize candidates that jump more than an octave away from the running hand state unless the surrounding context supports a real RH leap.
+- Add an onset-density gate: when there is only one plausible onset in the window, skip the expensive selector and keep the trivial path; activate RH selection only when there is a polyphonic conflict.
+- Keep top-voice / skyline as a candidate generator, not as the whole decision rule. Debussy-like textures can briefly put LH above RH, so pure highest-pitch wins is known to fail.
+- If two tuning rounds cannot move the 9-song piano set beyond 7/9-8/9, ship piano only for high-confidence solo-piano subtypes and retreat the rest to `full_mix_pyin`.
+
 **Instrumental solo** (jazz combo, fingerstyle, sax/guitar lead):
 
 | Priority | Candidate | Source |
@@ -134,6 +151,10 @@ Candidate priority is **type-specific**, not universal. The single global ladder
 | 1 | `midi_aligned` | If available |
 | 2 | `instrument_lead` | Demucs `other` stem + pYIN (only if Demucs precompute is committed; see §4.3) |
 | 3 | `full_mix_pyin` | Fallback |
+
+Phase 0.5 review result: `instrument_lead` beat `full_mix_pyin` on only 2/6 instrumental smoke songs; 4/6 were `neither`. This route is **not** a general instrumental fallback. It is only applicable when the song has a clear monophonic lead instrument. Fusion pads, organ comping, multi-instrument trades, and jam tracks can make the target itself ill-defined.
+
+Resolver v0 must not auto-promote `instrument_lead`. The A/B tooling should keep an `applicable` review field so future analysis can distinguish "candidate failed" from "the song has no single lead to extract". A real instrumental route needs a lead-existence classifier, which is a later phase.
 
 **MR / karaoke**:
 
@@ -294,6 +315,7 @@ The choices in §4.2.1 / §4.2.2 are the result of a comparison, not a default. 
 The previous draft listed `instrument_lead` as a candidate but described it as "full-mix harmonic pYIN plus optional Demucs other/harmonic route". The first half is identical to the current path — it would be relabeling, not a new technique. This plan commits explicitly:
 
 - **`instrument_lead` requires Demucs `other` stem precompute.** If Phase 2 does not commit Demucs precompute on PC-side, this candidate is **dropped**, not silently relabeled. Resolver simply falls through to `full_mix_pyin` for the instrumental-solo sub-type, with `quality_flags: ["instrument_lead_unavailable"]`.
+- **`instrument_lead` is applicable only when there is a clear monophonic lead instrument.** Phase 0.5 showed this candidate is useful for some sax/guitar lead songs but unreliable for fusion or jam tracks where the "lead" target is ambiguous. Treat lead-existence detection as a separate future classifier, not a selector-tuning problem.
 
 ### 4.4 Cache layout
 
