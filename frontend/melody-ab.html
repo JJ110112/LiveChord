@@ -77,11 +77,12 @@
     }
 
     .midi-progress {
+      flex: 1;
       height: 6px;
       background: rgba(255,255,255,.08);
       border-radius: 999px;
       overflow: hidden;
-      margin-top: 10px;
+      cursor: pointer;
     }
 
     .midi-progress-bar {
@@ -90,6 +91,21 @@
       background: var(--accent);
       border-radius: inherit;
       transition: width .08s linear;
+    }
+
+    .midi-transport {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .midi-time {
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      min-width: 82px;
+      text-align: right;
     }
 
     button,
@@ -344,9 +360,12 @@
     scheduled: [],
     activeButton: null,
     activeProgress: null,
+    activeTime: null,
+    activeCandidate: null,
     progressTimer: 0,
     playbackStartTime: 0,
-    playbackEndTime: 0
+    playbackEndTime: 0,
+    playbackDuration: 0
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -357,6 +376,13 @@
   function fmt(value, digits = 2) {
     const num = Number(value);
     return Number.isFinite(num) ? num.toFixed(digits) : "0";
+  }
+
+  function formatTime(seconds) {
+    const total = Math.max(0, Math.floor(Number(seconds) || 0));
+    const mins = Math.floor(total / 60);
+    const secs = String(total % 60).padStart(2, "0");
+    return `${mins}:${secs}`;
   }
 
   function noteCount(candidate) {
@@ -402,6 +428,27 @@
     return start + (Number.isFinite(duration) ? Math.max(duration, 0.04) : 0.18);
   }
 
+  function usableMelodyEvents(candidate) {
+    const melody = Array.isArray(candidate?.melody) ? candidate.melody : [];
+    const raw = melody
+      .map(event => ({ event, start: eventStart(event), end: eventEnd(event) }))
+      .filter(item => Number.isFinite(item.start) && Number.isFinite(item.end) && item.end > item.start)
+      .sort((a, b) => a.start - b.start)
+      .slice(0, 900);
+    if (!raw.length) return [];
+    const firstStart = raw[0].start;
+    return raw.map(item => ({
+      event: item.event,
+      start: Math.max(0, item.start - firstStart),
+      end: Math.max(0.04, item.end - firstStart),
+    }));
+  }
+
+  function midiDuration(candidate) {
+    const usable = usableMelodyEvents(candidate);
+    return usable.reduce((maxEnd, item) => Math.max(maxEnd, item.end), 0);
+  }
+
   function resetActiveUi({ complete = false } = {}) {
     if (state.activeButton) {
       state.activeButton.textContent = state.activeButton.dataset.label || state.activeButton.textContent;
@@ -409,16 +456,27 @@
     }
     if (state.activeProgress) {
       state.activeProgress.style.width = complete ? "100%" : "0%";
+      state.activeProgress.parentElement?.setAttribute("aria-valuenow", complete ? "100" : "0");
       state.activeProgress = null;
     }
+    if (state.activeTime) {
+      const total = Number(state.activeTime.dataset.total || 0);
+      state.activeTime.textContent = `${formatTime(complete ? total : 0)} / ${formatTime(total)}`;
+      state.activeTime = null;
+    }
+    state.activeCandidate = null;
   }
 
   function updateMidiProgress() {
-    if (!state.audioContext || !state.activeProgress || !state.playbackEndTime) return;
-    const total = Math.max(0.05, state.playbackEndTime - state.playbackStartTime);
+    if (!state.audioContext || !state.activeProgress || !state.playbackDuration) return;
+    const total = Math.max(0.05, state.playbackDuration);
     const elapsed = state.audioContext.currentTime - state.playbackStartTime;
     const pct = Math.max(0, Math.min(100, (elapsed / total) * 100));
     state.activeProgress.style.width = `${pct}%`;
+    state.activeProgress.parentElement?.setAttribute("aria-valuenow", String(Math.round(pct)));
+    if (state.activeTime) {
+      state.activeTime.textContent = `${formatTime(Math.min(total, Math.max(0, elapsed)))} / ${formatTime(total)}`;
+    }
     if (pct >= 100) stopMidi({ complete: true });
   }
 
@@ -433,13 +491,15 @@
     state.scheduled = [];
     state.playbackStartTime = 0;
     state.playbackEndTime = 0;
+    state.playbackDuration = 0;
     resetActiveUi({ complete: !!options.complete });
   }
 
-  function playCandidate(button, candidate) {
-    const melody = Array.isArray(candidate?.melody) ? candidate.melody : [];
-    if (!melody.length) return;
+  function playCandidate(button, candidate, offset = 0) {
+    const label = button.dataset.label || button.textContent;
     stopMidi();
+    const usable = usableMelodyEvents(candidate);
+    if (!usable.length) return;
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) {
       alert("WebAudio unavailable");
@@ -448,24 +508,18 @@
     if (!state.audioContext) state.audioContext = new AudioCtx();
     const ctx = state.audioContext;
     if (ctx.state === "suspended") ctx.resume();
-    const usable = melody
-      .map(event => ({ event, start: eventStart(event), end: eventEnd(event) }))
-      .filter(item => Number.isFinite(item.start) && Number.isFinite(item.end) && item.end > item.start)
-      .sort((a, b) => a.start - b.start)
-      .slice(0, 900);
-    if (!usable.length) return;
-    const firstStart = usable[0].start;
+    const duration = usable.reduce((maxEnd, item) => Math.max(maxEnd, item.end), 0);
+    const startOffset = Math.max(0, Math.min(Number(offset) || 0, Math.max(0, duration - 0.05)));
     const now = ctx.currentTime + 0.04;
     const master = ctx.createGain();
     master.gain.value = 0.18;
     master.connect(ctx.destination);
-    let lastEnd = now;
     for (const item of usable) {
+      if (item.end <= startOffset) continue;
       const midi = midiFromEvent(item.event);
       const freq = 440 * Math.pow(2, (midi - 69) / 12);
-      const start = now + Math.max(0, item.start - firstStart);
-      const end = now + Math.max(0.06, item.end - firstStart);
-      lastEnd = Math.max(lastEnd, end);
+      const start = now + Math.max(0, item.start - startOffset);
+      const end = now + Math.max(0.06, item.end - startOffset);
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "triangle";
@@ -482,11 +536,22 @@
     }
     state.activeButton = button;
     state.activeProgress = button.closest(".candidate")?.querySelector(".midi-progress-bar") || null;
-    state.playbackStartTime = now;
-    state.playbackEndTime = lastEnd;
-    button.dataset.label = button.textContent;
+    state.activeTime = button.closest(".candidate")?.querySelector(".midi-time") || null;
+    state.activeCandidate = candidate;
+    state.playbackDuration = duration;
+    state.playbackStartTime = now - startOffset;
+    state.playbackEndTime = state.playbackStartTime + duration;
+    button.dataset.label = label;
     button.textContent = "Stop MIDI";
-    if (state.activeProgress) state.activeProgress.style.width = "0%";
+    if (state.activeProgress) state.activeProgress.style.width = `${(startOffset / Math.max(0.05, duration)) * 100}%`;
+    state.activeProgress?.parentElement?.setAttribute(
+      "aria-valuenow",
+      String(Math.round((startOffset / Math.max(0.05, duration)) * 100))
+    );
+    if (state.activeTime) {
+      state.activeTime.dataset.total = String(duration);
+      state.activeTime.textContent = `${formatTime(startOffset)} / ${formatTime(duration)}`;
+    }
     state.progressTimer = window.setInterval(updateMidiProgress, 80);
     updateMidiProgress();
   }
@@ -550,6 +615,7 @@
   function renderCandidate(side, candidate) {
     const disabled = !candidate?.exists || !noteCount(candidate);
     const stats = candidate?.melody_stats || {};
+    const duration = midiDuration(candidate);
     return `
       <section class="candidate" data-side="${side}">
         <h2><span>${side.toUpperCase()} · ${escapeHtml(candidate?.label || candidate?.id || "")}</span>${candidateBadge(candidate)}</h2>
@@ -562,7 +628,12 @@
         <div class="button-row">
           <button class="play-midi" data-side="${side}" ${disabled ? "disabled" : ""}>Play ${side.toUpperCase()} MIDI</button>
         </div>
-        <div class="midi-progress" aria-hidden="true"><div class="midi-progress-bar"></div></div>
+        <div class="midi-transport">
+          <div class="midi-progress" data-side="${side}" role="slider" aria-label="${side.toUpperCase()} MIDI seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="midi-progress-bar"></div>
+          </div>
+          <span class="midi-time" data-total="${duration}">0:00 / ${formatTime(duration)}</span>
+        </div>
       </section>`;
   }
 
@@ -684,6 +755,19 @@
       const item = findItem(article);
       const candidate = play.dataset.side === "a" ? item?.candidate_a : item?.candidate_b;
       playCandidate(play, candidate);
+      return;
+    }
+    const progress = event.target.closest(".midi-progress");
+    if (progress) {
+      const item = findItem(article);
+      const side = progress.dataset.side;
+      const candidate = side === "a" ? item?.candidate_a : item?.candidate_b;
+      const duration = midiDuration(candidate);
+      if (!duration || !noteCount(candidate)) return;
+      const rect = progress.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));
+      const button = article.querySelector(`.play-midi[data-side="${side}"]`);
+      if (button && !button.disabled) playCandidate(button, candidate, pct * duration);
       return;
     }
     const save = event.target.closest(".save-feedback");
