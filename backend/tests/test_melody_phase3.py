@@ -35,7 +35,6 @@ from backend.ai.melody_candidate import (
 )
 from backend.ai.melody_shadow_generator import ShadowCandidateResult, ShadowGenerationResult, generate_shadow_candidates
 from backend.ai.melody_shadow_smoke import (
-    FULL_MIX_PYIN as SMOKE_FULL_MIX_PYIN,
     SMOKE_SURVEY_ID,
     SmokeQueueItem,
     read_smoke_queue,
@@ -1193,9 +1192,20 @@ class TestMelodyPhase3(unittest.TestCase):
 
             items = read_smoke_queue(queue)
 
-            self.assertEqual(items[0].resolved_candidates(), [SMOKE_FULL_MIX_PYIN, VOCAL_STEM_CREPE])
+            self.assertEqual(items[0].resolved_candidates(), [FULL_MIX_PYIN, VOCAL_STEM_CREPE])
             self.assertEqual(items[1].resolved_candidates(), [FULL_MIX_PYIN, SOLO_PIANO_POLYPHONIC])
             self.assertEqual(items[2].resolved_candidates(), [FULL_MIX_PYIN])
+
+    def test_shadow_smoke_queue_accepts_utf8_bom(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            queue = root / "queue.jsonl"
+            queue.write_bytes(b"\xef\xbb\xbf" + json.dumps({"hash": "vocal123", "group": "vocal"}).encode("utf-8") + b"\n")
+
+            items = read_smoke_queue(queue)
+
+            self.assertEqual(len(items), 1)
+            self.assertEqual(items[0].hash, "vocal123")
 
     def test_shadow_smoke_runner_invokes_generator_and_writes_report(self):
         calls = []
@@ -1234,11 +1244,75 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(calls[1]["polyphonic_json"], "notes.json")
             self.assertEqual(summary["survey_id"], SMOKE_SURVEY_ID)
             self.assertEqual(summary["ok"], 2)
-            self.assertEqual(summary["by_candidate"][VOCAL_STEM_CREPE]["generated"], 1)
+            self.assertEqual(summary["by_candidate"][VOCAL_STEM_CREPE]["by_status"]["generated"], 1)
             self.assertTrue(out.is_file())
             self.assertTrue(Path(written["summary_output"]).is_file())
             loaded_rows = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
             self.assertEqual(loaded_rows[0]["survey_id"], SMOKE_SURVEY_ID)
+
+    def test_shadow_smoke_runner_keeps_going_after_row_exception(self):
+        def fake_generator(**kwargs):
+            if kwargs.get("song_hash") == "boom":
+                raise RuntimeError("audio_missing")
+            return ShadowGenerationResult(
+                ok=True,
+                song_hash=kwargs.get("song_hash") or "",
+                path=kwargs.get("path") or "",
+                audio_path="",
+                results=[
+                    ShadowCandidateResult(
+                        candidate_id=kwargs["candidates"][0],
+                        ok=True,
+                        status="generated",
+                    )
+                ],
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rows, summary = run_smoke_queue(
+                [
+                    SmokeQueueItem(hash="ok1", group="vocal", candidates=[FULL_MIX_PYIN]),
+                    SmokeQueueItem(hash="boom", group="vocal", candidates=[FULL_MIX_PYIN]),
+                    SmokeQueueItem(hash="ok2", group="vocal", candidates=[FULL_MIX_PYIN]),
+                ],
+                data_dir=root,
+                generator=fake_generator,
+            )
+
+            self.assertEqual(len(rows), 3)
+            self.assertTrue(rows[0]["result"]["ok"])
+            self.assertFalse(rows[1]["result"]["ok"])
+            self.assertTrue(rows[2]["result"]["ok"])
+            self.assertEqual(rows[1]["resolved_candidates"], [])
+            self.assertIn("RuntimeError:audio_missing", rows[1]["result"]["error"])
+            self.assertEqual(summary["ok"], 2)
+            self.assertEqual(summary["failed"], 1)
+
+    def test_shadow_smoke_dry_run_surfaces_polyphonic_path_errors_and_unknown_group(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rows, summary = run_smoke_queue(
+                [
+                    SmokeQueueItem(
+                        hash="piano1",
+                        group="solo_piano",
+                        candidates=[SOLO_PIANO_POLYPHONIC],
+                        polyphonic_json=str(root / "missing-notes.json"),
+                    ),
+                    SmokeQueueItem(hash="typo1", group="balad"),
+                ],
+                data_dir=root,
+                dry_run=True,
+            )
+
+            self.assertFalse(rows[0]["result"]["ok"])
+            self.assertEqual(rows[0]["result"]["results"][0]["status"], "polyphonic_json_missing")
+            self.assertEqual(rows[1]["resolved_candidates"], [FULL_MIX_PYIN])
+            self.assertIn("unknown_group:balad;defaulting_to_unknown", rows[1]["warnings"])
+            self.assertEqual(summary["failed"], 1)
+            self.assertEqual(summary["warnings"]["unknown_group:balad;defaulting_to_unknown"], 1)
+            self.assertEqual(summary["by_candidate"][SOLO_PIANO_POLYPHONIC]["by_status"]["polyphonic_json_missing"], 1)
 
     def test_shadow_smoke_report_refuses_overwrite_without_force(self):
         with tempfile.TemporaryDirectory() as tmp:

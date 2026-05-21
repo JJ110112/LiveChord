@@ -78,10 +78,17 @@ class SmokeQueueItem:
             "note": self.note,
         }
 
+    def warnings(self) -> List[str]:
+        if self.candidates:
+            return []
+        if self.group not in DEFAULT_CANDIDATES_BY_GROUP:
+            return [f"unknown_group:{self.group};defaulting_to_unknown"]
+        return []
+
 
 def read_smoke_queue(path: Path) -> List[SmokeQueueItem]:
     items: List[SmokeQueueItem] = []
-    for line_no, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    for line_no, raw in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), start=1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -114,18 +121,20 @@ def run_smoke_queue(
     started_at = datetime.now(timezone.utc).isoformat()
 
     for index, item in enumerate(selected, start=1):
+        warnings = item.warnings()
         try:
             candidates = item.resolved_candidates()
             if dry_run:
+                planned_results = [
+                    _dry_run_candidate_result(candidate_id, item)
+                    for candidate_id in candidates
+                ]
                 result_dict: Dict[str, Any] = {
-                    "ok": True,
+                    "ok": all(result["ok"] for result in planned_results),
                     "song_hash": item.hash,
                     "path": item.path,
                     "audio_path": item.audio_path,
-                    "results": [
-                        {"candidate_id": candidate_id, "ok": True, "status": "planned", "cache_file": "", "error": "", "details": {}}
-                        for candidate_id in candidates
-                    ],
+                    "results": planned_results,
                 }
             else:
                 result = generate(
@@ -141,7 +150,8 @@ def run_smoke_queue(
                 )
                 result_dict = result.to_dict()
         except Exception as exc:
-            candidates = item.candidates or []
+            candidates = []
+            warnings.append("candidate_resolution_failed")
             result_dict = {
                 "ok": False,
                 "song_hash": item.hash,
@@ -157,6 +167,7 @@ def run_smoke_queue(
             "note": item.note,
             "requested": item.to_dict(),
             "resolved_candidates": candidates,
+            "warnings": warnings,
             "result": result_dict,
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
@@ -198,11 +209,15 @@ def _summarize_rows(
     force: bool,
 ) -> Dict[str, Any]:
     by_group: Dict[str, Dict[str, int]] = {}
-    by_candidate: Dict[str, Dict[str, int]] = {}
+    by_candidate: Dict[str, Dict[str, Any]] = {}
+    warnings: Dict[str, int] = {}
     ok_rows = 0
     for row in rows:
         group = str(row.get("group") or "unknown")
         result = row.get("result") or {}
+        for warning in row.get("warnings") or []:
+            key = str(warning or "unknown_warning")
+            warnings[key] = warnings.get(key, 0) + 1
         if result.get("ok"):
             ok_rows += 1
         group_counts = by_group.setdefault(group, {"total": 0, "ok": 0, "failed": 0})
@@ -213,10 +228,10 @@ def _summarize_rows(
             status = str(candidate_result.get("status") or "unknown")
             if not candidate_id:
                 continue
-            counts = by_candidate.setdefault(candidate_id, {"total": 0, "ok": 0, "failed": 0})
+            counts = by_candidate.setdefault(candidate_id, {"total": 0, "ok": 0, "failed": 0, "by_status": {}})
             counts["total"] += 1
             counts["ok" if candidate_result.get("ok") else "failed"] += 1
-            counts[status] = counts.get(status, 0) + 1
+            counts["by_status"][status] = counts["by_status"].get(status, 0) + 1
     return {
         "survey_id": SMOKE_SURVEY_ID,
         "started_at": started_at,
@@ -229,6 +244,31 @@ def _summarize_rows(
         "failed": max(0, len(rows) - ok_rows),
         "by_group": by_group,
         "by_candidate": by_candidate,
+        "warnings": warnings,
+    }
+
+
+def _dry_run_candidate_result(candidate_id: str, item: SmokeQueueItem) -> Dict[str, Any]:
+    if candidate_id == SOLO_PIANO_POLYPHONIC:
+        if item.polyphonic_json:
+            if not Path(item.polyphonic_json).is_file():
+                return _planned_failure(candidate_id, "polyphonic_json_missing", item.polyphonic_json)
+        elif item.polyphonic_midi:
+            if not Path(item.polyphonic_midi).is_file():
+                return _planned_failure(candidate_id, "polyphonic_midi_missing", item.polyphonic_midi)
+        else:
+            return _planned_failure(candidate_id, "polyphonic_input_missing", "")
+    return {"candidate_id": candidate_id, "ok": True, "status": "planned", "cache_file": "", "error": "", "details": {}}
+
+
+def _planned_failure(candidate_id: str, status: str, path: str) -> Dict[str, Any]:
+    return {
+        "candidate_id": candidate_id,
+        "ok": False,
+        "status": status,
+        "cache_file": "",
+        "error": status,
+        "details": {"path": path},
     }
 
 
