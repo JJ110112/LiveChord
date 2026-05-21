@@ -538,6 +538,12 @@ async def melody_ab_page():
     return FileResponse(FRONTEND_DIR / "melody-ab.html", headers=NO_CACHE_HEADERS)
 
 
+@app.get("/song-type-label")
+@app.get("/song-type-label.html")
+async def song_type_label_page():
+    return FileResponse(FRONTEND_DIR / "song-type-label.html", headers=NO_CACHE_HEADERS)
+
+
 @app.get("/benchmark")
 async def benchmark():
     return FileResponse(FRONTEND_DIR / "benchmark.html", headers=NO_CACHE_HEADERS)

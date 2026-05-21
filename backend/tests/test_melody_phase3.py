@@ -10,6 +10,7 @@ from unittest.mock import patch
 from fastapi import HTTPException
 
 import tools.sample_melody_phase0_survey as survey_script
+import tools.sample_rh_song_type_labels as song_type_label_script
 import tools.run_basic_pitch_polyphonic_batch as polyphonic_script
 from backend.ai.melody_extractor import MelodyExtractor
 from backend.ai.melody_extractor_v2 import MelodyExtractorV2
@@ -39,6 +40,14 @@ from backend.ai.melody_ab_review_report import (
     build_review_rows,
     render_review_markdown,
     write_review_markdown,
+)
+from backend.ai.song_type_label_queue import (
+    build_label_candidates,
+    infer_song_type_hint,
+    load_excluded_hashes,
+    parse_quotas,
+    sample_label_queue,
+    write_label_queue,
 )
 from backend.ai.melody_shadow_generator import ShadowCandidateResult, ShadowGenerationResult, generate_shadow_candidates
 from backend.ai.melody_shadow_smoke import (
@@ -555,6 +564,63 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(rows[0]["review_note"], "better phrase endings")
             self.assertIs(rows[0]["applicable"], False)
 
+    def test_ai_api_song_type_label_queue_round_trips_latest_label(self):
+        backend_dir = Path(__file__).resolve().parents[1]
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        import ai_api
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review_dir = root / "melody_reviews"
+            review_dir.mkdir()
+            song_hash = "songtype123"
+            (review_dir / "phase0_5_song_type_label_queue.jsonl").write_text(
+                json.dumps({
+                    "schema_version": 1,
+                    "phase": "phase0_5_song_type",
+                    "survey_id": "heldout",
+                    "sample_order": 1,
+                    "hash": song_hash,
+                    "path": "song.mp3",
+                    "title": "Song",
+                    "candidate_hint": "vocal_led",
+                    "human_label": "pending",
+                }) + "\n",
+                encoding="utf-8",
+            )
+            body = ai_api.SongTypeLabelRequest(
+                song_hash=song_hash,
+                path="song.mp3",
+                human_label="vocal_led",
+                candidate_hint="vocal_led",
+                review_note="clear vocal",
+                survey_id="heldout",
+            )
+
+            with patch.object(ai_api, "DATA_DIR", root):
+                saved = ai_api.post_song_type_label(body=body, reviewer="teacher")
+                result = ai_api.get_song_type_label_queue(_="admin")
+
+            self.assertTrue(saved["ok"])
+            self.assertEqual(saved["entry"]["human_label"], "vocal_led")
+            self.assertEqual(result["total"], 1)
+            self.assertEqual(result["items"][0]["song_hash"], song_hash)
+            self.assertEqual(result["items"][0]["label"]["review_note"], "clear vocal")
+            self.assertIn("/api/track/stream?path=song.mp3", result["items"][0]["audio_url"])
+
+    def test_ai_api_song_type_label_rejects_unknown_label(self):
+        backend_dir = Path(__file__).resolve().parents[1]
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        import ai_api
+
+        body = ai_api.SongTypeLabelRequest(song_hash="song123", human_label="bad_label")
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(ai_api, "DATA_DIR", Path(tmp)):
+                with self.assertRaises(HTTPException):
+                    ai_api.post_song_type_label(body=body, reviewer="teacher")
+
     def test_ai_api_melody_debug_tag_rejects_unknown_labels(self):
         backend_dir = Path(__file__).resolve().parents[1]
         if str(backend_dir) not in sys.path:
@@ -718,6 +784,113 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(candidates[0]["selection_source"], "library_cache")
             self.assertTrue(candidates[0]["audio_exists"])
             self.assertEqual(candidates[0]["duration_s"], 123.4)
+
+    def test_song_type_label_queue_infers_metadata_hints(self):
+        self.assertEqual(
+            infer_song_type_hint({"title": "Chopin Nocturne solo piano"})[0],
+            "solo_piano",
+        )
+        self.assertEqual(
+            infer_song_type_hint({"path": "Jam/Blues backing track.flac"})[0],
+            "no_clear_lead",
+        )
+        self.assertEqual(
+            infer_song_type_hint({"title": "Sam Smith - How Do You Sleep? Official Music Video"})[0],
+            "vocal_led",
+        )
+        self.assertEqual(
+            infer_song_type_hint({"artist": "Dave Brubeck", "title": "Take Five"})[0],
+            "instrumental_lead",
+        )
+        self.assertEqual(
+            infer_song_type_hint({"title": "ABBA Official Music Video"})[0],
+            "vocal_led",
+        )
+
+    def test_song_type_label_queue_excludes_smoke_hashes_and_writes_summary(self):
+        import backend.chord_cache as chord_cache
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            excluded_path = root / "smoke.jsonl"
+            excluded_hash = chord_cache.song_hash("ABBA - Song.flac")
+            excluded_path.write_text(
+                json.dumps({"hash": excluded_hash}) + "\n",
+                encoding="utf-8",
+            )
+            tracks = [
+                {"path": "ABBA - Song.flac", "title": "ABBA Official Music Video", "duration": 100},
+                {"path": "Chopin - Nocturne.flac", "title": "Chopin Nocturne solo piano", "duration": 200},
+                {"path": "Jazz/Take Five.flac", "artist": "Dave Brubeck", "duration": 300},
+                {"path": "Jam/Backing Track.flac", "title": "Blues backing track", "duration": 150},
+            ]
+
+            excluded = load_excluded_hashes([excluded_path])
+            candidates, stats = build_label_candidates(
+                tracks,
+                exclude_hashes=excluded,
+                base_url="http://example.test",
+            )
+            sample = sample_label_queue(
+                candidates,
+                quotas={"solo_piano": 1, "instrumental_lead": 1, "no_clear_lead": 1},
+                seed=1,
+            )
+            out = root / "labels.jsonl"
+            summary = write_label_queue(
+                out,
+                sample,
+                survey_id="heldout",
+                seed=1,
+                candidate_stats=stats,
+                quotas={"solo_piano": 1, "instrumental_lead": 1, "no_clear_lead": 1},
+            )
+
+            self.assertEqual(stats["excluded"], 1)
+            self.assertEqual(len(sample), 3)
+            rows = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(rows[0]["phase"], "phase0_5_song_type")
+            self.assertEqual(rows[0]["human_label"], "pending")
+            self.assertIn("solo_piano", rows[0]["label_options"])
+            self.assertTrue(rows[0]["player_url"].startswith("http://example.test/player?path="))
+            self.assertEqual(summary["by_hint"], {
+                "instrumental_lead": 1,
+                "no_clear_lead": 1,
+                "solo_piano": 1,
+            })
+
+    def test_sample_rh_song_type_labels_cli_writes_queue(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            library_cache = root / "library_cache.json"
+            library_cache.write_text(
+                json.dumps({
+                    "tracks": [
+                        {"path": "ABBA - Song.flac", "title": "Official Music Video"},
+                        {"path": "Chopin - Nocturne.flac", "title": "Chopin Nocturne solo piano"},
+                    ]
+                }),
+                encoding="utf-8",
+            )
+            out = root / "queue.jsonl"
+
+            with patch.object(sys, "argv", [
+                "sample_rh_song_type_labels.py",
+                "--library-cache", str(library_cache),
+                "--out", str(out),
+                "--quotas", "vocal_led=1,solo_piano=1",
+                "--force",
+            ]):
+                code = song_type_label_script.main()
+
+            self.assertEqual(code, 0)
+            rows = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(len(rows), 2)
+            self.assertTrue(out.with_suffix(".summary.json").is_file())
+
+    def test_song_type_label_queue_parse_quotas_rejects_unknown_label(self):
+        with self.assertRaises(ValueError):
+            parse_quotas("vocal=10")
 
     def test_melody_phase0_review_data_dir_prefers_existing_local_then_production(self):
         with tempfile.TemporaryDirectory() as tmp:

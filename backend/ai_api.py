@@ -174,6 +174,15 @@ class MelodyAbFeedbackRequest(BaseModel):
     segment: Optional[Dict[str, Any]] = None
 
 
+class SongTypeLabelRequest(BaseModel):
+    song_hash: str
+    path: str = ""
+    human_label: str
+    candidate_hint: str = ""
+    review_note: str = ""
+    survey_id: str = "phase0_5_song_type_heldout_seed_20260522"
+
+
 @router.post("/jazzify")
 async def jazzify(body: JazzifyRequest):
     """Jazzify: 將和弦進行重配為爵士風格"""
@@ -579,6 +588,23 @@ def _ab_feedback_key(data: Dict[str, Any]) -> str:
     return "|".join([song_hash, group, candidate_a, candidate_b])
 
 
+def _song_type_label_key(data: Dict[str, Any]) -> str:
+    song_hash = str(data.get("song_hash") or data.get("hash") or "").strip()
+    if not song_hash:
+        return ""
+    survey_id = str(data.get("survey_id") or "").strip()
+    return "|".join([survey_id, song_hash])
+
+
+def _latest_song_type_labels(label_file: Path) -> Dict[str, Dict[str, Any]]:
+    latest: Dict[str, Dict[str, Any]] = {}
+    for entry in _read_jsonl_dicts(label_file):
+        key = _song_type_label_key(entry)
+        if key:
+            latest[key] = entry
+    return latest
+
+
 def _title_from_audio_path(path: str) -> str:
     name = Path(path or "").name
     return name.rsplit(".", 1)[0] if "." in name else name
@@ -682,6 +708,90 @@ def get_melody_ab_review(
         "total": len(items),
         "items": items,
     }
+
+
+@router.get("/melody/song-type-labels")
+def get_song_type_label_queue(
+    _: str = Depends(get_admin_user),
+):
+    """Admin-only held-out song-type labeling queue for RH melody classifier work."""
+
+    review_dir = _melody_ab_review_dir()
+    queue_file = review_dir / "phase0_5_song_type_label_queue.jsonl"
+    summary_file = review_dir / "phase0_5_song_type_label_queue.summary.json"
+    label_file = review_dir / "phase0_5_song_type_labels.jsonl"
+    rows = _read_jsonl_dicts(queue_file)
+    latest = _latest_song_type_labels(label_file)
+    items = []
+    counts: Dict[str, int] = {}
+    for row in rows:
+        song_hash = str(row.get("hash") or row.get("song_hash") or "").strip()
+        survey_id = str(row.get("survey_id") or "").strip()
+        hint = str(row.get("candidate_hint") or "unknown").strip() or "unknown"
+        counts[hint] = counts.get(hint, 0) + 1
+        key = _song_type_label_key({"survey_id": survey_id, "song_hash": song_hash})
+        path = str(row.get("path") or "").strip()
+        items.append({
+            **row,
+            "song_hash": song_hash,
+            "audio_url": f"/api/track/stream?path={quote(path, safe='')}" if path else "",
+            "label": latest.get(key),
+        })
+    items.sort(key=lambda item: int(item.get("sample_order") or 0))
+    summary: Dict[str, Any] = {}
+    if summary_file.is_file():
+        import json as _json
+        try:
+            data = _json.loads(summary_file.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                summary = data
+        except Exception:
+            summary = {}
+    return {
+        "ok": True,
+        "queue_file": str(queue_file),
+        "label_file": str(label_file),
+        "summary": summary,
+        "counts": counts,
+        "total": len(items),
+        "items": items,
+    }
+
+
+@router.post("/melody/song-type-labels")
+def post_song_type_label(
+    body: SongTypeLabelRequest,
+    reviewer: str = Depends(get_admin_user),
+):
+    """Append one held-out song-type label."""
+
+    from ai.song_type_label_queue import LABEL_OPTIONS
+
+    song_hash = body.song_hash.strip()
+    if not song_hash:
+        raise HTTPException(status_code=400, detail="song_hash is required")
+    if body.human_label not in LABEL_OPTIONS:
+        raise HTTPException(status_code=400, detail=f"human_label must be one of: {', '.join(LABEL_OPTIONS)}")
+    review_dir = _melody_ab_review_dir()
+    review_dir.mkdir(parents=True, exist_ok=True)
+    label_file = review_dir / "phase0_5_song_type_labels.jsonl"
+    entry = {
+        "schema_version": 1,
+        "phase": "phase0_5_song_type",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "reviewer": reviewer,
+        "survey_id": body.survey_id.strip() or "phase0_5_song_type_heldout_seed_20260522",
+        "song_hash": song_hash,
+        "path": body.path,
+        "candidate_hint": body.candidate_hint.strip() or "unknown",
+        "human_label": body.human_label,
+        "review_note": body.review_note[:2000],
+    }
+    import json as _json
+
+    with label_file.open("a", encoding="utf-8", newline="\n") as fh:
+        fh.write(_json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+    return {"ok": True, "file": str(label_file), "entry": entry}
 
 
 @router.post("/melody/ab/feedback")

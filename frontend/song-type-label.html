@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiveChord Song-Type Labels</title>
+  <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
+  <script>
+    if (!localStorage.getItem("livechord_token")) {
+      fetch("/api/auth/is_admin").then(r => {
+        if (!r.ok) window.location.href = "/login";
+      }).catch(() => {
+        window.location.href = "/login";
+      });
+    }
+  </script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #11161d;
+      --panel: #171e27;
+      --panel-soft: #1d2632;
+      --border: #2b3544;
+      --text: #eef3f8;
+      --muted: #96a5b8;
+      --accent: #5fb3a8;
+      --accent-strong: #7dd6ca;
+      --ok: #8bcf8b;
+      --warn: #e5ad4f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+    main {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 22px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: flex-end;
+      margin-bottom: 16px;
+    }
+    h1 {
+      font-size: 26px;
+      line-height: 1.1;
+      margin: 0 0 6px;
+    }
+    .subline,
+    .meta,
+    #status {
+      color: var(--muted);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+    .toolbar,
+    .song {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      padding: 12px;
+      margin-bottom: 14px;
+      align-items: center;
+    }
+    .top-actions,
+    .choice-row,
+    .button-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    input,
+    textarea {
+      border: 1px solid var(--border);
+      background: #0d1218;
+      color: var(--text);
+      border-radius: 7px;
+      padding: 9px 12px;
+      font-size: 13px;
+    }
+    input {
+      min-width: 220px;
+      flex: 1;
+    }
+    textarea {
+      width: 100%;
+      min-height: 54px;
+      resize: vertical;
+      margin-top: 10px;
+    }
+    button {
+      border: 1px solid var(--border);
+      background: var(--panel-soft);
+      color: var(--text);
+      border-radius: 7px;
+      padding: 8px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      min-height: 36px;
+    }
+    button:hover { border-color: var(--accent); }
+    .choice.active {
+      background: rgba(95, 179, 168, .18);
+      border-color: var(--accent);
+      color: var(--accent-strong);
+    }
+    .song {
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .song-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: start;
+      margin-bottom: 12px;
+    }
+    .song-title {
+      font-size: 16px;
+      font-weight: 720;
+      margin-bottom: 4px;
+      overflow-wrap: anywhere;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 23px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .badge.done { color: var(--ok); border-color: rgba(139, 207, 139, .45); }
+    .badge.hint { color: var(--warn); border-color: rgba(229, 173, 79, .45); }
+    audio {
+      width: 100%;
+      height: 38px;
+      margin-bottom: 12px;
+    }
+    .feedback-grid {
+      display: grid;
+      grid-template-columns: 120px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      margin: 8px 0;
+    }
+    .save-state {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .empty {
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      color: var(--muted);
+      text-align: center;
+    }
+    @media (max-width: 720px) {
+      main { padding: 14px; }
+      header,
+      .toolbar,
+      .song-head,
+      .feedback-grid {
+        grid-template-columns: 1fr;
+        display: grid;
+      }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>RH Song-Type Labeling</h1>
+      <div class="subline" id="subline">loading</div>
+    </div>
+    <div class="top-actions">
+      <input id="filter" type="search" placeholder="filter title / path / hash / hint">
+      <button id="reload">Reload</button>
+      <button id="stopAudio">Stop</button>
+    </div>
+  </header>
+  <section class="toolbar">
+    <div id="status">Loading</div>
+    <div class="top-actions">
+      <button class="quick-filter" data-filter="">All</button>
+      <button class="quick-filter" data-filter="pending">Pending</button>
+      <button class="quick-filter" data-filter="vocal_led">Vocal</button>
+      <button class="quick-filter" data-filter="solo_piano">Piano</button>
+      <button class="quick-filter" data-filter="instrumental_lead">Instrumental</button>
+      <button class="quick-filter" data-filter="no_clear_lead">No lead</button>
+    </div>
+  </section>
+  <section id="list"></section>
+</main>
+<script>
+  const LABELS = [
+    ["vocal_led", "Vocal-led"],
+    ["solo_piano", "Solo piano"],
+    ["instrumental_lead", "Instrumental lead"],
+    ["no_clear_lead", "No clear lead"],
+    ["unknown", "Unknown"]
+  ];
+  const state = { items: [], filtered: [], filter: "", activeAudio: null };
+  const $ = selector => document.querySelector(selector);
+  const list = $("#list");
+  const status = $("#status");
+  const subline = $("#subline");
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    })[c]);
+  }
+
+  async function loadQueue() {
+    status.textContent = "Loading";
+    const res = await fetch("/api/ai/melody/song-type-labels");
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.detail || data.error || res.statusText);
+    state.items = data.items || [];
+    subline.textContent = `${data.total || 0} rows · ${data.queue_file || ""}`;
+    const counts = data.counts || {};
+    const labeled = state.items.filter(item => item.label?.human_label).length;
+    status.textContent = `labeled ${labeled}/${state.items.length} · hints vocal ${counts.vocal_led || 0} · piano ${counts.solo_piano || 0} · inst ${counts.instrumental_lead || 0} · no lead ${counts.no_clear_lead || 0}`;
+    applyFilter();
+  }
+
+  function applyFilter() {
+    const q = state.filter.trim().toLowerCase();
+    state.filtered = state.items.filter(item => {
+      if (!q) return true;
+      if (q === "pending") return !item.label?.human_label;
+      const text = [
+        item.hash, item.path, item.title, item.artist, item.album, item.genre,
+        item.candidate_hint, item.human_label, item.label?.human_label
+      ].join(" ").toLowerCase();
+      return text.includes(q);
+    });
+    render();
+  }
+
+  function render() {
+    if (!state.filtered.length) {
+      list.innerHTML = `<div class="empty">No rows</div>`;
+      return;
+    }
+    list.innerHTML = state.filtered.map(renderItem).join("");
+    for (const item of state.filtered) hydrateLabel(item);
+  }
+
+  function renderItem(item) {
+    const label = item.label?.human_label || "";
+    return `
+      <article class="song" data-hash="${escapeHtml(item.song_hash || item.hash)}" data-survey-id="${escapeHtml(item.survey_id || "")}">
+        <div class="song-head">
+          <div>
+            <div class="song-title">${escapeHtml(item.sample_order || "")}. ${escapeHtml([item.artist, item.title].filter(Boolean).join(" - ") || item.path)}</div>
+            <div class="meta">${escapeHtml(item.path || "")}</div>
+            <div class="meta">${escapeHtml(item.hash || item.song_hash || "")} · ${escapeHtml(item.genre || "")} · ${escapeHtml(item.hint_reason || "")}</div>
+          </div>
+          <div class="badge ${label ? "done" : "hint"}">${label ? `labeled: ${escapeHtml(label)}` : `hint: ${escapeHtml(item.candidate_hint || "")}`}</div>
+        </div>
+        ${item.audio_url ? `<audio controls preload="none" src="${escapeHtml(item.audio_url)}"></audio>` : ""}
+        <div class="feedback-grid" data-field="human_label">
+          <label>Song type</label>
+          <div class="choice-row">
+            ${LABELS.map(([value, text]) => `<button type="button" class="choice" data-value="${value}">${text}</button>`).join("")}
+          </div>
+        </div>
+        <textarea data-field="review_note" placeholder="notes"></textarea>
+        <div class="button-row">
+          <button class="save-label">Save label</button>
+          <span class="save-state"></span>
+        </div>
+      </article>`;
+  }
+
+  function findItem(article) {
+    const hash = article.dataset.hash;
+    const surveyId = article.dataset.surveyId;
+    return state.items.find(item => (item.song_hash || item.hash) === hash && item.survey_id === surveyId);
+  }
+
+  function setChoice(article, value) {
+    for (const button of article.querySelectorAll(".choice")) {
+      button.classList.toggle("active", button.dataset.value === value);
+    }
+  }
+
+  function getChoice(article) {
+    return article.querySelector(".choice.active")?.dataset.value || "";
+  }
+
+  function hydrateLabel(item) {
+    const hash = CSS.escape(item.song_hash || item.hash || "");
+    const survey = CSS.escape(item.survey_id || "");
+    const article = list.querySelector(`.song[data-hash="${hash}"][data-survey-id="${survey}"]`);
+    if (!article) return;
+    const label = item.label || {};
+    setChoice(article, label.human_label || item.human_label || item.candidate_hint || "");
+    const note = article.querySelector("textarea[data-field='review_note']");
+    if (note) note.value = label.review_note || "";
+    const stateEl = article.querySelector(".save-state");
+    if (stateEl && label.created_at) stateEl.textContent = `saved ${label.created_at}`;
+  }
+
+  async function saveLabel(article) {
+    const item = findItem(article);
+    if (!item) return;
+    const humanLabel = getChoice(article);
+    if (!humanLabel) throw new Error("choose a label first");
+    const payload = {
+      song_hash: item.song_hash || item.hash,
+      path: item.path,
+      human_label: humanLabel,
+      candidate_hint: item.candidate_hint || "",
+      review_note: article.querySelector("textarea[data-field='review_note']")?.value || "",
+      survey_id: item.survey_id || "phase0_5_song_type_heldout_seed_20260522"
+    };
+    const stateEl = article.querySelector(".save-state");
+    stateEl.textContent = "saving";
+    const res = await fetch("/api/ai/melody/song-type-labels", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.detail || data.error || res.statusText);
+    item.label = data.entry;
+    stateEl.textContent = `saved ${data.entry.created_at}`;
+    const badge = article.querySelector(".badge");
+    if (badge) {
+      badge.classList.remove("hint");
+      badge.classList.add("done");
+      badge.textContent = `labeled: ${data.entry.human_label}`;
+    }
+  }
+
+  list.addEventListener("click", event => {
+    const article = event.target.closest(".song");
+    if (!article) return;
+    const choice = event.target.closest(".choice");
+    if (choice) {
+      setChoice(article, choice.dataset.value);
+      return;
+    }
+    const save = event.target.closest(".save-label");
+    if (save) {
+      saveLabel(article).catch(err => {
+        const stateEl = article.querySelector(".save-state");
+        if (stateEl) stateEl.textContent = `failed: ${err.message}`;
+      });
+    }
+  });
+
+  list.addEventListener("play", event => {
+    if (event.target.tagName !== "AUDIO") return;
+    if (state.activeAudio && state.activeAudio !== event.target) state.activeAudio.pause();
+    state.activeAudio = event.target;
+  }, true);
+
+  $("#stopAudio").addEventListener("click", () => {
+    if (state.activeAudio) {
+      state.activeAudio.pause();
+      state.activeAudio.currentTime = 0;
+    }
+  });
+  $("#reload").addEventListener("click", () => loadQueue().catch(err => status.textContent = `Failed: ${err.message}`));
+  $("#filter").addEventListener("input", event => {
+    state.filter = event.target.value || "";
+    applyFilter();
+  });
+  document.querySelectorAll(".quick-filter").forEach(button => {
+    button.addEventListener("click", () => {
+      state.filter = button.dataset.filter || "";
+      $("#filter").value = state.filter;
+      applyFilter();
+    });
+  });
+
+  loadQueue().catch(err => {
+    status.textContent = `Failed: ${err.message}`;
+    list.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+  });
+</script>
+</body>
+</html>
