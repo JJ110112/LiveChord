@@ -7,7 +7,10 @@ soundfile>=0.13
 pretty_midi>=0.2
 mir_eval>=0.7
 demucs>=4.0
+# OmegaConf 2.3.0's generated grammar is incompatible with antlr4 4.13.x.
+antlr4-python3-runtime>=4.9,<4.10
 basic-pitch>=0.3
+torchcrepe>=0.0.23
 torchcodec>=0.1.0
 
 # OAuth (public-mode sign-in via Google/Discord). Authlib handles the OAuth2/OIDC

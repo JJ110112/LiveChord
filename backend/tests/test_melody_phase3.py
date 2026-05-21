@@ -1314,6 +1314,21 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(summary["warnings"]["unknown_group:balad;defaulting_to_unknown"], 1)
             self.assertEqual(summary["by_candidate"][SOLO_PIANO_POLYPHONIC]["by_status"]["polyphonic_json_missing"], 1)
 
+    def test_shadow_smoke_dry_run_surfaces_vocal_dependency_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch("backend.ai.melody_shadow_smoke._module_available", side_effect=lambda name: name != "torchcrepe"):
+                rows, summary = run_smoke_queue(
+                    [SmokeQueueItem(hash="vocal1", group="vocal", candidates=[VOCAL_STEM_CREPE])],
+                    data_dir=root,
+                    dry_run=True,
+                )
+
+            self.assertFalse(rows[0]["result"]["ok"])
+            self.assertEqual(rows[0]["result"]["results"][0]["status"], "dependency_missing")
+            self.assertEqual(rows[0]["result"]["results"][0]["details"]["path"], "torchcrepe")
+            self.assertEqual(summary["by_candidate"][VOCAL_STEM_CREPE]["by_status"]["dependency_missing"], 1)
+
     def test_shadow_smoke_report_refuses_overwrite_without_force(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

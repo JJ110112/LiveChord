@@ -249,6 +249,10 @@ def _summarize_rows(
 
 
 def _dry_run_candidate_result(candidate_id: str, item: SmokeQueueItem) -> Dict[str, Any]:
+    if candidate_id == VOCAL_STEM_CREPE:
+        missing = [name for name in ("demucs", "torchcrepe") if not _module_available(name)]
+        if missing:
+            return _planned_failure(candidate_id, "dependency_missing", ",".join(missing))
     if candidate_id == SOLO_PIANO_POLYPHONIC:
         if item.polyphonic_json:
             if not Path(item.polyphonic_json).is_file():
@@ -270,6 +274,14 @@ def _planned_failure(candidate_id: str, status: str, path: str) -> Dict[str, Any
         "error": status,
         "details": {"path": path},
     }
+
+
+def _module_available(module_name: str) -> bool:
+    try:
+        __import__(module_name)
+        return True
+    except Exception:
+        return False
 
 
 def _clean_group(value: Any) -> str:

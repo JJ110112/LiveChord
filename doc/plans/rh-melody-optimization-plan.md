@@ -700,7 +700,7 @@ Phase 0 instrumentation is complete, but current RH quality is poor enough that 
 | 4 | Add `solo_piano_polyphonic` Stage-2 selector: Magenta/polyphonic notes -> Skyline candidates -> Temperley Viterbi -> candidate cache | Done |
 | 5 | Add a one-song/batch shadow generation entry point for small A/B trials without changing formal RH playback | Done |
 | 6 | Add Admin candidate compare/read endpoint and UI hook so review can switch `full_mix_pyin` vs shadow candidates | Done |
-| 7 | Run a 20-30 song A/B smoke set (vocal, solo piano, instrumental) to see whether the new routes are worth scaling | Runner ready; pending curated queue + run |
+| 7 | Run a 20-30 song A/B smoke set (vocal, solo piano, instrumental) to see whether the new routes are worth scaling | Partial run complete: 27-song queue built; `full_mix_pyin` 27/27, `vocal_stem_crepe` 12/12, instrumental baseline 6/6; `solo_piano_polyphonic` pending Stage-1 polyphonic JSON |
 | 8 | Finish the 200-song equal-probability listening survey through the Admin RH survey panel, using candidate comparison where available | Pending human review |
 | 9 | Add Phase 0 survey summary/report output: completion count, primary-tag distribution, post-filter-fixable ratio, secondary/audio-quality breakdown | Pending |
 | 10 | Run current `full_mix_pyin` against a MedleyDB-Melody / MIR-1K subset (≥20 songs); record RPA/RCA as the external floor for later phases | Pending |
