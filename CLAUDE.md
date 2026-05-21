@@ -62,6 +62,7 @@ The user-facing data left over from the beta (`feedback.db`, `auth.db`, `audit.d
 After any code change:
 - Backend `.py` → copy to matching path under `V:\backend\`
 - Frontend `.html`/`.js`/`.css` → copy to matching path under `V:\frontend\`
+- Dev-only tests (`backend/tests/**`) are not part of the NUC runtime deploy surface. Do not treat their V:\ drift as a runtime sync failure; leave them unsynced unless doing explicit housekeeping.
 - Verify with `diff -q` after copy
 - `W:\` is **not** the runtime — edits there are silent no-ops for the server
 
