@@ -55,9 +55,40 @@ class VocalStemCrepeExtractor:
         time_signature: str = "4/4",
         model: str = "full",
     ) -> VocalCrepeResult:
-        stem = Path(vocal_stem_path)
+        return self.extract_stem_to_cache(
+            song_hash=song_hash,
+            path=path,
+            stem_path=vocal_stem_path,
+            candidate_id=VOCAL_STEM_CREPE,
+            stem_label="vocals",
+            algorithm=f"htdemucs.vocals+torchcrepe.{model}",
+            empty_flag="empty_vocal_stem_crepe",
+            song_type="vocal_pop",
+            bpm=bpm,
+            tempo_curve=tempo_curve,
+            time_signature=time_signature,
+            model=model,
+        )
+
+    def extract_stem_to_cache(
+        self,
+        *,
+        song_hash: str,
+        path: str,
+        stem_path: str,
+        candidate_id: str,
+        stem_label: str,
+        algorithm: str,
+        empty_flag: str,
+        song_type: str,
+        bpm: float = 120.0,
+        tempo_curve: Optional[List[Dict[str, Any]]] = None,
+        time_signature: str = "4/4",
+        model: str = "full",
+    ) -> VocalCrepeResult:
+        stem = Path(stem_path)
         if not stem.is_file():
-            return VocalCrepeResult(ok=False, error="vocal_stem_not_found")
+            return VocalCrepeResult(ok=False, error=f"{stem_label}_stem_not_found")
         try:
             events, build_info = self._extract_events(stem, model=model)
         except ImportError as exc:
@@ -67,22 +98,22 @@ class VocalStemCrepeExtractor:
 
         flags = []
         if not events:
-            flags.append("empty_vocal_stem_crepe")
+            flags.append(empty_flag)
         payload = build_candidate_payload(
             song_hash=song_hash,
             path=path,
-            candidate_id=VOCAL_STEM_CREPE,
+            candidate_id=candidate_id,
             melody=events,
-            stem="vocals",
-            algorithm=f"htdemucs.vocals+torchcrepe.{model}",
+            stem=stem_label,
+            algorithm=algorithm,
             quality_flags=flags,
             bpm=bpm,
             tempo_curve=tempo_curve,
             time_signature=time_signature,
-            song_type="vocal_pop",
+            song_type=song_type,
             build_info=build_info,
         )
-        cache_file = write_candidate_cache(self.data_dir, song_hash, VOCAL_STEM_CREPE, payload)
+        cache_file = write_candidate_cache(self.data_dir, song_hash, candidate_id, payload)
         return VocalCrepeResult(ok=True, payload=payload, cache_file=str(cache_file))
 
     def _extract_events(self, stem: Path, *, model: str) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:

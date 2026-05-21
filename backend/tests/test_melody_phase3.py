@@ -25,6 +25,7 @@ from backend.ai.melody_review import (
 )
 from backend.ai.melody_candidate import (
     FULL_MIX_PYIN,
+    INSTRUMENT_LEAD,
     MELODY_CANDIDATE_CACHE_VERSION,
     SOLO_PIANO_POLYPHONIC,
     VOCAL_STEM_CREPE,
@@ -1198,6 +1199,53 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(result.results[0].details["reused"], True)
             self.assertTrue(candidate_path(root, "abcdef123456", VOCAL_STEM_CREPE).exists())
 
+    def test_shadow_generator_instrument_lead_uses_other_stem_and_extractor(self):
+        class FakeStemCache:
+            def ensure_stems(self, **_kwargs):
+                return StemCacheResult(
+                    ok=True,
+                    stems={"vocals": str(root / "vocals.wav"), "other": str(root / "other.wav")},
+                    cache_dir=str(root / "stems"),
+                    reused=True,
+                )
+
+        class FakeCrepeExtractor:
+            def extract_stem_to_cache(self, **kwargs):
+                payload = build_candidate_payload(
+                    song_hash=kwargs["song_hash"],
+                    path=kwargs["path"],
+                    candidate_id=kwargs["candidate_id"],
+                    melody=[{"start": 0.0, "end": 0.5, "midi": 72}],
+                    stem=kwargs["stem_label"],
+                    algorithm=kwargs["algorithm"],
+                    song_type=kwargs["song_type"],
+                    bpm=120,
+                )
+                out = write_candidate_cache(root, kwargs["song_hash"], kwargs["candidate_id"], payload)
+                return VocalCrepeResult(ok=True, payload=payload, cache_file=str(out))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "vocals.wav").write_bytes(b"v")
+            (root / "other.wav").write_bytes(b"o")
+
+            result = generate_shadow_candidates(
+                data_dir=root,
+                song_hash="abcdef123456",
+                path="Jazz/lead.flac",
+                audio_path=str(root / "song.wav"),
+                candidates=[INSTRUMENT_LEAD],
+                stem_cache=FakeStemCache(),
+                vocal_extractor=FakeCrepeExtractor(),
+            )
+            payload = read_candidate_cache(root, "abcdef123456", INSTRUMENT_LEAD)
+
+            self.assertTrue(result.ok)
+            self.assertEqual(result.results[0].candidate_id, INSTRUMENT_LEAD)
+            self.assertEqual(payload["melody_source"]["stem"], "other")
+            self.assertEqual(payload["melody_source"]["song_type"], "instrumental")
+            self.assertEqual(payload["melody"][0]["midi"], 72)
+
     def test_shadow_generator_solo_piano_from_polyphonic_json(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1316,7 +1364,7 @@ class TestMelodyPhase3(unittest.TestCase):
 
             self.assertEqual(items[0].resolved_candidates(), [FULL_MIX_PYIN, VOCAL_STEM_CREPE])
             self.assertEqual(items[1].resolved_candidates(), [FULL_MIX_PYIN, SOLO_PIANO_POLYPHONIC])
-            self.assertEqual(items[2].resolved_candidates(), [FULL_MIX_PYIN])
+            self.assertEqual(items[2].resolved_candidates(), [FULL_MIX_PYIN, INSTRUMENT_LEAD])
 
     def test_shadow_smoke_queue_accepts_utf8_bom(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1450,6 +1498,16 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(rows[0]["result"]["results"][0]["status"], "dependency_missing")
             self.assertEqual(rows[0]["result"]["results"][0]["details"]["path"], "demucs,torchcrepe")
             self.assertEqual(summary["by_candidate"][VOCAL_STEM_CREPE]["by_status"]["dependency_missing"], 1)
+
+            with patch("backend.ai.melody_shadow_smoke._module_available", side_effect=lambda name: False):
+                rows, summary = run_smoke_queue(
+                    [SmokeQueueItem(hash="inst1", group="instrumental", candidates=[INSTRUMENT_LEAD])],
+                    data_dir=root,
+                    dry_run=True,
+                )
+            self.assertFalse(rows[0]["result"]["ok"])
+            self.assertEqual(rows[0]["result"]["results"][0]["status"], "dependency_missing")
+            self.assertEqual(summary["by_candidate"][INSTRUMENT_LEAD]["by_status"]["dependency_missing"], 1)
 
             with patch("backend.ai.melody_shadow_smoke._module_available", side_effect=lambda name: name == "torchcrepe"):
                 rows, _summary = run_smoke_queue(

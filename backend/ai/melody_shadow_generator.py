@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 from .melody_candidate import (
     FULL_MIX_PYIN,
+    INSTRUMENT_LEAD,
     SOLO_PIANO_POLYPHONIC,
     VOCAL_STEM_CREPE,
     build_candidate_payload,
@@ -114,6 +115,17 @@ def generate_shadow_candidates(
                 force=force,
                 stem_cache=stem_cache,
                 vocal_extractor=vocal_extractor,
+            ))
+        elif candidate_id == INSTRUMENT_LEAD:
+            results.append(_generate_instrument_lead(
+                data_dir=root,
+                song_hash=resolved_hash,
+                path=resolved_path,
+                audio_path=resolved_audio,
+                context=context,
+                force=force,
+                stem_cache=stem_cache,
+                extractor=vocal_extractor,
             ))
         elif candidate_id == SOLO_PIANO_POLYPHONIC:
             results.append(_generate_solo_piano_polyphonic(
@@ -242,6 +254,63 @@ def _generate_vocal_stem_crepe(
         )
     return ShadowCandidateResult(
         VOCAL_STEM_CREPE,
+        True,
+        "generated",
+        result.cache_file,
+        details={"stems": stems.stems, "cache_dir": stems.cache_dir, "reused": stems.reused},
+    )
+
+
+def _generate_instrument_lead(
+    *,
+    data_dir: Path,
+    song_hash: str,
+    path: str,
+    audio_path: str,
+    context: Dict[str, Any],
+    force: bool,
+    stem_cache: Optional[StemCache],
+    extractor: Optional[VocalStemCrepeExtractor],
+) -> ShadowCandidateResult:
+    out = candidate_path(data_dir, song_hash, INSTRUMENT_LEAD)
+    if out.is_file() and not force:
+        return ShadowCandidateResult(INSTRUMENT_LEAD, True, "cached", str(out))
+
+    cache = stem_cache or StemCache(data_dir)
+    stems = cache.ensure_stems(song_hash=song_hash, audio_path=audio_path, force=force)
+    if not stems.ok:
+        return ShadowCandidateResult(
+            INSTRUMENT_LEAD,
+            False,
+            "failed",
+            error=f"stem_cache:{stems.error}",
+            details={"stems": stems.stems, "cache_dir": stems.cache_dir, "reused": stems.reused},
+        )
+    other = stems.stems.get("other", "")
+    crepe = extractor or VocalStemCrepeExtractor(data_dir=data_dir)
+    result = crepe.extract_stem_to_cache(
+        song_hash=song_hash,
+        path=path,
+        stem_path=other,
+        candidate_id=INSTRUMENT_LEAD,
+        stem_label="other",
+        algorithm="htdemucs.other+torchcrepe.full",
+        empty_flag="empty_instrument_lead",
+        song_type="instrumental",
+        bpm=float(context.get("bpm") or 120.0),
+        tempo_curve=context.get("tempo_curve"),
+        time_signature=str(context.get("time_signature") or "4/4"),
+    )
+    if not result.ok:
+        return ShadowCandidateResult(
+            INSTRUMENT_LEAD,
+            False,
+            "failed",
+            error=result.error,
+            details={"stems": stems.stems, "cache_dir": stems.cache_dir, "reused": stems.reused},
+        )
+    return ShadowCandidateResult(
+        INSTRUMENT_LEAD,
         True,
         "generated",
         result.cache_file,

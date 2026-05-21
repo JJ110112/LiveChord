@@ -10,18 +10,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
-from .melody_candidate import FULL_MIX_PYIN, SOLO_PIANO_POLYPHONIC, VOCAL_STEM_CREPE
+from .melody_candidate import FULL_MIX_PYIN, INSTRUMENT_LEAD, SOLO_PIANO_POLYPHONIC, VOCAL_STEM_CREPE
 from .melody_shadow_generator import DEFAULT_DATA_DIR, ShadowGenerationResult, generate_shadow_candidates
 
 
 SMOKE_SURVEY_ID = "phase0_5_ab_smoke"
-IMPLEMENTED_SMOKE_CANDIDATES = {FULL_MIX_PYIN, VOCAL_STEM_CREPE, SOLO_PIANO_POLYPHONIC}
+IMPLEMENTED_SMOKE_CANDIDATES = {FULL_MIX_PYIN, VOCAL_STEM_CREPE, SOLO_PIANO_POLYPHONIC, INSTRUMENT_LEAD}
 DEFAULT_CANDIDATES_BY_GROUP = {
     "vocal": [FULL_MIX_PYIN, VOCAL_STEM_CREPE],
     "vocal_led": [FULL_MIX_PYIN, VOCAL_STEM_CREPE],
     "solo_piano": [FULL_MIX_PYIN, SOLO_PIANO_POLYPHONIC],
     "piano": [FULL_MIX_PYIN, SOLO_PIANO_POLYPHONIC],
-    "instrumental": [FULL_MIX_PYIN],
+    "instrumental": [FULL_MIX_PYIN, INSTRUMENT_LEAD],
     "mixed": [FULL_MIX_PYIN, VOCAL_STEM_CREPE],
     "unknown": [FULL_MIX_PYIN],
 }
@@ -250,7 +250,7 @@ def _summarize_rows(
 
 
 def _dry_run_candidate_result(candidate_id: str, item: SmokeQueueItem) -> Dict[str, Any]:
-    if candidate_id == VOCAL_STEM_CREPE:
+    if candidate_id in {VOCAL_STEM_CREPE, INSTRUMENT_LEAD}:
         missing = [name for name in ("demucs", "torchcrepe") if not _module_available(name)]
         if missing:
             return _planned_failure(candidate_id, "dependency_missing", ",".join(missing))
