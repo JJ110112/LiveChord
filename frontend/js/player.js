@@ -8978,10 +8978,10 @@
     if (btnBugCopyEmail) {
       btnBugCopyEmail.addEventListener("click", async () => {
         try {
-          await navigator.clipboard.writeText("hiteacherwu@gmail.com");
+          await navigator.clipboard.writeText("livechordcookie@gmail.com");
           showToast(_t("toast.email_copied"));
         } catch (_) {
-          showToast("hiteacherwu@gmail.com");
+          showToast("livechordcookie@gmail.com");
         }
       });
     }

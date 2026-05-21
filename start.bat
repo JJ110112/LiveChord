@@ -7,7 +7,7 @@ REM (auto worker, library, backup) and force the front-end into the legacy
 REM Beta login UI on LAN. Env var wins over settings.json in config.py.
 REM NUC = personal (LAN-only, full library). VPS uses its own systemd unit.
 set LIVECHORD_MODE=personal
-set LIVECHORD_ADMIN_EMAILS=hiteacherwu@gmail.com
+set LIVECHORD_ADMIN_EMAILS=livechordcookie@gmail.com
 
 REM Add Windows firewall rule for port 8800 (needs Admin elevation)
 netsh advfirewall firewall show rule name="LiveChord Server" >nul 2>&1

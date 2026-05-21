@@ -167,7 +167,7 @@ LiveChord is licensed under the [GNU Affero General Public License v3.0](LICENSE
 
 In plain language: you can use, modify, and redistribute LiveChord freely, but if you run a modified version as a network service (e.g. host a fork at `your-livechord-fork.com`), you must make your modified source code available to users of that service. This matches the project's spirit — "free for everyone, including the people who fork it."
 
-If AGPL doesn't fit your use case (e.g. proprietary commercial integration), email the author at hiteacherwu@gmail.com to discuss.
+If AGPL doesn't fit your use case (e.g. proprietary commercial integration), email the author at livechordcookie@gmail.com to discuss.
 
 ## Acknowledgments
 

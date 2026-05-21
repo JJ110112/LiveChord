@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const SUPPORT_EMAIL = "hiteacherwu@gmail.com";
+  const SUPPORT_EMAIL = "livechordcookie@gmail.com";
 
   function _t(key, vars, fallback) {
     if (window.LiveChordI18n && window.LiveChordI18n.t) {
@@ -105,8 +105,8 @@
           <input id="siteReportWebsite" class="site-report-honeypot" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">
           <div class="site-report-fallbacks">
             <button id="siteReportCopyEmail" type="button" class="site-report-link" data-i18n="player.bug.copy_email">Copy email</button>
-            <a class="site-report-link" href="https://mail.google.com/mail/?view=cm&fs=1&to=hiteacherwu@gmail.com&su=LiveChord%20bug%20report" target="_blank" rel="noopener noreferrer" data-i18n="player.bug.open_gmail">Open Gmail</a>
-            <a class="site-report-link" href="https://outlook.live.com/mail/0/deeplink/compose?to=hiteacherwu@gmail.com&subject=LiveChord%20bug%20report" target="_blank" rel="noopener noreferrer" data-i18n="player.bug.open_outlook">Open Outlook web</a>
+            <a class="site-report-link" href="https://mail.google.com/mail/?view=cm&fs=1&to=livechordcookie@gmail.com&su=LiveChord%20bug%20report" target="_blank" rel="noopener noreferrer" data-i18n="player.bug.open_gmail">Open Gmail</a>
+            <a class="site-report-link" href="https://outlook.live.com/mail/0/deeplink/compose?to=livechordcookie@gmail.com&subject=LiveChord%20bug%20report" target="_blank" rel="noopener noreferrer" data-i18n="player.bug.open_outlook">Open Outlook web</a>
           </div>
           <div id="siteReportStatus" class="site-report-status" aria-live="polite"></div>
           <div class="site-report-actions">

@@ -67,7 +67,7 @@ Open a GitHub issue with:
 - A screenshot if it's a UI bug
 - For analysis errors: the song name + audio source if you can share it
 
-For sensitive reports (security issues, data leaks): email hiteacherwu@gmail.com directly. Don't open a public issue.
+For sensitive reports (security issues, data leaks): email livechordcookie@gmail.com directly. Don't open a public issue.
 
 ## Code of conduct
 
