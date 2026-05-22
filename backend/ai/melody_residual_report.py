@@ -321,13 +321,34 @@ def _summary(rows: Sequence[Mapping[str, Any]], *, skipped: int) -> Dict[str, An
     total = len(rows)
     coverage_flagged = sum(1 for row in rows if "coverage_gap_gt_30pct" in (row.get("flags") or []))
     tail_flagged = sum(1 for row in rows if "phrase_tail_jump_gt_30pct" in (row.get("flags") or []))
+    rows_with_missing_windows = [
+        row for row in rows
+        if int((row.get("coverage") or {}).get("candidate_missing_windows") or 0) > 0
+    ]
+    rows_with_low_worst_window = [
+        row for row in rows
+        if _float_or_none((row.get("coverage") or {}).get("worst_window_ratio")) is not None
+        and (_float_or_none((row.get("coverage") or {}).get("worst_window_ratio")) or 0.0) <= 0.05
+    ]
+    rows_with_tail_jumps = [
+        row for row in rows
+        if int((row.get("phrase_tail_jumps") or {}).get("jump_tail_count") or 0) > 0
+    ]
     return {
         "total": total,
         "skipped": skipped,
         "coverage_gap_gt_30pct_songs": coverage_flagged,
         "coverage_gap_gt_30pct_fraction": round(coverage_flagged / total, 4) if total else 0.0,
+        "songs_with_missing_windows": len(rows_with_missing_windows),
+        "worst_window_ratio_lte_005_songs": len(rows_with_low_worst_window),
+        "worst_window_review_rows": _worst_window_review_rows(rows_with_low_worst_window),
         "phrase_tail_jump_gt_30pct_songs": tail_flagged,
         "phrase_tail_jump_gt_30pct_fraction": round(tail_flagged / total, 4) if total else 0.0,
+        "songs_with_phrase_tail_jumps": len(rows_with_tail_jumps),
+        "max_phrase_tail_jump_count": max(
+            (int((row.get("phrase_tail_jumps") or {}).get("jump_tail_count") or 0) for row in rows),
+            default=0,
+        ),
         "passes_stage_b_residual_gate": (
             total > 0
             and coverage_flagged / total <= 0.30
@@ -339,3 +360,33 @@ def _summary(rows: Sequence[Mapping[str, Any]], *, skipped: int) -> Dict[str, An
 def _title_from_path(path: str) -> str:
     name = Path(path).name
     return name.rsplit(".", 1)[0] if "." in name else name
+
+
+def _worst_window_review_rows(rows: Sequence[Mapping[str, Any]], *, limit: int = 5) -> List[Dict[str, Any]]:
+    def sort_key(row: Mapping[str, Any]) -> float:
+        value = _float_or_none((row.get("coverage") or {}).get("worst_window_ratio"))
+        return value if value is not None else 999.0
+
+    output: List[Dict[str, Any]] = []
+    for row in sorted(rows, key=sort_key)[:limit]:
+        coverage = row.get("coverage") or {}
+        missing_windows = [
+            {
+                "start": item.get("start"),
+                "end": item.get("end"),
+                "coverage_ratio": item.get("coverage_ratio"),
+                "baseline_active_s": item.get("baseline_active_s"),
+                "candidate_active_s": item.get("candidate_active_s"),
+            }
+            for item in coverage.get("windows") or []
+            if isinstance(item, Mapping) and item.get("missing")
+        ]
+        output.append({
+            "sample_order": row.get("sample_order"),
+            "song_hash": row.get("song_hash"),
+            "title": row.get("title"),
+            "worst_window_ratio": coverage.get("worst_window_ratio"),
+            "candidate_missing_windows": coverage.get("candidate_missing_windows"),
+            "missing_windows": missing_windows,
+        })
+    return output

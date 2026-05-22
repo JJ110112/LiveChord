@@ -2643,6 +2643,8 @@ class TestMelodyPhase3(unittest.TestCase):
             saved = json.loads(out.read_text(encoding="utf-8"))
             self.assertEqual(saved["summary"]["total"], 1)
             self.assertTrue(saved["summary"]["passes_stage_b_residual_gate"])
+            self.assertEqual(saved["summary"]["songs_with_missing_windows"], 0)
+            self.assertEqual(saved["summary"]["worst_window_review_rows"], [])
             self.assertEqual(saved["rows"][0]["song_hash"], song_hash)
 
             with self.assertRaises(FileExistsError):

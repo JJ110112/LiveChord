@@ -63,6 +63,7 @@ After any code change:
 - Backend `.py` → copy to matching path under `V:\backend\`
 - Frontend `.html`/`.js`/`.css` → copy to matching path under `V:\frontend\`
 - Dev-only tests (`backend/tests/**`) are not part of the NUC runtime deploy surface. Do not treat their V:\ drift as a runtime sync failure; leave them unsynced unless doing explicit housekeeping.
+- Research/evaluation tools that run from the dev repo against `V:\data` are also not runtime deploy surface, even when their helpers live under `backend/ai/` for import hygiene. Examples: report/evaluation scripts under `tools/` and helper modules only imported by those scripts. If a backend module is imported by `main.py`, an API route, `process_queue`, or another live worker, then it is runtime and must be synced to `V:\backend\`.
 - Verify with `diff -q` after copy
 - `W:\` is **not** the runtime — edits there are silent no-ops for the server
 
