@@ -13,7 +13,13 @@ import tools.sample_melody_phase0_survey as survey_script
 import tools.sample_rh_song_type_labels as song_type_label_script
 import tools.report_rh_song_type_labels as song_type_report_script
 import tools.train_rh_song_type_classifier as song_type_train_script
+import tools.extract_rh_song_type_audio_features as song_type_audio_script
 import tools.run_basic_pitch_polyphonic_batch as polyphonic_script
+from backend.ai.song_type_audio_features import (
+    AUDIO_FEATURE_SOURCE,
+    cached_stem_energy_features,
+    summarize_audio_array,
+)
 from backend.ai.song_type_classifier import (
     evaluate_leave_one_out,
     predict_metadata_nb,
@@ -984,6 +990,99 @@ class TestMelodyPhase3(unittest.TestCase):
         prediction = predict_metadata_nb({"title": "zzzxq novel unseen tokens"}, model)
 
         self.assertEqual(prediction["song_type"], "vocal_led")
+
+    def test_song_type_audio_features_summarize_array(self):
+        import numpy as np
+
+        sr = 16000
+        t = np.linspace(0, 1.0, sr, endpoint=False)
+        audio = (0.4 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
+
+        features = summarize_audio_array(audio, sr)
+
+        self.assertEqual(features["feature_source"], AUDIO_FEATURE_SOURCE)
+        self.assertAlmostEqual(features["analyzed_duration_s"], 1.0)
+        self.assertGreater(features["rms_mean"], 0.0)
+        self.assertGreaterEqual(features["onset_density_per_s"], 0.0)
+        self.assertIsNotNone(features["hpss_harmonic_ratio"])
+        self.assertGreaterEqual(features["hpss_harmonic_ratio"], 0.0)
+        self.assertLessEqual(features["hpss_harmonic_ratio"], 1.0)
+
+    def test_song_type_audio_features_reads_cached_stem_energy_ratio(self):
+        import numpy as np
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            song_hash = "aa123456"
+            for stem in ("vocals", "bass", "drums", "other"):
+                path = stem_path(root, song_hash, stem)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("stub", encoding="utf-8")
+
+            def fake_load(path, *, sample_rate, max_seconds):
+                value = 2.0 if str(path).endswith("vocals.wav") else 1.0
+                return np.ones(8, dtype=np.float32) * value, sample_rate
+
+            with patch("backend.ai.song_type_audio_features.load_audio_mono", side_effect=fake_load):
+                features = cached_stem_energy_features(root, song_hash)
+
+        self.assertEqual(features["stem_status"], "cached_stems")
+        self.assertAlmostEqual(features["vocal_stem_energy_ratio"], 4.0 / 7.0)
+        self.assertAlmostEqual(features["vocal_vs_other_energy_ratio"], 4.0 / 5.0)
+
+    def test_extract_rh_song_type_audio_features_cli_writes_rows_and_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            queue = root / "queue.jsonl"
+            labels = root / "labels.jsonl"
+            out = root / "features.jsonl"
+            queue.write_text(
+                "\n".join([
+                    json.dumps({"survey_id": "heldout", "hash": "a", "path": "song-a.flac", "candidate_hint": "vocal_led"}),
+                    json.dumps({"survey_id": "heldout", "hash": "b", "path": "song-b.flac", "candidate_hint": "solo_piano"}),
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            labels.write_text(
+                "\n".join([
+                    json.dumps({"survey_id": "heldout", "song_hash": "a", "human_label": "vocal_led"}),
+                    json.dumps({"survey_id": "heldout", "song_hash": "b", "human_label": "solo_piano"}),
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            def fake_build(row, *, audio_path, data_dir, sample_rate, max_seconds, include_cached_stems):
+                return {
+                    "schema_version": 1,
+                    "feature_source": AUDIO_FEATURE_SOURCE,
+                    "song_hash": row["hash"],
+                    "resolved_label": row["resolved_label"],
+                    "status": "ok",
+                    "mix": {"onset_density_per_s": 1.5},
+                    "stems": {"stem_status": "not_requested"},
+                }
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(sys, "argv", [
+                    "extract_rh_song_type_audio_features.py",
+                    "--queue", str(queue),
+                    "--labels", str(labels),
+                    "--out", str(out),
+                    "--data-dir", str(root),
+                    "--no-cached-stems",
+                    "--force-output",
+                ]))
+                stack.enter_context(patch.object(song_type_audio_script, "_resolve_audio_path", lambda path: str(root / path)))
+                stack.enter_context(patch.object(song_type_audio_script, "build_audio_feature_row", side_effect=fake_build))
+                code = song_type_audio_script.main()
+
+            self.assertEqual(code, 0)
+            rows = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+            summary = json.loads(out.with_suffix(".summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0]["resolved_label"], "vocal_led")
+            self.assertEqual(summary["ok"], 2)
+            self.assertEqual(summary["stem_status"]["not_requested"], 2)
 
     def test_train_rh_song_type_classifier_cli_writes_model_and_report(self):
         with tempfile.TemporaryDirectory() as tmp:
