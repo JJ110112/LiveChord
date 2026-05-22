@@ -1958,6 +1958,19 @@ class TestMelodyPhase3(unittest.TestCase):
         self.assertEqual([event["midi"] for event in selected], [64, 65, 67])
         self.assertTrue(all(event["voice_lane"] == MELODY_VOICE_LANE for event in selected))
 
+    def test_piano_rh_selector_rejects_crossed_hand_spike_with_continuity(self):
+        notes = []
+        right_hand = [52, 54, 56, 58, 60, 62, 64, 66]
+        for index, midi in enumerate(right_hand):
+            start = index * 0.5
+            notes.append({"start": start, "end": start + 0.3, "midi": midi, "velocity": 45})
+            if index in (3, 4, 5):
+                notes.append({"start": start, "end": start + 0.8, "midi": midi + 14, "velocity": 127})
+
+        selected = select_right_hand_melody(notes, key="C", bpm=120)
+
+        self.assertEqual([event["midi"] for event in selected], right_hand)
+
     def test_piano_rh_selector_ignores_confidence_as_velocity_fallback(self):
         notes = [
             {"start": 0.0, "end": 0.5, "midi": 64, "confidence": 0.01},

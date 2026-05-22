@@ -9,7 +9,7 @@ needs note events.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .melody_schema import finalize_melody_events
 
@@ -48,6 +48,7 @@ def select_right_hand_melody(
     time_signature: str = "4/4",
     onset_cluster_s: float = 0.08,
     max_candidates_per_cluster: int = 4,
+    beam_size: int = 8,
 ) -> List[Dict[str, Any]]:
     """Select a monophonic RH melody from polyphonic note events."""
 
@@ -63,7 +64,7 @@ def select_right_hand_melody(
     if not candidate_sets:
         return []
 
-    path = _viterbi(candidate_sets, key=key)
+    path = _viterbi(candidate_sets, key=key, beam_size=beam_size)
     events = _post_merge([
         {
             "start": round(note.start, 6),
@@ -147,40 +148,34 @@ def _skyline_candidates(cluster: List[PianoNote], limit: int) -> List[PianoNote]
     return dedup
 
 
-def _viterbi(candidate_sets: List[List[PianoNote]], *, key: str) -> List[PianoNote]:
-    scores: List[Dict[int, float]] = []
-    back: List[Dict[int, int]] = []
+def _viterbi(candidate_sets: List[List[PianoNote]], *, key: str, beam_size: int = 8) -> List[PianoNote]:
+    # Beam search keeps a short pitch history so the selector can reject a brief
+    # crossing-hand spike without turning the whole path into "highest voice wins".
+    beam: List[Tuple[float, List[PianoNote]]] = [
+        (_local_score(note, key), [note])
+        for note in candidate_sets[0]
+    ]
+    beam = _prune_beam(beam, beam_size)
 
-    first_scores = {i: _local_score(note, key) for i, note in enumerate(candidate_sets[0])}
-    scores.append(first_scores)
-    back.append({})
+    for candidates in candidate_sets[1:]:
+        expanded: List[Tuple[float, List[PianoNote]]] = []
+        for score, path in beam:
+            prev = path[-1]
+            for note in candidates:
+                total = (
+                    score
+                    + _local_score(note, key)
+                    + _transition_score(prev, note)
+                    + _hand_state_score(path, note)
+                )
+                expanded.append((total, [*path, note]))
+        beam = _prune_beam(expanded, beam_size)
 
-    for idx in range(1, len(candidate_sets)):
-        layer: Dict[int, float] = {}
-        layer_back: Dict[int, int] = {}
-        prev_candidates = candidate_sets[idx - 1]
-        for j, note in enumerate(candidate_sets[idx]):
-            best_score = None
-            best_prev = 0
-            local = _local_score(note, key)
-            for i, prev in enumerate(prev_candidates):
-                transition = _transition_score(prev, note)
-                score = scores[idx - 1][i] + local + transition
-                if best_score is None or score > best_score:
-                    best_score = score
-                    best_prev = i
-            layer[j] = float(best_score if best_score is not None else local)
-            layer_back[j] = best_prev
-        scores.append(layer)
-        back.append(layer_back)
+    return max(beam, key=lambda item: item[0])[1]
 
-    last_index = max(scores[-1], key=lambda i: scores[-1][i])
-    indexes = [last_index]
-    for idx in range(len(candidate_sets) - 1, 0, -1):
-        last_index = back[idx].get(last_index, 0)
-        indexes.append(last_index)
-    indexes.reverse()
-    return [candidate_sets[i][j] for i, j in enumerate(indexes)]
+
+def _prune_beam(beam: List[Tuple[float, List[PianoNote]]], beam_size: int) -> List[Tuple[float, List[PianoNote]]]:
+    return sorted(beam, key=lambda item: item[0], reverse=True)[:max(1, int(beam_size))]
 
 
 def _local_score(note: PianoNote, key: str) -> float:
@@ -215,6 +210,35 @@ def _transition_score(prev: PianoNote, note: PianoNote) -> float:
     overlap = max(0.0, prev.end - note.start)
     continuity = -min(0.4, gap * 0.15) - min(0.25, overlap * 0.2)
     return interval_score + continuity
+
+
+def _hand_state_score(path: List[PianoNote], note: PianoNote) -> float:
+    if len(path) < 3:
+        return 0.0
+    recent = path[-4:]
+    pitches = sorted(n.midi for n in recent)
+    mid = len(pitches) // 2
+    if len(pitches) % 2:
+        anchor = float(pitches[mid])
+    else:
+        anchor = (pitches[mid - 1] + pitches[mid]) / 2.0
+
+    last_interval = recent[-1].midi - recent[-2].midi if len(recent) >= 2 else 0
+    predicted = recent[-1].midi + max(-5, min(5, last_interval))
+    distance = abs(note.midi - anchor)
+    predicted_distance = abs(note.midi - predicted)
+
+    score = 0.0
+    if distance <= 7:
+        score += 0.16
+    elif distance <= 12:
+        score += 0.02
+    else:
+        score -= 0.38 + min(0.55, (distance - 12) * 0.06)
+
+    if predicted_distance > 12:
+        score -= 0.20 + min(0.35, (predicted_distance - 12) * 0.04)
+    return score
 
 
 def _post_merge(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
