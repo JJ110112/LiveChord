@@ -76,11 +76,25 @@ def evaluate_vocal_gate(
     fn = [row for row in predictions if not row["predict_vocal"] and row["human_label"] == "vocal_led"]
     predicted = sum(1 for row in predictions if row["predict_vocal"])
     actual = sum(1 for row in predictions if row["human_label"] == "vocal_led")
+    known_predictions = [row for row in predictions if row["human_label"] != "unknown"]
+    lenient_predicted = sum(1 for row in known_predictions if row["predict_vocal"])
+    lenient_actual = sum(1 for row in known_predictions if row["human_label"] == "vocal_led")
+    lenient_tp = sum(1 for row in known_predictions if row["predict_vocal"] and row["human_label"] == "vocal_led")
+    lenient_fn = [row for row in known_predictions if not row["predict_vocal"] and row["human_label"] == "vocal_led"]
+    unknown_rows = [row for row in predictions if row["human_label"] == "unknown"]
+    unknown_predicted_vocal = [row for row in unknown_rows if row["predict_vocal"]]
     return {
         "gate_version": VOCAL_GATE_VERSION,
+        "metric_policy": {
+            "strict": "unknown labels are counted as not-vocal for precision.",
+            "lenient": "unknown labels are excluded from precision and recall denominators.",
+        },
         "vocal_ratio_threshold": vocal_ratio_threshold,
         "min_duration_s": min_duration_s,
         "total": len(predictions),
+        "known_total": len(known_predictions),
+        "unknown_total": len(unknown_rows),
+        "unknown_predicted_vocal": len(unknown_predicted_vocal),
         "predicted_vocal": predicted,
         "actual_vocal": actual,
         "true_positive": tp,
@@ -88,8 +102,14 @@ def evaluate_vocal_gate(
         "false_negative": len(fn),
         "precision": (tp / predicted) if predicted else None,
         "recall": (tp / actual) if actual else None,
+        "strict_precision": (tp / predicted) if predicted else None,
+        "strict_recall": (tp / actual) if actual else None,
+        "lenient_precision": (lenient_tp / lenient_predicted) if lenient_predicted else None,
+        "lenient_recall": (lenient_tp / lenient_actual) if lenient_actual else None,
         "false_positives": fp,
         "false_negatives": fn,
+        "lenient_false_negatives": lenient_fn,
+        "unknown_rows": unknown_rows,
         "rows": predictions,
     }
 

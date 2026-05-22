@@ -1369,11 +1369,39 @@ class TestMelodyPhase3(unittest.TestCase):
         self.assertEqual(report["false_positive"], 0)
         self.assertEqual(report["false_negative"], 0)
         self.assertEqual(report["precision"], 1.0)
+        self.assertEqual(report["strict_precision"], 1.0)
+        self.assertEqual(report["lenient_precision"], 1.0)
+        self.assertEqual(report["unknown_total"], 1)
         self.assertEqual(report["rows"][2]["reason"], "duration_below_min")
 
         sweep = threshold_sweep(rows, thresholds=[0.25, 0.30, 0.35], min_duration_s=30)
         self.assertIn("0.300", sweep)
         self.assertEqual(sweep["0.300"]["precision"], 1.0)
+
+    def test_vocal_gate_reports_strict_and_lenient_unknown_policy(self):
+        rows = [
+            {
+                "song_hash": "vocal",
+                "resolved_label": "vocal_led",
+                "duration_s": 120,
+                "stems": {"vocal_stem_energy_ratio": 0.6},
+            },
+            {
+                "song_hash": "unknown",
+                "resolved_label": "unknown",
+                "duration_s": 120,
+                "stems": {"vocal_stem_energy_ratio": 0.9},
+            },
+        ]
+
+        report = evaluate_vocal_gate(rows, vocal_ratio_threshold=0.3, min_duration_s=30)
+
+        self.assertEqual(report["unknown_total"], 1)
+        self.assertEqual(report["unknown_predicted_vocal"], 1)
+        self.assertEqual(report["strict_precision"], 0.5)
+        self.assertEqual(report["lenient_precision"], 1.0)
+        self.assertEqual(report["strict_recall"], 1.0)
+        self.assertEqual(report["lenient_recall"], 1.0)
 
     def test_evaluate_rh_vocal_gate_cli_writes_report(self):
         with tempfile.TemporaryDirectory() as tmp:
