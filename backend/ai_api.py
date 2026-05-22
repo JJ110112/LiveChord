@@ -48,6 +48,17 @@ def _read_finalized_melody_cache(cache_file: Path, *, path: str = "",
     return finalized
 
 
+def _maybe_resolve_rh_melody(payload: Dict[str, Any], *, path: str = "", song_hash: str = "") -> Dict[str, Any]:
+    try:
+        from ai.melody_resolver import MelodyResolver, resolver_enabled
+
+        if not resolver_enabled():
+            return payload
+        return MelodyResolver(DATA_DIR).resolve(payload, song_hash=song_hash, path=path)
+    except Exception:
+        return payload
+
+
 def _melody_debug_target(path: str = "", song_hash: str = "") -> Dict[str, Any]:
     import json as _json
 
@@ -247,7 +258,8 @@ def get_melody(
     if hash and not path:
         cache_file = MELODY_DIR / f"{hash}.json"
         if cache_file.is_file():
-            return _read_finalized_melody_cache(cache_file, song_hash=hash)
+            payload = _read_finalized_melody_cache(cache_file, song_hash=hash)
+            return _maybe_resolve_rh_melody(payload, song_hash=hash)
         # Try to find path from chord data and derive melody hash
         chords_file = chord_file_for(hash)
         if chords_file.is_file():
@@ -258,11 +270,12 @@ def get_melody(
                     melody_hash = get_song_hash(cd["path"])
                     alt_file = MELODY_DIR / f"{melody_hash}.json"
                     if alt_file.is_file():
-                        return _read_finalized_melody_cache(
+                        payload = _read_finalized_melody_cache(
                             alt_file,
                             path=cd.get("path", ""),
                             song_hash=hash,
                         )
+                        return _maybe_resolve_rh_melody(payload, path=cd.get("path", ""), song_hash=hash)
             except Exception:
                 pass
         return {"melody": []}
@@ -276,7 +289,8 @@ def get_melody(
 
     # 有快取直接回傳
     if cache_file.is_file():
-        return _read_finalized_melody_cache(cache_file, path=path, song_hash=h)
+        payload = _read_finalized_melody_cache(cache_file, path=path, song_hash=h)
+        return _maybe_resolve_rh_melody(payload, path=path, song_hash=h)
 
     # 即時提取
     from config import resolve_path
@@ -302,7 +316,7 @@ def get_melody(
             song_hash=h,
         )
         cache_file.write_text(_json.dumps(result, ensure_ascii=False), encoding="utf-8")
-        return result
+        return _maybe_resolve_rh_melody(result, path=path, song_hash=h)
     except Exception as e:
         return {"error": str(e), "melody": []}
 

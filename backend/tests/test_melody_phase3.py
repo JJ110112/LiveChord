@@ -53,9 +53,11 @@ from backend.ai.melody_candidate import (
     build_candidate_payload,
     candidate_path,
     read_candidate_cache,
+    selected_path,
     stem_path,
     write_candidate_cache,
 )
+from backend.ai.melody_resolver import MelodyResolver, RESOLVER_VERSION, RETREAT_LOW_COVERAGE_FLAG
 from backend.ai.melody_ab_review_report import (
     build_review_rows,
     render_review_markdown,
@@ -1183,6 +1185,7 @@ class TestMelodyPhase3(unittest.TestCase):
                 features = cached_stem_energy_features(root, song_hash)
 
         self.assertEqual(features["stem_status"], "cached_stems")
+        self.assertAlmostEqual(features["stem_analyzed_duration_s"], 8.0 / 16000.0)
         self.assertAlmostEqual(features["vocal_stem_energy_ratio"], 4.0 / 7.0)
         self.assertAlmostEqual(features["vocal_vs_other_energy_ratio"], 4.0 / 5.0)
 
@@ -1494,6 +1497,105 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(report["recall"], 1.0)
             self.assertEqual(report["vocal_ratio_threshold"], 0.06)
             self.assertIn("0.060", report["threshold_sweep"])
+
+    def test_melody_resolver_selects_vocal_candidate_when_gate_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            song_hash = "abcdef123456"
+            baseline = finalize_melody_payload(
+                {"path": "song.flac", "melody": [{"start": 0, "end": 2.0, "midi": 60}]},
+                path="song.flac",
+            )
+            candidate = build_candidate_payload(
+                song_hash=song_hash,
+                path="song.flac",
+                candidate_id=VOCAL_STEM_CREPE,
+                melody=[{"start": 0, "end": 1.0, "midi": 64}, {"start": 1.0, "end": 2.0, "midi": 65}],
+                stem="vocals",
+                algorithm="htdemucs.vocals+torchcrepe.full",
+                quality_flags=["shadow_candidate"],
+            )
+            write_candidate_cache(root, song_hash, VOCAL_STEM_CREPE, candidate)
+
+            with patch(
+                "backend.ai.melody_resolver.cached_stem_energy_features",
+                return_value={
+                    "stem_status": "cached_stems",
+                    "missing_stems": [],
+                    "stem_analyzed_duration_s": 120.0,
+                    "vocal_stem_energy_ratio": 0.08,
+                },
+            ):
+                resolved = MelodyResolver(root).resolve(baseline, song_hash=song_hash, path="song.flac")
+
+            self.assertEqual(resolved["melody_source"]["id"], VOCAL_STEM_CREPE)
+            self.assertEqual(resolved["melody_source"]["selected_by"], RESOLVER_VERSION)
+            self.assertEqual(resolved["melody_source"]["song_type"], "vocal_led")
+            self.assertEqual(resolved["melody_source"]["resolver_gate"]["vocal_stem_energy_ratio"], 0.08)
+            self.assertTrue(selected_path(root, song_hash).is_file())
+
+    def test_melody_resolver_falls_back_when_gate_fails_or_coverage_low(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            song_hash = "abcdef123456"
+            baseline = finalize_melody_payload(
+                {"path": "song.flac", "melody": [{"start": 0, "end": 10.0, "midi": 60}]},
+                path="song.flac",
+            )
+            candidate = build_candidate_payload(
+                song_hash=song_hash,
+                path="song.flac",
+                candidate_id=VOCAL_STEM_CREPE,
+                melody=[{"start": 0, "end": 1.0, "midi": 64}],
+                stem="vocals",
+                algorithm="htdemucs.vocals+torchcrepe.full",
+            )
+            write_candidate_cache(root, song_hash, VOCAL_STEM_CREPE, candidate)
+
+            with patch(
+                "backend.ai.melody_resolver.cached_stem_energy_features",
+                return_value={
+                    "stem_status": "cached_stems",
+                    "missing_stems": [],
+                    "stem_analyzed_duration_s": 120.0,
+                    "vocal_stem_energy_ratio": 0.05,
+                },
+            ):
+                gate_failed = MelodyResolver(root).resolve(baseline, song_hash=song_hash, path="song.flac")
+
+            self.assertEqual(gate_failed["melody_source"]["id"], FULL_MIX_PYIN)
+            self.assertEqual(gate_failed["melody_source"]["selected_by"], "fallback")
+            self.assertEqual(gate_failed["melody_source"]["fallback_reason"], "vocal_ratio_below_threshold")
+
+            with patch(
+                "backend.ai.melody_resolver.cached_stem_energy_features",
+                return_value={
+                    "stem_status": "cached_stems",
+                    "missing_stems": [],
+                    "stem_analyzed_duration_s": 120.0,
+                    "vocal_stem_energy_ratio": 0.08,
+                },
+            ):
+                low_coverage = MelodyResolver(root).resolve(baseline, song_hash=song_hash, path="song.flac")
+
+            self.assertEqual(low_coverage["melody_source"]["id"], FULL_MIX_PYIN)
+            self.assertEqual(low_coverage["melody_source"]["fallback_reason"], RETREAT_LOW_COVERAGE_FLAG)
+            self.assertIn(RETREAT_LOW_COVERAGE_FLAG, low_coverage["quality_flags"])
+
+    def test_melody_resolver_missing_candidate_does_not_read_stems(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = finalize_melody_payload(
+                {"path": "song.flac", "melody": [{"start": 0, "end": 2.0, "midi": 60}]},
+                path="song.flac",
+            )
+
+            with patch("backend.ai.melody_resolver.cached_stem_energy_features") as stem_features:
+                resolved = MelodyResolver(root).resolve(baseline, song_hash="abcdef123456", path="song.flac")
+
+            stem_features.assert_not_called()
+            self.assertEqual(resolved["melody_source"]["id"], FULL_MIX_PYIN)
+            self.assertEqual(resolved["melody_source"]["fallback_reason"], "vocal_candidate_missing")
 
     def test_sample_rh_vocal_gate_validation_excludes_hashes_and_writes_queue(self):
         import backend.chord_cache as chord_cache

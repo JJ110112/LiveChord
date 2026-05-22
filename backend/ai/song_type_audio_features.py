@@ -126,15 +126,18 @@ def cached_stem_energy_features(
         }
 
     energies: Dict[str, float] = {}
+    durations = []
     for name, path in paths.items():
         y, _sr = load_audio_mono(path, sample_rate=sample_rate, max_seconds=max_seconds)
         energies[name] = _mean_square(y)
+        durations.append(float(len(y) / _sr) if _sr else 0.0)
     total = sum(energies.values())
     vocal = energies.get("vocals", 0.0)
     other = energies.get("other", 0.0)
     return {
         "stem_status": "cached_stems",
         "missing_stems": [],
+        "stem_analyzed_duration_s": max(durations) if durations else None,
         "stem_energy": energies,
         "vocal_stem_energy_ratio": _safe_ratio(vocal, total),
         "vocal_vs_other_energy_ratio": _safe_ratio(vocal, vocal + other),
