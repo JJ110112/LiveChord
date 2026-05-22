@@ -1613,9 +1613,9 @@ class TestMelodyPhase3(unittest.TestCase):
             chords = root / "chords" / old_hash[:2]
             melodies.mkdir(parents=True)
             chords.mkdir(parents=True)
-            (chords / f"{old_hash}.json").write_text(json.dumps({"path": path}), encoding="utf-8")
+            (chords / f"{old_hash}.json").write_text(json.dumps({"path": path, "bpm": 60}), encoding="utf-8")
             (melodies / f"{melody_hash}.json").write_text(
-                json.dumps({"path": path, "melody": [{"start": 0, "end": 1.0, "midi": 60}]}),
+                json.dumps({"path": path, "melody": [{"start": 0, "end": 0.5, "midi": 60}, {"start": 0.9, "end": 1.4, "midi": 62}]}),
                 encoding="utf-8",
             )
 
@@ -1623,10 +1623,20 @@ class TestMelodyPhase3(unittest.TestCase):
                 stack.enter_context(patch.object(ai_api, "DATA_DIR", root))
                 stack.enter_context(patch.object(ai_api, "chord_file_for", lambda h: chords / f"{h}.json"))
                 stack.enter_context(patch("chord_cache.song_hash", lambda p: melody_hash))
+                context = stack.enter_context(patch(
+                    "ai.melody_schema.melody_context_from_chord_cache",
+                    side_effect=lambda h: {
+                        "bpm": 60 if h == old_hash else 120,
+                        "tempo_curve": None,
+                        "time_signature": "4/4",
+                    },
+                ))
                 resolver = stack.enter_context(patch.object(ai_api, "_maybe_resolve_rh_melody", side_effect=lambda payload, **kwargs: {**payload, "resolver_kwargs": kwargs}))
                 result = ai_api.get_melody(path="", hash=old_hash)
 
             self.assertEqual(result["resolver_kwargs"]["song_hash"], melody_hash)
+            self.assertAlmostEqual(result["melody"][0]["end"], 0.9)
+            context.assert_any_call(old_hash)
             resolver.assert_called_once()
 
     def test_sample_rh_vocal_gate_validation_excludes_hashes_and_writes_queue(self):

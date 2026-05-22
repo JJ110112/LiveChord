@@ -273,7 +273,7 @@ def get_melody(
                         payload = _read_finalized_melody_cache(
                             alt_file,
                             path=cd.get("path", ""),
-                            song_hash=melody_hash,
+                            song_hash=hash,
                         )
                         return _maybe_resolve_rh_melody(payload, path=cd.get("path", ""), song_hash=melody_hash)
             except Exception:
