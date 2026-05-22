@@ -971,6 +971,20 @@ class TestMelodyPhase3(unittest.TestCase):
         self.assertEqual(report["total"], 6)
         self.assertIn("vocal_led", report["precision_by_label"])
 
+    def test_song_type_metadata_nb_ignores_unseen_tokens_instead_of_favoring_minority_class(self):
+        rows = [
+            {"title": "ABBA Official Music Video", "genre": "POP", "resolved_label": "vocal_led"},
+            {"title": "Whitney Houston Live Vocal", "genre": "POP", "resolved_label": "vocal_led"},
+            {"title": "Mariah Carey Ballad", "genre": "POP", "resolved_label": "vocal_led"},
+            {"title": "Beatles Lyrics", "genre": "POP", "resolved_label": "vocal_led"},
+            {"title": "Obscure Ambiguous Intro", "genre": "Other", "resolved_label": "unknown"},
+        ]
+
+        model = train_metadata_nb(rows)
+        prediction = predict_metadata_nb({"title": "zzzxq novel unseen tokens"}, model)
+
+        self.assertEqual(prediction["song_type"], "vocal_led")
+
     def test_train_rh_song_type_classifier_cli_writes_model_and_report(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

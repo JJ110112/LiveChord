@@ -13,7 +13,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Sequence
 from .song_type_label_queue import LABEL_OPTIONS
 
 
-MODEL_VERSION = "metadata_nb_v1"
+MODEL_VERSION = "metadata_nb_v2"
 TEXT_FIELDS = ("path", "title", "artist", "album", "genre")
 
 
@@ -67,7 +67,8 @@ def predict_metadata_nb(row: Mapping[str, Any], model: Mapping[str, Any]) -> Dic
         str(label): int(count)
         for label, count in (model.get("total_tokens") or {}).items()
     }
-    vocab_size = max(1, len(model.get("vocab") or []))
+    vocab = set(str(token) for token in (model.get("vocab") or []))
+    vocab_size = max(1, len(vocab))
     total_docs = max(1, sum(label_doc_counts.values()))
     tokens = _tokens_for_row(row)
     scores: Dict[str, float] = {}
@@ -77,6 +78,8 @@ def predict_metadata_nb(row: Mapping[str, Any], model: Mapping[str, Any]) -> Dic
         counts = token_counts.get(label) if isinstance(token_counts.get(label), dict) else {}
         score = prior
         for token in tokens:
+            if token not in vocab:
+                continue
             score += math.log((int(counts.get(token, 0)) + 1) / denom)
         scores[label] = score
 
@@ -128,7 +131,7 @@ def _classification_report(rows: Sequence[Mapping[str, Any]], *, prediction_fiel
         predicted = confusion.get(label, {})
         predicted_total = sum(predicted.values())
         precision_by_label[label] = predicted.get(label, 0) / predicted_total if predicted_total else None
-        gold_total = sum(row.get(label, 0) for row in confusion.values())
+        gold_total = sum(predicted_counts.get(label, 0) for predicted_counts in confusion.values())
         recall_by_label[label] = confusion.get(label, {}).get(label, 0) / gold_total if gold_total else None
     return {
         "model_version": MODEL_VERSION,
