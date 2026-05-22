@@ -1596,6 +1596,38 @@ class TestMelodyPhase3(unittest.TestCase):
             stem_features.assert_not_called()
             self.assertEqual(resolved["melody_source"]["id"], FULL_MIX_PYIN)
             self.assertEqual(resolved["melody_source"]["fallback_reason"], "vocal_candidate_missing")
+            self.assertFalse(selected_path(root, "abcdef123456").is_file())
+
+    def test_ai_api_melody_hash_rehash_uses_recomputed_hash_for_resolver(self):
+        backend_dir = Path(__file__).resolve().parents[1]
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        import ai_api
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            old_hash = "oldhash123456"
+            melody_hash = "newhash123456"
+            path = "renamed-song.flac"
+            melodies = root / "melodies"
+            chords = root / "chords" / old_hash[:2]
+            melodies.mkdir(parents=True)
+            chords.mkdir(parents=True)
+            (chords / f"{old_hash}.json").write_text(json.dumps({"path": path}), encoding="utf-8")
+            (melodies / f"{melody_hash}.json").write_text(
+                json.dumps({"path": path, "melody": [{"start": 0, "end": 1.0, "midi": 60}]}),
+                encoding="utf-8",
+            )
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(ai_api, "DATA_DIR", root))
+                stack.enter_context(patch.object(ai_api, "chord_file_for", lambda h: chords / f"{h}.json"))
+                stack.enter_context(patch("chord_cache.song_hash", lambda p: melody_hash))
+                resolver = stack.enter_context(patch.object(ai_api, "_maybe_resolve_rh_melody", side_effect=lambda payload, **kwargs: {**payload, "resolver_kwargs": kwargs}))
+                result = ai_api.get_melody(path="", hash=old_hash)
+
+            self.assertEqual(result["resolver_kwargs"]["song_hash"], melody_hash)
+            resolver.assert_called_once()
 
     def test_sample_rh_vocal_gate_validation_excludes_hashes_and_writes_queue(self):
         import backend.chord_cache as chord_cache

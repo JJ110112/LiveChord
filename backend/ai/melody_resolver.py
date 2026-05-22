@@ -66,7 +66,7 @@ class MelodyResolver:
 
         candidate = read_candidate_cache(self.data_dir, song_hash, VOCAL_STEM_CREPE)
         if not candidate:
-            selected = self._fallback(
+            return self._fallback(
                 baseline,
                 gate={
                     "predict_vocal": False,
@@ -75,8 +75,6 @@ class MelodyResolver:
                 },
                 reason="vocal_candidate_missing",
             )
-            self._write_selected_cache(song_hash, selected)
-            return selected
 
         gate = self._vocal_gate(song_hash)
         if gate.get("predict_vocal"):
