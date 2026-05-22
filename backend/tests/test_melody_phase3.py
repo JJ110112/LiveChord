@@ -11,6 +11,7 @@ from fastapi import HTTPException
 
 import tools.sample_melody_phase0_survey as survey_script
 import tools.sample_rh_song_type_labels as song_type_label_script
+import tools.report_rh_song_type_labels as song_type_report_script
 import tools.run_basic_pitch_polyphonic_batch as polyphonic_script
 from backend.ai.melody_extractor import MelodyExtractor
 from backend.ai.melody_extractor_v2 import MelodyExtractorV2
@@ -42,10 +43,12 @@ from backend.ai.melody_ab_review_report import (
     write_review_markdown,
 )
 from backend.ai.song_type_label_queue import (
+    build_label_report,
     build_label_candidates,
     infer_song_type_hint,
     load_excluded_hashes,
     parse_quotas,
+    render_label_report_markdown,
     sample_label_queue,
     write_label_queue,
 )
@@ -891,6 +894,55 @@ class TestMelodyPhase3(unittest.TestCase):
     def test_song_type_label_queue_parse_quotas_rejects_unknown_label(self):
         with self.assertRaises(ValueError):
             parse_quotas("vocal=10")
+
+    def test_song_type_label_report_computes_precision_and_confusion(self):
+        queue_rows = [
+            {"survey_id": "heldout", "hash": "a", "candidate_hint": "vocal_led"},
+            {"survey_id": "heldout", "hash": "b", "candidate_hint": "vocal_led"},
+            {"survey_id": "heldout", "hash": "c", "candidate_hint": "solo_piano"},
+            {"survey_id": "heldout", "hash": "d", "candidate_hint": "no_clear_lead"},
+        ]
+        label_rows = [
+            {"survey_id": "heldout", "song_hash": "a", "human_label": "vocal_led"},
+            {"survey_id": "heldout", "song_hash": "b", "human_label": "instrumental_lead"},
+            {"survey_id": "heldout", "song_hash": "c", "human_label": "solo_piano"},
+        ]
+
+        report = build_label_report(queue_rows, label_rows)
+        markdown = render_label_report_markdown(report)
+
+        self.assertEqual(report["total"], 4)
+        self.assertEqual(report["labeled"], 3)
+        self.assertEqual(report["pending"], 1)
+        self.assertEqual(report["confusion"]["vocal_led"]["vocal_led"], 1)
+        self.assertEqual(report["confusion"]["vocal_led"]["instrumental_lead"], 1)
+        self.assertAlmostEqual(report["precision_by_label"]["vocal_led"], 0.5)
+        self.assertIn("RH Song-Type Label Report", markdown)
+
+    def test_report_rh_song_type_labels_cli_writes_json_and_returns_nonzero_without_labels(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            queue = root / "queue.jsonl"
+            labels = root / "labels.jsonl"
+            out = root / "report.json"
+            queue.write_text(
+                json.dumps({"survey_id": "heldout", "hash": "a", "candidate_hint": "vocal_led"}) + "\n",
+                encoding="utf-8",
+            )
+
+            with patch.object(sys, "argv", [
+                "report_rh_song_type_labels.py",
+                "--queue", str(queue),
+                "--labels", str(labels),
+                "--out", str(out),
+                "--force-output",
+            ]):
+                code = song_type_report_script.main()
+
+            self.assertEqual(code, 1)
+            report = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(report["labeled"], 0)
+            self.assertEqual(report["pending"], 1)
 
     def test_melody_phase0_review_data_dir_prefers_existing_local_then_production(self):
         with tempfile.TemporaryDirectory() as tmp:

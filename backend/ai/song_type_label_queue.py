@@ -222,6 +222,126 @@ def write_label_queue(
     return summary
 
 
+def read_label_rows(label_file: Path) -> List[Dict[str, Any]]:
+    return _read_jsonl(label_file) if label_file.is_file() else []
+
+
+def latest_labels_by_song(rows: Iterable[Mapping[str, Any]]) -> Dict[Tuple[str, str], Dict[str, Any]]:
+    latest: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for row in rows:
+        survey_id = str(row.get("survey_id") or "").strip()
+        song_hash = str(row.get("song_hash") or row.get("hash") or "").strip()
+        if survey_id and song_hash:
+            latest[(survey_id, song_hash)] = dict(row)
+    return latest
+
+
+def merge_queue_with_latest_labels(
+    queue_rows: Sequence[Mapping[str, Any]],
+    label_rows: Sequence[Mapping[str, Any]],
+) -> List[Dict[str, Any]]:
+    latest = latest_labels_by_song(label_rows)
+    merged: List[Dict[str, Any]] = []
+    for row in queue_rows:
+        item = dict(row)
+        survey_id = str(item.get("survey_id") or "").strip()
+        song_hash = str(item.get("song_hash") or item.get("hash") or "").strip()
+        label = latest.get((survey_id, song_hash))
+        item["latest_label"] = label
+        item["resolved_label"] = str(label.get("human_label") or "") if label else ""
+        merged.append(item)
+    return merged
+
+
+def build_label_report(
+    queue_rows: Sequence[Mapping[str, Any]],
+    label_rows: Sequence[Mapping[str, Any]],
+    *,
+    prediction_field: str = "candidate_hint",
+) -> Dict[str, Any]:
+    merged = merge_queue_with_latest_labels(queue_rows, label_rows)
+    labeled = [row for row in merged if row.get("resolved_label")]
+    by_label = _count_by(labeled, "resolved_label")
+    by_prediction = _count_by(labeled, prediction_field)
+    confusion: Dict[str, Dict[str, int]] = {}
+    for row in labeled:
+        pred = str(row.get(prediction_field) or "unknown")
+        gold = str(row.get("resolved_label") or "unknown")
+        confusion.setdefault(pred, {})
+        confusion[pred][gold] = confusion[pred].get(gold, 0) + 1
+    precision_by_label: Dict[str, float | None] = {}
+    for label in LABEL_OPTIONS:
+        predicted = confusion.get(label, {})
+        total_predicted = sum(predicted.values())
+        precision_by_label[label] = (
+            predicted.get(label, 0) / total_predicted if total_predicted else None
+        )
+    return {
+        "schema_version": LABEL_QUEUE_SCHEMA_VERSION,
+        "phase": LABEL_QUEUE_PHASE,
+        "prediction_field": prediction_field,
+        "total": len(merged),
+        "labeled": len(labeled),
+        "pending": len(merged) - len(labeled),
+        "completion": (len(labeled) / len(merged)) if merged else 0.0,
+        "by_label": by_label,
+        "by_prediction": by_prediction,
+        "confusion": confusion,
+        "precision_by_label": precision_by_label,
+    }
+
+
+def render_label_report_markdown(report: Mapping[str, Any]) -> str:
+    lines = [
+        "# RH Song-Type Label Report",
+        "",
+        f"Rows: {report.get('labeled', 0)} labeled / {report.get('total', 0)} total",
+        f"Prediction field: `{report.get('prediction_field', '')}`",
+        "",
+        "## Precision",
+        "",
+        "| Label | Precision |",
+        "|---|---:|",
+    ]
+    precision = report.get("precision_by_label") if isinstance(report.get("precision_by_label"), dict) else {}
+    for label in LABEL_OPTIONS:
+        value = precision.get(label)
+        text = "n/a" if value is None else f"{float(value):.3f}"
+        lines.append(f"| `{label}` | {text} |")
+
+    lines.extend([
+        "",
+        "## Confusion",
+        "",
+        "| Predicted | vocal_led | solo_piano | instrumental_lead | no_clear_lead | unknown |",
+        "|---|---:|---:|---:|---:|---:|",
+    ])
+    confusion = report.get("confusion") if isinstance(report.get("confusion"), dict) else {}
+    for pred in LABEL_OPTIONS:
+        row = confusion.get(pred) if isinstance(confusion.get(pred), dict) else {}
+        cells = [str(int(row.get(gold, 0))) for gold in LABEL_OPTIONS]
+        lines.append(f"| `{pred}` | " + " | ".join(cells) + " |")
+    return "\n".join(lines) + "\n"
+
+
+def write_label_report(
+    report: Mapping[str, Any],
+    output_path: Path,
+    *,
+    force: bool = False,
+) -> Path:
+    if output_path.exists() and not force:
+        raise FileExistsError(f"{output_path} already exists; pass force=True to overwrite")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = output_path.with_suffix(output_path.suffix + ".tmp")
+    if output_path.suffix.lower() == ".md":
+        tmp.write_text(render_label_report_markdown(report), encoding="utf-8")
+    else:
+        tmp.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    os.replace(tmp, output_path)
+    return output_path
+
+
 def parse_quotas(raw: str) -> Dict[str, int]:
     if not raw.strip():
         return dict(DEFAULT_LABEL_QUOTAS)
