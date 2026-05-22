@@ -12,7 +12,13 @@ from fastapi import HTTPException
 import tools.sample_melody_phase0_survey as survey_script
 import tools.sample_rh_song_type_labels as song_type_label_script
 import tools.report_rh_song_type_labels as song_type_report_script
+import tools.train_rh_song_type_classifier as song_type_train_script
 import tools.run_basic_pitch_polyphonic_batch as polyphonic_script
+from backend.ai.song_type_classifier import (
+    evaluate_leave_one_out,
+    predict_metadata_nb,
+    train_metadata_nb,
+)
 from backend.ai.melody_extractor import MelodyExtractor
 from backend.ai.melody_extractor_v2 import MelodyExtractorV2
 from backend.ai.melody_review import (
@@ -943,6 +949,66 @@ class TestMelodyPhase3(unittest.TestCase):
             report = json.loads(out.read_text(encoding="utf-8"))
             self.assertEqual(report["labeled"], 0)
             self.assertEqual(report["pending"], 1)
+
+    def test_song_type_metadata_nb_predicts_from_text(self):
+        rows = [
+            {"title": "ABBA Official Music Video", "genre": "POP", "resolved_label": "vocal_led"},
+            {"title": "Whitney Houston Live", "genre": "POP", "resolved_label": "vocal_led"},
+            {"title": "Chopin Nocturne", "path": "Classics/Piano", "resolved_label": "solo_piano"},
+            {"title": "Moonlight Sonata", "path": "Classics/Piano", "resolved_label": "solo_piano"},
+            {"title": "Take Five", "artist": "Dave Brubeck", "genre": "Jazz", "resolved_label": "instrumental_lead"},
+            {"title": "Backing Track in C", "path": "Jam/backing track.flac", "resolved_label": "no_clear_lead"},
+        ]
+
+        model = train_metadata_nb(rows)
+        vocal = predict_metadata_nb({"title": "ABBA live video", "genre": "POP"}, model)
+        piano = predict_metadata_nb({"title": "Chopin Piano Sonata", "path": "Classics/Piano"}, model)
+        report = evaluate_leave_one_out(rows)
+
+        self.assertEqual(model["documents"], 6)
+        self.assertEqual(vocal["song_type"], "vocal_led")
+        self.assertEqual(piano["song_type"], "solo_piano")
+        self.assertEqual(report["total"], 6)
+        self.assertIn("vocal_led", report["precision_by_label"])
+
+    def test_train_rh_song_type_classifier_cli_writes_model_and_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            queue = root / "queue.jsonl"
+            labels = root / "labels.jsonl"
+            model_out = root / "model.json"
+            report_out = root / "report.json"
+            queue.write_text(
+                "\n".join([
+                    json.dumps({"survey_id": "heldout", "hash": "a", "title": "ABBA Official", "candidate_hint": "vocal_led"}),
+                    json.dumps({"survey_id": "heldout", "hash": "b", "title": "Chopin Piano", "candidate_hint": "solo_piano"}),
+                    json.dumps({"survey_id": "heldout", "hash": "c", "title": "Backing Track", "candidate_hint": "no_clear_lead"}),
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            labels.write_text(
+                "\n".join([
+                    json.dumps({"survey_id": "heldout", "song_hash": "a", "human_label": "vocal_led"}),
+                    json.dumps({"survey_id": "heldout", "song_hash": "b", "human_label": "solo_piano"}),
+                    json.dumps({"survey_id": "heldout", "song_hash": "c", "human_label": "no_clear_lead"}),
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            with patch.object(sys, "argv", [
+                "train_rh_song_type_classifier.py",
+                "--queue", str(queue),
+                "--labels", str(labels),
+                "--model-out", str(model_out),
+                "--report-out", str(report_out),
+                "--force-output",
+            ]):
+                code = song_type_train_script.main()
+
+            self.assertEqual(code, 0)
+            self.assertTrue(model_out.is_file())
+            report = json.loads(report_out.read_text(encoding="utf-8"))
+            self.assertEqual(report["total"], 3)
 
     def test_melody_phase0_review_data_dir_prefers_existing_local_then_production(self):
         with tempfile.TemporaryDirectory() as tmp:

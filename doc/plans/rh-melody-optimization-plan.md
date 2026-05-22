@@ -441,6 +441,8 @@ Phase 0.5 classifier plan:
 
 If a cheap LR/decision-tree classifier stays below 85% vocal precision, consider an ingest-time LLM metadata classifier as a fallback. That is acceptable only if it runs once per song, records the prompt/model/version in `song_type_source`, and still obeys the same held-out precision gate.
 
+Stage A metadata-only result (2026-05-22): the 48-song held-out label set is complete. The original metadata hint baseline reached only `vocal_led` precision 0.667, and a leave-one-out metadata Naive Bayes baseline reached 0.625. Metadata-only routing is therefore rejected for resolver v0. Continue with audio-derived features, especially Demucs vocal-stem energy ratio and cheap HPSS/onset features, before considering an LLM metadata fallback.
+
 ## 6. Implementation Phases
 
 ### Phase 0 - Failure-mode survey and metadata visibility
@@ -741,7 +743,7 @@ Phase 0 instrumentation is complete, but current RH quality is poor enough that 
 | 5 | Add a one-song/batch shadow generation entry point for small A/B trials without changing formal RH playback | Done |
 | 6 | Add Admin candidate compare/read endpoint and UI hook so review can switch `full_mix_pyin` vs shadow candidates | Done |
 | 7 | Run a 20-30 song A/B smoke set (vocal, solo piano, instrumental) to see whether the new routes are worth scaling | Done: 27-song queue reviewed. `vocal_stem_crepe` 12/12 B wins, `solo_piano_polyphonic` 7/9 B wins, `instrument_lead` 2/6 B wins with 4/6 marked not applicable/no clear lead |
-| 8 | Build the song-type classifier Stage A (§5.3): held-out label set, cheap-feature classifier, cache stamping into `melody_source.song_type`, classifier-vs-manual switch | In progress: held-out 48-song label queue generated at `V:\data\melody_reviews\phase0_5_song_type_label_queue.jsonl`; Admin labeling page available at `/song-type-label` |
+| 8 | Build the song-type classifier Stage A (§5.3): held-out label set, cheap-feature classifier, cache stamping into `melody_source.song_type`, classifier-vs-manual switch | In progress: held-out 48-song label queue completed; metadata hint baseline `vocal_led` precision 0.667, metadata NB LOO 0.625. Metadata-only rejected; next classifier pass must use audio/stem features |
 | 9 | Vocal route ship audit Stage B: confusion matrix on held-out labels, `vocal_led` precision >= 92%, 30% retreat gate metrics, and 12-song vocal residual metrics | Pending |
 | 10 | Add Phase 0 survey summary/report output: completion count, primary-tag distribution, post-filter-fixable ratio, secondary/audio-quality breakdown | Pending |
 | 11 | Finish the 200-song equal-probability listening survey through the Admin RH survey panel, using candidate comparison where available | Pending human review |
