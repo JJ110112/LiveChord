@@ -994,6 +994,19 @@ class TestMelodyPhase3(unittest.TestCase):
 
         self.assertEqual(prediction["song_type"], "vocal_led")
 
+    def test_song_type_metadata_nb_ignores_common_stop_tokens(self):
+        rows = [
+            {"title": "Song Of The Night", "resolved_label": "vocal_led"},
+            {"title": "Jazz Of The Night", "resolved_label": "instrumental_lead"},
+            {"title": "Piano Of The Night", "resolved_label": "solo_piano"},
+        ]
+
+        model = train_metadata_nb(rows)
+
+        self.assertNotIn("of", model["vocab"])
+        self.assertNotIn("the", model["vocab"])
+        self.assertIn("night", model["vocab"])
+
     def test_song_type_metadata_audio_nb_uses_audio_feature_tokens(self):
         rows = [
             {

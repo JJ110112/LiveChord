@@ -13,9 +13,23 @@ from typing import Any, Dict, Iterable, List, Mapping, Sequence
 from .song_type_label_queue import LABEL_OPTIONS
 
 
-MODEL_VERSION = "metadata_nb_v2"
-AUDIO_MODEL_VERSION = "metadata_audio_nb_v1"
+MODEL_VERSION = "metadata_nb_v3"
+AUDIO_MODEL_VERSION = "metadata_audio_nb_v2"
 TEXT_FIELDS = ("path", "title", "artist", "album", "genre")
+STOP_TOKENS = {
+    "a",
+    "an",
+    "and",
+    "feat",
+    "ft",
+    "in",
+    "is",
+    "of",
+    "on",
+    "the",
+    "to",
+    "with",
+}
 
 
 def prepare_labeled_rows(rows: Iterable[Mapping[str, Any]]) -> List[Dict[str, Any]]:
@@ -189,7 +203,7 @@ def _tokens_for_row(row: Mapping[str, Any]) -> List[str]:
     text = " ".join(str(row.get(field) or "") for field in TEXT_FIELDS).lower()
     text = text.replace("\\", "/")
     raw_tokens = re.findall(r"[\w#]+", text, flags=re.UNICODE)
-    tokens = [token for token in raw_tokens if len(token) >= 2]
+    tokens = [token for token in raw_tokens if len(token) >= 2 and token not in STOP_TOKENS]
     path = str(row.get("path") or "").lower().replace("\\", "/")
     for part in path.split("/"):
         clean = part.strip()
