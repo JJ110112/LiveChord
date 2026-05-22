@@ -14,6 +14,7 @@ import tools.sample_rh_song_type_labels as song_type_label_script
 import tools.report_rh_song_type_labels as song_type_report_script
 import tools.train_rh_song_type_classifier as song_type_train_script
 import tools.extract_rh_song_type_audio_features as song_type_audio_script
+import tools.diagnose_rh_song_type_classifier as song_type_diagnostic_script
 import tools.run_basic_pitch_polyphonic_batch as polyphonic_script
 from backend.ai.song_type_audio_features import (
     AUDIO_FEATURE_SOURCE,
@@ -1229,6 +1230,45 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(model["model_version"], AUDIO_MODEL_VERSION)
             self.assertEqual(report["total"], 3)
             self.assertEqual(report["audio_feature_rows"], 3)
+
+    def test_diagnose_rh_song_type_classifier_writes_focus_rows(self):
+        rows = [
+            {
+                "survey_id": "heldout",
+                "hash": "v1",
+                "title": "Ambiguous",
+                "resolved_label": "vocal_led",
+                "_audio_features": {"mix": {"spectral_centroid_mean": 800}, "stems": {"stem_status": "missing_cached_stems"}},
+                "latest_label": {"review_note": "singer enters late"},
+            },
+            {
+                "survey_id": "heldout",
+                "hash": "i1",
+                "title": "Ambiguous",
+                "resolved_label": "instrumental_lead",
+                "_audio_features": {"mix": {"spectral_centroid_mean": 850}, "stems": {"stem_status": "missing_cached_stems"}},
+            },
+            {
+                "survey_id": "heldout",
+                "hash": "v2",
+                "title": "Bright Vocal",
+                "resolved_label": "vocal_led",
+                "_audio_features": {"mix": {"spectral_centroid_mean": 1900}, "stems": {"stem_status": "missing_cached_stems"}},
+            },
+        ]
+
+        report = song_type_diagnostic_script.build_diagnostics(
+            rows,
+            focus_gold="vocal_led",
+            focus_prediction="instrumental_lead",
+            audio_features=True,
+        )
+
+        self.assertEqual(report["total"], 3)
+        self.assertIn("vocal_led->instrumental_lead", report["errors_by_pair"])
+        self.assertEqual(len(report["focus_rows"]), 1)
+        self.assertEqual(report["focus_rows"][0]["song_hash"], "v1")
+        self.assertEqual(report["focus_rows"][0]["review_note"], "singer enters late")
 
     def test_melody_phase0_review_data_dir_prefers_existing_local_then_production(self):
         with tempfile.TemporaryDirectory() as tmp:
