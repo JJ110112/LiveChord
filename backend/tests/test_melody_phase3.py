@@ -63,6 +63,12 @@ from backend.ai.melody_ab_review_report import (
     render_review_markdown,
     write_review_markdown,
 )
+from backend.ai.melody_residual_report import (
+    build_vocal_residual_report,
+    coverage_gap_metrics,
+    phrase_tail_jump_metrics,
+    write_residual_report,
+)
 from backend.ai.song_type_label_queue import (
     build_label_report,
     build_label_candidates,
@@ -2572,6 +2578,75 @@ class TestMelodyPhase3(unittest.TestCase):
 
             with self.assertRaises(FileExistsError):
                 write_review_markdown("new\n", out, force=False)
+
+    def test_vocal_residual_metrics_flag_coverage_and_tail_jump(self):
+        baseline = [
+            {"start": 0.0, "end": 1.0, "midi": 60},
+            {"start": 10.0, "end": 11.0, "midi": 62},
+        ]
+        candidate = [
+            {"start": "bad", "end": 0.1, "midi": 55},
+            {"start": 0.0, "end": 0.2, "midi": 60},
+            {"start": 2.0, "end": 2.02, "midi": 72},
+            {"start": 2.15, "end": 2.17, "midi": 60},
+        ]
+
+        coverage = coverage_gap_metrics(
+            baseline,
+            candidate,
+            duration_s=20.0,
+            window_s=10.0,
+            min_baseline_active_s=0.5,
+            min_candidate_coverage_ratio=0.3,
+        )
+        tail = phrase_tail_jump_metrics(
+            candidate,
+            phrase_gap_s=0.5,
+            tail_window_s=0.5,
+            tail_jump_semitones=7,
+        )
+
+        self.assertEqual(coverage["baseline_active_windows"], 2)
+        self.assertEqual(coverage["candidate_missing_windows"], 2)
+        self.assertEqual(coverage["missing_window_fraction"], 1.0)
+        self.assertEqual(tail["phrase_tail_count"], 2)
+        self.assertEqual(tail["jump_tail_count"], 1)
+        self.assertEqual(tail["jump_tail_fraction"], 0.5)
+
+    def test_vocal_residual_report_reads_candidate_caches_and_writes_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            song_hash = "aa1111111111"
+            smoke_rows = [{
+                "sample_order": 1,
+                "group": "vocal",
+                "requested": {"hash": song_hash, "path": "song.flac", "duration_s": 20},
+                "result": {"song_hash": song_hash, "path": "song.flac"},
+            }]
+            write_candidate_cache(
+                root,
+                song_hash,
+                FULL_MIX_PYIN,
+                {"melody": [{"start": 0.0, "end": 1.0, "midi": 60}]},
+            )
+            write_candidate_cache(
+                root,
+                song_hash,
+                VOCAL_STEM_CREPE,
+                {"melody": [{"start": 0.0, "end": 1.0, "midi": 60}]},
+            )
+
+            report = build_vocal_residual_report(smoke_rows, data_dir=root, window_s=10.0)
+            out = root / "residual.json"
+            write_residual_report(report, out)
+
+            saved = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(saved["summary"]["total"], 1)
+            self.assertTrue(saved["summary"]["passes_stage_b_residual_gate"])
+            self.assertEqual(saved["rows"][0]["song_hash"], song_hash)
+
+            with self.assertRaises(FileExistsError):
+                write_residual_report(report, out)
 
 
 if __name__ == "__main__":
