@@ -981,6 +981,35 @@ def get_melody_debug_survey(
     }
 
 
+@router.get("/melody/debug/survey/report")
+def get_melody_debug_survey_report(
+    survey_id: str = Query(default="", description="Optional survey id filter"),
+    _: str = Depends(get_admin_user),
+):
+    """Admin-only Phase 0 survey aggregate report."""
+
+    from ai.melody_review import (
+        build_survey_report,
+        read_latest_review_tags,
+        read_survey_queue,
+        resolve_review_data_dir,
+    )
+
+    review_data_dir = resolve_review_data_dir(DATA_DIR)
+    items, summary, _queue_file = read_survey_queue(review_data_dir)
+    if not isinstance(survey_id, str):
+        survey_id = ""
+    active_survey_id = survey_id or str(summary.get("survey_id") or "")
+    latest, _tag_file = read_latest_review_tags(review_data_dir, active_survey_id)
+    report = build_survey_report(
+        items,
+        latest,
+        queue_summary=summary,
+        survey_id=active_survey_id,
+    )
+    return {"ok": True, "data_dir": str(review_data_dir), "report": report}
+
+
 @router.get("/emission")
 async def emission_stats(
     chord: str = Query(default="", description="和弦級數，如 I 或 V7"),

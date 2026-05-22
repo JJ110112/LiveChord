@@ -7,6 +7,7 @@ import os
 import random
 import re
 import sys
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
@@ -20,6 +21,7 @@ REVIEW_DIR_NAME = "melody_reviews"
 REVIEW_TAG_LOG_NAME = "phase0_tags.jsonl"
 REVIEW_QUEUE_NAME = "phase0_survey_queue.jsonl"
 REVIEW_SUMMARY_NAME = "phase0_survey_queue.summary.json"
+REVIEW_REPORT_NAME = "phase0_survey_report.json"
 PRODUCTION_DATA_DIR = Path(r"V:\data")
 AUDIO_QUALITY_NOTES = {
     "none",
@@ -172,6 +174,98 @@ def read_latest_review_tags(data_dir: Path, survey_id: str = "") -> Tuple[Dict[s
         if not previous or str(row.get("created_at") or "") >= str(previous.get("created_at") or ""):
             latest[key] = row
     return latest, log_file
+
+
+def build_survey_report(
+    queue_rows: List[Dict[str, Any]],
+    latest_tags: Dict[str, Dict[str, Any]],
+    *,
+    queue_summary: Optional[Dict[str, Any]] = None,
+    survey_id: str = "",
+) -> Dict[str, Any]:
+    """Aggregate Phase 0 survey completion and failure-mode distribution."""
+
+    taxonomy = melody_review_taxonomy()
+    primary_tags = taxonomy["primary_tags"]
+    active_survey_id = survey_id or str((queue_summary or {}).get("survey_id") or "")
+    rows = [
+        dict(row)
+        for row in queue_rows
+        if not active_survey_id or row.get("survey_id") == active_survey_id
+    ]
+
+    tag_counts = Counter({tag: 0 for tag in primary_tags})
+    secondary_counts: Counter[str] = Counter()
+    audio_quality_counts: Counter[str] = Counter()
+    source_counts: Counter[str] = Counter()
+    fixable_counts = Counter({"true": 0, "false": 0})
+    reviewed_items: List[Dict[str, Any]] = []
+
+    for row in rows:
+        key = _review_key(row)
+        tag = latest_tags.get(key)
+        if not tag:
+            continue
+        failure_tag = str(tag.get("failure_tag") or "")
+        if failure_tag:
+            tag_counts[failure_tag] += 1
+        fixable_key = "true" if bool(tag.get("post_filter_fixable")) else "false"
+        fixable_counts[fixable_key] += 1
+        for flag in tag.get("secondary_flags") or []:
+            secondary_counts[str(flag)] += 1
+        audio_quality_counts[str(tag.get("audio_quality_note") or "none")] += 1
+        source = tag.get("melody_source") if isinstance(tag.get("melody_source"), dict) else {}
+        source_counts[str(source.get("id") or "unknown")] += 1
+        reviewed_items.append({
+            "sample_order": row.get("sample_order"),
+            "song_hash": row.get("hash") or row.get("song_hash") or tag.get("song_hash") or "",
+            "path": row.get("path") or tag.get("path") or "",
+            "failure_tag": failure_tag,
+            "post_filter_fixable": bool(tag.get("post_filter_fixable")),
+            "secondary_flags": list(tag.get("secondary_flags") or []),
+            "audio_quality_note": tag.get("audio_quality_note") or "none",
+            "created_at": tag.get("created_at") or "",
+        })
+
+    reviewed = len(reviewed_items)
+    total = len(rows)
+    fixable_true = int(fixable_counts["true"])
+    fixable_ratio = round(fixable_true / reviewed, 4) if reviewed else None
+    return {
+        "schema_version": REVIEW_SCHEMA_VERSION,
+        "phase": REVIEW_PHASE,
+        "source": "rh_melody_phase0_survey_report_v1",
+        "survey_id": active_survey_id,
+        "queue_summary": queue_summary or {},
+        "total": total,
+        "completed": reviewed,
+        "pending": max(0, total - reviewed),
+        "completion_ratio": round(reviewed / total, 4) if total else 0.0,
+        "primary_tag_counts": dict(sorted(tag_counts.items())),
+        "post_filter_fixable": {
+            "true": fixable_true,
+            "false": int(fixable_counts["false"]),
+            "ratio": fixable_ratio,
+            "decision_rule": "> 0.50 means Phase 1 post-filters are likely the next best investment.",
+            "passes_phase1_threshold": (fixable_ratio is not None and fixable_ratio > 0.50),
+        },
+        "secondary_flag_counts": dict(sorted(secondary_counts.items())),
+        "audio_quality_note_counts": dict(sorted(audio_quality_counts.items())),
+        "melody_source_counts": dict(sorted(source_counts.items())),
+        "reviewed_items": sorted(reviewed_items, key=lambda item: int(item.get("sample_order") or 0)),
+    }
+
+
+def write_survey_report(report: Dict[str, Any], output_path: Path, *, force: bool = False) -> Path:
+    """Write a Phase 0 survey report JSON atomically."""
+
+    if output_path.exists() and not force:
+        raise FileExistsError(f"{output_path} already exists; pass force=True to overwrite")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = output_path.with_suffix(output_path.suffix + ".tmp")
+    tmp.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    os.replace(tmp, output_path)
+    return output_path
 
 
 def collect_survey_candidates(

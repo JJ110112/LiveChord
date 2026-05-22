@@ -10,6 +10,7 @@ from unittest.mock import patch
 from fastapi import HTTPException
 
 import tools.sample_melody_phase0_survey as survey_script
+import tools.report_melody_phase0_survey as survey_report_script
 import tools.sample_rh_song_type_labels as song_type_label_script
 import tools.report_rh_song_type_labels as song_type_report_script
 import tools.train_rh_song_type_classifier as song_type_train_script
@@ -35,6 +36,7 @@ from backend.ai.song_type_vocal_gate import evaluate_vocal_gate, threshold_sweep
 from backend.ai.melody_extractor import MelodyExtractor
 from backend.ai.melody_extractor_v2 import MelodyExtractorV2
 from backend.ai.melody_review import (
+    build_survey_report,
     collect_library_cache_candidates,
     collect_survey_candidates,
     load_library_cache_paths,
@@ -42,6 +44,7 @@ from backend.ai.melody_review import (
     read_survey_queue,
     resolve_review_data_dir,
     sample_survey_candidates,
+    write_survey_report,
     write_survey_queue,
 )
 from backend.ai.melody_candidate import (
@@ -1719,6 +1722,94 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(summary["survey_id"], "phase0")
             self.assertEqual(rows[0]["hash"], "abc")
             self.assertEqual(latest["phase0|abc"]["failure_tag"], "pyin_fine")
+
+    def test_melody_phase0_survey_report_counts_latest_tags(self):
+        queue = [
+            {"survey_id": "phase0", "hash": "a", "path": "a.mp3", "sample_order": 1},
+            {"survey_id": "phase0", "hash": "b", "path": "b.mp3", "sample_order": 2},
+            {"survey_id": "phase0", "hash": "c", "path": "c.mp3", "sample_order": 3},
+        ]
+        latest = {
+            "phase0|a": {
+                "song_hash": "a",
+                "failure_tag": "wrong_octave",
+                "post_filter_fixable": True,
+                "secondary_flags": ["quantization_jitter", "audio_quality_secondary"],
+                "audio_quality_note": "reverb_high",
+                "melody_source": {"id": "full_mix_pyin"},
+                "created_at": "2",
+            },
+            "phase0|b": {
+                "song_hash": "b",
+                "failure_tag": "wrong_line_backing_vocal",
+                "post_filter_fixable": False,
+                "secondary_flags": [],
+                "audio_quality_note": "none",
+                "melody_source": {"id": "full_mix_pyin"},
+                "created_at": "1",
+            },
+        }
+
+        report = build_survey_report(queue, latest, queue_summary={"survey_id": "phase0"}, survey_id="phase0")
+
+        self.assertEqual(report["total"], 3)
+        self.assertEqual(report["completed"], 2)
+        self.assertEqual(report["pending"], 1)
+        self.assertEqual(report["primary_tag_counts"]["wrong_octave"], 1)
+        self.assertEqual(report["primary_tag_counts"]["wrong_line_backing_vocal"], 1)
+        self.assertEqual(report["post_filter_fixable"]["true"], 1)
+        self.assertEqual(report["post_filter_fixable"]["false"], 1)
+        self.assertEqual(report["post_filter_fixable"]["ratio"], 0.5)
+        self.assertEqual(report["secondary_flag_counts"]["audio_quality_secondary"], 1)
+        self.assertEqual(report["audio_quality_note_counts"]["reverb_high"], 1)
+
+    def test_melody_phase0_survey_report_endpoint_and_cli_write_json(self):
+        import ai_api
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review_dir = root / "melody_reviews"
+            review_dir.mkdir()
+            (review_dir / "phase0_survey_queue.jsonl").write_text(
+                "\n".join([
+                    json.dumps({"survey_id": "phase0", "hash": "a", "path": "a.mp3", "sample_order": 1}),
+                    json.dumps({"survey_id": "phase0", "hash": "b", "path": "b.mp3", "sample_order": 2}),
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            (review_dir / "phase0_survey_queue.summary.json").write_text(
+                json.dumps({"survey_id": "phase0", "sample_size": 2}),
+                encoding="utf-8",
+            )
+            (review_dir / "phase0_tags.jsonl").write_text(
+                json.dumps({
+                    "survey_id": "phase0",
+                    "song_hash": "a",
+                    "failure_tag": "wrong_octave",
+                    "post_filter_fixable": True,
+                    "created_at": "1",
+                }) + "\n",
+                encoding="utf-8",
+            )
+            with patch.object(ai_api, "DATA_DIR", root):
+                endpoint = ai_api.get_melody_debug_survey_report(_="admin")
+
+            self.assertEqual(endpoint["report"]["completed"], 1)
+            out = root / "report.json"
+            rows, summary, _ = read_survey_queue(root)
+            latest, _ = read_latest_review_tags(root, "phase0")
+            report = build_survey_report(rows, latest, queue_summary=summary, survey_id="phase0")
+            write_survey_report(report, out, force=True)
+            self.assertEqual(json.loads(out.read_text(encoding="utf-8"))["pending"], 1)
+            cli_out = root / "cli-report.json"
+            with patch.object(sys, "argv", [
+                "report_melody_phase0_survey.py",
+                "--data-dir", str(root),
+                "--out", str(cli_out),
+                "--force-output",
+            ]):
+                self.assertEqual(survey_report_script.main(), 0)
+            self.assertEqual(json.loads(cli_out.read_text(encoding="utf-8"))["completed"], 1)
 
     def test_melody_phase0_survey_write_queue_refuses_overwrite_without_force(self):
         with tempfile.TemporaryDirectory() as tmp:
