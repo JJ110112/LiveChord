@@ -174,6 +174,7 @@ def build_audio_feature_row(
         "path": str(row.get("path") or ""),
         "title": str(row.get("title") or ""),
         "artist": str(row.get("artist") or ""),
+        "duration_s": _optional_float(row.get("duration_s") or row.get("duration")),
         "candidate_hint": str(row.get("candidate_hint") or ""),
         "resolved_label": str(row.get("resolved_label") or row.get("human_label") or ""),
         "audio_path": str(audio_file),
@@ -250,6 +251,16 @@ def _safe_std(values: Sequence[float] | np.ndarray) -> float:
     if arr.size == 0:
         return 0.0
     return float(np.nanstd(arr))
+
+
+def _optional_float(value: Any) -> Optional[float]:
+    try:
+        if value is None or value == "":
+            return None
+        parsed = float(value)
+        return parsed if math.isfinite(parsed) else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _import_librosa():

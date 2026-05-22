@@ -15,6 +15,8 @@ import tools.report_rh_song_type_labels as song_type_report_script
 import tools.train_rh_song_type_classifier as song_type_train_script
 import tools.extract_rh_song_type_audio_features as song_type_audio_script
 import tools.diagnose_rh_song_type_classifier as song_type_diagnostic_script
+import tools.precompute_rh_song_type_stems as song_type_stems_script
+import tools.evaluate_rh_vocal_gate as vocal_gate_script
 import tools.run_basic_pitch_polyphonic_batch as polyphonic_script
 from backend.ai.song_type_audio_features import (
     AUDIO_FEATURE_SOURCE,
@@ -28,6 +30,7 @@ from backend.ai.song_type_classifier import (
     predict_metadata_nb,
     train_metadata_nb,
 )
+from backend.ai.song_type_vocal_gate import evaluate_vocal_gate
 from backend.ai.melody_extractor import MelodyExtractor
 from backend.ai.melody_extractor_v2 import MelodyExtractorV2
 from backend.ai.melody_review import (
@@ -1126,7 +1129,7 @@ class TestMelodyPhase3(unittest.TestCase):
             out = root / "features.jsonl"
             queue.write_text(
                 "\n".join([
-                    json.dumps({"survey_id": "heldout", "hash": "a", "path": "song-a.flac", "candidate_hint": "vocal_led"}),
+                    json.dumps({"survey_id": "heldout", "hash": "a", "path": "song-a.flac", "candidate_hint": "vocal_led", "duration_s": 123.4}),
                     json.dumps({"survey_id": "heldout", "hash": "b", "path": "song-b.flac", "candidate_hint": "solo_piano"}),
                 ]) + "\n",
                 encoding="utf-8",
@@ -1144,6 +1147,7 @@ class TestMelodyPhase3(unittest.TestCase):
                     "schema_version": 1,
                     "feature_source": AUDIO_FEATURE_SOURCE,
                     "song_hash": row["hash"],
+                    "duration_s": row.get("duration_s"),
                     "resolved_label": row["resolved_label"],
                     "status": "ok",
                     "mix": {"onset_density_per_s": 1.5},
@@ -1169,6 +1173,7 @@ class TestMelodyPhase3(unittest.TestCase):
             summary = json.loads(out.with_suffix(".summary.json").read_text(encoding="utf-8"))
             self.assertEqual(len(rows), 2)
             self.assertEqual(rows[0]["resolved_label"], "vocal_led")
+            self.assertEqual(rows[0]["duration_s"], 123.4)
             self.assertEqual(summary["ok"], 2)
             self.assertEqual(summary["stem_status"]["not_requested"], 2)
 
@@ -1282,6 +1287,114 @@ class TestMelodyPhase3(unittest.TestCase):
         self.assertEqual(len(report["focus_rows"]), 1)
         self.assertEqual(report["focus_rows"][0]["song_hash"], "v1")
         self.assertEqual(report["focus_rows"][0]["review_note"], "singer enters late")
+
+    def test_precompute_rh_song_type_stems_dry_run_plans_selected_rows(self):
+        rows = [
+            {"hash": "a1", "resolved_label": "vocal_led", "path": "a.flac"},
+            {"hash": "b2", "resolved_label": "solo_piano", "path": "b.flac"},
+        ]
+
+        with patch.object(song_type_stems_script, "_resolve_audio_path", lambda path: str(Path("C:/missing") / path)):
+            report_rows, summary = song_type_stems_script.run_precompute(
+                song_type_stems_script.select_rows(rows, labels=["vocal_led"]),
+                data_dir=Path("V:/data"),
+                execute=False,
+            )
+
+        self.assertEqual(len(report_rows), 1)
+        self.assertEqual(report_rows[0]["song_hash"], "a1")
+        self.assertEqual(report_rows[0]["status"], "audio_not_found")
+        self.assertEqual(summary["by_status"]["audio_not_found"], 1)
+
+    def test_precompute_rh_song_type_stems_execute_uses_injected_cache_and_writes_report(self):
+        class FakeStemCache:
+            def ensure_stems(self, *, song_hash, audio_path, force=False):
+                return StemCacheResult(
+                    ok=True,
+                    stems={"vocals": f"{song_hash}/vocals.wav", "other": f"{song_hash}/other.wav"},
+                    cache_dir=f"cache/{song_hash}",
+                    reused=False,
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            audio = root / "a.flac"
+            audio.write_text("audio", encoding="utf-8")
+            out = root / "stems.jsonl"
+            rows = [{"hash": "a1", "resolved_label": "vocal_led", "path": "a.flac"}]
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(song_type_stems_script, "_resolve_audio_path", lambda path: str(audio)))
+                stack.enter_context(patch.object(song_type_stems_script, "_module_available", lambda name: True))
+                report_rows, summary = song_type_stems_script.run_precompute(
+                    rows,
+                    data_dir=root,
+                    execute=True,
+                    stem_cache=FakeStemCache(),
+                )
+                written_summary = song_type_stems_script.write_report(report_rows, summary, out, force=True)
+
+            saved = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(saved[0]["status"], "generated")
+            self.assertEqual(saved[0]["stems"]["vocals"], "a1/vocals.wav")
+            self.assertEqual(written_summary["ok"], 1)
+            self.assertTrue(out.with_suffix(".summary.json").is_file())
+
+    def test_vocal_gate_prefers_high_stem_ratio_and_blocks_short_audio(self):
+        rows = [
+            {
+                "song_hash": "vocal",
+                "resolved_label": "vocal_led",
+                "duration_s": 120,
+                "stems": {"vocal_stem_energy_ratio": 0.6},
+            },
+            {
+                "song_hash": "inst",
+                "resolved_label": "instrumental_lead",
+                "duration_s": 180,
+                "stems": {"vocal_stem_energy_ratio": 0.2},
+            },
+            {
+                "song_hash": "short",
+                "resolved_label": "unknown",
+                "duration_s": 6,
+                "stems": {"vocal_stem_energy_ratio": 0.99},
+            },
+        ]
+
+        report = evaluate_vocal_gate(rows, vocal_ratio_threshold=0.3, min_duration_s=30)
+
+        self.assertEqual(report["true_positive"], 1)
+        self.assertEqual(report["false_positive"], 0)
+        self.assertEqual(report["false_negative"], 0)
+        self.assertEqual(report["precision"], 1.0)
+        self.assertEqual(report["rows"][2]["reason"], "duration_below_min")
+
+    def test_evaluate_rh_vocal_gate_cli_writes_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            features = root / "features.jsonl"
+            out = root / "gate.json"
+            features.write_text(
+                "\n".join([
+                    json.dumps({"song_hash": "v", "resolved_label": "vocal_led", "duration_s": 100, "stems": {"vocal_stem_energy_ratio": 0.7}}),
+                    json.dumps({"song_hash": "i", "resolved_label": "instrumental_lead", "duration_s": 100, "stems": {"vocal_stem_energy_ratio": 0.0}}),
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            with patch.object(sys, "argv", [
+                "evaluate_rh_vocal_gate.py",
+                "--features", str(features),
+                "--out", str(out),
+                "--force-output",
+            ]):
+                code = vocal_gate_script.main()
+
+            report = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(code, 0)
+            self.assertEqual(report["precision"], 1.0)
+            self.assertEqual(report["recall"], 1.0)
 
     def test_melody_phase0_review_data_dir_prefers_existing_local_then_production(self):
         with tempfile.TemporaryDirectory() as tmp:
