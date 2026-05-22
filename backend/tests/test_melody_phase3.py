@@ -17,6 +17,7 @@ import tools.extract_rh_song_type_audio_features as song_type_audio_script
 import tools.diagnose_rh_song_type_classifier as song_type_diagnostic_script
 import tools.precompute_rh_song_type_stems as song_type_stems_script
 import tools.evaluate_rh_vocal_gate as vocal_gate_script
+import tools.sample_rh_vocal_gate_validation as vocal_gate_sample_script
 import tools.run_basic_pitch_polyphonic_batch as polyphonic_script
 from backend.ai.song_type_audio_features import (
     AUDIO_FEATURE_SOURCE,
@@ -30,7 +31,7 @@ from backend.ai.song_type_classifier import (
     predict_metadata_nb,
     train_metadata_nb,
 )
-from backend.ai.song_type_vocal_gate import evaluate_vocal_gate
+from backend.ai.song_type_vocal_gate import evaluate_vocal_gate, threshold_sweep
 from backend.ai.melody_extractor import MelodyExtractor
 from backend.ai.melody_extractor_v2 import MelodyExtractorV2
 from backend.ai.melody_review import (
@@ -1370,6 +1371,10 @@ class TestMelodyPhase3(unittest.TestCase):
         self.assertEqual(report["precision"], 1.0)
         self.assertEqual(report["rows"][2]["reason"], "duration_below_min")
 
+        sweep = threshold_sweep(rows, thresholds=[0.25, 0.30, 0.35], min_duration_s=30)
+        self.assertIn("0.300", sweep)
+        self.assertEqual(sweep["0.300"]["precision"], 1.0)
+
     def test_evaluate_rh_vocal_gate_cli_writes_report(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1395,6 +1400,45 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(report["precision"], 1.0)
             self.assertEqual(report["recall"], 1.0)
+            self.assertIn("0.300", report["threshold_sweep"])
+
+    def test_sample_rh_vocal_gate_validation_excludes_hashes_and_writes_queue(self):
+        import backend.chord_cache as chord_cache
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            excluded_hash = chord_cache.song_hash("ABBA - Song.flac")
+            exclude = root / "exclude.jsonl"
+            exclude.write_text(json.dumps({"hash": excluded_hash}) + "\n", encoding="utf-8")
+            tracks = [
+                {"path": "ABBA - Song.flac", "title": "ABBA Official Music Video"},
+                {"path": "Chopin - Nocturne.flac", "title": "Chopin Nocturne"},
+                {"path": "Jazz/Take Five.flac", "artist": "Dave Brubeck"},
+            ]
+            out = root / "vocal_gate_queue.jsonl"
+
+            excluded = vocal_gate_sample_script.load_excluded_hashes([exclude])
+            candidates, stats = vocal_gate_sample_script.build_vocal_gate_candidates(
+                tracks,
+                exclude_hashes=excluded,
+                base_url="http://example.test",
+            )
+            sample = vocal_gate_sample_script.sample_vocal_gate_queue(candidates, sample_size=10, seed=7)
+            summary = vocal_gate_sample_script.write_vocal_gate_queue(
+                out,
+                sample,
+                survey_id="validation",
+                seed=7,
+                candidate_stats=stats,
+            )
+
+            rows = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(stats["excluded"], 1)
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0]["phase"], "phase0_5_vocal_gate_validation")
+            self.assertEqual(rows[0]["label_options"], ["vocal_led", "not_vocal", "unknown"])
+            self.assertTrue(rows[0]["player_url"].startswith("http://example.test/player?path="))
+            self.assertEqual(summary["sample_size"], 2)
 
     def test_melody_phase0_review_data_dir_prefers_existing_local_then_production(self):
         with tempfile.TemporaryDirectory() as tmp:

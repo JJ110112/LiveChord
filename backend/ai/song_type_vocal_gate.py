@@ -11,6 +11,7 @@ from typing import Any, Dict, Iterable, Mapping, Sequence
 VOCAL_GATE_VERSION = "vocal_stem_ratio_gate_v1"
 DEFAULT_VOCAL_RATIO_THRESHOLD = 0.30
 DEFAULT_MIN_DURATION_S = 30.0
+DEFAULT_THRESHOLD_SWEEP = (0.25, 0.30, 0.35)
 
 
 def classify_vocal_gate(
@@ -23,6 +24,10 @@ def classify_vocal_gate(
 
     This is intentionally a binary conservative gate, not a full song-type
     classifier. Low confidence or missing stems should fall back to full_mix_pyin.
+    The 0.30 default is an empirical Phase 0.5 candidate chosen from the 48-song
+    held-out gap between non-vocal and vocal stem energy ratios; it must be
+    revalidated on a leakage-clean set before resolver promotion. The 30s floor
+    avoids trusting Demucs ratios on very short clips.
     """
 
     stems = row.get("stems") if isinstance(row.get("stems"), Mapping) else {}
@@ -86,6 +91,26 @@ def evaluate_vocal_gate(
         "false_positives": fp,
         "false_negatives": fn,
         "rows": predictions,
+    }
+
+
+def threshold_sweep(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    thresholds: Sequence[float] = DEFAULT_THRESHOLD_SWEEP,
+    min_duration_s: float = DEFAULT_MIN_DURATION_S,
+) -> Dict[str, Dict[str, Any]]:
+    return {
+        f"{float(threshold):.3f}": {
+            key: value
+            for key, value in evaluate_vocal_gate(
+                rows,
+                vocal_ratio_threshold=float(threshold),
+                min_duration_s=min_duration_s,
+            ).items()
+            if key not in {"rows", "false_positives", "false_negatives"}
+        }
+        for threshold in thresholds
     }
 
 
