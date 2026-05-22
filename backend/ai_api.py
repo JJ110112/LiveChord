@@ -605,6 +605,33 @@ def _latest_song_type_labels(label_file: Path) -> Dict[str, Dict[str, Any]]:
     return latest
 
 
+def _song_type_label_profile(queue: str) -> Dict[str, Any]:
+    from ai.song_type_label_queue import LABEL_OPTIONS
+
+    clean = str(queue or "song_type").strip().lower()
+    if clean in {"vocal_gate", "vocal_gate_validation", "validation"}:
+        return {
+            "id": "vocal_gate_validation",
+            "phase": "phase0_5_vocal_gate_validation",
+            "queue_file": "phase0_5_vocal_gate_validation_queue.jsonl",
+            "summary_file": "phase0_5_vocal_gate_validation_queue.summary.json",
+            "label_file": "phase0_5_vocal_gate_validation_labels.jsonl",
+            "label_options": ["vocal_led", "not_vocal", "unknown"],
+            "default_survey_id": "phase0_5_vocal_gate_validation_seed_20260523",
+        }
+    if clean not in {"song_type", "heldout", ""}:
+        raise HTTPException(status_code=400, detail="queue must be song_type or vocal_gate_validation")
+    return {
+        "id": "song_type",
+        "phase": "phase0_5_song_type",
+        "queue_file": "phase0_5_song_type_label_queue.jsonl",
+        "summary_file": "phase0_5_song_type_label_queue.summary.json",
+        "label_file": "phase0_5_song_type_labels.jsonl",
+        "label_options": list(LABEL_OPTIONS),
+        "default_survey_id": "phase0_5_song_type_heldout_seed_20260522",
+    }
+
+
 def _title_from_audio_path(path: str) -> str:
     name = Path(path or "").name
     return name.rsplit(".", 1)[0] if "." in name else name
@@ -712,14 +739,16 @@ def get_melody_ab_review(
 
 @router.get("/melody/song-type-labels")
 def get_song_type_label_queue(
+    queue: str = "song_type",
     _: str = Depends(get_admin_user),
 ):
     """Admin-only held-out song-type labeling queue for RH melody classifier work."""
 
     review_dir = _melody_ab_review_dir()
-    queue_file = review_dir / "phase0_5_song_type_label_queue.jsonl"
-    summary_file = review_dir / "phase0_5_song_type_label_queue.summary.json"
-    label_file = review_dir / "phase0_5_song_type_labels.jsonl"
+    profile = _song_type_label_profile(queue)
+    queue_file = review_dir / profile["queue_file"]
+    summary_file = review_dir / profile["summary_file"]
+    label_file = review_dir / profile["label_file"]
     rows = _read_jsonl_dicts(queue_file)
     latest = _latest_song_type_labels(label_file)
     items = []
@@ -749,6 +778,10 @@ def get_song_type_label_queue(
             summary = {}
     return {
         "ok": True,
+        "queue": profile["id"],
+        "phase": profile["phase"],
+        "label_options": profile["label_options"],
+        "default_survey_id": profile["default_survey_id"],
         "queue_file": str(queue_file),
         "label_file": str(label_file),
         "summary": summary,
@@ -761,26 +794,26 @@ def get_song_type_label_queue(
 @router.post("/melody/song-type-labels")
 def post_song_type_label(
     body: SongTypeLabelRequest,
+    queue: str = "song_type",
     reviewer: str = Depends(get_admin_user),
 ):
     """Append one held-out song-type label."""
 
-    from ai.song_type_label_queue import LABEL_OPTIONS
-
+    profile = _song_type_label_profile(queue)
     song_hash = body.song_hash.strip()
     if not song_hash:
         raise HTTPException(status_code=400, detail="song_hash is required")
-    if body.human_label not in LABEL_OPTIONS:
-        raise HTTPException(status_code=400, detail=f"human_label must be one of: {', '.join(LABEL_OPTIONS)}")
+    if body.human_label not in profile["label_options"]:
+        raise HTTPException(status_code=400, detail=f"human_label must be one of: {', '.join(profile['label_options'])}")
     review_dir = _melody_ab_review_dir()
     review_dir.mkdir(parents=True, exist_ok=True)
-    label_file = review_dir / "phase0_5_song_type_labels.jsonl"
+    label_file = review_dir / profile["label_file"]
     entry = {
         "schema_version": 1,
-        "phase": "phase0_5_song_type",
+        "phase": profile["phase"],
         "created_at": datetime.now(timezone.utc).isoformat(),
         "reviewer": reviewer,
-        "survey_id": body.survey_id.strip() or "phase0_5_song_type_heldout_seed_20260522",
+        "survey_id": body.survey_id.strip() or profile["default_survey_id"],
         "song_hash": song_hash,
         "path": body.path,
         "candidate_hint": body.candidate_hint.strip() or "unknown",

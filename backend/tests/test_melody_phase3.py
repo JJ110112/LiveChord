@@ -631,6 +631,70 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(result["items"][0]["label"]["review_note"], "clear vocal")
             self.assertIn("/api/track/stream?path=song.mp3", result["items"][0]["audio_url"])
 
+    def test_ai_api_vocal_gate_label_queue_uses_binary_labels(self):
+        backend_dir = Path(__file__).resolve().parents[1]
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        import ai_api
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review_dir = root / "melody_reviews"
+            review_dir.mkdir()
+            song_hash = "vocalgate123"
+            (review_dir / "phase0_5_vocal_gate_validation_queue.jsonl").write_text(
+                json.dumps({
+                    "schema_version": 1,
+                    "phase": "phase0_5_vocal_gate_validation",
+                    "survey_id": "validation",
+                    "sample_order": 1,
+                    "hash": song_hash,
+                    "path": "song.mp3",
+                    "title": "Song",
+                    "candidate_hint": "vocal_led",
+                    "human_label": "pending",
+                }) + "\n",
+                encoding="utf-8",
+            )
+            body = ai_api.SongTypeLabelRequest(
+                song_hash=song_hash,
+                path="song.mp3",
+                human_label="not_vocal",
+                candidate_hint="vocal_led",
+                review_note="instrumental track",
+                survey_id="validation",
+            )
+
+            with patch.object(ai_api, "DATA_DIR", root):
+                saved = ai_api.post_song_type_label(
+                    body=body,
+                    queue="vocal_gate_validation",
+                    reviewer="teacher",
+                )
+                result = ai_api.get_song_type_label_queue(queue="vocal_gate_validation", _="admin")
+
+            self.assertTrue(saved["ok"])
+            self.assertEqual(saved["entry"]["phase"], "phase0_5_vocal_gate_validation")
+            self.assertEqual(saved["entry"]["human_label"], "not_vocal")
+            self.assertIn("not_vocal", result["label_options"])
+            self.assertEqual(result["queue"], "vocal_gate_validation")
+            self.assertEqual(result["items"][0]["label"]["human_label"], "not_vocal")
+            log_file = review_dir / "phase0_5_vocal_gate_validation_labels.jsonl"
+            rows = [json.loads(line) for line in log_file.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(rows[0]["review_note"], "instrumental track")
+
+    def test_ai_api_song_type_label_queue_still_rejects_not_vocal(self):
+        backend_dir = Path(__file__).resolve().parents[1]
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        import ai_api
+
+        body = ai_api.SongTypeLabelRequest(song_hash="song123", human_label="not_vocal")
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(ai_api, "DATA_DIR", Path(tmp)):
+                with self.assertRaises(HTTPException):
+                    ai_api.post_song_type_label(body=body, queue="song_type", reviewer="teacher")
+
     def test_ai_api_song_type_label_rejects_unknown_label(self):
         backend_dir = Path(__file__).resolve().parents[1]
         if str(backend_dir) not in sys.path:

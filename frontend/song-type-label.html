@@ -201,6 +201,7 @@
       <button class="quick-filter" data-filter="">All</button>
       <button class="quick-filter" data-filter="pending">Pending</button>
       <button class="quick-filter" data-filter="vocal_led">Vocal</button>
+      <button class="quick-filter" data-filter="not_vocal">Not vocal</button>
       <button class="quick-filter" data-filter="solo_piano">Piano</button>
       <button class="quick-filter" data-filter="instrumental_lead">Instrumental</button>
       <button class="quick-filter" data-filter="no_clear_lead">No lead</button>
@@ -209,14 +210,17 @@
   <section id="list"></section>
 </main>
 <script>
-  const LABELS = [
-    ["vocal_led", "Vocal-led"],
-    ["solo_piano", "Solo piano"],
-    ["instrumental_lead", "Instrumental lead"],
-    ["no_clear_lead", "No clear lead"],
-    ["unknown", "Unknown"]
-  ];
-  const state = { items: [], filtered: [], filter: "", activeAudio: null };
+  const params = new URLSearchParams(location.search);
+  const queueName = params.get("queue") || "song_type";
+  const LABEL_TEXT = {
+    vocal_led: "Vocal-led",
+    not_vocal: "Not vocal",
+    solo_piano: "Solo piano",
+    instrumental_lead: "Instrumental lead",
+    no_clear_lead: "No clear lead",
+    unknown: "Unknown"
+  };
+  const state = { items: [], filtered: [], filter: "", activeAudio: null, labels: [] };
   const $ = selector => document.querySelector(selector);
   const list = $("#list");
   const status = $("#status");
@@ -230,14 +234,15 @@
 
   async function loadQueue() {
     status.textContent = "Loading";
-    const res = await fetch("/api/ai/melody/song-type-labels");
+    const res = await fetch(`/api/ai/melody/song-type-labels?queue=${encodeURIComponent(queueName)}`);
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.detail || data.error || res.statusText);
     state.items = data.items || [];
-    subline.textContent = `${data.total || 0} rows · ${data.queue_file || ""}`;
+    state.labels = (data.label_options || []).map(value => [value, LABEL_TEXT[value] || value]);
+    subline.textContent = `${data.queue || queueName} · ${data.total || 0} rows · ${data.queue_file || ""}`;
     const counts = data.counts || {};
     const labeled = state.items.filter(item => item.label?.human_label).length;
-    status.textContent = `labeled ${labeled}/${state.items.length} · hints vocal ${counts.vocal_led || 0} · piano ${counts.solo_piano || 0} · inst ${counts.instrumental_lead || 0} · no lead ${counts.no_clear_lead || 0}`;
+    status.textContent = `labeled ${labeled}/${state.items.length} · hints vocal ${counts.vocal_led || 0} · not vocal ${counts.not_vocal || 0} · piano ${counts.solo_piano || 0} · inst ${counts.instrumental_lead || 0} · no lead ${counts.no_clear_lead || 0}`;
     applyFilter();
   }
 
@@ -280,7 +285,7 @@
         <div class="feedback-grid" data-field="human_label">
           <label>Song type</label>
           <div class="choice-row">
-            ${LABELS.map(([value, text]) => `<button type="button" class="choice" data-value="${value}">${text}</button>`).join("")}
+            ${state.labels.map(([value, text]) => `<button type="button" class="choice" data-value="${value}">${text}</button>`).join("")}
           </div>
         </div>
         <textarea data-field="review_note" placeholder="notes"></textarea>
@@ -313,7 +318,11 @@
     const article = list.querySelector(`.song[data-hash="${hash}"][data-survey-id="${survey}"]`);
     if (!article) return;
     const label = item.label || {};
-    setChoice(article, label.human_label || item.human_label || item.candidate_hint || "");
+    const pending = item.human_label === "pending" ? "" : item.human_label;
+    const hint = queueName === "song_type" && state.labels.some(([value]) => value === item.candidate_hint)
+      ? item.candidate_hint
+      : "";
+    setChoice(article, label.human_label || pending || hint || "");
     const note = article.querySelector("textarea[data-field='review_note']");
     if (note) note.value = label.review_note || "";
     const stateEl = article.querySelector(".save-state");
@@ -331,11 +340,11 @@
       human_label: humanLabel,
       candidate_hint: item.candidate_hint || "",
       review_note: article.querySelector("textarea[data-field='review_note']")?.value || "",
-      survey_id: item.survey_id || "phase0_5_song_type_heldout_seed_20260522"
+      survey_id: item.survey_id || ""
     };
     const stateEl = article.querySelector(".save-state");
     stateEl.textContent = "saving";
-    const res = await fetch("/api/ai/melody/song-type-labels", {
+    const res = await fetch(`/api/ai/melody/song-type-labels?queue=${encodeURIComponent(queueName)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
