@@ -221,11 +221,7 @@ def _as_audio_array(y: Sequence[float] | np.ndarray) -> np.ndarray:
         audio = np.mean(audio, axis=0)
     if audio.size == 0:
         return np.zeros(0, dtype=np.float32)
-    audio = np.nan_to_num(audio, nan=0.0, posinf=0.0, neginf=0.0)
-    peak = float(np.max(np.abs(audio))) if audio.size else 0.0
-    if not math.isfinite(peak) or peak <= 0:
-        return audio.astype(np.float32, copy=False)
-    return audio.astype(np.float32, copy=False)
+    return np.nan_to_num(audio, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32, copy=False)
 
 
 def _mean_square(y: Sequence[float] | np.ndarray) -> float:

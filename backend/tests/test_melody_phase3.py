@@ -21,7 +21,9 @@ from backend.ai.song_type_audio_features import (
     summarize_audio_array,
 )
 from backend.ai.song_type_classifier import (
+    AUDIO_MODEL_VERSION,
     evaluate_leave_one_out,
+    merge_audio_feature_rows,
     predict_metadata_nb,
     train_metadata_nb,
 )
@@ -991,6 +993,78 @@ class TestMelodyPhase3(unittest.TestCase):
 
         self.assertEqual(prediction["song_type"], "vocal_led")
 
+    def test_song_type_metadata_audio_nb_uses_audio_feature_tokens(self):
+        rows = [
+            {
+                "survey_id": "heldout",
+                "hash": "v1",
+                "title": "Ambiguous Song",
+                "resolved_label": "vocal_led",
+            },
+            {
+                "survey_id": "heldout",
+                "hash": "v2",
+                "title": "Another Track",
+                "resolved_label": "vocal_led",
+            },
+            {
+                "survey_id": "heldout",
+                "hash": "p1",
+                "title": "Ambiguous Song",
+                "resolved_label": "solo_piano",
+            },
+            {
+                "survey_id": "heldout",
+                "hash": "p2",
+                "title": "Another Track",
+                "resolved_label": "solo_piano",
+            },
+        ]
+        feature_rows = [
+            {
+                "survey_id": "heldout",
+                "song_hash": "v1",
+                "status": "ok",
+                "mix": {"spectral_centroid_mean": 1900, "zero_crossing_rate_mean": 0.13, "hpss_harmonic_ratio": 0.75},
+                "stems": {"stem_status": "missing_cached_stems"},
+            },
+            {
+                "survey_id": "heldout",
+                "song_hash": "v2",
+                "status": "ok",
+                "mix": {"spectral_centroid_mean": 1850, "zero_crossing_rate_mean": 0.14, "hpss_harmonic_ratio": 0.76},
+                "stems": {"stem_status": "missing_cached_stems"},
+            },
+            {
+                "survey_id": "heldout",
+                "song_hash": "p1",
+                "status": "ok",
+                "mix": {"spectral_centroid_mean": 700, "zero_crossing_rate_mean": 0.04, "hpss_harmonic_ratio": 0.96},
+                "stems": {"stem_status": "missing_cached_stems"},
+            },
+            {
+                "survey_id": "heldout",
+                "song_hash": "p2",
+                "status": "ok",
+                "mix": {"spectral_centroid_mean": 750, "zero_crossing_rate_mean": 0.05, "hpss_harmonic_ratio": 0.95},
+                "stems": {"stem_status": "missing_cached_stems"},
+            },
+        ]
+
+        enriched = merge_audio_feature_rows(rows, feature_rows)
+        model = train_metadata_nb(enriched)
+        prediction = predict_metadata_nb({
+            "title": "Ambiguous Track",
+            "_audio_features": {
+                "mix": {"spectral_centroid_mean": 1950, "zero_crossing_rate_mean": 0.13, "hpss_harmonic_ratio": 0.74},
+                "stems": {"stem_status": "missing_cached_stems"},
+            },
+        }, model)
+
+        self.assertEqual(model["model_version"], AUDIO_MODEL_VERSION)
+        self.assertTrue(model["audio_features"])
+        self.assertEqual(prediction["song_type"], "vocal_led")
+
     def test_song_type_audio_features_summarize_array(self):
         import numpy as np
 
@@ -1084,11 +1158,32 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(summary["ok"], 2)
             self.assertEqual(summary["stem_status"]["not_requested"], 2)
 
+    def test_extract_rh_song_type_audio_features_records_missing_audio_failure(self):
+        rows = [{
+            "survey_id": "heldout",
+            "hash": "missing",
+            "path": "missing.flac",
+            "resolved_label": "vocal_led",
+        }]
+
+        result = song_type_audio_script.extract_feature_rows(
+            rows,
+            data_dir=Path("V:/data"),
+            sample_rate=16000,
+            max_seconds=1.0,
+            include_cached_stems=False,
+        )
+
+        self.assertEqual(result[0]["status"], "failed")
+        self.assertEqual(result[0]["song_hash"], "missing")
+        self.assertIn("FileNotFoundError", result[0]["error"])
+
     def test_train_rh_song_type_classifier_cli_writes_model_and_report(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             queue = root / "queue.jsonl"
             labels = root / "labels.jsonl"
+            features = root / "features.jsonl"
             model_out = root / "model.json"
             report_out = root / "report.json"
             queue.write_text(
@@ -1107,11 +1202,20 @@ class TestMelodyPhase3(unittest.TestCase):
                 ]) + "\n",
                 encoding="utf-8",
             )
+            features.write_text(
+                "\n".join([
+                    json.dumps({"survey_id": "heldout", "song_hash": "a", "status": "ok", "mix": {"spectral_centroid_mean": 1900}}),
+                    json.dumps({"survey_id": "heldout", "song_hash": "b", "status": "ok", "mix": {"spectral_centroid_mean": 700}}),
+                    json.dumps({"survey_id": "heldout", "song_hash": "c", "status": "ok", "mix": {"spectral_centroid_mean": 1100}}),
+                ]) + "\n",
+                encoding="utf-8",
+            )
 
             with patch.object(sys, "argv", [
                 "train_rh_song_type_classifier.py",
                 "--queue", str(queue),
                 "--labels", str(labels),
+                "--audio-features", str(features),
                 "--model-out", str(model_out),
                 "--report-out", str(report_out),
                 "--force-output",
@@ -1120,8 +1224,11 @@ class TestMelodyPhase3(unittest.TestCase):
 
             self.assertEqual(code, 0)
             self.assertTrue(model_out.is_file())
+            model = json.loads(model_out.read_text(encoding="utf-8"))
             report = json.loads(report_out.read_text(encoding="utf-8"))
+            self.assertEqual(model["model_version"], AUDIO_MODEL_VERSION)
             self.assertEqual(report["total"], 3)
+            self.assertEqual(report["audio_feature_rows"], 3)
 
     def test_melody_phase0_review_data_dir_prefers_existing_local_then_production(self):
         with tempfile.TemporaryDirectory() as tmp:
