@@ -9,9 +9,9 @@ from typing import Any, Dict, Iterable, Mapping, Sequence
 
 
 VOCAL_GATE_VERSION = "vocal_stem_ratio_gate_v1"
-DEFAULT_VOCAL_RATIO_THRESHOLD = 0.30
+DEFAULT_VOCAL_RATIO_THRESHOLD = 0.06
 DEFAULT_MIN_DURATION_S = 30.0
-DEFAULT_THRESHOLD_SWEEP = (0.25, 0.30, 0.35)
+DEFAULT_THRESHOLD_SWEEP = (0.04, 0.05, 0.055, 0.06, 0.065, 0.07, 0.08, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35)
 
 
 def classify_vocal_gate(
@@ -24,10 +24,10 @@ def classify_vocal_gate(
 
     This is intentionally a binary conservative gate, not a full song-type
     classifier. Low confidence or missing stems should fall back to full_mix_pyin.
-    The 0.30 default is an empirical Phase 0.5 candidate chosen from the 48-song
-    held-out gap between non-vocal and vocal stem energy ratios; it must be
-    revalidated on a leakage-clean set before resolver promotion. The 30s floor
-    avoids trusting Demucs ratios on very short clips.
+    The 0.06 default is calibrated from the leakage-clean 100-song Phase 0.5
+    validation set. It sits inside the observed gap between the highest
+    not-vocal stem ratio (~0.054) and lowest vocal-led ratio (~0.065). The 30s
+    floor avoids trusting Demucs ratios on very short clips.
     """
 
     stems = row.get("stems") if isinstance(row.get("stems"), Mapping) else {}

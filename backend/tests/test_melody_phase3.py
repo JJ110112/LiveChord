@@ -1492,7 +1492,8 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(report["precision"], 1.0)
             self.assertEqual(report["recall"], 1.0)
-            self.assertIn("0.300", report["threshold_sweep"])
+            self.assertEqual(report["vocal_ratio_threshold"], 0.06)
+            self.assertIn("0.060", report["threshold_sweep"])
 
     def test_sample_rh_vocal_gate_validation_excludes_hashes_and_writes_queue(self):
         import backend.chord_cache as chord_cache
