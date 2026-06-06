@@ -27,6 +27,7 @@
   cursor: pointer;
   transition: transform .15s, box-shadow .15s;
   border: 1px solid transparent;
+  position: relative;
 }
 
 .grid-item:hover {
@@ -83,6 +84,85 @@
   padding: 1px 6px;
   border-radius: 10px;
   margin-top: 4px;
+}
+
+.queue-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity .15s, transform .15s;
+}
+.grid-item:hover .queue-actions,
+.grid-item:focus-within .queue-actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+.queue-btn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-card) 82%, #000);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0,0,0,.25);
+  transition: background .15s, border-color .15s, transform .15s;
+}
+.queue-btn:hover,
+.queue-btn:focus-visible {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  transform: translateY(-1px);
+}
+.folder-play-controls,
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.folder-play-controls .queue-btn,
+.section-actions .queue-btn {
+  background: var(--bg-card);
+  box-shadow: none;
+}
+.jam-tracks-section .dash-title {
+  gap: 10px;
+}
+.jam-style-count {
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+}
+.jam-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -4px 0 12px;
+}
+.jam-style-select {
+  min-width: min(260px, 100%);
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 13px;
+}
+@media (pointer: coarse) {
+  .queue-actions {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* ========== [END: GRID] ========== */
@@ -566,6 +646,7 @@
 #secBetaRecent      { order: 20; }
 #secBetaLocalTracks { order: 30; }
 #secFavorites       { order: 40; }
+#secJamTracks       { order: 43; }
 #secBrowse          { order: 45; }
 #secDemoSongs       { order: 50; }
 .site-footer        { order: 100; }

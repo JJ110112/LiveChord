@@ -52,12 +52,93 @@
     });
   }
 
-  function goPlayer(path, hash) {
+  function _makeQueueSeed(source, mode, key) {
+    return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}_${source}_${mode}_${key || ""}`;
+  }
+
+  function _appendQueueParams(qs, queue) {
+    if (!queue || !queue.source) return;
+    qs.set("queue", queue.source);
+    qs.set("queue_mode", queue.mode || "sequential");
+    qs.set("queue_seed", queue.seed || "");
+    if (queue.path != null) qs.set("queue_path", queue.path);
+    if (queue.group_id) qs.set("queue_group", queue.group_id);
+    if (queue.style) qs.set("queue_style", queue.style);
+    if (queue.label) qs.set("queue_label", queue.label);
+  }
+
+  function _playerUrl(path, hash, queue) {
+    const qs = new URLSearchParams();
     if (hash) {
-      window.location.href = `/player?hash=${encodeURIComponent(hash)}`;
+      qs.set("hash", hash);
     } else {
-      window.location.href = `/player?path=${encodeURIComponent(path)}&autoplay=1`;
+      qs.set("path", path || "");
+      qs.set("autoplay", "1");
+      _appendQueueParams(qs, queue);
     }
+    return `/player?${qs.toString()}`;
+  }
+
+  function goPlayer(path, hash, queue) {
+    if (hash) {
+      window.location.href = _playerUrl("", hash);
+    } else {
+      window.location.href = _playerUrl(path, "", queue);
+    }
+  }
+
+  async function playQueue(source, mode, opts = {}) {
+    const key = opts.path || opts.group_id || opts.style || "music";
+    const queue = {
+      source,
+      mode,
+      seed: opts.seed || _makeQueueSeed(source, mode, key),
+      path: opts.path || "",
+      group_id: opts.group_id || "",
+      style: opts.style || "",
+      label: opts.label || "",
+    };
+    showLoading(true);
+    try {
+      const data = await API.playlist(queue);
+      const tracks = data.tracks || [];
+      if (!tracks.length) {
+        showToast(_t("toast.queue.empty"), 2500);
+        return;
+      }
+      queue.seed = data.seed || queue.seed;
+      queue.label = queue.label || data.label || "";
+      goPlayer(tracks[0].path, "", queue);
+    } catch (err) {
+      const msg = err && err.message ? err.message : String(err || "");
+      showToast(_t("toast.queue.failed", { err: msg }), 3500);
+    } finally {
+      showLoading(false);
+    }
+  }
+
+  function _queueButtonHtml(source, mode, attrs = {}) {
+    const titleKey = mode === "shuffle" ? "home.queue.shuffle_title" : "home.queue.play_title";
+    const icon = mode === "shuffle" ? "&#128256;" : "&#9654;";
+    const attrHtml = Object.entries(attrs)
+      .map(([k, v]) => `data-${k}="${escapeHtml(v == null ? "" : String(v))}"`)
+      .join(" ");
+    return `<button class="queue-btn" type="button" data-queue-source="${source}" data-queue-mode="${mode}" ${attrHtml} title="${escapeHtml(_t(titleKey))}" aria-label="${escapeHtml(_t(titleKey))}">${icon}</button>`;
+  }
+
+  function _bindQueueButtons(root) {
+    root.querySelectorAll(".queue-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        playQueue(btn.dataset.queueSource || "folder", btn.dataset.queueMode || "sequential", {
+          path: btn.dataset.path || "",
+          group_id: btn.dataset.groupId || "",
+          style: btn.dataset.style || "",
+          label: btn.dataset.label || "",
+        });
+      });
+    });
   }
 
   function _hideAddSongPanelOnly() {
@@ -1492,6 +1573,7 @@
 
       const dirs = data.entries.filter((e) => e.is_dir);
       const files = data.entries.filter((e) => !e.is_dir);
+      _updateFolderPlayControls(data.current || "", dirs, files);
 
       if (files.length > 0 && dirs.length === 0) {
         // 純音軌 → 列表模式
@@ -1512,6 +1594,7 @@
         showLoading(false);
         return browse("");
       }
+      _updateFolderPlayControls("", [], []);
       browseGrid.innerHTML = `<div class="empty"><div class="icon">&#x26A0;</div><div class="msg">${escapeHtml(err.message)}</div></div>`;
     } finally {
       showLoading(false);
@@ -1536,6 +1619,48 @@
     });
   }
 
+  function _updateFolderPlayControls(current, dirs, files) {
+    const controls = $("#folderPlayControls");
+    if (!controls) return;
+    const queuePath = current || "";
+    const virtualRoot = !queuePath
+      && files.length === 0
+      && dirs.length > 0
+      && dirs.every(d => /^@\d+$/.test(d.path || ""));
+    if ((!dirs.length && !files.length) || virtualRoot) {
+      controls.style.display = "none";
+      return;
+    }
+    controls.style.display = "flex";
+    const label = queuePath || _t("home.queue.all_music");
+    const seq = $("#btnPlayFolderSeq");
+    const shuffle = $("#btnPlayFolderShuffle");
+    if (seq) {
+      seq.dataset.path = queuePath;
+      seq.dataset.label = label;
+    }
+    if (shuffle) {
+      shuffle.dataset.path = queuePath;
+      shuffle.dataset.label = label;
+    }
+    if (controls.dataset.queueBound === "1") return;
+    controls.dataset.queueBound = "1";
+    if (seq) seq.addEventListener("click", (e) => {
+      e.preventDefault();
+      playQueue("folder", "sequential", {
+        path: seq.dataset.path || "",
+        label: seq.dataset.label || "",
+      });
+    });
+    if (shuffle) shuffle.addEventListener("click", (e) => {
+      e.preventDefault();
+      playQueue("folder", "shuffle", {
+        path: shuffle.dataset.path || "",
+        label: shuffle.dataset.label || "",
+      });
+    });
+  }
+
   function renderGrid(dirs, files) {
     let html = "";
 
@@ -1549,6 +1674,10 @@
             ? `<img class="cover" src="${coverUrl}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt=""><div class="cover-placeholder" style="display:none">&#x1F4C1;</div>`
             : `<div class="cover-placeholder">&#x1F4C1;</div>`
           }
+          <div class="queue-actions">
+            ${_queueButtonHtml("folder", "sequential", { path: d.path, label: d.name })}
+            ${_queueButtonHtml("folder", "shuffle", { path: d.path, label: d.name })}
+          </div>
           <div class="info">
             <div class="title">${escapeHtml(d.name)}</div>
           </div>
@@ -1570,7 +1699,8 @@
     browseGrid.innerHTML = html || `<div class="empty"><div class="icon">&#x1F4C2;</div><div class="msg">${_t("home.browse.empty_dir")}</div></div>`;
 
     browseGrid.querySelectorAll(".grid-item").forEach((el) => {
-      el.addEventListener("click", () => {
+      el.addEventListener("click", (e) => {
+        if (e.target.closest(".queue-btn")) return;
         if (el.dataset.dir) {
           browse(el.dataset.path);
         } else {
@@ -1578,6 +1708,7 @@
         }
       });
     });
+    _bindQueueButtons(browseGrid);
   }
 
   function renderTrackList(files) {

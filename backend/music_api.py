@@ -4,6 +4,8 @@ import os
 import re
 import json
 import time
+import hashlib
+import random
 import threading
 from pathlib import Path
 from typing import Optional
@@ -261,6 +263,183 @@ def browse(path: str = Query(default=""), _=Depends(_check_browse_access)):
     else:
         current_display = rel_prefix + current_rel
     return {"current": current_display, "entries": entries}
+
+
+# ---------------------------------------------------------------------------
+# playlist queue
+# ---------------------------------------------------------------------------
+
+def _split_root_rel(rel_path: str) -> tuple[int, str]:
+    p = (rel_path or "").replace("\\", "/").strip("/")
+    if p.startswith("@"):
+        parts = p.split("/", 1)
+        try:
+            root_idx = int(parts[0][1:])
+        except ValueError:
+            root_idx = 0
+        return root_idx, (parts[1].strip("/") if len(parts) > 1 else "")
+    return 0, p
+
+
+def _path_in_folder(track_path: str, folder_path: str) -> bool:
+    track_root, track_rel = _split_root_rel(track_path)
+    folder_root, folder_rel = _split_root_rel(folder_path)
+    if track_root != folder_root:
+        return False
+    if not folder_rel:
+        return True
+    folder_rel = folder_rel.rstrip("/")
+    return track_rel == folder_rel or track_rel.startswith(folder_rel + "/")
+
+
+def _queue_track(t: dict) -> dict:
+    path = (t.get("path") or "").replace("\\", "/")
+    name = t.get("name") or os.path.basename(path)
+    return {
+        "path": path,
+        "name": name,
+        "title": t.get("title") or os.path.splitext(name)[0],
+        "artist": t.get("artist") or "",
+        "album": t.get("album") or "",
+        "duration": t.get("duration") or 0,
+    }
+
+
+def _sort_queue_tracks(tracks: list[dict]) -> list[dict]:
+    return sorted(
+        tracks,
+        key=lambda t: (
+            (t.get("path") or "").lower(),
+            (t.get("title") or "").lower(),
+        ),
+    )
+
+
+def _shuffle_queue_tracks(tracks: list[dict], seed: str) -> list[dict]:
+    digest = hashlib.sha256((seed or "livechord").encode("utf-8")).hexdigest()
+    rng = random.Random(int(digest[:16], 16))
+    shuffled = list(tracks)
+    rng.shuffle(shuffled)
+    return shuffled
+
+
+def _tracks_from_cache_for_folder(folder_path: str) -> list[dict]:
+    from data_cache import get_library_tracks
+    return [
+        _queue_track(t)
+        for t in get_library_tracks()
+        if t.get("path") and _path_in_folder(t.get("path", ""), folder_path)
+    ]
+
+
+def _tracks_from_fs_for_folder(folder_path: str) -> list[dict]:
+    roots = get_music_roots()
+    root_idx, browse_rel = _split_root_rel(folder_path)
+    if root_idx >= len(roots):
+        raise HTTPException(status_code=404, detail="音樂庫索引不存在")
+
+    root = roots[root_idx]
+    target = os.path.join(root, browse_rel) if browse_rel else root
+    target = _safe_path(target)
+    if not os.path.isdir(target):
+        raise HTTPException(status_code=404, detail="目錄不存在")
+
+    prefix = f"@{root_idx}/" if root_idx > 0 else ""
+    tracks = []
+    skip_dirs = {".", "_", "#recycle", "@eaDir", "@tmp", "#snapshot"}
+    for dirpath, dirnames, filenames in os.walk(target):
+        dirnames[:] = [
+            d for d in dirnames
+            if not d.startswith(".")
+            and not d.startswith("_")
+            and d not in skip_dirs
+        ]
+        for name in filenames:
+            if not _is_supported_audio(name):
+                continue
+            full = os.path.join(dirpath, name)
+            inner_rel = os.path.relpath(full, root).replace("\\", "/")
+            rel = prefix + inner_rel
+            tracks.append({
+                "path": rel,
+                "name": name,
+                "title": os.path.splitext(name)[0],
+                "artist": "",
+                "album": "",
+                "duration": 0,
+            })
+    return tracks
+
+
+def _tracks_for_source(source: str, path: str, group_id: str, style: str) -> tuple[str, list[dict]]:
+    if source == "folder":
+        label = path or "Music"
+        tracks = _tracks_from_cache_for_folder(path)
+        if not tracks:
+            tracks = _tracks_from_fs_for_folder(path)
+        return label, tracks
+
+    if source == "group":
+        from data_cache import get_library_tracks
+        from library_groups import filter_tracks_by_group, list_groups
+        groups = list_groups()
+        group = next((g for g in groups if g.get("group_id") == group_id), None)
+        label = (group or {}).get("label") or group_id
+        tracks = [_queue_track(t) for t in filter_tracks_by_group(get_library_tracks(), group_id)]
+        if not tracks and group and group.get("path_prefix") is not None:
+            tracks = _tracks_from_fs_for_folder(str(group.get("path_prefix") or "").rstrip("/"))
+        return label, tracks
+
+    if source == "jam":
+        try:
+            from jam_tracks_api import _load_jam_tracks
+            data = _load_jam_tracks()
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Jam tracks unavailable: {exc}")
+        raw_tracks = data.get("tracks", [])
+        if style:
+            raw_tracks = [t for t in raw_tracks if t.get("style") == style]
+        return style or "Jam", [_queue_track(t) for t in raw_tracks if t.get("path")]
+
+    raise HTTPException(status_code=400, detail="不支援的播放清單來源")
+
+
+@router.get("/playlist")
+def playlist(
+    source: str = Query(default="folder"),
+    path: str = Query(default=""),
+    group_id: str = Query(default=""),
+    style: str = Query(default=""),
+    mode: str = Query(default="sequential"),
+    seed: str = Query(default=""),
+    limit: int = Query(default=10000, ge=1, le=20000),
+    _=Depends(_check_browse_access),
+):
+    """Build a playable queue for folders, library groups, or jam styles."""
+    if source not in {"folder", "group", "jam"}:
+        raise HTTPException(status_code=400, detail="不支援的播放清單來源")
+    if mode not in {"sequential", "shuffle"}:
+        raise HTTPException(status_code=400, detail="不支援的播放模式")
+    label, tracks = _tracks_for_source(source, path, group_id, style)
+    tracks = _sort_queue_tracks(tracks)
+    total = len(tracks)
+    queue_seed = seed or f"{source}:{path}:{group_id}:{style}:{mode}"
+    if mode == "shuffle":
+        tracks = _shuffle_queue_tracks(tracks, queue_seed)
+    tracks = tracks[:limit]
+    return {
+        "source": source,
+        "path": path,
+        "group_id": group_id,
+        "style": style,
+        "label": label,
+        "mode": mode,
+        "seed": queue_seed,
+        "total": total,
+        "tracks": tracks,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -10,6 +10,14 @@
   const autoplay = params.get("autoplay") === "1";
   const restoreFs = params.get("fs") === "1";
   if (!trackPath && !hashMode) { window.location.href = "/"; return; }
+  const queueSource = params.get("queue") || "";
+  const queueMode = params.get("queue_mode") === "shuffle" ? "shuffle" : "sequential";
+  const queueSeed = params.get("queue_seed") || "";
+  const queuePath = params.get("queue_path") || "";
+  const queueGroup = params.get("queue_group") || "";
+  const queueStyle = params.get("queue_style") || "";
+  const queueLabel = params.get("queue_label") || "";
+  const queueActive = !hashMode && !!trackPath && ["folder", "group", "jam"].includes(queueSource);
   const BEAT_SOURCE_PREF_KEY = "livechord_player_beat_source";
   function _pageBeatSourcePrefKey() {
     const songId = hashMode ? `hash_${hashMode}` : `path_${trackPath || ""}`;
@@ -51,6 +59,8 @@
   let chordCache = {};
   let siblingTracks = [];
   let currentIndex = -1;
+  let queueTracks = [];
+  let queueIndex = -1;
   let activeChordIdx = -1;
   let chordElements = [];
   let _ribbonPositions = [];
@@ -2415,15 +2425,35 @@
     });
     _popupPressOrigin = null;
   });
+  function _appendQueueParams(qs) {
+    if (!queueActive) return;
+    qs.set("queue", queueSource);
+    qs.set("queue_mode", queueMode);
+    qs.set("queue_seed", queueSeed);
+    if (queuePath) qs.set("queue_path", queuePath);
+    if (queueGroup) qs.set("queue_group", queueGroup);
+    if (queueStyle) qs.set("queue_style", queueStyle);
+    if (queueLabel) qs.set("queue_label", queueLabel);
+  }
   function _navUrl(path) {
-    const fs = document.fullscreenElement ? "&fs=1" : "";
-    return `/player?path=${encodeURIComponent(path)}&autoplay=1${fs}`;
+    const qs = new URLSearchParams({ path, autoplay: "1" });
+    if (document.fullscreenElement) qs.set("fs", "1");
+    _appendQueueParams(qs);
+    return `/player?${qs.toString()}`;
+  }
+  function _hasQueueNext() {
+    return queueTracks.length > 0 && queueIndex >= 0 && queueIndex < queueTracks.length - 1;
+  }
+  function _hasQueuePrev() {
+    return queueTracks.length > 0 && queueIndex > 0;
   }
   function _navPrev() {
     if (loopMode === "favorites" && favTracks.length > 0) {
       const i = favTracks.indexOf(trackPath);
       const prev = (i <= 0) ? favTracks.length - 1 : i - 1;
       window.location.href = _navUrl(favTracks[prev]);
+    } else if (_hasQueuePrev()) {
+      window.location.href = _navUrl(queueTracks[queueIndex - 1].path);
     } else if (siblingTracks.length > 0 && currentIndex > 0) {
       window.location.href = _navUrl(siblingTracks[currentIndex - 1].path);
     }
@@ -2433,6 +2463,8 @@
       const i = favTracks.indexOf(trackPath);
       const next = (i < 0 || i >= favTracks.length - 1) ? 0 : i + 1;
       window.location.href = _navUrl(favTracks[next]);
+    } else if (_hasQueueNext()) {
+      window.location.href = _navUrl(queueTracks[queueIndex + 1].path);
     } else if (siblingTracks.length > 0 && currentIndex < siblingTracks.length - 1) {
       window.location.href = _navUrl(siblingTracks[currentIndex + 1].path);
     }
@@ -2528,7 +2560,12 @@
       currentChordVersion = null;
       await loadVersions(path);
       await loadChords(path, currentChordVersion);
-      loadSiblings(path);
+      if (queueActive) {
+        await loadQueue(path);
+        if (!queueTracks.length) loadSiblings(path);
+      } else {
+        loadSiblings(path);
+      }
     } finally {
       _setLoadingState(false);
       _maybeStartPlayerTutorial();
@@ -2544,6 +2581,26 @@
       siblingTracks = data.entries.filter((e) => !e.is_dir && /\.(flac|mp3|wav|ogg)$/i.test(e.name));
       currentIndex = siblingTracks.findIndex((t) => t.path === path);
     } catch {}
+  }
+
+  async function loadQueue(path) {
+    try {
+      const data = await API.playlist({
+        source: queueSource,
+        mode: queueMode,
+        seed: queueSeed,
+        path: queuePath,
+        group_id: queueGroup,
+        style: queueStyle,
+        limit: 20000,
+      });
+      queueTracks = (data.tracks || []).filter((e) => e && e.path);
+      queueIndex = queueTracks.findIndex((t) => t.path === path);
+    } catch (err) {
+      console.warn("queue load failed:", err);
+      queueTracks = [];
+      queueIndex = -1;
+    }
   }
 
   // ---- melody data (for Dynamic Lead Sheet) ----
@@ -4828,7 +4885,8 @@
   const btnPrev = $("#btnPrev");
   if (btnPrev) {
     btnPrev.addEventListener("click", () => {
-      _rewindToStart();
+      if ((audio.currentTime || 0) > 3) _rewindToStart();
+      else _navPrev();
     });
   }
   const btnNext = $("#btnNext");
@@ -5520,6 +5578,11 @@
       return;
     }
 
+    if (_hasQueueNext()) {
+      _navNext();
+      return;
+    }
+
     // off — stop
     btnPlay.classList.remove("is-playing");
     if (topProgressFill) topProgressFill.style.width = "0%";
@@ -5536,7 +5599,8 @@
 
   // 平板 FLAC 串流可能不觸發 ended，用 timeupdate 偵測播放結束
   audio.addEventListener("timeupdate", () => {
-    if (loopMode === "favorites" && favTracks.length > 0 && audio.duration > 0) {
+    const shouldAdvance = (loopMode === "favorites" && favTracks.length > 0) || _hasQueueNext();
+    if (loopMode !== "single" && shouldAdvance && audio.duration > 0) {
       if (audio.currentTime >= audio.duration - 0.5 && !audio.paused) {
         audio.pause();
         _navNext();

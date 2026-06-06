@@ -40,6 +40,17 @@ const API = {
   libraryScan: (mode = "incremental") => API.post(`/api/library/scan?mode=${mode}`),
   libraryScanStatus: () => API.get("/api/library/scan/status"),
   libraryStats: () => API.get("/api/library/stats"),
+  playlist: (opts = {}) => {
+    const qs = new URLSearchParams();
+    qs.set("source", opts.source || "folder");
+    qs.set("mode", opts.mode || "sequential");
+    if (opts.path != null) qs.set("path", opts.path);
+    if (opts.group_id) qs.set("group_id", opts.group_id);
+    if (opts.style) qs.set("style", opts.style);
+    if (opts.seed) qs.set("seed", opts.seed);
+    if (opts.limit) qs.set("limit", String(opts.limit));
+    return API.get(`/api/playlist?${qs.toString()}`);
+  },
 
   // 和弦
   chordInfo: (name) => API.get(`/api/chord/info/${encodeURIComponent(name)}`),

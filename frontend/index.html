@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=23">
-  <link rel="stylesheet" href="/css/home.css?v=52">
+  <link rel="stylesheet" href="/css/home.css?v=53">
 
   <link rel="stylesheet" href="/css/help.css?v=10">
   <link rel="stylesheet" href="/css/tutorial.css?v=1">
@@ -51,7 +51,7 @@
   <script src="/js/auth.js?v=7"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
-  <script src="/js/i18n.js?v=56"></script>
+  <script src="/js/i18n.js?v=57"></script>
   <script src="/js/analytics.js?v=3"></script>
 </head>
 <body>
@@ -371,6 +371,28 @@
     <div id="favList" class="horizontal-scroll"></div>
   </section>
 
+  <!-- Jam music panel — personal library style buckets -->
+  <section id="secJamTracks" class="dash-section jam-tracks-section" style="display:none">
+    <h2 class="dash-title dash-title-tools">
+      <span data-i18n="home.jam.title">Jam music</span>
+      <span id="jamStyleCount" class="jam-style-count"></span>
+      <span class="section-actions">
+        <button id="jamPlaySeq" class="queue-btn" type="button"
+                data-i18n-attr="title=home.queue.play_category_title,aria-label=home.queue.play_category_title"
+                title="Play category" aria-label="Play category">&#9654;</button>
+        <button id="jamPlayShuffle" class="queue-btn" type="button"
+                data-i18n-attr="title=home.queue.shuffle_category_title,aria-label=home.queue.shuffle_category_title"
+                title="Shuffle category" aria-label="Shuffle category">&#128256;</button>
+      </span>
+    </h2>
+    <div class="jam-toolbar">
+      <select id="jamStyleSelect" class="jam-style-select"
+              data-i18n-attr="title=home.jam.style_title,aria-label=home.jam.style_title"
+              title="Jam style" aria-label="Jam style"></select>
+    </div>
+    <div id="jamTracksList" class="horizontal-scroll"></div>
+  </section>
+
   <!-- beta local music — user-picked files, persisted via IndexedDB + localStorage metadata -->
   <section id="secBetaLocalTracks" class="dash-section" style="display:none">
     <h2 class="dash-title dash-title-tools" style="display:flex; align-items:center; gap:12px">
@@ -463,6 +485,14 @@
              data-i18n-attr="placeholder=home.filter.placeholder"
              placeholder="Filter songs..."
              style="display:none; padding: 4px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); font-size: 12px; width: 140px;">
+      <div id="folderPlayControls" class="folder-play-controls" style="display:none">
+        <button id="btnPlayFolderSeq" class="queue-btn" type="button"
+                data-i18n-attr="title=home.queue.play_folder_title,aria-label=home.queue.play_folder_title"
+                title="Play folder" aria-label="Play folder">&#9654;</button>
+        <button id="btnPlayFolderShuffle" class="queue-btn" type="button"
+                data-i18n-attr="title=home.queue.shuffle_folder_title,aria-label=home.queue.shuffle_folder_title"
+                title="Shuffle folder" aria-label="Shuffle folder">&#128256;</button>
+      </div>
     </div>
     <div id="browseGrid" class="library-grid" style="margin-top: 16px;"></div>
     <ul id="trackList" class="track-list" style="display:none; margin-top: 16px;"></ul>
@@ -492,7 +522,7 @@
 <div id="toast" class="toast"></div>
 
 <script src="/js/utils.js?v=12"></script>
-<script src="/js/api.js?v=63"></script>
+<script src="/js/api.js?v=64"></script>
 <script src="/js/report-problem.js?v=2"></script>
 <script src="/js/tutorial-tour.js?v=3"></script>
 <script>
@@ -701,6 +731,7 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 }
 </script>
 
-<script src="/js/app.js?v=129"></script>
+<script src="/js/app.js?v=130"></script>
+<script src="/js/jam-tracks.js?v=2"></script>
 </body>
 </html>
