@@ -257,7 +257,17 @@
   function rebuild() {
     const prog = currentProg();
     const key = currentKey();
-    state.chords = (prog.chords || []).map(([deg, q]) => buildChord(key, deg, q));
+    const chords = (prog.chords || []).map(([deg, q]) => buildChord(key, deg, q));
+    applyVoiceLeading(chords);
+    // Octave dots are relative to the progression's central register, so most
+    // notes stay dot-free and only genuine high/low voices get a dot.
+    const octs = chords.flatMap((ch) => ch.voicedMidis.map((m) => Math.floor(m / 12) - 1));
+    const baseOct = octs.length ? Math.round(octs.reduce((a, b) => a + b, 0) / octs.length) : 4;
+    chords.forEach((ch) => {
+      ch.jianpu = ch.voicedMidis.map((m) => midiToJianpu(m, ch.sharp, baseOct));
+      ch.midis = ch.voicedMidis; // playback follows the voiced realization
+    });
+    state.chords = chords;
     state.activeIndex = 0;
     renderRibbon();
     renderDesc();
@@ -268,17 +278,88 @@
     const qd = QUALITY[quality] || QUALITY.maj;
     const names = key.sharp ? SHARP_NAMES : FLAT_NAMES;
     const rootPc = (key.pc + deg) % 12;
-    const rootName = names[rootPc];
-    // Fixed-do jianpu (C = 1), same convention as the player's chord ribbon.
-    const jianpu = qd.iv.map((i) => {
-      const pc = (key.pc + deg + i) % 12;
-      return (names[pc].includes("b") ? JP_FLAT : JP_SHARP)[pc];
-    });
-    const rootMidi = 48 + rootPc; // C3 = 48; root sits in C3..B3
-    const midis = qd.iv.map((i) => rootMidi + i);
+    const tonePcs = qd.iv.map((i) => (key.pc + deg + i) % 12);
     let roman = ROMAN_BASE[((deg % 12) + 12) % 12];
     if (qd.min) roman = roman.toLowerCase();
-    return { name: rootName + qd.sfx, roman, romanSfx: romanSuffix(quality), jianpu, midis };
+    return { name: names[rootPc] + qd.sfx, roman, romanSfx: romanSuffix(quality), tonePcs, sharp: key.sharp };
+  }
+
+  // ---- voice leading (ported from Ambient Mode) -------------------------
+  // First chord is seeded in root position around C4; each subsequent chord
+  // keeps common tones at the same register and moves the rest minimally.
+  function applyVoiceLeading(chords) {
+    if (!chords.length) return;
+    let prev = seedVoicing(chords[0].tonePcs, 60);
+    chords[0].voicedMidis = prev;
+    for (let i = 1; i < chords.length; i++) {
+      const v = voiceLeadFromPrev(prev, chords[i].tonePcs);
+      chords[i].voicedMidis = v;
+      prev = v;
+    }
+  }
+
+  function seedVoicing(pcs, minMidi) {
+    if (!pcs.length) return [];
+    const out = [];
+    let cursor = minMidi;
+    for (let i = 0; i < pcs.length; i++) {
+      const midi = nearestMidiAtOrAbove(pcs[i], cursor);
+      out.push(midi);
+      cursor = midi + 2;
+    }
+    return out;
+  }
+
+  function voiceLeadFromPrev(prevVoicing, targetPcs) {
+    if (!prevVoicing.length || !targetPcs.length) return seedVoicing(targetPcs, 60);
+    const usedPcs = new Set();
+    const next = [];
+    const freePrev = [];
+    for (let i = 0; i < prevVoicing.length; i++) {
+      const midi = prevVoicing[i];
+      const pc = midiToPc(midi);
+      if (targetPcs.includes(pc) && !usedPcs.has(pc)) {
+        next.push(midi);
+        usedPcs.add(pc);
+      } else {
+        freePrev.push(midi);
+      }
+    }
+    const missingPcs = targetPcs.filter((pc) => !usedPcs.has(pc));
+    for (let i = 0; i < missingPcs.length; i++) {
+      const pc = missingPcs[i];
+      const anchor = freePrev[i] != null ? freePrev[i] : (prevVoicing[prevVoicing.length - 1] || 60);
+      let midi = nearestMidiTo(pc, anchor);
+      while (next.includes(midi)) midi += 12;
+      next.push(midi);
+    }
+    return next.sort((a, b) => a - b);
+  }
+
+  function nearestMidiAtOrAbove(pc, minMidi) {
+    let m = nearestMidiTo(pc, minMidi);
+    while (m < minMidi) m += 12;
+    return m;
+  }
+
+  function nearestMidiTo(pc, anchorMidi) {
+    const base = Math.floor(anchorMidi / 12) * 12 + pc;
+    const cands = [base - 12, base, base + 12];
+    cands.sort((a, b) => Math.abs(a - anchorMidi) - Math.abs(b - anchorMidi));
+    return cands[0];
+  }
+
+  function midiToPc(midi) {
+    return ((midi % 12) + 12) % 12;
+  }
+
+  // Fixed-do solfège token + octave-dot count (relative to baseOct).
+  function midiToJianpu(midi, sharp, baseOct) {
+    const pc = midiToPc(midi);
+    const names = sharp ? SHARP_NAMES : FLAT_NAMES;
+    const tok = (names[pc].includes("b") ? JP_FLAT : JP_SHARP)[pc];
+    const oct = Math.floor(midi / 12) - 1;
+    return { tok, oct: clamp(oct - baseOct, -2, 2) };
   }
 
   function romanSuffix(quality) {
@@ -293,13 +374,7 @@
   function renderRibbon() {
     refs.ribbon.innerHTML = state.chords
       .map((ch, idx) => {
-        const jianpuHtml = ch.jianpu
-          .map((j) => {
-            if (j.startsWith("#")) return `<sup>#</sup>${escapeHtml(j.slice(1))}`;
-            if (j.startsWith("b")) return `<sup>b</sup>${escapeHtml(j.slice(1))}`;
-            return escapeHtml(j);
-          })
-          .join(" ");
+        const jianpuHtml = ch.jianpu.map(renderJianpuNote).join("");
         return `
         <button class="proglib-chord ${idx === state.activeIndex ? "is-active" : ""}" data-idx="${idx}" type="button">
           <div class="proglib-chord-roman">${escapeHtml(ch.roman)}<sup>${escapeHtml(ch.romanSfx)}</sup></div>
@@ -317,6 +392,19 @@
         restartLoopIfActive(false);
       });
     });
+  }
+
+  function renderJianpuNote(j) {
+    const tok = j && j.tok != null ? j.tok : String(j || "");
+    const oct = j && typeof j.oct === "number" ? j.oct : 0;
+    let acc = "";
+    let digit = tok;
+    if (tok[0] === "#" || tok[0] === "b") { acc = tok[0]; digit = tok.slice(1); }
+    const accHtml = acc ? `<sup class="pl-jp-acc">${acc}</sup>` : "";
+    let dotsHtml = "";
+    if (oct > 0) dotsHtml = `<span class="pl-jp-dot up">${"•".repeat(Math.min(oct, 2))}</span>`;
+    else if (oct < 0) dotsHtml = `<span class="pl-jp-dot down">${"•".repeat(Math.min(-oct, 2))}</span>`;
+    return `<span class="pl-jp-note">${accHtml}<span class="pl-jp-d">${escapeHtml(digit)}</span>${dotsHtml}</span>`;
   }
 
   function renderDesc() {

@@ -1289,17 +1289,41 @@ body.ambient-fullscreen-lock {
   box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 .proglib-chord-jianpu {
-  font-size: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  font-size: 13px;
   color: var(--text-dim);
-  letter-spacing: 0.06em;
+  min-height: 18px;
 }
 .proglib-chord.is-active .proglib-chord-jianpu { color: #eee; }
-.proglib-chord-jianpu sup {
+/* Each note is a positioning context for its octave dot(s). */
+.pl-jp-note {
+  position: relative;
+  display: inline-block;
+  line-height: 1;
+}
+.pl-jp-acc {
   font-size: 9px;
   vertical-align: super;
   line-height: 0;
-  letter-spacing: 0;
 }
+.pl-jp-dot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 8px;
+  line-height: 3px;
+  letter-spacing: 1px;
+  pointer-events: none;
+  color: color-mix(in srgb, var(--accent) 60%, var(--text-dim));
+}
+.proglib-chord.is-active .pl-jp-dot { color: #eee; }
+.pl-jp-dot.up { top: -4px; }
+.pl-jp-dot.down { bottom: -4px; }
 
 .proglib-desc {
   margin-top: 12px;
