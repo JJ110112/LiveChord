@@ -160,7 +160,14 @@
     desc: document.getElementById("proglibDesc"),
     favorites: document.getElementById("proglibFavorites"),
     favHead: ROOT.querySelector(".proglib-fav-head"),
+    matches: document.getElementById("proglibMatches"),
+    matchCount: document.getElementById("proglibMatchCount"),
   };
+
+  // Chord qualities that count as minor-family for progression matching.
+  const MINOR_QUALITIES = new Set(["m", "m7", "m9", "m6", "dim", "dim7", "m7b5"]);
+  let _matchToken = 0;
+  let _lastMatchSeq = null;
 
   let synth = null;
   let outputGain = null;
@@ -288,7 +295,61 @@
     state.activeIndex = 0;
     renderRibbon();
     renderDesc();
+    fetchMatches();
     restartLoopIfActive(false);
+  }
+
+  // ---- matching library songs -------------------------------------------
+  function progSeqString() {
+    const prog = currentProg();
+    return (prog.chords || [])
+      .map(([deg, q]) => `${((deg % 12) + 12) % 12}${MINOR_QUALITIES.has(q) ? "m" : "M"}`)
+      .join("-");
+  }
+
+  async function fetchMatches() {
+    if (!refs.matches) return;
+    const seq = progSeqString();
+    // The match pattern is key-independent, so a key/bpm change doesn't need a
+    // refetch — only a new progression does.
+    if (seq === _lastMatchSeq) return;
+    _lastMatchSeq = seq;
+    const token = ++_matchToken;
+    refs.matches.innerHTML = `<div class="proglib-match-empty">搜尋中…</div>`;
+    if (refs.matchCount) refs.matchCount.textContent = "";
+    try {
+      const res = await fetch(`/api/progression/match?seq=${encodeURIComponent(seq)}&limit=24`);
+      if (!res.ok) throw new Error(String(res.status));
+      const data = await res.json();
+      if (token !== _matchToken) return; // a newer request superseded this one
+      renderMatches(data);
+    } catch (e) {
+      if (token !== _matchToken) return;
+      if (refs.matchCount) refs.matchCount.textContent = "";
+      refs.matches.innerHTML = `<div class="proglib-match-empty">此伺服器未提供歌曲比對。</div>`;
+    }
+  }
+
+  function renderMatches(data) {
+    const songs = (data && data.songs) || [];
+    if (refs.matchCount) {
+      refs.matchCount.textContent = data && data.count ? `共 ${data.count} 首` : "";
+    }
+    if (!songs.length) {
+      refs.matches.innerHTML = `<div class="proglib-match-empty">音樂庫中沒有符合此進行的歌曲。</div>`;
+      return;
+    }
+    refs.matches.innerHTML = songs
+      .map((s) => {
+        const h = encodeURIComponent(s.hash);
+        const title = escapeHtml(s.title || "Untitled");
+        const key = escapeHtml(s.key || "");
+        return `<a class="proglib-song-card" href="/player?hash=${h}" title="${title}">
+          <span class="proglib-song-cover no-cover"><img src="/api/process/cover/${h}" loading="lazy" alt="" onload="this.parentElement.classList.remove('no-cover')" onerror="this.remove()"><span class="proglib-song-ph">♪</span></span>
+          <span class="proglib-song-meta"><span class="proglib-song-title">${title}</span>${key ? `<span class="proglib-song-key">${key}</span>` : ""}</span>
+        </a>`;
+      })
+      .join("");
   }
 
   function buildChord(key, deg, quality) {

@@ -22,6 +22,8 @@ data/library_cache.json
 data/library_cache.tmp
 data/chord_index.json
 data/chord_index.tmp
+data/progression_index.json
+data/progression_index.json.tmp
 data/recent.json
 data/favorites.json
 data/chords/

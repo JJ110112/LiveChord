@@ -91,6 +91,7 @@ from feedback_api import router as feedback_router
 from analytics_api import router as analytics_router
 from process_api import router as process_router
 from oauth_api import router as oauth_router
+from progression_api import router as progression_router
 # demo_api is optional — V:\ NUC personal-mode deploy may lack the module
 # (demo songs feature is for the public landing on livechord.org). Without
 # this guard, an out-of-sync NUC clone fails to boot.
@@ -201,6 +202,7 @@ app.include_router(oauth_router)
 app.include_router(feedback_router)
 app.include_router(analytics_router)
 app.include_router(process_router)
+app.include_router(progression_router)
 if demo_router is not None:
     app.include_router(demo_router)
 
@@ -534,13 +536,13 @@ async def admin():
 
 @app.get("/melody-ab")
 @app.get("/melody-ab.html")
-async def melody_ab_page():
+def melody_ab_page():
     return FileResponse(FRONTEND_DIR / "melody-ab.html", headers=NO_CACHE_HEADERS)
 
 
 @app.get("/song-type-label")
 @app.get("/song-type-label.html")
-async def song_type_label_page():
+def song_type_label_page():
     return FileResponse(FRONTEND_DIR / "song-type-label.html", headers=NO_CACHE_HEADERS)
 
 
