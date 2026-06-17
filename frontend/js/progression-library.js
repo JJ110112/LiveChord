@@ -35,13 +35,21 @@
   // Each progression: chords = [[degreeSemitone, quality], ...] relative to key root.
   const LIBRARY = {
     pop: {
+      // Popular progressions per hooktheory.com/theorytab/popular-chord-progressions.
       name: "流行 / 一般",
       progressions: [
-        { id: "axis",   name: "萬用四和弦 I–V–vi–IV", desc: "Axis 進行，無數西洋／華語流行歌的骨架。", chords: [[0,"maj"],[7,"maj"],[9,"m"],[5,"maj"]] },
+        { id: "axis",   name: "萬用四和弦 I–V–vi–IV", desc: "最熱門的進行，無數西洋／華語流行歌的骨架。", chords: [[0,"maj"],[7,"maj"],[9,"m"],[5,"maj"]] },
         { id: "6451",   name: "情歌 6451 vi–IV–I–V", desc: "從 vi 起頭，帶點傷感的抒情骨架。", chords: [[9,"m"],[5,"maj"],[0,"maj"],[7,"maj"]] },
-        { id: "doowop", name: "50s 進行 I–vi–IV–V", desc: "Doo-wop / 老式情歌的經典循環。", chords: [[0,"maj"],[9,"m"],[5,"maj"],[7,"maj"]] },
+        { id: "doowop", name: "50s 進行 / Those magic changes  I–vi–IV–V", desc: "Doo-wop / 老式情歌的經典循環。", chords: [[0,"maj"],[9,"m"],[5,"maj"],[7,"maj"]] },
+        { id: "vi545",  name: "vi–V–IV–V", desc: "各曲風通吃的循環 (Effective in all genres)。", chords: [[9,"m"],[7,"maj"],[5,"maj"],[7,"maj"]] },
+        { id: "i4645",  name: "I–IV–vi–V", desc: "近年竄紅的排列 (Gaining popularity)。", chords: [[0,"maj"],[5,"maj"],[9,"m"],[7,"maj"]] },
+        { id: "i545",   name: "I–V–IV–V", desc: "歷久不衰的三和弦循環 (Timeless)。", chords: [[0,"maj"],[7,"maj"],[5,"maj"],[7,"maj"]] },
         { id: "canon",  name: "卡農 I–V–vi–iii–IV–I–IV–V", desc: "帕海貝爾卡農，下行低音線。", chords: [[0,"maj"],[7,"maj"],[9,"m"],[4,"m"],[5,"maj"],[0,"maj"],[5,"maj"],[7,"maj"]] },
         { id: "royal",  name: "王道進行 IV–V–iii–vi", desc: "日系王道進行 (4536)，動畫／J-pop 常見。", chords: [[5,"maj7"],[7,"7"],[4,"m7"],[9,"m7"]] },
+        { id: "vofvi",  name: "I–V7/vi–vi 副屬和弦", desc: "用 vi 的屬和弦 (V/vi) 加深色彩。", chords: [[0,"maj"],[4,"7"],[9,"m"]] },
+        { id: "iv_iv_i", name: "IV–iv–I 借用小調 iv", desc: "大調 IV 轉小調 iv 的鄉愁感終止。", chords: [[5,"maj"],[5,"m"],[0,"maj"]] },
+        { id: "mixo",   name: "I–♭VII–IV 米索利地安", desc: "搖滾常見的下屬調式 vamp (Sweet Home Alabama)。", chords: [[0,"maj"],[10,"maj"],[5,"maj"]] },
+        { id: "bvi_v",  name: "I–♭VI–V", desc: "用 ♭VI 製造張力再解決到 V。", chords: [[0,"maj"],[8,"maj"],[7,"maj"]] },
         { id: "251pop", name: "大調 ii–V–I", desc: "最基本的解決進行。", chords: [[2,"m7"],[7,"7"],[0,"maj7"]] },
       ],
     },
