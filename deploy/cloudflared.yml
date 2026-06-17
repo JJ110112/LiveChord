@@ -1,3 +1,10 @@
+# VPS Cloudflare Tunnel configuration — ARCHIVED (2026-06-17)
+# This file is kept for historical reference. The public VPS deployment
+# was discontinued on 2026-06-17. To re-enable public mode in the future:
+# 1. Provision a new VPS (Hetzner or other)
+# 2. Replace TUNNEL_UUID with the actual tunnel UUID from Cloudflare
+# 3. Deploy this config to /etc/cloudflared/config.yml on the VPS
+
 tunnel: <REPLACE_WITH_TUNNEL_UUID>
 credentials-file: /etc/cloudflared/<REPLACE_WITH_TUNNEL_UUID>.json
 

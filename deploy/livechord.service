@@ -1,5 +1,10 @@
+# VPS systemd service unit — ARCHIVED (2026-06-17)
+# This file is kept for historical reference. The public VPS deployment
+# was discontinued on 2026-06-17. To re-enable public mode in the future,
+# deploy this file to /etc/systemd/system/livechord.service on the VPS.
+
 [Unit]
-Description=LiveChord public mode (FastAPI / uvicorn)
+Description=LiveChord public mode (FastAPI / uvicorn) — ARCHIVED
 After=network-online.target
 Wants=network-online.target
 

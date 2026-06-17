@@ -8,35 +8,27 @@ Project-specific guidance for Claude Code working in this repo. Also see [doc/QA
 - **Local testing**: IDE Live Server is installed, Playwright MCP is registered for AI-driven local QA.
 - **Prod runtime** (NUC, mounted as `V:\` from PC): backend runs from `V:\backend`, frontend from `V:\frontend`
 - **Backend server**: FastAPI/uvicorn, `main:app` — single instance on NUC, port 8800 (start: [start.bat](start.bat) · restart: [restart.bat](restart.bat)). `LIVECHORD_MODE` defaults to `personal`. The dual-instance scripts ([start_dual.bat](start_dual.bat) / [restart_dual.bat](restart_dual.bat)) and beta-only port 8801/8802/8803 are archival — kept on disk for reference but not in the live workflow
-- **Production QA Server**: `http://192.168.50.6:8800/` (LAN, NUC personal). `https://livechord.org` is the **public VPS** deployment (Hetzner CPX21 Hillsboro OR, `5.78.135.8`) — separate codebase clone at `/srv/livechord`, deployed via `git pull` (see [doc/OPS.md](doc/OPS.md) "Deploying code changes to the VPS"). NUC's cloudflared is disabled, so livechord.org is VPS-only
+- **Production QA Server**: `http://192.168.50.6:8800/` (LAN, NUC personal)
 - **Production Admin Account**: User: `hitea` (password user-managed; first-registered user is auto-promoted to admin by `auth_api.init_db`, no seeded account)
-- **Admin page**: `http://localhost:8800/admin`
+- **Admin page**: `http://192.168.50.6:8800/admin` (LAN access only)
 
-## Post-Beta Status (split deployment — NUC personal + VPS public)
+## Deployment Status (NUC personal only, 2026-06-17)
 
-The 2026-04-16 → 2026-04-26 invite-only beta on `livechord.org:8801` ended on 2026-04-26. Going forward LiveChord runs split:
+The public VPS deployment (`livechord.org` on Hetzner) was **discontinued on 2026-06-17**. LiveChord now runs as a personal/NUC-only instance:
 
 - **NUC** — single uvicorn on `192.168.50.6:8800`, `LIVECHORD_MODE=personal`, LAN bypass. Personal/admin use only. Started via [start.bat](start.bat) / [restart.bat](restart.bat).
-- **VPS (Hetzner CPX21 Hillsboro OR, IPv4 `5.78.135.8`, deployed 2026-05-03)** — `LIVECHORD_MODE=public`, OAuth (Google + Discord), Modal-dispatched BTC + beat_this, R2 cover storage. Serves `livechord.org` via Cloudflare Tunnel `d182dd0a-3655-42db-86e3-b78294aee428` (locally-managed config at `/etc/cloudflared/config.yml`, systemd unit at [deploy/livechord.service](deploy/livechord.service)). Operations runbook: [doc/OPS.md](doc/OPS.md). **Public mode is upload-only as of 2026-05-04 (Plan B)** — every `/api/process/youtube*` endpoint returns 404, frontend hides every YT entry point, and the cookies refresh apparatus is no longer in use. Don't propose re-enabling YT for public via proxies/automation — explicitly rejected by user on hobby/legality grounds.
+- **VPS** — deleted. Hetzner account pending close (2026-07-04 after final invoice).
+- **Cloudflare Tunnel** — disabled. `livechord.org` domain retained until 2027-04-16 auto-expiry (auto-renewal disabled 2026-06-17).
+- **Modal livechord-btc** — stopped (no longer needed without VPS ingest).
 
-NUC's cloudflared service is **disabled** (2026-05-03) so VPS is the sole tunnel replica going forward. The beta-mode code paths, dual-instance scripts, and `LIVECHORD_MODE=beta` gates are kept inert in the codebase so the deployment can be re-enabled later without re-implementing — but they are *not* exercised in the current workflow and you should not assume they're running.
-
-The user-facing data left over from the beta (`feedback.db`, `auth.db`, `audit.db` `process_audit` rows, `youtube_library_map`, `data/human_feedback/`, `data/human_sections/`) is **kept** — it's training signal for the AI quality pipeline below, and any historical analyses still resolve. Treat these tables as append-only history.
-
-**Public-mode homepage flow** (anti-foot-gun reminder — bit us once on the "guest can't log in" bug):
-
-- Two visual states only: **logged-in dashboard** (recent / favorites / local-music, header visible) vs. **logged-out marketing landing** (intro + hero + how-it-works + open-source, header hidden — clean sign-up funnel)
-- Hero "Get started for free" CTA: **always** routes to `/login` when no token. Do not special-case on `livechord_guest_acked` — that flag is sticky in localStorage and any CTA branch keyed off it makes `/login` unreachable for returning users
-- Guest upload entry: `/login` → "Continue as guest" link redirects to **`/?upload=1`** → [frontend/js/app.js](frontend/js/app.js) reads the query param on load and auto-opens the upload modal, then strips the param via `history.replaceState` so a hard-reload doesn't re-trigger
-- `livechord_guest_acked` is vestigial: set on guest-ack (login.html), cleared on logout (index.html `logout()`), but **not read by layout or CTA logic**. Logout also redirects to `/` for all modes so logged-out users always see the marketing landing
+The beta-mode code paths, dual-instance scripts, and `LIVECHORD_MODE=beta`/`public` gates remain in the codebase as archival but are **no longer exercised**. The user-facing data from beta (`feedback.db`, `auth.db`, audit tables, `data/human_feedback/`, `data/human_sections/`) is **kept** as training signal for the AI quality pipeline.
 
 **Default workflow for any change**:
 
 1. **Edit only in the dev repo** (`c:\Users\hitea\Claude\LiveChord`). Never edit `V:\` directly — commits won't pick it up and rollbacks are harder
-2. **QA on PC localhost first**. Two options:
+2. **QA on PC localhost first**. Options:
    - PC personal local on 8803 via [start_personal_local.bat](start_personal_local.bat) — same `LIVECHORD_MODE=personal` semantics as NUC, isolated `data/` so experiments don't touch the NUC corpus
-   - Direct QA against NUC 8800 over LAN once the change is shipped, since it's the only live target
-   - 8801 / 8802 (beta-mode local) are no longer part of the routine. Only spin them up when explicitly testing `LIVECHORD_MODE=beta`-gated code (forced login, hashed paths, invite flows) before re-enabling beta — if you do, see [doc/ARCHIVAL_BETA.md](doc/ARCHIVAL_BETA.md) for the gating details
+   - Direct QA against NUC 8800 over LAN once the change is shipped (the only live target)
 3. **Ship to V:\ only after local QA passes**. Copy via `cp` + verify with `diff -q`
 4. **Restart NUC after backend `.py` changes**: uvicorn has no `--reload` in prod, so changes don't take effect until restart. AI agents can self-trigger via `ssh nuc "schtasks /run /tn LiveChordRestart"` (or run [restart_nuc.bat](restart_nuc.bat)), then poll `curl http://192.168.50.6:8800/` until 200 (~4s) before continuing tests. Requires hitea logged into NUC desktop (interactive task constraint). **Do NOT use `ssh nuc "C:\LiveChord\restart.bat"` directly** — SSH lands in Windows session 0, the `start "..." python ...` inside fails to spawn a new console, and the OLD uvicorn gets killed without a replacement (verified live, took 8800 down on 2026-05-19). The schtasks indirection runs `restart.bat` in hitea's interactive session where `start` works normally. Restart is briefly destructive to anyone playing — confirm with user first if production-impacting
 
@@ -299,12 +291,8 @@ Anonymous visitors at livechord.org get a "try without uploading" entry: 15 roya
 - QA protocol, test matrix, UI architecture rules: [doc/QA.md](doc/QA.md)
 - **UX convention (mandatory for all UI changes)**: [doc/UX_CONVENTION.md](doc/UX_CONVENTION.md)
 - Battle stories / past incidents: [doc/QA_BATTLE_STORY.md](doc/QA_BATTLE_STORY.md)
-- **VPS operations runbook** (deploy workflow, yt-dlp cookies, tunnel cutover, gotchas): [doc/OPS.md](doc/OPS.md)
-- **SEO / search visibility plan** (current GSC state, Phase 1-5 ranking roadmap): [doc/SEO.md](doc/SEO.md)
 - **HF Hub + PyPI release** (livechord-beat-refiner + livechord-bar-arbitrator under `livechord-music` org, Apache 2.0; live since 2026-05-09): [doc/HF_RELEASE.md](doc/HF_RELEASE.md). Held-out metrics: [doc/beat_refiner_metrics.md](doc/beat_refiner_metrics.md). Staging dirs (not in git): `c:\Users\hitea\hf-hub-staging\`
-- Productization roadmap (Beta 能跑起來): [doc/PRODUCTIZATION.md](doc/PRODUCTIZATION.md)
-- **Beta deployment + dual-instance archival** (LIVECHORD_MODE=beta gates, hashed paths, invite flow, dual-instance settings split): [doc/ARCHIVAL_BETA.md](doc/ARCHIVAL_BETA.md)
-- Scaling roadmap (Beta 成功之後 — 個人/公眾分割、GPU、雲端部署、DB 擴展、i18n): [doc/SCALING.md](doc/SCALING.md)
+- **Beta deployment + archival** (LIVECHORD_MODE=beta gates, hashed paths, invite flow; discontinued 2026-06-17): [doc/ARCHIVAL_BETA.md](doc/ARCHIVAL_BETA.md)
 - NotebookLM hand-off (accompaniment knowledge doc for AI-coding): [doc/for-notebooklm/](doc/for-notebooklm/)
 - Implementation plans (historical): [doc/plans/](doc/plans/)
 

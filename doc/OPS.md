@@ -1,6 +1,10 @@
-# LiveChord Public VPS — Operations Runbook
+# LiveChord Public VPS — Operations Runbook (ARCHIVED)
 
-Operational procedures for the public deployment on Hetzner CPX21 Hillsboro OR (us-west, IPv4 `5.78.135.8`). Personal/NUC operations stay in [CLAUDE.md](../CLAUDE.md). VPS provider rationale: [vps-survey-for-livechord-jolly-pancake.md](../../.claude/plans/vps-survey-for-livechord-jolly-pancake.md). Deployed 2026-05-03; tunnel `livechord` (UUID `d182dd0a-3655-42db-86e3-b78294aee428`) routes via local config at [/etc/cloudflared/config.yml](../deploy/cloudflared.yml).
+**Status**: Discontinued 2026-06-17. This document is historical reference only.
+
+The public VPS deployment on Hetzner CPX21 Hillsboro OR (IPv4 `5.78.135.8`) was active from 2026-05-03 to 2026-06-17. The Cloudflare Tunnel (UUID `d182dd0a-3655-42db-86e3-b78294aee428`), Modal livechord-btc function, and domain auto-renewal have been deactivated. To re-enable public mode in the future, restore from this document and the archived deploy configs in [deploy/](../deploy/).
+
+**Current deployment**: NUC personal-only mode (`LIVECHORD_MODE=personal`) on `192.168.50.6:8800` (LAN access).
 
 ## YouTube ingest — REMOVED (2026-05-04)
 
