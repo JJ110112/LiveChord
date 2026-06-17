@@ -292,31 +292,20 @@ def get_melody(
         payload = _read_finalized_melody_cache(cache_file, path=path, song_hash=h)
         return _maybe_resolve_rh_melody(payload, path=path, song_hash=h)
 
-    # 即時提取
+    # 無快取 → 背景提取（鬆耦合：不在 request thread 內同步跑 extract_melody，
+    # Phase 11b 後它變重，在 FastAPI thread-pool worker 內握 GIL 會餓死其他
+    # request → 前端無回應）。同步只做檔案存在性 pre-flight，其餘交給
+    # melody_extract_queue 的 daemon worker（ProcessPool 隔離 GIL），前端輪詢
+    # GET ?path= 直到快取落地，與 hash-mode poller 一致。
     from config import resolve_path
     full_path = resolve_path(path)
     if not os.path.isfile(full_path):
         return {"error": "file not found", "melody": []}
 
     try:
-        from ai.melody_extractor import MelodyExtractor
-        from ai.melody_schema import melody_context_from_chord_cache
-        context = melody_context_from_chord_cache(h)
-        ext = MelodyExtractor()
-        melody = ext.extract_melody(
-            full_path,
-            bpm=context["bpm"],
-            tempo_curve=context["tempo_curve"],
-            time_signature=context["time_signature"],
-        )
-
-        result = _finalize_melody_response(
-            {"path": path, "melody": melody},
-            path=path,
-            song_hash=h,
-        )
-        cache_file.write_text(_json.dumps(result, ensure_ascii=False), encoding="utf-8")
-        return _maybe_resolve_rh_melody(result, path=path, song_hash=h)
+        import melody_extract_queue
+        status = melody_extract_queue.enqueue(h, full_path, path=path)
+        return {"melody": [], "pending": True, "status": status}
     except Exception as e:
         return {"error": str(e), "melody": []}
 

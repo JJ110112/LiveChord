@@ -770,6 +770,24 @@
         this._playOscillatorNote(pitch, duration, startTime, peakGain, null, gateRatio);
       }
     }
+
+    // Click-to-play preview: a single note triggered by a user gesture on the
+    // instrument canvas. Deliberately independent of the playback path —
+    // ignores activeHand AND volLeft/volRight (which applyAudioMode() zeroes in
+    // Music mode), so a preview is always audible regardless of the audio-mode
+    // mix. Uses a fixed peak gain comparable to a mid-velocity played note.
+    previewNote(pitch, duration = 0.9) {
+      this.init();
+      if (!this.ctx) return;
+      if (this.ctx.state === "suspended") { try { this.ctx.resume(); } catch {} }
+      const peakGain = 0.55;
+      const startTime = this.ctx.currentTime + 0.005;
+      if (this.spec.type === "sample") {
+        this._playSampleNote(pitch, duration, startTime, peakGain, 0.95);
+      } else {
+        this._playOscillatorNote(pitch, duration, startTime, peakGain, null, 0.95);
+      }
+    }
   }
 
   // Synth instance pool — at most one instance per soundId, kept around so
@@ -797,6 +815,14 @@
   }
   function getActiveSynth() {
     return _ensureSynth(_resolveActiveSoundId());
+  }
+  // Click-to-play: sound the given MIDI pitch on the ACTIVE tab's instrument
+  // sound (piano→piano, guitar→nylon-guitar, accordion→accordion, …). Shared
+  // by the 88-key keyboard, the string fretboards, and the accordion bass grid
+  // via the player bridge. Always audible (see SampleSynth.previewNote).
+  function _previewNote(pitch) {
+    if (typeof pitch !== "number" || !Number.isFinite(pitch)) return;
+    try { getActiveSynth().previewNote(Math.round(pitch)); } catch (_) {}
   }
   function _applyVolToAllSynths(volL, volR) {
     for (const s of Object.values(_synthCache)) {
@@ -2640,33 +2666,65 @@
   // hash-mode poller so browser-back during a ~1min uncached extraction
   // doesn't leave the previous page waiting on a zombie fetch.
   let _melodyLoadAbort = null;
+  let _melodyLoadTimeout = null;
   function _stopMelodyLoad() {
     if (_melodyLoadAbort) { try { _melodyLoadAbort.abort(); } catch {} _melodyLoadAbort = null; }
+    if (_melodyLoadTimeout) { clearTimeout(_melodyLoadTimeout); _melodyLoadTimeout = null; }
   }
   window.addEventListener("pagehide", _stopMelodyLoad);
+  function _applyMelodyData(notes) {
+    melodyData = _filterMelody(notes);
+    if (typeof _scoreRedraw === "function") _scoreRedraw();
+  }
   async function _loadMelody(path) {
-    // Loose-coupling rule (CLAUDE.md "Long-running operations"): no
-    // mid-flight status banner. Background work runs silently; user gets
-    // a toast on completion only if (a) they would actually look at
-    // melody (rhContentMode != "acc") and (b) the load was non-trivial
-    // (>1s, i.e., uncached extraction — instant cache hits stay silent).
+    // Loose-coupling (CLAUDE.md "Long-running operations"): path-mode
+    // library songs with no melody cache are extracted by a background
+    // worker (backend melody_extract_queue) — the GET returns
+    // {melody:[], pending:true} immediately instead of blocking the
+    // request thread on Phase 11b's heavy extractor. We poll until the
+    // cache lands, mirroring the hash-mode poller's discipline.
     const showUi = rhContentMode !== "acc";
-    const t0 = Date.now();
+    _stopMelodyLoad();
     _melodyLoadAbort = new AbortController();
+    const signal = _melodyLoadAbort.signal;
+    const url = `/api/ai/melody?path=${encodeURIComponent(path)}`;
     try {
-      const res = await fetch(`/api/ai/melody?path=${encodeURIComponent(path)}`,
-                              { signal: _melodyLoadAbort.signal });
+      const res = await fetch(url, { signal });
       const data = await res.json();
       if (data.melody && data.melody.length > 0) {
-        melodyData = _filterMelody(data.melody);
-        if (typeof _scoreRedraw === "function") _scoreRedraw();
-        if (showUi && (Date.now() - t0) > 1000) {
-          showToast(_t("toast.melody.done"), 4000);
-        }
+        _applyMelodyData(data.melody);  // cache hit — instant, stay silent
+        return;
       }
-    } catch {} finally {
-      _melodyLoadAbort = null;
-    }
+      if (!data.pending) return;  // genuinely no melody (e.g. file missing)
+    } catch { return; }
+
+    // Background extraction in flight — toast start, then poll for the cache.
+    if (showUi) showToast(_t("toast.melody.started"), 5000);
+    const deadline = Date.now() + 5 * 60000;
+    const tick = async () => {
+      if (signal.aborted) return;
+      if (Date.now() > deadline) {
+        _stopMelodyLoad();
+        if (showUi) showToast(_t("toast.melody.timeout"), 5000);
+        return;
+      }
+      try {
+        const r = await fetch(url, { signal });
+        if (signal.aborted) return;
+        const d = await r.json();
+        if (d.melody && d.melody.length > 0) {
+          _applyMelodyData(d.melody);
+          _stopMelodyLoad();
+          if (showUi) showToast(_t("toast.melody.done"), 5000);
+          return;
+        }
+      } catch (e) {
+        if (e && e.name === "AbortError") return;
+      }
+      if (signal.aborted) return;
+      _melodyLoadTimeout = setTimeout(tick, 5000);
+    };
+    _melodyLoadTimeout = setTimeout(tick, 8000);  // 8s head start for the worker
   }
 
   function _getMelodyMidi(currentTime) {
@@ -2695,6 +2753,48 @@
     return Math.min(w, Math.round(reservedH / 5.1 * 52));
   }
 
+  // ---- Click-to-play: 88-key keyboard ----
+  // Transient "pressed" highlights for clicked keys. Map midi -> expiry (ms,
+  // performance.now()-based). update88Piano merges these into the highlight
+  // set so a clicked key lights up even while paused; a short rAF loop keeps
+  // redrawing until the flashes expire.
+  const _keyFlash = new Map();
+  var _keyFlashRaf = null;
+  function _flashKey(midi) {
+    _keyFlash.set(midi, performance.now() + 300);
+    if (_keyFlashRaf) return;
+    const tick = () => {
+      const now = performance.now();
+      for (const [m, exp] of _keyFlash) { if (now >= exp) _keyFlash.delete(m); }
+      try { update88Piano((typeof audio !== "undefined" && audio.currentTime) || 0); } catch (_) {}
+      _keyFlashRaf = _keyFlash.size ? requestAnimationFrame(tick) : null;
+    };
+    _keyFlashRaf = requestAnimationFrame(tick);
+  }
+  // Hit-test a pointer position (client coords) against the cached key
+  // geometry. Black keys are checked first (drawn on top, occupy only the
+  // upper band). Geometry in piano88Cache is in the same CSS-px space as the
+  // canvas's style.width/height, so scale client coords by that ratio.
+  function _piano88MidiAt(clientX, clientY) {
+    if (!piano88Canvas || !piano88Cache) return null;
+    const rect = piano88Canvas.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return null;
+    const cssW = parseFloat(piano88Canvas.style.width) || rect.width;
+    const cssH = parseFloat(piano88Canvas.style.height) || rect.height;
+    const cx = (clientX - rect.left) * (cssW / rect.width);
+    const cy = (clientY - rect.top) * (cssH / rect.height);
+    const { whiteXs, blackXs } = piano88Cache;
+    for (const m in blackXs) {
+      const b = blackXs[m];
+      if (cx >= b.x && cx <= b.x + b.w && cy >= 0 && cy <= b.h) return parseInt(m, 10);
+    }
+    for (const m in whiteXs) {
+      const w = whiteXs[m];
+      if (cx >= w.x && cx <= w.x + w.w && cy >= 0 && cy <= w.h) return parseInt(m, 10);
+    }
+    return null;
+  }
+
   // var (not let) — _init88Piano is called from _switchTab during boot before
   // this line evaluates; let would put us in TDZ and throw, breaking the rest
   // of player.js initialisation (jianpu toggle, etc.).
@@ -2714,6 +2814,22 @@
     // draw static keyboard immediately (theme palette so initial light-theme
     // render doesn't briefly show dark-mode default highlights)
     ChordRender.draw88Piano(piano88Canvas, piano88Cache, [], -1, { colors: _palette() });
+
+    // Click-to-play: tap a key to hear it in the current piano sound.
+    // Assigned via the onpointerdown PROPERTY (not addEventListener) so it is
+    // inherently idempotent — _init88Piano runs multiple times (boot, resize,
+    // tab switch) and a property assignment just replaces the prior handler,
+    // so a key can never double-trigger. Reads the live piano88Cache so it
+    // stays correct after resize.
+    piano88Canvas.style.cursor = "pointer";
+    piano88Canvas.style.touchAction = "manipulation";
+    piano88Canvas.onpointerdown = (e) => {
+      const midi = _piano88MidiAt(e.clientX, e.clientY);
+      if (midi == null) return;
+      e.preventDefault();
+      _previewNote(midi);
+      _flashKey(midi);
+    };
 
     // Re-init on container resize so highlights stay bound to keys after the
     // user toggles the waterfall, rotates the device, or resizes the window.
@@ -2956,6 +3072,13 @@
           pedalDepth = p.depth || 1.0;
           break;
         }
+      }
+    }
+
+    // Click-to-play: light up keys the user just tapped (transient, ~300ms).
+    if (_keyFlash.size) {
+      for (const m of _keyFlash.keys()) {
+        if (!activeRh.includes(m) && !activeLh.includes(m)) activeRh.push(m);
       }
     }
 
@@ -3900,19 +4023,14 @@
     }
     function _syncSoundPickerEnabled() {
       if (!soundSelect) return;
-      // audioMode is a `let` declared further down the IIFE; this function
-      // can run during _setupTeachControls (called from _switchTab during
-      // init) BEFORE that let-binding is reached, hitting the TDZ. typeof
-      // also throws on TDZ-let so we have to swallow the ReferenceError.
-      // applyAudioMode() re-runs _syncSoundPickerEnabled once audioMode
-      // is live, so the UI ends up correct either way.
-      let muted = false;
-      try { muted = (audioMode === 0); } catch { muted = false; }
-      soundSelect.disabled = muted;
-      if (soundResetBtn) soundResetBtn.disabled = muted;
-      soundSelect.title = muted
-        ? "Switch to MIDI / Mix mode to hear sound changes"
-        : "Instrument sound (per tab)";
+      // Always enabled. The picker used to be disabled in Music mode (synth
+      // output is muted there), but click-to-play previews now sound the
+      // chosen instrument regardless of audio mode, so the selection is
+      // always meaningful. Keep the function (applyAudioMode still calls it)
+      // so a future mode-dependent tweak has a single hook.
+      soundSelect.disabled = false;
+      if (soundResetBtn) soundResetBtn.disabled = false;
+      soundSelect.title = "Instrument sound — used for click-to-play and MIDI / Mix mode";
     }
     // Expose for applyAudioMode() — declared earlier in IIFE
     window._syncSoundPickerEnabled = _syncSoundPickerEnabled;
@@ -6013,7 +6131,7 @@
     const span = Math.max(0.001, range.end - range.start);
     for (const c of chordsInRange) {
       const el = document.createElement("span");
-      el.textContent = c.chord || "";
+      el.textContent = _displayChordName(c.chord || "");
       if (useTimeToX) {
         el.style.left = window.ScoreRender.timeToX(+c.time) + "px";
       } else {
@@ -6212,8 +6330,8 @@
     value: $("#arrangerSplitValue"),
   };
   function _arrangerSplitName(midi) {
-    const names = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
-    return names[midi % 12] + (Math.floor(midi / 12) - 1);
+    // 固定顯示拼法（全降記號，唯 F# 升記號）。
+    return semitoneToDisplay(midi) + (Math.floor(midi / 12) - 1);
   }
   function _getArrangerSplit() {
     const inst = (typeof InstrumentRegistry !== "undefined") ? InstrumentRegistry.get("arranger") : null;
@@ -7837,16 +7955,23 @@
           // Load melody for waterfall (try hash, then path from chord data)
           try {
             const melPath = chordData.path || "";
-            const melUrl = melPath
-              ? `/api/ai/melody?path=${encodeURIComponent(melPath)}`
-              : `/api/ai/melody?hash=${encodeURIComponent(hashMode)}`;
-            const melRes = await fetch(melUrl);
-            const melData = await melRes.json();
-            if (melData.melody && melData.melody.length > 0) {
-              melodyData = _filterMelody(melData.melody);
+            if (melPath) {
+              // Path-mode: _loadMelody handles cache-hit AND the new
+              // pending→poll path (library songs whose melody is extracted
+              // on-demand by the background worker). Don't rely on
+              // _maybeStartMelodyPolling here — it only polls fresh-analyzed
+              // hashes, so an old library song opened in hash mode would
+              // otherwise enqueue extraction but never pick up the result.
+              _loadMelody(melPath);
             } else {
-              // Freshly-analyzed hash → melody worker is still running; poll + banner.
-              _maybeStartMelodyPolling();
+              const melRes = await fetch(`/api/ai/melody?hash=${encodeURIComponent(hashMode)}`);
+              const melData = await melRes.json();
+              if (melData.melody && melData.melody.length > 0) {
+                melodyData = _filterMelody(melData.melody);
+              } else {
+                // Freshly-analyzed hash → ingest melody worker still running; poll.
+                _maybeStartMelodyPolling();
+              }
             }
           } catch {}
 
@@ -8809,6 +8934,7 @@
     getAccData: () => accData,
     getMelodyData: () => melodyData,
     getActiveTab: () => activeTab,
+    previewNote: (pitch) => _previewNote(pitch),
     drawAITeacherHUD: _drawAITeacherHUD,
     spawnWaterfallParticles: _spawnWaterfallParticles,
     drawWaterfallParticles: _drawWaterfallParticles,
