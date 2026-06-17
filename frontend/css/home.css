@@ -1362,24 +1362,23 @@ body.ambient-fullscreen-lock {
   vertical-align: middle;
 }
 .proglib-pg-btn {
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--bg-card) 84%, transparent);
-  color: var(--text);
-  font-size: 16px;
+  border: none;
+  background: none;
+  color: color-mix(in srgb, var(--accent) 75%, var(--text));
+  font-size: 18px;
   font-weight: 700;
   line-height: 1;
-  min-width: 28px;
-  padding: 3px 8px;
+  min-width: 22px;
+  padding: 0 4px;
   cursor: pointer;
 }
 .proglib-pg-btn:hover:not(:disabled),
 .proglib-pg-btn:focus-visible:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
-  background: color-mix(in srgb, var(--bg-hover) 88%, transparent);
+  color: var(--accent);
 }
 .proglib-pg-btn:disabled {
-  opacity: 0.4;
+  color: var(--text-dim);
+  opacity: 0.45;
   cursor: default;
 }
 .proglib-pg-info {
