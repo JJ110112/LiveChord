@@ -107,7 +107,10 @@
   const SHARP_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
   const FLAT_NAMES  = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
   const ROMAN_BASE = { 0: "I", 1: "♭II", 2: "II", 3: "♭III", 4: "III", 5: "IV", 6: "♭V", 7: "V", 8: "♭VI", 9: "VI", 10: "♭VII", 11: "VII" };
-  const JIANPU_MAP = { 0: "1", 1: "#1", 2: "2", 3: "b3", 4: "3", 5: "4", 6: "#4", 7: "5", 8: "b6", 9: "6", 10: "b7", 11: "7" };
+  // Fixed-do (固定調) solfège — C is always 1, matching the player's
+  // _notesToJianpu (keySemi = 0). Table chosen by the note's spelling.
+  const JP_SHARP = ["1", "#1", "2", "#2", "3", "4", "#4", "5", "#5", "6", "#6", "7"];
+  const JP_FLAT  = ["1", "b2", "2", "b3", "3", "4", "b5", "5", "b6", "6", "b7", "7"];
 
   const state = {
     style: "pop",
@@ -263,10 +266,14 @@
 
   function buildChord(key, deg, quality) {
     const qd = QUALITY[quality] || QUALITY.maj;
+    const names = key.sharp ? SHARP_NAMES : FLAT_NAMES;
     const rootPc = (key.pc + deg) % 12;
-    const rootName = (key.sharp ? SHARP_NAMES : FLAT_NAMES)[rootPc];
-    const tonePcs = qd.iv.map((i) => (key.pc + deg + i) % 12);
-    const jianpu = tonePcs.map((pc) => JIANPU_MAP[((pc - key.pc) % 12 + 12) % 12]);
+    const rootName = names[rootPc];
+    // Fixed-do jianpu (C = 1), same convention as the player's chord ribbon.
+    const jianpu = qd.iv.map((i) => {
+      const pc = (key.pc + deg + i) % 12;
+      return (names[pc].includes("b") ? JP_FLAT : JP_SHARP)[pc];
+    });
     const rootMidi = 48 + rootPc; // C3 = 48; root sits in C3..B3
     const midis = qd.iv.map((i) => rootMidi + i);
     let roman = ROMAN_BASE[((deg % 12) + 12) % 12];
