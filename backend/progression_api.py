@@ -76,7 +76,10 @@ def match_progression(
     songs = _load_index()
     t0 = time.time()
     matches = [s for s in songs if pm.song_matches(s[3], variants)]
-    out = [{"hash": s[0], "title": s[1], "key": s[2]} for s in matches[:limit]]
+    out = [
+        {"hash": s[0], "title": s[1], "key": s[2], "path": s[4] if len(s) > 4 else ""}
+        for s in matches[:limit]
+    ]
     return {
         "count": len(matches),
         "indexed": len(songs),

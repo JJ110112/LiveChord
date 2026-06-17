@@ -344,8 +344,13 @@
         const h = encodeURIComponent(s.hash);
         const title = escapeHtml(s.title || "Untitled");
         const key = escapeHtml(s.key || "");
+        // Library songs carry embedded album art served by path; processed/demo
+        // songs fall back to the hash-based cover.
+        const cover = s.path
+          ? `/api/track/cover?path=${encodeURIComponent(s.path)}`
+          : `/api/process/cover/${h}`;
         return `<a class="proglib-song-card" href="/player?hash=${h}" title="${title}">
-          <span class="proglib-song-cover no-cover"><img src="/api/process/cover/${h}" loading="lazy" alt="" onload="this.parentElement.classList.remove('no-cover')" onerror="this.remove()"><span class="proglib-song-ph">♪</span></span>
+          <span class="proglib-song-cover no-cover"><img src="${cover}" loading="lazy" alt="" onload="this.parentElement.classList.remove('no-cover')" onerror="this.remove()"><span class="proglib-song-ph">♪</span></span>
           <span class="proglib-song-meta"><span class="proglib-song-title">${title}</span>${key ? `<span class="proglib-song-key">${key}</span>` : ""}</span>
         </a>`;
       })

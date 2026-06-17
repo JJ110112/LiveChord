@@ -6,7 +6,8 @@ backend/progression_match.py), and writes a compact index that the
 /api/progression/match endpoint scans in memory.
 
 Output: data/progression_index.json
-  { "version": 1, "count": N, "songs": [[hash, title, key, packed_seq], ...] }
+  { "version": 2, "count": N, "songs": [[hash, title, key, packed_seq, path], ...] }
+  (path is used to fetch embedded album art via /api/track/cover)
 
 Run from the dev repo (fast local SSD), then deploy the resulting JSON to
 V:\data\progression_index.json. This is a dev/offline tool, NOT runtime — but
@@ -68,9 +69,10 @@ def build(chords_dir: Path, out_path: Path, limit: int = 0) -> dict:
                 skipped += 1
                 continue
             h = entry.name[:-5]
-            title = _title_from_path(data.get("path", ""))
+            path = data.get("path", "") or ""
+            title = _title_from_path(path)
             key = data.get("key", "") or ""
-            songs.append([h, title, key, packed])
+            songs.append([h, title, key, packed, path])
             if limit and len(songs) >= limit:
                 break
         if scanned % 5000 == 0:
@@ -78,7 +80,7 @@ def build(chords_dir: Path, out_path: Path, limit: int = 0) -> dict:
         if limit and len(songs) >= limit:
             break
 
-    payload = {"version": 1, "count": len(songs), "songs": songs}
+    payload = {"version": 2, "count": len(songs), "songs": songs}
     out_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = out_path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
