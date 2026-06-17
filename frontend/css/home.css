@@ -1354,6 +1354,37 @@ body.ambient-fullscreen-lock {
   color: var(--text-dim);
   margin-left: 6px;
 }
+.proglib-match-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 12px;
+  vertical-align: middle;
+}
+.proglib-pg-btn {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-card) 84%, transparent);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.proglib-pg-btn:hover:not(:disabled),
+.proglib-pg-btn:focus-visible:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  background: color-mix(in srgb, var(--bg-hover) 88%, transparent);
+}
+.proglib-pg-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.proglib-pg-info {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
 .proglib-matches {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));

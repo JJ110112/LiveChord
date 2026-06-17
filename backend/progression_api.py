@@ -68,6 +68,7 @@ def _parse_seq(seq: str):
 def match_progression(
     seq: str = Query(..., description="degree+M/m tokens, e.g. 0M-7M-9m-5M"),
     limit: int = Query(24, ge=1, le=60),
+    offset: int = Query(0, ge=0, description="page offset into the match list"),
 ):
     tokens = _parse_seq(seq)
     if len(tokens) < 2:
@@ -76,12 +77,15 @@ def match_progression(
     songs = _load_index()
     t0 = time.time()
     matches = [s for s in songs if pm.song_matches(s[3], variants)]
+    page = matches[offset:offset + limit]
     out = [
         {"hash": s[0], "title": s[1], "key": s[2], "path": s[4] if len(s) > 4 else ""}
-        for s in matches[:limit]
+        for s in page
     ]
     return {
         "count": len(matches),
+        "offset": offset,
+        "limit": limit,
         "indexed": len(songs),
         "took_ms": round((time.time() - t0) * 1000, 1),
         "songs": out,

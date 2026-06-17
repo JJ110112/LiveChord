@@ -162,12 +162,17 @@
     favHead: ROOT.querySelector(".proglib-fav-head"),
     matches: document.getElementById("proglibMatches"),
     matchCount: document.getElementById("proglibMatchCount"),
+    pager: document.getElementById("proglibMatchPager"),
   };
 
   // Chord qualities that count as minor-family for progression matching.
   const MINOR_QUALITIES = new Set(["m", "m7", "m9", "m6", "dim", "dim7", "m7b5"]);
+  const MATCH_PAGE_SIZE = 12;
+  const MATCH_PAGE_KEY = "livechord_proglib_matchpage";
   let _matchToken = 0;
-  let _lastMatchSeq = null;
+  let _matchSeq = null;
+  let _matchPage = 0;
+  let _matchTotal = 0;
 
   let synth = null;
   let outputGain = null;
@@ -307,25 +312,57 @@
       .join("-");
   }
 
-  async function fetchMatches() {
+  // Called on progression/random change. The match pattern is key-independent,
+  // so a key/bpm change doesn't refetch — only a new progression does.
+  function fetchMatches() {
     if (!refs.matches) return;
     const seq = progSeqString();
-    // The match pattern is key-independent, so a key/bpm change doesn't need a
-    // refetch — only a new progression does.
-    if (seq === _lastMatchSeq) return;
-    _lastMatchSeq = seq;
+    if (seq === _matchSeq) return;
+    _matchSeq = seq;
+    _matchPage = _loadPersistedPage(seq); // resume the page for this progression
+    doFetchMatches();
+  }
+
+  function goToMatchPage(delta) {
+    const totalPages = Math.max(1, Math.ceil(_matchTotal / MATCH_PAGE_SIZE));
+    const next = Math.min(totalPages - 1, Math.max(0, _matchPage + delta));
+    if (next === _matchPage) return;
+    _matchPage = next;
+    _persistPage(_matchSeq, _matchPage);
+    doFetchMatches();
+  }
+
+  async function doFetchMatches() {
+    const seq = _matchSeq;
     const token = ++_matchToken;
     refs.matches.innerHTML = `<div class="proglib-match-empty">搜尋中…</div>`;
     if (refs.matchCount) refs.matchCount.textContent = "";
+    if (refs.pager) refs.pager.innerHTML = "";
     try {
-      const res = await fetch(`/api/progression/match?seq=${encodeURIComponent(seq)}&limit=24`);
+      const offset = _matchPage * MATCH_PAGE_SIZE;
+      const res = await fetch(
+        `/api/progression/match?seq=${encodeURIComponent(seq)}&limit=${MATCH_PAGE_SIZE}&offset=${offset}`
+      );
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
-      if (token !== _matchToken) return; // a newer request superseded this one
+      if (token !== _matchToken) return; // superseded by a newer request
+      _matchTotal = data.count || 0;
+      // A persisted page can fall out of range if the match set shrank; clamp
+      // and refetch from the last valid page.
+      const totalPages = Math.max(1, Math.ceil(_matchTotal / MATCH_PAGE_SIZE));
+      if (_matchPage > totalPages - 1 && _matchTotal > 0) {
+        _matchPage = totalPages - 1;
+        _persistPage(_matchSeq, _matchPage);
+        doFetchMatches();
+        return;
+      }
       renderMatches(data);
+      renderPagination();
     } catch (e) {
       if (token !== _matchToken) return;
+      _matchTotal = 0;
       if (refs.matchCount) refs.matchCount.textContent = "";
+      if (refs.pager) refs.pager.innerHTML = "";
       refs.matches.innerHTML = `<div class="proglib-match-empty">此伺服器未提供歌曲比對。</div>`;
     }
   }
@@ -344,17 +381,52 @@
         const h = encodeURIComponent(s.hash);
         const title = escapeHtml(s.title || "Untitled");
         const key = escapeHtml(s.key || "");
-        // Library songs carry embedded album art served by path; processed/demo
-        // songs fall back to the hash-based cover.
+        // Library songs (real NAS paths) open in path mode so the player can
+        // stream the audio; hash mode can't locate it. Uploads (__upload/...)
+        // and pathless rows fall back to hash mode.
+        const isLib = s.path && !s.path.startsWith("__");
+        const href = isLib
+          ? `/player?path=${encodeURIComponent(s.path)}&autoplay=1`
+          : `/player?hash=${h}`;
         const cover = s.path
           ? `/api/track/cover?path=${encodeURIComponent(s.path)}`
           : `/api/process/cover/${h}`;
-        return `<a class="proglib-song-card" href="/player?hash=${h}" title="${title}">
+        return `<a class="proglib-song-card" href="${href}" title="${title}">
           <span class="proglib-song-cover no-cover"><img src="${cover}" loading="lazy" alt="" onload="this.parentElement.classList.remove('no-cover')" onerror="this.remove()"><span class="proglib-song-ph">♪</span></span>
           <span class="proglib-song-meta"><span class="proglib-song-title">${title}</span>${key ? `<span class="proglib-song-key">${key}</span>` : ""}</span>
         </a>`;
       })
       .join("");
+  }
+
+  function renderPagination() {
+    if (!refs.pager) return;
+    const totalPages = Math.max(1, Math.ceil(_matchTotal / MATCH_PAGE_SIZE));
+    if (_matchTotal <= MATCH_PAGE_SIZE) {
+      refs.pager.innerHTML = "";
+      return;
+    }
+    refs.pager.innerHTML =
+      `<button class="proglib-pg-btn" type="button" data-dir="-1" ${_matchPage <= 0 ? "disabled" : ""}>‹ 上一頁</button>` +
+      `<span class="proglib-pg-info">第 ${_matchPage + 1} / ${totalPages} 頁</span>` +
+      `<button class="proglib-pg-btn" type="button" data-dir="1" ${_matchPage >= totalPages - 1 ? "disabled" : ""}>下一頁 ›</button>`;
+    refs.pager.querySelectorAll(".proglib-pg-btn").forEach((b) => {
+      b.addEventListener("click", () => goToMatchPage(Number(b.dataset.dir)));
+    });
+  }
+
+  function _loadPersistedPage(seq) {
+    try {
+      const o = JSON.parse(localStorage.getItem(MATCH_PAGE_KEY) || "null");
+      if (o && o.seq === seq && Number.isFinite(Number(o.page))) return Math.max(0, Number(o.page));
+    } catch {}
+    return 0;
+  }
+
+  function _persistPage(seq, page) {
+    try {
+      localStorage.setItem(MATCH_PAGE_KEY, JSON.stringify({ seq, page }));
+    } catch {}
   }
 
   function buildChord(key, deg, quality) {
