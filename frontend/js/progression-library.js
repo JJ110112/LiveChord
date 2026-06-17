@@ -167,7 +167,7 @@
 
   // Chord qualities that count as minor-family for progression matching.
   const MINOR_QUALITIES = new Set(["m", "m7", "m9", "m6", "dim", "dim7", "m7b5"]);
-  const MATCH_PAGE_SIZE = 12;
+  const MATCH_PAGE_SIZE = 16;
   const MATCH_PAGE_KEY = "livechord_proglib_matchpage";
   let _matchToken = 0;
   let _matchSeq = null;
@@ -407,9 +407,9 @@
       return;
     }
     refs.pager.innerHTML =
-      `<button class="proglib-pg-btn" type="button" data-dir="-1" ${_matchPage <= 0 ? "disabled" : ""}>‹ 上一頁</button>` +
+      `<button class="proglib-pg-btn" type="button" data-dir="-1" aria-label="上一頁" ${_matchPage <= 0 ? "disabled" : ""}>‹</button>` +
       `<span class="proglib-pg-info">第 ${_matchPage + 1} / ${totalPages} 頁</span>` +
-      `<button class="proglib-pg-btn" type="button" data-dir="1" ${_matchPage >= totalPages - 1 ? "disabled" : ""}>下一頁 ›</button>`;
+      `<button class="proglib-pg-btn" type="button" data-dir="1" aria-label="下一頁" ${_matchPage >= totalPages - 1 ? "disabled" : ""}>›</button>`;
     refs.pager.querySelectorAll(".proglib-pg-btn").forEach((b) => {
       b.addEventListener("click", () => goToMatchPage(Number(b.dataset.dir)));
     });
