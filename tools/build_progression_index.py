@@ -1,4 +1,4 @@
-"""Build the chord-progression search index for the Progression Library feature.
+r"""Build the chord-progression search index for the Progression Library feature.
 
 Walks the sharded chord corpus (data/chords/<bucket>/<hash>.json), packs each
 song's ordered chord sequence into a deduped token string (see
