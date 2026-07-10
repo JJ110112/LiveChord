@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=23">
-  <link rel="stylesheet" href="/css/home.css?v=65">
+  <link rel="stylesheet" href="/css/home.css?v=68">
 
   <link rel="stylesheet" href="/css/help.css?v=10">
   <link rel="stylesheet" href="/css/tutorial.css?v=1">
@@ -51,7 +51,7 @@
   <script src="/js/auth.js?v=7"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
-  <script src="/js/i18n.js?v=57"></script>
+  <script src="/js/i18n.js?v=58"></script>
   <script src="/js/analytics.js?v=3"></script>
 </head>
 <body>
@@ -259,6 +259,43 @@
       <div class="proglib-favorites-wrap">
         <div class="proglib-fav-head">我的進行最愛</div>
         <div id="proglibFavorites" class="proglib-favorites"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="secTrends" class="trends">
+    <div class="trends-head">
+      <div>
+        <h2 class="trends-title">Chord Trends</h2>
+        <p class="trends-subtitle">從你的起始和弦往下探索，看看音樂庫裡最常見的接續走向</p>
+      </div>
+      <div class="trends-head-actions">
+        <button id="trendsCollapseBtn" class="trends-btn" type="button" aria-expanded="false">展開</button>
+        <button id="trendsResetBtn" class="trends-btn" type="button">重設</button>
+      </div>
+    </div>
+    <div id="trendsBody" class="trends-body" aria-hidden="true">
+      <div class="trends-controls">
+        <div class="trends-scale-toggle" role="group" aria-label="Scale">
+          <button id="trendsScaleMajor" class="trends-btn trends-chip" type="button">大調 C</button>
+          <button id="trendsScaleMinor" class="trends-btn trends-chip" type="button">小調 Cm</button>
+        </div>
+        <label class="trends-key-field">
+          <span>顯示調性</span>
+          <select id="trendsKey" aria-label="Display key"></select>
+        </label>
+      </div>
+
+      <div id="trendsBreadcrumb" class="trends-breadcrumb" aria-label="Progression path"></div>
+
+      <div class="trends-next-wrap">
+        <h3 id="trendsNextHead" class="trends-next-head">接下來最可能的和弦</h3>
+        <div id="trendsNext" class="trends-next" aria-label="Next chord probabilities"></div>
+      </div>
+
+      <div class="proglib-matches-wrap trends-matches-wrap">
+        <div class="proglib-matches-head">音樂庫中符合此進行的歌曲 <span id="trendsMatchCount" class="proglib-match-count"></span><span id="trendsPager" class="proglib-match-pager"></span></div>
+        <div id="trendsMatches" class="proglib-matches" aria-label="Matching songs"></div>
       </div>
     </div>
   </section>
@@ -861,7 +898,8 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 
 <script src="https://unpkg.com/tone@14.8.49/build/Tone.js" defer></script>
   <script src="/js/ambient-mode.js?v=17"></script>
-  <script src="/js/progression-library.js?v=9"></script>
+  <script src="/js/progression-library.js?v=18"></script>
+  <script src="/js/trends-explorer.js?v=1"></script>
 <script src="/js/app.js?v=130"></script>
 <script src="/js/jam-tracks.js?v=2"></script>
 </body>
