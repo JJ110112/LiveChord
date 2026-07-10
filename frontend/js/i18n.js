@@ -42,7 +42,7 @@
   // the dictionary fetch — without this the browser holds onto a stale
   // dictionary that's missing freshly added keys, and falls back to the
   // Chinese fallback text baked into the HTML even when lang===en.
-  const DICT_VERSION = 57;
+  const DICT_VERSION = 58;
 
   const _dicts = {}; // { lang: { "key.path": "value" } }
   let _lang = DEFAULT_LANG;

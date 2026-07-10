@@ -1856,6 +1856,15 @@
       nameEl.textContent = _displayChordName(c.chord);
       item.appendChild(nameEl);
 
+      const strand = c && c.explain && typeof c.explain.strand === "string" ? c.explain.strand : "";
+      if (strand) {
+        const strandEl = document.createElement("div");
+        strandEl.className = "rv-strand-tag";
+        strandEl.textContent = _strandLabel(strand);
+        strandEl.title = `strand: ${strand}`;
+        item.appendChild(strandEl);
+      }
+
       const jp = document.createElement("div");
       jp.className = "rv-jianpu";
       jp.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
@@ -6934,9 +6943,105 @@
 
   // ---- Jazzify 按鈕 (merged: off → L1 → L2 → L3 → ✨AI → off) ----
   const btnJazzify = $("#btnJazzify");
+  const jazzExplainEl = $("#jazzExplain");
+  const JAZZ_STRANDS_KEY = "livechord_jazzify_strands";
+  const ALLOWED_JAZZ_EXTRA_STRANDS = ["diminished_leading", "modal_interchange", "five_alternatives"];
   let jazzifyLevel = 0;  // 0=off, 1/2/3=rule-based, 4=AI transformer
   let originalChords = null;
   let jazzifyReqGen = 0;  // generation counter — stale async callbacks check this
+  let jazzifyExtraStrands = _loadJazzifyExtraStrands();
+
+  function _loadJazzifyExtraStrands() {
+    try {
+      const raw = localStorage.getItem(JAZZ_STRANDS_KEY);
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      return arr.filter(s => ALLOWED_JAZZ_EXTRA_STRANDS.includes(String(s)));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function _saveJazzifyExtraStrands() {
+    try {
+      localStorage.setItem(JAZZ_STRANDS_KEY, JSON.stringify(jazzifyExtraStrands));
+    } catch (_) {}
+  }
+
+  function _baseJazzStrandsByLevel(lvl) {
+    if (lvl >= 3) return ["diatonic", "ii_v", "tritone_sub", "secondary_dominant"];
+    if (lvl === 2) return ["diatonic", "ii_v"];
+    if (lvl === 1) return ["diatonic"];
+    return [];
+  }
+
+  function _effectiveJazzStrands(apiLevel) {
+    const set = new Set(_baseJazzStrandsByLevel(apiLevel));
+    jazzifyExtraStrands.forEach(s => set.add(s));
+    return Array.from(set);
+  }
+
+  function _syncJazzStrandPopup() {
+    const activeSet = new Set(jazzifyExtraStrands);
+    document.querySelectorAll(".jazz-strand-opt").forEach(btn => {
+      const on = activeSet.has(btn.dataset.strand);
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+  }
+
+  function _strandLabel(strand) {
+    switch (String(strand || "")) {
+      case "ii_v": return "II-V";
+      case "tritone_sub": return "三全音";
+      case "secondary_dominant": return "次屬";
+      case "diminished_leading": return "減導";
+      case "modal_interchange": return "借用";
+      case "five_alternatives": return "V替代";
+      case "diatonic":
+      default:
+        return "基礎";
+    }
+  }
+
+  function _attachJazzExplainToChords(chords, explainSteps) {
+    if (!Array.isArray(chords) || chords.length === 0) return;
+    const posToStrand = new Map();
+    if (Array.isArray(explainSteps)) {
+      explainSteps.forEach(step => {
+        const pos = Number(step && step.position);
+        if (Number.isInteger(pos) && pos >= 0 && pos < chords.length) {
+          posToStrand.set(pos, String(step.strand || "diatonic"));
+        }
+      });
+    }
+
+    chords.forEach((ch, idx) => {
+      if (!ch || typeof ch !== "object") return;
+      const strand = posToStrand.get(idx) || (ch.explain && ch.explain.strand) || "diatonic";
+      const source = (ch.explain && ch.explain.source) || (posToStrand.has(idx) ? "changed" : (ch.inserted ? "inserted" : "carried"));
+      ch.explain = { strand, source };
+    });
+  }
+
+  function _renderJazzExplain(res) {
+    if (!jazzExplainEl) return;
+    if (!res || !Array.isArray(res.explain) || !res.explain.length) {
+      jazzExplainEl.textContent = _t(
+        "player.jazzify.explain_empty",
+        null,
+        "Choose a Jazzify level to preview theory steps."
+      );
+      return;
+    }
+    const top = res.explain.slice(0, 3);
+    const lines = top.map(x => `${x.step}. [${_strandLabel(x.strand)}] ${x.rule}: ${x.from} -> ${x.to}`).join("\n");
+    const more = res.explain.length > top.length ? `\n+${res.explain.length - top.length} more` : "";
+    jazzExplainEl.innerHTML =
+      `<span class="jazz-explain-title">${_t("player.jazzify.explain_title", null, "Theory steps")}</span>` +
+      `<span>${lines.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>")}${more ? `<br>${more}` : ""}</span>`;
+  }
 
   function _syncJazzifyPopup() {
     document.querySelectorAll(".jazz-opt").forEach(b => {
@@ -6944,8 +7049,10 @@
     });
   }
   _syncJazzifyPopup();
+  _syncJazzStrandPopup();
+  _renderJazzExplain(null);
 
-  async function _setJazzifyLevel(lvl) {
+  async function _setJazzifyLevel(lvl, force = false) {
     // Allow the call to proceed even if current chords went empty — so long
     // as we have an `originalChords` backup to restore to. Without this, a
     // degenerate API response (empty res.chords) would pin the button on AI
@@ -6955,7 +7062,7 @@
       showToast("\u5C1A\u7121\u548C\u5F26\u8CC7\u6599", 2000);
       return;
     }
-    if (lvl === jazzifyLevel && lvl !== 0) return;  // no-op: already at level
+    if (lvl === jazzifyLevel && lvl !== 0 && !force) return;  // no-op: already at level
 
     jazzifyLevel = lvl;
     _syncJazzifyPopup();
@@ -6975,6 +7082,7 @@
       buildChordDOM();
       activeChordIdx = -1;
       requestAnimationFrame(() => updateActiveChord(audio.currentTime || -1, true));
+      _renderJazzExplain(null);
       showToast("\u5DF2\u9084\u539F\u539F\u59CB\u548C\u5F26", 1500);
       return;
     }
@@ -6988,15 +7096,24 @@
     const isAI = (jazzifyLevel === 4);
     const apiLevel = isAI ? 3 : jazzifyLevel;
     const mode = isAI ? "transformer" : "rule-based";
+    const strandFlags = _effectiveJazzStrands(apiLevel);
 
     try {
-      const res = await API.jazzify(originalChords, chordData.key || "C", apiLevel, mode, chordData && chordData.bpm || null);
+      const res = await API.jazzify(
+        originalChords,
+        chordData.key || "C",
+        apiLevel,
+        mode,
+        chordData && chordData.bpm || null,
+        strandFlags,
+      );
       if (myGen !== jazzifyReqGen) return;
       if (res.error) throw new Error(res.error);
       if (!Array.isArray(res.chords) || res.chords.length === 0) {
         throw new Error("\u4F3A\u670D\u5668\u672A\u56DE\u50B3\u548C\u5F26");
       }
       chordData.chords = res.chords;
+      _attachJazzExplainToChords(chordData.chords, res.explain);
 
       if (isAI) {
         btnJazzify.textContent = "\u2728AI";
@@ -7014,6 +7131,7 @@
       buildChordDOM();
       activeChordIdx = -1;
       requestAnimationFrame(() => updateActiveChord(audio.currentTime || -1, true));
+      _renderJazzExplain(res);
       const label = isAI ? "AI Transformer" : `Jazzify L${jazzifyLevel}`;
       showToast(`${label}: ${res.original_count}\u2192${res.jazzified_count} \u548C\u5F26, ${res.changes.length} \u8B8A\u66F4`, 3000);
     } catch (err) {
@@ -7021,6 +7139,7 @@
       showToast("Jazzify \u5931\u6557: " + err.message, 3000);
       jazzifyLevel = 0;
       _syncJazzifyPopup();
+      _renderJazzExplain(null);
       btnJazzify.textContent = "\u{1F3B7}";
       btnJazzify.style.background = "";
       btnJazzify.style.color = "";
@@ -7036,6 +7155,22 @@
       _setJazzifyLevel(parseInt(b.dataset.jazz, 10));
       const item = b.closest(".tb-item");
       if (item) item.classList.remove("open");
+    });
+  });
+
+  document.querySelectorAll(".jazz-strand-opt").forEach(b => {
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const strand = b.dataset.strand;
+      if (!ALLOWED_JAZZ_EXTRA_STRANDS.includes(strand)) return;
+      if (jazzifyExtraStrands.includes(strand)) {
+        jazzifyExtraStrands = jazzifyExtraStrands.filter(s => s !== strand);
+      } else {
+        jazzifyExtraStrands = [...jazzifyExtraStrands, strand];
+      }
+      _saveJazzifyExtraStrands();
+      _syncJazzStrandPopup();
+      if (jazzifyLevel !== 0) _setJazzifyLevel(jazzifyLevel, true);
     });
   });
 

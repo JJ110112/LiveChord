@@ -1,33 +1,44 @@
 @echo off
-REM Trigger LiveChord restart on NUC via SSH.
-REM
-REM Direct `ssh nuc "C:\LiveChord\restart.bat"` does NOT work — SSH lands in
-REM Windows session 0 (no desktop) and the `start "title" python ...` inside
-REM restart.bat needs an interactive session to spawn the uvicorn console.
-REM Workaround: trigger a pre-registered scheduled task (`LiveChordRestart`,
-REM /ru hitea /it) which runs restart.bat in hitea's interactive desktop
-REM session. See NUC setup prompt in CLAUDE.md / chat history.
-REM
-REM Requires:
-REM   - OpenSSH Server enabled on NUC + key-based auth (one-time)
-REM   - "nuc" host alias in %USERPROFILE%\.ssh\config
-REM   - Scheduled task `LiveChordRestart` registered on NUC
-REM   - hitea logged in to NUC desktop (interactive task requirement)
+setlocal
+
+REM Trigger LiveChord restart on NUC via headless PowerShell script over SSH.
+REM Flow:
+REM   1) Copy headless restart script to NUC
+REM   2) Execute script remotely in non-interactive SSH session
+
+set "REMOTE_SCRIPT=C:\LiveChord\restart_headless.ps1"
 
 echo Triggering LiveChord restart on NUC (192.168.50.6)...
 echo.
-
-ssh nuc "schtasks /run /tn LiveChordRestart"
-
+echo [1/3] Uploading headless restart script...
+scp -q "%~dp0restart_headless.ps1" "nuc:/C:/LiveChord/restart_headless.ps1"
 if errorlevel 1 (
-    echo.
-    echo Trigger failed. Common causes:
-    echo   - sshd not running on NUC
-    echo   - Scheduled task `LiveChordRestart` not registered
-    echo   - hitea not logged in to NUC desktop ^(/it tasks require active session^)
-    echo.
+    echo Upload failed. Check ssh/scp connectivity and path permissions.
+    goto :done
 )
 
+echo [2/3] Executing headless restart...
+ssh nuc "cmd /c powershell -NoProfile -ExecutionPolicy Bypass -File %REMOTE_SCRIPT%"
+echo [3/3] Probing service health...
+powershell -NoProfile -Command "$ok=$false; for($i=0; $i -lt 10; $i++){ try { $r=Invoke-WebRequest -UseBasicParsing -Uri 'http://192.168.50.6:8800/' -Method Get -TimeoutSec 5; if($r.StatusCode -eq 200){ $ok=$true; break } } catch {} ; Start-Sleep -Milliseconds 800 }; if($ok){ exit 0 } else { exit 1 }"
+if errorlevel 1 (
+    echo Headless restart did not recover service in time.
+    echo Attempting fallback task trigger \LiveChordRestart ...
+    ssh nuc "schtasks /run /tn \LiveChordRestart"
+    if errorlevel 1 (
+        echo Fallback task trigger also failed.
+        goto :done
+    )
+) else (
+    echo Headless restart recovered service.
+)
+
+echo Restart command sent.
+
 echo.
-echo Done. Verify with: curl http://192.168.50.6:8800/
-pause
+echo Restart triggered successfully.
+
+:done
+echo.
+echo Verify with: curl http://192.168.50.6:8800/
+endlocal

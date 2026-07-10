@@ -154,6 +154,7 @@ class JazzifyRequest(BaseModel):
     level: int = 1
     mode: str = "rule-based"
     bpm: Optional[float] = None
+    strand_flags: List[str] = Field(default_factory=list)
 
 
 class MelodyDebugTagRequest(BaseModel):
@@ -200,7 +201,13 @@ async def jazzify(body: JazzifyRequest):
     from ai.reharmonizer import Reharmonizer
 
     rh = Reharmonizer(level=body.level)
-    result = rh.jazzify(body.chords, key=body.key, mode=body.mode, bpm=body.bpm)
+    result = rh.jazzify(
+        body.chords,
+        key=body.key,
+        mode=body.mode,
+        bpm=body.bpm,
+        strand_flags=body.strand_flags,
+    )
     return result
 
 

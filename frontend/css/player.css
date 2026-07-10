@@ -322,6 +322,23 @@
   text-shadow: var(--chord-text-shadow);
 }
 
+.rv-item .rv-strand-tag {
+  margin-top: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.05);
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.rv-item.active .rv-strand-tag {
+  border-color: rgba(255,255,255,0.24);
+  background: rgba(255,255,255,0.12);
+  color: #f4f8ff;
+}
+
 .rv-item .rv-jianpu {
   font-size: 11px;
   color: var(--text-dim);
@@ -1919,6 +1936,47 @@ body.no-score #scoreLayer { display: none !important; }
   justify-content: center;
 }
 
+.tb-jazz-strands {
+  flex: 0 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.tb-jazz-strands-title {
+  flex: 0 0 100%;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.tb-popup-jazzify .jazz-strand-opt {
+  flex: 1 1 calc(33.333% - 6px);
+  min-width: 90px;
+}
+
+.tb-jazz-explain {
+  flex: 0 0 100%;
+  margin-top: 6px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-dim);
+  white-space: normal;
+}
+
+.tb-jazz-explain .jazz-explain-title {
+  color: var(--text);
+  font-weight: 700;
+  margin-right: 6px;
+}
+
 /* Speed popup: keep single-row on desktop (6 buttons fit easily), force
    3×2 grid only on touch portrait where horizontal space is limited.
    User feedback 2026-04-19: PC showed Speed as vertical-ish 3×2 while
@@ -2787,6 +2845,10 @@ body.no-score #scoreLayer { display: none !important; }
     text-overflow: ellipsis;
     white-space: nowrap;
     justify-content: center;
+  }
+  .tb-popup-jazzify .tb-jazz-strands,
+  .tb-popup-jazzify .tb-jazz-explain {
+    grid-column: 1 / -1;
   }
 }
 

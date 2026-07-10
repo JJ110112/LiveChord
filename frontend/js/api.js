@@ -71,7 +71,8 @@ const API = {
   tasksStatus: () => API.get("/api/tasks/status"),
   chordVoicings: (inst, name) => API.get(`/api/chord/voicings/${inst}/${encodeURIComponent(name)}`),
   chordAnalysis: (key, name) => API.get(`/api/chord/analysis/${encodeURIComponent(key)}/${encodeURIComponent(name)}`),
-  jazzify: (chords, key, level, mode = "rule-based", bpm = null) => API.post("/api/ai/jazzify", { chords, key, level, mode, bpm }),
+  jazzify: (chords, key, level, mode = "rule-based", bpm = null, strandFlags = []) =>
+    API.post("/api/ai/jazzify", { chords, key, level, mode, bpm, strand_flags: strandFlags }),
 
   // Jam Tracks
   jamTracksStyles: () => API.get("/api/jam_tracks/styles"),

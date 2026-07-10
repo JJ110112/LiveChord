@@ -42,7 +42,7 @@ class Reharmonizer:
         """
         self.level = min(max(level, 1), 3)
 
-    def jazzify(self, chords, key="C", melody_data=None, mode="rule-based", bpm=None):
+    def jazzify(self, chords, key="C", melody_data=None, mode="rule-based", bpm=None, strand_flags=None):
         """主入口：重配和聲
 
         Args:
@@ -52,20 +52,61 @@ class Reharmonizer:
             mode: "rule-based" 或是 "transformer"
             bpm: 歌曲 BPM（含 ballad halving 修正後）。用於動態縮放插入閾值，
                  慢歌下 ii-V / 二次屬插入的 prev_duration 下限會放寬。
+              strand_flags: 指定啟用的和聲策略。空值時沿用既有 level 1/2/3 行為。
 
         Returns:
             {
                 "key": str,
                 "level": int,
+                "strand_flags": [str, ...],
                 "original_count": int,
                 "jazzified_count": int,
-                "chords": [{time, end, chord, inserted?}, ...],
-                "changes": [{position, original, jazzified, rule}, ...]
+                "chords": [{time, end, chord, inserted?, explain:{strand, source}}, ...],
+                "changes": [{position, original, jazzified, rule, strand}, ...],
+                "explain": [{step, position, strand, rule, from, to}, ...]
             }
         """
+        normalized_strands, unknown_strands = self._normalize_strand_flags(strand_flags)
+        not_implemented_strands = []
+        custom_strands = bool(normalized_strands)
+
+        enable_diatonic = ("diatonic" in normalized_strands) if custom_strands else True
+        enable_ii_v = ("ii_v" in normalized_strands) if custom_strands else self.level >= 2
+        enable_tritone = ("tritone_sub" in normalized_strands) if custom_strands else self.level >= 3
+        enable_secondary = ("secondary_dominant" in normalized_strands) if custom_strands else self.level >= 3
+        enable_dim_leading = ("diminished_leading" in normalized_strands) if custom_strands else False
+        enable_modal_interchange = ("modal_interchange" in normalized_strands) if custom_strands else False
+        enable_five_alternatives = ("five_alternatives" in normalized_strands) if custom_strands else False
+
+        active_strands = []
+        if enable_diatonic:
+            active_strands.append("diatonic")
+        if enable_ii_v:
+            active_strands.append("ii_v")
+        if enable_tritone:
+            active_strands.append("tritone_sub")
+        if enable_secondary:
+            active_strands.append("secondary_dominant")
+        if enable_dim_leading:
+            active_strands.append("diminished_leading")
+        if enable_modal_interchange:
+            active_strands.append("modal_interchange")
+        if enable_five_alternatives:
+            active_strands.append("five_alternatives")
+
         if not chords:
-            return {"key": key, "level": self.level, "original_count": 0,
-                    "jazzified_count": 0, "chords": [], "changes": []}
+            return {
+                "key": key,
+                "level": self.level,
+                "strand_flags": active_strands,
+                "unknown_strands": unknown_strands,
+                "not_implemented_strands": not_implemented_strands,
+                "original_count": 0,
+                "jazzified_count": 0,
+                "chords": [],
+                "changes": [],
+                "explain": [],
+            }
 
         # 解析 key
         key_semi = self._parse_key(key)
@@ -78,32 +119,57 @@ class Reharmonizer:
         changes = []
 
         if mode == "transformer":
-            return self._apply_transformer(chords, result, key_semi, melody_data, key)
+            return self._apply_transformer(
+                chords,
+                result,
+                key_semi,
+                melody_data,
+                key,
+                active_strands,
+                unknown_strands,
+                not_implemented_strands,
+            )
 
         # Pass 1: Extensions
-        for i, c in enumerate(result):
-            original = c["chord"]
-            new_chord = self._apply_extension(original, key_semi, is_minor)
-            if new_chord != original:
-                c["chord"] = new_chord
-                changes.append({
-                    "position": i, "original": original,
-                    "jazzified": new_chord, "rule": "extension",
-                })
+        if enable_diatonic:
+            for i, c in enumerate(result):
+                original = c["chord"]
+                new_chord = self._apply_extension(original, key_semi, is_minor)
+                if new_chord != original:
+                    c["chord"] = new_chord
+                    changes.append({
+                        "position": i, "original": original,
+                        "jazzified": new_chord, "rule": "extension",
+                    })
 
         # Pass 2: II-V-I insertion (level >= 2)
-        if self.level >= 2:
+        if enable_ii_v:
             result, new_changes = self._insert_ii_v(result, key_semi)
             changes.extend(new_changes)
 
         # Pass 3: Tritone substitution (level >= 3)
-        if self.level >= 3:
+        if enable_tritone:
             result, new_changes = self._apply_tritone(result, key_semi)
             changes.extend(new_changes)
 
         # Pass 4: Secondary dominants (level >= 3)
-        if self.level >= 3:
+        if enable_secondary:
             result, new_changes = self._insert_secondary_dom(result, key_semi)
+            changes.extend(new_changes)
+
+        # Pass 4.2: Diminished leading-tone insertions (Phase 1)
+        if enable_dim_leading:
+            result, new_changes = self._insert_diminished_leading(result, key_semi)
+            changes.extend(new_changes)
+
+        # Pass 4.3: Modal interchange substitutions
+        if enable_modal_interchange:
+            result, new_changes = self._apply_modal_interchange(result, key_semi)
+            changes.extend(new_changes)
+
+        # Pass 4.4: Five-chord alternatives for V->I motion
+        if enable_five_alternatives:
+            result, new_changes = self._apply_five_alternatives(result, key_semi)
             changes.extend(new_changes)
 
         # Pass 4.5: Phrase tension arc — 確保樂句有起承轉合
@@ -123,14 +189,22 @@ class Reharmonizer:
 
         # Pass 6: 大亂鬥 (Multi-Agent QA Battle)
         qa_reports = self._run_qa_battle(chords, result)
+        changes = self._finalize_changes(changes)
+        result, explain_chords = self._annotate_chord_explain(result, changes)
+        explain = self._build_explain(changes)
 
         return {
             "key": key,
             "level": self.level,
+            "strand_flags": active_strands,
+            "unknown_strands": unknown_strands,
+            "not_implemented_strands": not_implemented_strands,
             "original_count": len(chords),
             "jazzified_count": len(result),
             "chords": result,
             "changes": changes,
+            "explain": explain,
+            "explain_chords": explain_chords,
             "patterns": patterns,
             "qa": qa_reports,
         }
@@ -333,10 +407,19 @@ class Reharmonizer:
 
         return chords
 
-    def _apply_transformer(self, original_chords, result_chords, key_semi, melody_data, key_str):
+    def _apply_transformer(self, original_chords, result_chords, key_semi, melody_data, key_str,
+                           active_strands, unknown_strands, not_implemented_strands):
         """使用神經網路進行 Jazzify"""
         changes = []
         transformer_error = None
+        active_set = set(active_strands or [])
+        enable_diatonic = "diatonic" in active_set
+        enable_ii_v = "ii_v" in active_set
+        enable_tritone = "tritone_sub" in active_set
+        enable_secondary = "secondary_dominant" in active_set
+        enable_dim_leading = "diminished_leading" in active_set
+        enable_modal_interchange = "modal_interchange" in active_set
+        enable_five_alternatives = "five_alternatives" in active_set
         try:
             import torch
             import json
@@ -454,26 +537,39 @@ class Reharmonizer:
         # Post-process transformer output through rule engine at self.level
         is_minor = key_str.endswith("m") and len(key_str) > 1
 
-        for i, c in enumerate(result_chords):
-            original = c["chord"]
-            new_chord = self._apply_extension(original, key_semi, is_minor)
-            if new_chord != original:
-                c["chord"] = new_chord
-                changes.append({
-                    "position": i, "original": original,
-                    "jazzified": new_chord, "rule": "transformer+extension",
-                })
+        if enable_diatonic:
+            for i, c in enumerate(result_chords):
+                original = c["chord"]
+                new_chord = self._apply_extension(original, key_semi, is_minor)
+                if new_chord != original:
+                    c["chord"] = new_chord
+                    changes.append({
+                        "position": i, "original": original,
+                        "jazzified": new_chord, "rule": "transformer+extension",
+                    })
 
-        if self.level >= 2:
+        if enable_ii_v:
             result_chords, new_changes = self._insert_ii_v(result_chords, key_semi)
             changes.extend(new_changes)
 
-        if self.level >= 3:
+        if enable_tritone:
             result_chords, new_changes = self._apply_tritone(result_chords, key_semi)
             changes.extend(new_changes)
 
-        if self.level >= 3:
+        if enable_secondary:
             result_chords, new_changes = self._insert_secondary_dom(result_chords, key_semi)
+            changes.extend(new_changes)
+
+        if enable_dim_leading:
+            result_chords, new_changes = self._insert_diminished_leading(result_chords, key_semi)
+            changes.extend(new_changes)
+
+        if enable_modal_interchange:
+            result_chords, new_changes = self._apply_modal_interchange(result_chords, key_semi)
+            changes.extend(new_changes)
+
+        if enable_five_alternatives:
+            result_chords, new_changes = self._apply_five_alternatives(result_chords, key_semi)
             changes.extend(new_changes)
 
         if self.level >= 2:
@@ -488,14 +584,22 @@ class Reharmonizer:
 
         patterns = self._detect_patterns(result_chords, key_str)
         qa_reports = self._run_qa_battle(original_chords, result_chords)
+        changes = self._finalize_changes(changes)
+        result_chords, explain_chords = self._annotate_chord_explain(result_chords, changes)
+        explain = self._build_explain(changes)
 
         return {
             "key": key_str,
             "level": self.level,
+            "strand_flags": list(active_strands or []),
+            "unknown_strands": list(unknown_strands or []),
+            "not_implemented_strands": list(not_implemented_strands or []),
             "original_count": len(original_chords),
             "jazzified_count": len(result_chords),
             "chords": result_chords,
             "changes": changes,
+            "explain": explain,
+            "explain_chords": explain_chords,
             "patterns": patterns,
             "qa": qa_reports,
             "error": transformer_error,
@@ -515,6 +619,279 @@ class Reharmonizer:
         """解析調性字串 → 半音數"""
         clean = key.rstrip("m").strip()
         return NOTE_TO_SEMI.get(clean, 0)
+
+    def _normalize_strand_flags(self, strand_flags):
+        """Normalize user-provided strand names to canonical keys."""
+        if not strand_flags:
+            return [], []
+        valid = {
+            "diatonic",
+            "secondary_dominant",
+            "modal_interchange",
+            "ii_v",
+            "tritone_sub",
+            "diminished_leading",
+            "five_alternatives",
+        }
+        alias = {
+            "secondary": "secondary_dominant",
+            "secondary_dominants": "secondary_dominant",
+            "ii-v": "ii_v",
+            "iiv": "ii_v",
+            "tritone": "tritone_sub",
+            "modal": "modal_interchange",
+            "borrow": "modal_interchange",
+            "diminished": "diminished_leading",
+            "dim": "diminished_leading",
+            "five": "five_alternatives",
+            "five-alternatives": "five_alternatives",
+            "five_chord_alternatives": "five_alternatives",
+        }
+        normalized = []
+        unknown = []
+        for raw in strand_flags:
+            if not isinstance(raw, str):
+                continue
+            key = raw.strip().lower()
+            if not key:
+                continue
+            key = alias.get(key, key)
+            if key in valid:
+                if key not in normalized:
+                    normalized.append(key)
+            else:
+                if key not in unknown:
+                    unknown.append(key)
+        return normalized, unknown
+
+    def _rule_to_strand(self, rule):
+        s = (rule or "").lower()
+        if "ii-v" in s:
+            return "ii_v"
+        if "tritone" in s:
+            return "tritone_sub"
+        if "secondary dominant" in s:
+            return "secondary_dominant"
+        if "diminished leading" in s:
+            return "diminished_leading"
+        if "modal interchange" in s:
+            return "modal_interchange"
+        if "five alternative" in s:
+            return "five_alternatives"
+        return "diatonic"
+
+    def _finalize_changes(self, changes):
+        for c in changes:
+            if "strand" not in c:
+                c["strand"] = self._rule_to_strand(c.get("rule", ""))
+        return changes
+
+    def _build_explain(self, changes):
+        explain = []
+        for idx, c in enumerate(changes):
+            explain.append({
+                "step": idx + 1,
+                "position": c.get("position", -1),
+                "strand": c.get("strand", "diatonic"),
+                "rule": c.get("rule", ""),
+                "from": c.get("original", ""),
+                "to": c.get("jazzified", ""),
+            })
+        return explain
+
+    def _annotate_chord_explain(self, chords, changes):
+        """Attach per-chord strand/source metadata for teaching UI labels."""
+        if not chords:
+            return chords, []
+
+        pos_to_strand = {}
+        for c in changes:
+            try:
+                pos = int(c.get("position", -1))
+            except (TypeError, ValueError):
+                continue
+            if 0 <= pos < len(chords):
+                pos_to_strand[pos] = c.get("strand") or self._rule_to_strand(c.get("rule", ""))
+
+        explain_chords = []
+        for idx, chord in enumerate(chords):
+            strand = pos_to_strand.get(idx, "diatonic")
+            if idx in pos_to_strand:
+                source = "changed"
+            elif chord.get("inserted"):
+                source = "inserted"
+            else:
+                source = "carried"
+
+            chord["explain"] = {
+                "strand": strand,
+                "source": source,
+            }
+            explain_chords.append({
+                "position": idx,
+                "time": chord.get("time", 0),
+                "chord": chord.get("chord", ""),
+                "strand": strand,
+                "source": source,
+            })
+
+        return chords, explain_chords
+
+    def _insert_diminished_leading(self, chords, key_semi):
+        """Pass 4.2: Insert leading-tone diminished 7th before target chords."""
+        result = []
+        changes = []
+        insert_budget = max(1, len(chords) // 10)
+        inserted = 0
+
+        for i, c in enumerate(chords):
+            root_semi, quality = jazz_rules.parse_root_quality(c.get("chord", ""))
+            if root_semi is None:
+                result.append(c)
+                continue
+
+            degree = chord_to_degree(c["chord"], key_semi)
+            func = jazz_rules.classify_function(degree) if degree else ""
+            quality_l = (quality or "").lower()
+
+            if (
+                i > 0 and
+                inserted < insert_budget and
+                func in ("tonic", "subdominant") and
+                "dim" not in quality_l and
+                "m7b5" not in quality_l
+            ):
+                prev = result[-1]
+                prev_duration = prev.get("end", prev["time"] + 2) - prev["time"]
+                if prev_duration >= getattr(self, "_min_insert", MIN_INSERT_DURATION) and not prev.get("inserted"):
+                    dim_root = (root_semi - 1) % 12
+                    dim_name = jazz_rules.root_name(dim_root) + "dim7"
+                    if prev.get("chord") != dim_name and c.get("chord") != dim_name:
+                        split_time = prev["time"] + prev_duration * 0.6
+                        if split_time < c["time"]:
+                            prev["end"] = split_time
+                            dim_chord = {
+                                "time": split_time,
+                                "end": c["time"],
+                                "chord": dim_name,
+                                "inserted": True,
+                            }
+                            result.append(dim_chord)
+                            changes.append({
+                                "position": len(result) - 1,
+                                "original": "-",
+                                "jazzified": dim_name,
+                                "rule": "diminished leading-tone",
+                            })
+                            inserted += 1
+
+            result.append(c)
+
+        return result, changes
+
+    def _apply_modal_interchange(self, chords, key_semi):
+        """Pass 4.3: Borrow selected colors from parallel minor modes."""
+        result = [copy.deepcopy(c) for c in chords]
+        changes = []
+        budget = max(1, len(result) // 8)
+        used = 0
+
+        for i, c in enumerate(result):
+            if used >= budget:
+                break
+            if c.get("inserted"):
+                continue
+
+            chord_name = c.get("chord", "")
+            root_semi, quality = jazz_rules.parse_root_quality(chord_name)
+            if root_semi is None:
+                continue
+            degree = chord_to_degree(chord_name, key_semi)
+            if not degree:
+                continue
+
+            new_name = None
+            quality_l = (quality or "").lower()
+
+            # Classic modal interchange color: IV -> ivm7
+            if degree == "IV" and "m" not in quality_l:
+                new_name = jazz_rules.root_name(root_semi) + "m7"
+            # Borrowed bIImaj7 from Phrygian flavor.
+            elif degree.startswith("II") and not degree.startswith("IIm"):
+                new_name = jazz_rules.root_name((root_semi - 1) % 12) + "maj7"
+            # Borrowed bVImaj7 from Aeolian flavor.
+            elif degree.startswith("VI") and "m" not in quality_l:
+                new_name = jazz_rules.root_name((root_semi - 1) % 12) + "maj7"
+
+            if not new_name or new_name == chord_name:
+                continue
+
+            old = c["chord"]
+            c["chord"] = new_name
+            changes.append({
+                "position": i,
+                "original": old,
+                "jazzified": new_name,
+                "rule": "modal interchange",
+            })
+            used += 1
+
+        return result, changes
+
+    def _apply_five_alternatives(self, chords, key_semi):
+        """Pass 4.4: Replace V-function chords with classic alternatives before I."""
+        result = [copy.deepcopy(c) for c in chords]
+        changes = []
+        budget = max(1, len(result) // 10)
+        used = 0
+
+        alt_cycle = [
+            ("backdoor dominant", (key_semi + 10) % 12, "7"),
+            ("tritone sub", (key_semi + 1) % 12, "7"),
+            ("diminished family", (key_semi + 11) % 12, "dim7"),
+            ("minor-half-diminished family", (key_semi + 2) % 12, "m7b5"),
+            ("minor-half-diminished family", (key_semi + 5) % 12, "m7b5"),
+        ]
+
+        for i in range(len(result) - 1):
+            if used >= budget:
+                break
+
+            cur = result[i]
+            nxt = result[i + 1]
+            if cur.get("inserted"):
+                continue
+
+            cur_root, _ = jazz_rules.parse_root_quality(cur.get("chord", ""))
+            nxt_root, _ = jazz_rules.parse_root_quality(nxt.get("chord", ""))
+            if cur_root is None or nxt_root is None:
+                continue
+
+            cur_deg = chord_to_degree(cur.get("chord", ""), key_semi)
+            nxt_deg = chord_to_degree(nxt.get("chord", ""), key_semi)
+
+            # Only apply when a dominant-function chord resolves to tonic.
+            if not (cur_deg and nxt_deg and nxt_root == key_semi and nxt_deg == "I"):
+                continue
+            if jazz_rules.classify_function(cur_deg) != "dominant":
+                continue
+
+            tag, alt_root, alt_quality = alt_cycle[used % len(alt_cycle)]
+            new_name = jazz_rules.root_name(alt_root) + alt_quality
+            old = cur["chord"]
+            if new_name == old:
+                continue
+
+            cur["chord"] = new_name
+            changes.append({
+                "position": i,
+                "original": old,
+                "jazzified": new_name,
+                "rule": f"five alternatives ({tag})",
+            })
+            used += 1
+
+        return result, changes
 
     def _apply_extension(self, chord_str, key_semi, is_minor):
         """Pass 1: 為和弦添加延伸音"""

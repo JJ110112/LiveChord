@@ -1,4 +1,4 @@
-// progression-library.js v1
+// progression-library.js v2
 // A curated library of classic chord progressions grouped by style.
 // Mirrors the Ambient Mode pattern (collapsible homepage section, Tone.js
 // loop playback, localStorage favorites) but plays *named* progressions the
@@ -11,6 +11,13 @@
   const FAVORITES_MAX = 16;
   const SETTINGS_KEY = "livechord_proglib_settings";
   const VOLUME_KEY = "livechord_proglib_volume";
+  const STRANDS_MAX_INSERT_RATIO = 0.5;
+  const STRANDS_MAX_LINK_MODULES = 3;
+  const STRANDS_LINK_INTENSITIES = {
+    light: { label: "輕量", modules: 1, extraConnector: false, connectorBias: "close" },
+    standard: { label: "標準", modules: 2, extraConnector: false, connectorBias: "balanced" },
+    evolution: { label: "進化", modules: 3, extraConnector: true, connectorBias: "wide" },
+  };
 
   // Quality → semitone intervals + display suffix + minor-ish flag (roman case).
   const QUALITY = {
@@ -30,7 +37,185 @@
     "6":     { iv: [0, 4, 7, 9],       sfx: "6",     min: false },
     m6:      { iv: [0, 3, 7, 9],       sfx: "m6",    min: true },
     add9:    { iv: [0, 4, 7, 14],      sfx: "add9",  min: false },
+    "6/9":  { iv: [0, 4, 7, 9, 14],   sfx: "6/9",   min: false },
+    "11":   { iv: [0, 4, 7, 10, 14, 17], sfx: "11", min: false },
+    m11:     { iv: [0, 3, 7, 10, 14, 17], sfx: "m11", min: true },
+    "13":   { iv: [0, 4, 7, 10, 14, 21], sfx: "13", min: false },
+    sus2:    { iv: [0, 2, 7],              sfx: "sus2", min: false },
+    sus4:    { iv: [0, 5, 7],              sfx: "sus4", min: false },
   };
+
+  function normDeg(v) {
+    return ((v % 12) + 12) % 12;
+  }
+
+  function vOf(targetDeg) {
+    return [normDeg(targetDeg + 7), "7"];
+  }
+
+  function dimLeadTo(targetDeg) {
+    return [normDeg(targetDeg - 1), "dim7"];
+  }
+
+  function tritoneSubOfV() {
+    return [1, "7"];
+  }
+
+  function buildStrandsProgression(progId, keyObj) {
+    const isFlatKey = keyObj && keyObj.sharp === false;
+    const fiveAlt = isFlatKey ? tritoneSubOfV() : [7, "7sus4"];
+    switch (progId) {
+      case "strand_colors":
+        // modal interchange + backdoor flavor (4 chords)
+        return [[0, "maj7"], [5, "m7"], [10, "7"], [0, "6/9"]];
+      case "strand_bridge":
+        // secondary dominant -> ii-V -> tonic (5 chords)
+        return [[0, "maj7"], vOf(2), [2, "m7"], [7, "13"], [0, "6/9"]];
+      case "strand_lift":
+        // diminished approach + ii-V alternative (6 chords)
+        return [[0, "maj7"], [9, "m7"], dimLeadTo(2), [2, "m9"], fiveAlt, [0, "maj9"]];
+      case "strand_run":
+        // extended turnaround with strand-inspired substitutions (8 chords)
+        return [[0, "maj7"], vOf(9), [9, "m7"], vOf(2), [2, "m9"], tritoneSubOfV(), [0, "maj7"], [7, "13"]];
+      default:
+        return [[0, "maj7"], [9, "m7"], [2, "m7"], [7, "7"]];
+    }
+  }
+
+  const EVOLUTION_MODULES = [
+    { id: "evo_pop_axis", role: "open", chords: [[0, "maj"], [7, "maj"], [9, "m"], [5, "maj"]] },
+    { id: "evo_jazz_turn", role: "release", chords: [[2, "m7"], [7, "7"], [0, "maj7"]] },
+    { id: "evo_modal_lift", role: "modal", chords: [[0, "maj"], [10, "maj"], [5, "maj"], [0, "maj"]] },
+    { id: "evo_borrow_color", role: "color", chords: [[5, "maj"], [5, "m"], [0, "maj"]] },
+    { id: "evo_secondary_push", role: "tension", chords: [[0, "maj"], [4, "7"], [9, "m"]] },
+    { id: "evo_circle_release", role: "release", chords: [[9, "m7"], [2, "m7"], [7, "7"], [0, "maj7"]] },
+    { id: "evo_dominant_walk", role: "tension", chords: [[0, "maj7"], [9, "7"], [2, "m7"], [7, "7"]] },
+  ];
+
+  function cloneProgressionSpecs(specs) {
+    return (Array.isArray(specs) ? specs : []).map((pair) => [normDeg(Number(pair && pair[0])), String(pair && pair[1] || "")]);
+  }
+
+  function pickRandom(items) {
+    if (!Array.isArray(items) || !items.length) return null;
+    return items[Math.floor(Math.random() * items.length)];
+  }
+
+  function progressionFirstDegree(specs) {
+    const first = Array.isArray(specs) && specs.length ? specs[0] : null;
+    return first ? normDeg(Number(first[0])) : 0;
+  }
+
+  function makeLinkConnector(prevSpec, nextSpec, strength) {
+    const prevDeg = progressionFirstDegree([prevSpec]);
+    const nextDeg = progressionFirstDegree([nextSpec]);
+    const step = (nextDeg - prevDeg + 12) % 12;
+    const mode = (strength && strength.connectorBias) || "balanced";
+
+    if (step === 0 || step === 1 || step === 2 || step === 10 || step === 11) return [];
+    if (nextDeg === 0) return mode === "close" ? [[7, "7"]] : [[2, "m7"], [7, "7"]];
+    if (nextDeg === 2 || nextDeg === 9) return mode === "close" ? [[7, "7"]] : [[normDeg(nextDeg + 7), "7"]];
+    if (nextDeg === 5 || nextDeg === 8) return [[normDeg(nextDeg - 1), "dim7"]];
+    if (nextDeg === 10) return mode === "close" ? [[5, "7"]] : [[5, "m7"], [10, "7"]];
+    return mode === "wide" ? [[normDeg(nextDeg - 1), "dim7"], [normDeg(nextDeg + 7), "7"]] : [[normDeg(nextDeg + 7), "7"]];
+  }
+
+  function appendLinkedSpecs(out, segment, strength) {
+    const next = cloneProgressionSpecs(segment);
+    if (!next.length) return;
+
+    if (!out.length) {
+      out.push(...next);
+      return;
+    }
+
+    const prev = out[out.length - 1];
+    const first = next[0];
+    const connector = makeLinkConnector(prev, first, strength);
+
+    connector.forEach((spec) => {
+      const last = out[out.length - 1];
+      if (!last || last[0] !== spec[0] || last[1] !== spec[1]) {
+        out.push(spec);
+      }
+    });
+
+    next.forEach((spec, idx) => {
+      if (idx === 0) {
+        const last = out[out.length - 1];
+        if (last && last[0] === spec[0] && last[1] === spec[1]) return;
+      }
+      out.push(spec);
+    });
+  }
+
+  function buildEvolutionaryStrandsProgression(baseProgId, keyObj, strengthKey = "standard") {
+    const base = cloneProgressionSpecs(buildStrandsProgression(baseProgId, keyObj));
+    const pool = EVOLUTION_MODULES.filter((mod) => mod.id !== baseProgId);
+    if (!pool.length) return base;
+
+    const strength = STRANDS_LINK_INTENSITIES[strengthKey] || STRANDS_LINK_INTENSITIES.standard;
+
+    const picks = [];
+    const targetCount = Math.max(1, Math.min(STRANDS_MAX_LINK_MODULES, strength.modules));
+    const roleOrder = ["tension", "modal", "color", "release", "open"];
+    const used = new Set([baseProgId]);
+
+    for (const role of roleOrder) {
+      if (picks.length >= targetCount) break;
+      const candidates = pool.filter((mod) => !used.has(mod.id) && mod.role === role);
+      const pick = pickRandom(candidates);
+      if (pick) {
+        picks.push(pick);
+        used.add(pick.id);
+      }
+    }
+
+    while (picks.length < targetCount) {
+      const fallback = pickRandom(pool.filter((mod) => !used.has(mod.id)));
+      if (!fallback) break;
+      picks.push(fallback);
+      used.add(fallback.id);
+    }
+
+    const out = [];
+    appendLinkedSpecs(out, base, strength);
+    picks.forEach((mod) => appendLinkedSpecs(out, mod.chords, strength));
+
+    if (strength.extraConnector && picks.length >= 2) {
+      const tail = picks[picks.length - 1] && picks[picks.length - 1].chords;
+      const penultimate = picks[picks.length - 2] && picks[picks.length - 2].chords;
+      if (tail && penultimate) {
+        appendLinkedSpecs(out, [[2, "m7"], [7, "7"], [0, "maj7"]], strength);
+      }
+    }
+    return out.length ? out : base;
+  }
+
+  function applyHalfstepApproachDominants(chords) {
+    if (!Array.isArray(chords) || chords.length < 2) return Array.isArray(chords) ? chords.slice() : [];
+    const out = [];
+    let inserted = 0;
+    const maxInsert = Math.max(1, Math.floor(chords.length * STRANDS_MAX_INSERT_RATIO));
+
+    for (let i = 0; i < chords.length; i++) {
+      const cur = chords[i];
+      const curDeg = normDeg(Number(cur && cur[0]));
+      // Density guard: only approach every other transition and cap total inserts.
+      if (i > 0 && (i % 2 === 1) && inserted < maxInsert) {
+        const approach = [normDeg(curDeg + 1), "7"];
+        const prev = out[out.length - 1];
+        if (!(prev && prev[0] === approach[0] && prev[1] === approach[1])) {
+          out.push(approach);
+          inserted += 1;
+        }
+      }
+
+      out.push([curDeg, String((cur && cur[1]) || "")]);
+    }
+
+    return out;
+  }
 
   // Each progression: chords = [[degreeSemitone, quality], ...] relative to key root.
   const LIBRARY = {
@@ -70,6 +255,7 @@
         { id: "itoiv",  name: "I 到 IV  Imaj7–(ii–V)–IVmaj7", desc: "用 IV 的 2-5 過渡到 IVmaj7。", chords: [[0,"maj7"],[7,"m7"],[0,"7"],[5,"maj7"]] },
         { id: "straycat", name: "Stray Cat Strut  i–♭VI7–V7", desc: "小調迴轉，下行低音的搖擺感。", chords: [[0,"m7"],[8,"7"],[7,"7"]] },
         { id: "36251",  name: "iii–vi–ii–V–I", desc: "延伸的下行五度迴圈。", chords: [[4,"m7"],[9,"m7"],[2,"m7"],[7,"7"],[0,"maj7"]] },
+        { id: "jazz_ii_v13_i69", name: "ii9–V13–I6/9", desc: "你提到的 Dm9–G13–C6/9 類型延伸和弦解決。", chords: [[2,"m9"],[7,"13"],[0,"6/9"]] },
       ],
     },
     blues: {
@@ -105,6 +291,88 @@
         { id: "smooth",  name: "Imaj9–iii7–vi9–IVmaj7", desc: "綿延的 smooth groove。", chords: [[0,"maj9"],[4,"m7"],[9,"m9"],[5,"maj7"]] },
       ],
     },
+    lofi: {
+      // Lo-fi hip-hop / chill progressions. Sources: melodics.com, landr.com, mondoloops.com, richardpryn.com.
+      name: "Lo-fi / Chill",
+      progressions: [
+        { id: "lofi_major_stack",  name: "Imaj9–IVmaj9  大調堆疊", desc: "兩個大調九和弦，最簡單也最飄的 lo-fi 底色。", chords: [[0,"maj9"],[5,"maj9"]] },
+        { id: "lofi_i_vi_ii_v",    name: "Imaj7–vim7–iim7–V7  標準抒情", desc: "lo-fi 最常見的四和弦迴圈，厚擴音 voicing 一秒入味。", chords: [[0,"maj7"],[9,"m7"],[2,"m7"],[7,"7"]] },
+        { id: "lofi_i_v_vi_iv",    name: "Imaj9–V7–vim9–IVmaj9  夢幻 I-V-vi-IV", desc: "萬用四和弦加九度，lo-fi 版本。", chords: [[0,"maj9"],[7,"7"],[9,"m9"],[5,"maj9"]] },
+        { id: "lofi_para",         name: "im9–♭iim9  半音平行移動", desc: "兩個小九和弦半音移位，lo-fi 的慵懶色彩來源。", chords: [[0,"m9"],[1,"m9"]] },
+        { id: "lofi_minor_neo",    name: "im9–♭VImaj9  小調轉大調", desc: "小調出發，挪到同根大調九和弦，帶點日落感。", chords: [[0,"m9"],[8,"maj9"]] },
+        { id: "lofi_minor_vamp",   name: "im9–IVm9–im9–V7  小調 Vamp", desc: "i–iv 來回的 lo-fi 標準小調循環，V7 收尾。", chords: [[0,"m9"],[5,"m9"],[0,"m9"],[7,"7"]] },
+        { id: "lofi_bvii",         name: "im9–♭VIImaj7  借用下屬", desc: "從 Dorian/Aeolian 借來的 ♭VII，帶城市夜晚氣息。", chords: [[0,"m9"],[10,"maj7"]] },
+        { id: "lofi_chromatic",    name: "im9–♭iim7  半音滑動", desc: "只有兩個和弦，半音下滑，極簡最有效。", chords: [[0,"m9"],[1,"m7"]] },
+        { id: "lofi_251_ext",      name: "im9–IVm9–iim7♭5–V7  lo-fi 251 擴展", desc: "小調 2-5-1 加入 iv，半減七帶點憂鬱色彩。", chords: [[0,"m9"],[5,"m9"],[2,"m7b5"],[7,"7"]] },
+        { id: "lofi_circle_maj",   name: "Imaj9–♭VIImaj9–Vmaj9  大調圓圈", desc: "全大調九和弦圓圈，清爽的日系 lo-fi 感。", chords: [[0,"maj9"],[10,"maj9"],[7,"maj9"]] },
+      ],
+    },
+    worship: {
+      // Worship / Praise progressions compiled from:
+      // worshiparts.net, hearandplay.com, learngospelmusic.com
+      name: "敬拜 Worship",
+      progressions: [
+        // ── 基礎骨架 ──
+        { id: "basic_145",      name: "I–IV–V–I  基本敬拜", desc: "最經典的敬拜進行，簡潔有力。(worshiparts.net)", chords: [[0,"maj"],[5,"maj"],[7,"maj"],[0,"maj"]] },
+        { id: "axis_worship",   name: "I–V–vi–IV  流行敬拜", desc: "現代敬拜最常用的四和弦，感情豐沛。", chords: [[0,"maj"],[7,"maj"],[9,"m"],[5,"maj"]] },
+        { id: "vi_worship",     name: "vi–IV–I–V  內斂敬拜", desc: "從 vi 起頭，低迴然後漸高，適合沈思祈禱。", chords: [[9,"m"],[5,"maj"],[0,"maj"],[7,"maj"]] },
+        { id: "lift_145",       name: "I–IV–I–V  提昇進行", desc: "重複 I–IV 製造期待感，最後 V 迎向高峰。", chords: [[0,"maj"],[5,"maj"],[0,"maj"],[7,"maj"]] },
+        { id: "anthemic_4151",  name: "IV–I–V–I  讚歌進行", desc: "以 IV 起頭的雄壯進行，大合唱的標準骨架。", chords: [[5,"maj"],[0,"maj"],[7,"maj"],[0,"maj"]] },
+        { id: "modern_v451",    name: "V–IV–I  現代上升", desc: "從屬和弦起頭往下解決，帶衝擊力的詩歌開場。", chords: [[7,"maj"],[5,"maj"],[0,"maj"]] },
+        // ── 上升/推進型 ──
+        { id: "i_iii_iv_v",     name: "I–iii–IV–V  1-3-4-5 上升", desc: "大調音階逐步上升，Hillsong 早期敬拜骨架。(learngospelmusic)", chords: [[0,"maj"],[4,"m"],[5,"maj"],[7,"maj"]] },
+        { id: "iv_v_vi",        name: "IV–V–vi  4-5-6 推進", desc: "三和弦向上推進，強調高潮前的期待感。(learngospelmusic)", chords: [[5,"maj"],[7,"maj"],[9,"m"]] },
+        { id: "ii_iv_i_v",      name: "ii–IV–I–V  2-4-1-5", desc: "ii 起頭繞一圈解決，worshiparts.net 推薦的敬拜骨架。", chords: [[2,"m"],[5,"maj"],[0,"maj"],[7,"maj"]] },
+        { id: "full_diatonic",  name: "I–IV–iii–vi–ii–V–I  全音階進行", desc: "除了 vii° 以外的七個大調和弦全部用到，worshiparts.net 練習用標準進行。", chords: [[0,"maj"],[5,"maj"],[4,"m"],[9,"m"],[2,"m"],[7,"maj"],[0,"maj"]] },
+        // ── Sus / 懸置解決 ──
+        { id: "worship_sus",    name: "Vsus4–V–I  懸置解決", desc: "G7sus4→G→C：敬拜音樂最常見的懸置解決，製造強烈期待。", chords: [[7,"sus4"],[7,"maj"],[0,"maj"]] },
+        { id: "worship_add9",   name: "Iadd9–IVadd9  Add9 清新 Vamp", desc: "加上九音的清透質感，現代讚美詩清新風格。(learngospelmusic)", chords: [[0,"add9"],[5,"add9"],[0,"add9"],[7,"add9"]] },
+        // ── Gospel 借用色彩 ──
+        { id: "gospel_borrow",  name: "I–I7–IVmaj7–iv6  Gospel 借用", desc: "對應 C–C7–Fmaj7–Fm6 的教會常見色彩。", chords: [[0,"maj"],[0,"7"],[5,"maj7"],[5,"m6"]] },
+        { id: "gospel_chrom",   name: "I–II–iv–I  半音 Gospel 接近", desc: "C–D–Fm–C：大調 II 接小 iv 的半音色彩，Gospel / hearandplay.com 敬拜進行 #1。", chords: [[0,"maj"],[2,"maj"],[5,"m"],[0,"maj"]] },
+        { id: "bvii_iv_ivm",    name: "I–♭VII–IV–iv  Gospel 結尾", desc: "C–Bb–F–Fm：♭VII 到 IV 再借用小 iv 收尾，hearandplay.com 敬拜進行 #2。", chords: [[0,"maj"],[10,"maj"],[5,"maj"],[5,"m"]] },
+        // ── 現代敬拜 Build / 推進 ──
+        { id: "bvi_bvii_i",     name: "♭VI–♭VII–I  現代敬拜 Build", desc: "Ab–Bb–C：從 ♭vi 往上推進到 I，Hillsong／Bethel 最標誌性的 Build-up。(hearandplay #3)", chords: [[8,"maj"],[10,"maj"],[0,"maj"]] },
+        { id: "iv_bvii_i",      name: "IV–♭VII–I  反向推進", desc: "F–Bb–C：下屬 ♭VII 接 I，learngospelmusic 4-♭7-1 敬拜進行。", chords: [[5,"maj"],[10,"maj"],[0,"maj"]] },
+        // ── 七和弦質感 ──
+        { id: "worship_maj7",   name: "Imaj7–IVmaj7–Vmaj7–Imaj7  醇厚敬拜", desc: "七度和弦的豐厚質感，現代讚美詩的層次感。", chords: [[0,"maj7"],[5,"maj7"],[7,"maj7"],[0,"maj7"]] },
+        { id: "hymn_circle",    name: "vi–ii–V–I  聖詩圓進行", desc: "傳統聖詩的五度圈下行，肅穆莊嚴。", chords: [[9,"m"],[2,"m"],[7,"maj"],[0,"maj"]] },
+        // ── 小調敬拜 ──
+        { id: "minor_145",      name: "im–iv–V  小調敬拜", desc: "C minor 敬拜的基本骨架，莊嚴沉穩。(learngospelmusic Minor 1-4-5)", chords: [[0,"m"],[5,"m"],[7,"maj"]] },
+        // ── 根音固定 Pedal-C 進行 (低音持續 I，上方和聲移動) ──
+        { id: "pedal_march_1",  name: "敬拜進行曲 1  I–D/I–Fm/I–I", desc: "低音持續在根音，上方和聲 C→D→Fm→C，常見於敬拜前奏、間奏。", chords: [[0,"maj"],[2,"maj",0],[5,"m",0],[0,"maj"]] },
+        { id: "pedal_march_2",  name: "敬拜進行曲 2  I–Bb/I–F/I–Fm/I", desc: "低音持續在根音，上方和聲 C→Bb→F→Fm，Bb 轉 F 再借小 iv，有推進感後帶著鄉愁收尾。", chords: [[0,"maj"],[10,"maj",0],[5,"maj",0],[5,"m",0]] },
+        { id: "pedal_hymn_open", name: "固定根音 A  I–IV/I–V/I–IV/I", desc: "現代讚美詩常見的開闊鋪墊：C→F/C→G/C→F/C，低音穩定、上方榮耀感推進。", chords: [[0,"maj"],[5,"maj",0],[7,"maj",0],[5,"maj",0]] },
+        { id: "pedal_minor_prayer", name: "固定根音 B  vi/I–V/I–IV/I–V/I", desc: "內省禱告色彩：Am/C→G/C→F/C→G/C，低音不動但和聲帶出悔改與渴慕的張力。", chords: [[9,"m",0],[7,"maj",0],[5,"maj",0],[7,"maj",0]] },
+        { id: "pedal_line_cliche", name: "固定根音 C  I–Imaj7–I7–IV/I", desc: "內聲部下行 line cliche：1→7→b7→6（C→Cmaj7→C7→F/C），史詩感與情緒遞進兼具。", chords: [[0,"maj"],[0,"maj7"],[0,"7"],[5,"maj",0]] },
+      ],
+    },
+    modal: {
+      name: "調式 Modal",
+      progressions: [
+        // ── Mixolydian (大調 ♭7，特色：v 小和弦、♭VII 大和弦) ──
+        { id: "mixo_classic",  name: "I–♭VII–IV–I  Mixolydian 經典", desc: "混合利地安最基本形態，Sweet Home Alabama / Lay Down Sally 骨架。", chords: [[0,"maj"],[10,"maj"],[5,"maj"],[0,"maj"]] },
+        { id: "mixo_vm11",     name: "I–vm11–IV–I  Mixolydian 小五和弦", desc: "C–Gm11–F–C：混合利地安獨特的 v 小和弦，帶飄逸的模態色彩。", chords: [[0,"maj"],[7,"m11"],[5,"maj"],[0,"maj"]] },
+        { id: "mixo_iv_bvii",  name: "I–IV–♭VII–I  Mixolydian 回旋", desc: "IV 往 ♭VII 下行再回 I，Rock / 民搖的基本 riff。", chords: [[0,"maj"],[5,"maj"],[10,"maj"],[0,"maj"]] },
+        { id: "mixo_vm_bvii",  name: "I–vm–♭VII–IV  Mixolydian 延伸", desc: "Gm→♭VII→IV 串接，用小 v 突顯調式色彩。", chords: [[0,"maj"],[7,"m"],[10,"maj"],[5,"maj"]] },
+        { id: "mixo_sus",      name: "Isus4–I–♭VII–IV  Mixolydian Sus 開場", desc: "Sus4 懸掛後解決再入 ♭VII，開闊的音場感。", chords: [[0,"sus4"],[0,"maj"],[10,"maj"],[5,"maj"]] },
+        // ── Dorian (小調 ♯6，特色：IV 大和弦) ──
+        { id: "dorian_i_iv",   name: "im–IV–im–IV  Dorian Vamp", desc: "Dorian 調式最核心的 i–IV 來回，So What / Scarborough Fair 底色。", chords: [[0,"m7"],[5,"maj"],[0,"m7"],[5,"maj"]] },
+        { id: "dorian_full",   name: "im7–IV–♭VII–im7  Dorian 圓圈", desc: "加入 ♭VII 的完整 Dorian 迴轉，Funk / Soul 常見。", chords: [[0,"m7"],[5,"maj"],[10,"maj"],[0,"m7"]] },
+        // ── Phrygian (小調 ♭2，特色：♭II 大和弦) ──
+        { id: "phryg_classic",  name: "i–♭II–i  Phrygian 終止", desc: "Phrygian 最標誌性的 ♭II 和弦，佛朗明哥 / 金屬搖滾常用。", chords: [[0,"m"],[1,"maj"],[0,"m"]] },
+        { id: "phryg_andal",   name: "i–♭VII–♭VI–♭II  安達魯西亞 Phrygian", desc: "下行低音線 i→♭VII→♭VI→♭II，最具異國感的終止。", chords: [[0,"m"],[10,"maj"],[8,"maj"],[1,"maj"]] },
+      ],
+    },
+    strands: {
+      name: "Strands 模式",
+      progressions: [
+        { id: "strand_colors", name: "Strands 色彩 4 和弦", desc: "規則生成：Modal interchange + backdoor，4 和弦。", generated: true },
+        { id: "strand_bridge", name: "Strands 橋接 5 和弦", desc: "規則生成：Secondary dominant 接 ii-V，再回主和弦。", generated: true },
+        { id: "strand_lift", name: "Strands 推進 6 和弦", desc: "規則生成：Diminished leading + V 替代，6 和弦。", generated: true },
+        { id: "strand_run", name: "Strands 迴轉 8 和弦", desc: "規則生成：延伸 turnaround，含 tritone / secondary 元素。", generated: true },
+      ],
+    },
   };
 
   const KEYS = [
@@ -136,13 +404,18 @@
     bpm: 100,
     beats: 4,
     volume: 0.7,
+    strandsHalfstepApproach: false,
+    strandsLinkEvolution: false,
+    strandsLinkIntensity: "standard",
     collapsed: false,
     activeIndex: 0,
     chords: [],
+    rawChords: [],
     synthReady: false,
   };
 
   const refs = {
+    controls: ROOT.querySelector(".proglib-controls"),
     style: document.getElementById("proglibStyle"),
     prog: document.getElementById("proglibProg"),
     key: document.getElementById("proglibKey"),
@@ -163,10 +436,15 @@
     matches: document.getElementById("proglibMatches"),
     matchCount: document.getElementById("proglibMatchCount"),
     pager: document.getElementById("proglibMatchPager"),
+    strandsToggleWrap: null,
+    strandsToggle: null,
+    strandsLinkWrap: null,
+    strandsLinkToggle: null,
+    strandsLinkIntensity: null,
   };
 
   // Chord qualities that count as minor-family for progression matching.
-  const MINOR_QUALITIES = new Set(["m", "m7", "m9", "m6", "dim", "dim7", "m7b5"]);
+  const MINOR_QUALITIES = new Set(["m", "m7", "m9", "m11", "m6", "dim", "dim7", "m7b5"]);
   const MATCH_PAGE_SIZE = 16;
   const MATCH_PAGE_KEY = "livechord_proglib_matchpage";
   let _matchToken = 0;
@@ -183,6 +461,8 @@
   function init() {
     hydrateVolume();
     hydrateSettings();
+    ensureStrandsToggleControl();
+    ensureStrandsLinkControl();
     populateControls();
     bindEvents();
     rebuild();
@@ -217,6 +497,62 @@
     refs.beats.value = String(state.beats);
     refs.vol.value = String(Math.round(state.volume * 100));
     refs.volVal.textContent = String(Math.round(state.volume * 100));
+    syncStrandsToggleUi();
+    syncStrandsLinkUi();
+  }
+
+  function ensureStrandsToggleControl() {
+    if (!refs.controls || refs.strandsToggleWrap) return;
+    const wrap = document.createElement("label");
+    wrap.className = "proglib-field";
+    wrap.id = "proglibStrandsHalfstepWrap";
+    wrap.innerHTML =
+      `<span>Strands 開關</span>` +
+      `<span style="display:flex;align-items:center;gap:8px">` +
+      `<input id="proglibStrandsHalfstep" type="checkbox">` +
+      `<span>上方半音屬七（低密度）</span>` +
+      `</span>`;
+    refs.controls.appendChild(wrap);
+    refs.strandsToggleWrap = wrap;
+    refs.strandsToggle = wrap.querySelector("#proglibStrandsHalfstep");
+  }
+
+  function ensureStrandsLinkControl() {
+    if (!refs.controls || refs.strandsLinkWrap) return;
+    const wrap = document.createElement("label");
+    wrap.className = "proglib-field";
+    wrap.id = "proglibStrandsLinkWrap";
+    wrap.innerHTML =
+      `<span>Strands 開關</span>` +
+      `<span style="display:flex;align-items:center;gap:8px">` +
+      `<input id="proglibStrandsLink" type="checkbox">` +
+      `<span>串接和弦（演化式）</span>` +
+      `</span>`;
+    refs.controls.appendChild(wrap);
+    refs.strandsLinkWrap = wrap;
+    refs.strandsLinkToggle = wrap.querySelector("#proglibStrandsLink");
+    const strength = document.createElement("select");
+    strength.id = "proglibStrandsIntensity";
+    strength.innerHTML = Object.entries(STRANDS_LINK_INTENSITIES)
+      .map(([k, v]) => `<option value="${k}">${v.label}</option>`)
+      .join("");
+    wrap.appendChild(strength);
+    refs.strandsLinkIntensity = strength;
+  }
+
+  function syncStrandsToggleUi() {
+    if (!refs.strandsToggleWrap || !refs.strandsToggle) return;
+    const visible = state.style === "strands";
+    refs.strandsToggleWrap.style.display = visible ? "" : "none";
+    refs.strandsToggle.checked = !!state.strandsHalfstepApproach;
+  }
+
+  function syncStrandsLinkUi() {
+    if (!refs.strandsLinkWrap || !refs.strandsLinkToggle) return;
+    const visible = state.style === "strands";
+    refs.strandsLinkWrap.style.display = visible ? "" : "none";
+    refs.strandsLinkToggle.checked = !!state.strandsLinkEvolution;
+    if (refs.strandsLinkIntensity) refs.strandsLinkIntensity.value = state.strandsLinkIntensity;
   }
 
   function refreshProgOptions() {
@@ -230,6 +566,8 @@
     refs.style.addEventListener("change", () => {
       state.style = refs.style.value;
       refreshProgOptions();
+      syncStrandsToggleUi();
+      syncStrandsLinkUi();
       persistSettings();
       rebuild();
     });
@@ -255,6 +593,27 @@
       restartLoopIfActive(false);
     });
     refs.vol.addEventListener("input", () => setVolumeFromPercent(Number(refs.vol.value || 70), true));
+    if (refs.strandsToggle) {
+      refs.strandsToggle.addEventListener("change", () => {
+        state.strandsHalfstepApproach = !!refs.strandsToggle.checked;
+        persistSettings();
+        rebuild();
+      });
+    }
+    if (refs.strandsLinkToggle) {
+      refs.strandsLinkToggle.addEventListener("change", () => {
+        state.strandsLinkEvolution = !!refs.strandsLinkToggle.checked;
+        persistSettings();
+        rebuild();
+      });
+    }
+    if (refs.strandsLinkIntensity) {
+      refs.strandsLinkIntensity.addEventListener("change", () => {
+        state.strandsLinkIntensity = refs.strandsLinkIntensity.value;
+        persistSettings();
+        rebuild();
+      });
+    }
     refs.randomBtn.addEventListener("click", randomize);
     refs.favBtn.addEventListener("click", saveFavorite);
     if (refs.collapseBtn) {
@@ -276,6 +635,8 @@
     state.keyName = KEYS[Math.floor(Math.random() * KEYS.length)].name;
     refs.style.value = state.style;
     refreshProgOptions();
+    syncStrandsToggleUi();
+    syncStrandsLinkUi();
     refs.key.value = state.keyName;
     persistSettings();
     rebuild();
@@ -286,7 +647,16 @@
   function rebuild() {
     const prog = currentProg();
     const key = currentKey();
-    const chords = (prog.chords || []).map(([deg, q]) => buildChord(key, deg, q));
+    const rawChords = Array.isArray(prog.chords)
+      ? prog.chords
+      : (prog.generated ? buildStrandsProgression(prog.id, key) : []);
+    const evolvedRaw = (state.style === "strands" && state.strandsLinkEvolution)
+      ? buildEvolutionaryStrandsProgression(prog.id, key, state.strandsLinkIntensity)
+      : rawChords;
+    const effectiveRaw = (state.style === "strands" && state.strandsHalfstepApproach)
+      ? applyHalfstepApproachDominants(evolvedRaw)
+      : evolvedRaw;
+    const chords = effectiveRaw.map(([deg, q, bass]) => buildChord(key, deg, q, bass));
     applyVoiceLeading(chords);
     // Octave dots are relative to the progression's central register, so most
     // notes stay dot-free and only genuine high/low voices get a dot.
@@ -297,6 +667,7 @@
       ch.midis = ch.voicedMidis; // playback follows the voiced realization
     });
     state.chords = chords;
+    state.rawChords = effectiveRaw;
     state.activeIndex = 0;
     renderRibbon();
     renderDesc();
@@ -306,8 +677,10 @@
 
   // ---- matching library songs -------------------------------------------
   function progSeqString() {
-    const prog = currentProg();
-    return (prog.chords || [])
+    const seqSource = state.rawChords && state.rawChords.length
+      ? state.rawChords
+      : (currentProg().chords || []);
+    return seqSource
       .map(([deg, q]) => `${((deg % 12) + 12) % 12}${MINOR_QUALITIES.has(q) ? "m" : "M"}`)
       .join("-");
   }
@@ -429,14 +802,22 @@
     } catch {}
   }
 
-  function buildChord(key, deg, quality) {
+  function buildChord(key, deg, quality, bassDeg) {
     const qd = QUALITY[quality] || QUALITY.maj;
     const names = key.sharp ? SHARP_NAMES : FLAT_NAMES;
     const rootPc = (key.pc + deg) % 12;
     const tonePcs = qd.iv.map((i) => (key.pc + deg + i) % 12);
     let roman = ROMAN_BASE[((deg % 12) + 12) % 12];
     if (qd.min) roman = roman.toLowerCase();
-    return { name: names[rootPc] + qd.sfx, roman, romanSfx: romanSuffix(quality), tonePcs, sharp: key.sharp };
+    const chordName = names[rootPc] + qd.sfx;
+    let slash = null;
+    if (bassDeg != null) {
+      const bassPc = (key.pc + bassDeg) % 12;
+      const bassName = names[bassPc];
+      if (bassName !== names[rootPc]) slash = bassName;
+    }
+    const displayName = slash ? `${chordName}/${slash}` : chordName;
+    return { name: chordName, slash, displayName, roman, romanSfx: romanSuffix(quality), tonePcs, sharp: key.sharp };
   }
 
   // ---- voice leading (ported from Ambient Mode) -------------------------
@@ -521,21 +902,31 @@
     if (quality === "m7b5") return "ø";
     if (quality === "dim" || quality === "dim7") return "°";
     if (quality === "maj7" || quality === "maj9") return "△";
-    if (/7|9/.test(quality)) return "7";
+    if (/7|9|11|13/.test(quality)) return "7";
     return "";
   }
 
   // ---- rendering ----
   function renderRibbon() {
-    refs.ribbon.innerHTML = state.chords
-      .map((ch, idx) => {
-        const jianpuHtml = ch.jianpu.map(renderJianpuNote).join("");
-        return `
-        <button class="proglib-chord ${idx === state.activeIndex ? "is-active" : ""}" data-idx="${idx}" type="button">
-          <div class="proglib-chord-roman">${escapeHtml(ch.roman)}<sup>${escapeHtml(ch.romanSfx)}</sup></div>
-          <div class="proglib-chord-name">${escapeHtml(ch.name)}</div>
-          <div class="proglib-chord-jianpu">${jianpuHtml}</div>
-        </button>`;
+    const rows = [];
+    for (let i = 0; i < state.chords.length; i += 8) {
+      rows.push(state.chords.slice(i, i + 8));
+    }
+    refs.ribbon.innerHTML = rows
+      .map((row, rowIdx) => {
+        const startIdx = rowIdx * 8;
+        return `<div class="proglib-ribbon-row">${row
+          .map((ch, offset) => {
+            const idx = startIdx + offset;
+            const jianpuHtml = ch.jianpu.map(renderJianpuNote).join("");
+            return `
+            <button class="proglib-chord ${idx === state.activeIndex ? "is-active" : ""}" data-idx="${idx}" type="button">
+              <div class="proglib-chord-roman">${escapeHtml(ch.roman)}<sup>${escapeHtml(ch.romanSfx)}</sup></div>
+              <div class="proglib-chord-name">${escapeHtml(ch.displayName || ch.name)}</div>
+              <div class="proglib-chord-jianpu">${jianpuHtml}</div>
+            </button>`;
+          })
+          .join("")}</div>`;
       })
       .join("");
 
@@ -772,6 +1163,9 @@
       if (obj.keyName && KEYS.some((k) => k.name === obj.keyName)) state.keyName = obj.keyName;
       if (Number.isFinite(Number(obj.bpm))) state.bpm = clamp(Math.round(Number(obj.bpm)), 40, 180);
       if ([2, 4, 8].includes(Number(obj.beats))) state.beats = Number(obj.beats);
+      if (typeof obj.strandsHalfstepApproach === "boolean") state.strandsHalfstepApproach = obj.strandsHalfstepApproach;
+      if (typeof obj.strandsLinkEvolution === "boolean") state.strandsLinkEvolution = obj.strandsLinkEvolution;
+      if (typeof obj.strandsLinkIntensity === "string" && STRANDS_LINK_INTENSITIES[obj.strandsLinkIntensity]) state.strandsLinkIntensity = obj.strandsLinkIntensity;
       if (typeof obj.collapsed === "boolean") state.collapsed = obj.collapsed;
     } catch {}
   }
@@ -780,7 +1174,10 @@
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
         style: state.style, progId: state.progId, keyName: state.keyName,
-        bpm: state.bpm, beats: state.beats, collapsed: state.collapsed,
+        bpm: state.bpm, beats: state.beats, strandsHalfstepApproach: state.strandsHalfstepApproach,
+        strandsLinkEvolution: state.strandsLinkEvolution,
+        strandsLinkIntensity: state.strandsLinkIntensity,
+        collapsed: state.collapsed,
       }));
     } catch {}
   }
