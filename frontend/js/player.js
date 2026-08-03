@@ -1947,7 +1947,7 @@
           dotHtml += `<span class="${cls}" data-time="${d.t.toFixed(4)}"${beatAttr}></span>`;
       }
       beatsEl.innerHTML = dotHtml;
-      item.appendChild(beatsEl);
+          item.insertBefore(beatsEl, nameEl);
       if (vb.short) item.classList.add("chord-short");
       if (vb.dots.length > 0 && vb.dots[0].isDownbeat) item.classList.add("chord-at-downbeat");
 

@@ -401,6 +401,40 @@ body.no-jianpu .melody-jianpu { display: none !important; }
   height: max(3px, calc(6px * var(--ribbon-scale, 1)));
   gap: max(2px, calc(4px * var(--ribbon-scale, 1)));
 }
+.rv-item > .rv-beats:first-child {
+  margin-top: 0;
+  margin-bottom: max(3px, calc(6px * var(--ribbon-scale, 1)));
+  height: auto;
+  min-height: max(3px, calc(6px * var(--ribbon-scale, 1)));
+  align-content: flex-start;
+  row-gap: max(1px, calc(2px * var(--ribbon-scale, 1)));
+}
+.rv-item > .rv-grid-phrase + .rv-beats {
+  margin-top: 0;
+  margin-bottom: max(3px, calc(6px * var(--ribbon-scale, 1)));
+  height: auto;
+  min-height: max(3px, calc(6px * var(--ribbon-scale, 1)));
+  align-content: flex-start;
+  row-gap: max(1px, calc(2px * var(--ribbon-scale, 1)));
+}
+.rv-item.active > .rv-beats:first-child {
+  margin-bottom: max(5px, calc(9px * var(--ribbon-scale, 1)));
+}
+.rv-item.active > .rv-grid-phrase + .rv-beats {
+  margin-bottom: max(5px, calc(9px * var(--ribbon-scale, 1)));
+}
+.rv-item > .rv-beats.rv-beats-metered:first-child {
+  min-height: max(12px, calc(20px * var(--ribbon-scale, 1)));
+}
+.rv-item > .rv-grid-phrase + .rv-beats.rv-beats-metered {
+  min-height: max(12px, calc(20px * var(--ribbon-scale, 1)));
+}
+.rv-item.active > .rv-beats:first-child .beat-dot {
+  transform-origin: center bottom;
+}
+.rv-item.active > .rv-grid-phrase + .rv-beats .beat-dot {
+  transform-origin: center bottom;
+}
 .rv-item .beat-dot {
   width: max(3px, calc(5px * var(--ribbon-scale, 1)));
   height: max(3px, calc(5px * var(--ribbon-scale, 1)));
@@ -3360,11 +3394,11 @@ body.no-score #scoreLayer { display: none !important; }
   border-left-color: rgba(0, 255, 204, 0.55);
 }
 /* Short chord — visual degrade (passing chord / syncopation).
-   Opacity removed: user wants to read the whole song structure clearly,
-   and parent opacity was cascading to dim the chord name too. The
-   smaller font on the chord-name still signals "this is a short
-   passing chord" without making it hard to read. */
-.rv-item.chord-short .rv-chord-name { font-size: 0.9em; }
+  Keep chord-name size consistent across durations. On mobile/tablet,
+  short (1-2 beat) chords were shrinking and hurting readability. */
+.rv-item.chord-short .rv-chord-name {
+  font-size: max(9px, calc(18px * var(--ribbon-scale, 1)));
+}
 
 /* Versions Dropdown */
 .versions-dropdown {
