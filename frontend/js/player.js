@@ -18,6 +18,7 @@
   const queueStyle = params.get("queue_style") || "";
   const queueLabel = params.get("queue_label") || "";
   const queueActive = !hashMode && !!trackPath && ["folder", "group", "jam"].includes(queueSource);
+  let preferPageFullscreen = restoreFs;
   const BEAT_SOURCE_PREF_KEY = "livechord_player_beat_source";
   function _pageBeatSourcePrefKey() {
     const songId = hashMode ? `hash_${hashMode}` : `path_${trackPath || ""}`;
@@ -2479,7 +2480,7 @@
   }
   function _navUrl(path) {
     const qs = new URLSearchParams({ path, autoplay: "1" });
-    if (document.fullscreenElement) qs.set("fs", "1");
+    if (preferPageFullscreen || _isPageFullscreen()) qs.set("fs", "1");
     _appendQueueParams(qs);
     return `/player?${qs.toString()}`;
   }
@@ -2515,25 +2516,81 @@
   const chordDisplay = $("#chordDisplay");
   const btnPageFs = $("#btnPageFs");
 
+  function _fullscreenElement() {
+    return document.fullscreenElement || document.webkitFullscreenElement || null;
+  }
+
+  function _isPageFullscreen() {
+    return !!_fullscreenElement();
+  }
+
+  async function _requestPageFullscreen() {
+    const root = document.documentElement;
+    if (root.requestFullscreen) {
+      await root.requestFullscreen();
+      return;
+    }
+    if (root.webkitRequestFullscreen) {
+      root.webkitRequestFullscreen();
+      return;
+    }
+    throw new Error("fullscreen not supported");
+  }
+
+  async function _exitPageFullscreen() {
+    if (document.exitFullscreen && document.fullscreenElement) {
+      await document.exitFullscreen();
+      return;
+    }
+    if (document.webkitExitFullscreen && document.webkitFullscreenElement) {
+      document.webkitExitFullscreen();
+    }
+  }
+
+  function _syncPageFsButton() {
+    if (!btnPageFs) return;
+    btnPageFs.innerHTML = _isPageFullscreen() ? "&#x2716;" : "&#x26F6;";
+  }
+
+  async function _restorePageFullscreen() {
+    if (!preferPageFullscreen || _isPageFullscreen()) {
+      _syncPageFsButton();
+      return;
+    }
+    try {
+      await _requestPageFullscreen();
+    } catch {
+      // Browsers may reject non-gesture fullscreen restore on navigation.
+    }
+    _syncPageFsButton();
+  }
+
   // Always immersive - hide body overflow
   document.body.style.overflow = "hidden";
 
   if (btnPageFs) {
-    btnPageFs.onclick = () => {
-      if (document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
-        btnPageFs.innerHTML = "&#x26F6;";
+    btnPageFs.onclick = async () => {
+      if (_isPageFullscreen()) {
+        preferPageFullscreen = false;
+        try { await _exitPageFullscreen(); } catch {}
       } else {
-        document.documentElement.requestFullscreen().catch(() => {});
-        btnPageFs.innerHTML = "&#x2716;";
+        preferPageFullscreen = true;
+        try { await _requestPageFullscreen(); } catch {}
       }
+      _syncPageFsButton();
     };
   }
-  document.addEventListener("fullscreenchange", () => {
-    if (!document.fullscreenElement) {
-      if (btnPageFs) btnPageFs.innerHTML = "&#x26F6;";
+
+  function _handleFullscreenChange() {
+    if (!_isPageFullscreen()) {
+      preferPageFullscreen = false;
     }
-  });
+    _syncPageFsButton();
+  }
+
+  document.addEventListener("fullscreenchange", _handleFullscreenChange);
+  document.addEventListener("webkitfullscreenchange", _handleFullscreenChange);
+  _syncPageFsButton();
 
   // 相對簡譜：notes 陣列相對於當前 key 的簡譜
   function _notesToJianpu(notes, key) {
@@ -8192,10 +8249,7 @@
       // only kick the NAS audio element for personal mode.
       const isBeta = await _isBetaModeAsync.catch(() => false);
       if (autoplay && !isBeta) audio.play().catch(() => {});
-      if (restoreFs) {
-        document.documentElement.requestFullscreen().catch(() => {});
-        if (btnPageFs) btnPageFs.innerHTML = "&#x2716;";
-      }
+      await _restorePageFullscreen();
     });
   }
 
