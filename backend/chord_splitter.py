@@ -87,6 +87,24 @@ _SAFE_LONG_SPLIT_MIN_BEATS = 5.5
 # populates the corpus.
 _BAR_SNAP_MIN_CONFIDENCE = 0.7
 
+# Some global arbiter rewrites intentionally define card-level musical
+# structure (free-time cycles, fixed 2-beat grammar). Those cards should not
+# be altered by the serve-time splitter. Quantize-only tags, however, still
+# need splitting when they span multiple bars; otherwise the player renders
+# 12-16 beat dot overflow on long holds.
+_GLOBAL_ARBITER_SPLIT_EXEMPT_PREFIXES = (
+    "free-time-",
+    "two-beat-chorus-grammar",
+    "modulated-verse-cycle",
+)
+
+
+def _is_split_exempt_global_arbiter(chord: Dict) -> bool:
+    tag = str(chord.get("global_arbiter") or "")
+    if not tag:
+        return False
+    return any(tag.startswith(prefix) for prefix in _GLOBAL_ARBITER_SPLIT_EXEMPT_PREFIXES)
+
 
 def _coerce_prob(p) -> float:
     """Defensively coerce a stored prob value. Returns 0.0 for non-finite or
@@ -803,7 +821,7 @@ def split_chords_at_bars(
     out: List[Dict] = []
 
     for chord in chords:
-        if chord.get("global_arbiter"):
+        if _is_split_exempt_global_arbiter(chord):
             out.append(dict(chord))
             continue
         start = chord.get("time")
@@ -886,7 +904,7 @@ def split_long_chords_at_bars(
         return list(chords)
     out: List[Dict] = []
     for chord in chords:
-        if chord.get("global_arbiter"):
+        if _is_split_exempt_global_arbiter(chord):
             out.append(dict(chord))
             continue
         start = chord.get("time")
@@ -915,7 +933,7 @@ def split_long_chords_evenly_by_bpm(
         return list(chords)
     out: List[Dict] = []
     for chord in chords:
-        if chord.get("global_arbiter"):
+        if _is_split_exempt_global_arbiter(chord):
             out.append(dict(chord))
             continue
         start = chord.get("time")

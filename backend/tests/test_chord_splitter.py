@@ -142,6 +142,21 @@ class TestSplitChordsAtBars(unittest.TestCase):
 
         self.assertEqual(out, chords)
 
+    def test_stable_downbeat_quantize_cards_can_still_split(self):
+        chords = [{
+            "time": 3.24,
+            "end": 12.34,
+            "chord": "C",
+            "display_beats": 4,
+            "global_arbiter": "stable-downbeat-quantize",
+        }]
+        downbeats = [3.22, 5.46, 7.76, 10.04, 12.34]
+
+        out = split_chords_at_bars(chords, downbeats)
+
+        self.assertGreater(len(out), 1)
+        self.assertTrue(all(c.get("auto_split") for c in out))
+
     def test_one_bar_chord_not_split_by_local_half_bar_downbeat(self):
         # Mixed grid: global median bar is 2.0s, but this local C bar has an
         # extra half-bar downbeat at 11.0. It is still C(4), not C(2)+C(2).

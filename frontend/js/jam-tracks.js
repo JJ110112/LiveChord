@@ -3,6 +3,7 @@
 (function () {
   const section = document.getElementById("secJamTracks");
   const styleSelect = document.getElementById("jamStyleSelect");
+  const refreshListBtn = document.getElementById("jamRefreshList");
   const countEl = document.getElementById("jamStyleCount");
   const listEl = document.getElementById("jamTracksList");
   const playSeq = document.getElementById("jamPlaySeq");
@@ -10,6 +11,10 @@
   if (!section || !styleSelect || !listEl) return;
 
   const LS_KEY = "livechord_jam_style";
+  const LIST_LIMIT = 100;
+  let currentSeed = "";
+  let currentMode = "shuffle";
+  let currentTracks = [];
 
   function _t(k, v) {
     return (window.LiveChordI18n && window.LiveChordI18n.t)
@@ -47,20 +52,18 @@
 
   async function playStyle(mode) {
     const style = styleSelect.value || "";
-    const queue = _queue(style, mode);
-    try {
-      const data = await API.playlist(queue);
-      const tracks = data.tracks || [];
-      if (!tracks.length) {
-        showToast(_t("toast.queue.empty"), 2500);
-        return;
-      }
-      queue.seed = data.seed || queue.seed;
-      goPlayer(tracks[0].path, queue);
-    } catch (err) {
-      const msg = err && err.message ? err.message : String(err || "");
-      showToast(_t("toast.queue.failed", { err: msg }), 3500);
+    // Keep the queue seed aligned with the rendered list so play always
+    // starts from a song the user can already see on screen.
+    if (mode === "shuffle" || !currentTracks.length) {
+      await loadStyleTracks(style, { fresh: mode === "shuffle" });
     }
+    if (!currentTracks.length) {
+      showToast(_t("toast.queue.empty"), 2500);
+      return;
+    }
+
+    const queue = _queue(style, currentMode || "shuffle", currentSeed);
+    goPlayer(currentTracks[0].path, queue);
   }
 
   function renderTracks(tracks) {
@@ -85,17 +88,32 @@
     }
     listEl.innerHTML = html;
     listEl.querySelectorAll(".jam-track-item").forEach((el) => {
-      el.addEventListener("click", () => goPlayer(el.dataset.path, _queue(styleSelect.value || "", "sequential")));
+      el.addEventListener("click", () => {
+        const style = styleSelect.value || "";
+        goPlayer(el.dataset.path, _queue(style, currentMode || "shuffle", currentSeed));
+      });
     });
   }
 
-  async function loadStyleTracks(style) {
+  async function loadStyleTracks(style, opts = {}) {
+    const fresh = Boolean(opts.fresh);
+    if (fresh || !currentSeed) currentSeed = _seed(style, "shuffle");
+    currentMode = "shuffle";
     listEl.innerHTML = `<div class="empty" style="padding:20px;color:var(--text-dim)">${escapeHtml(_t("common.loading"))}</div>`;
     try {
-      const data = await API.jamTracksList(style, 100, 0);
+      const data = await API.playlist({
+        source: "jam",
+        style,
+        mode: "shuffle",
+        seed: currentSeed,
+        limit: LIST_LIMIT,
+      });
+      currentSeed = data.seed || currentSeed;
+      currentTracks = data.tracks || [];
       countEl.textContent = _t("home.jam.count", { n: data.total });
-      renderTracks(data.tracks || []);
+      renderTracks(currentTracks);
     } catch (err) {
+      currentTracks = [];
       listEl.innerHTML = `<div class="empty" style="padding:20px;color:var(--text-dim)">${escapeHtml(_t("home.jam.failed", { err: err.message }))}</div>`;
     }
   }
@@ -128,10 +146,17 @@
 
       styleSelect.addEventListener("change", () => {
         localStorage.setItem(LS_KEY, styleSelect.value);
-        loadStyleTracks(styleSelect.value);
+        loadStyleTracks(styleSelect.value, { fresh: true });
       });
 
-      await loadStyleTracks(initial);
+      if (refreshListBtn) {
+        refreshListBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          loadStyleTracks(styleSelect.value || "", { fresh: true });
+        });
+      }
+
+      await loadStyleTracks(initial, { fresh: true });
     } catch (err) {
       console.warn("Jam Tracks init failed:", err);
       section.style.display = "none";

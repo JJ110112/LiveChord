@@ -28,10 +28,10 @@ function Stop-PortListeners {
             if ($parts.Count -ge 5) { $parts[-1] }
         } | Sort-Object -Unique)
 
-        foreach ($pid in $pids) {
-            if ($pid -match "^\d+$") {
+        foreach ($procId in $pids) {
+            if ($procId -match "^\d+$") {
                 try {
-                    Stop-Process -Id ([int]$pid) -Force -ErrorAction Stop
+                    Stop-Process -Id ([int]$procId) -Force -ErrorAction Stop
                 } catch {
                     # Ignore already-exited processes.
                 }

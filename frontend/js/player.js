@@ -2179,16 +2179,20 @@
     if (!ribbonHidden && !waterfallHidden && legacyVisible === "false") ribbonHidden = true;
   }
 
-  function _applyRibbonLayout() {
-    // Touch devices have orientation-driven single-panel layouts (CSS hides
-    // the other side via !important). Align JS state to match so the
-    // inline `display:` written below doesn't fight the CSS.
-    //   portrait → chord ribbon only (waterfall hidden)
-    //   landscape → waterfall only (chord ribbon hidden)
-    // Stale localStorage from a prior desktop session would otherwise
-    // leave the wrong side hidden after orientation flip.
+  function _isForcedSinglePanelTouchLayout() {
+    // Keep phone UX unchanged (portrait chord-only, landscape waterfall-only),
+    // but allow large tablets in landscape to use the desktop split layout.
     const _isTouch = window.matchMedia("(pointer: coarse)").matches;
-    if (_isTouch) {
+    if (!_isTouch) return false;
+    const _isPortrait = window.matchMedia("(orientation: portrait)").matches;
+    if (_isPortrait) return true;
+    return window.matchMedia("(max-width: 1024px)").matches;
+  }
+
+  function _applyRibbonLayout() {
+    // In forced single-panel touch layouts, mirror orientation-driven CSS
+    // state so inline display styles do not conflict with stylesheet rules.
+    if (_isForcedSinglePanelTouchLayout()) {
       const _isPortraitTouch = window.matchMedia("(orientation: portrait)").matches;
       ribbonHidden = !_isPortraitTouch;       // hide ribbon in landscape
       waterfallHidden = _isPortraitTouch;     // hide waterfall in portrait
@@ -2260,6 +2264,9 @@
   }
 
   function _persistRibbonLayout() {
+    // Do not persist orientation-forced states from phone layouts; otherwise
+    // a phone-landscape visit can incorrectly hide the ribbon on desktop/tablet.
+    if (_isForcedSinglePanelTouchLayout()) return;
     if (ribbonHidden) localStorage.setItem("livechord_ribbon_hidden", "true");
     else localStorage.removeItem("livechord_ribbon_hidden");
     if (waterfallHidden) localStorage.setItem("livechord_waterfall_hidden", "true");

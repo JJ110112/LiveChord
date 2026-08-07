@@ -2914,13 +2914,11 @@ body.no-score #scoreLayer { display: none !important; }
   }
 }
 
-/* Touch devices (any orientation): hide the resize-handle fold buttons so
-   the waterfall is always visible alongside the chord ribbon. Mouse-user
-   desktops keep them — drag-resize is useful there but pointless on a
-   phone where the divider isn't draggable anyway. Portrait already hides
-   via @media (max-width:640px) above; this catches landscape phones.
-   (LiveChord brand is hidden universally via the base .topbar-logo rule.) */
-@media (pointer: coarse) {
+/* Touch portrait stays single-panel (phone + tablet) and should not show the
+   divider controls. Touch landscape keeps this behavior only on smaller
+   screens; large tablets use the desktop-like split/resizable layout. */
+@media (pointer: coarse) and (orientation: portrait),
+       (pointer: coarse) and (orientation: landscape) and (max-width: 1024px) {
   .resize-handle {
     display: none !important;
   }
@@ -2946,6 +2944,11 @@ body.no-score #scoreLayer { display: none !important; }
     max-height: calc(100vh - 44px - 60px - 8px);  /* topbar 44 + toolbar 60 + 8 gap */
     overflow-y: auto;
   }
+  }
+
+  /* Small touch landscape keeps the compact, waterfall-only mobile layout.
+    Large tablets in landscape fall back to the default split layout above. */
+  @media (pointer: coarse) and (orientation: landscape) and (max-width: 1024px) {
   /* Touch landscape = waterfall-only. Hide the chord-ribbon-panel and let
      the instrument panel (piano + falling notes) take the full width.
      Mirror of the portrait rule that hides #instrumentPanel + shows the
