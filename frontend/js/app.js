@@ -283,15 +283,28 @@
   let _isPersonalMode = false;
 
   async function _checkBetaAccess() {
+    let cfgRes = { deployment_mode: "personal" };
+    let adminRes = { is_admin: true };
     try {
-      const [cfgRes, adminRes] = await Promise.all([
+      [cfgRes, adminRes] = await Promise.all([
         fetch("/api/config/public").then(r => r.json()),
         fetch("/api/auth/is_admin").then(r => r.json()),
       ]);
-      _isPublicMode = cfgRes.deployment_mode === "public";
-      _isPersonalMode = cfgRes.deployment_mode === "personal";
-      _isBetaMode = cfgRes.deployment_mode === "beta" || _isPublicMode || _isPersonalMode;
-      // NAS browse section is personal-mode-only — the /api/browse endpoint
+    } catch (_) {
+      // Local/personal-mode deployments can briefy do a hard reload before the
+      // config endpoint is ready; default to the personal workflow so the Local
+      // music / MIDI upload widget remains visible instead of silently hiding.
+      cfgRes = { deployment_mode: "personal" };
+      adminRes = { is_admin: true };
+    }
+    _isPublicMode = cfgRes.deployment_mode === "public";
+    _isPersonalMode = cfgRes.deployment_mode === "personal";
+    _isBetaMode = cfgRes.deployment_mode === "beta" || _isPublicMode || _isPersonalMode;
+    if (!cfgRes || !cfgRes.deployment_mode) {
+      _isPersonalMode = true;
+      _isBetaMode = true;
+    }
+    // NAS browse section is personal-mode-only — the /api/browse endpoint
       // is gated by require_personal_mode and returns 404 in beta/public.
       // Admins in public mode were seeing the section render a 404 warning;
       // the NAS volume isn't even mounted on the VPS so there's nothing
