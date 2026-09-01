@@ -280,6 +280,7 @@
   let _isBetaNonAdmin = false;
   let _isBetaMode = false;
   let _isPublicMode = false;
+  let _isPersonalMode = false;
 
   async function _checkBetaAccess() {
     try {
@@ -288,7 +289,8 @@
         fetch("/api/auth/is_admin").then(r => r.json()),
       ]);
       _isPublicMode = cfgRes.deployment_mode === "public";
-      _isBetaMode = cfgRes.deployment_mode === "beta" || _isPublicMode;
+      _isPersonalMode = cfgRes.deployment_mode === "personal";
+      _isBetaMode = cfgRes.deployment_mode === "beta" || _isPublicMode || _isPersonalMode;
       // NAS browse section is personal-mode-only — the /api/browse endpoint
       // is gated by require_personal_mode and returns 404 in beta/public.
       // Admins in public mode were seeing the section render a 404 warning;
@@ -366,6 +368,20 @@
 
         if (isLoggedIn) {
           // Logged-in dashboard: hide marketing, show user-data sections.
+          if (headerEl) headerEl.style.display = "";
+          if (intro) intro.style.display = "none";
+          if (heroSec) heroSec.style.display = "none";
+          if (techSec) techSec.style.display = "none";
+          if (hiwSec) hiwSec.style.display = "none";
+          if (osSec) osSec.style.display = "none";
+          if (secBetaLocal) secBetaLocal.style.display = "";
+          if (secBetaRecent) secBetaRecent.style.display = "";
+          if (secFavorites) secFavorites.style.display = "";
+        } else if (_isPersonalMode) {
+          // Personal/local mode: no product marketing page, only the local
+          // upload + analysis workflow. Keep the header and show the local
+          // history/track sections so MIDI/audio uploads are discoverable
+          // immediately on the home screen, even without sign-in.
           if (headerEl) headerEl.style.display = "";
           if (intro) intro.style.display = "none";
           if (heroSec) heroSec.style.display = "none";
@@ -1517,9 +1533,9 @@
         // for anon visitors above) — _initBetaLocalAudio also calls
         // section.style.display = "" which would un-hide it for anon
         // visitors if called unconditionally.
-        if (_isPublicMode) {
+        if (_isPublicMode || _isPersonalMode) {
           _initBetaUpload();
-          if (localStorage.getItem("livechord_token")) _initBetaLocalAudio();
+          if (_isPersonalMode || localStorage.getItem("livechord_token")) _initBetaLocalAudio();
         }
       }
       await Promise.allSettled(tasks);
