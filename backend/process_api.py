@@ -13,10 +13,10 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 from auth_api import get_current_user, get_admin_user, get_user_or_anon, is_anon
-from config import is_beta_mode, is_public_mode
+from config import is_beta_mode, is_public_mode, is_personal_mode
 from process_queue import (
     ProcessJob, JobStatus, TMP_DIR, COVERS_DIR,
-    submit_job, get_job, generate_job_id, compute_file_hash,
+    submit_job, get_job, generate_job_id,
     check_quota, get_user_daily_count, get_audit_log, get_user_audit_log,
     delete_audit_entries, delete_user_audit_entry,
     CHORDS_DIR,
@@ -28,22 +28,60 @@ router = APIRouter(prefix="/api/process", tags=["process"])
 # Max upload size: 200 MB
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 
-ALLOWED_MIME_TYPES = {
+ALLOWED_AUDIO_MIME_TYPES = {
     "audio/mpeg", "audio/mp3", "audio/flac", "audio/x-flac",
     "audio/wav", "audio/x-wav", "audio/ogg",
 }
+MIDI_MIME_TYPES = {
+    "audio/midi", "audio/mid", "audio/x-midi", "audio/x-mid",
+    "application/x-midi", "application/midi",
+}
+MIDI_EXTENSIONS = {".mid", ".midi"}
 
 
 def _require_user_facing():
-    """Process API only exists on user-facing instances (beta or public).
-    On personal mode (LAN self-use) these endpoints are 404 — personal users
-    use the library-scan flow, not the upload ingest."""
-    if not (is_beta_mode() or is_public_mode()):
+    """Upload API available on all supported deployment modes."""
+    if not (is_beta_mode() or is_public_mode() or is_personal_mode()):
         raise HTTPException(status_code=404, detail="Not available")
 
 
 # Back-compat alias — old beta-only callers still resolve.
 _require_beta = _require_user_facing
+
+
+def _validate_upload_format(filename: str, content_type: str) -> tuple[str, bool]:
+    ct = (content_type or "").lower().strip()
+    ext = Path(filename or "").suffix.lower()
+    is_midi = ext in MIDI_EXTENSIONS
+    if ct in ALLOWED_AUDIO_MIME_TYPES:
+        return ext, False
+    if ct in MIDI_MIME_TYPES:
+        return ext, True
+    if is_midi and ct in {"", "application/octet-stream", "binary/octet-stream"}:
+        return ext, True
+    raise HTTPException(status_code=400, detail=f"不支援的音檔格式: {ct or '(empty)'}")
+
+
+def _convert_midi_to_wav(midi_path: Path, wav_path: Path):
+    try:
+        import pretty_midi
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail="伺服器缺少 pretty_midi，無法讀取 MIDI") from exc
+    try:
+        import numpy as np
+        import soundfile as sf
+        pm = pretty_midi.PrettyMIDI(str(midi_path))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"MIDI 讀取失敗: {exc}") from exc
+    if not pm.instruments:
+        raise HTTPException(status_code=400, detail="MIDI 檔沒有可播放音軌")
+    wave = pm.synthesize(fs=22050)
+    if wave is None or len(wave) == 0:
+        raise HTTPException(status_code=400, detail="MIDI 內容為空，無法分析")
+    peak = float(np.max(np.abs(wave)))
+    if peak > 1.0:
+        wave = wave / peak
+    sf.write(str(wav_path), wave.astype(np.float32), 22050, subtype="PCM_16")
 
 
 # ---------------------------------------------------------------------------
@@ -60,10 +98,7 @@ def upload_audio(file: UploadFile = File(...),
             detail=f"每日額度已用完 ({get_user_daily_count(username)}/10)"
         )
 
-    # MIME validation
-    ct = (file.content_type or "").lower()
-    if ct not in ALLOWED_MIME_TYPES:
-        raise HTTPException(status_code=400, detail=f"不支援的音檔格式: {ct}")
+    ext, is_midi_upload = _validate_upload_format(file.filename or "", file.content_type or "")
 
     # Read file with size limit
     data = file.file.read(MAX_UPLOAD_BYTES + 1)
@@ -71,13 +106,22 @@ def upload_audio(file: UploadFile = File(...),
         raise HTTPException(status_code=400, detail="檔案超過 200MB 上限")
 
     # Save to tmp
-    ext = os.path.splitext(file.filename or "audio.mp3")[1] or ".mp3"
     job_id = generate_job_id()
+    if not ext:
+        ext = ".mid" if is_midi_upload else ".mp3"
     tmp_path = TMP_DIR / f"{job_id}{ext}"
     tmp_path.write_bytes(data)
+    audio_path = tmp_path
+    if is_midi_upload:
+        wav_path = TMP_DIR / f"{job_id}.wav"
+        try:
+            _convert_midi_to_wav(tmp_path, wav_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+        audio_path = wav_path
 
     # Compute file hash for audit
-    file_hash = compute_file_hash(str(tmp_path))
+    file_hash = hashlib.md5(data).hexdigest()[:12]
 
     title = os.path.splitext(file.filename or "")[0].strip() or "Uploaded"
 
@@ -85,7 +129,7 @@ def upload_audio(file: UploadFile = File(...),
         job_id=job_id,
         username=username,
         source_type="upload",
-        audio_path=str(tmp_path),
+        audio_path=str(audio_path),
         title=title,
         file_hash=file_hash,
     )
@@ -93,7 +137,7 @@ def upload_audio(file: UploadFile = File(...),
     try:
         submit_job(job)
     except queue.Full:
-        tmp_path.unlink(missing_ok=True)
+        audio_path.unlink(missing_ok=True)
         raise HTTPException(status_code=503, detail="處理佇列已滿，請稍後再試")
 
     return {"job_id": job_id, "status": "queued"}
@@ -694,4 +738,3 @@ def admin_audit_delete(req: DeleteAuditRequest,
     """Delete audit entries and associated chord/cover/melody files."""
     deleted = delete_audit_entries(req.ids)
     return {"deleted": deleted}
-

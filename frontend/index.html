@@ -571,7 +571,7 @@
     </h2>
     <div id="betaLocalAnalyzedRow" class="horizontal-scroll" style="margin-top:8px"></div>
     <div id="betaLocalTrackList" class="local-track-list" style="margin-top:8px"></div>
-    <input type="file" id="betaLocalAudioInput" accept="audio/*" multiple style="display:none">
+    <input type="file" id="betaLocalAudioInput" accept="audio/*,.mid,.midi,audio/midi,audio/x-midi" multiple style="display:none">
   </section>
 
   <!-- First-run instrument picker — shown once if livechord_tab unset.
@@ -614,8 +614,8 @@
     <div class="fab-panel-title" data-i18n="home.modal.title">Add a song</div>
     <div class="fab-section" id="betaDropZone">
       <span data-i18n="home.modal.dropzone">🎵 Drop audio or click to pick</span>
-      <span class="upload-hint" data-i18n="home.modal.upload_hint">MP3, FLAC, WAV, OGG (100 MB)</span>
-      <input type="file" id="betaFileInput" accept="audio/*" style="display:none">
+      <span class="upload-hint" data-i18n="home.modal.upload_hint">MP3, FLAC, WAV, OGG, MID (100 MB)</span>
+      <input type="file" id="betaFileInput" accept="audio/*,.mid,.midi,audio/midi,audio/x-midi" style="display:none">
     </div>
     <div class="beta-file-info" id="betaFileInfo" style="display:none">
       <span id="betaFileName" class="beta-file-name"></span>
