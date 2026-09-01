@@ -84,6 +84,10 @@ _idx_to_chord = None
 _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def _btc_model_path() -> str:
+    return os.path.join(BTC_DIR, "btc_model_large_voca.pt")
+
+
 def _load_model():
     """延遲載入 BTC 模型（只載入一次）"""
     global _model, _config, _mean, _std, _idx_to_chord, _device
@@ -91,6 +95,14 @@ def _load_model():
 
     if _model is not None:
         return
+
+    model_path = _btc_model_path()
+    if not os.path.isfile(model_path):
+        raise FileNotFoundError(
+            "BTC model not found: "
+            f"{model_path}. Restore backend/btc/btc_model_large_voca.pt "
+            "or enable the Modal BTC volume before re-running analysis."
+        )
 
     from btc_model import BTC_model  # type: ignore
     from utils.hparams import HParams  # type: ignore
@@ -105,7 +117,7 @@ def _load_model():
 
     _model = BTC_model(config=_config.model)
     checkpoint = torch.load(
-        os.path.join(BTC_DIR, "btc_model_large_voca.pt"),
+        model_path,
         map_location=_device, weights_only=False
     )
     _mean = checkpoint["mean"]

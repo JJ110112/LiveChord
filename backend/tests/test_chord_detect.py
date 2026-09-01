@@ -50,6 +50,16 @@ class TestChordDetectAudioLoad(unittest.TestCase):
 
         self.assertIs(raised.exception, err)
 
+    def test_load_model_raises_clear_error_when_btc_weights_are_missing(self):
+        with mock.patch.object(chord_detect, "_model", None), mock.patch(
+            "os.path.isfile", return_value=False
+        ):
+            with self.assertRaises(FileNotFoundError) as raised:
+                chord_detect._load_model()
+
+        self.assertIn("btc_model_large_voca.pt", str(raised.exception))
+        self.assertIn("Restore backend/btc/btc_model_large_voca.pt", str(raised.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
