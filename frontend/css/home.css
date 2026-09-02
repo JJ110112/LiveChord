@@ -2927,6 +2927,7 @@ body.ambient-fullscreen-lock {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
 }
+.proglib-editor[hidden] { display: none; }
 .proglib-editor-title { grid-column: 1 / -1; font-weight: 700; font-size: 13px; color: var(--text); }
 .proglib-editor .proglib-field input {
   border: 1px solid var(--border);
