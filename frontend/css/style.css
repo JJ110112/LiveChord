@@ -249,13 +249,19 @@ a:hover { text-decoration: underline; }
 
 .grid-item .info {
   padding: 10px 12px;
+  min-width: 0;
 }
 
 .grid-item .info .title {
   font-size: 14px;
   font-weight: 600;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
   overflow: hidden;
+  word-break: break-word;
   text-overflow: ellipsis;
 }
 

@@ -9,7 +9,7 @@
 /* Library grid — wrapping grid with scroll for large collections */
 .library-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 150px);
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 12px;
   max-height: 70vh;
   overflow-y: auto;
@@ -57,14 +57,21 @@
 
 .grid-item .info {
   padding: 10px 12px;
+  min-width: 0;
 }
 
 .grid-item .info .title {
   font-size: 14px;
   font-weight: 600;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  white-space: normal;
   overflow: hidden;
+  word-break: break-word;
   text-overflow: ellipsis;
+  line-height: 1.35;
 }
 
 .grid-item .info .subtitle {

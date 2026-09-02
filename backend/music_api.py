@@ -114,6 +114,37 @@ def _find_cover(filepath: str) -> Optional[str]:
     return None
 
 
+def _find_cover_in_tree(folder_path: str) -> Optional[str]:
+    """對資料夾套用 fallback：先找同層封面，沒有就遞迴找第一個子目錄的封面。"""
+    if not os.path.isdir(folder_path):
+        return None
+
+    for name in ("cover.jpg", "cover.png", "Cover.jpg", "folder.jpg"):
+        cover = os.path.join(folder_path, name)
+        if os.path.isfile(cover):
+            return cover
+
+    # 若此資料夾沒有封面，嘗試第一個有封面的子目錄；避免長路徑資料夾卡片空白。
+    try:
+        children = sorted(os.listdir(folder_path), key=lambda s: s.lower())
+    except OSError:
+        return None
+
+    for child in children:
+        full = os.path.join(folder_path, child)
+        if not os.path.isdir(full):
+            continue
+        cover = _find_cover_in_tree(full)
+        if cover:
+            return cover
+    return None
+
+
+def _directory_has_cover(folder_path: str) -> bool:
+    """Return True if the folder or any nested child folder contains a cover file."""
+    return bool(_find_cover_in_tree(folder_path))
+
+
 def _extract_embedded_cover(filepath: str):
     """回傳 (data, mime) 或 None — 支援 flac / mp3 (ID3 APIC) / ogg (METADATA_BLOCK_PICTURE)"""
     ext = os.path.splitext(filepath)[1].lower()
@@ -190,10 +221,7 @@ def browse(path: str = Query(default=""), _=Depends(_check_browse_access)):
             drive, _ = os.path.splitdrive(r)
             label = drive if drive else (os.path.basename(r.rstrip("\\/")) or r)
             vpath = f"@{i}"
-            has_cover = any(
-                os.path.isfile(os.path.join(r, c))
-                for c in ("cover.jpg", "cover.png")
-            )
+            has_cover = _directory_has_cover(r)
             entries.append({
                 "name": label, "path": vpath, "is_dir": True,
                 "has_cover": has_cover,
@@ -237,10 +265,7 @@ def browse(path: str = Query(default=""), _=Depends(_check_browse_access)):
         inner_rel = os.path.relpath(full, root).replace("\\", "/")
         rel = rel_prefix + inner_rel
         if os.path.isdir(full):
-            cover = any(
-                os.path.isfile(os.path.join(full, c))
-                for c in ("cover.jpg", "cover.png")
-            )
+            cover = _directory_has_cover(full)
             entries.append({
                 "name": name, "path": rel, "is_dir": True,
                 "has_cover": cover,
@@ -678,25 +703,27 @@ def track_stream(request: Request, path: str = Query(...)):
 
 @router.get("/track/cover")
 def track_cover(path: str = Query(...)):
-    """取得專輯封面（優先同目錄 cover.jpg，fallback 內嵌封面 flac/mp3/ogg）"""
+    """取得專輯封面（同目錄優先，fallback 到子目錄或音檔內嵌封面）"""
     full = _safe_path(resolve_path(path))
 
-    # 1. 找同目錄的 cover.jpg
-    if os.path.isfile(full):
+    # 1. 若是目錄：同層封面優先，否則遞迴找第一個子目錄封面
+    if os.path.isdir(full):
+        cover = _find_cover_in_tree(full)
+    elif os.path.isfile(full):
         cover = _find_cover(full)
-    elif os.path.isdir(full):
-        for name in ("cover.jpg", "cover.png", "Cover.jpg", "folder.jpg"):
-            c = os.path.join(full, name)
-            if os.path.isfile(c):
-                cover = c
-                break
-        else:
-            cover = None
     else:
         raise HTTPException(status_code=404, detail="路徑不存在")
 
     if cover:
-        return FileResponse(cover, media_type="image/jpeg")
+        return FileResponse(
+            cover,
+            media_type="image/jpeg",
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
 
     # 2. 從音檔內嵌封面提取
     if os.path.isfile(full):
@@ -706,7 +733,11 @@ def track_cover(path: str = Query(...)):
             return Response(
                 content=data,
                 media_type=mime,
-                headers={"Cache-Control": "public, max-age=86400"},
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                },
             )
 
     raise HTTPException(status_code=404, detail="無封面圖片")

@@ -36,7 +36,7 @@ const API = {
   search: (q) => API.get(`/api/search?q=${encodeURIComponent(q)}`),
   trackInfo: (path) => API.get(`/api/track/info?path=${encodeURIComponent(path)}`),
   trackStreamUrl: (path) => `/api/track/stream?path=${encodeURIComponent(path)}`,
-  trackCoverUrl: (path) => `/api/track/cover?path=${encodeURIComponent(path)}`,
+  trackCoverUrl: (path) => `/api/track/cover?path=${encodeURIComponent(path)}&v=${Date.now()}`,
   libraryScan: (mode = "incremental") => API.post(`/api/library/scan?mode=${mode}`),
   libraryScanStatus: () => API.get("/api/library/scan/status"),
   libraryStats: () => API.get("/api/library/stats"),
