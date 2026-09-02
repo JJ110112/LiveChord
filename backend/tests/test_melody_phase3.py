@@ -1198,6 +1198,46 @@ class TestMelodyPhase3(unittest.TestCase):
         self.assertAlmostEqual(features["vocal_stem_energy_ratio"], 4.0 / 7.0)
         self.assertAlmostEqual(features["vocal_vs_other_energy_ratio"], 4.0 / 5.0)
 
+    def test_stem_energy_sidecar_serves_gate_without_stem_wavs(self):
+        # Stems are deleted right after the batch worker runs; the resolver gate
+        # must be answerable from the sidecar alone and must never load audio.
+        from backend.ai.song_type_audio_features import (
+            read_stem_energy_sidecar,
+            stem_energy_sidecar_path,
+            write_stem_energy_sidecar,
+        )
+        from backend.ai.song_type_vocal_gate import classify_vocal_gate
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            song_hash = "bb123456"
+            self.assertIsNone(read_stem_energy_sidecar(root, song_hash))
+            out = write_stem_energy_sidecar(
+                root,
+                song_hash,
+                {
+                    "stem_analyzed_duration_s": 120.0,
+                    "stem_energy_ratio": {"vocals": 0.4, "bass": 0.2, "drums": 0.2, "other": 0.2},
+                    "vocal_stem_energy_ratio": 0.4,
+                    "vocal_vs_other_energy_ratio": 0.5,
+                },
+            )
+            self.assertEqual(out, stem_energy_sidecar_path(root, song_hash))
+            self.assertTrue(out.parent.samefile(candidate_path(root, song_hash, "vocal_stem_crepe").parent))
+
+            def must_not_load(*args, **kwargs):
+                raise AssertionError("sidecar present: stem WAVs must not be loaded")
+
+            with patch("backend.ai.song_type_audio_features.load_audio_mono", side_effect=must_not_load):
+                features = cached_stem_energy_features(root, song_hash)
+
+        self.assertEqual(features["stem_status"], "sidecar")
+        self.assertEqual(features["missing_stems"], [])
+        self.assertAlmostEqual(features["vocal_stem_energy_ratio"], 0.4)
+        self.assertAlmostEqual(features["stem_analyzed_duration_s"], 120.0)
+        gate = classify_vocal_gate({"duration_s": features["stem_analyzed_duration_s"], "stems": features})
+        self.assertTrue(gate["predict_vocal"])
+
     def test_extract_rh_song_type_audio_features_cli_writes_rows_and_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

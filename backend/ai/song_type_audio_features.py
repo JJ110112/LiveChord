@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import math
+import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
 
 import numpy as np
 
-from .melody_candidate import stem_path
+from .melody_candidate import candidate_dir, stem_path
 
 
 AUDIO_FEATURE_SCHEMA_VERSION = 1
@@ -16,6 +19,8 @@ AUDIO_FEATURE_SOURCE = "song_type_audio_features_v1"
 DEFAULT_SAMPLE_RATE = 16000
 DEFAULT_MAX_SECONDS = 120.0
 STEM_NAMES = ("vocals", "bass", "drums", "other")
+STEM_ENERGY_SIDECAR_VERSION = "stem_energy_sidecar_v1"
+STEM_ENERGY_SIDECAR_NAME = "stem_energy.json"
 
 
 def extract_mix_audio_features(
@@ -112,9 +117,18 @@ def cached_stem_energy_features(
     sample_rate: int = DEFAULT_SAMPLE_RATE,
     max_seconds: float = DEFAULT_MAX_SECONDS,
 ) -> Dict[str, Any]:
-    """Return vocal-stem energy ratios from already cached stems only."""
+    """Return vocal-stem energy ratios without running Demucs.
+
+    Prefers the small ``stem_energy.json`` sidecar written by the candidate
+    batch worker (stems are deleted after use); falls back to cached stem WAVs
+    from the Phase 0.5 ``stems/`` cache when no sidecar exists.
+    """
 
     root = Path(data_dir)
+    sidecar = read_stem_energy_sidecar(root, song_hash)
+    if sidecar is not None:
+        return sidecar
+
     paths = {name: stem_path(root, song_hash, name) for name in STEM_NAMES}
     missing = [name for name, path in paths.items() if not path.is_file()]
     if missing:
@@ -124,7 +138,27 @@ def cached_stem_energy_features(
             "vocal_stem_energy_ratio": None,
             "vocal_vs_other_energy_ratio": None,
         }
+    features = stem_energy_features_from_paths(
+        {name: str(path) for name, path in paths.items()},
+        sample_rate=sample_rate,
+        max_seconds=max_seconds,
+    )
+    features["stem_status"] = "cached_stems"
+    return features
 
+
+def stem_energy_features_from_paths(
+    stems: Mapping[str, str | Path],
+    *,
+    sample_rate: int = DEFAULT_SAMPLE_RATE,
+    max_seconds: float = DEFAULT_MAX_SECONDS,
+) -> Dict[str, Any]:
+    """Compute per-stem energy ratios from stem WAV paths (all four required)."""
+
+    paths = {name: Path(stems[name]) for name in STEM_NAMES if stems.get(name)}
+    missing = [name for name in STEM_NAMES if name not in paths]
+    if missing:
+        raise FileNotFoundError(f"missing stems: {missing}")
     energies: Dict[str, float] = {}
     durations = []
     for name, path in paths.items():
@@ -135,13 +169,58 @@ def cached_stem_energy_features(
     vocal = energies.get("vocals", 0.0)
     other = energies.get("other", 0.0)
     return {
-        "stem_status": "cached_stems",
         "missing_stems": [],
         "stem_analyzed_duration_s": max(durations) if durations else None,
         "stem_energy": energies,
+        "stem_energy_ratio": {name: _safe_ratio(energies.get(name, 0.0), total) for name in STEM_NAMES},
         "vocal_stem_energy_ratio": _safe_ratio(vocal, total),
         "vocal_vs_other_energy_ratio": _safe_ratio(vocal, vocal + other),
     }
+
+
+def stem_energy_sidecar_path(data_dir: str | Path, song_hash: str) -> Path:
+    return candidate_dir(Path(data_dir), song_hash) / STEM_ENERGY_SIDECAR_NAME
+
+
+def write_stem_energy_sidecar(
+    data_dir: str | Path,
+    song_hash: str,
+    features: Mapping[str, Any],
+    *,
+    extra: Optional[Mapping[str, Any]] = None,
+) -> Path:
+    """Persist stem energy ratios so the resolver gate never needs stem WAVs."""
+
+    payload: Dict[str, Any] = dict(features)
+    payload.update({
+        "sidecar_version": STEM_ENERGY_SIDECAR_VERSION,
+        "song_hash": song_hash,
+        "stem_status": "sidecar",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    if extra:
+        payload.update(dict(extra))
+    out = stem_energy_sidecar_path(data_dir, song_hash)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_suffix(out.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, out)
+    return out
+
+
+def read_stem_energy_sidecar(data_dir: str | Path, song_hash: str) -> Optional[Dict[str, Any]]:
+    path = stem_energy_sidecar_path(data_dir, song_hash)
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(data, dict) or "vocal_stem_energy_ratio" not in data:
+        return None
+    data["stem_status"] = "sidecar"
+    data.setdefault("missing_stems", [])
+    return data
 
 
 def build_audio_feature_row(
