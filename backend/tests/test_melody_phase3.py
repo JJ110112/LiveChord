@@ -1572,8 +1572,8 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(report["precision"], 1.0)
             self.assertEqual(report["recall"], 1.0)
-            self.assertEqual(report["vocal_ratio_threshold"], 0.06)
-            self.assertIn("0.060", report["threshold_sweep"])
+            self.assertEqual(report["vocal_ratio_threshold"], 0.15)
+            self.assertIn("0.150", report["threshold_sweep"])
 
     def test_melody_resolver_selects_vocal_candidate_when_gate_passes(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1600,7 +1600,7 @@ class TestMelodyPhase3(unittest.TestCase):
                     "stem_status": "cached_stems",
                     "missing_stems": [],
                     "stem_analyzed_duration_s": 120.0,
-                    "vocal_stem_energy_ratio": 0.08,
+                    "vocal_stem_energy_ratio": 0.40,
                 },
             ):
                 resolved = MelodyResolver(root).resolve(baseline, song_hash=song_hash, path="song.flac")
@@ -1608,7 +1608,7 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(resolved["melody_source"]["id"], VOCAL_STEM_CREPE)
             self.assertEqual(resolved["melody_source"]["selected_by"], RESOLVER_VERSION)
             self.assertEqual(resolved["melody_source"]["song_type"], "vocal_led")
-            self.assertEqual(resolved["melody_source"]["resolver_gate"]["vocal_stem_energy_ratio"], 0.08)
+            self.assertEqual(resolved["melody_source"]["resolver_gate"]["vocal_stem_energy_ratio"], 0.40)
             self.assertTrue(selected_path(root, song_hash).is_file())
 
     def test_melody_resolver_falls_back_when_gate_fails_or_coverage_low(self):
@@ -1650,7 +1650,7 @@ class TestMelodyPhase3(unittest.TestCase):
                     "stem_status": "cached_stems",
                     "missing_stems": [],
                     "stem_analyzed_duration_s": 120.0,
-                    "vocal_stem_energy_ratio": 0.08,
+                    "vocal_stem_energy_ratio": 0.40,
                 },
             ):
                 low_coverage = MelodyResolver(root).resolve(baseline, song_hash=song_hash, path="song.flac")

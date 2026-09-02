@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping, Sequence
 
 
-VOCAL_GATE_VERSION = "vocal_stem_ratio_gate_v1"
-DEFAULT_VOCAL_RATIO_THRESHOLD = 0.06
+VOCAL_GATE_VERSION = "vocal_stem_ratio_gate_v2"
+DEFAULT_VOCAL_RATIO_THRESHOLD = 0.15
 DEFAULT_MIN_DURATION_S = 30.0
 DEFAULT_THRESHOLD_SWEEP = (0.04, 0.05, 0.055, 0.06, 0.065, 0.07, 0.08, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35)
 
@@ -24,10 +24,16 @@ def classify_vocal_gate(
 
     This is intentionally a binary conservative gate, not a full song-type
     classifier. Low confidence or missing stems should fall back to full_mix_pyin.
-    The 0.06 default is calibrated from the leakage-clean 100-song Phase 0.5
-    validation set. It sits inside the observed gap between the highest
-    not-vocal stem ratio (~0.054) and lowest vocal-led ratio (~0.065). The 30s
-    floor avoids trusting Demucs ratios on very short clips.
+    The 0.15 default (gate v2, 2026-09-02) replaces the 0.06 of v1. v1 was
+    calibrated on the leakage-clean 100-song Phase 0.5 validation set, which
+    had no instrumental songs in the 0.06-0.15 band; a 200-song random batch
+    then surfaced six (sax / flute / harmonica / brass) that v1 routed to
+    vocal_stem_crepe with bogus "vocal" melodies. The 34-song gate-band A/B
+    review (phase0_5_ab_gate_band_20260902) found 0/6 CREPE wins below 0.15
+    and 28/29 above. Cost is ~10% vocal recall on the validation set (those
+    songs fall back to full_mix_pyin, i.e. the pre-resolver behaviour), which
+    is the cheaper error. The 30s floor avoids trusting Demucs ratios on very
+    short clips.
     """
 
     stems = row.get("stems") if isinstance(row.get("stems"), Mapping) else {}
