@@ -13,7 +13,7 @@ Default is a dry-run plan. Pass --execute to run. Per-song timing / disk
 numbers go to <data-dir>/logs/rh_melody_candidates_<ts>.jsonl (+ .summary.json).
 
 Examples:
-  python tools/build_rh_melody_candidates.py --recent --favorites --random 20 --limit 50
+  python tools/build_rh_melody_candidates.py --recent --favorites --rated --analytics
   python tools/build_rh_melody_candidates.py --recent --favorites --random 20 --limit 50 --execute
   python tools/build_rh_melody_candidates.py --hash 9a399f94b9e7 --execute --force
 """
@@ -98,6 +98,41 @@ def select_songs(args: argparse.Namespace, data_dir: Path) -> List[Dict[str, Any
         for item in _load_json(data_dir / "favorites.json", {}).get("favorites", []) or []:
             if isinstance(item, dict):
                 _add(rows, item.get("path", ""), "favorite", song_hash=str(item.get("hash") or ""))
+    if args.rated:
+        ratings = _load_json(data_dir / "ratings.json", {})
+        for h in (ratings.keys() if isinstance(ratings, dict) else []):
+            _add(rows, _path_from_chord_json(data_dir, h), "rated", song_hash=h)
+        try:
+            import sqlite3
+
+            con = sqlite3.connect(data_dir / "feedback.db", timeout=10)
+            for (h,) in con.execute("select distinct song_hash from ratings where song_hash != ''"):
+                _add(rows, _path_from_chord_json(data_dir, h), "rated_db", song_hash=str(h))
+            con.close()
+        except Exception:
+            pass
+    if args.analytics:
+        try:
+            import sqlite3
+
+            con = sqlite3.connect(data_dir / "analytics.db", timeout=10)
+            for (payload,) in con.execute("select payload from events"):
+                try:
+                    d = json.loads(payload or "{}")
+                except Exception:
+                    continue
+                raw = str(d.get("song_hash") or d.get("hash") or "").strip()
+                if not raw:
+                    continue
+                if raw.startswith("__hash/"):
+                    raw = raw[len("__hash/"):]
+                if len(raw) == 12 and all(c in "0123456789abcdef" for c in raw):
+                    _add(rows, _path_from_chord_json(data_dir, raw), "analytics", song_hash=raw)
+                else:
+                    _add(rows, raw, "analytics")  # payload stored a library path
+            con.close()
+        except Exception:
+            pass
     if args.random > 0:
         chords_root = data_dir / "chords"
         shards = [d for d in chords_root.iterdir() if d.is_dir() and len(d.name) == 2]
@@ -297,6 +332,8 @@ def main() -> int:
     ap.add_argument("--hashes-file", default="")
     ap.add_argument("--recent", action="store_true")
     ap.add_argument("--favorites", action="store_true")
+    ap.add_argument("--rated", action="store_true", help="ratings.json + feedback.db rated songs.")
+    ap.add_argument("--analytics", action="store_true", help="Songs with play events in analytics.db.")
     ap.add_argument("--random", type=int, default=0, help="Random sample from chords index.")
     ap.add_argument("--seed", type=int, default=20260902)
     ap.add_argument("--limit", type=int, default=0)
