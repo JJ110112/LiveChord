@@ -7784,6 +7784,14 @@
   const transposeVal = $("#transposeValue");
   const capoSelect = $("#capoSelect");
 
+  // Push the badge's current key/mode into the floating scale panel (if open).
+  // ScaleLab.followKey() de-dupes, so calling this on every tick is cheap.
+  function _syncScaleFollow(key, mode) {
+    if (window.ScaleLab && typeof window.ScaleLab.followKey === "function") {
+      window.ScaleLab.followKey({ key, mode: mode || "" });
+    }
+  }
+
   function _updateKeyDisplay(currentTime) {
     const keyInfo = $("#chordKey");
     if (!keyInfo || !chordData || !chordData.key) return;
@@ -7903,6 +7911,7 @@
         keyInfo.dataset.mobileKey = curRaw;
         const keyRun = `${display}${modeSuffix}`;
         keyInfo.innerHTML = `Key:&nbsp;<span class="key-modulation-full">${keyRun}</span>`;
+        _syncScaleFollow(curRaw, keyInfo.dataset.mode);
         return;
       }
       // No modulation — show single key with mode if non-standard
@@ -7910,6 +7919,7 @@
         keyInfo.classList.remove("has-modulation");
         keyInfo.dataset.mobileKey = baseKey;
         keyInfo.innerHTML = `Key:&nbsp;${baseKey} <span style="color:#00e5ff;opacity:0.7;font-size:0.85em">${curModeLabel}</span>`;
+        _syncScaleFollow(baseKey, keyInfo.dataset.mode);
         return;
       }
     }
@@ -7917,12 +7927,14 @@
     keyInfo.dataset.mobileKey = baseKey;
     keyInfo.dataset.mode = chordData.mode || "";
     keyInfo.textContent = `Key: ${baseKey}`;
+    _syncScaleFollow(baseKey, keyInfo.dataset.mode);
   }
 
-  // Key badge → scale popup (ScaleLab, shared with the homepage Scale Lab section).
-  // Uses the badge's own data-mobile-key so a mid-song modulation opens the
-  // *current* key, and the section/global mode (Dorian, Mixolydian, …) picks
-  // the matching scale instead of plain major/minor.
+  // Key badge → floating scale panel (ScaleLab, shared with the homepage Scale
+  // Lab section). Uses the badge's own data-mobile-key so a mid-song modulation
+  // opens the *current* key, and the section/global mode (Dorian, Mixolydian, …)
+  // picks the matching scale. The panel then follows the song via
+  // _syncScaleFollow() until the user closes it with ×.
   const _keyBadge = $("#chordKey");
   function _openKeyScalePopup() {
     if (!window.ScaleLab || !chordData || !chordData.key) return;

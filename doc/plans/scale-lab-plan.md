@@ -1,6 +1,6 @@
 # Scale Lab — 鋼琴 + 吉他音階小工具（規劃 + 實作紀錄）
 
-日期：2026-09-02　狀態：Phase 1 已實作（首頁區塊 + Player 調性彈窗）
+日期：2026-09-02　狀態：Phase 1 已實作（首頁區塊 + Player 調性面板，跟隨轉調）
 
 ## 目標
 
@@ -46,11 +46,13 @@
 
 - `_updateKeyDisplay` 會寫 `keyInfo.dataset.mode`；轉調曲目的 `data-mobile-key` 已是當前段落的調，所以彈窗開的是「現在」的調。
 - `scaleIdForKey("Am", "Dorian")` → `dorian`；無 mode 時 `Xm` → 自然小調、否則大調。
-- 彈窗用 UX_CONVENTION §12 Type B（`.lc-modal-backdrop` + `.lc-modal`）：backdrop 點擊 / ESC / × 關閉；樂器選擇記在 `localStorage.livechord_scalelab_player`。
+- 面板用 UX_CONVENTION §12 **Type C 浮動面板**（`.scale-panel.lc-panel`，z 9600，無 backdrop），停在 topbar 下方右側，手機版改為全寬。只有 × 會關閉（ESC / 點外面不會），所以可以邊播邊看。樂器選擇記在 `localStorage.livechord_scalelab_player`。
+- **即時跟隨轉調**：`_updateKeyDisplay` 的每個出口都呼叫 `_syncScaleFollow(key, mode)` → `ScaleLab.followKey()`。`followKey` 以 `root|scaleId` 去重：調沒變就不動（使用者在面板裡手動換的音階會保留），調一變就切換並閃一下邊框。轉調、移調（Transpose）、Capo 都會觸發。
+- 面板開著時再點徽章，會重新對齊到目前的調（不會開第二個）。
 
 ## 快取版本（已同步 bump）
 
-`base.css?v=24`（index + player）、`home.css?v=69`、`player.css?v=153`、`player.js?v=363`、`scale-lab.js?v=1`、`i18n.js?v=61` + `DICT_VERSION=61`（新增 `player.key_scale_title`）。
+`base.css?v=24`（index + player）、`home.css?v=69`、`player.css?v=154`、`player.js?v=364`、`scale-lab.js?v=2`、`i18n.js?v=61` + `DICT_VERSION=61`（新增 `player.key_scale_title`）。
 
 ## 後續可做（未實作）
 

@@ -1,11 +1,11 @@
-// scale-lab.js v1
+// scale-lab.js v2
 // Piano + guitar scale reference — shared by the homepage "Scale Lab" section
 // (index.html #secScaleLab) and the player key-badge popup (player.html #chordKey).
 //
 // Exposes window.ScaleLab = {
 //   KEYS, CATEGORIES, SCALES, getScale, buildScale, spellScale,
 //   drawPianoScale, drawGuitarScale, buildGuitarTab, playScale,
-//   renderInto, openModal, scaleIdForKey
+//   renderInto, openModal (= openPanel), followKey, closeModal, scaleIdForKey
 // }
 //
 // Everything here is client-side and self-contained: no API calls, no
@@ -800,12 +800,14 @@
       play: "試聽", stop: "停止", label_name: "音名", label_degree: "級數", notes: "組成音", formula: "音程公式",
       mood: "音色特性", use: "適用曲風", tip: "練習提示", chords: "常見和弦", tab: "TAB 把位（根音在第 6 弦）",
       relative: "關係調", title: "音階", close: "關閉", colon: "：",
+      follow_hint: "會跟著歌曲轉調自動切換，按 × 關閉",
     },
     en: {
       key: "Key", category: "Category", scale: "Scale", instrument: "Instrument", piano: "Piano", guitar: "Guitar",
       play: "Play", stop: "Stop", label_name: "Names", label_degree: "Degrees", notes: "Notes", formula: "Formula",
       mood: "Character", use: "Genres", tip: "Practice tip", chords: "Common chords", tab: "TAB position (root on 6th string)",
       relative: "Relative", title: "Scale", close: "Close", colon: ": ",
+      follow_hint: "Follows the song's key changes — press × to close",
     },
   };
   function L(k) {
@@ -1034,53 +1036,80 @@
     };
   }
 
-  // ---- player modal (UX_CONVENTION §12 Type B: .lc-modal-backdrop + .lc-modal) ----
-  let _modal = null;
+  // ---- player panel (UX_CONVENTION §12 Type C: .lc-panel, no backdrop) ----
+  // Floating so the user keeps playing / scrubbing while it stays open. It
+  // follows the song: player.js calls followKey() whenever the key badge's
+  // current key or mode changes (modulations, transpose, capo). Only the ×
+  // button closes it.
+  let _panel = null;
   function closeModal() {
-    if (!_modal) return;
-    const m = _modal; _modal = null;
+    if (!_panel) return;
+    const m = _panel; _panel = null;
     try { m.view.destroy(); } catch {}
-    document.removeEventListener("keydown", m.onKey);
-    m.backdrop.remove();
+    m.el.remove();
+  }
+
+  function _panelTitle(root, scaleId) {
+    const sc = getScale(scaleId);
+    return `🎼 ${L("title")}${L("colon")}${root} ${isEn() ? sc.en : sc.name}`;
   }
 
   /**
-   * Open the scale popup for a key (player). Remembers the last instrument.
+   * Open (or refocus) the scale panel for a key. Kept as `openModal` for
+   * call-site compatibility; `openPanel` is the same function.
    * @param {object} opts - { key: "Am" | "F#", mode?: "Dorian", instrument?: "piano"|"guitar" }
    */
   function openModal(opts = {}) {
-    closeModal();
     const root = rootFromKey(opts.key || "C");
     const scaleId = opts.scaleId || scaleIdForKey(opts.key, opts.mode);
-    const backdrop = document.createElement("div");
-    backdrop.className = "scale-modal lc-modal-backdrop";
-    const card = document.createElement("div");
-    card.className = "lc-modal";
-    card.innerHTML = `
+    if (_panel) {
+      _panel.followed = `${root}|${scaleId}`;
+      _panel.view.setState({ root, scaleId });
+      return _panel.view;
+    }
+    const el = document.createElement("div");
+    el.className = "scale-panel lc-panel";
+    el.setAttribute("role", "dialog");
+    el.setAttribute("aria-label", L("title"));
+    el.innerHTML = `
       <button class="lc-close" aria-label="${L("close")}">&times;</button>
-      <div class="lc-title">🎼 ${L("title")}${L("colon")}${escapeHtml(root)} ${escapeHtml(isEn() ? getScale(scaleId).en : getScale(scaleId).name)}</div>
-      <div class="sl-modal-body"></div>`;
-    backdrop.appendChild(card);
-    document.body.appendChild(backdrop);
-    const body = card.querySelector(".sl-modal-body");
+      <div class="lc-title">${escapeHtml(_panelTitle(root, scaleId))}</div>
+      <div class="lc-subtitle sl-follow-hint">${L("follow_hint")}</div>
+      <div class="sl-panel-body"></div>`;
+    document.body.appendChild(el);
+    const body = el.querySelector(".sl-panel-body");
     const view = renderInto(body, {
       root, scaleId, instrument: opts.instrument, compact: true, persistKey: "livechord_scalelab_player",
-      onChange: (st) => {
-        const s = getScale(st.scaleId);
-        card.querySelector(".lc-title").textContent = `🎼 ${L("title")}${L("colon")}${st.root} ${isEn() ? s.en : s.name}`;
-      },
+      onChange: (st) => { el.querySelector(".lc-title").textContent = _panelTitle(st.root, st.scaleId); },
     });
-    // the persisted key/scale from a previous popup must not override the song's key
+    // the persisted key/scale from a previous panel must not override the song's key
     view.setState({ root, scaleId });
-    const onKey = (e) => { if (e.key === "Escape") closeModal(); };
-    document.addEventListener("keydown", onKey);
-    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeModal(); });
-    card.querySelector(".lc-close").addEventListener("click", closeModal);
-    _modal = { backdrop, view, onKey };
-    // canvas width depends on the card's final layout
-    requestAnimationFrame(() => { if (_modal) _modal.view.redraw(); });
+    el.querySelector(".lc-close").addEventListener("click", closeModal);
+    _panel = { el, view, followed: `${root}|${scaleId}` };
+    // canvas width depends on the panel's final layout
+    requestAnimationFrame(() => { if (_panel) _panel.view.redraw(); });
     return view;
   }
+
+  /**
+   * Live-follow hook: called by the player whenever the badge's current key /
+   * mode changes. No-op when the panel is closed or the target didn't change
+   * (so a user's manual scale pick inside the panel survives playback ticks).
+   */
+  function followKey(opts = {}) {
+    if (!_panel || !opts.key) return;
+    const root = rootFromKey(opts.key);
+    const scaleId = scaleIdForKey(opts.key, opts.mode);
+    const sig = `${root}|${scaleId}`;
+    if (sig === _panel.followed) return;
+    _panel.followed = sig;
+    _panel.view.setState({ root, scaleId });
+    _panel.el.classList.remove("is-flash");
+    void _panel.el.offsetWidth; // restart the highlight animation
+    _panel.el.classList.add("is-flash");
+  }
+
+  function isPanelOpen() { return !!_panel; }
 
   // ---- homepage section bootstrap ----
   function initHomeSection() {
@@ -1114,7 +1143,8 @@
 
   window.ScaleLab = {
     KEYS, CATEGORIES, SCALES, getScale, buildScale, spellScale, scaleIdForKey, rootFromKey,
-    drawPianoScale, drawGuitarScale, buildGuitarTab, playScale, renderInto, openModal, closeModal,
+    drawPianoScale, drawGuitarScale, buildGuitarTab, playScale, renderInto,
+    openModal, openPanel: openModal, closeModal, closePanel: closeModal, followKey, isPanelOpen,
   };
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initHomeSection);

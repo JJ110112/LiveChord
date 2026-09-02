@@ -4332,15 +4332,37 @@ body.no-score #scoreLayer { display: none !important; }
   background: rgba(0, 0, 0, 0.08);
 }
 
-/* ---- Scale popup on the key badge (#chordKey → ScaleLab.openModal).
-   Type B modal — composes .lc-modal-backdrop + .lc-modal in JS (scale-lab.js). */
+/* ---- Scale panel on the key badge (#chordKey → ScaleLab.openModal).
+   Type C floating panel (composes .lc-panel, z 9600 / tier 6) — no backdrop,
+   so playback and scrubbing keep working while it follows the song's key.
+   Closed only by its × button. Anchored under the topbar on the right. */
 .topbar-key-btn { cursor: pointer; border-radius: 6px; padding: 2px 4px; }
 .topbar-key-btn:hover, .topbar-key-btn:focus-visible { background: var(--bg-hover); outline: none; }
-.scale-modal .lc-modal {
-  width: min(820px, 94vw);
-  max-width: min(820px, 94vw);
-  max-height: 88vh;
+.scale-panel {
+  top: 52px;
+  right: 12px;
+  width: min(620px, 94vw);
+  max-width: none;
+  max-height: calc(100vh - 150px);
+  overflow: auto;
+  padding: 14px 16px 16px;
 }
-.scale-modal .sl-modal-body { margin-top: 10px; }
-.scale-modal .sl-controls { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
-.scale-modal .sl-desc { font-size: 13px; }
+.scale-panel .lc-title { padding-right: 32px; }
+.scale-panel .sl-follow-hint { margin: 2px 0 8px; }
+.scale-panel .sl-panel-body { min-width: 0; }
+.scale-panel .sl-controls { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.scale-panel .sl-desc { font-size: 13px; }
+.scale-panel.is-flash { animation: scalePanelFlash 0.6s ease-out; }
+@keyframes scalePanelFlash {
+  0%   { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 80%, transparent), var(--lc-popup-shadow); }
+  100% { box-shadow: var(--lc-popup-shadow); }
+}
+@media (max-width: 640px) {
+  .scale-panel {
+    top: 46px;
+    left: 3vw;
+    right: 3vw;
+    width: auto;
+    max-height: calc(100vh - 210px);
+  }
+}
