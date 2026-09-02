@@ -54,6 +54,7 @@
     "m7b9":  { iv: [0, 3, 7, 10, 13],      sfx: "m7♭9", min: true },
     mmaj7:   { iv: [0, 3, 7, 11],          sfx: "m(maj7)", min: true },
     "9sus4": { iv: [0, 5, 7, 10, 14],      sfx: "9sus4", min: false },
+    "m6/9":  { iv: [0, 3, 7, 9, 14],       sfx: "m6/9",  min: true },
   };
 
   function normDeg(v) {
@@ -1058,6 +1059,7 @@
   function normalizeSuffix(sfx) {
     return String(sfx || "")
       .replace(/[()]/g, "").replace(/♭/g, "b").replace(/♯/g, "#")
+      .replace(/^maj/i, "maj").replace(/^min/i, "m").replace(/^sus/i, "sus").replace(/^dim/i, "dim").replace(/^aug/i, "aug").replace(/^add/i, "add")
       .replace(/Δ/g, "maj").replace(/ø7?/g, "m7b5").replace(/°7|o7/g, "dim7").replace(/°|^o$/g, "dim")
       .replace(/^\+$/, "aug").replace(/^7\+$/, "7#5").replace(/^min/, "m").replace(/^M(?=7|9)/, "maj").replace(/^ma(?=7|9)/, "maj")
       .replace(/^mM7$|^mmaj7$|^minmaj7$|^m\/maj7$/, "mmaj7")
@@ -1072,6 +1074,7 @@
     if (n === "9") return lower ? "m9" : "9";
     if (n === "11") return lower ? "m11" : "11";
     if (n === "6") return lower ? "m6" : "6";
+    if (n === "6/9") return lower ? "m6/9" : "6/9";
     if (QUALITY[n]) return n;
     // Unknown alteration tail (e.g. 13b9, 7b9#11): strip trailing alterations
     // one at a time until a known quality remains.
@@ -1131,8 +1134,12 @@
     const key = { pc: keyNameToPc(keyName) };
     const absolute = [];
     const chords = [];
-    for (const tok of tokens) {
-      if (tok.includes("/") && !/6\/9$/.test(tok)) return { chords: [], error: `暫不支援斜線和弦：${tok}` };
+    for (const rawTok of tokens) {
+      // Slash bass: "C/E", "Cmaj9/E", "I/III", "V/VII". "6/9" is not a slash.
+      let tok = rawTok;
+      let bassTok = null;
+      const sm = rawTok.match(/^(.+)\/([A-G][b#]?|[b#]?[ivIV]+)$/);
+      if (sm) { tok = sm[1]; bassTok = sm[2]; }
       let deg, lower = false, sfx;
       let m = tok.match(/^([b#])?([ivIV]+)(.*)$/);
       if (m && ROMAN_VAL[m[2].toUpperCase()] != null && (m[2] === m[2].toUpperCase() || m[2] === m[2].toLowerCase())) {
@@ -1149,17 +1156,26 @@
         return { chords: [], error: `看不懂的和弦：${tok}` };
       }
       const q = suffixToQuality(sfx, lower);
-      if (!q) return { chords: [], error: `不支援的和弦類型：${tok}` };
-      chords.push([normDeg(deg), q]);
+      if (!q) return { chords: [], error: `不支援的和弦類型：${rawTok}` };
+      let bassDeg = null;
+      if (bassTok) {
+        let bm = bassTok.match(/^([A-G])([b#])?$/);
+        if (bm) bassDeg = normDeg(NOTE_VAL[bm[1]] + (bm[2] === "b" ? -1 : bm[2] === "#" ? 1 : 0) - key.pc);
+        else if ((bm = bassTok.match(/^([b#])?([ivIV]+)$/)) && ROMAN_VAL[bm[2].toUpperCase()] != null) {
+          bassDeg = normDeg(ROMAN_VAL[bm[2].toUpperCase()] + (bm[1] === "b" ? -1 : bm[1] === "#" ? 1 : 0));
+        } else return { chords: [], error: `看不懂的低音：${rawTok}` };
+      }
+      chords.push(bassDeg != null ? [normDeg(deg), q, bassDeg] : [normDeg(deg), q]);
     }
     return { chords, error: null, detectedKey: absolute.length === tokens.length ? detectKeyFromChords(absolute) : null };
   }
 
   function specsToRoman(specs) {
-    return specs.map(([deg, q]) => {
+    return specs.map(([deg, q, bass]) => {
       const qd = QUALITY[q] || QUALITY.maj;
       const base = ROMAN_BASE[normDeg(deg)];
-      return qd.min ? base.toLowerCase() + qd.sfx.replace(/^m(?!aj)/, "") : base + qd.sfx;
+      const r = qd.min ? base.toLowerCase() + qd.sfx.replace(/^m(?!aj)/, "") : base + qd.sfx;
+      return bass != null ? `${r}/${ROMAN_BASE[normDeg(bass)]}` : r;
     }).join("–");
   }
 
