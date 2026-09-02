@@ -376,6 +376,48 @@ def _quantize_group_times(events: List[dict], tol: float = 0.03) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Cover art
+# ---------------------------------------------------------------------------
+
+def write_cover(out_hash: str, title: str, key: str, bpm: float) -> None:
+    """Paint a simple 512×512 cover so hash-mode cards don't 404 on cover."""
+    from PIL import Image, ImageDraw, ImageFont
+    covers = DATA_DIR / "covers"
+    covers.mkdir(parents=True, exist_ok=True)
+    img = Image.new("RGB", (512, 512), (24, 28, 44))
+    d = ImageDraw.Draw(img)
+    for y in range(512):  # vertical gradient
+        c = int(24 + 40 * y / 511)
+        d.line([(0, y), (511, y)], fill=(c, c + 6, c + 30))
+    # keyboard motif
+    for i in range(14):
+        x = 20 + i * 34
+        d.rectangle([x, 380, x + 30, 500], fill=(236, 236, 240))
+    for i, black in enumerate([1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0]):
+        if black:
+            x = 20 + i * 34 + 24
+            d.rectangle([x, 380, x + 20, 455], fill=(30, 30, 36))
+    font_path = None
+    for cand in (r"C:\Windows\Fonts\msjh.ttc", r"C:\Windows\Fonts\segoeui.ttf",
+                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"):
+        if os.path.isfile(cand):
+            font_path = cand
+            break
+    try:
+        big = ImageFont.truetype(font_path, 40) if font_path else ImageFont.load_default()
+        small = ImageFont.truetype(font_path, 26) if font_path else ImageFont.load_default()
+    except Exception:
+        big = small = ImageFont.load_default()
+    text = title if len(title) <= 22 else title[:21] + "…"
+    d.text((32, 60), "MIDI", font=small, fill=(140, 180, 255))
+    d.text((32, 110), text, font=big, fill=(245, 245, 250))
+    d.text((32, 190), f"Key {key}   {int(round(bpm))} BPM", font=small, fill=(200, 205, 220))
+    tmp = covers / f"{out_hash}.jpg.tmp"
+    img.save(tmp, "JPEG", quality=88)
+    os.replace(tmp, covers / f"{out_hash}.jpg")
+
+
+# ---------------------------------------------------------------------------
 # FluidSynth render
 # ---------------------------------------------------------------------------
 
@@ -488,6 +530,12 @@ def ingest(midi_path: str, job_id: str, title: str, progress_cb=None) -> dict:
         warnings.append(f"fingering skipped: {e}")
 
     melody_events = skyline_melody(rh_raw)
+
+    # --- cover (homepage 最近播放 card asks /api/process/cover/<hash>) ----
+    try:
+        write_cover(h, title, key, bpm)
+    except Exception as e:
+        warnings.append(f"cover skipped: {e}")
 
     # --- audio -----------------------------------------------------------
     if progress_cb:

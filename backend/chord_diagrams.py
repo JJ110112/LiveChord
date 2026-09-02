@@ -765,6 +765,7 @@ def get_chord_diagram(chord_name, instrument='guitar'):
 
         # Fallback: simplify chord quality (e.g. Dm6 -> Dm7 -> Dm, Cmaj9 -> Cmaj7 -> C)
         _simplify = [
+            (r'm7b5', 'm7'),                                 # Gbm7b5 -> Gbm7 (half-dim: nearest shape)
             (r'(m?)(?:add|sus|aug|dim)?\d+', r'\g<1>7'),   # Dm6/Dm9/Dm11 -> Dm7
             (r'(m?)7', r'\g<1>'),                            # Dm7 -> Dm
             (r'maj7', ''),                                   # Cmaj7 -> C
