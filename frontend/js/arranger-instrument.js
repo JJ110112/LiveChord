@@ -38,7 +38,8 @@ class ArrangerInstrument {
   static RH_GLOW  = "rgba(255, 152, 0, 0.4)";
 
   /* ---- MIDI helpers ---- */
-  static NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  // 固定顯示拼法（全降記號，唯 F# 升記號）— 與 utils.js NOTE_NAMES_DISPLAY 一致。
+  static NOTE_NAMES = ["C","Db","D","Eb","E","F","F#","G","Ab","A","Bb","B"];
 
   static midiToName(midi) {
     return ArrangerInstrument.NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
@@ -95,7 +96,8 @@ class ArrangerInstrument {
     this._kbCache = null;
     this._lastWidth = 0;
     this._lastKbWidth = 0;
-    if (this._kbCanvas) this._kbCanvas.style.cursor = "default";
+    if (this._kbCanvas) this._kbCanvas.style.cursor = "pointer";
+    this._bindKeyboardClicks();
 
     // ResizeObserver: re-render when flex layout changes canvas dimensions
     // (e.g. keyboard canvas sizing itself changes waterfall height)
@@ -150,6 +152,44 @@ class ArrangerInstrument {
     const sx = splitKey.x + splitKey.w;
     // Wide hit area: ±20px horizontal, top 30px of keyboard
     return Math.abs(x - sx) < 20 && y < 30;
+  }
+
+  // Click-to-play: tap a key on the arranger keyboard to hear it in the active
+  // arranger sound. The keyboard fills the canvas (style.height == cache.totalH)
+  // so hit-testing mirrors the 88-key piano. onpointerdown PROPERTY so repeated
+  // init() calls just replace the handler (no double-trigger). The split point
+  // is set via the toolbar +/-/reset buttons, not canvas clicks, so there is no
+  // conflict here.
+  _bindKeyboardClicks() {
+    const canvas = this._kbCanvas;
+    if (!canvas) return;
+    const self = this;
+    canvas.onpointerdown = (e) => {
+      const cache = self._kbCache;
+      if (!cache) return;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) return;
+      const cssW = parseFloat(canvas.style.width) || rect.width;
+      const cssH = parseFloat(canvas.style.height) || rect.height;
+      const cx = (e.clientX - rect.left) * (cssW / rect.width);
+      const cy = (e.clientY - rect.top) * (cssH / rect.height);
+      const { whiteXs, blackXs } = cache;
+      let midi = null;
+      for (const m in blackXs) {               // black keys on top + shorter
+        const b = blackXs[m];
+        if (cx >= b.x && cx <= b.x + b.w && cy >= 0 && cy <= b.h) { midi = parseInt(m, 10); break; }
+      }
+      if (midi == null) {
+        for (const m in whiteXs) {
+          const w = whiteXs[m];
+          if (cx >= w.x && cx <= w.x + w.w && cy >= 0 && cy <= w.h) { midi = parseInt(m, 10); break; }
+        }
+      }
+      if (midi != null && self._b.previewNote) {
+        e.preventDefault();
+        self._b.previewNote(midi);
+      }
+    };
   }
 
   /* ---- Main update (called every frame) ---- */
@@ -249,7 +289,7 @@ class ArrangerInstrument {
           ctx.stroke();
           if (isBarLine) {
             ctx.fillStyle = "rgba(255,255,255,0.5)";
-            ctx.fillText(gc.chord, 8, y - 3);
+            ctx.fillText(window.normalizeChordNameForDisplay ? window.normalizeChordNameForDisplay(gc.chord) : gc.chord, 8, y - 3);
           }
         }
       }

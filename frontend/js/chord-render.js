@@ -425,7 +425,7 @@ const ChordRender = {
 
     const nameEl = document.createElement("div");
     nameEl.className = "chord-name";
-    nameEl.textContent = chord.chord;
+    nameEl.textContent = window.normalizeChordNameForDisplay ? window.normalizeChordNameForDisplay(chord.chord) : chord.chord;
     div.appendChild(nameEl);
 
     if (diagramData) {
@@ -1393,8 +1393,9 @@ const ChordRender = {
     // Determine root note semitone for highlighting
     let rootSemi = -1;
     if (rootNote) {
-      const idx = NOTE_NAMES.indexOf(rootNote);
-      if (idx >= 0) rootSemi = idx;
+      // noteToSemitone 同時支援升／降記號拼法（Db 與 C# 都解析正確），
+      // 避免固定顯示拼法（如 Db、Eb、Ab、Bb）在純升記號表查不到而漏標根音。
+      rootSemi = window.noteToSemitone ? window.noteToSemitone(rootNote) : NOTE_NAMES.indexOf(rootNote);
     }
 
     // Draw barres
@@ -1645,6 +1646,35 @@ const ChordRender = {
         ctx.textBaseline = "middle";
         ctx.fillText(finger, x, y);
       }
+    }
+
+    // Click-to-play hit-targets: one per sounding string (open or fretted),
+    // tagged with the MIDI pitch so a tap can preview the note in the active
+    // instrument sound. Requires opts.openMidi (per-string open tuning) from
+    // the caller; muted strings (-1) produce no target. Tap radius is widened
+    // for touch. Stored on the canvas so the click handler reads live geometry.
+    const _openMidi = opts.openMidi;
+    if (Array.isArray(_openMidi)) {
+      const dots = [];
+      for (let s = 0; s < strings.length; s++) {
+        const fret = strings[s];
+        if (fret < 0) continue; // muted
+        const om = _openMidi[s];
+        if (typeof om !== "number") continue;
+        const px = strX(s);
+        let py, midi;
+        if (fret === 0) {
+          py = padTop - 12;            // open-string marker above the nut
+          midi = om;
+        } else {
+          const relF = fret - baseFret + 1;
+          if (relF < 1 || relF > numFrets) continue;
+          py = fretY(relF - 1) + fretSpacing / 2;
+          midi = om + fret;
+        }
+        dots.push({ x: px, y: py, r: Math.max(dotR, 14), midi });
+      }
+      canvas._playDots = dots;
     }
 
     // Draw next chord ghost (if provided) — dashed outlines, higher visibility

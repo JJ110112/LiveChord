@@ -931,7 +931,8 @@ function _t(k, v) { return (window.LiveChordI18n && window.LiveChordI18n.t) ? wi
   let midiHeldNotes = new Set();
   let midiChordTimeout = null;
 
-  const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  // 固定顯示拼法（全降記號，唯 F# 升記號）— 與 utils.js NOTE_NAMES_DISPLAY 一致。
+  const NOTE_NAMES = ["C","Db","D","Eb","E","F","F#","G","Ab","A","Bb","B"];
   const CHORD_MAP = {
     "0,4,7": "", "0,3,7": "m", "0,4,7,10": "7", "0,3,7,10": "m7",
     "0,4,7,11": "maj7", "0,3,6": "dim", "0,4,8": "aug",
@@ -1140,13 +1141,14 @@ function _t(k, v) { return (window.LiveChordI18n && window.LiveChordI18n.t) ? wi
     container.style.overflowX = "auto";
     
     // 以各個根音為一列
+    // 固定顯示拼法：每個音高僅提供單一拼法（全降記號，唯 F# 升記號）。
     const rootGroups = [
-        ["C", "Db", "C#"],
-        ["D", "Eb", "D#"],
+        ["C", "Db"],
+        ["D", "Eb"],
         ["E"],
-        ["F", "Gb", "F#"],
-        ["G", "Ab", "G#"],
-        ["A", "Bb", "A#"],
+        ["F", "F#"],
+        ["G", "Ab"],
+        ["A", "Bb"],
         ["B"]
     ];
     

@@ -78,8 +78,8 @@
     },
   };
 
-  const NOTE_NAMES = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
-  const SHARP_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  // 固定顯示拼法（全降記號，唯 F# 升記號）— 與 utils.js NOTE_NAMES_DISPLAY 一致。
+  const NOTE_NAMES = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
   const NOTE_NAME_TO_PC = {
     C: 0, "B#": 0,
     "C#": 1, Db: 1,
@@ -409,7 +409,7 @@
       const obj = JSON.parse(raw);
       if (!obj || typeof obj !== "object") return;
       if (obj.preset && PRESETS[obj.preset]) state.preset = obj.preset;
-      if (obj.key && NOTE_NAMES.includes(obj.key)) state.key = obj.key;
+      if (obj.key && noteNameToPc(obj.key) >= 0) state.key = pcToName(noteNameToPc(obj.key));
       if (Number.isFinite(Number(obj.bpm))) state.bpm = clamp(Math.round(Number(obj.bpm)), 50, 80);
       if (Number.isFinite(Number(obj.density))) state.density = clamp(Math.round(Number(obj.density)), 1, 3);
       if (obj.semitoneMode && ["off", "prefer", "force"].includes(obj.semitoneMode)) {
@@ -673,7 +673,8 @@
   }
 
   function pcToName(pc, prefersSharps) {
-    return (prefersSharps ? SHARP_NAMES : NOTE_NAMES)[((pc % 12) + 12) % 12];
+    // 固定顯示拼法，忽略 prefersSharps（保留參數作向後相容）。
+    return NOTE_NAMES[((pc % 12) + 12) % 12];
   }
 
   function chordPrefersSharps(rootSemi) {

@@ -94,6 +94,8 @@ class AccordionInstrument {
     this._pianoCache = null;
     this._lastWfWidth = 0;
 
+    this._bindBassClicks();
+    this._bindKeyboardClicks();
     this.prefetchData();
     // Defer first render so container layout is computed
     requestAnimationFrame(() => {
@@ -183,7 +185,7 @@ class AccordionInstrument {
     if (chordName !== this._activeChordName) {
       this._activeChordName = chordName;
       this._activeIdx = idx;
-      if (this._chordNameEl) this._chordNameEl.textContent = chordName || "--";
+      if (this._chordNameEl) this._chordNameEl.textContent = (window.normalizeChordNameForDisplay ? window.normalizeChordNameForDisplay(chordName || "") : chordName) || "--";
       this._updateHints(chordName);
     }
     this._ghostChordName = ghostName;
@@ -341,10 +343,18 @@ class AccordionInstrument {
       ctx.fillText(DLABELS[d], gridLeft + (d + 0.5) * colW, padTop + headerH - 2);
     }
 
+    // Click-to-play hit-targets, collected during the draw. Every button of a
+    // given column key sounds that key's bass note (single note per click) in
+    // the accordion timbre — see _bindBassClicks.
+    const _bassButtons = [];
+
     // Draw buttons
     for (let ki = 0; ki < nKeys; ki++) {
       const keyName = keysTopDown[ki];
       const col = COLS.indexOf(keyName);
+      // Bass-note MIDI for this column key, placed in the C2–B2 bass octave
+      // (within the accordion sample range, which starts at MIDI 36 = C2).
+      const _bassMidi = 36 + (window.noteToSemitone ? window.noteToSemitone(keyName) : 0);
 
       for (let d = 0; d < nTypes; d++) {
         const row = D2R[d]; // data row: 0=Bass, 1=Major, 2=Minor
@@ -353,6 +363,7 @@ class AccordionInstrument {
         const dy = d * offsetY;
         const cx = gridLeft + (d + 0.5) * colW;
         const cy = padTop + headerH + (ki + 0.5) * rowH + dy;
+        _bassButtons.push({ cx, cy, r: btnR, midi: _bassMidi });
 
         // Match against chord resolution data
         let isChordBtn = false, isAltBass = false, isGhost = false;
@@ -491,6 +502,8 @@ class AccordionInstrument {
       }
     }
 
+    canvas._bassButtons = _bassButtons;
+
     // Warning
     if (active && !active.available) {
       const wtxt = AccordionInstrument._warnText(active);
@@ -549,6 +562,13 @@ class AccordionInstrument {
     const dispKh = cache.keyH  * _scaleY;
     const dispBh = cache.bKeyH * _scaleY;
 
+    // Stash the keyboard band layout for click-to-play hit-testing. The
+    // keyboard occupies y ∈ [waterfallH, waterfallH+pianoH]; key x/w come from
+    // the cache (full-width space), key heights are the display-scaled
+    // dispKh / dispBh. Stored every frame so it tracks resizes. (Both this and
+    // the waterfallH<20 path draw the keyboard at H-pianoH == waterfallH.)
+    canvas._kbLayout = { waterfallH, dispKh, dispBh, cache };
+
     if (waterfallH < 20) {
       // Not enough space for waterfall, just draw the keyboard
       ctx.drawImage(cache.canvas, 0, 0, cache.canvas.width, cache.canvas.height,
@@ -598,7 +618,7 @@ class AccordionInstrument {
           ctx.lineTo(W, y);
           ctx.stroke();
           ctx.fillStyle = isBarLine ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.3)";
-          ctx.fillText(line.label, 8, y - 2);
+          ctx.fillText(window.normalizeChordNameForDisplay ? window.normalizeChordNameForDisplay(line.label) : line.label, 8, y - 2);
         }
       }
     }
@@ -841,6 +861,76 @@ class AccordionInstrument {
         ctx.restore();
       }
     }
+  }
+
+  /* ---- Click-to-play (left-hand bass grid) ---- */
+
+  // Tap a Stradella button to hear its column key's bass note in the active
+  // accordion sound. renderBassGrid stamps the canvas with `_bassButtons`
+  // ([{cx,cy,r,midi}]) each frame; we hit-test the nearest button. Bound once.
+  _bindBassClicks() {
+    const canvas = this._gridCanvas;
+    if (!canvas) return;
+    canvas.style.cursor = "pointer";
+    canvas.style.touchAction = "manipulation";
+    const self = this;
+    // onpointerdown PROPERTY (not addEventListener): init() may run more than
+    // once, so a property assignment (which replaces any prior handler) keeps
+    // exactly one handler and prevents double-trigger.
+    canvas.onpointerdown = (e) => {
+      const btns = canvas._bassButtons;
+      if (!btns || !btns.length) return;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) return;
+      // _bassButtons are in the canvas's CSS-px space (W/H == style.width/height).
+      const cx = (e.clientX - rect.left) * ((parseFloat(canvas.style.width) || rect.width) / rect.width);
+      const cy = (e.clientY - rect.top) * ((parseFloat(canvas.style.height) || rect.height) / rect.height);
+      let best = null, bestD = Infinity;
+      for (const b of btns) {
+        const dist = Math.hypot(cx - b.cx, cy - b.cy);
+        if (dist <= b.r && dist < bestD) { best = b; bestD = dist; }
+      }
+      if (best && self._b.previewNote) {
+        e.preventDefault();
+        self._b.previewNote(best.midi);
+      }
+    };
+  }
+
+  // Click-to-play on the right-hand keyboard band at the bottom of the
+  // waterfall. _drawKeyboardWaterfall stamps `_kbLayout` each frame.
+  _bindKeyboardClicks() {
+    const canvas = this._wfCanvas;
+    if (!canvas) return;
+    const self = this;
+    canvas.onpointerdown = (e) => {
+      const L = canvas._kbLayout;
+      if (!L) return;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) return;
+      const cssW = parseFloat(canvas.style.width) || rect.width;
+      const cssH = parseFloat(canvas.style.height) || rect.height;
+      const cx = (e.clientX - rect.left) * (cssW / rect.width);
+      const cy = (e.clientY - rect.top) * (cssH / rect.height);
+      if (cy < L.waterfallH) return;           // click landed in the waterfall, not a key
+      const localY = cy - L.waterfallH;
+      const { whiteXs, blackXs } = L.cache;
+      let midi = null;
+      for (const m in blackXs) {               // black keys are on top + shorter
+        const b = blackXs[m];
+        if (cx >= b.x && cx <= b.x + b.w && localY <= L.dispBh) { midi = parseInt(m, 10); break; }
+      }
+      if (midi == null) {
+        for (const m in whiteXs) {
+          const w = whiteXs[m];
+          if (cx >= w.x && cx <= w.x + w.w && localY <= L.dispKh) { midi = parseInt(m, 10); break; }
+        }
+      }
+      if (midi != null && self._b.previewNote) {
+        e.preventDefault();
+        self._b.previewNote(midi);
+      }
+    };
   }
 
   /* ---- Hints ---- */

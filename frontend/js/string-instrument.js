@@ -57,6 +57,42 @@ class StringInstrument {
       this._drawRhWaterfall(this._b.getAudio().currentTime || 0);
     }
     this._installResizeObserver();
+    this._bindFretboardClicks();
+  }
+
+  // Click-to-play: tap a finger dot / open-string marker to hear that string's
+  // note in the active instrument sound. drawVerticalFretboard stamps the
+  // canvas with `_playDots` ([{x,y,r,midi}]) each render; we hit-test against
+  // the nearest dot within its radius.
+  _bindFretboardClicks() {
+    const canvas = this._b.$(this._config.selectors.fretboardCanvas);
+    if (!canvas) return;
+    canvas.style.cursor = "pointer";
+    canvas.style.touchAction = "manipulation";
+    const self = this;
+    // onpointerdown PROPERTY (not addEventListener): _bindFretboardClicks runs
+    // on every init() (tab switch, retry, resize), so a property assignment —
+    // which replaces any prior handler — guarantees exactly one handler and no
+    // double-trigger.
+    canvas.onpointerdown = (e) => {
+      const dots = canvas._playDots;
+      if (!dots || !dots.length) return;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) return;
+      // _playDots are in the canvas's CSS-px layout space (W/H passed to the
+      // draw == clientWidth/Height), so client coords map 1:1 after offset.
+      const cx = (e.clientX - rect.left) * (canvas.clientWidth / rect.width);
+      const cy = (e.clientY - rect.top) * (canvas.clientHeight / rect.height);
+      let best = null, bestD = Infinity;
+      for (const d of dots) {
+        const dist = Math.hypot(cx - d.x, cy - d.y);
+        if (dist <= d.r && dist < bestD) { best = d; bestD = dist; }
+      }
+      if (best && self._b.previewNote) {
+        e.preventDefault();
+        self._b.previewNote(best.midi);
+      }
+    };
   }
 
   // The two canvases live in side-by-side flex panels (.gt-left-panel /
@@ -190,6 +226,7 @@ class StringInstrument {
       canvasW: canvas.clientWidth,
       canvasH: canvas.clientHeight,
       nextData: nextDiag,
+      openMidi: cfg.openMidi,
     });
 
     // Voicing pills
@@ -245,6 +282,7 @@ class StringInstrument {
       canvasH: canvas.clientHeight,
       nextData: nextDiag,
       nextAlpha: blinkAlpha,
+      openMidi: cfg.openMidi,
     });
   }
 

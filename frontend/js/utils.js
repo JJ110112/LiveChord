@@ -126,6 +126,15 @@ function formatTime(sec, mode) {
 const NOTE_NAMES_SHARP = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 const NOTE_NAMES_FLAT  = ["C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B"];
 
+// 固定顯示拼法：全用降記號，唯獨 F# 用升記號 —— C Db D Eb E F F# G Ab A Bb B。
+// 所有面向使用者的和弦／音名「文字」都應透過此表拼寫（樂譜五線譜除外，由調號決定）。
+const NOTE_NAMES_DISPLAY = ["C","Db","D","Eb","E","F","F#","G","Ab","A","Bb","B"];
+
+function semitoneToDisplay(s) {
+  s = ((s%12)+12)%12;
+  return NOTE_NAMES_DISPLAY[s];
+}
+
 function noteToSemitone(n) {
   const m = {C:0,D:2,E:4,F:5,G:7,A:9,B:11};
   let s = m[n[0].toUpperCase()] || 0;
@@ -142,9 +151,12 @@ function semitoneToNote(s, flat) {
 
 function normalizeNoteForDisplay(note, preferFlat = true) {
   if (typeof note !== "string") return note || "";
-  const m = note.toUpperCase().match(/^([A-G][b#]?)$/);
+  // 不要先 toUpperCase：那會把降記號 "b" 變成 "B"，使所有 flat 拼法（尤其 Gb）
+  // 比對失敗而原封不動 → Gb 無法轉成 F#。改用大小寫不敏感的字母 + 原樣記號比對。
+  const m = note.match(/^([A-Ga-g][b#]?)$/);
   if (!m) return note;
-  const normalized = semitoneToNote(noteToSemitone(m[0]), preferFlat);
+  // 固定顯示拼法（NOTE_NAMES_DISPLAY）；preferFlat 保留作向後相容，不再影響 F#。
+  const normalized = semitoneToDisplay(noteToSemitone(m[1]));
   return note === note.toLowerCase() ? normalized.toLowerCase() : normalized;
 }
 
@@ -167,9 +179,9 @@ function transposeChord(chord, semi) {
   if (!chord || semi === 0) return chord;
   const m = chord.match(/^([A-G][b#]?)(.*?)(?:\/([A-G][b#]?))?$/);
   if (!m) return chord;
-  const flat = m[1].includes("b") || chord.includes("b");
-  let r = semitoneToNote(noteToSemitone(m[1])+semi, flat) + (m[2]||"");
-  if (m[3]) r += "/" + semitoneToNote(noteToSemitone(m[3])+semi, flat);
+  // 移調結果採固定顯示拼法（見 NOTE_NAMES_DISPLAY），不再依來源升降記號。
+  let r = semitoneToDisplay(noteToSemitone(m[1])+semi) + (m[2]||"");
+  if (m[3]) r += "/" + semitoneToDisplay(noteToSemitone(m[3])+semi);
   return r;
 }
 
