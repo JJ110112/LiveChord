@@ -59,6 +59,18 @@ def _maybe_resolve_rh_melody(payload: Dict[str, Any], *, path: str = "", song_ha
         return payload
 
 
+def _maybe_resolve_rh_melody_without_baseline(*, path: str = "", song_hash: str = ""):
+    """Return a gate-passing cached candidate payload when no pYIN cache exists, else None."""
+    try:
+        from ai.melody_resolver import MelodyResolver, resolver_enabled
+
+        if not resolver_enabled():
+            return None
+        return MelodyResolver(DATA_DIR).resolve_missing_baseline(song_hash=song_hash, path=path)
+    except Exception:
+        return None
+
+
 def _melody_debug_target(path: str = "", song_hash: str = "") -> Dict[str, Any]:
     import json as _json
 
@@ -283,6 +295,9 @@ def get_melody(
                             song_hash=hash,
                         )
                         return _maybe_resolve_rh_melody(payload, path=cd.get("path", ""), song_hash=melody_hash)
+                    candidate = _maybe_resolve_rh_melody_without_baseline(path=cd.get("path", ""), song_hash=melody_hash)
+                    if candidate:
+                        return candidate
             except Exception:
                 pass
         return {"melody": []}
@@ -312,9 +327,16 @@ def get_melody(
     try:
         import melody_extract_queue
         status = melody_extract_queue.enqueue(h, full_path, path=path)
-        return {"melody": [], "pending": True, "status": status}
     except Exception as e:
         return {"error": str(e), "melody": []}
+
+    # Batch-built vocal candidate may already exist ahead of pYIN: serve it now
+    # instead of an empty pending payload; pYIN still lands in the background
+    # so the normal baseline-aware resolve path applies on later requests.
+    candidate = _maybe_resolve_rh_melody_without_baseline(path=path, song_hash=h)
+    if candidate:
+        return candidate
+    return {"melody": [], "pending": True, "status": status}
 
 
 @router.get("/melody/debug")

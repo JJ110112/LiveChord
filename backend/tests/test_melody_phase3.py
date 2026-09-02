@@ -1683,6 +1683,81 @@ class TestMelodyPhase3(unittest.TestCase):
             resolved = MelodyResolver(root).resolve(baseline, song_hash=song_hash, path="song.flac")
             self.assertEqual(resolved["melody_source"]["fallback_reason"], "vocal_candidate_missing")
 
+    def test_melody_resolver_missing_baseline_serves_gated_candidate(self):
+        # Batch candidate builds run ahead of pYIN; a gate-validated candidate
+        # must be servable without a baseline, but never when the gate fails.
+        from backend.ai.melody_resolver import NO_BASELINE_FLAG
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            song_hash = "abcdef123456"
+            candidate = build_candidate_payload(
+                song_hash=song_hash,
+                path="song.flac",
+                candidate_id=VOCAL_STEM_CREPE,
+                melody=[{"start": 0, "end": 1.0, "midi": 64}],
+                stem="vocals",
+                algorithm="htdemucs.vocals+torchcrepe.full",
+            )
+            self.assertIsNone(MelodyResolver(root).resolve_missing_baseline(song_hash=song_hash, path="song.flac"))
+            write_candidate_cache(root, song_hash, VOCAL_STEM_CREPE, candidate)
+
+            def features(ratio):
+                return {"stem_status": "cached_stems", "missing_stems": [], "stem_analyzed_duration_s": 120.0, "vocal_stem_energy_ratio": ratio}
+
+            with patch("backend.ai.melody_resolver.cached_stem_energy_features", return_value=features(0.02)):
+                self.assertIsNone(MelodyResolver(root).resolve_missing_baseline(song_hash=song_hash, path="song.flac"))
+            self.assertFalse(selected_path(root, song_hash).is_file())
+
+            with patch("backend.ai.melody_resolver.cached_stem_energy_features", return_value=features(0.30)):
+                resolved = MelodyResolver(root).resolve_missing_baseline(song_hash=song_hash, path="song.flac")
+
+            self.assertEqual(resolved["melody_source"]["id"], VOCAL_STEM_CREPE)
+            self.assertEqual(resolved["melody_source"]["selected_by"], RESOLVER_VERSION)
+            self.assertIn(NO_BASELINE_FLAG, resolved["quality_flags"])
+            self.assertIn("resolver_selected_vocal_stem_crepe", resolved["quality_flags"])
+            self.assertEqual(resolved["melody"][0]["midi"], 64)
+            self.assertTrue(selected_path(root, song_hash).is_file())
+
+    def test_ai_api_melody_path_mode_serves_candidate_before_pyin_lands(self):
+        backend_dir = Path(__file__).resolve().parents[1]
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        import ai_api
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "melodies").mkdir()
+            audio = root / "song.flac"
+            audio.write_bytes(b"x")
+            song_hash = "abcdef123456"
+            candidate_payload = {"melody": [{"start": 0, "end": 1.0, "midi": 64}], "melody_source": {"id": VOCAL_STEM_CREPE}}
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(ai_api, "DATA_DIR", root))
+                stack.enter_context(patch("chord_cache.song_hash", lambda p: song_hash))
+                stack.enter_context(patch("config.resolve_path", lambda p: str(audio)))
+                enqueue = stack.enter_context(patch("melody_extract_queue.enqueue", return_value="queued"))
+                no_baseline = stack.enter_context(patch.object(
+                    ai_api, "_maybe_resolve_rh_melody_without_baseline", return_value=candidate_payload,
+                ))
+                result = ai_api.get_melody(path="song.flac", hash="")
+
+            enqueue.assert_called_once()
+            no_baseline.assert_called_once_with(path="song.flac", song_hash=song_hash)
+            self.assertEqual(result["melody"][0]["midi"], 64)
+            self.assertNotIn("pending", result)
+
+            # No candidate -> unchanged pending contract.
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(ai_api, "DATA_DIR", root))
+                stack.enter_context(patch("chord_cache.song_hash", lambda p: song_hash))
+                stack.enter_context(patch("config.resolve_path", lambda p: str(audio)))
+                stack.enter_context(patch("melody_extract_queue.enqueue", return_value="queued"))
+                stack.enter_context(patch.object(ai_api, "_maybe_resolve_rh_melody_without_baseline", return_value=None))
+                result = ai_api.get_melody(path="song.flac", hash="")
+            self.assertEqual(result, {"melody": [], "pending": True, "status": "queued"})
+
     def test_ai_api_melody_hash_rehash_uses_recomputed_hash_for_resolver(self):
         backend_dir = Path(__file__).resolve().parents[1]
         if str(backend_dir) not in sys.path:

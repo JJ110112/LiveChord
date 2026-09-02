@@ -16,6 +16,7 @@ from .song_type_vocal_gate import VOCAL_GATE_VERSION, classify_vocal_gate
 RESOLVER_VERSION = "rhmelody-resolver-v0"
 RETREAT_LOW_COVERAGE_FLAG = "vocal_candidate_retreat_low_coverage"
 RESOLVER_FALLBACK_FLAG = "resolver_fallback_full_mix"
+NO_BASELINE_FLAG = "resolver_selected_without_baseline"
 DEFAULT_MIN_COVERAGE_RATIO = 0.30
 
 
@@ -140,6 +141,47 @@ class MelodyResolver:
                 extra_flags=[RETREAT_LOW_COVERAGE_FLAG],
             )
 
+        return self._select_vocal(candidate, song_hash=song_hash, path=path, gate=gate)
+
+    def resolve_missing_baseline(self, *, song_hash: str, path: str = "") -> Dict[str, Any] | None:
+        """Serve a cached `vocal_stem_crepe` candidate when no pYIN baseline exists.
+
+        Batch candidate builds run ahead of pYIN extraction, so a song can have
+        a gate-validated candidate but no `melodies/<hash>.json`. Returns None
+        (caller falls through to the normal extraction path) unless the
+        candidate is cached AND the vocal gate passes. The relative
+        low-coverage retreat is skipped because there is no baseline to
+        compare against; the absolute gate still applies. Never runs Demucs,
+        CREPE, or pYIN.
+        """
+
+        if not song_hash:
+            return None
+        candidate = read_candidate_cache(self.data_dir, song_hash, VOCAL_STEM_CREPE)
+        if not candidate:
+            return None
+        gate = self._vocal_gate(song_hash)
+        if not gate.get("predict_vocal"):
+            return None
+        selected = self._select_vocal(
+            candidate,
+            song_hash=song_hash,
+            path=path,
+            gate=gate,
+            extra_flags=[NO_BASELINE_FLAG],
+        )
+        self._write_selected_cache(song_hash, selected)
+        return selected
+
+    def _select_vocal(
+        self,
+        candidate: Mapping[str, Any],
+        *,
+        song_hash: str,
+        path: str,
+        gate: Mapping[str, Any],
+        extra_flags: list[str] | None = None,
+    ) -> Dict[str, Any]:
         selected = copy.deepcopy(dict(candidate))
         source = selected.get("melody_source") if isinstance(selected.get("melody_source"), dict) else {}
         source = dict(source)
@@ -154,8 +196,9 @@ class MelodyResolver:
         })
         selected["melody_source"] = source
         flags = self._flags(selected.get("quality_flags"))
-        if "resolver_selected_vocal_stem_crepe" not in flags:
-            flags.append("resolver_selected_vocal_stem_crepe")
+        for flag in ["resolver_selected_vocal_stem_crepe", *(extra_flags or [])]:
+            if flag not in flags:
+                flags.append(flag)
         selected["quality_flags"] = flags
         return self._finalize(selected, path=path or str(selected.get("path") or ""), song_hash=song_hash)
 
