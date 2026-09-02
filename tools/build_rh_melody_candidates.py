@@ -358,6 +358,9 @@ def main() -> int:
     log_dir = data_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     out_jsonl = log_dir / f"rh_melody_candidates_{ts}.jsonl"
+    # Write the per-song log locally: an SMB hiccup on V:\ mid-run must not
+    # abort the batch. The file is copied to <data-dir>/logs at the end.
+    local_jsonl = Path(tempfile.gettempdir()) / out_jsonl.name
 
     if not args.execute:
         planned = 0
@@ -373,7 +376,7 @@ def main() -> int:
     tmp_root = Path(args.tmp_root) if args.tmp_root else Path(tempfile.gettempdir())
     tmp_root.mkdir(parents=True, exist_ok=True)
     records: List[Dict[str, Any]] = []
-    with out_jsonl.open("a", encoding="utf-8") as fh:
+    with local_jsonl.open("a", encoding="utf-8") as fh:
         for i, row in enumerate(rows, 1):
             print(f"[{i}/{len(rows)}] {row['song_hash']} {row['path']}", flush=True)
             rec = process_song(
@@ -396,9 +399,17 @@ def main() -> int:
 
     summary = _summarize(records)
     summary["log"] = str(out_jsonl)
-    (out_jsonl.with_suffix(".summary.json")).write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    try:
+        shutil.copy2(local_jsonl, out_jsonl)
+        (out_jsonl.with_suffix(".summary.json")).write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except OSError as exc:
+        summary["log"] = str(local_jsonl)
+        summary["log_copy_error"] = f"{type(exc).__name__}: {exc}"
+        local_jsonl.with_suffix(".summary.json").write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0
 
