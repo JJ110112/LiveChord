@@ -875,7 +875,8 @@ a:hover { text-decoration: underline; }
 .sl-note.is-playing { background: var(--accent); border-color: var(--accent); transform: translateY(-2px); }
 .sl-note.is-playing b, .sl-note.is-playing small { color: #fff; }
 .sl-stage { min-width: 0; overflow-x: auto; }
-.sl-canvas { display: block; max-width: 100%; }
+/* no max-width: the guitar board has a 520px floor and must scroll inside .sl-stage, not squash */
+.sl-canvas { display: block; }
 .sl-tab {
   margin: 10px 0 0; padding: 10px 12px; border-radius: 10px;
   border: 1px solid var(--border);
