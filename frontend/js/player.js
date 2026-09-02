@@ -2642,6 +2642,7 @@
         songTitle.title = _trackArtist ? `${title} — ${_trackArtist}` : title;
         document.title = `${title} — LiveChord`;
         _checkMarquee(songTitle);
+        _setTopbarCover(API.trackCoverUrl(path));
       } catch {
         const title = path.split("/").pop().replace(/\.flac$/i, "");
         songTitle.textContent = title;
@@ -3275,6 +3276,17 @@
   // chord JSON at data/chords/<h>.json.
   function _accPath() {
     return trackPath || (chordData && chordData.path) || "";
+  }
+
+  // Topbar album thumbnail. Shown only once the image loads, so songs
+  // without cover art (404) leave the title row exactly as before.
+  function _setTopbarCover(url) {
+    const img = document.getElementById("songCover");
+    if (!img || !url) return;
+    img.hidden = true;
+    img.onload = () => { img.hidden = false; };
+    img.onerror = () => { img.hidden = true; };
+    img.src = url;
   }
 
   function _loadAccompaniment(forceRefresh) {
@@ -8109,6 +8121,7 @@
           songTitle.title = title;
           _checkMarquee(songTitle);
           document.title = `${title} — LiveChord`;
+          _setTopbarCover(`/api/process/cover/${encodeURIComponent(hashMode)}`);
           if (chordData.key) {
             const keyInfo = $("#chordKey");
             if (keyInfo) keyInfo.textContent = `Key: ${_displayKey(chordData.key)}`;

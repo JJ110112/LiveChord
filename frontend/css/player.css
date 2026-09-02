@@ -98,6 +98,18 @@
   pointer-events: auto;
 }
 
+/* Album thumbnail left of the title — quick visual cue for which album/
+   MIDI the player is on. Hidden until the image actually loads. */
+.topbar-cover {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  box-shadow: 0 1px 3px rgba(0,0,0,.35);
+}
+
 .topbar-title {
   font-size: 15px;
   font-weight: 600;
@@ -2675,6 +2687,10 @@ body.no-score #scoreLayer { display: none !important; }
      when the controls were wider than the freed space. */
   .topbar-title {
     font-size: 13px;
+  }
+  .topbar-cover {
+    width: 24px;
+    height: 24px;
   }
   /* Three-tier stacked mobile toolbar — replaces the old single-row overflow-x
      scrollable toolbar. T1 pills (speed/loop/transpose/volume) on top, transport
