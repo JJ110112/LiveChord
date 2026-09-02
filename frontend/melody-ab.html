@@ -353,6 +353,7 @@
 <script>
 (function () {
   const state = {
+    queue: new URLSearchParams(location.search).get("queue") || "smoke",
     group: "vocal",
     items: [],
     filtered: [],
@@ -559,11 +560,11 @@
   async function loadGroup() {
     status.textContent = "loading";
     list.innerHTML = "";
-    const res = await fetch(`/api/ai/melody/ab/review?group=${encodeURIComponent(state.group)}`);
+    const res = await fetch(`/api/ai/melody/ab/review?group=${encodeURIComponent(state.group)}&queue=${encodeURIComponent(state.queue)}`);
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.detail || data.error || res.statusText);
     state.items = data.items || [];
-    sourceLine.textContent = `${data.total || 0} rows · ${data.smoke_file || ""}`;
+    sourceLine.textContent = `queue ${data.queue || state.queue} · ${data.total || 0} rows · ${data.smoke_file || ""}`;
     applyFilter();
     const counts = data.group_counts || {};
     status.textContent = `vocal ${counts.vocal || 0} · piano ${counts.solo_piano || 0} · instrumental ${counts.instrumental || 0}`;
@@ -715,7 +716,7 @@
         ? getChoice(article, "preferred", "na")
         : "na",
       review_note: article.querySelector("textarea[data-field='review_note']")?.value || "",
-      survey_id: "phase0_5_ab_smoke"
+      survey_id: item.survey_id || "phase0_5_ab_smoke"
     };
     const stateEl = article.querySelector(".save-state");
     stateEl.textContent = "saving";

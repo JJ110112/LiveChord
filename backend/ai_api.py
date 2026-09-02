@@ -669,17 +669,40 @@ def _title_from_audio_path(path: str) -> str:
     return name.rsplit(".", 1)[0] if "." in name else name
 
 
+_MELODY_AB_QUEUES: Dict[str, Dict[str, str]] = {
+    "smoke": {
+        "results_file": "phase0_5_ab_smoke_results.jsonl",
+        "survey_id": "phase0_5_ab_smoke",
+    },
+    "gate_band": {
+        "results_file": "phase0_5_ab_gate_band_results.jsonl",
+        "survey_id": "phase0_5_ab_gate_band_20260902",
+    },
+}
+
+
+def _melody_ab_queue_profile(queue: str) -> Dict[str, str]:
+    # Direct (non-FastAPI) callers may pass the Query default object through.
+    clean = (queue if isinstance(queue, str) else "smoke").strip().lower() or "smoke"
+    profile = _MELODY_AB_QUEUES.get(clean)
+    if profile is None:
+        raise HTTPException(status_code=400, detail=f"queue must be one of {sorted(_MELODY_AB_QUEUES)}")
+    return {"id": clean, **profile}
+
+
 @router.get("/melody/ab/review")
 def get_melody_ab_review(
     group: str = Query(default="all", description="all, vocal, piano, solo_piano, instrumental"),
+    queue: str = Query(default="smoke", description="A/B results queue: smoke or gate_band"),
     _: str = Depends(get_admin_user),
 ):
     """Admin-only temporary A/B review queue for RH melody extraction candidates."""
 
     review_dir = _melody_ab_review_dir()
     data_root = review_dir.parent
-    smoke_file = review_dir / "phase0_5_ab_smoke_results.jsonl"
-    summary_file = review_dir / "phase0_5_ab_smoke_results.jsonl.summary.json"
+    profile = _melody_ab_queue_profile(queue)
+    smoke_file = review_dir / profile["results_file"]
+    summary_file = review_dir / f"{profile['results_file']}.summary.json"
     feedback_file = review_dir / "phase0_5_ab_feedback.jsonl"
     rows = _read_jsonl_dicts(smoke_file)
     latest_feedback = _latest_ab_feedback(feedback_file)
@@ -739,6 +762,7 @@ def get_melody_ab_review(
             "title": str(requested.get("title") or _title_from_audio_path(path)),
             "artist": str(requested.get("artist") or ""),
             "note": str(row.get("note") or requested.get("note") or ""),
+            "survey_id": profile["survey_id"],
             "warnings": row.get("warnings") or [],
             "audio_url": f"/api/track/stream?path={quote(path, safe='')}" if path else "",
             "candidate_a": candidate_entries[0] if candidate_entries else _blank_ab_candidate(""),
@@ -760,6 +784,8 @@ def get_melody_ab_review(
     return {
         "ok": True,
         "group": group,
+        "queue": profile["id"],
+        "survey_id": profile["survey_id"],
         "smoke_file": str(smoke_file),
         "feedback_file": str(feedback_file),
         "summary": summary,

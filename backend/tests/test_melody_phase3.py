@@ -562,6 +562,35 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(item["feedback"]["preferred"], "b")
             self.assertIs(item["feedback"]["applicable"], True)
 
+    def test_ai_api_melody_ab_review_queue_param_selects_results_file(self):
+        # A second A/B queue (gate band) must not clobber or read the original
+        # 27-song smoke results; unknown queue names fail loudly.
+        backend_dir = Path(__file__).resolve().parents[1]
+        if str(backend_dir) not in sys.path:
+            sys.path.insert(0, str(backend_dir))
+        import ai_api
+        from fastapi import HTTPException
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            reviews = root / "melody_reviews"
+            reviews.mkdir(parents=True)
+            row = {"group": "vocal", "requested": {"hash": "abcdef123456", "path": "song.flac"}, "resolved_candidates": ["full_mix_pyin", "vocal_stem_crepe"], "result": {"results": []}}
+            (reviews / "phase0_5_ab_gate_band_results.jsonl").write_text(json.dumps(row) + "
+", encoding="utf-8")
+
+            with patch.object(ai_api, "DATA_DIR", root), patch("ai.melody_review.resolve_review_data_dir", lambda d: root):
+                gate = ai_api.get_melody_ab_review(group="vocal", queue="gate_band", _="admin")
+                smoke = ai_api.get_melody_ab_review(group="vocal", _="admin")
+                with self.assertRaises(HTTPException):
+                    ai_api.get_melody_ab_review(group="vocal", queue="nope", _="admin")
+
+            self.assertEqual(gate["queue"], "gate_band")
+            self.assertEqual(gate["total"], 1)
+            self.assertEqual(gate["items"][0]["survey_id"], "phase0_5_ab_gate_band_20260902")
+            self.assertEqual(smoke["queue"], "smoke")
+            self.assertEqual(smoke["total"], 0)
+
     def test_ai_api_melody_ab_feedback_appends_jsonl(self):
         backend_dir = Path(__file__).resolve().parents[1]
         if str(backend_dir) not in sys.path:
