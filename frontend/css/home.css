@@ -1162,7 +1162,7 @@ body.ambient-fullscreen-lock {
 .proglib.is-collapsed { min-height: 0; padding: 12px 14px; }
 .proglib.is-collapsed .proglib-subtitle { display: none; }
 .proglib.is-collapsed .proglib-head { align-items: center; }
-.proglib.is-collapsed .proglib-head-actions .proglib-btn:not(#proglibCollapseBtn) { display: none; }
+.proglib.is-collapsed .proglib-head-actions .proglib-btn:not(.proglib-collapse-btn) { display: none; }
 
 .proglib-btn {
   border: 1px solid var(--border);
@@ -2889,3 +2889,14 @@ body.ambient-fullscreen-lock {
   .ip-grid { grid-template-columns: repeat(3, 1fr); }
   .instrument-picker-panel { padding: 18px 16px 12px; }
 }
+
+/* ---- Scale Lab (homepage section, composes .proglib chrome) ---- */
+.scalelab .sl-host { margin-top: 14px; }
+.sl-refs {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+.sl-refs a { color: var(--accent); text-decoration: none; }
+.sl-refs a:hover { text-decoration: underline; }

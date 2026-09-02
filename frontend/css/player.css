@@ -4331,3 +4331,16 @@ body.no-score #scoreLayer { display: none !important; }
 [data-theme="sky"] .demo-attribution:hover {
   background: rgba(0, 0, 0, 0.08);
 }
+
+/* ---- Scale popup on the key badge (#chordKey → ScaleLab.openModal).
+   Type B modal — composes .lc-modal-backdrop + .lc-modal in JS (scale-lab.js). */
+.topbar-key-btn { cursor: pointer; border-radius: 6px; padding: 2px 4px; }
+.topbar-key-btn:hover, .topbar-key-btn:focus-visible { background: var(--bg-hover); outline: none; }
+.scale-modal .lc-modal {
+  width: min(820px, 94vw);
+  max-width: min(820px, 94vw);
+  max-height: 88vh;
+}
+.scale-modal .sl-modal-body { margin-top: 10px; }
+.scale-modal .sl-controls { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.scale-modal .sl-desc { font-size: 13px; }

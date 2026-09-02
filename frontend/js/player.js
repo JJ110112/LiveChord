@@ -4785,7 +4785,7 @@
           const _ma = { Mixolydian:"Mix", Dorian:"Dor", Lydian:"Lyd", Aeolian:"Aeo", Blues:"Blues" };
           const _ml = chordData.mode && _ma[chordData.mode] ? ` ${_ma[chordData.mode]}` : "";
           const displayKey = _displayKey(chordData.key);
-          if (keyInfo) keyInfo.textContent = `Key: ${displayKey}${_ml}`;
+          if (keyInfo) { keyInfo.textContent = `Key: ${displayKey}${_ml}`; keyInfo.dataset.mode = chordData.mode || ""; }
         }
         if (chordData.capo) {
           capo = chordData.capo;
@@ -7858,6 +7858,7 @@
       const curMode = curSec && curSec.mode ? curSec.mode : "";
       const modeAbbr = { Mixolydian: "Mix", Dorian: "Dor", Lydian: "Lyd", Aeolian: "Aeo", Phrygian: "Phr", Blues: "Blues" };
       const curModeLabel = modeAbbr[curMode] || "";
+      keyInfo.dataset.mode = curMode || (chordData.mode || "");
 
       const uniqueRoots = new Set(stable.map(rawRoot));
       if (uniqueRoots.size > 1) {
@@ -7914,7 +7915,26 @@
     }
     keyInfo.classList.remove("has-modulation");
     keyInfo.dataset.mobileKey = baseKey;
+    keyInfo.dataset.mode = chordData.mode || "";
     keyInfo.textContent = `Key: ${baseKey}`;
+  }
+
+  // Key badge → scale popup (ScaleLab, shared with the homepage Scale Lab section).
+  // Uses the badge's own data-mobile-key so a mid-song modulation opens the
+  // *current* key, and the section/global mode (Dorian, Mixolydian, …) picks
+  // the matching scale instead of plain major/minor.
+  const _keyBadge = $("#chordKey");
+  function _openKeyScalePopup() {
+    if (!window.ScaleLab || !chordData || !chordData.key) return;
+    const key = (_keyBadge && _keyBadge.dataset.mobileKey) || _displayKey(_currentKey());
+    const mode = (_keyBadge && _keyBadge.dataset.mode) || chordData.mode || "";
+    window.ScaleLab.openModal({ key, mode });
+  }
+  if (_keyBadge) {
+    _keyBadge.addEventListener("click", _openKeyScalePopup);
+    _keyBadge.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); _openKeyScalePopup(); }
+    });
   }
 
   if (transposeUpBtn) transposeUpBtn.addEventListener("click", () => {
@@ -8124,7 +8144,7 @@
           _setTopbarCover(`/api/process/cover/${encodeURIComponent(hashMode)}`);
           if (chordData.key) {
             const keyInfo = $("#chordKey");
-            if (keyInfo) keyInfo.textContent = `Key: ${_displayKey(chordData.key)}`;
+            if (keyInfo) { keyInfo.textContent = `Key: ${_displayKey(chordData.key)}`; keyInfo.dataset.mode = chordData.mode || ""; }
           }
           _updateChordQualityBadge(chordData, hashMode);
           await preloadChordInfo(chordData.chords);

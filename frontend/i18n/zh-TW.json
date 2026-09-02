@@ -1446,5 +1446,6 @@
   "home.midi.stage.render": "合成音訊…",
   "home.midi.stage.save": "儲存中…",
   "player.chord_src.midi_upload": "MIDI 檔案（精確）",
-  "toast.midi.no_audio": "此 MIDI 沒有合成音訊（伺服器缺 FluidSynth），僅顯示和弦與指法"
+  "toast.midi.no_audio": "此 MIDI 沒有合成音訊（伺服器缺 FluidSynth），僅顯示和弦與指法",
+  "player.key_scale_title": "點擊查看此調性的音階（鋼琴 / 吉他）"
 }

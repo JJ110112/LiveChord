@@ -1446,5 +1446,6 @@
   "home.midi.stage.render": "Rendering audio…",
   "home.midi.stage.save": "Saving…",
   "player.chord_src.midi_upload": "MIDI file (exact)",
-  "toast.midi.no_audio": "No synthesized audio for this MIDI (server has no FluidSynth) — chords and fingering only"
+  "toast.midi.no_audio": "No synthesized audio for this MIDI (server has no FluidSynth) — chords and fingering only",
+  "player.key_scale_title": "Click to view this key's scale (piano / guitar)"
 }
