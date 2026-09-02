@@ -9,7 +9,7 @@ from typing import Any, Dict, Mapping
 
 from .melody_candidate import FULL_MIX_PYIN, VOCAL_STEM_CREPE, read_candidate_cache, selected_path
 from .melody_schema import finalize_melody_payload
-from .song_type_audio_features import cached_stem_energy_features
+from .song_type_audio_features import cached_stem_energy_features, read_stem_energy_sidecar
 from .song_type_vocal_gate import VOCAL_GATE_VERSION, classify_vocal_gate
 
 
@@ -66,15 +66,18 @@ class MelodyResolver:
 
         candidate = read_candidate_cache(self.data_dir, song_hash, VOCAL_STEM_CREPE)
         if not candidate:
-            return self._fallback(
-                baseline,
-                gate={
+            # Only the cheap sidecar is consulted here (never cached stem WAVs):
+            # batch runs with --skip-crepe-below-gate leave a sidecar but no
+            # candidate, and the real gate reason is more useful than
+            # "candidate missing" for those songs.
+            gate = self._sidecar_gate(song_hash)
+            if gate is None or gate.get("predict_vocal"):
+                gate = {
                     "predict_vocal": False,
                     "reason": "vocal_candidate_missing",
                     "song_type_source": VOCAL_GATE_VERSION,
-                },
-                reason="vocal_candidate_missing",
-            )
+                }
+            return self._fallback(baseline, gate=gate, reason=str(gate["reason"]))
 
         gate = self._vocal_gate(song_hash)
         if gate.get("predict_vocal"):
@@ -94,6 +97,18 @@ class MelodyResolver:
             )
         self._write_selected_cache(song_hash, selected)
         return selected
+
+    def _sidecar_gate(self, song_hash: str) -> Dict[str, Any] | None:
+        sidecar = read_stem_energy_sidecar(self.data_dir, song_hash)
+        if sidecar is None:
+            return None
+        gate = classify_vocal_gate({
+            "duration_s": sidecar.get("stem_analyzed_duration_s"),
+            "stems": sidecar,
+        })
+        gate["stem_status"] = sidecar.get("stem_status")
+        gate["missing_stems"] = sidecar.get("missing_stems", [])
+        return gate
 
     def _vocal_gate(self, song_hash: str) -> Dict[str, Any]:
         stem_features = cached_stem_energy_features(self.data_dir, song_hash)

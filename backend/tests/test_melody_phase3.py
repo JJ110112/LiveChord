@@ -1647,6 +1647,42 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(resolved["melody_source"]["fallback_reason"], "vocal_candidate_missing")
             self.assertFalse(selected_path(root, "abcdef123456").is_file())
 
+    def test_melody_resolver_missing_candidate_reports_sidecar_gate_reason(self):
+        # Batch runs with --skip-crepe-below-gate persist a sidecar but no
+        # candidate; the real gate reason must win over "candidate missing"
+        # without touching cached stem WAVs.
+        from backend.ai.song_type_audio_features import write_stem_energy_sidecar
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            song_hash = "abcdef123456"
+            baseline = finalize_melody_payload(
+                {"path": "song.flac", "melody": [{"start": 0, "end": 2.0, "midi": 60}]},
+                path="song.flac",
+            )
+            write_stem_energy_sidecar(
+                root,
+                song_hash,
+                {"vocal_stem_energy_ratio": 0.02, "stem_analyzed_duration_s": 120.0},
+            )
+
+            with patch("backend.ai.melody_resolver.cached_stem_energy_features") as stem_features:
+                resolved = MelodyResolver(root).resolve(baseline, song_hash=song_hash, path="song.flac")
+
+            stem_features.assert_not_called()
+            self.assertEqual(resolved["melody_source"]["id"], FULL_MIX_PYIN)
+            self.assertEqual(resolved["melody_source"]["fallback_reason"], "vocal_ratio_below_threshold")
+            self.assertFalse(selected_path(root, song_hash).is_file())
+
+            # Gate passing with no candidate is still "candidate missing".
+            write_stem_energy_sidecar(
+                root,
+                song_hash,
+                {"vocal_stem_energy_ratio": 0.30, "stem_analyzed_duration_s": 120.0},
+            )
+            resolved = MelodyResolver(root).resolve(baseline, song_hash=song_hash, path="song.flac")
+            self.assertEqual(resolved["melody_source"]["fallback_reason"], "vocal_candidate_missing")
+
     def test_ai_api_melody_hash_rehash_uses_recomputed_hash_for_resolver(self):
         backend_dir = Path(__file__).resolve().parents[1]
         if str(backend_dir) not in sys.path:
