@@ -514,6 +514,7 @@
     };
 
     const WHITE_PCS = [0, 2, 4, 5, 7, 9, 11];
+    const WHITE_NAMES = ["C", "D", "E", "F", "G", "A", "B"];
     const BLACK_AFTER = { 0: 1, 2: 3, 5: 6, 7: 8, 9: 10 }; // white pc -> black pc to its right
 
     // white keys
@@ -538,12 +539,13 @@
           ctx.fillStyle = "rgba(255,255,255,0.85)";
           ctx.fillText(built.degrees[inScale.get(pc)], x + whiteW / 2, whiteH - 26);
         }
-      } else if (pc === 0) {
-        // octave anchor label like the 88-key view: C inside the key
+      } else {
+        // out-of-scale white key: faint note name so the keyboard stays readable
         ctx.fillStyle = light ? "#666" : "#8a8f99";
         ctx.font = `500 ${Math.round(Math.min(11, whiteW * 0.3))}px system-ui, sans-serif`;
         ctx.textAlign = "center";
-        ctx.fillText("C", x + whiteW / 2, whiteH - 10);
+        ctx.textBaseline = "alphabetic";
+        ctx.fillText(WHITE_NAMES[w % 7], x + whiteW / 2, whiteH - 10);
       }
     }
     // black keys
@@ -562,7 +564,13 @@
         ctx.fillStyle = "#fff";
         ctx.font = `${isRoot ? 700 : 600} ${Math.round(Math.min(12, blackW * 0.5))}px system-ui, sans-serif`;
         ctx.textAlign = "center";
+        ctx.textBaseline = "alphabetic";
         ctx.fillText(labelFor(pcBlack), x + blackW / 2, blackH - 8);
+        if (labelMode === "name") {
+          ctx.font = `500 ${Math.round(Math.min(10, blackW * 0.42))}px system-ui, sans-serif`;
+          ctx.fillStyle = "rgba(255,255,255,0.85)";
+          ctx.fillText(built.degrees[inScale.get(pcBlack)], x + blackW / 2, blackH - 22);
+        }
       }
     }
   }
