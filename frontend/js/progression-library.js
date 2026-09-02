@@ -597,6 +597,7 @@
     refs.style.addEventListener("change", () => {
       state.style = refs.style.value;
       refreshProgOptions();
+      applyCustomInputKey();
       syncStrandsToggleUi();
       syncStrandsLinkUi();
       persistSettings();
@@ -604,6 +605,7 @@
     });
     refs.prog.addEventListener("change", () => {
       state.progId = refs.prog.value;
+      applyCustomInputKey();
       persistSettings();
       rebuild();
     });
@@ -1035,9 +1037,24 @@
     }
     if (state.style === CUSTOM_STYLE) {
       refreshProgOptions();
+      applyCustomInputKey();
       rebuild();
     }
     renderFavorites();
+  }
+
+  // Custom entries typed as chord names remember their key ("Am" → tonic A);
+  // selecting one flips the Key dropdown so the cards show the user's original
+  // chord names instead of a C-transposed version.
+  function applyCustomInputKey() {
+    if (state.style !== CUSTOM_STYLE) return;
+    const prog = currentProg();
+    if (!prog || !prog.input_key) return;
+    const pc = keyNameToPc(prog.input_key);
+    const k = KEYS.find((x) => x.pc === pc);
+    if (!k || k.name === state.keyName) return;
+    state.keyName = k.name;
+    refs.key.value = state.keyName;
   }
 
   function customToProg(it) {
@@ -1047,6 +1064,8 @@
       desc: it.desc || "",
       source_url: it.source_url || "",
       input_text: it.input_text || "",
+      // Entries saved before input_key existed: re-detect from the chord names.
+      input_key: it.input_key || (it.input_text ? (parseProgressionInput(it.input_text, "C").detectedKey || "") : ""),
       chords: (it.chords || []).map((c) => (c.length > 2 && c[2] != null ? [c[0], c[1], c[2]] : [c[0], c[1]])),
     };
   }
@@ -1248,8 +1267,8 @@
     ed.querySelector(".proglib-editor-title").textContent = prog ? `編輯：${prog.name}` : "新增自訂進行";
     ed.querySelector("[name=name]").value = prog ? prog.name : "";
     ed.querySelector("[name=text]").value = prog ? (prog.input_text || specsToRoman(prog.chords)) : "";
-    ed.querySelector("[name=inkey]").value = state.keyName;
-    ed.dataset.inkeyTouched = "";
+    ed.querySelector("[name=inkey]").value = (prog && prog.input_key) || state.keyName;
+    ed.dataset.inkeyTouched = prog && prog.input_key ? "1" : "";
     ed.querySelector("[name=desc]").value = prog ? prog.desc : "";
     ed.querySelector("[name=url]").value = prog ? prog.source_url : "";
     ed.hidden = false;
@@ -1274,6 +1293,7 @@
       desc: ed.querySelector("[name=desc]").value.trim(),
       source_url: ed.querySelector("[name=url]").value.trim(),
       input_text: text.trim(),
+      input_key: ed.querySelector(".proglib-field-inkey").style.display === "none" ? "" : ed.querySelector("[name=inkey]").value,
     };
     if (!body.name) { showToastSafe("請輸入名稱"); return; }
     const editing = _customEditingId;
@@ -1294,6 +1314,7 @@
       state.progId = prog.id;
       refs.style.value = state.style;
       refreshProgOptions();
+      applyCustomInputKey();
       syncStrandsToggleUi();
       syncStrandsLinkUi();
       persistSettings();

@@ -229,6 +229,7 @@ class CustomProgressionIn(BaseModel):
     desc: str = Field("", max_length=500)
     source_url: str = Field("", max_length=500)
     input_text: str = Field("", max_length=300)
+    input_key: str = Field("", max_length=4)
 
 
 def _read_custom() -> list:
@@ -279,6 +280,7 @@ def _validate_custom(body: CustomProgressionIn) -> dict:
         "desc": body.desc.strip(),
         "source_url": url,
         "input_text": body.input_text.strip(),
+        "input_key": body.input_key.strip(),
     }
 
 
