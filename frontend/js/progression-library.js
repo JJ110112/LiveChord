@@ -966,7 +966,7 @@
             return `
             <button class="proglib-chord ${idx === state.activeIndex ? "is-active" : ""}" data-idx="${idx}" type="button">
               <div class="proglib-chord-roman">${escapeHtml(ch.roman)}<sup>${escapeHtml(ch.romanSfx)}</sup></div>
-              <div class="proglib-chord-name">${escapeHtml(ch.displayName || ch.name)}</div>
+              <div class="proglib-chord-name" data-len="${Math.min(12, String(ch.displayName || ch.name).length)}">${escapeHtml(ch.displayName || ch.name)}</div>
               <div class="proglib-chord-jianpu">${jianpuHtml}</div>
             </button>`;
           })
@@ -1086,11 +1086,50 @@
 
   // Parse "I–V–vi–IV", "ii7 V7 Imaj7", "bVII IV I" or "C G Am F" (with keyName)
   // into LIBRARY chord specs. Returns { chords, error }.
+  // "C" / "F#" / "Am" / "Bbm" → pitch class of the tonic.
+  function keyNameToPc(name) {
+    const m = String(name || "").match(/^([A-G])([b#])?(m)?$/);
+    if (!m) return 0;
+    return normDeg(NOTE_VAL[m[1]] + (m[2] === "b" ? -1 : m[2] === "#" ? 1 : 0));
+  }
+
+  const MINOR_KEY_NAMES = ["Am", "Em", "Bm", "F#m", "C#m", "G#m", "Dm", "Gm", "Cm", "Fm", "Bbm", "Ebm"];
+
+  // Guess the key from absolute chord tokens: score all 24 keys by diatonic
+  // fit, with a bonus for the tonic at the start / end. Returns "C" or "Am".
+  function detectKeyFromChords(parsed) {
+    if (!parsed.length) return null;
+    const MAJ = { 0: "maj", 2: "m", 4: "m", 5: "maj", 7: "maj", 9: "m", 11: "dim" };
+    const MIN = { 0: "m", 2: "dim", 3: "maj", 5: "m", 7: "maj", 8: "maj", 10: "maj" };
+    const fam = (q) => (/dim/.test(q) ? "dim" : QUALITY[q] && QUALITY[q].min ? "m" : "maj");
+    let best = null;
+    for (let tonic = 0; tonic < 12; tonic++) {
+      for (const minor of [false, true]) {
+        const table = minor ? MIN : MAJ;
+        let score = 0;
+        parsed.forEach(({ pc, q }, i) => {
+          const d = normDeg(pc - tonic);
+          const expect = table[d];
+          if (expect == null) { score -= 1; return; }
+          score += 1;
+          const f = fam(q);
+          if (f === expect || (minor && d === 7 && f === "maj") || (minor && d === 7 && f === "m")) score += 1;
+          if (d === 0 && f === expect) { if (i === 0) score += 3; if (i === parsed.length - 1) score += 2; }
+          if (d === 7 && i === parsed.length - 1) score += 1;
+        });
+        if (!best || score > best.score) best = { score, tonic, minor };
+      }
+    }
+    const names = best.minor ? MINOR_KEY_NAMES : KEYS.map((k) => k.name);
+    return names.find((n) => keyNameToPc(n) === best.tonic) || null;
+  }
+
   function parseProgressionInput(text, keyName) {
     const src = String(text || "").replace(/♭/g, "b").replace(/♯/g, "#").replace(/[–—→>|,]/g, " ").trim();
     const tokens = src.split(/[\s-]+/).filter(Boolean);
     if (tokens.length < 2) return { chords: [], error: "至少需要 2 個和弦" };
-    const key = KEYS.find((k) => k.name === keyName) || KEYS[0];
+    const key = { pc: keyNameToPc(keyName) };
+    const absolute = [];
     const chords = [];
     for (const tok of tokens) {
       if (tok.includes("/") && !/6\/9$/.test(tok)) return { chords: [], error: `暫不支援斜線和弦：${tok}` };
@@ -1101,9 +1140,11 @@
         lower = m[2] === m[2].toLowerCase();
         sfx = m[3];
       } else if ((m = tok.match(/^([A-G])([b#])?(.*)$/))) {
-        const pc = NOTE_VAL[m[1]] + (m[2] === "b" ? -1 : m[2] === "#" ? 1 : 0);
+        const pc = normDeg(NOTE_VAL[m[1]] + (m[2] === "b" ? -1 : m[2] === "#" ? 1 : 0));
         deg = pc - key.pc;
         sfx = m[3];
+        const aq = suffixToQuality(sfx, false);
+        if (aq) absolute.push({ pc, q: aq });
       } else {
         return { chords: [], error: `看不懂的和弦：${tok}` };
       }
@@ -1111,7 +1152,7 @@
       if (!q) return { chords: [], error: `不支援的和弦類型：${tok}` };
       chords.push([normDeg(deg), q]);
     }
-    return { chords, error: null };
+    return { chords, error: null, detectedKey: absolute.length === tokens.length ? detectKeyFromChords(absolute) : null };
   }
 
   function specsToRoman(specs) {
@@ -1153,10 +1194,12 @@
     refs.desc.insertAdjacentElement("afterend", ed);
     refs.editor = ed;
     const inkey = ed.querySelector("[name=inkey]");
-    inkey.innerHTML = KEYS.map((k) => `<option value="${k.name}">${k.name}</option>`).join("");
+    inkey.innerHTML =
+      `<optgroup label="大調">${KEYS.map((k) => `<option value="${k.name}">${k.name}</option>`).join("")}</optgroup>` +
+      `<optgroup label="小調">${MINOR_KEY_NAMES.map((n) => `<option value="${n}">${n}</option>`).join("")}</optgroup>`;
     const refresh = () => renderEditorPreview();
     ed.querySelector("[name=text]").addEventListener("input", refresh);
-    inkey.addEventListener("change", refresh);
+    inkey.addEventListener("change", () => { ed.dataset.inkeyTouched = "1"; refresh(); });
     ed.querySelector("[data-action=cancel]").addEventListener("click", closeCustomEditor);
     ed.addEventListener("submit", (evt) => { evt.preventDefault(); submitCustomEditor(); });
   }
@@ -1168,9 +1211,17 @@
     ed.querySelector(".proglib-field-inkey").style.display = usesNames ? "" : "none";
     const out = ed.querySelector(".proglib-editor-preview");
     if (!text.trim()) { out.textContent = ""; out.dataset.ok = ""; return; }
-    const r = parseProgressionInput(text, ed.querySelector("[name=inkey]").value);
+    const inkey = ed.querySelector("[name=inkey]");
+    let r = parseProgressionInput(text, inkey.value);
+    let autoNote = "";
+    // Auto-pick the key from the chord names until the user overrides it.
+    if (usesNames && !r.error && r.detectedKey && ed.dataset.inkeyTouched !== "1" && r.detectedKey !== inkey.value) {
+      inkey.value = r.detectedKey;
+      r = parseProgressionInput(text, inkey.value);
+    }
+    if (usesNames && !r.error && ed.dataset.inkeyTouched !== "1") autoNote = `（自動判斷 ${inkey.value}，可手動改）`;
     if (r.error) { out.textContent = "⚠ " + r.error; out.dataset.ok = "0"; return; }
-    out.textContent = "解析：" + specsToRoman(r.chords);
+    out.textContent = "解析：" + specsToRoman(r.chords) + autoNote;
     out.dataset.ok = "1";
   }
 
@@ -1182,6 +1233,7 @@
     ed.querySelector("[name=name]").value = prog ? prog.name : "";
     ed.querySelector("[name=text]").value = prog ? (prog.input_text || specsToRoman(prog.chords)) : "";
     ed.querySelector("[name=inkey]").value = state.keyName;
+    ed.dataset.inkeyTouched = "";
     ed.querySelector("[name=desc]").value = prog ? prog.desc : "";
     ed.querySelector("[name=url]").value = prog ? prog.source_url : "";
     ed.hidden = false;

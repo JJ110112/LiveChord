@@ -1293,10 +1293,19 @@ body.ambient-fullscreen-lock {
   line-height: 1.1;
   color: var(--text);
   padding: 2px 10px;
+  max-width: 100%;
+  white-space: nowrap;
   border-radius: 8px;
   border: 1px solid transparent;
   transition: background 0.2s, box-shadow 0.2s, color 0.2s, border-color 0.2s;
 }
+.proglib-chord-name[data-len="6"],
+.proglib-chord-name[data-len="7"] { font-size: clamp(15px, 1.9vw, 20px); padding: 3px 6px; }
+.proglib-chord-name[data-len="8"],
+.proglib-chord-name[data-len="9"],
+.proglib-chord-name[data-len="10"],
+.proglib-chord-name[data-len="11"],
+.proglib-chord-name[data-len="12"] { font-size: clamp(13px, 1.5vw, 16px); padding: 4px 4px; }
 .proglib-chord-slash {
   font-size: 11px;
   font-weight: 600;
