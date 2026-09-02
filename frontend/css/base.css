@@ -796,3 +796,113 @@ a:hover { text-decoration: underline; }
 [data-theme="sky"] .breadcrumb .sep { color: #b0b8c0; }
 
 /* ========== [END: LIGHT THEME OVERRIDES] ========== */
+
+/* ============================================================
+   Scale Lab (frontend/js/scale-lab.js) — shared by the homepage
+   #secScaleLab section and the player key-badge popup. Uses theme
+   tokens only; canvases read <html data-theme> for ink colours.
+   ============================================================ */
+.sl-host { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.sl-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+.sl-field {
+  display: flex; flex-direction: column; gap: 6px;
+  font-size: 12px; color: var(--text-dim); min-width: 0;
+}
+.sl-field select {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-card) 90%, transparent);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color-scheme: dark;
+}
+[data-theme="light"] .sl-field select,
+[data-theme="sakura"] .sl-field select,
+[data-theme="sunny"] .sl-field select,
+[data-theme="sky"] .sl-field select { color-scheme: light; }
+.sl-field select option { background: var(--bg); color: var(--text); }
+.sl-seg { display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.sl-seg-btn {
+  flex: 1; min-width: 0; padding: 8px 4px; border: 0; cursor: pointer;
+  background: color-mix(in srgb, var(--bg-card) 84%, transparent);
+  color: var(--text); font-size: 12px; font-weight: 600; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.sl-seg-btn + .sl-seg-btn { border-left: 1px solid var(--border); }
+.sl-seg-btn.is-active { background: var(--accent); color: #fff; }
+/* .sl-play is self-styled (player.html doesn't load home.css's .proglib-btn) */
+.sl-play {
+  white-space: nowrap; cursor: pointer;
+  padding: 8px 12px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-card));
+  color: var(--text); font-size: 12px; font-weight: 700;
+}
+.sl-play:hover, .sl-play:focus-visible { border-color: var(--accent); }
+.sl-play.is-active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.sl-keychips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sl-chip {
+  min-width: 40px; padding: 5px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-card) 84%, transparent);
+  color: var(--text); font-size: 12px; font-weight: 700;
+}
+.sl-chip:hover { border-color: color-mix(in srgb, var(--accent) 65%, var(--border)); }
+.sl-chip.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sl-headline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.sl-name { font-size: 20px; font-weight: 800; color: var(--text); }
+.sl-name .sl-en { margin-left: 10px; font-size: 13px; font-weight: 500; color: var(--text-dim); }
+.sl-sub { font-size: 12px; color: var(--text-dim); }
+.sl-notes { display: flex; flex-wrap: wrap; gap: 6px; }
+.sl-note {
+  display: inline-flex; flex-direction: column; align-items: center; min-width: 44px;
+  padding: 5px 8px; border-radius: 8px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-card) 84%, transparent);
+  color: var(--text); line-height: 1.15;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+.sl-note b { font-size: 15px; }
+.sl-note small { font-size: 10px; color: var(--text-dim); }
+.sl-note.is-root { border-color: var(--accent); }
+.sl-note.is-root b { color: var(--accent); }
+.sl-note.is-playing { background: var(--accent); border-color: var(--accent); transform: translateY(-2px); }
+.sl-note.is-playing b, .sl-note.is-playing small { color: #fff; }
+.sl-stage { min-width: 0; overflow-x: auto; }
+/* no max-width: the guitar board has a 520px floor and must scroll inside .sl-stage, not squash */
+.sl-canvas { display: block; }
+.sl-tab {
+  margin: 10px 0 0; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-card) 84%, transparent);
+  color: var(--text); font: 12px/1.5 ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+  overflow-x: auto; white-space: pre;
+}
+.sl-info {
+  padding: 12px 14px; border-radius: 12px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-card) 84%, transparent);
+  color: var(--text);
+}
+.sl-mood { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.sl-mood-tag {
+  padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+.sl-desc { margin: 0 0 10px; font-size: 14px; line-height: 1.7; }
+.sl-meta { display: grid; gap: 6px; font-size: 13px; line-height: 1.6; color: var(--text); }
+.sl-meta b { display: inline-block; min-width: 5em; color: var(--text-dim); font-weight: 600; }
+.sl-meta b::after { content: "："; }
+@media (max-width: 620px) {
+  .sl-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sl-field-scale { grid-column: 1 / -1; }
+  .sl-name { font-size: 17px; }
+}

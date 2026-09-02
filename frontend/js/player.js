@@ -4785,7 +4785,7 @@
           const _ma = { Mixolydian:"Mix", Dorian:"Dor", Lydian:"Lyd", Aeolian:"Aeo", Blues:"Blues" };
           const _ml = chordData.mode && _ma[chordData.mode] ? ` ${_ma[chordData.mode]}` : "";
           const displayKey = _displayKey(chordData.key);
-          if (keyInfo) keyInfo.textContent = `Key: ${displayKey}${_ml}`;
+          if (keyInfo) { keyInfo.textContent = `Key: ${displayKey}${_ml}`; keyInfo.dataset.mode = chordData.mode || ""; }
         }
         if (chordData.capo) {
           capo = chordData.capo;
@@ -7784,6 +7784,14 @@
   const transposeVal = $("#transposeValue");
   const capoSelect = $("#capoSelect");
 
+  // Push the badge's current key/mode into the floating scale panel (if open).
+  // ScaleLab.followKey() de-dupes, so calling this on every tick is cheap.
+  function _syncScaleFollow(key, mode) {
+    if (window.ScaleLab && typeof window.ScaleLab.followKey === "function") {
+      window.ScaleLab.followKey({ key, mode: mode || "" });
+    }
+  }
+
   function _updateKeyDisplay(currentTime) {
     const keyInfo = $("#chordKey");
     if (!keyInfo || !chordData || !chordData.key) return;
@@ -7858,6 +7866,7 @@
       const curMode = curSec && curSec.mode ? curSec.mode : "";
       const modeAbbr = { Mixolydian: "Mix", Dorian: "Dor", Lydian: "Lyd", Aeolian: "Aeo", Phrygian: "Phr", Blues: "Blues" };
       const curModeLabel = modeAbbr[curMode] || "";
+      keyInfo.dataset.mode = curMode || (chordData.mode || "");
 
       const uniqueRoots = new Set(stable.map(rawRoot));
       if (uniqueRoots.size > 1) {
@@ -7902,6 +7911,7 @@
         keyInfo.dataset.mobileKey = curRaw;
         const keyRun = `${display}${modeSuffix}`;
         keyInfo.innerHTML = `Key:&nbsp;<span class="key-modulation-full">${keyRun}</span>`;
+        _syncScaleFollow(curRaw, keyInfo.dataset.mode);
         return;
       }
       // No modulation — show single key with mode if non-standard
@@ -7909,12 +7919,34 @@
         keyInfo.classList.remove("has-modulation");
         keyInfo.dataset.mobileKey = baseKey;
         keyInfo.innerHTML = `Key:&nbsp;${baseKey} <span style="color:#00e5ff;opacity:0.7;font-size:0.85em">${curModeLabel}</span>`;
+        _syncScaleFollow(baseKey, keyInfo.dataset.mode);
         return;
       }
     }
     keyInfo.classList.remove("has-modulation");
     keyInfo.dataset.mobileKey = baseKey;
+    keyInfo.dataset.mode = chordData.mode || "";
     keyInfo.textContent = `Key: ${baseKey}`;
+    _syncScaleFollow(baseKey, keyInfo.dataset.mode);
+  }
+
+  // Key badge → floating scale panel (ScaleLab, shared with the homepage Scale
+  // Lab section). Uses the badge's own data-mobile-key so a mid-song modulation
+  // opens the *current* key, and the section/global mode (Dorian, Mixolydian, …)
+  // picks the matching scale. The panel then follows the song via
+  // _syncScaleFollow() until the user closes it with ×.
+  const _keyBadge = $("#chordKey");
+  function _openKeyScalePopup() {
+    if (!window.ScaleLab || !chordData || !chordData.key) return;
+    const key = (_keyBadge && _keyBadge.dataset.mobileKey) || _displayKey(_currentKey());
+    const mode = (_keyBadge && _keyBadge.dataset.mode) || chordData.mode || "";
+    window.ScaleLab.openModal({ key, mode });
+  }
+  if (_keyBadge) {
+    _keyBadge.addEventListener("click", _openKeyScalePopup);
+    _keyBadge.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); _openKeyScalePopup(); }
+    });
   }
 
   if (transposeUpBtn) transposeUpBtn.addEventListener("click", () => {
@@ -8124,7 +8156,7 @@
           _setTopbarCover(`/api/process/cover/${encodeURIComponent(hashMode)}`);
           if (chordData.key) {
             const keyInfo = $("#chordKey");
-            if (keyInfo) keyInfo.textContent = `Key: ${_displayKey(chordData.key)}`;
+            if (keyInfo) { keyInfo.textContent = `Key: ${_displayKey(chordData.key)}`; keyInfo.dataset.mode = chordData.mode || ""; }
           }
           _updateChordQualityBadge(chordData, hashMode);
           await preloadChordInfo(chordData.chords);
