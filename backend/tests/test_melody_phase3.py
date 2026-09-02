@@ -576,8 +576,7 @@ class TestMelodyPhase3(unittest.TestCase):
             reviews = root / "melody_reviews"
             reviews.mkdir(parents=True)
             row = {"group": "vocal", "requested": {"hash": "abcdef123456", "path": "song.flac"}, "resolved_candidates": ["full_mix_pyin", "vocal_stem_crepe"], "result": {"results": []}}
-            (reviews / "phase0_5_ab_gate_band_results.jsonl").write_text(json.dumps(row) + "
-", encoding="utf-8")
+            (reviews / "phase0_5_ab_gate_band_results.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
 
             with patch.object(ai_api, "DATA_DIR", root), patch("ai.melody_review.resolve_review_data_dir", lambda d: root):
                 gate = ai_api.get_melody_ab_review(group="vocal", queue="gate_band", _="admin")
