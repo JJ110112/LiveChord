@@ -43,6 +43,17 @@
     "13":   { iv: [0, 4, 7, 10, 14, 21], sfx: "13", min: false },
     sus2:    { iv: [0, 2, 7],              sfx: "sus2", min: false },
     sus4:    { iv: [0, 5, 7],              sfx: "sus4", min: false },
+    // Altered / colour dominants and minor-major (custom-progression input).
+    "7b9":   { iv: [0, 4, 7, 10, 13],      sfx: "7♭9",  min: false },
+    "7#9":   { iv: [0, 4, 7, 10, 15],      sfx: "7♯9",  min: false },
+    "7b5":   { iv: [0, 4, 6, 10],          sfx: "7♭5",  min: false },
+    "7#5":   { iv: [0, 4, 8, 10],          sfx: "7♯5",  min: false },
+    "7b13":  { iv: [0, 4, 7, 10, 20],      sfx: "7♭13", min: false },
+    "7#11":  { iv: [0, 4, 7, 10, 18],      sfx: "7♯11", min: false },
+    "maj7#11": { iv: [0, 4, 7, 11, 18],    sfx: "maj7♯11", min: false },
+    "m7b9":  { iv: [0, 3, 7, 10, 13],      sfx: "m7♭9", min: true },
+    mmaj7:   { iv: [0, 3, 7, 11],          sfx: "m(maj7)", min: true },
+    "9sus4": { iv: [0, 5, 7, 10, 14],      sfx: "9sus4", min: false },
   };
 
   function normDeg(v) {
@@ -1046,9 +1057,11 @@
 
   function normalizeSuffix(sfx) {
     return String(sfx || "")
+      .replace(/[()]/g, "").replace(/♭/g, "b").replace(/♯/g, "#")
       .replace(/Δ/g, "maj").replace(/ø7?/g, "m7b5").replace(/°7|o7/g, "dim7").replace(/°|^o$/g, "dim")
-      .replace(/\+/g, "aug").replace(/^min/, "m").replace(/^M(?=7|9)/, "maj").replace(/^ma(?=7|9)/, "maj")
-      .replace(/^-/, "m").replace(/^69$/, "6/9").replace(/^sus$/, "sus4").replace(/^dom7$/, "7");
+      .replace(/^\+$/, "aug").replace(/^7\+$/, "7#5").replace(/^min/, "m").replace(/^M(?=7|9)/, "maj").replace(/^ma(?=7|9)/, "maj")
+      .replace(/^mM7$|^mmaj7$|^minmaj7$|^m\/maj7$/, "mmaj7")
+      .replace(/^-/, "m").replace(/^69$/, "6/9").replace(/^sus$/, "sus4").replace(/^dom7$/, "7").replace(/^7alt$/, "7#9");
   }
 
   function suffixToQuality(sfx, lower) {
@@ -1059,7 +1072,16 @@
     if (n === "9") return lower ? "m9" : "9";
     if (n === "11") return lower ? "m11" : "11";
     if (n === "6") return lower ? "m6" : "6";
-    return QUALITY[n] ? n : null;
+    if (QUALITY[n]) return n;
+    // Unknown alteration tail (e.g. 13b9, 7b9#11): strip trailing alterations
+    // one at a time until a known quality remains.
+    let base = n;
+    while (/(b|#)(5|9|11|13)$|add(9|11|13)$/.test(base)) {
+      base = base.replace(/(b|#)(5|9|11|13)$|add(9|11|13)$/, "");
+      const q = suffixToQuality(base, lower);
+      if (q) return q;
+    }
+    return null;
   }
 
   // Parse "I–V–vi–IV", "ii7 V7 Imaj7", "bVII IV I" or "C G Am F" (with keyName)

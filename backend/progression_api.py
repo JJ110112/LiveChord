@@ -218,6 +218,7 @@ _custom_lock = threading.Lock()
 _CUSTOM_QUALITIES = {
     "maj", "m", "dim", "aug", "maj7", "m7", "7", "m7b5", "dim7", "maj9", "m9",
     "9", "7sus4", "6", "m6", "add9", "6/9", "11", "m11", "13", "sus2", "sus4",
+    "7b9", "7#9", "7b5", "7#5", "7b13", "7#11", "maj7#11", "m7b9", "mmaj7", "9sus4",
 }
 _CUSTOM_MAX = 200
 
