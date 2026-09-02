@@ -203,6 +203,8 @@ app.include_router(feedback_router)
 app.include_router(analytics_router)
 app.include_router(process_router)
 app.include_router(progression_router)
+from midi_api import router as midi_router  # noqa: E402
+app.include_router(midi_router)
 if demo_router is not None:
     app.include_router(demo_router)
 

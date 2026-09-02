@@ -493,6 +493,68 @@
   let _betaActivePollTimer = null;
   const POLL_MS = 2000;
 
+  // MIDI upload — homepage 音樂庫 header button. POST → background ingest
+  // (backend/midi_ingest.py subprocess) → poll → /player?hash=. Chords,
+  // beats and fingering come straight from the MIDI, audio is a FluidSynth
+  // render served by /api/midi/audio/<hash>.
+  function _initMidiUpload() {
+    const btn = $("#btnMidiUpload");
+    const input = $("#midiFileInput");
+    if (!btn || !input) return;
+    const idleLabel = btn.textContent;
+    const reset = () => { btn.disabled = false; btn.textContent = idleLabel; };
+
+    btn.addEventListener("click", () => input.click());
+    input.addEventListener("change", async () => {
+      const file = input.files && input.files[0];
+      input.value = "";
+      if (!file) return;
+      if (!/\.(mid|midi)$/i.test(file.name || "")) {
+        showToast(_t("home.midi.bad_file"), 3000);
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = _t("home.midi.analyzing");
+      try {
+        const fd = new FormData();
+        fd.append("file", file, file.name);
+        const res = await fetch("/api/midi/upload", { method: "POST", body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `${res.status} ${res.statusText}`);
+        const jobId = data.job_id;
+        const timer = setInterval(async () => {
+          let s;
+          try {
+            const sr = await fetch(`/api/midi/status/${encodeURIComponent(jobId)}`);
+            s = await sr.json();
+            if (!sr.ok) throw new Error(s.detail || `${sr.status} ${sr.statusText}`);
+          } catch (e) {
+            clearInterval(timer);
+            showToast(_t("home.midi.failed", { err: e.message }), 5000);
+            reset();
+            return;
+          }
+          if (s.stage && s.status === "processing") {
+            const k = `home.midi.stage.${s.stage}`;
+            const txt = _t(k);
+            btn.textContent = txt === k ? _t("home.midi.analyzing") : txt;
+          }
+          if (s.status === "done" && s.result_hash) {
+            clearInterval(timer);
+            window.location.href = `/player?hash=${encodeURIComponent(s.result_hash)}`;
+          } else if (s.status === "error") {
+            clearInterval(timer);
+            showToast(_t("home.midi.failed", { err: s.error || "?" }), 6000);
+            reset();
+          }
+        }, 1500);
+      } catch (e) {
+        showToast(_t("home.midi.failed", { err: e.message }), 5000);
+        reset();
+      }
+    });
+  }
+
   function _initBetaUpload() {
     const dropZone = $("#betaDropZone");
     const fileInput = $("#betaFileInput");
@@ -1483,6 +1545,7 @@
 
     // Parallel loading avoids blocking the UI
     try {
+      _initMidiUpload();
       showLoading(true);
       const tasks = [];
       // Demo songs render in both beta/public modes (logged-in OR logged-out).

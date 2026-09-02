@@ -904,15 +904,16 @@
     const srcBadge = document.getElementById("chordSource");
     if (!srcBadge) return;
     const rawSrc = (cd && cd.source) || "btc";
-    const srcKey = ["midi", "btc", "btc_upload", "btc_batch", "chordy", "chordify"]
+    const srcKey = ["midi", "midi_upload", "btc", "btc_upload", "btc_batch", "chordy", "chordify"]
       .includes(rawSrc) ? `player.chord_src.${rawSrc}` : "player.chord_src.unknown";
     const srcLabel = _t(srcKey);
     const srcShort = rawSrc.startsWith("btc") ? "AI"
+                    : rawSrc === "midi_upload" ? "MIDI"
                     : rawSrc === "midi" ? _t("player.chord_src.badge_corrected")
                     : rawSrc === "chordify" ? _t("player.chord_src.badge_corrected") : "?";
     // Paint immediately with source-based fallback
     const sourceCssClass =
-      rawSrc === "midi" ? "src-midi"
+      rawSrc === "midi" || rawSrc === "midi_upload" ? "src-midi"
       : rawSrc === "chordify" ? "src-midi"
       : "src-btc";
     srcBadge.className = `chord-source-badge ${sourceCssClass}`;
@@ -8198,12 +8199,15 @@
           // the URL so the player can wire it up without a separate manifest
           // round-trip. Marked _usingLocalFile=false so the file-picker fallback
           // doesn't fire and so seek/play behaviour follows the streaming path.
-          if (!audioLoaded && chordData && chordData.demo_audio_url) {
-            audio.src = chordData.demo_audio_url;
+          // MIDI-derived songs carry audio_url (FluidSynth render served by
+          // /api/midi/audio/<hash>) — same streaming path, no attribution strip.
+          const serverAudio = chordData && (chordData.audio_url || chordData.demo_audio_url);
+          if (!audioLoaded && serverAudio) {
+            audio.src = serverAudio;
             _usingLocalFile = false;
             audio.play().catch(() => {});
             audioLoaded = true;
-            _showDemoAttribution(chordData);
+            if (chordData.demo_audio_url) _showDemoAttribution(chordData);
           }
 
           // No bundled audio — show the fallback panel so the user can
@@ -8211,7 +8215,13 @@
           // youtube_url field are no longer auto-embedded; users must
           // upload the audio file themselves.
           if (!audioLoaded) {
-            _showYtFallbackPanel();
+            if (chordData.source === "midi_upload") {
+              // Rendered audio missing (server has no FluidSynth) — chords +
+              // fingering still work, tell the user instead of asking for a file.
+              showToast(_t("toast.midi.no_audio"), 6000);
+            } else {
+              _showYtFallbackPanel();
+            }
           }
         } else {
           // Hash mode, but no chord data (song exists in library metadata but not yet analyzed,

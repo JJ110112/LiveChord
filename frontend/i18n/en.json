@@ -1437,5 +1437,14 @@
   "tos.title": "LiveChord Terms of Service",
   "tos.title_tag": "LiveChord — Terms of Service",
   "yt.analysis_done": "Analysis done!",
-  "yt.view_chords": "View chords"
+  "yt.view_chords": "View chords",
+  "home.section.midi_btn": "🎹 Load MIDI",
+  "home.midi.bad_file": "Please choose a .mid / .midi file",
+  "home.midi.analyzing": "Analyzing MIDI…",
+  "home.midi.failed": "MIDI analysis failed: {err}",
+  "home.midi.stage.parsing": "Reading MIDI…",
+  "home.midi.stage.render": "Rendering audio…",
+  "home.midi.stage.save": "Saving…",
+  "player.chord_src.midi_upload": "MIDI file (exact)",
+  "toast.midi.no_audio": "No synthesized audio for this MIDI (server has no FluidSynth) — chords and fingering only"
 }

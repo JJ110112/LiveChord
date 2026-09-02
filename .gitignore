@@ -213,3 +213,8 @@ tools/logs/
 # Local QA + backfill reports (waterfall screenshots, run summaries, case studies)
 reports/
 
+
+# FluidSynth binaries deployed alongside the runtime (midi_ingest.py render)
+tools/fluidsynth/
+# FluidSynth renders of uploaded MIDI files (served by /api/midi/audio)
+data/midi_audio/

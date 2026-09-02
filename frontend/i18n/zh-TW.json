@@ -1437,5 +1437,14 @@
   "tos.title": "LiveChord 使用條款",
   "tos.title_tag": "LiveChord — 使用條款",
   "yt.analysis_done": "分析完成！",
-  "yt.view_chords": "看和弦"
+  "yt.view_chords": "看和弦",
+  "home.section.midi_btn": "🎹 載入 MIDI",
+  "home.midi.bad_file": "請選擇 .mid / .midi 檔案",
+  "home.midi.analyzing": "MIDI 分析中…",
+  "home.midi.failed": "MIDI 分析失敗：{err}",
+  "home.midi.stage.parsing": "解析 MIDI…",
+  "home.midi.stage.render": "合成音訊…",
+  "home.midi.stage.save": "儲存中…",
+  "player.chord_src.midi_upload": "MIDI 檔案（精確）",
+  "toast.midi.no_audio": "此 MIDI 沒有合成音訊（伺服器缺 FluidSynth），僅顯示和弦與指法"
 }

@@ -1312,6 +1312,15 @@ def get_accompaniment(
     from chord_cache import song_hash as get_song_hash
     from ai.accompaniment_generator import ACC_ENGINE_VERSION
     h = get_song_hash(path)
+
+    # MIDI-derived songs (midi_ingest.py): the file's own LH/RH notes with
+    # fingering are the ground truth — serve them for every piano style
+    # instead of generating a pattern. Checked before nocache so a forced
+    # regen never deletes the source events.
+    midi_source = ACC_DIR / f"{h}_midi_source.json"
+    if instrument == "piano" and midi_source.is_file():
+        return _json.loads(midi_source.read_text(encoding="utf-8"))
+
     cache_file = ACC_DIR / f"{h}_{style}_{level}_{section_type}_{instrument}_{ACC_ENGINE_VERSION}.json"
 
     # nocache: 清除此歌所有伴奏快取
