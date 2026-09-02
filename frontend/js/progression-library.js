@@ -1,4 +1,4 @@
-// progression-library.js v2
+// progression-library.js v3
 // A curated library of classic chord progressions grouped by style.
 // Mirrors the Ambient Mode pattern (collapsible homepage section, Tone.js
 // loop playback, localStorage favorites) but plays *named* progressions the
@@ -373,7 +373,14 @@
         { id: "strand_run", name: "Strands 迴轉 8 和弦", desc: "規則生成：延伸 turnaround，含 tritone / secondary 元素。", generated: true },
       ],
     },
+    custom: {
+      // User-collected progressions, loaded from /api/progression/custom.
+      name: "✏️ 我的收集",
+      progressions: [],
+    },
   };
+  const CUSTOM_STYLE = "custom";
+  const CUSTOM_API = "/api/progression/custom";
 
   const KEYS = [
     { name: "C",  pc: 0,  sharp: false },
@@ -441,7 +448,10 @@
     strandsLinkWrap: null,
     strandsLinkToggle: null,
     strandsLinkIntensity: null,
+    addBtn: null,
+    editor: null,
   };
+  let _customEditingId = null;
 
   // Chord qualities that count as minor-family for progression matching.
   const MINOR_QUALITIES = new Set(["m", "m7", "m9", "m11", "m6", "dim", "dim7", "m7b5"]);
@@ -463,21 +473,24 @@
     hydrateSettings();
     ensureStrandsToggleControl();
     ensureStrandsLinkControl();
+    ensureCustomEditor();
     populateControls();
     bindEvents();
     rebuild();
     renderFavorites();
     syncCollapseUi();
     syncPlayUi();
+    loadCustomProgressions();
   }
 
   function currentStyle() {
     return LIBRARY[state.style] || LIBRARY.pop;
   }
 
+  // May return null when the custom category is empty.
   function currentProg() {
     const list = currentStyle().progressions;
-    return list.find((p) => p.id === state.progId) || list[0];
+    return list.find((p) => p.id === state.progId) || list[0] || null;
   }
 
   function currentKey() {
@@ -557,7 +570,13 @@
 
   function refreshProgOptions() {
     const list = currentStyle().progressions;
-    refs.prog.innerHTML = list.map((p) => `<option value="${p.id}">${p.name}</option>`).join("");
+    if (!list.length) {
+      refs.prog.innerHTML = `<option value="">（尚無，按「＋ 新增進行」）</option>`;
+      state.progId = "";
+      refs.prog.value = "";
+      return;
+    }
+    refs.prog.innerHTML = list.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
     if (!list.some((p) => p.id === state.progId)) state.progId = list[0].id;
     refs.prog.value = state.progId;
   }
@@ -616,6 +635,7 @@
     }
     refs.randomBtn.addEventListener("click", randomize);
     refs.favBtn.addEventListener("click", saveFavorite);
+    if (refs.addBtn) refs.addBtn.addEventListener("click", () => openCustomEditor(null));
     if (refs.collapseBtn) {
       refs.collapseBtn.addEventListener("click", () => {
         state.collapsed = !state.collapsed;
@@ -628,7 +648,7 @@
   }
 
   function randomize() {
-    const styles = Object.keys(LIBRARY);
+    const styles = Object.keys(LIBRARY).filter((k) => LIBRARY[k].progressions.length);
     state.style = styles[Math.floor(Math.random() * styles.length)];
     const list = LIBRARY[state.style].progressions;
     state.progId = list[Math.floor(Math.random() * list.length)].id;
@@ -647,6 +667,19 @@
   function rebuild() {
     const prog = currentProg();
     const key = currentKey();
+    if (!prog) {
+      state.chords = [];
+      state.rawChords = [];
+      state.activeIndex = 0;
+      stopLoop(false);
+      refs.ribbon.innerHTML = "";
+      renderDesc();
+      if (refs.matches) refs.matches.innerHTML = "";
+      if (refs.matchCount) refs.matchCount.textContent = "";
+      if (refs.pager) refs.pager.innerHTML = "";
+      _matchSeq = null;
+      return;
+    }
     const rawChords = Array.isArray(prog.chords)
       ? prog.chords
       : (prog.generated ? buildStrandsProgression(prog.id, key) : []);
@@ -679,7 +712,7 @@
   function progSeqString() {
     const seqSource = state.rawChords && state.rawChords.length
       ? state.rawChords
-      : (currentProg().chords || []);
+      : ((currentProg() || {}).chords || []);
     return seqSource
       .map(([deg, q]) => `${((deg % 12) + 12) % 12}${MINOR_QUALITIES.has(q) ? "m" : "M"}`)
       .join("-");
@@ -955,7 +988,248 @@
 
   function renderDesc() {
     const prog = currentProg();
-    refs.desc.textContent = `${currentStyle().name} · ${prog.name}　—　${prog.desc || ""}`;
+    if (!prog) {
+      refs.desc.textContent = state.style === CUSTOM_STYLE
+        ? "還沒有收集任何進行。按右上角「＋ 新增進行」，貼上網路上看到的和弦進行即可。"
+        : "";
+      return;
+    }
+    if (state.style !== CUSTOM_STYLE) {
+      refs.desc.textContent = `${currentStyle().name} · ${prog.name}　—　${prog.desc || ""}`;
+      return;
+    }
+    const srcHtml = prog.source_url
+      ? ` <a class="proglib-src-link" href="${escapeHtml(prog.source_url)}" target="_blank" rel="noopener">來源 ↗</a>`
+      : "";
+    refs.desc.innerHTML =
+      `<span>${escapeHtml(currentStyle().name)} · ${escapeHtml(prog.name)}　—　${escapeHtml(prog.desc || "")}${srcHtml}</span>` +
+      `<span class="proglib-desc-actions">` +
+      `<button class="proglib-mini-btn" type="button" data-action="edit">編輯</button>` +
+      `<button class="proglib-mini-btn proglib-mini-danger" type="button" data-action="delete">刪除</button>` +
+      `</span>`;
+    refs.desc.querySelector("[data-action='edit']").addEventListener("click", () => openCustomEditor(prog));
+    refs.desc.querySelector("[data-action='delete']").addEventListener("click", () => deleteCustomProgression(prog));
+  }
+
+  // ---- custom progressions (user-collected) ------------------------------
+  async function loadCustomProgressions() {
+    try {
+      const res = await fetch(CUSTOM_API);
+      if (!res.ok) throw new Error(String(res.status));
+      const data = await res.json();
+      LIBRARY.custom.progressions = (data.items || []).map(customToProg);
+    } catch {
+      LIBRARY.custom.progressions = [];
+    }
+    if (state.style === CUSTOM_STYLE) {
+      refreshProgOptions();
+      rebuild();
+    }
+    renderFavorites();
+  }
+
+  function customToProg(it) {
+    return {
+      id: it.id,
+      name: it.name,
+      desc: it.desc || "",
+      source_url: it.source_url || "",
+      input_text: it.input_text || "",
+      chords: (it.chords || []).map((c) => (c.length > 2 && c[2] != null ? [c[0], c[1], c[2]] : [c[0], c[1]])),
+    };
+  }
+
+  // Roman numerals: I..VII with optional b/# prefix. Case decides maj/min
+  // unless the suffix says otherwise.
+  const ROMAN_VAL = { I: 0, II: 2, III: 4, IV: 5, V: 7, VI: 9, VII: 11 };
+  const NOTE_VAL = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+
+  function normalizeSuffix(sfx) {
+    return String(sfx || "")
+      .replace(/Δ/g, "maj").replace(/ø7?/g, "m7b5").replace(/°7|o7/g, "dim7").replace(/°|^o$/g, "dim")
+      .replace(/\+/g, "aug").replace(/^min/, "m").replace(/^M(?=7|9)/, "maj").replace(/^ma(?=7|9)/, "maj")
+      .replace(/^-/, "m").replace(/^69$/, "6/9").replace(/^sus$/, "sus4").replace(/^dom7$/, "7");
+  }
+
+  function suffixToQuality(sfx, lower) {
+    const n = normalizeSuffix(sfx);
+    if (n === "") return lower ? "m" : "maj";
+    if (n === "m") return "m";
+    if (n === "7") return lower ? "m7" : "7";
+    if (n === "9") return lower ? "m9" : "9";
+    if (n === "11") return lower ? "m11" : "11";
+    if (n === "6") return lower ? "m6" : "6";
+    return QUALITY[n] ? n : null;
+  }
+
+  // Parse "I–V–vi–IV", "ii7 V7 Imaj7", "bVII IV I" or "C G Am F" (with keyName)
+  // into LIBRARY chord specs. Returns { chords, error }.
+  function parseProgressionInput(text, keyName) {
+    const src = String(text || "").replace(/♭/g, "b").replace(/♯/g, "#").replace(/[–—→>|,]/g, " ").trim();
+    const tokens = src.split(/[\s-]+/).filter(Boolean);
+    if (tokens.length < 2) return { chords: [], error: "至少需要 2 個和弦" };
+    const key = KEYS.find((k) => k.name === keyName) || KEYS[0];
+    const chords = [];
+    for (const tok of tokens) {
+      if (tok.includes("/") && !/6\/9$/.test(tok)) return { chords: [], error: `暫不支援斜線和弦：${tok}` };
+      let deg, lower = false, sfx;
+      let m = tok.match(/^([b#])?([ivIV]+)(.*)$/);
+      if (m && ROMAN_VAL[m[2].toUpperCase()] != null && (m[2] === m[2].toUpperCase() || m[2] === m[2].toLowerCase())) {
+        deg = ROMAN_VAL[m[2].toUpperCase()] + (m[1] === "b" ? -1 : m[1] === "#" ? 1 : 0);
+        lower = m[2] === m[2].toLowerCase();
+        sfx = m[3];
+      } else if ((m = tok.match(/^([A-G])([b#])?(.*)$/))) {
+        const pc = NOTE_VAL[m[1]] + (m[2] === "b" ? -1 : m[2] === "#" ? 1 : 0);
+        deg = pc - key.pc;
+        sfx = m[3];
+      } else {
+        return { chords: [], error: `看不懂的和弦：${tok}` };
+      }
+      const q = suffixToQuality(sfx, lower);
+      if (!q) return { chords: [], error: `不支援的和弦類型：${tok}` };
+      chords.push([normDeg(deg), q]);
+    }
+    return { chords, error: null };
+  }
+
+  function specsToRoman(specs) {
+    return specs.map(([deg, q]) => {
+      const qd = QUALITY[q] || QUALITY.maj;
+      const base = ROMAN_BASE[normDeg(deg)];
+      return qd.min ? base.toLowerCase() + qd.sfx.replace(/^m(?!aj)/, "") : base + qd.sfx;
+    }).join("–");
+  }
+
+  function ensureCustomEditor() {
+    const actions = ROOT.querySelector(".proglib-head-actions");
+    if (actions && !refs.addBtn) {
+      const btn = document.createElement("button");
+      btn.id = "proglibAddBtn";
+      btn.className = "proglib-btn";
+      btn.type = "button";
+      btn.textContent = "＋ 新增進行";
+      actions.insertBefore(btn, refs.favBtn);
+      refs.addBtn = btn;
+    }
+    if (refs.editor || !refs.desc) return;
+    const ed = document.createElement("form");
+    ed.id = "proglibCustomEditor";
+    ed.className = "proglib-editor";
+    ed.hidden = true;
+    ed.innerHTML =
+      `<div class="proglib-editor-title"></div>` +
+      `<label class="proglib-field"><span>名稱</span><input name="name" type="text" maxlength="80" placeholder="例：Creep 進行" required></label>` +
+      `<label class="proglib-field"><span>和弦序列（羅馬數字或和弦名）</span><input name="text" type="text" maxlength="300" placeholder="I–III–IV–iv 或 G B C Cm" required></label>` +
+      `<label class="proglib-field proglib-field-inkey"><span>和弦名所在的調</span><select name="inkey"></select></label>` +
+      `<div class="proglib-editor-preview"></div>` +
+      `<label class="proglib-field"><span>備註</span><input name="desc" type="text" maxlength="500" placeholder="出處、用法、感想"></label>` +
+      `<label class="proglib-field"><span>來源網址</span><input name="url" type="url" maxlength="500" placeholder="https://"></label>` +
+      `<div class="proglib-editor-actions">` +
+      `<button class="proglib-btn proglib-btn-accent" type="submit">儲存</button>` +
+      `<button class="proglib-btn" type="button" data-action="cancel">取消</button>` +
+      `</div>`;
+    refs.desc.insertAdjacentElement("afterend", ed);
+    refs.editor = ed;
+    const inkey = ed.querySelector("[name=inkey]");
+    inkey.innerHTML = KEYS.map((k) => `<option value="${k.name}">${k.name}</option>`).join("");
+    const refresh = () => renderEditorPreview();
+    ed.querySelector("[name=text]").addEventListener("input", refresh);
+    inkey.addEventListener("change", refresh);
+    ed.querySelector("[data-action=cancel]").addEventListener("click", closeCustomEditor);
+    ed.addEventListener("submit", (evt) => { evt.preventDefault(); submitCustomEditor(); });
+  }
+
+  function renderEditorPreview() {
+    const ed = refs.editor;
+    const text = ed.querySelector("[name=text]").value;
+    const usesNames = /(^|[\s,|–—>-])[A-G][b#]?/.test(text.replace(/♭/g, "b").replace(/♯/g, "#"));
+    ed.querySelector(".proglib-field-inkey").style.display = usesNames ? "" : "none";
+    const out = ed.querySelector(".proglib-editor-preview");
+    if (!text.trim()) { out.textContent = ""; out.dataset.ok = ""; return; }
+    const r = parseProgressionInput(text, ed.querySelector("[name=inkey]").value);
+    if (r.error) { out.textContent = "⚠ " + r.error; out.dataset.ok = "0"; return; }
+    out.textContent = "解析：" + specsToRoman(r.chords);
+    out.dataset.ok = "1";
+  }
+
+  function openCustomEditor(prog) {
+    ensureCustomEditor();
+    const ed = refs.editor;
+    _customEditingId = prog ? prog.id : null;
+    ed.querySelector(".proglib-editor-title").textContent = prog ? `編輯：${prog.name}` : "新增自訂進行";
+    ed.querySelector("[name=name]").value = prog ? prog.name : "";
+    ed.querySelector("[name=text]").value = prog ? (prog.input_text || specsToRoman(prog.chords)) : "";
+    ed.querySelector("[name=inkey]").value = state.keyName;
+    ed.querySelector("[name=desc]").value = prog ? prog.desc : "";
+    ed.querySelector("[name=url]").value = prog ? prog.source_url : "";
+    ed.hidden = false;
+    if (state.collapsed) { state.collapsed = false; persistSettings(); syncCollapseUi(); }
+    renderEditorPreview();
+    ed.querySelector(prog ? "[name=text]" : "[name=name]").focus();
+  }
+
+  function closeCustomEditor() {
+    if (refs.editor) refs.editor.hidden = true;
+    _customEditingId = null;
+  }
+
+  async function submitCustomEditor() {
+    const ed = refs.editor;
+    const text = ed.querySelector("[name=text]").value;
+    const parsed = parseProgressionInput(text, ed.querySelector("[name=inkey]").value);
+    if (parsed.error) { showToastSafe(parsed.error); return; }
+    const body = {
+      name: ed.querySelector("[name=name]").value.trim(),
+      chords: parsed.chords,
+      desc: ed.querySelector("[name=desc]").value.trim(),
+      source_url: ed.querySelector("[name=url]").value.trim(),
+      input_text: text.trim(),
+    };
+    if (!body.name) { showToastSafe("請輸入名稱"); return; }
+    const editing = _customEditingId;
+    try {
+      const res = await fetch(editing ? `${CUSTOM_API}/${encodeURIComponent(editing)}` : CUSTOM_API, {
+        method: editing ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || `${res.status} ${res.statusText}`);
+      const prog = customToProg(data);
+      const list = LIBRARY.custom.progressions;
+      const idx = list.findIndex((p) => p.id === prog.id);
+      if (idx >= 0) list[idx] = prog; else list.push(prog);
+      closeCustomEditor();
+      state.style = CUSTOM_STYLE;
+      state.progId = prog.id;
+      refs.style.value = state.style;
+      refreshProgOptions();
+      syncStrandsToggleUi();
+      syncStrandsLinkUi();
+      persistSettings();
+      rebuild();
+      renderFavorites();
+      showToastSafe(editing ? "已更新進行" : "已新增到「我的收集」");
+    } catch (e) {
+      showToastSafe(`儲存失敗：${e.message || e}`);
+    }
+  }
+
+  async function deleteCustomProgression(prog) {
+    if (!prog || !window.confirm(`刪除「${prog.name}」？`)) return;
+    try {
+      const res = await fetch(`${CUSTOM_API}/${encodeURIComponent(prog.id)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(String(res.status));
+      LIBRARY.custom.progressions = LIBRARY.custom.progressions.filter((p) => p.id !== prog.id);
+      closeCustomEditor();
+      refreshProgOptions();
+      persistSettings();
+      rebuild();
+      renderFavorites();
+      showToastSafe("已刪除");
+    } catch (e) {
+      showToastSafe(`刪除失敗：${e.message || e}`);
+    }
   }
 
   // ---- playback ----
@@ -1085,6 +1359,7 @@
       return;
     }
     refs.favorites.innerHTML = list
+      .filter((f) => f.style !== CUSTOM_STYLE || LIBRARY.custom.progressions.some((p) => p.id === f.progId))
       .map((f) => {
         const sName = LIBRARY[f.style]?.name || f.style;
         const pName = (LIBRARY[f.style]?.progressions || []).find((p) => p.id === f.progId)?.name || f.progId;
@@ -1159,7 +1434,7 @@
       const obj = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null");
       if (!obj || typeof obj !== "object") return;
       if (obj.style && LIBRARY[obj.style]) state.style = obj.style;
-      if (obj.progId && (LIBRARY[state.style].progressions || []).some((p) => p.id === obj.progId)) state.progId = obj.progId;
+      if (obj.progId && (state.style === CUSTOM_STYLE || (LIBRARY[state.style].progressions || []).some((p) => p.id === obj.progId))) state.progId = obj.progId;
       if (obj.keyName && KEYS.some((k) => k.name === obj.keyName)) state.keyName = obj.keyName;
       if (Number.isFinite(Number(obj.bpm))) state.bpm = clamp(Math.round(Number(obj.bpm)), 40, 180);
       if ([2, 4, 8].includes(Number(obj.beats))) state.beats = Number(obj.beats);

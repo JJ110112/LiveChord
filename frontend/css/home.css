@@ -2900,3 +2900,43 @@ body.ambient-fullscreen-lock {
 }
 .sl-refs a { color: var(--accent); text-decoration: none; }
 .sl-refs a:hover { text-decoration: underline; }
+
+/* Progression Library — custom (user-collected) progressions editor */
+.proglib-desc { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.proglib-desc-actions { display: inline-flex; gap: 6px; flex: 0 0 auto; }
+.proglib-src-link { color: var(--accent); text-decoration: none; margin-left: 4px; }
+.proglib-src-link:hover { text-decoration: underline; }
+.proglib-mini-btn {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.proglib-mini-btn:hover { border-color: color-mix(in srgb, var(--accent) 65%, var(--border)); }
+.proglib-mini-danger:hover { border-color: #f44336; color: #f44336; }
+.proglib-editor {
+  margin-top: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--bg-card) 92%, transparent);
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+.proglib-editor-title { grid-column: 1 / -1; font-weight: 700; font-size: 13px; color: var(--text); }
+.proglib-editor .proglib-field input {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-card) 90%, transparent);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+.proglib-editor-preview { grid-column: 1 / -1; font-size: 12px; color: var(--text-dim); min-height: 16px; }
+.proglib-editor-preview[data-ok="1"] { color: var(--accent); }
+.proglib-editor-preview[data-ok="0"] { color: #f44336; }
+.proglib-editor-actions { grid-column: 1 / -1; display: flex; gap: 8px; }

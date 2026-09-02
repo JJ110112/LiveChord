@@ -198,3 +198,126 @@ def progression_trends(
     }
     _trends_cache[cache_key] = result
     return result
+
+
+# ---------------------------------------------------------------------------
+# Custom progressions — user-collected progressions (personal use). Stored in
+# data/custom_progressions.json (tier1 backup). Chord specs mirror the frontend
+# LIBRARY shape: [degree 0-11, quality, optional bass degree].
+# ---------------------------------------------------------------------------
+import os
+import re
+import threading
+import uuid
+
+from pydantic import BaseModel, Field
+
+CUSTOM_FILE = DATA_DIR / "custom_progressions.json"
+_custom_lock = threading.Lock()
+
+_CUSTOM_QUALITIES = {
+    "maj", "m", "dim", "aug", "maj7", "m7", "7", "m7b5", "dim7", "maj9", "m9",
+    "9", "7sus4", "6", "m6", "add9", "6/9", "11", "m11", "13", "sus2", "sus4",
+}
+_CUSTOM_MAX = 200
+
+
+class CustomProgressionIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    chords: list = Field(..., min_length=2, max_length=32)
+    desc: str = Field("", max_length=500)
+    source_url: str = Field("", max_length=500)
+    input_text: str = Field("", max_length=300)
+
+
+def _read_custom() -> list:
+    try:
+        data = json.loads(CUSTOM_FILE.read_text(encoding="utf-8"))
+        items = data.get("items", [])
+        return items if isinstance(items, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _write_custom(items: list) -> None:
+    CUSTOM_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = CUSTOM_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps({"version": 1, "items": items}, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, CUSTOM_FILE)
+
+
+def _normalize_chords(chords) -> list:
+    out = []
+    for spec in chords:
+        if not isinstance(spec, (list, tuple)) or len(spec) < 2:
+            raise HTTPException(status_code=400, detail="each chord must be [degree, quality]")
+        try:
+            deg = int(spec[0]) % 12
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="chord degree must be an integer")
+        q = str(spec[1])
+        if q not in _CUSTOM_QUALITIES:
+            raise HTTPException(status_code=400, detail=f"unsupported chord quality: {q}")
+        item = [deg, q]
+        if len(spec) > 2 and spec[2] is not None:
+            try:
+                item.append(int(spec[2]) % 12)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="bass degree must be an integer")
+        out.append(item)
+    return out
+
+
+def _validate_custom(body: CustomProgressionIn) -> dict:
+    url = body.source_url.strip()
+    if url and not re.match(r"^https?://", url, re.I):
+        raise HTTPException(status_code=400, detail="source_url must start with http:// or https://")
+    return {
+        "name": body.name.strip(),
+        "chords": _normalize_chords(body.chords),
+        "desc": body.desc.strip(),
+        "source_url": url,
+        "input_text": body.input_text.strip(),
+    }
+
+
+@router.get("/api/progression/custom")
+def list_custom_progressions():
+    return {"items": _read_custom()}
+
+
+@router.post("/api/progression/custom")
+def create_custom_progression(body: CustomProgressionIn):
+    fields = _validate_custom(body)
+    with _custom_lock:
+        items = _read_custom()
+        if len(items) >= _CUSTOM_MAX:
+            raise HTTPException(status_code=400, detail=f"limit of {_CUSTOM_MAX} custom progressions reached")
+        item = {"id": f"c_{uuid.uuid4().hex[:10]}", "created_at": int(time.time()), **fields}
+        items.append(item)
+        _write_custom(items)
+    return item
+
+
+@router.put("/api/progression/custom/{item_id}")
+def update_custom_progression(item_id: str, body: CustomProgressionIn):
+    fields = _validate_custom(body)
+    with _custom_lock:
+        items = _read_custom()
+        for i, it in enumerate(items):
+            if it.get("id") == item_id:
+                items[i] = {**it, **fields, "updated_at": int(time.time())}
+                _write_custom(items)
+                return items[i]
+    raise HTTPException(status_code=404, detail="custom progression not found")
+
+
+@router.delete("/api/progression/custom/{item_id}")
+def delete_custom_progression(item_id: str):
+    with _custom_lock:
+        items = _read_custom()
+        kept = [it for it in items if it.get("id") != item_id]
+        if len(kept) == len(items):
+            raise HTTPException(status_code=404, detail="custom progression not found")
+        _write_custom(kept)
+    return {"ok": True, "count": len(kept)}
