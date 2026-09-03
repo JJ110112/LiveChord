@@ -2179,6 +2179,11 @@
       let html;
       let m;
       if ((m = s.match(/^#{1,6}\s+(.*)$/))) html = `<strong class="pl-note-h">${inline(m[1])}</strong>`;
+      else if ((m = s.match(/^(\d+[.、]\s*[^：:（(]{0,30}(?:[（(][^）)]{0,30}[）)])?)(.*)$/)) && m[1].length <= 45) {
+        // "1. A 主歌（前導與順暢下行）CMaj7 → …": bold the numbered title, keep the rest inline.
+        const rest = m[2].replace(/^[：:]\s*/, "");
+        html = `<strong class="pl-note-h">${inline(m[1].trim())}</strong>${rest ? "<br>" + inline(rest) : ""}`;
+      }
       else if ((m = s.match(/^[*\-•]\s+(.*)$/))) html = `<span class="pl-note-li">• ${inline(m[1])}</span>`;
       else html = inline(s);
       if (prevBlank && out.length) out.push(`<span class="pl-note-gap"></span>`);
