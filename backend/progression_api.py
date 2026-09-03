@@ -363,7 +363,7 @@ _GEN_SUFFIX = {
 
 
 class ProgressionAccIn(BaseModel):
-    chords: list = Field(..., min_length=1, max_length=32)
+    chords: list = Field(..., min_length=1, max_length=96)
     key: str = Field("C", max_length=4)
     bpm: float = Field(100.0, ge=40, le=200)
     beats_per_chord: int = Field(4, ge=1, le=16)

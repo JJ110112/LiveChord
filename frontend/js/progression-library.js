@@ -1786,7 +1786,11 @@
       }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || `${res.status} ${res.statusText}`);
+    if (!res.ok) {
+      // FastAPI 422 sends detail as a list of {loc, msg}; flatten it for the toast.
+      const det = Array.isArray(data.detail) ? data.detail.map((d) => d.msg || JSON.stringify(d)).join("; ") : data.detail;
+      throw new Error(det || `${res.status} ${res.statusText}`);
+    }
     if (aiCache.size > 40) aiCache.clear();
     aiCache.set(sig, data);
     return data;
