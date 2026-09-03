@@ -240,7 +240,7 @@ _CUSTOM_MAX = 200
 class CustomProgressionIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=80)
     chords: list = Field(..., min_length=2, max_length=96)
-    desc: str = Field("", max_length=500)
+    desc: str = Field("", max_length=4000)
     source_url: str = Field("", max_length=500)
     input_text: str = Field("", max_length=1000)
     input_key: str = Field("", max_length=4)

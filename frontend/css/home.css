@@ -2489,6 +2489,18 @@
 }
 .proglib-editor[hidden] { display: none; }
 .proglib-editor-title { grid-column: 1 / -1; font-weight: 700; font-size: 13px; color: var(--text); }
+.proglib-field-wide { grid-column: 1 / -1; }
+.proglib-desc-text { white-space: pre-wrap; }
+.proglib-editor .proglib-field textarea {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-card) 90%, transparent);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
 .proglib-editor .proglib-field input {
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg-card) 90%, transparent);

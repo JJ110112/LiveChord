@@ -1381,7 +1381,7 @@
       ? ` <a class="proglib-src-link" href="${escapeHtml(prog.source_url)}" target="_blank" rel="noopener">來源 ↗</a>`
       : "";
     refs.desc.innerHTML =
-      `<span>${escapeHtml(currentStyle().name)} · ${escapeHtml(prog.name)}　—　${escapeHtml(prog.desc || "")}${srcHtml}</span>` +
+      `<span class="proglib-desc-text">${escapeHtml(currentStyle().name)} · ${escapeHtml(prog.name)}　—　${formatNote(prog.desc || "")}${srcHtml}</span>` +
       `<span class="proglib-desc-actions">` +
       `<button class="proglib-mini-btn" type="button" data-action="edit">編輯</button>` +
       `<button class="proglib-mini-btn proglib-mini-danger" type="button" data-action="delete">刪除</button>` +
@@ -1588,7 +1588,7 @@
       `<label class="proglib-field"><span>和弦序列（羅馬數字或和弦名）</span><input name="text" type="text" maxlength="300" placeholder="I–III–IV–iv 或 G B C Cm" required></label>` +
       `<label class="proglib-field proglib-field-inkey"><span>和弦名所在的調</span><select name="inkey"></select></label>` +
       `<div class="proglib-editor-preview"></div>` +
-      `<label class="proglib-field"><span>備註</span><input name="desc" type="text" maxlength="500" placeholder="出處、用法、感想"></label>` +
+      `<label class="proglib-field proglib-field-wide"><span>備註（可換行；貼上的 $\text{..}$ 會自動轉成可讀符號）</span><textarea name="desc" rows="4" maxlength="4000" placeholder="出處、用法、感想"></textarea></label>` +
       `<label class="proglib-field"><span>來源網址</span><input name="url" type="url" maxlength="500" placeholder="https://"></label>` +
       `<div class="proglib-editor-actions">` +
       `<button class="proglib-btn proglib-btn-accent" type="submit">儲存</button>` +
@@ -2150,6 +2150,22 @@
       el.classList.add("show");
       setTimeout(() => el.classList.remove("show"), 1800);
     }
+  }
+
+  // Notes pasted from AI answers carry LaTeX-ish markup; make it readable
+  // for display (stored text is untouched). Line breaks become <br>.
+  function formatNote(raw) {
+    let t = String(raw || "")
+      .replace(/\$\$?([^$]*)\$\$?/g, "$1")
+      .replace(/\\text\{([^}]*)\}/g, "$1")
+      .replace(/\\mathrm\{([^}]*)\}/g, "$1")
+      .replace(/\\(?:to|rightarrow|longrightarrow)\b/g, "→")
+      .replace(/\\flat\b/g, "♭").replace(/\\sharp\b/g, "♯")
+      .replace(/\\(?:circ|deg)\b/g, "°")
+      .replace(/\^\{([^}]*)\}/g, "$1").replace(/_\{([^}]*)\}/g, "$1")
+      .replace(/\\,|\\;|\\ /g, " ")
+      .replace(/\\([A-Za-z]+)/g, "$1");
+    return escapeHtml(t).replace(/\r?\n/g, "<br>");
   }
 
   function escapeHtml(s) {
