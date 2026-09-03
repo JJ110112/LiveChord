@@ -2152,8 +2152,10 @@
     }
   }
 
-  // Notes pasted from AI answers carry LaTeX-ish markup; make it readable
-  // for display (stored text is untouched). Line breaks become <br>.
+  // Notes pasted from AI answers carry LaTeX-ish markup and light Markdown;
+  // make them readable for display (stored text is untouched).
+  //   $\text{I} \to \text{ii}$ → I → ii · \flat → ♭ · "### 標題" → bold line ·
+  //   "* item" / "- item" → bullet · **bold** · blank line → paragraph gap
   function formatNote(raw) {
     let t = String(raw || "")
       .replace(/\$\$([^$]+)\$\$/g, "$1")   // display math first
@@ -2166,7 +2168,24 @@
       .replace(/\^\{([^}]*)\}/g, "$1").replace(/_\{([^}]*)\}/g, "$1")
       .replace(/\\,|\\;|\\ /g, " ")
       .replace(/\\([A-Za-z]+)/g, "$1");
-    return escapeHtml(t).replace(/\r?\n/g, "<br>");
+    const inline = (line) => escapeHtml(line)
+      .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>");
+    const out = [];
+    let prevBlank = false;
+    t.split(/\r?\n/).forEach((line) => {
+      const s = line.trim();
+      if (!s) { prevBlank = true; return; }
+      let html;
+      let m;
+      if ((m = s.match(/^#{1,6}\s+(.*)$/))) html = `<strong class="pl-note-h">${inline(m[1])}</strong>`;
+      else if ((m = s.match(/^[*\-•]\s+(.*)$/))) html = `<span class="pl-note-li">• ${inline(m[1])}</span>`;
+      else html = inline(s);
+      if (prevBlank && out.length) out.push(`<span class="pl-note-gap"></span>`);
+      out.push(html);
+      prevBlank = false;
+    });
+    return out.join("<br>");
   }
 
   function escapeHtml(s) {
