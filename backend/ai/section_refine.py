@@ -157,7 +157,11 @@ def _majority_type(secs: List[Dict], s0: float, s1: float) -> Optional[str]:
     return max(votes.items(), key=lambda kv: kv[1])[0] if votes else None
 
 
+_STRUCT_MIN_LOOP_BARS = 4.0   # loops shorter than this are riffs, not phrases
+
+
 def _structure_first(secs: List[Dict], patterns: List[Dict], bar_sec: float) -> Optional[List[Dict]]:
+    patterns = [p for p in (patterns or []) if float(p.get("loop_bars") or 0) >= _STRUCT_MIN_LOOP_BARS]
     if not patterns or not secs:
         return None
     total = float(secs[-1]["end"]) - float(secs[0]["start"])

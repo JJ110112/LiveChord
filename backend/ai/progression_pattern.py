@@ -108,23 +108,31 @@ def _grid_tokens(chords: List[Dict], key_semi: int, downbeats: Optional[List[flo
     step_bars = 0.5 if med < 0.75 * bar_sec else 1.0
     t_start = float(valid[0]["time"])
     t_end = max(float(c.get("end", c["time"])) for c in valid)
-    # Grid anchored on real downbeats when we have them, else on the first chord.
-    if downbeats and len(downbeats) >= 4:
-        anchor = min(downbeats, key=lambda d: abs(d - t_start))
-    else:
-        anchor = t_start
     step = bar_sec * step_bars
-    edges = []
-    t = anchor
-    while t > t_start + 1e-6:
-        t -= step
-    while t < t_end - step * 0.25:
-        edges.append(t)
-        t += step
+    edges: List[float] = []
+    if downbeats and len(downbeats) >= 4:
+        # Use the real bar lines (rubato-safe); half-bar slots take midpoints.
+        lines = sorted(float(d) for d in downbeats)
+        # extend to cover the chord span at the median spacing
+        while lines[0] - bar_sec > t_start:
+            lines.insert(0, lines[0] - bar_sec)
+        while lines[-1] + bar_sec * 0.75 < t_end:
+            lines.append(lines[-1] + bar_sec)
+        for i, b in enumerate(lines):
+            edges.append(b)
+            if step_bars < 1 and i + 1 < len(lines):
+                edges.append((b + lines[i + 1]) / 2)
+        edges = [e for e in edges if e < t_end - step * 0.25]
+    else:
+        t = t_start
+        while t < t_end - step * 0.25:
+            edges.append(t)
+            t += step
     toks: List[Dict] = []
     ci = 0
-    for e in edges:
-        s0, s1 = e, e + step
+    for idx, e in enumerate(edges):
+        s0 = e
+        s1 = edges[idx + 1] if idx + 1 < len(edges) else e + step
         best, best_ov = None, 0.0
         while ci > 0 and float(valid[ci]["time"]) > s0:
             ci -= 1
@@ -200,19 +208,23 @@ def _best_gram(seq: List[str], used: List[bool], min_p: int = 2, max_p: int = 8)
             # Canonical = min over rotations of the transposition-invariant
             # form, so a verse that modulates up a minor third still counts.
             rots = [g[k:] + g[:k] for k in range(p)]
-            rel_forms = [_relative(r) for r in rots]
-            if any(r is None for r in rel_forms):
-                continue
-            canon = min(rel_forms)
+            if p >= _TRANSPOSE_MIN_LEN:
+                rel_forms = [_relative(r) for r in rots]
+                if any(r is None for r in rel_forms):
+                    continue
+                canon = ("rel",) + min(rel_forms)
+            else:
+                canon = ("abs",) + min(rots)   # short grams: absolute degrees only
             grams[canon] += 1
             rot_of.setdefault(canon, Counter())[g] += 1
         for canon, cnt in grams.items():
             need = 3 if p == 2 else 2
             if cnt < need:
                 continue
-            # Coverage with a mild preference for shorter loops (an 8-gram made
-            # of two 4-loops must not beat the 4-loop).
-            score = cnt * p * (1 - 0.02 * p)
+            # Coverage with a mild preference for LONGER loops: the periodic
+            # filter above already removes "two 4-loops in a row" grams, and a
+            # generic 2-gram must not consume the slots of a real 6-chord verse.
+            score = cnt * p * (1 + 0.03 * p)
             if best is None or score > best[0]:
                 rots = rot_of[canon]
                 tonic = [g for g in rots if g[0] in ("I", "i")]
@@ -221,9 +233,24 @@ def _best_gram(seq: List[str], used: List[bool], min_p: int = 2, max_p: int = 8)
     return (best[1], best[2]) if best else None
 
 
+_TRANSPOSE_MIN_LEN = 4   # transposition-invariant matching only for loops this long or longer
+
+
 def _occurrences(toks: List[Dict], loop: tuple, used: List[bool]):
-    """Exact matches of `loop` in any transposition. Returns (a, b, transpose)."""
+    """Exact matches of `loop` (any transposition when len ≥ _TRANSPOSE_MIN_LEN). Returns (a, b, transpose)."""
     p = len(loop)
+    if p < _TRANSPOSE_MIN_LEN:
+        occ = []
+        i = 0
+        while i <= len(toks) - p:
+            if not any(used[i:i + p]) and tuple(t["fam"] for t in toks[i:i + p]) == loop:
+                occ.append((i, i + p, 0))
+                for k in range(i, i + p):
+                    used[k] = True
+                i += p
+            else:
+                i += 1
+        return occ
     ref = _relative(loop)
     ref_deg = _fam_split(loop[0])[0] if ref else None
     occ = []
