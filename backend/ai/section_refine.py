@@ -232,6 +232,7 @@ def _structure_first(secs: List[Dict], patterns: List[Dict], bar_sec: float, cho
         loop_type[i] = t or _RANK_LABELS[min(i, len(_RANK_LABELS) - 1)]
 
     events = sorted((o["start"], o["end"], i, o.get("transpose", 0)) for i, p in enumerate(patterns) for o in p.get("occurrences", []))
+    song_end_hint = float(secs[-1]["end"])
     # Melody rule 1: a transposed occurrence of the main loop is only a verse
     # if it also sounds like the (untransposed) verses.
     anchors = [(a, b) for a, b, i, tr in events if i == 0 and not tr]
@@ -247,6 +248,46 @@ def _structure_first(secs: List[Dict], patterns: List[Dict], bar_sec: float, cho
             kept.append((a, b, i, tr))
         events = kept
         meta["melody_demoted"] = demoted
+    # Climactic restatement: a TRANSPOSED occurrence of the main loop that
+    # arrives after only a short pivot (2–4 bars of non-loop material, too
+    # short to be a section of its own) is the tune restated in a new key at
+    # the climax — heard as a chorus, not another verse (Liszt Liebesträume:
+    # theme in Ab, Ab, B, then E after a 3-bar pivot). Fold pivot + restatement
+    # into one chorus-type section.
+    forced_chorus: List[Tuple[float, float]] = []
+    kept2 = []
+    prev_end = float(secs[0]["start"])
+
+    def _effective_end(a: float, b: float, limit: float) -> float:
+        """Occurrence end extended over following bars that still sing the verse tune."""
+        if mel is None or not anchors:
+            return b
+        i0 = mel.bar_index(b)
+        end = b
+        for kb in range(0, _MEL_EXTEND_MAX_BARS):
+            if i0 + kb + 1 >= len(mel.bars) or mel.bars[i0 + kb + 1] > limit + 0.01:
+                break
+            if mel.bar_best_sim(i0 + kb, anchors) < _MEL_EXTEND_MIN:
+                break
+            end = mel.bars[i0 + kb + 1]
+        return end
+
+    for idx, (a, b, i, tr) in enumerate(events):
+        nxt = events[idx + 1][0] if idx + 1 < len(events) else song_end_hint
+        if i == 0 and kept2 and kept2[-1][2] == 0:
+            prev_end = _effective_end(kept2[-1][0], kept2[-1][1], a)
+        gap = a - prev_end
+        if i == 0 and tr and kept2 and bar_sec * 2 <= gap < bar_sec * _STRUCT_MIN_LOOP_BARS:
+            forced_chorus.append((prev_end, b))
+            kept2.append((prev_end, b, -1, tr))   # pivot + restatement = one chorus-type section
+            prev_end = b
+            continue
+        kept2.append((a, b, i, tr))
+        prev_end = b
+    events = kept2
+    loop_type[-1] = "chorus"
+    if forced_chorus:
+        meta["climax_restatements"] = [{"start": round(a, 2), "end": round(b, 2)} for a, b in forced_chorus]
     events = [(a, b, i) for a, b, i, _ in events]
     out: List[Dict] = []
     cursor = float(secs[0]["start"])
@@ -281,6 +322,8 @@ def _structure_first(secs: List[Dict], patterns: List[Dict], bar_sec: float, cho
             add(cursor, a, gap_type)
         elif a > cursor and out:
             out[-1]["end"] = round(a, 2)     # absorb a sub-2-bar gap into the previous section
+        if i == -1:
+            chorus_bags.append(_chord_bag(chords, a, b))
         add(a, b, loop_type[i])
         cursor = b
     if song_end - cursor >= bar_sec * _MIN_SECTION_BARS:
