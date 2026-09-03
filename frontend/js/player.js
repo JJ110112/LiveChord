@@ -6121,9 +6121,32 @@
     const el = _progPanel.el;
     const dur = Math.max(1, Number(d.duration) || (audio.duration || 1));
     const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const st = d.style || {};
+    const styleNames = { Block: "Block", Arpeggio: "分解", Rhythm: "附點節奏", PopBallad: "Pop Ballad", RockBallad: "Rock Ballad", "1+3": "1+3", RockEighths: "Rock 八分", Shell: "Shell", Walking: "Walking", Stride: "Stride", SwingFour: "Swing", JazzCharleston: "Charleston", JazzWaltz: "Jazz Waltz", SlowBlues: "Slow Blues", BluesShuffle: "Shuffle", BossaNova: "Bossa", Samba: "Samba", Reggae: "Reggae", Funk16: "Funk", RnBNeoSoul: "Neo-Soul", Alberti: "Alberti" };
     let html = `<button class="lc-close" aria-label="close">&times;</button>
-      <div class="lc-title">📊 和弦進行分析</div>
-      <div class="pp-sub">Key ${esc(d.key)} · 以小節格點取樣，經過和弦不計 · 已解釋 ${Math.round((d.explained || 0) * 100)}% 的時長</div>`;
+      <div class="lc-title">📊 ${esc(d.title || "和弦進行分析")}</div>
+      <div class="pp-meta">
+        ${d.genre ? `<span>曲風 <b>${esc(d.genre)}</b></span>` : `<span>曲風 <b>未標記</b></span>`}
+        <span><b>${esc(d.key)}</b> ${esc(st.mode || "")}</span>
+        ${st.bpm ? `<span><b>${st.bpm}</b> BPM · ${esc(st.tempo_label || "")}</span>` : ""}
+        <span>和弦 <b>${st.unique_chords || 0}</b> 種</span>
+        ${(st.suggested_styles || []).length ? `<span>建議伴奏 <b>${st.suggested_styles.map((x) => styleNames[x] || x).join(" / ")}</b></span>` : ""}
+      </div>
+      <div class="pp-tags">${(st.tags || []).map((t) => `<span class="pp-tag">${esc(t)}</span>`).join("")}</div>`;
+    const secs = d.sections || [];
+    if (secs.length) {
+      html += `<div class="pp-section-head">段落 → 使用的循環</div><div class="pp-sections">`;
+      secs.forEach((sec) => {
+        const p = sec.pattern >= 0 ? d.patterns[sec.pattern] : null;
+        const pat = p
+          ? `<span class="pp-sec-pat"><span class="pp-dot d${sec.pattern}"></span>${esc(p.roman_text)}${p.known_name ? `（${esc(p.known_name)}）` : ""}<small class="pp-sec-free"> ${Math.round(sec.pattern_ratio * 100)}%</small></span>`
+          : `<span class="pp-sec-free">自由進行：${esc(sec.chord_run.join(" "))}${sec.chord_run_more ? ` …+${sec.chord_run_more}` : ""}</span>`;
+        html += `<div class="pp-sec" data-t="${sec.start}"><span class="pp-sec-bar" style="background:${esc(sec.color || "#888")}"></span>
+          <span class="pp-sec-label"><b>${esc(sec.label)}</b><small>${_fmtT(sec.start)}–${_fmtT(sec.end)}</small></span>${pat}</div>`;
+      });
+      html += `</div>`;
+    }
+    html += `<div class="pp-section-head">循環 <small class="pp-sec-free">已解釋 ${Math.round((d.explained || 0) * 100)}% 的時長 · 以小節格點取樣，經過和弦不計</small></div>`;
     if (!d.patterns || !d.patterns.length) {
       html += `<div class="pp-empty">沒有找到明顯的重複循環。這首歌的和弦可能一直在變化（轉調、自由節奏），或是偵測結果雜訊較多。</div>`;
     }
@@ -6142,9 +6165,13 @@
         <div class="pp-timeline">${occ}</div>
       </div>`;
     });
-    html += `<div class="pp-foot">點時間軸上的色塊可跳到該段。循環起點之後會用來改善樂句分段（下一階段）。</div>`;
+    html += `<div class="pp-foot">點段落或時間軸色塊可跳到該處。</div>`;
     el.innerHTML = html;
     el.querySelector(".lc-close").addEventListener("click", _closeProgPanel);
+    el.querySelectorAll(".pp-sec").forEach((row) => row.addEventListener("click", () => {
+      const t = Number(row.dataset.t);
+      if (Number.isFinite(t)) { audio.currentTime = t; if (audio.paused) audio.play().catch(() => {}); }
+    }));
     el.querySelectorAll(".pp-occ").forEach((o) => o.addEventListener("click", () => {
       const t = Number(o.dataset.t);
       if (Number.isFinite(t)) { audio.currentTime = t; if (audio.paused) audio.play().catch(() => {}); }
@@ -6167,6 +6194,11 @@
   }
   const btnProgSummary = $("#btnProgSummary");
   if (btnProgSummary) btnProgSummary.addEventListener("click", _openProgPanel);
+  const _coverImg = document.getElementById("songCover");
+  if (_coverImg) {
+    _coverImg.addEventListener("click", _openProgPanel);
+    _coverImg.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); _openProgPanel(); } });
+  }
   audio.addEventListener("timeupdate", () => _updateProgPanel(audio.currentTime || 0));
 
   const btnToggleJianpu = $("#btnToggleJianpu");

@@ -292,3 +292,103 @@ def analyze_progression(chords: List[Dict], key: str = "C", downbeats: Optional[
         "phrase_boundaries": [round(b, 2) for b in bounds],
         "explained": round(sum(p["coverage"] for p in patterns), 3),
     }
+
+
+# ---------------------------------------------------------------------------
+# Song-level description: genre / tempo / harmonic vocabulary + per-section
+# pattern usage. Called by the API after analyze_progression().
+# ---------------------------------------------------------------------------
+def _tempo_label(bpm: Optional[float]) -> str:
+    if not bpm:
+        return ""
+    b = float(bpm)
+    if b < 76:
+        return "慢板"
+    if b < 100:
+        return "中慢板"
+    if b < 130:
+        return "中板"
+    return "快板"
+
+
+def describe_style(chords: List[Dict], key: str, bpm: Optional[float], genre: str, patterns: List[Dict]) -> Dict:
+    names = [c.get("chord") for c in chords if c.get("chord") and c["chord"] not in ("N", "X")]
+    n = max(1, len(names))
+    sevenths = sum(1 for c in names if re.search(r"(maj7|m7|7|9|11|13)", c))
+    dims = sum(1 for c in names if re.search(r"(dim|°|ø|m7b5)", c))
+    sus = sum(1 for c in names if "sus" in c)
+    slash = sum(1 for c in names if "/" in c)
+    uniq = len(set(names))
+    minor = key.endswith("m")
+    tags = []
+    if sevenths / n > 0.6:
+        tags.append("七和弦為主，爵士 / R&B 色彩")
+    elif sevenths / n > 0.25:
+        tags.append("三和弦混七和弦")
+    else:
+        tags.append("三和弦為主，流行 / 民謠質地")
+    if dims / n > 0.05:
+        tags.append("有減和弦經過")
+    if sus / n > 0.08:
+        tags.append("常用掛留和弦")
+    if slash / n > 0.1:
+        tags.append("轉位低音線")
+    if uniq <= 5:
+        tags.append(f"只用 {uniq} 種和弦，結構精簡")
+    elif uniq >= 16:
+        tags.append(f"和弦種類多達 {uniq} 種，和聲豐富")
+    main = patterns[0] if patterns else None
+    if main and main["coverage"] >= 0.6:
+        tags.append(f"整首幾乎都在跑同一個 {main['loop_bars']:g} 小節循環")
+    elif len(patterns) >= 2:
+        tags.append("主歌副歌各有自己的循環")
+    elif not patterns:
+        tags.append("沒有固定循環，和弦一直在走")
+    try:
+        from .accompaniment_generator import suggest_style
+    except ImportError:  # pragma: no cover
+        from accompaniment_generator import suggest_style
+    try:
+        suggested = suggest_style(genre=genre or "", bpm=float(bpm or 120))[:3]
+    except Exception:
+        suggested = []
+    return {
+        "genre": genre or "",
+        "tempo_label": _tempo_label(bpm),
+        "bpm": round(float(bpm), 1) if bpm else None,
+        "mode": "小調" if minor else "大調",
+        "tags": tags,
+        "suggested_styles": suggested,
+        "unique_chords": uniq,
+    }
+
+
+def map_sections(sections: List[Dict], patterns: List[Dict], chords: List[Dict], key_semi: int) -> List[Dict]:
+    """For each detected section, which loop covers it (by overlapped time)."""
+    out = []
+    for sec in sections or []:
+        s0, s1 = float(sec.get("start", 0)), float(sec.get("end", 0))
+        if s1 <= s0:
+            continue
+        best_i, best_ov = -1, 0.0
+        for i, p in enumerate(patterns):
+            ov = sum(max(0.0, min(s1, o["end"]) - max(s0, o["start"])) for o in p["occurrences"])
+            if ov > best_ov:
+                best_i, best_ov = i, ov
+        ratio = best_ov / (s1 - s0)
+        # Chord run inside the section (condensed) for the "free" description.
+        run = []
+        for c in chords:
+            t = float(c.get("time", 0))
+            if t < s0 or t >= s1 or not c.get("chord") or c["chord"] in ("N", "X"):
+                continue
+            if not run or run[-1] != c["chord"]:
+                run.append(c["chord"])
+        out.append({
+            "type": sec.get("type"), "label": sec.get("label") or sec.get("type"),
+            "color": sec.get("color"), "start": round(s0, 2), "end": round(s1, 2),
+            "pattern": best_i if ratio >= 0.3 else -1,
+            "pattern_ratio": round(ratio, 2),
+            "chord_run": run[:12], "chord_run_more": max(0, len(run) - 12),
+        })
+    return out

@@ -427,4 +427,54 @@ def progression_summary(
         downbeats=data.get("downbeats") or None, bpm=data.get("bpm"),
     )
     result["hash"] = h
+    result["path"] = path or data.get("path") or ""
+    result["title"] = _title_from_path(result["path"])
+
+    # Genre: library tag + folder category (path like "@1/POP/K-POP/…").
+    from ai.progression_pattern import describe_style, map_sections, _key_semi
+    result["genre"] = _genre_for_path(result["path"])
+    result["style"] = describe_style(chords, result["key"], data.get("bpm"), result["genre"], result["patterns"])
+
+    # Sections (honours human annotations like /api/ai/sections does).
+    sections = []
+    try:
+        from ai.section_detect import detect_sections
+        sec = detect_sections(chords, data.get("key") or "C", song_hash=h, data_dir=str(DATA_DIR),
+                              fallback_data_dir=str(DATA_DIR), hint_bpm=data.get("bpm"))
+        sections = sec.get("sections", [])
+    except Exception:
+        sections = []
+    result["sections"] = map_sections(sections, result["patterns"], chords, _key_semi(result["key"]))
     return result
+
+
+def _title_from_path(path: str) -> str:
+    base = (path or "").replace("\\", "/").rsplit("/", 1)[-1]
+    return re.sub(r"\.[a-z0-9]{2,5}$", "", base, flags=re.I)
+
+
+_genre_cache = {"mtime": -1.0, "map": {}}
+
+
+def _genre_for_path(path: str) -> str:
+    if not path or path.startswith("__"):
+        return ""
+    norm = path.replace("\\", "/")
+    tag = ""
+    cache_path = DATA_DIR / "library_cache.json"
+    try:
+        mt = cache_path.stat().st_mtime
+        if _genre_cache["mtime"] != mt:
+            lib = json.loads(cache_path.read_text(encoding="utf-8"))
+            _genre_cache["map"] = {t.get("path", "").replace("\\", "/"): t.get("genre", "") for t in lib.get("tracks", [])}
+            _genre_cache["mtime"] = mt
+        tag = _genre_cache["map"].get(norm, "") or ""
+    except (OSError, json.JSONDecodeError):
+        pass
+    parts = [p for p in norm.split("/")[:-1] if p and not p.startswith("@")]
+    folder = " / ".join(parts[:2])
+    if tag.lower() in ("", "music", "other", "unknown"):
+        return folder
+    if folder and tag.lower() not in folder.lower():
+        return f"{folder} · {tag}"
+    return tag or folder
