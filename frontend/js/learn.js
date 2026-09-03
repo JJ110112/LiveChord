@@ -1,4 +1,4 @@
-// learn.js v2 — /learn 互動學習: ear-training quizzes (和弦聽辨 / 音階聽辨).
+// learn.js v3 — /learn 互動學習: ear-training quizzes (和弦聽辨 / 音階聽辨).
 // Self-contained WebAudio for chords; scales reuse window.ScaleLab
 // (catalogue + playScale). Progress is stored via /api/learn/*.
 (function () {
@@ -28,6 +28,39 @@
     "7#5": { iv: [0, 4, 8, 10],       name: "屬七升五",   sfx: "7♯5",   desc: "增和弦加小七度，張力更大。" },
     mmaj7: { iv: [0, 3, 7, 11],       name: "小大七和弦", sfx: "m(maj7)", desc: "小三和弦配大七度，懸疑電影感。" },
   };
+  // ---- single-note catalogue (relative to a played reference "do") ----
+  // semi: semitones from do. jp: jianpu digit; acc: "#"; oct: -1 / 0 / +1.
+  const NOTES = {
+    do:   { semi: 0,  jp: "1", solf: "do",  iv: "主音（同 do）" },
+    re:   { semi: 2,  jp: "2", solf: "re",  iv: "大二度" },
+    mi:   { semi: 4,  jp: "3", solf: "mi",  iv: "大三度" },
+    fa:   { semi: 5,  jp: "4", solf: "fa",  iv: "完全四度" },
+    sol:  { semi: 7,  jp: "5", solf: "sol", iv: "完全五度" },
+    la:   { semi: 9,  jp: "6", solf: "la",  iv: "大六度" },
+    ti:   { semi: 11, jp: "7", solf: "ti",  iv: "大七度" },
+    di:   { semi: 1,  jp: "1", acc: "#", solf: "di (升 do)", iv: "小二度" },
+    ri:   { semi: 3,  jp: "2", acc: "#", solf: "ri (升 re)", iv: "小三度" },
+    fi:   { semi: 6,  jp: "4", acc: "#", solf: "fi (升 fa)", iv: "增四度 / 三全音" },
+    si:   { semi: 8,  jp: "5", acc: "#", solf: "si (升 sol)", iv: "小六度" },
+    li:   { semi: 10, jp: "6", acc: "#", solf: "li (升 la)", iv: "小七度" },
+    do_hi:  { semi: 12, jp: "1", oct: 1,  solf: "高音 do",  iv: "純八度" },
+    re_hi:  { semi: 14, jp: "2", oct: 1,  solf: "高音 re",  iv: "大九度" },
+    mi_hi:  { semi: 16, jp: "3", oct: 1,  solf: "高音 mi",  iv: "大十度" },
+    ti_lo:  { semi: -1, jp: "7", oct: -1, solf: "低音 ti",  iv: "下方小二度" },
+    la_lo:  { semi: -3, jp: "6", oct: -1, solf: "低音 la",  iv: "下方小三度" },
+    sol_lo: { semi: -5, jp: "5", oct: -1, solf: "低音 sol", iv: "下方完全四度" },
+  };
+  const NOTE_LEVELS = {
+    1: ["do", "re", "mi", "fa", "sol", "la", "ti"],
+    2: ["do", "re", "mi", "fa", "sol", "la", "ti", "fi", "di", "si", "ri", "li"],
+    3: ["do", "re", "mi", "fa", "sol", "la", "ti", "do_hi", "ti_lo", "re_hi", "la_lo", "mi_hi", "sol_lo"],
+  };
+  const NOTE_LEVEL_HINT = {
+    1: "先聽 do（參考音），再聽目標音，答它是 do re mi fa sol la ti 哪一個。從 do / re 二選一開始。",
+    2: "加入五個半音（升 do、升 re、升 fa、升 sol、升 la），共 12 個音。",
+    3: "跨八度：低音 sol 到高音 mi，練習聽出音在 do 的上方還是下方。",
+  };
+
   const CHORD_LEVELS = {
     1: ["maj", "m", "dim", "aug"],
     2: ["maj", "m", "7", "maj7", "m7", "dim", "aug", "m7b5", "dim7"],
@@ -80,6 +113,7 @@
     allTime: $("learnAllTime"),
     playBtn: $("learnPlayBtn"),
     arpBtn: $("learnArpBtn"),
+    refBtn: $("learnRefBtn"),
     nextBtn: $("learnNextBtn"),
     prompt: $("learnPrompt"),
     options: $("learnOptions"),
@@ -151,6 +185,29 @@
     };
   }
 
+  /** Reference do, then the target (or only the reference when id is null). */
+  function playNote(rootMidi, id) {
+    const ac = ctx();
+    if (!ac) return;
+    stopAudio();
+    const master = ac.createGain();
+    master.gain.value = 0.28;
+    master.connect(ac.destination);
+    const t0 = ac.currentTime + 0.03;
+    noteOn(ac, master, rootMidi, t0, 0.7, 0.8);
+    let end = t0 + 0.8;
+    if (id) {
+      noteOn(ac, master, rootMidi + NOTES[id].semi, t0 + 0.85, 1.1, 0.9);
+      end = t0 + 2.0;
+    }
+    const timer = setTimeout(() => { try { master.disconnect(); } catch {} }, (end - ac.currentTime + 0.1) * 1000);
+    _stopCurrent = () => {
+      clearTimeout(timer);
+      try { master.gain.setTargetAtTime(0.0001, ac.currentTime, 0.02); } catch {}
+      setTimeout(() => { try { master.disconnect(); } catch {} }, 120);
+    };
+  }
+
   function chordMidis(rootMidi, id) {
     return CHORDS[id].iv.map((iv) => rootMidi + iv);
   }
@@ -172,7 +229,13 @@
   }
 
   function pool() {
+    if (state.module === "note") return NOTE_LEVELS[state.level];
     return state.module === "chord" ? CHORD_LEVELS[state.level] : SCALE_LEVELS[state.level];
+  }
+
+  function levelHint() {
+    if (state.module === "note") return NOTE_LEVEL_HINT[state.level];
+    return (state.module === "chord" ? CHORD_LEVEL_HINT : SCALE_LEVEL_HINT)[state.level];
   }
 
   function poolKey() { return `livechord_learn_pool:${state.module}:${state.level}`; }
@@ -247,7 +310,9 @@
     // Avoid the same answer twice in a row when there is a choice.
     if (state.question && ids.length > 1 && id === state.question.id) id = pick(ids.filter((x) => x !== id));
     const rootPc = Math.floor(Math.random() * 12);
-    const q = { id, rootPc, root: NOTE_NAMES[rootPc], rootMidi: 48 + rootPc + (Math.random() < 0.5 ? 0 : 12) };
+    // Notes: keep do around C4 so low-sol / high-mi both sit in a singable range.
+    const rootMidi = state.module === "note" ? 55 + rootPc : 48 + rootPc + (Math.random() < 0.5 ? 0 : 12);
+    const q = { id, rootPc, root: NOTE_NAMES[rootPc], rootMidi };
     let options = ids;
     if (ids.length > MAX_OPTIONS) {
       options = shuffle([id].concat(shuffle(ids.filter((x) => x !== id)).slice(0, MAX_OPTIONS - 1)));
@@ -262,20 +327,35 @@
     refs.feedback.className = "learn-feedback";
     refs.nextBtn.disabled = true;
     refs.playBtn.textContent = "🔁 再聽一次";
-    refs.prompt.textContent = state.module === "chord"
-      ? "這是什麼和弦？（根音不固定，聽和弦的色彩）"
-      : "這是什麼音階？（上行再下行，聽每一階的距離）";
+    refs.prompt.textContent = state.module === "note"
+      ? "先聽 do，再聽第二個音 — 第二個音是哪個？（每題的 do 都不同，聽相對距離）"
+      : state.module === "chord"
+        ? "這是什麼和弦？（根音不固定，聽和弦的色彩）"
+        : "這是什麼音階？（上行再下行，聽每一階的距離）";
     playQuestion(false);
   }
 
   function playQuestion(arp) {
     const q = state.question;
     if (!q) return;
-    if (state.module === "chord") playChord(chordMidis(q.rootMidi, q.id), arp);
+    if (state.module === "note") playNote(q.rootMidi, q.id);
+    else if (state.module === "chord") playChord(chordMidis(q.rootMidi, q.id), arp);
     else playScaleId(q.root, q.id);
   }
 
+  function noteJpHtml(id) {
+    const n = NOTES[id];
+    const acc = n.acc ? `<sup>${n.acc}</sup>` : "";
+    const up = n.oct > 0 ? `<span class="dot">•</span>` : "";
+    const down = n.oct < 0 ? `<span class="dot">•</span>` : "";
+    return `<span class="learn-jp">${up}${acc}${n.jp}${down}</span>`;
+  }
+
   function optionLabel(id) {
+    if (state.module === "note") {
+      const n = NOTES[id];
+      return { main: n.solf, sub: n.iv, html: noteJpHtml(id) };
+    }
     if (state.module === "chord") {
       const c = CHORDS[id];
       return { main: c.name, sub: "X" + c.sfx };
@@ -288,7 +368,8 @@
     const q = state.question;
     refs.options.innerHTML = q.options.map((id, i) => {
       const l = optionLabel(id);
-      return `<button class="learn-opt" type="button" data-id="${id}"><span class="learn-key">${i + 1}</span>${esc(l.main)}<small>${esc(l.sub)}</small></button>`;
+      const main = l.html ? `${l.html}<small>${esc(l.main)}</small>` : esc(l.main);
+      return `<button class="learn-opt" type="button" data-id="${id}"><span class="learn-key">${i + 1}</span>${main}<small>${esc(l.sub)}</small></button>`;
     }).join("");
     refs.options.querySelectorAll(".learn-opt").forEach((b) => b.addEventListener("click", () => answer(b.dataset.id)));
   }
@@ -324,8 +405,11 @@
     const q = state.question;
     const exp = optionLabel(q.id);
     const isChord = state.module === "chord";
-    const expName = isChord ? `${q.root}${CHORDS[q.id].sfx}（${exp.main}）` : `${q.root} ${exp.main}`;
-    const desc = isChord ? CHORDS[q.id].desc : (window.ScaleLab.getScale(q.id).desc || "");
+    const isNote = state.module === "note";
+    const expName = isNote
+      ? `${exp.main}（do = ${q.root}，${exp.sub}）`
+      : isChord ? `${q.root}${CHORDS[q.id].sfx}（${exp.main}）` : `${q.root} ${exp.main}`;
+    const desc = isNote ? "答錯時用下面兩個按鈕來回聽：都是先 do 再目標音，比較距離感。" : isChord ? CHORDS[q.id].desc : (window.ScaleLab.getScale(q.id).desc || "");
     let html = `<div class="learn-feedback-title">${correct ? "✅ 答對了！" : "❌ 不是這個。"}正確答案：${esc(expName)}</div>`;
     html += `<div class="learn-feedback-desc">${esc(desc)}</div>`;
     html += `<div class="learn-compare"><button class="learn-btn" type="button" data-play="${q.id}">🔊 聽正確答案</button>`;
@@ -339,7 +423,8 @@
     refs.feedback.classList.add(correct ? "is-correct" : "is-wrong");
     refs.feedback.querySelectorAll("[data-play]").forEach((b) => b.addEventListener("click", () => {
       const id = b.dataset.play;
-      if (isChord) playChord(chordMidis(q.rootMidi, id), false);
+      if (isNote) playNote(q.rootMidi, id);
+      else if (isChord) playChord(chordMidis(q.rootMidi, id), false);
       else playScaleId(q.root, id);
     }));
   }
@@ -382,8 +467,13 @@
   function setModule(m) {
     state.module = m;
     refs.tabs.forEach((t) => t.classList.toggle("is-active", t.dataset.module === m));
-    refs.arpBtn.style.display = m === "chord" ? "" : "none";
+    syncModuleButtons();
     resetForNewSet();
+  }
+
+  function syncModuleButtons() {
+    refs.arpBtn.style.display = state.module === "chord" ? "" : "none";
+    refs.refBtn.style.display = state.module === "note" ? "" : "none";
   }
 
   function setLevel(l) {
@@ -398,7 +488,7 @@
     state.answered = false;
     state.session = { correct: 0, total: 0 };
     state.streak = 0;
-    refs.levelHint.textContent = (state.module === "chord" ? CHORD_LEVEL_HINT : SCALE_LEVEL_HINT)[state.level];
+    refs.levelHint.textContent = levelHint();
     loadActive();
     renderPool();
     refs.options.innerHTML = "";
@@ -417,6 +507,7 @@
     refs.playBtn.addEventListener("click", () => { if (!state.question) newQuestion(); else playQuestion(false); });
     refs.arpBtn.addEventListener("click", () => { if (!state.question) newQuestion(); else playQuestion(true); });
     refs.nextBtn.addEventListener("click", () => { if (state.answered) newQuestion(); });
+    refs.refBtn.addEventListener("click", () => { if (state.question) playNote(state.question.rootMidi, null); });
     refs.autoGrow.addEventListener("change", () => {
       state.autoGrow = refs.autoGrow.checked;
       try { localStorage.setItem("livechord_learn_autogrow", state.autoGrow ? "1" : "0"); } catch {}
@@ -440,7 +531,7 @@
   function init() {
     try {
       const saved = JSON.parse(localStorage.getItem("livechord_learn") || "null");
-      if (saved && (saved.module === "chord" || saved.module === "scale")) state.module = saved.module;
+      if (saved && ["note", "chord", "scale"].includes(saved.module)) state.module = saved.module;
       if (saved && [1, 2, 3].includes(Number(saved.level))) state.level = Number(saved.level);
     } catch {}
     try { state.autoGrow = localStorage.getItem("livechord_learn_autogrow") !== "0"; } catch {}
@@ -448,7 +539,7 @@
     bind();
     refs.tabs.forEach((t) => t.classList.toggle("is-active", t.dataset.module === state.module));
     refs.levels.forEach((b) => b.classList.toggle("is-active", Number(b.dataset.level) === state.level));
-    refs.arpBtn.style.display = state.module === "chord" ? "" : "none";
+    syncModuleButtons();
     resetForNewSet();
     loadStats();
   }
