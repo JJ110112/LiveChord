@@ -5701,6 +5701,7 @@
     const t = audio.currentTime;
     _updateProgress(t);
     _updateDynamicBpmLabel(t);
+    _updateKeyDisplay(t); // key badge + scale panel follow a paused scrub too
     // forceScroll=true so rewind-to-start (and any scrub) re-centers the
     // ribbon even when paused. The default _isAnyPlaying gate suppresses
     // scrolling on a paused player which is correct for pause-without-seek
@@ -7842,6 +7843,9 @@
       // Filter section-derived keys: key must persist 2+ consecutive sections.
       // Arbiter windows are already sustained song-level key regions.
       const stable = [];
+      // For the arbiter path: which stable slot each candidate's `to` landed
+      // in (enharmonic repeats like Eb→D#→Eb collapse into one slot).
+      const candStableIdx = [];
       if (sectionKeyWindows.length) {
         const secKeys = sectionKeyWindows.map(w => w.key);
         for (let i = 0; i < secKeys.length; i++) {
@@ -7856,7 +7860,10 @@
       } else if (modulationCandidates.length) {
         const first = modulationCandidates[0];
         pushUniqueRoot(stable, first.from || baseKey);
-        modulationCandidates.forEach(c => pushUniqueRoot(stable, c.to));
+        modulationCandidates.forEach(c => {
+          pushUniqueRoot(stable, c.to);
+          candStableIdx.push(stable.length - 1);
+        });
       }
       // Fallback: if nothing survived, use global key
       if (stable.length === 0) stable.push(baseKey);
@@ -7893,8 +7900,10 @@
             }
           }
           const curCandidate = curCandidateIdx >= 0 ? modulationCandidates[curCandidateIdx] : null;
-          curRaw = curCandidate ? curCandidate.to : "";
-          activeStableIdx = curCandidateIdx >= 0 ? curCandidateIdx + 1 : 0;
+          // Before the first modulation the song sits in the first candidate's
+          // `from` key (not the global key, which may be its relative minor).
+          curRaw = curCandidate ? curCandidate.to : (modulationCandidates[0].from || stable[0]);
+          activeStableIdx = curCandidateIdx >= 0 ? (candStableIdx[curCandidateIdx] ?? -1) : 0;
         }
         if (!curRaw) curRaw = baseKey;
         if (activeStableIdx < 0 || activeStableIdx >= stable.length || rawRoot(stable[activeStableIdx]) !== rawRoot(curRaw)) {
