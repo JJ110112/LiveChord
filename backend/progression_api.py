@@ -424,6 +424,7 @@ def progression_summary(
     if not f.is_file():
         raise HTTPException(status_code=404, detail="no chord data")
     data = json.loads(f.read_text(encoding="utf-8"))
+    raw_chords = list(data.get("chords") or [])   # section detector runs on raw chords, like /api/ai/sections
     try:  # analyse the served view (meter regularizer, quality smoothing, split)
         from chord_api import apply_serve_pipeline
         apply_serve_pipeline(data, f, path or data.get("path") or "")
@@ -451,7 +452,7 @@ def progression_summary(
         from ai.section_detect import detect_sections
         user_dir = DATA_DIR / "users" / str(username)
         effective = str(user_dir) if (user_dir / "human_sections" / f"{h}.json").is_file() else str(DATA_DIR)
-        sec = detect_sections(chords, data.get("key") or "C", song_hash=h, data_dir=effective,
+        sec = detect_sections(raw_chords, data.get("key") or "C", song_hash=h, data_dir=effective,
                               fallback_data_dir=str(DATA_DIR), hint_bpm=data.get("bpm"))
         sections = sec.get("sections", [])
         if (sec.get("analysis") or {}).get("mode") != "human-loop":
