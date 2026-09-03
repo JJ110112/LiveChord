@@ -29,6 +29,8 @@ _MIN_BARS = 8
 _PHASE_MIN_GAIN = 0.10      # new phase must align this much better (fraction of chord onsets)
 _SNAP_TOL_UNITS = 1.0       # chord boundary snap tolerance in subdivisions
 _MIN_CHORD_UNITS = 1.0      # never shrink a chord below one subdivision
+_BAR_PREF_MIN_RATIO = 0.70  # 整小節優先: share of chord changes on bar lines that marks a bar-aligned song
+_BAR_PREF_MIN_LONG_SHARE = 0.75  # …or share of time spent in chords ≥ 1 bar long
 
 
 def _median_gap(xs: List[float]) -> Optional[float]:
@@ -200,6 +202,108 @@ def regularize(chord_data: Dict) -> Dict:
             q = dict(best)
             q["time"], q["end"] = round(s0, 3), round(s1, 3)
             quantized.append(q)
+    # 整小節優先 — whole-bar preference. If the song changes chords on bar
+    # lines most of the time, a change that landed on a half-bar line is far
+    # more likely a BTC boundary that drifted by half a bar than a genuine
+    # half-bar harmony. Re-quantize such songs at bar resolution (majority
+    # chord per bar). Genuinely half-bar songs (ratio below the gate) keep
+    # the finer grid.
+    bar_pref = {"applied": False}
+    if compound and len(quantized) >= 6:
+        bar_set = {round(b, 3) for b in bars}
+        changes = [q["time"] for q in quantized[1:]]
+        on_bar = sum(1 for t in changes if round(t, 3) in bar_set)
+        ratio_bar = on_bar / len(changes) if changes else 0.0
+        # Second gate: when BTC drift is pervasive the change ratio is low
+        # even though harmonies are bar-long — so also accept songs whose
+        # time is mostly spent in chords ≥ 1 bar (Libera: 83 %).
+        tot_t = sum(q["end"] - q["time"] for q in quantized) or 1.0
+        long_t = sum(q["end"] - q["time"] for q in quantized if q["end"] - q["time"] >= expected * 0.9)
+        long_share = long_t / tot_t
+        bar_pref = {"applied": False, "bar_change_ratio": round(ratio_bar, 3), "long_chord_share": round(long_share, 3), "changes": len(changes)}
+        if ratio_bar >= _BAR_PREF_MIN_RATIO or long_share >= _BAR_PREF_MIN_LONG_SHARE:
+            bq: List[Dict] = []
+            ci = 0
+            for k in range(len(bars) - 1):
+                s0, s1 = bars[k], bars[k + 1]
+                best, best_ov = None, 0.0
+                while ci > 0 and float(chords[ci].get("time", 0)) > s0:
+                    ci -= 1
+                j = ci
+                while j < len(chords) and float(chords[j].get("time", 0)) < s1:
+                    c = chords[j]
+                    ov = min(s1, float(c.get("end", c.get("time", 0)))) - max(s0, float(c.get("time", 0)))
+                    if ov > best_ov:
+                        best, best_ov = c, ov
+                    j += 1
+                ci = max(0, j - 1)
+                if best is None or best_ov <= 0:
+                    continue
+                if bq and bq[-1]["chord"] == best.get("chord"):
+                    bq[-1]["end"] = round(s1, 3)
+                else:
+                    q = dict(best)
+                    q["time"], q["end"] = round(s0, 3), round(s1, 3)
+                    bq.append(q)
+            # No-drop guard: a chord that was at least ~half a bar long in the
+            # detection must survive — give it the bar it overlaps most (a
+            # 50/50 bar split otherwise lets the neighbour swallow it).
+            if len(bq) >= 2:
+                bar_of: List = []
+                for k in range(len(bars) - 1):
+                    mid = (bars[k] + bars[k + 1]) / 2
+                    bar_of.append(next((q for q in bq if q["time"] <= mid < q["end"]), None))
+                rescued = 0
+                rescued_ex: List[Dict] = []
+                locked: set = set()
+                for idx, c in enumerate(chords):
+                    c0, c1 = float(c.get("time", 0)), float(c.get("end", c.get("time", 0)))
+                    if c1 - c0 < expected * 0.45:
+                        continue
+                    if any(b is not None and b.get("chord") == c.get("chord") and b["time"] < c1 and b["end"] > c0 for b in bar_of):
+                        continue
+                    # Candidate bars by overlap; never take a bar another
+                    # rescued chord already locked (that caused F → Bb7
+                    # overwrite chains), and prefer bars whose holder keeps
+                    # at least one other bar.
+                    cands = sorted(((min(bars[k + 1], c1) - max(bars[k], c0), k) for k in range(len(bars) - 1)), reverse=True)
+                    cands = [(ov, k) for ov, k in cands if ov > 0 and k not in locked]
+                    best_k = -1
+                    for ov, k in cands:
+                        holder = bar_of[k]
+                        held = sum(1 for b in bar_of if b is holder) if holder is not None else 0
+                        if holder is None or held >= 2:
+                            best_k = k
+                            break
+                    if best_k < 0 and cands:
+                        best_k = cands[0][1]
+                    if best_k >= 0:
+                        locked.add(best_k)
+                        q = dict(c)
+                        q["time"], q["end"] = round(bars[best_k], 3), round(bars[best_k + 1], 3)
+                        bar_of[best_k] = q
+                        rescued += 1
+                        rescued_ex.append({"chord": c.get("chord"), "at": round(c0, 2), "bar": round(bars[best_k], 2)})
+                if rescued:
+                    rebuilt: List[Dict] = []
+                    for k, q in enumerate(bar_of):
+                        if q is None:
+                            continue
+                        s0, s1 = round(bars[k], 3), round(bars[k + 1], 3)
+                        if rebuilt and rebuilt[-1]["chord"] == q["chord"] and abs(rebuilt[-1]["end"] - s0) < 0.01:
+                            rebuilt[-1]["end"] = s1
+                        else:
+                            nq = dict(q)
+                            nq["time"], nq["end"] = s0, s1
+                            rebuilt.append(nq)
+                    bq = rebuilt
+                bar_pref["rescued"] = rescued
+                bar_pref["rescued_examples"] = rescued_ex[:20]
+                bar_pref["applied"] = True
+                bar_pref["chords_half_bar"] = len(quantized)
+                bar_pref["chords_whole_bar"] = len(bq)
+                quantized = bq
+
     # Keep the very first onset (an intro pickup may start before the grid).
     if quantized and chords:
         first_t = float(chords[0].get("time", 0))
@@ -224,6 +328,7 @@ def regularize(chord_data: Dict) -> Dict:
         "align_before": round(align_before, 3),
         "align_after": round(align_after, 3),
         "chords_before": len(chords), "chords_after": len(new_chords),
+        "bar_preference": bar_pref,
         "bar_count": len(bars),
     })
     return meta
