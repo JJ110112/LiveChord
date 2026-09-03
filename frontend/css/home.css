@@ -1230,6 +1230,10 @@ body.ambient-fullscreen-lock {
   color: var(--text);
   border-radius: 10px;
   padding: 8px 10px;
+  /* Explicit size: form controls otherwise follow the browser's default font
+     size setting (chrome://settings/fonts), which differs per browser/profile. */
+  font-size: 14px;
+  font-family: inherit;
 }
 .proglib-field select option {
   background: var(--bg);
