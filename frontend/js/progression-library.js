@@ -672,8 +672,9 @@
   function ambientScore(specs) {
     if (!specs.length) return -999;
     const pcsOf = ([deg, q]) => (QUALITY[q] || QUALITY.maj).iv.map((iv) => normDeg(deg + iv));
-    let smooth = 0, common = 0, leaps = 0;
+    let smooth = 0, common = 0, leaps = 0, dupes = 0;
     for (let i = 1; i < specs.length; i++) {
+      if (specs[i][0] === specs[i - 1][0] && specs[i][1] === specs[i - 1][1]) dupes += 1;
       const jump = Math.abs(specs[i][0] - specs[i - 1][0]);
       const wrapped = Math.min(jump, 12 - jump);
       smooth += wrapped;
@@ -684,7 +685,7 @@
     const tension = specs.filter(([, q]) => /7|9|11|sus/.test(q)).length;
     const lastDeg = specs[specs.length - 1][0];
     const pull = Math.min(lastDeg, 12 - lastDeg);
-    return 120 - smooth * 5 - leaps * 8 + common * 4 + tension * 3 - pull * 1.5;
+    return 120 - smooth * 5 - leaps * 8 + common * 4 + tension * 3 - pull * 1.5 - dupes * 60;
   }
 
   function regenerateAmbient(isInitial) {
