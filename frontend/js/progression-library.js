@@ -2156,7 +2156,8 @@
   // for display (stored text is untouched). Line breaks become <br>.
   function formatNote(raw) {
     let t = String(raw || "")
-      .replace(/\$\$?([^$]*)\$\$?/g, "$1")
+      .replace(/\$\$([^$]+)\$\$/g, "$1")   // display math first
+      .replace(/\$([^$]+)\$/g, "$1")       // inline math; "$a$$b$" is two spans, not display math
       .replace(/\\text\{([^}]*)\}/g, "$1")
       .replace(/\\mathrm\{([^}]*)\}/g, "$1")
       .replace(/\\(?:to|rightarrow|longrightarrow)\b/g, "→")
