@@ -555,6 +555,13 @@ def _key_from_chords(chords: list) -> str:
             best_score = score_minor
             best_key = NOTE_NAMES[tonic] + "m"
 
+    # Relative major/minor share the pitch set; pick the tonic by cadences,
+    # tonic time and endings instead of template size (see key_relative.py).
+    try:
+        from key_relative import decide_relative
+        best_key, _ = decide_relative(chords, best_key)
+    except Exception:
+        pass
     return best_key
 
 

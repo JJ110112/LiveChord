@@ -39,6 +39,7 @@ from chord_noise_filter import maybe_filter_for_serve as maybe_noise_filter_for_
 from bar_phase_corrector import maybe_correct_for_serve as maybe_phase_correct_for_serve
 from meter_regularizer import maybe_regularize_for_serve
 from chord_quality_smoother import maybe_smooth_for_serve
+from key_relative import maybe_fix_relative_key_for_serve
 from bpm_sanity import maybe_apply_structural_bpm_correction_for_serve
 from global_chord_arbiter import maybe_analyze_global_structure_for_serve
 from instrument_registry import get_instrument, list_instruments, INSTRUMENTS
@@ -428,6 +429,7 @@ def apply_serve_pipeline(data: dict, official_file: Path, path: str = "") -> dic
     consumers (progression summary) analyse exactly what the player shows."""
     if path and _suppress_stale_legacy_timeline_for_serve(data, path):
         return data
+    maybe_fix_relative_key_for_serve(data)   # Ab major vs Fm: pick the tonic by cadences/endings
     maybe_apply_structural_bpm_correction_for_serve(data)
     maybe_phase_correct_for_serve(data)
     _maybe_meter_fallback_from_sidecars(data, official_file)
@@ -470,6 +472,7 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
     data["current_version"] = "official" if is_fallback or not version else version
     if _suppress_stale_legacy_timeline_for_serve(data, path):
         return data
+    maybe_fix_relative_key_for_serve(data)   # Ab major vs Fm: pick the tonic by cadences/endings
     maybe_apply_structural_bpm_correction_for_serve(data)
     maybe_phase_correct_for_serve(data) # rewrite irregular downbeats[] to regular grid
     _maybe_meter_fallback_from_sidecars(data, official_file)  # stamp 6/8 from sidecars when active source can't detect
@@ -494,6 +497,7 @@ async def get_chords_by_hash(hash: str = Query(..., min_length=8, max_length=16)
     data["exists"] = True
     if _suppress_stale_legacy_timeline_for_serve(data):
         return data
+    maybe_fix_relative_key_for_serve(data)   # Ab major vs Fm: pick the tonic by cadences/endings
     maybe_apply_structural_bpm_correction_for_serve(data)
     maybe_phase_correct_for_serve(data)
     _maybe_meter_fallback_from_sidecars(data, chords_file)
