@@ -424,6 +424,11 @@ def progression_summary(
     if not f.is_file():
         raise HTTPException(status_code=404, detail="no chord data")
     data = json.loads(f.read_text(encoding="utf-8"))
+    try:  # analyse the served view (meter regularizer, quality smoothing, split)
+        from chord_api import apply_serve_pipeline
+        apply_serve_pipeline(data, f, path or data.get("path") or "")
+    except Exception:
+        pass
     chords = data.get("chords") or []
     result = analyze_progression(
         chords, key=data.get("key") or "C",

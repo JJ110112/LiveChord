@@ -38,6 +38,7 @@ from chord_tail_extender import maybe_extend_tail_for_serve
 from chord_noise_filter import maybe_filter_for_serve as maybe_noise_filter_for_serve
 from bar_phase_corrector import maybe_correct_for_serve as maybe_phase_correct_for_serve
 from meter_regularizer import maybe_regularize_for_serve
+from chord_quality_smoother import maybe_smooth_for_serve
 from bpm_sanity import maybe_apply_structural_bpm_correction_for_serve
 from global_chord_arbiter import maybe_analyze_global_structure_for_serve
 from instrument_registry import get_instrument, list_instruments, INSTRUMENTS
@@ -421,6 +422,24 @@ def _merge_official_timing_fields_for_serve(data: dict, official_file: Path,
             data[key] = official[key]
 
 
+
+def apply_serve_pipeline(data: dict, official_file: Path, path: str = "") -> dict:
+    """Run the same serve-time corrections GET /api/chords applies, so other
+    consumers (progression summary) analyse exactly what the player shows."""
+    if path and _suppress_stale_legacy_timeline_for_serve(data, path):
+        return data
+    maybe_apply_structural_bpm_correction_for_serve(data)
+    maybe_phase_correct_for_serve(data)
+    _maybe_meter_fallback_from_sidecars(data, official_file)
+    maybe_analyze_global_structure_for_serve(data)
+    maybe_regularize_for_serve(data)
+    maybe_noise_filter_for_serve(data)
+    maybe_smooth_for_serve(data)
+    maybe_extend_tail_for_serve(data)
+    maybe_split_for_serve(data)
+    return data
+
+
 @router.get("/chords")
 async def get_chords(path: str = Query(...), version: str = Query(None),
                      beat_source: str = Query(None),
@@ -457,6 +476,7 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
     maybe_analyze_global_structure_for_serve(data) # section-level diagnostic hints
     maybe_regularize_for_serve(data)    # 6/8 & 3/4: clean bars, fix phase, even beats, snap chord edges
     maybe_noise_filter_for_serve(data)  # absorb 1-beat noise tails
+    maybe_smooth_for_serve(data)        # Fm → Fm6 → Fm extension flicker → Fm
     maybe_extend_tail_for_serve(data)   # fill missing outro cards from beat tail
     maybe_split_for_serve(data)         # split long chords at corrected downbeats
     return data
@@ -480,6 +500,7 @@ async def get_chords_by_hash(hash: str = Query(..., min_length=8, max_length=16)
     maybe_analyze_global_structure_for_serve(data)
     maybe_regularize_for_serve(data)
     maybe_noise_filter_for_serve(data)
+    maybe_smooth_for_serve(data)
     maybe_extend_tail_for_serve(data)
     maybe_split_for_serve(data)
     return data
