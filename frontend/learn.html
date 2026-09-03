@@ -9,7 +9,7 @@
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <script src="/js/auth.js?v=7"></script>
   <link rel="stylesheet" href="/css/base.css?v=24">
-  <link rel="stylesheet" href="/css/learn.css?v=1">
+  <link rel="stylesheet" href="/css/learn.css?v=2">
 </head>
 <body class="learn-body">
 
@@ -48,6 +48,7 @@
         <button class="learn-level" type="button" data-level="3">高級</button>
       </div>
       <div id="learnLevelHint" class="learn-level-hint"></div>
+      <label class="learn-auto"><input id="learnAutoGrow" type="checkbox" checked> 循序模式（連對 5 題自動加一種）</label>
       <div class="learn-score">
         <span>本次 <b id="learnSessionScore">0 / 0</b></span>
         <span>連對 <b id="learnStreak">0</b></span>
@@ -55,6 +56,10 @@
       </div>
     </div>
 
+    <div class="learn-pool-wrap">
+      <span class="learn-pool-label">練習範圍 <span id="learnPoolCount"></span></span>
+      <div id="learnPool" class="learn-pool"></div>
+    </div>
     <div class="learn-stage">
       <div class="learn-play-row">
         <button id="learnPlayBtn" class="learn-big-btn" type="button">▶ 播放題目</button>
@@ -75,6 +80,6 @@
 
 <div id="toast" class="toast"></div>
 <script src="/js/scale-lab.js?v=3"></script>
-<script src="/js/learn.js?v=1"></script>
+<script src="/js/learn.js?v=2"></script>
 </body>
 </html>

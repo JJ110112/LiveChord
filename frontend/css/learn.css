@@ -41,6 +41,17 @@
 }
 .learn-level.is-active { background: color-mix(in srgb, var(--accent) 30%, var(--bg-card)); color: var(--text); }
 .learn-level-hint { font-size: 12px; color: var(--text-dim); flex: 1 1 200px; }
+.learn-auto { font-size: 12px; color: var(--text-dim); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.learn-pool-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border)); }
+.learn-pool-label { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.learn-pool { display: flex; flex-wrap: wrap; gap: 6px; }
+.learn-chip {
+  border: 1px solid var(--border); border-radius: 999px; padding: 5px 11px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  background: transparent; color: var(--text-dim);
+}
+.learn-chip.is-on { background: color-mix(in srgb, var(--accent) 26%, var(--bg-card)); border-color: color-mix(in srgb, var(--accent) 70%, var(--border)); color: var(--text); }
+.learn-chip.is-next { border-style: dashed; }
 .learn-score { display: flex; gap: 14px; font-size: 13px; color: var(--text-dim); }
 .learn-score b { color: var(--text); }
 

@@ -1,4 +1,4 @@
-// learn.js v1 — /learn 互動學習: ear-training quizzes (和弦聽辨 / 音階聽辨).
+// learn.js v2 — /learn 互動學習: ear-training quizzes (和弦聽辨 / 音階聽辨).
 // Self-contained WebAudio for chords; scales reuse window.ScaleLab
 // (catalogue + playScale). Progress is stored via /api/learn/*.
 (function () {
@@ -30,8 +30,8 @@
   };
   const CHORD_LEVELS = {
     1: ["maj", "m", "dim", "aug"],
-    2: ["maj", "m", "dim", "aug", "maj7", "m7", "7", "m7b5", "dim7"],
-    3: Object.keys(CHORDS),
+    2: ["maj", "m", "7", "maj7", "m7", "dim", "aug", "m7b5", "dim7"],
+    3: ["maj", "m", "7", "maj7", "m7", "sus4", "sus2", "6", "m6", "dim", "aug", "m7b5", "dim7", "9", "maj9", "m9", "7b9", "7#5", "mmaj7"],
   };
   const CHORD_LEVEL_HINT = {
     1: "四種三和弦：大 / 小 / 減 / 增。",
@@ -40,8 +40,8 @@
   };
 
   const SCALE_LEVELS = {
-    1: ["major", "minor", "harmonic_minor", "major_pentatonic", "minor_pentatonic", "blues"],
-    2: ["major", "minor", "melodic_minor", "dorian", "phrygian", "lydian", "mixolydian", "locrian"],
+    1: ["major", "minor", "major_pentatonic", "minor_pentatonic", "harmonic_minor", "blues"],
+    2: ["major", "minor", "dorian", "mixolydian", "lydian", "phrygian", "locrian", "melodic_minor"],
     3: ["whole_tone", "half_whole_dim", "whole_half_dim", "altered", "lydian_dominant", "bebop_dominant",
         "harmonic_major", "hungarian_minor", "phrygian_dominant", "double_harmonic", "hirajoshi", "in_sen", "chromatic"],
   };
@@ -51,6 +51,8 @@
     3: "爵士、對稱、異國音階。每題隨機出 8 個選項。",
   };
   const MAX_OPTIONS = 8;
+  const GROW_STREAK = 5;   // consecutive correct answers before auto-adding an item
+  const MIN_ACTIVE = 2;
 
   const state = {
     module: "chord",
@@ -60,6 +62,9 @@
     session: { correct: 0, total: 0 },
     streak: 0,
     stats: null,
+    active: [],        // ids currently in play (ordered subset of pool())
+    autoGrow: true,
+    sinceGrow: 0,      // consecutive correct since the last expansion
   };
 
   const $ = (id) => document.getElementById(id);
@@ -67,6 +72,9 @@
     tabs: document.querySelectorAll(".learn-tab"),
     levels: document.querySelectorAll(".learn-level"),
     levelHint: $("learnLevelHint"),
+    autoGrow: $("learnAutoGrow"),
+    pool: $("learnPool"),
+    poolCount: $("learnPoolCount"),
     sessionScore: $("learnSessionScore"),
     streak: $("learnStreak"),
     allTime: $("learnAllTime"),
@@ -167,9 +175,74 @@
     return state.module === "chord" ? CHORD_LEVELS[state.level] : SCALE_LEVELS[state.level];
   }
 
+  function poolKey() { return `livechord_learn_pool:${state.module}:${state.level}`; }
+
+  function loadActive() {
+    const ids = pool();
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(poolKey()) || "null"); } catch {}
+    const valid = Array.isArray(saved) ? ids.filter((id) => saved.includes(id)) : [];
+    state.active = valid.length >= MIN_ACTIVE ? valid : ids.slice(0, MIN_ACTIVE);
+    state.sinceGrow = 0;
+  }
+
+  function saveActive() {
+    try { localStorage.setItem(poolKey(), JSON.stringify(state.active)); } catch {}
+  }
+
+  function nextInactive() {
+    return pool().find((id) => !state.active.includes(id)) || null;
+  }
+
+  function renderPool() {
+    const ids = pool();
+    const next = nextInactive();
+    refs.poolCount.textContent = `${state.active.length} / ${ids.length}`;
+    refs.pool.innerHTML = ids.map((id) => {
+      const on = state.active.includes(id);
+      const l = optionLabel(id);
+      return `<button class="learn-chip ${on ? "is-on" : ""} ${id === next ? "is-next" : ""}" type="button" data-id="${id}" title="${esc(l.sub)}">${esc(l.main)}</button>`;
+    }).join("");
+    refs.pool.querySelectorAll(".learn-chip").forEach((b) => b.addEventListener("click", () => toggleActive(b.dataset.id)));
+  }
+
+  function toggleActive(id) {
+    const on = state.active.includes(id);
+    if (on) {
+      if (state.active.length <= MIN_ACTIVE) { toast(`至少要保留 ${MIN_ACTIVE} 種`); return; }
+      state.active = state.active.filter((x) => x !== id);
+    } else {
+      state.active = pool().filter((x) => x === id || state.active.includes(x));
+    }
+    state.sinceGrow = 0;
+    saveActive();
+    renderPool();
+    if (state.question && !state.answered && !state.active.includes(state.question.id)) newQuestion();
+  }
+
+  function maybeGrow() {
+    if (!state.autoGrow || state.sinceGrow < GROW_STREAK) return;
+    const next = nextInactive();
+    if (!next) { state.sinceGrow = 0; return; }
+    state.active = pool().filter((x) => x === next || state.active.includes(x));
+    state.sinceGrow = 0;
+    saveActive();
+    renderPool();
+    toast(`🎉 連對 ${GROW_STREAK} 題，加入：${optionLabel(next).main}`);
+  }
+
+  function toast(msg) {
+    const el = document.getElementById("toast");
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => el.classList.remove("show"), 2200);
+  }
+
   function newQuestion() {
     stopAudio();
-    const ids = pool();
+    const ids = state.active.length >= MIN_ACTIVE ? state.active : pool();
     let id = pick(ids);
     // Avoid the same answer twice in a row when there is a choice.
     if (state.question && ids.length > 1 && id === state.question.id) id = pick(ids.filter((x) => x !== id));
@@ -227,7 +300,7 @@
     state.answered = true;
     const correct = id === q.id;
     state.session.total += 1;
-    if (correct) { state.session.correct += 1; state.streak += 1; } else state.streak = 0;
+    if (correct) { state.session.correct += 1; state.streak += 1; state.sinceGrow += 1; } else { state.streak = 0; state.sinceGrow = 0; }
     refs.options.querySelectorAll(".learn-opt").forEach((b) => {
       b.disabled = true;
       if (b.dataset.id === q.id) b.classList.add("is-correct");
@@ -237,6 +310,7 @@
     renderFeedback(id, correct);
     refs.nextBtn.disabled = false;
     updateScoreUi();
+    maybeGrow();
     try {
       await fetch("/api/learn/result", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -325,6 +399,8 @@
     state.session = { correct: 0, total: 0 };
     state.streak = 0;
     refs.levelHint.textContent = (state.module === "chord" ? CHORD_LEVEL_HINT : SCALE_LEVEL_HINT)[state.level];
+    loadActive();
+    renderPool();
     refs.options.innerHTML = "";
     refs.feedback.hidden = true;
     refs.nextBtn.disabled = true;
@@ -341,6 +417,10 @@
     refs.playBtn.addEventListener("click", () => { if (!state.question) newQuestion(); else playQuestion(false); });
     refs.arpBtn.addEventListener("click", () => { if (!state.question) newQuestion(); else playQuestion(true); });
     refs.nextBtn.addEventListener("click", () => { if (state.answered) newQuestion(); });
+    refs.autoGrow.addEventListener("change", () => {
+      state.autoGrow = refs.autoGrow.checked;
+      try { localStorage.setItem("livechord_learn_autogrow", state.autoGrow ? "1" : "0"); } catch {}
+    });
     document.addEventListener("keydown", (e) => {
       if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
       if (e.key === " ") { e.preventDefault(); if (!state.question) newQuestion(); else playQuestion(false); return; }
@@ -363,6 +443,8 @@
       if (saved && (saved.module === "chord" || saved.module === "scale")) state.module = saved.module;
       if (saved && [1, 2, 3].includes(Number(saved.level))) state.level = Number(saved.level);
     } catch {}
+    try { state.autoGrow = localStorage.getItem("livechord_learn_autogrow") !== "0"; } catch {}
+    refs.autoGrow.checked = state.autoGrow;
     bind();
     refs.tabs.forEach((t) => t.classList.toggle("is-active", t.dataset.module === state.module));
     refs.levels.forEach((b) => b.classList.toggle("is-active", Number(b.dataset.level) === state.level));
