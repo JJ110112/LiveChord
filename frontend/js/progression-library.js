@@ -518,7 +518,11 @@
   let aiActive = false;
   let aiToken = 0;
   let aiTimers = [];
+  let aiTicker = null;     // lookahead scheduler interval
+  let aiSched = null;      // { events, chords, loop, passStart, evIdx, chIdx }
   const aiCache = new Map();
+  const AI_LOOKAHEAD = 0.3;   // seconds of audio scheduled ahead of now
+  const AI_TICK_MS = 100;
 
   function init() {
     hydrateVolume();
@@ -1464,11 +1468,15 @@
   function stopLoop(announce) {
     if (loopTimer) { clearInterval(loopTimer); loopTimer = null; }
     loopBusy = false;
-    if (aiActive) {
+    if (aiActive || aiTicker) {
       aiActive = false;
       aiToken++;
+      if (aiTicker) { clearInterval(aiTicker); aiTicker = null; }
+      aiSched = null;
       aiTimers.forEach(clearTimeout);
       aiTimers = [];
+      // Only ≤ AI_LOOKAHEAD s of audio is ever queued, so releasing held
+      // voices is enough to silence the old pattern almost immediately.
       try { if (synth && synth.releaseAll) synth.releaseAll(); } catch {}
     }
     syncPlayUi();
@@ -1519,40 +1527,59 @@
       return false;
     }
     aiActive = true;
-    schedulePass(data, window.Tone.now() + 0.1, token);
+    const sorted = events
+      .filter((e) => Number.isFinite(e.pitch) && Number.isFinite(e.time))
+      .sort((a, b) => a.time - b.time);
+    aiSched = {
+      events: sorted, chords: data.chords || [], loop: data.loop_seconds,
+      passStart: window.Tone.now() + 0.1, evIdx: 0, chIdx: 0,
+    };
+    aiTick(token);
+    aiTicker = setInterval(() => aiTick(token), AI_TICK_MS);
     return true;
   }
 
-  function schedulePass(data, startAt, token) {
-    if (token !== aiToken || !aiActive) return;
+  // Lookahead scheduler: each tick queues only the notes that start within
+  // the next AI_LOOKAHEAD seconds, so a stop / setting change cuts the old
+  // pattern off almost instantly instead of letting a pre-queued loop play out.
+  function aiTick(token) {
+    if (token !== aiToken || !aiActive || !aiSched) return;
     const T = window.Tone;
     const now = T.now();
-    const loop = data.loop_seconds;
-    const events = (data.left_hand || []).concat(data.right_hand || []);
-    events.forEach((e) => {
-      if (!Number.isFinite(e.pitch) || !Number.isFinite(e.time)) return;
-      const gate = Number.isFinite(e.gate_ratio) ? Math.max(0.1, Math.min(1, e.gate_ratio)) : 1;
-      const dur = Math.max(0.05, (Number(e.duration) || 0.25) * gate);
-      const v = Number(e.velocity);
-      const vel = Number.isFinite(v) ? Math.max(0.05, Math.min(1, v > 1 ? v / 127 : v)) : 0.7;
-      try { synth.triggerAttackRelease(midiToTone(Math.round(e.pitch)), dur, startAt + e.time, vel); } catch {}
-    });
-    (data.chords || []).forEach((c, i) => {
-      const delay = (startAt + c.time - now) * 1000;
-      aiTimers.push(setTimeout(() => {
-        if (token !== aiToken) return;
-        state.activeIndex = i % Math.max(1, state.chords.length);
-        renderRibbon();
-      }, Math.max(0, delay)));
-    });
-    // Queue the next pass shortly before this one ends so audio stays gapless.
-    const nextIn = (startAt + loop - now) * 1000 - 300;
-    aiTimers.push(setTimeout(() => schedulePass(data, startAt + loop, token), Math.max(0, nextIn)));
+    const horizon = now + AI_LOOKAHEAD;
+    const S = aiSched;
+    let guard = 0;
+    while (guard++ < 2000) {
+      // Chord-card highlight at each chord boundary (just-in-time timers).
+      while (S.chIdx < S.chords.length && S.passStart + S.chords[S.chIdx].time < horizon) {
+        const i = S.chIdx;
+        const at = S.passStart + S.chords[i].time;
+        aiTimers.push(setTimeout(() => {
+          if (token !== aiToken) return;
+          state.activeIndex = i % Math.max(1, state.chords.length);
+          renderRibbon();
+        }, Math.max(0, (at - now) * 1000)));
+        S.chIdx++;
+      }
+      while (S.evIdx < S.events.length && S.passStart + S.events[S.evIdx].time < horizon) {
+        triggerAccEvent(S.events[S.evIdx], S.passStart);
+        S.evIdx++;
+      }
+      if (S.evIdx >= S.events.length && S.chIdx >= S.chords.length) {
+        // Pass fully queued — roll to the next loop iteration if it is within reach.
+        if (S.passStart + S.loop < horizon) { S.passStart += S.loop; S.evIdx = 0; S.chIdx = 0; continue; }
+      }
+      break;
+    }
+    aiTimers = aiTimers.filter((t) => t._fired !== true);
   }
 
-  function loopIntervalMs() {
-    const safeBpm = clamp(state.bpm || 100, 40, 180);
-    return Math.max(450, Math.round((60 / safeBpm) * 1000 * state.beats));
+  function triggerAccEvent(e, passStart) {
+    const gate = Number.isFinite(e.gate_ratio) ? Math.max(0.1, Math.min(1, e.gate_ratio)) : 1;
+    const dur = Math.max(0.05, (Number(e.duration) || 0.25) * gate);
+    const v = Number(e.velocity);
+    const vel = Number.isFinite(v) ? Math.max(0.05, Math.min(1, v > 1 ? v / 127 : v)) : 0.7;
+    try { synth.triggerAttackRelease(midiToTone(Math.round(e.pitch)), dur, passStart + e.time, vel); } catch {}
   }
 
   function sampleUrls(spec) {
