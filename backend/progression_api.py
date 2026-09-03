@@ -14,7 +14,9 @@ import json
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from auth_api import get_current_user
 
 import progression_match as pm
 
@@ -411,6 +413,7 @@ def progression_accompaniment(body: ProgressionAccIn):
 def progression_summary(
     path: str = Query(None, description="song path (or use hash)"),
     hash: str = Query(None, description="song hash"),
+    username: str = Depends(get_current_user),
 ):
     from chord_cache import chord_file_for, song_hash as get_song_hash
     from ai.progression_pattern import analyze_progression
@@ -436,10 +439,14 @@ def progression_summary(
     result["style"] = describe_style(chords, result["key"], data.get("bpm"), result["genre"], result["patterns"])
 
     # Sections (honours human annotations like /api/ai/sections does).
+    # Same source-of-truth rules as /api/ai/sections: the user's own human
+    # annotation wins, otherwise the shared algorithmic detection.
     sections = []
     try:
         from ai.section_detect import detect_sections
-        sec = detect_sections(chords, data.get("key") or "C", song_hash=h, data_dir=str(DATA_DIR),
+        user_dir = DATA_DIR / "users" / str(username)
+        effective = str(user_dir) if (user_dir / "human_sections" / f"{h}.json").is_file() else str(DATA_DIR)
+        sec = detect_sections(chords, data.get("key") or "C", song_hash=h, data_dir=effective,
                               fallback_data_dir=str(DATA_DIR), hint_bpm=data.get("bpm"))
         sections = sec.get("sections", [])
     except Exception:
