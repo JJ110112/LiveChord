@@ -98,6 +98,41 @@ def _subdivide(bars: List[float], subdiv: int, tail_len: float) -> List[float]:
     return beats
 
 
+def _dp_bars(H: List[float], onsets: List[float], tol: float):
+    """Choose bar heads on the half-bar grid H. Returns (bars, hits, flips)."""
+    import bisect
+    ons = sorted(onsets)
+    def hit(t: float) -> float:
+        k = bisect.bisect_left(ons, t - tol)
+        return 1.0 if k < len(ons) and ons[k] <= t + tol else 0.0
+    n = len(H)
+    NEG = -1e9
+    best = [NEG] * n
+    prev = [-1] * n
+    steps = {2: 0.15, 1: -1.6, 3: -1.6}   # regular spacing gets a small bonus, odd spacing a cost
+    for i in range(n):
+        h = hit(H[i])
+        if i < 2:
+            best[i] = h
+            continue
+        for step, bonus in steps.items():
+            j = i - step
+            if j >= 0 and best[j] > NEG / 2:
+                cand = best[j] + h + bonus
+                if cand > best[i]:
+                    best[i], prev[i] = cand, j
+    end = max(range(n), key=lambda i: best[i])
+    seq = []
+    i = end
+    while i >= 0:
+        seq.append(H[i])
+        i = prev[i]
+    seq.reverse()
+    flips = sum(1 for a, b in zip(seq, seq[1:]) if abs(H.index(b) - H.index(a)) != 2)
+    hits = sum(hit(t) for t in seq)
+    return seq, hits, flips
+
+
 def _nearest(lines: List[float], t: float) -> float:
     return min(lines, key=lambda x: abs(x - t))
 
@@ -157,6 +192,16 @@ def regularize(chord_data: Dict) -> Dict:
     if compound and len(scored) > 1 and align_after < scored[-1][0] + _PHASE_MIN_GAIN:
         # No clear winner: keep the tracker's own phase (parity 0).
         align_after, parity, bars = next(x for x in scored if x[1] == 0)
+    if compound and len(H) >= 6:
+        # Local phase: a held chorus ending can add an odd half-bar, after
+        # which every chord sits on the other parity. Pick bar heads on the
+        # half-bar grid by DP — 2 pulses per bar normally, 1 or 3 allowed at a
+        # cost — maximising chord-onset hits.
+        dp_bars, dp_hits, flips = _dp_bars(H, onsets, tol)
+        if dp_bars and len(dp_bars) >= 2 and flips:
+            bars = dp_bars
+            align_after = round(dp_hits / max(1, len(onsets)), 3)
+            meta["phase_flips"] = flips
 
     expected = _median_gap(bars) or (unit * subdiv)
     # Extend the grid to cover the chord tail.
