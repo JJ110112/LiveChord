@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>LiveChord — 互動學習</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
+  <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+  <script src="/js/auth.js?v=7"></script>
+  <link rel="stylesheet" href="/css/base.css?v=24">
+  <link rel="stylesheet" href="/css/learn.css?v=1">
+</head>
+<body class="learn-body">
+
+<header class="header">
+  <h1 class="header-brand">
+    <a href="/" style="color:inherit; text-decoration:none; display:flex; align-items:center; gap:8px;">
+      <img src="/favicon.svg?v=4" alt="" class="header-brand-icon" aria-hidden="true">
+      <span>LiveChord</span>
+    </a>
+  </h1>
+  <nav style="margin-left:auto; margin-right: 32px;">
+    <div style="display:flex; align-items:center; gap: 14px;">
+      <a href="/" class="header-link">首頁</a>
+      <a href="/learn" class="header-link is-active">互動學習</a>
+      <a href="/help" class="header-link">Help</a>
+    </div>
+  </nav>
+</header>
+
+<main class="learn-main">
+  <section class="learn-hero">
+    <h1>🧠 互動學習</h1>
+    <p>聽一聽、想一想、按下答案。每題都可以重聽，答錯會把正確答案和你選的放在一起比對。</p>
+  </section>
+
+  <div class="learn-tabs" role="tablist">
+    <button class="learn-tab is-active" type="button" role="tab" data-module="chord">🎹 和弦聽辨</button>
+    <button class="learn-tab" type="button" role="tab" data-module="scale">🎼 音階聽辨</button>
+  </div>
+
+  <section class="learn-card">
+    <div class="learn-toolbar">
+      <div class="learn-levels" role="radiogroup" aria-label="難度">
+        <button class="learn-level is-active" type="button" data-level="1">初級</button>
+        <button class="learn-level" type="button" data-level="2">中級</button>
+        <button class="learn-level" type="button" data-level="3">高級</button>
+      </div>
+      <div id="learnLevelHint" class="learn-level-hint"></div>
+      <div class="learn-score">
+        <span>本次 <b id="learnSessionScore">0 / 0</b></span>
+        <span>連對 <b id="learnStreak">0</b></span>
+        <span>累計 <b id="learnAllTime">—</b></span>
+      </div>
+    </div>
+
+    <div class="learn-stage">
+      <div class="learn-play-row">
+        <button id="learnPlayBtn" class="learn-big-btn" type="button">▶ 播放題目</button>
+        <button id="learnArpBtn" class="learn-btn" type="button" title="分解和弦逐音播放">琶音</button>
+        <button id="learnNextBtn" class="learn-btn learn-btn-accent" type="button" disabled>下一題 ⏎</button>
+      </div>
+      <div id="learnPrompt" class="learn-prompt">按「播放題目」開始。快捷鍵：空白鍵重聽、數字鍵作答、Enter 下一題。</div>
+      <div id="learnOptions" class="learn-options"></div>
+      <div id="learnFeedback" class="learn-feedback" hidden></div>
+    </div>
+  </section>
+
+  <section class="learn-card learn-stats-card">
+    <div class="learn-stats-head">📈 弱點分析 <span class="learn-dim">（累計答題，正確率最低的排前面）</span></div>
+    <div id="learnWeak" class="learn-weak"></div>
+  </section>
+</main>
+
+<div id="toast" class="toast"></div>
+<script src="/js/scale-lab.js?v=3"></script>
+<script src="/js/learn.js?v=1"></script>
+</body>
+</html>

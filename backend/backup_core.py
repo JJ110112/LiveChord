@@ -47,6 +47,7 @@ TIERS = {
         "favorites.json",
         "jam_tracks.json",
         "custom_progressions.json",
+        "learn_progress.json",
     ],
     "tier2": [
         # Heavy to recompute
