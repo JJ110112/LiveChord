@@ -50,7 +50,8 @@ def _dominant_pattern(patterns: List[Dict], s0: float, s1: float) -> Tuple[int, 
     return best_i, best_ov / span
 
 
-def refine_sections(sections: List[Dict], analysis: Dict, bars: Optional[List[float]] = None) -> Tuple[List[Dict], Dict]:
+def refine_sections(sections: List[Dict], analysis: Dict, bars: Optional[List[float]] = None,
+                    chords: Optional[List[Dict]] = None) -> Tuple[List[Dict], Dict]:
     patterns = (analysis or {}).get("patterns") or []
     loop_starts = sorted({float(o["start"]) for p in patterns for o in p.get("occurrences", [])})
     bar_sec = float((analysis or {}).get("bar_seconds") or 0) or 2.0
@@ -67,7 +68,7 @@ def refine_sections(sections: List[Dict], analysis: Dict, bars: Optional[List[fl
     #    the detector's windows are finer than the loops themselves, rebuild the
     #    sections from the loop occurrences (each occurrence = one phrase,
     #    gaps between them = one section each) instead of snapping junk.
-    structural = _structure_first(secs, patterns, bar_sec)
+    structural = _structure_first(secs, patterns, bar_sec, chords or [])
     if structural is not None:
         meta.update({"applied": True, "mode": "structure-first", "sections_before": len(secs), "sections_after": len(structural)})
         return structural, meta
@@ -160,7 +161,31 @@ def _majority_type(secs: List[Dict], s0: float, s1: float) -> Optional[str]:
 _STRUCT_MIN_LOOP_BARS = 4.0   # loops shorter than this are riffs, not phrases
 
 
-def _structure_first(secs: List[Dict], patterns: List[Dict], bar_sec: float) -> Optional[List[Dict]]:
+import re as _re
+
+_GAP_SIMILAR = 0.45   # Jaccard of chord (root, minor) bags: a gap this similar to an earlier chorus gap is a chorus too
+
+
+def _chord_bag(chords: List[Dict], s0: float, s1: float) -> set:
+    bag = set()
+    for c in chords:
+        t = float(c.get("time", 0))
+        if t < s0 or t >= s1:
+            continue
+        m = _re.match(r"^([A-G][b#]?)(.*?)(?:/[A-G][b#]?)?$", c.get("chord") or "")
+        if not m:
+            continue
+        minor = bool(_re.match(r"^(m(?!aj)|min|-|dim|ø|°)", m.group(2)))
+        bag.add((m.group(1), minor))
+    return bag
+
+
+def _jaccard(a: set, b: set) -> float:
+    return len(a & b) / len(a | b) if (a or b) else 0.0
+
+
+def _structure_first(secs: List[Dict], patterns: List[Dict], bar_sec: float, chords: Optional[List[Dict]] = None) -> Optional[List[Dict]]:
+    chords = chords or []
     patterns = [p for p in (patterns or []) if float(p.get("loop_bars") or 0) >= _STRUCT_MIN_LOOP_BARS]
     if not patterns or not secs:
         return None
@@ -203,11 +228,24 @@ def _structure_first(secs: List[Dict], patterns: List[Dict], bar_sec: float) -> 
             return
         out.append(_restyle({"start": round(s0, 2), "end": round(s1, 2)}, sec_type))
 
+    chorus_bags: List[set] = []
     for a, b, i in events:
         if a - cursor >= bar_sec * _MIN_SECTION_BARS:
             gap_type = _majority_type(secs, cursor, a) if not detector_junk else None
             if gap_type is None or gap_type == loop_type[i]:
-                gap_type = "intro" if not out else ("chorus" if loop_type[i] != "chorus" else "bridge")
+                if not out:
+                    gap_type = "intro"
+                else:
+                    # Gaps between loop phrases: the first one is the chorus;
+                    # later ones are a chorus when their chord content looks
+                    # like an earlier chorus, otherwise new material → bridge.
+                    bag = _chord_bag(chords, cursor, a)
+                    if chords and chorus_bags and max(_jaccard(bag, cb) for cb in chorus_bags) < _GAP_SIMILAR:
+                        gap_type = "bridge"
+                    else:
+                        gap_type = "chorus" if loop_type[i] != "chorus" else "bridge"
+                        if gap_type == "chorus":
+                            chorus_bags.append(bag)
             add(cursor, a, gap_type)
         elif a > cursor and out:
             out[-1]["end"] = round(a, 2)     # absorb a sub-2-bar gap into the previous section

@@ -1162,7 +1162,7 @@ def detect_sections_api(
                 downbeats=served.get("downbeats") or None, bpm=served.get("bpm"),
                 bars=served.get("bars") or None,
             )
-            refined, rmeta = refine_sections(result.get("sections", []), analysis, served.get("bars") or served.get("downbeats"))
+            refined, rmeta = refine_sections(result.get("sections", []), analysis, served.get("bars") or served.get("downbeats"), served.get("chords"))
             result["sections"] = refined
             result["analysis"]["loop_refine"] = rmeta
         except Exception as exc:
