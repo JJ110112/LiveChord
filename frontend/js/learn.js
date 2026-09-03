@@ -1,4 +1,4 @@
-// learn.js v3 — /learn 互動學習: ear-training quizzes (和弦聽辨 / 音階聽辨).
+// learn.js v4 — /learn 互動學習: ear-training quizzes (和弦聽辨 / 音階聽辨).
 // Self-contained WebAudio for chords; scales reuse window.ScaleLab
 // (catalogue + playScale). Progress is stored via /api/learn/*.
 (function () {
@@ -59,6 +59,29 @@
     1: "先聽 do（參考音），再聽目標音，答它是 do re mi fa sol la ti 哪一個。從 do / re 二選一開始。",
     2: "加入五個半音（升 do、升 re、升 fa、升 sol、升 la），共 12 個音。",
     3: "跨八度：低音 sol 到高音 mi，練習聽出音在 do 的上方還是下方。",
+  };
+
+  // ---- interval catalogue ----
+  const INTERVALS = {
+    P8: { semi: 12, name: "純八度",  en: "P8", song: "Somewhere Over the Rainbow 開頭" },
+    P5: { semi: 7,  name: "純五度",  en: "P5", song: "小星星（一閃一閃）" },
+    M3: { semi: 4,  name: "大三度",  en: "M3", song: "When the Saints Go Marching In 開頭" },
+    m3: { semi: 3,  name: "小三度",  en: "m3", song: "綠袖子 / 布拉姆斯搖籃曲開頭" },
+    P4: { semi: 5,  name: "純四度",  en: "P4", song: "婚禮進行曲 Here Comes the Bride" },
+    M2: { semi: 2,  name: "大二度",  en: "M2", song: "生日快樂歌開頭" },
+    m2: { semi: 1,  name: "小二度",  en: "m2", song: "大白鯊主題" },
+    M6: { semi: 9,  name: "大六度",  en: "M6", song: "My Bonnie / NBC 三音" },
+    m6: { semi: 8,  name: "小六度",  en: "m6", song: "Love Story 主題開頭" },
+    m7: { semi: 10, name: "小七度",  en: "m7", song: "Star Trek 原版主題開頭" },
+    M7: { semi: 11, name: "大七度",  en: "M7", song: "Take On Me 副歌" },
+    TT: { semi: 6,  name: "三全音",  en: "TT / 增四 / 減五", song: "辛普森家庭主題 The Simp-sons" },
+  };
+  const INTERVAL_ORDER = ["P8", "P5", "M3", "m3", "P4", "M2", "m2", "M6", "m6", "m7", "M7", "TT"];
+  const INTERVAL_LEVELS = { 1: INTERVAL_ORDER, 2: INTERVAL_ORDER, 3: INTERVAL_ORDER };
+  const INTERVAL_LEVEL_HINT = {
+    1: "上行旋律音程：先低音再高音。從 純八度 / 純五度 二選一開始。",
+    2: "隨機上行或下行：先聽方向，再聽距離。",
+    3: "和聲音程：兩個音同時響，最難。可用「琶音」拆開聽。",
   };
 
   const CHORD_LEVELS = {
@@ -208,6 +231,36 @@
     };
   }
 
+  /** Two notes: melodic (dir = 1 up / -1 down) or harmonic (dir = 0). arp forces melodic up. */
+  function playInterval(rootMidi, id, dir, arp) {
+    const ac = ctx();
+    if (!ac) return;
+    stopAudio();
+    const master = ac.createGain();
+    master.gain.value = 0.28;
+    master.connect(ac.destination);
+    const t0 = ac.currentTime + 0.03;
+    const hi = rootMidi + INTERVALS[id].semi;
+    let end;
+    if (dir === 0 && !arp) {
+      noteOn(ac, master, rootMidi, t0, 1.6, 0.8);
+      noteOn(ac, master, hi, t0, 1.6, 0.8);
+      end = t0 + 1.7;
+    } else {
+      const first = dir < 0 ? hi : rootMidi;
+      const second = dir < 0 ? rootMidi : hi;
+      noteOn(ac, master, first, t0, 0.7, 0.85);
+      noteOn(ac, master, second, t0 + 0.75, 1.0, 0.9);
+      end = t0 + 1.8;
+    }
+    const timer = setTimeout(() => { try { master.disconnect(); } catch {} }, (end - ac.currentTime + 0.1) * 1000);
+    _stopCurrent = () => {
+      clearTimeout(timer);
+      try { master.gain.setTargetAtTime(0.0001, ac.currentTime, 0.02); } catch {}
+      setTimeout(() => { try { master.disconnect(); } catch {} }, 120);
+    };
+  }
+
   function chordMidis(rootMidi, id) {
     return CHORDS[id].iv.map((iv) => rootMidi + iv);
   }
@@ -230,11 +283,13 @@
 
   function pool() {
     if (state.module === "note") return NOTE_LEVELS[state.level];
+    if (state.module === "interval") return INTERVAL_LEVELS[state.level];
     return state.module === "chord" ? CHORD_LEVELS[state.level] : SCALE_LEVELS[state.level];
   }
 
   function levelHint() {
     if (state.module === "note") return NOTE_LEVEL_HINT[state.level];
+    if (state.module === "interval") return INTERVAL_LEVEL_HINT[state.level];
     return (state.module === "chord" ? CHORD_LEVEL_HINT : SCALE_LEVEL_HINT)[state.level];
   }
 
@@ -311,8 +366,10 @@
     if (state.question && ids.length > 1 && id === state.question.id) id = pick(ids.filter((x) => x !== id));
     const rootPc = Math.floor(Math.random() * 12);
     // Notes: keep do around C4 so low-sol / high-mi both sit in a singable range.
-    const rootMidi = state.module === "note" ? 55 + rootPc : 48 + rootPc + (Math.random() < 0.5 ? 0 : 12);
+    const rootMidi = (state.module === "note" || state.module === "interval") ? 55 + rootPc : 48 + rootPc + (Math.random() < 0.5 ? 0 : 12);
     const q = { id, rootPc, root: NOTE_NAMES[rootPc], rootMidi };
+    // Interval direction: L1 up, L2 random, L3 harmonic.
+    if (state.module === "interval") q.dir = state.level === 1 ? 1 : state.level === 2 ? (Math.random() < 0.5 ? 1 : -1) : 0;
     let options = ids;
     if (ids.length > MAX_OPTIONS) {
       options = shuffle([id].concat(shuffle(ids.filter((x) => x !== id)).slice(0, MAX_OPTIONS - 1)));
@@ -327,7 +384,9 @@
     refs.feedback.className = "learn-feedback";
     refs.nextBtn.disabled = true;
     refs.playBtn.textContent = "🔁 再聽一次";
-    refs.prompt.textContent = state.module === "note"
+    refs.prompt.textContent = state.module === "interval"
+      ? (state.level === 3 ? "兩個音同時響 — 距離是多少？" : "兩個音的距離是多少？（不用管方向，只答距離）")
+      : state.module === "note"
       ? "先聽 do，再聽第二個音 — 第二個音是哪個？（每題的 do 都不同，聽相對距離）"
       : state.module === "chord"
         ? "這是什麼和弦？（根音不固定，聽和弦的色彩）"
@@ -339,6 +398,7 @@
     const q = state.question;
     if (!q) return;
     if (state.module === "note") playNote(q.rootMidi, q.id);
+    else if (state.module === "interval") playInterval(q.rootMidi, q.id, q.dir, arp);
     else if (state.module === "chord") playChord(chordMidis(q.rootMidi, q.id), arp);
     else playScaleId(q.root, q.id);
   }
@@ -352,6 +412,10 @@
   }
 
   function optionLabel(id) {
+    if (state.module === "interval") {
+      const iv = INTERVALS[id];
+      return { main: iv.name, sub: `${iv.en} · ${iv.semi} 半音` };
+    }
     if (state.module === "note") {
       const n = NOTES[id];
       return { main: n.solf, sub: n.iv, html: noteJpHtml(id) };
@@ -406,10 +470,13 @@
     const exp = optionLabel(q.id);
     const isChord = state.module === "chord";
     const isNote = state.module === "note";
-    const expName = isNote
+    const isInterval = state.module === "interval";
+    const expName = isInterval
+      ? `${exp.main}（${exp.sub}${q.dir < 0 ? "，下行" : q.dir > 0 ? "，上行" : "，和聲"}）`
+      : isNote
       ? `${exp.main}（do = ${q.root}，${exp.sub}）`
       : isChord ? `${q.root}${CHORDS[q.id].sfx}（${exp.main}）` : `${q.root} ${exp.main}`;
-    const desc = isNote ? "答錯時用下面兩個按鈕來回聽：都是先 do 再目標音，比較距離感。" : isChord ? CHORDS[q.id].desc : (window.ScaleLab.getScale(q.id).desc || "");
+    const desc = isInterval ? `參考曲：${INTERVALS[q.id].song}` : isNote ? "答錯時用下面兩個按鈕來回聽：都是先 do 再目標音，比較距離感。" : isChord ? CHORDS[q.id].desc : (window.ScaleLab.getScale(q.id).desc || "");
     let html = `<div class="learn-feedback-title">${correct ? "✅ 答對了！" : "❌ 不是這個。"}正確答案：${esc(expName)}</div>`;
     html += `<div class="learn-feedback-desc">${esc(desc)}</div>`;
     html += `<div class="learn-compare"><button class="learn-btn" type="button" data-play="${q.id}">🔊 聽正確答案</button>`;
@@ -424,6 +491,7 @@
     refs.feedback.querySelectorAll("[data-play]").forEach((b) => b.addEventListener("click", () => {
       const id = b.dataset.play;
       if (isNote) playNote(q.rootMidi, id);
+      else if (isInterval) playInterval(q.rootMidi, id, q.dir, false);
       else if (isChord) playChord(chordMidis(q.rootMidi, id), false);
       else playScaleId(q.root, id);
     }));
@@ -472,7 +540,7 @@
   }
 
   function syncModuleButtons() {
-    refs.arpBtn.style.display = state.module === "chord" ? "" : "none";
+    refs.arpBtn.style.display = (state.module === "chord" || state.module === "interval") ? "" : "none";
     refs.refBtn.style.display = state.module === "note" ? "" : "none";
   }
 
@@ -531,7 +599,7 @@
   function init() {
     try {
       const saved = JSON.parse(localStorage.getItem("livechord_learn") || "null");
-      if (saved && ["note", "chord", "scale"].includes(saved.module)) state.module = saved.module;
+      if (saved && ["note", "interval", "chord", "scale"].includes(saved.module)) state.module = saved.module;
       if (saved && [1, 2, 3].includes(Number(saved.level))) state.level = Number(saved.level);
     } catch {}
     try { state.autoGrow = localStorage.getItem("livechord_learn_autogrow") !== "0"; } catch {}
