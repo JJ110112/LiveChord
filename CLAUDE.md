@@ -207,6 +207,30 @@ Post-beta, the active engineering track is **improving the upstream signal that 
 
 Open trade-offs and known issues for the active tracks live in [doc/TODOS.md](doc/TODOS.md) "Quality Tracks (active focus)".
 
+## Phrase / section detection rules (serve-time, 2026-09)
+
+`/api/ai/sections` and `/api/progression/summary` share one pipeline. Human annotations (`data/users/<u>/human_sections/<hash>.json`, `analysis.mode == "human-loop"`) are returned untouched; everything below applies only to algorithmic output. Every step stamps its decision into the payload (`key_relative_meta`, `meter_regularizer_meta`, `quality_smooth_meta`, `analysis.loop_refine`) — read those before guessing why a song was labelled the way it was. Reference song for all of this: Libera "The Lark's Last Song" (6/8 rubato choir, verse theme restated in Ab, Ab, B, E, Ab).
+
+**Chord serve chain** (`chord_api.apply_serve_pipeline`, non-destructive, order matters):
+1. `key_relative` — relative major/minor re-decision by tonic time, V7→I / V→I / IV→I cadences, dominant pull, first/last chord. Flips only when the relative wins clearly (≥1.5× and +3, more tonic time, wins cadences or endings). Also applied at ingest in `chord_detect._key_from_chords`. Measured 35 % of library songs flip, almost all minor→major (the old scorer's minor template had more entries).
+2. bpm / bar-phase / meter arbiter (pre-existing).
+3. `meter_regularizer` — 6/8 and 3/4 only. Cleans the tracker's half-bar pulse list, picks bar heads by DP over the half-bar grid (2 pulses per bar, 1 or 3 allowed at a cost, maximising chord-onset hits — a held phrase ending that adds an odd half-bar becomes a local phase flip, not a half-bar shift of every later chord), rebuilds beats[] as exact subdivisions per bar, quantizes chords to the half-bar grid. **整小節優先**: when ≥70 % of changes fall on bar lines OR ≥75 % of time is in bar-long chords, re-quantize at whole bars with a no-drop guard (any chord ≥ ~half a bar keeps the bar it overlaps most; rescued bars are locked so one rescue cannot overwrite another). Player 6/8 card dots count the regularized beats inside the card, not tempo_curve.
+4. `chord_quality_smoother` — same root + same third-family only: X X' X sandwich shorter than a bar → X; two same-family chords inside one bar → the longer. No song-level canonicalisation (it turned a real Ab7 into Ab). A 50/50 Fm vs Fm6 across verses is left alone.
+5. noise filter, tail extend, splitter (pre-existing).
+
+**Loop analysis** (`ai/progression_pattern.analyze_progression`): slots on real bar lines (`bars[]`, never `downbeats[]` for 6/8 — those carry half-bar pulses), majority chord per slot; rotation-invariant n-grams scored `count × len × (1 + 0.03·len)` (longer loops win; a generic 2-gram must not consume a real 6-chord verse); transposition-invariant matching only for loops ≥4 chords, each occurrence records `transpose`.
+
+**Section refinement** (`ai/section_refine.refine_sections`), in order:
+1. Structure-first when loops explain ≥30 % of the song AND the detector's median section is shorter than 0.9× the main loop (the detector's fixed windows are finer than the phrases). Only loops ≥4 bars count as phrases. Each occurrence = one phrase; gaps = one section each; main loop = 主歌 (rank labels when the detector is junk, its majority label otherwise).
+2. Melody (`ai/melody_similarity.MelodyBars`, needs `data/melodies/<hash>.json`, ≥50 % of bars fingerprinted): 12 pitch samples per bar relative to the bar's median (transposition-safe), bass octave-folded around the song median; bar sim = 0.7 pitch + 0.3 rest/note rhythm. Verse↔verse ≈0.8–0.9, unrelated ≈0.38.
+   - a transposed occurrence must sound like the untransposed verses (≥0.45) or it is demoted to a gap;
+   - a gap that opens with the verse tune is folded into the preceding verse, bar by bar while each bar ≥0.65 (min 2 bars); never applied to the final gap (an outro re-singing the tune is still the outro).
+3. Climactic restatement: a transposed occurrence arriving after only a 2–4 bar pivot (measured after step 2's extension) is folded with its pivot into one 副歌 section — the tune restated in a new key at the climax is heard as a chorus, not a verse.
+4. Gap labels: first gap after the intro = 副歌; later gaps are 副歌 only when their chord (root, minor) bag is Jaccard ≥0.45 to an earlier chorus gap, else 橋段; trailing gap = 尾奏. Sections under 2 bars merge into the previous one.
+5. Fallback (loops weak or detector already at phrase scale): snap boundaries to loop starts within 1.5 bars, else to bar lines within half a bar; split a section at a loop switch and relabel by the loop's usual label.
+
+Known gaps: labels for songs without melody data rely on rank/chord-bag heuristics; register (高潮唱得高) was tried and is useless on full-mix pYIN melodies; `/api/ai/sections` section detection itself still runs on raw chords (same as before) — only the refinement sees the served view.
+
 ## Note Event Schema v2 (canonical duration contract)
 
 This contract applies to AI accompaniment, melody extraction, score rendering, playback, and MIDI export. It exists to fix the systemic "short notes + frequent rests" failure mode at the event-data layer, not just in notation.
