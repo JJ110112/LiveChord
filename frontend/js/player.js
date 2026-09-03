@@ -5242,9 +5242,19 @@
       const halfBar = subdivisions / 2;
       const baseSpb = _secPerBeatAt(cStart);
       const nominalEighths = baseSpb > 0 ? (durSec / baseSpb) : rawBeats;
-      const n = nominalEighths <= (halfBar + subdivisions) / 2
+      let n = nominalEighths <= (halfBar + subdivisions) / 2
         ? Math.round(halfBar)
         : Math.round(subdivisions);
+      // When the server regularized the grid (meter_regularizer: exactly 6
+      // eighths per bar, chords quantized to bar / half-bar lines), the real
+      // beat count inside the card is the truth — tempo_curve-based nominal
+      // counts under-count long rubato bars (2.8 s bar at a fast local BPM
+      // reads as 4.4 eighths → 3 dots).
+      const regMeta = chordData && chordData.meter_regularizer_meta;
+      if (regMeta && regMeta.applied && Array.isArray(chordData.beats) && chordData.beats.length) {
+        const real = _beatsInRange(chordData.beats, cStart, cStart + durSec).length;
+        if (real >= 2) n = real >= (halfBar + subdivisions) / 2 ? Math.round(subdivisions) : Math.round(halfBar);
+      }
       // Anchor dots on real eighth-note beats from chordData.beats[] when
       // available, so the highlight ticks at the song's actual eighth rate
       // regardless of card duration. For sub-bar cards (e.g. a 2.13s "bar"
