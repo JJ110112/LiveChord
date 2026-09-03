@@ -6139,7 +6139,7 @@
       <div class="pp-meta">
         ${d.genre ? `<span>曲風 <b>${esc(d.genre)}</b></span>` : `<span>曲風 <b>未標記</b></span>`}
         <span><b>${esc(d.key)}</b> ${esc(st.mode || "")}</span>
-        ${st.bpm ? `<span><b>${st.bpm}</b> BPM · ${esc(st.tempo_label || "")}</span>` : ""}
+        ${st.bpm ? `<span title="${esc(st.bpm_note || "")}"><b>${Math.round(st.bpm)}</b> BPM · ${esc(st.tempo_label || "")}${st.bpm_note ? `<small class="pp-sec-free">（${esc(st.bpm_note)}）</small>` : ""}</span>` : ""}
         <span>和弦 <b>${st.unique_chords || 0}</b> 種</span>
         ${(st.suggested_styles || []).length ? `<span>建議伴奏 <b>${st.suggested_styles.map((x) => styleNames[x] || x).join(" / ")}</b></span>` : ""}
       </div>

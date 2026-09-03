@@ -443,7 +443,10 @@ def progression_summary(
     # Genre: library tag + folder category (path like "@1/POP/K-POP/…").
     from ai.progression_pattern import describe_style, map_sections, _key_semi
     result["genre"] = _genre_for_path(result["path"])
-    result["style"] = describe_style(chords, result["key"], data.get("bpm"), result["genre"], result["patterns"])
+    result["style"] = describe_style(chords, result["key"], data.get("bpm"), result["genre"], result["patterns"],
+                                     time_signature=data.get("time_signature") or "",
+                                     subdivisions=data.get("display_subdivisions_per_bar"),
+                                     pulses=data.get("practice_pulses_per_bar"))
 
     # Sections (honours human annotations like /api/ai/sections does).
     # Same source-of-truth rules as /api/ai/sections: the user's own human

@@ -377,7 +377,19 @@ def _tempo_label(bpm: Optional[float]) -> str:
     return "快板"
 
 
-def describe_style(chords: List[Dict], key: str, bpm: Optional[float], genre: str, patterns: List[Dict]) -> Dict:
+def describe_style(chords: List[Dict], key: str, bpm: Optional[float], genre: str, patterns: List[Dict],
+                   time_signature: str = "", subdivisions: Optional[int] = None, pulses: Optional[int] = None) -> Dict:
+    # Compound meter: the tracker's bpm counts eighths (6/8 at 130 = a slow
+    # 43 dotted-quarter pulse). Judge tempo and suggest styles on the felt pulse.
+    felt_bpm = float(bpm) if bpm else None
+    bpm_note = ""
+    ts = str(time_signature or "").strip()
+    if felt_bpm and ts in ("6/8", "12/8", "9/8"):
+        sub = int(subdivisions or int(ts.split("/")[0]))
+        pul = int(pulses or (sub // 3))
+        if sub > 0 and pul > 0:
+            felt_bpm = felt_bpm * pul / sub
+            bpm_note = f"{ts} 附點四分音符為一拍（八分音符 {round(float(bpm))}）"
     names = [c.get("chord") for c in chords if c.get("chord") and c["chord"] not in ("N", "X")]
     n = max(1, len(names))
     sevenths = sum(1 for c in names if re.search(r"(maj7|m7|7|9|11|13)", c))
@@ -415,13 +427,15 @@ def describe_style(chords: List[Dict], key: str, bpm: Optional[float], genre: st
     except ImportError:  # pragma: no cover
         from accompaniment_generator import suggest_style
     try:
-        suggested = suggest_style(genre=genre or "", bpm=float(bpm or 120))[:3]
+        suggested = suggest_style(genre=genre or "", bpm=float(felt_bpm or 120), time_signature=ts)[:3]
     except Exception:
         suggested = []
     return {
         "genre": genre or "",
-        "tempo_label": _tempo_label(bpm),
-        "bpm": round(float(bpm), 1) if bpm else None,
+        "tempo_label": _tempo_label(felt_bpm),
+        "bpm": round(float(felt_bpm), 1) if felt_bpm else None,
+        "bpm_raw": round(float(bpm), 1) if bpm else None,
+        "bpm_note": bpm_note,
         "mode": "小調" if minor else "大調",
         "tags": tags,
         "suggested_styles": suggested,
