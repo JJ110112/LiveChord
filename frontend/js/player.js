@@ -6133,7 +6133,7 @@
     const dur = Math.max(1, Number(d.duration) || (audio.duration || 1));
     const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const st = d.style || {};
-    const styleNames = { Block: "Block", Arpeggio: "分解", Rhythm: "附點節奏", PopBallad: "Pop Ballad", RockBallad: "Rock Ballad", "1+3": "1+3", RockEighths: "Rock 八分", Shell: "Shell", Walking: "Walking", Stride: "Stride", SwingFour: "Swing", JazzCharleston: "Charleston", JazzWaltz: "Jazz Waltz", SlowBlues: "Slow Blues", BluesShuffle: "Shuffle", BossaNova: "Bossa", Samba: "Samba", Reggae: "Reggae", Funk16: "Funk", RnBNeoSoul: "Neo-Soul", Alberti: "Alberti" };
+    const styleNames = { Block: "Block", Arpeggio: "分解", Rhythm: "附點節奏", PopBallad: "Pop Ballad", RockBallad: "Rock Ballad", "1+3": "1+3", RockEighths: "Rock 八分", Shell: "Shell", Walking: "Walking", Stride: "Stride", SwingFour: "Swing", JazzCharleston: "Charleston", JazzWaltz: "Jazz Waltz", SlowBlues: "Slow Blues", BluesShuffle: "Shuffle", BossaNova: "Bossa", Samba: "Samba", Reggae: "Reggae", Funk16: "Funk", RnBNeoSoul: "Neo-Soul", Alberti: "Alberti", ChoralWorld: "Choral World" };
     let html = `<button class="lc-close" aria-label="close">&times;</button>
       <div class="lc-title">📊 ${esc(d.title || "和弦進行分析")}</div>
       <div class="pp-meta">

@@ -448,7 +448,7 @@
     { name: "流行 / 抒情", styles: [["Block", "Block 整體"], ["Arpeggio", "Arpeggio 分解"], ["Rhythm", "Rhythm 附點節奏"], ["PopBallad", "Pop Ballad"], ["RockBallad", "Rock Ballad"], ["1+3", "1+3 根音＋和弦"], ["RockEighths", "Rock 八分音符"]] },
     { name: "爵士 / 藍調", styles: [["Shell", "Shell 三七音"], ["Walking", "Walking Bass"], ["Stride", "Stride"], ["SwingFour", "Swing Four"], ["JazzCharleston", "Charleston"], ["JazzWaltz", "Jazz Waltz"], ["SlowBlues", "Slow Blues"], ["BluesShuffle", "Blues Shuffle"]] },
     { name: "拉丁 / 律動", styles: [["BossaNova", "Bossa Nova"], ["Samba", "Samba"], ["Reggae", "Reggae"], ["Funk16", "Funk 16 分"], ["RnBNeoSoul", "R&B / Neo-Soul"]] },
-    { name: "古典", styles: [["Alberti", "Alberti Bass"]] },
+    { name: "古典 / 合唱", styles: [["Alberti", "Alberti Bass"], ["ChoralWorld", "Choral World 天籟流動"]] },
   ];
 
   const KEYS = [

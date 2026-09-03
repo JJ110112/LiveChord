@@ -183,6 +183,19 @@ STYLE_DICT = {
         (0.0,  [0, 3], 1.0),
         (0.5,  [0],    0.85),
     ],
+    # ── Choral / World (v9, 2026-09) ──
+    # Heavenly, flowing sextuplet accompaniment under a choir (Libera-style,
+    # Liebesträume arpeggio): root – 5th – octave rising and falling, six
+    # evenly spaced touches per pattern period so it reads as 6/8 in compound
+    # meter and as sextuplets in 4/4. Soft, sustained; no accents.
+    "ChoralWorld": [
+        (0.0,    [0], 0.9),
+        (0.1667, [1], 0.6),
+        (0.3333, [2], 0.7),
+        (0.5,    [1], 0.55),
+        (0.6667, [2], 0.65),
+        (0.8333, [1], 0.5),
+    ],
     # ── Rock 系列 ──
     # Power chord (root + 5th + octave via L2) hammered every 8th.
     "RockEighths": [
@@ -285,6 +298,13 @@ GENRE_STYLE_MAP = {
     "country":   ["Arpeggio", "Block", "PopBallad", "1+3"],
     "folk":      ["Arpeggio", "Block", "PopBallad", "1+3"],
     "latin":     ["BossaNova", "Samba", "Rhythm", "Walking"],
+    # v9: choir / relaxation / sleep material — heavenly flowing accompaniment
+    "choral":    ["ChoralWorld", "Arpeggio", "PopBallad"],
+    "choir":     ["ChoralWorld", "Arpeggio", "PopBallad"],
+    "relax":     ["ChoralWorld", "Arpeggio", "PopBallad", "Shell"],
+    "sleep":     ["ChoralWorld", "Arpeggio"],
+    "new age":   ["ChoralWorld", "Arpeggio"],
+    "world":     ["ChoralWorld", "Arpeggio", "BossaNova"],
 }
 
 BPM_STYLE_MAP = [
@@ -330,6 +350,8 @@ STYLE_CONFIG = {
     # Blues: shuffle bass + bluesy harmony fill
     "BluesShuffle":   {"lh_level": "L3", "rh_mode": "fill_harmony",       "lh_vel": 70, "rh_vel": 85, "pattern_period_beats": 4},
     "SlowBlues":      {"lh_level": "L3", "rh_mode": "fill_harmony",       "lh_vel": 60, "rh_vel": 80, "pattern_period_beats": 4},
+    # Choral / World: soft flowing LH, gentle RH arpeggio, no backbeat
+    "ChoralWorld":    {"lh_level": "L2", "rh_mode": "arpeggio",           "lh_vel": 52, "rh_vel": 62, "pattern_period_beats": 4},
     # Rock: power-chord 8ths + block on downbeats; ballad uses RH arpeggio
     "RockEighths":    {"lh_level": "L2", "rh_mode": "fill_block",         "lh_vel": 75, "rh_vel": 95, "pattern_period_beats": 4},
     "RockBallad":     {"lh_level": "L2", "rh_mode": "arpeggio",           "lh_vel": 60, "rh_vel": 85, "pattern_period_beats": 4},
@@ -380,6 +402,7 @@ _DOWNBEAT_STYLES = frozenset({
     # v4: ballads / jazz / latin all sit on beats 1 and 3 (or 1 of 3 for waltz)
     "PopBallad", "RockBallad", "SlowBlues", "JazzCharleston", "JazzWaltz",
     "SwingFour", "BossaNova", "Samba", "RnBNeoSoul",
+    "ChoralWorld",
 })
 
 
@@ -668,6 +691,7 @@ STRING_IDIOM_BY_STYLE = {
     "PopBallad":      "arpeggio",
     "RockBallad":     "arpeggio",
     "RnBNeoSoul":     "arpeggio",
+    "ChoralWorld":    "arpeggio",
     # Offbeat upstroke (Reggae skank / Bossa comp / Charleston stab)
     "Reggae":         "offbeat",
     "BossaNova":      "offbeat",
@@ -1086,6 +1110,9 @@ def suggest_style(
         for s in ("SlowBlues", "BluesShuffle", "PopBallad", "Arpeggio"):
             if s in STYLE_DICT:
                 scores[s] = scores.get(s, 0) + 2.0
+        # Slow compound meter is the natural home of the choral sextuplet flow.
+        if bpm <= 0 or bpm < 60:
+            scores["ChoralWorld"] = scores.get("ChoralWorld", 0) + 3.0
 
     # 無匹配時回傳預設
     if not scores:
@@ -1100,7 +1127,8 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
                      melody: List[Dict], base_velocity: int = 70,
                      density_mult: float = 1.0,
                      bpm: float = 120.0,
-                     tempo_curve: Optional[List[Dict]] = None) -> Tuple[List[Dict], List[int]]:
+                     tempo_curve: Optional[List[Dict]] = None,
+                     time_signature: str = "") -> Tuple[List[Dict], List[int]]:
     """生成單一和弦的左手伴奏事件。
 
     v5: pattern 以「節拍週期」拼貼。pattern_period_beats 從 STYLE_CONFIG 讀，
@@ -1174,6 +1202,15 @@ def _build_left_hand(chord_name: str, start_time: float, duration: float,
     # Period-tile (v5): pattern fracs interpreted relative to period_dur, not
     # chord duration. period_beats from STYLE_CONFIG (default 4).
     period_beats = STYLE_CONFIG.get(style, STYLE_CONFIG["Block"]).get("pattern_period_beats", 4)
+    # Meter-aware period for flowing styles: one pattern = one bar, so the
+    # six-touch ChoralWorld rise/fall lands on the bar in 6/8 (six eighth
+    # beats) and on the three quarters of a 3/4 bar.
+    if style == "ChoralWorld":
+        _ts = str(time_signature or "").strip()
+        if _ts in ("6/8", "12/8", "9/8"):
+            period_beats = int(_ts.split("/")[0])
+        elif _ts == "3/4":
+            period_beats = 3
     if level == "L1":
         period_beats = 4  # L1 fires once at start regardless
 
@@ -1807,6 +1844,7 @@ def generate_accompaniment(chords: List[Dict],
             density_mult=(density_mult if v2 else 1.0),
             bpm=bpm,
             tempo_curve=tempo_curve,
+            time_signature=time_signature,
         )
         left_events.extend(lh)
 
