@@ -6075,6 +6075,100 @@
     const btn = document.getElementById("btnToggleJianpu");
     if (btn) btn.setAttribute("aria-pressed", _showJianpu ? "true" : "false");
   }
+  // ===== 進行分析 panel — which chord loop(s) the song is built on =====
+  let _progPanel = null;      // { el, data }
+  let _progFetchToken = 0;
+  function _progSongQuery() {
+    if (hashMode) return `hash=${encodeURIComponent(hashMode)}`;
+    const p = _accPath();
+    return p ? `path=${encodeURIComponent(p)}` : "";
+  }
+  function _closeProgPanel() {
+    if (_progPanel) { _progPanel.el.remove(); _progPanel = null; }
+  }
+  async function _openProgPanel() {
+    if (_progPanel) { _closeProgPanel(); return; }
+    const q = _progSongQuery();
+    if (!q) { showToast("沒有可分析的歌曲"); return; }
+    const el = document.createElement("div");
+    el.className = "prog-panel lc-panel";
+    el.setAttribute("role", "dialog");
+    el.innerHTML = `<button class="lc-close" aria-label="close">&times;</button>
+      <div class="lc-title">📊 和弦進行分析</div>
+      <div class="pp-sub">分析中…</div>`;
+    document.body.appendChild(el);
+    el.querySelector(".lc-close").addEventListener("click", _closeProgPanel);
+    _progPanel = { el, data: null };
+    const token = ++_progFetchToken;
+    try {
+      const res = await fetch(`/api/progression/summary?${q}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || `${res.status}`);
+      if (token !== _progFetchToken || !_progPanel) return;
+      _progPanel.data = data;
+      _renderProgPanel();
+    } catch (e) {
+      if (_progPanel) _progPanel.el.querySelector(".pp-sub").textContent = `分析失敗：${e.message || e}`;
+    }
+  }
+  function _fmtT(t) {
+    const m = Math.floor(t / 60), s = Math.floor(t % 60);
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+  function _renderProgPanel() {
+    if (!_progPanel || !_progPanel.data) return;
+    const d = _progPanel.data;
+    const el = _progPanel.el;
+    const dur = Math.max(1, Number(d.duration) || (audio.duration || 1));
+    const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    let html = `<button class="lc-close" aria-label="close">&times;</button>
+      <div class="lc-title">📊 和弦進行分析</div>
+      <div class="pp-sub">Key ${esc(d.key)} · 以小節格點取樣，經過和弦不計 · 已解釋 ${Math.round((d.explained || 0) * 100)}% 的時長</div>`;
+    if (!d.patterns || !d.patterns.length) {
+      html += `<div class="pp-empty">沒有找到明顯的重複循環。這首歌的和弦可能一直在變化（轉調、自由節奏），或是偵測結果雜訊較多。</div>`;
+    }
+    (d.patterns || []).forEach((p, i) => {
+      const cls = i === 0 ? "" : i === 1 ? " is-secondary" : " is-secondary is-third";
+      const known = p.known_name ? `<span class="pp-known">${esc(p.known_name)}${p.known_rotated ? "（換起點）" : ""}</span>` : "";
+      const chips = p.chords.map((c, k) => `<span class="pp-chip"><b>${esc(c)}</b><small>${esc(p.roman[k])}</small><span class="pp-bars">${p.chord_bars[k]} 小節</span></span>`).join("");
+      const occ = p.occurrences.map((o) => {
+        const l = ((o.start - 0) / dur * 100).toFixed(2), w = Math.max(0.6, (o.end - o.start) / dur * 100).toFixed(2);
+        return `<span class="pp-occ" data-t="${o.start}" style="left:${l}%;width:${w}%" title="${_fmtT(o.start)} – ${_fmtT(o.end)}"></span>`;
+      }).join("");
+      html += `<div class="pp-pattern${cls}">
+        <div class="pp-head"><span class="pp-rank">${i === 0 ? "主要循環" : `次要循環 ${i}`}</span><span class="pp-name">${esc(p.roman_text)}</span>${known}</div>
+        <div class="pp-chips">${chips}</div>
+        <div class="pp-stats"><span>一圈 <b>${p.loop_bars}</b> 小節</span><span>出現 <b>${p.count}</b> 次</span><span>覆蓋 <b>${Math.round(p.coverage * 100)}%</b></span></div>
+        <div class="pp-timeline">${occ}</div>
+      </div>`;
+    });
+    html += `<div class="pp-foot">點時間軸上的色塊可跳到該段。循環起點之後會用來改善樂句分段（下一階段）。</div>`;
+    el.innerHTML = html;
+    el.querySelector(".lc-close").addEventListener("click", _closeProgPanel);
+    el.querySelectorAll(".pp-occ").forEach((o) => o.addEventListener("click", () => {
+      const t = Number(o.dataset.t);
+      if (Number.isFinite(t)) { audio.currentTime = t; if (audio.paused) audio.play().catch(() => {}); }
+    }));
+  }
+  function _updateProgPanel(t) {
+    if (!_progPanel || !_progPanel.data) return;
+    _progPanel.el.querySelectorAll(".pp-occ").forEach((o) => {
+      const s = Number(o.dataset.t);
+      const w = o.title.split(" – ");
+      o.classList.toggle("is-current", t >= s && t < s + _occLen(o));
+    });
+  }
+  function _occLen(o) {
+    const d = _progPanel && _progPanel.data;
+    if (!d) return 0;
+    const s = Number(o.dataset.t);
+    for (const p of d.patterns || []) for (const oc of p.occurrences) if (oc.start === s) return oc.end - oc.start;
+    return 0;
+  }
+  const btnProgSummary = $("#btnProgSummary");
+  if (btnProgSummary) btnProgSummary.addEventListener("click", _openProgPanel);
+  audio.addEventListener("timeupdate", () => _updateProgPanel(audio.currentTime || 0));
+
   const btnToggleJianpu = $("#btnToggleJianpu");
   if (btnToggleJianpu) {
     btnToggleJianpu.addEventListener("click", () => {

@@ -16,7 +16,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=24">
-  <link rel="stylesheet" href="/css/player.css?v=154">
+  <link rel="stylesheet" href="/css/player.css?v=155">
   <link rel="stylesheet" href="/css/tutorial.css?v=1">
   <!-- Phase A: shared auth + fetch wrapper (see frontend/js/auth.js). Must
        load before any /api/ call so anon X-Anon-Id is injected from the
@@ -817,6 +817,10 @@
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 17V5l10-2v12"/><circle cx="6" cy="17" r="3"/><circle cx="16" cy="15" r="3"/></svg>
         <span id="btnToggleJianpuLabel" data-i18n="player.tools.jianpu_on">Jianpu: On</span>
       </button>
+      <button id="btnProgSummary" class="tb-popup-btn" title="和弦進行分析：找出這首歌的主要循環" aria-label="Progression summary">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>
+        <span>進行分析</span>
+      </button>
       <button id="btnToggleScore" class="tb-popup-btn" title="Show / hide sheet music (grand staff above the waterfall)" data-i18n-attr="title=player.tools.score_title,aria-label=player.tools.score" aria-label="Toggle score" aria-pressed="true">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="3" y1="14" x2="21" y2="14"/><line x1="3" y1="18" x2="21" y2="18"/><circle cx="9" cy="17" r="1.6" fill="currentColor"/><path d="M10.5 17V8"/></svg>
         <span id="btnToggleScoreLabel" data-i18n="player.tools.score_on">Score: On</span>
@@ -936,7 +940,7 @@
 <!-- Phase A: fetch wrapper installed by /js/auth.js at <head>; the inline
      duplicate block was removed. -->
 <script src="/js/scale-lab.js?v=3"></script>
-<script src="/js/player.js?v=365"></script>
+<script src="/js/player.js?v=366"></script>
 <script>
   // Toolbar gear theme picker — mirrors the homepage gear handler so the
   // user's theme choice is honored on either entry point. Active state on

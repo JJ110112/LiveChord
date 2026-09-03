@@ -402,3 +402,29 @@ def progression_accompaniment(body: ProgressionAccIn):
         "left_hand": slim(result.get("left_hand", [])),
         "right_hand": slim(result.get("right_hand", [])),
     }
+
+
+# ---------------------------------------------------------------------------
+# Progression summary for the player — which loop(s) a song is built on.
+# ---------------------------------------------------------------------------
+@router.get("/api/progression/summary")
+def progression_summary(
+    path: str = Query(None, description="song path (or use hash)"),
+    hash: str = Query(None, description="song hash"),
+):
+    from chord_cache import chord_file_for, song_hash as get_song_hash
+    from ai.progression_pattern import analyze_progression
+    h = hash or (get_song_hash(path) if path else None)
+    if not h:
+        raise HTTPException(status_code=400, detail="missing path or hash")
+    f = chord_file_for(h)
+    if not f.is_file():
+        raise HTTPException(status_code=404, detail="no chord data")
+    data = json.loads(f.read_text(encoding="utf-8"))
+    chords = data.get("chords") or []
+    result = analyze_progression(
+        chords, key=data.get("key") or "C",
+        downbeats=data.get("downbeats") or None, bpm=data.get("bpm"),
+    )
+    result["hash"] = h
+    return result
