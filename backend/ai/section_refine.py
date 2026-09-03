@@ -51,7 +51,7 @@ def _dominant_pattern(patterns: List[Dict], s0: float, s1: float) -> Tuple[int, 
 
 
 def refine_sections(sections: List[Dict], analysis: Dict, bars: Optional[List[float]] = None,
-                    chords: Optional[List[Dict]] = None) -> Tuple[List[Dict], Dict]:
+                    chords: Optional[List[Dict]] = None, melody: Optional[List[Dict]] = None) -> Tuple[List[Dict], Dict]:
     patterns = (analysis or {}).get("patterns") or []
     loop_starts = sorted({float(o["start"]) for p in patterns for o in p.get("occurrences", [])})
     bar_sec = float((analysis or {}).get("bar_seconds") or 0) or 2.0
@@ -68,7 +68,16 @@ def refine_sections(sections: List[Dict], analysis: Dict, bars: Optional[List[fl
     #    the detector's windows are finer than the loops themselves, rebuild the
     #    sections from the loop occurrences (each occurrence = one phrase,
     #    gaps between them = one section each) instead of snapping junk.
-    structural = _structure_first(secs, patterns, bar_sec, chords or [])
+    mel = None
+    if melody and bars:
+        try:
+            from .melody_similarity import MelodyBars
+        except ImportError:  # pragma: no cover
+            from melody_similarity import MelodyBars
+        mb = MelodyBars(melody, bars)
+        mel = mb if mb.usable else None
+    meta["melody_used"] = mel is not None
+    structural = _structure_first(secs, patterns, bar_sec, chords or [], mel, meta)
     if structural is not None:
         meta.update({"applied": True, "mode": "structure-first", "sections_before": len(secs), "sections_after": len(structural)})
         return structural, meta
@@ -184,8 +193,15 @@ def _jaccard(a: set, b: set) -> float:
     return len(a & b) / len(a | b) if (a or b) else 0.0
 
 
-def _structure_first(secs: List[Dict], patterns: List[Dict], bar_sec: float, chords: Optional[List[Dict]] = None) -> Optional[List[Dict]]:
+_MEL_VERSE_MIN = 0.45      # a transposed loop occurrence must sound at least this much like the verse
+_MEL_EXTEND_MIN = 0.65     # each gap-opening bar this similar to some verse bar belongs to the verse (contiguous run)
+_MEL_EXTEND_MAX_BARS = 8
+
+
+def _structure_first(secs: List[Dict], patterns: List[Dict], bar_sec: float, chords: Optional[List[Dict]] = None,
+                     mel=None, meta: Optional[Dict] = None) -> Optional[List[Dict]]:
     chords = chords or []
+    meta = meta if meta is not None else {}
     patterns = [p for p in (patterns or []) if float(p.get("loop_bars") or 0) >= _STRUCT_MIN_LOOP_BARS]
     if not patterns or not secs:
         return None
@@ -215,7 +231,23 @@ def _structure_first(secs: List[Dict], patterns: List[Dict], bar_sec: float, cho
             t = max(votes.items(), key=lambda kv: kv[1])[0] if votes else None
         loop_type[i] = t or _RANK_LABELS[min(i, len(_RANK_LABELS) - 1)]
 
-    events = sorted((o["start"], o["end"], i) for i, p in enumerate(patterns) for o in p.get("occurrences", []))
+    events = sorted((o["start"], o["end"], i, o.get("transpose", 0)) for i, p in enumerate(patterns) for o in p.get("occurrences", []))
+    # Melody rule 1: a transposed occurrence of the main loop is only a verse
+    # if it also sounds like the (untransposed) verses.
+    anchors = [(a, b) for a, b, i, tr in events if i == 0 and not tr]
+    if mel is not None and anchors:
+        kept = []
+        demoted = []
+        for a, b, i, tr in events:
+            if i == 0 and tr:
+                sim = mel.best_sim((a, b), anchors)
+                if sim < _MEL_VERSE_MIN:
+                    demoted.append({"start": round(a, 2), "sim": round(sim, 2)})
+                    continue
+            kept.append((a, b, i, tr))
+        events = kept
+        meta["melody_demoted"] = demoted
+    events = [(a, b, i) for a, b, i, _ in events]
     out: List[Dict] = []
     cursor = float(secs[0]["start"])
     song_end = float(secs[-1]["end"])
@@ -255,5 +287,39 @@ def _structure_first(secs: List[Dict], patterns: List[Dict], bar_sec: float, cho
         add(cursor, song_end, "outro")
     elif out:
         out[-1]["end"] = round(song_end, 2)
+
+    # Melody rule 2: a gap that opens with the verse tune (a varied repeat)
+    # belongs to the preceding verse — extend it bar by bar while the melody
+    # still matches.
+    if mel is not None and anchors and len(out) >= 2:
+        extended = []
+        verse_type = loop_type.get(0, "verse")
+        for k in range(1, len(out)):
+            prev, cur = out[k - 1], out[k]
+            if prev["type"] != verse_type or cur["type"] == verse_type:
+                continue
+            if k == len(out) - 1:
+                continue  # an outro that re-sings the verse tune is still the outro
+            g0, g1 = float(cur["start"]), float(cur["end"])
+            i0 = mel.bar_index(g0)
+            # Walk bar by bar while each bar still matches some verse bar.
+            best_k = 0
+            for kb in range(0, _MEL_EXTEND_MAX_BARS):
+                if i0 + kb + 1 >= len(mel.bars) or mel.bars[i0 + kb + 1] > g1 + 0.01:
+                    break
+                if mel.bar_best_sim(i0 + kb, anchors) < _MEL_EXTEND_MIN:
+                    break
+                best_k = kb + 1
+            if best_k < 2:
+                best_k = 0
+            if best_k:
+                t1 = mel.bars[i0 + best_k]
+                if g1 - t1 < bar_sec * _MIN_SECTION_BARS:
+                    t1 = g1  # whole gap was a varied verse
+                prev["end"] = round(t1, 2)
+                cur["start"] = round(t1, 2)
+                extended.append({"at": round(g0, 2), "bars": best_k})
+        out = [s for s in out if float(s["end"]) - float(s["start"]) > 0.05]
+        meta["melody_extended"] = extended
     # Number repeated phrase labels so the A-B picker can tell them apart.
     return out if len(out) >= 2 else None

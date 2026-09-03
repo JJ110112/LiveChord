@@ -458,7 +458,9 @@ def progression_summary(
         sections = sec.get("sections", [])
         if (sec.get("analysis") or {}).get("mode") != "human-loop":
             from ai.section_refine import refine_sections
-            sections, result["section_refine"] = refine_sections(sections, result, data.get("bars") or data.get("downbeats"), chords)
+            from ai_api import load_melody_notes
+            sections, result["section_refine"] = refine_sections(sections, result, data.get("bars") or data.get("downbeats"), chords,
+                                                                 melody=load_melody_notes(h))
     except Exception:
         sections = []
     result["sections"] = map_sections(sections, result["patterns"], chords, _key_semi(result["key"]))

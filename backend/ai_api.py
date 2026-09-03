@@ -261,6 +261,19 @@ def evaluate():
     return full_evaluation(str(CHORDS_DIR))
 
 
+def load_melody_notes(song_hash: str):
+    """Finalized melody notes for a song hash (empty list when none)."""
+    try:
+        cache_file = DATA_DIR / "melodies" / f"{song_hash}.json"
+        if not cache_file.is_file():
+            return []
+        payload = _read_finalized_melody_cache(cache_file, song_hash=song_hash)
+        payload = _maybe_resolve_rh_melody(payload, song_hash=song_hash)
+        return list(payload.get("melody") or [])
+    except Exception:
+        return []
+
+
 @router.get("/melody")
 def get_melody(
     path: str = Query(default="", description="歌曲路徑"),
@@ -1162,7 +1175,8 @@ def detect_sections_api(
                 downbeats=served.get("downbeats") or None, bpm=served.get("bpm"),
                 bars=served.get("bars") or None,
             )
-            refined, rmeta = refine_sections(result.get("sections", []), analysis, served.get("bars") or served.get("downbeats"), served.get("chords"))
+            refined, rmeta = refine_sections(result.get("sections", []), analysis, served.get("bars") or served.get("downbeats"),
+                                             served.get("chords"), melody=load_melody_notes(h))
             result["sections"] = refined
             result["analysis"]["loop_refine"] = rmeta
         except Exception as exc:
