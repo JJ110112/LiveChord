@@ -6206,12 +6206,12 @@
     try {
       const sameKey = d.key ? await fetchPage(d.key) : { songs: [], count: 0 };
       let songs = sameKey.songs || [];
-      let total = sameKey.count || 0;
+      let totalNote = `同調（${esc(d.key)}）共 ${sameKey.count || 0} 首`;
       if (songs.length < 6) {
         const any = await fetchPage("");
         const seen = new Set(songs.map((s) => s.hash));
         songs = songs.concat((any.songs || []).filter((s) => !seen.has(s.hash))).slice(0, 12);
-        total = any.count || total;
+        totalNote = `共 ${any.count || 0} 首（含其他調）`;
       }
       if (!songs.length) { host.innerHTML = `<div class="pp-empty">音樂庫裡沒有其他歌用同樣的循環。</div>`; return; }
       host.innerHTML = songs.map((s) => {
@@ -6220,7 +6220,7 @@
         const cover = s.path ? `/api/track/cover?path=${encodeURIComponent(s.path)}` : `/api/process/cover/${encodeURIComponent(s.hash)}`;
         const same = d.key && s.key === d.key ? " is-samekey" : "";
         return `<a class="pp-song${same}" href="${href}" title="${esc(s.title)}"><img src="${cover}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><span class="pp-song-title">${esc(s.title || "Untitled")}</span><span class="pp-song-key">${esc(s.key || "")}</span></a>`;
-      }).join("") + `<div class="pp-sec-free pp-song-more">共 ${total} 首（含其他調）· 到首頁 Progression Library 可翻頁與依調性篩選</div>`;
+      }).join("") + `<div class="pp-sec-free pp-song-more">${totalNote} · 到首頁 Progression Library 可翻頁與依調性篩選</div>`;
     } catch (e) {
       host.innerHTML = `<div class="pp-empty">相似歌曲載入失敗：${esc(e.message || e)}</div>`;
     }
