@@ -4454,3 +4454,6 @@ body.no-score #scoreLayer { display: none !important; }
 .pp-song-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-song-key { color: var(--accent); font-weight: 700; }
 .pp-song-more { grid-column: 1 / -1; }
+
+.pp-link { color: var(--accent); text-decoration: none; }
+.pp-link:hover { text-decoration: underline; }

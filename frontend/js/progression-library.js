@@ -551,6 +551,7 @@
   let _matchTotal = 0;
   let _matchKey = "";        // "" = all keys; otherwise a song key like "G" / "Gm"
   let _matchKeyCounts = {};  // from the API, over the unfiltered match set
+  let _pendingMatchKey = null; // preset from the URL (player → "看全部" link), consumed on the next fetch
 
   let synth = null;
   let synthSoundId = null;
@@ -569,9 +570,47 @@
   const AI_LOOKAHEAD = 0.3;   // seconds of audio scheduled ahead of now
   const AI_TICK_MS = 100;
 
+  // Transient entry injected by the player's "看全部" link: the song's main
+  // loop as a custom-category item (not saved), key filter preset to the song.
+  let _deepLink = null;
+  function readDeepLink() {
+    try {
+      const q = new URLSearchParams(location.search);
+      const seq = q.get("proglib_match");
+      if (!seq) return;
+      const specs = seq.split("-").map((tok) => {
+        const m = tok.match(/^(\d+)([Mm])$/);
+        return m ? [normDeg(Number(m[1])), m[2] === "m" ? "m" : "maj"] : null;
+      }).filter(Boolean);
+      if (specs.length < 2) return;
+      const rawKey = q.get("proglib_key") || "C";
+      const pc = keyNameToPc(rawKey);
+      const k = KEYS.find((x) => x.pc === pc);
+      _deepLink = { specs, key: k ? k.name : "C", matchKey: rawKey, name: q.get("proglib_name") || seq };
+    } catch {}
+  }
+
+  function applyDeepLink() {
+    if (!_deepLink) return;
+    const prog = { id: "from_player", name: `來自 player：${_deepLink.name}`, desc: "player 進行分析的主要循環（暫存，未寫入我的收集；按「儲存最愛」可存起來）", chords: _deepLink.specs, transient: true };
+    LIBRARY.custom.progressions = [prog].concat(LIBRARY.custom.progressions.filter((p) => p.id !== "from_player"));
+    state.style = CUSTOM_STYLE;
+    state.progId = "from_player";
+    state.keyName = _deepLink.key;
+    _pendingMatchKey = _deepLink.matchKey;
+    if (refs.style) refs.style.value = state.style;
+    refreshProgOptions();
+    if (refs.key) refs.key.value = state.keyName;
+    syncStrandsToggleUi(); syncStrandsLinkUi(); syncAmbientUi();
+    if (state.collapsed) { state.collapsed = false; syncCollapseUi(); }
+    rebuild();
+    setTimeout(() => ROOT.scrollIntoView({ block: "start" }), 50);
+  }
+
   function init() {
     hydrateVolume();
     hydrateSettings();
+    readDeepLink();
     ensureStrandsToggleControl();
     ensureStrandsLinkControl();
     ensureCustomEditor();
@@ -582,7 +621,7 @@
     renderFavorites();
     syncCollapseUi();
     syncPlayUi();
-    loadCustomProgressions().then(migrateAmbientFavorites);
+    loadCustomProgressions().then(() => { applyDeepLink(); return migrateAmbientFavorites(); });
   }
 
   // ---- Ambient generator (ported from ambient-mode.js) --------------------
@@ -1046,7 +1085,8 @@
     const seq = progSeqString();
     if (seq === _matchSeq) return;
     _matchSeq = seq;
-    _matchKey = "";            // a new progression resets the key filter
+    _matchKey = _pendingMatchKey != null ? _pendingMatchKey : "";   // a new progression resets the key filter
+    _pendingMatchKey = null;
     _matchKeyCounts = {};
     _matchPage = _loadPersistedPage(seq); // resume the page for this progression
     doFetchMatches();
@@ -1330,6 +1370,10 @@
       return;
     }
     if (state.style !== CUSTOM_STYLE) {
+      refs.desc.textContent = `${currentStyle().name} · ${prog.name}　—　${prog.desc || ""}`;
+      return;
+    }
+    if (prog.transient) {
       refs.desc.textContent = `${currentStyle().name} · ${prog.name}　—　${prog.desc || ""}`;
       return;
     }
@@ -1881,6 +1925,28 @@
 
   // ---- favorites ----
   async function saveFavorite() {
+    const curProg = currentProg();
+    if (state.style === CUSTOM_STYLE && curProg && curProg.transient) {
+      // Persist the player-supplied loop as a real custom entry.
+      try {
+        const res = await fetch(CUSTOM_API, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: curProg.name.replace(/^來自 player：/, ""), chords: curProg.chords, desc: "從 player 進行分析存入", source_url: "", input_text: "", input_key: state.keyName }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || res.status);
+        LIBRARY.custom.progressions = LIBRARY.custom.progressions.filter((p) => p.id !== "from_player");
+        const saved = customToProg(data);
+        LIBRARY.custom.progressions.push(saved);
+        state.progId = saved.id;
+        refreshProgOptions();
+        rebuild();
+        showToastSafe("已存進「我的收集」");
+      } catch (e) {
+        showToastSafe(`儲存失敗：${e.message || e}`);
+      }
+      return;
+    }
     if (state.style === AMBIENT_STYLE) {
       // Generated loops are random — persist the actual chords as a custom entry.
       const prog = currentProg();

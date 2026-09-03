@@ -6220,7 +6220,7 @@
         const cover = s.path ? `/api/track/cover?path=${encodeURIComponent(s.path)}` : `/api/process/cover/${encodeURIComponent(s.hash)}`;
         const same = d.key && s.key === d.key ? " is-samekey" : "";
         return `<a class="pp-song${same}" href="${href}" title="${esc(s.title)}"><img src="${cover}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><span class="pp-song-title">${esc(s.title || "Untitled")}</span><span class="pp-song-key">${esc(s.key || "")}</span></a>`;
-      }).join("") + `<div class="pp-sec-free pp-song-more">${totalNote} · 到首頁 Progression Library 可翻頁與依調性篩選</div>`;
+      }).join("") + `<div class="pp-sec-free pp-song-more">${totalNote} · <a class="pp-link" href="/?proglib_match=${seq}&proglib_key=${encodeURIComponent(d.key || "")}&proglib_name=${encodeURIComponent((main.chords || []).join(" "))}#secProgLib">到 Progression Library 看全部（可翻頁、依調性篩選）</a></div>`;
     } catch (e) {
       host.innerHTML = `<div class="pp-empty">相似歌曲載入失敗：${esc(e.message || e)}</div>`;
     }
