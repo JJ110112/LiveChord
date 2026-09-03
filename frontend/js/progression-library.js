@@ -525,6 +525,7 @@
     favHead: ROOT.querySelector(".proglib-fav-head"),
     matches: document.getElementById("proglibMatches"),
     matchCount: document.getElementById("proglibMatchCount"),
+    matchKey: document.getElementById("proglibMatchKey"),
     pager: document.getElementById("proglibMatchPager"),
     strandsToggleWrap: null,
     strandsToggle: null,
@@ -548,6 +549,8 @@
   let _matchSeq = null;
   let _matchPage = 0;
   let _matchTotal = 0;
+  let _matchKey = "";        // "" = all keys; otherwise a song key like "G" / "Gm"
+  let _matchKeyCounts = {};  // from the API, over the unfiltered match set
 
   let synth = null;
   let synthSoundId = null;
@@ -937,6 +940,11 @@
         rebuild();
       });
     }
+    if (refs.matchKey) refs.matchKey.addEventListener("change", () => {
+      _matchKey = refs.matchKey.value || "";
+      _matchPage = 0;
+      doFetchMatches();
+    });
     refs.randomBtn.addEventListener("click", randomize);
     refs.favBtn.addEventListener("click", saveFavorite);
     if (refs.addBtn) refs.addBtn.addEventListener("click", () => openCustomEditor(null));
@@ -1038,8 +1046,20 @@
     const seq = progSeqString();
     if (seq === _matchSeq) return;
     _matchSeq = seq;
+    _matchKey = "";            // a new progression resets the key filter
+    _matchKeyCounts = {};
     _matchPage = _loadPersistedPage(seq); // resume the page for this progression
     doFetchMatches();
+  }
+
+  function renderMatchKeyOptions() {
+    if (!refs.matchKey) return;
+    const keys = Object.keys(_matchKeyCounts);
+    const total = keys.reduce((n, k) => n + _matchKeyCounts[k], 0);
+    refs.matchKey.innerHTML = `<option value="">全部調性（${total}）</option>` +
+      keys.map((k) => `<option value="${escapeHtml(k)}">${escapeHtml(k)}（${_matchKeyCounts[k]}）</option>`).join("");
+    refs.matchKey.value = _matchKey;
+    refs.matchKey.style.display = keys.length ? "" : "none";
   }
 
   function goToMatchPage(delta) {
@@ -1060,12 +1080,14 @@
     try {
       const offset = _matchPage * MATCH_PAGE_SIZE;
       const res = await fetch(
-        `/api/progression/match?seq=${encodeURIComponent(seq)}&limit=${MATCH_PAGE_SIZE}&offset=${offset}`
+        `/api/progression/match?seq=${encodeURIComponent(seq)}&limit=${MATCH_PAGE_SIZE}&offset=${offset}&key=${encodeURIComponent(_matchKey)}`
       );
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
       if (token !== _matchToken) return; // superseded by a newer request
       _matchTotal = data.count || 0;
+      if (data.key_counts && Object.keys(data.key_counts).length) _matchKeyCounts = data.key_counts;
+      renderMatchKeyOptions();
       // A persisted page can fall out of range if the match set shrank; clamp
       // and refetch from the last valid page.
       const totalPages = Math.max(1, Math.ceil(_matchTotal / MATCH_PAGE_SIZE));

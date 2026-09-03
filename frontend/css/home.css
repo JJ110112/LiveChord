@@ -2501,3 +2501,14 @@
 .proglib-editor-preview[data-ok="1"] { color: var(--accent); }
 .proglib-editor-preview[data-ok="0"] { color: #f44336; }
 .proglib-editor-actions { grid-column: 1 / -1; display: flex; gap: 8px; }
+
+.proglib-match-key {
+  margin-left: 10px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-card) 90%, transparent);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-family: inherit;
+}

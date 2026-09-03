@@ -6176,8 +6176,10 @@
         <div class="pp-timeline">${occ}</div>
       </div>`;
     });
+    html += `<div class="pp-section-head">相似歌曲 <small class="pp-sec-free">同一個主要循環 · 同調優先</small></div><div class="pp-similar"><div class="pp-empty">搜尋中…</div></div>`;
     html += `<div class="pp-foot">點段落或時間軸色塊可跳到該處。</div>`;
     el.innerHTML = html;
+    _loadSimilarSongs(d, el.querySelector(".pp-similar"));
     el.querySelector(".lc-close").addEventListener("click", _closeProgPanel);
     el.querySelectorAll(".pp-sec").forEach((row) => row.addEventListener("click", () => {
       const t = Number(row.dataset.t);
@@ -6189,6 +6191,41 @@
     }));
   }
   let _progCurSec = -1;
+  async function _loadSimilarSongs(d, host) {
+    const main = d.patterns && d.patterns[0];
+    if (!host) return;
+    if (!main || !main.match_seq) { host.innerHTML = `<div class="pp-empty">沒有可比對的主要循環。</div>`; return; }
+    const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const seq = encodeURIComponent(main.match_seq);
+    const exclude = encodeURIComponent(d.hash || "");
+    const fetchPage = async (key) => {
+      const res = await fetch(`/api/progression/match?seq=${seq}&limit=12&offset=0&key=${encodeURIComponent(key)}&exclude=${exclude}`);
+      if (!res.ok) throw new Error(String(res.status));
+      return res.json();
+    };
+    try {
+      const sameKey = d.key ? await fetchPage(d.key) : { songs: [], count: 0 };
+      let songs = sameKey.songs || [];
+      let total = sameKey.count || 0;
+      if (songs.length < 6) {
+        const any = await fetchPage("");
+        const seen = new Set(songs.map((s) => s.hash));
+        songs = songs.concat((any.songs || []).filter((s) => !seen.has(s.hash))).slice(0, 12);
+        total = any.count || total;
+      }
+      if (!songs.length) { host.innerHTML = `<div class="pp-empty">音樂庫裡沒有其他歌用同樣的循環。</div>`; return; }
+      host.innerHTML = songs.map((s) => {
+        const isLib = s.path && !s.path.startsWith("__");
+        const href = isLib ? `/player?path=${encodeURIComponent(s.path)}&autoplay=1` : `/player?hash=${encodeURIComponent(s.hash)}`;
+        const cover = s.path ? `/api/track/cover?path=${encodeURIComponent(s.path)}` : `/api/process/cover/${encodeURIComponent(s.hash)}`;
+        const same = d.key && s.key === d.key ? " is-samekey" : "";
+        return `<a class="pp-song${same}" href="${href}" title="${esc(s.title)}"><img src="${cover}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><span class="pp-song-title">${esc(s.title || "Untitled")}</span><span class="pp-song-key">${esc(s.key || "")}</span></a>`;
+      }).join("") + `<div class="pp-sec-free pp-song-more">共 ${total} 首（含其他調）· 到首頁 Progression Library 可翻頁與依調性篩選</div>`;
+    } catch (e) {
+      host.innerHTML = `<div class="pp-empty">相似歌曲載入失敗：${esc(e.message || e)}</div>`;
+    }
+  }
+
   function _updateProgPanel(t) {
     if (!_progPanel || !_progPanel.data) return;
     // Current section row: highlight + keep it in view inside the scroll list.

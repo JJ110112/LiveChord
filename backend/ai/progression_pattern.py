@@ -305,6 +305,8 @@ def _describe(toks: List[Dict], occ, loop: tuple, bar_sec: float, total: float, 
         "chord_bars": [round(b, 2) for b in bars_each],
         "known_name": name,
         "known_rotated": rotated,
+        # Query string for /api/progression/match (degree + M/m per chord).
+        "match_seq": "-".join(f"{_fam_split(c['fam'])[0]}{'m' if _fam_split(c['fam'])[1] == 'minor' else 'M'}" for c in cond if _fam_split(c["fam"])),
         "length": len(cond),
         "bars_per_chord": round(statistics.median(bars_each), 2) if bars_each else 0,
         "loop_bars": loop_bars,

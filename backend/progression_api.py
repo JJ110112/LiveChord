@@ -101,6 +101,8 @@ def match_progression(
     seq: str = Query(..., description="degree+M/m tokens, e.g. 0M-7M-9m-5M"),
     limit: int = Query(24, ge=1, le=60),
     offset: int = Query(0, ge=0, description="page offset into the match list"),
+    key: str = Query("", description="optional song-key filter, e.g. 'G' or 'Gm'"),
+    exclude: str = Query("", description="optional song hash to leave out (the song being analysed)"),
 ):
     tokens = _parse_seq(seq)
     if len(tokens) < 2:
@@ -108,7 +110,15 @@ def match_progression(
     variants = pm.query_variants(tokens)
     songs = _load_index()
     t0 = time.time()
-    matches = [s for s in songs if pm.song_matches(s[3], variants)]
+    matches = [s for s in songs if pm.song_matches(s[3], variants) and s[0] != exclude]
+    # Per-key counts over the unfiltered match set so the UI can offer a key
+    # dropdown ("全部 / G (312) / Gm (40) …") without a second request.
+    key_counts: dict = {}
+    for s in matches:
+        k = s[2] or "?"
+        key_counts[k] = key_counts.get(k, 0) + 1
+    if key:
+        matches = [s for s in matches if (s[2] or "") == key]
     page = matches[offset:offset + limit]
     out = [
         {"hash": s[0], "title": s[1], "key": s[2], "path": s[4] if len(s) > 4 else ""}
@@ -118,6 +128,8 @@ def match_progression(
         "count": len(matches),
         "offset": offset,
         "limit": limit,
+        "key": key,
+        "key_counts": dict(sorted(key_counts.items(), key=lambda kv: -kv[1])),
         "indexed": len(songs),
         "took_ms": round((time.time() - t0) * 1000, 1),
         "songs": out,
