@@ -1444,6 +1444,7 @@
     return String(sfx || "")
       .replace(/[()]/g, "").replace(/♭/g, "b").replace(/♯/g, "#").replace(/[º˚]/g, "°").replace(/Ø/g, "ø")
       .replace(/^maj/i, "maj").replace(/^min/i, "m").replace(/^sus/i, "sus").replace(/^dim/i, "dim").replace(/^aug/i, "aug").replace(/^add/i, "add")
+      .replace(/^(maj|m)?7(9|11|13)$/, "$1$2")   // A7(9) → A9, Cmaj7(9) → Cmaj9, Dm7(9) → Dm9
       .replace(/Δ/g, "maj").replace(/ø7?/g, "m7b5").replace(/°7|o7/g, "dim7").replace(/°|^o$/g, "dim")
       .replace(/^\+$/, "aug").replace(/^7\+$/, "7#5").replace(/^min/, "m").replace(/^M(?=7|9)/, "maj").replace(/^ma(?=7|9)/, "maj")
       .replace(/^mM7$|^mmaj7$|^minmaj7$|^m\/maj7$/, "mmaj7")
