@@ -6177,9 +6177,11 @@
       </div>`;
     });
     html += `<div class="pp-section-head">相似歌曲 <small class="pp-sec-free">同一個主要循環 · 同調優先</small></div><div class="pp-similar"><div class="pp-empty">搜尋中…</div></div>`;
+    html += `<div class="pp-section-head">📝 我的備註 <small class="pp-sec-free">支援換行、Markdown 標題 / 清單、$…$ 級數</small></div><div class="pp-note"><div class="pp-empty">載入中…</div></div>`;
     html += `<div class="pp-foot">點段落或時間軸色塊可跳到該處。</div>`;
     el.innerHTML = html;
     _loadSimilarSongs(d, el.querySelector(".pp-similar"));
+    _loadSongNote(el.querySelector(".pp-note"));
     el.querySelector(".lc-close").addEventListener("click", _closeProgPanel);
     el.querySelectorAll(".pp-sec").forEach((row) => row.addEventListener("click", () => {
       const t = Number(row.dataset.t);
@@ -6191,6 +6193,50 @@
     }));
   }
   let _progCurSec = -1;
+  // Per-song free-text note (PUT /api/progression/song-note), rendered with the
+  // same formatter as Progression Library notes. Editing stays inside the panel.
+  async function _loadSongNote(host) {
+    if (!host) return;
+    const q = _progSongQuery();
+    let note = "";
+    try {
+      const res = await fetch(`/api/progression/song-note?${q}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || res.status);
+      note = data.note || "";
+    } catch (e) {
+      host.innerHTML = `<div class="pp-empty">備註載入失敗：${String(e.message || e).replace(/</g, "&lt;")}</div>`;
+      return;
+    }
+    const render = () => {
+      host.innerHTML = `<div class="pp-note-text">${note ? window.formatNoteHtml(note) : `<span class="pp-empty">還沒有備註。</span>`}</div>
+        <div class="pp-note-actions"><button type="button" class="pp-btn pp-note-edit">${note ? "編輯" : "新增備註"}</button></div>`;
+      host.querySelector(".pp-note-edit").addEventListener("click", edit);
+    };
+    const edit = () => {
+      host.innerHTML = `<textarea class="pp-note-input" rows="6" placeholder="例如：主歌用 I–vi–IV–V，副歌轉到平行小調…"></textarea>
+        <div class="pp-note-actions"><button type="button" class="pp-btn pp-note-save">儲存</button><button type="button" class="pp-btn pp-btn-ghost pp-note-cancel">取消</button></div>`;
+      const ta = host.querySelector(".pp-note-input");
+      ta.value = note;
+      ta.focus();
+      host.querySelector(".pp-note-cancel").addEventListener("click", render);
+      host.querySelector(".pp-note-save").addEventListener("click", async () => {
+        const body = { note: ta.value };
+        if (hashMode) body.hash = hashMode; else body.path = _accPath();
+        try {
+          const res = await fetch("/api/progression/song-note", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.detail || res.status);
+          note = data.note || "";
+          showToast(note ? "備註已儲存" : "備註已清除");
+          render();
+        } catch (e) {
+          showToast(`儲存失敗：${e.message || e}`);
+        }
+      });
+    };
+    render();
+  }
   async function _loadSimilarSongs(d, host) {
     const main = d.patterns && d.patterns[0];
     if (!host) return;

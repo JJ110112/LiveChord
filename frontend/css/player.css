@@ -4457,3 +4457,21 @@ body.no-score #scoreLayer { display: none !important; }
 
 .pp-link { color: var(--accent); text-decoration: none; }
 .pp-link:hover { text-decoration: underline; }
+
+.pp-note-text { font-size: 13px; line-height: 1.55; white-space: normal; word-break: break-word; }
+.pp-note-text .pl-note-h { display: inline-block; margin-top: 6px; color: var(--text); font-size: 13px; }
+.pp-note-text .pl-note-li { display: inline-block; padding-left: 10px; }
+.pp-note-text .pl-note-gap { display: block; height: 2px; }
+.pp-note-text code { font-size: 12px; padding: 0 3px; border-radius: 4px; background: color-mix(in srgb, var(--text) 10%, transparent); }
+.pp-note-input {
+  width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 13px; line-height: 1.5;
+  color: var(--text); background: color-mix(in srgb, var(--bg-card) 90%, transparent);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px;
+}
+.pp-note-actions { display: flex; gap: 8px; margin-top: 6px; }
+.pp-btn {
+  font: inherit; font-size: 12px; padding: 4px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--accent) 60%, var(--border)); background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--text);
+}
+.pp-btn:hover { background: color-mix(in srgb, var(--accent) 32%, transparent); }
+.pp-btn-ghost { border-color: var(--border); background: transparent; }

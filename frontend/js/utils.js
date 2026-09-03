@@ -102,6 +102,47 @@ function escapeHtml(str) {
 
 // ---- 時間格式 ----
 
+// Notes pasted from AI answers carry LaTeX-ish markup and light Markdown;
+// make them readable for display (stored text is untouched).
+//   $\text{I} \to \text{ii}$ → I → ii · \flat → ♭ · "### 標題" → bold line ·
+//   "* item" / "- item" → bullet · **bold** · blank line → paragraph gap
+function formatNoteHtml(raw) {
+  let t = String(raw || "")
+    .replace(/\$\$([^$]+)\$\$/g, "$1")   // display math first
+    .replace(/\$([^$]+)\$/g, "$1")       // inline math; "$a$$b$" is two spans, not display math
+    .replace(/\\text\{([^}]*)\}/g, "$1")
+    .replace(/\\mathrm\{([^}]*)\}/g, "$1")
+    .replace(/\\(?:to|rightarrow|longrightarrow)\b/g, "→")
+    .replace(/\\flat/g, "♭").replace(/\\sharp/g, "♯")
+    .replace(/\\(?:circ|deg)\b/g, "°")
+    .replace(/\^\{([^}]*)\}/g, "$1").replace(/_\{([^}]*)\}/g, "$1")
+    .replace(/\\,|\\;|\\ /g, " ")
+    .replace(/\\([A-Za-z]+)/g, "$1");
+  const inline = (line) => escapeHtml(line)
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+  const out = [];
+  let prevBlank = false;
+  t.split(/\r?\n/).forEach((line) => {
+    const s = line.trim();
+    if (!s) { prevBlank = true; return; }
+    let html;
+    let m;
+    if ((m = s.match(/^#{1,6}\s+(.*)$/))) html = `<strong class="pl-note-h">${inline(m[1])}</strong>`;
+    else if ((m = s.match(/^(\d+[.、]\s*[^：:（(]{0,30}(?:[（(][^）)]{0,30}[）)])?)(.*)$/)) && m[1].length <= 45) {
+      // "1. A 主歌（前導與順暢下行）CMaj7 → …": bold the numbered title, keep the rest inline.
+      const rest = m[2].replace(/^[：:]\s*/, "");
+      html = `<strong class="pl-note-h">${inline(m[1].trim())}</strong>${rest ? "<br>" + inline(rest) : ""}`;
+    }
+    else if ((m = s.match(/^[*\-•]\s+(.*)$/))) html = `<span class="pl-note-li">• ${inline(m[1])}</span>`;
+    else html = inline(s);
+    if (prevBlank && out.length) out.push(`<span class="pl-note-gap"></span>`);
+    out.push(html);
+    prevBlank = false;
+  });
+  return out.join("<br>");
+}
+
 function formatTime(sec, mode) {
   if (sec == null) return "";
   if (mode === "centi") {

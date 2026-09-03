@@ -421,6 +421,66 @@ def progression_accompaniment(body: ProgressionAccIn):
 # ---------------------------------------------------------------------------
 # Progression summary for the player — which loop(s) a song is built on.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Per-song notes (personal). data/song_notes.json {hash: {note, updated}}, tier1
+# backup. Same free-text conventions as custom-progression notes (LaTeX-ish,
+# light Markdown) — rendering is the frontend's formatNoteHtml.
+# ---------------------------------------------------------------------------
+NOTES_FILE = DATA_DIR / "song_notes.json"
+_notes_lock = threading.Lock()
+
+
+class SongNoteIn(BaseModel):
+    hash: str = Field("", max_length=64)
+    path: str = Field("", max_length=1000)
+    note: str = Field("", max_length=8000)
+
+
+def _read_notes() -> dict:
+    try:
+        data = json.loads(NOTES_FILE.read_text(encoding="utf-8"))
+        items = data.get("items", {})
+        return items if isinstance(items, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _write_notes(items: dict) -> None:
+    NOTES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = NOTES_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps({"version": 1, "items": items}, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, NOTES_FILE)
+
+
+def _note_hash(hash: str, path: str) -> str:
+    from chord_cache import song_hash as get_song_hash
+    h = (hash or "").strip() or (get_song_hash(path) if path else "")
+    if not h or not re.match(r"^[0-9a-f]{8,64}$", h):
+        raise HTTPException(status_code=400, detail="hash or path required")
+    return h
+
+
+@router.get("/api/progression/song-note")
+def get_song_note(hash: str = Query(""), path: str = Query("")):
+    h = _note_hash(hash, path)
+    item = _read_notes().get(h) or {}
+    return {"hash": h, "note": item.get("note", ""), "updated": item.get("updated", 0)}
+
+
+@router.put("/api/progression/song-note")
+def put_song_note(body: SongNoteIn):
+    h = _note_hash(body.hash, body.path)
+    note = body.note.strip()
+    with _notes_lock:
+        items = _read_notes()
+        if note:
+            items[h] = {"note": note, "updated": int(time.time())}
+        else:
+            items.pop(h, None)
+        _write_notes(items)
+    return {"hash": h, "note": note, "updated": items.get(h, {}).get("updated", 0)}
+
+
 @router.get("/api/progression/summary")
 def progression_summary(
     path: str = Query(None, description="song path (or use hash)"),
