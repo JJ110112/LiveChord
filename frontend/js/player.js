@@ -6085,6 +6085,7 @@
   }
   function _closeProgPanel() {
     if (_progPanel) { _progPanel.el.remove(); _progPanel = null; }
+    _progCurSec = -1;
   }
   async function _openProgPanel() {
     if (_progPanel) { _closeProgPanel(); return; }
@@ -6141,7 +6142,7 @@
         const pat = p
           ? `<span class="pp-sec-pat"><span class="pp-dot d${sec.pattern}"></span>${esc(p.roman_text)}${p.known_name ? `（${esc(p.known_name)}）` : ""}<small class="pp-sec-free"> ${Math.round(sec.pattern_ratio * 100)}%</small></span>`
           : `<span class="pp-sec-free">自由進行：${esc(sec.chord_run.join(" "))}${sec.chord_run_more ? ` …+${sec.chord_run_more}` : ""}</span>`;
-        html += `<div class="pp-sec" data-t="${sec.start}"><span class="pp-sec-bar" style="background:${esc(sec.color || "#888")}"></span>
+        html += `<div class="pp-sec" data-t="${sec.start}" data-end="${sec.end}"><span class="pp-sec-bar" style="background:${esc(sec.color || "#888")}"></span>
           <span class="pp-sec-label"><b>${esc(sec.label)}</b><small>${_fmtT(sec.start)}–${_fmtT(sec.end)}</small></span>${pat}</div>`;
       });
       html += `</div>`;
@@ -6177,8 +6178,23 @@
       if (Number.isFinite(t)) { audio.currentTime = t; if (audio.paused) audio.play().catch(() => {}); }
     }));
   }
+  let _progCurSec = -1;
   function _updateProgPanel(t) {
     if (!_progPanel || !_progPanel.data) return;
+    // Current section row: highlight + keep it in view inside the scroll list.
+    const rows = _progPanel.el.querySelectorAll(".pp-sec");
+    let cur = -1;
+    rows.forEach((r, i) => { if (t >= Number(r.dataset.t) && t < Number(r.dataset.end)) cur = i; });
+    if (cur !== _progCurSec) {
+      _progCurSec = cur;
+      rows.forEach((r, i) => r.classList.toggle("is-current", i === cur));
+      if (cur >= 0) {
+        // Scroll only the section list (not the panel / page): centre the row.
+        const list = rows[cur].parentElement;
+        const target = rows[cur].offsetTop - list.offsetTop - (list.clientHeight - rows[cur].offsetHeight) / 2;
+        list.scrollTop = Math.max(0, target);
+      }
+    }
     _progPanel.el.querySelectorAll(".pp-occ").forEach((o) => {
       const s = Number(o.dataset.t);
       const w = o.title.split(" – ");

@@ -4428,7 +4428,8 @@ body.no-score #scoreLayer { display: none !important; }
 .pp-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .pp-tag { font-size: 11px; padding: 3px 9px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); color: var(--text); }
 .pp-section-head { font-weight: 800; font-size: 13px; margin: 12px 0 6px; }
-.pp-sections { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+.pp-sections { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; max-height: 190px; overflow-y: auto; scrollbar-width: thin; padding-right: 4px; }
+.pp-sec.is-current { background: color-mix(in srgb, var(--accent) 22%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent); }
 .pp-sec { display: grid; grid-template-columns: 8px 78px 1fr; gap: 8px; align-items: center; font-size: 12px; padding: 4px 6px; border-radius: 8px; cursor: pointer; }
 .pp-sec:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
 .pp-sec-bar { width: 4px; height: 100%; min-height: 18px; border-radius: 2px; }
