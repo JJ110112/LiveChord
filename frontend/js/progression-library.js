@@ -1,4 +1,4 @@
-// progression-library.js v4
+// progression-library.js v5
 // A curated library of classic chord progressions grouped by style.
 // Mirrors the Ambient Mode pattern (collapsible homepage section, Tone.js
 // loop playback, localStorage favorites) but plays *named* progressions the
@@ -385,6 +385,17 @@
         { id: "strand_run", name: "Strands 迴轉 8 和弦", desc: "規則生成：延伸 turnaround，含 tritone / secondary 元素。", generated: true },
       ],
     },
+    ambient: {
+      // Generative vibes ported from the former homepage Ambient Mode. Each
+      // entry regenerates a 2–4 chord loop from a vibe's root-transition table.
+      name: "🌙 Ambient 生成",
+      progressions: [
+        { id: "neo", name: "Neo-Soul Chill", ambient: true, desc: "慵懶的 i9 / iv11 / ♭VIImaj9 色彩。推薦 SP-404: Vinyl Sim + Cloud Reverb，Pad A1 放雨聲。" },
+        { id: "midnight", name: "Midnight City Pop", ambient: true, desc: "Imaj7 → V/IV → iiim7 → vim7 的都市夜色。推薦 SP-404: Cassette Sim + SX Reverb，Pad A1 放列車環境音。" },
+        { id: "drone", name: "Cinematic Drone", ambient: true, desc: "sus2 / add9 的開放和聲，低音持續。推薦 SP-404: Cloud Reverb + Vinyl Sim，Pad A1 放風聲。" },
+        { id: "modal", name: "Modal Drift", ambient: true, desc: "im7 / IV7 / ♭IIImaj7 的調式漂移。推薦 SP-404: Cassette Sim + Reverb，Pad A1 放低頻城市底噪。" },
+      ],
+    },
     custom: {
       // User-collected progressions, loaded from /api/progression/custom.
       name: "✏️ 我的收集",
@@ -392,6 +403,29 @@
     },
   };
   const CUSTOM_STYLE = "custom";
+  const AMBIENT_STYLE = "ambient";
+  const AMBIENT_FAVORITES_KEY = "livechord_ambient_favorites";
+  // Vibe tables: starts / transitions are root degrees relative to the key;
+  // templates are quality cycles thinned by density (1 = triads, 3 = full).
+  const AMBIENT_PRESETS = {
+    neo: {
+      starts: [0, 5, 10], transitions: { 0: [5, 10, 3], 5: [10, 3, 0], 10: [3, 5, 0], 3: [0, 5] },
+      templates: [["m9", "m11", "maj9", "7sus4"], ["m9", "maj7", "maj9", "m11"]],
+    },
+    midnight: {
+      starts: [0, 7], transitions: { 0: [7, 4, 9], 7: [4, 9, 0], 4: [9, 0, 7], 9: [0, 7] },
+      templates: [["maj7", "7", "m7", "m7"], ["maj9", "7sus4", "m7", "m9"]],
+    },
+    drone: {
+      starts: [0, 5], transitions: { 0: [5, 10, 0], 5: [10, 0, 7], 10: [0, 5], 7: [0, 5] },
+      templates: [["sus2", "add9", "maj7", "sus4"], ["add9", "sus2", "maj9", "add9"]],
+    },
+    modal: {
+      starts: [0, 2, 9], transitions: { 0: [2, 5, 9], 2: [5, 9, 0], 5: [9, 0, 2], 9: [0, 2, 5] },
+      templates: [["m7", "7", "maj7", "sus2"], ["m9", "7sus4", "maj9", "sus2"]],
+      motifs: [{ roots: [0, 11], qualities: ["maj7", "m7"] }],
+    },
+  };
   const CUSTOM_API = "/api/progression/custom";
 
   // Playback sounds — mirrors the player's SAMPLE_MANIFEST (same local sample
@@ -459,6 +493,10 @@
     accLevel: "L2",
     accInst: "piano",
     sound: "grand-piano",
+    ambientDensity: 2,
+    ambientMotif: "prefer",   // half-step motif: off | prefer | force
+    ambientSeed: Math.floor(Math.random() * 100000),
+    ambientSpecs: [],         // current generated [deg, quality][] for the ambient category
   };
 
   const refs = {
@@ -495,6 +533,10 @@
     strandsLinkIntensity: null,
     addBtn: null,
     editor: null,
+    ambientWrap: null,
+    ambientDensity: null,
+    ambientMotif: null,
+    ambientRegen: null,
   };
   let _customEditingId = null;
 
@@ -530,13 +572,169 @@
     ensureStrandsToggleControl();
     ensureStrandsLinkControl();
     ensureCustomEditor();
+    ensureAmbientControls();
     populateControls();
     bindEvents();
     rebuild();
     renderFavorites();
     syncCollapseUi();
     syncPlayUi();
-    loadCustomProgressions();
+    loadCustomProgressions().then(migrateAmbientFavorites);
+  }
+
+  // ---- Ambient generator (ported from ambient-mode.js) --------------------
+  function ensureAmbientControls() {
+    if (!refs.controls || refs.ambientWrap) return;
+    const wrap = document.createElement("div");
+    wrap.className = "proglib-ambient-wrap";
+    wrap.style.display = "contents";
+    wrap.innerHTML =
+      `<label class="proglib-field proglib-field-ambient"><span>Ambient 密度 <b id="proglibAmbientDensityVal">2</b></span>` +
+      `<input id="proglibAmbientDensity" type="range" min="1" max="3" step="1" value="2"></label>` +
+      `<label class="proglib-field proglib-field-ambient"><span>半音動機 Imaj7→VIIm7</span>` +
+      `<select id="proglibAmbientMotif"><option value="off">關閉</option><option value="prefer">偶爾</option><option value="force">固定</option></select></label>` +
+      `<label class="proglib-field proglib-field-ambient"><span>&nbsp;</span>` +
+      `<button id="proglibAmbientRegen" class="proglib-btn proglib-btn-accent" type="button">🎲 重新生成</button></label>`;
+    refs.controls.appendChild(wrap);
+    refs.ambientWrap = wrap;
+    refs.ambientDensity = wrap.querySelector("#proglibAmbientDensity");
+    refs.ambientMotif = wrap.querySelector("#proglibAmbientMotif");
+    refs.ambientRegen = wrap.querySelector("#proglibAmbientRegen");
+    refs.ambientDensity.addEventListener("input", () => {
+      state.ambientDensity = clamp(Number(refs.ambientDensity.value) || 2, 1, 3);
+      wrap.querySelector("#proglibAmbientDensityVal").textContent = String(state.ambientDensity);
+      persistSettings();
+      regenerateAmbient(false);
+    });
+    refs.ambientMotif.addEventListener("change", () => {
+      state.ambientMotif = refs.ambientMotif.value;
+      persistSettings();
+      regenerateAmbient(false);
+    });
+    refs.ambientRegen.addEventListener("click", () => regenerateAmbient(false));
+  }
+
+  function syncAmbientUi() {
+    if (!refs.ambientWrap) return;
+    const on = state.style === AMBIENT_STYLE;
+    refs.ambientWrap.querySelectorAll(".proglib-field-ambient").forEach((el) => { el.style.display = on ? "" : "none"; });
+    refs.ambientDensity.value = String(state.ambientDensity);
+    refs.ambientWrap.querySelector("#proglibAmbientDensityVal").textContent = String(state.ambientDensity);
+    refs.ambientMotif.value = state.ambientMotif;
+  }
+
+  function ambientRand(min, max, seedAdd) {
+    const x = Math.sin(state.ambientSeed + seedAdd * 17.31) * 10000;
+    const n = x - Math.floor(x);
+    return min + Math.floor(n * (max - min + 1));
+  }
+
+  function ambientAdaptQuality(q) {
+    if (state.ambientDensity === 1) {
+      if (q === "m9" || q === "m11") return "m7";
+      if (q === "maj9") return "maj7";
+      if (q === "add9" || q === "sus2" || q === "sus4") return "maj";
+    }
+    if (state.ambientDensity === 2) {
+      if (q === "m11") return "m9";
+      if (q === "add9") return "maj7";
+    }
+    return q;
+  }
+
+  function ambientCandidate(presetId, iter) {
+    const preset = AMBIENT_PRESETS[presetId] || AMBIENT_PRESETS.neo;
+    const pair = [[0, "maj7"], [11, "m7"]];
+    if (state.ambientMotif === "force") return { specs: pair, score: 500 };
+    // "prefer": the pair shows up as an occasional colour (~1 in 4 regenerations), never the default.
+    if (state.ambientMotif === "prefer" && ambientRand(0, 99, iter + 71) < 6) return { specs: pair, score: ambientScore(pair) - 6 };
+    const motifs = preset.motifs || [];
+    if (motifs.length && ambientRand(0, 99, iter + 43) < 18) {
+      const m = motifs[ambientRand(0, motifs.length - 1, iter + 59)];
+      return { specs: m.roots.map((r, i) => [normDeg(r), ambientAdaptQuality(m.qualities[i] || "maj7")]), score: 200 };
+    }
+    const tpl = preset.templates[ambientRand(0, preset.templates.length - 1, iter + 31)] || preset.templates[0];
+    const count = 2 + ambientRand(0, 2, iter + 17);
+    const path = [];
+    let cur = preset.starts[ambientRand(0, preset.starts.length - 1, iter + 3)] || 0;
+    path.push(cur);
+    for (let i = 1; i < count; i++) {
+      const pool = preset.transitions[cur] || preset.starts;
+      cur = pool[ambientRand(0, pool.length - 1, iter + 11 + i)] || preset.starts[0] || 0;
+      path.push(cur);
+    }
+    const specs = path.map((deg, i) => [normDeg(deg), ambientAdaptQuality(tpl[i % tpl.length])]);
+    return { specs, score: ambientScore(specs) };
+  }
+
+  // Smoothness heuristic: small root motion, shared tones, some tension, and a
+  // last chord that pulls back toward the tonic.
+  function ambientScore(specs) {
+    if (!specs.length) return -999;
+    const pcsOf = ([deg, q]) => (QUALITY[q] || QUALITY.maj).iv.map((iv) => normDeg(deg + iv));
+    let smooth = 0, common = 0, leaps = 0;
+    for (let i = 1; i < specs.length; i++) {
+      const jump = Math.abs(specs[i][0] - specs[i - 1][0]);
+      const wrapped = Math.min(jump, 12 - jump);
+      smooth += wrapped;
+      if (wrapped > 5) leaps += 1;
+      const prev = pcsOf(specs[i - 1]);
+      common += pcsOf(specs[i]).filter((pc) => prev.includes(pc)).length;
+    }
+    const tension = specs.filter(([, q]) => /7|9|11|sus/.test(q)).length;
+    const lastDeg = specs[specs.length - 1][0];
+    const pull = Math.min(lastDeg, 12 - lastDeg);
+    return 120 - smooth * 5 - leaps * 8 + common * 4 + tension * 3 - pull * 1.5;
+  }
+
+  function regenerateAmbient(isInitial) {
+    const prog = currentProg();
+    if (!prog || !prog.ambient) return;
+    const cands = [];
+    for (let i = 0; i < 24; i++) cands.push(ambientCandidate(prog.id, i));
+    cands.sort((a, b) => b.score - a.score);
+    const pick = isInitial ? 0 : Math.min(5, Math.floor(Math.random() * 6));
+    state.ambientSpecs = (cands[pick] || cands[0]).specs;
+    state.ambientSeed = (state.ambientSeed + 97) % 100000;
+    rebuild();
+  }
+
+  // One-time import of the old Ambient Mode favorites (localStorage) into
+  // 我的收集 so nothing is lost when the homepage section goes away.
+  async function migrateAmbientFavorites() {
+    let list;
+    try { list = JSON.parse(localStorage.getItem(AMBIENT_FAVORITES_KEY) || "null"); } catch { list = null; }
+    if (!Array.isArray(list) || !list.length) return;
+    const NOTE_PC = { C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5, "F#": 6, Gb: 6, G: 7, "G#": 8, Ab: 8, A: 9, "A#": 10, Bb: 10, B: 11 };
+    const QMAP = { triad: "maj", m7: "m7", maj7: "maj7", "7": "7", m9: "m9", maj9: "maj9", m11: "m11", sus2: "sus2", sus4: "sus4", add9: "add9", "7sus4": "7sus4" };
+    let imported = 0;
+    for (const f of list) {
+      const prog = Array.isArray(f && f.progression) ? f.progression : [];
+      const keyPc = NOTE_PC[f && f.key] ?? 0;
+      const chords = prog
+        .filter((c) => c && Number.isFinite(Number(c.rootSemi)))
+        .map((c) => [normDeg(Number(c.rootSemi) - keyPc), QMAP[c.quality] || "maj7"]);
+      if (chords.length < 2) continue;
+      const names = prog.map((c) => c && c.name).filter(Boolean).join(" ");
+      const name = `Ambient · ${f.preset || "vibe"} · ${names}`.slice(0, 80);
+      if (LIBRARY.custom.progressions.some((p) => p.name === name)) continue;
+      try {
+        const res = await fetch(CUSTOM_API, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, chords, desc: "從 Ambient Mode 最愛匯入", source_url: "", input_text: names, input_key: f.key || "C" }),
+        });
+        if (res.ok) { LIBRARY.custom.progressions.push(customToProg(await res.json())); imported++; }
+      } catch {}
+    }
+    try {
+      localStorage.setItem(AMBIENT_FAVORITES_KEY + "_migrated", localStorage.getItem(AMBIENT_FAVORITES_KEY) || "[]");
+      localStorage.removeItem(AMBIENT_FAVORITES_KEY);
+    } catch {}
+    if (imported) {
+      if (state.style === CUSTOM_STYLE) refreshProgOptions();
+      renderFavorites();
+      showToastSafe(`已把 ${imported} 組 Ambient 最愛搬進「我的收集」`);
+    }
   }
 
   function currentStyle() {
@@ -582,6 +780,7 @@
     syncAccUi();
     syncStrandsToggleUi();
     syncStrandsLinkUi();
+    syncAmbientUi();
   }
 
   function syncAccUi() {
@@ -663,13 +862,16 @@
       applyCustomInputKey();
       syncStrandsToggleUi();
       syncStrandsLinkUi();
+      syncAmbientUi();
       persistSettings();
+      if (state.style === AMBIENT_STYLE) { regenerateAmbient(true); return; }
       rebuild();
     });
     refs.prog.addEventListener("change", () => {
       state.progId = refs.prog.value;
       applyCustomInputKey();
       persistSettings();
+      if (state.style === AMBIENT_STYLE) { regenerateAmbient(true); return; }
       rebuild();
     });
     refs.key.addEventListener("change", () => {
@@ -758,9 +960,10 @@
     refreshProgOptions();
     syncStrandsToggleUi();
     syncStrandsLinkUi();
+    syncAmbientUi();
     refs.key.value = state.keyName;
     persistSettings();
-    rebuild();
+    if (state.style === AMBIENT_STYLE) regenerateAmbient(false); else rebuild();
     restartLoopIfActive(true);
   }
 
@@ -781,8 +984,16 @@
       _matchSeq = null;
       return;
     }
+    if (prog.ambient && !state.ambientSpecs.length) {
+      // First visit to the ambient category (e.g. restored from settings).
+      const cands = [];
+      for (let i = 0; i < 24; i++) cands.push(ambientCandidate(prog.id, i));
+      cands.sort((a, b) => b.score - a.score);
+      state.ambientSpecs = cands[0].specs;
+    }
     const rawChords = Array.isArray(prog.chords)
       ? prog.chords
+      : prog.ambient ? state.ambientSpecs
       : (prog.generated ? buildStrandsProgression(prog.id, key) : []);
     const evolvedRaw = (state.style === "strands" && state.strandsLinkEvolution)
       ? buildEvolutionaryStrandsProgression(prog.id, key, state.strandsLinkIntensity)
@@ -1646,7 +1857,27 @@
   }
 
   // ---- favorites ----
-  function saveFavorite() {
+  async function saveFavorite() {
+    if (state.style === AMBIENT_STYLE) {
+      // Generated loops are random — persist the actual chords as a custom entry.
+      const prog = currentProg();
+      const names = state.chords.map((c) => c.displayName || c.name).join(" ");
+      const name = `Ambient · ${prog ? prog.name : "vibe"} · ${names}`.slice(0, 80);
+      try {
+        const res = await fetch(CUSTOM_API, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, chords: state.rawChords, desc: `Ambient 生成（密度 ${state.ambientDensity}）`, source_url: "", input_text: names, input_key: state.keyName }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || res.status);
+        LIBRARY.custom.progressions.push(customToProg(data));
+        renderFavorites();
+        showToastSafe("已把這組 Ambient 進行存進「我的收集」");
+      } catch (e) {
+        showToastSafe(`儲存失敗：${e.message || e}`);
+      }
+      return;
+    }
     const payload = {
       style: state.style,
       progId: state.progId,
@@ -1710,7 +1941,7 @@
         state.progId = target.progId;
         if (KEYS.some((k) => k.name === target.keyName)) state.keyName = target.keyName;
         if (Number.isFinite(Number(target.bpm))) state.bpm = clamp(Math.round(Number(target.bpm)), 40, 180);
-        if ([2, 4, 8].includes(Number(target.beats))) state.beats = Number(target.beats);
+        if ([2, 4, 8, 16].includes(Number(target.beats))) state.beats = Number(target.beats);
         refs.style.value = state.style;
         refreshProgOptions();
         refs.key.value = state.keyName;
@@ -1771,7 +2002,9 @@
       if (obj.progId && (state.style === CUSTOM_STYLE || (LIBRARY[state.style].progressions || []).some((p) => p.id === obj.progId))) state.progId = obj.progId;
       if (obj.keyName && KEYS.some((k) => k.name === obj.keyName)) state.keyName = obj.keyName;
       if (Number.isFinite(Number(obj.bpm))) state.bpm = clamp(Math.round(Number(obj.bpm)), 40, 180);
-      if ([2, 4, 8].includes(Number(obj.beats))) state.beats = Number(obj.beats);
+      if ([2, 4, 8, 16].includes(Number(obj.beats))) state.beats = Number(obj.beats);
+      if ([1, 2, 3].includes(Number(obj.ambientDensity))) state.ambientDensity = Number(obj.ambientDensity);
+      if (["off", "prefer", "force"].includes(obj.ambientMotif)) state.ambientMotif = obj.ambientMotif;
       if (typeof obj.strandsHalfstepApproach === "boolean") state.strandsHalfstepApproach = obj.strandsHalfstepApproach;
       if (typeof obj.strandsLinkEvolution === "boolean") state.strandsLinkEvolution = obj.strandsLinkEvolution;
       if (typeof obj.strandsLinkIntensity === "string" && STRANDS_LINK_INTENSITIES[obj.strandsLinkIntensity]) state.strandsLinkIntensity = obj.strandsLinkIntensity;
@@ -1794,6 +2027,7 @@
         collapsed: state.collapsed,
         accMode: state.accMode, accStyle: state.accStyle, accLevel: state.accLevel, accInst: state.accInst,
         sound: state.sound,
+        ambientDensity: state.ambientDensity, ambientMotif: state.ambientMotif,
       }));
     } catch {}
   }

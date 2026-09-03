@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=24">
-  <link rel="stylesheet" href="/css/home.css?v=73">
+  <link rel="stylesheet" href="/css/home.css?v=74">
 
   <link rel="stylesheet" href="/css/help.css?v=10">
   <link rel="stylesheet" href="/css/tutorial.css?v=1">
@@ -136,73 +136,6 @@
 <!-- dashboard layout -->
 <main class="content dashboard-layout">
 
-  <section id="secAmbientMode" class="ambient-mode">
-    <div class="ambient-head">
-      <div>
-        <h2 class="ambient-title">Ambient Mode</h2>
-        <p class="ambient-subtitle">為即興、Lo-Fi 與靜心練習設計的和弦氛圍遊樂場</p>
-      </div>
-      <div class="ambient-head-actions">
-        <button id="ambientCollapseBtn" class="ambient-btn" type="button" aria-expanded="true">收折</button>
-        <button id="ambientFullscreenBtn" class="ambient-btn" type="button">全螢幕</button>
-        <button id="ambientLoopBtn" class="ambient-btn ambient-play-btn" type="button" title="循環播放" aria-label="Loop playback">
-          <svg class="amb-icon amb-ico-play" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>
-          <svg class="amb-icon amb-ico-pause" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-        </button>
-        <button id="ambientSurpriseBtn" class="ambient-btn ambient-btn-accent" type="button">Surprise Me</button>
-        <button id="ambientFavBtn" class="ambient-btn" type="button">儲存最愛</button>
-      </div>
-    </div>
-    <div id="ambientBody" class="ambient-body">
-    <div class="ambient-controls">
-      <label class="ambient-field">
-        <span>Vibe</span>
-        <select id="ambientPreset"></select>
-      </label>
-      <label class="ambient-field">
-        <span>Key</span>
-        <select id="ambientKey"></select>
-      </label>
-      <label class="ambient-field ambient-field-bpm">
-        <span>BPM <b id="ambientBpmVal">64</b></span>
-        <input id="ambientBpm" type="range" min="50" max="80" step="1" value="64">
-      </label>
-      <label class="ambient-field ambient-field-density">
-        <span>Density <b id="ambientDensityVal">2</b></span>
-        <input id="ambientDensity" type="range" min="1" max="3" step="1" value="2">
-      </label>
-      <label class="ambient-field">
-        <span>Half-step motif</span>
-        <select id="ambientSemitoneMode">
-          <option value="off">Off</option>
-          <option value="prefer" selected>Prefer</option>
-          <option value="force">Force</option>
-        </select>
-      </label>
-      <label class="ambient-field">
-        <span>Chord hold</span>
-        <select id="ambientHoldBeats">
-          <option value="4">4 beats</option>
-          <option value="8" selected>8 beats</option>
-          <option value="16">16 beats</option>
-        </select>
-      </label>
-      <label class="ambient-field ambient-field-volume">
-        <span>Volume <b id="ambientVolumeVal">70</b>%</span>
-        <input id="ambientVolume" type="range" min="0" max="100" step="1" value="70">
-      </label>
-    </div>
-    <div id="ambientRibbon" class="ambient-ribbon" aria-label="Ambient chord ribbon"></div>
-    <div class="ambient-foot">
-      <div id="ambientVoiceGuide" class="ambient-guide">Voice leading guide</div>
-      <div id="ambientSpGuide" class="ambient-sp-guide">SP-404 建議</div>
-    </div>
-    <div class="ambient-favorites-wrap">
-      <div class="ambient-fav-head">我的 Ambient 最愛</div>
-      <div id="ambientFavorites" class="ambient-favorites"></div>
-    </div>
-    </div>
-  </section>
 
   <section id="secProgLib" class="proglib">
     <div class="proglib-head">
@@ -244,6 +177,7 @@
             <option value="2">2 拍</option>
             <option value="4" selected>4 拍</option>
             <option value="8">8 拍</option>
+            <option value="16">16 拍</option>
           </select>
         </label>
         <label class="proglib-field proglib-field-volume">
@@ -955,8 +889,7 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 </script>
 
 <script src="https://unpkg.com/tone@14.8.49/build/Tone.js" defer></script>
-  <script src="/js/ambient-mode.js?v=17"></script>
-  <script src="/js/progression-library.js?v=26"></script>
+    <script src="/js/progression-library.js?v=27"></script>
   <script src="/js/scale-lab.js?v=3"></script>
   <script src="/js/trends-explorer.js?v=1"></script>
 <script src="/js/app.js?v=131"></script>
