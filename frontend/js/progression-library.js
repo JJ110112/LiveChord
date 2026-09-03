@@ -1,4 +1,4 @@
-// progression-library.js v3
+// progression-library.js v4
 // A curated library of classic chord progressions grouped by style.
 // Mirrors the Ambient Mode pattern (collapsible homepage section, Tone.js
 // loop playback, localStorage favorites) but plays *named* progressions the
@@ -394,6 +394,29 @@
   const CUSTOM_STYLE = "custom";
   const CUSTOM_API = "/api/progression/custom";
 
+  // Playback sounds — mirrors the player's SAMPLE_MANIFEST (same local sample
+  // folders, same "Cs4.mp3" file naming). Sample sounds load via Tone.Sampler;
+  // oscillator sounds are a PolySynth with the listed envelope.
+  const SOUNDS = {
+    "grand-piano":   { label: "平台鋼琴", type: "sample", baseUrl: "/audio/samples/grand-piano/", notes: [21,24,27,30,33,36,39,42,45,48,51,54,57,60,63,66,69,72,75,78,81,84,87,90,93,96,99,102,105,108], gain: 1.0 },
+    "upright-piano": { label: "直立鋼琴", type: "osc", osc: "triangle", env: { attack: 0.005, decay: 0.45, sustain: 0.25, release: 0.45 }, gain: 0.85 },
+    "rhodes":        { label: "Rhodes 電鋼琴", type: "osc", osc: "sine", env: { attack: 0.008, decay: 0.7, sustain: 0.35, release: 0.7 }, gain: 0.95 },
+    "wurlitzer":     { label: "Wurlitzer 電鋼琴", type: "osc", osc: "triangle", env: { attack: 0.005, decay: 0.55, sustain: 0.4, release: 0.5 }, gain: 0.9 },
+    "organ":         { label: "電風琴", type: "sample", baseUrl: "/audio/samples/organ/", notes: [24,27,30,33,36,39,42,45,48,51,54,57,60,63,66,69,72,75,78,81,84], gain: 0.6 },
+    "nylon-guitar":  { label: "古典吉他", type: "sample", baseUrl: "/audio/samples/nylon-guitar/", notes: [35,38,40,42,44,45,47,49,50,52,54,55,57,59,61,63,64,66,68,69,71,73,74,76,78,79,80,81,82], gain: 1.0 },
+    "steel-guitar":  { label: "鋼弦吉他", type: "sample", baseUrl: "/audio/samples/steel-guitar/", notes: [38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74], gain: 0.95 },
+    "accordion":     { label: "手風琴", type: "sample", baseUrl: "/audio/samples/accordion/", notes: [36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,67,68,69,70,71,72,73,74], gain: 0.7 },
+    "synth-pad":     { label: "合成器 Pad", type: "osc", osc: "sawtooth", env: { attack: 0.4, decay: 0.3, sustain: 0.7, release: 1.4 }, gain: 0.4 },
+  };
+  // Accompaniment styles (backend STYLE_DICT), grouped for the picker.
+  const ACC_STYLE_GROUPS = [
+    { name: "自動", styles: [["Auto", "Auto（依 BPM 建議）"]] },
+    { name: "流行 / 抒情", styles: [["Block", "Block 整體"], ["Arpeggio", "Arpeggio 分解"], ["Rhythm", "Rhythm 附點節奏"], ["PopBallad", "Pop Ballad"], ["RockBallad", "Rock Ballad"], ["1+3", "1+3 根音＋和弦"], ["RockEighths", "Rock 八分音符"]] },
+    { name: "爵士 / 藍調", styles: [["Shell", "Shell 三七音"], ["Walking", "Walking Bass"], ["Stride", "Stride"], ["SwingFour", "Swing Four"], ["JazzCharleston", "Charleston"], ["JazzWaltz", "Jazz Waltz"], ["SlowBlues", "Slow Blues"], ["BluesShuffle", "Blues Shuffle"]] },
+    { name: "拉丁 / 律動", styles: [["BossaNova", "Bossa Nova"], ["Samba", "Samba"], ["Reggae", "Reggae"], ["Funk16", "Funk 16 分"], ["RnBNeoSoul", "R&B / Neo-Soul"]] },
+    { name: "古典", styles: [["Alberti", "Alberti Bass"]] },
+  ];
+
   const KEYS = [
     { name: "C",  pc: 0,  sharp: false },
     { name: "G",  pc: 7,  sharp: true },
@@ -431,6 +454,11 @@
     chords: [],
     rawChords: [],
     synthReady: false,
+    accMode: "basic",
+    accStyle: "Auto",
+    accLevel: "L2",
+    accInst: "piano",
+    sound: "grand-piano",
   };
 
   const refs = {
@@ -442,6 +470,11 @@
     bpmVal: document.getElementById("proglibBpmVal"),
     beats: document.getElementById("proglibBeats"),
     vol: document.getElementById("proglibVol"),
+    accMode: document.getElementById("proglibAccMode"),
+    accStyle: document.getElementById("proglibAccStyle"),
+    accLevel: document.getElementById("proglibAccLevel"),
+    accInst: document.getElementById("proglibAccInst"),
+    sound: document.getElementById("proglibSound"),
     volVal: document.getElementById("proglibVolVal"),
     collapseBtn: document.getElementById("proglibCollapseBtn"),
     playBtn: document.getElementById("proglibPlayBtn"),
@@ -475,10 +508,17 @@
   let _matchTotal = 0;
 
   let synth = null;
+  let synthSoundId = null;
+  let synthGain = null;
   let outputGain = null;
   let reverb = null;
   let loopTimer = null;
   let loopBusy = false;
+  // AI-accompaniment loop state
+  let aiActive = false;
+  let aiToken = 0;
+  let aiTimers = [];
+  const aiCache = new Map();
 
   function init() {
     hydrateVolume();
@@ -522,8 +562,27 @@
     refs.beats.value = String(state.beats);
     refs.vol.value = String(Math.round(state.volume * 100));
     refs.volVal.textContent = String(Math.round(state.volume * 100));
+    if (refs.accStyle) {
+      refs.accStyle.innerHTML = ACC_STYLE_GROUPS.map((g) =>
+        `<optgroup label="${escapeHtml(g.name)}">${g.styles.map(([v, l]) => `<option value="${escapeHtml(v)}">${escapeHtml(l)}</option>`).join("")}</optgroup>`
+      ).join("");
+      refs.accStyle.value = state.accStyle;
+    }
+    if (refs.sound) {
+      refs.sound.innerHTML = Object.entries(SOUNDS).map(([k, v]) => `<option value="${k}">${escapeHtml(v.label)}</option>`).join("");
+      refs.sound.value = state.sound;
+    }
+    if (refs.accMode) refs.accMode.value = state.accMode;
+    if (refs.accLevel) refs.accLevel.value = state.accLevel;
+    if (refs.accInst) refs.accInst.value = state.accInst;
+    syncAccUi();
     syncStrandsToggleUi();
     syncStrandsLinkUi();
+  }
+
+  function syncAccUi() {
+    const ai = state.accMode === "ai";
+    ROOT.querySelectorAll(".proglib-field-ai").forEach((el) => { el.style.display = ai ? "" : "none"; });
   }
 
   function ensureStrandsToggleControl() {
@@ -626,6 +685,30 @@
       restartLoopIfActive(false);
     });
     refs.vol.addEventListener("input", () => setVolumeFromPercent(Number(refs.vol.value || 70), true));
+    if (refs.accMode) refs.accMode.addEventListener("change", () => {
+      state.accMode = refs.accMode.value === "ai" ? "ai" : "basic";
+      syncAccUi();
+      persistSettings();
+      restartLoopIfActive(false);
+    });
+    [["accStyle", "accStyle"], ["accLevel", "accLevel"], ["accInst", "accInst"]].forEach(([ref, key]) => {
+      if (!refs[ref]) return;
+      refs[ref].addEventListener("change", () => {
+        state[key] = refs[ref].value;
+        persistSettings();
+        restartLoopIfActive(false);
+      });
+    });
+    if (refs.sound) refs.sound.addEventListener("change", async () => {
+      state.sound = SOUNDS[refs.sound.value] ? refs.sound.value : "grand-piano";
+      persistSettings();
+      const wasLooping = isLooping();
+      stopLoop(false);
+      state.synthReady = false;
+      await ensureSynth();
+      if (wasLooping) startLoop(false, false);
+      else if (state.chords.length) playChord(state.activeIndex);
+    });
     if (refs.strandsToggle) {
       refs.strandsToggle.addEventListener("change", () => {
         state.strandsHalfstepApproach = !!refs.strandsToggle.checked;
@@ -1344,8 +1427,10 @@
   }
 
   // ---- playback ----
+  function isLooping() { return !!loopTimer || aiActive; }
+
   async function toggleLoop() {
-    if (loopTimer) { stopLoop(true); return; }
+    if (isLooping()) { stopLoop(true); return; }
     await startLoop(true, true);
   }
 
@@ -1354,6 +1439,11 @@
     await ensureSynth();
     if (!state.synthReady) return;
     stopLoop(false);
+    if (state.accMode === "ai") {
+      const ok = await startAiLoop();
+      if (ok) { syncPlayUi(); if (announce) showToastSafe(`AI 伴奏循環中 · ${state.accStyle}`); return; }
+      // fall through to basic playback when the generator refused the progression
+    }
     if (playNow) await playChord(state.activeIndex);
     const periodMs = loopIntervalMs();
     loopTimer = setInterval(async () => {
@@ -1374,13 +1464,90 @@
   function stopLoop(announce) {
     if (loopTimer) { clearInterval(loopTimer); loopTimer = null; }
     loopBusy = false;
+    if (aiActive) {
+      aiActive = false;
+      aiToken++;
+      aiTimers.forEach(clearTimeout);
+      aiTimers = [];
+      try { if (synth && synth.releaseAll) synth.releaseAll(); } catch {}
+    }
     syncPlayUi();
     if (announce) showToastSafe("已停止播放");
   }
 
   function restartLoopIfActive(playNow) {
-    if (!loopTimer) return;
+    if (!isLooping()) return;
     startLoop(playNow, false);
+  }
+
+  // ---- AI accompaniment loop -------------------------------------------
+  function accSignature() {
+    return JSON.stringify([state.rawChords, state.keyName, state.bpm, state.beats, state.accStyle, state.accLevel, state.accInst]);
+  }
+
+  async function fetchAccompaniment() {
+    const sig = accSignature();
+    if (aiCache.has(sig)) return aiCache.get(sig);
+    const res = await fetch("/api/progression/accompaniment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chords: state.rawChords, key: state.keyName, bpm: state.bpm, beats_per_chord: state.beats,
+        style: state.accStyle, level: state.accLevel, instrument: state.accInst,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || `${res.status} ${res.statusText}`);
+    if (aiCache.size > 40) aiCache.clear();
+    aiCache.set(sig, data);
+    return data;
+  }
+
+  async function startAiLoop() {
+    const token = ++aiToken;
+    let data;
+    try {
+      data = await fetchAccompaniment();
+    } catch (e) {
+      showToastSafe(`AI 伴奏產生失敗，改用基本播放：${e.message || e}`);
+      return false;
+    }
+    if (token !== aiToken) return true; // superseded by a newer start/stop
+    const events = (data.left_hand || []).concat(data.right_hand || []);
+    if (!events.length || !(data.loop_seconds > 0)) {
+      showToastSafe("AI 伴奏沒有產生任何音符，改用基本播放");
+      return false;
+    }
+    aiActive = true;
+    schedulePass(data, window.Tone.now() + 0.1, token);
+    return true;
+  }
+
+  function schedulePass(data, startAt, token) {
+    if (token !== aiToken || !aiActive) return;
+    const T = window.Tone;
+    const now = T.now();
+    const loop = data.loop_seconds;
+    const events = (data.left_hand || []).concat(data.right_hand || []);
+    events.forEach((e) => {
+      if (!Number.isFinite(e.pitch) || !Number.isFinite(e.time)) return;
+      const gate = Number.isFinite(e.gate_ratio) ? Math.max(0.1, Math.min(1, e.gate_ratio)) : 1;
+      const dur = Math.max(0.05, (Number(e.duration) || 0.25) * gate);
+      const v = Number(e.velocity);
+      const vel = Number.isFinite(v) ? Math.max(0.05, Math.min(1, v > 1 ? v / 127 : v)) : 0.7;
+      try { synth.triggerAttackRelease(midiToTone(Math.round(e.pitch)), dur, startAt + e.time, vel); } catch {}
+    });
+    (data.chords || []).forEach((c, i) => {
+      const delay = (startAt + c.time - now) * 1000;
+      aiTimers.push(setTimeout(() => {
+        if (token !== aiToken) return;
+        state.activeIndex = i % Math.max(1, state.chords.length);
+        renderRibbon();
+      }, Math.max(0, delay)));
+    });
+    // Queue the next pass shortly before this one ends so audio stays gapless.
+    const nextIn = (startAt + loop - now) * 1000 - 300;
+    aiTimers.push(setTimeout(() => schedulePass(data, startAt + loop, token), Math.max(0, nextIn)));
   }
 
   function loopIntervalMs() {
@@ -1388,20 +1555,49 @@
     return Math.max(450, Math.round((60 / safeBpm) * 1000 * state.beats));
   }
 
+  function sampleUrls(spec) {
+    const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    const files = ["C", "Cs", "D", "Ds", "E", "F", "Fs", "G", "Gs", "A", "As", "B"];
+    const urls = {};
+    spec.notes.forEach((m) => {
+      const oct = Math.floor(m / 12) - 1;
+      urls[names[m % 12] + oct] = files[m % 12] + oct + ".mp3";
+    });
+    return urls;
+  }
+
   async function ensureSynth() {
-    if (state.synthReady) return;
+    if (state.synthReady && synthSoundId === state.sound) return;
     if (!window.Tone) {
       showToastSafe("Tone.js 載入失敗，請檢查網路連線");
       return;
     }
+    const T = window.Tone;
     try {
-      await window.Tone.start();
-      outputGain = new window.Tone.Gain(state.volume).toDestination();
-      reverb = new window.Tone.Reverb({ decay: 3.2, wet: 0.22 }).connect(outputGain);
-      synth = new window.Tone.PolySynth(window.Tone.Synth, {
-        oscillator: { type: "triangle" },
-        envelope: { attack: 0.012, decay: 0.5, sustain: 0.5, release: 1.2 },
-      }).connect(reverb);
+      await T.start();
+      if (!outputGain) {
+        outputGain = new T.Gain(state.volume).toDestination();
+        reverb = new T.Reverb({ decay: 3.2, wet: 0.22 }).connect(outputGain);
+      }
+      if (synth) { try { synth.releaseAll && synth.releaseAll(); synth.dispose(); } catch {} synth = null; }
+      if (synthGain) { try { synthGain.dispose(); } catch {} synthGain = null; }
+      const spec = SOUNDS[state.sound] || SOUNDS["grand-piano"];
+      synthGain = new T.Gain(spec.gain || 1).connect(reverb);
+      if (spec.type === "sample") {
+        showToastSafe(`載入音色：${spec.label}…`);
+        await new Promise((resolve) => {
+          synth = new T.Sampler({
+            urls: sampleUrls(spec), baseUrl: spec.baseUrl, release: 1.2,
+            onload: resolve, onerror: () => resolve(),
+          }).connect(synthGain);
+        });
+      } else {
+        synth = new T.PolySynth(T.Synth, {
+          oscillator: { type: spec.osc || "triangle" },
+          envelope: spec.env || { attack: 0.012, decay: 0.5, sustain: 0.5, release: 1.2 },
+        }).connect(synthGain);
+      }
+      synthSoundId = state.sound;
       state.synthReady = true;
     } catch {
       showToastSafe("音訊初始化失敗，請點擊頁面後再試");
@@ -1524,7 +1720,7 @@
 
   function syncPlayUi() {
     if (!refs.playBtn) return;
-    const active = !!loopTimer;
+    const active = isLooping();
     refs.playBtn.classList.toggle("is-active", active);
     refs.playBtn.setAttribute("title", active ? "停止" : "循環播放");
     refs.playBtn.setAttribute("aria-label", active ? "Stop" : "Loop playback");
@@ -1553,6 +1749,11 @@
       if (typeof obj.strandsLinkEvolution === "boolean") state.strandsLinkEvolution = obj.strandsLinkEvolution;
       if (typeof obj.strandsLinkIntensity === "string" && STRANDS_LINK_INTENSITIES[obj.strandsLinkIntensity]) state.strandsLinkIntensity = obj.strandsLinkIntensity;
       if (typeof obj.collapsed === "boolean") state.collapsed = obj.collapsed;
+      if (obj.accMode === "ai" || obj.accMode === "basic") state.accMode = obj.accMode;
+      if (typeof obj.accStyle === "string" && ACC_STYLE_GROUPS.some((g) => g.styles.some(([v]) => v === obj.accStyle))) state.accStyle = obj.accStyle;
+      if (["L1", "L2", "L3"].includes(obj.accLevel)) state.accLevel = obj.accLevel;
+      if (["piano", "guitar", "ukulele"].includes(obj.accInst)) state.accInst = obj.accInst;
+      if (typeof obj.sound === "string" && SOUNDS[obj.sound]) state.sound = obj.sound;
     } catch {}
   }
 
@@ -1564,6 +1765,8 @@
         strandsLinkEvolution: state.strandsLinkEvolution,
         strandsLinkIntensity: state.strandsLinkIntensity,
         collapsed: state.collapsed,
+        accMode: state.accMode, accStyle: state.accStyle, accLevel: state.accLevel, accInst: state.accInst,
+        sound: state.sound,
       }));
     } catch {}
   }

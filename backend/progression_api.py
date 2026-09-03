@@ -324,3 +324,81 @@ def delete_custom_progression(item_id: str):
             raise HTTPException(status_code=404, detail="custom progression not found")
         _write_custom(kept)
     return {"ok": True, "count": len(kept)}
+
+
+# ---------------------------------------------------------------------------
+# AI accompaniment for a bare progression (Progression Library playback).
+# Builds a chord timeline from [degree, quality, bass?] specs + key and runs
+# the same generator the player uses. Generation is a few ms for ≤ 32 chords,
+# so it runs synchronously (plain def → thread pool).
+# ---------------------------------------------------------------------------
+_SHARP_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+_FLAT_NAMES = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
+_SHARP_KEYS = {"G", "D", "A", "E", "B", "F#", "C#"}
+# Quality id → suffix the accompaniment generator's chord parser understands.
+# Entries whose exact spelling the parser degrades (maj7#11 → triad, m7b9 →
+# major) are mapped to the nearest well-parsed quality.
+_GEN_SUFFIX = {
+    "maj": "", "m": "m", "dim": "dim", "aug": "aug", "maj7": "maj7", "m7": "m7", "7": "7",
+    "m7b5": "m7b5", "dim7": "dim7", "maj9": "maj9", "m9": "m9", "9": "9", "7sus4": "7sus4",
+    "6": "6", "m6": "m6", "add9": "add9", "6/9": "6/9", "11": "11", "m11": "m11", "13": "13",
+    "sus2": "sus2", "sus4": "sus4", "7b9": "7b9", "7#9": "7#9", "7b5": "7b5", "7#5": "7#5",
+    "7b13": "7b13", "7#11": "7#11", "maj7#11": "maj7", "m7b9": "m7", "mmaj7": "mM7",
+    "9sus4": "9sus4", "m6/9": "m6/9",
+}
+
+
+class ProgressionAccIn(BaseModel):
+    chords: list = Field(..., min_length=1, max_length=32)
+    key: str = Field("C", max_length=4)
+    bpm: float = Field(100.0, ge=40, le=200)
+    beats_per_chord: int = Field(4, ge=1, le=16)
+    style: str = Field("Auto", max_length=32)
+    level: str = Field("L2", max_length=4)
+    instrument: str = Field("piano", max_length=16)
+
+
+def _key_pc(key: str) -> int:
+    m = re.match(r"^([A-G])([b#])?", key or "")
+    if not m:
+        return 0
+    base = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}[m.group(1)]
+    return (base + (1 if m.group(2) == "#" else -1 if m.group(2) == "b" else 0)) % 12
+
+
+@router.post("/api/progression/accompaniment")
+def progression_accompaniment(body: ProgressionAccIn):
+    if body.level not in ("L1", "L2", "L3"):
+        raise HTTPException(status_code=400, detail="level must be L1/L2/L3")
+    if body.instrument not in ("piano", "guitar", "ukulele"):
+        raise HTTPException(status_code=400, detail="instrument must be piano/guitar/ukulele")
+    specs = _normalize_chords(body.chords)
+    key_pc = _key_pc(body.key)
+    names = _SHARP_NAMES if body.key in _SHARP_KEYS else _FLAT_NAMES
+    sec = 60.0 / body.bpm * body.beats_per_chord
+    timeline = []
+    for i, spec in enumerate(specs):
+        deg, q = spec[0], spec[1]
+        name = names[(key_pc + deg) % 12] + _GEN_SUFFIX.get(q, "")
+        if len(spec) > 2:
+            name += "/" + names[(key_pc + spec[2]) % 12]
+        timeline.append({"time": round(i * sec, 4), "end": round((i + 1) * sec, 4), "chord": name})
+    try:
+        from ai.accompaniment_generator import generate_accompaniment
+        result = generate_accompaniment(
+            chords=timeline, bpm=body.bpm, style=body.style, level=body.level,
+            instrument=body.instrument,
+        )
+    except Exception as exc:  # generator is strict about spellings; surface it
+        raise HTTPException(status_code=400, detail=f"accompaniment failed: {exc}")
+    keep = ("time", "duration", "pitch", "velocity", "gate_ratio", "voice_lane", "hand", "string", "finger", "strum_id")
+    slim = lambda evs: [{k: e[k] for k in keep if k in e} for e in evs if isinstance(e, dict)]
+    return {
+        "chords": timeline,
+        "loop_seconds": round(len(specs) * sec, 4),
+        "style": result.get("style", body.style),
+        "level": body.level,
+        "instrument": body.instrument,
+        "left_hand": slim(result.get("left_hand", [])),
+        "right_hand": slim(result.get("right_hand", [])),
+    }

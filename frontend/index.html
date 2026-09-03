@@ -250,6 +250,37 @@
           <span>音量 <b id="proglibVolVal">70</b>%</span>
           <input id="proglibVol" type="range" min="0" max="100" step="1" value="70">
         </label>
+        <label class="proglib-field">
+          <span>演奏方式</span>
+          <select id="proglibAccMode">
+            <option value="basic">基本（整個和弦一起響）</option>
+            <option value="ai">AI 伴奏（player 同款）</option>
+          </select>
+        </label>
+        <label class="proglib-field proglib-field-ai">
+          <span>伴奏風格</span>
+          <select id="proglibAccStyle"></select>
+        </label>
+        <label class="proglib-field proglib-field-ai">
+          <span>難度</span>
+          <select id="proglibAccLevel">
+            <option value="L1">L1 初階</option>
+            <option value="L2" selected>L2 中階</option>
+            <option value="L3">L3 進階</option>
+          </select>
+        </label>
+        <label class="proglib-field proglib-field-ai">
+          <span>編曲樂器</span>
+          <select id="proglibAccInst">
+            <option value="piano">鋼琴</option>
+            <option value="guitar">吉他</option>
+            <option value="ukulele">烏克麗麗</option>
+          </select>
+        </label>
+        <label class="proglib-field">
+          <span>音色</span>
+          <select id="proglibSound"></select>
+        </label>
       </div>
       <div id="proglibRibbon" class="proglib-ribbon" aria-label="Progression chord cards"></div>
       <div id="proglibDesc" class="proglib-desc"></div>
@@ -925,7 +956,7 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 
 <script src="https://unpkg.com/tone@14.8.49/build/Tone.js" defer></script>
   <script src="/js/ambient-mode.js?v=17"></script>
-  <script src="/js/progression-library.js?v=24"></script>
+  <script src="/js/progression-library.js?v=25"></script>
   <script src="/js/scale-lab.js?v=3"></script>
   <script src="/js/trends-explorer.js?v=1"></script>
 <script src="/js/app.js?v=131"></script>
