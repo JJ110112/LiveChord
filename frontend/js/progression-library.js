@@ -1381,7 +1381,7 @@
       ? ` <a class="proglib-src-link" href="${escapeHtml(prog.source_url)}" target="_blank" rel="noopener">來源 ↗</a>`
       : "";
     refs.desc.innerHTML =
-      `<span class="proglib-desc-text">${escapeHtml(currentStyle().name)} · ${escapeHtml(prog.name)}　—　${formatNote(prog.desc || "")}${srcHtml}</span>` +
+      `<span class="proglib-desc-text">${escapeHtml(currentStyle().name)} · ${escapeHtml(prog.name)}${(prog.desc || "").indexOf(String.fromCharCode(10)) >= 0 ? "<br>" : "　—　"}${formatNote(prog.desc || "")}${srcHtml}</span>` +
       `<span class="proglib-desc-actions">` +
       `<button class="proglib-mini-btn" type="button" data-action="edit">編輯</button>` +
       `<button class="proglib-mini-btn proglib-mini-danger" type="button" data-action="delete">刪除</button>` +

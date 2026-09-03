@@ -2528,5 +2528,5 @@
 /* Progression Library note rendering (light Markdown) */
 .proglib-desc-text .pl-note-h { display: inline-block; margin-top: 6px; color: var(--text); font-size: 13px; }
 .proglib-desc-text .pl-note-li { display: inline-block; padding-left: 10px; }
-.proglib-desc-text .pl-note-gap { display: block; height: 6px; }
+.proglib-desc-text .pl-note-gap { display: block; height: 2px; }
 .proglib-desc-text code { font-size: 11px; padding: 0 4px; border-radius: 4px; background: color-mix(in srgb, var(--text) 10%, transparent); }
