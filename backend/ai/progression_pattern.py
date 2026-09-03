@@ -157,6 +157,27 @@ def _bar_seconds(downbeats: Optional[List[float]], bpm: Optional[float], toks: L
     return float(statistics.median(durs)) if durs else 2.0
 
 
+_ROMAN_DEG = {v: k for k, v in _ROMAN.items()}
+
+
+def _fam_split(fam: str):
+    """'♭vi' → (8, 'minor'); 'V' → (7, 'major')."""
+    up = fam.upper()
+    deg = _ROMAN_DEG.get(up)
+    if deg is None:
+        return None
+    return deg, ("minor" if fam != up else "major")
+
+
+def _relative(gram: tuple):
+    """Transposition-invariant form: degrees relative to the first chord."""
+    parts = [_fam_split(f) for f in gram]
+    if any(p is None for p in parts):
+        return None
+    d0 = parts[0][0]
+    return tuple(((d - d0) % 12, fam) for d, fam in parts)
+
+
 def _best_gram(seq: List[str], used: List[bool], min_p: int = 2, max_p: int = 8):
     """Pick the (rotation-invariant) n-gram that explains the most still-unused
     chord tokens. Returns (loop_tuple, count) or None."""
@@ -176,7 +197,13 @@ def _best_gram(seq: List[str], used: List[bool], min_p: int = 2, max_p: int = 8)
             # Skip grams that are themselves a repeated shorter loop (I V I V).
             if any(p % q == 0 and g == g[:q] * (p // q) for q in range(1, p)):
                 continue
-            canon = min(g[k:] + g[:k] for k in range(p))
+            # Canonical = min over rotations of the transposition-invariant
+            # form, so a verse that modulates up a minor third still counts.
+            rots = [g[k:] + g[:k] for k in range(p)]
+            rel_forms = [_relative(r) for r in rots]
+            if any(r is None for r in rel_forms):
+                continue
+            canon = min(rel_forms)
             grams[canon] += 1
             rot_of.setdefault(canon, Counter())[g] += 1
         for canon, cnt in grams.items():
@@ -195,12 +222,17 @@ def _best_gram(seq: List[str], used: List[bool], min_p: int = 2, max_p: int = 8)
 
 
 def _occurrences(toks: List[Dict], loop: tuple, used: List[bool]):
+    """Exact matches of `loop` in any transposition. Returns (a, b, transpose)."""
     p = len(loop)
+    ref = _relative(loop)
+    ref_deg = _fam_split(loop[0])[0] if ref else None
     occ = []
     i = 0
     while i <= len(toks) - p:
-        if not any(used[i:i + p]) and tuple(t["fam"] for t in toks[i:i + p]) == loop:
-            occ.append((i, i + p))
+        g = tuple(t["fam"] for t in toks[i:i + p])
+        if not any(used[i:i + p]) and ref is not None and _relative(g) == ref:
+            tr = (_fam_split(g[0])[0] - ref_deg) % 12
+            occ.append((i, i + p, tr))
             for k in range(i, i + p):
                 used[k] = True
             i += p
@@ -222,9 +254,11 @@ def _known_name(loop: tuple):
 
 def _describe(toks: List[Dict], occ, loop: tuple, bar_sec: float, total: float, key_semi: int) -> Dict:
     p = len(loop)
-    first = toks[occ[0][0]:occ[0][1]]
+    # Display the untransposed occurrence (transpose 0) when there is one.
+    base = next((o for o in occ if o[2] == 0), occ[0])
+    first = toks[base[0]:base[1]]
     step_bars = first[0].get("step_bars", 1.0)
-    covered = sum(toks[b - 1]["end"] - toks[a]["start"] for a, b in occ)
+    covered = sum(toks[b - 1]["end"] - toks[a]["start"] for a, b, _ in occ)
     # Collapse consecutive identical slots for display: D D Bm7 Bm7 → D(2) Bm7(2).
     cond: List[Dict] = []
     for t in first:
@@ -247,17 +281,22 @@ def _describe(toks: List[Dict], occ, loop: tuple, bar_sec: float, total: float, 
         "length": len(cond),
         "bars_per_chord": round(statistics.median(bars_each), 2) if bars_each else 0,
         "loop_bars": loop_bars,
-        "occurrences": [{"start": round(toks[a]["start"], 2), "end": round(toks[b - 1]["end"], 2)} for a, b in occ],
+        "occurrences": [{"start": round(toks[a]["start"], 2), "end": round(toks[b - 1]["end"], 2), "transpose": tr} for a, b, tr in occ],
         "count": len(occ),
+        "transposed_count": sum(1 for _, _, tr in occ if tr),
         "coverage": round(covered / total, 3) if total > 0 else 0.0,
     }
 
 
 def analyze_progression(chords: List[Dict], key: str = "C", downbeats: Optional[List[float]] = None,
-                        bpm: Optional[float] = None, max_patterns: int = 3) -> Dict:
+                        bpm: Optional[float] = None, max_patterns: int = 3,
+                        bars: Optional[List[float]] = None) -> Dict:
     key_semi = _key_semi(key)
-    bar_sec = _bar_seconds(downbeats, bpm, _condense(chords, key_semi))
-    toks = _grid_tokens(chords, key_semi, downbeats, bar_sec)
+    # 6/8 songs carry half-bar pulses in downbeats[]; bars[] (bar lines only)
+    # is the right grid when the arbiter / meter_regularizer provided it.
+    grid = bars if bars and len(bars) >= 4 else downbeats
+    bar_sec = _bar_seconds(grid, bpm, _condense(chords, key_semi))
+    toks = _grid_tokens(chords, key_semi, grid, bar_sec)
     if len(toks) < 4:
         return {"key": key, "patterns": [], "tokens": len(toks), "note": "too few chords"}
     total = toks[-1]["end"] - toks[0]["start"]

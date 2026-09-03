@@ -63,6 +63,15 @@ def refine_sections(sections: List[Dict], analysis: Dict, bars: Optional[List[fl
     secs = [dict(s) for s in sections]
     tol = _SNAP_TOL_BARS * bar_sec
 
+    # 0. Structure-first: when the loops explain a solid share of the song and
+    #    the detector's windows are finer than the loops themselves, rebuild the
+    #    sections from the loop occurrences (each occurrence = one phrase,
+    #    gaps between them = one section each) instead of snapping junk.
+    structural = _structure_first(secs, patterns, bar_sec)
+    if structural is not None:
+        meta.update({"applied": True, "mode": "structure-first", "sections_before": len(secs), "sections_after": len(structural)})
+        return structural, meta
+
     # 1. Snap interior boundaries (sections are contiguous: end[i] == start[i+1]).
     for i in range(1, len(secs)):
         t = float(secs[i]["start"])
@@ -133,3 +142,76 @@ def refine_sections(sections: List[Dict], analysis: Dict, bars: Optional[List[fl
 
     meta["applied"] = bool(meta["snapped"] or meta["split"] or meta["dropped"])
     return cleaned, meta
+
+
+_STRUCT_MIN_COVERAGE = 0.30
+_RANK_LABELS = ["verse", "chorus", "bridge"]
+
+
+def _majority_type(secs: List[Dict], s0: float, s1: float) -> Optional[str]:
+    votes: Dict[str, float] = {}
+    for s in secs:
+        ov = max(0.0, min(s1, float(s["end"])) - max(s0, float(s["start"])))
+        if ov > 0:
+            votes[s.get("type", "verse")] = votes.get(s.get("type", "verse"), 0.0) + ov
+    return max(votes.items(), key=lambda kv: kv[1])[0] if votes else None
+
+
+def _structure_first(secs: List[Dict], patterns: List[Dict], bar_sec: float) -> Optional[List[Dict]]:
+    if not patterns or not secs:
+        return None
+    total = float(secs[-1]["end"]) - float(secs[0]["start"])
+    if total <= 0:
+        return None
+    covered = sum(o["end"] - o["start"] for p in patterns for o in p.get("occurrences", []))
+    if covered / total < _STRUCT_MIN_COVERAGE:
+        return None
+    med_sec = sorted(float(s["end"]) - float(s["start"]) for s in secs)[len(secs) // 2]
+    top_loop_sec = float(patterns[0].get("loop_bars") or 0) * bar_sec
+    if not top_loop_sec or med_sec >= top_loop_sec * 0.9:
+        return None  # detector already works at phrase scale — keep snapping path
+
+    detector_junk = med_sec < top_loop_sec * 0.75
+    # Label per loop: detector majority over its occurrences unless the
+    # detector is finer than the loops (then rank-based: main loop = verse).
+    loop_type: Dict[int, str] = {}
+    for i, p in enumerate(patterns):
+        t = None
+        if not detector_junk:
+            votes: Dict[str, float] = {}
+            for o in p.get("occurrences", []):
+                mt = _majority_type(secs, o["start"], o["end"])
+                if mt:
+                    votes[mt] = votes.get(mt, 0.0) + (o["end"] - o["start"])
+            t = max(votes.items(), key=lambda kv: kv[1])[0] if votes else None
+        loop_type[i] = t or _RANK_LABELS[min(i, len(_RANK_LABELS) - 1)]
+
+    events = sorted((o["start"], o["end"], i) for i, p in enumerate(patterns) for o in p.get("occurrences", []))
+    out: List[Dict] = []
+    cursor = float(secs[0]["start"])
+    song_end = float(secs[-1]["end"])
+
+    def add(s0: float, s1: float, sec_type: str):
+        if s1 - s0 < bar_sec * 0.5:
+            return
+        if out and out[-1]["type"] == sec_type and abs(float(out[-1]["end"]) - s0) < 0.05 and (s1 - s0) < bar_sec * _MIN_SECTION_BARS:
+            out[-1]["end"] = round(s1, 2)   # tiny tail merges into the previous same-type section
+            return
+        out.append(_restyle({"start": round(s0, 2), "end": round(s1, 2)}, sec_type))
+
+    for a, b, i in events:
+        if a - cursor >= bar_sec * _MIN_SECTION_BARS:
+            gap_type = _majority_type(secs, cursor, a) if not detector_junk else None
+            if gap_type is None or gap_type == loop_type[i]:
+                gap_type = "intro" if not out else ("chorus" if loop_type[i] != "chorus" else "bridge")
+            add(cursor, a, gap_type)
+        elif a > cursor and out:
+            out[-1]["end"] = round(a, 2)     # absorb a sub-2-bar gap into the previous section
+        add(a, b, loop_type[i])
+        cursor = b
+    if song_end - cursor >= bar_sec * _MIN_SECTION_BARS:
+        add(cursor, song_end, "outro")
+    elif out:
+        out[-1]["end"] = round(song_end, 2)
+    # Number repeated phrase labels so the A-B picker can tell them apart.
+    return out if len(out) >= 2 else None

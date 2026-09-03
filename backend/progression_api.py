@@ -434,6 +434,7 @@ def progression_summary(
     result = analyze_progression(
         chords, key=data.get("key") or "C",
         downbeats=data.get("downbeats") or None, bpm=data.get("bpm"),
+        bars=data.get("bars") or None,
     )
     result["hash"] = h
     result["path"] = path or data.get("path") or ""

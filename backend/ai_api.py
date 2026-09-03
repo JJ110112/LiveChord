@@ -1160,6 +1160,7 @@ def detect_sections_api(
             analysis = analyze_progression(
                 served.get("chords") or [], key=served.get("key") or "C",
                 downbeats=served.get("downbeats") or None, bpm=served.get("bpm"),
+                bars=served.get("bars") or None,
             )
             refined, rmeta = refine_sections(result.get("sections", []), analysis, served.get("bars") or served.get("downbeats"))
             result["sections"] = refined
