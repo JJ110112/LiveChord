@@ -454,6 +454,9 @@ def progression_summary(
         sec = detect_sections(chords, data.get("key") or "C", song_hash=h, data_dir=effective,
                               fallback_data_dir=str(DATA_DIR), hint_bpm=data.get("bpm"))
         sections = sec.get("sections", [])
+        if (sec.get("analysis") or {}).get("mode") != "human-loop":
+            from ai.section_refine import refine_sections
+            sections, result["section_refine"] = refine_sections(sections, result, data.get("bars") or data.get("downbeats"))
     except Exception:
         sections = []
     result["sections"] = map_sections(sections, result["patterns"], chords, _key_semi(result["key"]))

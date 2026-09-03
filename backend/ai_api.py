@@ -1148,6 +1148,24 @@ def detect_sections_api(
         fallback_data_dir=str(DATA_DIR),
         hint_bpm=data.get("bpm"),
     )
+    # 階段 2: snap / split algorithmic boundaries using the song's chord loops.
+    # Human annotations (mode == human-loop) are returned untouched.
+    if (result.get("analysis") or {}).get("mode") != "human-loop":
+        try:
+            from chord_api import apply_serve_pipeline
+            from ai.progression_pattern import analyze_progression
+            from ai.section_refine import refine_sections
+            served = _json.loads(chords_file.read_text(encoding="utf-8"))
+            apply_serve_pipeline(served, chords_file, path or served.get("path") or "")
+            analysis = analyze_progression(
+                served.get("chords") or [], key=served.get("key") or "C",
+                downbeats=served.get("downbeats") or None, bpm=served.get("bpm"),
+            )
+            refined, rmeta = refine_sections(result.get("sections", []), analysis, served.get("bars") or served.get("downbeats"))
+            result["sections"] = refined
+            result["analysis"]["loop_refine"] = rmeta
+        except Exception as exc:
+            result["analysis"]["loop_refine"] = {"applied": False, "reason": f"error: {exc}"}
     result["path"] = path
     result["hash"] = h
     result["author"] = target_user
