@@ -2160,7 +2160,7 @@
       .replace(/\\text\{([^}]*)\}/g, "$1")
       .replace(/\\mathrm\{([^}]*)\}/g, "$1")
       .replace(/\\(?:to|rightarrow|longrightarrow)\b/g, "→")
-      .replace(/\\flat\b/g, "♭").replace(/\\sharp\b/g, "♯")
+      .replace(/\\flat/g, "♭").replace(/\\sharp/g, "♯")
       .replace(/\\(?:circ|deg)\b/g, "°")
       .replace(/\^\{([^}]*)\}/g, "$1").replace(/_\{([^}]*)\}/g, "$1")
       .replace(/\\,|\\;|\\ /g, " ")
