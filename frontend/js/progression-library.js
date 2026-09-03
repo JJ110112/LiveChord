@@ -1512,7 +1512,10 @@
   }
 
   function parseProgressionInput(text, keyName) {
-    const src = String(text || "").replace(/♭/g, "b").replace(/♯/g, "#").replace(/[–—→>|,]/g, " ").trim();
+    // Keep alterations inside parentheses together: "E7(#9,b13)" is one chord.
+    const src = String(text || "").replace(/♭/g, "b").replace(/♯/g, "#")
+      .replace(/\(([^)]*)\)/g, (m, inner) => "(" + inner.replace(/[,\s]+/g, "") + ")")
+      .replace(/[–—→>|,]/g, " ").trim();
     const tokens = src.split(/[\s-]+/).filter(Boolean);
     if (tokens.length < 2) return { chords: [], error: "至少需要 2 個和弦" };
     const key = { pc: keyNameToPc(keyName) };
