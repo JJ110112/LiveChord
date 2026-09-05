@@ -83,6 +83,19 @@ def _fmt_dur(seconds: float) -> str:
     return f"{h}h{m:02d}m" if h else f"{m}m{s:02d}s"
 
 
+def _row_error(r: Dict[str, Any]) -> str:
+    """Best available explanation for a failed row (statuses carry different fields)."""
+    if r.get("error"):
+        return str(r["error"])
+    if r.get("status") == "audio_not_found":
+        return f"missing: {r.get('audio_path')}"
+    if r.get("status") == "demucs_failed":
+        stems = r.get("stems") or {}
+        have = [k for k, v in stems.items() if v]
+        return f"stems returned: {have or 'none'} (demucs {r.get('demucs_s')}s)"
+    return ""
+
+
 def build_report(rows: List[Dict[str, Any]], *, log: Path, total: int, stall_min: float) -> Dict[str, Any]:
     now = datetime.now(timezone.utc)
     by_status: Dict[str, int] = {}
@@ -106,7 +119,7 @@ def build_report(rows: List[Dict[str, Any]], *, log: Path, total: int, stall_min
             "i": i + 1,
             "song_hash": r.get("song_hash"),
             "status": r.get("status"),
-            "error": r.get("error") or r.get("audio_path") or "",
+            "error": _row_error(r),
             "path": r.get("path"),
         }
         for i, r in enumerate(rows)
