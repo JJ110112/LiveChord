@@ -1,6 +1,6 @@
 # Musical Interaction Engine（MIE）— 技術架構與 MVP 規劃
 
-日期：2026-09-06　狀態：規劃（Phase 0 尚未開始）　Beads：`LiveChord-3nex`（epic）
+日期：2026-09-06　狀態：Phase 0 探針已寫好（`backend/mie/probe.py`、`data/mie/ports.json`、`probe_mie.bat`），等硬體就緒後由使用者執行 T0　Beads：`LiveChord-3nex`（epic）
 
 > 一句話：LiveChord 即時觀察使用者的 MIDI 演奏（音、和弦、節奏、力度、留白），
 > 依演算法 + 機率 + 音樂約束，指揮 15 個 MIDI Channel 上的硬體樂器與 REAPER VST 彼此互動。

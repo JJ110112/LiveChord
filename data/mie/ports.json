@@ -1,0 +1,21 @@
+{
+  "_comment": "MIE Phase 0 probe config. Port values are case-insensitive substrings matched against `python backend/mie/probe.py list`. Set optional ports to null to skip them.",
+  "ports": {
+    "mie_in":     "HST 2",
+    "mie_out":    "HST 3",
+    "uc4_in":     "UC4",
+    "reaper_out": "LiveChord_MIE_to_REAPER"
+  },
+  "echo": {
+    "delay_ms": 250,
+    "target_ch": 11,
+    "transpose": 0,
+    "max_note_s": 8.0
+  },
+  "panic": {
+    "_comment": "UC4 trigger: cc=null means ANY control change with value >= value_min (a button press). Set cc to a number to bind one button.",
+    "cc": null,
+    "value_min": 127
+  },
+  "self_echo_window_ms": 30
+}
