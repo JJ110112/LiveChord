@@ -60,7 +60,7 @@ RH_LOW, RH_HIGH = 60, 84
 # v8 (2026-05-20): canonical duration schema v2. Pattern durations no longer
 # reserve visual rests with 0.9/0.85 multipliers; short playback touch is stored
 # in gate_ratio and consumed by player.js. Cache bump forces lazy regeneration.
-ACC_ENGINE_VERSION = "v8"
+ACC_ENGINE_VERSION = "v9"  # v9: pattern-truncation slivers dropped + note continuity active
 NOTE_EVENT_SCHEMA_VERSION = 2
 DEFAULT_PATTERN_GATE_RATIO = 0.9
 _V2_FLAG_CACHE: Optional[bool] = None
@@ -551,6 +551,9 @@ def _repair_for_continuity_observation(
     return repaired, _summarize_continuity(repaired, mode)
 
 
+_MIN_PATTERN_EVENT_S = 0.05  # shortest pattern event worth emitting after chord-end truncation
+
+
 def _emit_period_pattern(pattern, start_time, duration, period_beats,
                          bpm, tempo_curve, emit):
     """Tile a frac-based ``pattern`` at fixed beat-period across a chord.
@@ -585,7 +588,12 @@ def _emit_period_pattern(pattern, start_time, duration, period_beats,
             next_frac = pattern[pi + 1][0] if pi + 1 < len(pattern) else 1.0
             event_dur = (next_frac - frac) * period_dur
             event_dur = min(event_dur, chord_end - event_time)
-            if event_dur <= 0.001:
+            if event_dur < _MIN_PATTERN_EVENT_S:
+                # Truncation sliver: an event cut to a few ms by the chord end.
+                # Left in, the continuity core groups it with the NEXT chord's
+                # onset (20 ms tolerance) and stretches it across the boundary
+                # (Phase 2.5 shadow review: 55 such notes held up to 3.9 beats
+                # under the wrong chord). Skip it at the source.
                 continue
             emit(pi, item, event_time, event_dur)
         period_start += period_dur

@@ -13,7 +13,10 @@ class TestAccompanimentPhase25(unittest.TestCase):
         acc._CONTINUITY_MODE_CACHE = None
 
     def test_default_continuity_mode_is_shadow(self):
-        with patch.dict(os.environ, {}, clear=True):
+        # No env var and no readable settings file -> code default. The real
+        # data/settings.json on this machine may say "active" (NUC rollout
+        # 2026-09-06), so the settings read is forced to fail here.
+        with patch.dict(os.environ, {}, clear=True), patch("builtins.open", side_effect=OSError):
             self.assertEqual(acc._load_continuity_mode(), "shadow")
 
     def test_shadow_mode_writes_would_metadata_without_extending_duration(self):
