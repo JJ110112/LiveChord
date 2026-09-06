@@ -36,8 +36,8 @@
 ```
 ┌──────────────────────── PC（演奏機）────────────────────────┐
 │  livechord-mie (Python 行程)                                  │
-│   ├ MIDI In  ← mioXL「MIE In」USB port  （使用者演奏 + UC4）    │
-│   ├ MIDI Out → mioXL「MIE Out」USB port （CH1–15）             │
+│   ├ MIDI In  ← mioXL「MIE In」USB port  （Fantom port 1 的副本 + UC4）│
+│   ├ MIDI Out → mioXL「MIE Out」USB port （CH1–15，與 Fantom 直通並行）│
 │   ├ 分析 / 狀態 / 演算法 / 機率 / 突變 / 約束 / 安全 / 排程        │
 │   └ WebSocket :8810  ← 面板 UI、player 上下文同步                 │
 │                                                              │
@@ -48,12 +48,18 @@
           │ USB
 ┌─────────▼──────────── iConnectivity mioXL ───────────────────┐
 │  只做「實體 port ↔ 虛擬 port」與 channel filter                  │
-│  規則 1：所有琴鍵 / UC4 的輸出 → MIE In（保留各自 channel）        │
-│  規則 2：MIE Out → 各硬體 DIN / USB port（依 channel 過濾）        │
-│  規則 3：MIE Out 絕對不得 route 回 MIE In（硬體層防迴圈）           │
-│  規則 4：硬體樂器的 MIDI Thru / Soft Thru 全部關閉                 │
+│  現況保留：Fantom port 1 In → DIN2–8（CH9–15 各琴自濾）不動        │
+│  規則 1：Fantom port 1 In 另外「複製」一份 → MIE In（保留 channel） │
+│  規則 2：UC4 → MIE In，走 CH16（目前空閒）                         │
+│  規則 3：MIE Out → DIN1（Fantom，CH2–8 INT zone）+ DIN2–8 + REAPER │
+│  規則 4：MIE Out 絕對不得 route 回 MIE In（硬體層防迴圈）           │
+│  規則 5：DIN2–8 各琴的 Out 不要 route 到 MIE In；Fantom Thru 關閉   │
 └──────────────────────────────────────────────────────────────┘
 ```
+
+**引擎是「並聯」不是「串聯」**：Fantom → DIN2–8 的直通路徑保持原樣，人類演奏零額外延遲；引擎只拿一份副本來分析，再從獨立的 MIE Out 把生成事件「合流」到各 DIN（mioXL 負責 merge）。引擎當掉或關掉，整套琴照常運作。
+
+**HUMAN 的判定靠 port，不靠 channel**：Fantom 是唯一主控鍵盤，INT zone 在 Fantom 內發聲、EXT zone 8–16 直接以對應 channel 送出。所以人類演奏可能出現在 CH2–15 任一個 channel，由「來自 MIE In 且不是 CH16」判定為 HUMAN，事件的 `ch` 記為 `human_ch`（使用者此刻透過哪台樂器在彈）。
 
 - **LiveChord（MIE 行程）負責**：一切音樂判斷、機率、狀態、安全、UI、Scene。
 - **mioXL 負責**：實體派發、channel 過濾、硬體層迴圈阻斷。引擎只看到「一個 In、一個 Out、16 個 channel」，程式碼不知道任何 DIN/USB port 細節。
@@ -122,6 +128,7 @@ class MusicalState:
     key: KeyInfo                 # tonic_pc, mode, confidence, source ("player"|"inferred"|"manual")
     bpm: float; beat_phase: float; bar_pos: int; beats_per_bar: int; clock_source: str
     held: dict[int, HeldNote]    # 使用者目前按住的音（note→vel,t_on,ch）
+    human_chs: set[int]          # 最近 2 s 內有人類 note_on 的 channel（Fantom 當前作用中的 EXT zone）
     register: Literal["low","mid","high"]  # 依最近 8 個音的加權中位數，門檻 <48 / 48–72 / >72
     direction: int               # -1/0/+1，最近 4 個音的斜率
     silence_s: float             # 距最後一個人類 note_on 的秒數
@@ -215,12 +222,12 @@ Scene 存在 `data/mie/scenes/*.json`，切換是「先 fade 舊 scene 的持續
 MieEvent 進 Engine thread
   1. 自我回音過濾   ─ 若 (ch,note,kind) 在「最近 8 ms 送出」的集合裡 → 丟（硬體 Thru 沒關乾淨時的保底）
   2. 分析器更新     ─ HUMAN 事件更新 MusicalState；GENERATIVE 只更新 active_gen / per_ch_voices（不汙染人類統計）
-  3. 找出邊         ─ graph.out_edges(src=事件所在 ch 或 0)；過濾 enabled / accepts / hop ≤ max_hop / cooldown
+  3. 找出邊         ─ HUMAN 事件走 src=0 的邊（不論它在哪個 ch）；GENERATIVE 走 src=事件所在 ch；過濾 enabled / accepts / hop ≤ max_hop / cooldown
   4. 抑制門         ─ p_eff = edge.prob × scene.prob_scale × restraint(human_energy)（§6）；rng < p_eff 才繼續
   5. 演算法         ─ algo(event, state, edge, rng) → list[Proposal]（純函式，可單元測試）
   6. 突變           ─ 對 Proposal 套 edge.mutations（§5），chaos 值決定額外隨機突變的量
   7. 音樂約束       ─ constraint="chord" → 貼齊和弦音；"scale" → 貼齊調內音；再 clamp 到 instrument.note_range
-  8. 安全           ─ §7：voice 預算、rate limit、與人類 held 音撞音、hop/TTL、dur 上限
+  8. 安全           ─ §7：voice 預算、rate limit、與人類 held 音撞音、hop/TTL、dur 上限；**目標 ch ∈ human_chs 時丟棄**（那台琴此刻是人在彈，生成音會跟人類音在同一音色上疊）
   9. 排程           ─ 轉成 (note_on, note_off) 配對推進 Scheduler；note_off 永遠與 note_on 一起排，永不分離
  10. 回饋           ─ 生成事件在「實際送出」那一刻，以 origin=GENERATIVE、hop+1 重新進入步驟 1（這就是 Cross-Interaction）
 ```
@@ -365,9 +372,9 @@ Test 6（Cmaj7→Am7→Fmaj7→G7 生成音必須跟著和弦）在自由演奏�
 
 ### Phase 0 — 探針（半天）
 - `pip install python-rtmidi`；`backend/mie/probe.py` 列出 port、選 mioXL In/Out、把收到的 note 原樣延遲 250 ms 轉到 CH11。
-- 量測：callback→送出的延遲分布、抖動；驗證 mioXL 規則 3（MIE Out 沒有回到 MIE In）；驗證各樂器 Thru 已關（開 BYPASS 看有沒有自我回音）。
+- 量測：callback→送出的延遲分布、抖動；驗證 mioXL 規則 4（MIE Out 沒有回到 MIE In）；驗證 Fantom Thru 已關、DIN2–8 沒有回流（開 BYPASS 看有沒有自我回音）；驗證引擎關掉時 Fantom → DIN2–8 直通完全不受影響。
 - **驗收**：T0 回音測試 0 筆重複；延遲 p95 < 5 ms。
-- 產出需要使用者回答的事實：使用者自己演奏的 MIDI 到底在哪個 channel（Fantom CH2？Nord CH9？兩台都會彈？）、mioXL 給 PC 的 port 名稱、UC4 的 port/channel、有無 MIDI Clock。
+- 產出需要使用者回答的事實：mioXL 給 PC 的 USB port 名稱（哪個拿來當 MIE In/Out）、UC4 實際接法、有無 MIDI Clock、REAPER 目前從哪個 port 收 CH1。
 
 ### Phase 1 — MVP 核心（使用者 §16）
 - `backend/mie/`：`events.py`、`state.py`、`graph.py`、`algos/{follow,echo,shadow,silence}.py`、`probability.py`、`constraint.py`、`safety.py`、`scheduler.py`、`io_rtmidi.py`、`ws_server.py`、`__main__.py`。
@@ -400,15 +407,24 @@ Test 6（Cmaj7→Am7→Fmaj7→G7 生成音必須跟著和弦）在自由演奏�
 - **不用 Web MIDI 當正式輸出**（分頁節流、無 PANIC 保底）。
 - Arranger（CH14/15）預設 `enabled:false`：arranger 收到 note 會啟動自動伴奏，跟「人類優先」衝突；Phase 2 再決定要不要只送 chord-recognition 區的音。
 - 風險：硬體 Local Control / Thru 沒關 → 第一層防線靠 mioXL 與 §7-1；Phase 0 必須人工驗證。
-- 風險：Fantom 七個 zone 的 MIDI Rx channel 需在 Fantom 端設好，否則 CH2–8 全打到同一 zone。
+- 風險：Fantom INT zone 的 MIDI Rx channel 需在 Fantom 端設好（zone N 收 CH N），否則引擎送到 DIN1 的 CH2–8 全打到同一 zone；Fantom 的 MIDI Thru 必須關，否則 DIN1 In 收到的生成音會從 DIN1 Out 再回到 mioXL。
+- 風險：使用者切換 Fantom EXT zone 時 `human_chs` 會跟著變，前一個 zone 上已排程的生成音仍會送出；這是預期行為（人剛離開那台琴），但 Shadow 這種「跟隨 note_off」的 lane 要在 zone 切換時明確收掉。
 - Python GIL：引擎是純事件驅動、每事件工作量微秒級，不會像 chord2vec 那樣長迴圈；但 **任何** 需要 numpy/ML 的未來功能（例如 motif 相似度用 DTW）必須丟到子行程，同 CLAUDE.md 既有規則。
 
 ---
 
-## 13. 需要使用者確認的問題（Phase 0 前）
+## 13. 使用者已確認的事實與待答問題
 
-1. 使用者本人演奏時，MIDI 從哪台琴、哪個 channel 進來？（決定 `src=0` 的判定規則：目前假設「CH2 與 CH9 的輸入 = HUMAN」，其他 channel 的輸入視為樂器回傳並丟棄）
-2. mioXL 對 PC 露出的 USB port 名稱與數量（要獨立一對給 MIE，還是共用現有的 DAW port？）
-3. UC4 走哪個 port/channel？可否指定 CH16？
-4. 有沒有 MIDI Clock master（Fantom？REAPER？），還是以 LiveChord player 播歌為主要情境？
-5. PANIC 要不要同時送到 REAPER（CH1 的 VST 通常吃 CC123，但某些 SWAM 不吃）？
+**已確認（2026-09-06）**：
+- Fantom 8 接 mioXL port 1（In + Out），是唯一主控鍵盤；zone 8–16 為 EXT。
+- mioXL 現況把 port 1 In route 到 DIN2–8，CH9–15 各台琴自己濾自己的 channel。這條路徑保持不動。
+- CH16 空閒 → 指定給 UC4 / 控制訊息。
+- 因此 HUMAN 判定 = 「來自 MIE In 且 ch ≠ 16」，`human_ch` 隨 Fantom 當前 zone 變動；目標 ch 落在 `human_chs` 的生成音一律丟棄。
+
+**Phase 0 前仍需回答**：
+1. mioXL 對 PC 露出的 USB port 名稱與數量：能否獨立一對給 MIE（In = port 1 的副本 + UC4；Out = 新的來源），還是要共用 REAPER 已在用的 port？
+2. UC4 實際接法（USB host 進 mioXL？DIN？還是直接接 PC？）；若直接接 PC，引擎就另開一個 In port 讀它，不經 mioXL。
+3. MIDI Clock：Fantom 有送 clock 出 port 1 嗎？還是主要情境是 LiveChord player 播歌？
+4. REAPER 從哪個 port 收 CH1？引擎的 CH1 生成音要走 mioXL 同一個 port，還是本機虛擬 port（loopMIDI）？
+5. DIN2–8 各台琴的 MIDI Out 有沒有接回 mioXL？有的話要確認它們沒有被 route 到 MIE In。
+6. PANIC 要不要同時送到 REAPER（CH1 的 VST 通常吃 CC123，但某些 SWAM 不吃）？
