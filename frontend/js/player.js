@@ -307,6 +307,10 @@
   let teachStyle = localStorage.getItem("livechord_teach_style") || "Auto";
   let teachLevel = localStorage.getItem("livechord_teach_level") || "L1";
   if (!["L1", "L2", "L3"].includes(teachLevel)) teachLevel = "L1";
+  // ?acc_level=L1|L2|L3 — one-off override for A/B listening (not persisted;
+  // the level buttons were removed from the UI, this is the only way to pick).
+  const accLevelParam = params.get("acc_level");
+  if (["L1", "L2", "L3"].includes(accLevelParam)) teachLevel = accLevelParam;
   let accData = null;  // {left_hand:[], right_hand:[]} from API
   let _beatPhase = 0;  // beat grid phase offset (seconds)
   let _accStaleWarned = false;  // single-shot stale-acc toast guard (Phase 2)
