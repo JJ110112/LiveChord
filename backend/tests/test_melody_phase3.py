@@ -14,6 +14,7 @@ import tools.report_melody_phase0_survey as survey_report_script
 import tools.sample_rh_song_type_labels as song_type_label_script
 import tools.report_rh_song_type_labels as song_type_report_script
 import tools.train_rh_song_type_classifier as song_type_train_script
+import tools.rh_resolver_drift_report as drift_report_script
 import tools.extract_rh_song_type_audio_features as song_type_audio_script
 import tools.diagnose_rh_song_type_classifier as song_type_diagnostic_script
 import tools.precompute_rh_song_type_stems as song_type_stems_script
@@ -1660,6 +1661,61 @@ class TestMelodyPhase3(unittest.TestCase):
             # Same ratio, no override entry -> automatic gate still refuses.
             self.assertNotEqual(untouched["melody_source"]["id"], VOCAL_STEM_CREPE)
             self.assertEqual(untouched["melody_source"]["resolver_gate"]["reason"], "vocal_ratio_below_threshold")
+
+    def test_rh_resolver_drift_report_flags_override_without_candidate(self):
+        # The drift report exists so a served-empty-melody regression is visible
+        # before someone hears it: an override entry whose CREPE candidate was
+        # never built (song batched with --skip-crepe-below-gate) must WARN, and
+        # served records must be bucketed by outcome with worst-window coverage.
+        from backend.ai.song_type_audio_features import write_stem_energy_sidecar
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            good, broken = "abcdef123456", "fedcba654321"
+            (root / "vocal_gate_overrides.json").write_text(
+                json.dumps({good: {"predict_vocal": True}, broken: {"predict_vocal": True, "note": "no candidate"}}),
+                encoding="utf-8",
+            )
+            for h, ratio in ((good, 0.146), (broken, 0.148)):
+                write_stem_energy_sidecar(root, h, {"vocal_stem_energy_ratio": ratio, "stem_analyzed_duration_s": 120.0, "stem_status": "sidecar", "missing_stems": []}, extra={"path": f"{h}.flac"})
+            # 4 s of notes in each of the first two 10 s windows (40 % >= the 30 % bar), nothing in 20-30 s
+            melody = [{"start": 0.0, "end": 4.0, "midi": 64}, {"start": 12.0, "end": 16.0, "midi": 65}]
+            write_candidate_cache(root, good, VOCAL_STEM_CREPE, build_candidate_payload(
+                song_hash=good, path="good.flac", candidate_id=VOCAL_STEM_CREPE, melody=melody,
+                stem="vocals", algorithm="htdemucs.vocals+torchcrepe.full"))
+            # baseline sings through 0-30 s; candidate is silent in 20-30 s -> one missing window
+            (root / "melodies").mkdir()
+            (root / "melodies" / f"{good}.json").write_text(json.dumps({
+                "melody": [{"start": 0.0, "end": 30.0, "midi": 60}]}), encoding="utf-8")
+            selected = build_candidate_payload(
+                song_hash=good, path="good.flac", candidate_id=VOCAL_STEM_CREPE, melody=melody,
+                stem="vocals", algorithm="htdemucs.vocals+torchcrepe.full")
+            selected["melody_source"].update({"id": VOCAL_STEM_CREPE, "selected_by": RESOLVER_VERSION,
+                "resolver_gate": {"version": "v2", "predict_vocal": True, "reason": "manual_override", "vocal_stem_energy_ratio": 0.146}})
+            selected["quality_flags"] = ["resolver_selected_vocal_stem_crepe"]
+            out = selected_path(root, good)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json.dumps(selected), encoding="utf-8")
+            fallback = {"song_hash": "0123456789ab", "path": "inst.flac", "melody": [], "quality_flags": ["resolver_fallback_full_mix"],
+                "melody_source": {"id": "full_mix_pyin", "selected_by": "fallback", "fallback_reason": "vocal_ratio_below_threshold",
+                    "resolver_gate": {"version": "v2", "predict_vocal": False, "reason": "vocal_ratio_below_threshold", "vocal_stem_energy_ratio": 0.12}}}
+            out = selected_path(root, "0123456789ab")
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json.dumps(fallback), encoding="utf-8")
+
+            rep = drift_report_script.build_report(root, since_days=14, threshold=0.15, band=0.05, window_s=10.0, worst_n=5)
+
+            self.assertEqual(rep["selections"]["by_outcome"], {"fallback:vocal_ratio_below_threshold": 1, "selected_override": 1})
+            self.assertEqual([e["song_hash"] for e in rep["selections"]["just_below"]], [good, "0123456789ab"])
+            problems = {e["song_hash"]: e["problems"] for e in rep["overrides"]["entries"]}
+            self.assertEqual(problems, {good: [], broken: ["candidate_missing"]})
+            self.assertTrue(any(v.startswith("WARN") and broken in v and "--force" in v for v in rep["verdict"]))
+            cov = rep["coverage"]["worst_vs_baseline"]
+            self.assertEqual(len(cov), 1)
+            self.assertEqual(cov[0]["mode"], "vs_baseline")
+            self.assertEqual(cov[0]["missing_at"], ["20-30s"])
+            md = drift_report_script.render_markdown(rep)
+            self.assertIn("candidate_missing", md)
 
     def test_melody_resolver_falls_back_when_gate_fails_or_coverage_low(self):
         with tempfile.TemporaryDirectory() as tmp:
