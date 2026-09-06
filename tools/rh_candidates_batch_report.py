@@ -407,10 +407,14 @@ def write_sample_hashes(rep: Dict[str, Any], out: Path) -> Optional[Path]:
     smp = rep["sample"]
     if not smp["n_per_band"]:
         return None
+    # One bare hash per line: build_rh_melody_candidates.py --hashes-file treats
+    # every non-# line as a hash, so annotations go on their own comment lines.
     lines = ["# gate-band A/B review sample; feed to build_rh_melody_candidates.py --hashes-file ... --execute --force"]
     for key in ("below", "above"):
-        lines.append(f"# {key} threshold")
-        lines += [f"{s['song_hash']}  # ratio={s['ratio']} {s['genre']}" for s in smp[key]]
+        lines.append(f"# --- {key} threshold ---")
+        for s in smp[key]:
+            lines.append(f"# ratio={s['ratio']} {s['genre']} {s['path']}")
+            lines.append(str(s["song_hash"]))
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return out
 
