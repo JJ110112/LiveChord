@@ -1342,7 +1342,7 @@
   "toast.melody.done": "Melody extraction done — toggle right hand from AI Teaching to view",
   "toast.melody.started": "Melody extraction started, running in background — you'll be notified when done",
   "toast.melody.timeout": "Melody extraction timed out — please refresh later to check",
-  "toast.melody.unreliable.bass_leak": "Melody detection is unreliable here: heavy bass leak; obvious bass notes removed, treat the rest as a rough guide",
+  "toast.melody.unreliable.bass_leak": "Melody detection is unreliable here: heavy left-hand bass leaked into it, treat the right-hand melody as a rough guide",
   "toast.melody.unreliable.low_coverage": "Melody detection is unreliable here: only fragments found (instrumental or no clear lead), treat as a rough guide",
   "toast.melody.unreliable.too_few_notes": "Almost no melody was detected for this song; the right-hand melody is only a rough guide",
   "toast.midi.downloaded": "✅ MIDI downloaded to your default downloads folder",
