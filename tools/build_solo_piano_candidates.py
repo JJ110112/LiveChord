@@ -173,10 +173,41 @@ def _resolve_audio(path: str) -> str:
 
 
 class _Transcriber:
-    def __init__(self) -> None:
+    """Basic Pitch with a CUDA ONNX session when available.
+
+    basic_pitch.inference.Model hardcodes providers=["CPUExecutionProvider"];
+    with onnxruntime-gpu 1.29 (CUDA 13 build, DLLs preloaded from the torch
+    cu130 install) the same song runs 2.4x faster on the RTX 5080 (14.0 s ->
+    5.8 s). Note counts differ by a few (3064 vs 3061) from float rounding.
+    """
+
+    def __init__(self, *, use_gpu: bool = True) -> None:
         from tools.run_basic_pitch_polyphonic_batch import BasicPitchPolyphonicTranscriber
 
         self.inner = BasicPitchPolyphonicTranscriber()
+        self.provider = "CPUExecutionProvider"
+        self.inner._ensure_loaded()
+        if not use_gpu:
+            return
+        try:
+            import onnxruntime as ort
+            from basic_pitch import FilenameSuffix, build_icassp_2022_model_path
+
+            if "CUDAExecutionProvider" not in ort.get_available_providers():
+                return
+            try:
+                ort.preload_dlls()
+            except Exception:
+                pass
+            session = ort.InferenceSession(
+                str(build_icassp_2022_model_path(FilenameSuffix.onnx)),
+                providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            )
+            if session.get_providers()[0] == "CUDAExecutionProvider":
+                self.inner._model.model = session
+                self.provider = "CUDAExecutionProvider"
+        except Exception as exc:
+            print(f"GPU session unavailable, staying on CPU: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     def __call__(self, audio_path: str) -> List[Dict[str, Any]]:
         return self.inner.transcribe(audio_path)
@@ -293,6 +324,7 @@ def main() -> int:
     ap.add_argument("--force", action="store_true", help="Rebuild even if a candidate exists.")
     ap.add_argument("--probe", type=int, default=0, help="Dry-run: transcribe N songs to time them (writes their inputs).")
     ap.add_argument("--execute", action="store_true", help="Run the batch; default is dry-run.")
+    ap.add_argument("--cpu", action="store_true", help="Force the CPU ONNX provider.")
     ap.add_argument("--list-out", default="", help="Dry-run: write selected hashes here (one per line).")
     args = ap.parse_args()
 
@@ -306,7 +338,8 @@ def main() -> int:
     if not args.execute:
         probe_s = None
         if args.probe > 0:
-            transcribe = _Transcriber()
+            transcribe = _Transcriber(use_gpu=not args.cpu)
+            print(f"provider: {transcribe.provider}")
             times: List[float] = []
             for row in rows[: args.probe]:
                 rec = process_song(row, data_dir=data_dir, transcribe=transcribe, force=True)
@@ -324,7 +357,8 @@ def main() -> int:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_jsonl = data_dir / "logs" / f"solo_piano_candidates_{ts}.jsonl"
     local_jsonl = Path(tempfile.gettempdir()) / out_jsonl.name
-    transcribe = _Transcriber()
+    transcribe = _Transcriber(use_gpu=not args.cpu)
+    print(f"provider: {transcribe.provider}", flush=True)
     records: List[Dict[str, Any]] = []
     with local_jsonl.open("a", encoding="utf-8") as fh:
         for i, row in enumerate(rows, 1):
