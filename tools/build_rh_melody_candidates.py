@@ -44,7 +44,11 @@ from ai.song_type_audio_features import (  # noqa: E402
     stem_energy_features_from_paths,
     write_stem_energy_sidecar,
 )
-from ai.song_type_vocal_gate import classify_vocal_gate  # noqa: E402
+from ai.song_type_vocal_gate import (  # noqa: E402
+    apply_vocal_gate_override,
+    classify_vocal_gate,
+    load_vocal_gate_overrides,
+)
 
 DEFAULT_DATA_DIR = Path(r"V:\data")
 
@@ -288,6 +292,7 @@ def process_song(
         feats = stem_energy_features_from_paths(stems)
         rec["energy_s"] = round(time.perf_counter() - t0, 2)
         gate = classify_vocal_gate({"duration_s": feats.get("stem_analyzed_duration_s"), "stems": feats})
+        gate = apply_vocal_gate_override(gate, song_hash, load_vocal_gate_overrides(data_dir))
         rec["vocal_stem_energy_ratio"] = feats.get("vocal_stem_energy_ratio")
         rec["stem_energy_ratio"] = feats.get("stem_energy_ratio")
         rec["gate"] = {"predict_vocal": gate.get("predict_vocal"), "reason": gate.get("reason")}

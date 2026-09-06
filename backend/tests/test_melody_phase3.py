@@ -1611,6 +1611,56 @@ class TestMelodyPhase3(unittest.TestCase):
             self.assertEqual(resolved["melody_source"]["resolver_gate"]["vocal_stem_energy_ratio"], 0.40)
             self.assertTrue(selected_path(root, song_hash).is_file())
 
+    def test_melody_resolver_manual_override_rescues_song_just_below_gate(self):
+        # Libera "Lux Aeterna" measures 0.146-0.149 against the 0.15 gate: sung
+        # lead, but a synth-pad bed dilutes the vocal stem. A per-song override
+        # must route it to vocal_stem_crepe without touching the global
+        # threshold (lowering it admits sax / lead-guitar instrumentals).
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            song_hash = "abcdef123456"
+            other_hash = "fedcba654321"
+            (root / "vocal_gate_overrides.json").write_text(
+                json.dumps({song_hash: {"predict_vocal": True, "note": "Libera choir, pad-heavy mix"}}),
+                encoding="utf-8",
+            )
+            baseline = finalize_melody_payload(
+                {"path": "song.flac", "melody": [{"start": 0, "end": 2.0, "midi": 60}]},
+                path="song.flac",
+            )
+            melody = [{"start": 0, "end": 1.0, "midi": 64}, {"start": 1.0, "end": 2.0, "midi": 65}]
+            for h in (song_hash, other_hash):
+                candidate = build_candidate_payload(
+                    song_hash=h,
+                    path="song.flac",
+                    candidate_id=VOCAL_STEM_CREPE,
+                    melody=melody,
+                    stem="vocals",
+                    algorithm="htdemucs.vocals+torchcrepe.full",
+                )
+                write_candidate_cache(root, h, VOCAL_STEM_CREPE, candidate)
+
+            with patch(
+                "backend.ai.melody_resolver.cached_stem_energy_features",
+                return_value={
+                    "stem_status": "cached_stems",
+                    "missing_stems": [],
+                    "stem_analyzed_duration_s": 120.0,
+                    "vocal_stem_energy_ratio": 0.146,
+                },
+            ):
+                resolved = MelodyResolver(root).resolve(baseline, song_hash=song_hash, path="song.flac")
+                untouched = MelodyResolver(root).resolve(baseline, song_hash=other_hash, path="song.flac")
+
+            gate = resolved["melody_source"]["resolver_gate"]
+            self.assertEqual(resolved["melody_source"]["id"], VOCAL_STEM_CREPE)
+            self.assertTrue(gate["predict_vocal"])
+            self.assertEqual(gate["reason"], "manual_override")
+            self.assertEqual(gate["vocal_stem_energy_ratio"], 0.146)  # measured value kept for reports
+            # Same ratio, no override entry -> automatic gate still refuses.
+            self.assertNotEqual(untouched["melody_source"]["id"], VOCAL_STEM_CREPE)
+            self.assertEqual(untouched["melody_source"]["resolver_gate"]["reason"], "vocal_ratio_below_threshold")
+
     def test_melody_resolver_falls_back_when_gate_fails_or_coverage_low(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

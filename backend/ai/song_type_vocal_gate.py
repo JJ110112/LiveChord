@@ -51,6 +51,57 @@ def classify_vocal_gate(
     return _result(False, ratio, duration_s, "vocal_ratio_below_threshold")
 
 
+OVERRIDES_FILENAME = "vocal_gate_overrides.json"
+
+
+def load_vocal_gate_overrides(data_dir: str | os.PathLike[str]) -> Dict[str, Dict[str, Any]]:
+    """Per-song manual gate overrides: ``<data_dir>/vocal_gate_overrides.json``.
+
+    Shape: ``{"<song_hash>": {"predict_vocal": true, "note": "..."}}``. Used for
+    the handful of songs whose Demucs vocal ratio lands just below the
+    threshold although the lead is unambiguously sung (Libera "Lux Aeterna",
+    0.146-0.149 vs the 0.15 gate). A per-song entry beats lowering the global
+    threshold, which would admit sax / lead-guitar / erhu instrumentals in the
+    0.10-0.15 band. Missing or unreadable file -> no overrides.
+    """
+
+    path = Path(data_dir) / OVERRIDES_FILENAME
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, Mapping):
+        return {}
+    return {str(k): dict(v) for k, v in data.items() if isinstance(v, Mapping)}
+
+
+def apply_vocal_gate_override(
+    gate: Dict[str, Any],
+    song_hash: str,
+    overrides: Mapping[str, Mapping[str, Any]],
+) -> Dict[str, Any]:
+    """Force ``predict_vocal`` for ``song_hash`` when an override entry exists.
+
+    Only the decision and reason change; the measured ratio stays so reports
+    still show why the automatic gate would have failed. Returns ``gate``.
+    """
+
+    entry = overrides.get(song_hash) if song_hash else None
+    if not entry or "predict_vocal" not in entry:
+        return gate
+    forced = bool(entry["predict_vocal"])
+    if gate.get("predict_vocal") == forced:
+        return gate
+    gate["auto_predict_vocal"] = gate.get("predict_vocal")
+    gate["auto_reason"] = gate.get("reason")
+    gate["predict_vocal"] = forced
+    gate["reason"] = "manual_override"
+    gate["song_type_confidence"] = 1.0 if forced else 0.0
+    if entry.get("note"):
+        gate["override_note"] = str(entry["note"])
+    return gate
+
+
 def evaluate_vocal_gate(
     rows: Sequence[Mapping[str, Any]],
     *,

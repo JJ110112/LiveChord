@@ -10,7 +10,12 @@ from typing import Any, Dict, Mapping
 from .melody_candidate import FULL_MIX_PYIN, VOCAL_STEM_CREPE, read_candidate_cache, selected_path
 from .melody_schema import finalize_melody_payload
 from .song_type_audio_features import cached_stem_energy_features, read_stem_energy_sidecar
-from .song_type_vocal_gate import VOCAL_GATE_VERSION, classify_vocal_gate
+from .song_type_vocal_gate import (
+    VOCAL_GATE_VERSION,
+    apply_vocal_gate_override,
+    classify_vocal_gate,
+    load_vocal_gate_overrides,
+)
 
 
 RESOLVER_VERSION = "rhmelody-resolver-v0"
@@ -109,7 +114,7 @@ class MelodyResolver:
         })
         gate["stem_status"] = sidecar.get("stem_status")
         gate["missing_stems"] = sidecar.get("missing_stems", [])
-        return gate
+        return apply_vocal_gate_override(gate, song_hash, load_vocal_gate_overrides(self.data_dir))
 
     def _vocal_gate(self, song_hash: str) -> Dict[str, Any]:
         stem_features = cached_stem_energy_features(self.data_dir, song_hash)
@@ -120,7 +125,7 @@ class MelodyResolver:
         gate = classify_vocal_gate(row)
         gate["stem_status"] = stem_features.get("stem_status")
         gate["missing_stems"] = stem_features.get("missing_stems", [])
-        return gate
+        return apply_vocal_gate_override(gate, song_hash, load_vocal_gate_overrides(self.data_dir))
 
     def _maybe_select_vocal(
         self,
