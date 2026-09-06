@@ -30,7 +30,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = REPO_ROOT / "backend"
@@ -154,10 +154,54 @@ def select_songs(args: argparse.Namespace, data_dir: Path) -> List[Dict[str, Any
                 continue
             _add(rows, p, "random", song_hash=h)
             picked += 1
-    out = list(rows.values())
+    out, dropped = _prefilter(list(rows.values()), max_audio_mb=args.max_audio_mb)
+    if dropped:
+        by_reason: Dict[str, int] = {}
+        for d in dropped:
+            by_reason[d["skip_reason"]] = by_reason.get(d["skip_reason"], 0) + 1
+        print(
+            "pre-flight skipped "
+            + ", ".join(f"{n} {reason}" for reason, n in sorted(by_reason.items())),
+            file=sys.stderr,
+        )
+        for d in dropped:
+            print(f"  skip({d['skip_reason']}) {d['song_hash']} {d['path']}", file=sys.stderr)
     if args.limit > 0:
         out = out[: args.limit]
     return out
+
+
+# Chord-JSON paths that never resolve to an audio file on the NAS: uploads
+# have their tmp audio deleted right after ingest, MIDI imports never had one.
+_UNPROCESSABLE_PREFIXES = ("__upload/", "__midi/")
+
+
+def _prefilter(rows: List[Dict[str, Any]], *, max_audio_mb: float) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Drop rows that would only burn a Demucs pass: empty / upload / midi
+    paths and audio above ``max_audio_mb`` (0 disables the size check)."""
+    kept: List[Dict[str, Any]] = []
+    dropped: List[Dict[str, Any]] = []
+    for row in rows:
+        path = str(row.get("path") or "").strip()
+        reason = ""
+        if not path:
+            reason = "empty_path"
+        elif path.startswith(_UNPROCESSABLE_PREFIXES):
+            reason = path.split("/", 1)[0]
+        elif max_audio_mb > 0:
+            try:
+                size = Path(_resolve_audio(path)).stat().st_size
+            except OSError:
+                size = 0  # missing file is reported as audio_not_found at run time
+            if size > max_audio_mb * 1e6:
+                reason = "oversize"
+                row["audio_bytes"] = size
+        if reason:
+            row["skip_reason"] = reason
+            dropped.append(row)
+        else:
+            kept.append(row)
+    return kept, dropped
 
 
 # --------------------------------------------------------------------------
@@ -337,6 +381,12 @@ def main() -> int:
     ap.add_argument("--random", type=int, default=0, help="Random sample from chords index.")
     ap.add_argument("--seed", type=int, default=20260902)
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument(
+        "--max-audio-mb",
+        type=float,
+        default=300.0,
+        help="Pre-flight skip audio larger than this (Demucs stalls on very long files). 0 disables.",
+    )
     ap.add_argument("--execute", action="store_true", help="Run Demucs + CREPE; default is dry-run plan.")
     ap.add_argument("--force", action="store_true", help="Rebuild even if sidecar + candidate exist.")
     ap.add_argument("--crepe-model", default="full", choices=["full", "tiny"])
