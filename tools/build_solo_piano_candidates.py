@@ -57,7 +57,7 @@ DEFAULT_TOKENS = r"piano|鋼琴|钢琴|klavier|pianoforte|nocturne|etude|étude|
 # Piano in the title but not a piano solo: concertos, chamber works "for
 # violin and piano", arrangements for other instruments, songs with a singer.
 # "solo piano" in the text overrides the exclusion.
-DEFAULT_EXCLUDE = r"concerto|orchestr|symphon|ensemble|\bband\b|violin|violon|viola|cello|violoncell|\bbass\b|contrabass|flute|flûte|clarinet|oboe|bassoon|\bhorn\b|trumpet|trombone|saxophon|\bsax\b|guitar|guitare|harp\b|harpsichord|organ\b|accordion|quartet|quintet|sextet|\btrio\b|\bduo\b|requiem|mass\b|choir|choral|chorus|\blied|feat\.|\bft\.|vocal|\bvoice|karaoke|\bopera\b|without keyboard"
+DEFAULT_EXCLUDE = r"concerto|orchestr|symphon|ensemble|\bband\b|violin|violon|viola|cello|violoncell|\bbass\b|contrabass|flute|flûte|flöte|floete|violine|geige|clarinet|oboe|bassoon|\bhorn\b|trumpet|trombone|saxophon|\bsax\b|guitar|guitare|harp\b|harpsichord|organ\b|accordion|quartet|quintet|sextet|\btrio\b|\bduo\b|requiem|mass\b|choir|choral|chorus|\blied|feat\.|\bft\.|vocal|\bvoice|karaoke|\bopera\b|without keyboard"
 LOG_GLOB = "rh_melody_candidates_*.jsonl"
 POLY_INPUT_NAME = "solo_piano_polyphonic_input.json"
 
