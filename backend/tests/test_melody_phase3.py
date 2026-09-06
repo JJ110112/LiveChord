@@ -1750,6 +1750,70 @@ class TestMelodyPhase3(unittest.TestCase):
 
         self.assertFalse(ai_api.melody_trust([], source_id="full_mix_pyin")["trusted"])
 
+    def test_melody_resolver_promotes_instrument_lead_when_vocal_gate_refuses(self):
+        # LiveChord-a1lh: instrumentals fail the vocal gate and used to be stuck
+        # on full-mix pYIN even when a human-preferred non-vocal candidate was
+        # cached. solo_piano_polyphonic / instrument_lead now win the fallback,
+        # but never on a song the gate calls vocal.
+        from backend.ai.melody_candidate import INSTRUMENT_LEAD
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            song_hash = "abcdef123456"
+            baseline = finalize_melody_payload(
+                {"path": "song.flac", "melody": [{"start": 0, "end": 2.0, "midi": 60}]},
+                path="song.flac",
+            )
+            lead = build_candidate_payload(
+                song_hash=song_hash, path="song.flac", candidate_id=INSTRUMENT_LEAD,
+                melody=[{"start": 0, "end": 1.0, "midi": 67}, {"start": 1.0, "end": 2.0, "midi": 69}],
+                stem="other", algorithm="htdemucs.other+torchcrepe.full",
+            )
+            write_candidate_cache(root, song_hash, INSTRUMENT_LEAD, lead)
+
+            refused = {"stem_status": "sidecar", "missing_stems": [], "stem_analyzed_duration_s": 120.0, "vocal_stem_energy_ratio": 0.02}
+            with patch("backend.ai.melody_resolver.read_stem_energy_sidecar", return_value=refused):
+                resolved = MelodyResolver(root).resolve(baseline, song_hash=song_hash, path="song.flac")
+                no_baseline = MelodyResolver(root).resolve_missing_baseline(song_hash=song_hash, path="song.flac")
+
+            self.assertEqual(resolved["melody_source"]["id"], INSTRUMENT_LEAD)
+            self.assertEqual(resolved["melody_source"]["song_type"], "instrumental")
+            self.assertIn("resolver_selected_instrument_lead", resolved["quality_flags"])
+            self.assertEqual(resolved["melody_source"]["resolver_gate"]["reason"], "vocal_ratio_below_threshold")
+            self.assertEqual(no_baseline["melody_source"]["id"], INSTRUMENT_LEAD)
+
+            # gate says vocal (but no CREPE candidate) -> pYIN fallback, never the instrument lead
+            vocal = dict(refused, vocal_stem_energy_ratio=0.60)
+            with patch("backend.ai.melody_resolver.read_stem_energy_sidecar", return_value=vocal):
+                kept = MelodyResolver(root).resolve(baseline, song_hash=song_hash, path="song.flac")
+            self.assertNotEqual(kept["melody_source"]["id"], INSTRUMENT_LEAD)
+            self.assertEqual(kept["melody_source"]["fallback_reason"], "vocal_candidate_missing")
+
+    def test_get_melody_stamps_quality_and_drops_bass_leak(self):
+        # The served melody carries melody_quality; a full-mix pYIN melody that
+        # is half LH bass gets the notes an octave below the median removed
+        # (the player used to fold them UP into the melody: Chopin complaint).
+        import ai_api
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "melodies").mkdir()
+            high = [{"start": i * 1.0, "end": i * 1.0 + 0.9, "midi": 72, "note": "C5"} for i in range(30)]
+            bass = [{"start": i * 1.0 + 0.5, "end": i * 1.0 + 0.9, "midi": 40, "note": "E2"} for i in range(30)]
+            (root / "melodies" / "song123.json").write_text(json.dumps({"melody": high + bass}), encoding="utf-8")
+            with patch.object(ai_api, "DATA_DIR", root):
+                result = ai_api.get_melody(path="", hash="song123")
+            q = result["melody_quality"]
+            self.assertFalse(q["trusted"])
+            self.assertEqual(q["reason"], "bass_leak")
+            self.assertEqual(q["dropped_bass_notes"], 30)
+            self.assertEqual(len(result["melody"]), 30)
+            self.assertTrue(all(n["midi"] == 72 for n in result["melody"]))
+            self.assertIn("bass_leak_notes_dropped", result["quality_flags"])
+            # on-disk cache untouched
+            on_disk = json.loads((root / "melodies" / "song123.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(on_disk["melody"]), 60)
+
     def test_melody_resolver_falls_back_when_gate_fails_or_coverage_low(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

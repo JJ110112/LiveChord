@@ -53,10 +53,55 @@ def _maybe_resolve_rh_melody(payload: Dict[str, Any], *, path: str = "", song_ha
         from ai.melody_resolver import MelodyResolver, resolver_enabled
 
         if not resolver_enabled():
-            return payload
-        return MelodyResolver(DATA_DIR).resolve(payload, song_hash=song_hash, path=path)
+            return _attach_melody_quality(payload, song_hash=song_hash)
+        resolved = MelodyResolver(DATA_DIR).resolve(payload, song_hash=song_hash, path=path)
+        return _attach_melody_quality(resolved, song_hash=song_hash)
     except Exception:
         return payload
+
+
+def _attach_melody_quality(payload: Dict[str, Any], *, song_hash: str = "") -> Dict[str, Any]:
+    """Stamp ``melody_quality`` (melody_trust verdict) on a served melody and,
+    when the verdict is bass_leak, drop the notes an octave below the median
+    instead of letting the player fold them up into the melody (LiveChord-a1lh).
+    Never touches the on-disk caches."""
+    if not isinstance(payload, dict):
+        return payload
+    events = payload.get("melody") or []
+    source = payload.get("melody_source") if isinstance(payload.get("melody_source"), dict) else {}
+    source_id = str(source.get("id") or "")
+    gate = source.get("resolver_gate") if isinstance(source.get("resolver_gate"), dict) else {}
+    # Only a real gate verdict counts; "vocal_candidate_missing" is not a refusal.
+    gate_vocal: Optional[bool] = None
+    if gate.get("predict_vocal"):
+        gate_vocal = True
+    elif gate.get("reason") in ("vocal_ratio_below_threshold", "duration_below_min"):
+        gate_vocal = False
+    if gate_vocal is None and song_hash:
+        try:
+            from ai.melody_resolver import MelodyResolver
+
+            g = MelodyResolver(DATA_DIR)._sidecar_gate(song_hash)
+            gate_vocal = bool(g.get("predict_vocal")) if g is not None else None
+        except Exception:
+            gate_vocal = None
+    quality = melody_trust(events, source_id=source_id, gate_predict_vocal=gate_vocal)
+    if quality.get("reason") == "bass_leak":
+        kept, dropped = drop_bass_leak_notes(events)
+        if dropped:
+            payload = dict(payload)
+            payload["melody"] = kept
+            flags = [str(f) for f in payload.get("quality_flags") or []]
+            if "bass_leak_notes_dropped" not in flags:
+                flags.append("bass_leak_notes_dropped")
+            payload["quality_flags"] = flags
+            # Keep the original verdict: notes within an octave of the median
+            # may still be bass, so the player must still warn.
+            quality["dropped_bass_notes"] = dropped
+            quality["notes_after_drop"] = len(kept)
+    payload = dict(payload)
+    payload["melody_quality"] = quality
+    return payload
 
 
 def _maybe_resolve_rh_melody_without_baseline(*, path: str = "", song_hash: str = ""):
@@ -66,86 +111,20 @@ def _maybe_resolve_rh_melody_without_baseline(*, path: str = "", song_hash: str 
 
         if not resolver_enabled():
             return None
-        return MelodyResolver(DATA_DIR).resolve_missing_baseline(song_hash=song_hash, path=path)
+        selected = MelodyResolver(DATA_DIR).resolve_missing_baseline(song_hash=song_hash, path=path)
+        return _attach_melody_quality(selected, song_hash=song_hash) if selected else None
     except Exception:
         return None
 
 
-# Accompaniment planning trusts a melody only when it is plausibly the sung /
-# lead line. full_mix_pyin on instrumentals or bass-heavy mixes returns the LH
-# bass line (LiveChord-gyjt: Unchained Melody had 107/206 notes below MIDI 55),
-# and Auto's RH vocal-avoidance + the LH collision dedupe then hollow out the
-# accompaniment around notes nobody sings.
-MELODY_TRUST_LOW_MIDI = 55
-MELODY_TRUST_MAX_LOW_FRACTION = 0.30
-MELODY_TRUST_MIN_COVERAGE = 0.40
-MELODY_TRUST_MIN_NOTES = 20
-
-
-def melody_trust(events: List[Dict[str, Any]], *, source_id: str = "",
-                 song_duration_s: float = 0.0,
-                 gate_predict_vocal: Optional[bool] = None) -> Dict[str, Any]:
-    """Decide whether accompaniment generation may plan around ``events``.
-
-    vocal_stem_crepe (resolver-selected, gate passed) is always trusted. Any
-    other source is trusted only when the vocal gate did not refuse the song,
-    the melody has enough notes, its active time covers >= 40 % of the song,
-    and <= 30 % of its notes sit below MIDI 55 (bass leak signature).
-    """
-
-    from ai.melody_candidate import VOCAL_STEM_CREPE
-
-    notes = [e for e in events or [] if isinstance(e, dict)]
-    n = len(notes)
-    meta: Dict[str, Any] = {"source": source_id or "unknown", "notes": n}
-    if not n:
-        meta.update(trusted=False, reason="no_melody")
-        return meta
-
-    def _st(e):
-        try:
-            return float(e.get("start", e.get("time", 0.0)) or 0.0)
-        except (TypeError, ValueError):
-            return 0.0
-
-    def _en(e):
-        try:
-            end = e.get("end")
-            if end is None:
-                end = _st(e) + float(e.get("duration", 0.0) or 0.0)
-            return float(end)
-        except (TypeError, ValueError):
-            return _st(e)
-
-    def _pitch(e):
-        try:
-            return float(e.get("midi", e.get("pitch", 60)) or 60)
-        except (TypeError, ValueError):
-            return 60.0
-
-    active = sum(max(0.0, _en(e) - _st(e)) for e in notes)
-    span = max([song_duration_s] + [_en(e) for e in notes])
-    coverage = round(active / span, 4) if span > 0 else 0.0
-    low_fraction = round(sum(1 for e in notes if _pitch(e) < MELODY_TRUST_LOW_MIDI) / n, 4)
-    meta.update(coverage=coverage, low_fraction=low_fraction)
-
-    if source_id == VOCAL_STEM_CREPE:
-        meta.update(trusted=True, reason="vocal_stem_crepe")
-        return meta
-    if gate_predict_vocal is False:
-        meta.update(trusted=False, reason="vocal_gate_refused")
-        return meta
-    if n < MELODY_TRUST_MIN_NOTES:
-        meta.update(trusted=False, reason="too_few_notes")
-        return meta
-    if coverage < MELODY_TRUST_MIN_COVERAGE:
-        meta.update(trusted=False, reason="low_coverage")
-        return meta
-    if low_fraction > MELODY_TRUST_MAX_LOW_FRACTION:
-        meta.update(trusted=False, reason="bass_leak")
-        return meta
-    meta.update(trusted=True, reason="full_mix_ok")
-    return meta
+from ai.melody_trust import (  # noqa: E402
+    MELODY_TRUST_LOW_MIDI,
+    MELODY_TRUST_MAX_LOW_FRACTION,
+    MELODY_TRUST_MIN_COVERAGE,
+    MELODY_TRUST_MIN_NOTES,
+    drop_bass_leak_notes,
+    melody_trust,
+)
 
 
 def _accompaniment_melody(song_hash: str, *, path: str = "",

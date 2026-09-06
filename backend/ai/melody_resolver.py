@@ -7,7 +7,14 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Mapping
 
-from .melody_candidate import FULL_MIX_PYIN, VOCAL_STEM_CREPE, read_candidate_cache, selected_path
+from .melody_candidate import (
+    FULL_MIX_PYIN,
+    INSTRUMENT_LEAD,
+    SOLO_PIANO_POLYPHONIC,
+    VOCAL_STEM_CREPE,
+    read_candidate_cache,
+    selected_path,
+)
 from .melody_schema import finalize_melody_payload
 from .song_type_audio_features import cached_stem_energy_features, read_stem_energy_sidecar
 from .song_type_vocal_gate import (
@@ -22,6 +29,16 @@ RESOLVER_VERSION = "rhmelody-resolver-v0"
 RETREAT_LOW_COVERAGE_FLAG = "vocal_candidate_retreat_low_coverage"
 RESOLVER_FALLBACK_FLAG = "resolver_fallback_full_mix"
 NO_BASELINE_FLAG = "resolver_selected_without_baseline"
+
+# Non-vocal routes, tried in this order when the vocal gate refuses the song
+# (or no vocal candidate exists). Both were judged better than full-mix pYIN
+# in the Phase 0.5 human A/B: solo_piano_polyphonic 7/9 songs, instrument_lead
+# 5/14 (the rest had no real lead line, where nothing wins). They are only
+# ever served when a candidate file is already cached; nothing runs here.
+INSTRUMENTAL_CANDIDATES = (
+    (SOLO_PIANO_POLYPHONIC, "solo_piano"),
+    (INSTRUMENT_LEAD, "instrumental"),
+)
 DEFAULT_MIN_COVERAGE_RATIO = 0.30
 
 
@@ -71,22 +88,24 @@ class MelodyResolver:
             return baseline
 
         candidate = read_candidate_cache(self.data_dir, song_hash, VOCAL_STEM_CREPE)
-        if not candidate:
+        if candidate:
+            gate = self._vocal_gate(song_hash)
+        else:
             # Only the cheap sidecar is consulted here (never cached stem WAVs):
             # batch runs with --skip-crepe-below-gate leave a sidecar but no
             # candidate, and the real gate reason is more useful than
             # "candidate missing" for those songs.
             gate = self._sidecar_gate(song_hash)
-            if gate is None or gate.get("predict_vocal"):
+            vocal_by_gate = bool(gate and gate.get("predict_vocal"))
+            if gate is None or vocal_by_gate:
                 gate = {
                     "predict_vocal": False,
                     "reason": "vocal_candidate_missing",
                     "song_type_source": VOCAL_GATE_VERSION,
                 }
-            return self._fallback(baseline, gate=gate, reason=str(gate["reason"]))
+        vocal_by_gate = bool(gate.get("predict_vocal")) if candidate else vocal_by_gate
 
-        gate = self._vocal_gate(song_hash)
-        if gate.get("predict_vocal"):
+        if candidate and gate.get("predict_vocal"):
             selected = self._maybe_select_vocal(
                 baseline,
                 candidate,
@@ -94,15 +113,38 @@ class MelodyResolver:
                 path=path,
                 gate=gate,
             )
-        else:
-            reason = str(gate.get("reason") or "vocal_gate_failed")
-            selected = self._fallback(
+            self._write_selected_cache(song_hash, selected)
+            return selected
+
+        # Vocal route refused or absent: a cached non-vocal candidate wins
+        # over full-mix pYIN, subject to the same low-coverage retreat.
+        inst_id, inst_type, inst = self._instrumental_candidate(song_hash)
+        if inst is not None and not vocal_by_gate:
+            selected = self._maybe_select_vocal(
                 baseline,
+                inst,
+                song_hash=song_hash,
+                path=path,
                 gate=gate,
-                reason=reason,
+                candidate_id=inst_id,
+                song_type=inst_type,
             )
-        self._write_selected_cache(song_hash, selected)
+            self._write_selected_cache(song_hash, selected)
+            return selected
+
+        reason = str(gate.get("reason") or "vocal_gate_failed")
+        selected = self._fallback(baseline, gate=gate, reason=reason)
+        if candidate:
+            self._write_selected_cache(song_hash, selected)
         return selected
+
+    def _instrumental_candidate(self, song_hash: str):
+        """First cached non-vocal candidate with notes: (id, song_type, payload)."""
+        for candidate_id, song_type in INSTRUMENTAL_CANDIDATES:
+            payload = read_candidate_cache(self.data_dir, song_hash, candidate_id)
+            if payload and payload.get("melody"):
+                return candidate_id, song_type, payload
+        return "", "", None
 
     def _sidecar_gate(self, song_hash: str) -> Dict[str, Any] | None:
         sidecar = read_stem_energy_sidecar(self.data_dir, song_hash)
@@ -135,6 +177,8 @@ class MelodyResolver:
         song_hash: str,
         path: str,
         gate: Mapping[str, Any],
+        candidate_id: str = VOCAL_STEM_CREPE,
+        song_type: str = "vocal_led",
     ) -> Dict[str, Any]:
         baseline_stats = baseline.get("melody_stats") if isinstance(baseline.get("melody_stats"), dict) else {}
         candidate_stats = candidate.get("melody_stats") if isinstance(candidate.get("melody_stats"), dict) else {}
@@ -146,7 +190,14 @@ class MelodyResolver:
                 extra_flags=[RETREAT_LOW_COVERAGE_FLAG],
             )
 
-        return self._select_vocal(candidate, song_hash=song_hash, path=path, gate=gate)
+        return self._select_vocal(
+            candidate,
+            song_hash=song_hash,
+            path=path,
+            gate=gate,
+            candidate_id=candidate_id,
+            song_type=song_type,
+        )
 
     def resolve_missing_baseline(self, *, song_hash: str, path: str = "") -> Dict[str, Any] | None:
         """Serve a cached `vocal_stem_crepe` candidate when no pYIN baseline exists.
@@ -163,17 +214,22 @@ class MelodyResolver:
         if not song_hash:
             return None
         candidate = read_candidate_cache(self.data_dir, song_hash, VOCAL_STEM_CREPE)
-        if not candidate:
-            return None
-        gate = self._vocal_gate(song_hash)
-        if not gate.get("predict_vocal"):
-            return None
+        gate = self._vocal_gate(song_hash) if candidate else (self._sidecar_gate(song_hash) or {})
+        candidate_id, song_type = VOCAL_STEM_CREPE, "vocal_led"
+        if not (candidate and gate.get("predict_vocal")):
+            if gate.get("predict_vocal"):
+                return None
+            candidate_id, song_type, candidate = self._instrumental_candidate(song_hash)
+            if candidate is None:
+                return None
         selected = self._select_vocal(
             candidate,
             song_hash=song_hash,
             path=path,
             gate=gate,
             extra_flags=[NO_BASELINE_FLAG],
+            candidate_id=candidate_id,
+            song_type=song_type,
         )
         self._write_selected_cache(song_hash, selected)
         return selected
@@ -186,13 +242,15 @@ class MelodyResolver:
         path: str,
         gate: Mapping[str, Any],
         extra_flags: list[str] | None = None,
+        candidate_id: str = VOCAL_STEM_CREPE,
+        song_type: str = "vocal_led",
     ) -> Dict[str, Any]:
         selected = copy.deepcopy(dict(candidate))
         source = selected.get("melody_source") if isinstance(selected.get("melody_source"), dict) else {}
         source = dict(source)
         source.update({
-            "id": VOCAL_STEM_CREPE,
-            "song_type": "vocal_led",
+            "id": candidate_id,
+            "song_type": song_type,
             "song_type_confidence": gate.get("song_type_confidence"),
             "song_type_source": gate.get("song_type_source") or VOCAL_GATE_VERSION,
             "selected_by": RESOLVER_VERSION,
@@ -201,7 +259,7 @@ class MelodyResolver:
         })
         selected["melody_source"] = source
         flags = self._flags(selected.get("quality_flags"))
-        for flag in ["resolver_selected_vocal_stem_crepe", *(extra_flags or [])]:
+        for flag in [f"resolver_selected_{candidate_id}", *(extra_flags or [])]:
             if flag not in flags:
                 flags.append(flag)
         selected["quality_flags"] = flags

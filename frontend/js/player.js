@@ -881,6 +881,7 @@
         const d = await r.json();
         if (d.melody && d.melody.length > 0) {
           melodyData = _filterMelody(d.melody);
+          _noteMelodyQuality(d);
           _stopMelodyPolling();
           // Always toast completion (loose-coupling rule). The phrasing
           // tells the user where to find the result, not just "done".
@@ -2751,9 +2752,26 @@
     if (_melodyLoadTimeout) { clearTimeout(_melodyLoadTimeout); _melodyLoadTimeout = null; }
   }
   window.addEventListener("pagehide", _stopMelodyLoad);
-  function _applyMelodyData(notes) {
+  // Served-melody honesty (LiveChord-a1lh): the backend stamps
+  // melody_quality = melody_trust verdict. When the melody is a full-mix
+  // pYIN guess that is mostly bass leak or covers little of the song, say
+  // so once instead of letting the user read junk as "the melody".
+  let _melodyQualityNoted = "";
+  function _noteMelodyQuality(data) {
+    const q = data && data.melody_quality;
+    if (!q || q.trusted) return;
+    const reason = String(q.reason || "");
+    if (!["bass_leak", "low_coverage", "too_few_notes"].includes(reason)) return;
+    if (rhContentMode === "acc") return;
+    const key = (trackPath || hashMode || "") + "|" + reason;
+    if (_melodyQualityNoted === key) return;
+    _melodyQualityNoted = key;
+    showToast(_t("toast.melody.unreliable." + reason), 6000);
+  }
+  function _applyMelodyData(notes, data) {
     melodyData = _filterMelody(notes);
     if (typeof _scoreRedraw === "function") _scoreRedraw();
+    _noteMelodyQuality(data);
   }
   async function _loadMelody(path) {
     // Loose-coupling (CLAUDE.md "Long-running operations"): path-mode
@@ -2771,7 +2789,7 @@
       const res = await fetch(url, { signal });
       const data = await res.json();
       if (data.melody && data.melody.length > 0) {
-        _applyMelodyData(data.melody);  // cache hit — instant, stay silent
+        _applyMelodyData(data.melody, data);  // cache hit — instant, stay silent
         return;
       }
       if (!data.pending) return;  // genuinely no melody (e.g. file missing)
@@ -2792,7 +2810,7 @@
         if (signal.aborted) return;
         const d = await r.json();
         if (d.melody && d.melody.length > 0) {
-          _applyMelodyData(d.melody);
+          _applyMelodyData(d.melody, d);
           _stopMelodyLoad();
           if (showUi) showToast(_t("toast.melody.done"), 5000);
           return;
@@ -8461,6 +8479,7 @@
               const melData = await melRes.json();
               if (melData.melody && melData.melody.length > 0) {
                 melodyData = _filterMelody(melData.melody);
+                _noteMelodyQuality(melData);
               } else {
                 // Freshly-analyzed hash → ingest melody worker still running; poll.
                 _maybeStartMelodyPolling();
