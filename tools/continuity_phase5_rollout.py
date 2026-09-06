@@ -700,7 +700,7 @@ def _current_engine_version() -> str:
 
         return str(ACC_ENGINE_VERSION)
     except Exception:
-        return "v9"
+        return "v10"
 
 
 def _split_csv(value: str, default: List[str]) -> List[str]:

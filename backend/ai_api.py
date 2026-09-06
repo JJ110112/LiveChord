@@ -71,6 +71,117 @@ def _maybe_resolve_rh_melody_without_baseline(*, path: str = "", song_hash: str 
         return None
 
 
+# Accompaniment planning trusts a melody only when it is plausibly the sung /
+# lead line. full_mix_pyin on instrumentals or bass-heavy mixes returns the LH
+# bass line (LiveChord-gyjt: Unchained Melody had 107/206 notes below MIDI 55),
+# and Auto's RH vocal-avoidance + the LH collision dedupe then hollow out the
+# accompaniment around notes nobody sings.
+MELODY_TRUST_LOW_MIDI = 55
+MELODY_TRUST_MAX_LOW_FRACTION = 0.30
+MELODY_TRUST_MIN_COVERAGE = 0.40
+MELODY_TRUST_MIN_NOTES = 20
+
+
+def melody_trust(events: List[Dict[str, Any]], *, source_id: str = "",
+                 song_duration_s: float = 0.0,
+                 gate_predict_vocal: Optional[bool] = None) -> Dict[str, Any]:
+    """Decide whether accompaniment generation may plan around ``events``.
+
+    vocal_stem_crepe (resolver-selected, gate passed) is always trusted. Any
+    other source is trusted only when the vocal gate did not refuse the song,
+    the melody has enough notes, its active time covers >= 40 % of the song,
+    and <= 30 % of its notes sit below MIDI 55 (bass leak signature).
+    """
+
+    from ai.melody_candidate import VOCAL_STEM_CREPE
+
+    notes = [e for e in events or [] if isinstance(e, dict)]
+    n = len(notes)
+    meta: Dict[str, Any] = {"source": source_id or "unknown", "notes": n}
+    if not n:
+        meta.update(trusted=False, reason="no_melody")
+        return meta
+
+    def _st(e):
+        try:
+            return float(e.get("start", e.get("time", 0.0)) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _en(e):
+        try:
+            end = e.get("end")
+            if end is None:
+                end = _st(e) + float(e.get("duration", 0.0) or 0.0)
+            return float(end)
+        except (TypeError, ValueError):
+            return _st(e)
+
+    def _pitch(e):
+        try:
+            return float(e.get("midi", e.get("pitch", 60)) or 60)
+        except (TypeError, ValueError):
+            return 60.0
+
+    active = sum(max(0.0, _en(e) - _st(e)) for e in notes)
+    span = max([song_duration_s] + [_en(e) for e in notes])
+    coverage = round(active / span, 4) if span > 0 else 0.0
+    low_fraction = round(sum(1 for e in notes if _pitch(e) < MELODY_TRUST_LOW_MIDI) / n, 4)
+    meta.update(coverage=coverage, low_fraction=low_fraction)
+
+    if source_id == VOCAL_STEM_CREPE:
+        meta.update(trusted=True, reason="vocal_stem_crepe")
+        return meta
+    if gate_predict_vocal is False:
+        meta.update(trusted=False, reason="vocal_gate_refused")
+        return meta
+    if n < MELODY_TRUST_MIN_NOTES:
+        meta.update(trusted=False, reason="too_few_notes")
+        return meta
+    if coverage < MELODY_TRUST_MIN_COVERAGE:
+        meta.update(trusted=False, reason="low_coverage")
+        return meta
+    if low_fraction > MELODY_TRUST_MAX_LOW_FRACTION:
+        meta.update(trusted=False, reason="bass_leak")
+        return meta
+    meta.update(trusted=True, reason="full_mix_ok")
+    return meta
+
+
+def _accompaniment_melody(song_hash: str, *, path: str = "",
+                          song_duration_s: float = 0.0):
+    """Melody the accompaniment endpoint may plan around: the resolver-served
+    melody (what the player shows), gated by ``melody_trust``. Returns
+    ``(events, trust_meta)``; ``events`` is empty when untrusted."""
+    import json as _json
+
+    melody_file = DATA_DIR / "melodies" / f"{song_hash}.json"
+    if not melody_file.is_file():
+        return [], {"source": "none", "notes": 0, "trusted": False, "reason": "no_melody"}
+    try:
+        payload = _json.loads(melody_file.read_text(encoding="utf-8"))
+    except Exception:
+        return [], {"source": "none", "notes": 0, "trusted": False, "reason": "unreadable"}
+    if isinstance(payload, list):
+        payload = {"melody": payload}
+    served = _maybe_resolve_rh_melody(payload, path=path, song_hash=song_hash)
+    events = served.get("melody") or []
+    source = served.get("melody_source") if isinstance(served.get("melody_source"), dict) else {}
+    source_id = str(source.get("id") or "")
+    gate_vocal = None
+    try:
+        from ai.melody_resolver import MelodyResolver
+
+        gate = MelodyResolver(DATA_DIR)._sidecar_gate(song_hash)
+        if gate is not None:
+            gate_vocal = bool(gate.get("predict_vocal"))
+    except Exception:
+        gate_vocal = None
+    meta = melody_trust(events, source_id=source_id, song_duration_s=song_duration_s,
+                        gate_predict_vocal=gate_vocal)
+    return (events if meta["trusted"] else []), meta
+
+
 def _melody_debug_target(path: str = "", song_hash: str = "") -> Dict[str, Any]:
     import json as _json
 
@@ -1413,12 +1524,8 @@ def get_accompaniment(
             except Exception:
                 pass
 
-    # 載入旋律快取（供去重使用）
-    melody = []
-    melody_file = DATA_DIR / "melodies" / f"{h}.json"
-    if melody_file.is_file():
-        mel_data = _json.loads(melody_file.read_text(encoding="utf-8"))
-        melody = mel_data.get("melody", mel_data if isinstance(mel_data, list) else [])
+    # 載入旋律（RH 閃避 / LH 去重 / 踏板用）— 只信任 melody_trust 通過的旋律
+    melody, melody_trust_meta = _accompaniment_melody(h, path=path)
 
     # 快取命中
     if cache_file.is_file():
@@ -1506,6 +1613,7 @@ def get_accompaniment(
     result["path"] = path
     result["bpm"] = round(bpm, 1)
     result["genre"] = genre
+    result["melody_trust"] = melody_trust_meta
     # Phase 2: stamp source beat version so player / downstream can detect
     # stale acc when the chord JSON's beats[] has been regenerated.
     result["source_beat_version"] = beat_version

@@ -60,7 +60,7 @@ RH_LOW, RH_HIGH = 60, 84
 # v8 (2026-05-20): canonical duration schema v2. Pattern durations no longer
 # reserve visual rests with 0.9/0.85 multipliers; short playback touch is stored
 # in gate_ratio and consumed by player.js. Cache bump forces lazy regeneration.
-ACC_ENGINE_VERSION = "v9"  # v9: pattern-truncation slivers dropped + note continuity active
+ACC_ENGINE_VERSION = "v10"  # v10: melody_trust gate (ai_api) so RH avoidance / LH dedupe ignore bass-leak pYIN melodies; v9: slivers dropped + continuity active
 NOTE_EVENT_SCHEMA_VERSION = 2
 DEFAULT_PATTERN_GATE_RATIO = 0.9
 _V2_FLAG_CACHE: Optional[bool] = None

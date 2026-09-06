@@ -1717,6 +1717,39 @@ class TestMelodyPhase3(unittest.TestCase):
             md = drift_report_script.render_markdown(rep)
             self.assertIn("candidate_missing", md)
 
+    def test_melody_trust_rejects_bass_leak_and_low_coverage_pyin(self):
+        # LiveChord-gyjt: Auto RH vocal-avoidance and the LH collision dedupe
+        # must not plan around a full-mix pYIN "melody" that is really the LH
+        # bass line, or one that covers little of the song. vocal_stem_crepe
+        # (resolver-selected after the vocal gate) is always trusted.
+        import ai_api
+
+        def notes(n, midi, dur=1.0, step=1.0):
+            return [{"start": i * step, "end": i * step + dur, "midi": midi} for i in range(n)]
+
+        # 60 sung notes, C4, over a 60 s song -> clean pYIN is trusted
+        clean = ai_api.melody_trust(notes(60, 60), source_id="full_mix_pyin", song_duration_s=60)
+        self.assertTrue(clean["trusted"]); self.assertEqual(clean["reason"], "full_mix_ok")
+
+        # half the notes below MIDI 55 -> bass leak (Unchained Melody signature)
+        leak = ai_api.melody_trust(notes(30, 60) + notes(30, 40), source_id="full_mix_pyin", song_duration_s=60)
+        self.assertFalse(leak["trusted"]); self.assertEqual(leak["reason"], "bass_leak")
+        self.assertGreater(leak["low_fraction"], 0.3)
+
+        # 30 notes covering 30 s of a 240 s song -> low coverage (Uptown Funk 23 %)
+        sparse = ai_api.melody_trust(notes(30, 60), source_id="full_mix_pyin", song_duration_s=240)
+        self.assertFalse(sparse["trusted"]); self.assertEqual(sparse["reason"], "low_coverage")
+
+        # the vocal gate refused the song -> never trust a full-mix melody
+        refused = ai_api.melody_trust(notes(60, 60), source_id="full_mix_pyin", song_duration_s=60, gate_predict_vocal=False)
+        self.assertFalse(refused["trusted"]); self.assertEqual(refused["reason"], "vocal_gate_refused")
+
+        # CREPE vocal stem: trusted even with the same bass-heavy shape
+        crepe = ai_api.melody_trust(notes(30, 60) + notes(30, 40), source_id=VOCAL_STEM_CREPE, song_duration_s=60)
+        self.assertTrue(crepe["trusted"]); self.assertEqual(crepe["reason"], "vocal_stem_crepe")
+
+        self.assertFalse(ai_api.melody_trust([], source_id="full_mix_pyin")["trusted"])
+
     def test_melody_resolver_falls_back_when_gate_fails_or_coverage_low(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -24,7 +24,7 @@ class TestAccompanimentPhase2(unittest.TestCase):
                 time_signature="4/4",
             )
 
-        self.assertEqual(ACC_ENGINE_VERSION, "v9")
+        self.assertEqual(ACC_ENGINE_VERSION, "v10")
         self.assertEqual(result["schema_version"], 2)
         self.assertEqual(result["continuity_observation"]["mode"], "shadow")
         all_events = result["left_hand"] + result["right_hand"]
