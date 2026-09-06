@@ -6,7 +6,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from .melody_candidate import VOCAL_STEM_CREPE
+from .melody_candidate import INSTRUMENT_LEAD, SOLO_PIANO_POLYPHONIC, VOCAL_STEM_CREPE
+
+# Resolver-selected non-vocal candidates: the vocal gate refusing the song is
+# expected (that is why they were chosen), so the gate verdict is ignored;
+# the content checks (notes / coverage / bass leak) still apply.
+NON_VOCAL_CANDIDATES = (SOLO_PIANO_POLYPHONIC, INSTRUMENT_LEAD)
 
 # Accompaniment planning trusts a melody only when it is plausibly the sung /
 # lead line. full_mix_pyin on instrumentals or bass-heavy mixes returns the LH
@@ -67,6 +72,8 @@ def melody_trust(events: List[Dict[str, Any]], *, source_id: str = "",
     if source_id == VOCAL_STEM_CREPE:
         meta.update(trusted=True, reason="vocal_stem_crepe")
         return meta
+    if source_id in NON_VOCAL_CANDIDATES:
+        gate_predict_vocal = None
     # Content verdicts first: they tell the player WHAT is wrong with the
     # notes; the gate verdict only says the song is not vocal-led.
     if n < MELODY_TRUST_MIN_NOTES:

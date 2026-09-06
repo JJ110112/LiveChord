@@ -112,7 +112,7 @@ def select_songs(args: argparse.Namespace, data_dir: Path) -> Tuple[List[Dict[st
             print(f"classifier model unreadable: {args.classifier}", file=sys.stderr)
             model = None
 
-    drops: Dict[str, int] = {"no_chords": 0, "no_token": 0, "excluded_ensemble": 0, "vocal_by_gate": 0, "has_candidate": 0, "classifier_only": 0}
+    drops: Dict[str, int] = {"no_chords": 0, "no_token": 0, "excluded_ensemble": 0, "too_long": 0, "vocal_by_gate": 0, "has_candidate": 0, "classifier_only": 0}
     rows: List[Dict[str, Any]] = []
     for t in lib:
         path = str(t.get("path") or "")
@@ -133,6 +133,11 @@ def select_songs(args: argparse.Namespace, data_dir: Path) -> Tuple[List[Dict[st
             continue
         if exclude is not None and exclude.search(text) and not solo_override.search(text):
             drops["excluded_ensemble"] += 1
+            continue
+        # Basic Pitch materialises the whole file: a 10-hour "piano mix" needed
+        # a 14 GiB array and died with MemoryError. Skip compilations.
+        if float(t.get("duration") or 0.0) > args.max_duration_min * 60:
+            drops["too_long"] += 1
             continue
         h = make_song_hash(path)
         ratio = ratios.get(h)
@@ -320,6 +325,7 @@ def main() -> int:
     ap.add_argument("--max-vocal-ratio", type=float, default=0.15, help="Skip songs the vocal gate calls vocal.")
     ap.add_argument("--classifier", default="", help="metadata NB model JSON to add solo_piano predictions.")
     ap.add_argument("--min-solo-prob", type=float, default=0.8)
+    ap.add_argument("--max-duration-min", type=float, default=30.0, help="Skip files longer than this (Basic Pitch holds the whole file in RAM).")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--force", action="store_true", help="Rebuild even if a candidate exists.")
     ap.add_argument("--probe", type=int, default=0, help="Dry-run: transcribe N songs to time them (writes their inputs).")

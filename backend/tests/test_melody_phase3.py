@@ -1750,6 +1750,12 @@ class TestMelodyPhase3(unittest.TestCase):
 
         self.assertFalse(ai_api.melody_trust([], source_id="full_mix_pyin")["trusted"])
 
+        # resolver-selected solo piano: the gate refusing vocals is expected, content rules still apply
+        piano = ai_api.melody_trust(notes(60, 72), source_id="solo_piano_polyphonic", song_duration_s=60, gate_predict_vocal=False)
+        self.assertTrue(piano["trusted"]); self.assertEqual(piano["reason"], "full_mix_ok")
+        piano_sparse = ai_api.melody_trust(notes(30, 72), source_id="solo_piano_polyphonic", song_duration_s=240, gate_predict_vocal=False)
+        self.assertFalse(piano_sparse["trusted"]); self.assertEqual(piano_sparse["reason"], "low_coverage")
+
     def test_melody_resolver_promotes_instrument_lead_when_vocal_gate_refuses(self):
         # LiveChord-a1lh: instrumentals fail the vocal gate and used to be stuck
         # on full-mix pYIN even when a human-preferred non-vocal candidate was
