@@ -1286,3 +1286,71 @@ def test_phrase_echo_transposes_as_a_unit():
     _shout(eng, clk, [72, 74, 71], [0.25, 0.25])
     run_for(eng, clk, 6.0)
     assert [n for _, _, n, _ in out.notes("note_on", ch=12)] == [67, 69, 66]
+
+
+def test_phrase_pass_does_not_ring_into_the_next_one():
+    """The 19:10 take: MODX lost n55 and n60 of pass 2 to `drop reason=voices`.
+
+    A note held for 1.9 s rang across two passes, the channel ran out of voices
+    and the budget ate the head of the next pass - the missing word arriving by
+    another door. A pass must be over before the next one opens.
+    """
+    eng, clk, out = make([_phrase_edge(repeats=3)])
+    # the gesture from that take: G3 C4 D4 E4, the first note held long
+    eng.post(human_event("note_on", clk(), 9, 55, 76)); eng.step()
+    run_for(eng, clk, 0.36)
+    for n, v in ((60, 68), (62, 55), (64, 48)):
+        eng.post(human_event("note_on", clk(), 9, n, v)); eng.step()
+        run_for(eng, clk, 0.40)
+    for n in (55, 60, 62, 64):
+        eng.post(human_event("note_off", clk(), 9, n, 0))
+    eng.step()
+    run_for(eng, clk, 12.0)
+    assert not eng.drop_reasons.get("voices"), f"voice budget truncated the echo: {eng.drop_reasons}"
+    passes = _passes(out, 12, 4)
+    assert len(passes) >= 2
+    for k, (a, b) in enumerate(zip(passes, passes[1:]), 1):
+        offs = [t for t, ch, n, v in out.notes("note_off", ch=12) if a[0][0] <= t <= b[0][0] + 3]
+        assert offs, "no releases recorded"
+        assert max(o for o in offs if o <= b[0][0] + 0.001) <= b[0][0] + 0.001, \
+            f"pass {k} was still ringing when pass {k + 1} started"
+
+
+def test_phrase_passes_get_shorter_as_well_as_quieter():
+    """Distance shortens a note as much as it quiets it, and on a synth patch
+    with a flat velocity curve the shortening is what the ear actually hears."""
+    # held notes, so the lengths are well clear of `dur_min_beats`
+    eng, clk, out = make([_phrase_edge(repeats=3, dur_decay=0.75)])
+    for i, n in enumerate([60, 62, 64]):
+        play(eng, clk, 9, n, vel=80, hold=0.55)
+        if i < 2:
+            run_for(eng, clk, 0.05)
+    run_for(eng, clk, 12.0)
+    ons = out.notes("note_on", ch=12)
+    offs = out.notes("note_off", ch=12)
+    lens = []
+    for t, ch, n, v in ons:
+        rel = [o for o, oc, on_, ov in offs if on_ == n and o > t]
+        lens.append(min(rel) - t)
+    first = lens[:3]
+    last = lens[-3:]
+    assert all(b < a for a, b in zip(first, last)), f"the tail did not shorten: {first} -> {last}"
+
+
+def test_phrase_never_returns_half_a_phrase():
+    """A fading tail stops between phrases, it does not drop its own soft notes.
+
+    The pass used to be judged by its loudest note, so the last pass came back
+    as 你好 with 嗎 missing once the quiet notes fell under `min_vel`.
+    """
+    eng, clk, out = make([_phrase_edge(repeats=8, vel_scale=0.6, min_vel=14)])
+    for i, (n, v) in enumerate([(55, 76), (60, 68), (62, 55), (64, 48)]):
+        play(eng, clk, 9, n, vel=v, hold=0.30)
+        if i < 3:
+            run_for(eng, clk, 0.10)
+    run_for(eng, clk, 15.0)
+    ons = out.notes("note_on", ch=12)
+    assert len(ons) % 4 == 0, f"a pass came back incomplete: {ons}"
+    for p in _passes(out, 12, 4):
+        assert [n for _, _, n, _ in p] == [55, 60, 62, 64]
+        assert all(v >= 14 for _, _, _, v in p)

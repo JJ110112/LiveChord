@@ -6,7 +6,8 @@ not 你＿嗎. Measured on the 2026-09-07 take, only 29 % of notes were echoed, 
 the phrase that came back was missing nine of its twenty-one pitches.
 
 This one waits for the gesture to finish, rolls once for the whole phrase, and
-replays it with its internal rhythm intact, each pass quieter than the last -
+replays it with its internal rhythm intact, each pass quieter and shorter
+than the last -
 a short looper rather than a sprinkle of single notes.
 
 `lane_state` keys: `answered` (the onset time of the phrase already dealt with).
@@ -68,22 +69,36 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     # `phrase_gap_beats`, so by now we are already late; the whole phrase is
     # shifted to absorb that rather than losing its opening note - an echo that
     # drops the first word is the very thing this algorithm exists to avoid.
+    dur_decay = float(p.get("dur_decay", 0.8))
     late = max(0.0, now - notes[-1].t)
     out: list[Proposal] = []
     for k in range(1, repeats + 1):
         decay = edge.vel_scale ** k
-        if int(round(max(r.vel for r in notes) * decay)) < min_vel:
+        # all or nothing: judge the pass by its QUIETEST note, so a fading tail
+        # stops between phrases instead of returning half of one. The loudest
+        # note was the wrong test - it let a pass through that then dropped its
+        # own soft notes one by one, which is the hole this algorithm removes.
+        if int(round(min(r.vel for r in notes) * decay)) < min_vel:
             break                                   # the tail has died away
         start = delay + (k - 1) * period - late
         shift = max(0.0, -start)                    # never schedule into the past
         for rec in notes:
-            vel = int(round(rec.vel * decay + edge.vel_offset))
-            if vel < min_vel:
-                continue
-            dur = max(dur_min, (rec.dur or dur_min) * edge.dur_scale)
+            vel = max(min_vel, int(round(rec.vel * decay + edge.vel_offset)))
+            offset = rec.t - t0
+            # A pass must be finished before the next one opens. Without this a
+            # held note rings across two or three passes, the channel runs out
+            # of voices and the voice budget eats the head of the next pass -
+            # the same "missing word" this algorithm exists to prevent, arriving
+            # by another door. Measured on the 19:10 take: MODX lost n55 and n60
+            # of pass 2 to `drop reason=voices`.
+            # a note still under the finger has no recorded length yet; use how
+            # long it has been down, or the whole phrase becomes 160 ms blips
+            heard = rec.dur if rec.dur else max(dur_min, now - rec.t)
+            dur = max(dur_min, heard * edge.dur_scale * dur_decay ** k)
+            dur = min(dur, max(dur_min, period - offset))
             out.append(Proposal(ch=edge.dst, note=rec.note + semis, vel=min(127, vel),
                                 dur=dur, lane=edge.lane,
-                                t_offset=start + shift + (rec.t - t0)))
+                                t_offset=start + shift + offset))
     return out
 
 
