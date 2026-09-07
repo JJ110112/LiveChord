@@ -1082,3 +1082,60 @@ def test_repeated_faults_do_not_flood_the_log(caplog):
         eng.step()
     assert 1 <= len(caplog.records) <= 5, f"{len(caplog.records)} records for 250 identical faults"
     assert eng._err_counts["<lambda>"] == 250, "the count must still be exact"
+
+
+# ------------------------------ 2026-09-07 session-log findings
+def test_the_engine_locks_onto_a_played_pulse():
+    """It used to sit on the scene default for a whole piece.
+
+    In the session log the player was around 140 BPM while every echo was spaced
+    at 92, which is 1.5 of their beats: neither on the beat nor a clean
+    subdivision.
+    """
+    from backend.mie.state import MusicalState
+    st = MusicalState(bpm=92, now=0.0)
+    t, beat = 0.0, 60.0 / 140.0
+    pattern = [1, 1, 0.5, 0.5, 1, 2, 1, 0.5, 0.5, 1, 1, 1, 2, 1]   # mixed note values
+    for i, mult in enumerate(pattern * 2):
+        eng_ev = human_event("note_on", t, 9, 60 + (i % 5), 70)
+        st.note_on_human(eng_ev, t)
+        t += beat * mult
+    assert st.clock_source == "ioi", "the engine never left the scene default"
+    assert 120 <= st.bpm <= 160, f"locked onto {st.bpm:.0f} BPM, the player was at 140"
+    assert st.ioi_conf >= MusicalState.IOI_ADOPT_CONF
+
+
+def test_a_refused_roll_does_not_retire_the_silence_lane():
+    """One skip used to end the lane for the whole silence: in the log the
+    texture lane logged a single skip and never spoke again in 15 s."""
+    from backend.mie.algos import silence as silence_algo
+    from backend.mie.graph import Edge
+    from backend.mie.state import MusicalState
+    e = Edge.from_json({"id": "s", "src": 0, "dst": 3, "algo": "silence", "after_s": 1.0,
+                        "retry_beats": 2.0, "voices": 2, "constraint": "chord"}, 0)
+    st = MusicalState(bpm=120, now=0.0)
+    st.set_key(0, "major", "manual")
+    st.last_human_on_t = 0.0
+    st.last_sound_end_t = 0.0
+    ls: dict = {}
+    st.tick(2.0)
+    assert silence_algo.tick(st, e, Random(1), 2.0, ls), "should want to speak after 1 s"
+    silence_algo.on_skip(st, e, 2.0, ls)            # the gate refused it
+    assert not ls["fired"], "the lane must not stay retired"
+    st.tick(2.2)
+    assert not silence_algo.tick(st, e, Random(1), 2.2, ls), "it must wait retry_beats first"
+    st.tick(3.2)
+    assert silence_algo.tick(st, e, Random(1), 3.2, ls), "and then try again"
+
+
+def test_an_edge_register_survives_voice_leading():
+    """The string lane reached 76-91 under an edge capped at 88, because the
+    leading re-picked inside the instrument range instead."""
+    edge = _sustain_edge(low=55, high=72, every_bars_min=0.5, every_bars_max=0.5, voices=4)
+    eng, clk, out = make([edge], seed=3)
+    eng.instruments[4] = Instrument(4, "Fantom Strings", "strings", "fantom", True, 8, 1.0, (36, 96), True)
+    hold_chord(eng, clk, 9, [48, 52, 55])
+    run_for(eng, clk, 25.0)
+    notes = [n for _, _, n, _ in out.notes("note_on", ch=4)]
+    assert notes, "the lane said nothing"
+    assert min(notes) >= 55 and max(notes) <= 72, f"left the edge's register: {sorted(set(notes))}"

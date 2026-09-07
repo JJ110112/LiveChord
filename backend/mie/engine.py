@@ -22,7 +22,7 @@ from random import Random
 from typing import Callable, Optional
 
 from . import algos, mutation
-from .constraint import collision_for, constrain, late_bind, voice_lead_for
+from .constraint import collision_for, constrain, edge_range, late_bind, voice_lead_for
 from .events import MieEvent, Proposal, next_id
 from .graph import ALGOS_PHASE1, MODES, InteractionGraph, Instrument, Scene
 from .io_rtmidi import panic_messages
@@ -442,7 +442,7 @@ class Engine:
                             edge_id=edge.id, constraint=edge.constraint, follow_off=cp.follow_off,
                             src_note=cp.src_note, max_dur=dur, ttl_wall=min(ev.ttl_wall, t_on + 4.0 * self.st.beat_s),
                             collision=collision_for(edge), voice_lead=voice_lead_for(edge),
-                            tension=self._tension(edge))
+                            tension=self._tension(edge), note_range=edge_range(edge))
             self.sched.schedule_pair(pair)
             self.safety.count_chain(ev.root_id, now)
             self.stats["gen_sched"] += 1
@@ -547,6 +547,7 @@ class Engine:
                 return False
             n2 = late_bind(pair.note, pair.constraint, self.st, self.instruments.get(pair.ch),
                            pair.collision, voice_lead=pair.voice_lead, tension=pair.tension,
+                           note_range=pair.note_range,
                            prev=self._lane_prev(pair.ch, pair.lane),
                            others=self._other_voices(pair.ch, pair.lane, now))
             if n2 is None:

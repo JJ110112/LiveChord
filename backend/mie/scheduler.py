@@ -41,6 +41,7 @@ class NotePair:
     collision: str = "octave"
     voice_lead: str = "off"
     tension: float = 0.0
+    note_range: Optional[tuple] = None
 
 
 @dataclass(order=True)

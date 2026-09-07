@@ -41,6 +41,8 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     after_s = float(edge.params.get("after_s", 2.0))
     if lane_state.get("fired") or st.last_human_on_t is None or st.silence_s < after_s:
         return []
+    if now < lane_state.get("retry_t", 0.0):
+        return []
     lane_state["fired"] = True
     lane_state["fired_t"] = now
     hold = float(edge.params.get("hold_s", 20.0))
@@ -59,11 +61,24 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
                      lane=edge.lane, t_offset=i * spread) for i, n in enumerate(notes)]
 
 
+def on_skip(st: MusicalState, edge: Edge, now: float, lane_state: dict) -> None:
+    """The probability gate refused this entry.
+
+    The flag was raised before the roll, so one refusal used to retire the lane
+    for the whole silence: in the 2026-09-07 log the texture lane logged a
+    single skip and never spoke again across fifteen seconds of silence. Let it
+    come back after `retry_beats` instead, the same way Sustain does.
+    """
+    lane_state["fired"] = False
+    lane_state["retry_t"] = now + float(edge.params.get("retry_beats", 2.0)) * st.beat_s
+
+
 def on_human_note(st: MusicalState, edge: Edge, now: float, lane_state: dict) -> list[Proposal]:
     """Human came back: schedule the lane's release after `release_beats`."""
     if not lane_state.get("fired"):
         return []
     lane_state["fired"] = False
+    lane_state["retry_t"] = 0.0
     rel = float(edge.params.get("release_beats", 1.0)) * st.beat_s
     return [Proposal(ch=ch, note=note, vel=0, dur=0.0, lane=edge.lane, kind="off", t_offset=rel)
             for (ch, note), g in list(st.active_gen.items()) if ch == edge.dst and g.lane == edge.lane]

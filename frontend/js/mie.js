@@ -58,7 +58,10 @@
     $("#mieKey").textContent = st.key + (st.key_source === "player" ? " ▶" : st.key_source === "inferred" ? " ~" : "");
     $("#mieChord").textContent = st.chord || "—";
     $("#mieBpm").textContent = st.bpm;
-    $("#mieClock").textContent = st.clock;
+    $("#mieClock").textContent = st.clock + (st.pulse_conf ? ` ${Math.round(st.pulse_conf * 100)}%` : "");
+    $("#mieBpm").parentElement.title = st.pulse_bpm
+      ? `脈動推估 ${st.pulse_bpm} BPM，信心 ${Math.round(st.pulse_conf * 100)}%（自由速度的演奏本來就沒有明確脈動）`
+      : "尚未從演奏推估出脈動";
     $("#mieBeat").textContent = `${st.beat}/${st.beats_per_bar}`;
     if (s.last_control) $("#mieUc4").textContent = `${s.last_control.key} = ${s.last_control.val}`;
     pct($("#mDensity"), st.density / 8); $("#vDensity").textContent = st.density.toFixed(1) + "/s";
@@ -100,6 +103,75 @@
       el.title = `${inst.role} · max ${inst.max_voices} voices · ${inst.note_range[0]}–${inst.note_range[1]}`;
     });
   }
+  // Which knobs an edge exposes, per algorithm (plan §9.1). Every one of these
+  // is a live `set` on the engine, so a lane can be shaped while playing.
+  const NUM = (label, key, min, max, step, hint) => ({ label, key, min, max, step, hint });
+  const COMMON = [
+    NUM("機率", "prob", 0, 1, 0.05, "這個手勢被回應的機率"),
+    NUM("力度×", "vel_scale", 0, 2, 0.05, "生成音的力度倍率"),
+    NUM("移調", "transpose", -24, 24, 1, "半音"),
+    NUM("八度", "octave", -3, 3, 1, null),
+  ];
+  const PARAMS = {
+    echo: [
+      NUM("回音次數", "repeats", 1, 12, 1, "上限；衰減到 min_vel 以下就停"),
+      NUM("間隔(拍)", "delay_beats", 0, 8, 0.25, "每次回音之間隔幾拍"),
+      NUM("衰減", "vel_scale", 0.1, 1, 0.02, "每次回音的力度倍率，越大尾巴越長"),
+      NUM("最小力度", "min_vel", 1, 64, 1, "低於此值就不再回音"),
+      NUM("時值衰減", "dur_decay", 0.3, 1, 0.05, "每次回音變短的比例"),
+      NUM("重疊", "max_overlap", 0.5, 4, 0.25, "同音回音允許重疊幾次；1 = 接續不重疊"),
+    ],
+    follow: [NUM("音程", "interval", -24, 24, 1, "半音，預設 7 = 五度")],
+    shadow: [NUM("延遲(ms)", "delay_ms", 0, 500, 10, null),
+             NUM("最長持續(s)", "max_hold_s", 0.5, 30, 0.5, null)],
+    silence: [NUM("等待(s)", "after_s", 0.5, 20, 0.5, "安靜多久才進來"),
+              NUM("聲部", "voices", 1, 6, 1, null),
+              NUM("力度", "vel", 1, 127, 1, null),
+              NUM("持續(s)", "hold_s", 1, 60, 1, null),
+              NUM("釋放(拍)", "release_beats", 0, 8, 0.5, "你再彈之後多久淡出"),
+              NUM("低", "low", 21, 108, 1, null), NUM("高", "high", 21, 108, 1, null)],
+    sustain: [NUM("等待(s)", "after_s", 0.5, 20, 0.5, "按住多久才開始"),
+              NUM("最短(小節)", "every_bars_min", 0.25, 8, 0.25, null),
+              NUM("最長(小節)", "every_bars_max", 0.25, 8, 0.25, null),
+              NUM("聲部", "voices", 1, 6, 1, null),
+              NUM("力度", "vel", 1, 127, 1, null),
+              NUM("持續(拍)", "hold_beats", 1, 32, 1, null),
+              NUM("釋放(拍)", "release_beats", 0, 8, 0.5, null),
+              NUM("低", "low", 21, 108, 1, null), NUM("高", "high", 21, 108, 1, null)],
+  };
+  const CHOICES = {
+    constraint: ["chord", "function", "scale", "free"],
+    align: ["none", "half", "beat", "bar"],
+    voice_lead: ["off", "octave", "free"],
+    collision: ["octave", "unison", "none"],
+  };
+
+  function edgeField(e, spec) {
+    const wrap = document.createElement("label");
+    wrap.className = "mie-field";
+    wrap.title = spec.hint || spec.key;
+    const val = e[spec.key];
+    wrap.innerHTML = `<span>${spec.label}</span><input type="number" min="${spec.min}" max="${spec.max}" step="${spec.step}">`;
+    const inp = wrap.querySelector("input");
+    inp.value = val === undefined ? "" : val;
+    inp.dataset.key = spec.key;
+    inp.addEventListener("change", () => send({ type: "set", path: `edge.${e.id}.${spec.key}`, value: Number(inp.value) }));
+    return wrap;
+  }
+
+  function edgeChoice(e, key) {
+    const wrap = document.createElement("label");
+    wrap.className = "mie-field";
+    wrap.title = key;
+    wrap.innerHTML = `<span>${key}</span><select></select>`;
+    const sel = wrap.querySelector("select");
+    CHOICES[key].forEach((v) => { const o = document.createElement("option"); o.value = v; o.textContent = v; sel.appendChild(o); });
+    sel.dataset.key = key;
+    sel.value = String(e[key] === undefined || e[key] === true ? CHOICES[key][0] : e[key]);
+    sel.addEventListener("change", () => send({ type: "set", path: `edge.${e.id}.${key}`, value: sel.value }));
+    return wrap;
+  }
+
   function renderEdges(s) {
     const box = $("#mieEdges");
     const seen = new Set();
@@ -108,18 +180,37 @@
       let el = edgeEls.get(e.id);
       if (!el) {
         el = document.createElement("div"); el.className = "mie-edge";
-        el.innerHTML = `<input type="checkbox" title="啟用"><div><div class="name"></div><div class="route"></div></div>
-          <span class="algo"></span><span class="prob">p <input type="number" min="0" max="1" step="0.05"></span><span class="fires"></span>`;
+        el.innerHTML = `<div class="mie-edge-head">
+            <input type="checkbox" title="啟用">
+            <div><div class="name"></div><div class="route"></div></div>
+            <span class="algo"></span><span class="fires"></span>
+            <button class="mie-more" title="參數">▾</button>
+          </div><div class="mie-edge-body" hidden></div>`;
         el.querySelector('input[type=checkbox]').addEventListener("change", (ev) => send({ type: "set", path: `edge.${e.id}.enabled`, value: ev.target.checked }));
-        el.querySelector('input[type=number]').addEventListener("change", (ev) => send({ type: "set", path: `edge.${e.id}.prob`, value: Number(ev.target.value) }));
+        const body = el.querySelector(".mie-edge-body");
+        el.querySelector(".mie-more").addEventListener("click", () => {
+          body.hidden = !body.hidden;
+          el.querySelector(".mie-more").textContent = body.hidden ? "▾" : "▴";
+        });
+        // the algorithm's own version of a knob wins, so vel_scale is not shown twice
+        const specs = new Map();
+        [...COMMON, ...(PARAMS[e.algo] || [])].forEach((sp) => specs.set(sp.key, sp));
+        specs.forEach((spec) => body.appendChild(edgeField(e, spec)));
+        ["constraint", "align", "voice_lead", "collision"].forEach((k) => body.appendChild(edgeChoice(e, k)));
         box.appendChild(el); edgeEls.set(e.id, el);
       }
       const src = e.src === 0 ? "HUMAN" : `CH${e.src}`;
       el.querySelector(".name").textContent = e.id;
-      el.querySelector(".route").textContent = `${src} → CH${e.dst}` + (e.delay_beats ? ` · ${e.delay_beats} beat` : "") + (e.delay_ms ? ` · ${e.delay_ms} ms` : "") + ` · ${e.constraint}` + (e.max_hop !== undefined ? ` · hop≤${e.max_hop}` : "");
+      el.querySelector(".route").textContent = `${src} → CH${e.dst} · p ${e.prob} · ${e.constraint}`
+        + (e.delay_beats ? ` · ${e.delay_beats} beat` : "") + (e.delay_ms ? ` · ${e.delay_ms} ms` : "");
       el.querySelector(".algo").textContent = e.algo;
       const cb = el.querySelector('input[type=checkbox]'); if (document.activeElement !== cb) cb.checked = e.enabled;
-      const pi = el.querySelector('input[type=number]'); if (document.activeElement !== pi) pi.value = e.prob;
+      el.querySelectorAll(".mie-edge-body input, .mie-edge-body select").forEach((inp) => {
+        if (document.activeElement === inp) return;
+        const v = e[inp.dataset.key];
+        if (v === undefined) return;
+        inp.value = inp.tagName === "SELECT" ? String(v === true ? CHOICES[inp.dataset.key][0] : v) : v;
+      });
       el.querySelector(".fires").textContent = e.fires || 0;
       el.classList.toggle("hot", e.ago !== null && e.ago !== undefined && e.ago < 2);
       el.classList.toggle("off", !e.enabled);

@@ -138,7 +138,7 @@ def voice_lead_for(edge) -> str:
 def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instrument],
               collision: str = "octave", *, voice_lead: str = "off",
               prev: Optional[int] = None, others: tuple = (),
-              tension: float = 0.0) -> Optional[int]:
+              tension: float = 0.0, note_range: Optional[tuple] = None) -> Optional[int]:
     """Final pitch for a generated note given the state *now*.
 
     Snap to the allowed pitch classes - by voice leading from `prev` when the
@@ -147,6 +147,13 @@ def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instr
     tone, else drop.
     """
     lo, hi = inst.note_range if inst else (0, 127)
+    if note_range:
+        # An edge that sets low/high means that register. Voice leading used to
+        # re-pick inside the instrument range and quietly ignore it, which is
+        # how the string lane ended up at 76-91 under an edge capped at 88.
+        lo, hi = max(lo, int(note_range[0])), min(hi, int(note_range[1]))
+        if lo > hi:
+            lo, hi = inst.note_range if inst else (0, 127)
     pcs = allowed_pcs(st, constraint, tension)
     held = list(st.held)
     held_pcs = {h % 12 for h in held} if collision != "none" else set()
@@ -174,6 +181,12 @@ def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instr
     return None
 
 
+def edge_range(edge) -> Optional[tuple]:
+    """The register an edge asked for, if it named one."""
+    lo, hi = edge.params.get("low"), edge.params.get("high")
+    return (int(lo), int(hi)) if lo is not None and hi is not None else None
+
+
 def constrain(p: Proposal, st: MusicalState, edge: Edge, inst: Optional[Instrument], *,
               prev: Optional[int] = None, others: tuple = (),
               tension: float = 0.0) -> Optional[Proposal]:
@@ -185,7 +198,8 @@ def constrain(p: Proposal, st: MusicalState, edge: Edge, inst: Optional[Instrume
     if p.kind != "on":
         return p
     note = late_bind(p.note, edge.constraint, st, inst, "none",
-                     voice_lead=voice_lead_for(edge), prev=prev, others=others, tension=tension)
+                     voice_lead=voice_lead_for(edge), prev=prev, others=others, tension=tension,
+                     note_range=edge_range(edge))
     if note is None:
         return None
     vel = int(round(p.vel * (inst.vel_scale if inst else 1.0)))

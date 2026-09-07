@@ -7,6 +7,7 @@ Only the Engine thread mutates this object.  All time comes in as an argument
 from __future__ import annotations
 
 import math
+import statistics
 from collections import Counter, deque
 from dataclasses import dataclass, field
 from typing import Optional
@@ -290,24 +291,75 @@ class MusicalState:
         self.human_energy = _ema(self.human_energy, target, dt if dt > 0 else 0.05, tau)
         self._energy_t = now
 
+    # A gap may be any of these note values of the pulse, but not all readings
+    # are equally good: a pulse two thirds of the real one explains everything
+    # through dotted values and would otherwise score the same, which is what
+    # made the estimate slide from 142 BPM to 97 on the second take. Simple
+    # ratios are worth more.
+    _RATIO_WEIGHTS = {1.0: 1.0, 0.5: 0.9, 2.0: 0.9, 0.25: 0.7, 4.0: 0.7,
+                      1.5: 0.45, 0.75: 0.45, 3.0: 0.4}
+    IOI_MIN_SAMPLES = 8
+    IOI_ADOPT_CONF = 0.55
+    IOI_TOLERANCE = 0.18       # how far off a note value may sit
+
+    @classmethod
+    def _pulse_fit(cls, iois: list[float], period: float) -> float:
+        """How well this pulse explains the gaps, 0-1, weighted by simplicity."""
+        if period <= 0:
+            return 0.0
+        score = 0.0
+        for x in iois:
+            r = x / period
+            best = 0.0
+            for k, w in cls._RATIO_WEIGHTS.items():
+                if abs(r - k) <= cls.IOI_TOLERANCE * k:
+                    best = max(best, w)
+            score += best
+        return score / len(iois)
+
     def _estimate_bpm(self) -> None:
-        """Cluster recent inter-onset intervals into a 60-180 BPM tempo."""
-        if len(self.recent_ioi) < 6:
+        """Induce the pulse from recent gaps between notes.
+
+        The old version demanded that 60 % of the gaps land in one 4-BPM bucket.
+        Real playing mixes quarters, eighths and dotted notes, so no bucket ever
+        got there and the engine sat on the scene default for a whole piece: in
+        the 2026-09-07 log the player was around 140 BPM while every echo was
+        spaced at 92, which is 1.5 of their beats - neither on the beat nor a
+        clean subdivision. Scoring candidate pulses by how many gaps are a plain
+        note value of them handles mixed rhythms, which is the normal case.
+        """
+        iois = [x for x in self.recent_ioi if 0.05 < x < 4.0]
+        if len(iois) < self.IOI_MIN_SAMPLES:
             return
-        cands: Counter = Counter()
-        for ioi in self.recent_ioi:
-            for mult in (1, 2, 4, 0.5):
-                bpm = 60.0 / (ioi * mult)
-                if 60 <= bpm <= 180:
-                    cands[round(bpm / 4) * 4] += 1
-        if not cands:
+        seeds = {statistics.median(iois)}
+        for x in iois:
+            seeds.add(x)
+        best, best_fit = None, 0.0
+        for seed in seeds:
+            period = seed
+            while period > 0 and 60.0 / period > 180.0:
+                period *= 2.0
+            while period > 0 and 60.0 / period < 60.0:
+                period /= 2.0
+            if not (0.3 <= period <= 1.05):
+                continue
+            fit = self._pulse_fit(iois, period)
+            if fit > best_fit + 1e-9:
+                best, best_fit = period, fit
+        if best is None:
             return
-        bpm, n = cands.most_common(1)[0]
-        self.ioi_bpm = float(bpm)
-        self.ioi_conf = n / (len(self.recent_ioi) * 1.0)
-        if self.clock_source in ("scene", "ioi") and self.ioi_conf >= 0.6:
-            self.bpm = self.ioi_bpm
-            self.clock_source = "ioi"
+        self.ioi_bpm = 60.0 / best
+        self.ioi_conf = best_fit
+        if self.clock_source not in ("scene", "ioi") or best_fit < self.IOI_ADOPT_CONF:
+            return
+        if self.clock_source == "ioi":
+            # already locked: only move for a reading that is clearly better,
+            # so the pulse does not wander mid-phrase
+            keep = self._pulse_fit(iois, 60.0 / self.bpm)
+            if best_fit <= keep * 1.12:
+                return
+        self.bpm = self.ioi_bpm
+        self.clock_source = "ioi"
 
     # ---- generated notes --------------------------------------------------
     def gen_on(self, ch: int, note: int, now: float, lane: str, root_id: int, hop: int,
@@ -352,6 +404,8 @@ class MusicalState:
             "key_source": self.key.source, "key_conf": round(self.key.confidence, 2),
             "scale": self.scale_id,
             "bpm": round(self.bpm, 1), "clock": self.clock_source,
+            "pulse_bpm": round(self.ioi_bpm, 1) if self.ioi_bpm else None,
+            "pulse_conf": round(self.ioi_conf, 2),
             "beat": self.bar_pos(now) + 1, "beats_per_bar": self.beats_per_bar,
             "held": sorted(dict(self.held)), "sustained": sorted(dict(self.sustained)),
             "pedal": sorted(ch for ch, on in list(self.sustain.items()) if on),
