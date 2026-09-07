@@ -1790,3 +1790,82 @@ def test_the_escape_never_lands_on_a_note_that_synth_is_already_playing():
     # with nothing in the way it is free to take the obvious note
     assert late_bind(65, "chord", eng.st, inst, "none", gen_now=[64],
                      note_range=(60, 70)) == 68
+
+
+def _tex_edge(**over) -> dict:
+    e = {"id": "tex", "src": 0, "dst": 1, "algo": "silence", "prob": 1.0, "after_s": 1.0,
+         "lane": "texture", "hold_s": 30, "voices": 2, "vel": 40, "constraint": "chord",
+         "release_beats": 1.0, "silence_mode": "attack", "align": "none"}
+    e.update(over)
+    return e
+
+
+def test_a_pad_leaves_when_the_harmony_moves_with_no_new_attack():
+    """22:14 take: the texture entered under a held chord and sat for 15.5 s -
+    a long tone in what had become a different scale, cutting across the
+    playing. It used to wait for the player's next ATTACK, so lifting fingers
+    off a chord could move the harmony out from under it and it would not
+    notice. Here the chord changes with no note_on at all.
+    """
+    eng, clk, out = make([_tex_edge()])
+    hold_chord(eng, clk, 9, [48, 52, 55, 58])        # C7, held down
+    run_for(eng, clk, 3.0)                           # no new attack: the pad enters
+    first = sorted(n for (c, n) in eng.st.active_gen if c == 1)
+    assert first, "the texture never entered"
+    assert all(n % 12 in {0, 4, 7, 10} for n in first), f"the pad did not voice C7: {first}"
+    # lift two fingers: the harmony moves, and NOT ONE note_on is played
+    release_chord(eng, clk, 9, [48, 52])
+    run_for(eng, clk, 2.0)
+    # `st.chord` is deliberately stale here - it is only recomputed on a note_on
+    # and outlives the release - which is precisely why the rule reads what is
+    # ringing instead
+    still = [n for (c, n) in eng.st.active_gen if c == 1 and n in first]
+    assert not still, f"still holding the C7 voicing after the harmony moved: {still}"
+
+
+def test_the_pad_leaves_only_when_it_no_longer_fits():
+    """A name change on its own is not a reason to leave, or the lane would
+    chatter on every passing chord. Only lifted fingers can move the harmony
+    without an attack, and an attack releases the lane by the older rule, so
+    both cases here are driven by releases alone.
+    """
+    from backend.mie.algos.silence import leaves_the_harmony
+
+    eng, clk, out = make([_tex_edge()])
+    hold_chord(eng, clk, 9, [48, 52, 55])                    # C: the pad takes C and E
+    run_for(eng, clk, 3.0)
+    edge, ls = eng.graph.find_edge("tex"), eng.lane_state["tex"]
+    assert ls.get("fired") and ls.get("chord") == "C"
+    assert sorted(n % 12 for (c, n) in eng.st.active_gen if c == 1) == [0, 4]
+    assert not leaves_the_harmony(eng.st, edge, ls, clk()), "it wanted to leave its own chord"
+    release_chord(eng, clk, 9, [55])                         # C(3): still holds C and E
+    run_for(eng, clk, 0.2)
+    assert not leaves_the_harmony(eng.st, edge, ls, clk()), "left a chord it still fitted"
+
+    eng, clk, out = make([_tex_edge()])
+    hold_chord(eng, clk, 9, [48, 52, 55, 58, 62])            # C9: the pad takes C and D
+    run_for(eng, clk, 3.0)
+    edge, ls = eng.graph.find_edge("tex"), eng.lane_state["tex"]
+    assert ls.get("fired")
+    release_chord(eng, clk, 9, [48, 52])                     # G Bb D left ringing: no C
+    assert leaves_the_harmony(eng.st, edge, ls, clk()), "stayed on a chord it no longer fits"
+    # and the lane acts on it: the stale voicing goes, a fitting one takes over
+    run_for(eng, clk, 3.0)
+    now = sorted(n % 12 for (c, n) in eng.st.active_gen if c == 1)
+    assert 0 not in now, f"the C is still ringing over a Gm: {now}"
+
+
+def test_following_the_harmony_can_be_turned_off():
+    from backend.mie.algos import silence
+    from backend.mie.algos.silence import leaves_the_harmony
+
+    eng, clk, out = make([_tex_edge(follow_chord=False)])
+    hold_chord(eng, clk, 9, [48, 52, 55, 58, 62])
+    run_for(eng, clk, 3.0)
+    edge, ls = eng.graph.find_edge("tex"), eng.lane_state["tex"]
+    assert ls.get("fired")
+    release_chord(eng, clk, 9, [48, 52])
+    # the rule still reports the truth; this edge simply does not consult it
+    assert leaves_the_harmony(eng.st, edge, ls, clk())
+    assert not silence.tick(eng.st, edge, eng.rng, clk(), ls), "it left although following was off"
+    assert [k for k in eng.st.active_gen if k[0] == 1], "the pad was released anyway"

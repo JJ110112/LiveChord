@@ -781,6 +781,11 @@ class Engine:
                 offs = [x for x in props if x.kind == "off"]
                 if offs:
                     self._apply_offs(offs, e, now)
+                    # and whatever of this lane has not started yet, same reason
+                    # as `_human_came_back`: those notes are not in active_gen
+                    rel = float(e.params.get("release_beats", 1.0)) * self.st.beat_s
+                    self.sched.release_lane(e.dst, e.lane, now + rel)
+                    self._ui("lane_off", edge=e.id, why=ls.get("left", ""), n=len(offs))
                 props = [x for x in props if x.kind == "on"]
                 if not props:
                     continue

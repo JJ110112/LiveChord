@@ -5,6 +5,7 @@ out after `release_beats`.
 `lane_state` (owned by the engine, one dict per edge) keys:
     fired: bool       - the lane is currently sounding / has fired for this silence
     notes: list       - (ch, note) pairs the engine actually started
+    chord: str        - the chord this entry was voiced for (`follow_chord`)
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from random import Random
 
 from ..events import Proposal
 from ..graph import Edge
+from ..harmony import recognize
 from ..scales import scale_pcs
 from ..state import MusicalState
 from . import scaled_vel
@@ -36,8 +38,50 @@ def _voicing(st: MusicalState, n_voices: int, low: int, high: int) -> list[int]:
     return notes
 
 
+def _release(st: MusicalState, edge: Edge, why: str, lane_state: dict) -> list[Proposal]:
+    lane_state["fired"] = False
+    lane_state["retry_t"] = 0.0
+    lane_state["left"] = why
+    rel = float(edge.params.get("release_beats", 1.0)) * st.beat_s
+    return [Proposal(ch=ch, note=note, vel=0, dur=0.0, lane=edge.lane, kind="off", t_offset=rel)
+            for (ch, note), g in list(st.active_gen.items()) if ch == edge.dst and g.lane == edge.lane]
+
+
+def leaves_the_harmony(st: MusicalState, edge: Edge, lane_state: dict, now: float = 0.0) -> bool:
+    """Has the music moved out from under the pad this lane laid down?
+
+    Waiting for the player's next attack is not enough. On the 22:14 take the
+    texture entered under a held chord and sat for 15.5 seconds, because that is
+    how long the player went without striking a new note - a long tone in what
+    had become a different scale, cutting across the playing.
+
+    It reads what is RINGING right now (fingers plus pedal), not `st.chord`.
+    `st.chord` is only recomputed on a note_on and deliberately outlives the
+    release, so a rule written against it could never fire: by the time the
+    chord had moved, an attack had already told the lane to leave. Lifting
+    fingers moves the harmony without striking anything, and that is exactly
+    the case this rule is for.
+
+    A name change on its own is not a reason to go - a pad that still fits
+    should ride through, or the lane would chatter on every passing chord. It
+    leaves when it no longer FITS.
+    """
+    if not lane_state.get("fired"):
+        return False
+    mine = [note for (ch, note), g in st.active_gen.items()
+            if ch == edge.dst and g.lane == edge.lane]
+    if not mine:
+        return False
+    live = recognize(list(st.held) + list(st.sustained), now, st.chord)
+    if live is None or live.name == lane_state.get("chord"):
+        return False
+    return any(note % 12 not in live.tones for note in mine)
+
+
 def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict,
          tension: float = 0.0) -> list[Proposal]:
+    if edge.params.get("follow_chord", True) and leaves_the_harmony(st, edge, lane_state, now):
+        return _release(st, edge, "chord_moved", lane_state)
     after_s = float(edge.params.get("after_s", 2.0))
     # What counts as space (per edge):
     #   "sound"  - nothing of the human's is ringing, pedal included. Correct
@@ -53,6 +97,8 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
         return []
     lane_state["fired"] = True
     lane_state["fired_t"] = now
+    live = recognize(list(st.held) + list(st.sustained), now, st.chord)
+    lane_state["chord"] = live.name if live else (st.chord.name if st.chord else None)
     hold = float(edge.params.get("hold_s", 20.0))
     vel = scaled_vel(edge, int(edge.params.get("vel", 56)))
     n_voices = int(edge.params.get("voices", 3))
@@ -85,8 +131,4 @@ def on_human_note(st: MusicalState, edge: Edge, now: float, lane_state: dict) ->
     """Human came back: schedule the lane's release after `release_beats`."""
     if not lane_state.get("fired"):
         return []
-    lane_state["fired"] = False
-    lane_state["retry_t"] = 0.0
-    rel = float(edge.params.get("release_beats", 1.0)) * st.beat_s
-    return [Proposal(ch=ch, note=note, vel=0, dur=0.0, lane=edge.lane, kind="off", t_offset=rel)
-            for (ch, note), g in list(st.active_gen.items()) if ch == edge.dst and g.lane == edge.lane]
+    return _release(st, edge, "human", lane_state)
