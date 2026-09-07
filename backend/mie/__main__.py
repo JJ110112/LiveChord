@@ -39,7 +39,10 @@ def main(argv=None) -> int:
     ap.add_argument("--no-ui", action="store_true")
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--list-ports", action="store_true")
-    ap.add_argument("--log-file", default=None, help="also append the log here")
+    ap.add_argument("--log-file", default=None, help="also append the fault log here")
+    ap.add_argument("--event-log", default=None,
+                    help="session event log (default: data/logs/mie/session-<time>.jsonl)")
+    ap.add_argument("--no-event-log", action="store_true")
     ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args(argv)
 
@@ -63,14 +66,24 @@ def main(argv=None) -> int:
     scene = load_scene(a.scene)
     clock = wall_clock
 
+    evlog = None
+    if not a.no_event_log:
+        from .eventlog import EventLog
+        evlog = EventLog(a.event_log)
+
     io = MidiIO(ports_cfg, None, clock)  # queue attached below
     engine = Engine(scene, instruments, clock=clock, send=io.send, rng=Random(a.seed), mode=a.mode,
-                    control_map=control_map)
+                    control_map=control_map, event_sink=evlog.log if evlog else None)
     io.q = engine.in_queue
     io.open()
     for k, v in io.names.items():
         print(f"[port] {k:<10} = {v}")
     print(f"[scene] {scene.id} {scene.name}  mode={engine.mode}  edges={len(scene.edges)}  scenes={[s['id'] for s in list_scenes()]}")
+    if evlog is not None:
+        evlog.header(scene=scene.id, mode=engine.mode, ports=io.names,
+                     edges=[e.to_dict() for e in scene.edges])
+        evlog.snapshots_from(engine, engine.stop)
+        print(f"[log] {evlog.path}")
 
     ui = None
     if not a.no_ui:
@@ -169,6 +182,10 @@ def main(argv=None) -> int:
         io.close()
         s = engine.snapshot()
         print(f"[final] {s['stats']} jitter={s['jitter']}")
+        if evlog is not None:
+            evlog.close({"stats": s["stats"], "drops": s["drops"], "jitter": s["jitter"],
+                         "edge_fires": {e.id: engine.edge_fires.get(e.id, 0) for e in engine.graph.edges}})
+            print(f"[log] {evlog.stats}")
     return 0
 
 

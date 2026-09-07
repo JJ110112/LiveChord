@@ -53,7 +53,8 @@ class Engine:
     def __init__(self, scene: Scene, instruments: dict[int, Instrument], *,
                  clock: Callable[[], float], send: Callable[[str, object], None],
                  rng: Optional[Random] = None, mode: Optional[str] = None,
-                 control_map: Optional[dict] = None):
+                 control_map: Optional[dict] = None,
+                 event_sink: Optional[Callable[[dict], None]] = None):
         import mido
         self.mido = mido
         self.clock = clock
@@ -85,6 +86,9 @@ class Engine:
         self._ui_lock = threading.Lock()
         self.last_control: Optional[dict] = None
         self.control_map = control_map or {}
+        # optional session log; called on the engine and scheduler threads, so
+        # it must only hand the event off, never touch the disk itself
+        self.event_sink = event_sink
         self.panicked = False
         self.stop = threading.Event()
         self._t0 = clock()
@@ -740,6 +744,8 @@ class Engine:
         kw["t"] = round(self.clock() - self._t0, 3)
         with self._ui_lock:
             self.ui_events.append(kw)
+        if self.event_sink is not None:
+            self.event_sink(kw)
 
     def pop_events(self) -> list[dict]:
         with self._ui_lock:
