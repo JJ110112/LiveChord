@@ -64,7 +64,9 @@
     pct($("#mDensity"), st.density / 8); $("#vDensity").textContent = st.density.toFixed(1) + "/s";
     pct($("#mEnergy"), st.energy); $("#vEnergy").textContent = Math.round(st.energy * 100) + "%";
     pct($("#mRestraint"), s.restraint); $("#vRestraint").textContent = s.restraint.toFixed(2);
-    pct($("#mSilence"), Math.min(1, st.silence_s / 8)); $("#vSilence").textContent = st.silence_s.toFixed(1) + " s";
+    pct($("#mSilence"), Math.min(1, st.silence_s / 8));
+    const holding = (st.held || []).length + (st.sustained || []).length;
+    $("#vSilence").textContent = holding ? `按住 ${holding}` + ((st.pedal || []).length ? " ♪" : "") : st.silence_s.toFixed(1) + " s";
     pct($("#mVel"), st.vel_mean / 127); $("#vVel").textContent = Math.round(st.vel_mean);
     const g = s.scene.global || {};
     syncSlider("gProb", g.prob_scale, 2); syncSlider("gChaos", g.chaos, 2); syncSlider("gRestraint", g.restraint, 2);
@@ -148,6 +150,7 @@
       case "off": cls = "off"; txt = `  off ch${e.ch} ${nn(e.note)} (${e.why})`; break;
       case "panic": cls = "panic"; txt = `PANIC (${e.reason}) ${e.notes} notes released`; break;
       case "loop": cls = "loop"; txt = `LOOP ch${e.ch} ${nn(e.note)} came back on MIE In`; break;
+      case "pedal": cls = "edge"; txt = `  pedal ch${e.ch} ${e.val >= 64 ? "down" : "up"}`; break;
       case "control": cls = "ctl"; txt = `UC4 ${e.key} = ${e.val}` + (e.action ? ` → ${e.action}` : ""); break;
       case "set": cls = "set"; txt = `set ${e.path} = ${JSON.stringify(e.value)}`; break;
       case "mode": cls = "mode"; txt = `mode → ${e.mode}`; break;

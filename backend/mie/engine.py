@@ -63,6 +63,7 @@ class Engine:
                       "panics": 0, "controls": 0, "dups": 0}
         self.edge_fires: dict[str, int] = {}
         self.drop_reasons: dict[str, int] = {}
+        self._roll_cache: dict[str, tuple] = {}   # edge id -> (group start t, p or None)
         self.edge_last: dict[str, float] = {}
         self.ui_events: deque[dict] = deque(maxlen=400)
         self._ui_lock = threading.Lock()
@@ -221,8 +222,10 @@ class Engine:
             return
         # ---- HUMAN ----
         if ev.kind in ("cc", "pc", "clock"):
+            # CH16 carries the Fantom's own scene bank/program changes: ignore.
             if ev.kind == "cc" and ev.cc == 64 and ev.ch != 16:
-                self._ui("human_cc", ch=ev.ch, cc=ev.cc, val=ev.val)
+                self.st.set_sustain(ev.ch, (ev.val or 0) >= 64, now)
+                self._ui("pedal", ch=ev.ch, val=ev.val)
             return
         if ev.note is None:
             return
@@ -274,7 +277,7 @@ class Engine:
         edges = self.graph.candidate_edges(ev.origin, ev.ch, ev.hop, now, self.allowed_algos)
         if not edges:
             return
-        fired = roll(edges, self.scene.globals, self.st.human_energy, self.rng, self.mode_caps)
+        fired = self._roll_grouped(edges, ev, now)
         for e, p in fired:
             fn = algos.EVENT_ALGOS.get(e.algo)
             if fn is None:
@@ -286,6 +289,31 @@ class Engine:
                                    beat_s=self.st.beat_s)
             self._record_fire(e, now, p)
             self._schedule_props(props, ev, e, now)
+
+    def _roll_grouped(self, edges: list, ev: MieEvent, now: float) -> list[tuple]:
+        """Probability gate with chord grouping.
+
+        Rolling per note turns a five-note chord into "two of the five notes got
+        an echo", which sounds arbitrary. Notes struck within `chord_window_ms`
+        of each other share one decision per edge, so a chord is answered as a
+        chord or not at all.
+        """
+        if ev.origin != "HUMAN" or not ev.is_note_on:
+            return roll(edges, self.scene.globals, self.st.human_energy, self.rng, self.mode_caps)
+        fresh, cached = [], []
+        for e in edges:
+            win = float(e.params.get("chord_window_ms", 45)) / 1000.0
+            c = self._roll_cache.get(e.id)
+            if c is not None and (now - c[0]) <= win:
+                if c[1] is not None:
+                    cached.append((e, c[1]))
+            else:
+                fresh.append(e)
+        fired = roll(fresh, self.scene.globals, self.st.human_energy, self.rng, self.mode_caps)
+        won = {id(e) for e, _ in fired}
+        for e in fresh:
+            self._roll_cache[e.id] = (now, next((p for f, p in fired if f is e), None) if id(e) in won else None)
+        return fired + cached
 
     def _record_fire(self, e, now: float, p: float) -> None:
         e.last_fire_t = now

@@ -68,10 +68,13 @@ class MusicalState:
         self.clock_source = "scene"
         self.beat_origin_t = now          # wall time of some downbeat
         self.held: dict[int, HeldNote] = {}
+        self.sustained: dict[int, HeldNote] = {}   # released but still ringing under the pedal
+        self.sustain: dict[int, bool] = {}         # CC64 state per human channel
         self._human_ch_t: dict[int, float] = {}
         self.register = "mid"
         self.direction = 0
         self.silence_s = 0.0
+        self.last_sound_end_t: Optional[float] = None   # when the last human note stopped ringing
         self.last_human_on_t: Optional[float] = None
         self.last_human_dur: Optional[float] = None
         self.density = 0.0
@@ -187,9 +190,30 @@ class MusicalState:
                 if rec.note == note and rec.dur is None:
                     rec.dur = dur
                     break
-        if not self.held:
-            pass  # keep last chord: harmonic context outlives the release
+            if self.sustain.get(h.ch):
+                self.sustained[note] = h      # the pedal keeps it ringing
+        # the chord itself is kept: harmonic context outlives the release
+        self._mark_sound_end(now)
         return dur
+
+    def set_sustain(self, ch: int, on: bool, now: float) -> None:
+        """CC64 for one human channel. Lifting it stops every note it was holding."""
+        was = self.sustain.get(ch, False)
+        self.sustain[ch] = on
+        if was and not on:
+            for note, h in list(self.sustained.items()):
+                if h.ch == ch:
+                    del self.sustained[note]
+            self._mark_sound_end(now)
+
+    @property
+    def sounding(self) -> dict[int, HeldNote]:
+        """Every human note still audible: fingers down plus pedal-held."""
+        return {**self.sustained, **self.held}
+
+    def _mark_sound_end(self, now: float) -> None:
+        if not self.held and not self.sustained:
+            self.last_sound_end_t = now
 
     def _update_register_direction(self) -> None:
         recent = list(self.recent_notes)[-8:]
@@ -256,7 +280,13 @@ class MusicalState:
     # ---- periodic ---------------------------------------------------------
     def tick(self, now: float) -> None:
         self._decay(now)
-        if self.last_human_on_t is not None:
+        # Silence is "nothing of mine is ringing any more", not "no new key was
+        # struck": holding a chord (or holding it on the pedal) is not 留白.
+        if self.held or self.sustained:
+            self.silence_s = 0.0
+        elif self.last_sound_end_t is not None:
+            self.silence_s = now - self.last_sound_end_t
+        elif self.last_human_on_t is not None:
             self.silence_s = now - self.last_human_on_t
         for ch, t in list(self._human_ch_t.items()):
             if now - t > self.HUMAN_CH_WINDOW:
@@ -280,7 +310,9 @@ class MusicalState:
             "scale": self.scale_id,
             "bpm": round(self.bpm, 1), "clock": self.clock_source,
             "beat": self.bar_pos(now) + 1, "beats_per_bar": self.beats_per_bar,
-            "held": sorted(self.held), "human_chs": sorted(self.human_chs),
+            "held": sorted(self.held), "sustained": sorted(self.sustained),
+            "pedal": sorted(ch for ch, on in self.sustain.items() if on),
+            "human_chs": sorted(self.human_chs),
             "register": self.register, "direction": self.direction,
             "silence_s": round(self.silence_s, 2),
             "density": round(self.density, 2), "vel_mean": round(self.vel_mean, 1),

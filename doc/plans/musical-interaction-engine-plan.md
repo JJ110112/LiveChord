@@ -133,7 +133,9 @@ class MusicalState:
     human_chs: set[int]          # 最近 2 s 內有人類 note_on 的 channel（Fantom 當前作用中的 EXT zone）
     register: Literal["low","mid","high"]  # 依最近 8 個音的加權中位數，門檻 <48 / 48–72 / >72
     direction: int               # -1/0/+1，最近 4 個音的斜率
-    silence_s: float             # 距最後一個人類 note_on 的秒數
+    silence_s: float             # 距最後一個人類「聲音結束」的秒數；held 或 sustained 非空時為 0
+    sustained: dict[int, HeldNote]  # 已放開但延音踏板還撐著的音
+    sustain: dict[int, bool]        # 每個 human channel 的 CC64 狀態
     # 能量（EMA，見 §6）
     density: float               # notes/sec，τ=1.5 s
     vel_mean: float; vel_var: float   # τ=2 s
@@ -462,7 +464,12 @@ Auracle 名詞對照：**DIN MIDI** = 實體 DIN 孔（`Fantom 8` = DIN 1）、*
 | Silence pad 只出一個音 | `above_held` 把音域下限推高，上限沒跟著放寬，配置只塞得下一個音 | 音域不足時退回設定的 low/high，保證聲部數；scene 的 pad high 48–84 |
 | 卡音 | Shadow 只靠 `active_gen` 找要放開的音；短音時人類 note_off 會早於 scheduler 的「已送出」通知到引擎，找不到就放不掉，撐到 8 s 安全上限 | 新增 `Scheduler.release_by_src()`，直接用「這個 shadow 綁的人類音」在 heap 上放開，不依賴 `active_gen` |
 
-以上都有回歸測試（`test_echo_length_follows_the_human_note_not_the_delay`、`test_echo_keeps_its_pitch_over_a_held_chord`、`test_silence_pad_keeps_all_voices_when_the_human_plays_high`、`test_shadow_releases_even_if_the_sent_notice_arrives_late`），共 33 passed。
+| 按著和弦不放卻觸發 silence pad | `silence_s` 依規格 §2.2 是「距最後一個 note_on 的秒數」，按住不放＝沒有新 note_on＝被當成留白 | **留白重新定義為「人類的聲音都停了」**：`held` 或延音踏板撐著的 `sustained` 只要非空，`silence_s` 就是 0；引擎現在也處理 CC64（踏板放開才開始算留白） |
+| 按和弦時有時完全沒有 echo、有時只回其中兩個音 | 機率是**每個音各擲一次**（SAFE 模式 p ≈ 0.13，五音和弦有一半機率全部落空） | 新增和弦分組：`chord_window_ms`（預設 45 ms）內按下的音，同一條邊共用一次擲骰，和弦要嘛整組回應、要嘛不回應 |
+
+以上都有回歸測試（`test_echo_length_follows_the_human_note_not_the_delay`、`test_echo_keeps_its_pitch_over_a_held_chord`、`test_silence_pad_keeps_all_voices_when_the_human_plays_high`、`test_shadow_releases_even_if_the_sent_notice_arrives_late`、`test_holding_a_chord_is_not_silence_even_with_the_pedal_down`、`test_a_chord_gets_one_probability_roll_not_one_per_note`），共 35 passed。
+
+**規格修訂**：§2.2 的 `silence_s` 定義改為「距最後一個人類聲音結束的秒數（`held` 與踏板 `sustained` 皆空之後才起算）」，`MusicalState` 新增 `sustained` 與 `sustain`（每個 human channel 的 CC64 狀態）。
 
 **驗收方式（規格 §11 Phase 1）**：使用者用 `start_mie.bat --mode SAFE` 彈 10 分鐘、再 `--mode INTERACTIVE` 彈 10 分鐘，觀察無卡音、無迴圈（面板 loops = 0）、UC4 / 面板 / `Esc Esc` PANIC 一鍵有效。
 

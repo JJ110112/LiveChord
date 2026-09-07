@@ -282,8 +282,14 @@ def test_panic_clears_everything_on_both_ports():
     ])
     eng.post(human_event("note_on", clk(), 9, 60, 90))
     eng.step()
-    run_for(eng, clk, 0.8)
-    assert eng.st.active_gen and any(k[0] == 1 for k in eng.st.active_gen)
+    run_for(eng, clk, 0.1)
+    eng.post(human_event("note_off", clk(), 9, 60, 0))   # release: silence starts here
+    eng.step()
+    run_for(eng, clk, 0.8)                               # texture pad comes in on CH1 (REAPER)
+    eng.post(human_event("note_on", clk(), 9, 64, 90))   # held: shadow sounds on CH11 (HST)
+    eng.step()
+    run_for(eng, clk, 0.1)
+    assert any(k[0] == 1 for k in eng.st.active_gen) and any(k[0] == 11 for k in eng.st.active_gen)
     out.clear()
     eng.post(control_event(clk(), 16, 20, 127))
     eng.control_map = {"uc4:cc:20": "panic"}
@@ -393,6 +399,9 @@ def test_silence_pad_keeps_all_voices_when_the_human_plays_high():
          "hold_s": 20, "voices": 3, "vel": 50, "low": 48, "high": 84, "constraint": "chord"},
     ])
     hold_chord(eng, clk, 9, [65, 69, 72])        # F major up at F4-C5
+    run_for(eng, clk, 0.4)
+    assert not out.notes("note_on", ch=3), "holding a chord is not silence"
+    release_chord(eng, clk, 9, [65, 69, 72])
     run_for(eng, clk, 1.6)
     pad = out.notes("note_on", ch=3)
     assert len(pad) == 3, f"pad played {len(pad)} voice(s), expected 3"
@@ -418,3 +427,55 @@ def test_shadow_releases_even_if_the_sent_notice_arrives_late():
     eng.step()
     run_for(eng, clk, 0.05)
     assert out.notes("note_off", ch=11), "shadow was left sounding"
+
+
+def test_holding_a_chord_is_not_silence_even_with_the_pedal_down():
+    """Silence means nothing of the human's is ringing, not "no new key struck"."""
+    eng, clk, out = make([
+        {"id": "s", "src": 0, "dst": 3, "algo": "silence", "prob": 1.0, "after_s": 1.0, "lane": "pad",
+         "hold_s": 20, "voices": 3, "vel": 50, "low": 48, "high": 84, "constraint": "chord"},
+    ])
+    hold_chord(eng, clk, 9, [48, 52, 55])
+    run_for(eng, clk, 3.0)
+    assert eng.st.silence_s == 0.0
+    assert not out.notes("note_on", ch=3), "pad fired while the human held the chord"
+    # pedal down, then fingers up: still ringing, still not silence
+    eng.post(human_event("cc", clk(), 9, cc=64, val=127))
+    eng.step()
+    release_chord(eng, clk, 9, [48, 52, 55])
+    run_for(eng, clk, 3.0)
+    assert eng.st.sustained and eng.st.silence_s == 0.0
+    assert not out.notes("note_on", ch=3), "pad fired while the pedal held the chord"
+    # pedal up: now it is really silent
+    eng.post(human_event("cc", clk(), 9, cc=64, val=0))
+    eng.step()
+    run_for(eng, clk, 1.6)
+    assert len(out.notes("note_on", ch=3)) == 3
+
+
+def test_a_chord_gets_one_probability_roll_not_one_per_note():
+    """Per-note rolls answered 2 of 5 chord notes at random; a chord is one gesture."""
+    eng, clk, out = make([
+        {"id": "e", "src": 0, "dst": 10, "algo": "echo", "delay_beats": 0.5, "prob": 0.5,
+         "constraint": "free", "lane": "echo", "chord_window_ms": 45},
+    ], seed=5, prob_scale=1.0)
+    answered, partial = 0, 0
+    for i in range(40):
+        notes = [48 + (i % 5), 55 + (i % 5), 64 + (i % 5)]
+        out.clear()
+        for n in notes:                       # struck together, inside the window
+            eng.post(human_event("note_on", clk(), 9, n, 70))
+            clk.advance(0.008)
+        eng.step()
+        run_for(eng, clk, 0.9)
+        for n in notes:
+            eng.post(human_event("note_off", clk(), 9, n, 0))
+        eng.step()
+        run_for(eng, clk, 0.6)
+        got = len({n for _, _, n, _ in out.notes("note_on", ch=10)})
+        if got:
+            answered += 1
+            if got != len(notes):
+                partial += 1
+    assert answered > 5, "the edge never fired"
+    assert partial == 0, f"{partial} chords were answered only in part"
