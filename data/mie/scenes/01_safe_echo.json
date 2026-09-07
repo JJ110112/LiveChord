@@ -22,7 +22,7 @@
     {"id": "phrase_modx", "src": 0, "dst": 12, "algo": "phrase", "prob": 0.8,
      "_phrase": "the whole gesture comes back with its rhythm intact, quieter each pass - a canyon, not a sprinkle of single notes",
      "phrase_gap_beats": 1.0, "min_notes": 3, "max_notes": 8, "delay_beats": 1.0,
-     "repeats": 3, "vel_scale": 0.6, "dur_decay": 0.75, "min_vel": 14, "dur_min_beats": 0.25,
+     "repeats": 4, "vel_scale": 0.85, "decay": 0.55, "dur_decay": 0.7, "min_vel": 12, "dur_min_beats": 0.25,
      "constraint": "free", "lane": "phrase"},
     {"id": "sustain_strings", "src": 0, "dst": 4, "algo": "sustain", "prob": 1.0, "after_s": 1.5,
      "every_bars_min": 1.0, "every_bars_max": 2.0, "voices": 3, "hold_beats": 8, "vel": 46,

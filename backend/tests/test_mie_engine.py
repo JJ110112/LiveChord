@@ -1354,3 +1354,18 @@ def test_phrase_never_returns_half_a_phrase():
     for p in _passes(out, 12, 4):
         assert [n for _, _, n, _ in p] == [55, 60, 62, 64]
         assert all(v >= 14 for _, _, _, v in p)
+
+
+def test_phrase_first_pass_is_not_already_faded():
+    """`vel_scale` is the edge's gain, `decay` is the tail; folding them into one
+    put the first return 40 % down and squeezed the whole tail into a quiet band
+    (19:18 take: v32 -> v19 -> stop, and the player heard no decay)."""
+    eng, clk, out = make([_phrase_edge(vel_scale=1.0, decay=0.55, repeats=4, min_vel=10)])
+    _shout(eng, clk, [60, 62, 64], [0.30, 0.30])
+    run_for(eng, clk, 14.0)
+    passes = _passes(out, 12, 3)
+    heads = [p[0][3] for p in passes]
+    assert heads[0] == 80, f"the first return should answer at the played velocity, got {heads[0]}"
+    for a, b in zip(heads, heads[1:]):
+        assert abs(b / a - 0.55) < 0.05, f"tail did not fade by `decay`: {heads}"
+    assert len(passes) >= 3, f"only {len(passes)} passes of range: {heads}"

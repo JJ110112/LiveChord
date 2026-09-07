@@ -7,7 +7,7 @@ the phrase that came back was missing nine of its twenty-one pitches.
 
 This one waits for the gesture to finish, rolls once for the whole phrase, and
 replays it with its internal rhythm intact, each pass quieter and shorter
-than the last -
+than the last (`decay`, per pass) -
 a short looper rather than a sprinkle of single notes.
 
 `lane_state` keys: `answered` (the onset time of the phrase already dealt with).
@@ -70,10 +70,17 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     # shifted to absorb that rather than losing its opening note - an echo that
     # drops the first word is the very thing this algorithm exists to avoid.
     dur_decay = float(p.get("dur_decay", 0.8))
+    # Two different jobs, so two numbers. `vel_scale` is the edge's own gain -
+    # how loud this instrument answers at all - and applies once. `decay` is how
+    # fast the tail dies and applies per pass AFTER the first. Folding them into
+    # one (vel_scale ** k, as the note echo does) put the very first return
+    # already 40 % down, so the whole tail sat in a narrow quiet band and the
+    # player heard "有重複但是聲音感覺一樣大" on the 19:18 take: v32 -> v19 -> stop.
+    fade = float(p.get("decay", 0.6))
     late = max(0.0, now - notes[-1].t)
     out: list[Proposal] = []
     for k in range(1, repeats + 1):
-        decay = edge.vel_scale ** k
+        decay = edge.vel_scale * fade ** (k - 1)
         # all or nothing: judge the pass by its QUIETEST note, so a fading tail
         # stops between phrases instead of returning half of one. The loudest
         # note was the wrong test - it let a pass through that then dropped its
@@ -94,7 +101,7 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
             # a note still under the finger has no recorded length yet; use how
             # long it has been down, or the whole phrase becomes 160 ms blips
             heard = rec.dur if rec.dur else max(dur_min, now - rec.t)
-            dur = max(dur_min, heard * edge.dur_scale * dur_decay ** k)
+            dur = max(dur_min, heard * edge.dur_scale * dur_decay ** (k - 1))
             dur = min(dur, max(dur_min, period - offset))
             out.append(Proposal(ch=edge.dst, note=rec.note + semis, vel=min(127, vel),
                                 dur=dur, lane=edge.lane,
