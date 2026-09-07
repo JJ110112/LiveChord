@@ -96,6 +96,8 @@ class Proposal:
     kind: str = "on"
     follow_off: bool = False
     src_note: Optional[int] = None   # human note this proposal is bound to (for follow_off)
+    capture_root: Optional[int] = None   # chord root when a phrase was captured
+    pass_id: Optional[tuple] = None      # which repeat of that phrase this note belongs to
 
     def clone(self, **kw) -> "Proposal":
         return replace(self, **kw)

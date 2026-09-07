@@ -1582,3 +1582,74 @@ def test_an_echo_keeps_its_pitch_class_even_when_it_rubs():
     run_for(eng, clk, 3.0)
     played = {n % 12 for _, _, n, _ in out.notes("note_on", ch=10)}
     assert played <= {0, 1}, f"the echo answered pitches nobody played: {sorted(played)}"
+
+
+# ------------------------------------------------- phrase follows the harmony
+def test_phrase_moves_bodily_to_the_new_chord():
+    """A phrase sung over Am and repeated under Dm comes back +5.
+
+    Every interval inside it survives, so the motif and its voice leading are
+    intact and a 9th stays a 9th instead of being snapped into a chord tone.
+    """
+    eng, clk, out = make([_phrase_edge(follow_chord=True, repeats=2, delay_beats=4.0)])
+    hold_chord(eng, clk, 9, [57, 60, 64])          # A minor
+    run_for(eng, clk, 0.2)
+    release_chord(eng, clk, 9, [57, 60, 64])
+    run_for(eng, clk, 2.0)                         # the chord is established and over
+    t_mel = clk()
+    for i, n in enumerate([69, 72, 76]):           # the phrase, over Am
+        play(eng, clk, 9, n, vel=80, hold=0.15)
+        if i < 2:
+            run_for(eng, clk, 0.1)
+    run_for(eng, clk, 0.7)                         # the phrase is captured under Am
+    hold_chord(eng, clk, 9, [62, 65, 69])          # D minor takes over before it returns
+    run_for(eng, clk, 8.0)
+    ons = [n for t, _, n, _ in out.notes("note_on", ch=12) if t > t_mel]
+    passes = [ons[i:i + 3] for i in range(0, len(ons) - 2, 3)]
+    assert [69, 72, 76] in passes, f"the pass captured under Am should return as played: {passes}"
+    assert [74, 77, 81] in passes, f"expected a pass moved +5 onto Dm: {passes}"
+    for p in passes[:2]:
+        assert [b - a for a, b in zip(p, p[1:])] == [3, 4], f"the shape changed: {p}"
+
+
+def test_a_phrase_pass_is_not_broken_in_half_by_a_chord_change():
+    """The shift is decided once per pass and reused.
+
+    A chord landing in the middle of a repeat must not leave the first half in
+    one key and the second in another - that is the one thing this feature
+    exists to protect.
+    """
+    from backend.mie.scheduler import NotePair
+
+    eng, clk, out = make([_phrase_edge(follow_chord=True)])
+    hold_chord(eng, clk, 9, [62, 65, 69])                    # D minor sounding
+    run_for(eng, clk, 0.3)
+    head = NotePair(ch=12, note=69, vel=60, t_on=0, t_off=1, lane="phrase",
+                    capture_root=9, pass_id=("p", 1))        # captured under A
+    tail = NotePair(ch=12, note=72, vel=60, t_on=0, t_off=1, lane="phrase",
+                    capture_root=9, pass_id=("p", 1))
+    assert eng._phrase_transpose(head) == 5                  # A -> D is +5
+    release_chord(eng, clk, 9, [62, 65, 69])
+    hold_chord(eng, clk, 9, [60, 64, 67])                    # C arrives mid-pass
+    run_for(eng, clk, 0.3)
+    assert eng._phrase_transpose(tail) == 5, "the pass was split by a chord change"
+    assert eng._phrase_transpose(NotePair(ch=12, note=72, vel=60, t_on=0, t_off=1,
+                                          lane="phrase", capture_root=9,
+                                          pass_id=("p", 2))) == 3, "the NEXT pass must follow C"
+
+
+def test_phrase_keeps_its_pitch_when_it_is_not_asked_to_follow():
+    eng, clk, out = make([_phrase_edge(repeats=1)])     # follow_chord absent
+    hold_chord(eng, clk, 9, [57, 60, 64])
+    run_for(eng, clk, 0.2)
+    release_chord(eng, clk, 9, [57, 60, 64])
+    run_for(eng, clk, 2.0)
+    t_mel = clk()
+    for i, n in enumerate([69, 72, 76]):
+        play(eng, clk, 9, n, vel=80, hold=0.15)
+        if i < 2:
+            run_for(eng, clk, 0.1)
+    run_for(eng, clk, 0.4)
+    hold_chord(eng, clk, 9, [62, 65, 69])
+    run_for(eng, clk, 6.0)
+    assert [n for t, _, n, _ in out.notes("note_on", ch=12) if t > t_mel][:3] == [69, 72, 76]

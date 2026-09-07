@@ -100,6 +100,14 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     # player heard "有重複但是聲音感覺一樣大" on the 19:18 take: v32 -> v19 -> stop.
     fade = float(p.get("decay", 0.6))
     late = max(0.0, now - notes[-1].t)
+    # The chord the phrase was sung over. Carried on every note so the repeat
+    # can be moved bodily to whatever chord is in force when it comes back -
+    # see `Engine._phrase_transpose`. None when the edge does not ask for it,
+    # and the note then returns at its original pitch.
+    root = None
+    if p.get("follow_chord") and st.chord is not None:
+        root = st.chord.root_pc
+    fire_id = round(st.last_human_on_t or now, 4)
     out: list[Proposal] = []
     for k in range(1, repeats + 1):
         decay = edge.vel_scale * fade ** (k - 1)
@@ -127,7 +135,8 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
             dur = min(dur, max(dur_min, period - offset))
             out.append(Proposal(ch=edge.dst, note=rec.note + semis, vel=min(127, vel),
                                 dur=dur, lane=edge.lane,
-                                t_offset=start + shift + offset))
+                                t_offset=start + shift + offset,
+                                capture_root=root, pass_id=(fire_id, k)))
     return out
 
 

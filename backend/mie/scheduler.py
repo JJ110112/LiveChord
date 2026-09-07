@@ -44,6 +44,8 @@ class NotePair:
     voice_lead: str = "off"
     tension: float = 0.0
     note_range: Optional[tuple] = None
+    capture_root: Optional[int] = None
+    pass_id: Optional[tuple] = None
 
 
 @dataclass(order=True)

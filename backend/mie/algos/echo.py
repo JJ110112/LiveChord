@@ -50,8 +50,13 @@ def run(ev: MieEvent, st: MusicalState, edge: Edge, rng: Random) -> list[Proposa
     out = []
     t = 0.0
     gap = d
+    # Two jobs, two numbers - the same split the phrase echo needed. Folding
+    # them into `vel_scale ** k` put the FIRST return already a fifth down and
+    # squeezed the whole tail into one quiet band. `decay` falls back to
+    # `vel_scale` so a scene that never set it behaves as before.
+    fade = float(edge.params.get("decay", edge.vel_scale))
     for k in range(1, repeats + 1):
-        vel = int(round(ev.vel * (edge.vel_scale ** k) + edge.vel_offset))
+        vel = int(round(ev.vel * edge.vel_scale * fade ** (k - 1) + edge.vel_offset))
         if vel < min_vel:
             break          # the tail has died away; a v4 repeat is a click, not an echo
         t += gap

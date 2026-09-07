@@ -66,6 +66,7 @@ class Engine:
         self.st = MusicalState(bpm=scene.bpm, beats_per_bar=scene.beats_per_bar, key=scene.key, now=clock())
         self.safety = Safety(instruments, scene.globals)
         self._cc_seen: dict[tuple[int, int], tuple[float, int]] = {}
+        self._phrase_shift: dict[tuple, int] = {}
         self.echo_filter = SelfEchoFilter(0.008)
         self.sched = Scheduler(clock, self._emit, self._before_on)
         self.in_queue: "queue.Queue[MieEvent | tuple]" = queue.Queue()
@@ -148,6 +149,35 @@ class Engine:
         if self.mode in ("OFF", "BYPASS"):
             self.set_mode(self.scene.mode if self.scene.mode not in ("OFF", "BYPASS") else "SAFE")
         self.panicked = False
+
+    def _phrase_transpose(self, pair) -> int:
+        """Semitones to move a captured phrase onto the chord it comes back to.
+
+        A phrase sung over Am and repeated under Dm moves bodily by +5: every
+        interval inside it survives, so the motif and its voice leading come
+        back intact, and a 9th stays a 9th instead of being snapped into a
+        chord tone. The shortest way round is taken (never more than a tritone)
+        so the answer stays in register.
+
+        The shift is decided ONCE per pass, at whichever note of it reaches the
+        send path first, and reused for the rest: a chord change in the middle
+        of a repeat must not break the phrase in half, which is the one thing
+        this feature exists to protect.
+        """
+        if pair.capture_root is None or pair.pass_id is None:
+            return 0
+        cached = self._phrase_shift.get(pair.pass_id)
+        if cached is not None:
+            return cached
+        chord = self.st.chord
+        shift = 0
+        if chord is not None:
+            d = (chord.root_pc - pair.capture_root) % 12
+            shift = d - 12 if d > 6 else d
+        if len(self._phrase_shift) > 64:
+            self._phrase_shift.clear()      # bounded: passes are seconds long
+        self._phrase_shift[pair.pass_id] = shift
+        return shift
 
     def _gen_sounding(self, ch: int, now: float) -> list:
         """Pitches the engine has sounding that this note has to live with.
@@ -513,7 +543,8 @@ class Engine:
                             edge_id=edge.id, constraint=edge.constraint, follow_off=cp.follow_off,
                             src_note=cp.src_note, max_dur=dur, ttl_wall=min(ev.ttl_wall, t_on + 4.0 * self.st.beat_s),
                             collision=collision_for(edge), voice_lead=voice_lead_for(edge),
-                            tension=self._tension(edge), note_range=edge_range(edge))
+                            tension=self._tension(edge), note_range=edge_range(edge),
+                            capture_root=cp.capture_root, pass_id=cp.pass_id)
             self.sched.schedule_pair(pair)
             self.safety.count_chain(ev.root_id, now)
             self.stats["gen_sched"] += 1
@@ -616,6 +647,9 @@ class Engine:
             if pair.ch in self.st.human_chs:
                 self._drop_async("human_ch_late", pair)
                 return False
+            shift = self._phrase_transpose(pair)
+            if shift:
+                pair.note += shift
             n2 = late_bind(pair.note, pair.constraint, self.st, self.instruments.get(pair.ch),
                            pair.collision, voice_lead=pair.voice_lead, tension=pair.tension,
                            note_range=pair.note_range,
