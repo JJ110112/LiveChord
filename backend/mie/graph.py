@@ -100,9 +100,25 @@ class Edge:
         kw.setdefault("id", f"e{idx}")
         return cls(params=params, **kw)
 
+    # how a lane's entries are quantised, in beats: 0 = not at all, 1 = beat,
+    # 4 = bar (plan §11 Phase 2 harmonic rhythm). Time-driven lanes enter on
+    # their own initiative, so they align; lanes answering a human note keep
+    # the human's own timing.
+    ALIGN_NAMES = {"none": 0.0, "off": 0.0, "half": 0.5, "beat": 1.0, "bar": -1.0, "downbeat": -1.0}
+    ALIGN_DEFAULT = {"silence": "bar", "sustain": "beat"}
+
     @property
     def lane(self) -> str:
         return self.params.get("lane") or self.algo
+
+    def align_beats(self, beats_per_bar: int) -> float:
+        """Grid this edge quantises to, in beats. -1 means one bar."""
+        v = self.params.get("align", self.ALIGN_DEFAULT.get(self.algo, "none"))
+        if isinstance(v, (int, float)):
+            g = float(v)
+        else:
+            g = self.ALIGN_NAMES.get(str(v).lower(), 0.0)
+        return float(beats_per_bar) if g < 0 else g
 
     def to_dict(self) -> dict:
         d = {"id": self.id, "src": self.src, "dst": self.dst, "algo": self.algo, "prob": self.prob,

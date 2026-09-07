@@ -377,13 +377,14 @@ class Engine:
                 p = p.clone(dur=p.dur * float(caps["dur_scale"]))
             if "vel_max" in caps:
                 p = p.clone(vel=min(p.vel, int(caps["vel_max"])))
-            cp = constrain(p, self.st, edge, inst,
+            cp = constrain(p, self.st, edge, inst, tension=self._tension(edge),
                            prev=self._lane_prev(edge.dst, edge.lane),
                            others=self._other_voices(edge.dst, edge.lane, now))
             if cp is None:
                 self._drop("constraint", edge, p, now)
                 continue
-            t_send = now + max(0.0, cp.t_offset)
+            t_send = self.st.next_grid_t(now + max(0.0, cp.t_offset),
+                                         edge.align_beats(self.st.beats_per_bar))
             adm = self.safety.admit(cp, self.st, now, t_send=t_send,
                                     voices_at=self.sched.sounding_at(cp.ch, t_send))
             if not adm.ok:
@@ -397,7 +398,8 @@ class Engine:
                             origin="GENERATIVE", root_id=ev.root_id, parent_id=ev.event_id, hop=hop,
                             edge_id=edge.id, constraint=edge.constraint, follow_off=cp.follow_off,
                             src_note=cp.src_note, max_dur=dur, ttl_wall=min(ev.ttl_wall, t_on + 4.0 * self.st.beat_s),
-                            collision=collision_for(edge), voice_lead=voice_lead_for(edge))
+                            collision=collision_for(edge), voice_lead=voice_lead_for(edge),
+                            tension=self._tension(edge))
             self.sched.schedule_pair(pair)
             self.safety.count_chain(ev.root_id, now)
             self.stats["gen_sched"] += 1
@@ -422,6 +424,15 @@ class Engine:
     @property
     def _lane_hist_ttl_s(self) -> float:
         return max(self.LANE_HIST_MIN_S, self.LANE_HIST_BEATS * self.st.beat_s)
+
+    def _tension(self, edge) -> float:
+        """How far outside the chord a lane may reach (plan §11 Phase 2).
+
+        Per edge if it sets one, else the scene global. It never opens a random
+        chromatic: `function.extension_pcs` only unlocks named degrees.
+        """
+        v = edge.params.get("tension", self.scene.globals.get("tension", 0.0))
+        return max(0.0, min(1.0, float(v)))
 
     def _lane_prev(self, ch: int, lane: str) -> Optional[int]:
         h = self._lane_hist.get((ch, lane))
@@ -492,7 +503,7 @@ class Engine:
                 self._drop_async("human_ch_late", pair)
                 return False
             n2 = late_bind(pair.note, pair.constraint, self.st, self.instruments.get(pair.ch),
-                           pair.collision, voice_lead=pair.voice_lead,
+                           pair.collision, voice_lead=pair.voice_lead, tension=pair.tension,
                            prev=self._lane_prev(pair.ch, pair.lane),
                            others=self._other_voices(pair.ch, pair.lane, now))
             if n2 is None:
@@ -578,7 +589,7 @@ class Engine:
                 fn = algos.TICK_ALGOS.get(e.algo)
                 if fn is None:
                     continue
-                props = fn(self.st, e, self.rng, now, ls)
+                props = fn(self.st, e, self.rng, now, ls, self._tension(e))
                 if not props:
                     continue
                 # releases a timed lane asks for are never probability-gated

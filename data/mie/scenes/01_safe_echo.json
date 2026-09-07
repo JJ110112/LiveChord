@@ -7,7 +7,9 @@
   "key": {"tonic": "C", "mode": "major"},
   "global": {"prob_scale": 0.6, "chaos": 0.0, "restraint": 1.0, "restraint_curve": 1.0,
              "max_hop": 2, "max_gen_notes_per_s": 24, "max_chain_events": 24,
-             "max_dur_s": 8.0, "sustain_dur_s": 30.0},
+             "max_dur_s": 8.0, "sustain_dur_s": 30.0,
+             "_tension": "0 = chord tones only; 0.35+ adds the diatonic 9/11/13; 0.7+ any natural extension; 0.85+ the altered tones. Never a random chromatic.",
+             "tension": 0.0},
   "edges": [
     {"id": "shadow_iridium", "src": 0, "dst": 11, "algo": "shadow", "shadow": "top", "prob": 0.8,
      "constraint": "chord", "delay_ms": 60, "vel_scale": 0.85, "lane": "shadow"},

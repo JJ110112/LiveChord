@@ -153,7 +153,7 @@ def test_t4_silence_pad_on_then_off_when_human_returns():
     release_chord(eng, clk, 9, [48, 52, 55])
     run_for(eng, clk, 1.5)
     assert not out.notes("note_on", ch=3), "pad fired before 2 s of silence"
-    run_for(eng, clk, 1.0)
+    run_for(eng, clk, 3.0)                      # + up to a bar, the pad enters on a downbeat
     pad_on = out.notes("note_on", ch=3)
     assert len(pad_on) == 3
     assert {n % 12 for _, _, n, _ in pad_on} == {0, 4, 7}, "pad must play chord tones"
@@ -288,7 +288,7 @@ def test_panic_clears_everything_on_both_ports():
     run_for(eng, clk, 0.1)
     eng.post(human_event("note_off", clk(), 9, 60, 0))   # release: silence starts here
     eng.step()
-    run_for(eng, clk, 0.8)                               # texture pad comes in on CH1 (REAPER)
+    run_for(eng, clk, 3.0)                               # texture pad comes in on CH1 (REAPER)
     eng.post(human_event("note_on", clk(), 9, 64, 90))   # held: shadow sounds on CH11 (HST)
     eng.step()
     run_for(eng, clk, 0.1)
@@ -405,7 +405,7 @@ def test_silence_pad_keeps_all_voices_when_the_human_plays_high():
     run_for(eng, clk, 0.4)
     assert not out.notes("note_on", ch=3), "holding a chord is not silence"
     release_chord(eng, clk, 9, [65, 69, 72])
-    run_for(eng, clk, 1.6)
+    run_for(eng, clk, 4.0)
     pad = out.notes("note_on", ch=3)
     assert len(pad) == 3, f"pad played {len(pad)} voice(s), expected 3"
     assert {n % 12 for _, _, n, _ in pad} == {5, 9, 0}
@@ -452,7 +452,7 @@ def test_holding_a_chord_is_not_silence_even_with_the_pedal_down():
     # pedal up: now it is really silent
     eng.post(human_event("cc", clk(), 9, cc=64, val=0))
     eng.step()
-    run_for(eng, clk, 1.6)
+    run_for(eng, clk, 4.0)
     assert len(out.notes("note_on", ch=3)) == 3
 
 
@@ -934,3 +934,104 @@ def test_release_ignores_other_channels_and_lanes():
         p.on_sent = True
     assert s.release(11, 60, 1.0, lane="shadow") == 1
     assert s.sounding_at(11, 2.0) == 1 and s.sounding_at(12, 2.0) == 1
+
+
+# ------------------------------------------- Phase 2: harmonic rhythm
+def test_a_pad_enters_on_a_downbeat_and_an_echo_keeps_the_human_timing():
+    """Lanes that speak on their own initiative enter in time; lanes answering
+    the human keep the human's own timing (plan §11 Phase 2)."""
+    eng, clk, out = make([
+        {"id": "s", "src": 0, "dst": 3, "algo": "silence", "prob": 1.0, "after_s": 1.0, "lane": "pad",
+         "hold_s": 20, "voices": 3, "vel": 50, "low": 48, "high": 84, "constraint": "chord",
+         "align": "bar"},
+        {"id": "e", "src": 0, "dst": 10, "algo": "echo", "delay_ms": 210, "prob": 1.0,
+         "constraint": "free", "lane": "echo", "align": "none"},
+    ])
+    # play off the grid on purpose
+    run_for(eng, clk, 0.37)
+    hold_chord(eng, clk, 9, [48, 52, 55])
+    release_chord(eng, clk, 9, [48, 52, 55])
+    run_for(eng, clk, 0.6)
+    echo_on = out.notes("note_on", ch=10)
+    assert echo_on, "no echo"
+    assert all(eng.st.beat_strength(t) == 0.0 for t, _, _, _ in echo_on), \
+        "the echo was quantised; it must follow the human, not the grid"
+    run_for(eng, clk, 4.0)
+    pad_on = out.notes("note_on", ch=3)
+    assert pad_on, "the pad never entered"
+    assert eng.st.beat_strength(pad_on[0][0]) == 1.0, "the pad did not enter on a downbeat"
+
+
+def test_the_beat_grid_is_anchored_to_the_player_not_to_engine_startup():
+    eng, clk, out = make([])
+    run_for(eng, clk, 3.3)                       # engine has been idle a while
+    t0 = clk()
+    eng.post(human_event("note_on", clk(), 9, 60, 80))
+    eng.step()
+    assert abs(eng.st.beat_origin_t - t0) < 1e-6, "the first note after a rest is the downbeat"
+    assert eng.st.beat_strength(t0) == 1.0
+    # a note inside the same phrase must not move the grid
+    run_for(eng, clk, 0.3)
+    eng.post(human_event("note_on", clk(), 9, 64, 80))
+    eng.step()
+    assert abs(eng.st.beat_origin_t - t0) < 1e-6
+    # a player timeline wins: the engine must not re-anchor under it
+    eng.st.set_tempo(100, clk(), "player", downbeat_t=t0 + 0.11)
+    run_for(eng, clk, 5.0)
+    eng.post(human_event("note_on", clk(), 9, 67, 80))
+    eng.step()
+    assert abs(eng.st.beat_origin_t - (t0 + 0.11)) < 1e-6
+
+
+def test_align_accepts_names_and_raw_beats():
+    from backend.mie.graph import Edge
+    mk = lambda v: Edge.from_json({"src": 0, "dst": 2, "algo": "echo", "align": v}, 0)
+    assert mk("bar").align_beats(4) == 4.0
+    assert mk("beat").align_beats(4) == 1.0
+    assert mk("half").align_beats(4) == 0.5
+    assert mk("none").align_beats(4) == 0.0
+    assert mk(0.25).align_beats(4) == 0.25
+    assert mk("bar").align_beats(3) == 3.0, "a bar follows the meter"
+    assert Edge.from_json({"src": 0, "dst": 2, "algo": "silence"}, 0).align_beats(4) == 4.0
+    assert Edge.from_json({"src": 0, "dst": 2, "algo": "echo"}, 0).align_beats(4) == 0.0
+
+
+def test_out_of_chord_notes_are_named_extensions_not_random_chromatics():
+    """Tension opens degrees that have names, never an arbitrary pitch."""
+    from backend.mie.function import extension_pcs, name_of
+    assert extension_pcs(0, 0.0) == frozenset(), "no tension, no extensions"
+    key_c = frozenset({0, 2, 4, 5, 7, 9, 11})
+    mild = extension_pcs(0, 0.5, key_c)
+    assert mild == {2, 5, 9}, "the 9th, 11th and 13th of C, all in key"
+    # over G7 in C, the 13th (E) is in key but the 9th (A) is too; #11 is not
+    assert extension_pcs(7, 0.5, key_c) == {9, 0, 4}
+    assert 1 not in extension_pcs(7, 0.5, key_c), "b9 is an altered tone, not mild"
+    hot = extension_pcs(7, 0.9, key_c)
+    assert {8, 10, 1, 3} & hot, "altered tones open at high tension"
+    assert name_of(2, 0) == "9" and name_of(6, 0) == "#11" and name_of(4, 0) == "3"
+
+
+def test_tension_widens_the_palette_step_by_step():
+    from backend.mie.constraint import allowed_pcs
+    from backend.mie.harmony import ChordInfo
+    from backend.mie.state import MusicalState
+    st = MusicalState(bpm=92, now=0.0)
+    st.set_key(0, "major", "manual")
+    st.set_chord(ChordInfo("C", 0, "", frozenset({0, 4, 7}), 0.0))
+    sizes = [len(allowed_pcs(st, "function", t)) for t in (0.0, 0.5, 0.9)]
+    assert sizes[0] < sizes[2], f"tension did nothing: {sizes}"
+    assert sizes == sorted(sizes), f"the palette must only widen: {sizes}"
+    assert allowed_pcs(st, "function", 0.0) <= allowed_pcs(st, "function", 0.9)
+
+
+def test_edge_tension_overrides_the_scene_global():
+    eng, clk, out = make([
+        {"id": "a", "src": 0, "dst": 11, "algo": "follow", "prob": 1.0, "constraint": "function"},
+        {"id": "b", "src": 0, "dst": 12, "algo": "follow", "prob": 1.0, "constraint": "function",
+         "tension": 0.9},
+    ], tension=0.0)
+    assert eng._tension(eng.graph.find_edge("a")) == 0.0
+    assert eng._tension(eng.graph.find_edge("b")) == 0.9
+    eng.set_global("tension", 0.5)
+    assert eng._tension(eng.graph.find_edge("a")) == 0.5
+    assert eng._tension(eng.graph.find_edge("b")) == 0.9, "the edge keeps its own setting"

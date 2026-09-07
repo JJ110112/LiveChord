@@ -24,7 +24,7 @@ from ..state import MusicalState
 from . import scaled_vel
 
 
-def _candidates(st: MusicalState, edge: Edge, lane_notes: list[int]) -> list[int]:
+def _candidates(st: MusicalState, edge: Edge, lane_notes: list[int], tension: float = 0.0) -> list[int]:
     """Notes the lane may add, ranked: the ones that bring new colour come first.
 
     The palette is the edge's own constraint, so `constraint: "function"` lets a
@@ -34,7 +34,7 @@ def _candidates(st: MusicalState, edge: Edge, lane_notes: list[int]) -> list[int
     the setting mean anything: late binding can only narrow what we propose.
     """
     from ..constraint import allowed_pcs      # imported late: constraint pulls in state
-    pcs = set(allowed_pcs(st, edge.constraint))
+    pcs = set(allowed_pcs(st, edge.constraint, tension))
     if not pcs:
         return []
     low, high = int(edge.params.get("low", 55)), int(edge.params.get("high", 88))
@@ -65,7 +65,8 @@ def on_skip(st: MusicalState, edge: Edge, now: float, lane_state: dict) -> None:
         lane_state["next_t"] = now + float(edge.params.get("retry_beats", 1.0)) * st.beat_s
 
 
-def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict) -> list[Proposal]:
+def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict,
+         tension: float = 0.0) -> list[Proposal]:
     lane_notes = [note for (ch, note), g in list(st.active_gen.items())
                   if ch == edge.dst and g.lane == edge.lane]
     if not st.sounding:
@@ -88,20 +89,13 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     hi = max(lo, float(edge.params.get("every_bars_max", 2.0)))
     lane_state["next_t"] = now + rng.uniform(lo, hi) * bar_s
 
-    cands = _candidates(st, edge, lane_notes)
+    cands = _candidates(st, edge, lane_notes, tension)
     if not cands:
         return []
     note = rng.choice(cands)
     vel = scaled_vel(edge, int(edge.params.get("vel", 46)) + rng.randint(-4, 4))
     hold = float(edge.params.get("hold_beats", 8.0)) * st.beat_s
-    # land on the next beat (or bar) so the voice enters in time with the music
-    align = str(edge.params.get("align", "beat"))
-    if align == "bar":
-        t_off = max(0.0, st.next_downbeat_t(now) - now)
-    elif align == "beat":
-        t_off = max(0.0, st.next_beat_t(now) - now)
-    else:
-        t_off = 0.0
+    t_off = 0.0     # the engine quantises every lane through `align` (plan §11 Ph2)
 
     out = []
     max_voices = int(edge.params.get("voices", 3))

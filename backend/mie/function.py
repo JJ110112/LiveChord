@@ -42,7 +42,7 @@ except Exception:  # pragma: no cover - the engine must still run without it
 NUMERALS = ("I", "II", "III", "IV", "V", "VI", "VII")
 TONIC, SUBDOMINANT, DOMINANT, AMBIGUOUS = "tonic", "subdominant", "dominant", "ambiguous"
 
-# semitones of the七 diatonic degrees, per mode
+# semitones of the seven diatonic degrees, per mode
 MAJOR_STEPS = (0, 2, 4, 5, 7, 9, 11)
 MINOR_STEPS = (0, 2, 3, 5, 7, 8, 10)
 
@@ -105,15 +105,56 @@ def group_pcs(function: str, tonic_pc: int, mode: str = "major") -> frozenset[in
 
 
 def colour_pcs(chord_pcs: Iterable[int], chord_root: Optional[int], tonic_pc: int,
-               mode: str = "major") -> frozenset[int]:
+               mode: str = "major", tension: float = 0.0) -> frozenset[int]:
     """Pitch classes a lane may use over this chord.
 
     The chord's own tones are always allowed; its functional relatives widen
-    that. A borrowed chord that has no function in the key keeps just its own
-    tones, which is the safe answer.
+    that, and `tension` adds named extensions on top. A borrowed chord with no
+    function in the key keeps its own tones plus extensions, which is the safe
+    answer.
     """
     own = frozenset(chord_pcs)
     if chord_root is None:
         return own
-    fn = function_of(chord_root % 12, tonic_pc % 12, mode)
-    return own | group_pcs(fn, tonic_pc, mode)
+    root = chord_root % 12
+    fn = function_of(root, tonic_pc % 12, mode)
+    out = own | group_pcs(fn, tonic_pc, mode)
+    if tension > 0:
+        key_pcs = frozenset((tonic_pc + step) % 12 for step in steps_for(mode))
+        out = out | extension_pcs(root, tension, key_pcs)
+    return out
+
+
+# --- tension: notes outside the chord must be nameable ---------------------
+#
+# The rule from the review: an out-of-chord tone has to be an extension or a
+# secondary-dominant tone, never a random pitch that merely happened to be
+# legal. These are the intervals above the chord root that have names.
+NATURAL_EXTENSIONS = {2: "9", 5: "11", 9: "13"}
+ALTERED_EXTENSIONS = {1: "b9", 3: "#9", 6: "#11", 8: "b13"}
+
+# tension thresholds (0 = plain triads, 1 = altered)
+T_NATURAL = 0.35      # above this, diatonic extensions are allowed
+T_ANY_NATURAL = 0.70  # above this, extensions outside the key too
+T_ALTERED = 0.85      # above this, the altered tones
+
+
+def extension_pcs(chord_root: int, tension: float, key_pcs: Optional[frozenset] = None) -> frozenset[int]:
+    """Named extensions available over a chord root at this tension level."""
+    if tension < T_NATURAL:
+        return frozenset()
+    out = set()
+    for iv in NATURAL_EXTENSIONS:
+        pc = (chord_root + iv) % 12
+        if tension >= T_ANY_NATURAL or key_pcs is None or pc in key_pcs:
+            out.add(pc)
+    if tension >= T_ALTERED:
+        out |= {(chord_root + iv) % 12 for iv in ALTERED_EXTENSIONS}
+    return frozenset(out)
+
+
+def name_of(pc: int, chord_root: int) -> str:
+    """What a pitch class is called over this chord root, for the event stream."""
+    iv = (pc - chord_root) % 12
+    named = {0: "1", 3: "b3", 4: "3", 7: "5", 10: "b7", 11: "7"}
+    return named.get(iv) or NATURAL_EXTENSIONS.get(iv) or ALTERED_EXTENSIONS.get(iv) or ("+%d" % iv)

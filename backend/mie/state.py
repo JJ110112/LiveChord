@@ -59,6 +59,7 @@ class MusicalState:
     TAU_ATTACK = 0.3
     TAU_RELEASE = 2.5
     HUMAN_CH_WINDOW = 2.0
+    EXTERNAL_CLOCKS = ("player", "midi")   # grids we can trust without guessing
     PC_HIST_TAU = 12.0
     GESTURE_WINDOW_S = 0.045   # notes struck this close together are one chord/gesture
 
@@ -118,6 +119,26 @@ class MusicalState:
         k = int((now - self.beat_origin_t) / bar_len) + 1
         return self.beat_origin_t + k * bar_len
 
+    def next_grid_t(self, t: float, grid_beats: float) -> float:
+        """The first point of a `grid_beats` grid at or after `t`.
+
+        Harmonic rhythm (plan §11 Phase 2): a lane that enters on its own
+        initiative should enter in time. Returns `t` unchanged when the grid is
+        off or `t` already sits on it, and never moves a note into the past.
+        """
+        if grid_beats <= 0:
+            return t
+        g = grid_beats * self.beat_s
+        k = math.ceil((t - self.beat_origin_t) / g - 1e-9)
+        return self.beat_origin_t + k * g
+
+    def beat_strength(self, t: float) -> float:
+        """1.0 on a downbeat, 0.5 on another beat, 0.0 off the beat."""
+        pos = ((t - self.beat_origin_t) / self.beat_s) % self.beats_per_bar
+        if abs(pos - round(pos)) > 0.08:
+            return 0.0
+        return 1.0 if round(pos) % self.beats_per_bar == 0 else 0.5
+
     @property
     def human_chs(self) -> set[int]:
         return set(self._human_ch_t)
@@ -165,6 +186,14 @@ class MusicalState:
         # chord as five events made slow ambient chord playing read as busy
         # playing, so restraint held the engine back (2026-09-07 play test).
         same_gesture = self.last_human_on_t is not None and (now - self.last_human_on_t) < self.GESTURE_WINDOW_S
+        # Anchor the beat grid to the player. Without a player timeline or MIDI
+        # clock, `beat_origin_t` is just "when the engine started", so quantising
+        # a lane to it would be arbitrary. The first note after a bar of rest is
+        # how a musician states the pulse, so take it as the downbeat.
+        if self.clock_source not in self.EXTERNAL_CLOCKS and not same_gesture:
+            gap = now - self.last_human_on_t if self.last_human_on_t is not None else 1e9
+            if gap > self.beat_s * self.beats_per_bar:
+                self.beat_origin_t = now
         self.held[note] = HeldNote(vel, now, ev.ch)
         if not same_gesture:
             self.density += 1.0 / self.TAU_DENSITY

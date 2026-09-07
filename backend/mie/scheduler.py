@@ -40,6 +40,7 @@ class NotePair:
     ttl_wall: float = float("inf")
     collision: str = "octave"
     voice_lead: str = "off"
+    tension: float = 0.0
 
 
 @dataclass(order=True)

@@ -18,7 +18,7 @@ from .state import MusicalState
 ALL_PCS = frozenset(range(12))
 
 
-def allowed_pcs(st: MusicalState, mode: str) -> frozenset[int]:
+def allowed_pcs(st: MusicalState, mode: str, tension: float = 0.0) -> frozenset[int]:
     """Pitch classes a proposal may land on under constraint `mode`.
 
     `chord`    - the literal chord tones: safest, but three pitch classes is
@@ -37,7 +37,7 @@ def allowed_pcs(st: MusicalState, mode: str) -> frozenset[int]:
             return st.chord.tones
         if mode == "function":
             return function.colour_pcs(st.chord.tones, st.chord.root_pc,
-                                       st.key.tonic_pc, st.key.mode)
+                                       st.key.tonic_pc, st.key.mode, tension)
     # no chord recognised yet -> fall back to the scale (plan §10)
     return scale_pcs(st.key.tonic_pc, st.scale_id)
 
@@ -137,7 +137,8 @@ def voice_lead_for(edge) -> str:
 
 def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instrument],
               collision: str = "octave", *, voice_lead: str = "off",
-              prev: Optional[int] = None, others: tuple = ()) -> Optional[int]:
+              prev: Optional[int] = None, others: tuple = (),
+              tension: float = 0.0) -> Optional[int]:
     """Final pitch for a generated note given the state *now*.
 
     Snap to the allowed pitch classes - by voice leading from `prev` when the
@@ -146,7 +147,7 @@ def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instr
     tone, else drop.
     """
     lo, hi = inst.note_range if inst else (0, 127)
-    pcs = allowed_pcs(st, constraint)
+    pcs = allowed_pcs(st, constraint, tension)
     held = list(st.held)
     held_pcs = {h % 12 for h in held} if collision != "none" else set()
     if voice_lead != "off" and prev is not None:
@@ -174,7 +175,8 @@ def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instr
 
 
 def constrain(p: Proposal, st: MusicalState, edge: Edge, inst: Optional[Instrument], *,
-              prev: Optional[int] = None, others: tuple = ()) -> Optional[Proposal]:
+              prev: Optional[int] = None, others: tuple = (),
+              tension: float = 0.0) -> Optional[Proposal]:
     """Schedule-time constraint: pitch classes + instrument range and velocity.
 
     Collision avoidance is deliberately NOT applied here: what matters is what
@@ -183,7 +185,7 @@ def constrain(p: Proposal, st: MusicalState, edge: Edge, inst: Optional[Instrume
     if p.kind != "on":
         return p
     note = late_bind(p.note, edge.constraint, st, inst, "none",
-                     voice_lead=voice_lead_for(edge), prev=prev, others=others)
+                     voice_lead=voice_lead_for(edge), prev=prev, others=others, tension=tension)
     if note is None:
         return None
     vel = int(round(p.vel * (inst.vel_scale if inst else 1.0)))

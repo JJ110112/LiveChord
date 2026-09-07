@@ -36,7 +36,8 @@ def _voicing(st: MusicalState, n_voices: int, low: int, high: int) -> list[int]:
     return notes
 
 
-def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict) -> list[Proposal]:
+def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict,
+         tension: float = 0.0) -> list[Proposal]:
     after_s = float(edge.params.get("after_s", 2.0))
     if lane_state.get("fired") or st.last_human_on_t is None or st.silence_s < after_s:
         return []
