@@ -105,9 +105,9 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     # can be moved bodily to whatever chord is in force when it comes back -
     # see `Engine._phrase_transpose`. None when the edge does not ask for it,
     # and the note then returns at its original pitch.
-    root = None
+    root, quality = None, ""
     if p.get("follow_chord") and st.chord is not None:
-        root = st.chord.root_pc
+        root, quality = st.chord.root_pc, st.chord.quality
     fire_id = round(st.last_human_on_t or now, 4)
     out: list[Proposal] = []
     for k in range(1, repeats + 1):
@@ -142,7 +142,8 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
             out.append(Proposal(ch=edge.dst, note=rec.note + semis, vel=min(127, vel),
                                 dur=dur, lane=edge.lane,
                                 t_offset=start + offset,
-                                capture_root=root, pass_id=(fire_id, k)))
+                                capture_root=root, capture_quality=quality,
+                                pass_id=(fire_id, k)))
     return out
 
 

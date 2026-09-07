@@ -22,7 +22,8 @@ from random import Random
 from typing import Callable, Optional
 
 from . import algos, mutation
-from .constraint import collision_for, constrain, edge_range, late_bind, voice_lead_for
+from .constraint import (collision_for, constrain, diatonic_map, edge_range, late_bind,
+                         voice_lead_for)
 from .events import MieEvent, Proposal, next_id
 from .graph import ALGOS_PHASE1, MODES, InteractionGraph, Instrument, Scene
 from .io_rtmidi import panic_messages
@@ -66,7 +67,7 @@ class Engine:
         self.st = MusicalState(bpm=scene.bpm, beats_per_bar=scene.beats_per_bar, key=scene.key, now=clock())
         self.safety = Safety(instruments, scene.globals)
         self._cc_seen: dict[tuple[int, int], tuple[float, int]] = {}
-        self._phrase_shift: dict[tuple, int] = {}
+        self._phrase_shift: dict[tuple, object] = {}
         self.echo_filter = SelfEchoFilter(0.008)
         self.sched = Scheduler(clock, self._emit, self._before_on)
         self.in_queue: "queue.Queue[MieEvent | tuple]" = queue.Queue()
@@ -150,41 +151,34 @@ class Engine:
             self.set_mode(self.scene.mode if self.scene.mode not in ("OFF", "BYPASS") else "SAFE")
         self.panicked = False
 
-    def _phrase_transpose(self, pair) -> int:
-        """Semitones to move a captured phrase onto the chord it comes back to.
+    def _phrase_target(self, pair):
+        """The chord a captured phrase should be re-read over, or None.
 
-        A phrase sung over Am and repeated under Dm moves bodily by +5: every
-        interval inside it survives, so the motif and its voice leading come
-        back intact, and a 9th stays a 9th instead of being snapped into a
-        chord tone. The shortest way round is taken (never more than a tritone)
-        so the answer stays in register.
-
-        The shift is decided ONCE per pass, at whichever note of it reaches the
-        send path first, and reused for the rest: a chord change in the middle
-        of a repeat must not break the phrase in half, which is the one thing
-        this feature exists to protect.
+        Frozen ONCE per pass, at whichever note reaches the send path first,
+        and reused for the rest: a chord change in the middle of a repeat must
+        not leave the first half in one key and the second in another. That is
+        the one thing this feature exists to protect.
         """
         if pair.capture_root is None or pair.pass_id is None:
-            return 0
-        cached = self._phrase_shift.get(pair.pass_id)
-        if cached is not None:
-            return cached
+            return None
+        if pair.pass_id in self._phrase_shift:
+            return self._phrase_shift[pair.pass_id]
         chord = self.st.chord
-        shift = 0
-        if chord is not None:
-            d = (chord.root_pc - pair.capture_root) % 12
-            shift = d - 12 if d > 6 else d
+        target = None
+        if chord is not None and (chord.root_pc != pair.capture_root
+                                  or chord.quality != pair.capture_quality):
+            target = (chord.root_pc, chord.quality)
         if len(self._phrase_shift) > 64:
             self._phrase_shift.clear()      # bounded: passes are seconds long
-        self._phrase_shift[pair.pass_id] = shift
-        if shift:
+        self._phrase_shift[pair.pass_id] = target
+        if target is not None:
             # Say it out loud. On the 21:30 take the feature was live and never
             # moved a note - every phrase came back under the chord it was
-            # captured under - and the log could not distinguish "it did not
-            # need to fire" from "it is broken".
-            self._ui("phrase_shift", edge=pair.edge_id, semis=shift,
-                     frm=pair.capture_root, to=chord.root_pc if chord else None)
-        return shift
+            # captured under - and the log could not tell "did not need to fire"
+            # from "broken".
+            self._ui("phrase_shift", edge=pair.edge_id, frm=pair.capture_root,
+                     frm_q=pair.capture_quality, to=target[0], to_q=target[1])
+        return target
 
     def _gen_sounding(self, ch: int, now: float) -> list:
         """Pitches the engine has sounding that this note has to live with.
@@ -551,7 +545,8 @@ class Engine:
                             src_note=cp.src_note, max_dur=dur, ttl_wall=min(ev.ttl_wall, t_on + 4.0 * self.st.beat_s),
                             collision=collision_for(edge), voice_lead=voice_lead_for(edge),
                             tension=self._tension(edge), note_range=edge_range(edge),
-                            capture_root=cp.capture_root, pass_id=cp.pass_id)
+                            capture_root=cp.capture_root, capture_quality=cp.capture_quality,
+                            pass_id=cp.pass_id)
             self.sched.schedule_pair(pair)
             self.safety.count_chain(ev.root_id, now)
             self.stats["gen_sched"] += 1
@@ -654,9 +649,10 @@ class Engine:
             if pair.ch in self.st.human_chs:
                 self._drop_async("human_ch_late", pair)
                 return False
-            shift = self._phrase_transpose(pair)
-            if shift:
-                pair.note += shift
+            target = self._phrase_target(pair)
+            if target is not None:
+                pair.note = diatonic_map(pair.note, pair.capture_root, pair.capture_quality,
+                                         target[0], target[1])
             n2 = late_bind(pair.note, pair.constraint, self.st, self.instruments.get(pair.ch),
                            pair.collision, voice_lead=pair.voice_lead, tension=pair.tension,
                            note_range=pair.note_range,

@@ -235,6 +235,70 @@ def _unharsh(n: int, pcs, gen_now, held, collision: str, lo: int, hi: int,
     return n
 
 
+# The scale a chord implies, as intervals from its root. Diatonic
+# transposition reads a phrase as degrees of the chord it was played over and
+# re-renders those degrees over the chord it comes back to, which is what makes
+# a major third become a minor third when the music turns minor.
+_CHORD_SCALES: dict[str, tuple] = {
+    "":      (0, 2, 4, 5, 7, 9, 11),   # major -> Ionian
+    "(3)":   (0, 2, 4, 5, 7, 9, 11),
+    "maj7":  (0, 2, 4, 5, 7, 9, 11),
+    "maj9":  (0, 2, 4, 5, 7, 9, 11),
+    "6":     (0, 2, 4, 5, 7, 9, 11),
+    "sus2":  (0, 2, 4, 5, 7, 9, 11),
+    "sus4":  (0, 2, 4, 5, 7, 9, 11),
+    "5":     (0, 2, 4, 5, 7, 9, 11),   # a bare fifth says nothing about the third
+    "7":     (0, 2, 4, 5, 7, 9, 10),   # dominant -> Mixolydian
+    "9":     (0, 2, 4, 5, 7, 9, 10),
+    "11":    (0, 2, 4, 5, 7, 9, 10),
+    "m":     (0, 2, 3, 5, 7, 9, 10),   # minor -> Dorian
+    "m(3)":  (0, 2, 3, 5, 7, 9, 10),
+    "m7":    (0, 2, 3, 5, 7, 9, 10),
+    "m9":    (0, 2, 3, 5, 7, 9, 10),
+    "m6":    (0, 2, 3, 5, 7, 9, 10),
+    "mMaj7": (0, 2, 3, 5, 7, 8, 11),   # melodic minor
+    "m7b5":  (0, 2, 3, 5, 6, 8, 10),   # half-diminished -> Locrian #2
+    "dim":   (0, 2, 3, 5, 6, 8, 9),
+    "dim7":  (0, 2, 3, 5, 6, 8, 9),
+    "aug":   (0, 2, 4, 6, 8, 10, 10),
+}
+_DEFAULT_SCALE = (0, 2, 4, 5, 7, 9, 11)
+
+
+def chord_scale(quality: str) -> tuple:
+    return _CHORD_SCALES.get(quality or "", _DEFAULT_SCALE)
+
+
+def diatonic_map(note: int, src_root: int, src_quality: str,
+                 dst_root: int, dst_quality: str) -> int:
+    """Re-read `note` as a scale degree of one chord and play it over another.
+
+    The player's choice (2026-09-07): a repeated phrase should slide inside the
+    current key rather than move by a fixed number of semitones. A motif is
+    recognised by its contour and its degrees, not by exact interval sizes, so
+    turning a major third into a minor third when the harmony turns minor still
+    reads as the same phrase - and it stops the parallel version from putting a
+    major third over a minor chord, which is what the 21:40 take heard as an F#
+    grinding against a held F.
+
+    A note outside the source scale keeps its alteration (a #4 comes back as a
+    #4), so chromatic colour is carried across rather than flattened out. The
+    register is preserved: the shift of the anchor is the shortest way round.
+    """
+    src, dst = chord_scale(src_quality), chord_scale(dst_quality)
+    rel = (note - src_root) % 12
+    anchor = note - rel                      # the source root below the note
+    idx = 0
+    for i, iv in enumerate(src):
+        if iv <= rel:
+            idx = i
+    alt = rel - src[idx]
+    d = (dst_root - src_root) % 12
+    if d > 6:
+        d -= 12                              # shortest way round keeps the register
+    return anchor + d + dst[idx] + alt
+
+
 def edge_range(edge) -> Optional[tuple]:
     """The register an edge asked for, if it named one."""
     lo, hi = edge.params.get("low"), edge.params.get("high")

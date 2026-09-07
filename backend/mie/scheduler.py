@@ -45,6 +45,7 @@ class NotePair:
     tension: float = 0.0
     note_range: Optional[tuple] = None
     capture_root: Optional[int] = None
+    capture_quality: str = ""
     pass_id: Optional[tuple] = None
 
 

@@ -1628,14 +1628,14 @@ def test_a_phrase_pass_is_not_broken_in_half_by_a_chord_change():
                     capture_root=9, pass_id=("p", 1))        # captured under A
     tail = NotePair(ch=12, note=72, vel=60, t_on=0, t_off=1, lane="phrase",
                     capture_root=9, pass_id=("p", 1))
-    assert eng._phrase_transpose(head) == 5                  # A -> D is +5
+    assert eng._phrase_target(head) == (2, "m")               # captured under A, back under Dm
     release_chord(eng, clk, 9, [62, 65, 69])
-    hold_chord(eng, clk, 9, [60, 64, 67])                    # C arrives mid-pass
+    hold_chord(eng, clk, 9, [60, 64, 67])                     # C arrives mid-pass
     run_for(eng, clk, 0.3)
-    assert eng._phrase_transpose(tail) == 5, "the pass was split by a chord change"
-    assert eng._phrase_transpose(NotePair(ch=12, note=72, vel=60, t_on=0, t_off=1,
-                                          lane="phrase", capture_root=9,
-                                          pass_id=("p", 2))) == 3, "the NEXT pass must follow C"
+    assert eng._phrase_target(tail) == (2, "m"), "the pass was split by a chord change"
+    nxt = NotePair(ch=12, note=72, vel=60, t_on=0, t_off=1, lane="phrase",
+                   capture_root=9, pass_id=("p", 2))
+    assert eng._phrase_target(nxt) == (0, ""), "the NEXT pass must follow C"
 
 
 def test_phrase_keeps_its_pitch_when_it_is_not_asked_to_follow():
@@ -1679,3 +1679,58 @@ def test_phrase_passes_stay_apart_when_detection_ran_late():
     assert len(heads) >= 2
     for a, b in zip(heads, heads[1:]):
         assert b - a > 0.15, f"two passes landed on top of each other: {heads}"
+
+
+def test_a_phrase_slides_inside_the_key_not_by_semitones():
+    """Exactly the 21:40 case: A C# D captured under A, returning under Dm.
+
+    Parallel motion put the major third C# down as an F# over a minor chord,
+    grinding against the F the player was holding. Read as degrees instead -
+    root, third, fourth - the phrase comes back D F G: same contour, same
+    degrees, and the third turns minor because the harmony did.
+    """
+    eng, clk, out = make([_phrase_edge(follow_chord=True, repeats=2, delay_beats=4.0)])
+    hold_chord(eng, clk, 9, [57, 61, 64])          # A major
+    run_for(eng, clk, 0.3)
+    release_chord(eng, clk, 9, [57, 61, 64])
+    run_for(eng, clk, 2.0)
+    t_mel = clk()
+    for i, n in enumerate([57, 61, 62]):           # A C# D
+        play(eng, clk, 9, n, vel=70, hold=0.2)
+        if i < 2:
+            run_for(eng, clk, 0.05)
+    run_for(eng, clk, 0.7)
+    hold_chord(eng, clk, 9, [50, 57, 60, 62, 65])  # Dm7, with an F in it
+    run_for(eng, clk, 8.0)
+    ons = [n for t, _, n, _ in out.notes("note_on", ch=12) if t > t_mel]
+    passes = [ons[i:i + 3] for i in range(0, len(ons) - 2, 3)]
+    assert [57, 61, 62] in passes, f"the pass under A should return as played: {passes}"
+    assert [62, 65, 67] in passes, f"expected D F G over Dm, got {passes}"
+    assert not any(66 in p for p in passes), "the major third survived onto a minor chord"
+
+
+def test_diatonic_transposition_keeps_a_chromatic_alteration():
+    """A note outside the source scale keeps its alteration, so chromatic
+    colour crosses over instead of being flattened into the scale."""
+    from backend.mie.constraint import diatonic_map
+    # C major, the #4 (F#): over G major it should still be the #4 (C#)
+    assert diatonic_map(66, 0, "", 7, "") % 12 == 1
+    # the plain degrees move plainly, and C -> G goes DOWN a fourth rather than
+    # up a fifth: the shortest way round keeps the answer in register
+    assert [diatonic_map(n, 0, "", 7, "") for n in (60, 64, 67)] == [55, 59, 62]
+
+
+def test_an_untransposed_echo_is_never_second_guessed():
+    """Only notes the engine invented by transposing are eligible. A phrase
+    that comes back under its own chord repeats what the player played, rub or
+    no rub."""
+    eng, clk, out = make([_phrase_edge(follow_chord=True, repeats=1, delay_beats=1.0)])
+    for i, n in enumerate([60, 64, 66]):
+        play(eng, clk, 9, n, vel=70, hold=0.2)
+        if i < 2:
+            run_for(eng, clk, 0.05)
+    run_for(eng, clk, 0.5)
+    hold_chord(eng, clk, 9, [65, 69, 72])          # an F the echoed 66 will rub against
+    run_for(eng, clk, 6.0)
+    ons = [n for _, _, n, _ in out.notes("note_on", ch=12)]
+    assert 66 in ons, f"an untransposed echo was altered: {ons}"
