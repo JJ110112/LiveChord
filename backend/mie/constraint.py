@@ -40,10 +40,11 @@ def snap(note: int, pcs: Iterable[int], prefer: str = "nearest", avoid_pcs: Iter
     `prefer` = nearest | up | down.  Returns None if nothing in [lo, hi] fits.
     """
     pcs = set(pcs)
-    if not pcs:
+    if not pcs or lo > hi:
         return None
     avoid = set(avoid_pcs)
-    best: Optional[tuple] = None
+    best_key: Optional[tuple] = None
+    best_note: Optional[int] = None
     for d in range(0, 13):
         if prefer == "nearest":
             cands = (note + d, note - d)
@@ -55,11 +56,13 @@ def snap(note: int, pcs: Iterable[int], prefer: str = "nearest", avoid_pcs: Iter
             if cand < lo or cand > hi or (cand % 12) not in pcs:
                 continue
             key = (d, 1 if (cand % 12) in avoid else 0, 0 if cand >= note else 1)
-            if best is None or key < best[0]:
-                best = (key, cand)
-        if best is not None and best[0][1] == 0:
-            return best[1]
-    return best[1] if best else None
+            if best_key is None or key < best_key:
+                best_key, best_note = key, cand
+        # a hit that is not on an avoided pitch class cannot be beaten by a
+        # larger distance, so stop as soon as we have one
+        if best_key is not None and best_key[1] == 0:
+            return best_note
+    return best_note        # None when nothing in [lo, hi] has an allowed pitch class
 
 
 # collision policy (plan §6 撞音迴避): what counts as "the same note the human holds"

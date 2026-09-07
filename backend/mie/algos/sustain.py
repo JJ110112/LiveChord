@@ -58,7 +58,7 @@ def on_skip(st: MusicalState, edge: Edge, now: float, lane_state: dict) -> None:
 
 
 def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict) -> list[Proposal]:
-    lane_notes = [note for (ch, note), g in st.active_gen.items()
+    lane_notes = [note for (ch, note), g in list(st.active_gen.items())
                   if ch == edge.dst and g.lane == edge.lane]
     if not st.sounding:
         # the human finally stopped: let the lane go
@@ -98,7 +98,7 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     out = []
     max_voices = int(edge.params.get("voices", 3))
     if len(lane_notes) >= max_voices:
-        oldest = min(((n, g.t_on) for (ch, n), g in st.active_gen.items()
+        oldest = min(((n, g.t_on) for (ch, n), g in list(st.active_gen.items())
                       if ch == edge.dst and g.lane == edge.lane), key=lambda x: x[1])[0]
         out.append(Proposal(ch=edge.dst, note=oldest, vel=0, dur=0.0, lane=edge.lane, kind="off",
                             t_offset=t_off))

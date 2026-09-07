@@ -616,3 +616,66 @@ def test_sustain_cadence_survives_the_probability_gate():
     gaps = [b - a for a, b in zip(ons, ons[1:])]
     avg = sum(gaps) / len(gaps)
     assert 1.5 <= avg <= 4.5, f"average gap {avg:.1f}s is outside the one-to-two bar band"
+
+
+# ------------------------------------------------- code review 2026-09-07
+def test_ui_parameter_changes_run_on_the_engine_thread():
+    """Plan §1: the UI must not touch edges/instruments/scene from its own thread."""
+    eng, clk, out = make([
+        {"id": "f", "src": 0, "dst": 11, "algo": "follow", "interval": 7, "prob": 1.0, "constraint": "free"},
+    ])
+    eng.submit(eng.set_edge, "f", "prob", 0.0)
+    eng.submit(eng.set_global, "prob_scale", 0.25)
+    eng.submit(eng.set_instrument, 11, "enabled", False)
+    # nothing has been applied yet: the commands are queued, not executed
+    assert eng.graph.find_edge("f").prob == 1.0
+    assert eng.scene.globals["prob_scale"] == 1.0
+    assert eng.instruments[11].enabled is True
+    eng.step()
+    assert eng.graph.find_edge("f").prob == 0.0
+    assert eng.scene.globals["prob_scale"] == 0.25
+    assert eng.instruments[11].enabled is False
+
+
+def test_a_bad_ui_command_does_not_kill_the_engine():
+    eng, clk, out = make([
+        {"id": "f", "src": 0, "dst": 11, "algo": "follow", "interval": 7, "prob": 1.0, "constraint": "free"},
+    ])
+    eng.submit(eng.set_instrument, 99, "note_range", "not a range")
+    eng.submit(lambda: 1 / 0)
+    eng.step()
+    assert any(e["type"] == "error" for e in eng.pop_events())
+    play(eng, clk, 9, 60, hold=0.1)             # still alive
+    run_for(eng, clk, 0.2)
+    assert out.notes("note_on", ch=11)
+
+
+def test_loading_a_scene_clears_the_per_edge_caches():
+    eng, clk, out = make([
+        {"id": "sh", "src": 0, "dst": 11, "algo": "shadow", "shadow": "top", "prob": 1.0,
+         "constraint": "free", "lane": "shadow"},
+    ])
+    eng.post(human_event("note_on", clk(), 9, 60, 80))
+    eng.step()
+    assert eng._roll_cache and eng._shadow_group
+    eng.load_scene(scene([{"id": "other", "src": 0, "dst": 10, "algo": "echo", "prob": 1.0}]))
+    assert eng._roll_cache == {} and eng._shadow_group == {} and eng.lane_state == {}
+
+
+def test_snap_returns_none_when_nothing_in_range_fits():
+    from backend.mie.constraint import snap
+    assert snap(60, {0, 4, 7}, lo=61, hi=62) is None      # no C/E/G in [61, 62]
+    assert snap(60, set()) is None
+    assert snap(60, {0, 4, 7}, lo=70, hi=60) is None      # empty range
+    assert snap(61, {0, 4, 7}) == 60
+
+
+def test_mutation_survives_all_zero_weights():
+    from random import Random
+    from backend.mie.mutation import apply_one
+    from backend.mie.events import Proposal
+    p = Proposal(ch=11, note=60, vel=80, dur=1.0, lane="x")
+    got = apply_one(p, {"type": "octave", "choices": [-1, 0, 1], "weights": [0, 0, 0]}, Random(1), 0.5)
+    assert len(got) == 1 and got[0].note in (48, 60, 72)
+    got = apply_one(p, {"type": "interval", "choices": [3, 5], "weights": [1]}, Random(1), 0.5)
+    assert len(got) == 1 and got[0].note in (63, 65)

@@ -67,31 +67,35 @@ def main(argv=None) -> int:
         from .ws_server import UiServer
 
         def on_msg(msg: dict) -> None:
+            """WebSocket thread. Nothing here touches engine state directly:
+            every change is handed to the engine thread via `submit` (plan §1).
+            PANIC is the one exception - it must not wait behind the queue."""
             t = msg.get("type")
             if t == "panic":
                 engine.panic("ui")
             elif t == "resume":
-                engine.resume()
+                engine.submit(engine.resume)
             elif t == "mode":
-                engine.set_mode(str(msg.get("value", "SAFE")))
+                engine.submit(engine.set_mode, str(msg.get("value", "SAFE")))
             elif t == "set":
-                path = str(msg.get("path", ""))
-                parts = path.split(".")
+                parts = str(msg.get("path", "")).split(".")
                 if parts[0] == "global" and len(parts) == 2:
-                    engine.set_global(parts[1], msg.get("value"))
+                    engine.submit(engine.set_global, parts[1], msg.get("value"))
                 elif parts[0] == "edge" and len(parts) == 3:
-                    engine.set_edge(parts[1], parts[2], msg.get("value"))
+                    engine.submit(engine.set_edge, parts[1], parts[2], msg.get("value"))
                 elif parts[0] == "inst" and len(parts) == 3:
-                    engine.set_instrument(int(parts[1]), parts[2], msg.get("value"))
+                    engine.submit(engine.set_instrument, int(parts[1]), parts[2], msg.get("value"))
             elif t == "scene":
                 try:
-                    engine.load_scene(load_scene(str(msg.get("id", "01"))))
+                    sc = load_scene(str(msg.get("id", "01")))       # file I/O off the engine thread
                 except Exception as e:  # noqa: BLE001
                     print(f"[scene] load failed: {e}")
+                    return
+                engine.submit(engine.load_scene, sc)
             elif t == "playhead":
-                _apply_playhead(engine, msg)
+                engine.submit(_apply_playhead, engine, msg)
             elif t == "action":
-                engine.apply_action(str(msg.get("action", "")), int(msg.get("value", 127)))
+                engine.submit(engine.apply_action, str(msg.get("action", "")), int(msg.get("value", 127)))
 
         ui = UiServer(engine, port=a.port, on_message=on_msg)
         ui.start()
@@ -113,16 +117,15 @@ def main(argv=None) -> int:
             if c == "p":
                 engine.panic("console")
             elif c == "r":
-                engine.resume()
-                print(f"[mode] {engine.mode}")
+                engine.submit(engine.resume)
+                print("[mode] resume queued")
             elif c == "b":
-                engine.set_mode("BYPASS")
+                engine.submit(engine.set_mode, "BYPASS")
             elif c == "s":
                 snap = engine.snapshot()
                 print(f"[stats] {snap['stats']} drops={snap['drops']} jitter={snap['jitter']} state={snap['state']}")
             elif c.startswith("m "):
-                engine.set_mode(c[2:].strip().upper())
-                print(f"[mode] {engine.mode}")
+                engine.submit(engine.set_mode, c[2:].strip().upper())
             elif c == "q":
                 engine.stop.set()
 

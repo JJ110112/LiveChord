@@ -8,6 +8,7 @@ queue; the engine thread is the sole consumer.  Output is a plain `send`.
 from __future__ import annotations
 
 import queue
+import threading
 import time
 from typing import Callable, Optional
 
@@ -37,6 +38,9 @@ class MidiIO:
         self.clock = clock
         self.open_out = open_out
         self.in_port = self.uc4_port = self.hst_out = self.reaper_out = None
+        # PANIC can come from the UI thread while the scheduler thread is sending:
+        # rtmidi output ports are not thread-safe, so serialize the bytes.
+        self._send_lock = threading.Lock()
         self.names: dict[str, Optional[str]] = {}
         self.in_count = 0
         self.uc4_count = 0
@@ -105,7 +109,8 @@ class MidiIO:
     def send(self, port: str, msg) -> None:
         prt = self.reaper_out if port == "reaper" else self.hst_out
         if prt is not None:
-            prt.send(msg)
+            with self._send_lock:
+                prt.send(msg)
 
     def has_port(self, port: str) -> bool:
         return (self.reaper_out if port == "reaper" else self.hst_out) is not None

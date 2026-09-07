@@ -150,14 +150,14 @@ class Safety:
         group_max = self.FANTOM_GROUP_MAX
         if st.human_energy > 0.7:
             max_v, group_max = 1, 3
-        ch_voices = [(k, g) for k, g in st.active_gen.items() if k[0] == p.ch]
+        ch_voices = [(k, g) for k, g in list(st.active_gen.items()) if k[0] == p.ch]
         steal = None
         if len(ch_voices) + pending_on_ch >= max_v:
             if not ch_voices:
                 return Admission(False, self._count("voices"))
             steal = min(ch_voices, key=lambda kv: kv[1].t_on)[0]
         if inst.group == "fantom":
-            grp = [(k, g) for k, g in st.active_gen.items()
+            grp = [(k, g) for k, g in list(st.active_gen.items())
                    if self.instruments.get(k[0]) and self.instruments[k[0]].group == "fantom"]
             if len(grp) >= group_max and steal is None:
                 if not grp:
@@ -172,7 +172,7 @@ class Safety:
     # ---- layer 7 ----
     def watchdog(self, st: MusicalState, now: float) -> list[tuple[int, int]]:
         out = []
-        for (ch, note), g in st.active_gen.items():
+        for (ch, note), g in list(st.active_gen.items()):
             if now - g.t_on > g.max_dur + 0.5:
                 out.append((ch, note))
         return out

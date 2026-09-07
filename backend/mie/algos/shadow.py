@@ -42,7 +42,7 @@ def run(ev: MieEvent, st: MusicalState, edge: Edge, rng: Random) -> list[Proposa
     if ev.is_note_off:
         # release every shadow note bound to this human note on this lane/channel
         out = []
-        for (ch, note), g in st.active_gen.items():
+        for (ch, note), g in list(st.active_gen.items()):
             if ch == edge.dst and g.lane == edge.lane and g.src_note == ev.note:
                 out.append(Proposal(ch=ch, note=note, vel=0, dur=0.0, lane=edge.lane, kind="off", src_note=ev.note))
         return out

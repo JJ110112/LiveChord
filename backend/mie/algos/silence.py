@@ -65,4 +65,4 @@ def on_human_note(st: MusicalState, edge: Edge, now: float, lane_state: dict) ->
     lane_state["fired"] = False
     rel = float(edge.params.get("release_beats", 1.0)) * st.beat_s
     return [Proposal(ch=ch, note=note, vel=0, dur=0.0, lane=edge.lane, kind="off", t_offset=rel)
-            for (ch, note), g in st.active_gen.items() if ch == edge.dst and g.lane == edge.lane]
+            for (ch, note), g in list(st.active_gen.items()) if ch == edge.dst and g.lane == edge.lane]

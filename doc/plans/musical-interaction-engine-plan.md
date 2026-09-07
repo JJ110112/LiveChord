@@ -513,6 +513,20 @@ Auracle 名詞對照：**DIN MIDI** = 實體 DIN 孔（`Fantom 8` = DIN 1）、*
 
 **尚未實作、使用者提過的更大構想**：彈法／織度辨識（持續按壓 / 琶音 / 旋律 / 打和弦，以及左手低音 + 右手旋律的分手判斷），讓不同的邊只在特定彈法下作用。現有 buffer（`recent_notes` 256 筆、`recent_ioi`、`recent_intervals`、`register`、`direction`）足以支撐，但分類器與 `when: {texture: ...}` 邊條件都還沒做，列為 Phase 2 候選。
 
+**程式碼審核修正（2026-09-07，使用者審核）**
+
+| 等級 | 發現 | 修正 |
+|---|---|---|
+| 高 | `set_instrument` / `set_edge` 由 WebSocket 執行緒直接改 `Instrument` / `Edge`，而 Engine thread 與 Scheduler thread（`_before_on`）同時在讀 | 這正是規格 §1 早就寫的「UI 的參數變更也丟進 `in_queue` 當控制訊息處理」，實作時漏了。新增 `Engine.submit(fn, *args)`：WS 與 console 執行緒一律把呼叫排進佇列，由 Engine thread 執行；壞掉的 UI 訊息只會記一筆 `error` 事件，不會殺掉引擎執行緒 |
+| 高（延伸） | PANIC 必須立即生效、不能排隊，但它會 `clear()` 發聲池，而其他執行緒正在迭代同一個 dict；且多執行緒同時對 rtmidi output port 寫入 | 所有 `active_gen` 的迭代改成先 `list()` 快照（CPython 下這是原子操作）；`MidiIO.send` 加互斥鎖，序列化送出的位元組。PANIC 因此可以安全地從任何執行緒直接呼叫 |
+| 中 | `mutation._weighted` 在 `weights` 全為 0 時 `tot=0`，輪盤邏輯失效 | `tot <= 0` 或長度不符時退回 `rng.choice`；空 `choices` 直接拋錯 |
+| 中 | `constraint.snap` 的 `best` 在找不到音時為 `None`，靠尾端三元運算保護，維護時易踩雷 | 拆成 `best_key` / `best_note` 兩個變數、加上 `lo > hi` 的早退與註解，回傳 `None` 的路徑一目了然 |
+| 低 | `_shadow_group` 與 `_roll_cache` 以 `edge.id` 為鍵，切換 Scene 後不會清掉 | `load_scene()` 一併 `clear()` 兩者 |
+
+全部有回歸測試（`test_ui_parameter_changes_run_on_the_engine_thread`、`test_a_bad_ui_command_does_not_kill_the_engine`、`test_loading_a_scene_clears_the_per_edge_caches`、`test_snap_returns_none_when_nothing_in_range_fits`、`test_mutation_survives_all_zero_weights`），共 47 passed。
+
+**Phase 1 驗收狀態**：使用者在 SAFE 與 INTERACTIVE 各彈 10 分鐘，無卡音、`loops` 維持 0、三種 PANIC 皆有效；`silence_pad` 依使用者要求關閉（SP-404 MK II 已鋪環境音）。等使用者完成程式碼審核後才算通過。
+
 **驗收方式（規格 §11 Phase 1）**：使用者用 `start_mie.bat --mode SAFE` 彈 10 分鐘、再 `--mode INTERACTIVE` 彈 10 分鐘，觀察無卡音、無迴圈（面板 loops = 0）、UC4 / 面板 / `Esc Esc` PANIC 一鍵有效。
 
 ### Phase 2 — 互動與控制

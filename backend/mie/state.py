@@ -281,7 +281,7 @@ class MusicalState:
         return self.active_gen.pop((ch, note), None)
 
     def gen_notes_for_lane(self, lane: str) -> list[tuple[int, int]]:
-        return [k for k, g in self.active_gen.items() if g.lane == lane]
+        return [k for k, g in list(self.active_gen.items()) if g.lane == lane]
 
     # ---- periodic ---------------------------------------------------------
     def tick(self, now: float) -> None:
@@ -323,5 +323,5 @@ class MusicalState:
             "silence_s": round(self.silence_s, 2),
             "density": round(self.density, 2), "vel_mean": round(self.vel_mean, 1),
             "energy": round(self.human_energy, 3),
-            "active_gen": [[ch, n, g.lane] for (ch, n), g in self.active_gen.items()],
+            "active_gen": [[ch, n, g.lane] for (ch, n), g in list(self.active_gen.items())],
         }

@@ -15,9 +15,13 @@ FANOUT_TYPES = {"chordify", "rhythm"}
 
 
 def _weighted(rng: Random, choices: list, weights: list | None):
-    if not weights:
+    if not choices:
+        raise ValueError("mutation has no choices")
+    if not weights or len(weights) != len(choices):
         return rng.choice(choices)
-    tot = float(sum(weights))
+    tot = float(sum(w for w in weights if w > 0))
+    if tot <= 0:              # a scene that weights everything 0 still has to pick something
+        return rng.choice(choices)
     x = rng.random() * tot
     for c, w in zip(choices, weights):
         if x < w:

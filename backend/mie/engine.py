@@ -16,6 +16,7 @@ from __future__ import annotations
 import queue
 import threading
 from collections import deque
+from dataclasses import dataclass, field
 from random import Random
 from typing import Callable, Optional
 
@@ -31,6 +32,14 @@ from .state import MusicalState
 
 DUP_WINDOW_S = 0.005      # Fantom layered zones: same key on two channels within 5 ms
 TICK_S = 0.05
+
+
+@dataclass(slots=True)
+class _Command:
+    """A parameter change handed to the engine thread (see `Engine.submit`)."""
+    fn: Callable
+    args: tuple = ()
+    kw: dict = field(default_factory=dict)
 
 
 def port_for(ch: int) -> str:
@@ -156,6 +165,8 @@ class Engine:
         self.graph = InteractionGraph(scene, self.instruments)
         self.safety.set_globals(scene.globals)
         self.lane_state.clear()
+        self._shadow_group.clear()      # both are keyed by edge id: the ids are gone
+        self._roll_cache.clear()
         if scene.key is not None:
             self.st.set_key(scene.key.tonic_pc, scene.key.mode, "scene")
         if self.st.clock_source == "scene":
@@ -166,6 +177,18 @@ class Engine:
     def post(self, ev) -> None:
         self.in_queue.put(ev)
 
+    def submit(self, fn: Callable, *args, **kw) -> None:
+        """Run `fn` on the engine thread (plan §1: UI parameter changes go
+        through `in_queue` as control messages).
+
+        Everything the UI can change — scene globals, edges, instruments, mode,
+        the playhead — is read by the engine thread while it builds notes and by
+        the scheduler thread while it re-snaps them. Mutating it from the
+        WebSocket thread is the one place that could tear that state, so the
+        server hands the call over instead of making it directly.
+        """
+        self.in_queue.put(_Command(fn, args, kw))
+
     def drain(self, now: Optional[float] = None) -> int:
         n = 0
         while True:
@@ -175,10 +198,18 @@ class Engine:
                 return n
             n += 1
             t = self.clock() if now is None else now
-            if isinstance(item, tuple):
+            if isinstance(item, _Command):
+                self._run_command(item)
+            elif isinstance(item, tuple):
                 self._on_sent(item[0], item[1], t)
             else:
                 self.handle(item, t)
+
+    def _run_command(self, cmd: _Command) -> None:
+        try:
+            cmd.fn(*cmd.args, **cmd.kw)
+        except Exception as e:  # a bad UI message must not kill the engine thread
+            self._ui("error", where=getattr(cmd.fn, "__name__", "cmd"), err=str(e))
 
     def step(self, now: Optional[float] = None) -> None:
         """Synchronous test driver: drain queue, pump scheduler, tick, drain again."""
@@ -200,7 +231,9 @@ class Engine:
                 item = None
             now = self.clock()
             if item is not None:
-                if isinstance(item, tuple):
+                if isinstance(item, _Command):
+                    self._run_command(item)
+                elif isinstance(item, tuple):
                     self._on_sent(item[0], item[1], now)
                 else:
                     self.handle(item, now)
@@ -523,7 +556,7 @@ class Engine:
         self.panicked = True
         self.mode = "BYPASS"
         sounding = self.sched.cancel_all()
-        active: dict[tuple[int, int], float] = {k: g.t_on for k, g in self.st.active_gen.items()}
+        active: dict[tuple[int, int], float] = {k: g.t_on for k, g in list(self.st.active_gen.items())}
         for p in sounding:
             active.setdefault((p.ch, p.note), p.t_on)
         by_port = {"hst": {}, "reaper": {}}
