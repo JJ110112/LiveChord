@@ -49,6 +49,15 @@ The beta-mode code paths, dual-instance scripts, and `LIVECHORD_MODE=beta`/`publ
 
 **Reverts**: if you need to roll back, `git restore <file>` in the dev repo then re-sync to V:\. Don't try to reverse-edit V:\ in place — you'll diverge.
 
+## Branching (two machines, 2026-09-07)
+
+Two AI agents work on this repo in parallel on different hardware. Neither works on `master` directly.
+
+- **`pc-5080/ai-quality`** — this PC (RTX 5080). AI quality pipeline: RH melody candidates / resolver, note continuity, beat & chord tracks, batch tools. This is also the branch the **NUC runtime is synced from** (V:\ deploy) until a merge lands
+- **Laptop branch (RTX 5070 ProArt 16, connected to music gear)** — human-computer interactive music features; branch name chosen there. Do not sync it to V:\ from the PC
+- **Merging into `master` is deliberate, never routine**: rebase the branch on `master` first, run `python -m pytest backend/tests -q` and [tools/lint_async_handlers.py](tools/lint_async_handlers.py), then merge with `--no-ff` so the merge is one revertable commit. Files both branches are likely to touch and that need a human look when they conflict: [frontend/js/player.js](frontend/js/player.js), [frontend/player.html](frontend/player.html), [backend/ai_api.py](backend/ai_api.py), `?v=` cache-bust numbers, `DICT_VERSION` in [frontend/js/i18n.js](frontend/js/i18n.js) and the i18n JSON files (take the higher number, never both)
+- After a merge, re-sync V:\ from the merged tree and restart the NUC; a cache-bust number that went backwards is the classic sign of a bad merge
+
 ## Deploy Sync (QA §590 防線5)
 
 After any code change:
