@@ -1,9 +1,9 @@
 {
   "_comment": "MIE Phase 0 probe config. Port values are case-insensitive substrings matched against `python backend/mie/probe.py list`. Set optional ports to null to skip them.",
   "ports": {
-    "mie_in":     "HST 2",
-    "mie_out":    "HST 3",
-    "uc4_in":     "UC4",
+    "mie_in": "HST 2",
+    "mie_out": "HST 3",
+    "uc4_in": "UC4",
     "reaper_out": "LiveChord_MIE_to_REAPER"
   },
   "echo": {
@@ -17,5 +17,13 @@
     "cc": null,
     "value_min": 127
   },
-  "self_echo_window_ms": 30
+  "self_echo_window_ms": 30,
+  "_observed_2026-09-07": {
+    "_comment": "Real Windows names seen by `probe_mie.bat list` on ProArt 16 (rtmidi appends a device index). Substrings above match these.",
+    "mie_in": "HST 2 14",
+    "mie_out": "HST 3 16",
+    "uc4_in": "Faderfox UC4 1",
+    "reaper_out": "NOT PRESENT yet; loopMIDI port LiveChord_MIE_to_REAPER must be created by the user",
+    "also_present": "FANTOM-6 7 8 (direct USB), FANTOM-6 7 8 MIDI IN/OUT 1-2, DIN 1-8, HST 1-7, Control, Breath Controller 5.2"
+  }
 }
