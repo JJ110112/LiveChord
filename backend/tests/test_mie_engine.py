@@ -1162,3 +1162,127 @@ def test_silence_mode_chooses_what_counts_as_space():
     eng.step()
     run_for(eng, clk, 5.0)
     assert out.notes("note_on", ch=3), "and the sound rule enters once it is really quiet"
+
+
+# ------------------------------------------------------- phrase echo (Phase 2)
+def _phrase_edge(**over) -> dict:
+    e = {"id": "ph", "src": 0, "dst": 12, "algo": "phrase", "prob": 1.0, "lane": "phrase",
+         "phrase_gap_beats": 1.0, "min_notes": 3, "max_notes": 8, "delay_beats": 1.0,
+         "repeats": 3, "vel_scale": 0.72, "min_vel": 14, "constraint": "free", "align": "none"}
+    e.update(over)
+    return e
+
+
+def _shout(eng: Engine, clk: FakeClock, notes: list[int], gaps: list[float]) -> None:
+    """Play a gesture: `notes` with `gaps` seconds between each onset."""
+    for i, n in enumerate(notes):
+        play(eng, clk, 9, n, vel=80, hold=0.15)
+        if i < len(gaps):
+            run_for(eng, clk, max(0.0, gaps[i] - 0.15))
+
+
+def _passes(out: FakeMidiOut, ch: int, size: int) -> list[list[tuple]]:
+    """Cut the generated note_ons into passes of `size`.
+
+    Splitting on a gap is unreliable here: the space between two passes can be
+    shorter than the longest gap inside the phrase, which is exactly the point
+    of the algorithm. The phrase length is known, so count instead.
+    """
+    ons = out.notes("note_on", ch=ch)
+    assert len(ons) % size == 0, f"a pass came back incomplete: {ons}"
+    return [ons[i:i + size] for i in range(0, len(ons), size)]
+
+
+def test_phrase_echo_returns_the_whole_gesture():
+    """Shout 你好嗎 into the canyon and 你好嗎 comes back, not 你＿嗎.
+
+    The note echo rolls once per note, so a phrase came back with holes; this
+    algorithm rolls once for the phrase. Every pass must carry all three
+    pitches, in order.
+    """
+    eng, clk, out = make([_phrase_edge()])
+    _shout(eng, clk, [72, 74, 71], [0.30, 0.45])
+    run_for(eng, clk, 9.0)
+    passes = _passes(out, 12, 3)
+    assert len(passes) == 3, f"expected 3 passes, got {len(passes)}"
+    for i, p in enumerate(passes, 1):
+        assert [n for _, _, n, _ in p] == [72, 74, 71], f"pass {i} came back broken: {p}"
+
+
+def test_phrase_echo_keeps_its_internal_rhythm():
+    """The gaps inside the phrase are the phrase; quantising them would erase it."""
+    eng, clk, out = make([_phrase_edge()])
+    _shout(eng, clk, [60, 62, 64, 65], [0.25, 0.50, 0.25])
+    run_for(eng, clk, 9.0)
+    for i, p in enumerate(_passes(out, 12, 4), 1):
+        gaps = [round(b[0] - a[0], 2) for a, b in zip(p, p[1:])]
+        assert gaps == [0.25, 0.50, 0.25], f"pass {i} rhythm drifted: {gaps}"
+
+
+def test_phrase_echo_never_drops_the_first_note():
+    """Detecting the end of a phrase costs a beat, which once pushed the opening
+    note's offset negative and silently discarded it. The pass is shifted
+    forward instead: late is fine, missing a word is not."""
+    for delay in (0.0, 0.25, 1.0):
+        eng, clk, out = make([_phrase_edge(delay_beats=delay, repeats=1)])
+        _shout(eng, clk, [67, 69, 71], [0.20, 0.20])
+        run_for(eng, clk, 6.0)
+        ons = out.notes("note_on", ch=12)
+        assert [n for _, _, n, _ in ons] == [67, 69, 71], f"delay_beats={delay} lost a note: {ons}"
+
+
+def test_phrase_echo_decays_and_stops():
+    eng, clk, out = make([_phrase_edge(repeats=8, vel_scale=0.5, min_vel=20)])
+    _shout(eng, clk, [60, 64, 67], [0.20, 0.20])
+    run_for(eng, clk, 20.0)
+    passes = _passes(out, 12, 3)
+    vels = [p[0][3] for p in passes]
+    assert vels == sorted(vels, reverse=True), f"the tail got louder: {vels}"
+    assert all(v >= 20 for v in vels), f"a pass fell below min_vel: {vels}"
+    assert len(passes) <= 4, f"a tail that should have died away ran {len(passes)} passes"
+
+
+def test_phrase_echo_waits_for_the_gesture_to_finish():
+    """It must not answer over the top of the player."""
+    eng, clk, out = make([_phrase_edge(phrase_gap_beats=2.0)])
+    _shout(eng, clk, [60, 62, 64], [0.20, 0.20])
+    run_for(eng, clk, 0.6)                      # still inside phrase_gap_beats (2 beats = 1.0 s)
+    assert not out.notes("note_on", ch=12), "the echo interrupted the phrase"
+    run_for(eng, clk, 6.0)
+    assert out.notes("note_on", ch=12)
+
+
+def test_phrase_echo_ignores_a_gesture_that_is_too_short():
+    eng, clk, out = make([_phrase_edge(min_notes=4)])
+    _shout(eng, clk, [60, 64, 67], [0.20, 0.20])
+    run_for(eng, clk, 8.0)
+    assert not out.notes("note_on", ch=12), "three notes answered a four-note minimum"
+
+
+def test_phrase_echo_answers_each_gesture_once():
+    """One roll per phrase, and the same phrase is never answered twice."""
+    eng, clk, out = make([_phrase_edge(repeats=1)])
+    _shout(eng, clk, [60, 62, 64], [0.20, 0.20])
+    run_for(eng, clk, 6.0)
+    first = len(out.notes("note_on", ch=12))
+    assert first == 3
+    run_for(eng, clk, 10.0)
+    assert len(out.notes("note_on", ch=12)) == first, "the same phrase came back again"
+    _shout(eng, clk, [55, 57, 59], [0.20, 0.20])
+    run_for(eng, clk, 6.0)
+    assert [n for _, _, n, _ in out.notes("note_on", ch=12)][3:] == [55, 57, 59], "the next gesture went unanswered"
+
+
+def test_phrase_echo_keeps_only_the_tail_of_a_long_run():
+    """A canyon answers what you just shouted, not the whole piece."""
+    eng, clk, out = make([_phrase_edge(max_notes=4, repeats=1)])
+    _shout(eng, clk, [60, 62, 64, 65, 67, 69], [0.2] * 5)
+    run_for(eng, clk, 8.0)
+    assert [n for _, _, n, _ in out.notes("note_on", ch=12)] == [64, 65, 67, 69]
+
+
+def test_phrase_echo_transposes_as_a_unit():
+    eng, clk, out = make([_phrase_edge(repeats=1, transpose=-5)])
+    _shout(eng, clk, [72, 74, 71], [0.25, 0.25])
+    run_for(eng, clk, 6.0)
+    assert [n for _, _, n, _ in out.notes("note_on", ch=12)] == [67, 69, 66]

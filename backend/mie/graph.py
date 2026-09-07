@@ -17,15 +17,15 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DATA_DIR = os.path.join(REPO_ROOT, "data", "mie")
 SCENE_DIR = os.path.join(DATA_DIR, "scenes")
 
-ALGOS_PHASE1 = ("follow", "echo", "shadow", "silence", "sustain")
+ALGOS_PHASE1 = ("follow", "echo", "shadow", "silence", "sustain", "phrase")
 
 # plan §7 operating modes -> overrides applied on top of the scene globals
 MODES: dict[str, dict] = {
     "OFF":         {"send": False},
     "BYPASS":      {"send": False},
     "SAFE":        {"prob_scale_max": 0.3, "max_hop": 1, "chaos": 0.0,
-                    "algos": ("shadow", "echo", "silence", "sustain"),
-                    "timed_lanes": ("pad", "sustain")},
+                    "algos": ("shadow", "echo", "silence", "sustain", "phrase"),
+                    "timed_lanes": ("pad", "sustain", "phrase")},
     "AMBIENT":     {"dur_scale": 2.0, "vel_max": 70, "prefer_lanes": ("pad", "texture")},
     "INTERACTIVE": {"max_hop": 2},
     "GENERATIVE":  {"max_hop": 2},
@@ -108,7 +108,7 @@ class Edge:
     # their own initiative, so they align; lanes answering a human note keep
     # the human's own timing.
     ALIGN_NAMES = {"none": 0.0, "off": 0.0, "half": 0.5, "beat": 1.0, "bar": -1.0, "downbeat": -1.0}
-    ALIGN_DEFAULT = {"silence": "bar", "sustain": "beat"}
+    ALIGN_DEFAULT = {"silence": "bar", "sustain": "beat", "phrase": "none"}
 
     @property
     def lane(self) -> str:
@@ -233,7 +233,7 @@ class InteractionGraph:
 
     def timed_edges(self, allowed_algos: Optional[Iterable[str]] = None) -> list[Edge]:
         allowed = set(allowed_algos) if allowed_algos else None
-        return [e for e in self.edges if e.enabled and e.algo in ("silence", "sustain", "density")
+        return [e for e in self.edges if e.enabled and e.algo in ("silence", "sustain", "phrase", "density")
                 and (allowed is None or e.algo in allowed)
                 and (self.instruments.get(e.dst) is not None and self.instruments[e.dst].enabled)]
 

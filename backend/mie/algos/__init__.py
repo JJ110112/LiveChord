@@ -19,9 +19,10 @@ def scaled_vel(edge, vel: int) -> int:
 
 
 # submodules import the two helpers above, so they must come after them
-from . import echo, follow, shadow, silence, sustain  # noqa: E402
+from . import echo, follow, phrase, shadow, silence, sustain  # noqa: E402
 
 EVENT_ALGOS = {"follow": follow.run, "echo": echo.run, "shadow": shadow.run}
-TICK_ALGOS = {"silence": silence.tick, "sustain": sustain.tick}
-TICK_SKIP = {"sustain": sustain.on_skip, "silence": silence.on_skip}   # told when a window was refused
+TICK_ALGOS = {"silence": silence.tick, "sustain": sustain.tick, "phrase": phrase.tick}
+TICK_SKIP = {"sustain": sustain.on_skip, "silence": silence.on_skip,
+             "phrase": phrase.on_skip}   # told when a window was refused
 RELEASE_ALGOS = {"silence": silence.on_human_note}   # timed lanes that react to the human coming back
