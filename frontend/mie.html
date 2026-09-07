@@ -32,6 +32,7 @@
     <div class="mie-pill mie-uc4" title="最後收到的 UC4 控制訊息（用來對 control_map.json 綁定）"><span class="mie-lbl">UC4</span><span id="mieUc4" class="mie-val">—</span></div>
     <div class="mie-spacer"></div>
     <button id="mieResume" class="mie-btn" title="離開 BYPASS，回到 scene 的模式">RESUME</button>
+    <button id="mieSave" class="mie-btn" title="把目前所有調整寫回 scene 檔">儲存</button>
     <button id="miePanic" class="mie-btn mie-btn-panic" title="兩個 Out port 各自 CH1–16 送 CC120/123/64=0，再補 note_off；引擎進 BYPASS（快捷鍵 Esc Esc）">PANIC</button>
   </header>
 
@@ -48,6 +49,8 @@
 
       <div class="lc-title mie-title-gap">全域</div>
       <label class="mie-slider"><span class="mie-mlbl">音量</span><input id="gMaster" type="range" min="0" max="1" step="0.01"><span id="gMasterV" class="mie-mval">1.00</span></label>
+      <label class="mie-slider"><span class="mie-mlbl">張力</span><input id="gTension" type="range" min="0" max="1" step="0.05"><span id="gTensionV" class="mie-mval">0.00</span></label>
+      <label class="mie-slider"><span class="mie-mlbl">厚度</span><input id="gDensity" type="range" min="0" max="1" step="0.05"><span id="gDensityV" class="mie-mval">0.50</span></label>
       <label class="mie-slider"><span class="mie-mlbl">PROB</span><input id="gProb" type="range" min="0" max="1" step="0.01"><span id="gProbV" class="mie-mval">0.60</span></label>
       <label class="mie-slider"><span class="mie-mlbl">CHAOS</span><input id="gChaos" type="range" min="0" max="1" step="0.01"><span id="gChaosV" class="mie-mval">0.00</span></label>
       <label class="mie-slider"><span class="mie-mlbl">RESTR.</span><input id="gRestraint" type="range" min="0" max="1" step="0.01"><span id="gRestraintV" class="mie-mval">1.00</span></label>
@@ -71,6 +74,6 @@
     </section>
   </main>
 
-  <script src="/js/mie.js?v=12"></script>
+  <script src="/js/mie.js?v=13"></script>
 </body>
 </html>

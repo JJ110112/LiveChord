@@ -67,6 +67,7 @@ class Engine:
         self.st = MusicalState(bpm=scene.bpm, beats_per_bar=scene.beats_per_bar, key=scene.key, now=clock())
         self.safety = Safety(instruments, scene.globals)
         self._cc_seen: dict[tuple[int, int], tuple[float, int]] = {}
+        self._sync_knobs()
         self._phrase_shift: dict[tuple, object] = {}
         self.echo_filter = SelfEchoFilter(0.008)
         self.sched = Scheduler(clock, self._emit, self._before_on)
@@ -180,6 +181,23 @@ class Engine:
                      frm_q=pair.capture_quality, to=target[0], to_q=target[1])
         return target
 
+    def scene_snapshot(self):
+        """The scene as it stands, safe to serialise off the engine thread.
+
+        The live `Edge` objects are mutated by `set_edge` while the player turns
+        knobs, so the writer gets rebuilt copies rather than the originals.
+        """
+        from .graph import Edge, Scene
+        edges = [Edge.from_json(e.to_dict(), i) for i, e in enumerate(self.graph.edges)]
+        return Scene(id=self.scene.id, name=self.scene.name, mode=self.mode,
+                     globals=dict(self.scene.globals), edges=edges, key=self.scene.key,
+                     bpm=self.scene.bpm, beats_per_bar=self.scene.beats_per_bar,
+                     path=self.scene.path)
+
+    def note_ui(self, typ: str, **kw) -> None:
+        """Put a line in the event stream from outside the engine thread."""
+        self._ui(typ, **kw)
+
     def _gen_sounding(self, ch: int, now: float) -> list:
         """Pitches the engine has sounding that this note has to live with.
 
@@ -247,6 +265,8 @@ class Engine:
 
     def set_global(self, key: str, value) -> None:
         self.scene.globals[key] = value
+        if key == "density":
+            self.st.density_knob = None if value is None else float(value)
         self.safety.set_globals(self.scene.globals)
         self._ui("set", path=f"global.{key}", value=value)
 
@@ -280,12 +300,23 @@ class Engine:
         self._ui("set", path=f"inst.{ch}.{key}", value=value)
         return True
 
+    def _sync_knobs(self) -> None:
+        """Push scene-level controls the state has to carry itself.
+
+        Without this a saved `density` is ignored until the player happens to
+        touch the slider - the scene says one thing and the engine plays
+        another, which is the worst kind of setting.
+        """
+        d = self.scene.globals.get("density")
+        self.st.density_knob = None if d is None else float(d)
+
     def load_scene(self, scene: Scene) -> None:
         now = self.clock()
         self._release_everything(now, fade_s=0.5)
         self.scene = scene
         self.graph = InteractionGraph(scene, self.instruments)
         self.safety.set_globals(scene.globals)
+        self._sync_knobs()
         self.lane_state.clear()
         self._shadow_group.clear()      # both are keyed by edge id: the ids are gone
         self._roll_cache.clear()

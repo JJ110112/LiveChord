@@ -200,6 +200,30 @@ def load_scene(path_or_id: str) -> Scene:
         return Scene.from_json(json.load(f), path)
 
 
+def save_scene(scene: "Scene", as_id: Optional[str] = None) -> str:
+    """Write a scene back to disk, atomically. Returns the path written.
+
+    Everything the player tunes on the panel lives only in memory until this
+    runs: an evening of finding the right decay and the right register is
+    thrown away by the next restart, which is a poor way to treat work that
+    can only be done by ear.
+
+    `as_id` saves a copy under a new id instead of overwriting.
+    """
+    d = scene.to_dict()
+    if as_id:
+        d["id"] = as_id
+        path = os.path.join(SCENE_DIR, f"{as_id}.json")
+    else:
+        path = scene.path or os.path.join(SCENE_DIR, f"{scene.id}.json")
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    os.replace(tmp, path)          # never leave a half-written scene behind
+    return path
+
+
 def list_scenes() -> list[dict]:
     out = []
     if os.path.isdir(SCENE_DIR):

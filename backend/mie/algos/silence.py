@@ -17,7 +17,7 @@ from ..graph import Edge
 from ..harmony import recognize
 from ..scales import scale_pcs
 from ..state import MusicalState
-from . import scaled_vel
+from . import how_many, scaled_vel
 
 
 def _voicing(st: MusicalState, n_voices: int, low: int, high: int) -> list[int]:
@@ -105,7 +105,7 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     lane_state["chord"] = live.name if live else (st.chord.name if st.chord else None)
     hold = float(edge.params.get("hold_s", 8.0))
     vel = scaled_vel(edge, int(edge.params.get("vel", 56)))
-    n_voices = int(edge.params.get("voices", 3))
+    n_voices = how_many(edge, st, "voices", 3)
     low, high = int(edge.params.get("low", 48)), int(edge.params.get("high", 84))
     spread = float(edge.params.get("spread_ms", 40)) / 1000.0
     notes = []

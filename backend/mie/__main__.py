@@ -19,7 +19,7 @@ import time
 from random import Random
 
 from .engine import Engine
-from .graph import DATA_DIR, load_instruments, load_scene, list_scenes
+from .graph import DATA_DIR, load_instruments, load_scene, list_scenes, save_scene
 from .io_rtmidi import MidiIO, wall_clock
 
 
@@ -115,6 +115,16 @@ def main(argv=None) -> int:
                     logging.getLogger("mie.ui").exception("mie: scene load failed")
                     return
                 engine.submit(engine.load_scene, sc)
+            elif t == "save_scene":
+                # file I/O off the engine thread, and a snapshot of the graph so
+                # a parameter cannot change under us mid-write
+                try:
+                    sc = engine.scene_snapshot()
+                    p = save_scene(sc, str(msg.get("as") or "") or None)
+                    engine.note_ui("saved", path=os.path.basename(p))
+                except Exception as exc:
+                    logging.getLogger("mie.ui").exception("mie: scene save failed")
+                    engine.note_ui("error", where="save_scene", err=str(exc))
             elif t == "playhead":
                 engine.submit(_apply_playhead, engine, msg)
             elif t == "action":

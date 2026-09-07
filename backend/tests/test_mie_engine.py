@@ -1954,3 +1954,104 @@ def test_an_edge_can_ask_for_one_kind_of_playing():
     assert eng.st.texture == "melody", eng.st.texture
     assert not out.notes("note_on", ch=11), "the edge spoke over playing it was not asked for"
     assert out.notes("note_on", ch=12), "the ungated edge should answer everything"
+
+
+# --------------------------------------------------------- the high-level knobs
+def test_density_decides_how_much_not_how_often():
+    """`density` is not another `prob_scale`. That one decides how OFTEN a lane
+    speaks; this decides how MUCH it plays when it does. 0.5 means exactly as
+    the edge is written, so a scene that never sets it is unchanged."""
+    edges = [{"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 1.0, "repeats": 5,
+              "delay_beats": 0.5, "vel_scale": 1.0, "decay": 1.0, "min_vel": 1,
+              "constraint": "free", "lane": "echo"}]
+
+    def returns(density):
+        eng, clk, out = make(edges)
+        if density is not None:
+            eng.set_global("density", density)
+        play(eng, clk, 9, 60, vel=90, hold=0.2)
+        run_for(eng, clk, 6.0)
+        return len(out.notes("note_on", ch=10))
+
+    assert returns(None) == 5, "an untouched scene must behave as written"
+    assert returns(0.5) == 5, "0.5 is 'as written'"
+    thin, thick = returns(0.0), returns(1.0)
+    assert thin < 5 < thick, f"thin {thin}, as written 5, thick {thick}"
+    assert thin >= 1, "it must never silence a lane completely"
+
+
+def test_density_thins_a_pad_as_well_as_an_echo():
+    edges = [{"id": "pad", "src": 0, "dst": 3, "algo": "silence", "prob": 1.0, "after_s": 1.0,
+              "lane": "pad", "hold_s": 8, "voices": 4, "vel": 50, "constraint": "chord",
+              "align": "none"}]
+
+    def voices(density):
+        eng, clk, out = make(edges)
+        eng.set_global("density", density)
+        hold_chord(eng, clk, 9, [48, 52, 55, 58])
+        release_chord(eng, clk, 9, [48, 52, 55, 58])
+        run_for(eng, clk, 3.0)
+        return len(out.notes("note_on", ch=3))
+
+    assert voices(0.0) < voices(0.5) <= voices(1.0), \
+        f"{voices(0.0)} / {voices(0.5)} / {voices(1.0)}"
+
+
+def test_the_density_knob_did_not_shadow_the_human_density():
+    """`st.density` was already the EMA of how densely the HUMAN is playing, and
+    the restraint curve reads it. Taking that name would have quietly broken
+    restraint while looking like it worked."""
+    eng, clk, out = make([])
+    eng.set_global("density", 1.0)
+    for n in (60, 62, 64, 65, 67):
+        play(eng, clk, 9, n, vel=80, hold=0.1)
+        run_for(eng, clk, 0.05)
+    assert eng.st.density > 0, "the human-density EMA stopped moving"
+    assert eng.st.density_knob == 1.0
+
+
+def test_a_scene_can_be_saved_and_comes_back_the_same():
+    """An evening of finding the right decay by ear must survive a restart."""
+    import json
+    import tempfile
+    from backend.mie.graph import Scene, save_scene
+
+    eng, clk, out = make([{"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 0.5,
+                           "repeats": 3, "constraint": "free", "lane": "echo"}])
+    eng.set_global("density", 0.8)
+    eng.set_edge("e", "prob", 0.25)
+    eng.set_edge("e", "repeats", 7)
+    snap = eng.scene_snapshot()
+    with tempfile.TemporaryDirectory() as d:
+        path = f"{d}/saved.json"
+        snap.path = path
+        save_scene(snap)
+        back = Scene.from_json(json.load(open(path, encoding="utf-8")), path)
+    assert back.globals["density"] == 0.8
+    e = [x for x in back.edges if x.id == "e"][0]
+    assert e.prob == 0.25 and e.params["repeats"] == 7
+
+
+def test_the_saved_snapshot_is_a_copy_not_the_live_edges():
+    """The writer runs off the engine thread while the player is still turning
+    knobs; it must not serialise objects that are being mutated under it."""
+    eng, clk, out = make([{"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 0.5,
+                           "repeats": 3, "constraint": "free", "lane": "echo"}])
+    snap = eng.scene_snapshot()
+    eng.set_edge("e", "prob", 0.9)
+    assert [x for x in snap.edges if x.id == "e"][0].prob == 0.5
+
+
+def test_a_saved_density_is_in_force_from_the_start():
+    """Without this a scene's own value is ignored until the player happens to
+    touch the slider - the scene says one thing and the engine plays another."""
+    from backend.mie.graph import Scene
+
+    sc = Scene.from_json({"id": "t", "name": "t", "mode": "INTERACTIVE",
+                          "global": {"density": 0.9}, "edges": []})
+    clk = FakeClock(10.0)
+    eng = Engine(sc, instruments(), clock=clk, send=FakeMidiOut(clk), rng=Random(1),
+                 mode="INTERACTIVE")
+    assert eng.st.density_knob == 0.9
+    eng.load_scene(Scene.from_json({"id": "u", "name": "u", "global": {"density": 0.1}, "edges": []}))
+    assert eng.st.density_knob == 0.1

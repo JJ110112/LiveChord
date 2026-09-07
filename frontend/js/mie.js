@@ -85,6 +85,8 @@
     pct($("#mVel"), st.vel_mean / 127); $("#vVel").textContent = Math.round(st.vel_mean);
     const g = s.scene.global || {};
     syncSlider("gMaster", g.master_gain === undefined ? 1 : g.master_gain, 2);
+    syncSlider("gTension", g.tension || 0, 2);
+    syncSlider("gDensity", g.density === undefined ? 0.5 : g.density, 2);
     syncSlider("gProb", g.prob_scale, 2); syncSlider("gChaos", g.chaos, 2); syncSlider("gRestraint", g.restraint, 2);
     if ($("#mieSceneSel").options.length && !$("#mieSceneSel").matches(":focus")) $("#mieSceneSel").value = s.scene.id;
     renderInstruments(s);
@@ -285,10 +287,17 @@
   // ---------------------------------------------------------------- controls
   $("#miePanic").addEventListener("click", () => send({ type: "panic" }));
   $("#mieResume").addEventListener("click", () => send({ type: "resume" }));
+  // Everything tuned on this panel lives only in memory until this is pressed.
+  $("#mieSave").addEventListener("click", () => {
+    const as = prompt("另存為新 scene 的編號（留空 = 覆寫目前的）", "");
+    if (as === null) return;
+    send({ type: "save_scene", as: as.trim() || undefined });
+  });
   $("#mieHaltResume").addEventListener("click", () => send({ type: "resume" }));
   $("#mieModeSel").addEventListener("change", (e) => send({ type: "mode", value: e.target.value }));
   $("#mieSceneSel").addEventListener("change", (e) => send({ type: "scene", id: e.target.value }));
-  [["gMaster", "master_gain"], ["gProb", "prob_scale"], ["gChaos", "chaos"], ["gRestraint", "restraint"]].forEach(([id, key]) => {
+  [["gMaster", "master_gain"], ["gTension", "tension"], ["gDensity", "density"],
+   ["gProb", "prob_scale"], ["gChaos", "chaos"], ["gRestraint", "restraint"]].forEach(([id, key]) => {
     const el = document.getElementById(id);
     el.addEventListener("input", () => { document.getElementById(id + "V").textContent = Number(el.value).toFixed(2); });
     el.addEventListener("change", () => send({ type: "set", path: `global.${key}`, value: Number(el.value) }));

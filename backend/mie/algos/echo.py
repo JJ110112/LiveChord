@@ -15,13 +15,13 @@ from random import Random
 from ..events import MieEvent, Proposal
 from ..graph import Edge
 from ..state import MusicalState
-from . import delay_s
+from . import delay_s, how_many, tail_floor
 
 
 def run(ev: MieEvent, st: MusicalState, edge: Edge, rng: Random) -> list[Proposal]:
     if not ev.is_note_on:
         return []
-    repeats = max(1, int(edge.params.get("repeats", 1)))
+    repeats = how_many(edge, st, "repeats", 1)
     d = delay_s(edge, st)
     if d <= 0:
         d = 0.5 * st.beat_s
@@ -43,7 +43,7 @@ def run(ev: MieEvent, st: MusicalState, edge: Edge, rng: Random) -> list[Proposa
     cap = d * overlap if repeats > 1 else dur_max     # one return has nothing to pile onto
     dur_floor = min(dur_min, cap)                     # the floor never breaks the cap
     dur = max(dur_floor, min(dur_max, base_dur * edge.dur_scale, cap))
-    min_vel = int(edge.params.get("min_vel", 12))
+    min_vel = tail_floor(edge, st, 12)
     dur_decay = float(edge.params.get("dur_decay", 1.0))
     spacing = float(edge.params.get("spacing_growth", 1.0))   # >1 spreads the tail out
     note = ev.note + edge.transpose + 12 * edge.octave
