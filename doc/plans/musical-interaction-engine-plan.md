@@ -306,7 +306,7 @@ p_eff = edge.prob × scene.prob_scale × restraint(human_energy)
 | 2 | `hop ≤ scene.max_hop`（預設 2，CHAOS 最多 3）；`ttl_wall` 過期即丟 | TTL = 排程時刻 + 4 拍 |
 | 3 | 同一 `root_id` 的鏈總事件數上限 | 24 |
 | 4 | GENERATIVE 來源禁止 fan-out > 1 的突變（chordify / rhythm）與 Answer；只允許單音對單音 | 硬編碼，不可由 scene 覆寫 |
-| 5 | Token bucket 限流：每 ch 音符 20/s（burst 8）、每 ch CC 30/s、全域生成 `max_gen_notes_per_s`（scene 設定，預設 12） | 超限 → 丟棄並在 UI 顯示「限流」計數 |
+| 5 | Token bucket 限流：每 ch 音符 20/s（burst 12，需容納一個和弦手勢；依**實際發聲時間**計費而非排程時間）、每 ch CC 30/s、全域生成 `max_gen_notes_per_s`（scene 設定，預設 12） | 超限 → 丟棄並在 UI 顯示「限流」計數 |
 | 6 | Voice 預算：`instrument.max_voices`、Fantom 群組總量、`human_energy` 縮減 | 滿了 → 先偷最舊的生成音（送其 note_off）再發新音，永不超發 |
 | 7 | Stuck-note 看門狗：`active_gen` 中任何音超過 `max_dur`（預設 8 s；`sustain_ok` lane 30 s）→ 強制 note_off | 每 250 ms 掃一次 |
 | 8 | note_off 配對保證：Scheduler 只接受 `(on, off)` 對；行程結束 / 例外 / KeyboardInterrupt 一律先跑 PANIC | `try/finally` |
@@ -468,6 +468,16 @@ Auracle 名詞對照：**DIN MIDI** = 實體 DIN 孔（`Fantom 8` = DIN 1）、*
 | 按和弦時有時完全沒有 echo、有時只回其中兩個音 | 機率是**每個音各擲一次**（SAFE 模式 p ≈ 0.13，五音和弦有一半機率全部落空） | 新增和弦分組：`chord_window_ms`（預設 45 ms）內按下的音，同一條邊共用一次擲骰，和弦要嘛整組回應、要嘛不回應 |
 
 以上都有回歸測試（`test_echo_length_follows_the_human_note_not_the_delay`、`test_echo_keeps_its_pitch_over_a_held_chord`、`test_silence_pad_keeps_all_voices_when_the_human_plays_high`、`test_shadow_releases_even_if_the_sent_notice_arrives_late`、`test_holding_a_chord_is_not_silence_even_with_the_pedal_down`、`test_a_chord_gets_one_probability_roll_not_one_per_note`），共 35 passed。
+
+**第二輪試奏（環境音樂彈法：按住和弦數秒再換和弦）發現與修正**：
+
+| 現象 | 原因 | 修正 |
+|---|---|---|
+| 回應非常少（約 1/5 的和弦才有反應） | ① 五音和弦被算成五次密度事件，慢速鋪陳的彈法被判定為「彈得很忙」，restraint 壓到 0.5；② 改成和弦共用一次擲骰後，每個和弦只有一次機會，但邊的機率仍是照「每音一次」的舊語意設定 | ① 45 ms 內的音只算一次密度與一次 IOI（`GESTURE_WINDOW_S`）；② 邊的 `prob` 語意正式改為「這個手勢被回應的機率」，scene 對應上調（shadow 0.7→0.8、echo 0.5→0.75、follow 0.4→0.55） |
+| Iridium 常常吃到整組和弦、還被丟棄 | `shadow: top` 判斷的是「當下按住的最高音」，由低往高彈時每個音都曾是最高音，五個音全送出去 | 同一手勢內後到的音取代先到的（`_regroup_shadow`），一個和弦只留一個影子；scene 的 shadow 延遲 30→60 ms，讓和弦先落定 |
+| 和弦回音常常缺幾個音 | 限流器在「排程當下」計費，一個和弦的十個回音雖然分散在半秒內送出，卻被當成瞬間爆量；per-channel burst 8 也蓋不住一個手勢 | 限流改用「實際發聲時間」計費；`NOTE_BURST` 8→12（持續速率 20/s 不變）；scene `max_gen_notes_per_s` 12→24；Wavestate 10 聲部、Iridium 8 聲部 |
+
+以環境彈法模擬 24 個和弦（每個按住 5 秒、間隔 2 秒）：INTERACTIVE 從 15% 提升到 92% 的和弦有回應，且**安全層丟棄為 0**（安全層不再默默修剪音樂，剩下的疏密純粹由機率決定）；SAFE 因 0.3 上限維持稀疏的 46%。
 
 **規格修訂**：§2.2 的 `silence_s` 定義改為「距最後一個人類聲音結束的秒數（`held` 與踏板 `sustained` 皆空之後才起算）」，`MusicalState` 新增 `sustained` 與 `sustain`（每個 human channel 的 CC64 狀態）。
 

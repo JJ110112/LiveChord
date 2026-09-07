@@ -31,8 +31,8 @@ def instruments() -> dict[int, Instrument]:
     return {
         1: Instrument(1, "REAPER", "texture", "vst", True, 6, 1.0, (36, 96), True),
         3: Instrument(3, "Fantom Pad", "pad", "fantom", True, 4, 1.0, (40, 88), True),
-        10: Instrument(10, "Wavestate", "sequence", "hw", True, 4, 1.0, (36, 96), True),
-        11: Instrument(11, "Iridium", "exp_synth", "hw", True, 4, 1.0, (36, 96), False),
+        10: Instrument(10, "Wavestate", "sequence", "hw", True, 10, 1.0, (36, 96), True),
+        11: Instrument(11, "Iridium", "exp_synth", "hw", True, 8, 1.0, (36, 96), False),
         12: Instrument(12, "MODX", "synth", "hw", True, 4, 1.0, (36, 96), False),
     }
 
@@ -479,3 +479,62 @@ def test_a_chord_gets_one_probability_roll_not_one_per_note():
                 partial += 1
     assert answered > 5, "the edge never fired"
     assert partial == 0, f"{partial} chords were answered only in part"
+
+
+def test_a_chord_counts_as_one_gesture_of_density_not_five_notes():
+    """Slow ambient chord playing must not read as busy playing.
+
+    Five notes struck together used to add five events of density, so restraint
+    throttled the engine exactly when the player left the most space.
+    """
+    eng, clk, out = make([])
+    for n in (48, 52, 55, 60, 64):          # one five-note chord
+        eng.post(human_event("note_on", clk(), 9, n, 45))
+        clk.advance(0.008)
+    eng.step()
+    chord_density = eng.st.density
+    eng2, clk2, _ = make([])
+    for n in (48, 52, 55, 60, 64):          # the same five notes, played one by one
+        eng2.post(human_event("note_on", clk2(), 9, n, 45))
+        clk2.advance(0.25)
+        eng2.step()
+    assert chord_density < eng2.st.density / 3, \
+        f"chord density {chord_density:.2f} should be far below melodic density {eng2.st.density:.2f}"
+    # and the engine should barely restrain itself after one quiet chord
+    eng.st.tick(clk())
+    assert eng.st.human_energy < 0.2, f"energy {eng.st.human_energy:.2f} after a single soft chord"
+
+
+def test_shadow_sends_one_note_per_chord_not_one_per_key():
+    """Rolling a chord from the bottom up made every note "the top note" in turn."""
+    eng, clk, out = make([
+        {"id": "sh", "src": 0, "dst": 11, "algo": "shadow", "shadow": "top", "prob": 1.0,
+         "constraint": "chord", "lane": "shadow", "delay_ms": 60},
+    ])
+    for n in (48, 55, 60, 64, 67):            # struck bottom-up inside one gesture
+        eng.post(human_event("note_on", clk(), 9, n, 60))
+        clk.advance(0.008)
+    eng.step()
+    run_for(eng, clk, 0.4)
+    ons = out.notes("note_on", ch=11)
+    assert len(ons) == 1, f"shadow sent {len(ons)} notes for one chord"
+    assert ons[0][2] == 67, f"shadow took {ons[0][2]}, expected the top note 67"
+
+
+def test_a_chord_response_is_not_trimmed_by_the_safety_layer():
+    """Safety must not silently shape the music: no drops for ordinary chord play."""
+    eng, clk, out = make([
+        {"id": "e", "src": 0, "dst": 10, "algo": "echo", "delay_beats": 0.5, "repeats": 2, "prob": 1.0,
+         "constraint": "free", "lane": "echo", "vel_scale": 0.8, "min_vel": 20},
+    ], prob_scale=1.0, max_gen_notes_per_s=24)
+    for i in range(6):
+        for n in (48, 55, 60, 64, 67):
+            eng.post(human_event("note_on", clk(), 9, n, 60))
+            clk.advance(0.008)
+        eng.step()
+        run_for(eng, clk, 2.0)
+        for n in (48, 55, 60, 64, 67):
+            eng.post(human_event("note_off", clk(), 9, n, 0))
+        eng.step()
+        run_for(eng, clk, 3.0)
+    assert eng.drop_reasons == {}, f"safety trimmed a plain chord echo: {eng.drop_reasons}"

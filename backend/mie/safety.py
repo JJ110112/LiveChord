@@ -50,6 +50,7 @@ class TokenBucket:
     def take(self, now: float, n: float = 1.0) -> bool:
         if self.t is None:
             self.t = now
+        now = max(now, self.t)      # callers may pass a future send time out of order
         self.tokens = min(self.burst, self.tokens + (now - self.t) * self.rate)
         self.t = now
         if self.tokens >= n:
@@ -66,7 +67,10 @@ class Admission:
 
 
 class Safety:
-    NOTE_RATE, NOTE_BURST = 20.0, 8.0
+    # The burst has to cover one musical gesture: a five-note chord echoed twice
+    # is ten notes inside a beat, and a burst of 8 silently trimmed the tail off
+    # chord echoes (2026-09-07 play test). The sustained rate is the real guard.
+    NOTE_RATE, NOTE_BURST = 20.0, 12.0
     CC_RATE, CC_BURST = 30.0, 10.0
     FANTOM_GROUP_MAX = 8
     CC_FLOOR = {7: 40}   # layer 9: volume never below this
@@ -123,17 +127,23 @@ class Safety:
         self._chain_t[root_id] = now
 
     # ---- layers 5-6 + human channel ----
-    def admit(self, p: Proposal, st: MusicalState, now: float, pending_on_ch: int = 0) -> Admission:
+    def admit(self, p: Proposal, st: MusicalState, now: float, pending_on_ch: int = 0,
+              t_send: Optional[float] = None) -> Admission:
+        """`t_send` is when the note will actually sound. The rate limiter has to
+        judge it there, not at scheduling time: a chord's worth of echoes is
+        scheduled in one instant but sounds spread over the delay, and charging
+        it all to `now` cut the tail off every chord (2026-09-07 play test)."""
         if p.kind != "on":
             return Admission(True)
+        t_send = now if t_send is None else max(now, t_send)
         inst = self.instruments.get(p.ch)
         if inst is None or not inst.enabled:
             return Admission(False, self._count("disabled"))
         if p.ch in st.human_chs:
             return Admission(False, self._count("human_ch"))
-        if not self._bucket(p.ch).take(now):
+        if not self._bucket(p.ch).take(t_send):
             return Admission(False, self._count("rate_ch"))
-        if not self._global.take(now):
+        if not self._global.take(t_send):
             return Admission(False, self._count("rate_global"))
         # voice budget (layer 6)
         max_v = inst.max_voices

@@ -57,6 +57,7 @@ class MusicalState:
     TAU_RELEASE = 2.5
     HUMAN_CH_WINDOW = 2.0
     PC_HIST_TAU = 12.0
+    GESTURE_WINDOW_S = 0.045   # notes struck this close together are one chord/gesture
 
     def __init__(self, *, bpm: float = 92.0, beats_per_bar: int = 4,
                  key: Optional[KeyInfo] = None, now: float = 0.0):
@@ -157,12 +158,17 @@ class MusicalState:
             return
         self._decay(now)
         note, vel = int(ev.note), int(ev.vel or 0)
+        # Notes struck together are ONE gesture. Counting all five notes of a
+        # chord as five events made slow ambient chord playing read as busy
+        # playing, so restraint held the engine back (2026-09-07 play test).
+        same_gesture = self.last_human_on_t is not None and (now - self.last_human_on_t) < self.GESTURE_WINDOW_S
         self.held[note] = HeldNote(vel, now, ev.ch)
-        self.density += 1.0 / self.TAU_DENSITY
+        if not same_gesture:
+            self.density += 1.0 / self.TAU_DENSITY
         self.vel_mean = _ema(self.vel_mean, vel, 1.0, 0.0) if self.human_note_count == 0 else \
             self.vel_mean + (1.0 - math.exp(-1.0 / 4.0)) * (vel - self.vel_mean)
         self.vel_var = self.vel_var + 0.2 * ((vel - self.vel_mean) ** 2 - self.vel_var)
-        if self.last_human_on_t is not None:
+        if self.last_human_on_t is not None and not same_gesture:
             ioi = now - self.last_human_on_t
             if 0.02 < ioi < 4.0:
                 self.recent_ioi.append(ioi)

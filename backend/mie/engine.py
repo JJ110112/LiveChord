@@ -64,6 +64,7 @@ class Engine:
         self.edge_fires: dict[str, int] = {}
         self.drop_reasons: dict[str, int] = {}
         self._roll_cache: dict[str, tuple] = {}   # edge id -> (group start t, p or None)
+        self._shadow_group: dict[str, tuple] = {}  # edge id -> (gesture start t, src note)
         self.edge_last: dict[str, float] = {}
         self.ui_events: deque[dict] = deque(maxlen=400)
         self._ui_lock = threading.Lock()
@@ -331,6 +332,8 @@ class Engine:
             return 0
         inst = self.instruments.get(edge.dst)
         caps = self.mode_caps
+        if edge.algo == "shadow" and ev.origin == "HUMAN":
+            self._regroup_shadow(edge, ev, now)
         n_ok = 0
         for p in props:
             if "dur_scale" in caps:
@@ -341,7 +344,8 @@ class Engine:
             if cp is None:
                 self._drop("constraint", edge, p, now)
                 continue
-            adm = self.safety.admit(cp, self.st, now, pending_on_ch=self.sched.pending_on(cp.ch))
+            adm = self.safety.admit(cp, self.st, now, pending_on_ch=self.sched.pending_on(cp.ch),
+                                    t_send=now + max(0.0, cp.t_offset))
             if not adm.ok:
                 self._drop(adm.reason or "safety", edge, cp, now)
                 continue
@@ -361,6 +365,24 @@ class Engine:
             self._ui("sched", ch=pair.ch, note=pair.note, vel=pair.vel, lane=pair.lane, hop=hop,
                      edge=edge.id, in_ms=round((t_on - now) * 1000), dur_ms=round(dur * 1000))
         return n_ok
+
+    def _regroup_shadow(self, edge, ev: MieEvent, now: float) -> None:
+        """Keep one shadow per chord, not one per note of it.
+
+        Shadow decides "is this the top note?" against what is held at that
+        instant, so a chord rolled from the bottom up makes every note the top
+        in turn and all five reach the instrument. Within one gesture the later
+        note wins and the earlier shadow is withdrawn.
+        """
+        win = float(edge.params.get("chord_window_ms", 45)) / 1000.0
+        prev = self._shadow_group.get(edge.id)
+        same_gesture = prev is not None and (now - prev[0]) <= win
+        if same_gesture and prev[1] != ev.note:
+            self.sched.release_by_src(edge.dst, edge.lane, prev[1], now)
+            for (ch, n), g in list(self.st.active_gen.items()):
+                if ch == edge.dst and g.lane == edge.lane and g.src_note == prev[1]:
+                    self._force_off(ch, n, now, "regroup")
+        self._shadow_group[edge.id] = ((prev[0] if same_gesture else now), ev.note)
 
     def _apply_offs(self, props: list[Proposal], edge, now: float) -> None:
         for p in props:
