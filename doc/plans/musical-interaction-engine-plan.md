@@ -1,6 +1,6 @@
 # Musical Interaction Engine（MIE）— 技術架構與 MVP 規劃
 
-日期：2026-09-06（Phase 0 驗證 2026-09-07，Phase 1 實作 2026-09-07）　狀態：**Phase 0 通過、Phase 1 已實作**（29 個無硬體測試通過、引擎在 ProArt 上開 port 成功），等使用者在琴前做 Phase 1 驗收　Beads：`LiveChord-3nex`（epic）
+日期：2026-09-06（Phase 0 驗證 2026-09-07，Phase 1 完成 2026-09-07）　狀態：**Phase 0、Phase 1 皆通過**（演奏驗收 + 使用者程式碼審核 APPROVED，51 個無硬體測試），Phase 2 待使用者核准開工　Beads：`LiveChord-3nex`（epic）
 
 > 一句話：LiveChord 即時觀察使用者的 MIDI 演奏（音、和弦、節奏、力度、留白），
 > 依演算法 + 機率 + 音樂約束，指揮 15 個 MIDI Channel 上的硬體樂器與 REAPER VST 彼此互動。
@@ -541,10 +541,59 @@ Auracle 名詞對照：**DIN MIDI** = 實體 DIN 孔（`Fantom 8` = DIN 1）、*
 **驗收方式（規格 §11 Phase 1）**：使用者用 `start_mie.bat --mode SAFE` 彈 10 分鐘、再 `--mode INTERACTIVE` 彈 10 分鐘，觀察無卡音、無迴圈（面板 loops = 0）、UC4 / 面板 / `Esc Esc` PANIC 一鍵有效。
 
 ### Phase 2 — 互動與控制
+
+> **使用者驗收（2026-09-07）**：Phase 1 通過。演奏驗收 SAFE 與 INTERACTIVE 各 10 分鐘、無卡音、`loops` 0、三種 PANIC 皆有效；兩輪程式碼審核結論 APPROVED。審核者附上 Phase 2 的架構方向，整理如下。
+
+#### Phase 2 的音樂性目標：避免「學術上精準、音樂上難聽」
+
+使用者指出 Phase 1 的生成雖然安全，但音高選擇仍是「最近的合法音」，缺少音樂邏輯。Phase 2 要補三件事：
+
+| 原則 | 現況 | 要做的 |
+|---|---|---|
+| **功能和聲優先於音名相似度** | 引擎只知道和弦音與調內音（`constraint.py`），不知道 T / S / D 功能 | 新 `function.py`：把和弦分類為主 / 下屬 / 屬功能與代換群；Answer、Register、Silence、Sustain 選目標音時先問功能，而不是只問「哪個音在和弦裡」。例：C 大調的主功能區可以給 `Am7` / `Em7` 的色彩音，而不是只為了湊音去拿異調音 |
+| **聲部導向（Voice Leading）** | `snap()` 找的是「離提議音最近」的合法音，不看同一 lane 上一個音在哪 | 改成「離同 lane 前一個音最近」，並讓三音與七音（Guide Tones）正確解決；避免平行五度與無意義大跳。這是最直接能把機械感壓下去的一項 |
+| **和聲節奏（Harmonic Rhythm）** | 只有 Sustain 有 `align`，其餘 lane 想送就送 | 和弦相關的生成一律鎖強拍；弱拍的極端離調音只在 tension 參數很高時才允許。離調音必須被解釋成 b9 / #11 / b13 或副屬，不能是隨機結果 |
+
+#### 雙軌與前瞻（Dual-Buffer / Look-Ahead）
+
+- **歷史軌**：Phase 1 已有（`recent_notes` 256 筆、`recent_ioi`、`recent_intervals`、`pc_hist`）。
+- **預測軌**：提前 1–2 拍推測和聲走向，預先排程。**要先講清楚它買到的是什麼**：MIE 的延遲已經是 0.2 ms 等級（它是 MIDI 反應式引擎，不做音訊分析、不必等樂句結束），所以前瞻買到的**不是延遲，而是樂句感**——讓生成音跟人「一起到」而不是「跟在後面」。這值得做，但別用「Zero Latency」當理由去做錯的東西。
+- **Top-K 候選**：引擎已有加權輪盤邊群組（`group_id`，一次擲骰選一條），缺的是把候選與信心值送到 UI 顯示，以及讓使用者看得到「為什麼是這個」。
+
+#### 高階可控參數（對應 §9.1）
+
+樂手不打字，用旋鈕改變生成邏輯。三個高階旋鈕映射到現有低階參數：
+
+| 旋鈕 | 映射 |
+|---|---|
+| **Tension**（0 = 純三和弦 → 100 = Alt / 離調） | `constraint`（chord → scale → free）、允許的延伸音集合、`chaos`、離調音是否需要副屬解釋 |
+| **Density**（每小節換幾次） | `every_bars_*`、`prob_scale`、`repeats`、Density 演算法的門檻 |
+| **Style Vector**（Pop → Neo-Soul → Bebop → Impressionist） | 一整組邊的預設值 + 音階選擇 + 突變權重；等同「一鍵換整組邊」的介入風格預設 |
+
+#### 明確劃清界線（避免把別的子系統搬進 MIE）
+
+使用者的架構筆記裡有一段是「即時音訊聆聽（Chroma / Pitch）→ 和弦推估 → 重和聲」。**這不屬於 MIE**：
+- MIE 是 MIDI 互動引擎，輸入是琴鍵，不做音訊分析（§0.1 選項 B 的理由）。
+- 音訊和弦辨識是既有的 `backend/chord_detect.py`（BTC，離線、process pool）。
+- 旋律重和聲是既有的 `backend/ai/reharmonizer.py`（Jazzify L1/L2/L3 + transformer）。
+- MIE 需要和聲上下文時，走 §10 的優先序：player 時間軸 → 按住的音辨識 → Krumhansl 推估。
+
+要做的是**讓 MIE 用上這些既有結果**（例如把 `reharmonizer` 的功能和聲表移植進 `function.py`），而不是在 MIE 內重寫一套音訊管線。
+
+#### Phase 2 工項（原本規劃 + 上述新增）
+
 - Answer、Mirror、Density、Velocity(CC)、Register；輪盤邊群組；Scene 切換淡出；UC4 MIDI Learn；矩陣 UI + 互動流動畫；player `playhead` 同步。
 - **邊編輯器與介入風格預設**（§9.1）：在面板上新增／刪除邊、切換演算法、調整上表所有參數、Scene 存檔。
 - **彈法／織度辨識**：持續按壓 / 琶音 / 旋律 / 打和弦，加上左手低音與右手旋律的分手判斷；邊可加 `when: {texture: [...]}` 條件，只在特定彈法下作用。現有 buffer（`recent_notes` / `recent_ioi` / `recent_intervals` / `register` / `direction`）足以支撐，缺分類器與條件語法。
-- 測試：T2（C D E → 另一 ch 有 3 音回答，落在強拍）、T5（持續 Cmaj7 → 60 s 內活躍樂器數單調遞增）。
+- **功能和聲 `function.py`**（T / S / D 與代換群，從 `backend/ai/reharmonizer.py` 移植既有的和聲知識，不重寫）。
+- **聲部導向**：`snap()` 改成參考同 lane 前一個音；Guide Tones 解決；平行五度與大跳的懲罰。
+- **和聲節奏鎖強拍**：所有和弦相關 lane 都吃 `align`，離調音需有解釋（延伸音或副屬）。
+- **前瞻軌**：提前 1–2 拍推測和聲走向並預排；買的是樂句感，不是延遲。
+- **Top-K 透明度**：把候選與信心值送進 WebSocket，UI 顯示「為什麼是這一條」。
+- **高階旋鈕**：Tension / Density / Style 三個參數映射到低階設定（見上表）。
+- 測試：T2（C D E → 另一 ch 有 3 音回答，落在強拍）、T5（持續 Cmaj7 → 60 s 內活躍樂器數單調遞增）；新增聲部導向與功能和聲的單元測試（固定 seed，斷言移動距離與解決方向）。
+
+**建議順序**（由「最能立刻改善聽感」到「最花工」）：① 聲部導向 ② 功能和聲 ③ 和聲節奏鎖強拍 ④ 彈法辨識 ⑤ 高階旋鈕與邊編輯器 ⑥ 前瞻軌 ⑦ 其餘演算法（Answer / Mirror / Density / Velocity / Register）。
 
 ### Phase 3 — Generative / Chaos
 - `motif_index` 片語記憶與再現、chaos 突變、role 內隨機換樂器、GENERATIVE 事件的多 hop 鏈（`max_hop=3`）。
