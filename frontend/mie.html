@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>LiveChord MIE</title>
+  <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+  <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/base.css?v=24">
+  <link rel="stylesheet" href="/css/mie.css?v=1">
+</head>
+<body class="mie-body">
+  <!-- 頂列：MODE / SCENE / KEY / CHORD / BPM / clock / PANIC -->
+  <header class="mie-top">
+    <div class="mie-brand">MIE <span class="mie-conn" id="mieConn" title="ws://127.0.0.1:8810/ws">●</span></div>
+    <div class="mie-pill mie-mode" id="mieMode" title="運作模式（點擊切換）">
+      <span class="mie-lbl">MODE</span>
+      <select id="mieModeSel" class="mie-sel">
+        <option>OFF</option><option>BYPASS</option><option>SAFE</option><option>AMBIENT</option>
+        <option>INTERACTIVE</option><option>GENERATIVE</option><option>CHAOS</option>
+      </select>
+    </div>
+    <div class="mie-pill" title="Scene">
+      <span class="mie-lbl">SCENE</span>
+      <select id="mieSceneSel" class="mie-sel"></select>
+    </div>
+    <div class="mie-pill"><span class="mie-lbl">KEY</span><span id="mieKey" class="mie-val">—</span></div>
+    <div class="mie-pill mie-chord"><span class="mie-lbl">CHORD</span><span id="mieChord" class="mie-val">—</span></div>
+    <div class="mie-pill"><span class="mie-lbl">BPM</span><span id="mieBpm" class="mie-val">—</span><span id="mieClock" class="mie-sub">scene</span></div>
+    <div class="mie-pill"><span class="mie-lbl">BEAT</span><span id="mieBeat" class="mie-val">—</span></div>
+    <div class="mie-pill mie-uc4" title="最後收到的 UC4 控制訊息（用來對 control_map.json 綁定）"><span class="mie-lbl">UC4</span><span id="mieUc4" class="mie-val">—</span></div>
+    <div class="mie-spacer"></div>
+    <button id="mieResume" class="mie-btn" title="離開 BYPASS，回到 scene 的模式">RESUME</button>
+    <button id="miePanic" class="mie-btn mie-btn-panic" title="兩個 Out port 各自 CH1–16 送 CC120/123/64=0，再補 note_off；引擎進 BYPASS（快捷鍵 Esc Esc）">PANIC</button>
+  </header>
+
+  <main class="mie-main">
+    <!-- 左：能量儀表 -->
+    <section class="mie-col mie-meters">
+      <div class="lc-title">能量</div>
+      <div class="mie-meter"><span class="mie-mlbl">DENSITY</span><div class="mie-bar"><div id="mDensity" class="mie-fill"></div></div><span id="vDensity" class="mie-mval">0</span></div>
+      <div class="mie-meter"><span class="mie-mlbl">ENERGY</span><div class="mie-bar"><div id="mEnergy" class="mie-fill mie-fill-energy"></div></div><span id="vEnergy" class="mie-mval">0</span></div>
+      <div class="mie-meter"><span class="mie-mlbl">RESTRAINT</span><div class="mie-bar"><div id="mRestraint" class="mie-fill mie-fill-restraint"></div></div><span id="vRestraint" class="mie-mval">1.00</span></div>
+      <div class="mie-meter"><span class="mie-mlbl">SILENCE</span><div class="mie-bar"><div id="mSilence" class="mie-fill mie-fill-silence"></div></div><span id="vSilence" class="mie-mval">0.0 s</span></div>
+      <div class="mie-meter"><span class="mie-mlbl">VEL</span><div class="mie-bar"><div id="mVel" class="mie-fill"></div></div><span id="vVel" class="mie-mval">0</span></div>
+
+      <div class="lc-title mie-title-gap">全域</div>
+      <label class="mie-slider"><span class="mie-mlbl">PROB</span><input id="gProb" type="range" min="0" max="1" step="0.01"><span id="gProbV" class="mie-mval">0.60</span></label>
+      <label class="mie-slider"><span class="mie-mlbl">CHAOS</span><input id="gChaos" type="range" min="0" max="1" step="0.01"><span id="gChaosV" class="mie-mval">0.00</span></label>
+      <label class="mie-slider"><span class="mie-mlbl">RESTR.</span><input id="gRestraint" type="range" min="0" max="1" step="0.01"><span id="gRestraintV" class="mie-mval">1.00</span></label>
+
+      <div class="lc-title mie-title-gap">樂器</div>
+      <div id="mieInstruments" class="mie-inst-list"></div>
+    </section>
+
+    <!-- 中：互動邊（Phase 1：清單；矩陣 / 動畫留 Phase 2） -->
+    <section class="mie-col mie-edges">
+      <div class="lc-title">互動邊 <span class="lc-subtitle">最近 2 s 觸發的邊會亮起；勾選 = 啟用；數字 = 觸發次數</span></div>
+      <div id="mieEdges" class="mie-edge-list"></div>
+      <div class="lc-title mie-title-gap">統計</div>
+      <div id="mieStats" class="mie-stats"></div>
+    </section>
+
+    <!-- 右：事件流 -->
+    <section class="mie-col mie-stream">
+      <div class="lc-title">事件流 <span class="lc-subtitle">HUMAN / GEN hop1 / GEN hop2 / 丟棄原因</span></div>
+      <div id="mieStream" class="mie-stream-list"></div>
+    </section>
+  </main>
+
+  <script src="/js/mie.js?v=1"></script>
+</body>
+</html>

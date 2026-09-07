@@ -1,0 +1,80 @@
+/* MIE panel (plan §9). Uses base.css theme tokens; desktop single page. */
+.mie-body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", system-ui, sans-serif; font-size: 13px; min-height: 100vh; display: flex; flex-direction: column; }
+.mie-top { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg-card); backdrop-filter: var(--glass-blur); position: sticky; top: 0; z-index: 10; flex-wrap: wrap; }
+.mie-brand { font-weight: 800; letter-spacing: .08em; font-size: 15px; margin-right: 6px; }
+.mie-conn { color: #f44336; font-size: 11px; vertical-align: middle; margin-left: 4px; }
+.mie-conn.on { color: #4caf50; }
+.mie-pill { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-card); white-space: nowrap; }
+.mie-lbl { font-size: 10px; letter-spacing: .12em; color: var(--text-dim); font-weight: 700; }
+.mie-val { font-weight: 700; font-size: 14px; min-width: 2ch; }
+.mie-sub { font-size: 10px; color: var(--text-dim); }
+.mie-chord .mie-val { font-size: 18px; color: #c084fc; }
+.mie-mode.bypass { border-color: #ff9800; box-shadow: 0 0 0 1px #ff980066 inset; }
+.mie-mode.live { border-color: #4caf50; }
+.mie-sel { background: transparent; color: var(--text); border: none; font-weight: 700; font-size: 13px; outline: none; }
+.mie-sel option { color: #111; }
+[data-theme] .mie-sel option, .mie-sel option { color: var(--text); background: var(--lc-popup-bg); }
+.mie-spacer { flex: 1; }
+.mie-btn { padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-hover); color: var(--text); font-weight: 700; cursor: pointer; }
+.mie-btn:hover { border-color: var(--accent); }
+.mie-btn-panic { background: #b71c1c; border-color: #ff5252; color: #fff; letter-spacing: .1em; padding: 6px 22px; }
+.mie-btn-panic:hover { background: #d32f2f; }
+.mie-btn-panic.armed { animation: mie-blink .6s infinite alternate; }
+@keyframes mie-blink { from { box-shadow: 0 0 0 0 #ff525200; } to { box-shadow: 0 0 0 4px #ff525288; } }
+.mie-uc4 .mie-val { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+
+.mie-main { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(360px, 1.4fr) minmax(300px, 1fr); gap: 12px; padding: 12px; flex: 1; min-height: 0; }
+.mie-col { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; overflow: auto; min-height: 0; }
+.mie-title-gap { margin-top: 16px; }
+.lc-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+.lc-subtitle { font-size: 11px; color: var(--text-dim); font-weight: 400; margin-left: 6px; }
+
+.mie-meter, .mie-slider { display: grid; grid-template-columns: 74px 1fr 56px; align-items: center; gap: 8px; margin: 6px 0; }
+.mie-mlbl { font-size: 10px; letter-spacing: .1em; color: var(--text-dim); font-weight: 700; }
+.mie-mval { font-variant-numeric: tabular-nums; text-align: right; font-size: 12px; }
+.mie-bar { height: 10px; background: rgba(255,255,255,.08); border-radius: 5px; overflow: hidden; }
+.mie-fill { height: 100%; width: 0; background: var(--accent); transition: width .12s linear; }
+.mie-fill-energy { background: linear-gradient(90deg, #4caf50, #ffc107 60%, #f44336); }
+.mie-fill-restraint { background: #9c27b0; }
+.mie-fill-silence { background: #607d8b; }
+.mie-slider input[type=range] { width: 100%; accent-color: var(--accent); }
+
+.mie-inst-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+.mie-inst { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 4px; border-radius: 6px; }
+.mie-inst.human { background: rgba(33,150,243,.18); }
+.mie-inst.active { box-shadow: inset 0 0 0 1px #4caf5088; }
+.mie-inst .ch { color: var(--text-dim); font-size: 10px; width: 26px; }
+.mie-inst .dot { width: 8px; height: 8px; border-radius: 50%; background: #444; }
+.mie-inst.active .dot { background: #4caf50; }
+.mie-inst.human .dot { background: #2196f3; }
+
+.mie-edge-list { display: flex; flex-direction: column; gap: 4px; }
+.mie-edge { display: grid; grid-template-columns: 22px 1fr 60px 56px 40px; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; transition: background .2s, border-color .2s; }
+.mie-edge.hot { border-color: #ffc107; background: rgba(255,193,7,.12); }
+.mie-edge.off { opacity: .5; }
+.mie-edge .name { font-weight: 600; }
+.mie-edge .route { font-size: 11px; color: var(--text-dim); }
+.mie-edge .prob { display: flex; align-items: center; gap: 4px; }
+.mie-edge .prob input { width: 46px; background: transparent; color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; font-size: 12px; }
+.mie-edge .fires { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.mie-edge .algo { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; background: rgba(255,255,255,.08); }
+
+.mie-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 4px 12px; font-size: 12px; }
+.mie-stats .k { color: var(--text-dim); }
+.mie-stats .drop { color: #ff9800; }
+
+.mie-stream-list { font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; display: flex; flex-direction: column-reverse; gap: 1px; }
+.mie-ev { padding: 2px 6px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mie-ev .t { color: var(--text-dim); margin-right: 6px; }
+.mie-ev-human { color: #64b5f6; }
+.mie-ev-gen1 { color: #81c784; }
+.mie-ev-gen2 { color: #ffb74d; }
+.mie-ev-gen3 { color: #ff8a65; }
+.mie-ev-drop { color: #ef9a9a; }
+.mie-ev-panic { background: #b71c1c; color: #fff; font-weight: 700; }
+.mie-ev-ctl, .mie-ev-set, .mie-ev-mode { color: #ce93d8; }
+.mie-ev-edge, .mie-ev-sched, .mie-ev-resnap, .mie-ev-off { color: var(--text-dim); }
+.mie-ev-loop { background: #ff9800; color: #000; font-weight: 700; }
+
+@media (max-width: 1100px) { .mie-main { grid-template-columns: 1fr 1fr; } .mie-stream { grid-column: 1 / -1; } }
+@media (max-width: 720px) { .mie-main { grid-template-columns: 1fr; } }

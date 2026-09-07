@@ -1,0 +1,7 @@
+{
+  "_comment": "UC4 -> engine actions (plan §8). Key = '<port alias>:cc:<number>'; channel is ignored. Buttons act on value >= 64. Phase 0 verified the UC4 sends CC20 value 127 on ch16 for the button that was pressed; bind the rest with the 'last control' readout in the /mie top bar (shows every UC4 CC as it arrives).",
+  "uc4:cc:20": "panic",
+  "uc4:cc:21": "engine.toggle",
+  "uc4:cc:22": "global.prob_scale",
+  "uc4:cc:23": "global.chaos"
+}

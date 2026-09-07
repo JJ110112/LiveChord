@@ -1,6 +1,6 @@
 # Musical Interaction Engine（MIE）— 技術架構與 MVP 規劃
 
-日期：2026-09-06（Phase 0 驗證 2026-09-07）　狀態：**Phase 0 通過**（T0 硬體驗證完成，見 §11 Phase 0 結果），等使用者驗收後進 Phase 1　Beads：`LiveChord-3nex`（epic）
+日期：2026-09-06（Phase 0 驗證 2026-09-07，Phase 1 實作 2026-09-07）　狀態：**Phase 0 通過、Phase 1 已實作**（29 個無硬體測試通過、引擎在 ProArt 上開 port 成功），等使用者在琴前做 Phase 1 驗收　Beads：`LiveChord-3nex`（epic）
 
 > 一句話：LiveChord 即時觀察使用者的 MIDI 演奏（音、和弦、節奏、力度、留白），
 > 依演算法 + 機率 + 音樂約束，指揮 15 個 MIDI Channel 上的硬體樂器與 REAPER VST 彼此互動。
@@ -416,10 +416,10 @@ Auracle 名詞對照：**DIN MIDI** = 實體 DIN 孔（`Fantom 8` = DIN 1）、*
 耳朵確認（使用者）：用 Fantom **INT zone（ch1）** 彈，該 channel 不經直通到任何琴，Iridium 響即為引擎回音。250 ms 有延遲跟響、放開即停；PANIC 時 Iridium 立刻靜音；`--delay 0` 幾乎同時響。
 
 **接線事實補充（Phase 1 要處理）**：
-- 其他琴（Nord / Wavestate / Iridium / MODX / Event 61）的 MIDI OUT **沒有接** mioXL，DIN2–8 回流在實體上不可能發生。
+- 其他琴（Nord Grand 2 / Wavestate mk II / Iridium / MODX M6 / Ketron Event 61 / PSR-SX900 / microArranger）的 MIDI OUT **目前沒有接** mioXL，DIN2–8 回流在實體上不可能發生。使用者決定加購 7 條 5-pin DIN 線把各琴 OUT 接到 mioXL DIN 2–8 IN（設定不用大改）；接上後 Auracle 的 DIN 2–8 Input **不得**點亮 USB DAW `HST 2`，且要重跑一次 BYPASS 逐台測試。七台琴都有 USB-MIDI（Ketron Event 61 待使用者確認），也可改插 mioXL 的 USB Host 孔。
 - Fantom 的 INT zone 也會送到 MIDI OUT（觀測到 ch1–5），不只 EXT zone 的 CH9–15；且某些 scene 下**同一個鍵同時送多個 channel**（例如 ch2+ch13、ch4+ch13、ch5+ch14、ch5+ch9+ch15，timestamp 差 < 1 ms）。HUMAN 判定與 `human_chs` 要把「一次按鍵、多 channel」視為同一事件，不能各自觸發演算法。
 - Fantom 切 scene 時在 **ch16** 送 CC0/CC32 + program change；規格說 CH16 保留不用，引擎收到 ch16 的 CC/PC 應忽略，PANIC 仍涵蓋 CH1–16。
-- Fantom 另有一條 USB 直接接 ProArt（Windows 顯示 `FANTOM-6 7 8`，REAPER 也開著它的 Input）。引擎不開這個 port；REAPER 上 Fantom USB 與 HST 1 若同時開會疊音，由使用者決定。
+- Fantom 另有一條 USB 直接接 ProArt（Windows 顯示 `FANTOM-6 7 8`）。Fantom zone 1 EXT 就是經這條 USB 直接彈 REAPER 的 VST（SWAM、Pianoteq），REAPER 沒開 `HST 1` Input，不會疊音。引擎不開這個 port；人類 CH1 直達 REAPER、引擎的 CH1 生成音走 loopMIDI，兩者一致。
 - UC4 同時被 REAPER 與探針開啟沒有衝突。
 
 ### Phase 1 — MVP 核心（使用者 §16）
@@ -433,6 +433,25 @@ Auracle 名詞對照：**DIN MIDI** = 實體 DIN 孔（`Fantom 8` = DIN 1）、*
   - T6 和弦切換 → 已排程 Echo 在送出前重新 snap；
   - 安全：人工構造 A→B→A 邊集合，斷言鏈在 `max_hop` 停止且總事件 ≤ 24；stuck-note 看門狗；PANIC 後 `active_gen` 為空。
 - **驗收**：使用者在 SAFE 與 INTERACTIVE 各彈 10 分鐘，無卡音、無迴圈、PANIC 一鍵有效。
+
+#### Phase 1 實作狀態（2026-09-07，ProArt 16；等使用者驗收）
+
+**啟動**：`start_mie.bat [--mode SAFE|INTERACTIVE] [--scene 01] [--no-ui]`（或 `python -m backend.mie`），面板 `http://127.0.0.1:8810/mie`（引擎自己用 stdlib 提供靜態頁與 WebSocket，不需 NUC；NUC 的 `/mie` 路由也能提供同一頁，頁面固定連 `ws://127.0.0.1:8810/ws`）。終端鍵：`p` PANIC、`r` resume、`b` BYPASS、`s` stats、`m <MODE>`、`q`。任何退出路徑先 PANIC。無硬體驗證：引擎在 ProArt 上以 `--mode BYPASS` 跑 40 s，四個 port 全開、面板連線、退出時 PANIC 兩個 Out port。
+
+**檔案**（全部在 `backend/mie/`）：`events.py`（§2.1 信封 + Proposal）、`state.py`（§2.2 + `human_chs`、EMA 能量、IOI 推估 BPM）、`harmony.py`（held 音和弦辨識 = editor.js `CHORD_MAP`；Krumhansl 調性）、`scales.py`（31 種音階，從 `scale-lab.js` 移植）、`graph.py`（Instrument / Edge / Scene / 模式表 / InteractionGraph）、`probability.py`（§6 restraint、群組輪盤）、`mutation.py`（§5）、`constraint.py`（snap、撞音迴避、late binding）、`safety.py`（§7 第 1–9 層）、`scheduler.py`（heap + (on,off) 配對 + 送出前 re-snap）、`engine.py`（管線 + 模式 + PANIC + UC4 動作）、`io_rtmidi.py`、`ws_server.py`（stdlib HTTP + RFC6455）、`__main__.py`、`fakes.py`（FakeClock / FakeMidiOut）、`algos/{follow,echo,shadow,silence}.py`。設定：`data/mie/instruments.json`（七台琴、CH14/15 arranger 預設關）、`data/mie/scenes/01_safe_echo.json`、`data/mie/control_map.json`（CC20 = PANIC，實測過）。UI：`frontend/mie.html` + `js/mie.js` + `css/mie.css`（頂列 / 能量儀表 / 全域滑桿 / 樂器開關 / 邊清單含 prob 與啟用 / 統計 / 事件流；`Esc Esc` = PANIC）。測試：`backend/tests/test_mie_engine.py`（T1 / T3 / T4 / T6、A→B→A 停在 max_hop、鏈 ≤ 24、fan-out 禁止、看門狗、PANIC 兩 port CC120/123/64 + 補 note_off、human_ch 不當目標、疊 zone 去重、自我回音、SAFE 模式白名單與 0.3 上限）+ 原本 15 個探針測試，共 29 passed。
+
+**執行緒**：rtmidi callback → `in_queue` → Engine thread（唯一改 state）；Scheduler thread 只送 MIDI，送出後把「已送出」通知丟回 `in_queue`，由 Engine thread 做 `active_gen` 記帳與第 10 步回饋；UI thread 只讀快照。MIDI 路徑沒有 asyncio。
+
+**與規格的差異 / 決定（Phase 0 接線事實導致）**：
+- **撞音迴避改在送出那一刻做**（`late_bind`），不在排程時做：延遲音真正要避的是「發聲當下」人按住的音。每條邊可設 `collision`：`octave`（同音 ±1 八度，follow / echo 預設）、`unison`、`none`（shadow 與 silence 預設，因為它們的目的就是疊奏）。替代音順序：和弦音 → 調內音 → 丟棄。
+- **一鍵多 channel 去重**：同一個 note 在 5 ms 內從另一個 channel 再到 → 只更新 `human_chs`，不重複觸發演算法、不算進密度。
+- **ch16 的 CC / PC 忽略**（Fantom 切 scene 用），PANIC 仍涵蓋 CH1–16。
+- Silence 的和弦音配置從人類按住的最高音以上開始（`above_held`），避免跟人類同音區疊。
+- `human_energy` 的力度項乘上 `min(1, density)`，靜止時能量會真的回到 0（否則 restraint 永遠不會回到 1）。
+- Density / Velocity(CC) / Answer / Mirror / Register / 矩陣 UI / MIDI Learn / player playhead 徽章依規格留 Phase 2；`playhead` WebSocket 訊息引擎端已接（chord / key / bpm），player 端尚未送。
+- 沒裝 `websockets` 套件、也不用 FastAPI：面板由引擎行程自己用 stdlib 提供，避免在演奏機上多跑一個 uvicorn。
+
+**驗收方式（規格 §11 Phase 1）**：使用者用 `start_mie.bat --mode SAFE` 彈 10 分鐘、再 `--mode INTERACTIVE` 彈 10 分鐘，觀察無卡音、無迴圈（面板 loops = 0）、UC4 / 面板 / `Esc Esc` PANIC 一鍵有效。
 
 ### Phase 2 — 互動與控制
 - Answer、Mirror、Density、Velocity(CC)、Register；輪盤邊群組；Scene 切換淡出；UC4 MIDI Learn；矩陣 UI + 互動流動畫；player `playhead` 同步。

@@ -550,6 +550,14 @@ def melody_ab_page():
     return FileResponse(FRONTEND_DIR / "melody-ab.html", headers=NO_CACHE_HEADERS)
 
 
+@app.get("/mie")
+@app.get("/mie.html")
+def mie_page():
+    # Musical Interaction Engine panel; the page connects to the engine process
+    # on the performance laptop (ws://127.0.0.1:8810), the NUC only serves the HTML.
+    return FileResponse(FRONTEND_DIR / "mie.html", headers=NO_CACHE_HEADERS)
+
+
 @app.get("/song-type-label")
 @app.get("/song-type-label.html")
 def song_type_label_page():

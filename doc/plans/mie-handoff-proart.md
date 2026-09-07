@@ -2,6 +2,8 @@
 
 日期：2026-09-07　來源：RTX 5080 PC 端 session　分支：`feature/mie`　Beads epic：`LiveChord-3nex`
 
+> **進度（2026-09-07 ProArt session）**：Phase 0 通過並經使用者核准；Phase 1 已實作（`start_mie.bat`、`backend/mie/*`、`frontend/mie.html`、29 個測試），等使用者做 10+10 分鐘驗收。細節見規格 §11「Phase 0 結果」與「Phase 1 實作狀態」。
+
 > 把這份文件整段貼給 ProArt 16 上的 coding agent 當第一則訊息即可。它是自足的，
 > 但完整規格在 [musical-interaction-engine-plan.md](musical-interaction-engine-plan.md)，開工前先讀完。
 
