@@ -143,6 +143,7 @@
     constraint: ["chord", "function", "scale", "free"],
     align: ["none", "half", "beat", "bar"],
     voice_lead: ["off", "octave", "free"],
+    silence_mode: ["sound", "attack"],
     collision: ["octave", "unison", "none"],
   };
 
@@ -196,7 +197,9 @@
         const specs = new Map();
         [...COMMON, ...(PARAMS[e.algo] || [])].forEach((sp) => specs.set(sp.key, sp));
         specs.forEach((spec) => body.appendChild(edgeField(e, spec)));
-        ["constraint", "align", "voice_lead", "collision"].forEach((k) => body.appendChild(edgeChoice(e, k)));
+        const choices = ["constraint", "align", "voice_lead", "collision"];
+        if (e.algo === "silence") choices.push("silence_mode");
+        choices.forEach((k) => body.appendChild(edgeChoice(e, k)));
         box.appendChild(el); edgeEls.set(e.id, el);
       }
       const src = e.src === 0 ? "HUMAN" : `CH${e.src}`;

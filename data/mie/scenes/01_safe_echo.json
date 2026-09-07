@@ -30,7 +30,8 @@
      "constraint": "chord"},
     {"id": "silence_texture", "src": 0, "dst": 1, "algo": "silence", "prob": 0.6, "after_s": 4.0,
      "lane": "texture", "hold_s": 24, "release_beats": 2.0, "voices": 2, "vel": 40, "low": 55, "high": 84,
-     "constraint": "chord"},
+     "_silence_mode": "attack: enter after 4 s without a new key, even if the pedal is still holding a chord",
+     "silence_mode": "attack", "constraint": "chord"},
     {"id": "iridium_to_wavestate", "src": 11, "dst": 10, "algo": "echo", "prob": 0.35, "delay_beats": 0.5,
      "transpose": 7, "vel_scale": 0.6, "min_vel": 24, "dur_min_beats": 1.0, "max_hop": 1,
      "constraint": "scale", "lane": "echo2", "accepts": ["GENERATIVE"]}

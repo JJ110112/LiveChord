@@ -80,6 +80,7 @@ class MusicalState:
         self.register = "mid"
         self.direction = 0
         self.silence_s = 0.0
+        self.quiet_s = 0.0          # since the last attack, ringing or not
         self.last_sound_end_t: Optional[float] = None   # when the last human note stopped ringing
         self.last_human_on_t: Optional[float] = None
         self.last_human_dur: Optional[float] = None
@@ -377,6 +378,8 @@ class MusicalState:
         self._decay(now)
         # Silence is "nothing of mine is ringing any more", not "no new key was
         # struck": holding a chord (or holding it on the pedal) is not 留白.
+        if self.last_human_on_t is not None:
+            self.quiet_s = now - self.last_human_on_t
         if self.held or self.sustained:
             self.silence_s = 0.0
         elif self.last_sound_end_t is not None:
@@ -411,7 +414,7 @@ class MusicalState:
             "pedal": sorted(ch for ch, on in list(self.sustain.items()) if on),
             "human_chs": sorted(self.human_chs),
             "register": self.register, "direction": self.direction,
-            "silence_s": round(self.silence_s, 2),
+            "silence_s": round(self.silence_s, 2), "quiet_s": round(self.quiet_s, 2),
             "density": round(self.density, 2), "vel_mean": round(self.vel_mean, 1),
             "energy": round(self.human_energy, 3),
             "active_gen": [[ch, n, g.lane] for (ch, n), g in list(self.active_gen.items())],

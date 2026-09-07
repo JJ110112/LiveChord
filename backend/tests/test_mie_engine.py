@@ -1139,3 +1139,26 @@ def test_an_edge_register_survives_voice_leading():
     notes = [n for _, _, n, _ in out.notes("note_on", ch=4)]
     assert notes, "the lane said nothing"
     assert min(notes) >= 55 and max(notes) <= 72, f"left the edge's register: {sorted(set(notes))}"
+
+
+def test_silence_mode_chooses_what_counts_as_space():
+    """A player who pedals through a piece is never silent by the sound rule."""
+    edges = [
+        {"id": "sound", "src": 0, "dst": 3, "algo": "silence", "prob": 1.0, "after_s": 1.0,
+         "lane": "pad", "hold_s": 20, "voices": 2, "vel": 50, "constraint": "chord"},
+        {"id": "attack", "src": 0, "dst": 1, "algo": "silence", "prob": 1.0, "after_s": 1.0,
+         "lane": "texture", "hold_s": 20, "voices": 2, "vel": 40, "constraint": "chord",
+         "silence_mode": "attack"},
+    ]
+    eng, clk, out = make(edges)
+    eng.post(human_event("cc", clk(), 9, cc=64, val=127))       # pedal down
+    eng.step()
+    hold_chord(eng, clk, 9, [48, 52, 55])
+    release_chord(eng, clk, 9, [48, 52, 55])                    # fingers up, pedal holds
+    run_for(eng, clk, 5.0)
+    assert not out.notes("note_on", ch=3), "the sound rule must wait for the pedal"
+    assert out.notes("note_on", ch=1), "the attack rule should have entered under the pedal"
+    eng.post(human_event("cc", clk(), 9, cc=64, val=0))         # pedal up
+    eng.step()
+    run_for(eng, clk, 5.0)
+    assert out.notes("note_on", ch=3), "and the sound rule enters once it is really quiet"

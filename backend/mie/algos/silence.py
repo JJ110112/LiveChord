@@ -39,7 +39,15 @@ def _voicing(st: MusicalState, n_voices: int, low: int, high: int) -> list[int]:
 def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict,
          tension: float = 0.0) -> list[Proposal]:
     after_s = float(edge.params.get("after_s", 2.0))
-    if lane_state.get("fired") or st.last_human_on_t is None or st.silence_s < after_s:
+    # What counts as space (per edge):
+    #   "sound"  - nothing of the human's is ringing, pedal included. Correct
+    #              when a pad should never sit on top of a held chord.
+    #   "attack" - no new key struck for `after_s`. A player who pedals through
+    #              a whole piece is never silent by the first rule, which is why
+    #              the texture lane spoke once in 88 seconds on 2026-09-07.
+    mode = str(edge.params.get("silence_mode", "sound"))
+    quiet = st.quiet_s if mode == "attack" else st.silence_s
+    if lane_state.get("fired") or st.last_human_on_t is None or quiet < after_s:
         return []
     if now < lane_state.get("retry_t", 0.0):
         return []
