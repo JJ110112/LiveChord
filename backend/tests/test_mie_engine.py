@@ -352,3 +352,69 @@ def test_safe_mode_caps_and_algo_whitelist():
     assert not out.notes("note_on", ch=11), "follow is not allowed in SAFE"
     n_shadow = len(out.notes("note_on", ch=12))
     assert 0 < n_shadow <= 40 * 0.3 * 1.6, f"SAFE prob cap 0.3 violated: {n_shadow}/40"
+
+
+# --------------------------------------------- 2026-09-07 play-test regressions
+def test_echo_length_follows_the_human_note_not_the_delay():
+    """A 0.5-beat delay used to cut every echo to 293 ms, which sounded abrupt."""
+    eng, clk, out = make([
+        {"id": "e", "src": 0, "dst": 10, "algo": "echo", "delay_beats": 0.5, "prob": 1.0,
+         "constraint": "free", "lane": "echo", "dur_min_beats": 1.0},
+    ])
+    play(eng, clk, 9, 60, vel=80, hold=1.6)      # a long note sets last_human_dur
+    run_for(eng, clk, 0.5)
+    out.clear()
+    eng.post(human_event("note_on", clk(), 9, 64, 80))
+    eng.step()
+    run_for(eng, clk, 3.0)
+    ons = out.notes("note_on", ch=10)
+    offs = out.notes("note_off", ch=10)
+    assert ons and offs
+    sounding = offs[0][0] - ons[0][0]
+    assert sounding > 0.9, f"echo only sounded {sounding*1000:.0f} ms"
+
+
+def test_echo_keeps_its_pitch_over_a_held_chord():
+    """Collision avoidance used to push echoes onto non-chord tones (A3 -> B3)."""
+    eng, clk, out = make([
+        {"id": "e", "src": 0, "dst": 10, "algo": "echo", "delay_beats": 0.5, "prob": 1.0,
+         "constraint": "free", "lane": "echo"},
+    ])
+    hold_chord(eng, clk, 9, [53, 57, 60])        # F major, still held when the echo fires
+    run_for(eng, clk, 1.5)
+    ons = out.notes("note_on", ch=10)
+    assert ons, "no echo"
+    assert {n for _, _, n, _ in ons} <= {53, 57, 60}, f"echo drifted off the held chord: {ons}"
+
+
+def test_silence_pad_keeps_all_voices_when_the_human_plays_high():
+    eng, clk, out = make([
+        {"id": "s", "src": 0, "dst": 3, "algo": "silence", "prob": 1.0, "after_s": 1.0, "lane": "pad",
+         "hold_s": 20, "voices": 3, "vel": 50, "low": 48, "high": 84, "constraint": "chord"},
+    ])
+    hold_chord(eng, clk, 9, [65, 69, 72])        # F major up at F4-C5
+    run_for(eng, clk, 1.6)
+    pad = out.notes("note_on", ch=3)
+    assert len(pad) == 3, f"pad played {len(pad)} voice(s), expected 3"
+    assert {n % 12 for _, _, n, _ in pad} == {5, 9, 0}
+
+
+def test_shadow_releases_even_if_the_sent_notice_arrives_late():
+    """Short note: the engine sees note_off before the scheduler's sent-notice.
+
+    The release must still happen, otherwise the shadow hangs on the hardware
+    until its safety cap (up to 8 s) — heard as a stuck note.
+    """
+    eng, clk, out = make([
+        {"id": "sh", "src": 0, "dst": 11, "algo": "shadow", "shadow": "top", "prob": 1.0,
+         "constraint": "free", "lane": "shadow", "delay_ms": 30, "max_hold_s": 8.0},
+    ])
+    eng.post(human_event("note_on", clk(), 9, 60, 90))
+    eng.step()
+    run_for(eng, clk, 0.05)                  # the shadow note_on has gone out
+    assert out.notes("note_on", ch=11)
+    eng.st.active_gen.clear()                # simulate the notice not processed yet
+    eng.post(human_event("note_off", clk(), 9, 60, 0))
+    eng.step()
+    run_for(eng, clk, 0.05)
+    assert out.notes("note_off", ch=11), "shadow was left sounding"

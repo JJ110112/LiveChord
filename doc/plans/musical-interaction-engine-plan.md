@@ -452,6 +452,18 @@ Auracle 名詞對照：**DIN MIDI** = 實體 DIN 孔（`Fantom 8` = DIN 1）、*
 - Density / Velocity(CC) / Answer / Mirror / Register / 矩陣 UI / MIDI Learn / player playhead 徽章依規格留 Phase 2；`playhead` WebSocket 訊息引擎端已接（chord / key / bpm），player 端尚未送。
 - 沒裝 `websockets` 套件、也不用 FastAPI：面板由引擎行程自己用 stdlib 提供，避免在演奏機上多跑一個 uvicorn。
 
+**首次試奏發現與修正（2026-09-07 深夜，SAFE / INTERACTIVE）**：
+
+| 現象 | 原因 | 修正 |
+|---|---|---|
+| Wavestate 有隨機打擊聲 | MIE Out merge 進 Fantom DIN IN，引擎的 CH10 打到 Fantom scene 的鼓組 part | Auracle：Output DIN MIDI `Fantom 8` 濾掉 CH9–16（見上方接線事實） |
+| Echo 很短促、突兀 | `echo.py` 把時值 cap 在 delay×0.9（半拍延遲 → 293 ms），且力度連乘後只剩 v4 | 時值改為跟隨人類音長（`dur_min_beats` / `dur_max_beats`），新增 `min_vel`（低於它就不送這一次重複） |
+| Echo 在按住的和弦上跑到非和弦音（A3 → B3） | 撞音迴避預設 `octave`，把重複音推開 | `echo` 的預設 collision 改為 `none`（重複人類正在按的音本來就是 echo 的意義） |
+| Silence pad 只出一個音 | `above_held` 把音域下限推高，上限沒跟著放寬，配置只塞得下一個音 | 音域不足時退回設定的 low/high，保證聲部數；scene 的 pad high 48–84 |
+| 卡音 | Shadow 只靠 `active_gen` 找要放開的音；短音時人類 note_off 會早於 scheduler 的「已送出」通知到引擎，找不到就放不掉，撐到 8 s 安全上限 | 新增 `Scheduler.release_by_src()`，直接用「這個 shadow 綁的人類音」在 heap 上放開，不依賴 `active_gen` |
+
+以上都有回歸測試（`test_echo_length_follows_the_human_note_not_the_delay`、`test_echo_keeps_its_pitch_over_a_held_chord`、`test_silence_pad_keeps_all_voices_when_the_human_plays_high`、`test_shadow_releases_even_if_the_sent_notice_arrives_late`），共 33 passed。
+
 **驗收方式（規格 §11 Phase 1）**：使用者用 `start_mie.bat --mode SAFE` 彈 10 分鐘、再 `--mode INTERACTIVE` 彈 10 分鐘，觀察無卡音、無迴圈（面板 loops = 0）、UC4 / 面板 / `Esc Esc` PANIC 一鍵有效。
 
 ### Phase 2 — 互動與控制

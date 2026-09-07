@@ -106,6 +106,28 @@ class Scheduler:
             self.cv.notify()
         return n
 
+    def release_by_src(self, ch: int, lane: str, src_note: int, at_t: float) -> int:
+        """Release every pair bound to the human note `src_note` (Shadow).
+
+        Matching on `src_note` instead of the generated note is what makes this
+        safe against the engine seeing the human note_off before the scheduler's
+        "note sent" notice: the pair is in the heap either way.
+        """
+        n = 0
+        with self.cv:
+            for d in self.heap:
+                p = d.pair
+                if p is None or p.dropped or p.ch != ch or p.lane != lane or p.src_note != src_note:
+                    continue
+                if d.kind == "off" and not p.off_sent:
+                    d.t = min(d.t, at_t)
+                    n += 1
+                elif d.kind == "on" and not p.on_sent:
+                    p.dropped = True
+            heapq.heapify(self.heap)
+            self.cv.notify()
+        return n
+
     def release_lane(self, ch: int, lane: str, at_t: float) -> int:
         n = 0
         with self.cv:

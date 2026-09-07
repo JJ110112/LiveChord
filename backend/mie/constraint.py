@@ -66,7 +66,10 @@ def snap(note: int, pcs: Iterable[int], prefer: str = "nearest", avoid_pcs: Iter
 #   "octave"  - same pitch +-1 octave (melodic lanes: follow / echo)
 #   "unison"  - exactly the same pitch
 #   "none"    - doubling is the point (shadow, pad lanes)
-COLLISION_DEFAULT = {"shadow": "none", "silence": "none"}
+#   echo is "none" on purpose: repeating the note the human is still holding is
+#   the whole point, and pushing it to a neighbouring scale tone turned echoes
+#   into wrong notes over a held chord (2026-09-07 play test).
+COLLISION_DEFAULT = {"shadow": "none", "silence": "none", "echo": "none"}
 
 
 def collision_for(edge) -> str:

@@ -12,17 +12,18 @@
     {"id": "shadow_iridium", "src": 0, "dst": 11, "algo": "shadow", "shadow": "top", "prob": 0.7,
      "constraint": "chord", "delay_ms": 30, "vel_scale": 0.85, "lane": "shadow"},
     {"id": "echo_wavestate", "src": 0, "dst": 10, "algo": "echo", "prob": 0.5,
-     "delay_beats": 0.5, "repeats": 2, "vel_scale": 0.7, "constraint": "free", "lane": "echo"},
+     "delay_beats": 0.5, "repeats": 2, "vel_scale": 0.8, "min_vel": 24, "dur_min_beats": 1.0,
+     "constraint": "free", "lane": "echo"},
     {"id": "follow_iridium_5th", "src": 0, "dst": 11, "algo": "follow", "interval": 7, "prob": 0.4,
      "constraint": "chord", "delay_ms": 0, "vel_scale": 0.8, "lane": "follow", "group_id": "iridium_reply"},
     {"id": "silence_pad", "src": 0, "dst": 3, "algo": "silence", "prob": 0.9, "after_s": 2.0,
-     "lane": "pad", "hold_s": 20, "release_beats": 1.0, "voices": 3, "vel": 52, "low": 48, "high": 79,
+     "lane": "pad", "hold_s": 20, "release_beats": 1.0, "voices": 3, "vel": 52, "low": 48, "high": 84,
      "constraint": "chord"},
     {"id": "silence_texture", "src": 0, "dst": 1, "algo": "silence", "prob": 0.6, "after_s": 4.0,
      "lane": "texture", "hold_s": 24, "release_beats": 2.0, "voices": 2, "vel": 40, "low": 55, "high": 84,
      "constraint": "chord"},
     {"id": "iridium_to_wavestate", "src": 11, "dst": 10, "algo": "echo", "prob": 0.35, "delay_beats": 0.5,
-     "transpose": 7, "vel_scale": 0.6, "max_hop": 1, "constraint": "scale", "lane": "echo2",
-     "accepts": ["GENERATIVE"]}
+     "transpose": 7, "vel_scale": 0.6, "min_vel": 24, "dur_min_beats": 1.0, "max_hop": 1,
+     "constraint": "scale", "lane": "echo2", "accepts": ["GENERATIVE"]}
   ]
 }

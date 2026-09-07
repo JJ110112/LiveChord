@@ -46,10 +46,14 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     vel = scaled_vel(edge, int(edge.params.get("vel", 56)))
     n_voices = int(edge.params.get("voices", 3))
     low, high = int(edge.params.get("low", 48)), int(edge.params.get("high", 84))
-    if st.held and edge.params.get("above_held", True):
-        low = max(low, min(high - 12, max(st.held) + 1))
     spread = float(edge.params.get("spread_ms", 40)) / 1000.0
-    notes = _voicing(st, n_voices, low, high)
+    notes = []
+    if st.held and edge.params.get("above_held", True):
+        # prefer sitting above what the human is holding, but never at the cost
+        # of losing voices: a one-note "chord" is not a pad (2026-09-07 play test)
+        notes = _voicing(st, n_voices, max(low, min(high - 12, max(st.held) + 1)), high)
+    if len(notes) < n_voices:
+        notes = _voicing(st, n_voices, low, high)
     return [Proposal(ch=edge.dst, note=n + 12 * edge.octave + edge.transpose, vel=vel, dur=hold,
                      lane=edge.lane, t_offset=i * spread) for i, n in enumerate(notes)]
 

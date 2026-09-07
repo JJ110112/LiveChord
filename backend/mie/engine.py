@@ -253,8 +253,15 @@ class Engine:
             if self.bypass:
                 return
             for e in self.graph.candidate_edges("HUMAN", ev.ch, 0, now, self.allowed_algos):
-                if e.algo == "shadow":
-                    self._apply_offs(algos.shadow.run(ev, self.st, e, self.rng), e, now)
+                if e.algo != "shadow":
+                    continue
+                # Release straight from the scheduler by the human note this
+                # shadow is bound to. Going through `active_gen` alone loses the
+                # race when a short note is released before the scheduler's
+                # "note sent" notice reaches the engine thread, and the shadow
+                # then hangs until its safety cap.
+                self.sched.release_by_src(e.dst, e.lane, ev.note, now)
+                self._apply_offs(algos.shadow.run(ev, self.st, e, self.rng), e, now)
 
     def _human_came_back(self, now: float) -> None:
         for e in self.graph.timed_edges(self.allowed_algos):
