@@ -679,3 +679,46 @@ def test_mutation_survives_all_zero_weights():
     assert len(got) == 1 and got[0].note in (48, 60, 72)
     got = apply_one(p, {"type": "interval", "choices": [3, 5], "weights": [1]}, Random(1), 0.5)
     assert len(got) == 1 and got[0].note in (63, 65)
+
+
+def test_rate_limit_is_measured_on_the_send_timeline():
+    """A far-future note must not hand out capacity for the present.
+
+    The old token bucket dragged its clock to the furthest scheduled send time,
+    which refilled it for time that had not happened yet.
+    """
+    from backend.mie.safety import SendWindowLimiter
+    lim = SendWindowLimiter(rate=10, window_s=1.0)
+    now = 100.0
+    assert lim.take(now + 5.0, now)                       # one note far in the future
+    admitted = sum(1 for _ in range(50) if lim.take(now, now))
+    assert admitted == 10, f"{admitted} notes went out now, the cap for one second is 10"
+    # the future second still has its own budget, minus the one already placed
+    later = sum(1 for _ in range(50) if lim.take(now + 5.0, now))
+    assert later == 9, f"the far-future window granted {later + 1} instead of 10"
+
+
+def test_rate_limit_ignores_the_order_notes_are_admitted_in():
+    from backend.mie.safety import SendWindowLimiter
+    lim = SendWindowLimiter(rate=4, window_s=1.0)
+    now = 0.0
+    assert [lim.take(t, now) for t in (0.9, 0.1, 0.5, 0.3)] == [True] * 4
+    assert not lim.take(0.4, now), "a fifth note in the same second must be refused"
+    assert lim.take(3.0, now), "a note a few seconds later has its own budget"
+
+
+def test_sounding_is_a_snapshot():
+    eng, clk, out = make([])
+    eng.post(human_event("note_on", clk(), 9, 60, 80))
+    eng.step()
+    snap1 = eng.st.sounding
+    eng.post(human_event("note_on", clk(), 9, 64, 80))
+    eng.step()
+    assert 64 not in snap1, "sounding handed out a live view of the state"
+    assert 64 in eng.st.sounding
+
+
+def test_ema_keeps_precision_for_tiny_time_steps():
+    from backend.mie.state import _ema
+    assert _ema(0.0, 1.0, 1e-9, 1.0) > 0.0          # 1 - exp(-1e-9) underflows to 0.0
+    assert abs(_ema(0.0, 1.0, 1e-9, 1.0) - 1e-9) < 1e-15

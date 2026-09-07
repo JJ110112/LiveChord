@@ -45,7 +45,10 @@ class GenNote:
 def _ema(prev: float, target: float, dt: float, tau: float) -> float:
     if tau <= 0:
         return target
-    a = 1.0 - math.exp(-dt / tau)
+    # -expm1(-x) instead of 1 - exp(-x): the latter loses most of its
+    # significant digits when dt is small next to tau, which is the normal case
+    # for MIDI events arriving a millisecond apart.
+    a = -math.expm1(-dt / tau)
     return prev + a * (target - prev)
 
 
@@ -214,8 +217,13 @@ class MusicalState:
 
     @property
     def sounding(self) -> dict[int, HeldNote]:
-        """Every human note still audible: fingers down plus pedal-held."""
-        return {**self.sustained, **self.held}
+        """Every human note still audible: fingers down plus pedal-held.
+
+        Both sources are copied first. The merge itself is atomic under the
+        GIL, but taking explicit snapshots keeps the intent readable and keeps
+        this correct if the engine ever runs on a free-threaded build.
+        """
+        return {**dict(self.sustained), **dict(self.held)}
 
     def _mark_sound_end(self, now: float) -> None:
         if not self.held and not self.sustained:
@@ -316,8 +324,8 @@ class MusicalState:
             "scale": self.scale_id,
             "bpm": round(self.bpm, 1), "clock": self.clock_source,
             "beat": self.bar_pos(now) + 1, "beats_per_bar": self.beats_per_bar,
-            "held": sorted(self.held), "sustained": sorted(self.sustained),
-            "pedal": sorted(ch for ch, on in self.sustain.items() if on),
+            "held": sorted(dict(self.held)), "sustained": sorted(dict(self.sustained)),
+            "pedal": sorted(ch for ch, on in list(self.sustain.items()) if on),
             "human_chs": sorted(self.human_chs),
             "register": self.register, "direction": self.direction,
             "silence_s": round(self.silence_s, 2),

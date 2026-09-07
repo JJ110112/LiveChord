@@ -47,7 +47,7 @@ def snap(note: int, pcs: Iterable[int], prefer: str = "nearest", avoid_pcs: Iter
     best_note: Optional[int] = None
     for d in range(0, 13):
         if prefer == "nearest":
-            cands = (note + d, note - d)
+            cands = (note,) if d == 0 else (note + d, note - d)
         elif prefer == "up":
             cands = (note + d,)
         else:

@@ -307,7 +307,7 @@ p_eff = edge.prob × scene.prob_scale × restraint(human_energy)
 | 2 | `hop ≤ scene.max_hop`（預設 2，CHAOS 最多 3）；`ttl_wall` 過期即丟 | TTL = 排程時刻 + 4 拍 |
 | 3 | 同一 `root_id` 的鏈總事件數上限 | 24 |
 | 4 | GENERATIVE 來源禁止 fan-out > 1 的突變（chordify / rhythm）與 Answer；只允許單音對單音 | 硬編碼，不可由 scene 覆寫 |
-| 5 | Token bucket 限流：每 ch 音符 20/s（burst 12，需容納一個和弦手勢；依**實際發聲時間**計費而非排程時間）、每 ch CC 30/s、全域生成 `max_gen_notes_per_s`（scene 設定，預設 12） | 超限 → 丟棄並在 UI 顯示「限流」計數 |
+| 5 | 限流：每 ch 音符 **任一秒的送出時間軸視窗內最多 20 個**（`SendWindowLimiter`，與到達順序無關；一個和弦手勢必須整組放行）；CC 仍用 token bucket（只走牆鐘）、每 ch CC 30/s、全域生成 `max_gen_notes_per_s`（scene 設定，預設 12） | 超限 → 丟棄並在 UI 顯示「限流」計數 |
 | 6 | Voice 預算：`instrument.max_voices`、Fantom 群組總量、`human_energy` 縮減 | 滿了 → 先偷最舊的生成音（送其 note_off）再發新音，永不超發 |
 | 7 | Stuck-note 看門狗：`active_gen` 中任何音超過 `max_dur`（預設 8 s；`sustain_ok` lane 30 s）→ 強制 note_off | 每 250 ms 掃一次 |
 | 8 | note_off 配對保證：Scheduler 只接受 `(on, off)` 對；行程結束 / 例外 / KeyboardInterrupt 一律先跑 PANIC | `try/finally` |
@@ -522,6 +522,17 @@ Auracle 名詞對照：**DIN MIDI** = 實體 DIN 孔（`Fantom 8` = DIN 1）、*
 | 中 | `mutation._weighted` 在 `weights` 全為 0 時 `tot=0`，輪盤邏輯失效 | `tot <= 0` 或長度不符時退回 `rng.choice`；空 `choices` 直接拋錯 |
 | 中 | `constraint.snap` 的 `best` 在找不到音時為 `None`，靠尾端三元運算保護，維護時易踩雷 | 拆成 `best_key` / `best_note` 兩個變數、加上 `lo > hi` 的早退與註解，回傳 `None` 的路徑一目了然 |
 | 低 | `_shadow_group` 與 `_roll_cache` 以 `edge.id` 為鍵，切換 Scene 後不會清掉 | `load_scene()` 一併 `clear()` 兩者 |
+
+**第二輪程式碼審核（2026-09-07）**
+
+| 等級 | 發現 | 處置 |
+|---|---|---|
+| 高 | `MusicalState.sounding` 的 `{**self.sustained, **self.held}` 合併可能在其他執行緒讀取時出錯 | **部分成立**：這個合併在 CPython 下是 C 層原子操作、不會丟 `RuntimeError`（`dict.update` 全程持有 GIL）。但確實有真正的跨執行緒讀者——UI 執行緒每 100 ms 呼叫 `to_dict()`。已改為顯式快照（`sounding` 與 `to_dict` 都先 `dict()` / `list()`），意圖清楚，也讓程式在未來的 free-threaded build 上仍然正確 |
+| 高 | `TokenBucket.take()` 接受未來的 `t_send`，會把桶子的時鐘推到未來，**預支還沒到的額度**；之後的即時請求因而不受限 | **完全成立，這輪最重要的發現**。音符限流改用 `SendWindowLimiter`：沿著「送出時間軸」計數，任何一秒視窗內最多 `rate` 個音，與到達順序無關。`TokenBucket` 只留給 CC（只用牆鐘）。`NOTE_BURST` 這個補丁式的參數因此取消，視窗本身就是允許量 |
+| 中 | `snap()` 在 `d == 0` 時 `cands` 為 `(note, note)`，重複評估 | 成立，改為 `(note,) if d == 0 else (note + d, note - d)` |
+| 中 | `_ema` 的 `1.0 - math.exp(-dt/tau)` 在 `dt << tau` 時損失精度 | 成立，改用 `-math.expm1(-dt/tau)`。實測 `dt=1e-9` 時舊寫法直接歸零，新寫法正確 |
+
+回歸測試：`test_rate_limit_is_measured_on_the_send_timeline`、`test_rate_limit_ignores_the_order_notes_are_admitted_in`、`test_sounding_is_a_snapshot`、`test_ema_keeps_precision_for_tiny_time_steps`。環境彈法模擬重跑：SAFE 22/24、INTERACTIVE 24/24 個和弦有回應，安全層丟棄仍為 0。
 
 全部有回歸測試（`test_ui_parameter_changes_run_on_the_engine_thread`、`test_a_bad_ui_command_does_not_kill_the_engine`、`test_loading_a_scene_clears_the_per_edge_caches`、`test_snap_returns_none_when_nothing_in_range_fits`、`test_mutation_survives_all_zero_weights`），共 47 passed。
 

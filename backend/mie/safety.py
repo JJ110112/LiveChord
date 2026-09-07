@@ -7,7 +7,7 @@ that the UI shows in the event stream.
 
 from __future__ import annotations
 
-import math
+import bisect
 from collections import deque
 from dataclasses import dataclass
 from typing import Optional
@@ -40,7 +40,7 @@ class SelfEchoFilter:
 
 
 class TokenBucket:
-    """Layer 5 rate limiter."""
+    """Layer 5 rate limiter for CC, which is only ever charged at wall clock."""
 
     def __init__(self, rate: float, burst: float):
         self.rate, self.burst = float(rate), float(burst)
@@ -50,13 +50,48 @@ class TokenBucket:
     def take(self, now: float, n: float = 1.0) -> bool:
         if self.t is None:
             self.t = now
-        now = max(now, self.t)      # callers may pass a future send time out of order
+        if now < self.t:            # never let the clock walk backwards
+            now = self.t
         self.tokens = min(self.burst, self.tokens + (now - self.t) * self.rate)
         self.t = now
         if self.tokens >= n:
             self.tokens -= n
             return True
         return False
+
+
+class SendWindowLimiter:
+    """Layer 5 for notes: at most `rate` notes in any `window` of the OUTPUT timeline.
+
+    Notes are admitted when they are scheduled but sound later, and out of
+    order: a chord's two echo repeats are admitted in one instant for +0.3 s
+    and +0.65 s, and the next gesture may be admitted for a time in between.
+    A token bucket cannot express that. Dragging its clock to the furthest send
+    time (what this used to do) silently granted a full refill for time that had
+    not happened yet, so an immediate burst right afterwards went through
+    unlimited. Counting along the send timeline is both correct and simpler.
+    """
+
+    def __init__(self, rate: float, window_s: float = 1.0):
+        self.rate = float(rate)
+        self.window = float(window_s)
+        self._times: list[float] = []      # admitted send times, kept sorted
+
+    def set_rate(self, rate: float) -> None:
+        self.rate = float(rate)
+
+    def take(self, t_send: float, now: float) -> bool:
+        # anything well behind the wall clock can no longer affect a decision
+        cutoff = now - 2.0 * self.window
+        if self._times and self._times[0] < cutoff:
+            self._times = [t for t in self._times if t >= cutoff]
+        half = self.window / 2.0
+        lo = bisect.bisect_left(self._times, t_send - half)
+        hi = bisect.bisect_right(self._times, t_send + half)
+        if (hi - lo) >= self.rate * self.window:
+            return False
+        bisect.insort(self._times, t_send)
+        return True
 
 
 @dataclass(slots=True)
@@ -67,10 +102,12 @@ class Admission:
 
 
 class Safety:
-    # The burst has to cover one musical gesture: a five-note chord echoed twice
-    # is ten notes inside a beat, and a burst of 8 silently trimmed the tail off
-    # chord echoes (2026-09-07 play test). The sustained rate is the real guard.
-    NOTE_RATE, NOTE_BURST = 20.0, 12.0
+    # At most NOTE_RATE notes per channel in any one second of the output
+    # timeline. One musical gesture (a five-note chord echoed twice) is ten
+    # notes inside a beat and has to fit, so this is not a "burst" allowance
+    # bolted onto a smaller rate - the window is the allowance.
+    NOTE_RATE = 20.0
+    RATE_WINDOW_S = 1.0
     CC_RATE, CC_BURST = 30.0, 10.0
     FANTOM_GROUP_MAX = 8
     CC_FLOOR = {7: 40}   # layer 9: volume never below this
@@ -78,9 +115,9 @@ class Safety:
     def __init__(self, instruments: dict[int, Instrument], globals_: dict):
         self.instruments = instruments
         self.g = globals_
-        self._note_buckets: dict[int, TokenBucket] = {}
+        self._note_limits: dict[int, SendWindowLimiter] = {}
         self._cc_buckets: dict[int, TokenBucket] = {}
-        self._global = TokenBucket(float(globals_.get("max_gen_notes_per_s", 12)), float(globals_.get("max_gen_notes_per_s", 12)))
+        self._global = SendWindowLimiter(float(globals_.get("max_gen_notes_per_s", 12)), self.RATE_WINDOW_S)
         self.chain_counts: dict[int, int] = {}
         self._chain_t: dict[int, float] = {}
         self.drops: dict[str, int] = {}
@@ -89,14 +126,13 @@ class Safety:
     # ---- housekeeping ----
     def set_globals(self, globals_: dict) -> None:
         self.g = globals_
-        r = float(globals_.get("max_gen_notes_per_s", 12))
-        self._global = TokenBucket(r, r)
+        self._global.set_rate(float(globals_.get("max_gen_notes_per_s", 12)))
 
-    def _bucket(self, ch: int) -> TokenBucket:
-        b = self._note_buckets.get(ch)
-        if b is None:
-            b = self._note_buckets[ch] = TokenBucket(self.NOTE_RATE, self.NOTE_BURST)
-        return b
+    def _limit(self, ch: int) -> SendWindowLimiter:
+        lim = self._note_limits.get(ch)
+        if lim is None:
+            lim = self._note_limits[ch] = SendWindowLimiter(self.NOTE_RATE, self.RATE_WINDOW_S)
+        return lim
 
     def _count(self, reason: str) -> str:
         self.drops[reason] = self.drops.get(reason, 0) + 1
@@ -141,9 +177,9 @@ class Safety:
             return Admission(False, self._count("disabled"))
         if p.ch in st.human_chs:
             return Admission(False, self._count("human_ch"))
-        if not self._bucket(p.ch).take(t_send):
+        if not self._limit(p.ch).take(t_send, now):
             return Admission(False, self._count("rate_ch"))
-        if not self._global.take(t_send):
+        if not self._global.take(t_send, now):
             return Admission(False, self._count("rate_global"))
         # voice budget (layer 6)
         max_v = inst.max_voices
