@@ -24,6 +24,7 @@ two subsystems cannot drift apart.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from functools import lru_cache
@@ -37,6 +38,8 @@ if _REPO_ROOT not in sys.path:
 try:
     from backend.ai import jazz_rules as _jr
 except Exception:  # pragma: no cover - the engine must still run without it
+    logging.getLogger("mie.function").warning(
+        "mie: backend.ai.jazz_rules unavailable, using the built-in T/S/D table", exc_info=True)
     _jr = None
 
 NUMERALS = ("I", "II", "III", "IV", "V", "VI", "VII")

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
 
 from .harmony import KeyInfo
 from .scales import NOTE_NAMES
+
+log = logging.getLogger("mie.graph")
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DATA_DIR = os.path.join(REPO_ROOT, "data", "mie")
@@ -189,6 +192,7 @@ def list_scenes() -> list[dict]:
                         d = json.load(fh)
                     out.append({"id": str(d.get("id", f[:-5])), "name": d.get("name", f), "file": f})
                 except Exception:
+                    log.warning("mie: scene file %s is unreadable, skipping", f, exc_info=True)
                     continue
     return out
 

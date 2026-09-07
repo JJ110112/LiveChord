@@ -21,6 +21,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import os
 import struct
 import threading
@@ -29,6 +30,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable, Optional
 
 from .graph import REPO_ROOT
+
+log = logging.getLogger("mie.ui")
 
 FRONTEND_DIR = os.path.join(REPO_ROOT, "frontend")
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -201,6 +204,7 @@ class UiServer:
             try:
                 msg = json.loads(payload.decode("utf-8"))
             except Exception:
+                log.debug("mie: ignoring a malformed websocket message", exc_info=True)
                 continue
             self._dispatch(msg)
 

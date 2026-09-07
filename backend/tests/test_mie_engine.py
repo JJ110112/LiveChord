@@ -1035,3 +1035,50 @@ def test_edge_tension_overrides_the_scene_global():
     eng.set_global("tension", 0.5)
     assert eng._tension(eng.graph.find_edge("a")) == 0.5
     assert eng._tension(eng.graph.find_edge("b")) == 0.9, "the edge keeps its own setting"
+
+
+# ---------------------------------------- logging (review 4): nothing silent
+def test_a_failing_ui_command_is_logged_with_its_traceback(caplog):
+    import logging
+    eng, clk, out = make([])
+    with caplog.at_level(logging.ERROR, logger="mie.engine"):
+        eng.submit(lambda: 1 / 0)
+        eng.step()
+    assert any("ZeroDivisionError" in r.getMessage() or r.exc_info for r in caplog.records), \
+        "the stack trace never reached the log"
+    assert any(e["type"] == "error" for e in eng.pop_events()), "the UI stream lost it too"
+
+
+def test_a_broken_config_is_reported_and_does_not_kill_the_engine(caplog):
+    import logging
+    eng, clk, out = make([
+        {"id": "f", "src": 0, "dst": 11, "algo": "follow", "interval": 7, "prob": 1.0,
+         "constraint": "free", "delay_ms": 40},
+        {"id": "g", "src": 0, "dst": 12, "algo": "follow", "interval": 4, "prob": 1.0,
+         "constraint": "free"},
+    ])
+    eng.instruments[11].note_range = "not a range"      # blows up inside late_bind
+    with caplog.at_level(logging.ERROR, logger="mie.engine"):
+        eng.post(human_event("note_on", clk(), 9, 60, 80))
+        eng.step()
+        run_for(eng, clk, 0.2)
+    assert any(r.exc_info for r in caplog.records), "the fault was swallowed silently"
+    assert any("edge[f]" in r.getMessage() for r in caplog.records), "the log must name the edge"
+    assert out.notes("note_on", ch=12), "the healthy edge stopped working too"
+    # and the engine is still alive afterwards
+    eng.instruments[11].note_range = (36, 96)
+    out.clear()
+    play(eng, clk, 9, 62, hold=0.1)
+    run_for(eng, clk, 0.2)
+    assert out.notes("note_on", ch=11) and out.notes("note_on", ch=12)
+
+
+def test_repeated_faults_do_not_flood_the_log(caplog):
+    import logging
+    eng, clk, out = make([])
+    with caplog.at_level(logging.ERROR, logger="mie.engine"):
+        for _ in range(250):
+            eng.submit(lambda: 1 / 0)
+        eng.step()
+    assert 1 <= len(caplog.records) <= 5, f"{len(caplog.records)} records for 250 identical faults"
+    assert eng._err_counts["<lambda>"] == 250, "the count must still be exact"

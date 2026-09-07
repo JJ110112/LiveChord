@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 import threading
@@ -38,7 +39,16 @@ def main(argv=None) -> int:
     ap.add_argument("--no-ui", action="store_true")
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--list-ports", action="store_true")
+    ap.add_argument("--log-file", default=None, help="also append the log here")
+    ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args(argv)
+
+    handlers: list = [logging.StreamHandler(sys.stderr)]
+    if a.log_file:
+        handlers.append(logging.FileHandler(a.log_file, encoding="utf-8"))
+    logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
+                        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+                        handlers=handlers, force=True)
 
     if a.list_ports:
         import mido
@@ -88,8 +98,8 @@ def main(argv=None) -> int:
             elif t == "scene":
                 try:
                     sc = load_scene(str(msg.get("id", "01")))       # file I/O off the engine thread
-                except Exception as e:  # noqa: BLE001
-                    print(f"[scene] load failed: {e}")
+                except Exception:
+                    logging.getLogger("mie.ui").exception("mie: scene load failed")
                     return
                 engine.submit(engine.load_scene, sc)
             elif t == "playhead":

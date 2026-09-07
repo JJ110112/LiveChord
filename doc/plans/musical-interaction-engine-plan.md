@@ -692,6 +692,32 @@ Phase 1 只有兩種選音方式，而且都不是音樂家的做法：
 
 順帶把所有 tick 演算法的簽名統一成帶 `tension` 參數，取代原本 `try/except TypeError` 的寫法——後者會連演算法內部真正的 TypeError 一起吞掉。
 
+**⑥ 例外不再無聲（審核建議，完成 2026-09-07）**
+
+審核指出 `_run_command` 只呼叫 `self._ui("error", ...)`，沒有 UI 連著時 stack trace 就消失了。順著查下去發現三層問題，由輕到重：
+
+| 層級 | 原本 | 現在 |
+|---|---|---|
+| UI 指令失敗 | 只推一筆 UI 事件 | `logging` 輸出完整 traceback，UI 事件照舊 |
+| `_before_on`（排程器執行緒） | **`except Exception: return True`，完全靜默**。這條在送音的關鍵路徑上，出錯等於徹底隱形 | 照舊 fail open（音在排程時已經約束過，送出去比丟掉安全），但一定記錄 |
+| PANIC 送出失敗 | `except: pass` | 繼續送其餘訊息與另一個 port，但記錄——PANIC 時 port 掛掉正是最需要知道的事 |
+
+**更嚴重的是測試順手抓到的兩件事**：
+
+1. **引擎執行緒本身沒有任何例外防護**。一個壞掉的 instrument 設定會讓執行緒直接死掉，而且是無聲的：port 還開著、面板還在更新快照，但引擎已經不處理任何事件。現在 `drain` / `loop` / `tick` 都有防護加記錄。
+2. **一條壞掉的邊會連累同一事件的其他邊**。例外會中斷 `_fire_edges` 的迴圈，後面的邊全部跳過。現在每條邊各自隔離，壞掉的那條靜音並記名，其餘照常演奏——這跟 §7「每一層安全獨立生效」是同一個原則。
+
+熱路徑防洪：同一個位置的錯誤第一次與每第 100 次輸出 traceback，其餘只累加計數，UI 事件流則每次都收得到。實測輸出：
+
+```
+ERROR mie.engine: mie: edge[shadow_iridium] failed (1 time(s))
+Traceback (most recent call last):
+  ...
+ValueError: too many values to unpack (expected 2)
+```
+
+`start_mie.bat` 新增 `--log-file` 與 `--verbose`；預設輸出到 stderr，所以終端本來就看得到。`graph.list_scenes()` 讀到壞掉的 scene 檔會警告而不是靜默跳過，`function.py` 找不到 `jazz_rules` 時會警告並退回內建的 T/S/D 表。
+
 #### Phase 2 工項（原本規劃 + 上述新增）
 
 - Answer、Mirror、Density、Velocity(CC)、Register；輪盤邊群組；Scene 切換淡出；UC4 MIDI Learn；矩陣 UI + 互動流動畫；player `playhead` 同步。

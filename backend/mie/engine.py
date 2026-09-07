@@ -13,6 +13,7 @@ For tests everything is driven synchronously: `post()` + `step(now)`.
 
 from __future__ import annotations
 
+import logging
 import queue
 import threading
 from collections import deque
@@ -29,6 +30,8 @@ from .probability import p_eff, roll
 from .safety import Safety, SelfEchoFilter
 from .scheduler import Due, NotePair, Scheduler
 from .state import MusicalState
+
+log = logging.getLogger("mie.engine")
 
 DUP_WINDOW_S = 0.005      # Fantom layered zones: same key on two channels within 5 ms
 TICK_S = 0.05
@@ -87,6 +90,21 @@ class Engine:
         self._t0 = clock()
         self._last_tick = clock()
         self.human_note_count = 0
+        self._err_counts: dict[str, int] = {}
+
+    def _log_error(self, where: str, exc: BaseException) -> None:
+        """Report a swallowed exception without flooding a hot path.
+
+        The stack trace goes to the log the first time and every hundredth time
+        after that; the UI event stream always gets a line. Without this a fault
+        inside the scheduler callback was invisible unless a browser happened to
+        be attached.
+        """
+        n = self._err_counts.get(where, 0) + 1
+        self._err_counts[where] = n
+        if n == 1 or n % 100 == 0:
+            log.exception("mie: %s failed (%d time(s))", where, n, exc_info=exc)
+        self._ui("error", where=where, err=str(exc), n=n)
 
     # ------------------------------------------------------------------ modes
     @property
@@ -202,18 +220,24 @@ class Engine:
                 return n
             n += 1
             t = self.clock() if now is None else now
-            if isinstance(item, _Command):
-                self._run_command(item)
-            elif isinstance(item, tuple):
-                self._on_sent(item[0], item[1], t)
-            else:
-                self.handle(item, t)
+            # The engine thread must survive a bad event or a broken scene: an
+            # exception here used to kill it outright and silently, leaving the
+            # ports open and nothing listening.
+            try:
+                if isinstance(item, _Command):
+                    self._run_command(item)
+                elif isinstance(item, tuple):
+                    self._on_sent(item[0], item[1], t)
+                else:
+                    self.handle(item, t)
+            except Exception as e:
+                self._log_error("handle", e)
 
     def _run_command(self, cmd: _Command) -> None:
         try:
             cmd.fn(*cmd.args, **cmd.kw)
         except Exception as e:  # a bad UI message must not kill the engine thread
-            self._ui("error", where=getattr(cmd.fn, "__name__", "cmd"), err=str(e))
+            self._log_error(getattr(cmd.fn, "__name__", "command"), e)
 
     def step(self, now: Optional[float] = None) -> None:
         """Synchronous test driver: drain queue, pump scheduler, tick, drain again."""
@@ -222,7 +246,10 @@ class Engine:
         self.sched.pump(now)
         self.drain(now)
         if now - self._last_tick >= TICK_S:
-            self.tick(now)
+            try:
+                self.tick(now)
+            except Exception as e:
+                self._log_error("tick", e)
         self.sched.pump(now)
         self.drain(now)
 
@@ -235,15 +262,21 @@ class Engine:
                 item = None
             now = self.clock()
             if item is not None:
-                if isinstance(item, _Command):
-                    self._run_command(item)
-                elif isinstance(item, tuple):
-                    self._on_sent(item[0], item[1], now)
-                else:
-                    self.handle(item, now)
+                try:
+                    if isinstance(item, _Command):
+                        self._run_command(item)
+                    elif isinstance(item, tuple):
+                        self._on_sent(item[0], item[1], now)
+                    else:
+                        self.handle(item, now)
+                except Exception as e:
+                    self._log_error("handle", e)
                 self.drain(now)
             if now - self._last_tick >= TICK_S:
-                self.tick(now)
+                try:
+                    self.tick(now)
+                except Exception as e:
+                    self._log_error("tick", e)
 
     def start(self) -> threading.Thread:
         th = threading.Thread(target=self.loop, name="mie-engine", daemon=True)
@@ -320,13 +353,19 @@ class Engine:
             fn = algos.EVENT_ALGOS.get(e.algo)
             if fn is None:
                 continue
-            props = [x for x in fn(ev, self.st, e, self.rng) if x.kind == "on"]
-            if not props:
-                continue
-            props = mutation.apply(props, e.mutations, self.rng, chaos=self.eff_chaos, origin=ev.origin,
-                                   beat_s=self.st.beat_s)
-            self._record_fire(e, now, p)
-            self._schedule_props(props, ev, e, now)
+            # One broken edge must not take the rest of the scene down with it:
+            # a bad instrument range or algorithm parameter should silence that
+            # lane alone, and say so.
+            try:
+                props = [x for x in fn(ev, self.st, e, self.rng) if x.kind == "on"]
+                if not props:
+                    continue
+                props = mutation.apply(props, e.mutations, self.rng, chaos=self.eff_chaos,
+                                       origin=ev.origin, beat_s=self.st.beat_s)
+                self._record_fire(e, now, p)
+                self._schedule_props(props, ev, e, now)
+            except Exception as exc:
+                self._log_error(f"edge[{e.id}]", exc)
 
     def _roll_grouped(self, edges: list, ev: MieEvent, now: float) -> list[tuple]:
         """Probability gate with chord grouping.
@@ -512,7 +551,12 @@ class Engine:
             if n2 != pair.note:
                 self._ui("resnap", ch=pair.ch, frm=pair.note, to=n2)
                 pair.note = n2
-        except Exception:
+        except Exception as e:
+            # Fail open: the note was already constrained when it was scheduled,
+            # so sending it is safer than dropping it. But this runs on the
+            # scheduler thread at note rate, and swallowing it silently hid the
+            # fault completely.
+            self._log_error("late_bind", e)
             return True
         return True
 
@@ -589,7 +633,11 @@ class Engine:
                 fn = algos.TICK_ALGOS.get(e.algo)
                 if fn is None:
                     continue
-                props = fn(self.st, e, self.rng, now, ls, self._tension(e))
+                try:
+                    props = fn(self.st, e, self.rng, now, ls, self._tension(e))
+                except Exception as exc:
+                    self._log_error(f"edge[{e.id}]", exc)
+                    continue
                 if not props:
                     continue
                 # releases a timed lane asks for are never probability-gated
@@ -608,8 +656,11 @@ class Engine:
                     continue
                 root = MieEvent(event_id=next_id(), kind="tick", t_wall=now, ch=0, origin="HUMAN",
                                 root_id=next_id(), source_ch=0, hop=0, lane=e.lane)
-                self._record_fire(e, now, p)
-                self._schedule_props(props, root, e, now)
+                try:
+                    self._record_fire(e, now, p)
+                    self._schedule_props(props, root, e, now)
+                except Exception as exc:
+                    self._log_error(f"edge[{e.id}]", exc)
         for (ch, note) in self.safety.watchdog(self.st, now):
             self._force_off(ch, note, now, "watchdog")
         self.safety.prune_chains(now)
@@ -632,8 +683,11 @@ class Engine:
             for m in panic_messages(by_port[port]):
                 try:
                     self.send(port, m)
-                except Exception:
-                    pass
+                except Exception as e:
+                    # keep going: the rest of the PANIC packet and the other
+                    # port still have to go out, but a dead port during PANIC is
+                    # exactly the thing to know about
+                    self._log_error(f"panic_send[{port}]", e)
         self.st.active_gen.clear()
         for ls in self.lane_state.values():
             ls["fired"] = False
