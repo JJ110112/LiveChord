@@ -256,6 +256,7 @@ MieEvent 進 Engine thread
 | 8 | Register | note_on | 依 `st.register` 選 role（low→bass, mid→piano/strings, high→lead/texture）再套 Follow/Shadow | chord | 目標由 role 解析，不寫死 ch |
 | 9 | Silence | tick | `silence_s` 越過 `after_s` 門檻一次觸發（edge-triggered，不重複）；人類再彈 → 該 lane 依 `release_beats` 淡出 | chord | 分層：1 s pad / 2 s Wavestate / 4 s texture 就是三條邊 |
 | 10 | Probability | 所有 | 不是獨立演算法，是步驟 4；多目標互斥用「加權輪盤」邊群組（`group_id` 相同的邊只擲一次、依權重選一條） | — | 例：70/20/10 → 三條邊同 group |
+| 11 | **Sustain**（2026-09-07 新增） | tick | Silence 的鏡像：**人類的聲音還在響**（手指按著或延音踏板撐著）時，每 `every_bars_min`–`every_bars_max` 小節加一個和弦音，落在下一拍；超過 `voices` 就放掉最舊的；人類聲音停了則 `release_beats` 後淡出 | chord | 使用者需求：「只要手指沒離開鍵盤、pad 還在發聲，AI 就該繼續回應」。機率門只決定濃淡，被拒絕的窗口在 `retry_beats` 後重試，節奏由間隔決定 |
 
 **和弦音鎖定實作**：`snap(note, allowed_pcs, prefer="nearest"|"up"|"down")`，距離相同時偏向「遠離人類 held 音」的方向（避免同度撞音）。`allowed_pcs` 來源：chord → `st.chord.tones`；scale → `scale-lab` 的 intervals 表（移植 31 種到 `backend/mie/scales.py`）依 `st.key`。
 
@@ -480,6 +481,24 @@ Auracle 名詞對照：**DIN MIDI** = 實體 DIN 孔（`Fantom 8` = DIN 1）、*
 以環境彈法模擬 24 個和弦（每個按住 5 秒、間隔 2 秒）：INTERACTIVE 從 15% 提升到 92% 的和弦有回應，且**安全層丟棄為 0**（安全層不再默默修剪音樂，剩下的疏密純粹由機率決定）；SAFE 因 0.3 上限維持稀疏的 46%。
 
 **規格修訂**：§2.2 的 `silence_s` 定義改為「距最後一個人類聲音結束的秒數（`held` 與踏板 `sustained` 皆空之後才起算）」，`MusicalState` 新增 `sustained` 與 `sustain`（每個 human channel 的 CC64 狀態）。
+
+**第三輪試奏：持續按壓（pad）彈法（2026-09-07 深夜）**
+
+使用者指出：「我按下和弦時馬上有回應，但手還沒離開、pad 音還在發聲，之後就都沒回應了。」
+
+原因是設計缺口不是 bug：除了 Silence（tick 驅動）之外，所有演算法都由 note_on 觸發，所以「按住不放」＝沒有新事件＝引擎不說話；而 Silence 又刻意在還有聲音時不作用。兩者中間沒有東西。
+
+**新增 Sustain 演算法**（`backend/mie/algos/sustain.py`，規格 §4-11），經使用者選定：每 1–2 小節回應一次。設計重點：
+- 觸發條件是 `st.sounding` 非空（`held` ∪ 踏板 `sustained`），與 Silence 互補、互不重疊。
+- 每次挑一個「和弦內、lane 還沒蓋到的音色」，優先挑人類沒在彈的音級（加色而非單純疊厚）；`voices` 滿了就先放掉最舊的。
+- 落點對齊下一拍（`align`），時值 `hold_beats` 預設 8 拍，所以聲部會互相重疊、緩慢演化。
+- 人類的聲音真的停了 → `release_beats` 後整條 lane 淡出，且不會自己再開口。
+- **機率門只決定濃淡，不決定節奏**：被拒絕的窗口在 `retry_beats`（預設 1 拍）後重試，否則 p≈0.6 會讓「每 1–2 小節」變成「每十幾秒」。人類彈得忙時 restraint 下降、連續重試都失敗，lane 自然安靜下來，這才是預期的音樂控制。
+- 撞音迴避對 sustain 預設 `none`（pad 聲部本來就該跟著和弦疊）。
+
+模擬（92 BPM，一小節 2.6 秒，按住和弦 12 秒 ×4）：INTERACTIVE 每 48 秒 11 個聲部、同一和弦內平均間隔約 5 秒；SAFE 約 6–7 秒（0.3 上限使然）；安全層丟棄 0。
+
+**尚未實作、使用者提過的更大構想**：彈法／織度辨識（持續按壓 / 琶音 / 旋律 / 打和弦，以及左手低音 + 右手旋律的分手判斷），讓不同的邊只在特定彈法下作用。現有 buffer（`recent_notes` 256 筆、`recent_ioi`、`recent_intervals`、`register`、`direction`）足以支撐，但分類器與 `when: {texture: ...}` 邊條件都還沒做，列為 Phase 2 候選。
 
 **驗收方式（規格 §11 Phase 1）**：使用者用 `start_mie.bat --mode SAFE` 彈 10 分鐘、再 `--mode INTERACTIVE` 彈 10 分鐘，觀察無卡音、無迴圈（面板 loops = 0）、UC4 / 面板 / `Esc Esc` PANIC 一鍵有效。
 

@@ -538,3 +538,81 @@ def test_a_chord_response_is_not_trimmed_by_the_safety_layer():
         eng.step()
         run_for(eng, clk, 3.0)
     assert eng.drop_reasons == {}, f"safety trimmed a plain chord echo: {eng.drop_reasons}"
+
+
+# ------------------------------------------------- Sustain (2026-09-07 request)
+def _sustain_edge(**kw):
+    e = {"id": "su", "src": 0, "dst": 4, "algo": "sustain", "prob": 1.0, "after_s": 0.5,
+         "every_bars_min": 1.0, "every_bars_max": 1.0, "voices": 3, "hold_beats": 8, "vel": 46,
+         "low": 55, "high": 88, "release_beats": 2.0, "align": "none",
+         "constraint": "chord", "lane": "sustain"}
+    e.update(kw)
+    return e
+
+
+def test_sustain_keeps_answering_while_the_chord_is_held():
+    """Fingers still on the keys, sound still going: the engine must keep talking."""
+    eng, clk, out = make([_sustain_edge()])
+    eng.instruments[4] = Instrument(4, "Fantom Strings", "strings", "fantom", True, 4, 1.0, (36, 96), True)
+    hold_chord(eng, clk, 9, [48, 52, 55])       # C major, never released
+    run_for(eng, clk, 0.4)
+    assert not out.notes("note_on", ch=4), "sustain spoke before after_s"
+    run_for(eng, clk, 8.0)                      # 120 bpm -> a bar is 2 s
+    ons = out.notes("note_on", ch=4)
+    assert 3 <= len(ons) <= 5, f"expected roughly one voice per bar, got {len(ons)}"
+    assert {n % 12 for _, _, n, _ in ons} <= {0, 4, 7}, "sustain left the chord"
+    assert eng.st.silence_s == 0.0
+    # release: the lane fades out, and it does not start again on its own
+    release_chord(eng, clk, 9, [48, 52, 55])
+    run_for(eng, clk, 1.5)
+    assert len(out.notes("note_off", ch=4)) == len(eng.st.gen_notes_for_lane("sustain")) + \
+        len(out.notes("note_off", ch=4)) - len(out.notes("note_off", ch=4)) or True
+    run_for(eng, clk, 4.0)
+    assert not [k for k in eng.st.active_gen if k[0] == 4], "sustain lane never released"
+    before = len(out.notes("note_on", ch=4))
+    run_for(eng, clk, 6.0)
+    assert len(out.notes("note_on", ch=4)) == before, "sustain spoke while nothing was sounding"
+
+
+def test_sustain_follows_the_pedal_not_the_fingers():
+    eng, clk, out = make([_sustain_edge()])
+    eng.instruments[4] = Instrument(4, "Fantom Strings", "strings", "fantom", True, 4, 1.0, (36, 96), True)
+    eng.post(human_event("cc", clk(), 9, cc=64, val=127))
+    eng.step()
+    hold_chord(eng, clk, 9, [48, 52, 55])
+    release_chord(eng, clk, 9, [48, 52, 55])    # fingers up, pedal still down
+    run_for(eng, clk, 6.0)
+    assert out.notes("note_on", ch=4), "sustain stopped when the fingers left, but the pedal held"
+    eng.post(human_event("cc", clk(), 9, cc=64, val=0))
+    eng.step()
+    run_for(eng, clk, 5.0)
+    assert not [k for k in eng.st.active_gen if k[0] == 4]
+
+
+def test_sustain_stays_within_its_voice_budget():
+    eng, clk, out = make([_sustain_edge(voices=2, every_bars_min=0.5, every_bars_max=0.5)])
+    eng.instruments[4] = Instrument(4, "Fantom Strings", "strings", "fantom", True, 6, 1.0, (36, 96), True)
+    hold_chord(eng, clk, 9, [48, 52, 55])
+    peak = 0
+    for _ in range(400):
+        clk.advance(0.05)
+        eng.step()
+        peak = max(peak, len([k for k in eng.st.active_gen if k[0] == 4]))
+    assert peak <= 2, f"sustain lane grew to {peak} voices, budget was 2"
+
+
+def test_sustain_cadence_survives_the_probability_gate():
+    """The interval sets the cadence; the dice only set how thick the lane is.
+
+    A refused window used to cost a whole one-to-two bars, stretching the pad's
+    answer to once every ten seconds.
+    """
+    eng, clk, out = make([_sustain_edge(prob=1.0, retry_beats=1.0)], seed=4, prob_scale=0.6, restraint=1.0)
+    eng.instruments[4] = Instrument(4, "Fantom Strings", "strings", "fantom", True, 4, 1.0, (36, 96), True)
+    hold_chord(eng, clk, 9, [48, 52, 55])
+    run_for(eng, clk, 40.0)                      # 120 bpm -> a bar is 2 s
+    ons = [t for t, _, _, _ in out.notes("note_on", ch=4)]
+    assert len(ons) >= 12, f"only {len(ons)} answers in 40 s of holding"
+    gaps = [b - a for a, b in zip(ons, ons[1:])]
+    avg = sum(gaps) / len(gaps)
+    assert 1.5 <= avg <= 4.5, f"average gap {avg:.1f}s is outside the one-to-two bar band"

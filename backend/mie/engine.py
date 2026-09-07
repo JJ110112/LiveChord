@@ -484,7 +484,7 @@ class Engine:
         self.st.tick(now)
         if not self.bypass:
             for e in self.graph.timed_edges(self.allowed_algos):
-                lanes_ok = self.mode_caps.get("silence_lanes")
+                lanes_ok = self.mode_caps.get("timed_lanes")
                 if lanes_ok and e.lane not in lanes_ok:
                     continue
                 ls = self.lane_state.setdefault(e.id, {})
@@ -494,9 +494,19 @@ class Engine:
                 props = fn(self.st, e, self.rng, now, ls)
                 if not props:
                     continue
+                # releases a timed lane asks for are never probability-gated
+                offs = [x for x in props if x.kind == "off"]
+                if offs:
+                    self._apply_offs(offs, e, now)
+                props = [x for x in props if x.kind == "on"]
+                if not props:
+                    continue
                 p = p_eff(e, self.scene.globals, self.st.human_energy, self.mode_caps)
                 if self.rng.random() >= p:
                     self._ui("skip", edge=e.id, p=round(p, 3))
+                    skip_fn = algos.TICK_SKIP.get(e.algo)
+                    if skip_fn is not None:
+                        skip_fn(self.st, e, now, ls)
                     continue
                 root = MieEvent(event_id=next_id(), kind="tick", t_wall=now, ch=0, origin="HUMAN",
                                 root_id=next_id(), source_ch=0, hop=0, lane=e.lane)
