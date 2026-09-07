@@ -149,6 +149,31 @@ class Engine:
             self.set_mode(self.scene.mode if self.scene.mode not in ("OFF", "BYPASS") else "SAFE")
         self.panicked = False
 
+    def _gen_sounding(self, ch: int, now: float) -> list:
+        """Pitches the engine has sounding that this note has to live with.
+
+        `ensemble` is the default because the measurement said so: over the
+        21:08 take, 80 % of the engine's harsh intervals were between lanes on
+        DIFFERENT instruments (echo 269 of 331, phrase 151 of 197). The room
+        hears one sound; separate MIDI channels are a voice-budget notion, not
+        an acoustic one. `instrument` keeps the old per-synth scope, `off`
+        disables it.
+        """
+        mode = self.avoid_semitone
+        if mode == "off":
+            return []
+        return self.sched.sounding_notes(now, None if mode == "ensemble" else ch)
+
+    @property
+    def avoid_semitone(self) -> str:
+        """`ensemble` | `instrument` | `off` - how wide the semitone check looks."""
+        v = self.scene.globals.get("avoid_semitone", "ensemble")
+        if v is True:
+            return "instrument"
+        if v is False:
+            return "off"
+        return str(v)
+
     @property
     def master_gain(self) -> float:
         """One volume for everything the engine plays (plan §9.1).
@@ -595,7 +620,9 @@ class Engine:
                            pair.collision, voice_lead=pair.voice_lead, tension=pair.tension,
                            note_range=pair.note_range,
                            prev=self._lane_prev(pair.ch, pair.lane),
-                           others=self._other_voices(pair.ch, pair.lane, now))
+                           others=self._other_voices(pair.ch, pair.lane, now),
+                           gen_now=self._gen_sounding(pair.ch, now),
+                           keep_pc=(pair.constraint == "free"))
             if n2 is None:
                 self._drop_async("resnap", pair)
                 return False

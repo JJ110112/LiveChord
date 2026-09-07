@@ -98,6 +98,21 @@ def collision_for(edge) -> str:
     return str(c or COLLISION_DEFAULT.get(edge.algo, "octave"))
 
 
+HARSH = (1, 13)     # minor 2nd and minor 9th: the intervals that actually bite
+
+
+def harsh_against(note: int, others: Iterable[int]) -> bool:
+    """Is `note` a minor 2nd or minor 9th from something already sounding?
+
+    Measured over the 21:08 take (549 human notes): of the engine's harsh
+    intervals, more than half were the engine against ITSELF on the same
+    instrument - follow n60 under its own n59, phrase n71 under its own n72.
+    The player's own semitones are their intent and are never second-guessed;
+    what this stops is the engine stacking its own on top.
+    """
+    return any(abs(note - m) in HARSH for m in others)
+
+
 def collides(note: int, held: Iterable[int], policy: str = "octave") -> bool:
     if policy == "none":
         return False
@@ -139,7 +154,8 @@ def voice_lead_for(edge) -> str:
 def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instrument],
               collision: str = "octave", *, voice_lead: str = "off",
               prev: Optional[int] = None, others: tuple = (),
-              tension: float = 0.0, note_range: Optional[tuple] = None) -> Optional[int]:
+              tension: float = 0.0, note_range: Optional[tuple] = None,
+              gen_now: Iterable[int] = (), keep_pc: bool = False) -> Optional[int]:
     """Final pitch for a generated note given the state *now*.
 
     Snap to the allowed pitch classes - by voice leading from `prev` when the
@@ -170,7 +186,7 @@ def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instr
     if n is None:
         return None
     if not collides(n, held, collision):
-        return n
+        return _unharsh(n, pcs, gen_now, held, collision, lo, hi, keep_pc)
     # Another octave of the SAME chord tone first. Dropping the pitch class
     # outright is what put a D over a held C major: the player held C, E and G,
     # every chord tone was therefore "in the way", and the escape fell through
@@ -179,7 +195,7 @@ def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instr
     for shift in (12, -12, 24, -24):
         cand = n + shift
         if lo <= cand <= hi and (cand % 12) in pcs and not collides(cand, held, collision):
-            return cand
+            return _unharsh(cand, pcs, gen_now, held, collision, lo, hi, keep_pc)
     chord_alt = set(harmonic_pcs(st)) - held_pcs
     scale_alt = set(scale_pcs(st.key.tonic_pc, st.scale_id)) - held_pcs
     for alt_pcs in (chord_alt, scale_alt, set(pcs) - held_pcs):
@@ -187,8 +203,36 @@ def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instr
             continue
         for cand in (snap(n + 1, alt_pcs, "up", lo=lo, hi=hi), snap(n - 1, alt_pcs, "down", lo=lo, hi=hi)):
             if cand is not None and not collides(cand, held, collision):
-                return cand
+                return _unharsh(cand, alt_pcs, gen_now, held, collision, lo, hi, keep_pc)
     return None
+
+
+def _unharsh(n: int, pcs, gen_now, held, collision: str, lo: int, hi: int,
+             keep_pc: bool = False) -> int:
+    """Move `n` off a minor 2nd / 9th against the engine's own sounding notes.
+
+    Register first, as everywhere else: another octave of the same pitch class
+    keeps the harmony. `keep_pc` says the lane is holding a specific pitch on
+    purpose - an echo repeating what was played, a shadow tracking one voice -
+    and for those the octave is the ONLY move allowed: an echo that answers a
+    different note is not an echo. If nothing works the note still goes out;
+    answering is worth more than a perfectly clean interval, and a rub is not
+    the same kind of wrong as silence.
+    """
+    gen_now = [m for m in gen_now if m != n]
+    if not gen_now or not harsh_against(n, gen_now):
+        return n
+    for shift in (12, -12, 24, -24):
+        cand = n + shift
+        if lo <= cand <= hi and (cand % 12) in pcs and not collides(cand, held, collision)                 and not harsh_against(cand, gen_now):
+            return cand
+    if keep_pc:
+        return n
+    for d in range(1, 8):
+        for cand in (n + d, n - d):
+            if lo <= cand <= hi and (cand % 12) in pcs and not collides(cand, held, collision)                     and not harsh_against(cand, gen_now):
+                return cand
+    return n
 
 
 def edge_range(edge) -> Optional[tuple]:

@@ -179,6 +179,23 @@ class Scheduler:
         with self.lock:
             return sum(1 for p in self._pairs(ch) if p.t_on <= t < p.t_off)
 
+    def sounding_notes(self, t: float, ch: Optional[int] = None) -> list:
+        """Pitches live at `t`, sent or still scheduled, on `ch` or everywhere.
+
+        `active_gen` is the wrong source for this: it is filled from the "note
+        sent" notice on the engine thread, so two notes scheduled in the same
+        instant cannot see each other there. The scheduler knows about a pair
+        the moment it is queued.
+        """
+        with self.lock:
+            chans = [ch] if ch is not None else list(self._live)
+            out = []
+            for c in chans:
+                for p in self._pairs(c):
+                    if not p.dropped and p.t_on <= t < p.t_off:
+                        out.append(p.note)
+            return out
+
     def cancel_all(self) -> list[NotePair]:
         """Drop everything not yet sent. Returns pairs whose note_on went out but
         whose note_off had not (the caller must release them explicitly)."""

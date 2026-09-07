@@ -1513,3 +1513,72 @@ def test_a_forced_release_sends_exactly_one_note_off():
     offs = out.notes("note_off", ch=11)
     seen = [(t, n) for t, ch, n, v in offs]
     assert len(seen) == len({n for _, n in seen}), f"a note was released more than once: {seen}"
+
+
+def test_engine_does_not_stack_a_semitone_on_its_own_note():
+    """21:08 take: over half the engine's harsh intervals were it against
+    itself on one instrument - follow n60 under its own n59, phrase n71 under
+    its own n72. The player's own semitones are their intent and are left
+    alone; the engine's are not."""
+    edges = [{"id": "f", "src": 0, "dst": 11, "algo": "follow", "prob": 1.0, "interval": 7,
+              "constraint": "scale", "lane": "follow", "collision": "none"}]
+    eng, clk, out = make(edges)
+    eng.instruments[11] = Instrument(11, "Iridium", "exp_synth", "hw", True, 8, 1.0, (36, 96), True)
+    # two human notes a semitone apart, both held: a +7 follow answers with two
+    # notes a semitone apart on the same synth
+    eng.post(human_event("note_on", clk(), 9, 52, 80)); eng.step()
+    run_for(eng, clk, 0.08)
+    eng.post(human_event("note_on", clk(), 9, 53, 80)); eng.step()
+    run_for(eng, clk, 0.1)                       # both answers are still ringing
+    sounding = sorted(n for (c, n) in eng.st.active_gen if c == 11)
+    assert len(sounding) >= 2, f"the follow lane went quiet instead of moving: {sounding}"
+    for a, b in zip(sounding, sounding[1:]):
+        assert b - a not in (1, 13), f"the engine put {a} and {b} together on one synth"
+
+
+def test_the_players_own_semitones_are_never_second_guessed():
+    """A shadow doubling a chord that contains a semitone (Am(maj7): A and G#)
+    must still double it. Only the engine's own stacking is prevented."""
+    edges = [{"id": "sh", "src": 0, "dst": 11, "algo": "shadow", "prob": 1.0, "delay_ms": 20,
+              "shadow": "top", "constraint": "free", "lane": "shadow", "collision": "none"}]
+    eng, clk, out = make(edges)
+    hold_chord(eng, clk, 9, [57, 60, 64, 68])    # A C E G# - the semitone is the chord
+    run_for(eng, clk, 1.0)
+    assert out.notes("note_on", ch=11), "the shadow refused a chord that contains a semitone"
+
+
+def test_semitone_check_spans_the_whole_ensemble():
+    """80 % of the engine's harsh intervals on the 21:08 take were between
+    lanes on DIFFERENT instruments. The room hears one sound; separate MIDI
+    channels are a voice-budget notion, not an acoustic one."""
+    # E and F: both in C major, and a semitone apart on two different synths
+    edges = [{"id": "a", "src": 0, "dst": 11, "algo": "follow", "prob": 1.0, "interval": 4,
+              "constraint": "scale", "lane": "fa", "collision": "none"},
+             {"id": "b", "src": 0, "dst": 12, "algo": "follow", "prob": 1.0, "interval": 5,
+              "constraint": "scale", "lane": "fb", "collision": "none"}]
+    eng, clk, out = make(edges)
+    eng.instruments[11] = Instrument(11, "Iridium", "exp_synth", "hw", True, 8, 1.0, (36, 96), True)
+    eng.instruments[12] = Instrument(12, "MODX", "synth", "hw", True, 8, 1.0, (36, 96), True)
+    eng.post(human_event("note_on", clk(), 9, 60, 80))
+    eng.step()
+    run_for(eng, clk, 0.15)
+    sounding = sorted(n for (c, n) in eng.st.active_gen if c in (11, 12))
+    assert len(sounding) >= 2, f"a lane went quiet instead of moving: {sounding}"
+    for a, b in zip(sounding, sounding[1:]):
+        assert b - a not in (1, 13), f"two instruments landed on {a} and {b}"
+
+
+def test_an_echo_keeps_its_pitch_class_even_when_it_rubs():
+    """An echo that answers a different note is not an echo. When a repeat is a
+    semitone from something sounding it may change octave, never pitch class."""
+    edges = [{"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 1.0, "repeats": 4,
+              "delay_beats": 0.5, "vel_scale": 0.95, "min_vel": 5, "constraint": "free",
+              "lane": "echo", "collision": "none"},
+             {"id": "sh", "src": 0, "dst": 10, "algo": "shadow", "prob": 1.0, "delay_ms": 10,
+              "shadow": "top", "constraint": "free", "lane": "shadow", "collision": "none",
+              "max_hold_s": 8.0}]
+    eng, clk, out = make(edges)
+    hold_chord(eng, clk, 9, [60, 61])            # a semitone the player meant
+    run_for(eng, clk, 3.0)
+    played = {n % 12 for _, _, n, _ in out.notes("note_on", ch=10)}
+    assert played <= {0, 1}, f"the echo answered pitches nobody played: {sorted(played)}"
