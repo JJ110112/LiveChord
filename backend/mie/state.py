@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from .events import ContextSnapshot, MieEvent
+from . import texture as _texture
 from .harmony import ChordInfo, KeyInfo, estimate_key, recognize
 from .scales import NOTE_NAMES, scale_for_mode
 
@@ -78,6 +79,10 @@ class MusicalState:
         self.sustain: dict[int, bool] = {}         # CC64 state per human channel
         self._human_ch_t: dict[int, float] = {}
         self.register = "mid"
+        self.texture = "quiet"        # how they are playing (see texture.py)
+        self.texture_conf = 1.0
+        self.lh: list[int] = []       # what the left hand is holding, if the
+        self.rh: list[int] = []       # voicing splits into two hands at all
         self.direction = 0
         self.silence_s = 0.0
         self.quiet_s = 0.0          # since the last attack, ringing or not
@@ -214,7 +219,7 @@ class MusicalState:
         self.human_note_count += 1
         self.recent_notes.append(NoteRec(now, note, vel, ev.ch))
         self.pc_hist[note % 12] += vel / 127.0
-        self._update_register_direction()
+        self._update_register_direction(now)
         self._update_chord(now)
         self._update_energy(now)
         self._estimate_bpm()
@@ -256,11 +261,24 @@ class MusicalState:
         """
         return {**dict(self.sustained), **dict(self.held)}
 
+    def refresh_texture(self, now: float) -> None:
+        """Re-read the playing between notes.
+
+        Texture is a function of time as much as of events: a chord held down
+        only becomes `sustained` once the strikes stop arriving, and a keyboard
+        that has been let go only becomes `quiet` after the fact. Called from
+        the engine tick.
+        """
+        self.texture, self.texture_conf = _texture.classify(self, now)
+        self.lh, self.rh = _texture.hands(list(self.held) + list(self.sustained))
+
     def _mark_sound_end(self, now: float) -> None:
         if not self.held and not self.sustained:
             self.last_sound_end_t = now
 
-    def _update_register_direction(self) -> None:
+    def _update_register_direction(self, now: float) -> None:
+        self.texture, self.texture_conf = _texture.classify(self, now)
+        self.lh, self.rh = _texture.hands(list(self.held) + list(self.sustained))
         recent = list(self.recent_notes)[-8:]
         if recent:
             w = sum(r.vel for r in recent) or 1
@@ -414,6 +432,8 @@ class MusicalState:
             "pedal": sorted(ch for ch, on in list(self.sustain.items()) if on),
             "human_chs": sorted(self.human_chs),
             "register": self.register, "direction": self.direction,
+            "texture": self.texture, "texture_conf": round(self.texture_conf, 2),
+            "lh": self.lh, "rh": self.rh,
             "silence_s": round(self.silence_s, 2), "quiet_s": round(self.quiet_s, 2),
             "density": round(self.density, 2), "vel_mean": round(self.vel_mean, 1),
             "energy": round(self.human_energy, 3),

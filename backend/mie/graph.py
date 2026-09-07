@@ -114,6 +114,24 @@ class Edge:
     def lane(self) -> str:
         return self.params.get("lane") or self.algo
 
+    def wants(self, texture: Optional[str]) -> bool:
+        """Does this edge want to speak over the way the player is playing now?
+
+        `when: {"texture": ["sustained", "arpeggio"]}` on an edge, or the
+        shorthand `texture: [...]`. An edge that names none takes everything,
+        so scenes written before this keep working unchanged. An unknown
+        texture (or none supplied) also passes: a condition should narrow a
+        scene deliberately, not silence it because a reading was missing.
+        """
+        want = self.params.get("texture")
+        if want is None:
+            want = (self.params.get("when") or {}).get("texture")
+        if not want or texture is None:
+            return True
+        if isinstance(want, str):
+            want = [want]
+        return texture in want
+
     def align_beats(self, beats_per_bar: int) -> float:
         """Grid this edge quantises to, in beats. -1 means one bar."""
         v = self.params.get("align", self.ALIGN_DEFAULT.get(self.algo, "none"))
@@ -214,12 +232,16 @@ class InteractionGraph:
     def edges_from(self, src: int) -> list[Edge]:
         return self._by_src.get(src, [])
 
-    def candidate_edges(self, origin: str, ch: int, hop: int, now: float, allowed_algos: Optional[Iterable[str]] = None) -> list[Edge]:
+    def candidate_edges(self, origin: str, ch: int, hop: int, now: float,
+                        allowed_algos: Optional[Iterable[str]] = None,
+                        texture: Optional[str] = None) -> list[Edge]:
         src = 0 if origin == "HUMAN" else ch
         out = []
         allowed = set(allowed_algos) if allowed_algos else None
         for e in self.edges_from(src):
             if not e.enabled or origin not in e.accepts or hop > e.max_hop:
+                continue
+            if not e.wants(texture):
                 continue
             if allowed is not None and e.algo not in allowed:
                 continue
@@ -231,10 +253,11 @@ class InteractionGraph:
             out.append(e)
         return out
 
-    def timed_edges(self, allowed_algos: Optional[Iterable[str]] = None) -> list[Edge]:
+    def timed_edges(self, allowed_algos: Optional[Iterable[str]] = None,
+                    texture: Optional[str] = None) -> list[Edge]:
         allowed = set(allowed_algos) if allowed_algos else None
         return [e for e in self.edges if e.enabled and e.algo in ("silence", "sustain", "phrase", "density")
-                and (allowed is None or e.algo in allowed)
+                and (allowed is None or e.algo in allowed) and e.wants(texture)
                 and (self.instruments.get(e.dst) is not None and self.instruments[e.dst].enabled)]
 
     def by_role(self, role: str) -> list[Instrument]:

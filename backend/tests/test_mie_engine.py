@@ -1869,3 +1869,88 @@ def test_following_the_harmony_can_be_turned_off():
     assert leaves_the_harmony(eng.st, edge, ls, clk())
     assert not silence.tick(eng.st, edge, eng.rng, clk(), ls), "it left although following was off"
     assert [k for k in eng.st.active_gen if k[0] == 1], "the pad was released anyway"
+
+
+# ------------------------------------------------- how the player is playing
+def _texture_after(eng, clk, play_fn) -> str:
+    play_fn()
+    eng.st.refresh_texture(clk())
+    return eng.st.texture
+
+
+def test_texture_reads_block_chords():
+    """Struck together, not spread out. On the real takes the gap distribution
+    is bimodal - a spike under 20 ms and a band at 150-400 ms - so the share of
+    notes arriving inside a strike separates cleanly."""
+    eng, clk, out = make([])
+    for _ in range(4):
+        hold_chord(eng, clk, 9, [48, 52, 55, 60])
+        run_for(eng, clk, 0.3)
+        release_chord(eng, clk, 9, [48, 52, 55, 60])
+        run_for(eng, clk, 0.2)
+    eng.st.refresh_texture(clk())
+    assert eng.st.texture == "chord", eng.st.texture
+
+
+def test_texture_reads_a_held_chord_as_sustained():
+    eng, clk, out = make([])
+    hold_chord(eng, clk, 9, [48, 52, 55])
+    run_for(eng, clk, 4.0)                       # fingers down, nothing new struck
+    assert eng.st.texture == "sustained", eng.st.texture
+
+
+def test_texture_reads_an_empty_keyboard_as_quiet():
+    eng, clk, out = make([])
+    run_for(eng, clk, 4.0)
+    assert eng.st.texture == "quiet", eng.st.texture
+    play(eng, clk, 9, 60, vel=80, hold=0.2)
+    release_chord(eng, clk, 9, [60])
+    run_for(eng, clk, 5.0)
+    assert eng.st.texture == "quiet", eng.st.texture
+
+
+def test_texture_tells_an_arpeggio_from_a_melody():
+    """Leap size cannot separate them - measured over the 2026-09-07 takes the
+    within-hand leap is 5-7 semitones either way. What separates them is what
+    the line lands on and how it moves."""
+    eng, clk, out = make([])
+    hold_chord(eng, clk, 9, [36, 40, 43])        # C major underneath, so there is a chord
+    run_for(eng, clk, 0.2)
+    for n in (60, 64, 67, 72, 76, 79):           # spelling the chord, running upward
+        play(eng, clk, 9, n, vel=70, hold=0.15)
+        run_for(eng, clk, 0.1)
+    eng.st.refresh_texture(clk())
+    assert eng.st.texture == "arpeggio", eng.st.texture
+
+    eng, clk, out = make([])
+    hold_chord(eng, clk, 9, [36, 40, 43])
+    run_for(eng, clk, 0.2)
+    for n in (72, 71, 74, 69, 71, 66):           # turning, and off the chord
+        play(eng, clk, 9, n, vel=70, hold=0.15)
+        run_for(eng, clk, 0.1)
+    eng.st.refresh_texture(clk())
+    assert eng.st.texture == "melody", eng.st.texture
+
+
+def test_hands_split_at_the_gap_not_at_a_fixed_pitch():
+    from backend.mie.texture import hands
+    assert hands([36, 60, 64, 67]) == ([36], [60, 64, 67])       # bass under a voicing
+    assert hands([60, 64, 67]) == ([], [60, 64, 67])             # one hand, no gap
+    assert hands([67, 72, 79]) == ([], [67, 72, 79])             # wide, but not a left hand
+    assert hands([48]) == ([], [48])
+
+
+def test_an_edge_can_ask_for_one_kind_of_playing():
+    """`texture: [...]` on an edge; an edge that names none takes everything, so
+    scenes written before this keep working."""
+    edges = [{"id": "onlyheld", "src": 0, "dst": 11, "algo": "follow", "prob": 1.0, "interval": 7,
+              "constraint": "free", "lane": "a", "texture": ["sustained"]},
+             {"id": "always", "src": 0, "dst": 12, "algo": "follow", "prob": 1.0, "interval": 7,
+              "constraint": "free", "lane": "b"}]
+    eng, clk, out = make(edges)
+    for n in (72, 71, 74, 69, 71, 66):           # a melody: the gated edge stays out
+        play(eng, clk, 9, n, vel=70, hold=0.15)
+        run_for(eng, clk, 0.1)
+    assert eng.st.texture == "melody", eng.st.texture
+    assert not out.notes("note_on", ch=11), "the edge spoke over playing it was not asked for"
+    assert out.notes("note_on", ch=12), "the ungated edge should answer everything"

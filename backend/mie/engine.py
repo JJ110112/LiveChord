@@ -457,7 +457,8 @@ class Engine:
                 self.sched.release_lane(e.dst, e.lane, now + rel)
 
     def _fire_edges(self, ev: MieEvent, now: float) -> None:
-        edges = self.graph.candidate_edges(ev.origin, ev.ch, ev.hop, now, self.allowed_algos)
+        edges = self.graph.candidate_edges(ev.origin, ev.ch, ev.hop, now, self.allowed_algos,
+                                           texture=self.st.texture)
         if not edges:
             return
         fired = self._roll_grouped(edges, ev, now)
@@ -762,7 +763,8 @@ class Engine:
         self._last_tick = now
         self.st.tick(now)
         if not self.bypass:
-            for e in self.graph.timed_edges(self.allowed_algos):
+            self.st.refresh_texture(now)
+            for e in self.graph.timed_edges(self.allowed_algos, texture=self.st.texture):
                 lanes_ok = self.mode_caps.get("timed_lanes")
                 if lanes_ok and e.lane not in lanes_ok:
                     continue

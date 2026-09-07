@@ -66,6 +66,9 @@
     }
     $("#mieKey").textContent = st.key + (st.key_source === "player" ? " ▶" : st.key_source === "inferred" ? " ~" : "");
     $("#mieChord").textContent = st.chord || "—";
+    const TEX = { quiet: "靜", sustained: "持續", chord: "和弦", arpeggio: "琶音", melody: "旋律" };
+    $("#mieTexture").textContent = TEX[st.texture] || st.texture || "—";
+    $("#mieHands").textContent = (st.lh && st.lh.length) ? `雙手 ${st.lh.length}+${st.rh.length}` : "";
     $("#mieBpm").textContent = st.bpm;
     $("#mieClock").textContent = st.clock + (st.pulse_conf ? ` ${Math.round(st.pulse_conf * 100)}%` : "");
     $("#mieBpm").parentElement.title = st.pulse_bpm
