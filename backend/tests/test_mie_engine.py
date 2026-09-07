@@ -1447,3 +1447,27 @@ def test_phrase_end_is_relative_to_how_fast_the_player_plays():
     fires = eng.edge_fires.get("ph", 0)
     assert fires >= played - 1, f"{played} phrases played, only {fires} answered"
     assert len(out.notes("note_on", ch=12)) >= 3 * played, "phrases came back shorter than they were played"
+
+
+def test_master_volume_acts_on_notes_already_queued():
+    """The fader has to catch what is queued but not yet sounding.
+
+    On the 20:53 take the player swept the fader through a phrase echo that had
+    already been scheduled, and every one of those notes went out at the old
+    level seconds later. Reading the volume at send time fixes that; a note
+    already ringing keeps its velocity, which is the honest limit of doing
+    volume by velocity.
+    """
+    edges = [{"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 1.0, "repeats": 4,
+              "delay_beats": 1.0, "vel_scale": 0.95, "min_vel": 5, "constraint": "free", "lane": "echo"}]
+    eng, clk, out = make(edges)
+    play(eng, clk, 9, 60, vel=100, hold=0.2)
+    run_for(eng, clk, 0.7)                       # the first return is out, the rest are queued
+    first = len(out.notes("note_on", ch=10))
+    assert first >= 1, "the echo never started"
+    eng.set_global("master_gain", 0.0)
+    run_for(eng, clk, 4.0)
+    assert len(out.notes("note_on", ch=10)) == first, "queued notes ignored the fader"
+    assert eng.stats["muted"] > 0, "the mute was not counted, so it cannot be diagnosed"
+    # and nothing is left hanging: a note that never started is never released
+    assert not [k for k in eng.st.active_gen if k[0] == 10], "a muted note was left sounding"

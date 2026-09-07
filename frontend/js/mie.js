@@ -242,7 +242,7 @@
   }
   function renderStats(s) {
     const st = s.stats, j = s.jitter || {};
-    const rows = [["human", st.human_notes], ["gen sent", st.gen_sent], ["scheduled", st.gen_sched], ["dropped", st.dropped],
+    const rows = [["human", st.human_notes], ["gen sent", st.gen_sent], ["scheduled", st.gen_sched], ["dropped", st.dropped], ["muted", st.muted],
       ["loops", st.loops], ["panics", st.panics], ["pending", s.pending],
       ["jitter p95", j.p95 !== undefined ? `${j.p95} ms` : "—"], ["jitter max", j.max !== undefined ? `${j.max} ms` : "—"]];
     Object.entries(s.drops || {}).forEach(([k, v]) => rows.push([`drop:${k}`, v, "drop"]));

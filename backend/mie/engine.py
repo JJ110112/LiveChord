@@ -73,7 +73,7 @@ class Engine:
         if self.mode not in MODES:
             self.mode = "SAFE"
         self.lane_state: dict[str, dict] = {}
-        self.stats = {"human_notes": 0, "gen_sched": 0, "gen_sent": 0, "dropped": 0, "loops": 0,
+        self.stats = {"human_notes": 0, "gen_sched": 0, "gen_sent": 0, "dropped": 0, "muted": 0, "loops": 0,
                       "panics": 0, "controls": 0, "dups": 0}
         self.edge_fires: dict[str, int] = {}
         self.drop_reasons: dict[str, int] = {}
@@ -460,13 +460,7 @@ class Engine:
         if edge.algo == "shadow" and ev.origin == "HUMAN":
             self._regroup_shadow(edge, ev, now)
         n_ok = 0
-        gain = self.master_gain
         for p in props:
-            if gain < 1.0:
-                v = int(round(p.vel * gain))
-                if v < 1:
-                    continue        # the master fader is down; this is a mute, not a fault
-                p = p.clone(vel=v)
             if "dur_scale" in caps:
                 p = p.clone(dur=p.dur * float(caps["dur_scale"]))
             if "vel_max" in caps:
@@ -631,8 +625,21 @@ class Engine:
         if p is None:
             return
         if due.kind == "on":
-            msg = self.mido.Message("note_on", channel=p.ch - 1, note=p.note, velocity=p.vel)
+            # The master volume is read HERE, not when the note was scheduled:
+            # the fader has to act on everything not yet sounding, or a sweep
+            # leaves seconds of already-queued notes at the old level. A note
+            # already ringing keeps its velocity - that is inherent to volume
+            # by velocity, and the honest limit of this approach.
+            vel = int(round(p.vel * self.master_gain))
+            if vel < 1:
+                p.muted = True      # the fader is down: silence, not a fault
+                self.stats["muted"] += 1
+                return
+            p.sent_vel = vel
+            msg = self.mido.Message("note_on", channel=p.ch - 1, note=p.note, velocity=vel)
         else:
+            if p.muted:
+                return              # never started, so nothing to release
             msg = self.mido.Message("note_off", channel=p.ch - 1, note=p.note, velocity=0)
         self.send(port_for(p.ch), msg)
         self.echo_filter.note_sent(p.ch, p.note, due.kind == "on", now)
@@ -644,7 +651,8 @@ class Engine:
             self.stats["gen_sent"] += 1
             self.st.gen_on(p.ch, p.note, now, p.lane, p.root_id, p.hop, p.src_note, p.max_dur)
             self._note_lane_sent(p.ch, p.lane, p.note, now)
-            self._ui("gen", ch=p.ch, note=p.note, vel=p.vel, lane=p.lane, hop=p.hop, edge=p.edge_id)
+            self._ui("gen", ch=p.ch, note=p.note, vel=p.sent_vel or p.vel, lane=p.lane,
+                     hop=p.hop, edge=p.edge_id, gain=round(self.master_gain, 2))
             if self.graph.edges_from(p.ch) and not self.bypass:
                 fb = MieEvent(event_id=next_id(), kind="note_on", t_wall=now, ch=p.ch, note=p.note, vel=p.vel,
                               origin="GENERATIVE", root_id=p.root_id, parent_id=p.parent_id, source_ch=p.ch,

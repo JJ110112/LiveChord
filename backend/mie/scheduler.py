@@ -34,6 +34,8 @@ class NotePair:
     follow_off: bool = False
     src_note: Optional[int] = None
     max_dur: float = 8.0
+    muted: bool = False        # master volume silenced it as it was sent
+    sent_vel: int = 0          # what actually left the process, after the master volume
     on_sent: bool = False
     off_sent: bool = False
     dropped: bool = False
