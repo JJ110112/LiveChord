@@ -1,6 +1,6 @@
 # Musical Interaction Engine（MIE）— 技術架構與 MVP 規劃
 
-日期：2026-09-06　狀態：Phase 0 探針已寫好（`backend/mie/probe.py`、`data/mie/ports.json`、`probe_mie.bat`），等硬體就緒後由使用者執行 T0　Beads：`LiveChord-3nex`（epic）
+日期：2026-09-06（Phase 0 驗證 2026-09-07）　狀態：**Phase 0 通過**（T0 硬體驗證完成，見 §11 Phase 0 結果），等使用者驗收後進 Phase 1　Beads：`LiveChord-3nex`（epic）
 
 > 一句話：LiveChord 即時觀察使用者的 MIDI 演奏（音、和弦、節奏、力度、留白），
 > 依演算法 + 機率 + 音樂約束，指揮 15 個 MIDI Channel 上的硬體樂器與 REAPER VST 彼此互動。
@@ -379,6 +379,48 @@ Test 6（Cmaj7→Am7→Fmaj7→G7 生成音必須跟著和弦）在自由演奏�
 - **驗收**：T0 回音測試 0 筆重複；延遲 p95 < 5 ms。
 - BYPASS 下逐台彈 Nord / Wavestate / Iridium / MODX / Event 61，引擎 log 必須完全沒有來自 DIN2–8 的事件（只看得到 Fantom 副本）。
 - 確認 Windows 上實際的 port 名稱（mioXL 韌體版本不同，可能叫 `HST 2` 或 `mioXL Port 2`），寫進 `data/mie/ports.json`。
+
+#### Phase 0 結果（2026-09-07，ProArt 16，使用者在琴前逐項驗證）
+
+**環境**：Python 3.12.10（`%LOCALAPPDATA%\Programs\Python\Python312`，winget 安裝）、`python-rtmidi`、`mido`、`pytest`；`test_mie_probe.py` 15 passed。`probe_mie.bat` 已改為自行尋找 CPython（py launcher → 使用者安裝 → PATH），避免 Microsoft Store 的 `python.exe` 別名把探針擋掉。
+
+**實際 port 名稱**（Windows / rtmidi，數字是裝置索引，`ports.json` 的子字串已能匹配）：
+
+| 角色 | Windows port | Auracle 對應 |
+|---|---|---|
+| MIE In | `HST 2 14` | USB DAW 欄 `HST 2` |
+| MIE Out | `HST 3 16` | USB DAW 欄 `HST 3` |
+| UC4 | `Faderfox UC4 1` | 直接 USB 接 ProArt |
+| REAPER | `LiveChord_MIE_to_REAPER 23` | loopMIDI（2026-09-07 新裝、新建） |
+
+Auracle 名詞對照：**DIN MIDI** = 實體 DIN 孔（`Fantom 8` = DIN 1）、**USB Host** = mioXL 自己的 USB 主機孔、**USB DAW** = 接 ProArt 的那條 USB 線，Windows 看到的 `DIN 1–8 / HST 1–7 / Control` 就是 USB DAW 欄的名字。
+
+**Auracle 路由（本次新增，直通路徑未動）**：
+- Input `Fantom 8`（DIN 1 In）→ DIN 2–7（原有直通）**+ USB DAW `HST 2`**（新增，Fantom 副本給引擎）。
+- Input USB DAW `HST 3`（引擎輸出）→ DIN MIDI `Fantom 8` + `DIN 2`–`DIN 8`；USB DAW 欄全不亮（規則 4）。目前 USB Host 欄的 `HST 3` 也被點亮，該孔沒接裝置，無害，可取消。
+- 原本 Fantom 8 只送 DIN 2–7、未送 DIN 8；規格寫 DIN2–8，以使用者現況為準。
+
+**T0 量測**：
+
+| 項目 | 結果 | 門檻 |
+|---|---|---|
+| 規則 4 軟體檢查（HST 3 送 CH11 短音，聽 HST 2 1.5 s） | 0 回流 | 0 |
+| BYPASS 逐台彈 Nord / Wavestate / Iridium / MODX / Event 61（120 s，不碰 Fantom） | HST 2 與 DIN 2–8 皆 0 事件 | 0 |
+| BYPASS 彈 Fantom（多輪，累計 >2000 事件） | `loops=0`、`T0 OK` | 0 |
+| 250 ms 回音（120 s，in=130 / out=113） | jitter p50 0.00 / p95 **0.55** / max 0.81 ms | p95 < 5 ms |
+| `--delay 0` 直通（callback → send） | p50 0.11–0.15 / p95 0.16–0.21 ms | 記錄 |
+| 純軟體排程精度（`Condition.wait` + spin，250 ms × 60） | p95 0.26 / max 0.93 ms | 記錄 |
+| UC4 任一按鈕（ch16 CC20=127）→ PANIC | 立刻 `PANIC sent to HST/REAPER`，按住的音補 1 個 note_off，之後輸入只記錄不送；`r` 後 `resumed`、回音恢復 | 生效 |
+| 引擎關掉時 Fantom zone 8–15 → DIN 2–7 直通 | 各琴照常發聲 | 不受影響 |
+
+耳朵確認（使用者）：用 Fantom **INT zone（ch1）** 彈，該 channel 不經直通到任何琴，Iridium 響即為引擎回音。250 ms 有延遲跟響、放開即停；PANIC 時 Iridium 立刻靜音；`--delay 0` 幾乎同時響。
+
+**接線事實補充（Phase 1 要處理）**：
+- 其他琴（Nord / Wavestate / Iridium / MODX / Event 61）的 MIDI OUT **沒有接** mioXL，DIN2–8 回流在實體上不可能發生。
+- Fantom 的 INT zone 也會送到 MIDI OUT（觀測到 ch1–5），不只 EXT zone 的 CH9–15；且某些 scene 下**同一個鍵同時送多個 channel**（例如 ch2+ch13、ch4+ch13、ch5+ch14、ch5+ch9+ch15，timestamp 差 < 1 ms）。HUMAN 判定與 `human_chs` 要把「一次按鍵、多 channel」視為同一事件，不能各自觸發演算法。
+- Fantom 切 scene 時在 **ch16** 送 CC0/CC32 + program change；規格說 CH16 保留不用，引擎收到 ch16 的 CC/PC 應忽略，PANIC 仍涵蓋 CH1–16。
+- Fantom 另有一條 USB 直接接 ProArt（Windows 顯示 `FANTOM-6 7 8`，REAPER 也開著它的 Input）。引擎不開這個 port；REAPER 上 Fantom USB 與 HST 1 若同時開會疊音，由使用者決定。
+- UC4 同時被 REAPER 與探針開啟沒有衝突。
 
 ### Phase 1 — MVP 核心（使用者 §16）
 - `backend/mie/`：`events.py`、`state.py`、`graph.py`、`algos/{follow,echo,shadow,silence}.py`、`probability.py`、`constraint.py`、`safety.py`、`scheduler.py`、`io_rtmidi.py`、`ws_server.py`、`__main__.py`。
