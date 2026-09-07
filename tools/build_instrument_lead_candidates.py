@@ -72,7 +72,7 @@ from tools.build_rh_melody_candidates import (  # noqa: E402
 
 DEFAULT_DATA_DIR = Path(r"V:\data")
 DEFAULT_FOLDERS = "Jazz,Relax,Other/Soundtracks"
-LOG_GLOB = "rh_melody_candidates_*.jsonl"
+LOG_GLOBS = ("rh_melody_candidates_*.jsonl", "instrument_lead_candidates_*.jsonl")
 EST_S_PER_SONG = 13.3  # measured avg_total_s of the 263-song Libera RH batch on the RTX 5080
 
 
@@ -88,7 +88,8 @@ def _load_json(path: Path, default: Any) -> Any:
 
 def load_log_ratios(data_dir: Path) -> Dict[str, float]:
     out: Dict[str, float] = {}
-    for f in sorted(glob.glob(str(data_dir / "logs" / LOG_GLOB))):
+    files = [f for pattern in LOG_GLOBS for f in glob.glob(str(data_dir / "logs" / pattern))]
+    for f in sorted(files):
         try:
             with open(f, encoding="utf-8") as fh:
                 for line in fh:
@@ -127,7 +128,7 @@ def select_songs(args: argparse.Namespace, data_dir: Path) -> Tuple[List[Dict[st
     ratios = load_log_ratios(data_dir)
     drops: Dict[str, int] = {
         "no_chords": 0, "outside_folders": 0, "unprocessable_path": 0, "too_long": 0,
-        "vocal_by_gate": 0, "has_instrument_lead": 0, "has_solo_piano": 0,
+        "vocal_by_gate": 0, "not_measured": 0, "has_instrument_lead": 0, "has_solo_piano": 0,
     }
     rows: List[Dict[str, Any]] = []
     for t in lib:
@@ -148,6 +149,9 @@ def select_songs(args: argparse.Namespace, data_dir: Path) -> Tuple[List[Dict[st
         ratio = ratios.get(h)
         if ratio is not None and ratio >= args.max_vocal_ratio:
             drops["vocal_by_gate"] += 1
+            continue
+        if args.only_measured and ratio is None:
+            drops["not_measured"] += 1
             continue
         if not args.force and candidate_path(data_dir, h, INSTRUMENT_LEAD).is_file():
             drops["has_instrument_lead"] += 1
@@ -310,6 +314,8 @@ def main() -> int:
     ap.add_argument("--data-dir", default=str(DEFAULT_DATA_DIR))
     ap.add_argument("--folders", default=DEFAULT_FOLDERS, help="Comma-separated top folders (after the @N root).")
     ap.add_argument("--max-vocal-ratio", type=float, default=0.15)
+    ap.add_argument("--only-measured", action="store_true",
+                    help="Only songs a previous batch already measured as instrumental (skip the Demucs-to-find-out half).")
     ap.add_argument("--max-duration-min", type=float, default=30.0)
     ap.add_argument("--max-audio-mb", type=float, default=300.0, help="0 disables the size check.")
     ap.add_argument("--limit", type=int, default=0)
