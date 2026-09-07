@@ -1653,3 +1653,29 @@ def test_phrase_keeps_its_pitch_when_it_is_not_asked_to_follow():
     hold_chord(eng, clk, 9, [62, 65, 69])
     run_for(eng, clk, 6.0)
     assert [n for t, _, n, _ in out.notes("note_on", ch=12) if t > t_mel][:3] == [69, 72, 76]
+
+
+def test_phrase_passes_stay_apart_when_detection_ran_late():
+    """21:30 take: two passes scheduled at identical offsets, on top of each other.
+
+    `late` was being clamped away per pass, so once detection cost more than
+    `delay` - which it does whenever the player is slow, since the gap threshold
+    follows their own note spacing - every pass clamped to zero and they all
+    landed at the same instant.
+    """
+    eng, clk, out = make([_phrase_edge(repeats=3, delay_beats=0.25, phrase_gap_beats=4.0)])
+    for i, n in enumerate([60, 63, 67]):         # a chord-shaped gesture, like the take
+        eng.post(human_event("note_on", clk(), 9, n, 70))
+        eng.step()
+        clk.advance(0.01)
+    run_for(eng, clk, 0.25)
+    for n in (60, 63, 67):
+        eng.post(human_event("note_off", clk(), 9, n, 0))
+    eng.step()
+    run_for(eng, clk, 14.0)
+    ons = out.notes("note_on", ch=12)
+    assert len(ons) >= 6, f"fewer than two passes came back: {ons}"
+    heads = [ons[i][0] for i in range(0, len(ons) - 2, 3)]
+    assert len(heads) >= 2
+    for a, b in zip(heads, heads[1:]):
+        assert b - a > 0.15, f"two passes landed on top of each other: {heads}"

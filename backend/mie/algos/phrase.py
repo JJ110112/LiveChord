@@ -100,6 +100,7 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     # player heard "有重複但是聲音感覺一樣大" on the 19:18 take: v32 -> v19 -> stop.
     fade = float(p.get("decay", 0.6))
     late = max(0.0, now - notes[-1].t)
+    head = max(0.0, delay - late)               # when the first pass opens
     # The chord the phrase was sung over. Carried on every note so the repeat
     # can be moved bodily to whatever chord is in force when it comes back -
     # see `Engine._phrase_transpose`. None when the edge does not ask for it,
@@ -117,8 +118,13 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
         # own soft notes one by one, which is the hole this algorithm removes.
         if int(round(min(r.vel for r in notes) * decay)) < min_vel:
             break                                   # the tail has died away
-        start = delay + (k - 1) * period - late
-        shift = max(0.0, -start)                    # never schedule into the past
+        # `late` is pushed back ONCE, for the whole answer. Clamping each pass
+        # separately meant that when detection cost more than `delay` - which
+        # it does whenever the player is slow, since the gap threshold now
+        # follows their own note spacing - every pass clamped to zero and they
+        # all landed on the same instant. Seen on the 21:30 take: two passes
+        # scheduled at identical offsets [0, .006, .014, .022, .031].
+        start = head + (k - 1) * period
         for rec in notes:
             vel = max(min_vel, int(round(rec.vel * decay + edge.vel_offset)))
             offset = rec.t - t0
@@ -135,7 +141,7 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
             dur = min(dur, max(dur_min, period - offset))
             out.append(Proposal(ch=edge.dst, note=rec.note + semis, vel=min(127, vel),
                                 dur=dur, lane=edge.lane,
-                                t_offset=start + shift + offset,
+                                t_offset=start + offset,
                                 capture_root=root, pass_id=(fire_id, k)))
     return out
 

@@ -177,6 +177,13 @@ class Engine:
         if len(self._phrase_shift) > 64:
             self._phrase_shift.clear()      # bounded: passes are seconds long
         self._phrase_shift[pair.pass_id] = shift
+        if shift:
+            # Say it out loud. On the 21:30 take the feature was live and never
+            # moved a note - every phrase came back under the chord it was
+            # captured under - and the log could not distinguish "it did not
+            # need to fire" from "it is broken".
+            self._ui("phrase_shift", edge=pair.edge_id, semis=shift,
+                     frm=pair.capture_root, to=chord.root_pc if chord else None)
         return shift
 
     def _gen_sounding(self, ch: int, now: float) -> list:
