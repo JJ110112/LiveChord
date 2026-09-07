@@ -397,7 +397,8 @@ Auracle 名詞對照：**DIN MIDI** = 實體 DIN 孔（`Fantom 8` = DIN 1）、*
 
 **Auracle 路由（本次新增，直通路徑未動）**：
 - Input `Fantom 8`（DIN 1 In）→ DIN 2–7（原有直通）**+ USB DAW `HST 2`**（新增，Fantom 副本給引擎）。
-- Input USB DAW `HST 3`（引擎輸出）→ DIN MIDI `Fantom 8` + `DIN 2`–`DIN 8`；USB DAW 欄全不亮（規則 4）。目前 USB Host 欄的 `HST 3` 也被點亮，該孔沒接裝置，無害，可取消。
+- Input USB DAW `HST 3`（引擎輸出）→ DIN MIDI `Fantom 8` + `DIN 2`–`DIN 8`；USB DAW 欄全不亮（規則 4）。USB Host 欄的 `HST 3` 已取消。
+- **Output DIN MIDI `Fantom 8` 的 Filter：CH 9–16 全部擋掉（All Filters），CH 1–8 放行**（2026-09-07 Phase 1 試奏時發現：引擎送到 CH10 的回音會同時進 Fantom 的 DIN IN，Fantom scene 的 part 10 是鼓組，聽起來像隨機 hi-hat / tom；Fantom 主音量歸零即消失。濾波器要放在 Fantom 8 這個實體輸出上，放在 HST 3 的 Input 總濾波器會連 DIN 2–8 一起擋掉，放在 USB DAW `DIN 1` 則濾錯 port）。這就是規則 2「HST 3 只把 CH2–8 merge 給 Fantom」的實作。
 - 原本 Fantom 8 只送 DIN 2–7、未送 DIN 8；規格寫 DIN2–8，以使用者現況為準。
 
 **T0 量測**：
