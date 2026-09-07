@@ -82,7 +82,11 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
          tension: float = 0.0) -> list[Proposal]:
     if edge.params.get("follow_chord", True) and leaves_the_harmony(st, edge, lane_state, now):
         return _release(st, edge, "chord_moved", lane_state)
-    after_s = float(edge.params.get("after_s", 2.0))
+    # How long the space has to last before the lane takes it. Measured on the
+    # 22:14 take, this is the knob that decides how PRESENT the lane is:
+    # 4 s put the texture on 42 % of the take, 6 s on 20 %, 8 s on 18 %,
+    # 12 s on 6 %. `hold_s` only caps one note; this decides the coverage.
+    after_s = float(edge.params.get("after_s", 4.0))
     # What counts as space (per edge):
     #   "sound"  - nothing of the human's is ringing, pedal included. Correct
     #              when a pad should never sit on top of a held chord.
