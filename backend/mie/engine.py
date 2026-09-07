@@ -373,6 +373,7 @@ class Engine:
                 return
             dur = self.st.note_off_human(ev, now)
             ev.dur_hint = dur
+            self._ui("human_off", ch=ev.ch, note=ev.note, held_ms=int((dur or 0) * 1000))
             if self.bypass:
                 return
             for e in self.graph.candidate_edges("HUMAN", ev.ch, 0, now, self.allowed_algos):
@@ -662,8 +663,9 @@ class Engine:
             self.st.gen_off(p.ch, p.note)
 
     def _force_off(self, ch: int, note: int, now: float, why: str = "") -> None:
-        self.sched.release(ch, note, now)
-        if (ch, note) in self.st.active_gen:
+        direct = (ch, note) in self.st.active_gen
+        self.sched.release(ch, note, now, mark_sent=direct)
+        if direct:
             self.send(port_for(ch), self.mido.Message("note_off", channel=ch - 1, note=note, velocity=0))
             self.echo_filter.note_sent(ch, note, False, now)
             self.st.gen_off(ch, note)

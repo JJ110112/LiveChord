@@ -1471,3 +1471,45 @@ def test_master_volume_acts_on_notes_already_queued():
     assert eng.stats["muted"] > 0, "the mute was not counted, so it cannot be diagnosed"
     # and nothing is left hanging: a note that never started is never released
     assert not [k for k in eng.st.active_gen if k[0] == 10], "a muted note was left sounding"
+
+
+# ------------------------------------------------- collision escape / releases
+def test_collision_escape_changes_register_not_harmony():
+    """Holding a whole C major must not push the follow lane onto the 2nd.
+
+    Measured on the 20:53 take: the player held C, E and G, so every chord tone
+    was "in the way", the escape gave up on the chord and answered with D and A
+    over a C. Another octave of the same chord tone is the better answer.
+    """
+    # exactly the 20:53 voicing, and the edge's own default collision policy
+    edges = [{"id": "f", "src": 0, "dst": 11, "algo": "follow", "prob": 1.0, "interval": 7,
+              "constraint": "chord", "lane": "follow"}]
+    eng, clk, out = make(edges)
+    hold_chord(eng, clk, 9, [36, 48, 60])        # C2 C3 C4 under the hand
+    run_for(eng, clk, 0.3)
+    for n in (55, 67):                           # G3, G4: +7 lands on a held C
+        eng.post(human_event("note_on", clk(), 9, n, 80))
+        eng.step()
+        run_for(eng, clk, 0.4)
+    ons = out.notes("note_on", ch=11)
+    assert ons, "the follow lane said nothing"
+    for _, _, n, _ in ons:
+        assert n % 12 in (0, 4, 7), f"answered n{n} ({n % 12}) - off the C chord it was told to use"
+
+
+def test_a_forced_release_sends_exactly_one_note_off():
+    """`_force_off` sends its own note_off for safety and the scheduler was
+    sending the entry it had just brought forward, so the note was released
+    twice. A stray note_off can cut short another lane's note of the same pitch
+    on the same channel."""
+    edges = [{"id": "sh", "src": 0, "dst": 11, "algo": "shadow", "prob": 1.0, "delay_ms": 20,
+              "shadow": "top", "constraint": "chord", "lane": "shadow", "max_hold_s": 8.0}]
+    eng, clk, out = make(edges)
+    hold_chord(eng, clk, 9, [60, 64, 67])
+    run_for(eng, clk, 1.0)
+    assert out.notes("note_on", ch=11), "the shadow never started"
+    release_chord(eng, clk, 9, [60, 64, 67])
+    run_for(eng, clk, 1.0)
+    offs = out.notes("note_off", ch=11)
+    seen = [(t, n) for t, ch, n, v in offs]
+    assert len(seen) == len({n for _, n in seen}), f"a note was released more than once: {seen}"

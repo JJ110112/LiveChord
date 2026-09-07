@@ -128,8 +128,14 @@ class Scheduler:
         self._push(t, "raw", None, payload)
 
     def release(self, ch: int, note: int, at_t: float, *, lane: Optional[str] = None,
-                src_note: Optional[int] = None) -> int:
-        """Stop matching notes at `at_t`; ones that have not started are dropped."""
+                src_note: Optional[int] = None, mark_sent: bool = False) -> int:
+        """Stop matching notes at `at_t`; ones that have not started are dropped.
+
+        `mark_sent` is for a caller that sends the note_off itself: the pair is
+        recorded as already released so the scheduler does not send a second
+        one. A stray note_off is not silent - it can cut short another lane's
+        note of the same pitch on the same channel.
+        """
         n = 0
         with self.cv:
             for p in list(self._pairs(ch)):
@@ -141,6 +147,8 @@ class Scheduler:
                     continue
                 if self._bring_off_forward(p, at_t):
                     n += 1
+                if mark_sent and p.on_sent:
+                    p.off_sent = True
             self.cv.notify()
         return n
 

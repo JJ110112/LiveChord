@@ -171,6 +171,15 @@ def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instr
         return None
     if not collides(n, held, collision):
         return n
+    # Another octave of the SAME chord tone first. Dropping the pitch class
+    # outright is what put a D over a held C major: the player held C, E and G,
+    # every chord tone was therefore "in the way", and the escape fell through
+    # to the scale and answered with the 2nd. Changing register keeps the
+    # harmony; changing pitch class is the last resort, not the first.
+    for shift in (12, -12, 24, -24):
+        cand = n + shift
+        if lo <= cand <= hi and (cand % 12) in pcs and not collides(cand, held, collision):
+            return cand
     chord_alt = set(harmonic_pcs(st)) - held_pcs
     scale_alt = set(scale_pcs(st.key.tonic_pc, st.scale_id)) - held_pcs
     for alt_pcs in (chord_alt, scale_alt, set(pcs) - held_pcs):
