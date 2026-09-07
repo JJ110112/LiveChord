@@ -145,9 +145,19 @@ class Scheduler:
             self.cv.notify()
         return n
 
-    def pending_on(self, ch: int) -> int:
+    def sounding_at(self, ch: int, t: float) -> int:
+        """Notes on `ch` that will be sounding at time `t`, sent or still scheduled.
+
+        The voice budget asks "how many at once", so counting every scheduled
+        note_on (what `pending_on` did) charged a two second echo tail as if all
+        of it sounded together and the budget threw most of the tail away. Each
+        pair has exactly one "off" entry in the heap, so counting those is both
+        exact and free of double counting.
+        """
         with self.lock:
-            return sum(1 for d in self.heap if d.kind == "on" and d.pair and not d.pair.dropped and d.pair.ch == ch)
+            return sum(1 for d in self.heap
+                       if d.kind == "off" and d.pair is not None and not d.pair.dropped
+                       and d.pair.ch == ch and d.pair.t_on <= t < d.t)
 
     def cancel_all(self) -> list[NotePair]:
         """Drop everything not yet sent. Returns pairs whose note_on went out but

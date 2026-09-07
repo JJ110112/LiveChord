@@ -9,7 +9,7 @@
   "7":  {"name": "Fantom Lead",      "role": "lead",      "group": "fantom", "enabled": true,  "max_voices": 1, "note_range": [55, 103]},
   "8":  {"name": "Fantom FX",        "role": "fx",        "group": "fantom", "enabled": true,  "max_voices": 2, "note_range": [36, 96]},
   "9":  {"name": "Nord Grand 2",     "role": "piano",     "group": "hw",     "enabled": true,  "max_voices": 6, "note_range": [28, 103]},
-  "10": {"name": "Wavestate mk II",  "role": "sequence",  "group": "hw",     "enabled": true,  "max_voices": 10, "note_range": [36, 96], "sustain_ok": true},
+  "10": {"name": "Wavestate mk II",  "role": "sequence",  "group": "hw",     "enabled": true,  "max_voices": 18, "note_range": [36, 96], "sustain_ok": true},
   "11": {"name": "Iridium",          "role": "exp_synth", "group": "hw",     "enabled": true,  "max_voices": 8, "note_range": [36, 96]},
   "12": {"name": "MODX M6",          "role": "synth",     "group": "hw",     "enabled": true,  "max_voices": 4, "note_range": [36, 96]},
   "13": {"name": "Ketron Event 61",  "role": "keyboard",  "group": "hw",     "enabled": true,  "max_voices": 4, "note_range": [36, 96]},

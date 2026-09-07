@@ -163,7 +163,7 @@ class Safety:
         self._chain_t[root_id] = now
 
     # ---- layers 5-6 + human channel ----
-    def admit(self, p: Proposal, st: MusicalState, now: float, pending_on_ch: int = 0,
+    def admit(self, p: Proposal, st: MusicalState, now: float, voices_at: int = 0,
               t_send: Optional[float] = None) -> Admission:
         """`t_send` is when the note will actually sound. The rate limiter has to
         judge it there, not at scheduling time: a chord's worth of echoes is
@@ -186,9 +186,11 @@ class Safety:
         group_max = self.FANTOM_GROUP_MAX
         if st.human_energy > 0.7:
             max_v, group_max = 1, 3
-        ch_voices = [(k, g) for k, g in list(st.active_gen.items()) if k[0] == p.ch]
+        # `voices_at` is how many notes this channel will have sounding when this
+        # one starts - not how many are scheduled in total.
         steal = None
-        if len(ch_voices) + pending_on_ch >= max_v:
+        if voices_at >= max_v:
+            ch_voices = [(k, g) for k, g in list(st.active_gen.items()) if k[0] == p.ch]
             if not ch_voices:
                 return Admission(False, self._count("voices"))
             steal = min(ch_voices, key=lambda kv: kv[1].t_on)[0]

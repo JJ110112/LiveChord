@@ -239,7 +239,10 @@ def test_chain_total_capped_at_24_events():
     ons = out.notes("note_on")
     assert 3 < len(ons) <= 24, f"{len(ons)} generated events in one chain"
     assert eng.drop_reasons.get("chain", 0) > 0
-    assert len(out.notes("note_off")) == len(ons)
+    # every pitch that was started got released; several pairs can share one
+    # (ch, note), so the counts need not match exactly
+    assert {(c, n) for _, c, n, _ in out.notes("note_off")} >= {(c, n) for _, c, n, _ in ons}
+    assert eng.st.active_gen == {}, "a note was left sounding"
 
 
 def test_generative_sources_cannot_fan_out():
@@ -795,3 +798,46 @@ def test_voice_leading_is_off_for_echo_so_it_keeps_its_pitch():
         run_for(eng, clk, 1.5)
         got = [n for _, _, n, _ in out.notes("note_on", ch=10)]
         assert got == [note], f"echo of {note} came out as {got}"
+
+
+# ---------------------------------------- Phase 2 play-test: canyon echo tail
+def test_echo_tail_decays_and_a_harder_note_echoes_further():
+    """The player wanted a canyon echo: several returns dying away, not one."""
+    from backend.mie.algos import echo as echo_algo
+    from backend.mie.graph import Edge
+    from backend.mie.state import MusicalState
+    e = Edge.from_json({"id": "e", "src": 0, "dst": 10, "algo": "echo", "delay_beats": 0.5,
+                        "repeats": 6, "vel_scale": 0.78, "min_vel": 11, "dur_decay": 0.85,
+                        "constraint": "free"}, 0)
+    st = MusicalState(bpm=92, now=0.0)
+    st.last_human_dur = 1.2
+    loud = echo_algo.run(human_event("note_on", 0.0, 9, 60, 100), st, e, Random(1))
+    soft = echo_algo.run(human_event("note_on", 0.0, 9, 60, 25), st, e, Random(1))
+    assert len(loud) > len(soft) >= 2, f"loud {len(loud)} returns, soft {len(soft)}"
+    vels = [p.vel for p in loud]
+    assert vels == sorted(vels, reverse=True), f"the tail did not decay: {vels}"
+    assert all(a.t_offset < b.t_offset for a, b in zip(loud, loud[1:])), "returns not spread in time"
+    durs = [p.dur for p in loud]
+    assert durs[-1] < durs[0], "later returns should thin out"
+    assert all(p.note == 60 for p in loud), "a canyon echo keeps the pitch"
+
+
+def test_a_line_that_has_been_quiet_stops_pulling_the_next_entry():
+    eng, clk, out = make([_sustain_edge()])
+    eng.instruments[4] = Instrument(4, "Fantom Strings", "strings", "fantom", True, 8, 1.0, (55, 88), True)
+    hold_chord(eng, clk, 9, [48, 52, 55])
+    run_for(eng, clk, 3.0)
+    assert eng._lane_hist, "nothing was recorded"
+    release_chord(eng, clk, 9, [48, 52, 55])
+    run_for(eng, clk, eng._lane_hist_ttl_s + 2.0)
+    assert eng._lane_hist == {}, "an old line still pulls the next entry"
+
+
+def test_the_voice_leading_windows_follow_the_tempo():
+    eng, clk, out = make([])
+    eng.st.set_tempo(60, clk(), "manual")     # slow: a beat is a second
+    slow_voice, slow_hist = eng._voice_window_s, eng._lane_hist_ttl_s
+    eng.st.set_tempo(180, clk(), "manual")    # fast
+    assert eng._voice_window_s < slow_voice and eng._lane_hist_ttl_s < slow_hist
+    assert eng._voice_window_s >= eng.VOICE_WINDOW_MIN_S
+    assert eng._lane_hist_ttl_s >= eng.LANE_HIST_MIN_S

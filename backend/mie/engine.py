@@ -383,15 +383,16 @@ class Engine:
             if cp is None:
                 self._drop("constraint", edge, p, now)
                 continue
-            adm = self.safety.admit(cp, self.st, now, pending_on_ch=self.sched.pending_on(cp.ch),
-                                    t_send=now + max(0.0, cp.t_offset))
+            t_send = now + max(0.0, cp.t_offset)
+            adm = self.safety.admit(cp, self.st, now, t_send=t_send,
+                                    voices_at=self.sched.sounding_at(cp.ch, t_send))
             if not adm.ok:
                 self._drop(adm.reason or "safety", edge, cp, now)
                 continue
             if adm.steal is not None:
                 self._force_off(adm.steal[0], adm.steal[1], now, "steal")
             dur = self.safety.clamp_dur(cp, inst)
-            t_on = now + max(0.0, cp.t_offset)
+            t_on = t_send
             pair = NotePair(ch=cp.ch, note=cp.note, vel=cp.vel, t_on=t_on, t_off=t_on + dur, lane=cp.lane,
                             origin="GENERATIVE", root_id=ev.root_id, parent_id=ev.event_id, hop=hop,
                             edge_id=edge.id, constraint=edge.constraint, follow_off=cp.follow_off,
@@ -405,7 +406,22 @@ class Engine:
                      edge=edge.id, in_ms=round((t_on - now) * 1000), dur_ms=round(dur * 1000))
         return n_ok
 
-    VOICE_WINDOW_S = 2.0     # another lane counts as "moving with us" this recently
+    # Both windows are musical, not absolute: at 92 BPM they are about 2.6 s and
+    # 10 s, but in a slow ambient passage two lines can be four beats apart and
+    # still be moving together, and a line that stopped 16 beats ago should not
+    # pull the next entry towards where it happened to be.
+    VOICE_WINDOW_BEATS = 4.0
+    VOICE_WINDOW_MIN_S = 2.0
+    LANE_HIST_BEATS = 16.0
+    LANE_HIST_MIN_S = 8.0
+
+    @property
+    def _voice_window_s(self) -> float:
+        return max(self.VOICE_WINDOW_MIN_S, self.VOICE_WINDOW_BEATS * self.st.beat_s)
+
+    @property
+    def _lane_hist_ttl_s(self) -> float:
+        return max(self.LANE_HIST_MIN_S, self.LANE_HIST_BEATS * self.st.beat_s)
 
     def _lane_prev(self, ch: int, lane: str) -> Optional[int]:
         h = self._lane_hist.get((ch, lane))
@@ -415,11 +431,19 @@ class Engine:
         """(previous, current) of the other generated lines that just moved,
         so voice leading can see a parallel fifth coming."""
         out = []
+        window = self._voice_window_s
         for (c, ln), (prev, last, t) in list(self._lane_hist.items()):
-            if (c, ln) == (ch, lane) or prev is None or now - t > self.VOICE_WINDOW_S:
+            if (c, ln) == (ch, lane) or prev is None or now - t > window:
                 continue
             out.append((prev, last))
         return tuple(out)
+
+    def _expire_lane_hist(self, now: float) -> None:
+        """A line that has been quiet for a long time is not a line any more."""
+        ttl = self._lane_hist_ttl_s
+        for key, (_, _, t) in list(self._lane_hist.items()):
+            if now - t > ttl:
+                del self._lane_hist[key]
 
     def _note_lane_sent(self, ch: int, lane: str, note: int, now: float) -> None:
         h = self._lane_hist.get((ch, lane))
@@ -578,6 +602,7 @@ class Engine:
         for (ch, note) in self.safety.watchdog(self.st, now):
             self._force_off(ch, note, now, "watchdog")
         self.safety.prune_chains(now)
+        self._expire_lane_hist(now)
 
     # --------------------------------------------------------------- PANIC
     def panic(self, reason: str = "manual") -> None:
