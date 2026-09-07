@@ -23,6 +23,10 @@
 @keyframes mie-blink { from { box-shadow: 0 0 0 0 #ff525200; } to { box-shadow: 0 0 0 4px #ff525288; } }
 .mie-uc4 .mie-val { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
 
+.mie-halt { display: flex; align-items: center; gap: 12px; margin: 0 12px; padding: 10px 16px; border-radius: var(--radius); background: #b71c1c; color: #fff; font-size: 14px; animation: mie-blink .8s infinite alternate; }
+.mie-halt b { letter-spacing: .06em; white-space: nowrap; }
+.mie-halt span { flex: 1; opacity: .92; font-size: 12.5px; }
+.mie-halt .mie-btn { background: #fff; color: #b71c1c; border-color: #fff; }
 .mie-main { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(360px, 1.4fr) minmax(300px, 1fr); gap: 12px; padding: 12px; flex: 1; min-height: 0; }
 .mie-col { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; overflow: auto; min-height: 0; }
 .mie-title-gap { margin-top: 16px; }

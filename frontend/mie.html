@@ -7,7 +7,7 @@
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
   <link rel="stylesheet" href="/css/base.css?v=24">
-  <link rel="stylesheet" href="/css/mie.css?v=3">
+  <link rel="stylesheet" href="/css/mie.css?v=4">
 </head>
 <body class="mie-body">
   <!-- 頂列：MODE / SCENE / KEY / CHORD / BPM / clock / PANIC -->
@@ -34,6 +34,7 @@
     <button id="miePanic" class="mie-btn mie-btn-panic" title="兩個 Out port 各自 CH1–16 送 CC120/123/64=0，再補 note_off；引擎進 BYPASS（快捷鍵 Esc Esc）">PANIC</button>
   </header>
 
+  <div id="mieHalt" class="mie-halt" hidden><b>引擎已停止</b><span id="mieHaltWhy"></span><button id="mieHaltResume" class="mie-btn">RESUME</button></div>
   <main class="mie-main">
     <!-- 左：能量儀表 -->
     <section class="mie-col mie-meters">
@@ -69,6 +70,6 @@
     </section>
   </main>
 
-  <script src="/js/mie.js?v=8"></script>
+  <script src="/js/mie.js?v=9"></script>
 </body>
 </html>

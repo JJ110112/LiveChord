@@ -159,8 +159,14 @@ def main(argv=None) -> int:
         while not engine.stop.is_set():
             time.sleep(0.25)
             # plan §7-10: UI gone for 5 s while sending -> PANIC (only if a UI was ever connected)
+            # The grace has to outlast a page reload: on 2026-09-07 a hard refresh
+            # to pick up a new ?v= tripped the 5 s window, the engine sat in
+            # BYPASS, and the player played 40 seconds into silence without a
+            # sign. The UC4 PANIC button needs no panel, so waiting longer for
+            # the operator's browser costs little.
+            grace = float(engine.scene.globals.get("ws_grace_s", 12.0))
             if ui is not None and ui.client_count == 0 and not engine.bypass and \
-                    getattr(ui, "_had_client", False) and time.time() - ui.last_client_seen > 5.0:
+                    getattr(ui, "_had_client", False) and time.time() - ui.last_client_seen > grace:
                 engine.panic("ws_lost")
                 ui._had_client = False
             if ui is not None and ui.client_count:

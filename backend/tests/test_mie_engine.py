@@ -1409,6 +1409,21 @@ def test_master_volume_follows_a_hardware_fader():
     assert abs(eng.master_gain - 0.504) < 0.01, "CH16 traffic reached the master volume"
 
 
+def test_master_volume_listens_to_one_channel_when_pinned():
+    """Confirmed on the hardware: the Fantom's zone 1 volume is CC7 on CH1.
+
+    Pinning the channel keeps another keyboard's volume slider from quietly
+    taking over the engine's master.
+    """
+    eng, clk, out = make([], master_cc=7, master_ch=1)
+    eng.post(human_event("cc", clk(), 1, cc=7, val=127))
+    eng.step()
+    assert eng.master_gain == 1.0
+    eng.post(human_event("cc", clk(), 9, cc=7, val=0))
+    eng.step()
+    assert eng.master_gain == 1.0, "a volume slider on another channel moved the master"
+
+
 def test_phrase_end_is_relative_to_how_fast_the_player_plays():
     """The 20:28 take: eight clear phrases, ONE answer in 39 seconds.
 

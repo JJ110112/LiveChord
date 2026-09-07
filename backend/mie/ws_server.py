@@ -176,6 +176,7 @@ class UiServer:
         with self.lock:
             self.conns.append(conn)
         self.last_client_seen = time.time()
+        self.engine._ui("ui", event="connect", clients=self.client_count)
         try:
             conn.send_text(json.dumps({"type": "hello", "snapshot": self.engine.snapshot()}))
             self._reader(conn)
@@ -184,6 +185,7 @@ class UiServer:
                 if conn in self.conns:
                     self.conns.remove(conn)
             conn.close()
+            self.engine._ui("ui", event="disconnect", clients=self.client_count)
         # keep the handler from writing anything else on the socket
         h.close_connection = True
 

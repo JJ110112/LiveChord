@@ -55,6 +55,15 @@
     modeEl.classList.toggle("bypass", !!s.bypass);
     modeEl.classList.toggle("live", !s.bypass);
     $("#miePanic").classList.toggle("armed", !!s.panicked);
+    // A grey BYPASS pill was not loud enough: after a `ws_lost` PANIC the player
+    // played 40 seconds into silence without noticing (2026-09-07 20:44).
+    const halt = $("#mieHalt");
+    halt.hidden = !(s.panicked || s.bypass);
+    if (!halt.hidden) {
+      $("#mieHaltWhy").textContent = s.panicked
+        ? "PANIC 之後不會自己恢復（面板重新整理過也會觸發）。按 RESUME 才會再發聲。"
+        : "目前是 BYPASS，直通照常，但引擎不會發聲。";
+    }
     $("#mieKey").textContent = st.key + (st.key_source === "player" ? " ▶" : st.key_source === "inferred" ? " ~" : "");
     $("#mieChord").textContent = st.chord || "—";
     $("#mieBpm").textContent = st.bpm;
@@ -272,6 +281,7 @@
   // ---------------------------------------------------------------- controls
   $("#miePanic").addEventListener("click", () => send({ type: "panic" }));
   $("#mieResume").addEventListener("click", () => send({ type: "resume" }));
+  $("#mieHaltResume").addEventListener("click", () => send({ type: "resume" }));
   $("#mieModeSel").addEventListener("change", (e) => send({ type: "mode", value: e.target.value }));
   $("#mieSceneSel").addEventListener("change", (e) => send({ type: "scene", id: e.target.value }));
   [["gMaster", "master_gain"], ["gProb", "prob_scale"], ["gChaos", "chaos"], ["gRestraint", "restraint"]].forEach(([id, key]) => {
