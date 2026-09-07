@@ -80,6 +80,7 @@
 .mie-ev-drop { color: #ef9a9a; }
 .mie-ev-panic { background: #b71c1c; color: #fff; font-weight: 700; }
 .mie-ev-ctl, .mie-ev-set, .mie-ev-mode { color: #ce93d8; }
+.mie-ev-cc_in, .mie-ev-pedal { color: #90a4ae; }   /* incoming controllers: identify a fader by moving it */
 .mie-ev-edge, .mie-ev-sched, .mie-ev-resnap, .mie-ev-off { color: var(--text-dim); }
 .mie-ev-loop { background: #ff9800; color: #000; font-weight: 700; }
 

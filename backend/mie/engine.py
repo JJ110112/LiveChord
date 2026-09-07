@@ -65,6 +65,7 @@ class Engine:
         self.graph = InteractionGraph(scene, instruments)
         self.st = MusicalState(bpm=scene.bpm, beats_per_bar=scene.beats_per_bar, key=scene.key, now=clock())
         self.safety = Safety(instruments, scene.globals)
+        self._cc_seen: dict[tuple[int, int], tuple[float, int]] = {}
         self.echo_filter = SelfEchoFilter(0.008)
         self.sched = Scheduler(clock, self._emit, self._before_on)
         self.in_queue: "queue.Queue[MieEvent | tuple]" = queue.Queue()
@@ -147,6 +148,46 @@ class Engine:
         if self.mode in ("OFF", "BYPASS"):
             self.set_mode(self.scene.mode if self.scene.mode not in ("OFF", "BYPASS") else "SAFE")
         self.panicked = False
+
+    @property
+    def master_gain(self) -> float:
+        """One volume for everything the engine plays (plan §9.1).
+
+        Before this the player had to walk the seven keyboards one at a time to
+        balance the engine against their own playing. It scales velocity rather
+        than sending CC7: a volume CC would write persistent state into someone
+        else's synth and would have to be undone on PANIC, and CC7 is often the
+        very control they are already using by hand.
+        """
+        return max(0.0, min(1.0, float(self.scene.globals.get("master_gain", 1.0))))
+
+    def _master_cc(self, ev, now: float) -> None:
+        """A hardware fader can own the master volume; `master_cc` says which.
+
+        `master_ch` 0 means any human channel. Listening only - the passthrough
+        that carries this same CC to whatever the zone actually plays is never
+        touched.
+        """
+        cc = int(self.scene.globals.get("master_cc", 0) or 0)
+        if not cc or ev.cc != cc:
+            return
+        ch = int(self.scene.globals.get("master_ch", 0) or 0)
+        if ch and ev.ch != ch:
+            return
+        self.set_global("master_gain", round((ev.val or 0) / 127.0, 3))
+
+    def _log_cc_in(self, ev, now: float) -> None:
+        """Log incoming CCs so a fader can be identified by moving it.
+
+        Throttled per (ch, cc): a fader sweep is a hundred messages and the
+        event stream is for reading, not for drowning in.
+        """
+        key = (ev.ch, ev.cc)
+        last = self._cc_seen.get(key)
+        if last and now - last[0] < 0.25 and abs((ev.val or 0) - last[1]) < 8:
+            return
+        self._cc_seen[key] = (now, ev.val or 0)
+        self._ui("cc_in", ch=ev.ch, cc=ev.cc, val=ev.val)
 
     def set_global(self, key: str, value) -> None:
         self.scene.globals[key] = value
@@ -298,9 +339,13 @@ class Engine:
         # ---- HUMAN ----
         if ev.kind in ("cc", "pc", "clock"):
             # CH16 carries the Fantom's own scene bank/program changes: ignore.
-            if ev.kind == "cc" and ev.cc == 64 and ev.ch != 16:
-                self.st.set_sustain(ev.ch, (ev.val or 0) >= 64, now)
-                self._ui("pedal", ch=ev.ch, val=ev.val)
+            if ev.kind == "cc" and ev.ch != 16:
+                if ev.cc == 64:
+                    self.st.set_sustain(ev.ch, (ev.val or 0) >= 64, now)
+                    self._ui("pedal", ch=ev.ch, val=ev.val)
+                else:
+                    self._master_cc(ev, now)
+                    self._log_cc_in(ev, now)
             return
         if ev.note is None:
             return
@@ -415,7 +460,13 @@ class Engine:
         if edge.algo == "shadow" and ev.origin == "HUMAN":
             self._regroup_shadow(edge, ev, now)
         n_ok = 0
+        gain = self.master_gain
         for p in props:
+            if gain < 1.0:
+                v = int(round(p.vel * gain))
+                if v < 1:
+                    continue        # the master fader is down; this is a mute, not a fault
+                p = p.clone(vel=v)
             if "dur_scale" in caps:
                 p = p.clone(dur=p.dur * float(caps["dur_scale"]))
             if "vel_max" in caps:

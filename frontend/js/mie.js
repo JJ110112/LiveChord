@@ -72,6 +72,7 @@
     $("#vSilence").textContent = holding ? `按住 ${holding}` + ((st.pedal || []).length ? " ♪" : "") : st.silence_s.toFixed(1) + " s";
     pct($("#mVel"), st.vel_mean / 127); $("#vVel").textContent = Math.round(st.vel_mean);
     const g = s.scene.global || {};
+    syncSlider("gMaster", g.master_gain === undefined ? 1 : g.master_gain, 2);
     syncSlider("gProb", g.prob_scale, 2); syncSlider("gChaos", g.chaos, 2); syncSlider("gRestraint", g.restraint, 2);
     if ($("#mieSceneSel").options.length && !$("#mieSceneSel").matches(":focus")) $("#mieSceneSel").value = s.scene.id;
     renderInstruments(s);
@@ -273,7 +274,7 @@
   $("#mieResume").addEventListener("click", () => send({ type: "resume" }));
   $("#mieModeSel").addEventListener("change", (e) => send({ type: "mode", value: e.target.value }));
   $("#mieSceneSel").addEventListener("change", (e) => send({ type: "scene", id: e.target.value }));
-  [["gProb", "prob_scale"], ["gChaos", "chaos"], ["gRestraint", "restraint"]].forEach(([id, key]) => {
+  [["gMaster", "master_gain"], ["gProb", "prob_scale"], ["gChaos", "chaos"], ["gRestraint", "restraint"]].forEach(([id, key]) => {
     const el = document.getElementById(id);
     el.addEventListener("input", () => { document.getElementById(id + "V").textContent = Number(el.value).toFixed(2); });
     el.addEventListener("change", () => send({ type: "set", path: `global.${key}`, value: Number(el.value) }));

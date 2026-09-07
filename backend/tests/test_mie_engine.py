@@ -1369,3 +1369,66 @@ def test_phrase_first_pass_is_not_already_faded():
     for a, b in zip(heads, heads[1:]):
         assert abs(b / a - 0.55) < 0.05, f"tail did not fade by `decay`: {heads}"
     assert len(passes) >= 3, f"only {len(passes)} passes of range: {heads}"
+
+
+# --------------------------------------------------------------- master volume
+def test_master_gain_scales_everything_the_engine_plays():
+    """One fader for the whole engine: the player had to walk seven keyboards."""
+    edges = [{"id": "f", "src": 0, "dst": 11, "algo": "follow", "prob": 1.0,
+              "interval": 7, "constraint": "free", "lane": "follow"}]
+    eng, clk, out = make(edges)
+    play(eng, clk, 9, 60, vel=100, hold=0.2)
+    run_for(eng, clk, 1.0)
+    full = out.notes("note_on", ch=11)[-1][3]
+    eng.set_global("master_gain", 0.5)
+    play(eng, clk, 9, 62, vel=100, hold=0.2)
+    run_for(eng, clk, 1.0)
+    half = out.notes("note_on", ch=11)[-1][3]
+    assert abs(half / full - 0.5) < 0.06, f"{full} -> {half}"
+    eng.set_global("master_gain", 0.0)
+    before = len(out.notes("note_on", ch=11))
+    play(eng, clk, 9, 64, vel=100, hold=0.2)
+    run_for(eng, clk, 1.0)
+    assert len(out.notes("note_on", ch=11)) == before, "fader at zero still made sound"
+
+
+def test_master_volume_follows_a_hardware_fader():
+    edges = [{"id": "f", "src": 0, "dst": 11, "algo": "follow", "prob": 1.0,
+              "interval": 7, "constraint": "free", "lane": "follow"}]
+    eng, clk, out = make(edges, master_cc=7, master_ch=0)
+    eng.post(human_event("cc", clk(), 9, cc=7, val=64))
+    eng.step()
+    assert abs(eng.master_gain - 0.504) < 0.01, eng.master_gain
+    # a CC the scene did not name must not touch the volume
+    eng.post(human_event("cc", clk(), 9, cc=11, val=0))
+    eng.step()
+    assert abs(eng.master_gain - 0.504) < 0.01, "an unrelated CC moved the master volume"
+    # CH16 is the Fantom's own bank/program traffic and is never listened to
+    eng.post(human_event("cc", clk(), 16, cc=7, val=0))
+    eng.step()
+    assert abs(eng.master_gain - 0.504) < 0.01, "CH16 traffic reached the master volume"
+
+
+def test_phrase_end_is_relative_to_how_fast_the_player_plays():
+    """The 20:28 take: eight clear phrases, ONE answer in 39 seconds.
+
+    The engine had locked onto 179.9 BPM, so `phrase_gap_beats: 1.0` was 0.33 s
+    - exactly the spacing of the notes being played. Every note ended a phrase,
+    each phrase collected one or two notes, `min_notes` refused them, and the
+    engine went quiet. The threshold has to scale with the player's own note
+    spacing as well as with the beat.
+    """
+    eng, clk, out = make([_phrase_edge()])
+    eng.st.bpm = 180.0                       # one beat = 0.333 s
+    eng.st.clock_source = "manual"           # pin it, as the take's estimator had
+    played = 0
+    for phrase in ([36, 48, 55, 60, 62], [41, 53, 57, 60], [44, 56, 60, 63]):
+        for i, n in enumerate(phrase):
+            play(eng, clk, 9, n, vel=70, hold=0.20)
+            if i < len(phrase) - 1:
+                run_for(eng, clk, 0.16)      # 0.36 s apart - WIDER than one beat
+        played += 1
+        run_for(eng, clk, 3.0)               # a real pause between phrases
+    fires = eng.edge_fires.get("ph", 0)
+    assert fires >= played - 1, f"{played} phrases played, only {fires} answered"
+    assert len(out.notes("note_on", ch=12)) >= 3 * played, "phrases came back shorter than they were played"

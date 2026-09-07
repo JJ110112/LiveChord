@@ -23,6 +23,28 @@ from ..graph import Edge
 from ..state import MusicalState
 
 
+def phrase_gap(st: MusicalState, edge: Edge) -> float:
+    """How long a silence has to be before the gesture counts as finished.
+
+    A fixed number of beats is not enough. On the 20:28 take the engine had
+    locked onto 179.9 BPM, so one beat was 0.33 s - exactly the spacing of the
+    notes the player was playing. Every note therefore "ended a phrase", each
+    phrase collected only one or two notes, `min_notes` refused them, and the
+    engine answered ONCE in 39 seconds while the player played eight clear
+    phrases separated by 2.7-7.8 s of silence.
+
+    So the threshold also has to be relative to how fast this player is
+    actually playing: a real phrase break is several times their own note
+    spacing. Whichever is longer wins.
+    """
+    beats = float(edge.params.get("phrase_gap_beats", 1.0)) * st.beat_s
+    iois = sorted(x for x in st.recent_ioi if 0.05 < x < 4.0)
+    if len(iois) >= 4:
+        mid = iois[len(iois) // 2]
+        beats = max(beats, float(edge.params.get("phrase_gap_iois", 2.2)) * mid)
+    return beats
+
+
 def collect_phrase(st: MusicalState, gap_s: float, max_notes: int) -> list:
     """The run of notes that ends the buffer, bounded by a gap of `gap_s`.
 
@@ -44,7 +66,7 @@ def collect_phrase(st: MusicalState, gap_s: float, max_notes: int) -> list:
 def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict,
          tension: float = 0.0) -> list[Proposal]:
     p = edge.params
-    gap = float(p.get("phrase_gap_beats", 1.0)) * st.beat_s
+    gap = phrase_gap(st, edge)
     if st.quiet_s < gap or st.last_human_on_t is None:
         return []                                   # the phrase is still running
     if lane_state.get("answered") == st.last_human_on_t:

@@ -7,7 +7,7 @@
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
   <link rel="stylesheet" href="/css/base.css?v=24">
-  <link rel="stylesheet" href="/css/mie.css?v=2">
+  <link rel="stylesheet" href="/css/mie.css?v=3">
 </head>
 <body class="mie-body">
   <!-- 頂列：MODE / SCENE / KEY / CHORD / BPM / clock / PANIC -->
@@ -45,6 +45,7 @@
       <div class="mie-meter"><span class="mie-mlbl">VEL</span><div class="mie-bar"><div id="mVel" class="mie-fill"></div></div><span id="vVel" class="mie-mval">0</span></div>
 
       <div class="lc-title mie-title-gap">全域</div>
+      <label class="mie-slider"><span class="mie-mlbl">音量</span><input id="gMaster" type="range" min="0" max="1" step="0.01"><span id="gMasterV" class="mie-mval">1.00</span></label>
       <label class="mie-slider"><span class="mie-mlbl">PROB</span><input id="gProb" type="range" min="0" max="1" step="0.01"><span id="gProbV" class="mie-mval">0.60</span></label>
       <label class="mie-slider"><span class="mie-mlbl">CHAOS</span><input id="gChaos" type="range" min="0" max="1" step="0.01"><span id="gChaosV" class="mie-mval">0.00</span></label>
       <label class="mie-slider"><span class="mie-mlbl">RESTR.</span><input id="gRestraint" type="range" min="0" max="1" step="0.01"><span id="gRestraintV" class="mie-mval">1.00</span></label>
@@ -68,6 +69,6 @@
     </section>
   </main>
 
-  <script src="/js/mie.js?v=7"></script>
+  <script src="/js/mie.js?v=8"></script>
 </body>
 </html>
