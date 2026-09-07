@@ -99,7 +99,7 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     lane_state["fired_t"] = now
     live = recognize(list(st.held) + list(st.sustained), now, st.chord)
     lane_state["chord"] = live.name if live else (st.chord.name if st.chord else None)
-    hold = float(edge.params.get("hold_s", 20.0))
+    hold = float(edge.params.get("hold_s", 8.0))
     vel = scaled_vel(edge, int(edge.params.get("vel", 56)))
     n_voices = int(edge.params.get("voices", 3))
     low, high = int(edge.params.get("low", 48)), int(edge.params.get("high", 84))
