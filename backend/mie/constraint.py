@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
+from . import voicing
 from .events import Proposal
 from .graph import Edge, Instrument
 from .scales import scale_pcs
@@ -89,16 +90,60 @@ def collides(note: int, held: Iterable[int], policy: str = "octave") -> bool:
     return any(abs(note - h) in dists for h in held)
 
 
+# Voice leading modes (plan §11 Phase 2):
+#   "off"     - nearest legal pitch to what the algorithm proposed (Phase 1)
+#   "octave"  - keep the pitch class the algorithm chose, pick the register that
+#               leads best from the lane's previous note
+#   "free"    - the leading may change the pitch class too
+#
+#   sustain  - "octave": the algorithm picks the colour on purpose (it avoids
+#              the pitch classes the lane already covers), and the leaping that
+#              sounded mechanical was in the register. Letting the leading
+#              re-pick the pitch class collapses the line into a drone.
+#   echo     - off: it must keep the pitch it is repeating
+#   shadow   - off: it tracks one specific voice of the human's chord
+#   silence  - off: it emits a whole voicing at once, there is no single line
+#   follow   - off by default: its point is the interval above the human, so
+#              leading it turns a parallel line into a counter-line. Set
+#              "voice_lead": "octave" on the edge to keep the interval but
+#              smooth the register.
+VOICE_LEAD_DEFAULT = {"sustain": "octave"}
+VOICE_LEAD_MODES = ("off", "octave", "free")
+
+
+def voice_lead_for(edge) -> str:
+    v = edge.params.get("voice_lead")
+    if v is None:
+        return VOICE_LEAD_DEFAULT.get(edge.algo, "off")
+    if isinstance(v, bool):
+        return "free" if v else "off"
+    v = str(v)
+    return v if v in VOICE_LEAD_MODES else "off"
+
+
 def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instrument],
-              collision: str = "octave") -> Optional[int]:
-    """Final pitch for a generated note given the state *now*: snap to the
-    allowed pitch classes, then move off any note the human is holding
-    (plan §6): to the next chord tone, else the next scale tone, else drop."""
+              collision: str = "octave", *, voice_lead: str = "off",
+              prev: Optional[int] = None, others: tuple = ()) -> Optional[int]:
+    """Final pitch for a generated note given the state *now*.
+
+    Snap to the allowed pitch classes - by voice leading from `prev` when the
+    edge asks for it, otherwise by nearest pitch - then move off any note the
+    human is holding (plan §6): to the next chord tone, else the next scale
+    tone, else drop.
+    """
     lo, hi = inst.note_range if inst else (0, 127)
     pcs = allowed_pcs(st, constraint)
     held = list(st.held)
     held_pcs = {h % 12 for h in held} if collision != "none" else set()
-    n = snap(note, pcs, "nearest", avoid_pcs=held_pcs, lo=lo, hi=hi)
+    if voice_lead != "off" and prev is not None:
+        lead_pcs = pcs
+        if voice_lead == "octave" and (note % 12) in pcs:
+            lead_pcs = frozenset({note % 12})     # keep the colour, choose the register
+        n = voicing.lead(lead_pcs, prev=prev, intent=note, lo=lo, hi=hi, avoid_pcs=held_pcs,
+                         chord_root=st.chord.root_pc if st.chord else None,
+                         chord_pcs=st.chord.tones if st.chord else pcs, others=others)
+    else:
+        n = snap(note, pcs, "nearest", avoid_pcs=held_pcs, lo=lo, hi=hi)
     if n is None:
         return None
     if not collides(n, held, collision):
@@ -114,7 +159,8 @@ def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instr
     return None
 
 
-def constrain(p: Proposal, st: MusicalState, edge: Edge, inst: Optional[Instrument]) -> Optional[Proposal]:
+def constrain(p: Proposal, st: MusicalState, edge: Edge, inst: Optional[Instrument], *,
+              prev: Optional[int] = None, others: tuple = ()) -> Optional[Proposal]:
     """Schedule-time constraint: pitch classes + instrument range and velocity.
 
     Collision avoidance is deliberately NOT applied here: what matters is what
@@ -122,7 +168,8 @@ def constrain(p: Proposal, st: MusicalState, edge: Edge, inst: Optional[Instrume
     time with the collision policy of the edge."""
     if p.kind != "on":
         return p
-    note = late_bind(p.note, edge.constraint, st, inst, "none")
+    note = late_bind(p.note, edge.constraint, st, inst, "none",
+                     voice_lead=voice_lead_for(edge), prev=prev, others=others)
     if note is None:
         return None
     vel = int(round(p.vel * (inst.vel_scale if inst else 1.0)))

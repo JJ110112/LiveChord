@@ -21,7 +21,7 @@ from random import Random
 from typing import Callable, Optional
 
 from . import algos, mutation
-from .constraint import collision_for, constrain, late_bind
+from .constraint import collision_for, constrain, late_bind, voice_lead_for
 from .events import MieEvent, Proposal, next_id
 from .graph import ALGOS_PHASE1, MODES, InteractionGraph, Instrument, Scene
 from .io_rtmidi import panic_messages
@@ -74,6 +74,9 @@ class Engine:
         self.drop_reasons: dict[str, int] = {}
         self._roll_cache: dict[str, tuple] = {}   # edge id -> (group start t, p or None)
         self._shadow_group: dict[str, tuple] = {}  # edge id -> (gesture start t, src note)
+        # (ch, lane) -> (note before last, last note, when it was sent): what a
+        # line has just done, so the next note can lead from it (plan §11 Ph2)
+        self._lane_hist: dict[tuple[int, str], tuple[Optional[int], int, float]] = {}
         self.edge_last: dict[str, float] = {}
         self.ui_events: deque[dict] = deque(maxlen=400)
         self._ui_lock = threading.Lock()
@@ -167,6 +170,7 @@ class Engine:
         self.lane_state.clear()
         self._shadow_group.clear()      # both are keyed by edge id: the ids are gone
         self._roll_cache.clear()
+        self._lane_hist.clear()
         if scene.key is not None:
             self.st.set_key(scene.key.tonic_pc, scene.key.mode, "scene")
         if self.st.clock_source == "scene":
@@ -373,7 +377,9 @@ class Engine:
                 p = p.clone(dur=p.dur * float(caps["dur_scale"]))
             if "vel_max" in caps:
                 p = p.clone(vel=min(p.vel, int(caps["vel_max"])))
-            cp = constrain(p, self.st, edge, inst)
+            cp = constrain(p, self.st, edge, inst,
+                           prev=self._lane_prev(edge.dst, edge.lane),
+                           others=self._other_voices(edge.dst, edge.lane, now))
             if cp is None:
                 self._drop("constraint", edge, p, now)
                 continue
@@ -390,7 +396,7 @@ class Engine:
                             origin="GENERATIVE", root_id=ev.root_id, parent_id=ev.event_id, hop=hop,
                             edge_id=edge.id, constraint=edge.constraint, follow_off=cp.follow_off,
                             src_note=cp.src_note, max_dur=dur, ttl_wall=min(ev.ttl_wall, t_on + 4.0 * self.st.beat_s),
-                            collision=collision_for(edge))
+                            collision=collision_for(edge), voice_lead=voice_lead_for(edge))
             self.sched.schedule_pair(pair)
             self.safety.count_chain(ev.root_id, now)
             self.stats["gen_sched"] += 1
@@ -398,6 +404,26 @@ class Engine:
             self._ui("sched", ch=pair.ch, note=pair.note, vel=pair.vel, lane=pair.lane, hop=hop,
                      edge=edge.id, in_ms=round((t_on - now) * 1000), dur_ms=round(dur * 1000))
         return n_ok
+
+    VOICE_WINDOW_S = 2.0     # another lane counts as "moving with us" this recently
+
+    def _lane_prev(self, ch: int, lane: str) -> Optional[int]:
+        h = self._lane_hist.get((ch, lane))
+        return h[1] if h else None
+
+    def _other_voices(self, ch: int, lane: str, now: float) -> tuple:
+        """(previous, current) of the other generated lines that just moved,
+        so voice leading can see a parallel fifth coming."""
+        out = []
+        for (c, ln), (prev, last, t) in list(self._lane_hist.items()):
+            if (c, ln) == (ch, lane) or prev is None or now - t > self.VOICE_WINDOW_S:
+                continue
+            out.append((prev, last))
+        return tuple(out)
+
+    def _note_lane_sent(self, ch: int, lane: str, note: int, now: float) -> None:
+        h = self._lane_hist.get((ch, lane))
+        self._lane_hist[(ch, lane)] = ((h[1] if h else None), note, now)
 
     def _regroup_shadow(self, edge, ev: MieEvent, now: float) -> None:
         """Keep one shadow per chord, not one per note of it.
@@ -441,7 +467,10 @@ class Engine:
             if pair.ch in self.st.human_chs:
                 self._drop_async("human_ch_late", pair)
                 return False
-            n2 = late_bind(pair.note, pair.constraint, self.st, self.instruments.get(pair.ch), pair.collision)
+            n2 = late_bind(pair.note, pair.constraint, self.st, self.instruments.get(pair.ch),
+                           pair.collision, voice_lead=pair.voice_lead,
+                           prev=self._lane_prev(pair.ch, pair.lane),
+                           others=self._other_voices(pair.ch, pair.lane, now))
             if n2 is None:
                 self._drop_async("resnap", pair)
                 return False
@@ -479,6 +508,7 @@ class Engine:
         if kind == "on":
             self.stats["gen_sent"] += 1
             self.st.gen_on(p.ch, p.note, now, p.lane, p.root_id, p.hop, p.src_note, p.max_dur)
+            self._note_lane_sent(p.ch, p.lane, p.note, now)
             self._ui("gen", ch=p.ch, note=p.note, vel=p.vel, lane=p.lane, hop=p.hop, edge=p.edge_id)
             if self.graph.edges_from(p.ch) and not self.bypass:
                 fb = MieEvent(event_id=next_id(), kind="note_on", t_wall=now, ch=p.ch, note=p.note, vel=p.vel,

@@ -722,3 +722,76 @@ def test_ema_keeps_precision_for_tiny_time_steps():
     from backend.mie.state import _ema
     assert _ema(0.0, 1.0, 1e-9, 1.0) > 0.0          # 1 - exp(-1e-9) underflows to 0.0
     assert abs(_ema(0.0, 1.0, 1e-9, 1.0) - 1e-9) < 1e-15
+
+
+# ------------------------------------------------- Phase 2: voice leading
+def test_voicing_keeps_a_common_tone_and_otherwise_moves_the_least():
+    from backend.mie.voicing import lead
+    # C5 is the fifth of F major: hold it rather than leaping up to the root
+    assert lead({5, 9, 0}, prev=72, intent=77, lo=55, hi=88) == 72
+    # D minor has no C: step to D5 (2 semitones) instead of dropping to A4 (3)
+    assert lead({2, 5, 9}, prev=72, intent=77, lo=55, hi=88) == 74
+    # and the line must not be dragged out of range
+    assert lead({2, 5, 9}, prev=72, intent=77, lo=60, hi=66) in (62, 65)
+
+
+def test_voicing_resolves_a_seventh_down_onto_a_chord_tone():
+    from backend.mie.voicing import lead, wants_resolution
+    assert wants_resolution(65, 7, {7, 11, 2, 5}) == -1     # F is the 7th of G7
+    # G7 -> C: the F should fall a semitone to E, not jump up to G
+    assert lead({0, 4, 7}, prev=65, intent=67, lo=55, hi=88, chord_root=0, chord_pcs={0, 4, 7}) == 64
+
+
+def test_voicing_avoids_parallel_fifths():
+    from backend.mie.voicing import lead
+    # our line is on C4 (60); another voice moved G4 -> A4, keeping a fifth if we go to D4
+    others = ((67, 69),)
+    got = lead({2, 5, 9}, prev=60, intent=62, lo=48, hi=84, others=others)
+    assert got != 62, "moved in parallel fifths with the other voice"
+
+
+def _sustain_line(voice_lead, seed=6):
+    edge = _sustain_edge(every_bars_min=0.5, every_bars_max=0.5, voices=4, voice_lead=voice_lead)
+    eng, clk, out = make([edge], seed=seed)
+    eng.instruments[4] = Instrument(4, "Fantom Strings", "strings", "fantom", True, 8, 1.0, (55, 88), True)
+    for notes in ([48, 55, 60, 64], [46, 53, 58, 62], [45, 52, 57, 64], [43, 50, 55, 62]):
+        for n in notes:
+            eng.post(human_event("note_on", clk(), 9, n, 60))
+            clk.advance(0.008)
+        eng.step()
+        run_for(eng, clk, 8.0)
+        for n in notes:
+            eng.post(human_event("note_off", clk(), 9, n, 0))
+        eng.step()
+        run_for(eng, clk, 0.5)
+    line = [n for _, _, n, _ in out.notes("note_on", ch=4)]
+    return line, [abs(b - a) for a, b in zip(line, line[1:])]
+
+
+def test_voice_leading_tames_the_leaps_without_flattening_the_line():
+    """The mechanical feel came from every entry landing in a random register.
+
+    Leading by octave keeps the colour the algorithm chose - the point of the
+    lane - and only decides where to put it.
+    """
+    plain, plain_leaps = _sustain_line("off")
+    led, led_leaps = _sustain_line("octave")
+    assert len(led_leaps) >= 6 and len(plain_leaps) >= 6, "not enough notes to compare"
+    assert max(led_leaps) < max(plain_leaps), "leading did not reduce the worst leap"
+    assert sum(led_leaps) / len(led_leaps) < sum(plain_leaps) / len(plain_leaps) * 0.75
+    assert max(led_leaps) <= 9, f"still leaping {max(led_leaps)} semitones"
+    # and the line must stay colourful: leading the pitch class too turns it into a drone
+    assert len({n % 12 for n in led}) >= 4, "the line collapsed onto one or two colours"
+
+
+def test_voice_leading_is_off_for_echo_so_it_keeps_its_pitch():
+    eng, clk, out = make([
+        {"id": "e", "src": 0, "dst": 10, "algo": "echo", "delay_beats": 0.5, "prob": 1.0,
+         "constraint": "free", "lane": "echo"},
+    ])
+    for note in (60, 72, 48):
+        out.clear()
+        play(eng, clk, 9, note, hold=0.3)
+        run_for(eng, clk, 1.5)
+        got = [n for _, _, n, _ in out.notes("note_on", ch=10)]
+        assert got == [note], f"echo of {note} came out as {got}"

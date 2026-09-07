@@ -39,6 +39,7 @@ class NotePair:
     dropped: bool = False
     ttl_wall: float = float("inf")
     collision: str = "octave"
+    voice_lead: str = "off"
 
 
 @dataclass(order=True)
