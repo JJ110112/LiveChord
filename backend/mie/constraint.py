@@ -155,7 +155,8 @@ def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instr
               collision: str = "octave", *, voice_lead: str = "off",
               prev: Optional[int] = None, others: tuple = (),
               tension: float = 0.0, note_range: Optional[tuple] = None,
-              gen_now: Iterable[int] = (), keep_pc: bool = False) -> Optional[int]:
+              gen_now: Iterable[int] = (), keep_pc: bool = False,
+              taken: Iterable[int] = ()) -> Optional[int]:
     """Final pitch for a generated note given the state *now*.
 
     Snap to the allowed pitch classes - by voice leading from `prev` when the
@@ -186,7 +187,7 @@ def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instr
     if n is None:
         return None
     if not collides(n, held, collision):
-        return _unharsh(n, pcs, gen_now, held, collision, lo, hi, keep_pc)
+        return _unharsh(n, pcs, gen_now, held, collision, lo, hi, keep_pc, taken)
     # Another octave of the SAME chord tone first. Dropping the pitch class
     # outright is what put a D over a held C major: the player held C, E and G,
     # every chord tone was therefore "in the way", and the escape fell through
@@ -195,7 +196,7 @@ def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instr
     for shift in (12, -12, 24, -24):
         cand = n + shift
         if lo <= cand <= hi and (cand % 12) in pcs and not collides(cand, held, collision):
-            return _unharsh(cand, pcs, gen_now, held, collision, lo, hi, keep_pc)
+            return _unharsh(cand, pcs, gen_now, held, collision, lo, hi, keep_pc, taken)
     chord_alt = set(harmonic_pcs(st)) - held_pcs
     scale_alt = set(scale_pcs(st.key.tonic_pc, st.scale_id)) - held_pcs
     for alt_pcs in (chord_alt, scale_alt, set(pcs) - held_pcs):
@@ -203,12 +204,12 @@ def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instr
             continue
         for cand in (snap(n + 1, alt_pcs, "up", lo=lo, hi=hi), snap(n - 1, alt_pcs, "down", lo=lo, hi=hi)):
             if cand is not None and not collides(cand, held, collision):
-                return _unharsh(cand, alt_pcs, gen_now, held, collision, lo, hi, keep_pc)
+                return _unharsh(cand, alt_pcs, gen_now, held, collision, lo, hi, keep_pc, taken)
     return None
 
 
 def _unharsh(n: int, pcs, gen_now, held, collision: str, lo: int, hi: int,
-             keep_pc: bool = False) -> int:
+             keep_pc: bool = False, taken: Iterable[int] = ()) -> int:
     """Move `n` off a minor 2nd / 9th against the engine's own sounding notes.
 
     Register first, as everywhere else: another octave of the same pitch class
@@ -219,18 +220,27 @@ def _unharsh(n: int, pcs, gen_now, held, collision: str, lo: int, hi: int,
     answering is worth more than a perfectly clean interval, and a rub is not
     the same kind of wrong as silence.
     """
+    # `taken` is what is already sounding on THIS instrument. Landing on one of
+    # those is not a rub, it is worse: one MIDI channel cannot hold the same
+    # note twice, so the first note_off kills both and a voice is wasted. Seen
+    # on the 22:14 take, where an escaping F landed on the G# its own lane was
+    # already playing and the texture went out as two identical note_ons.
+    taken = set(taken) - {n}
     gen_now = [m for m in gen_now if m != n]
-    if not gen_now or not harsh_against(n, gen_now):
+    if n not in taken and (not gen_now or not harsh_against(n, gen_now)):
         return n
+    def ok(cand: int) -> bool:
+        return (lo <= cand <= hi and (cand % 12) in pcs and cand not in taken
+                and not collides(cand, held, collision) and not harsh_against(cand, gen_now))
+
     for shift in (12, -12, 24, -24):
-        cand = n + shift
-        if lo <= cand <= hi and (cand % 12) in pcs and not collides(cand, held, collision)                 and not harsh_against(cand, gen_now):
-            return cand
+        if ok(n + shift):
+            return n + shift
     if keep_pc:
         return n
     for d in range(1, 8):
         for cand in (n + d, n - d):
-            if lo <= cand <= hi and (cand % 12) in pcs and not collides(cand, held, collision)                     and not harsh_against(cand, gen_now):
+            if ok(cand):
                 return cand
     return n
 

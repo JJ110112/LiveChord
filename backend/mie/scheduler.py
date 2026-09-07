@@ -182,6 +182,27 @@ class Scheduler:
         with self.lock:
             return sum(1 for p in self._pairs(ch) if p.t_on <= t < p.t_off)
 
+    def release_lane(self, ch: int, lane: str, at_t: float) -> int:
+        """Stop every note of one lane, sounding OR still queued.
+
+        Releasing only what `active_gen` knows about misses the window between
+        scheduling and sending. The silence lane aligns its entry to the bar, so
+        that window is over a second wide - and on the 22:14 take the player
+        played inside it, the lane cleared its `fired` flag with nothing yet
+        sounding, and the notes that arrived afterwards were never released.
+        They held for their full 24 s across every chord change: the long note
+        in the wrong key the player heard cutting across their playing.
+        """
+        n = 0
+        with self.cv:
+            for p in list(self._pairs(ch)):
+                if p.lane != lane:
+                    continue
+                if self._bring_off_forward(p, at_t):
+                    n += 1
+            self.cv.notify()
+        return n
+
     def sounding_notes(self, t: float, ch: Optional[int] = None) -> list:
         """Pitches live at `t`, sent or still scheduled, on `ch` or everywhere.
 

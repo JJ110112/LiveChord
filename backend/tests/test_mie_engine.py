@@ -1734,3 +1734,59 @@ def test_an_untransposed_echo_is_never_second_guessed():
     run_for(eng, clk, 6.0)
     ons = [n for _, _, n, _ in out.notes("note_on", ch=12)]
     assert 66 in ons, f"an untransposed echo was altered: {ons}"
+
+
+# ------------------------------------------------- the long note that intruded
+def test_a_timed_lane_releases_notes_it_has_not_started_yet():
+    """22:14 take: a 24 s texture note held across every chord change.
+
+    The silence lane aligns its entry to the bar, so there is over a second
+    between scheduling and sounding. The player played inside that window: the
+    lane cleared its `fired` flag with nothing yet in `active_gen`, so the
+    release found nothing to release, and the notes that arrived afterwards
+    were never released at all.
+    """
+    edges = [{"id": "tex", "src": 0, "dst": 1, "algo": "silence", "prob": 1.0, "after_s": 1.0,
+              "lane": "texture", "hold_s": 24, "voices": 2, "vel": 40, "constraint": "chord",
+              "release_beats": 1.0, "align": "bar"}]
+    eng, clk, out = make(edges)
+    hold_chord(eng, clk, 9, [48, 52, 55])
+    release_chord(eng, clk, 9, [48, 52, 55])
+    run_for(eng, clk, 1.1)                       # quiet: the lane fires...
+    assert eng.lane_state.get("tex", {}).get("fired"), "the texture lane never entered"
+    assert not out.notes("note_on", ch=1), "…but is still waiting for the bar line"
+    play(eng, clk, 9, 60, vel=80, hold=0.2)      # the player comes back BEFORE it sounds
+    for n in (62, 64, 65, 67, 69, 71, 72, 74):   # and keeps playing, so the lane
+        play(eng, clk, 9, n, vel=80, hold=0.3)   # has no silence to re-enter on
+        run_for(eng, clk, 0.3)
+    assert not [k for k in eng.st.active_gen if k[0] == 1], \
+        f"the texture is still sounding: {sorted(eng.st.active_gen)}"
+    ons = out.notes("note_on", ch=1)
+    offs = out.notes("note_off", ch=1)
+    assert len(offs) >= len(ons), f"{len(ons)} notes started, only {len(offs)} released"
+    for t, ch, n, v in ons:
+        rel = [o for o, oc, on_, ov in offs if on_ == n and o > t]
+        assert rel and min(rel) - t < 4.0, f"n{n} held {min(rel) - t if rel else 99:.1f}s across the music"
+
+
+def test_the_escape_never_lands_on_a_note_that_synth_is_already_playing():
+    """One MIDI channel cannot hold the same note twice: the first note_off
+    kills both and a voice is wasted. On the 22:14 take an escaping F landed on
+    the G# its own lane was already playing and the texture went out as two
+    identical note_ons."""
+    from backend.mie.constraint import late_bind
+
+    eng, clk, out = make([])
+    hold_chord(eng, clk, 9, [41, 44, 48, 51])         # Fm7: F G# C D#
+    run_for(eng, clk, 0.2)
+    inst = eng.instruments[1]
+    # F rubs against a sounding E, so it has to move; G# is the nearest chord
+    # tone but that synth is already playing it. A narrow register rules out
+    # simply changing octave.
+    got = late_bind(65, "chord", eng.st, inst, "none", gen_now=[64], taken=[68],
+                    note_range=(60, 70))
+    assert got != 68, "landed on a pitch the same synth was already playing"
+    assert got is not None and got % 12 in {5, 8, 0, 3}, f"left the chord: {got}"
+    # with nothing in the way it is free to take the obvious note
+    assert late_bind(65, "chord", eng.st, inst, "none", gen_now=[64],
+                     note_range=(60, 70)) == 68

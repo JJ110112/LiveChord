@@ -449,6 +449,12 @@ class Engine:
             fn = algos.RELEASE_ALGOS.get(e.algo)
             if fn and ls.get("fired"):
                 self._apply_offs(fn(self.st, e, now, ls), e, now)
+                # …and anything of this lane that has not started yet. Those
+                # notes are not in `active_gen`, so the proposals above cannot
+                # see them, and they would otherwise hold for their full length
+                # no matter what the player did next.
+                rel = float(e.params.get("release_beats", 1.0)) * self.st.beat_s
+                self.sched.release_lane(e.dst, e.lane, now + rel)
 
     def _fire_edges(self, ev: MieEvent, now: float) -> None:
         edges = self.graph.candidate_edges(ev.origin, ev.ch, ev.hop, now, self.allowed_algos)
@@ -659,7 +665,8 @@ class Engine:
                            prev=self._lane_prev(pair.ch, pair.lane),
                            others=self._other_voices(pair.ch, pair.lane, now),
                            gen_now=self._gen_sounding(pair.ch, now),
-                           keep_pc=(pair.constraint == "free"))
+                           keep_pc=(pair.constraint == "free"),
+                           taken=self.sched.sounding_notes(now, pair.ch))
             if n2 is None:
                 self._drop_async("resnap", pair)
                 return False
