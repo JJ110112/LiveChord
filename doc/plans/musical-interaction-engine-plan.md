@@ -355,6 +355,19 @@ p_eff = edge.prob × scene.prob_scale × restraint(human_energy)
 └ 底列 ─ 事件流（最近 30 筆，顏色分 HUMAN / GEN hop1 / GEN hop2 / 丟棄原因）
 ```
 
+### 9.1 AI 介入的「方法」與「程度」要能在 UI 調（使用者需求，2026-09-07）
+
+使用者要求：面板上要能直接決定 **AI 用什麼方式介入、介入到什麼程度**，不必改 JSON。分兩層：
+
+| 層級 | 「方法」 | 「程度」 |
+|---|---|---|
+| 全域 | 模式（OFF/BYPASS/SAFE/AMBIENT/INTERACTIVE/GENERATIVE/CHAOS）、Scene | `prob_scale`、`chaos`、`restraint` 與 `restraint_curve`、`max_gen_notes_per_s` |
+| 每條邊 | 演算法（follow/echo/shadow/silence/sustain…）、來源 → 目標樂器、`constraint`（chord/scale/free）、`collision`、突變 | `prob`、延遲（拍或 ms）、`repeats`、`every_bars_*`、`voices`、`hold_*`、力度縮放、`transpose`/`octave` |
+| 每台樂器 | 角色 `role`、啟用 | `max_voices`、音域、力度縮放 |
+
+**Phase 1 已經有的**：模式、Scene 切換、`prob_scale`/`chaos`/`restraint` 三個滑桿、每條邊的啟用與 `prob`、每台樂器的啟用。
+**Phase 2 要補的**：邊的新增／刪除與演算法切換、上表其餘參數的即時編輯、15×15 矩陣檢視、Scene 從 UI 存檔、以及幾個「介入風格」預設（例如伴奏型 / 對話型 / 氛圍型），讓使用者一鍵換掉整組邊而不必逐條調。
+
 WebSocket 訊息：`state`（10 Hz 快照）、`event`（每筆生成/丟棄，含 `drop_reason`）、`edge_fire`（邊觸發，UI 亮線）、`set`（UI → 引擎參數）、`scene`（載入/儲存）。
 
 Player 端只加一個小徽章 `#mieBadge`（連線中 / 模式），點了開 `/mie`；player 播歌時透過同一個 WebSocket 推 `playhead {t, chord, key, bpm, beat, bar, section}` 給引擎當音樂時鐘。
@@ -504,6 +517,8 @@ Auracle 名詞對照：**DIN MIDI** = 實體 DIN 孔（`Fantom 8` = DIN 1）、*
 
 ### Phase 2 — 互動與控制
 - Answer、Mirror、Density、Velocity(CC)、Register；輪盤邊群組；Scene 切換淡出；UC4 MIDI Learn；矩陣 UI + 互動流動畫；player `playhead` 同步。
+- **邊編輯器與介入風格預設**（§9.1）：在面板上新增／刪除邊、切換演算法、調整上表所有參數、Scene 存檔。
+- **彈法／織度辨識**：持續按壓 / 琶音 / 旋律 / 打和弦，加上左手低音與右手旋律的分手判斷；邊可加 `when: {texture: [...]}` 條件，只在特定彈法下作用。現有 buffer（`recent_notes` / `recent_ioi` / `recent_intervals` / `register` / `direction`）足以支撐，缺分類器與條件語法。
 - 測試：T2（C D E → 另一 ch 有 3 音回答，落在強拍）、T5（持續 Cmaj7 → 60 s 內活躍樂器數單調遞增）。
 
 ### Phase 3 — Generative / Chaos
