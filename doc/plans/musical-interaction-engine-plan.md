@@ -640,6 +640,26 @@ Phase 1 只有兩種選音方式，而且都不是音樂家的做法：
 
 **架構上學到的一點**：一開始只改 `allowed_pcs()` 完全沒有效果，因為 `sustain._candidates()` 自己寫死了「用和弦音」當調色盤，後端的約束只能「收窄」提議、不能「放寬」。演算法必須向 constraint 要調色盤，設定才有意義。Silence 刻意維持用和弦音——pad 負責把和弦講清楚，sustain 線負責上色。
 
+**④ 排程器釋放路徑優化（審核建議，完成 2026-09-07）**
+
+審核指出 `release()` / `release_by_src()` / `release_lane()` 對 `self.heap` 做線性掃描再 `heapify()`，事件多時會吃 CPU。先量測再動手：
+
+| 堆積大小 | 修改前（命中） | 修改後 | 沒命中 |
+|---|---|---|---|
+| 100 | 16.9 µs | **1.1 µs** | 0.5 µs |
+| 400 | 69.6 µs | **2.3 µs** | 0.5 µs |
+| 2 000 | 349 µs | **8.3 µs** | 0.5 µs |
+| 8 000 | 1 475 µs | **31 µs** | 0.5 µs |
+
+實際環境彈法時堆積峰值只有 75 項（約 13 µs），所以今天還不是問題；但 8 000 項時單次呼叫 1.5 ms **超過排程器自己的自旋門檻 `SPIN_S`，而且是持鎖進行**，會直接變成 jitter。而且修改前「完全沒命中」跟命中一樣貴，`release_by_src` 每個人類 note_off 都會呼叫一次，多半是空跑。
+
+兩項修改：
+
+1. **每個 channel 一份 live pair 索引**。刻意用 channel 當鍵——`note` 會在送出前被 late binding 改掉，用它當鍵會失效，這是個陷阱。
+2. **惰性刪除取代 heapify**：要讓音提早停，就推一個新的 off 項目，舊的在 pop 時因為 `off_sent` 已為真而略過；還沒開始的音直接標記 `dropped`，`pump` 本來就會跳過。整條路徑不再有 `heapify`。
+
+`release_lane()` 沒有任何呼叫者，一併刪除。真執行緒實跑 12 秒（每 1.3 秒一個五音和弦）：jitter p95 0.71 ms、max 0.88 ms、丟棄 0、PANIC 後殘留 0。
+
 #### Phase 2 工項（原本規劃 + 上述新增）
 
 - Answer、Mirror、Density、Velocity(CC)、Register；輪盤邊群組；Scene 切換淡出；UC4 MIDI Learn；矩陣 UI + 互動流動畫；player `playhead` 同步。

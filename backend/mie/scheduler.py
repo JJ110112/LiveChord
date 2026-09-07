@@ -62,6 +62,13 @@ class Scheduler:
         self.emit = emit
         self.before_on = before_on
         self.heap: list[Due] = []
+        # Live pairs indexed by channel. Releasing used to scan the whole heap
+        # and re-heapify it while holding the lock; on a big heap that took
+        # longer than the scheduler's own spin threshold and turned straight
+        # into jitter, and a call that matched nothing paid the same price.
+        # The channel is the one key that never changes - `note` is re-snapped
+        # at send time, so an index keyed on it would go stale.
+        self._live: dict[int, list[NotePair]] = {}
         self.seq = 0
         self.lock = threading.Lock()
         self.cv = threading.Condition(self.lock)
@@ -78,32 +85,58 @@ class Scheduler:
     def schedule_pair(self, pair: NotePair) -> None:
         if pair.t_off <= pair.t_on:
             pair.t_off = pair.t_on + 0.02
+        with self.cv:
+            self._live.setdefault(pair.ch, []).append(pair)
         self._push(pair.t_on, "on", pair)
         self._push(pair.t_off, "off", pair)
+
+    def _pairs(self, ch: int) -> list[NotePair]:
+        """Live pairs on one channel; finished ones are dropped as we go.
+        Caller must hold the lock."""
+        lst = self._live.get(ch)
+        if not lst:
+            return []
+        if any(p.dropped or p.off_sent for p in lst):
+            lst = [p for p in lst if not (p.dropped or p.off_sent)]
+            self._live[ch] = lst
+        return lst
+
+    def _bring_off_forward(self, p: NotePair, at_t: float) -> bool:
+        """Make a sounding note stop sooner, or drop it if it has not started.
+
+        A fresh "off" entry is pushed rather than the old one being moved, so
+        nothing has to be re-heapified; the stale entry is skipped on pop
+        because the pair is already marked off_sent. Caller holds the lock.
+        """
+        if p.dropped:
+            return False
+        if not p.on_sent:
+            p.dropped = True          # never started: pump skips it
+            return False
+        if p.off_sent or at_t >= p.t_off:
+            return False
+        p.t_off = at_t
+        self.seq += 1
+        heapq.heappush(self.heap, Due(at_t, self.seq, "off", p))
+        return True
 
     def schedule_raw(self, t: float, payload) -> None:
         self._push(t, "raw", None, payload)
 
     def release(self, ch: int, note: int, at_t: float, *, lane: Optional[str] = None,
                 src_note: Optional[int] = None) -> int:
-        """Bring the note_off of matching pairs forward to `at_t`; pairs whose
-        note_on has not been sent yet are dropped entirely. Returns count."""
+        """Stop matching notes at `at_t`; ones that have not started are dropped."""
         n = 0
         with self.cv:
-            for d in self.heap:
-                p = d.pair
-                if p is None or p.ch != ch or p.note != note or p.dropped:
+            for p in list(self._pairs(ch)):
+                if p.note != note:
                     continue
                 if lane is not None and p.lane != lane:
                     continue
                 if src_note is not None and p.src_note != src_note:
                     continue
-                if d.kind == "off" and not p.off_sent:
-                    d.t = min(d.t, at_t)
+                if self._bring_off_forward(p, at_t):
                     n += 1
-                elif d.kind == "on" and not p.on_sent:
-                    p.dropped = True
-            heapq.heapify(self.heap)
             self.cv.notify()
         return n
 
@@ -112,36 +145,15 @@ class Scheduler:
 
         Matching on `src_note` instead of the generated note is what makes this
         safe against the engine seeing the human note_off before the scheduler's
-        "note sent" notice: the pair is in the heap either way.
+        "note sent" notice: the pair is live either way.
         """
         n = 0
         with self.cv:
-            for d in self.heap:
-                p = d.pair
-                if p is None or p.dropped or p.ch != ch or p.lane != lane or p.src_note != src_note:
+            for p in list(self._pairs(ch)):
+                if p.lane != lane or p.src_note != src_note:
                     continue
-                if d.kind == "off" and not p.off_sent:
-                    d.t = min(d.t, at_t)
+                if self._bring_off_forward(p, at_t):
                     n += 1
-                elif d.kind == "on" and not p.on_sent:
-                    p.dropped = True
-            heapq.heapify(self.heap)
-            self.cv.notify()
-        return n
-
-    def release_lane(self, ch: int, lane: str, at_t: float) -> int:
-        n = 0
-        with self.cv:
-            for d in self.heap:
-                p = d.pair
-                if p is None or p.ch != ch or p.lane != lane or p.dropped:
-                    continue
-                if d.kind == "off" and not p.off_sent:
-                    d.t = min(d.t, at_t)
-                    n += 1
-                elif d.kind == "on" and not p.on_sent:
-                    p.dropped = True
-            heapq.heapify(self.heap)
             self.cv.notify()
         return n
 
@@ -149,28 +161,26 @@ class Scheduler:
         """Notes on `ch` that will be sounding at time `t`, sent or still scheduled.
 
         The voice budget asks "how many at once", so counting every scheduled
-        note_on (what `pending_on` did) charged a two second echo tail as if all
-        of it sounded together and the budget threw most of the tail away. Each
-        pair has exactly one "off" entry in the heap, so counting those is both
-        exact and free of double counting.
+        note_on charged a two second echo tail as if all of it sounded together
+        and the budget threw most of the tail away.
         """
         with self.lock:
-            return sum(1 for d in self.heap
-                       if d.kind == "off" and d.pair is not None and not d.pair.dropped
-                       and d.pair.ch == ch and d.pair.t_on <= t < d.t)
+            return sum(1 for p in self._pairs(ch) if p.t_on <= t < p.t_off)
 
     def cancel_all(self) -> list[NotePair]:
         """Drop everything not yet sent. Returns pairs whose note_on went out but
         whose note_off had not (the caller must release them explicitly)."""
         with self.cv:
-            sounding = []
-            for d in self.heap:
-                p = d.pair
-                if p is not None and d.kind == "off" and p.on_sent and not p.off_sent:
-                    sounding.append(p)
-                if p is not None:
+            sounding = [p for lst in self._live.values() for p in lst
+                        if p.on_sent and not p.off_sent and not p.dropped]
+            for lst in self._live.values():
+                for p in lst:
                     p.dropped = True
+            for d in self.heap:
+                if d.pair is not None:
+                    d.pair.dropped = True
             self.heap.clear()
+            self._live.clear()
             self.cv.notify()
         return sounding
 
@@ -199,8 +209,8 @@ class Scheduler:
                     continue
                 p.on_sent = True
             elif item.kind == "off":
-                if not p.on_sent:
-                    continue
+                if not p.on_sent or p.off_sent:
+                    continue          # never started, or a superseded off entry
                 p.off_sent = True
             self.late_ms.append((now - item.t) * 1000.0)
             if len(self.late_ms) > 2000:

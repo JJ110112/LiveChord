@@ -890,3 +890,47 @@ def test_a_sustained_line_uses_functional_colour_not_just_chord_tones():
     assert pcs <= {0, 2, 4, 7, 9, 11}, f"the lane left the tonic colour set: {sorted(pcs)}"
     assert 5 not in pcs, "F would blur the tonic function"
     assert len(pcs) > 3, f"only {len(pcs)} colours over a whole minute: still a drone"
+
+
+# ------------------------------------------- scheduler release path (review 3)
+def test_releasing_a_note_does_not_double_fire_or_leave_it_sounding():
+    from backend.mie.scheduler import NotePair, Scheduler
+    sent = []
+    clk = FakeClock(0.0)
+    # record the time each message was DUE, not the moment we happened to pump
+    s = Scheduler(clk, lambda due, now: sent.append((round(due.t, 3), due.kind, due.pair.note)))
+    s.schedule_pair(NotePair(ch=11, note=60, vel=80, t_on=0.1, t_off=5.0, lane="shadow", src_note=48))
+    clk.advance(0.2); s.pump()
+    assert sent == [(0.1, "on", 60)]
+    assert s.release(11, 60, 1.0) == 1
+    assert s.release(11, 60, 0.5) == 1, "an even earlier release must win"
+    clk.t = 1.5; s.pump()
+    offs = [x for x in sent if x[1] == "off"]
+    assert len(offs) == 1, f"the note was released more than once: {sent}"
+    assert offs[0][0] == 0.5
+    clk.t = 6.0; s.pump()
+    assert len([x for x in sent if x[1] == "off"]) == 1, "the superseded entry fired too"
+
+
+def test_releasing_a_note_that_never_started_drops_it_entirely():
+    from backend.mie.scheduler import NotePair, Scheduler
+    sent = []
+    clk = FakeClock(0.0)
+    s = Scheduler(clk, lambda due, now: sent.append(due.kind))
+    s.schedule_pair(NotePair(ch=11, note=60, vel=80, t_on=1.0, t_off=3.0, lane="shadow", src_note=48))
+    s.release(11, 60, 0.2)
+    clk.t = 5.0; s.pump()
+    assert sent == [], "a note released before it started must never sound"
+    assert s.sounding_at(11, 2.0) == 0
+
+
+def test_release_ignores_other_channels_and_lanes():
+    from backend.mie.scheduler import NotePair, Scheduler
+    clk = FakeClock(0.0)
+    s = Scheduler(clk, lambda due, now: None)
+    for ch, lane in ((11, "shadow"), (11, "echo"), (12, "shadow")):
+        p = NotePair(ch=ch, note=60, vel=80, t_on=0.0, t_off=5.0, lane=lane, src_note=48)
+        s.schedule_pair(p)
+        p.on_sent = True
+    assert s.release(11, 60, 1.0, lane="shadow") == 1
+    assert s.sounding_at(11, 2.0) == 1 and s.sounding_at(12, 2.0) == 1
