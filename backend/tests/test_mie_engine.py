@@ -841,3 +841,52 @@ def test_the_voice_leading_windows_follow_the_tempo():
     assert eng._voice_window_s < slow_voice and eng._lane_hist_ttl_s < slow_hist
     assert eng._voice_window_s >= eng.VOICE_WINDOW_MIN_S
     assert eng._lane_hist_ttl_s >= eng.LANE_HIST_MIN_S
+
+
+# ------------------------------------------------- Phase 2: functional harmony
+def test_function_classification_matches_the_repo_rules():
+    from backend.mie.function import function_of
+    for pc, want in [(0, "tonic"), (4, "tonic"), (9, "tonic"),
+                     (2, "subdominant"), (5, "subdominant"),
+                     (7, "dominant"), (11, "dominant")]:
+        assert function_of(pc, 0, "major") == want, f"pc {pc}"
+    assert function_of(10, 0, "major") == "ambiguous", "bVII is borrowed, not diatonic"
+
+
+def test_function_colour_sets_leave_out_what_would_blur_the_function():
+    from backend.mie.function import group_pcs
+    tonic = group_pcs("tonic", 0, "major")
+    dominant = group_pcs("dominant", 0, "major")
+    sub = group_pcs("subdominant", 0, "major")
+    assert tonic == {0, 2, 4, 7, 9, 11}, "tonic colour is C D E G A B"
+    assert 5 not in tonic, "F pulls towards the subdominant"
+    assert 11 not in sub, "the leading tone belongs to the dominant"
+    assert 0 not in dominant and 4 not in dominant, "the dominant resolves onto C and E, it does not sit on them"
+
+
+def test_function_constraint_is_wider_than_chord_and_narrower_than_scale():
+    from backend.mie.constraint import allowed_pcs
+    from backend.mie.harmony import ChordInfo
+    from backend.mie.state import MusicalState
+    st = MusicalState(bpm=92, now=0.0)
+    st.set_key(0, "major", "manual")
+    st.set_chord(ChordInfo("C", 0, "", frozenset({0, 4, 7}), 0.0))
+    chord = allowed_pcs(st, "chord")
+    func = allowed_pcs(st, "function")
+    scale = allowed_pcs(st, "scale")
+    assert chord < func < scale
+    assert func == {0, 2, 4, 7, 9, 11}
+
+
+def test_a_sustained_line_uses_functional_colour_not_just_chord_tones():
+    edge = _sustain_edge(every_bars_min=0.5, every_bars_max=0.5, voices=4, constraint="function")
+    eng, clk, out = make([edge], seed=8)
+    eng.instruments[4] = Instrument(4, "Fantom Strings", "strings", "fantom", True, 8, 1.0, (55, 88), True)
+    eng.st.set_key(0, "major", "manual")
+    hold_chord(eng, clk, 9, [48, 52, 55])          # a plain C triad, held
+    run_for(eng, clk, 24.0)
+    pcs = {n % 12 for _, _, n, _ in out.notes("note_on", ch=4)}
+    assert pcs, "the lane said nothing"
+    assert pcs <= {0, 2, 4, 7, 9, 11}, f"the lane left the tonic colour set: {sorted(pcs)}"
+    assert 5 not in pcs, "F would blur the tonic function"
+    assert len(pcs) > 3, f"only {len(pcs)} colours over a whole minute: still a drone"

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
-from . import voicing
+from . import function, voicing
 from .events import Proposal
 from .graph import Edge, Instrument
 from .scales import scale_pcs
@@ -19,12 +19,26 @@ ALL_PCS = frozenset(range(12))
 
 
 def allowed_pcs(st: MusicalState, mode: str) -> frozenset[int]:
-    """Pitch classes a proposal may land on under constraint `mode`."""
+    """Pitch classes a proposal may land on under constraint `mode`.
+
+    `chord`    - the literal chord tones: safest, but three pitch classes is
+                 not enough colour for a lane that keeps speaking
+    `function` - the chord plus the tones of the key's other chords with the
+                 same harmonic function (plan §11 Phase 2); wider than `chord`
+                 but, unlike `scale`, it leaves out the notes that would blur
+                 the function
+    `scale`    - anything in the key
+    `free`     - anything
+    """
     if mode == "free":
         return ALL_PCS
-    if mode == "chord" and st.chord is not None:
-        return st.chord.tones
-    # chord requested but no chord known -> fall back to the scale (plan §10)
+    if st.chord is not None:
+        if mode == "chord":
+            return st.chord.tones
+        if mode == "function":
+            return function.colour_pcs(st.chord.tones, st.chord.root_pc,
+                                       st.key.tonic_pc, st.key.mode)
+    # no chord recognised yet -> fall back to the scale (plan §10)
     return scale_pcs(st.key.tonic_pc, st.scale_id)
 
 

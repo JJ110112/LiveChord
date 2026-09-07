@@ -619,12 +619,33 @@ Phase 1 用 `constraint.snap()` 選音：離「演算法提議的音」最近的
 
 環境彈法模擬（12 個和弦，每個按住 6 秒）：SAFE 回音 120 音、INTERACTIVE 196 音，**安全層丟棄 0、殘留發聲 0**。
 
+**③ 功能和聲（完成 2026-09-07）** — `backend/mie/function.py`，新增 `constraint: "function"`
+
+Phase 1 只有兩種選音方式，而且都不是音樂家的做法：
+
+- `constraint: "chord"` 只用字面上的和弦音。按住一個三和弦就只有三個音級，pad 線很快沒色彩可用，變成單音持續。
+- `constraint: "scale"` 整個調內都合法。每個音都「合規」，但線會走到模糊功能的音上——正是審核者警告的「學術上精準、音樂上難聽」。
+
+新的 `constraint: "function"` 介於兩者之間：**和弦本身的音，加上調內同功能和弦借給它的音**。C 大調的 C 和弦屬主功能，同組還有 Em7 與 Am7，所以色彩集是 C D E G A B——伴奏者真正會伸手去拿的音——而會把和聲拉向下屬的 F 被排除在外。G7 屬功能組是 G7 與 Bm7b5，色彩集 D F G A B，刻意不含 C 與 E（屬和弦要解決到它們，不是坐在上面）。
+
+**T/S/D 的分類沒有重寫**，直接 import `backend/ai/jazz_rules.py`——離線 reharmonizer 已經在用的那份，只依賴標準庫，所以兩個子系統不會各自漂移。這比移植更好：單一真相來源。
+
+實測（按住一個 C 三和弦 60 秒，同一 seed）：
+
+| constraint | 用到的音級 | 結果 |
+|---|---|---|
+| `chord` | 3 種：C E G | 單音持續，沒有色彩 |
+| **`function`** | **5 種：C D G A B** | 加上 9 音、6 音、7 音，功能清楚 |
+| `scale` | 4 種：D F A B | 含 F，主功能被模糊掉 |
+
+**架構上學到的一點**：一開始只改 `allowed_pcs()` 完全沒有效果，因為 `sustain._candidates()` 自己寫死了「用和弦音」當調色盤，後端的約束只能「收窄」提議、不能「放寬」。演算法必須向 constraint 要調色盤，設定才有意義。Silence 刻意維持用和弦音——pad 負責把和弦講清楚，sustain 線負責上色。
+
 #### Phase 2 工項（原本規劃 + 上述新增）
 
 - Answer、Mirror、Density、Velocity(CC)、Register；輪盤邊群組；Scene 切換淡出；UC4 MIDI Learn；矩陣 UI + 互動流動畫；player `playhead` 同步。
 - **邊編輯器與介入風格預設**（§9.1）：在面板上新增／刪除邊、切換演算法、調整上表所有參數、Scene 存檔。
 - **彈法／織度辨識**：持續按壓 / 琶音 / 旋律 / 打和弦，加上左手低音與右手旋律的分手判斷；邊可加 `when: {texture: [...]}` 條件，只在特定彈法下作用。現有 buffer（`recent_notes` / `recent_ioi` / `recent_intervals` / `register` / `direction`）足以支撐，缺分類器與條件語法。
-- **功能和聲 `function.py`**（T / S / D 與代換群，從 `backend/ai/reharmonizer.py` 移植既有的和聲知識，不重寫）。
+- ~~**功能和聲 `function.py`**~~ **完成**，見上（直接 import `jazz_rules`，比移植更好）。
 - ~~**聲部導向**：`snap()` 改成參考同 lane 前一個音；Guide Tones 解決；平行五度與大跳的懲罰。~~ **完成**，見上。
 - **和聲節奏鎖強拍**：所有和弦相關 lane 都吃 `align`，離調音需有解釋（延伸音或副屬）。
 - **前瞻軌**：提前 1–2 拍推測和聲走向並預排；買的是樂句感，不是延遲。
@@ -632,7 +653,7 @@ Phase 1 用 `constraint.snap()` 選音：離「演算法提議的音」最近的
 - **高階旋鈕**：Tension / Density / Style 三個參數映射到低階設定（見上表）。
 - 測試：T2（C D E → 另一 ch 有 3 音回答，落在強拍）、T5（持續 Cmaj7 → 60 s 內活躍樂器數單調遞增）；新增聲部導向與功能和聲的單元測試（固定 seed，斷言移動距離與解決方向）。
 
-**建議順序**（由「最能立刻改善聽感」到「最花工」）：~~① 聲部導向~~（完成） ② 功能和聲 ③ 和聲節奏鎖強拍 ④ 彈法辨識 ⑤ 高階旋鈕與邊編輯器 ⑥ 前瞻軌 ⑦ 其餘演算法（Answer / Mirror / Density / Velocity / Register）。
+**建議順序**（由「最能立刻改善聽感」到「最花工」）：~~① 聲部導向~~（完成） ~~② 功能和聲~~（完成） ③ 和聲節奏鎖強拍 ④ 彈法辨識 ⑤ 高階旋鈕與邊編輯器 ⑥ 前瞻軌 ⑦ 其餘演算法（Answer / Mirror / Density / Velocity / Register）。
 
 ### Phase 3 — Generative / Chaos
 - `motif_index` 片語記憶與再現、chaos 突變、role 內隨機換樂器、GENERATIVE 事件的多 hop 鏈（`max_hop=3`）。

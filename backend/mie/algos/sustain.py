@@ -25,8 +25,16 @@ from . import scaled_vel
 
 
 def _candidates(st: MusicalState, edge: Edge, lane_notes: list[int]) -> list[int]:
-    """Chord/scale tones in range, ranked: notes that add colour come first."""
-    pcs = set(st.chord.tones) if st.chord else set(scale_pcs(st.key.tonic_pc, st.scale_id))
+    """Notes the lane may add, ranked: the ones that bring new colour come first.
+
+    The palette is the edge's own constraint, so `constraint: "function"` lets a
+    line over a plain C triad reach the tones of Em7 and Am7 as well - the notes
+    an accompanist would use - instead of circling the same three chord tones.
+    Asking the constraint here rather than hardcoding chord tones is what makes
+    the setting mean anything: late binding can only narrow what we propose.
+    """
+    from ..constraint import allowed_pcs      # imported late: constraint pulls in state
+    pcs = set(allowed_pcs(st, edge.constraint))
     if not pcs:
         return []
     low, high = int(edge.params.get("low", 55)), int(edge.params.get("high", 88))
