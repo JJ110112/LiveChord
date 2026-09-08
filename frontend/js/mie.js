@@ -255,6 +255,7 @@
     };
 
     let last = 0;
+    let sentX, sentY;                             // what the engine already has
     const move = (ev) => {
       const r = el.getBoundingClientRect();
       const fx = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
@@ -273,8 +274,14 @@
       const now = performance.now();
       if (now - last < 33) return;                // ~30 Hz is plenty for a knob
       last = now;
-      send({ type: "set", path: `edge.${e.id}.${spec.x.key}`, value: x });
-      send({ type: "set", path: `edge.${e.id}.${spec.y.key}`, value: y });
+      // Only the axis that actually MOVED. A drag is mostly sideways or mostly
+      // vertical, so sending both every frame doubled the traffic and filled
+      // the session log with no-op sets - the 22:29 take recorded
+      // `every_bars_min: 1` five times in 800 ms while only `voices` was
+      // changing, which makes the log unreadable when you are trying to see
+      // what the player actually did.
+      if (x !== sentX) { sentX = x; send({ type: "set", path: `edge.${e.id}.${spec.x.key}`, value: x }); }
+      if (y !== sentY) { sentY = y; send({ type: "set", path: `edge.${e.id}.${spec.y.key}`, value: y }); }
     };
     el.addEventListener("pointerdown", (ev) => {
       el.setPointerCapture(ev.pointerId); el.classList.add("is-live"); move(ev);
@@ -283,7 +290,8 @@
     const end = (ev) => {
       if (!el.classList.contains("is-live")) return;
       el.classList.remove("is-live");
-      last = 0; move(ev);                          // make sure the last position lands
+      last = 0; sentX = sentY = undefined;         // make sure the last position lands
+      move(ev);
     };
     el.addEventListener("pointerup", end);
     el.addEventListener("pointercancel", end);
@@ -319,13 +327,13 @@
     // chord at all.
     const commit = (v) => {
       v = Number(v);
-      const partner = spec.key === "low" ? "high" : (spec.key === "high" ? "low" : null);
-      if (partner) {
-        const other = wrap.parentElement.querySelector(`.mie-fn[data-key="${partner}"]`);
+      const p = PAIRS[spec.key];
+      if (p) {
+        const other = wrap.parentElement.querySelector(`.mie-fn[data-key="${p.partner}"]`);
         if (other) {
           const o = Number(other.value);
-          if (spec.key === "low" && v > o - 12) pushPartner(wrap, partner, v + 12);
-          if (spec.key === "high" && v < o + 12) pushPartner(wrap, partner, v - 12);
+          if (p.side === "above" && o < v + p.gap) pushPartner(wrap, p.partner, v + p.gap);
+          if (p.side === "below" && o > v - p.gap) pushPartner(wrap, p.partner, v - p.gap);
         }
       }
       sl.value = num.value = v;
@@ -336,12 +344,30 @@
     return wrap;
   }
 
+  // Settings that only mean anything as a pair, and the least room to keep
+  // between them. `every_bars_*` joined the table after the 22:42 take, where
+  // the panel let the player set 最長 0.25 under 最短 0.5: the algorithm quietly
+  // clamps `hi = max(lo, hi)`, so the slider they were moving did nothing and
+  // said nothing.
+  const PAIRS = {
+    low:  { partner: "high", gap: 12, side: "above" },
+    high: { partner: "low",  gap: 12, side: "below" },
+    every_bars_min: { partner: "every_bars_max", gap: 0, side: "above" },
+    every_bars_max: { partner: "every_bars_min", gap: 0, side: "below" },
+  };
+
   function pushPartner(wrap, key, value) {
     const body = wrap.parentElement;
     const num = body.querySelector(`.mie-fn[data-key="${key}"]`);
     const sl = body.querySelector(`.mie-fs[data-key="${key}"]`);
     if (!num || !sl) return;
-    const v = Math.max(Number(sl.min), Math.min(Number(sl.max), Math.round(value)));
+    // On the partner's OWN step. Rounding to whole numbers was fine while the
+    // only pair was a register in semitones; `every_bars_*` moves in quarters
+    // and would have been rounded away.
+    const step = Number(sl.step) || 1;
+    const snapped = Math.round(value / step) * step;
+    const dp = String(step).includes(".") ? String(step).split(".")[1].length : 0;
+    const v = Number(Math.max(Number(sl.min), Math.min(Number(sl.max), snapped)).toFixed(dp));
     if (Number(num.value) === v) return;
     num.value = sl.value = v;
     num.dispatchEvent(new Event("change"));
