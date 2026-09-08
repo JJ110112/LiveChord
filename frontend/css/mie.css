@@ -27,6 +27,7 @@
 .mie-pstore:hover { color: var(--accent); }
 /* the Save button carries the one fact the player kept losing: "+A" stores
    into the running engine, Save is what puts it on disk */
+.mie-btn.is-arming { border-color: #ffc107; color: #ffc107; }
 .mie-btn.is-frozen { background: #0288d1; border-color: #4fc3f7; color: #fff; }
 .mie-btn.is-unsaved { border-color: #ffc107; color: #ffc107; }
 .mie-btn.is-unsaved::after { content: " •"; }

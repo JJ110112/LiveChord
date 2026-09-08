@@ -219,6 +219,8 @@ class Engine:
         """Hold what is sounding (or let it go). Returns how many notes moved."""
         now = self.clock()
         if on:
+            if self._frozen:
+                return 0                # already holding: pressing again is not an event
             cap = float(self.scene.globals.get("freeze_max_s", self.FREEZE_MAX_S))
             n = 0
             for (ch, note), g in list(self.st.active_gen.items()):
@@ -227,10 +229,21 @@ class Engine:
                 self.sched.hold(ch, note, now + cap)
                 g.max_dur = max(g.max_dur, cap + (now - g.t_on))   # the watchdog still owns it
                 n += 1
+            if n == 0:
+                # Nothing was sounding, so there is nothing to hold. Latching
+                # anyway made the state flip straight back on the next tick
+                # ("frozen but silent" is not a state), and every press logged
+                # another freeze - the 2026-09-08 panel filled with hundreds of
+                # identical `on:true notes:0` lines and the page stopped
+                # responding. A press with nothing to hold is simply nothing.
+                self._ui("freeze", on=True, notes=0, empty=True)
+                return 0
             self._frozen = True
             self._frozen_lane = lane
             self._ui("freeze", on=True, notes=n, lane=lane or "*", cap=cap)
             return n
+        if not self._frozen:
+            return 0                    # not holding: releasing is not an event
         n = 0
         for (ch, note), g in list(self.st.active_gen.items()):
             if lane and g.lane != lane:

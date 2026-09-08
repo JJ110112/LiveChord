@@ -2494,3 +2494,31 @@ def test_freeze_holds_only_what_is_already_audible():
     sounding = len(eng.st.active_gen)
     assert eng.freeze(True) == sounding
     assert sounding < 4, "the test needs notes still waiting in the queue"
+
+
+def test_freezing_nothing_is_not_a_state():
+    """2026-09-08: holding SPACE latched a freeze with nothing sounding, the
+    next tick unlatched it because "frozen but silent" is not a state, and
+    every press logged another event. The panel filled with hundreds of
+    identical lines and stopped answering."""
+    eng, clk, out = make(_freeze_edges())
+    run_for(eng, clk, 0.5)                      # nothing is sounding
+    assert eng.freeze(True) == 0
+    assert eng._frozen is False, "it latched with nothing to hold"
+    before = len([e for e in eng.ui_events if e["type"] == "freeze"])
+    for _ in range(20):                         # what a held key does
+        eng.freeze(True)
+    after = len([e for e in eng.ui_events if e["type"] == "freeze"])
+    assert after - before <= 20, "each press must stay one line, not a cascade"
+    assert eng._frozen is False
+
+
+def test_pressing_freeze_twice_is_not_two_events():
+    eng, clk, out = make(_freeze_edges())
+    hold_chord(eng, clk, 9, [60, 64, 67])
+    run_for(eng, clk, 0.5)
+    n = eng.freeze(True)
+    assert n > 0
+    assert eng.freeze(True) == 0, "a second press re-froze what was already held"
+    assert eng.freeze(False) > 0
+    assert eng.freeze(False) == 0, "a second release fired again"

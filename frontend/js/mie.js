@@ -109,14 +109,40 @@
     $("#mieFreeze").addEventListener("click", () =>
     send({ type: "freeze", on: !$("#mieFreeze").classList.contains("is-frozen") }));
   $("#mieUndo").addEventListener("click", () => send({ type: "undo" }));
+  // `confirm()` blocks this page's JavaScript, and while it is blocked the
+  // engine's messages queue up behind it - the dialog looked stuck because the
+  // page could not repaint. A two-step button asks the same question without
+  // stopping the panel.
+  let revertArmed = 0;
   $("#mieRevert").addEventListener("click", () => {
-    if (confirm("把所有參數退回 scene 檔存著的值？（未儲存的調整會消失）")) send({ type: "revert" });
+    const b = $("#mieRevert");
+    if (Date.now() - revertArmed < 4000) {
+      revertArmed = 0; b.classList.remove("is-arming"); b.textContent = "退回檔案";
+      send({ type: "revert" });
+      return;
+    }
+    revertArmed = Date.now();
+    b.classList.add("is-arming");
+    b.textContent = "再按一次確認";
+    setTimeout(() => {
+      if (!revertArmed) return;
+      revertArmed = 0; b.classList.remove("is-arming"); b.textContent = "退回檔案";
+    }, 4000);
   });
   document.addEventListener("keydown", (e) => {
     // space toggles freeze: both hands are usually on the keys, so the one
     // control worth reaching for has to be the easiest key on the laptop
-    if (e.code === "Space" && !e.target.matches("input, select, textarea")) {
+    //  is not always an Element - a keydown can land on the document
+    // itself, and  does not exist, so the guard threw and the
+    // whole handler died silently.
+    const onField = e.target instanceof Element && e.target.matches("input, select, textarea");
+    if (e.code === "Space" && !onField) {
       e.preventDefault();
+      // Holding the key repeats at the OS rate. Each repeat read the same
+      // not-yet-updated button state and sent another freeze, which is how the
+      // event stream filled with hundreds of identical lines and the page
+      // stopped answering (2026-09-08).
+      if (e.repeat) return;
       send({ type: "freeze", on: !$("#mieFreeze").classList.contains("is-frozen") });
       return;
     }
