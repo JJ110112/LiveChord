@@ -2522,3 +2522,22 @@ def test_pressing_freeze_twice_is_not_two_events():
     assert eng.freeze(True) == 0, "a second press re-froze what was already held"
     assert eng.freeze(False) > 0
     assert eng.freeze(False) == 0, "a second release fired again"
+
+
+def test_an_edge_reports_its_own_dropped_notes():
+    """19:27 take: one edge's octave was dragged to -3, its notes landed below
+    the synth's range and every one was dropped, and the row still looked
+    healthy. A lane throwing its notes away must say so where the control that
+    caused it is."""
+    eng, clk, out = make([_phrase_edge(octave=-3, repeats=1)])
+    eng.instruments[12] = Instrument(12, "MODX", "synth", "hw", True, 8, 1.0, (36, 96), False)
+    for i, n in enumerate([48, 52, 55]):
+        play(eng, clk, 9, n, vel=70, hold=0.2)
+        if i < 2:
+            run_for(eng, clk, 0.05)
+    run_for(eng, clk, 6.0)
+    assert not out.notes("note_on", ch=12), "the test needs the notes to fall out of range"
+    assert eng.edge_drops.get("ph", 0) > 0, "the edge did not count its own drops"
+    row = [e for e in eng.snapshot()["edges"] if e["id"] == "ph"][0]
+    assert row["drops"] == eng.edge_drops["ph"]
+    assert row["fires"] > 0, "it fired, it just threw everything away - that is the point"

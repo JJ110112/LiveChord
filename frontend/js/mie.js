@@ -106,51 +106,7 @@
   function renderPreset(p) {
     if (!p) return;
     const stored = new Set(p.stored || []);
-    $("#mieFreeze").addEventListener("click", () =>
-    send({ type: "freeze", on: !$("#mieFreeze").classList.contains("is-frozen") }));
-  $("#mieUndo").addEventListener("click", () => send({ type: "undo" }));
-  // `confirm()` blocks this page's JavaScript, and while it is blocked the
-  // engine's messages queue up behind it - the dialog looked stuck because the
-  // page could not repaint. A two-step button asks the same question without
-  // stopping the panel.
-  let revertArmed = 0;
-  $("#mieRevert").addEventListener("click", () => {
-    const b = $("#mieRevert");
-    if (Date.now() - revertArmed < 4000) {
-      revertArmed = 0; b.classList.remove("is-arming"); b.textContent = "退回檔案";
-      send({ type: "revert" });
-      return;
-    }
-    revertArmed = Date.now();
-    b.classList.add("is-arming");
-    b.textContent = "再按一次確認";
-    setTimeout(() => {
-      if (!revertArmed) return;
-      revertArmed = 0; b.classList.remove("is-arming"); b.textContent = "退回檔案";
-    }, 4000);
-  });
-  document.addEventListener("keydown", (e) => {
-    // space toggles freeze: both hands are usually on the keys, so the one
-    // control worth reaching for has to be the easiest key on the laptop
-    //  is not always an Element - a keydown can land on the document
-    // itself, and  does not exist, so the guard threw and the
-    // whole handler died silently.
-    const onField = e.target instanceof Element && e.target.matches("input, select, textarea");
-    if (e.code === "Space" && !onField) {
-      e.preventDefault();
-      // Holding the key repeats at the OS rate. Each repeat read the same
-      // not-yet-updated button state and sent another freeze, which is how the
-      // event stream filled with hundreds of identical lines and the page
-      // stopped answering (2026-09-08).
-      if (e.repeat) return;
-      send({ type: "freeze", on: !$("#mieFreeze").classList.contains("is-frozen") });
-      return;
-    }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
-      e.preventDefault(); send({ type: "undo" });
-    }
-  });
-  document.querySelectorAll(".mie-pbtn").forEach((b) => {
+    document.querySelectorAll(".mie-pbtn").forEach((b) => {
       const slot = b.dataset.slot;
       b.classList.toggle("is-on", slot === p.slot);
       // an empty slot is shown faded rather than hidden: you should be able to
@@ -449,7 +405,14 @@
       const ph = el.querySelector(".mie-edge-head .prob-val");
       if (ph) ph.textContent = Number(e.prob).toFixed(2);
       if (el._pad && !el._pad.classList.contains("is-live")) el._pad.render();
-      el.querySelector(".fires").textContent = e.fires || 0;
+      // A lane whose notes are being thrown away looks identical to a quiet
+      // one. Say it on the row, where the control that caused it is.
+      const fires = el.querySelector(".fires");
+      fires.textContent = e.drops ? `${e.fires || 0} ⚠${e.drops}` : (e.fires || 0);
+      fires.classList.toggle("has-drops", !!e.drops);
+      fires.title = e.drops
+        ? `${e.drops} 個音被丟掉了——多半是音域或八度把它推到樂器範圍外`
+        : "";
       el.classList.toggle("hot", e.ago !== null && e.ago !== undefined && e.ago < 2);
       el.classList.toggle("off", !e.enabled);
     });
@@ -494,8 +457,51 @@
   }
 
   // ---------------------------------------------------------------- controls
+  // EVERY binding below runs exactly once, at load. Putting one inside a render
+  // function attaches another copy on every snapshot, and a single click then
+  // fires all of them: on the 19:27 take one press of Revert sent 117 reverts,
+  // which wrote 24,777 settings, and the panel stopped responding. If a control
+  // ever needs binding from a render path, remove the old listener first.
   $("#miePanic").addEventListener("click", () => send({ type: "panic" }));
   $("#mieResume").addEventListener("click", () => send({ type: "resume" }));
+  $("#mieFreeze").addEventListener("click", () =>
+    send({ type: "freeze", on: !$("#mieFreeze").classList.contains("is-frozen") }));
+  $("#mieUndo").addEventListener("click", () => send({ type: "undo" }));
+  // `confirm()` blocks this page's JavaScript, and the engine's messages queue
+  // up behind it - the dialog looked stuck because the page could not repaint.
+  // A two-step button asks the same question without stopping the panel.
+  let revertArmed = 0;
+  $("#mieRevert").addEventListener("click", () => {
+    const b = $("#mieRevert");
+    if (Date.now() - revertArmed < 4000) {
+      revertArmed = 0; b.classList.remove("is-arming"); b.textContent = "退回檔案";
+      send({ type: "revert" });
+      return;
+    }
+    revertArmed = Date.now();
+    b.classList.add("is-arming");
+    b.textContent = "再按一次確認";
+    setTimeout(() => {
+      if (!revertArmed) return;
+      revertArmed = 0; b.classList.remove("is-arming"); b.textContent = "退回檔案";
+    }, 4000);
+  });
+  document.addEventListener("keydown", (e) => {
+    // Space toggles freeze: both hands are usually on the keys, so the one
+    // control worth reaching for has to be the easiest key on the laptop.
+    // `e.target` is not always an Element - a keydown can land on the document
+    // itself, where `matches` does not exist and the guard would throw.
+    const onField = e.target instanceof Element && e.target.matches("input, select, textarea");
+    if (e.code === "Space" && !onField) {
+      e.preventDefault();
+      if (e.repeat) return;          // a held key repeats at the OS rate
+      send({ type: "freeze", on: !$("#mieFreeze").classList.contains("is-frozen") });
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
+      e.preventDefault(); send({ type: "undo" });
+    }
+  });
   // Everything tuned on this panel lives only in memory until this is pressed.
   document.querySelectorAll(".mie-pbtn").forEach((b) =>
     b.addEventListener("click", () => send({ type: "preset", slot: b.dataset.slot })));

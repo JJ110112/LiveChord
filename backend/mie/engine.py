@@ -87,6 +87,7 @@ class Engine:
         self.stats = {"human_notes": 0, "gen_sched": 0, "gen_sent": 0, "dropped": 0, "muted": 0, "loops": 0,
                       "panics": 0, "controls": 0, "dups": 0}
         self.edge_fires: dict[str, int] = {}
+        self.edge_drops: dict[str, int] = {}   # so a silenced lane can say so
         self.drop_reasons: dict[str, int] = {}
         self._roll_cache: dict[str, tuple] = {}   # edge id -> (group start t, p or None)
         self._shadow_group: dict[str, tuple] = {}  # edge id -> (gesture start t, src note)
@@ -941,6 +942,12 @@ class Engine:
                 self._force_off(p.ch, p.note, at, "release")
 
     def _drop(self, reason: str, edge, p: Proposal, now: float, n: int = 1) -> None:
+        # Per edge as well as in total. A control can silence a lane without
+        # anything on screen saying so: on the 19:27 take the octave of one edge
+        # was dragged to -3, its notes landed below the synth's range, and every
+        # one was dropped while the row still looked healthy.
+        eid = getattr(edge, "id", "?")
+        self.edge_drops[eid] = self.edge_drops.get(eid, 0) + n
         self.stats["dropped"] += n
         self.drop_reasons[reason] = self.drop_reasons.get(reason, 0) + n
         self._ui("drop", reason=reason, edge=getattr(edge, "id", "?"), ch=p.ch, note=p.note, lane=p.lane)
@@ -1217,6 +1224,7 @@ class Engine:
             "stats": dict(self.stats), "drops": dict(self.drop_reasons),
             "jitter": self.sched.jitter_summary(), "pending": len(self.sched),
             "edges": [dict(e.to_dict(), fires=self.edge_fires.get(e.id, 0),
+                           drops=self.edge_drops.get(e.id, 0),
                            ago=round(now - self.edge_last[e.id], 2) if e.id in self.edge_last else None)
                       for e in self.graph.edges],
             "instruments": [i.to_dict() for i in self.instruments.values()],

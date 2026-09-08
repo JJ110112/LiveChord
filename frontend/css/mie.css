@@ -94,6 +94,7 @@
 .mie-edge .prob { display: flex; align-items: center; gap: 4px; }
 .mie-edge .prob input { width: 46px; background: transparent; color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; font-size: 12px; }
 .mie-edge .fires { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.mie-edge .fires.has-drops { color: #ff9800; }
 .mie-edge .algo { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; background: rgba(255,255,255,.08); }
 
 .mie-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 4px 12px; font-size: 12px; }
