@@ -135,8 +135,17 @@ def main(argv=None) -> int:
                 # a parameter cannot change under us mid-write
                 try:
                     sc = engine.scene_snapshot()
-                    p = save_scene(sc, str(msg.get("as") or "") or None)
-                    engine.submit(engine.mark_saved, os.path.basename(p))
+                    as_id = str(msg.get("as") or "") or None
+                    p = save_scene(sc, as_id)
+                    # Save-as ADOPTS the new file, the way every editor does.
+                    # Without this the engine still thought it was in the scene
+                    # it had loaded: the player saved test1's settings into
+                    # test01, the top bar still read test1, and the next Save
+                    # with an empty name would have written the OTHER file
+                    # (2026-09-08). Two names for one state is how work gets
+                    # lost.
+                    engine.submit(engine.mark_saved, os.path.basename(p),
+                                  as_id, p if as_id else None)
                 except Exception as exc:
                     logging.getLogger("mie.ui").exception("mie: scene save failed")
                     engine.note_ui("error", where="save_scene", err=str(exc))

@@ -2632,3 +2632,47 @@ def test_the_time_knob_does_not_deafen_the_phrase_detector():
     quick = delay_s(edge, eng.st)
     eng.set_global("time", 3.0)
     assert delay_s(edge, eng.st) == pytest.approx(quick * 3), "TIME stopped stretching delays"
+
+
+def test_save_as_moves_the_engine_into_the_new_scene():
+    """Every editor's Save As does this. Without it the engine still thought it
+    was in the scene it had loaded: the player saved test1's settings into
+    test01, the top bar still read test1, and the next plain Save would have
+    written the OTHER file. Two names for one state is how work gets lost."""
+    import tempfile
+    from backend.mie.graph import save_scene
+
+    eng, clk, out = make([{"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 0.5,
+                           "constraint": "free", "lane": "echo"}])
+    with tempfile.TemporaryDirectory() as d:
+        eng.scene.id = "one"
+        eng.scene.path = f"{d}/one.json"
+        eng.set_global("time", 2.0)
+        eng.set_global("master_gain", 0.63)
+        save_scene(eng.scene_snapshot())                       # plain save
+        eng.mark_saved("one.json")
+        assert eng.scene.id == "one"
+
+        two = f"{d}/two.json"
+        eng.mark_saved("two.json", "two", two)                 # save as
+        assert eng.scene.id == "two", "the engine stayed in the old scene"
+        assert eng.scene.path == two, "a later plain save would write the old file"
+
+
+def test_the_global_knobs_are_in_what_gets_saved():
+    """The player asked whether volume and time are saved at all. They are -
+    they were going into the file that Save As had written."""
+    import json
+    import tempfile
+    from backend.mie.graph import Scene, save_scene
+
+    eng, clk, out = make([])
+    eng.set_global("master_gain", 0.63)
+    eng.set_global("time", 2.05)
+    with tempfile.TemporaryDirectory() as d:
+        snap = eng.scene_snapshot()
+        snap.path = f"{d}/s.json"
+        save_scene(snap)
+        back = Scene.from_json(json.load(open(snap.path, encoding="utf-8")), snap.path)
+    assert back.globals["master_gain"] == 0.63
+    assert back.globals["time"] == 2.05

@@ -1670,6 +1670,28 @@ Am  -> Am(3)        Dm -> E(3)        Fm7 -> Em(3)
 
 MIE 測試 160 個。
 
+**㊿ 21:16 take：移調上機了；「全域音量／時間不會被存？」——會，只是存進了另一個檔**
+
+**`chord_solid` 的修正在硬體上生效**：`phrase_shift` **4 次**（前一趟是 0）。整趟 637 個人類音、947 個生成音、丟棄 0、靜音 0、迴圈 0、jitter p95 1.77 ms（max 5.32 ms 是目前最高，仍在容忍範圍）。
+
+**存檔問題查證：值有存到，只是進了別的檔案。** log 說得很清楚：
+
+```
+t= 8.4   載入 scene test1
+t=15.8   set global.master_gain = 0.52
+t=17.4   set global.master_gain = 0.63
+t=20.8   set global.time = 2.05
+t=31.8   saved path=test01.json
+```
+
+而 `test01.json` 現在確實是 `time=2.05, master_gain=0.63`；`test1.json` 則沒有。**使用者在 test1 裡工作，卻按了「儲存」並輸入 `test01`**，所以下次載入 test1 當然什麼都沒有。
+
+問題其實在我的設計：**另存新檔之後，引擎仍然認為自己在原本那個 scene 裡**。頂列還寫著 test1、下一次留空存檔會寫回 **另一個檔案**——同一份狀態掛著兩個名字，工作就是這樣掉的。改成**另存即採用**（每個編輯器的 Save As 都是這樣）：存完之後「目前的 scene」就是剛寫出去的那一個。存檔對話框也改成把名字講出來——「留空 = 覆寫 **test1**」，而不是含糊的「覆寫目前的」。
+
+兩個測試：另存之後引擎的 scene id 與路徑都跟著走；以及全域旋鈕（音量、時間）確實會被序列化進檔案。
+
+MIE 測試 162 個。
+
 #### Phase 2 工項（原本規劃 + 上述新增）
 
 - Answer、Mirror、Density、Velocity(CC)、Register；輪盤邊群組；Scene 切換淡出；UC4 MIDI Learn；矩陣 UI + 互動流動畫；player `playhead` 同步。

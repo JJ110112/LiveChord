@@ -514,7 +514,11 @@
   document.querySelectorAll(".mie-pstore").forEach((b) =>
     b.addEventListener("click", () => send({ type: "preset_save", slot: b.dataset.store })));
   $("#mieSave").addEventListener("click", () => {
-    const as = prompt("另存為新 scene 的編號（留空 = 覆寫目前的）", "");
+    // Name the scene an empty answer overwrites. "覆寫目前的" is only obvious
+    // to whoever wrote it; the player saved into a second file for two sessions
+    // and thought the global knobs were not being saved at all.
+    const cur = (lastSnap && lastSnap.scene && lastSnap.scene.id) || "";
+    const as = prompt(`另存為新 scene 的編號（留空 = 覆寫 ${cur}）`, "");
     if (as === null) return;
     send({ type: "save_scene", as: as.trim() || undefined });
   });

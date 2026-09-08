@@ -432,10 +432,20 @@ class Engine:
                      bpm=self.scene.bpm, beats_per_bar=self.scene.beats_per_bar,
                      presets=dict(self.scene.presets), path=self.scene.path)
 
-    def mark_saved(self, path: str) -> None:
-        """The file now matches the engine, so nothing is unsaved any more."""
+    def mark_saved(self, path: str, as_id: Optional[str] = None,
+                   as_path: Optional[str] = None) -> None:
+        """The file now matches the engine, so nothing is unsaved any more.
+
+        A save under a new name also moves the engine into that file: from here
+        on "the current scene" is the one just written, so a later plain Save
+        goes back to the same place.
+        """
         self._undo = []
-        self._ui("saved", path=path)
+        if as_id:
+            self.scene.id = as_id
+            if as_path:
+                self.scene.path = as_path
+        self._ui("saved", path=path, scene=self.scene.id)
 
     def note_ui(self, typ: str, **kw) -> None:
         """Put a line in the event stream from outside the engine thread."""
