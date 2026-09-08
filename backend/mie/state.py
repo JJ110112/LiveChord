@@ -14,7 +14,7 @@ from typing import Optional
 
 from .events import ContextSnapshot, MieEvent
 from . import texture as _texture
-from .harmony import ChordInfo, KeyInfo, estimate_key, recognize
+from .harmony import ChordInfo, KeyInfo, estimate_key, recognize, states_a_third
 from .scales import NOTE_NAMES, scale_for_mode
 
 
@@ -81,6 +81,7 @@ class MusicalState:
         self.register = "mid"
         self.density_knob: float | None = None   # scene DENSITY control, see algos.how_many
         self.time_knob: float | None = None      # scene TIME control, see algos.time_scale
+        self.chord_solid: Optional[ChordInfo] = None   # last chord with a real third
         self.texture = "quiet"        # how they are playing (see texture.py)
         self.texture_conf = 1.0
         self.lh: list[int] = []       # what the left hand is holding, if the
@@ -172,6 +173,19 @@ class MusicalState:
 
     def set_chord(self, chord: Optional[ChordInfo]) -> None:
         self.chord = chord
+        self._keep_solid(chord)
+
+    def _keep_solid(self, c: Optional[ChordInfo]) -> None:
+        """Remember the last chord that actually said something about the mode.
+
+        `chord` is whatever is down at this instant, and during playing that
+        flickers between the full chord and a two-note fragment as fingers land
+        and lift - on the 21:00 take the reading went Am -> Am(3) -> Am inside a
+        second. Anything that has to ASK "what harmony are we in" wants the last
+        solid answer, not the flicker.
+        """
+        if c is not None and len(c.tones) >= 3 and states_a_third(c.quality):
+            self.chord_solid = c
 
     # ---- human input ------------------------------------------------------
     def _decay(self, now: float) -> None:
@@ -296,6 +310,7 @@ class MusicalState:
             c = recognize(self.held.keys(), now, self.chord)
             if c is not None:
                 self.chord = c
+                self._keep_solid(c)
         if self.key.source in ("scene", "inferred") and self.human_note_count >= 8:
             k = estimate_key(self.pc_hist)
             if k and k.confidence >= 0.35 and (self.key.source == "scene" or k.confidence >= self.key.confidence * 0.8):

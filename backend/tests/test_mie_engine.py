@@ -2166,13 +2166,13 @@ def test_a_bare_fifth_does_not_re_spell_a_phrase():
     eng, clk, out = make([_phrase_edge(follow_chord=True)])
     pair = NotePair(ch=12, note=69, vel=60, t_on=0, t_off=1, lane="phrase",
                     capture_root=9, capture_quality="m", pass_id=("p", 1))
-    eng.st.chord = recognize([57, 64], clk())              # A5, mid-strike
+    eng.st.set_chord(recognize([57, 64], clk()))              # A5, mid-strike
     assert eng.st.chord.name == "A5"
     assert eng._phrase_target(pair) is None, "a bare fifth was allowed to re-spell the phrase"
 
     pair2 = NotePair(ch=12, note=69, vel=60, t_on=0, t_off=1, lane="phrase",
                      capture_root=9, capture_quality="m", pass_id=("p", 2))
-    eng.st.chord = recognize([62, 65, 69], clk())          # the third arrives: Dm
+    eng.st.set_chord(recognize([62, 65, 69], clk()))          # the third arrives: Dm
     assert eng._phrase_target(pair2) == (2, "m")
 
 
@@ -2190,12 +2190,12 @@ def test_a_phrase_captured_over_a_fragment_is_not_marked_to_follow():
             run_for(eng, clk, 0.05)
     run_for(eng, clk, 1.2)
 
-    eng.st.chord = recognize([57, 64], clk())              # A5: a bare fifth
+    eng.st.set_chord(recognize([57, 64], clk()))              # A5: a bare fifth
     props = phrase.tick(eng.st, edge, eng.rng, clk(), {})
     assert props, "the phrase did not fire"
     assert all(p.capture_root is None for p in props), "captured a mode from a bare fifth"
 
-    eng.st.chord = recognize([57, 60, 64], clk())          # Am: a real chord
+    eng.st.set_chord(recognize([57, 60, 64], clk()))          # Am: a real chord
     props = phrase.tick(eng.st, edge, eng.rng, clk(), {})
     assert props and all(p.capture_root == 9 for p in props)
 
@@ -2382,13 +2382,13 @@ def test_a_sus_chord_does_not_decide_a_phrase_mode():
     eng, clk, out = make([_phrase_edge(follow_chord=True)])
     pair = NotePair(ch=12, note=69, vel=60, t_on=0, t_off=1, lane="phrase",
                     capture_root=9, capture_quality="m", pass_id=("p", 1))
-    eng.st.chord = recognize([57, 59, 64], clk())          # Asus2: A B E, no third
+    eng.st.set_chord(recognize([57, 59, 64], clk()))          # Asus2: A B E, no third
     assert eng.st.chord.name == "Asus2"
     assert eng._phrase_target(pair) is None, "a sus chord chose a mode for the phrase"
 
     pair2 = NotePair(ch=12, note=69, vel=60, t_on=0, t_off=1, lane="phrase",
                      capture_root=9, capture_quality="m", pass_id=("p", 2))
-    eng.st.chord = recognize([60, 64, 67], clk())          # C: a third at last
+    eng.st.set_chord(recognize([60, 64, 67], clk()))          # C: a third at last
     assert eng._phrase_target(pair2) == (0, "")
 
 

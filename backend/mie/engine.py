@@ -24,7 +24,8 @@ from typing import Callable, Optional
 from . import algos, mutation
 from .algos import quantize_time
 from .constraint import (collision_for, constrain, diatonic_map, edge_range, late_bind,
-                         states_a_third, voice_lead_for)
+                         voice_lead_for)
+from .harmony import states_a_third
 from .events import MieEvent, Proposal, next_id
 from .graph import _EDGE_FIELDS, ALGOS_PHASE1, MODES, InteractionGraph, Instrument, Scene
 from .io_rtmidi import panic_messages
@@ -173,18 +174,19 @@ class Engine:
             return None
         if pair.pass_id in self._phrase_shift:
             return self._phrase_shift[pair.pass_id]
-        # A chord needs a third before it can tell a phrase what mode to be in.
-        # The recogniser reads whatever is down at that instant, and while a
-        # hand is landing that is a bare fifth: on the 17:13 take it read D5 at
-        # t=90.18 and Dm ten milliseconds later. Three of the five
-        # transpositions that take fired on such a fragment - Am -> A5 would
-        # have re-spelled a minor phrase as major, because a fifth implies
-        # nothing about the third and the scale table has to guess. Without
-        # real harmonic information, leave the phrase as it was played.
-        chord = self.st.chord
+        # The LAST SOLID chord, not whatever is down at this instant. Reading
+        # the instant cut both ways: on the 17:13 take a mid-strike D5 nearly
+        # re-spelled a minor phrase as major, and once that was guarded the
+        # 21:00 take swung the other way - 17 of 36 phrases came back over a
+        # genuinely different chord and NONE of them transposed, because at the
+        # moment the pass landed the reading happened to be a two-note fragment
+        # (Am -> Am(3), Dm -> E(3)). `chord_solid` is the last reading that had
+        # a third to state, which answers "what harmony are we in" instead of
+        # "what keys are down right now".
+        chord = self.st.chord_solid
         target = None
-        if chord is not None and len(chord.tones) >= 3 and states_a_third(chord.quality) and (
-                chord.root_pc != pair.capture_root or chord.quality != pair.capture_quality):
+        if chord is not None and (chord.root_pc != pair.capture_root
+                                  or chord.quality != pair.capture_quality):
             target = (chord.root_pc, chord.quality)
         if len(self._phrase_shift) > 64:
             self._phrase_shift.clear()      # bounded: passes are seconds long

@@ -25,6 +25,19 @@ CHORD_MAP: dict[tuple[int, ...], str] = {
 }
 
 
+# Chords that do not say what the third is. They cannot tell a phrase what mode
+# to be in, so they are neither a source nor a target for transposition - the
+# same reasoning as the bare fifth, one note further on. Seen on the 18:34 take:
+# Asus2 -> Am was allowed through and would have re-read a phrase as major
+# (the table has to guess a third for sus) before making it minor.
+THIRDLESS = frozenset({"5", "sus2", "sus4"})
+
+
+def states_a_third(quality: str) -> bool:
+    return (quality or "") not in THIRDLESS
+
+
+
 @dataclass(slots=True, frozen=True)
 class ChordInfo:
     name: str
