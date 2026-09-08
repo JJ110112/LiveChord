@@ -204,6 +204,16 @@ def main(argv=None) -> int:
         engine.stop.set()
         engine.sched.stop.set()
         engine.panic("exit")
+        # The log matters more than a tidy socket: close it FIRST, so a wedged
+        # UI thread cannot swallow a whole session's recording the way it did
+        # on 2026-09-08 (the file was left at zero bytes).
+        s0 = engine.snapshot()
+        if evlog is not None:
+            evlog.close({"stats": s0["stats"], "drops": s0["drops"], "jitter": s0["jitter"],
+                         "edge_fires": {e.id: engine.edge_fires.get(e.id, 0)
+                                        for e in engine.graph.edges}})
+            print(f"[log] {evlog.stats}")
+            evlog = None
         if ui is not None:
             ui.shutdown()
         io.close()

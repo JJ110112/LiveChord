@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import struct
+import socket
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -241,19 +242,52 @@ class UiServer:
             self.broadcast({"type": "state", **self.engine.snapshot()})
 
     def start(self) -> None:
+        # Windows lets a second socket bind a port that is already LISTENing
+        # when SO_REUSEADDR is set, which HTTPServer sets by default. Two
+        # servers then share the port and the OS hands each connection to one
+        # of them at random. On 2026-09-08 a leftover test server from hours
+        # earlier was still on 8810: the engine bound alongside it, the panel
+        # talked to the wrong one, the engine saw no client and PANICked into
+        # BYPASS, and the whole session was lost. Refuse loudly instead.
+        probe = socket.socket()
+        probe.settimeout(0.3)
+        try:
+            probe.connect(("127.0.0.1", self.port))
+            raise OSError(
+                f"port {self.port} is already serving - another MIE (or a leftover "
+                f"test server) is running. Close it first: the two would share the "
+                f"port and the panel would reach whichever the OS picked.")
+        except OSError as e:
+            if "already serving" in str(e):
+                raise
+        finally:
+            probe.close()
+
         self.httpd = ThreadingHTTPServer(("127.0.0.1", self.port), self._make_handler())
         self.httpd.daemon_threads = True
         threading.Thread(target=self.httpd.serve_forever, name="mie-http", daemon=True).start()
         threading.Thread(target=self._broadcaster, name="mie-ws-bcast", daemon=True).start()
 
     def shutdown(self) -> None:
+        """Stop serving, but never block the process from exiting.
+
+        `httpd.shutdown()` waits for `serve_forever` to acknowledge, and if that
+        thread is wedged it waits forever - which is how a hung quit swallowed a
+        whole session's log on 2026-09-08: the exit path never reached
+        `evlog.close()` and the file was left at zero bytes. Everything after
+        this is more important than a tidy socket.
+        """
         self.stop.set()
         with self.lock:
             conns = list(self.conns)
         for c in conns:
             c.close()
         if self.httpd:
-            self.httpd.shutdown()
+            t = threading.Thread(target=self.httpd.shutdown, name="mie-http-stop", daemon=True)
+            t.start()
+            t.join(2.0)
+            if t.is_alive():
+                log.warning("mie: the UI server did not stop; leaving it and exiting")
 
     @property
     def client_count(self) -> int:
