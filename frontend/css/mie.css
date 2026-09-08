@@ -89,6 +89,8 @@
 .mie-field select option { color: var(--text); background: var(--lc-popup-bg); }
 .mie-edge.hot { border-color: #ffc107; background: rgba(255,193,7,.12); }
 .mie-edge.off { opacity: .5; }
+/* enabled but unable to make a sound: it must not look like a quiet lane */
+.mie-edge.is-mute { border-color: #ff9800; }
 .mie-edge .name { font-weight: 600; }
 .mie-edge .route { font-size: 11px; color: var(--text-dim); }
 .mie-edge .prob { display: flex; align-items: center; gap: 4px; }

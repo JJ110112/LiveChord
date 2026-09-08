@@ -2541,3 +2541,20 @@ def test_an_edge_reports_its_own_dropped_notes():
     row = [e for e in eng.snapshot()["edges"] if e["id"] == "ph"][0]
     assert row["drops"] == eng.edge_drops["ph"]
     assert row["fires"] > 0, "it fired, it just threw everything away - that is the point"
+
+
+def test_a_lane_that_cannot_make_a_sound_says_so():
+    """19:40 take: the echo's velocity scale had been dragged to zero during the
+    earlier click storm and saved into the scene. It sat there enabled and mute
+    for the whole session, showing zero fires - indistinguishable from a lane
+    with nothing to say."""
+    eng, clk, out = make([{"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 1.0,
+                           "repeats": 3, "vel_scale": 0.0, "constraint": "free", "lane": "echo"}])
+    play(eng, clk, 9, 60, vel=100, hold=0.2)
+    run_for(eng, clk, 3.0)
+    assert not out.notes("note_on", ch=10), "the test needs a silent lane"
+    row = [x for x in eng.snapshot()["edges"] if x["id"] == "e"][0]
+    assert row["mute"], "an enabled lane that cannot sound said nothing about it"
+    eng.set_edge("e", "vel_scale", 0.8)
+    row = [x for x in eng.snapshot()["edges"] if x["id"] == "e"][0]
+    assert not row["mute"], "the warning stayed after the cause was fixed"

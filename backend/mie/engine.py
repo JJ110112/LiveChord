@@ -438,6 +438,25 @@ class Engine:
         """Put a line in the event stream from outside the engine thread."""
         self._ui(typ, **kw)
 
+    @staticmethod
+    def _mute_reason(e) -> str:
+        """Why an enabled edge cannot make a sound, if it cannot.
+
+        A lane silenced by a setting looks exactly like a lane with nothing to
+        say: both show zero fires. On the 19:40 take the echo's velocity scale
+        had been dragged to zero during the earlier click storm and saved into
+        the scene, so it sat there enabled and mute for the whole session.
+        """
+        if not e.enabled:
+            return ""
+        if e.vel_scale <= 0:
+            return "力度× 是 0：這條線發不出聲音"
+        inst_lo = e.params.get("low")
+        inst_hi = e.params.get("high")
+        if inst_lo is not None and inst_hi is not None and float(inst_lo) > float(inst_hi):
+            return "音域上下限反了"
+        return ""
+
     def _gen_sounding(self, ch: int, now: float) -> list:
         """Pitches the engine has sounding that this note has to live with.
 
@@ -1224,7 +1243,7 @@ class Engine:
             "stats": dict(self.stats), "drops": dict(self.drop_reasons),
             "jitter": self.sched.jitter_summary(), "pending": len(self.sched),
             "edges": [dict(e.to_dict(), fires=self.edge_fires.get(e.id, 0),
-                           drops=self.edge_drops.get(e.id, 0),
+                           drops=self.edge_drops.get(e.id, 0), mute=self._mute_reason(e),
                            ago=round(now - self.edge_last[e.id], 2) if e.id in self.edge_last else None)
                       for e in self.graph.edges],
             "instruments": [i.to_dict() for i in self.instruments.values()],

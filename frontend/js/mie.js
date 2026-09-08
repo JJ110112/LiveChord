@@ -408,11 +408,12 @@
       // A lane whose notes are being thrown away looks identical to a quiet
       // one. Say it on the row, where the control that caused it is.
       const fires = el.querySelector(".fires");
-      fires.textContent = e.drops ? `${e.fires || 0} ⚠${e.drops}` : (e.fires || 0);
-      fires.classList.toggle("has-drops", !!e.drops);
-      fires.title = e.drops
+      fires.textContent = e.mute ? "靜音" : (e.drops ? `${e.fires || 0} ⚠${e.drops}` : (e.fires || 0));
+      fires.classList.toggle("has-drops", !!e.drops || !!e.mute);
+      fires.title = e.mute || (e.drops
         ? `${e.drops} 個音被丟掉了——多半是音域或八度把它推到樂器範圍外`
-        : "";
+        : "");
+      el.classList.toggle("is-mute", !!e.mute);
       el.classList.toggle("hot", e.ago !== null && e.ago !== undefined && e.ago < 2);
       el.classList.toggle("off", !e.enabled);
     });
