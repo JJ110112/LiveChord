@@ -99,6 +99,10 @@
     $("#mieUndo").disabled = !ed.undo;
     $("#mieFreeze").classList.toggle("is-frozen", !!s.frozen);
     $("#mieFreeze").textContent = s.frozen ? "解凍" : "凍結";
+    $("#mieFreeze").title = s.frozen
+      ? "按住中：引擎不再產生新的音，你在這張床上彈。再按一次放開"
+      : "按住引擎現在正在響的聲音，讓你在上面繼續彈（空白鍵）";
+    document.body.classList.toggle("is-frozen", !!s.frozen);
     renderInstruments(s);
     renderEdges(s);
     renderStats(s);

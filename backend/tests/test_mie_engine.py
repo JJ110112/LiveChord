@@ -2578,15 +2578,31 @@ def test_freeze_arrests_the_tail_that_was_already_on_its_way():
         "a queued return landed after the freeze"
 
 
-def test_freeze_still_lets_the_engine_answer_new_playing():
-    """You freeze a bed in order to play over it, and the engine answering what
-    you play next is the point - only the old tail is arrested."""
-    eng, clk, out = make([{"id": "f", "src": 0, "dst": 11, "algo": "follow", "prob": 1.0,
-                           "interval": 7, "constraint": "free", "lane": "follow"}])
+def test_the_engine_says_nothing_new_while_frozen():
+    """The player's choice: while frozen the held bed sounds alone and they
+    play over it. Answering as well would put the engine back on top of the
+    very thing it was asked to hold still."""
+    edges = [{"id": "f", "src": 0, "dst": 11, "algo": "follow", "prob": 1.0, "interval": 7,
+              "constraint": "free", "lane": "follow"},
+             {"id": "tex", "src": 0, "dst": 1, "algo": "silence", "prob": 1.0, "after_s": 0.5,
+              "lane": "texture", "hold_s": 8, "voices": 2, "vel": 40, "constraint": "chord",
+              "align": "none", "silence_mode": "attack"}]
+    eng, clk, out = make(edges)
     play(eng, clk, 9, 60, vel=90, hold=0.3)
     run_for(eng, clk, 0.2)
-    eng.freeze(True)
-    before = len(out.notes("note_on", ch=11))
-    play(eng, clk, 9, 64, vel=90, hold=0.3)
+    assert eng.freeze(True) > 0, "nothing was sounding to hold"
+    held = sorted(k for k in eng.st.active_gen)
+    before = len(out.notes("note_on"))
+
+    for n in (62, 64, 65, 67):                  # the player keeps playing
+        play(eng, clk, 9, n, vel=90, hold=0.25)
+        run_for(eng, clk, 0.2)
+    run_for(eng, clk, 4.0)                      # and long enough for a pad to want in
+    assert len(out.notes("note_on")) == before, "the engine spoke while frozen"
+    assert sorted(k for k in eng.st.active_gen) == held, "the held bed changed"
+
+    eng.freeze(False)
+    run_for(eng, clk, 0.3)
+    play(eng, clk, 9, 72, vel=90, hold=0.3)
     run_for(eng, clk, 0.5)
-    assert len(out.notes("note_on", ch=11)) > before, "the engine went deaf while frozen"
+    assert len(out.notes("note_on")) > before, "it stayed deaf after unfreezing"

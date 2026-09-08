@@ -774,6 +774,12 @@ class Engine:
                 self.sched.release_lane(e.dst, e.lane, now + rel)
 
     def _fire_edges(self, ev: MieEvent, now: float) -> None:
+        if self._frozen:
+            # The player's choice: while frozen the engine says nothing new.
+            # What is held sounds alone and they play over it. Answering as well
+            # would put the engine back on top of the bed it was asked to hold
+            # still - and the bed is the point.
+            return
         edges = self.graph.candidate_edges(ev.origin, ev.ch, ev.hop, now, self.allowed_algos,
                                            texture=self.st.texture)
         if not edges:
@@ -1091,7 +1097,9 @@ class Engine:
         self.st.tick(now)
         if not self.bypass:
             self.st.refresh_texture(now)
-            for e in self.graph.timed_edges(self.allowed_algos, texture=self.st.texture):
+            timed = [] if self._frozen else self.graph.timed_edges(self.allowed_algos,
+                                                                   texture=self.st.texture)
+            for e in timed:
                 lanes_ok = self.mode_caps.get("timed_lanes")
                 if lanes_ok and e.lane not in lanes_ok:
                     continue

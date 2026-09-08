@@ -29,6 +29,8 @@
    into the running engine, Save is what puts it on disk */
 .mie-btn.is-arming { border-color: #ffc107; color: #ffc107; }
 .mie-btn.is-frozen { background: #0288d1; border-color: #4fc3f7; color: #fff; }
+/* frozen means deliberately silent, which must not read as "the engine died" */
+.mie-body.is-frozen .mie-main { box-shadow: inset 0 0 0 2px rgba(2,136,209,.55); }
 .mie-btn.is-unsaved { border-color: #ffc107; color: #ffc107; }
 .mie-btn.is-unsaved::after { content: " •"; }
 .mie-btn:disabled { opacity: .35; cursor: default; }
