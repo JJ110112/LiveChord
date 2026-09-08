@@ -17,6 +17,14 @@
 .mie-spacer { flex: 1; }
 .mie-btn { padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-hover); color: var(--text); font-weight: 700; cursor: pointer; }
 .mie-btn:hover { border-color: var(--accent); }
+.mie-preset { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-hover); }
+.mie-pbtn { min-width: 40px; padding: 4px 8px; border: none; border-radius: 6px; background: transparent; color: var(--text-dim); font-weight: 700; font-size: 11px; letter-spacing: .06em; cursor: pointer; }
+.mie-pbtn:hover { color: var(--text); }
+.mie-pbtn.is-on { background: var(--accent); color: #fff; }
+.mie-pbtn.is-empty { opacity: .35; }
+.mie-pbtn.is-dirty::after { content: "•"; margin-left: 3px; }
+.mie-pstore { padding: 4px 6px; border: none; border-radius: 6px; background: transparent; color: var(--text-dim); font-size: 11px; cursor: pointer; }
+.mie-pstore:hover { color: var(--accent); }
 .mie-btn-panic { background: #b71c1c; border-color: #ff5252; color: #fff; letter-spacing: .1em; padding: 6px 22px; }
 .mie-btn-panic:hover { background: #d32f2f; }
 .mie-btn-panic.armed { animation: mie-blink .6s infinite alternate; }

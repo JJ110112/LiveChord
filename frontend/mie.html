@@ -7,7 +7,7 @@
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
   <link rel="stylesheet" href="/css/base.css?v=24">
-  <link rel="stylesheet" href="/css/mie.css?v=5">
+  <link rel="stylesheet" href="/css/mie.css?v=6">
 </head>
 <body class="mie-body">
   <!-- 頂列：MODE / SCENE / KEY / CHORD / BPM / clock / PANIC -->
@@ -32,6 +32,13 @@
     <div class="mie-pill mie-uc4" title="最後收到的 UC4 控制訊息（用來對 control_map.json 綁定）"><span class="mie-lbl">UC4</span><span id="mieUc4" class="mie-val">—</span></div>
     <div class="mie-spacer"></div>
     <button id="mieResume" class="mie-btn" title="離開 BYPASS，回到 scene 的模式">RESUME</button>
+    <div class="mie-preset" title="A / LIVE / B：中間是你正在調的，左右是存好的。切過去再切回來，LIVE 原封不動">
+      <button class="mie-pbtn" data-slot="A">A</button>
+      <button class="mie-pbtn is-on" data-slot="LIVE">LIVE</button>
+      <button class="mie-pbtn" data-slot="B">B</button>
+      <button class="mie-pstore" data-store="A" title="把目前設定存到 A">＋A</button>
+      <button class="mie-pstore" data-store="B" title="把目前設定存到 B">＋B</button>
+    </div>
     <button id="mieSave" class="mie-btn" title="把目前所有調整寫回 scene 檔">儲存</button>
     <button id="miePanic" class="mie-btn mie-btn-panic" title="兩個 Out port 各自 CH1–16 送 CC120/123/64=0，再補 note_off；引擎進 BYPASS（快捷鍵 Esc Esc）">PANIC</button>
   </header>
@@ -74,6 +81,6 @@
     </section>
   </main>
 
-  <script src="/js/mie.js?v=14"></script>
+  <script src="/js/mie.js?v=15"></script>
 </body>
 </html>

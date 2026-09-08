@@ -25,7 +25,7 @@ from . import algos, mutation
 from .constraint import (collision_for, constrain, diatonic_map, edge_range, late_bind,
                          voice_lead_for)
 from .events import MieEvent, Proposal, next_id
-from .graph import ALGOS_PHASE1, MODES, InteractionGraph, Instrument, Scene
+from .graph import _EDGE_FIELDS, ALGOS_PHASE1, MODES, InteractionGraph, Instrument, Scene
 from .io_rtmidi import panic_messages
 from .probability import p_eff, roll
 from .safety import Safety, SelfEchoFilter
@@ -69,6 +69,9 @@ class Engine:
         self._cc_seen: dict[tuple[int, int], tuple[float, int]] = {}
         self._sync_knobs()
         self._phrase_shift: dict[tuple, object] = {}
+        self.preset_slot = "LIVE"
+        self.preset_dirty = False
+        self._live_backup: Optional[dict] = None
         self.echo_filter = SelfEchoFilter(0.008)
         self.sched = Scheduler(clock, self._emit, self._before_on)
         self.in_queue: "queue.Queue[MieEvent | tuple]" = queue.Queue()
@@ -181,6 +184,86 @@ class Engine:
                      frm_q=pair.capture_quality, to=target[0], to_q=target[1])
         return target
 
+    # ------------------------------------------------------------- presets
+    # Borrowed from the Bad Mood pedal, which puts two stored settings and a
+    # LIVE position on one three-way toggle. The value is not the storage - it
+    # is that the middle position holds what you were just doing, so you can
+    # flip A / LIVE / B and hear three versions of the same moment. Comparing
+    # two settings otherwise means editing, playing, editing back, and playing
+    # again, by which time the ear has forgotten the first one.
+    PRESET_SLOTS = ("A", "B")
+
+    def preset_capture(self) -> dict:
+        """Everything a preset holds: the scene globals and each edge's settings.
+
+        The graph itself (which edges exist, and what they connect) is NOT part
+        of a preset. A preset is a way of playing the same rig, so applying one
+        must never rebuild the graph - see `preset_apply`.
+        """
+        return {"globals": dict(self.scene.globals),
+                "edges": {e.id: e.to_dict() for e in self.graph.edges}}
+
+    def preset_apply(self, data: dict) -> int:
+        """Apply a captured preset IN PLACE. Returns how many edges it touched.
+
+        In place, because the point is to switch while playing. `load_scene`
+        releases every sounding note and clears the lane state, which would cut
+        the music off at every flip; the same settings applied through the
+        ordinary setters leave the lanes, the phrase buffers and the ringing
+        notes exactly where they are.
+        """
+        for k, v in (data.get("globals") or {}).items():
+            self.set_global(k, v)
+        n = 0
+        for eid, d in (data.get("edges") or {}).items():
+            e = self.graph.find_edge(eid)
+            if e is None:
+                continue                # the scene has changed under the preset
+            for k, v in d.items():
+                if k in ("id", "src", "dst", "algo"):
+                    continue            # structure, not setting
+                self.set_edge(eid, k, v)
+            n += 1
+        return n
+
+    def preset_save(self, slot: str) -> bool:
+        slot = str(slot).upper()
+        if slot not in self.PRESET_SLOTS:
+            return False
+        self.scene.presets[slot] = self.preset_capture()
+        self._ui("preset", action="save", slot=slot)
+        return True
+
+    def preset_select(self, slot: str) -> bool:
+        """Move the three-way switch. LIVE restores what was there before.
+
+        Leaving LIVE stashes it first, so an evening of tweaking is not lost by
+        glancing at a preset - which is exactly the accident the middle position
+        exists to prevent.
+        """
+        slot = str(slot).upper()
+        if slot == self.preset_slot:
+            return True
+        if slot == "LIVE":
+            if self._live_backup is not None:
+                self.preset_apply(self._live_backup)
+                self._live_backup = None
+            self.preset_slot, self.preset_dirty = "LIVE", False
+            self._ui("preset", action="select", slot="LIVE")
+            return True
+        if slot not in self.PRESET_SLOTS:
+            return False
+        data = self.scene.presets.get(slot)
+        if not data:
+            self._ui("preset", action="empty", slot=slot)
+            return False
+        if self.preset_slot == "LIVE":
+            self._live_backup = self.preset_capture()
+        self.preset_apply(data)
+        self.preset_slot, self.preset_dirty = slot, False
+        self._ui("preset", action="select", slot=slot)
+        return True
+
     def scene_snapshot(self):
         """The scene as it stands, safe to serialise off the engine thread.
 
@@ -192,7 +275,7 @@ class Engine:
         return Scene(id=self.scene.id, name=self.scene.name, mode=self.mode,
                      globals=dict(self.scene.globals), edges=edges, key=self.scene.key,
                      bpm=self.scene.bpm, beats_per_bar=self.scene.beats_per_bar,
-                     path=self.scene.path)
+                     presets=dict(self.scene.presets), path=self.scene.path)
 
     def note_ui(self, typ: str, **kw) -> None:
         """Put a line in the event stream from outside the engine thread."""
@@ -274,7 +357,10 @@ class Engine:
         e = self.graph.find_edge(edge_id)
         if e is None:
             return False
-        if hasattr(e, key) and key not in ("params", "last_fire_t"):
+        # `hasattr` is the wrong test: `lane` is a read-only property computed
+        # from params, so writing it raised AttributeError. Only the declared
+        # edge fields are real attributes; everything else belongs in params.
+        if key in _EDGE_FIELDS and key not in ("id",):
             cur = getattr(e, key)
             if isinstance(cur, set):
                 value = set(value)
@@ -288,6 +374,8 @@ class Engine:
         else:
             e.params[key] = value
         self._ui("set", path=f"edge.{edge_id}.{key}", value=value)
+        if self.preset_slot != "LIVE":
+            self.preset_dirty = True
         return True
 
     def set_instrument(self, ch: int, key: str, value) -> bool:
@@ -931,6 +1019,8 @@ class Engine:
             "mode": self.mode, "bypass": self.bypass, "panicked": self.panicked,
             "scene": {"id": self.scene.id, "name": self.scene.name, "mode": self.scene.mode,
                       "global": self.scene.globals, "bpm": self.scene.bpm},
+            "preset": {"slot": self.preset_slot, "dirty": self.preset_dirty,
+                       "stored": sorted(k for k, v in self.scene.presets.items() if v)},
             "state": self.st.to_dict(now),
             "restraint": round(p_eff(_UNIT_EDGE, {"prob_scale": 1.0, "restraint": self.scene.globals.get("restraint", 1.0),
                                                   "restraint_curve": self.scene.globals.get("restraint_curve", 1.0)},

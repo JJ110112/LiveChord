@@ -89,10 +89,24 @@
     syncSlider("gDensity", g.density === undefined ? 0.5 : g.density, 2);
     syncSlider("gProb", g.prob_scale, 2); syncSlider("gChaos", g.chaos, 2); syncSlider("gRestraint", g.restraint, 2);
     if ($("#mieSceneSel").options.length && !$("#mieSceneSel").matches(":focus")) $("#mieSceneSel").value = s.scene.id;
+    renderPreset(s.preset);
     renderInstruments(s);
     renderEdges(s);
     renderStats(s);
   }
+  function renderPreset(p) {
+    if (!p) return;
+    const stored = new Set(p.stored || []);
+    document.querySelectorAll(".mie-pbtn").forEach((b) => {
+      const slot = b.dataset.slot;
+      b.classList.toggle("is-on", slot === p.slot);
+      // an empty slot is shown faded rather than hidden: you should be able to
+      // see that A is free before you decide to put something in it
+      b.classList.toggle("is-empty", slot !== "LIVE" && !stored.has(slot));
+      b.classList.toggle("is-dirty", slot === p.slot && slot !== "LIVE" && !!p.dirty);
+    });
+  }
+
   function syncSlider(id, v, digits) {
     const el = document.getElementById(id);
     if (!el || v === undefined || el.matches(":active")) return;
@@ -302,6 +316,10 @@
   $("#miePanic").addEventListener("click", () => send({ type: "panic" }));
   $("#mieResume").addEventListener("click", () => send({ type: "resume" }));
   // Everything tuned on this panel lives only in memory until this is pressed.
+  document.querySelectorAll(".mie-pbtn").forEach((b) =>
+    b.addEventListener("click", () => send({ type: "preset", slot: b.dataset.slot })));
+  document.querySelectorAll(".mie-pstore").forEach((b) =>
+    b.addEventListener("click", () => send({ type: "preset_save", slot: b.dataset.store })));
   $("#mieSave").addEventListener("click", () => {
     const as = prompt("另存為新 scene 的編號（留空 = 覆寫目前的）", "");
     if (as === null) return;

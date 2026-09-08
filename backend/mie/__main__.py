@@ -115,6 +115,10 @@ def main(argv=None) -> int:
                     logging.getLogger("mie.ui").exception("mie: scene load failed")
                     return
                 engine.submit(engine.load_scene, sc)
+            elif t == "preset":
+                engine.submit(engine.preset_select, str(msg.get("slot", "LIVE")))
+            elif t == "preset_save":
+                engine.submit(engine.preset_save, str(msg.get("slot", "A")))
             elif t == "save_scene":
                 # file I/O off the engine thread, and a snapshot of the graph so
                 # a parameter cannot change under us mid-write

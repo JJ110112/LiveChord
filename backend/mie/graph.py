@@ -162,6 +162,7 @@ class Scene:
     key: Optional[KeyInfo] = None
     bpm: float = 92.0
     beats_per_bar: int = 4
+    presets: dict = field(default_factory=dict)
     path: Optional[str] = None
 
     GLOBAL_DEFAULTS = {"prob_scale": 0.6, "chaos": 0.0, "restraint": 1.0, "restraint_curve": 1.0,
@@ -180,13 +181,15 @@ class Scene:
         edges = [Edge.from_json(e, i) for i, e in enumerate(d.get("edges", []))]
         return cls(id=str(d.get("id", "00")), name=d.get("name", "scene"), mode=d.get("mode", "SAFE"),
                    globals=g, edges=edges, key=key, bpm=float(d.get("bpm", 92)),
-                   beats_per_bar=int(d.get("beats_per_bar", 4)), path=path)
+                   beats_per_bar=int(d.get("beats_per_bar", 4)),
+                   presets=dict(d.get("presets") or {}), path=path)
 
     def to_dict(self) -> dict:
         return {"id": self.id, "name": self.name, "mode": self.mode, "global": self.globals,
                 "bpm": self.bpm, "beats_per_bar": self.beats_per_bar,
                 "key": {"tonic": NOTE_NAMES[self.key.tonic_pc], "mode": self.key.mode} if self.key else None,
-                "edges": [e.to_dict() for e in self.edges]}
+                "edges": [e.to_dict() for e in self.edges],
+                "presets": self.presets}
 
 
 def load_scene(path_or_id: str) -> Scene:

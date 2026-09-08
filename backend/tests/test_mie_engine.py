@@ -2055,3 +2055,98 @@ def test_a_saved_density_is_in_force_from_the_start():
     assert eng.st.density_knob == 0.9
     eng.load_scene(Scene.from_json({"id": "u", "name": "u", "global": {"density": 0.1}, "edges": []}))
     assert eng.st.density_knob == 0.1
+
+
+# ------------------------------------------------------------ A / LIVE / B
+def _preset_edges() -> list[dict]:
+    return [{"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 0.5, "repeats": 3,
+             "delay_beats": 1.0, "constraint": "free", "lane": "echo"}]
+
+
+def test_live_survives_a_look_at_a_preset():
+    """The middle position is the whole point: it holds what you were just
+    doing, so glancing at a stored setting cannot cost you an evening of
+    tweaking."""
+    eng, clk, out = make(_preset_edges())
+    eng.set_edge("e", "repeats", 6)
+    eng.set_global("density", 0.9)
+    eng.preset_save("A")
+    eng.set_edge("e", "repeats", 2)          # …and carry on working
+    eng.set_global("density", 0.2)
+    assert eng.preset_slot == "LIVE"
+
+    eng.preset_select("A")
+    assert eng.preset_slot == "A"
+    assert eng.graph.find_edge("e").params["repeats"] == 6
+    assert eng.scene.globals["density"] == 0.9
+
+    eng.preset_select("LIVE")
+    assert eng.preset_slot == "LIVE"
+    assert eng.graph.find_edge("e").params["repeats"] == 2, "the live state was lost"
+    assert eng.scene.globals["density"] == 0.2
+
+
+def test_switching_preset_does_not_cut_the_music_off():
+    """Switching must be playable: `load_scene` releases every sounding note and
+    clears the lane state, which would chop the music at every flip. A preset is
+    the same rig played differently, so it is applied in place."""
+    edges = _preset_edges() + [
+        {"id": "sh", "src": 0, "dst": 11, "algo": "shadow", "prob": 1.0, "delay_ms": 10,
+         "shadow": "top", "constraint": "free", "lane": "shadow", "max_hold_s": 8.0}]
+    eng, clk, out = make(edges)
+    eng.preset_save("A")
+    hold_chord(eng, clk, 9, [60, 64, 67])
+    run_for(eng, clk, 0.5)
+    sounding = sorted(k for k in eng.st.active_gen)
+    assert sounding, "nothing was sounding to begin with"
+    eng.preset_select("A")
+    run_for(eng, clk, 0.1)
+    assert sorted(k for k in eng.st.active_gen) == sounding, "the flip cut the notes off"
+
+
+def test_a_preset_changes_settings_not_the_rig():
+    """A preset is a way of playing the same rig. It must never add, remove or
+    re-route an edge - if the scene has moved on, the missing edge is skipped."""
+    eng, clk, out = make(_preset_edges())
+    eng.preset_save("A")
+    data = eng.scene.presets["A"]
+    data["edges"]["ghost"] = {"id": "ghost", "src": 0, "dst": 12, "algo": "echo", "prob": 1.0}
+    data["edges"]["e"]["dst"] = 99          # a preset must not re-route
+    eng.preset_apply(data)
+    assert [e.id for e in eng.graph.edges] == ["e"], "a preset added an edge"
+    assert eng.graph.find_edge("e").dst == 10, "a preset re-routed an edge"
+
+
+def test_editing_while_on_a_preset_is_marked():
+    eng, clk, out = make(_preset_edges())
+    eng.preset_save("A")
+    eng.preset_select("A")
+    assert not eng.preset_dirty
+    eng.set_edge("e", "repeats", 9)
+    assert eng.preset_dirty, "an edit on a stored preset went unmarked"
+    eng.preset_save("A")                     # saving adopts the edit
+    assert eng.scene.presets["A"]["edges"]["e"]["repeats"] == 9
+
+
+def test_an_empty_slot_changes_nothing():
+    eng, clk, out = make(_preset_edges())
+    eng.set_edge("e", "repeats", 4)
+    assert eng.preset_select("B") is False
+    assert eng.preset_slot == "LIVE"
+    assert eng.graph.find_edge("e").params["repeats"] == 4
+
+
+def test_presets_are_saved_with_the_scene():
+    import json
+    import tempfile
+    from backend.mie.graph import Scene, save_scene
+
+    eng, clk, out = make(_preset_edges())
+    eng.set_edge("e", "repeats", 5)
+    eng.preset_save("A")
+    snap = eng.scene_snapshot()
+    with tempfile.TemporaryDirectory() as d:
+        snap.path = f"{d}/s.json"
+        save_scene(snap)
+        back = Scene.from_json(json.load(open(snap.path, encoding="utf-8")), snap.path)
+    assert back.presets["A"]["edges"]["e"]["repeats"] == 5
