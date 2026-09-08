@@ -38,8 +38,16 @@ def phrase_gap(st: MusicalState, edge: Edge) -> float:
     So the threshold also has to be relative to how fast this player is
     actually playing: a real phrase break is several times their own note
     spacing. Whichever is longer wins.
+
+    The TIME knob deliberately does NOT reach this number. Everything else it
+    touches is a wait the engine performs - how long an echo holds off, how
+    long a pad sits before entering - and stretching those is the point. This
+    is not a wait, it is a DETECTOR threshold on the player's own playing, and
+    multiplying it just makes the engine deaf: on the 20:33 take at TIME 3x it
+    needed 1.22 s of silence to notice a phrase had ended, the player's median
+    note spacing was 0.364 s, and the lane spoke three times in three minutes.
     """
-    beats = t_beats(edge, st, "phrase_gap_beats", 1.0)
+    beats = float(edge.params.get("phrase_gap_beats", 1.0)) * st.beat_s
     iois = sorted(x for x in st.recent_ioi if 0.05 < x < 4.0)
     if len(iois) >= 4:
         mid = iois[len(iois) // 2]

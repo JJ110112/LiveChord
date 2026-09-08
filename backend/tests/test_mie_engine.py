@@ -2606,3 +2606,29 @@ def test_the_engine_says_nothing_new_while_frozen():
     play(eng, clk, 9, 72, vel=90, hold=0.3)
     run_for(eng, clk, 0.5)
     assert len(out.notes("note_on")) > before, "it stayed deaf after unfreezing"
+
+
+def test_the_time_knob_does_not_deafen_the_phrase_detector():
+    """Everything else TIME touches is a wait the engine performs. The phrase
+    gap is not a wait, it is a detector threshold on the player's own playing,
+    and stretching it just makes the engine stop noticing phrases: at TIME 3x
+    on the 20:33 take it wanted 1.22 s of silence while the player's median
+    note spacing was 0.364 s."""
+    from backend.mie.algos.phrase import phrase_gap
+
+    eng, clk, out = make([_phrase_edge(phrase_gap_beats=1.0)])
+    edge = eng.graph.find_edge("ph")
+    eng.st.bpm = 120.0
+    eng.st.clock_source = "manual"
+    base = phrase_gap(eng.st, edge)
+    eng.set_global("time", 3.0)
+    assert eng.st.time_knob == 3.0, "the knob did not take"
+    assert phrase_gap(eng.st, edge) == pytest.approx(base), \
+        "the TIME knob moved the phrase-end threshold"
+
+    # …while it still stretches the waits, which is what it is for
+    from backend.mie.algos import delay_s
+    eng.set_global("time", 1.0)
+    quick = delay_s(edge, eng.st)
+    eng.set_global("time", 3.0)
+    assert delay_s(edge, eng.st) == pytest.approx(quick * 3), "TIME stopped stretching delays"
