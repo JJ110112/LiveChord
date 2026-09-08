@@ -24,7 +24,7 @@ from typing import Callable, Optional
 from . import algos, mutation
 from .algos import quantize_time
 from .constraint import (collision_for, constrain, diatonic_map, edge_range, late_bind,
-                         voice_lead_for)
+                         states_a_third, voice_lead_for)
 from .events import MieEvent, Proposal, next_id
 from .graph import _EDGE_FIELDS, ALGOS_PHASE1, MODES, InteractionGraph, Instrument, Scene
 from .io_rtmidi import panic_messages
@@ -180,7 +180,7 @@ class Engine:
         # real harmonic information, leave the phrase as it was played.
         chord = self.st.chord
         target = None
-        if chord is not None and len(chord.tones) >= 3 and (
+        if chord is not None and len(chord.tones) >= 3 and states_a_third(chord.quality) and (
                 chord.root_pc != pair.capture_root or chord.quality != pair.capture_quality):
             target = (chord.root_pc, chord.quality)
         if len(self._phrase_shift) > 64:

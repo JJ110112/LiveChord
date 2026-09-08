@@ -2369,3 +2369,39 @@ def test_the_time_knob_reaches_a_pad_as_well_as_an_echo():
 
     quick, slow = entered_at(1.0), entered_at(2.0)
     assert slow > quick * 1.6, f"the wait did not stretch: {quick} -> {slow}"
+
+
+def test_a_sus_chord_does_not_decide_a_phrase_mode():
+    """18:34 take: Asus2 -> Am was allowed through. A sus chord says nothing
+    about the third, so the scale table has to guess one - it would have read
+    the phrase as major before making it minor. Same reasoning as the bare
+    fifth, one note further on."""
+    from backend.mie.harmony import recognize
+    from backend.mie.scheduler import NotePair
+
+    eng, clk, out = make([_phrase_edge(follow_chord=True)])
+    pair = NotePair(ch=12, note=69, vel=60, t_on=0, t_off=1, lane="phrase",
+                    capture_root=9, capture_quality="m", pass_id=("p", 1))
+    eng.st.chord = recognize([57, 59, 64], clk())          # Asus2: A B E, no third
+    assert eng.st.chord.name == "Asus2"
+    assert eng._phrase_target(pair) is None, "a sus chord chose a mode for the phrase"
+
+    pair2 = NotePair(ch=12, note=69, vel=60, t_on=0, t_off=1, lane="phrase",
+                     capture_root=9, capture_quality="m", pass_id=("p", 2))
+    eng.st.chord = recognize([60, 64, 67], clk())          # C: a third at last
+    assert eng._phrase_target(pair2) == (0, "")
+
+
+def test_every_chord_scale_is_a_real_scale():
+    """The augmented row was whole-tone padded to seven entries by repeating a
+    degree, which is not a scale - degrees 6 and 7 mapped to the same pitch."""
+    from backend.mie.constraint import _CHORD_SCALES, chord_scale
+
+    for quality, iv in _CHORD_SCALES.items():
+        assert len(iv) == 7, f"{quality!r} has {len(iv)} degrees"
+        assert len(set(iv)) == 7, f"{quality!r} repeats a degree: {iv}"
+        assert list(iv) == sorted(iv), f"{quality!r} is out of order: {iv}"
+        assert iv[0] == 0 and iv[-1] < 12, f"{quality!r} leaves the octave: {iv}"
+    # and the augmented scale still contains the chord it is named for
+    aug = set(chord_scale("aug"))
+    assert {0, 4, 8} <= aug, aug
