@@ -90,6 +90,10 @@
     syncSlider("gProb", g.prob_scale, 2); syncSlider("gChaos", g.chaos, 2); syncSlider("gRestraint", g.restraint, 2);
     if ($("#mieSceneSel").options.length && !$("#mieSceneSel").matches(":focus")) $("#mieSceneSel").value = s.scene.id;
     renderPreset(s.preset);
+    const ed = s.edits || {};
+    $("#mieSave").classList.toggle("is-unsaved", !!ed.unsaved);
+    $("#mieSave").title = ed.unsaved ? `有 ${ed.undo} 項調整還沒寫進 scene 檔` : "把目前所有調整寫回 scene 檔";
+    $("#mieUndo").disabled = !ed.undo;
     renderInstruments(s);
     renderEdges(s);
     renderStats(s);
@@ -97,7 +101,16 @@
   function renderPreset(p) {
     if (!p) return;
     const stored = new Set(p.stored || []);
-    document.querySelectorAll(".mie-pbtn").forEach((b) => {
+    $("#mieUndo").addEventListener("click", () => send({ type: "undo" }));
+  $("#mieRevert").addEventListener("click", () => {
+    if (confirm("把所有參數退回 scene 檔存著的值？（未儲存的調整會消失）")) send({ type: "revert" });
+  });
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
+      e.preventDefault(); send({ type: "undo" });
+    }
+  });
+  document.querySelectorAll(".mie-pbtn").forEach((b) => {
       const slot = b.dataset.slot;
       b.classList.toggle("is-on", slot === p.slot);
       // an empty slot is shown faded rather than hidden: you should be able to

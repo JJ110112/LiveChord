@@ -2217,3 +2217,84 @@ def test_every_lane_release_says_why():
     assert reasons, "the sustain lane never released"
     assert "" not in reasons, f"a release went unexplained: {reasons}"
     assert reasons <= {"voice_budget", "human_stopped"}, reasons
+
+
+# --------------------------------------------------------- putting it back
+def test_undo_puts_the_last_change_back():
+    """The 17:21 accident in one line: a knob you can put back is a knob you
+    will explore."""
+    eng, clk, out = make([{"id": "su", "src": 0, "dst": 4, "algo": "sustain", "prob": 1.0,
+                           "low": 55, "high": 88, "lane": "sustain"}])
+    eng.set_edge("su", "high", 55)              # the accident
+    assert eng.graph.find_edge("su").params["high"] == 55
+    assert eng.undo() is True
+    assert eng.graph.find_edge("su").params["high"] == 88, "the register was not restored"
+    assert eng.undo() is False, "there was nothing left to undo"
+
+
+def test_undo_steps_back_through_several_changes():
+    eng, clk, out = make([{"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 0.5,
+                           "repeats": 3, "constraint": "free", "lane": "echo"}])
+    eng.set_edge("e", "repeats", 4)
+    eng.set_edge("e", "repeats", 5)
+    eng.set_global("density", 0.9)
+    eng.undo(); assert eng.scene.globals.get("density") is None
+    eng.undo(); assert eng.graph.find_edge("e").params["repeats"] == 4
+    eng.undo(); assert eng.graph.find_edge("e").params["repeats"] == 3
+
+
+def test_a_preset_switch_does_not_bury_the_undo_stack():
+    """A preset writes a hundred settings at once. Recording each would bury
+    the player's last real move and undo would appear not to work."""
+    eng, clk, out = make([{"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 0.5,
+                           "repeats": 3, "constraint": "free", "lane": "echo"}])
+    eng.preset_save("A")
+    eng.set_edge("e", "repeats", 7)             # the one move worth undoing
+    eng.preset_select("A")
+    eng.preset_select("LIVE")
+    assert eng.undo() is True
+    assert eng.graph.find_edge("e").params["repeats"] == 3, "undo did not reach the real change"
+
+
+def test_revert_goes_back_to_the_file_not_to_a_code_default():
+    """"Default" here means the last state the player deliberately saved, which
+    is what the scene file holds - not what the code happens to ship with."""
+    import json
+    import tempfile
+    from backend.mie.graph import Scene, save_scene
+
+    eng, clk, out = make([{"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 0.5,
+                           "repeats": 3, "constraint": "free", "lane": "echo"}])
+    with tempfile.TemporaryDirectory() as d:
+        snap = eng.scene_snapshot()
+        snap.path = f"{d}/s.json"
+        eng.set_edge("e", "repeats", 6)         # something the player liked
+        snap = eng.scene_snapshot(); snap.path = f"{d}/s.json"
+        save_scene(snap)
+        eng.scene.path = snap.path
+        eng.set_edge("e", "repeats", 1)         # …and then something they did not
+        eng.set_global("density", 0.05)
+        assert eng.revert() is True
+        assert eng.graph.find_edge("e").params["repeats"] == 6
+        # revert is authoritative: a global the file does not carry is dropped,
+        # not merged, or "put it back" would not mean what it says
+        assert "density" not in eng.scene.globals
+
+
+def test_revert_can_take_one_edge_and_leave_the_rest():
+    import tempfile
+    from backend.mie.graph import save_scene
+
+    eng, clk, out = make([{"id": "a", "src": 0, "dst": 10, "algo": "echo", "prob": 0.5,
+                           "repeats": 3, "constraint": "free", "lane": "a"},
+                          {"id": "b", "src": 0, "dst": 11, "algo": "echo", "prob": 0.5,
+                           "repeats": 3, "constraint": "free", "lane": "b"}])
+    with tempfile.TemporaryDirectory() as d:
+        snap = eng.scene_snapshot(); snap.path = f"{d}/s.json"
+        save_scene(snap)
+        eng.scene.path = snap.path
+        eng.set_edge("a", "repeats", 9)
+        eng.set_edge("b", "repeats", 9)
+        assert eng.revert("a") is True
+        assert eng.graph.find_edge("a").params["repeats"] == 3
+        assert eng.graph.find_edge("b").params["repeats"] == 9, "revert touched an edge it was not asked about"

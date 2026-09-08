@@ -7,7 +7,7 @@
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
   <link rel="stylesheet" href="/css/base.css?v=24">
-  <link rel="stylesheet" href="/css/mie.css?v=6">
+  <link rel="stylesheet" href="/css/mie.css?v=7">
 </head>
 <body class="mie-body">
   <!-- 頂列：MODE / SCENE / KEY / CHORD / BPM / clock / PANIC -->
@@ -39,6 +39,8 @@
       <button class="mie-pstore" data-store="A" title="把目前設定存到 A">＋A</button>
       <button class="mie-pstore" data-store="B" title="把目前設定存到 B">＋B</button>
     </div>
+    <button id="mieUndo" class="mie-btn" title="復原上一個參數調整（Ctrl+Z）">↶</button>
+    <button id="mieRevert" class="mie-btn" title="全部退回 scene 檔存著的值">退回檔案</button>
     <button id="mieSave" class="mie-btn" title="把目前所有調整寫回 scene 檔">儲存</button>
     <button id="miePanic" class="mie-btn mie-btn-panic" title="兩個 Out port 各自 CH1–16 送 CC120/123/64=0，再補 note_off；引擎進 BYPASS（快捷鍵 Esc Esc）">PANIC</button>
   </header>
@@ -81,6 +83,6 @@
     </section>
   </main>
 
-  <script src="/js/mie.js?v=16"></script>
+  <script src="/js/mie.js?v=17"></script>
 </body>
 </html>

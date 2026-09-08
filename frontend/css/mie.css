@@ -25,6 +25,11 @@
 .mie-pbtn.is-dirty::after { content: "•"; margin-left: 3px; }
 .mie-pstore { padding: 4px 6px; border: none; border-radius: 6px; background: transparent; color: var(--text-dim); font-size: 11px; cursor: pointer; }
 .mie-pstore:hover { color: var(--accent); }
+/* the Save button carries the one fact the player kept losing: "+A" stores
+   into the running engine, Save is what puts it on disk */
+.mie-btn.is-unsaved { border-color: #ffc107; color: #ffc107; }
+.mie-btn.is-unsaved::after { content: " •"; }
+.mie-btn:disabled { opacity: .35; cursor: default; }
 .mie-btn-panic { background: #b71c1c; border-color: #ff5252; color: #fff; letter-spacing: .1em; padding: 6px 22px; }
 .mie-btn-panic:hover { background: #d32f2f; }
 .mie-btn-panic.armed { animation: mie-blink .6s infinite alternate; }

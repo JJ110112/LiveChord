@@ -72,6 +72,8 @@ class Engine:
         self.preset_slot = "LIVE"
         self.preset_dirty = False
         self._live_backup: Optional[dict] = None
+        self._undo: list = []
+        self._bulk = False
         self.echo_filter = SelfEchoFilter(0.008)
         self.sched = Scheduler(clock, self._emit, self._before_on)
         self.in_queue: "queue.Queue[MieEvent | tuple]" = queue.Queue()
@@ -192,6 +194,79 @@ class Engine:
                      frm_q=pair.capture_quality, to=target[0], to_q=target[1])
         return target
 
+    # -------------------------------------------------------------- undo
+    # The 17:21 take is the argument for this. One drag put a lane's register
+    # ceiling onto its floor, the lane played one pitch for four minutes, and
+    # nothing on screen said so. Constraining the input (a register is a pair)
+    # stops that particular accident; these two stop the NEXT one, whatever it
+    # turns out to be. A knob you can put back is a knob you will explore.
+    UNDO_DEPTH = 40
+
+    def _remember(self, path: str, old) -> None:
+        # A preset or a revert writes a hundred settings at once. Recording each
+        # one would bury the player's last real move under the bulk, and undo
+        # would appear not to work. Those operations are undone by switching
+        # back, not by stepping.
+        if self._bulk:
+            return
+        self._undo.append((path, old))
+        if len(self._undo) > self.UNDO_DEPTH:
+            self._undo.pop(0)
+
+    def undo(self) -> bool:
+        """Put the last parameter change back. Returns False if there is none."""
+        if not self._undo:
+            self._ui("undo", ok=False)
+            return False
+        path, old = self._undo.pop()
+        parts = path.split(".")
+        guard, self._bulk = self._undo, True    # an undo is not itself undoable
+        self._undo = []
+        try:
+            if parts[0] == "global":
+                self.set_global(parts[1], old)
+            elif parts[0] == "edge":
+                self.set_edge(parts[1], parts[2], old)
+            elif parts[0] == "inst":
+                self.set_instrument(int(parts[1]), parts[2], old)
+        finally:
+            self._undo, self._bulk = guard, False
+        self._ui("undo", ok=True, path=path, value=old)
+        return True
+
+    def revert(self, edge_id: Optional[str] = None) -> bool:
+        """Put settings back to the scene FILE - the last thing you chose to keep.
+
+        The file is the honest definition of "default" here: not what the code
+        ships with, but the last state the player deliberately saved. One edge
+        or, with no argument, everything.
+        """
+        from .graph import load_scene
+        if not self.scene.path:
+            return False
+        try:
+            disk = load_scene(self.scene.path)
+        except Exception as e:
+            self._log_error("revert", e)
+            return False
+        data = {"globals": dict(disk.globals),
+                "edges": {e.id: e.to_dict() for e in disk.edges}}
+        if edge_id:
+            d = data["edges"].get(edge_id)
+            if d is None:
+                return False
+            data = {"globals": {}, "edges": {edge_id: d}}
+        else:
+            # Revert is authoritative, not a merge: a setting the file does not
+            # have must go, or a stray global would quietly survive being put
+            # back and "revert" would not mean what it says.
+            for k in [k for k in self.scene.globals if k not in data["globals"]]:
+                self.scene.globals.pop(k, None)
+        self.preset_apply(data)
+        self._undo = []
+        self._ui("revert", edge=edge_id or "*")
+        return True
+
     # ------------------------------------------------------------- presets
     # Borrowed from the Bad Mood pedal, which puts two stored settings and a
     # LIVE position on one three-way toggle. The value is not the storage - it
@@ -220,6 +295,13 @@ class Engine:
         ordinary setters leave the lanes, the phrase buffers and the ringing
         notes exactly where they are.
         """
+        self._bulk = True
+        try:
+            return self._apply_settings(data)
+        finally:
+            self._bulk = False
+
+    def _apply_settings(self, data: dict) -> int:
         for k, v in (data.get("globals") or {}).items():
             self.set_global(k, v)
         n = 0
@@ -284,6 +366,11 @@ class Engine:
                      globals=dict(self.scene.globals), edges=edges, key=self.scene.key,
                      bpm=self.scene.bpm, beats_per_bar=self.scene.beats_per_bar,
                      presets=dict(self.scene.presets), path=self.scene.path)
+
+    def mark_saved(self, path: str) -> None:
+        """The file now matches the engine, so nothing is unsaved any more."""
+        self._undo = []
+        self._ui("saved", path=path)
 
     def note_ui(self, typ: str, **kw) -> None:
         """Put a line in the event stream from outside the engine thread."""
@@ -355,6 +442,7 @@ class Engine:
         self._ui("cc_in", ch=ev.ch, cc=ev.cc, val=ev.val)
 
     def set_global(self, key: str, value) -> None:
+        self._remember(f"global.{key}", self.scene.globals.get(key))
         self.scene.globals[key] = value
         if key == "density":
             self.st.density_knob = None if value is None else float(value)
@@ -368,6 +456,8 @@ class Engine:
         # `hasattr` is the wrong test: `lane` is a read-only property computed
         # from params, so writing it raised AttributeError. Only the declared
         # edge fields are real attributes; everything else belongs in params.
+        self._remember(f"edge.{edge_id}.{key}",
+                       getattr(e, key) if key in _EDGE_FIELDS else e.params.get(key))
         if key in _EDGE_FIELDS and key not in ("id",):
             cur = getattr(e, key)
             if isinstance(cur, set):
@@ -1027,6 +1117,7 @@ class Engine:
             "mode": self.mode, "bypass": self.bypass, "panicked": self.panicked,
             "scene": {"id": self.scene.id, "name": self.scene.name, "mode": self.scene.mode,
                       "global": self.scene.globals, "bpm": self.scene.bpm},
+            "edits": {"undo": len(self._undo), "unsaved": bool(self._undo)},
             "preset": {"slot": self.preset_slot, "dirty": self.preset_dirty,
                        "stored": sorted(k for k, v in self.scene.presets.items() if v)},
             "state": self.st.to_dict(now),
