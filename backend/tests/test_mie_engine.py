@@ -2150,3 +2150,51 @@ def test_presets_are_saved_with_the_scene():
         save_scene(snap)
         back = Scene.from_json(json.load(open(snap.path, encoding="utf-8")), snap.path)
     assert back.presets["A"]["edges"]["e"]["repeats"] == 5
+
+
+def test_a_bare_fifth_does_not_re_spell_a_phrase():
+    """17:13 take: three of five transpositions fired on a chord fragment.
+
+    The recogniser reads whatever is down at that instant, and while a hand is
+    landing that is a bare fifth - it read D5 at t=90.18 and Dm ten milliseconds
+    later. Am -> A5 would map Dorian onto Ionian at the same root, turning a
+    minor phrase major, because a fifth says nothing about the third.
+    """
+    from backend.mie.harmony import recognize
+    from backend.mie.scheduler import NotePair
+
+    eng, clk, out = make([_phrase_edge(follow_chord=True)])
+    pair = NotePair(ch=12, note=69, vel=60, t_on=0, t_off=1, lane="phrase",
+                    capture_root=9, capture_quality="m", pass_id=("p", 1))
+    eng.st.chord = recognize([57, 64], clk())              # A5, mid-strike
+    assert eng.st.chord.name == "A5"
+    assert eng._phrase_target(pair) is None, "a bare fifth was allowed to re-spell the phrase"
+
+    pair2 = NotePair(ch=12, note=69, vel=60, t_on=0, t_off=1, lane="phrase",
+                     capture_root=9, capture_quality="m", pass_id=("p", 2))
+    eng.st.chord = recognize([62, 65, 69], clk())          # the third arrives: Dm
+    assert eng._phrase_target(pair2) == (2, "m")
+
+
+def test_a_phrase_captured_over_a_fragment_is_not_marked_to_follow():
+    """The other end of the same rule: with no third at capture there is no
+    mode to transpose FROM, so the phrase is not marked to follow at all."""
+    from backend.mie.algos import phrase
+    from backend.mie.harmony import recognize
+
+    eng, clk, out = make([_phrase_edge(follow_chord=True, repeats=1)])
+    edge = eng.graph.find_edge("ph")
+    for i, n in enumerate([69, 72, 76]):
+        play(eng, clk, 9, n, vel=70, hold=0.2)
+        if i < 2:
+            run_for(eng, clk, 0.05)
+    run_for(eng, clk, 1.2)
+
+    eng.st.chord = recognize([57, 64], clk())              # A5: a bare fifth
+    props = phrase.tick(eng.st, edge, eng.rng, clk(), {})
+    assert props, "the phrase did not fire"
+    assert all(p.capture_root is None for p in props), "captured a mode from a bare fifth"
+
+    eng.st.chord = recognize([57, 60, 64], clk())          # Am: a real chord
+    props = phrase.tick(eng.st, edge, eng.rng, clk(), {})
+    assert props and all(p.capture_root == 9 for p in props)

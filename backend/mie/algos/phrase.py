@@ -106,8 +106,10 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     # can be moved bodily to whatever chord is in force when it comes back -
     # see `Engine._phrase_transpose`. None when the edge does not ask for it,
     # and the note then returns at its original pitch.
+    # Same rule at the other end: a phrase captured over a bare fifth has no
+    # mode to be transposed FROM, so it is not marked to follow the harmony.
     root, quality = None, ""
-    if p.get("follow_chord") and st.chord is not None:
+    if p.get("follow_chord") and st.chord is not None and len(st.chord.tones) >= 3:
         root, quality = st.chord.root_pc, st.chord.quality
     fire_id = round(st.last_human_on_t or now, 4)
     out: list[Proposal] = []

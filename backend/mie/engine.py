@@ -167,10 +167,18 @@ class Engine:
             return None
         if pair.pass_id in self._phrase_shift:
             return self._phrase_shift[pair.pass_id]
+        # A chord needs a third before it can tell a phrase what mode to be in.
+        # The recogniser reads whatever is down at that instant, and while a
+        # hand is landing that is a bare fifth: on the 17:13 take it read D5 at
+        # t=90.18 and Dm ten milliseconds later. Three of the five
+        # transpositions that take fired on such a fragment - Am -> A5 would
+        # have re-spelled a minor phrase as major, because a fifth implies
+        # nothing about the third and the scale table has to guess. Without
+        # real harmonic information, leave the phrase as it was played.
         chord = self.st.chord
         target = None
-        if chord is not None and (chord.root_pc != pair.capture_root
-                                  or chord.quality != pair.capture_quality):
+        if chord is not None and len(chord.tones) >= 3 and (
+                chord.root_pc != pair.capture_root or chord.quality != pair.capture_quality):
             target = (chord.root_pc, chord.quality)
         if len(self._phrase_shift) > 64:
             self._phrase_shift.clear()      # bounded: passes are seconds long
