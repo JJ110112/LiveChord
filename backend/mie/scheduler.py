@@ -213,6 +213,25 @@ class Scheduler:
         self._push(until_t, "off", target)
         return True
 
+    def drop_pending(self) -> int:
+        """Throw away every note that has not started yet. Returns how many.
+
+        For FREEZE. Holding what is audible is only half of "hold this moment":
+        the echoes of what was played a second ago are still in the queue, and
+        they arrive on top of the held bed a beat or two later. On the 19:46
+        take the player froze one note and heard two more echo returns land
+        afterwards - the tail of what freeze was meant to arrest.
+        """
+        n = 0
+        with self.cv:
+            for pairs in self._live.values():
+                for p in pairs:
+                    if not p.on_sent and not p.dropped:
+                        p.dropped = True
+                        n += 1
+            self.cv.notify()
+        return n
+
     def is_frozen(self, ch: int, note: int) -> bool:
         with self.lock:
             return any(p.note == note and p.frozen and not p.off_sent

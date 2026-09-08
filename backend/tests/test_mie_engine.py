@@ -2558,3 +2558,35 @@ def test_a_lane_that_cannot_make_a_sound_says_so():
     eng.set_edge("e", "vel_scale", 0.8)
     row = [x for x in eng.snapshot()["edges"] if x["id"] == "e"][0]
     assert not row["mute"], "the warning stayed after the cause was fixed"
+
+
+def test_freeze_arrests_the_tail_that_was_already_on_its_way():
+    """19:46 take: the player froze one note and two more echo returns landed
+    afterwards. Holding what is audible is only half of "hold this moment" -
+    the echoes of what was played a second ago are still in the queue and
+    arrive on top of the held bed."""
+    eng, clk, out = make([{"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 1.0,
+                           "repeats": 5, "delay_beats": 1.0, "vel_scale": 1.0, "decay": 1.0,
+                           "min_vel": 1, "constraint": "free", "lane": "echo"}])
+    play(eng, clk, 9, 60, vel=90, hold=0.2)
+    run_for(eng, clk, 0.6)                       # one return out, four queued
+    before = len(out.notes("note_on", ch=10))
+    assert before >= 1 and before < 5, "the test needs returns still waiting"
+    assert eng.freeze(True) > 0
+    run_for(eng, clk, 8.0)
+    assert len(out.notes("note_on", ch=10)) == before, \
+        "a queued return landed after the freeze"
+
+
+def test_freeze_still_lets_the_engine_answer_new_playing():
+    """You freeze a bed in order to play over it, and the engine answering what
+    you play next is the point - only the old tail is arrested."""
+    eng, clk, out = make([{"id": "f", "src": 0, "dst": 11, "algo": "follow", "prob": 1.0,
+                           "interval": 7, "constraint": "free", "lane": "follow"}])
+    play(eng, clk, 9, 60, vel=90, hold=0.3)
+    run_for(eng, clk, 0.2)
+    eng.freeze(True)
+    before = len(out.notes("note_on", ch=11))
+    play(eng, clk, 9, 64, vel=90, hold=0.3)
+    run_for(eng, clk, 0.5)
+    assert len(out.notes("note_on", ch=11)) > before, "the engine went deaf while frozen"

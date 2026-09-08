@@ -230,6 +230,7 @@ class Engine:
                 self.sched.hold(ch, note, now + cap)
                 g.max_dur = max(g.max_dur, cap + (now - g.t_on))   # the watchdog still owns it
                 n += 1
+            pending = self.sched.drop_pending() if n else 0
             if n == 0:
                 # Nothing was sounding, so there is nothing to hold. Latching
                 # anyway made the state flip straight back on the next tick
@@ -241,7 +242,7 @@ class Engine:
                 return 0
             self._frozen = True
             self._frozen_lane = lane
-            self._ui("freeze", on=True, notes=n, lane=lane or "*", cap=cap)
+            self._ui("freeze", on=True, notes=n, lane=lane or "*", cap=cap, cancelled=pending)
             return n
         if not self._frozen:
             return 0                    # not holding: releasing is not an event
