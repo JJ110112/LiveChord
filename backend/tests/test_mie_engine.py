@@ -24,6 +24,7 @@ from backend.mie.engine import Engine  # noqa: E402
 from backend.mie.events import control_event, human_event  # noqa: E402
 from backend.mie.fakes import FakeClock, FakeMidiOut  # noqa: E402
 from backend.mie.graph import Instrument, Scene  # noqa: E402
+from backend.mie.graph import _EDGE_FIELDS  # noqa: E402
 from backend.mie.harmony import recognize  # noqa: E402
 from backend.mie.scales import SCALES, scale_pcs  # noqa: E402
 
@@ -1940,6 +1941,102 @@ def _texture_after(eng, clk, play_fn) -> str:
     play_fn()
     eng.st.refresh_texture(clk())
     return eng.st.texture
+
+
+# ------------------------------------------------- 介入風格預設 (2026-09-09)
+def test_every_style_only_sets_things_the_engine_actually_reads():
+    """A setting that is silently ignored is this project's most expensive bug.
+
+    `"scale": "blues"` was written into a style and did nothing whatsoever -
+    the scale is derived from the key's mode and nothing looks for that global.
+    The same shape as the TIME knob quantising 1.8 to 2 and the panel drawing a
+    boolean as a slider: the control moves, the sound does not, and nothing
+    says so. So every key a style writes has to be one something reads.
+    """
+    import re
+    from backend.mie.graph import KNOWN_GLOBALS, load_styles
+
+    algo_dir = os.path.join(os.path.dirname(__file__), "..", "mie", "algos")
+    shared = ""
+    for f in ("__init__.py",):
+        with open(os.path.join(algo_dir, f), encoding="utf-8") as fh:
+            shared += fh.read()
+    with open(os.path.join(algo_dir, "..", "constraint.py"), encoding="utf-8") as fh:
+        shared += fh.read()
+
+    styles = load_styles()
+    assert styles, "no styles loaded at all"
+    problems = []
+    for sty in styles:
+        for k in (sty.get("globals") or {}):
+            if k not in KNOWN_GLOBALS:
+                problems.append(f'{sty["id"]}: global {k!r} is not one the engine reads')
+        for algo, d in (sty.get("algos") or {}).items():
+            path = os.path.join(algo_dir, f"{algo}.py")
+            assert os.path.isfile(path), f'{sty["id"]}: no algorithm named {algo!r}'
+            with open(path, encoding="utf-8") as fh:
+                src = fh.read() + shared
+            for k in d:
+                if k in _EDGE_FIELDS:
+                    continue                     # a declared field on the edge
+                if re.search("[\"']" + re.escape(k) + "[\"']", src):
+                    continue                     # the algorithm asks for it by name
+                problems.append(f'{sty["id"]}: {algo}.{k!r} is read by nothing')
+    assert not problems, "styles set things nothing reads: " + "; ".join(problems)
+
+
+def test_a_style_can_be_taken_back_off():
+    """Applying one stashes what was there, and clearing restores THAT.
+
+    Not the previous style's settings - the player's own. Switching between
+    styles to compare them must not quietly make one of them the new baseline.
+    """
+    eng, clk, out = make([_sustain_edge()])
+    eng.styles = [
+        {"id": "loud", "globals": {"tension": 0.9, "density": 0.9},
+         "algos": {"sustain": {"vel": 100}}},
+        {"id": "quiet", "globals": {"tension": 0.1, "density": 0.1},
+         "algos": {"sustain": {"vel": 20}}},
+    ]
+    edge = eng.graph.edges[0]
+    before = (eng.scene.globals.get("tension"), eng.scene.globals.get("density"),
+              edge.params.get("vel"))
+    before_hold = edge.params.get("hold_beats")
+
+    assert eng.apply_style("loud")
+    assert eng.style == "loud"
+    assert edge.params["vel"] == 100 and eng.scene.globals["tension"] == 0.9
+
+    # straight from one style to another lands on THAT style, not on it stacked
+    # over the last one: `loud` sets `hold_beats` and `quiet` does not mention
+    # it, so without this the pad would keep the loud style's length
+    eng.styles[0]["algos"]["sustain"]["hold_beats"] = 24
+    assert eng.apply_style("loud")
+    assert edge.params["hold_beats"] == 24
+    assert eng.apply_style("quiet")
+    assert edge.params["vel"] == 20
+    assert edge.params["hold_beats"] == before_hold,         f"switching styles kept the previous one's hold_beats ({edge.params['hold_beats']})"
+
+    assert eng.clear_style()
+    assert eng.style is None
+    after = (eng.scene.globals.get("tension"), eng.scene.globals.get("density"),
+             edge.params.get("vel"))
+    assert after == before, f"clearing a style landed on {after}, not {before}"
+    assert not eng.clear_style(), "clearing twice should report there was nothing to clear"
+    assert not eng.apply_style("no-such-style")
+
+
+def test_a_style_is_keyed_by_algorithm_so_it_fits_any_scene():
+    """A scene names its own edges; a style that referenced them would fit one rig."""
+    eng, clk, out = make([
+        {"id": "whatever_i_called_it", "src": 0, "dst": 10, "algo": "echo",
+         "prob": 1.0, "repeats": 3, "lane": "echo"},
+        {"id": "and_this_one", "src": 0, "dst": 12, "algo": "echo",
+         "prob": 1.0, "repeats": 3, "lane": "echo2"},
+    ])
+    eng.styles = [{"id": "s", "globals": {}, "algos": {"echo": {"repeats": 1}}}]
+    assert eng.apply_style("s")
+    assert [e.params["repeats"] for e in eng.graph.edges] == [1, 1],         "a style missed an edge because of what the scene happened to call it"
 
 
 def test_replay_tool_reproduces_a_take_and_isolates_one_setting(tmp_path):

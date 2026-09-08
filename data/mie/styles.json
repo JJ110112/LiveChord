@@ -1,0 +1,191 @@
+{
+  "_note": "介入風格預設 (plan §11 Phase 2). A style is a NAMED BUNDLE OF SETTINGS THAT ALREADY EXIST - it adds no new engine behaviour. It is keyed by ALGORITHM, never by edge id, so one style works on any scene: a scene names its own edges (phrase_modx, iridium_to_wavestate) and a style that referenced them would only ever fit one rig. Applying a style stashes what was there first, so 取消風格 puts it all back. Every value here is a STARTING POINT chosen from what the machinery supports, not a claim about how the music should sound - play each one and move the sliders.",
+  "_tension": "0 = chord tones only. 0.35+ adds the diatonic 9/11/13. 0.70+ any natural extension. 0.85+ the altered tones (b9 #9 #11 b13).",
+  "_time": "one knob stretching or compressing every wait in the scene: echo delays, how long a pad holds, how much silence a lane wants before entering. It QUANTISES to musical ratios (1/4 1/3 1/2 2/3 1 1.5 2 3 4), so write a value that IS one of them - 1.8 lands on 2 and 0.85 lands on 1, and a style that meant to be slower or tighter would then do nothing and say nothing.",
+  "_density": "how thick the engine's answer is; it scales how many notes a lane offers.",
+  "styles": [
+    {
+      "id": "worship",
+      "name": "敬拜 / 氛圍",
+      "hint": "長音、寬聲部、慢回音。引擎在下面鋪著，不跟你搶前面",
+      "globals": {
+        "tension": 0.2,
+        "density": 0.35,
+        "time": 1.5,
+        "prob_scale": 0.5,
+        "restraint": 1.0
+      },
+      "algos": {
+        "sustain": {
+          "constraint": "function",
+          "hold_beats": 12,
+          "vel": 38,
+          "release_beats": 3.0,
+          "voice_lead": "octave"
+        },
+        "silence": {
+          "constraint": "chord",
+          "hold_s": 16,
+          "vel": 34
+        },
+        "echo": {
+          "decay": 0.72,
+          "dur_decay": 0.9,
+          "vel_scale": 0.6
+        },
+        "phrase": {
+          "decay": 0.7,
+          "repeats": 2,
+          "vel_scale": 0.65
+        },
+        "follow": {
+          "vel_scale": 0.55
+        },
+        "shadow": {
+          "vel_scale": 0.6
+        }
+      }
+    },
+    {
+      "id": "jazz",
+      "name": "爵士 / 和聲擴展",
+      "hint": "延伸音與變化音全開，聲部走最短路徑。和弦越複雜它跟得越緊",
+      "globals": {
+        "tension": 0.85,
+        "density": 0.6,
+        "time": 1.0,
+        "prob_scale": 0.7,
+        "restraint": 0.8
+      },
+      "algos": {
+        "sustain": {
+          "constraint": "function",
+          "voice_lead": "octave",
+          "hold_beats": 6
+        },
+        "silence": {
+          "constraint": "function"
+        },
+        "follow": {
+          "constraint": "function",
+          "voice_lead": "octave"
+        },
+        "shadow": {
+          "constraint": "function"
+        },
+        "phrase": {
+          "follow_chord": true,
+          "decay": 0.7
+        },
+        "echo": {
+          "constraint": "free"
+        }
+      }
+    },
+    {
+      "id": "pop",
+      "name": "流行 / 抒情",
+      "hint": "乾淨的和弦內音，規律的回應，不加味精",
+      "globals": {
+        "tension": 0.0,
+        "density": 0.5,
+        "time": 1.0,
+        "prob_scale": 0.6,
+        "restraint": 1.0
+      },
+      "algos": {
+        "sustain": {
+          "constraint": "chord",
+          "hold_beats": 8,
+          "vel": 46
+        },
+        "silence": {
+          "constraint": "chord"
+        },
+        "follow": {
+          "constraint": "chord"
+        },
+        "shadow": {
+          "constraint": "chord"
+        },
+        "phrase": {
+          "constraint": "free",
+          "decay": 0.75,
+          "follow_chord": true
+        },
+        "echo": {
+          "constraint": "free",
+          "decay": 0.55
+        }
+      }
+    },
+    {
+      "id": "blues",
+      "name": "藍調 / R&B",
+      "hint": "變化音全開、回應咬得比較近。注意：這不是強制藍調音階（引擎的音階是從調式推出來的），是張力 0.9 讓變化音進來",
+      "globals": {
+        "tension": 0.9,
+        "density": 0.6,
+        "time": 0.6667,
+        "prob_scale": 0.7,
+        "restraint": 0.7
+      },
+      "algos": {
+        "sustain": {
+          "constraint": "function",
+          "hold_beats": 5
+        },
+        "follow": {
+          "constraint": "scale"
+        },
+        "shadow": {
+          "constraint": "scale"
+        },
+        "phrase": {
+          "decay": 0.7,
+          "delay_beats": 0.5
+        },
+        "echo": {
+          "decay": 0.6,
+          "delay_beats": 0.75
+        }
+      }
+    },
+    {
+      "id": "sparse",
+      "name": "留白",
+      "hint": "什麼都少一點。要聽清楚自己在彈什麼的時候用",
+      "globals": {
+        "tension": 0.0,
+        "density": 0.2,
+        "time": 1.5,
+        "prob_scale": 0.3,
+        "restraint": 1.0
+      },
+      "algos": {
+        "sustain": {
+          "vel": 34,
+          "voices": 1
+        },
+        "silence": {
+          "voices": 1,
+          "vel": 32
+        },
+        "echo": {
+          "repeats": 1,
+          "vel_scale": 0.5
+        },
+        "phrase": {
+          "repeats": 1,
+          "vel_scale": 0.6
+        },
+        "follow": {
+          "vel_scale": 0.5
+        },
+        "shadow": {
+          "vel_scale": 0.5
+        }
+      }
+    }
+  ]
+}

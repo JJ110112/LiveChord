@@ -17,6 +17,8 @@
 .mie-spacer { flex: 1; }
 .mie-btn { padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-hover); color: var(--text); font-weight: 700; cursor: pointer; }
 .mie-btn:hover { border-color: var(--accent); }
+.mie-style.is-on { border-color: var(--accent); }
+.mie-style.is-on .mie-lbl { color: var(--accent); }
 .mie-preset { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-hover); }
 .mie-pbtn { min-width: 40px; padding: 4px 8px; border: none; border-radius: 6px; background: transparent; color: var(--text-dim); font-weight: 700; font-size: 11px; letter-spacing: .06em; cursor: pointer; }
 .mie-pbtn:hover { color: var(--text); }

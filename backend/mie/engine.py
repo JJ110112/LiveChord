@@ -73,6 +73,10 @@ class Engine:
         self._sync_knobs()
         self._phrase_shift: dict[tuple, object] = {}
         self.preset_slot = "LIVE"
+        from .graph import load_styles
+        self.styles = load_styles()
+        self.style: Optional[str] = None
+        self._style_before: Optional[dict] = None
         self.preset_dirty = False
         self._live_backup: Optional[dict] = None
         self._undo: list = []
@@ -381,6 +385,84 @@ class Engine:
                 self.set_edge(eid, k, v)
             n += 1
         return n
+
+    # ------------------------------------------------------- 介入風格預設
+    # A style is a NAMED BUNDLE OF SETTINGS THAT ALREADY EXIST - tension,
+    # density, the time knob, each algorithm's constraint and weight. It adds
+    # no new engine behaviour, which is the point: everything it does is
+    # something the player can already reach and can already see move.
+    #
+    # Keyed by ALGORITHM, never by edge id. A scene names its own edges
+    # (`phrase_modx`, `iridium_to_wavestate`), so a style written against those
+    # would fit exactly one rig and silently do nothing on the next one.
+    def apply_style(self, style_id: str) -> bool:
+        style = next((s for s in self.styles if s.get("id") == style_id), None)
+        if style is None:
+            return False
+        # Stash what was there BEFORE the first style is applied, so 取消風格
+        # puts back the player's own settings rather than the previous style's.
+        # Switching between styles keeps that same original.
+        if self._style_before is None:
+            self._style_before = self.preset_capture()
+        else:
+            # Going from one style straight to another must land on THAT style,
+            # not on it stacked over the last one: worship sets `hold_beats` and
+            # sparse does not mention it, so switching left the pad holding
+            # twelve beats under a style whose whole point is less of
+            # everything. Put the player's own settings back first, then lay the
+            # new style over them - the same ground every time.
+            self._restore_style_base()
+        self._bulk = True
+        try:
+            for k, v in (style.get("globals") or {}).items():
+                self.set_global(k, v)
+            n = 0
+            for e in list(self.graph.edges):
+                d = (style.get("algos") or {}).get(e.algo)
+                if not d:
+                    continue
+                for k, v in d.items():
+                    if k in ("id", "src", "dst", "algo"):
+                        continue
+                    self.set_edge(e.id, k, v)
+                n += 1
+        finally:
+            self._bulk = False
+        self.style = style_id
+        self._ui("style", action="apply", id=style_id, edges=n)
+        return True
+
+    def _restore_style_base(self) -> None:
+        """Put the settings back to what they were before any style was applied."""
+        self._bulk = True
+        try:
+            # Overwriting is not enough: a style may INTRODUCE a global the
+            # scene never carried (`tension` and `density` are the usual ones),
+            # and `_apply_settings` can only write keys it has - so those would
+            # be left behind and "取消風格" would quietly not undo itself.
+            before = (self._style_before or {}).get("globals") or {}
+            for k in [k for k in self.scene.globals if k not in before]:
+                del self.scene.globals[k]
+            self._apply_settings(self._style_before or {})
+            # the derived knobs read straight off the dict, so re-sync them
+            # after a deletion as well as after a write
+            self.st.density_knob = (None if self.scene.globals.get("density") is None
+                                    else float(self.scene.globals["density"]))
+            self.st.time_knob = self._time_knob()
+            self.safety.set_globals(self.scene.globals)
+        finally:
+            self._bulk = False
+
+    def clear_style(self) -> bool:
+        """Back to what was there before any style was applied."""
+        if self._style_before is None:
+            self.style = None
+            return False
+        self._restore_style_base()
+        self._style_before = None
+        self.style = None
+        self._ui("style", action="clear")
+        return True
 
     def preset_save(self, slot: str) -> bool:
         slot = str(slot).upper()
@@ -1301,6 +1383,9 @@ class Engine:
             "frozen": self._frozen,
             "preset": {"slot": self.preset_slot, "dirty": self.preset_dirty,
                        "stored": sorted(k for k, v in self.scene.presets.items() if v)},
+            "style": {"id": self.style,
+                      "list": [{"id": x["id"], "name": x.get("name") or x["id"],
+                                "hint": x.get("hint", "")} for x in self.styles]},
             "state": self.st.to_dict(now),
             "restraint": round(p_eff(_UNIT_EDGE, {"prob_scale": 1.0, "restraint": self.scene.globals.get("restraint", 1.0),
                                                   "restraint_curve": self.scene.globals.get("restraint_curve", 1.0)},

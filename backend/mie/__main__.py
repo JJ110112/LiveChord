@@ -128,6 +128,9 @@ def main(argv=None) -> int:
                 engine.submit(engine.revert, str(msg.get("edge") or "") or None)
             elif t == "preset":
                 engine.submit(engine.preset_select, str(msg.get("slot", "LIVE")))
+            elif t == "style":
+                sid = str(msg.get("id") or "")
+                engine.submit(engine.apply_style, sid) if sid else engine.submit(engine.clear_style)
             elif t == "preset_save":
                 engine.submit(engine.preset_save, str(msg.get("slot", "A")))
             elif t == "save_scene":

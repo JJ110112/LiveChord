@@ -81,6 +81,7 @@
       ? `脈動推估 ${st.pulse_bpm} BPM，信心 ${Math.round(st.pulse_conf * 100)}%（自由速度的演奏本來就沒有明確脈動）`
       : "尚未從演奏推估出脈動";
     $("#mieBeat").textContent = `${st.beat}/${st.beats_per_bar}`;
+    renderStyles(s.style);
     if (s.last_control) $("#mieUc4").textContent = `${s.last_control.key} = ${s.last_control.val}`;
     pct($("#mDensity"), st.density / 8); $("#vDensity").textContent = st.density.toFixed(1) + "/s";
     pct($("#mEnergy"), st.energy); $("#vEnergy").textContent = Math.round(st.energy * 100) + "%";
@@ -634,6 +635,37 @@
       revertArmed = 0; b.classList.remove("is-arming"); b.textContent = "退回檔案";
     }, 4000);
   });
+  // ---------------------------------------------------------- 介入風格預設
+  // A style is a bundle of settings that already exist - nothing here can do
+  // anything the player could not already do by hand, which is why it is safe
+  // to reach for mid-set. Choosing one stashes the current settings; 取消
+  // puts those back, not the previous style's.
+  let styleSig = "";
+  function renderStyles(info) {
+    const sel = $("#mieStyleSel");
+    const list = (info && info.list) || [];
+    const sig = list.map((x) => x.id).join(",");
+    if (sig !== styleSig) {
+      styleSig = sig;
+      sel.innerHTML = '<option value="">— 不套用 —</option>';
+      list.forEach((x) => {
+        const o = document.createElement("option");
+        o.value = x.id; o.textContent = x.name; o.title = x.hint || "";
+        sel.appendChild(o);
+      });
+    }
+    const cur = (info && info.id) || "";
+    if (document.activeElement !== sel && sel.value !== cur) sel.value = cur;
+    const hit = list.find((x) => x.id === cur);
+    sel.parentElement.title = hit
+      ? `${hit.name}：${hit.hint}　（選「不套用」會全部回到你套用之前的設定）`
+      : "介入風格：一次把張力、厚度、時間與每個演算法的取音範圍換成一組。取消就全部回到你原本的設定";
+    sel.parentElement.classList.toggle("is-on", !!cur);
+  }
+  $("#mieStyleSel").addEventListener("change", (e) => {
+    send({ type: "style", id: e.target.value });
+  });
+
   // ------------------------------------------------------------ 鋼琴捲軸
   // Created lazily: until the player asks for it there is no canvas, no
   // animation frame, and `pushEvent` does nothing extra on the panel's hot

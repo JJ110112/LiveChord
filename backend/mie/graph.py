@@ -198,6 +198,41 @@ class Scene:
                 "presets": self.presets}
 
 
+# Every scene global the engine actually reads. A style (or a scene) may only
+# set one of these: `"scale": "blues"` was written into a style and did nothing
+# at all, because the scale is derived from the key's mode and nothing ever
+# looks for that key. A setting that is silently ignored is the exact failure
+# this project keeps paying for.
+KNOWN_GLOBALS = frozenset({
+    "prob_scale", "chaos", "restraint", "restraint_curve", "max_hop",
+    "max_gen_notes_per_s", "max_chain_events", "max_dur_s", "sustain_dur_s",
+    "avoid_semitone", "tension", "density", "time", "time_steps",
+    "master_gain", "master_cc", "master_ch", "ws_grace_s", "freeze_max_s",
+})
+
+
+def load_styles(path: Optional[str] = None) -> list:
+    """The named intervention styles (plan §11 Phase 2, 介入風格預設).
+
+    A style is a bundle of settings that ALREADY EXIST, keyed by ALGORITHM
+    rather than by edge id: a scene names its own edges (`phrase_modx`,
+    `iridium_to_wavestate`), so a style that referenced them would fit exactly
+    one rig. Missing or unreadable is not an error - the panel simply offers no
+    styles.
+    """
+    path = path or os.path.join(DATA_DIR, "styles.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, ValueError):
+        return []
+    out = []
+    for s in raw.get("styles", []):
+        if isinstance(s, dict) and s.get("id"):
+            out.append(s)
+    return out
+
+
 def load_scene(path_or_id: str) -> Scene:
     path = path_or_id
     if not os.path.exists(path):

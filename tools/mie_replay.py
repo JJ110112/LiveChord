@@ -157,7 +157,27 @@ def parse_overrides(spec: str) -> list[tuple[str, str, object]]:
     return out
 
 
+def apply_style(scene, style) -> None:
+    """The same rule the engine uses: by ALGORITHM, never by edge id."""
+    for k, v in (style.get("globals") or {}).items():
+        scene.globals[k] = v
+    for e in scene.edges:
+        d = (style.get("algos") or {}).get(e.algo)
+        if not d:
+            continue
+        for k, v in d.items():
+            if k in ("id", "src", "dst", "algo"):
+                continue
+            if hasattr(e, k) and k != "params":
+                setattr(e, k, v)
+            else:
+                e.params[k] = v
+
+
 def apply_overrides(scene, overrides) -> None:
+    if isinstance(overrides, tuple) and overrides and overrides[0] == "style":
+        apply_style(scene, overrides[1])
+        return
     for target, key, value in overrides:
         if target == "global":
             scene.globals[key] = value
@@ -256,6 +276,8 @@ LABEL_W = 44
 
 
 def label_for(overrides) -> str:
+    if isinstance(overrides, tuple) and overrides and overrides[0] == "style":
+        return "風格 " + (overrides[1].get("name") or overrides[1]["id"])
     if not overrides:
         return "as recorded"
     parts = []
@@ -323,6 +345,8 @@ def main(argv=None) -> int:
     ap.add_argument("--by-lane", action="store_true", help="also break the notes down per lane")
     ap.add_argument("--out-dir", default=None,
                     help="write each variant's events out as JSONL")
+    ap.add_argument("--styles", action="store_true",
+                    help="one variant per intervention style in data/mie/styles.json")
     ap.add_argument("--no-baseline", action="store_true",
                     help="skip the unchanged run (only meaningful with --set/--sweep)")
     a = ap.parse_args(argv)
@@ -348,6 +372,10 @@ def main(argv=None) -> int:
         path, raw = a.sweep.split("=", 1)
         for v in raw.split(","):
             variants.append(parse_overrides(f"{path}={v.strip()}"))
+    if a.styles:
+        from backend.mie.graph import load_styles
+        for sty in load_styles():
+            variants.append(("style", sty))
     if not variants:
         variants.append([])
 
