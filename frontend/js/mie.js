@@ -174,15 +174,26 @@
   };
 
   function edgeField(e, spec) {
+    // A slider, not a number box. On a laptop a slider is the closest thing to
+    // the hardware knob this will eventually live on: you can sweep it while
+    // listening, which is the only way to find a decay or a register by ear.
+    // The number is still shown, and still typeable, because some values (a
+    // transpose of exactly 7) are named, not felt.
     const wrap = document.createElement("label");
-    wrap.className = "mie-field";
+    wrap.className = "mie-field mie-field-slider";
     wrap.title = spec.hint || spec.key;
     const val = e[spec.key];
-    wrap.innerHTML = `<span>${spec.label}</span><input type="number" min="${spec.min}" max="${spec.max}" step="${spec.step}">`;
-    const inp = wrap.querySelector("input");
-    inp.value = val === undefined ? "" : val;
-    inp.dataset.key = spec.key;
-    inp.addEventListener("change", () => send({ type: "set", path: `edge.${e.id}.${spec.key}`, value: Number(inp.value) }));
+    wrap.innerHTML = `<span class="mie-fl">${spec.label}</span>` +
+      `<input class="mie-fs" type="range" min="${spec.min}" max="${spec.max}" step="${spec.step}">` +
+      `<input class="mie-fn" type="number" min="${spec.min}" max="${spec.max}" step="${spec.step}">`;
+    const sl = wrap.querySelector(".mie-fs");
+    const num = wrap.querySelector(".mie-fn");
+    const set = (v) => send({ type: "set", path: `edge.${e.id}.${spec.key}`, value: Number(v) });
+    sl.value = num.value = val === undefined ? spec.min : val;
+    sl.dataset.key = num.dataset.key = spec.key;
+    // dragging sends live so you hear it move; typing sends on commit
+    sl.addEventListener("input", () => { num.value = sl.value; set(sl.value); });
+    num.addEventListener("change", () => { sl.value = num.value; set(num.value); });
     return wrap;
   }
 
@@ -240,6 +251,9 @@
         if (v === undefined) return;
         inp.value = inp.tagName === "SELECT" ? String(v === true ? CHOICES[inp.dataset.key][0] : v) : v;
       });
+      // `prob` is on the head row too, where it is the one number you glance at
+      const ph = el.querySelector(".mie-edge-head .prob-val");
+      if (ph) ph.textContent = Number(e.prob).toFixed(2);
       el.querySelector(".fires").textContent = e.fires || 0;
       el.classList.toggle("hot", e.ago !== null && e.ago !== undefined && e.ago < 2);
       el.classList.toggle("off", !e.enabled);

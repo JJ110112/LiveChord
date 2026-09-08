@@ -57,9 +57,15 @@
 .mie-edge-head { display: grid; grid-template-columns: 22px 1fr 76px 40px 24px; align-items: center; gap: 8px; }
 .mie-more { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 13px; padding: 0 2px; }
 .mie-more:hover { color: var(--text); }
-.mie-edge-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 4px 8px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
+.mie-edge-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 4px 14px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
 .mie-field { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 11px; color: var(--text-dim); }
 .mie-field input, .mie-field select { width: 62px; background: transparent; color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; font-size: 11.5px; }
+/* one row per parameter: label, slider you can sweep while listening, number you can type */
+.mie-field-slider { display: grid; grid-template-columns: 74px 1fr 46px; gap: 6px; align-items: center; }
+.mie-field-slider .mie-fl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mie-field-slider .mie-fs { width: 100%; accent-color: var(--accent); border: none; padding: 0; }
+.mie-field-slider .mie-fn { width: 46px; text-align: right; font-variant-numeric: tabular-nums; }
+.mie-field-slider .mie-fn::-webkit-outer-spin-button, .mie-field-slider .mie-fn::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .mie-field select option { color: var(--text); background: var(--lc-popup-bg); }
 .mie-edge.hot { border-color: #ffc107; background: rgba(255,193,7,.12); }
 .mie-edge.off { opacity: .5; }
