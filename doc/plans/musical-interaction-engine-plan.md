@@ -1765,6 +1765,47 @@ if edge.params.get("above_held", True) and st.sounding:
 
 MIE 測試 164 個。
 
+**㉓ 22:29 take：「我彈 C chord，MIE 會播放 B5?」—— 會，而且是設定叫它這麼做的**
+
+先說上一個修正：`sustain_strings` 的音高中位數 **B5 → G#4**，26 個音散在 G3–B5 之間，天花板釘死的現象沒有了。整趟 375 人類音 / 566 生成音、丟棄 0、靜音 0、迴圈 0、jitter p95 1.63 ms、`phrase_shift` 4 次。
+
+B5 出自 `sustain_strings`，兩次，各持續 **6.8 秒**。log 對得很死：
+
+```
+t=245.02  B5 dur=6.76s | 手指 C2 | 踏板держ C2 C3 C4 E3 G3
+t=259.30  B5 dur=6.76s | 手指 C2 C3 C4 E4 G3          ← 純 C 大三和弦
+```
+
+三件事疊起來造成的：
+
+1. 這條邊是 `constraint: "function"`。C 在 C 大調是 **tonic 功能**，所以調色盤會擴到同功能的 Em7 與 Am7 —— **B 就是從 Em7／Am7 進來的**。
+2. `sustain._candidates` 偏好「新顏色」：把演奏者正按著的音級排到後面。演奏者按著 C、E、G，於是**它的選項只剩 A、B、D 三個**。
+3. sustain 是長音 lane，`hold_beats 8` → 抽到 B 就是 6.8 秒的大七度懸在三和弦上面。
+
+**修法**：功能擴充可以加顏色，但不能替一個沒有宣告七音的三和弦加上大七度。`colour_pcs` 裡把「與和弦根音相距 11 半音」的擴充音濾掉——`own`（和弦自己的音）不受影響，所以 Cmaj7 的 B 照樣留著，只有沒要七度的和弦不會被硬塞。
+
+| 和弦 | 修改前 | 修改後 | 拿掉 |
+|---|---|---|---|
+| C（三和弦） | C D E G A **B** | C D E G A | B |
+| Cmaj7 | C D E G A B | C D E G A B | — |
+| Am | C E F G A **B** | C E F G A B | — |
+| Dm | C D **E** F A | C D E F A | — |
+| F（三和弦） | C D **E** F A | C D F A | E |
+| C7 | C D E G A A# **B** | C D E G A A# | B |
+
+**九音全部活著**（B 之於 Am、E 之於 Dm）——那正是這個 constraint 存在的理由；被拿掉的只有和弦沒說出口的大七度。
+
+用 log 裡那一刻的實際按鍵（C2 C3 C4 E4 G3）直接問這條 lane 能挑什麼：
+
+```
+修改前：G3 A3 B3 C4 D4 E4 G4 A4 B4 C5 D5 E5 G5 A5 B5 C6 D6 E6
+修改後：G3 A3    C4 D4 E4 G4 A4    C5 D5 E5 G5 A5    C6 D6 E6
+```
+
+B5 本來就在菜單上，現在不在了。
+
+三個測試（純三和弦不得被加大七度、Cmaj7 保留自己的七音、Am 保留九音），舊的 `func == {0,2,4,7,9,11}` 斷言同步更新為 `{0,2,4,7,9}`。MIE 測試 165 個。
+
 #### Phase 2 工項（原本規劃 + 上述新增）
 
 - Answer、Mirror、Density、Velocity(CC)、Register；輪盤邊群組；Scene 切換淡出；UC4 MIDI Learn；矩陣 UI + 互動流動畫；player `playhead` 同步。

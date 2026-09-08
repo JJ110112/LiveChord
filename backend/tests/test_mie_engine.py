@@ -912,7 +912,32 @@ def test_function_constraint_is_wider_than_chord_and_narrower_than_scale():
     func = allowed_pcs(st, "function")
     scale = allowed_pcs(st, "scale")
     assert chord < func < scale
-    assert func == {0, 2, 4, 7, 9, 11}
+    # D, A - the 9th and the 13th, reached through Em7 / Am7 - but NOT B: a
+    # plain triad does not get a major 7th it never stated (22:29 take).
+    assert func == {0, 2, 4, 7, 9}
+
+
+def test_function_never_adds_a_major_7th_the_chord_did_not_state():
+    """B over a plain C triad is a rub; over Cmaj7 it is the chord.
+
+    The tonic group reaches Em7 and Am7, which is where B comes from, and the
+    sustain lane prefers colours the player is NOT holding - so over a held
+    C/E/G its only choices were A, B and D. It picked B, on strings, for 6.8
+    seconds: "我彈C chord MIE 會撥放 B5?".
+    """
+    from backend.mie.constraint import allowed_pcs
+    from backend.mie.harmony import ChordInfo
+    from backend.mie.state import MusicalState
+    st = MusicalState(bpm=92, now=0.0)
+    st.set_key(0, "major", "manual")
+    st.set_chord(ChordInfo("C", 0, "", frozenset({0, 4, 7}), 0.0))
+    assert 11 not in allowed_pcs(st, "function"), "plain C triad answered with its major 7th"
+    st.set_chord(ChordInfo("Cmaj7", 0, "maj7", frozenset({0, 4, 7, 11}), 0.0))
+    assert 11 in allowed_pcs(st, "function"), "Cmaj7 lost the 7th it states itself"
+    # and the 9ths this constraint exists to reach are untouched
+    st.set_key(9, "minor", "manual")
+    st.set_chord(ChordInfo("Am", 9, "m", frozenset({9, 0, 4}), 0.0))
+    assert 11 in allowed_pcs(st, "function"), "Am lost its 9th"
 
 
 def test_a_sustained_line_uses_functional_colour_not_just_chord_tones():

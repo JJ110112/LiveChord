@@ -121,7 +121,20 @@ def colour_pcs(chord_pcs: Iterable[int], chord_root: Optional[int], tonic_pc: in
         return own
     root = chord_root % 12
     fn = function_of(root, tonic_pc % 12, mode)
-    out = own | group_pcs(fn, tonic_pc, mode)
+    colour = group_pcs(fn, tonic_pc, mode)
+    # A relative may widen the palette, but it may not answer a plain triad
+    # with a major 7th the triad never stated. Over a C triad in C major the
+    # tonic group reaches Em7 and Am7, which is where B comes from; the sustain
+    # lane then prefers pitch classes the player is NOT holding, so with C, E
+    # and G under the fingers its only choices were A, B and D. On the 22:29
+    # take that put B5 on the strings for 6.8 seconds over a C major triad the
+    # player had just planted with C2, C3, C4 - "我彈C chord MIE 會撥放 B5?".
+    # `own` is unconditional, so Cmaj7 still gets its B; this only removes the
+    # 7th from chords that did not ask for one. Every 9th survives (B over Am,
+    # E over Dm) - those are a semitone from a chord tone too, and they are
+    # exactly the colour this constraint exists to reach.
+    colour = {pc for pc in colour if (pc - root) % 12 != 11}
+    out = own | frozenset(colour)
     if tension > 0:
         key_pcs = frozenset((tonic_pc + step) % 12 for step in steps_for(mode))
         out = out | extension_pcs(root, tension, key_pcs)
