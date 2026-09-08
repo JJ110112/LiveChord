@@ -54,10 +54,14 @@ def main(argv=None) -> int:
                         handlers=handlers, force=True)
 
     if a.list_ports:
-        import mido
-        mido.set_backend("mido.backends.rtmidi")
-        print("inputs:", *mido.get_input_names(), sep="\n  ")
-        print("outputs:", *mido.get_output_names(), sep="\n  ")
+        # Through the same guarded helper as the engine: on a wedged MIDI
+        # subsystem this call blocks for ever, and `--list-ports` is the first
+        # thing anyone reaches for when the engine will not start - it must not
+        # hang too (2026-09-08).
+        io_probe = MidiIO({"ports": {}}, None, wall_clock, open_out=False)
+        ins, outs = io_probe._list_ports()
+        print("inputs:", *ins, sep="\n  ")
+        print("outputs:", *outs, sep="\n  ")
         return 0
 
     ports_cfg = load_json(a.ports)

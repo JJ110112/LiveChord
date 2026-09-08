@@ -45,9 +45,45 @@ class MidiIO:
         self.in_count = 0
         self.uc4_count = 0
 
+    ENUM_TIMEOUT_S = 6.0
+
+    def _list_ports(self):
+        """Enumerate MIDI ports, but never wait for ever.
+
+        Windows MIDI enumeration can block indefinitely when the subsystem is
+        wedged - a driver left open by a force-killed process, or several
+        programs holding every input at once. It happened on 2026-09-08 with
+        eight Auracle instances and a monitor open: the engine printed nothing,
+        listened on no port and could not be quit, because this call never
+        returned and every print comes after it.
+
+        The probe runs in a SUBPROCESS, not a thread. The blocking call keeps
+        the GIL, so a thread with a timeout cannot help - the main thread never
+        gets to notice the timeout. Only a separate process can be abandoned.
+        """
+        import json
+        import subprocess
+        import sys
+
+        code = ("import json,mido;mido.set_backend('mido.backends.rtmidi');"
+                "print(json.dumps([mido.get_input_names(),mido.get_output_names()]))")
+        try:
+            r = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                               text=True, timeout=self.ENUM_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            raise SystemExit(
+                f"MIDI 埠列舉超過 {self.ENUM_TIMEOUT_S:.0f} 秒沒有回應——Windows 的 MIDI "
+                f"子系統卡住了。通常是某個程式把所有輸入抓著不放（MIDI 監看工具、"
+                f"多個 Auracle X 實例），或前一個行程被強制結束時沒有放開驅動。"
+                f"先關掉那些程式；還是不行就重新插拔 USB，最後才重開機。")
+        if r.returncode != 0:
+            raise SystemExit(f"MIDI 埠列舉失敗：{(r.stderr or '').strip()[:300]}")
+        ins, outs = json.loads(r.stdout)
+        return ins, outs
+
     def open(self) -> None:
         mido = self.mido
-        ins, outs = mido.get_input_names(), mido.get_output_names()
+        ins, outs = self._list_ports()
         p = self.cfg["ports"]
         name_in = pick_port(ins, p.get("mie_in"))
         if not name_in:
