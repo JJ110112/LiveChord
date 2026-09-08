@@ -68,7 +68,12 @@
 
 .mie-edge-list { display: flex; flex-direction: column; gap: 4px; }
 .mie-edge { padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; transition: background .2s, border-color .2s; }
-.mie-edge-head { display: grid; grid-template-columns: 22px 1fr 76px 40px 24px; align-items: center; gap: 8px; }
+.mie-edge-head { display: grid; grid-template-columns: 22px 1fr 132px 76px 40px 24px; align-items: center; gap: 8px; }
+/* the first layer of an edge: two settings, one drag */
+.mie-pad { position: relative; height: 46px; border: 1px solid var(--border); border-radius: 6px; background: linear-gradient(0deg, rgba(255,255,255,.05), transparent); cursor: crosshair; touch-action: none; overflow: hidden; }
+.mie-pad.is-live { border-color: var(--accent); }
+.mie-pad-dot { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px rgba(33,150,243,.25); pointer-events: none; }
+.mie-pad-lbl { position: absolute; left: 4px; bottom: 2px; font-size: 9.5px; color: var(--text-dim); pointer-events: none; white-space: nowrap; }
 .mie-more { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 13px; padding: 0 2px; }
 .mie-more:hover { color: var(--text); }
 .mie-edge-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 4px 14px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }

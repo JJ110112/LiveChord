@@ -214,6 +214,96 @@
     collision: ["octave", "unison", "none"],
   };
 
+  // ------------------------------------------------------------- XY pad
+  // A pedal puts one or two knobs on the surface and hides the rest. The panel
+  // had it backwards: the first layer carried no control at all, so changing
+  // anything meant expanding an edge and facing ten sliders - eight edges read
+  // as eighty controls, and the player said they would get lost in it. Each
+  // edge now leads with the two settings that decide how it FEELS, on one pad
+  // you can move with a single drag. X is its sense of time, Y is how much of
+  // it there is. Everything else stays exactly where it was, one click down.
+  const PAD = {
+    echo:    { x: { key: "delay_beats", min: 0.25, max: 8, step: 0.25, label: "間隔" },
+               y: { key: "decay", min: 0.1, max: 0.95, step: 0.05, label: "尾巴" } },
+    phrase:  { x: { key: "delay_beats", min: 0.25, max: 8, step: 0.25, label: "延遲" },
+               y: { key: "decay", min: 0.1, max: 0.95, step: 0.05, label: "尾巴" } },
+    shadow:  { x: { key: "delay_ms", min: 0, max: 500, step: 10, label: "延遲" },
+               y: { key: "max_hold_s", min: 0.5, max: 30, step: 0.5, label: "持續" } },
+    silence: { x: { key: "after_s", min: 0.5, max: 20, step: 0.5, label: "等待" },
+               y: { key: "hold_s", min: 1, max: 60, step: 1, label: "持續" } },
+    sustain: { x: { key: "every_bars_min", min: 0.25, max: 8, step: 0.25, label: "間隔" },
+               y: { key: "voices", min: 1, max: 6, step: 1, label: "聲部" } },
+    follow:  { x: { key: "interval", min: -24, max: 24, step: 1, label: "音程" },
+               y: { key: "prob", min: 0, max: 1, step: 0.05, label: "機率" } },
+  };
+
+  function padValue(e, ax) {
+    const v = e[ax.key];
+    return v === undefined ? ax.min : Math.max(ax.min, Math.min(ax.max, Number(v)));
+  }
+
+  function makePad(e) {
+    const spec = PAD[e.algo];
+    if (!spec) return null;
+    const el = document.createElement("div");
+    el.className = "mie-pad";
+    el.title = `橫向 ${spec.x.label}　直向 ${spec.y.label}（拖曳）`;
+    el.innerHTML = `<div class="mie-pad-dot"></div><span class="mie-pad-lbl"></span>`;
+    const dot = el.querySelector(".mie-pad-dot");
+    const lbl = el.querySelector(".mie-pad-lbl");
+
+    el.render = () => {
+      const x = padValue(e, spec.x), y = padValue(e, spec.y);
+      const fx = (x - spec.x.min) / (spec.x.max - spec.x.min);
+      const fy = (y - spec.y.min) / (spec.y.max - spec.y.min);
+      dot.style.left = `${fx * 100}%`;
+      dot.style.bottom = `${fy * 100}%`;          // up is more, as a fader is
+      lbl.textContent = `${spec.x.label} ${round(x, spec.x.step)} · ${spec.y.label} ${round(y, spec.y.step)}`;
+    };
+
+    const round = (v, step) => {
+      const s = String(step);
+      const dp = s.includes(".") ? s.split(".")[1].length : 0;
+      return Number(v).toFixed(dp);
+    };
+
+    let last = 0;
+    const move = (ev) => {
+      const r = el.getBoundingClientRect();
+      const fx = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+      const fy = Math.max(0, Math.min(1, 1 - (ev.clientY - r.top) / r.height));
+      const snap = (f, ax) => {
+        const raw = ax.min + f * (ax.max - ax.min);
+        // round to the step's own precision: Math.round(x/0.05)*0.05 gives
+        // 0.8500000000000001, which then goes into the scene file verbatim
+        const s = String(ax.step);
+        const dp = s.includes(".") ? s.split(".")[1].length : 0;
+        return Number((Math.round(raw / ax.step) * ax.step).toFixed(dp));
+      };
+      const x = snap(fx, spec.x), y = snap(fy, spec.y);
+      e[spec.x.key] = x; e[spec.y.key] = y;
+      el.render();
+      const now = performance.now();
+      if (now - last < 33) return;                // ~30 Hz is plenty for a knob
+      last = now;
+      send({ type: "set", path: `edge.${e.id}.${spec.x.key}`, value: x });
+      send({ type: "set", path: `edge.${e.id}.${spec.y.key}`, value: y });
+    };
+    el.addEventListener("pointerdown", (ev) => {
+      el.setPointerCapture(ev.pointerId); el.classList.add("is-live"); move(ev);
+    });
+    el.addEventListener("pointermove", (ev) => { if (el.hasPointerCapture(ev.pointerId)) move(ev); });
+    const end = (ev) => {
+      if (!el.classList.contains("is-live")) return;
+      el.classList.remove("is-live");
+      last = 0; move(ev);                          // make sure the last position lands
+    };
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
+    el.render();
+    return el;
+  }
+
   function edgeField(e, spec) {
     // A slider, not a number box. On a laptop a slider is the closest thing to
     // the hardware knob this will eventually live on: you can sweep it while
@@ -297,6 +387,11 @@
             <span class="algo"></span><span class="fires"></span>
             <button class="mie-more" title="參數">▾</button>
           </div><div class="mie-edge-body" hidden></div>`;
+        const pad = makePad(e);
+        if (pad) {
+          el.querySelector(".mie-edge-head").insertBefore(pad, el.querySelector(".algo"));
+          el._pad = pad;
+        }
         el.querySelector('input[type=checkbox]').addEventListener("change", (ev) => send({ type: "set", path: `edge.${e.id}.enabled`, value: ev.target.checked }));
         const body = el.querySelector(".mie-edge-body");
         el.querySelector(".mie-more").addEventListener("click", () => {
@@ -327,6 +422,7 @@
       // `prob` is on the head row too, where it is the one number you glance at
       const ph = el.querySelector(".mie-edge-head .prob-val");
       if (ph) ph.textContent = Number(e.prob).toFixed(2);
+      if (el._pad && !el._pad.classList.contains("is-live")) el._pad.render();
       el.querySelector(".fires").textContent = e.fires || 0;
       el.classList.toggle("hot", e.ago !== null && e.ago !== undefined && e.ago < 2);
       el.classList.toggle("off", !e.enabled);
