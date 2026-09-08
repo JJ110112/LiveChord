@@ -154,7 +154,13 @@ class UiServer:
                 self.send_response(200)
                 self.send_header("Content-Type", MIME.get(ext, "application/octet-stream"))
                 self.send_header("Content-Length", str(len(body)))
-                self.send_header("Cache-Control", "no-cache")
+                # `no-cache` still lets a browser reuse a stored copy after a
+                # revalidation it may skip. The panel is served off local disk
+                # and is edited constantly, so a stale page costs more than a
+                # re-fetch ever will: the player went looking for a control that
+                # was already there (2026-09-08).
+                self.send_header("Cache-Control", "no-store, must-revalidate")
+                self.send_header("Pragma", "no-cache")
                 self.end_headers()
                 self.wfile.write(body)
 
