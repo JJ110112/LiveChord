@@ -15,6 +15,7 @@ import sys
 from random import Random
 
 import collections
+import json
 import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
@@ -1939,6 +1940,70 @@ def _texture_after(eng, clk, play_fn) -> str:
     play_fn()
     eng.st.refresh_texture(clk())
     return eng.st.texture
+
+
+def test_replay_tool_reproduces_a_take_and_isolates_one_setting(tmp_path):
+    """`tools/mie_replay.py` is the measurement this project runs on.
+
+    The value of it is that the HUMAN side is fixed: the same notes, pedal,
+    timing and seed, so a difference in the output belongs to the setting that
+    changed and to nothing else. If it ever stops holding the human side
+    constant, every A/B in the plan document becomes unfounded - so that is
+    what this asserts, not the musical numbers themselves.
+    """
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+    from tools import mie_replay
+
+    # a tiny take: three notes and a pedal press, in the recorded log's shape
+    rows = [{"type": "session", "t": 0.0, "scene": "01", "mode": "INTERACTIVE"}]
+    t0 = 1.0
+    for k, n in enumerate((60, 64, 67)):
+        rows.append({"type": "human", "t": t0 + k * 0.4, "ch": 9, "note": n, "vel": 80})
+        rows.append({"type": "human_off", "t": t0 + k * 0.4 + 0.3, "ch": 9, "note": n})
+    rows.append({"type": "pedal", "t": t0, "ch": 9, "val": 127})
+    log = tmp_path / "session-test.jsonl"
+    log.write_text("".join(json.dumps(r) + chr(10) for r in rows), encoding="utf-8")
+
+    take = mie_replay.Take(str(log))
+    assert take.scene_id == "01"
+    assert take.scene_changed_while_playing is None
+
+    a = mie_replay.measure(mie_replay.run_once(take, "01", [], seed=5, mode="INTERACTIVE"))
+    b = mie_replay.measure(mie_replay.run_once(take, "01", [], seed=5, mode="INTERACTIVE"))
+    assert a == b, "the same take and seed produced two different runs"
+
+    louder = mie_replay.parse_overrides("global.prob_scale=0.0")
+    c = mie_replay.measure(mie_replay.run_once(take, "01", louder, seed=5, mode="INTERACTIVE"))
+    assert c["human"] == a["human"], "the human side moved between variants"
+    assert c["gen"] < a["gen"], "an override that should quieten the engine did nothing"
+
+
+def test_replay_tool_reads_the_scene_that_was_played_not_the_one_it_started_on(tmp_path):
+    """The header records the STARTUP scene, which is often not the played one.
+
+    On the 22:54 take the engine came up on `01` and the player switched to
+    `test01` 52 s in, before touching a key. Replaying the header's scene would
+    have measured the wrong graph and said nothing about it.
+    """
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+    from tools import mie_replay
+
+    rows = [{"type": "session", "t": 0.0, "scene": "01", "mode": "INTERACTIVE"},
+            {"type": "scene", "t": 5.0, "id": "test01", "name": "Safe Echo"},
+            {"type": "human", "t": 9.0, "ch": 9, "note": 60, "vel": 80},
+            {"type": "human_off", "t": 9.3, "ch": 9, "note": 60}]
+    log = tmp_path / "session-switch.jsonl"
+    log.write_text("".join(json.dumps(r) + chr(10) for r in rows), encoding="utf-8")
+    take = mie_replay.Take(str(log))
+    assert take.scene_id == "test01", "replayed the scene the engine merely started on"
+    assert take.scene_changed_while_playing is None, "the switch was before the first note"
+
+    # a switch AFTER playing started cannot be reproduced by a single-scene run
+    rows.insert(3, {"type": "human", "t": 6.0, "ch": 9, "note": 55, "vel": 70})
+    rows.append({"type": "scene", "t": 12.0, "id": "test2", "name": "x"})
+    log2 = tmp_path / "session-switch2.jsonl"
+    log2.write_text("".join(json.dumps(r) + chr(10) for r in rows), encoding="utf-8")
+    assert mie_replay.Take(str(log2)).scene_changed_while_playing == 12.0
 
 
 def test_the_log_can_describe_a_note_from_start_to_finish():

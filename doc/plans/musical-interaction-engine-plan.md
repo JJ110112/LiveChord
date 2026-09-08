@@ -1885,6 +1885,44 @@ gen 882  off 879          （改之前是 852 gen / 59 off）
 
 一個回歸測試（每個生成音都要有長度、每個響過的音恰好一次釋放、每次釋放都要說出響了多久），在舊程式碼上會失敗。MIE 測試 169 個。
 
+**㉗ 第 1 段：`tools/mie_replay.py` —— 這週所有音樂性修正的來源，終於是一個工具**
+
+計畫書 Phase 3 早就列了這一項。這週它以四五份拋棄式腳本的形式存在，現在升成正式工具。
+
+**它為什麼有價值**：人的那一半是**固定的**。同樣的音、同樣的踏板、同樣的時間、同樣的 seed —— 所以輸出的差異只屬於你改的那個設定，不屬於別的東西。「再彈一次聽聽看」做不到這件事：你不會彈出同一趟，而且引擎自己的骰子也會動。
+
+它只重放 log 裡的 **human 與 pedal** 事件，刻意不重放引擎自己的事件 —— 那會把答案跟問題一起重播，是這個工具唯一不能做的事。不開任何 MIDI port，樂器睡覺時也能跑。
+
+```
+python tools/mie_replay.py <log>                                   # 這趟做了什麼
+python tools/mie_replay.py <log> --sweep phrase_modx.decay=0.55,0.65,0.75,0.85
+python tools/mie_replay.py <log> --set "phrase_modx.decay=0.75,phrase_modx.repeats=3"
+python tools/mie_replay.py <log> --set global.density=0.9 --by-lane
+python tools/mie_replay.py <log> --out-dir data/logs/mie/replay    # 事件寫出來，之後畫或 diff
+```
+
+實跑 22:54 那趟，重現了我手工量到的同一條曲線：
+
+```
+variant                    human   gen  /human  drop  mute  loop  err  shift
+as recorded                  562   864    1.54     4     0     0    0      6
+phrase_modx.decay=0.55       562   774    1.38     0     0     0    0      2
+phrase_modx.decay=0.65       562   818    1.46     4     0     0    0      5
+phrase_modx.decay=0.75       562   864    1.54     4     0     0    0      6
+phrase_modx.decay=0.85       562   918    1.63     8     0     0    0      9
+```
+
+`as recorded` 與 `decay=0.75` 完全一致（那正是目前 scene 的值），是一個自洽檢查。
+
+**兩個容易靜默出錯的地方，都處理掉了**：
+
+1. **重放要用「真正彈的那個 scene」，不是引擎啟動時的那個。** header 記的是啟動場景；22:54 那趟引擎開在 `01`、玩家在第 52 秒才切到 `test01`（切之前一個音都沒彈）。照 header 重放會量到錯的圖，而且不會說。現在讀最後一個 `scene` 事件；如果切換發生在**開始彈之後**，會明講「這些數字不是那一趟」，因為單場景重放無法重現兩個引擎的混合。
+2. **`--set` 要分得清欄位與 params。** `prob` 是 Edge 的宣告欄位，寫進 `params` 會靜默無效。
+
+`--by-lane` 除了每個 lane 的音數，還印**每個 lane 的音高中位數** —— 那正是抓到「弦樂把自己釘在天花板」（中位數 B5、範圍 B4–E6）的那個測量；音**數**看不出音域問題，這個一眼就看得到。
+
+三個測試：同一趟同 seed 必須產生一模一樣的兩次結果（否則所有 A/B 都失去根據）、override 之後人的那一半不能動、以及讀對場景與偵測「彈到一半換場景」。MIE 測試 171 個。
+
 #### Phase 2 工項（原本規劃 + 上述新增）
 
 - Answer、Mirror、Density、Velocity(CC)、Register；輪盤邊群組；Scene 切換淡出；UC4 MIDI Learn；矩陣 UI + 互動流動畫；player `playhead` 同步。
