@@ -8,6 +8,7 @@ from random import Random
 from ..events import MieEvent, Proposal
 from ..graph import Edge
 from ..state import MusicalState
+from . import t_secs
 from . import delay_s, scaled_vel
 
 
@@ -36,7 +37,7 @@ def run(ev: MieEvent, st: MusicalState, edge: Edge, rng: Random) -> list[Proposa
         if n is None:
             return []
         n += edge.transpose + 12 * edge.octave
-        cap = float(edge.params.get("max_hold_s", 8.0))
+        cap = t_secs(edge, st, "max_hold_s", 8.0)
         return [Proposal(ch=edge.dst, note=n, vel=scaled_vel(edge, ev.vel), dur=cap, lane=edge.lane,
                          t_offset=delay_s(edge, st), follow_off=True, src_note=ev.note)]
     if ev.is_note_off:

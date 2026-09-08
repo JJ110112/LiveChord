@@ -21,7 +21,7 @@ from typing import Optional
 from ..events import Proposal
 from ..graph import Edge
 from ..state import MusicalState
-from . import how_many, tail_floor
+from . import how_many, t_beats, tail_floor
 
 
 def phrase_gap(st: MusicalState, edge: Edge) -> float:
@@ -38,7 +38,7 @@ def phrase_gap(st: MusicalState, edge: Edge) -> float:
     actually playing: a real phrase break is several times their own note
     spacing. Whichever is longer wins.
     """
-    beats = float(edge.params.get("phrase_gap_beats", 1.0)) * st.beat_s
+    beats = t_beats(edge, st, "phrase_gap_beats", 1.0)
     iois = sorted(x for x in st.recent_ioi if 0.05 < x < 4.0)
     if len(iois) >= 4:
         mid = iois[len(iois) // 2]
@@ -85,7 +85,7 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     period = length + delay
     repeats = how_many(edge, st, "repeats", 3)
     min_vel = tail_floor(edge, st, 12)
-    dur_min = float(p.get("dur_min_beats", 0.25)) * st.beat_s
+    dur_min = t_beats(edge, st, "dur_min_beats", 0.25)
     semis = edge.transpose + 12 * edge.octave
 
     # A pass starts a `delay` after the phrase ended. Detecting the end costs

@@ -21,7 +21,7 @@ from ..events import Proposal
 from ..graph import Edge
 from ..scales import scale_pcs
 from ..state import MusicalState
-from . import scaled_vel
+from . import scaled_vel, t_beats, t_secs, time_scale
 
 
 def _candidates(st: MusicalState, edge: Edge, lane_notes: list[int], tension: float = 0.0) -> list[int]:
@@ -62,7 +62,7 @@ def on_skip(st: MusicalState, edge: Edge, now: float, lane_state: dict) -> None:
     the lane quiet, which is the musical control we want.
     """
     if lane_state.get("next_t") is not None:
-        lane_state["next_t"] = now + float(edge.params.get("retry_beats", 1.0)) * st.beat_s
+        lane_state["next_t"] = now + t_beats(edge, st, "retry_beats", 1.0)
 
 
 def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict,
@@ -74,7 +74,7 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
         lane_state["next_t"] = None
         lane_state["left"] = "human_stopped"     # so the log says WHY it left
         if lane_notes:
-            rel = float(edge.params.get("release_beats", 2.0)) * st.beat_s
+            rel = t_beats(edge, st, "release_beats", 2.0)
             return [Proposal(ch=edge.dst, note=n, vel=0, dur=0.0, lane=edge.lane, kind="off",
                              t_offset=rel) for n in lane_notes]
         return []
@@ -82,12 +82,13 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     bar_s = st.beat_s * st.beats_per_bar
     if lane_state.get("next_t") is None:
         # first tick of this held gesture: wait `after_s` before speaking at all
-        lane_state["next_t"] = now + float(edge.params.get("after_s", 1.5))
+        lane_state["next_t"] = now + t_secs(edge, st, "after_s", 1.5)
         return []
     if now < lane_state["next_t"]:
         return []
-    lo = float(edge.params.get("every_bars_min", 1.0))
-    hi = max(lo, float(edge.params.get("every_bars_max", 2.0)))
+    scale = time_scale(st)
+    lo = float(edge.params.get("every_bars_min", 1.0)) * scale
+    hi = max(lo, float(edge.params.get("every_bars_max", 2.0)) * scale)
     lane_state["next_t"] = now + rng.uniform(lo, hi) * bar_s
 
     cands = _candidates(st, edge, lane_notes, tension)
@@ -95,7 +96,7 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
         return []
     note = rng.choice(cands)
     vel = scaled_vel(edge, int(edge.params.get("vel", 46)) + rng.randint(-4, 4))
-    hold = float(edge.params.get("hold_beats", 8.0)) * st.beat_s
+    hold = t_beats(edge, st, "hold_beats", 8.0)
     t_off = 0.0     # the engine quantises every lane through `align` (plan §11 Ph2)
 
     out = []

@@ -22,6 +22,7 @@ from random import Random
 from typing import Callable, Optional
 
 from . import algos, mutation
+from .algos import quantize_time
 from .constraint import (collision_for, constrain, diatonic_map, edge_range, late_bind,
                          voice_lead_for)
 from .events import MieEvent, Proposal, next_id
@@ -391,6 +392,21 @@ class Engine:
             return []
         return self.sched.sounding_notes(now, None if mode == "ensemble" else ch)
 
+    def _time_knob(self) -> Optional[float]:
+        """The TIME control, quantised to musical ratios unless told otherwise.
+
+        Bad Mood's CLOCK moves in harmonised steps because halving a delay is
+        musical and multiplying it by 1.07 is not; its SMOOTH switch turns that
+        off. `time_steps: false` in the scene does the same here.
+        """
+        v = self.scene.globals.get("time")
+        if v is None:
+            return None
+        v = max(0.05, float(v))
+        if self.scene.globals.get("time_steps", True):
+            v = quantize_time(v)
+        return v
+
     @property
     def avoid_semitone(self) -> str:
         """`ensemble` | `instrument` | `off` - how wide the semitone check looks."""
@@ -446,6 +462,8 @@ class Engine:
         self.scene.globals[key] = value
         if key == "density":
             self.st.density_knob = None if value is None else float(value)
+        elif key in ("time", "time_steps"):
+            self.st.time_knob = self._time_knob()
         self.safety.set_globals(self.scene.globals)
         self._ui("set", path=f"global.{key}", value=value)
 
@@ -495,6 +513,7 @@ class Engine:
         """
         d = self.scene.globals.get("density")
         self.st.density_knob = None if d is None else float(d)
+        self.st.time_knob = self._time_knob()
 
     def load_scene(self, scene: Scene) -> None:
         now = self.clock()

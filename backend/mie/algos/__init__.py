@@ -10,8 +10,44 @@ engine owns for the timed algorithms.
 from __future__ import annotations
 
 
+# The TIME knob (plan §9.1, after Bad Mood's CLOCK). One control that stretches
+# or compresses every waiting time in the scene at once - how long an echo waits,
+# how long a pad holds, how long a silence has to last before a lane takes it.
+# Bad Mood's version moves in harmonised steps rather than continuously, because
+# halving a delay is musical and multiplying it by 1.07 is not; `time_steps`
+# keeps that, and turning it off gives a plain continuous sweep.
+TIME_STEPS = (0.25, 1 / 3, 0.5, 2 / 3, 1.0, 1.5, 2.0, 3.0, 4.0)
+
+
+def quantize_time(x: float) -> float:
+    """Nearest musical ratio, by how far apart they sound rather than in value.
+
+    Distance is measured on the ratios themselves (1/2 to 1 is the same step as
+    1 to 2), which is how the ear hears tempo relationships.
+    """
+    import math
+    lx = math.log(max(1e-6, x))
+    return min(TIME_STEPS, key=lambda s: abs(math.log(s) - lx))
+
+
+def time_scale(st) -> float:
+    """How much longer everything waits. 1.0 = the scene as written."""
+    v = getattr(st, "time_knob", None)
+    return 1.0 if v is None else max(0.05, float(v))
+
+
+def t_beats(edge, st, key: str, default: float) -> float:
+    """A duration written in beats, in seconds, stretched by the TIME knob."""
+    return float(edge.params.get(key, default)) * st.beat_s * time_scale(st)
+
+
+def t_secs(edge, st, key: str, default: float) -> float:
+    """A duration written in seconds, stretched by the TIME knob."""
+    return float(edge.params.get(key, default)) * time_scale(st)
+
+
 def delay_s(edge, st) -> float:
-    return edge.delay_beats * st.beat_s + edge.delay_ms / 1000.0
+    return (edge.delay_beats * st.beat_s + edge.delay_ms / 1000.0) * time_scale(st)
 
 
 def scaled_vel(edge, vel: int) -> int:

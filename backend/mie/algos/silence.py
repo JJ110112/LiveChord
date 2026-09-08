@@ -17,7 +17,7 @@ from ..graph import Edge
 from ..harmony import recognize
 from ..scales import scale_pcs
 from ..state import MusicalState
-from . import how_many, scaled_vel
+from . import how_many, scaled_vel, t_beats, t_secs
 
 
 def _voicing(st: MusicalState, n_voices: int, low: int, high: int) -> list[int]:
@@ -42,7 +42,7 @@ def _release(st: MusicalState, edge: Edge, why: str, lane_state: dict) -> list[P
     lane_state["fired"] = False
     lane_state["retry_t"] = 0.0
     lane_state["left"] = why
-    rel = float(edge.params.get("release_beats", 1.0)) * st.beat_s
+    rel = t_beats(edge, st, "release_beats", 1.0)
     return [Proposal(ch=ch, note=note, vel=0, dur=0.0, lane=edge.lane, kind="off", t_offset=rel)
             for (ch, note), g in list(st.active_gen.items()) if ch == edge.dst and g.lane == edge.lane]
 
@@ -86,7 +86,7 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     # 22:14 take, this is the knob that decides how PRESENT the lane is:
     # 4 s put the texture on 42 % of the take, 6 s on 20 %, 8 s on 18 %,
     # 12 s on 6 %. `hold_s` only caps one note; this decides the coverage.
-    after_s = float(edge.params.get("after_s", 4.0))
+    after_s = t_secs(edge, st, "after_s", 4.0)
     # What counts as space (per edge):
     #   "sound"  - nothing of the human's is ringing, pedal included. Correct
     #              when a pad should never sit on top of a held chord.
@@ -103,7 +103,7 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     lane_state["fired_t"] = now
     live = recognize(list(st.held) + list(st.sustained), now, st.chord)
     lane_state["chord"] = live.name if live else (st.chord.name if st.chord else None)
-    hold = float(edge.params.get("hold_s", 8.0))
+    hold = t_secs(edge, st, "hold_s", 8.0)
     vel = scaled_vel(edge, int(edge.params.get("vel", 56)))
     n_voices = how_many(edge, st, "voices", 3)
     low, high = int(edge.params.get("low", 48)), int(edge.params.get("high", 84))
@@ -128,7 +128,7 @@ def on_skip(st: MusicalState, edge: Edge, now: float, lane_state: dict) -> None:
     come back after `retry_beats` instead, the same way Sustain does.
     """
     lane_state["fired"] = False
-    lane_state["retry_t"] = now + float(edge.params.get("retry_beats", 2.0)) * st.beat_s
+    lane_state["retry_t"] = now + t_beats(edge, st, "retry_beats", 2.0)
 
 
 def on_human_note(st: MusicalState, edge: Edge, now: float, lane_state: dict) -> list[Proposal]:

@@ -80,6 +80,7 @@ class MusicalState:
         self._human_ch_t: dict[int, float] = {}
         self.register = "mid"
         self.density_knob: float | None = None   # scene DENSITY control, see algos.how_many
+        self.time_knob: float | None = None      # scene TIME control, see algos.time_scale
         self.texture = "quiet"        # how they are playing (see texture.py)
         self.texture_conf = 1.0
         self.lh: list[int] = []       # what the left hand is holding, if the
@@ -437,7 +438,7 @@ class MusicalState:
             "lh": self.lh, "rh": self.rh,
             "silence_s": round(self.silence_s, 2), "quiet_s": round(self.quiet_s, 2),
             "density": round(self.density, 2), "vel_mean": round(self.vel_mean, 1),
-            "density_knob": self.density_knob,
+            "density_knob": self.density_knob, "time_knob": self.time_knob,
             "energy": round(self.human_energy, 3),
             "active_gen": [[ch, n, g.lane] for (ch, n), g in list(self.active_gen.items())],
         }

@@ -15,7 +15,7 @@ from random import Random
 from ..events import MieEvent, Proposal
 from ..graph import Edge
 from ..state import MusicalState
-from . import delay_s, how_many, tail_floor
+from . import delay_s, how_many, t_beats, tail_floor
 
 
 def run(ev: MieEvent, st: MusicalState, edge: Edge, rng: Random) -> list[Proposal]:
@@ -31,8 +31,8 @@ def run(ev: MieEvent, st: MusicalState, edge: Edge, rng: Random) -> list[Proposa
     # not known yet at note_on, so use the previous one (same as Follow) with a
     # musical floor.
     base_dur = ev.dur_hint or st.last_human_dur or st.beat_s
-    dur_min = float(edge.params.get("dur_min_beats", 0.75)) * st.beat_s
-    dur_max = float(edge.params.get("dur_max_beats", 8.0)) * st.beat_s
+    dur_min = t_beats(edge, st, "dur_min_beats", 0.75)
+    dur_max = t_beats(edge, st, "dur_max_beats", 8.0)
     # A tail repeats the SAME pitch on the SAME channel, and MIDI cannot hold
     # two of those at once: if a return outlasts the gap to the next one, the
     # first note_off silences the second. So returns are consecutive, not

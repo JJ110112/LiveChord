@@ -2298,3 +2298,74 @@ def test_revert_can_take_one_edge_and_leave_the_rest():
         assert eng.revert("a") is True
         assert eng.graph.find_edge("a").params["repeats"] == 3
         assert eng.graph.find_edge("b").params["repeats"] == 9, "revert touched an edge it was not asked about"
+
+
+# ---------------------------------------------------------- the TIME knob
+def test_time_knob_stretches_every_wait_together():
+    """Bad Mood's CLOCK in one line: one control for how long everything waits.
+    An echo's delay, a pad's hold, the silence a lane needs before it enters."""
+    edges = [{"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 1.0, "repeats": 2,
+              "delay_beats": 1.0, "vel_scale": 1.0, "decay": 1.0, "min_vel": 1,
+              "constraint": "free", "lane": "echo"}]
+
+    def first_gap(scale):
+        eng, clk, out = make(edges)
+        if scale is not None:
+            eng.set_global("time", scale)
+        play(eng, clk, 9, 60, vel=90, hold=0.2)
+        run_for(eng, clk, 12.0)
+        ons = [t for t, _, _, _ in out.notes("note_on", ch=10)]
+        assert len(ons) >= 2, f"the echo did not repeat at scale {scale}"
+        return round(ons[1] - ons[0], 3)
+
+    base = first_gap(None)
+    assert first_gap(1.0) == base, "1.0 must be the scene exactly as written"
+    assert abs(first_gap(2.0) - base * 2) < 0.02, "doubling the knob must double the wait"
+    assert abs(first_gap(0.5) - base / 2) < 0.02, "halving it must halve the wait"
+
+
+def test_time_knob_moves_in_musical_steps():
+    """Halving a delay is musical; multiplying it by 1.07 is not. Bad Mood's
+    CLOCK steps for the same reason, and its SMOOTH switch turns that off."""
+    from backend.mie.algos import quantize_time
+
+    assert quantize_time(0.40) == pytest.approx(1 / 3, abs=1e-6)
+    assert quantize_time(0.60) == pytest.approx(2 / 3, abs=1e-6)
+    assert quantize_time(1.30) == 1.5
+    assert quantize_time(2.70) == 3.0
+    assert quantize_time(9.00) == 4.0            # clamped to the top step
+
+    eng, clk, out = make([])
+    eng.set_global("time", 1.3)
+    assert eng.st.time_knob == 1.5
+    eng.set_global("time_steps", False)
+    eng.set_global("time", 1.3)
+    assert eng.st.time_knob == pytest.approx(1.3), "SMOOTH did not turn the steps off"
+
+
+def test_a_scene_without_a_time_knob_is_untouched():
+    """Every scene written before this must behave exactly as it did."""
+    from backend.mie.algos import time_scale
+
+    eng, clk, out = make([])
+    assert eng.st.time_knob is None
+    assert time_scale(eng.st) == 1.0
+
+
+def test_the_time_knob_reaches_a_pad_as_well_as_an_echo():
+    edges = [{"id": "tex", "src": 0, "dst": 1, "algo": "silence", "prob": 1.0, "after_s": 2.0,
+              "lane": "texture", "hold_s": 4, "voices": 2, "vel": 40, "constraint": "chord",
+              "align": "none", "silence_mode": "attack"}]
+
+    def entered_at(scale):
+        eng, clk, out = make(edges)
+        eng.set_global("time", scale)
+        hold_chord(eng, clk, 9, [48, 52, 55])
+        t0 = clk()
+        run_for(eng, clk, 12.0)
+        ons = out.notes("note_on", ch=1)
+        assert ons, f"the pad never entered at scale {scale}"
+        return round(ons[0][0] - t0, 2)
+
+    quick, slow = entered_at(1.0), entered_at(2.0)
+    assert slow > quick * 1.6, f"the wait did not stretch: {quick} -> {slow}"
