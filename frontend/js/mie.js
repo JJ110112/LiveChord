@@ -205,10 +205,42 @@
     const set = (v) => send({ type: "set", path: `edge.${e.id}.${spec.key}`, value: Number(v) });
     sl.value = num.value = val === undefined ? spec.min : val;
     sl.dataset.key = num.dataset.key = spec.key;
-    // dragging sends live so you hear it move; typing sends on commit
-    sl.addEventListener("input", () => { num.value = sl.value; set(sl.value); });
-    num.addEventListener("change", () => { sl.value = num.value; set(num.value); });
+
+    // A register is a PAIR. On the 17:21 take the player dragged `high` from 88
+    // down onto `low`, which was 55, and the sustain lane spent the next four
+    // minutes playing n55 and nothing else - seventeen times, one pitch. A
+    // number box makes you type that on purpose; a slider you can sweep into it
+    // by accident and never notice. So the two ends push each other and keep an
+    // octave between them, which is the least room a lane needs to voice a
+    // chord at all.
+    const commit = (v) => {
+      v = Number(v);
+      const partner = spec.key === "low" ? "high" : (spec.key === "high" ? "low" : null);
+      if (partner) {
+        const other = wrap.parentElement.querySelector(`.mie-fn[data-key="${partner}"]`);
+        if (other) {
+          const o = Number(other.value);
+          if (spec.key === "low" && v > o - 12) pushPartner(wrap, partner, v + 12);
+          if (spec.key === "high" && v < o + 12) pushPartner(wrap, partner, v - 12);
+        }
+      }
+      sl.value = num.value = v;
+      set(v);
+    };
+    sl.addEventListener("input", () => commit(sl.value));
+    num.addEventListener("change", () => commit(num.value));
     return wrap;
+  }
+
+  function pushPartner(wrap, key, value) {
+    const body = wrap.parentElement;
+    const num = body.querySelector(`.mie-fn[data-key="${key}"]`);
+    const sl = body.querySelector(`.mie-fs[data-key="${key}"]`);
+    if (!num || !sl) return;
+    const v = Math.max(Number(sl.min), Math.min(Number(sl.max), Math.round(value)));
+    if (Number(num.value) === v) return;
+    num.value = sl.value = v;
+    num.dispatchEvent(new Event("change"));
   }
 
   function edgeChoice(e, key) {
