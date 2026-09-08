@@ -119,9 +119,15 @@ class Edge:
 
         `when: {"texture": ["sustained", "arpeggio"]}` on an edge, or the
         shorthand `texture: [...]`. An edge that names none takes everything,
-        so scenes written before this keep working unchanged. An unknown
-        texture (or none supplied) also passes: a condition should narrow a
-        scene deliberately, not silence it because a reading was missing.
+        so scenes written before this keep working unchanged.
+
+        A MISSING reading passes: a condition should narrow a scene
+        deliberately, not silence it in the moment the classifier had nothing
+        to say. A reading that simply is not in the list does NOT pass - that
+        is the whole point of the setting. So a name that is not a real texture
+        silences the lane for ever, which is exactly the failure `_mute_reason`
+        exists to catch; it says so on the row rather than leaving the player
+        to wonder.
         """
         want = self.params.get("texture")
         if want is None:

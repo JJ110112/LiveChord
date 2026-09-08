@@ -1,10 +1,17 @@
 /* LiveChord MIE panel (plan §9, Phase 1: top bar + meters + edge list + event stream).
- * Talks to the engine process over ws://127.0.0.1:8810/ws. Static page can be served by
+ * Talks to the engine over the WebSocket on whatever port served this page
+ * (falling back to 8810 when the LiveChord backend on 8800 served it). Served by
  * the engine itself (http://127.0.0.1:8810/mie) or by the LiveChord backend (/mie). */
 (function () {
   "use strict";
   const $ = (s) => document.querySelector(s);
-  const WS_URL = "ws://127.0.0.1:8810/ws";
+  // Whoever served this page is the engine, unless the page came from the
+  // LiveChord backend on 8800 - which serves /mie as a convenience and has no
+  // engine of its own. Hardcoding 8810 meant `--port` silently did not work:
+  // the engine listened where you asked and the panel talked to 8810 anyway.
+  const WS_URL = (location.port && location.port !== "8800")
+    ? `ws://${location.host}/ws`
+    : "ws://127.0.0.1:8810/ws";
   const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
   const nn = (n) => `${NOTE_NAMES[n % 12]}${Math.floor(n / 12) - 1}`;
 
@@ -66,7 +73,6 @@
     }
     $("#mieKey").textContent = st.key + (st.key_source === "player" ? " ▶" : st.key_source === "inferred" ? " ~" : "");
     $("#mieChord").textContent = st.chord || "—";
-    const TEX = { quiet: "靜", sustained: "持續", chord: "和弦", arpeggio: "琶音", melody: "旋律" };
     $("#mieTexture").textContent = TEX[st.texture] || st.texture || "—";
     $("#mieHands").textContent = (st.lh && st.lh.length) ? `雙手 ${st.lh.length}+${st.rh.length}` : "";
     $("#mieBpm").textContent = st.bpm;
@@ -148,6 +154,12 @@
   // Which knobs an edge exposes, per algorithm (plan §9.1). Every one of these
   // is a live `set` on the engine, so a lane can be shaped while playing.
   const NUM = (label, key, min, max, step, hint) => ({ label, key, min, max, step, hint });
+  // A yes/no setting is a checkbox, not a 0..1 slider. `follow_chord` is stored
+  // in the scene as the JSON boolean `true`; the slider could never bind to it,
+  // so the box showed EMPTY and every snapshot logged "The specified value
+  // 'true' cannot be parsed" - 85 of them in one minute on the QA panel. Worse,
+  // dragging it would have written a NUMBER over the boolean.
+  const BOOL = (label, key, hint) => ({ label, key, hint, kind: "bool" });
   const COMMON = [
     NUM("機率", "prob", 0, 1, 0.05, "這個手勢被回應的機率"),
     NUM("力度×", "vel_scale", 0, 2, 0.05, "生成音的力度倍率"),
@@ -174,7 +186,7 @@
       NUM("最少音數", "min_notes", 1, 8, 1, "太短的不算一句"),
       NUM("最多音數", "max_notes", 2, 16, 1, "只回最後這幾個音"),
       NUM("最小力度", "min_vel", 1, 64, 1, null),
-      NUM("跟和弦移調", "follow_chord", 0, 1, 1, "1 = 重播時整句依和弦根音平行移調（Am→Dm 就整句 +5）"),
+      BOOL("跟和弦移調", "follow_chord", "重播時整句依和弦根音平行移調（Am→Dm 就整句 +5）"),
     ],
     shadow: [NUM("延遲(ms)", "delay_ms", 0, 500, 10, null),
              NUM("最長持續(s)", "max_hold_s", 0.5, 30, 0.5, null)],
@@ -183,6 +195,7 @@
               NUM("力度", "vel", 1, 127, 1, null),
               NUM("持續(s)", "hold_s", 1, 60, 1, null),
               NUM("釋放(拍)", "release_beats", 0, 8, 0.5, "你再彈之後多久淡出"),
+              BOOL("跟和弦", "follow_chord", "和弦換了就把這層墊音重新擺到新的和弦上"),
               NUM("低", "low", 21, 108, 1, null), NUM("高", "high", 21, 108, 1, null)],
     sustain: [NUM("等待(s)", "after_s", 0.5, 20, 0.5, "按住多久才開始"),
               NUM("最短(小節)", "every_bars_min", 0.25, 8, 0.25, null),
@@ -191,6 +204,7 @@
               NUM("力度", "vel", 1, 127, 1, null),
               NUM("持續(拍)", "hold_beats", 1, 32, 1, null),
               NUM("釋放(拍)", "release_beats", 0, 8, 0.5, null),
+              BOOL("疊在手上面", "above_held", "把這層墊音放在你正按著的音之上（預設開）"),
               NUM("低", "low", 21, 108, 1, null), NUM("高", "high", 21, 108, 1, null)],
   };
   const CHOICES = {
@@ -299,6 +313,29 @@
     return el;
   }
 
+  function edgeBool(e, spec) {
+    let cur = e;
+    const wrap = document.createElement("label");
+    wrap.className = "mie-field mie-field-bool";
+    wrap.title = spec.hint || spec.key;
+    wrap.innerHTML = `<span class="mie-fl">${spec.label}</span><input type="checkbox">`;
+    const cb = wrap.querySelector("input");
+    cb.dataset.key = spec.key;
+    // undefined means the algorithm's own default, and every one of these
+    // defaults to on; a missing key must not read as "off"
+    const val = (v) => (v === undefined || v === null ? true : !!v);
+    cb.checked = val(e[spec.key]);
+    cb.addEventListener("change", () => {
+      cur[spec.key] = cb.checked;
+      send({ type: "set", path: `edge.${cur.id}.${spec.key}`, value: cb.checked });
+    });
+    wrap.sync = (fresh) => {
+      cur = fresh;
+      if (document.activeElement !== cb) cb.checked = val(fresh[spec.key]);
+    };
+    return wrap;
+  }
+
   function edgeField(e, spec) {
     // A slider, not a number box. On a laptop a slider is the closest thing to
     // the hardware knob this will eventually live on: you can sweep it while
@@ -373,6 +410,65 @@
     num.dispatchEvent(new Event("change"));
   }
 
+  // ------------------------------------------------- 彈法條件 (when.texture)
+  // The classifier has been reading the playing for a while - block chords,
+  // arpeggio, a held pad, a single line - and nothing could act on it: no
+  // scene named a condition and there was no way to write one. This is the
+  // control. Nothing selected means "takes everything", which is every edge
+  // that exists today, so turning this on changes nothing until you use it.
+  const TEX = { quiet: "靜", sustained: "持續", chord: "和弦", arpeggio: "琶音", melody: "旋律" };
+  const TEX_ORDER = ["quiet", "sustained", "chord", "arpeggio", "melody"];
+
+  function edgeWhenTexture(e) {
+    const w = e.texture !== undefined ? e.texture : (e.when || {}).texture;
+    if (!w) return [];
+    return typeof w === "string" ? [w] : w.slice();
+  }
+
+  function edgeTextureField(e) {
+    // The snapshot hands us a NEW edge object every frame while the DOM node is
+    // cached, so the control keeps a reference it can refresh: without this the
+    // chips would show whatever the FIRST snapshot said and never move again
+    // when the server changed the setting - undo, revert and a preset switch
+    // all do exactly that.
+    let cur = e;
+    const wrap = document.createElement("label");
+    wrap.className = "mie-field mie-field-when";
+    wrap.title = "只有在你這樣彈的時候，這條線才會說話。全部不選 = 不限";
+    wrap.innerHTML = `<span class="mie-fl">只在這樣彈</span><span class="mie-chips"></span>`;
+    const chips = wrap.querySelector(".mie-chips");
+    TEX_ORDER.forEach((k) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "mie-chip"; b.dataset.tex = k; b.textContent = TEX[k];
+      chips.appendChild(b);
+    });
+    const paint = () => {
+      const on = new Set(edgeWhenTexture(cur));
+      chips.querySelectorAll(".mie-chip").forEach((b) => b.classList.toggle("on", on.has(b.dataset.tex)));
+      wrap.classList.toggle("is-any", on.size === 0);
+    };
+    chips.addEventListener("click", (ev) => {
+      const b = ev.target.closest(".mie-chip");
+      if (!b) return;
+      const on = new Set(edgeWhenTexture(cur));
+      on.has(b.dataset.tex) ? on.delete(b.dataset.tex) : on.add(b.dataset.tex);
+      const list = TEX_ORDER.filter((k) => on.has(k));
+      cur.when = { texture: list };
+      // One source of truth. A scene may carry the `texture:` shorthand, and
+      // `wants()` reads THAT first - a `when` written beside it would never be
+      // looked at. Clear it in the same breath.
+      if (cur.texture !== undefined && cur.texture !== null) {
+        cur.texture = null;
+        send({ type: "set", path: `edge.${cur.id}.texture`, value: null });
+      }
+      send({ type: "set", path: `edge.${cur.id}.when`, value: { texture: list } });
+      paint();
+    });
+    wrap.sync = (fresh) => { cur = fresh; paint(); };
+    paint();
+    return wrap;
+  }
+
   function edgeChoice(e, key) {
     const wrap = document.createElement("label");
     wrap.className = "mie-field";
@@ -414,7 +510,14 @@
         // the algorithm's own version of a knob wins, so vel_scale is not shown twice
         const specs = new Map();
         [...COMMON, ...(PARAMS[e.algo] || [])].forEach((sp) => specs.set(sp.key, sp));
-        specs.forEach((spec) => body.appendChild(edgeField(e, spec)));
+        el._bools = [];
+        specs.forEach((spec) => {
+          const f = spec.kind === "bool" ? edgeBool(e, spec) : edgeField(e, spec);
+          if (spec.kind === "bool") el._bools.push(f);
+          body.appendChild(f);
+        });
+        el._when = edgeTextureField(e);
+        body.appendChild(el._when);
         const choices = ["constraint", "align", "voice_lead", "collision"];
         if (e.algo === "silence") choices.push("silence_mode");
         choices.forEach((k) => body.appendChild(edgeChoice(e, k)));
@@ -427,11 +530,12 @@
       el.querySelector(".algo").textContent = e.algo;
       const cb = el.querySelector('input[type=checkbox]'); if (document.activeElement !== cb) cb.checked = e.enabled;
       el.querySelectorAll(".mie-edge-body input, .mie-edge-body select").forEach((inp) => {
-        if (document.activeElement === inp) return;
+        if (document.activeElement === inp || inp.type === "checkbox") return;
         const v = e[inp.dataset.key];
         if (v === undefined) return;
         inp.value = inp.tagName === "SELECT" ? String(v === true ? CHOICES[inp.dataset.key][0] : v) : v;
       });
+      (el._bools || []).forEach((f) => f.sync(e));
       // `prob` is on the head row too, where it is the one number you glance at
       const ph = el.querySelector(".mie-edge-head .prob-val");
       if (ph) ph.textContent = Number(e.prob).toFixed(2);
@@ -444,6 +548,17 @@
       fires.title = e.mute || (e.drops
         ? `${e.drops} 個音被丟掉了——多半是音域或八度把它推到樂器範圍外`
         : "");
+      if (el._when && !el._when.contains(document.activeElement)) el._when.sync(e);
+      // A lane whose condition does not match right now is not broken and not
+      // idle - it is WAITING, and it should say which playing it is waiting
+      // for. Silence you can explain is not the same as silence you cannot.
+      const want = edgeWhenTexture(e);
+      const waiting = want.length > 0 && s.state.texture && !want.includes(s.state.texture);
+      el.classList.toggle("is-waiting", !!waiting);
+      if (waiting && !e.mute) {
+        fires.textContent = `${e.fires || 0} ⏸`;
+        fires.title = `這條線只在「${want.map((k) => TEX[k] || k).join("、")}」時說話，你現在是「${TEX[s.state.texture] || s.state.texture}」`;
+      }
       el.classList.toggle("is-mute", !!e.mute);
       el.classList.toggle("hot", e.ago !== null && e.ago !== undefined && e.ago < 2);
       el.classList.toggle("off", !e.enabled);

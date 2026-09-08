@@ -89,6 +89,21 @@
 .mie-field-slider .mie-fn { width: 46px; text-align: right; font-variant-numeric: tabular-nums; }
 .mie-field-slider .mie-fn::-webkit-outer-spin-button, .mie-field-slider .mie-fn::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .mie-field select option { color: var(--text); background: var(--lc-popup-bg); }
+/* 彈法條件 (when.texture): "this lane only speaks when you play like this".
+   Nothing selected is the default and means "takes everything", so the row
+   has to read as unset rather than as five things turned off. */
+.mie-field-bool { display: grid; grid-template-columns: 74px 1fr; gap: 6px; align-items: center; }
+.mie-field-bool input[type=checkbox] { width: auto; justify-self: start; accent-color: var(--accent); }
+.mie-field-when { display: grid; grid-template-columns: 74px 1fr; gap: 6px; align-items: center; }
+.mie-chips { display: flex; flex-wrap: wrap; gap: 3px; }
+.mie-chip { padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--text-dim); font-size: 10.5px; cursor: pointer; line-height: 1.5; }
+.mie-chip:hover { border-color: var(--accent); color: var(--text); }
+.mie-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+.mie-field-when.is-any .mie-fl::after { content: "：不限"; color: var(--text-dim); opacity: .7; }
+/* waiting is not broken and not idle - it is a lane holding its tongue on
+   purpose, so it reads quieter than `hot` and calmer than `is-mute`. */
+.mie-edge.is-waiting { border-color: #5c6bc0; }
+.mie-edge.is-waiting .fires { color: #7986cb; }
 .mie-edge.hot { border-color: #ffc107; background: rgba(255,193,7,.12); }
 .mie-edge.off { opacity: .5; }
 /* enabled but unable to make a sound: it must not look like a quiet lane */

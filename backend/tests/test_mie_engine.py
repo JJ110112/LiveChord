@@ -1940,6 +1940,78 @@ def _texture_after(eng, clk, play_fn) -> str:
     return eng.st.texture
 
 
+def test_edge_texture_condition_narrows_but_never_silences():
+    """`when: {texture: [...]}` - the lane speaks only over that kind of playing.
+
+    The classifier has been in for a while and nothing could USE it: no scene
+    named a condition and the panel had no control for one. These are the rules
+    the UI is about to write against.
+    """
+    from backend.mie.graph import Edge
+    plain = Edge(src=0, dst=3, algo="sustain", id="e")
+    assert plain.wants("chord") and plain.wants("melody") and plain.wants(None),         "an edge that names no condition must take everything"
+
+    picky = Edge(src=0, dst=3, algo="sustain", id="e",
+                 params={"when": {"texture": ["sustained", "chord"]}})
+    assert picky.wants("sustained") and picky.wants("chord")
+    assert not picky.wants("melody") and not picky.wants("arpeggio")
+    # a missing reading must not silence a scene - a condition narrows on
+    # purpose, it does not go quiet because the classifier had nothing to say
+    assert picky.wants(None), "no texture reading silenced a conditioned edge"
+    # a name that is not in the list does NOT pass - narrowing is the point -
+    # so a misspelt one silences the lane, and the panel has to say so
+    assert not picky.wants("sustaind")
+
+    # empty means no condition, so clearing the chips in the panel restores
+    # "takes everything" rather than muting the edge for ever
+    for empty in ({"texture": []}, {}, None):
+        e = Edge(src=0, dst=3, algo="sustain", id="e", params={"when": empty})
+        assert e.wants("melody"), f"an empty condition muted the lane: {empty}"
+
+    # the shorthand, and a single string instead of a list
+    short = Edge(src=0, dst=3, algo="sustain", id="e", params={"texture": "arpeggio"})
+    assert short.wants("arpeggio") and not short.wants("chord")
+
+
+def test_a_misspelt_texture_condition_says_so_on_the_row():
+    """Silenced by a setting must never look like silenced by having nothing to say."""
+    from backend.mie.graph import Edge
+    bad = Edge(src=0, dst=3, algo="sustain", id="e", params={"when": {"texture": ["sustaind"]}})
+    assert "sustaind" in Engine._mute_reason(bad)
+    ok = Edge(src=0, dst=3, algo="sustain", id="e", params={"when": {"texture": ["chord"]}})
+    assert Engine._mute_reason(ok) == "", "a real condition was reported as broken"
+    # one good name among typos is a deliberate scene, not a mistake to shout about
+    mixed = Edge(src=0, dst=3, algo="sustain", id="e",
+                 params={"when": {"texture": ["chord", "sustaind"]}})
+    assert Engine._mute_reason(mixed) == ""
+
+
+def test_edge_texture_condition_reaches_both_edge_lookups():
+    """Both the tick lanes and the note-driven lanes have to honour it.
+
+    They are two different call sites; conditioning one and not the other is
+    how a lane ends up answering notes it was told to stay out of.
+    """
+    cond = {"texture": ["chord"]}
+    eng, clk, out = make([
+        {"id": "tick", "src": 0, "dst": 3, "algo": "sustain", "prob": 1.0, "after_s": 0.5,
+         "lane": "sustain", "when": cond},
+        {"id": "note", "src": 0, "dst": 10, "algo": "echo", "prob": 1.0,
+         "lane": "echo", "when": cond},
+    ])
+    g = eng.graph
+    now = clk()
+    assert [e.id for e in g.timed_edges(None, texture="chord")] == ["tick"]
+    assert [e.id for e in g.timed_edges(None, texture="melody")] == []
+    assert "note" in [e.id for e in g.candidate_edges("HUMAN", 9, 0, now, texture="chord")]
+    assert [e.id for e in g.candidate_edges("HUMAN", 9, 0, now, texture="melody")] == []
+    # and with no condition at all, both call sites hand them over again
+    for e in g.edges:
+        e.params.pop("when")
+    assert [e.id for e in g.timed_edges(None, texture="melody")] == ["tick"]
+    assert "note" in [e.id for e in g.candidate_edges("HUMAN", 9, 0, now, texture="melody")]
+
+
 def test_texture_reads_block_chords():
     """Struck together, not spread out. On the real takes the gap distribution
     is bimodal - a spike under 20 ms and a band at 150-400 ms - so the share of

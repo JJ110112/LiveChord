@@ -32,6 +32,7 @@ from .io_rtmidi import panic_messages
 from .probability import p_eff, roll
 from .safety import Safety, SelfEchoFilter
 from .scheduler import Due, NotePair, Scheduler
+from .texture import TEXTURES
 from .state import MusicalState
 
 log = logging.getLogger("mie.engine")
@@ -468,6 +469,18 @@ class Engine:
         inst_hi = e.params.get("high")
         if inst_lo is not None and inst_hi is not None and float(inst_lo) > float(inst_hi):
             return "音域上下限反了"
+        # A texture condition that names something the classifier can never
+        # produce silences the lane for ever, and it looks exactly like a lane
+        # with nothing to say. The panel only writes real names; a hand-edited
+        # scene can misspell one.
+        want = e.params.get("texture")
+        if want is None:
+            want = (e.params.get("when") or {}).get("texture")
+        if want:
+            want = [want] if isinstance(want, str) else list(want)
+            unknown = [w for w in want if w not in TEXTURES]
+            if unknown and not [w for w in want if w in TEXTURES]:
+                return f"彈法條件寫的不是真的彈法：{'、'.join(map(str, unknown))}"
         return ""
 
     def _gen_sounding(self, ch: int, now: float) -> list:
