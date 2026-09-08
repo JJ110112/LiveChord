@@ -592,6 +592,43 @@ def test_sustain_follows_the_pedal_not_the_fingers():
     assert not [k for k in eng.st.active_gen if k[0] == 4]
 
 
+def test_sustain_above_held_forgets_what_the_pedal_is_still_holding():
+    """A note flicked high and let go must not pin the pad up there.
+
+    `above_held` puts the lane over the player's hands. It used to read
+    `sounding`, which is fingers PLUS everything the pedal is holding, so with
+    the pedal down its maximum only ever went up: one reach to A6 kept the
+    floor at the ceiling for the rest of the passage. On the 22:16 take that
+    left a long high E ringing over everything - "有點干擾".
+    """
+    eng, clk, out = make([_sustain_edge(every_bars_min=0.5, every_bars_max=0.5)], seed=3)
+    eng.instruments[4] = Instrument(4, "Fantom Strings", "strings", "fantom", True, 6, 1.0, (36, 96), True)
+    eng.post(human_event("cc", clk(), 9, cc=64, val=127))
+    eng.step()
+    hold_chord(eng, clk, 9, [88])               # one high flick, E6
+    release_chord(eng, clk, 9, [88])            # let go; the pedal still holds it
+    hold_chord(eng, clk, 9, [48, 52, 55])       # and now play low
+    run_for(eng, clk, 10.0)
+    ons = [n for _, _, n, _ in out.notes("note_on", ch=4)]
+    assert ons, "sustain never spoke"
+    assert min(ons) < 76, f"pad stayed above the released high note: {sorted(ons)}"
+
+
+def test_sustain_does_not_pin_itself_to_the_ceiling():
+    """When the player is already at the top, "above them" is not reachable.
+
+    Clamping the floor to `high - 12` does not get out of their way - it jams
+    the lane into one octave hard against its own ceiling and leaves it there.
+    """
+    eng, clk, out = make([_sustain_edge(low=55, high=88, every_bars_min=0.5, every_bars_max=0.5)], seed=5)
+    eng.instruments[4] = Instrument(4, "Fantom Strings", "strings", "fantom", True, 6, 1.0, (36, 96), True)
+    hold_chord(eng, clk, 9, [84, 88, 91])       # both hands up at the top
+    run_for(eng, clk, 10.0)
+    ons = [n for _, _, n, _ in out.notes("note_on", ch=4)]
+    assert ons, "sustain never spoke"
+    assert min(ons) < 76, f"pad pinned to its own top octave: {sorted(ons)}"
+
+
 def test_sustain_stays_within_its_voice_budget():
     eng, clk, out = make([_sustain_edge(voices=2, every_bars_min=0.5, every_bars_max=0.5)])
     eng.instruments[4] = Instrument(4, "Fantom Strings", "strings", "fantom", True, 6, 1.0, (36, 96), True)

@@ -38,8 +38,26 @@ def _candidates(st: MusicalState, edge: Edge, lane_notes: list[int], tension: fl
     if not pcs:
         return []
     low, high = int(edge.params.get("low", 55)), int(edge.params.get("high", 88))
-    if edge.params.get("above_held", True) and st.sounding:
-        low = max(low, min(high - 12, max(st.sounding) - 4))
+    if edge.params.get("above_held", True):
+        # ABOVE WHAT THE FINGERS ARE PLAYING NOW, not above everything the
+        # pedal is still holding. `sounding` is fingers plus pedal, so with the
+        # pedal down its maximum is a ratchet over the whole pedalled passage:
+        # one flick up to A6 pinned this floor for the next ten seconds. On the
+        # 22:16 take that clamped the lane into 76-88 - a single octave hard
+        # against the ceiling, with E at BOTH ends of it - and the player heard
+        # "一直有個高兩個八度的 mi 長音，有點干擾". Measured: the sent notes'
+        # median was 81 (F5-E6 nearly throughout); reading `held` instead puts
+        # it at 67. Hands lifted with the pedal down still get a floor, from
+        # what is ringing - there is nothing else to be above.
+        # And only while there is still room to BE above them. When the
+        # player's top is already inside the lane's top octave, sitting above
+        # it is not possible; clamping to `high - 12` does not get out of their
+        # way, it just pins the lane to the ceiling and leaves it there. The
+        # point of this floor is "do not sit inside their chord", and when they
+        # are at the top of the register the way out is downwards.
+        ref = st.held or st.sounding
+        if ref and max(ref) - 4 <= high - 12:
+            low = max(low, max(ref) - 4)
     human_pcs = {n % 12 for n in st.sounding}
     lane_pcs = {n % 12 for n in lane_notes}
     fresh, doubled = [], []
