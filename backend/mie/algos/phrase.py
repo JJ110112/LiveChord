@@ -51,7 +51,11 @@ def phrase_gap(st: MusicalState, edge: Edge) -> float:
     iois = sorted(x for x in st.recent_ioi if 0.05 < x < 4.0)
     if len(iois) >= 4:
         mid = iois[len(iois) // 2]
-        beats = max(beats, float(edge.params.get("phrase_gap_iois", 2.2)) * mid)
+        # 1.5, not 2.2: measured on the 20:33 take, 2.2 x a 0.364 s median
+        # spacing asked for 0.80 s of silence and the take contained only
+        # fourteen pauses that long, so the lane spoke three times in three
+        # minutes. 1.5 puts the threshold at 0.55 s and finds seventeen.
+        beats = max(beats, float(edge.params.get("phrase_gap_iois", 1.5)) * mid)
     return beats
 
 
