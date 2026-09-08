@@ -72,6 +72,7 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     if not st.sounding:
         # the human finally stopped: let the lane go
         lane_state["next_t"] = None
+        lane_state["left"] = "human_stopped"     # so the log says WHY it left
         if lane_notes:
             rel = float(edge.params.get("release_beats", 2.0)) * st.beat_s
             return [Proposal(ch=edge.dst, note=n, vel=0, dur=0.0, lane=edge.lane, kind="off",
@@ -100,6 +101,7 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     out = []
     max_voices = int(edge.params.get("voices", 3))
     if len(lane_notes) >= max_voices:
+        lane_state["left"] = "voice_budget"
         oldest = min(((n, g.t_on) for (ch, n), g in list(st.active_gen.items())
                       if ch == edge.dst and g.lane == edge.lane), key=lambda x: x[1])[0]
         out.append(Proposal(ch=edge.dst, note=oldest, vel=0, dur=0.0, lane=edge.lane, kind="off",

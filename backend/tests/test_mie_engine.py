@@ -2198,3 +2198,22 @@ def test_a_phrase_captured_over_a_fragment_is_not_marked_to_follow():
     eng.st.chord = recognize([57, 60, 64], clk())          # Am: a real chord
     props = phrase.tick(eng.st, edge, eng.rng, clk(), {})
     assert props and all(p.capture_root == 9 for p in props)
+
+
+def test_every_lane_release_says_why():
+    """Three logs in a row carried 26 `lane_off` rows with an empty reason,
+    because only the silence lane recorded one. A release you cannot attribute
+    is a release you cannot debug."""
+    edges = [{"id": "su", "src": 0, "dst": 4, "algo": "sustain", "prob": 1.0, "after_s": 0.5,
+              "every_bars_min": 0.25, "every_bars_max": 0.25, "voices": 2, "vel": 50,
+              "hold_beats": 8, "constraint": "chord", "lane": "sustain", "align": "none"}]
+    eng, clk, out = make(edges)
+    eng.instruments[4] = Instrument(4, "Fantom Strings", "strings", "fantom", True, 6, 1.0, (36, 96), True)
+    hold_chord(eng, clk, 9, [48, 52, 55])
+    run_for(eng, clk, 6.0)                      # fills past the voice budget
+    release_chord(eng, clk, 9, [48, 52, 55])
+    run_for(eng, clk, 3.0)                      # and then the player stops
+    reasons = {r.get("why") for r in eng.ui_events if r["type"] == "lane_off"}
+    assert reasons, "the sustain lane never released"
+    assert "" not in reasons, f"a release went unexplained: {reasons}"
+    assert reasons <= {"voice_budget", "human_stopped"}, reasons
