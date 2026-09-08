@@ -75,6 +75,8 @@ class Engine:
         self._live_backup: Optional[dict] = None
         self._undo: list = []
         self._bulk = False
+        self._frozen = False
+        self._frozen_lane: Optional[str] = None
         self.echo_filter = SelfEchoFilter(0.008)
         self.sched = Scheduler(clock, self._emit, self._before_on)
         self.in_queue: "queue.Queue[MieEvent | tuple]" = queue.Queue()
@@ -194,6 +196,51 @@ class Engine:
             self._ui("phrase_shift", edge=pair.edge_id, frm=pair.capture_root,
                      frm_q=pair.capture_quality, to=target[0], to_q=target[1])
         return target
+
+    # ------------------------------------------------------------- freeze
+    # Bad Mood freezes the current sound and repeats it forever while you play
+    # over the top (Soup becomes a pad, Flip a repeating chord). Here the
+    # equivalent is: hold whatever the engine has sounding RIGHT NOW, so the
+    # player can build on a bed the engine made rather than one they had to
+    # play themselves and then abandon.
+    #
+    # It is a deliberate override of the note length, so it is also a deliberate
+    # override of the thing that stops notes hanging - which makes it exactly
+    # the feature that could hand this project the stuck note it has spent
+    # weeks avoiding. Three rules follow from that:
+    #   * a frozen note is still known to the watchdog, with a longer leash,
+    #     never an exemption from it;
+    #   * the leash is finite (`freeze_max_s`), so a freeze someone walks away
+    #     from ends by itself;
+    #   * PANIC outranks it, like everything else.
+    FREEZE_MAX_S = 120.0
+
+    def freeze(self, on: bool = True, lane: Optional[str] = None) -> int:
+        """Hold what is sounding (or let it go). Returns how many notes moved."""
+        now = self.clock()
+        if on:
+            cap = float(self.scene.globals.get("freeze_max_s", self.FREEZE_MAX_S))
+            n = 0
+            for (ch, note), g in list(self.st.active_gen.items()):
+                if lane and g.lane != lane:
+                    continue
+                self.sched.hold(ch, note, now + cap)
+                g.max_dur = max(g.max_dur, cap + (now - g.t_on))   # the watchdog still owns it
+                n += 1
+            self._frozen = True
+            self._frozen_lane = lane
+            self._ui("freeze", on=True, notes=n, lane=lane or "*", cap=cap)
+            return n
+        n = 0
+        for (ch, note), g in list(self.st.active_gen.items()):
+            if lane and g.lane != lane:
+                continue
+            self._force_off(ch, note, now, "unfreeze")
+            n += 1
+        self._frozen = False
+        self._frozen_lane = None
+        self._ui("freeze", on=False, notes=n)
+        return n
 
     # -------------------------------------------------------------- undo
     # The 17:21 take is the argument for this. One drag put a lane's register
@@ -873,6 +920,8 @@ class Engine:
             if p.kind != "off":
                 continue
             at = now + max(0.0, p.t_offset)
+            if self.sched.is_frozen(p.ch, p.note):
+                continue        # a freeze outranks a lane's own release
             n = self.sched.release(p.ch, p.note, at, lane=p.lane, src_note=p.src_note)
             if n == 0 and (p.ch, p.note) in self.st.active_gen:
                 # note_on went out but its off is not in the heap any more (e.g. after steal): send now
@@ -971,6 +1020,7 @@ class Engine:
             self.st.gen_off(p.ch, p.note)
 
     def _force_off(self, ch: int, note: int, now: float, why: str = "") -> None:
+        self.sched.thaw(ch, note)       # unfreeze and PANIC outrank a freeze
         direct = (ch, note) in self.st.active_gen
         self.sched.release(ch, note, now, mark_sent=direct)
         if direct:
@@ -991,6 +1041,7 @@ class Engine:
         for (c, n) in list(self.st.active_gen):
             self._force_off(c, n, now + fade_s, "release_all")
         self.st.active_gen.clear()
+        self._frozen, self._frozen_lane = False, None
         for ls in self.lane_state.values():
             ls["fired"] = False
 
@@ -1043,6 +1094,8 @@ class Engine:
                     self._log_error(f"edge[{e.id}]", exc)
         for (ch, note) in self.safety.watchdog(self.st, now):
             self._force_off(ch, note, now, "watchdog")
+        if self._frozen and not self.st.active_gen:
+            self._frozen, self._frozen_lane = False, None   # the last held note went
         self.safety.prune_chains(now)
         self._expire_lane_hist(now)
 
@@ -1089,6 +1142,10 @@ class Engine:
         if action == "panic":
             if pressed:
                 self.panic("uc4")
+        elif action == "freeze":
+            self.freeze(not self._frozen) if pressed else None
+        elif action == "freeze.hold":
+            self.freeze(pressed)              # momentary: held down = frozen
         elif action == "engine.toggle":
             if pressed:
                 self.resume() if self.bypass else self.set_mode("BYPASS")
@@ -1137,6 +1194,7 @@ class Engine:
             "scene": {"id": self.scene.id, "name": self.scene.name, "mode": self.scene.mode,
                       "global": self.scene.globals, "bpm": self.scene.bpm},
             "edits": {"undo": len(self._undo), "unsaved": bool(self._undo)},
+            "frozen": self._frozen,
             "preset": {"slot": self.preset_slot, "dirty": self.preset_dirty,
                        "stored": sorted(k for k, v in self.scene.presets.items() if v)},
             "state": self.st.to_dict(now),

@@ -97,6 +97,8 @@
     $("#mieSave").classList.toggle("is-unsaved", !!ed.unsaved);
     $("#mieSave").title = ed.unsaved ? `有 ${ed.undo} 項調整還沒寫進 scene 檔` : "把目前所有調整寫回 scene 檔";
     $("#mieUndo").disabled = !ed.undo;
+    $("#mieFreeze").classList.toggle("is-frozen", !!s.frozen);
+    $("#mieFreeze").textContent = s.frozen ? "解凍" : "凍結";
     renderInstruments(s);
     renderEdges(s);
     renderStats(s);
@@ -104,11 +106,20 @@
   function renderPreset(p) {
     if (!p) return;
     const stored = new Set(p.stored || []);
-    $("#mieUndo").addEventListener("click", () => send({ type: "undo" }));
+    $("#mieFreeze").addEventListener("click", () =>
+    send({ type: "freeze", on: !$("#mieFreeze").classList.contains("is-frozen") }));
+  $("#mieUndo").addEventListener("click", () => send({ type: "undo" }));
   $("#mieRevert").addEventListener("click", () => {
     if (confirm("把所有參數退回 scene 檔存著的值？（未儲存的調整會消失）")) send({ type: "revert" });
   });
   document.addEventListener("keydown", (e) => {
+    // space toggles freeze: both hands are usually on the keys, so the one
+    // control worth reaching for has to be the easiest key on the laptop
+    if (e.code === "Space" && !e.target.matches("input, select, textarea")) {
+      e.preventDefault();
+      send({ type: "freeze", on: !$("#mieFreeze").classList.contains("is-frozen") });
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
       e.preventDefault(); send({ type: "undo" });
     }

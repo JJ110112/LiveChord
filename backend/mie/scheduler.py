@@ -34,6 +34,7 @@ class NotePair:
     follow_off: bool = False
     src_note: Optional[int] = None
     max_dur: float = 8.0
+    frozen: bool = False       # held by FREEZE: ordinary releases pass it by
     muted: bool = False        # master volume silenced it as it was sent
     sent_vel: int = 0          # what actually left the process, after the master volume
     on_sent: bool = False
@@ -117,6 +118,12 @@ class Scheduler:
         """
         if p.dropped:
             return False
+        if p.frozen:
+            # A freeze is the player saying "hold this". The lane's own release
+            # logic - a shadow following the human's key up, a pad leaving when
+            # the harmony moves - must not undo that. Only unfreeze and PANIC
+            # go through `_force_off`, which clears the flag first.
+            return False
         if not p.on_sent:
             p.dropped = True          # never started: pump skips it
             return False
@@ -181,6 +188,42 @@ class Scheduler:
         """
         with self.lock:
             return sum(1 for p in self._pairs(ch) if p.t_on <= t < p.t_off)
+
+    def hold(self, ch: int, note: int, until_t: float) -> bool:
+        """Push a sounding note's release out to `until_t` (freeze).
+
+        Only a note that has actually started: freezing must hold what is
+        AUDIBLE, not silently extend something still queued, which would be a
+        different note by the time it arrived.
+        """
+        # `self.lock` is a plain Lock, not an RLock: `_push` takes it too, so
+        # calling it from inside the `with` here deadlocks the scheduler thread
+        # and everything behind it. Find the pair under the lock, push outside.
+        target = None
+        with self.cv:
+            for p in self._pairs(ch):
+                if p.note == note and p.on_sent and not p.off_sent and p.t_off < until_t:
+                    p.t_off = until_t
+                    p.max_dur = max(p.max_dur, until_t - p.t_on)
+                    p.frozen = True
+                    target = p
+                    break
+        if target is None:
+            return False
+        self._push(until_t, "off", target)
+        return True
+
+    def is_frozen(self, ch: int, note: int) -> bool:
+        with self.lock:
+            return any(p.note == note and p.frozen and not p.off_sent
+                       for p in self._pairs(ch))
+
+    def thaw(self, ch: int, note: int) -> None:
+        """Drop the freeze flag so an ordinary release can take the note again."""
+        with self.cv:
+            for p in self._pairs(ch):
+                if p.note == note:
+                    p.frozen = False
 
     def release_lane(self, ch: int, lane: str, at_t: float) -> int:
         """Stop every note of one lane, sounding OR still queued.
@@ -264,6 +307,14 @@ class Scheduler:
             elif item.kind == "off":
                 if not p.on_sent or p.off_sent:
                     continue          # never started, or a superseded off entry
+                if item.t < p.t_off - 1e-9:
+                    # The pair's release has been pushed LATER since this entry
+                    # was queued (a freeze). Lazy deletion only ever handled the
+                    # other direction - bringing a release forward, where the
+                    # new entry fires first and marks off_sent - so the stale
+                    # early entry sailed through and cut a frozen note off at
+                    # its original length.
+                    continue
                 p.off_sent = True
             self.late_ms.append((now - item.t) * 1000.0)
             if len(self.late_ms) > 2000:

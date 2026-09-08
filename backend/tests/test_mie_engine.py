@@ -2405,3 +2405,92 @@ def test_every_chord_scale_is_a_real_scale():
     # and the augmented scale still contains the chord it is named for
     aug = set(chord_scale("aug"))
     assert {0, 4, 8} <= aug, aug
+
+
+# ------------------------------------------------------------------ freeze
+def _freeze_edges() -> list[dict]:
+    return [{"id": "sh", "src": 0, "dst": 11, "algo": "shadow", "prob": 1.0, "delay_ms": 10,
+             "shadow": "top", "constraint": "free", "lane": "shadow", "max_hold_s": 2.0}]
+
+
+def test_freeze_holds_what_is_sounding_so_you_can_play_over_it():
+    """Bad Mood's FREEZE: keep the current sound and build on it. Here the bed
+    is one the engine made, rather than one the player had to hold themselves."""
+    eng, clk, out = make(_freeze_edges())
+    hold_chord(eng, clk, 9, [60, 64, 67])
+    run_for(eng, clk, 0.5)
+    held = sorted(k for k in eng.st.active_gen)
+    assert held, "nothing was sounding to freeze"
+    assert eng.freeze(True) == len(held)
+    release_chord(eng, clk, 9, [60, 64, 67])
+    run_for(eng, clk, 6.0)                       # long past max_hold_s
+    assert sorted(k for k in eng.st.active_gen) == held, "the freeze did not hold"
+
+
+def test_unfreeze_lets_go():
+    eng, clk, out = make(_freeze_edges())
+    hold_chord(eng, clk, 9, [60, 64, 67])
+    run_for(eng, clk, 0.5)
+    n = eng.freeze(True)
+    run_for(eng, clk, 3.0)
+    assert eng.st.active_gen
+    assert eng.freeze(False) == n
+    run_for(eng, clk, 0.5)
+    assert not eng.st.active_gen, "unfreeze left notes sounding"
+    assert len(out.notes("note_off", ch=11)) >= n
+
+
+def test_a_freeze_ends_by_itself():
+    """A deliberate override of the note length is a deliberate override of the
+    thing that stops notes hanging. The leash is longer, never absent: a freeze
+    someone walks away from has to end."""
+    eng, clk, out = make(_freeze_edges(), freeze_max_s=4.0)
+    hold_chord(eng, clk, 9, [60, 64, 67])
+    run_for(eng, clk, 0.5)
+    eng.freeze(True)
+    release_chord(eng, clk, 9, [60, 64, 67])
+    run_for(eng, clk, 3.0)
+    assert eng.st.active_gen, "it let go too early"
+    run_for(eng, clk, 4.0)
+    assert not eng.st.active_gen, "a frozen note outlived its own cap"
+
+
+def test_panic_outranks_a_freeze():
+    eng, clk, out = make(_freeze_edges())
+    hold_chord(eng, clk, 9, [60, 64, 67])
+    run_for(eng, clk, 0.5)
+    eng.freeze(True)
+    eng.panic("test")
+    run_for(eng, clk, 0.2)
+    assert not eng.st.active_gen, "PANIC did not clear a frozen note"
+    assert eng._frozen is False, "the engine came back still frozen"
+
+
+def test_freeze_can_take_one_lane_and_leave_the_rest():
+    edges = _freeze_edges() + [
+        {"id": "f", "src": 0, "dst": 12, "algo": "follow", "prob": 1.0, "interval": 7,
+         "constraint": "free", "lane": "follow"}]
+    eng, clk, out = make(edges)
+    eng.instruments[12] = Instrument(12, "MODX", "synth", "hw", True, 8, 1.0, (36, 96), True)
+    hold_chord(eng, clk, 9, [60, 64, 67])
+    run_for(eng, clk, 0.3)
+    assert [k for k in eng.st.active_gen if k[0] == 11]
+    eng.freeze(True, lane="shadow")
+    release_chord(eng, clk, 9, [60, 64, 67])
+    run_for(eng, clk, 6.0)
+    assert [k for k in eng.st.active_gen if k[0] == 11], "the frozen lane let go"
+    assert not [k for k in eng.st.active_gen if k[0] == 12], "an unfrozen lane was held too"
+
+
+def test_freeze_holds_only_what_is_already_audible():
+    """Freezing something still in the queue would hold a note that has not been
+    heard - and by the time it arrived it might be a different pitch, because
+    late binding re-snaps it on the way out."""
+    eng, clk, out = make([{"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 1.0,
+                           "repeats": 4, "delay_beats": 1.0, "vel_scale": 1.0, "decay": 1.0,
+                           "min_vel": 1, "constraint": "free", "lane": "echo"}])
+    play(eng, clk, 9, 60, vel=90, hold=0.2)
+    run_for(eng, clk, 0.6)                       # one return out, three queued
+    sounding = len(eng.st.active_gen)
+    assert eng.freeze(True) == sounding
+    assert sounding < 4, "the test needs notes still waiting in the queue"

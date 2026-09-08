@@ -115,6 +115,9 @@ def main(argv=None) -> int:
                     logging.getLogger("mie.ui").exception("mie: scene load failed")
                     return
                 engine.submit(engine.load_scene, sc)
+            elif t == "freeze":
+                engine.submit(engine.freeze, bool(msg.get("on", True)),
+                              str(msg.get("lane") or "") or None)
             elif t == "undo":
                 engine.submit(engine.undo)
             elif t == "revert":
