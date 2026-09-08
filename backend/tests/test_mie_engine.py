@@ -14,6 +14,7 @@ import os
 import sys
 from random import Random
 
+import collections
 import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
@@ -1938,6 +1939,41 @@ def _texture_after(eng, clk, play_fn) -> str:
     play_fn()
     eng.st.refresh_texture(clk())
     return eng.st.texture
+
+
+def test_the_log_can_describe_a_note_from_start_to_finish():
+    """Every generated note must record when it started, how long, and when it stopped.
+
+    The log used to say only where a note began. `gen` carried no length, and
+    `off` was emitted from `_force_off` alone - the 22:54 take recorded 852
+    note-ons and 59 offs. `sched` does carry a length, but late binding re-snaps
+    the pitch between scheduling and sending (46 % of that take's notes went out
+    at a different pitch than they were scheduled at), so a `sched` row cannot
+    be paired with the note that actually sounded and its length belongs to a
+    pitch that never played. Nothing downstream could draw or measure a note.
+    """
+    log = []
+    clk = FakeClock(10.0)
+    out = FakeMidiOut(clk)
+    eng = Engine(scene([{"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 1.0,
+                         "repeats": 2, "delay_beats": 1.0, "lane": "echo"}]),
+                 instruments(), clock=clk, send=out, rng=Random(3), mode="INTERACTIVE",
+                 event_sink=log.append)
+    play(eng, clk, 9, 60, 90, hold=0.3)
+    run_for(eng, clk, 8.0)
+
+    gens = [r for r in log if r["type"] == "gen"]
+    offs = [r for r in log if r["type"] == "off"]
+    assert gens, "nothing was generated"
+    for g in gens:
+        assert "dur_ms" in g and g["dur_ms"] > 0, f"a generated note with no length: {g}"
+    # exactly one release per note that sounded - no note left open, none
+    # released twice (a stray note_off cuts short another lane's same pitch)
+    started = collections.Counter((g["ch"], g["note"]) for g in gens)
+    stopped = collections.Counter((o["ch"], o["note"]) for o in offs)
+    assert started == stopped, f"starts {started} != stops {stopped}"
+    for o in offs:
+        assert "held_ms" in o, f"a release with no duration: {o}"
 
 
 def test_edge_texture_condition_narrows_but_never_silences():

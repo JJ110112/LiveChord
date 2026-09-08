@@ -1080,8 +1080,21 @@ class Engine:
             self.stats["gen_sent"] += 1
             self.st.gen_on(p.ch, p.note, now, p.lane, p.root_id, p.hop, p.src_note, p.max_dur)
             self._note_lane_sent(p.ch, p.lane, p.note, now)
+            # The LENGTH belongs on this event, not on `sched`. Late binding
+            # re-snaps the pitch between scheduling and sending - measured over
+            # the 22:54 take, 46 % of notes went out at a different pitch than
+            # they were scheduled at - so a `sched` row cannot be paired with
+            # the note that actually sounded, and its `dur_ms` describes a pitch
+            # that never played. Without this nothing downstream can draw or
+            # measure how long a generated note lasted.
+            #
+            # `dur_ms` is the length PLANNED at send time; `follow` marks the
+            # ones whose real release is the human's (Shadow), where the plan is
+            # only a safety cap. The matching `off` event carries the truth.
+            extra = {"follow": True} if p.follow_off else {}
             self._ui("gen", ch=p.ch, note=p.note, vel=p.sent_vel or p.vel, lane=p.lane,
-                     hop=p.hop, edge=p.edge_id, gain=round(self.master_gain, 2))
+                     hop=p.hop, edge=p.edge_id, gain=round(self.master_gain, 2),
+                     dur_ms=round(max(0.0, p.t_off - now) * 1000), **extra)
             if self.graph.edges_from(p.ch) and not self.bypass:
                 fb = MieEvent(event_id=next_id(), kind="note_on", t_wall=now, ch=p.ch, note=p.note, vel=p.vel,
                               origin="GENERATIVE", root_id=p.root_id, parent_id=p.parent_id, source_ch=p.ch,
@@ -1089,16 +1102,34 @@ class Engine:
                 self._fire_edges(fb, now)
         else:
             self.st.gen_off(p.ch, p.note)
+            # EVERY release, not only the forced ones. Until now `off` was
+            # emitted from `_force_off` alone, so a take recorded 852 note-ons
+            # and 59 offs: the log knew when a note started and never when it
+            # stopped. `_force_off` marks its own pairs `off_sent` before the
+            # scheduler reaches them, so it still logs exactly once.
+            #
+            # One `gen` in a few hundred has no `off`, and that is correct: when
+            # the same pitch retriggers on the same channel before the first has
+            # been released, both pairs share ONE note_off - a synth has one
+            # voice for a pitch, and a second note_off would cut whatever is
+            # sounding there now. Anything reading this log should fall back to
+            # the note's own `dur_ms` when no release arrives.
+            self._ui("off", ch=p.ch, note=p.note, why="end",
+                     held_ms=round(max(0.0, now - p.t_on) * 1000))
 
     def _force_off(self, ch: int, note: int, now: float, why: str = "") -> None:
         self.sched.thaw(ch, note)       # unfreeze and PANIC outrank a freeze
-        direct = (ch, note) in self.st.active_gen
+        g = self.st.active_gen.get((ch, note))
+        direct = g is not None
         self.sched.release(ch, note, now, mark_sent=direct)
         if direct:
             self.send(port_for(ch), self.mido.Message("note_off", channel=ch - 1, note=note, velocity=0))
             self.echo_filter.note_sent(ch, note, False, now)
             self.st.gen_off(ch, note)
-            self._ui("off", ch=ch, note=note, why=why)
+            # the same shape as a natural release: every `off` says how long
+            # the note actually sounded, so a consumer never has two cases
+            self._ui("off", ch=ch, note=note, why=why,
+                     held_ms=round(max(0.0, now - g.t_on) * 1000))
 
     def _release_channel(self, ch: int, now: float) -> None:
         for (c, n) in list(self.st.active_gen):
