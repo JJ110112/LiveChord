@@ -7,7 +7,7 @@
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
   <link rel="stylesheet" href="/css/base.css?v=24">
-  <link rel="stylesheet" href="/css/mie.css?v=15">
+  <link rel="stylesheet" href="/css/mie.css?v=16">
 </head>
 <body class="mie-body">
   <!-- 頂列：MODE / SCENE / KEY / CHORD / BPM / clock / PANIC -->
@@ -43,6 +43,7 @@
     <button id="mieUndo" class="mie-btn" title="復原上一個參數調整（Ctrl+Z）">↶</button>
     <button id="mieRevert" class="mie-btn" title="全部退回 scene 檔存著的值">退回檔案</button>
     <button id="mieSave" class="mie-btn" title="把目前所有調整寫回 scene 檔">儲存</button>
+    <button id="mieRollBtn" class="mie-btn" title="鋼琴捲軸：把一整趟的音畫出來，或載入舊的 log 回顧（R）">捲軸</button>
     <button id="miePanic" class="mie-btn mie-btn-panic" title="兩個 Out port 各自 CH1–16 送 CC120/123/64=0，再補 note_off；引擎進 BYPASS（快捷鍵 Esc Esc）">PANIC</button>
   </header>
 
@@ -85,6 +86,39 @@
     </section>
   </main>
 
-  <script src="/js/mie.js?v=30"></script>
+  <!-- 鋼琴捲軸：預設收著。面板在演出當下是樂器，這裡的任何東西都不該讓你賠掉一趟 -->
+  <section id="mieRoll" class="mie-roll" hidden>
+    <div class="mr-bar">
+      <button class="mr-play mie-btn" title="播放／暫停（空白鍵在捲軸上時）">▶</button>
+      <span class="mr-time">0:00 / 0:00</span>
+      <input class="mr-seek" type="range" min="0" max="10" step="0.01" value="0" title="拖曳移動播放頭">
+      <select class="mr-speed mie-sel" title="回放速度：慢下來才看得出撞音與延遲">
+        <option value="0.25">0.25×</option>
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+      </select>
+      <button class="mr-loop mie-btn" title="Shift + 拖曳畫出反覆區間；按這裡清掉">循環</button>
+      <label class="mr-zoomwrap" title="縮放：一個畫面幾秒（滑鼠滾輪也可以）">
+        <span class="mie-lbl">縮放</span>
+        <input class="mr-zoom" type="range" min="1" max="600" step="1" value="20">
+      </label>
+      <span class="mie-spacer"></span>
+      <button class="mr-live mie-btn" title="即時：畫引擎正在送出的音。預設關著">○ 即時</button>
+      <select class="mr-logs mie-sel" title="這台引擎自己錄下的 session，新的在最上面">
+        <option value="">載入錄音…</option>
+      </select>
+      <label class="mie-btn mr-filebtn" title="載入別處來的 session JSONL">檔案
+        <input class="mr-file" type="file" accept=".jsonl,.json,.txt" hidden>
+      </label>
+      <button id="mieRollClose" class="mie-btn" title="收起捲軸">✕</button>
+    </div>
+    <div class="mr-lanes"></div>
+    <div class="mr-stage"><canvas class="mr-canvas"></canvas></div>
+    <div class="mr-foot"><span class="mr-title">尚未載入</span><span class="mr-note"></span></div>
+  </section>
+
+  <script src="/js/mie-roll.js?v=5"></script>
+  <script src="/js/mie.js?v=33"></script>
 </body>
 </html>

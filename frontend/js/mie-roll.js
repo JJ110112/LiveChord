@@ -1,0 +1,579 @@
+/* LiveChord MIE — piano roll (plan §11 Phase 2, stage 2 of the 2026-09-09 sequence).
+ *
+ * A take is four minutes of a thousand notes across seven lanes and six
+ * instruments. The event list can show you the last twenty of them, which is
+ * the wrong shape for the questions actually being asked: is this lane sitting
+ * on top of my playing, does that answer come back before or after the chord
+ * moves, why is the strings part always up there.
+ *
+ * So: time on X, pitch on Y, a keyboard down the left edge as the legend, one
+ * colour per lane. Canvas 2D, no library — this repo already draws a MIDI
+ * waterfall the same way in player.js, and a take is a few thousand
+ * rectangles, which 2D handles without breathing hard.
+ *
+ * Two modes:
+ *   LIVE    — events arrive from the engine's WebSocket and the view follows
+ *             the playhead. Off by default: the panel is an instrument during a
+ *             performance and nothing here is allowed to cost it a take.
+ *   REVIEW  — a session JSONL is loaded and can be scrubbed, looped and played
+ *             back at quarter speed to look for collisions and late entries.
+ *
+ * Reading a log needs `dur_ms` on `gen` and an `off` for every note, which the
+ * engine only started recording on 2026-09-09. Older logs draw with the notes
+ * they can pair and say how many they could not.
+ */
+(function () {
+  "use strict";
+
+  // One colour per LANE, not per algorithm: a scene names its own edges
+  // (`phrase_modx`, `iridium_to_wavestate`) and a hardcoded legend goes stale
+  // the moment a scene changes. Lanes are the engine's own vocabulary.
+  const LANE_HUE = {
+    human: 145,       // green: the one you played
+    shadow: 275,      // violet
+    echo: 190,        // cyan
+    echo2: 205,
+    follow: 25,       // orange
+    phrase: 55,       // yellow
+    sustain: 330,     // pink
+    pad: 300,
+    texture: 240,
+  };
+  const LANE_LABEL = {
+    human: "你", shadow: "影子", echo: "回音", echo2: "回音2", follow: "跟隨",
+    phrase: "樂句", sustain: "延續", pad: "襯底", texture: "織體",
+  };
+
+  function hueFor(lane) {
+    if (LANE_HUE[lane] !== undefined) return LANE_HUE[lane];
+    let h = 0;                                  // stable colour for a lane we do not know
+    for (let i = 0; i < lane.length; i++) h = (h * 31 + lane.charCodeAt(i)) % 360;
+    return h;
+  }
+
+  const BLACK = { 1: 1, 3: 1, 6: 1, 8: 1, 10: 1 };
+  const isBlack = (n) => !!BLACK[((n % 12) + 12) % 12];
+  const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const noteName = (n) => NOTE_NAMES[((n % 12) + 12) % 12] + (Math.floor(n / 12) - 1);
+
+  // ---------------------------------------------------------------- model
+  /** Turn a session's events into note rectangles.
+   *
+   * `gen` gives the pitch that actually sounded and the length planned at send
+   * time; the matching `off` gives the truth. They are paired oldest-first per
+   * (channel, pitch) because that is how the engine releases them - and one in
+   * a few hundred has no `off` at all, because two overlapping notes of the
+   * same pitch on one channel share a single note_off. Those fall back to the
+   * planned length, which is what `dur_ms` is for.
+   */
+  function buildNotes(rows) {
+    const notes = [];
+    const open = new Map();                     // "src|ch|note" -> [note, ...]
+    let unpaired = 0, noLength = 0;
+    const key = (src, ch, n) => src + "|" + ch + "|" + n;
+
+    for (const r of rows) {
+      const t = r.t;
+      if (r.type === "human") {
+        const o = { t, ch: r.ch, note: r.note, vel: r.vel || 64, lane: "human",
+                    edge: "human", dur: null, planned: null, human: true };
+        notes.push(o);
+        const k = key("h", r.ch, r.note);
+        if (!open.has(k)) open.set(k, []);
+        open.get(k).push(o);
+      } else if (r.type === "human_off") {
+        const q = open.get(key("h", r.ch, r.note));
+        const o = q && q.shift();
+        if (o) o.dur = (r.held_ms !== undefined ? r.held_ms / 1000 : Math.max(0.05, t - o.t));
+      } else if (r.type === "gen") {
+        const o = { t, ch: r.ch, note: r.note, vel: r.vel || 64, lane: r.lane || "gen",
+                    edge: r.edge || "", hop: r.hop || 1,
+                    dur: null,
+                    planned: r.dur_ms !== undefined ? r.dur_ms / 1000 : null,
+                    follow: !!r.follow, human: false };
+        if (r.dur_ms === undefined) noLength++;
+        notes.push(o);
+        const k = key("g", r.ch, r.note);
+        if (!open.has(k)) open.set(k, []);
+        open.get(k).push(o);
+      } else if (r.type === "off") {
+        const q = open.get(key("g", r.ch, r.note));
+        const o = q && q.shift();
+        if (o) o.dur = (r.held_ms !== undefined ? r.held_ms / 1000 : Math.max(0.03, t - o.t));
+      }
+    }
+    for (const n of notes) {
+      if (n.dur === null) {
+        unpaired++;
+        // a note we never saw stop: its own planned length, else a short stub
+        // so it is visible rather than invisible
+        n.dur = n.planned !== null ? n.planned : 0.25;
+        n.openEnded = true;
+      }
+    }
+    return { notes, unpaired, noLength };
+  }
+
+  function spanOf(notes) {
+    let lo = Infinity, hi = -Infinity, t0 = Infinity, t1 = -Infinity;
+    for (const n of notes) {
+      if (n.note < lo) lo = n.note;
+      if (n.note > hi) hi = n.note;
+      if (n.t < t0) t0 = n.t;
+      if (n.t + n.dur > t1) t1 = n.t + n.dur;
+    }
+    if (!notes.length) return { lo: 48, hi: 84, t0: 0, t1: 10 };
+    return { lo: Math.max(0, lo - 2), hi: Math.min(127, hi + 2), t0: Math.max(0, t0 - 0.5), t1: t1 + 0.5 };
+  }
+
+  // ------------------------------------------------------------ the view
+  function create(root, opts) {
+    opts = opts || {};
+    const el = {
+      canvas: root.querySelector(".mr-canvas"),
+      lanes: root.querySelector(".mr-lanes"),
+      seek: root.querySelector(".mr-seek"),
+      play: root.querySelector(".mr-play"),
+      speed: root.querySelector(".mr-speed"),
+      loop: root.querySelector(".mr-loop"),
+      zoom: root.querySelector(".mr-zoom"),
+      file: root.querySelector(".mr-file"),
+      logs: root.querySelector(".mr-logs"),
+      live: root.querySelector(".mr-live"),
+      time: root.querySelector(".mr-time"),
+      note: root.querySelector(".mr-note"),
+      title: root.querySelector(".mr-title"),
+    };
+    const ctx = el.canvas.getContext("2d");
+
+    const st = {
+      notes: [],
+      span: { lo: 48, hi: 84, t0: 0, t1: 10 },
+      hidden: new Set(),                 // lanes the player has switched off
+      view: 0,                           // left edge of the window, seconds
+      secondsPerScreen: 20,
+      playhead: 0,
+      playing: false,
+      speed: 1,
+      loop: null,                        // [a, b] in seconds
+      live: false,
+      liveT: 0,
+      hover: null,
+      raf: 0,
+      lastFrame: 0,
+    };
+
+    // ------------------------------------------------------------ drawing
+    const KEY_W = 44;                    // the keyboard legend down the left
+    function size() {
+      const dpr = window.devicePixelRatio || 1;
+      const r = el.canvas.getBoundingClientRect();
+      const w = Math.max(320, Math.floor(r.width)), h = Math.max(160, Math.floor(r.height));
+      if (el.canvas.width !== w * dpr || el.canvas.height !== h * dpr) {
+        el.canvas.width = w * dpr; el.canvas.height = h * dpr;
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { w, h };
+    }
+
+    const ink = () => {
+      const t = document.documentElement.getAttribute("data-theme");
+      return /^(light|sakura|sunny|sky)$/.test(t || "") ? "0,0,0" : "255,255,255";
+    };
+
+    function draw() {
+      const { w, h } = size();
+      const rgb = ink();
+      const plotW = w - KEY_W;
+      const { lo, hi } = st.span;
+      const rows = Math.max(1, hi - lo + 1);
+      const rowH = h / rows;
+      const yOf = (n) => (hi - n) * rowH;
+      const xOf = (t) => KEY_W + ((t - st.view) / st.secondsPerScreen) * plotW;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // pitch lanes: the black keys shaded, so the eye can find an octave
+      for (let n = lo; n <= hi; n++) {
+        if (isBlack(n)) {
+          ctx.fillStyle = `rgba(${rgb},.05)`;
+          ctx.fillRect(KEY_W, yOf(n), plotW, rowH);
+        }
+        if (n % 12 === 0) {
+          ctx.fillStyle = `rgba(${rgb},.16)`;
+          ctx.fillRect(KEY_W, yOf(n) + rowH - 1, plotW, 1);
+        }
+      }
+
+      // a second grid, and a heavier line every five
+      const step = st.secondsPerScreen > 60 ? 10 : st.secondsPerScreen > 24 ? 5 : 1;
+      const first = Math.floor(st.view / step) * step;
+      ctx.font = "10px ui-monospace, monospace";
+      for (let t = first; t < st.view + st.secondsPerScreen; t += step) {
+        const x = xOf(t);
+        if (x < KEY_W) continue;
+        ctx.fillStyle = `rgba(${rgb},${t % (step * 5) === 0 ? .18 : .07})`;
+        ctx.fillRect(x, 0, 1, h);
+        if (t % (step * 5) === 0) {
+          ctx.fillStyle = `rgba(${rgb},.45)`;
+          ctx.fillText(`${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`, x + 3, 11);
+        }
+      }
+
+      // the notes
+      const vEnd = st.view + st.secondsPerScreen;
+      for (const n of st.notes) {
+        if (st.hidden.has(n.lane)) continue;
+        if (n.t > vEnd || n.t + n.dur < st.view) continue;
+        if (n.note < lo || n.note > hi) continue;
+        const x = xOf(n.t);
+        const wid = Math.max(2, (n.dur / st.secondsPerScreen) * plotW);
+        const y = yOf(n.note);
+        const hgt = Math.max(2, rowH - 1);
+        const hue = hueFor(n.lane);
+        const light = n.human ? 62 : 42 + Math.round((n.vel / 127) * 26);
+        const sat = n.human ? 70 : 78;
+        ctx.fillStyle = `hsl(${hue} ${sat}% ${light}%)`;
+        ctx.globalAlpha = n.human ? 1 : 0.55 + (n.vel / 127) * 0.45;
+        ctx.fillRect(Math.max(KEY_W, x), y, Math.min(wid, w - Math.max(KEY_W, x)), hgt);
+        ctx.globalAlpha = 1;
+        // a note we never saw stop is drawn from its PLANNED length, so it is
+        // marked - otherwise the picture would assert something it does not know
+        if (n.openEnded && wid > 6) {
+          ctx.fillStyle = `rgba(${rgb},.5)`;
+          ctx.fillRect(Math.max(KEY_W, x) + Math.min(wid, w) - 2, y, 2, hgt);
+        }
+        if (n.human && hgt > 3) {              // the human line gets an outline
+          ctx.strokeStyle = `hsl(${hue} 80% 78%)`;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(Math.max(KEY_W, x) + .5, y + .5, Math.min(wid, w) - 1, hgt - 1);
+        }
+      }
+
+      // the keyboard legend
+      ctx.fillStyle = `rgba(${rgb},.06)`;
+      ctx.fillRect(0, 0, KEY_W, h);
+      for (let n = lo; n <= hi; n++) {
+        const y = yOf(n);
+        ctx.fillStyle = isBlack(n) ? `rgba(${rgb},.55)` : `rgba(${rgb},.14)`;
+        ctx.fillRect(0, y, isBlack(n) ? KEY_W * 0.62 : KEY_W - 2, Math.max(1, rowH - 1));
+        if (n % 12 === 0 && rowH > 6) {
+          ctx.fillStyle = `rgba(${rgb},.75)`;
+          ctx.font = "9px ui-monospace, monospace";
+          ctx.fillText(noteName(n), KEY_W - 22, y + rowH - 1);
+        }
+      }
+
+      // loop region, then the playhead over everything
+      if (st.loop) {
+        const a = xOf(st.loop[0]), b = xOf(st.loop[1]);
+        ctx.fillStyle = "rgba(92,107,192,.18)";
+        ctx.fillRect(Math.max(KEY_W, a), 0, Math.max(1, b - Math.max(KEY_W, a)), h);
+      }
+      const px = xOf(st.playhead);
+      if (px >= KEY_W) {
+        ctx.fillStyle = "#ff5252";
+        ctx.fillRect(px, 0, 1.5, h);
+      }
+    }
+
+    function schedule() {
+      if (st.raf) return;
+      st.raf = requestAnimationFrame(() => { st.raf = 0; draw(); });
+    }
+
+    // ------------------------------------------------------------ playback
+    /** Move the playhead by `dt` seconds of wall clock. Separated from the
+     *  animation loop so the transport can be reasoned about - and tested -
+     *  without a visible document: `requestAnimationFrame` does not run at all
+     *  on a hidden tab, which is correct for an animation and useless for
+     *  checking that a loop region actually wraps.
+     */
+    function advance(dt) {
+      st.playhead += dt * st.speed;
+      if (st.loop && st.playhead > st.loop[1]) st.playhead = st.loop[0];
+      if (st.playhead >= st.span.t1) { st.playhead = st.span.t1; setPlaying(false); }
+      follow();
+      syncSeek();
+    }
+
+    function tick(now) {
+      if (!st.playing) return;
+      // the first frame after a start - or after the tab was hidden and the
+      // pending frame finally arrives - must not jump by however long that was
+      const dt = st.lastFrame ? (now - st.lastFrame) / 1000 : 0;
+      st.lastFrame = now;
+      advance(dt);
+      draw();
+      if (st.playing) requestAnimationFrame(tick);
+    }
+
+    function follow() {
+      const margin = st.secondsPerScreen * 0.15;
+      if (st.playhead < st.view + margin) st.view = st.playhead - margin;
+      if (st.playhead > st.view + st.secondsPerScreen - margin)
+        st.view = st.playhead - st.secondsPerScreen + margin;
+      st.view = Math.max(st.span.t0 - 1, st.view);
+    }
+
+    function setPlaying(on) {
+      st.playing = on;
+      st.lastFrame = 0;
+      el.play.textContent = on ? "❚❚" : "▶";
+      el.play.classList.toggle("is-on", on);
+      if (on) requestAnimationFrame(tick);
+    }
+
+    function syncSeek() {
+      const { t0, t1 } = st.span;
+      el.seek.min = t0; el.seek.max = t1;
+      if (document.activeElement !== el.seek) el.seek.value = st.playhead;
+      el.time.textContent = fmt(st.playhead) + " / " + fmt(t1);
+    }
+    const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+    // -------------------------------------------------------------- lanes
+    function renderLanes() {
+      const counts = new Map();
+      for (const n of st.notes) counts.set(n.lane, (counts.get(n.lane) || 0) + 1);
+      el.lanes.innerHTML = "";
+      // sorted by how much of the take each one is, so the loud ones lead
+      [...counts.entries()].sort((a, b) => b[1] - a[1]).forEach(([lane, n]) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "mr-lane" + (st.hidden.has(lane) ? "" : " on");
+        b.dataset.lane = lane;
+        b.style.setProperty("--h", hueFor(lane));
+        b.innerHTML = `<i></i>${LANE_LABEL[lane] || lane}<span>${n}</span>`;
+        b.title = `${lane}：${n} 個音（點一下單獨隱藏，按住 Alt 只留這一條）`;
+        el.lanes.appendChild(b);
+      });
+    }
+
+    function paintLanes() {
+      el.lanes.querySelectorAll(".mr-lane").forEach((b) => {
+        b.classList.toggle("on", !st.hidden.has(b.dataset.lane));
+      });
+    }
+
+    el.lanes.addEventListener("click", (ev) => {
+      const b = ev.target.closest(".mr-lane");
+      if (!b) return;
+      const lane = b.dataset.lane;
+      if (ev.altKey) {
+        const all = new Set(st.notes.map((n) => n.lane));
+        st.hidden = new Set([...all].filter((k) => k !== lane));
+      } else if (st.hidden.has(lane)) st.hidden.delete(lane);
+      else st.hidden.add(lane);
+      // repaint the classes, do NOT rebuild the list: replacing the button
+      // under the finger that just pressed it loses every rapid second click
+      paintLanes();
+      draw();
+    });
+
+    // ------------------------------------------------------------ pointer
+    el.canvas.addEventListener("pointermove", (ev) => {
+      const r = el.canvas.getBoundingClientRect();
+      const x = ev.clientX - r.left, y = ev.clientY - r.top;
+      if (x < KEY_W) { el.note.textContent = ""; return; }
+      const plotW = r.width - KEY_W;
+      const t = st.view + ((x - KEY_W) / plotW) * st.secondsPerScreen;
+      const rows = st.span.hi - st.span.lo + 1;
+      const pitch = Math.round(st.span.hi - (y / r.height) * rows);
+      const hit = st.notes.find((n) => !st.hidden.has(n.lane) && n.note === pitch &&
+                                       t >= n.t && t <= n.t + n.dur);
+      el.note.textContent = hit
+        ? `${noteName(hit.note)} · ${LANE_LABEL[hit.lane] || hit.lane}` +
+          `${hit.edge && hit.edge !== "human" ? " · " + hit.edge : ""}` +
+          ` · CH${hit.ch} · v${hit.vel} · ${Math.round(hit.dur * 1000)}ms` +
+          `${hit.openEnded ? "（長度為排程值）" : ""}`
+        : `${noteName(pitch)} · ${fmt(t)}`;
+    });
+    el.canvas.addEventListener("pointerleave", () => { el.note.textContent = ""; });
+
+    el.canvas.addEventListener("wheel", (ev) => {
+      ev.preventDefault();
+      const r = el.canvas.getBoundingClientRect();
+      const x = Math.max(KEY_W, ev.clientX - r.left);
+      const at = st.view + ((x - KEY_W) / (r.width - KEY_W)) * st.secondsPerScreen;
+      const f = ev.deltaY > 0 ? 1.18 : 1 / 1.18;
+      st.secondsPerScreen = Math.min(600, Math.max(1, st.secondsPerScreen * f));
+      st.view = at - ((x - KEY_W) / (r.width - KEY_W)) * st.secondsPerScreen;
+      el.zoom.value = st.secondsPerScreen;
+      draw();
+    }, { passive: false });
+
+    // click to move the playhead; drag with shift to set a loop
+    let dragFrom = null;
+    el.canvas.addEventListener("pointerdown", (ev) => {
+      const r = el.canvas.getBoundingClientRect();
+      const x = ev.clientX - r.left;
+      if (x < KEY_W) return;
+      const t = st.view + ((x - KEY_W) / (r.width - KEY_W)) * st.secondsPerScreen;
+      if (ev.shiftKey) { dragFrom = t; st.loop = [t, t]; }
+      else { st.playhead = t; st.loop = null; el.loop.classList.remove("is-on"); }
+      el.canvas.setPointerCapture(ev.pointerId);
+      syncSeek(); draw();
+    });
+    el.canvas.addEventListener("pointermove", (ev) => {
+      if (dragFrom === null) return;
+      const r = el.canvas.getBoundingClientRect();
+      const x = Math.max(KEY_W, ev.clientX - r.left);
+      const t = st.view + ((x - KEY_W) / (r.width - KEY_W)) * st.secondsPerScreen;
+      st.loop = [Math.min(dragFrom, t), Math.max(dragFrom, t)];
+      el.loop.classList.toggle("is-on", st.loop[1] - st.loop[0] > 0.2);
+      draw();
+    });
+    const endDrag = () => {
+      if (dragFrom !== null && st.loop && st.loop[1] - st.loop[0] < 0.2) st.loop = null;
+      dragFrom = null;
+    };
+    el.canvas.addEventListener("pointerup", endDrag);
+    el.canvas.addEventListener("pointercancel", endDrag);
+
+    // ----------------------------------------------------------- controls
+    el.play.addEventListener("click", () => setPlaying(!st.playing));
+    el.seek.addEventListener("input", () => {
+      st.playhead = Number(el.seek.value); follow(); syncSeek(); draw();
+    });
+    el.speed.addEventListener("change", () => { st.speed = Number(el.speed.value); });
+    el.zoom.addEventListener("input", () => {
+      st.secondsPerScreen = Number(el.zoom.value); draw();
+    });
+    el.loop.addEventListener("click", () => {
+      st.loop = null; el.loop.classList.remove("is-on"); draw();
+    });
+    el.file.addEventListener("change", () => {
+      const f = el.file.files && el.file.files[0];
+      if (!f) return;
+      const rd = new FileReader();
+      rd.onload = () => {
+        const rows = [];
+        for (const line of String(rd.result).split("\n")) {
+          const s = line.trim();
+          if (!s) continue;
+          try { rows.push(JSON.parse(s)); } catch (e) { /* a half-written last line */ }
+        }
+        api.loadEvents(rows, f.name);
+      };
+      rd.readAsText(f);
+      el.file.value = "";
+    });
+    // The engine's own recordings, listed by the engine. Reviewing the take
+    // you just played should be one click, not a file dialog opened with both
+    // hands still on the keyboard.
+    el.logs.addEventListener("focus", () => api.refreshLogs());
+    el.logs.addEventListener("change", () => {
+      const name = el.logs.value;
+      if (!name) return;
+      el.title.textContent = "載入中…";
+      fetch("/api/log/" + encodeURIComponent(name))
+        .then((r) => (r.ok ? r.text() : Promise.reject(new Error(r.status))))
+        .then((txt) => {
+          const rows = [];
+          for (const line of txt.split(String.fromCharCode(10))) {
+            const t = line.trim();
+            if (!t) continue;
+            try { rows.push(JSON.parse(t)); } catch (e) { /* a half-written last line */ }
+          }
+          api.loadEvents(rows, name);
+        })
+        .catch((e) => { el.title.textContent = `載入失敗：${e.message}`; });
+    });
+
+    el.live.addEventListener("click", () => api.setLive(!st.live));
+
+    window.addEventListener("resize", schedule);
+
+    // ---------------------------------------------------------------- api
+    const api = {
+      loadEvents(rows, name) {
+        const built = buildNotes(rows);
+        st.notes = built.notes;
+        st.span = spanOf(st.notes);
+        st.view = st.span.t0;
+        st.playhead = st.span.t0;
+        st.secondsPerScreen = Math.min(120, Math.max(8, (st.span.t1 - st.span.t0) / 4));
+        el.zoom.min = 1; el.zoom.max = 600; el.zoom.value = st.secondsPerScreen;
+        st.hidden.clear();
+        setPlaying(false);
+        renderLanes();
+        syncSeek();
+        draw();
+        const gen = st.notes.filter((n) => !n.human).length;
+        let msg = `${name || "log"}：${st.notes.length - gen} 個你彈的、${gen} 個引擎的`;
+        if (built.noLength) {
+          // an old log, recorded before `gen` carried a length
+          msg += `　⚠ ${built.noLength} 個音沒有長度（2026-09-09 之前的 log），畫成短棒`;
+        } else if (built.unpaired) {
+          msg += `　${built.unpaired} 個音沒有對應的釋放，用排程長度`;
+        }
+        el.title.textContent = msg;
+        return built;
+      },
+      pushEvent(e) {
+        if (!st.live) return;
+        if (e.type === "human" || e.type === "human_off" || e.type === "gen" || e.type === "off") {
+          st.liveRows.push(e);
+          st.liveDirty = true;
+        }
+      },
+      setLive(on) {
+        st.live = on;
+        el.live.classList.toggle("is-on", on);
+        el.live.textContent = on ? "● 即時" : "○ 即時";
+        if (on) {
+          st.liveRows = [];
+          st.liveDirty = false;
+          setPlaying(false);
+          st.liveTimer = setInterval(() => {
+            if (!st.liveDirty) return;
+            st.liveDirty = false;
+            const built = buildNotes(st.liveRows);
+            st.notes = built.notes;
+            const s = spanOf(st.notes);
+            // the pitch window may only GROW while live, or the picture jumps
+            // every time a lane happens to fall silent
+            st.span = { lo: Math.min(st.span.lo, s.lo), hi: Math.max(st.span.hi, s.hi),
+                        t0: 0, t1: Math.max(s.t1, st.playhead) };
+            st.playhead = s.t1;
+            follow();
+            renderLanes();
+            syncSeek();
+            draw();
+          }, 250);
+        } else if (st.liveTimer) {
+          clearInterval(st.liveTimer);
+          st.liveTimer = 0;
+        }
+      },
+      refreshLogs() {
+        fetch("/api/logs").then((r) => r.json()).then((list) => {
+          const cur = el.logs.value;
+          el.logs.innerHTML = '<option value="">載入錄音…</option>';
+          list.forEach((f) => {
+            const o = document.createElement("option");
+            o.value = f.name;
+            // the timestamp is the useful half of the filename
+            const m = /^session-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/.exec(f.name);
+            o.textContent = m
+              ? `${m[2]}/${m[3]} ${m[4]}:${m[5]}  ${Math.round(f.bytes / 1024)} KB`
+              : f.name;
+            el.logs.appendChild(o);
+          });
+          el.logs.value = cur;
+        }).catch(() => { /* served from somewhere that is not the engine */ });
+      },
+      redraw: schedule,
+      _advance: advance,          // for QA: drive the transport without a clock
+      _setPlaying: setPlaying,
+      _state: st,
+    };
+    st.liveRows = [];
+    api.setLive(false);
+    draw();
+    return api;
+  }
+
+  window.MieRoll = { create, buildNotes, hueFor, noteName };
+})();

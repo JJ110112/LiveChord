@@ -23,6 +23,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import struct
 import socket
 import threading
@@ -36,6 +37,35 @@ log = logging.getLogger("mie.ui")
 
 FRONTEND_DIR = os.path.join(REPO_ROOT, "frontend")
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+# The session recordings, for the panel's piano roll. Only ever read, and only
+# ever files this engine itself writes: `_log_path` refuses anything that is not
+# a bare `session-*.jsonl`, so a request cannot address a file outside here.
+LOG_DIR = os.path.join(REPO_ROOT, "data", "logs", "mie")
+_LOG_RE = re.compile(r"^session-[0-9]{8}-[0-9]{6}\.jsonl$")
+
+
+def _list_logs(limit: int = 40) -> list:
+    try:
+        names = [n for n in os.listdir(LOG_DIR) if _LOG_RE.match(n)]
+    except OSError:
+        return []
+    names.sort(reverse=True)                    # newest first: that is the one you want
+    out = []
+    for n in names[:limit]:
+        try:
+            out.append({"name": n, "bytes": os.path.getsize(os.path.join(LOG_DIR, n))})
+        except OSError:
+            pass
+    return out
+
+
+def _log_path(name: str) -> Optional[str]:
+    if not _LOG_RE.match(name or ""):
+        return None
+    p = os.path.join(LOG_DIR, name)
+    return p if os.path.isfile(p) else None
+
+
 MIME = {".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8",
         ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8",
         ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2"}
@@ -141,6 +171,35 @@ class UiServer:
                     self.send_response(200)
                     self.send_header("Content-Type", MIME[".json"])
                     self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                # The panel's own recordings, so reviewing a take is a click
+                # rather than a file dialog. Read-only, and confined to the log
+                # directory: the name is rejected outright if it is not a plain
+                # `session-*.jsonl`, so no path can walk out of there.
+                if path == "/api/logs":
+                    body = json.dumps(_list_logs()).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", MIME[".json"])
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                if path.startswith("/api/log/"):
+                    name = path[len("/api/log/"):]
+                    fp = _log_path(name)
+                    if fp is None:
+                        self.send_response(404)
+                        self.end_headers()
+                        return
+                    with open(fp, "rb") as f:
+                        body = f.read()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Cache-Control", "no-store")
                     self.end_headers()
                     self.wfile.write(body)
                     return

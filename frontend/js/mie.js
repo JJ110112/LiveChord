@@ -576,6 +576,7 @@
 
   // ---------------------------------------------------------------- events
   function pushEvent(e) {
+    if (roll) roll.pushEvent(e);          // the roll draws from the same stream
     const box = $("#mieStream");
     const el = document.createElement("div");
     let cls = "", txt = "";
@@ -633,6 +634,31 @@
       revertArmed = 0; b.classList.remove("is-arming"); b.textContent = "退回檔案";
     }, 4000);
   });
+  // ------------------------------------------------------------ 鋼琴捲軸
+  // Created lazily: until the player asks for it there is no canvas, no
+  // animation frame, and `pushEvent` does nothing extra on the panel's hot
+  // path. The three columns above are where the work happens during a take
+  // and this must not disturb them.
+  let roll = null;
+  const rollBox = $("#mieRoll");
+  function toggleRoll(on) {
+    const show = on === undefined ? rollBox.hidden : on;
+    rollBox.hidden = !show;
+    $("#mieRollBtn").classList.toggle("is-on", show);
+    if (show && !roll && window.MieRoll) {
+      roll = window.MieRoll.create(rollBox);
+      window.__mieRoll = roll;   // a handle for the console: the roll is the
+                                 // one part of this panel worth poking at from
+                                 // devtools while a take is being reviewed
+    }
+    if (roll) { if (show) roll.redraw(); else roll.setLive(false); }
+    // it lives below the three columns, which fill the screen - opening
+    // something the player then cannot see is the same as not opening it
+    if (show) rollBox.scrollIntoView({ behavior: "smooth", block: "end" });
+  }
+  $("#mieRollBtn").addEventListener("click", () => toggleRoll());
+  $("#mieRollClose").addEventListener("click", () => toggleRoll(false));
+
   document.addEventListener("keydown", (e) => {
     // Space toggles freeze: both hands are usually on the keys, so the one
     // control worth reaching for has to be the easiest key on the laptop.
@@ -644,6 +670,9 @@
       if (e.repeat) return;          // a held key repeats at the OS rate
       send({ type: "freeze", on: !$("#mieFreeze").classList.contains("is-frozen") });
       return;
+    }
+    if (e.key.toLowerCase() === "r" && !onField && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault(); toggleRoll(); return;
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
       e.preventDefault(); send({ type: "undo" });
