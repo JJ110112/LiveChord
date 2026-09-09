@@ -4277,3 +4277,87 @@ def test_a_live_entry_keeps_its_numbers_current():
     if live:
         assert live[0]["text"] != before or True   # updated in place, not duplicated
     assert len([a for a in eng.advice if a["id"] == "tension_gap"]) == 1,         "one entry per id, not one per reading"
+
+
+# ------------------------------------------------------- 環境琶音 (Phase 3)
+def _arp_scene(**over):
+    e = {"id": "pad", "src": 0, "dst": 3, "algo": "sustain", "prob": 1.0,
+         "constraint": "chord", "lane": "pad", "after_s": 0.5,
+         "every_bars_min": 0.25, "every_bars_max": 0.25, "voices": 3,
+         "hold_beats": 60, "vel": 44, "low": 48, "high": 72}
+    a = {"id": "arp", "src": 0, "dst": 10, "algo": "arp", "prob": 1.0,
+         "constraint": "chord", "lane": "arp", "grid_beats": 0.25, "vel": 30,
+         "low": 72, "high": 96, "dur_beats": 0.5, "jitter_ms": 25,
+         "with_lane": "pad"}
+    a.update(over)
+    return [e, a]
+
+
+def test_the_arp_waits_for_the_pad():
+    """「讓長音負責鋪底，同時帶出一個…琶音」. It is something the pad DOES, not a
+    second lane answering the same silence - two lanes answering one silence is
+    how a mix turns to soup."""
+    eng, clk, out = make(_arp_scene())
+    # nothing played yet: the pad is not holding, so the arp must not speak
+    run_for(eng, clk, 6.0)
+    assert not out.notes(ch=10), f"the arp played with no pad under it: {out.notes(ch=10)}"
+
+    hold_chord(eng, clk, 0, [60, 64, 67], vel=80)
+    run_for(eng, clk, 6.0)
+    assert out.notes(ch=3), "the pad never entered, so this proves nothing"
+    assert out.notes(ch=10), "the pad is holding and the arp said nothing"
+
+
+def test_the_arp_is_high_quiet_and_off_the_grid():
+    eng, clk, out = make(_arp_scene())
+    hold_chord(eng, clk, 0, [60, 64, 67], vel=80)
+    run_for(eng, clk, 12.0)
+    arp = out.notes(ch=10)
+    assert len(arp) >= 8, f"too few to judge: {arp}"
+    assert all(n >= 72 for _, _, n, _ in arp), f"came down into the pad: {arp}"
+    assert max(v for _, _, _, v in arp) < 40, f"not a shimmer: {arp}"
+
+    # 「隨機、非嚴格對拍」: the gaps must not all be the same
+    ts = [t for t, _, _, _ in arp]
+    gaps = [round(b - a, 4) for a, b in zip(ts, ts[1:])]
+    assert len(set(gaps)) > 2, f"landed on a strict grid: {gaps}"
+
+    # and it never repeats the same pitch twice running
+    ns = [n for _, _, n, _ in arp]
+    assert not [1 for a, b in zip(ns, ns[1:]) if a == b], f"trilled: {ns}"
+
+
+def test_the_arp_reaches_for_colour_before_the_root():
+    """The pad underneath is already stating the chord; what is wanted up here
+    is the ninth and the fifth."""
+    eng, clk, out = make(_arp_scene(constraint="function"))
+    hold_chord(eng, clk, 0, [60, 64, 67], vel=80)
+    run_for(eng, clk, 30.0)
+    arp = out.notes(ch=10)
+    assert len(arp) >= 20, f"too few to judge: {len(arp)}"
+    pcs = collections.Counter((n - 0) % 12 for _, _, n, _ in arp)      # C major
+    colour = pcs[2] + pcs[7] + pcs[9]          # 9th, 5th, 6th
+    assert colour > pcs[0], f"the root won: {pcs.most_common()}"
+
+
+def test_the_arp_stops_the_moment_the_pad_does():
+    eng, clk, out = make(_arp_scene())
+    hold_chord(eng, clk, 0, [60, 64, 67], vel=80)
+    run_for(eng, clk, 8.0)
+    assert out.notes(ch=10), "never started"
+    eng.set_edge("pad", "enabled", False)
+    run_for(eng, clk, 0.3)
+    out.clear()
+    run_for(eng, clk, 6.0)
+    assert not out.notes(ch=10), f"kept shimmering over nothing: {out.notes(ch=10)}"
+
+
+def test_a_late_tick_does_not_fire_every_slot_it_missed():
+    """A burst of sixteenths in one instant is the opposite of this lane's job."""
+    eng, clk, out = make(_arp_scene())
+    hold_chord(eng, clk, 0, [60, 64, 67], vel=80)
+    run_for(eng, clk, 3.0)
+    out.clear()
+    clk.advance(5.0)                    # the engine was away for five seconds
+    eng.step()
+    assert len(out.notes(ch=10)) <= 1, f"caught up in a burst: {out.notes(ch=10)}"

@@ -87,8 +87,13 @@ def snap(note: int, pcs: Iterable[int], prefer: str = "nearest", avoid_pcs: Iter
 #   echo is "none" on purpose: repeating the note the human is still holding is
 #   the whole point, and pushing it to a neighbouring scale tone turned echoes
 #   into wrong notes over a held chord (2026-09-07 play test).
+#   arp is "none" for a different reason: it lives two octaves above the hands,
+#   where doubling a pitch class the player is holding is not a clash - it is
+#   the shimmer. With the default the rule pushed every pick up an octave into
+#   the same four notes and the line repeated itself: picks of 72, 76, 79 all
+#   arrived as 84, 88, 91, which relocates the doubling without removing it.
 COLLISION_DEFAULT = {"shadow": "none", "silence": "none", "echo": "none", "sustain": "none",
-                     "phrase": "none"}   # an echo must answer the same pitch
+                     "phrase": "none", "arp": "none"}   # an echo must answer the same pitch
 
 
 def collision_for(edge) -> str:

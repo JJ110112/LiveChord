@@ -250,6 +250,15 @@
               NUM("釋放(拍)", "release_beats", 0, 8, 0.5, "你再彈之後多久淡出"),
               BOOL("跟和弦", "follow_chord", "和弦換了就把這層墊音重新擺到新的和弦上"),
               NUM("低", "low", 21, 108, 1, null), NUM("高", "high", 21, 108, 1, null)],
+    // 環境琶音: a shimmer OVER a lane that is already holding, not a lane of
+    // its own. `with_lane` is what makes it that, so it is the first thing here.
+    arp: [NUM("格子(拍)", "grid_beats", 0.125, 2, 0.125, "多久一個機會。0.25 = 十六分音符"),
+          NUM("不對拍(ms)", "jitter_ms", 0, 120, 5, "每個音在格子附近隨機偏移多少。0 = 死對拍，聽起來就像音序器"),
+          NUM("力度", "vel", 1, 80, 1, "本來就該很小聲：長音的三、四成"),
+          NUM("長度(拍)", "dur_beats", 0.125, 4, 0.125, "每個點多長"),
+          NUM("低", "low", 21, 108, 1, "這條線該在長音的上面兩個八度左右"),
+          NUM("高", "high", 21, 108, 1, null),
+          NUM("等待(s)", "after_s", 0.5, 20, 0.5, "沒有指定長音聲部時，安靜多久就停")],
     sustain: [NUM("等待(s)", "after_s", 0.5, 20, 0.5, "按住多久才開始"),
               NUM("最短(小節)", "every_bars_min", 0.25, 8, 0.25, null),
               NUM("最長(小節)", "every_bars_max", 0.25, 8, 0.25, null),
@@ -299,6 +308,8 @@
                y: { key: "voices", min: 1, max: 6, step: 1, label: "聲部" } },
     follow:  { x: { key: "interval", min: -24, max: 24, step: 1, label: "音程" },
                y: { key: "prob", min: 0, max: 1, step: 0.05, label: "機率" } },
+    arp:     { x: { key: "grid_beats", min: 0.125, max: 2, step: 0.125, label: "格子" },
+               y: { key: "prob", min: 0, max: 1, step: 0.05, label: "密度" } },
   };
 
   function padValue(e, ax) {
@@ -799,6 +810,39 @@
     pedal: ["持續低音", "一個聲部釘在調的主音或五度，上面的和弦怎麼換它都不動。"
                       + "它不會被輪替掉——會被輪掉的就不是持續低音了"],
   };
+  /** 跟著哪一條: the lane this one may only speak over.
+   *
+   *  Without it the arp is just another lane answering the same silence, and
+   *  two lanes answering one silence is how a mix turns to soup. 「讓長音負責
+   *  鋪底，同時帶出一個…琶音」 - it is something the pad does.
+   */
+  function edgeWithLane(e) {
+    const wrap = document.createElement("label");
+    wrap.className = "mie-field";
+    wrap.title = "只在這條線正在發聲的時候才說話。留空 = 自己判斷（你停手 等待(s) 秒之後就停）";
+    wrap.innerHTML = '<span>跟著哪一條</span><select></select>';
+    const sel = wrap.querySelector("select");
+    let sig = "";
+    sel.addEventListener("change", () =>
+      send({ type: "set", path: `edge.${e.id}.with_lane`, value: sel.value }));
+    wrap.sync = (fresh, edges) => {
+      const lanes = [...new Set((edges || []).filter((x) => x.id !== fresh.id)
+                                             .map((x) => x.lane))].sort();
+      const s2 = lanes.join(",");
+      if (s2 !== sig) {
+        sig = s2;
+        sel.innerHTML = "";
+        [["", "（自己判斷）"]].concat(lanes.map((l) => [l, LANE_LABEL[l] || l]))
+          .forEach(([v, label]) => {
+            const o = document.createElement("option");
+            o.value = v; o.textContent = label; sel.appendChild(o);
+          });
+      }
+      if (document.activeElement !== sel) sel.value = fresh.with_lane || "";
+    };
+    return wrap;
+  }
+
   function edgeChoice(e, key) {
     const wrap = document.createElement("label");
     wrap.className = "mie-field";
@@ -912,6 +956,13 @@
         body.appendChild(el._drift);
         el._swell = edgeSwell(e);
         body.appendChild(el._swell);
+        // Which lane this one shimmers over. Built from the scene, because a
+        // lane list is a fact about THIS rig; it is the setting that makes the
+        // arp a thing the pad does rather than a second pad.
+        if (e.algo === "arp") {
+          el._with = edgeWithLane(e);
+          body.appendChild(el._with);
+        }
         const choices = ["constraint", "align", "voice_lead", "collision"];
         if (e.algo === "silence") choices.push("silence_mode");
         // Only the two lanes that lay a chord down have a voicing to shape.
@@ -962,6 +1013,7 @@
       fires.title = e.mute || (e.drops
         ? `${e.drops} 個音被丟掉了——多半是音域或八度把它推到樂器範圍外`
         : "");
+      if (el._with) el._with.sync(e, s.edges);
       if (el._when && !el._when.contains(document.activeElement)) el._when.sync(e);
       if (el._drift) el._drift.sync(e);
       if (el._swell) el._swell.sync(e, s.instruments);
@@ -1283,7 +1335,7 @@
   // puts those back, not the previous style's.
   const LANE_LABEL = {
     human: "你", shadow: "影子", echo: "回音", echo2: "回音2", follow: "跟隨",
-    phrase: "樂句", sustain: "延續", pad: "襯底", texture: "織體",
+    phrase: "樂句", sustain: "延續", pad: "襯底", texture: "織體", arp: "琶音",
   };
 
   let styleSig = "";

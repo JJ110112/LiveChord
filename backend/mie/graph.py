@@ -17,7 +17,7 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DATA_DIR = os.path.join(REPO_ROOT, "data", "mie")
 SCENE_DIR = os.path.join(DATA_DIR, "scenes")
 
-ALGOS_PHASE1 = ("follow", "echo", "shadow", "silence", "sustain", "phrase")
+ALGOS_PHASE1 = ("follow", "echo", "shadow", "silence", "sustain", "phrase", "arp")
 
 # plan §7 operating modes -> overrides applied on top of the scene globals
 MODES: dict[str, dict] = {
@@ -150,7 +150,9 @@ class Edge:
     # their own initiative, so they align; lanes answering a human note keep
     # the human's own timing.
     ALIGN_NAMES = {"none": 0.0, "off": 0.0, "half": 0.5, "beat": 1.0, "bar": -1.0, "downbeat": -1.0}
-    ALIGN_DEFAULT = {"silence": "bar", "sustain": "beat", "phrase": "none"}
+    # `arp` is deliberately not aligned: 「隨機、非嚴格對拍」 - quantising it
+    # would turn a shimmer into a sequencer.
+    ALIGN_DEFAULT = {"silence": "bar", "sustain": "beat", "phrase": "none", "arp": "none"}
 
     @property
     def lane(self) -> str:
@@ -432,7 +434,7 @@ class InteractionGraph:
     def timed_edges(self, allowed_algos: Optional[Iterable[str]] = None,
                     texture: Optional[str] = None) -> list[Edge]:
         allowed = set(allowed_algos) if allowed_algos else None
-        return [e for e in self.edges if e.enabled and e.algo in ("silence", "sustain", "phrase", "density")
+        return [e for e in self.edges if e.enabled and e.algo in ("silence", "sustain", "phrase", "density", "arp")
                 and (allowed is None or e.algo in allowed) and e.wants(texture)
                 and (self.instruments.get(e.dst) is not None and self.instruments[e.dst].enabled)]
 

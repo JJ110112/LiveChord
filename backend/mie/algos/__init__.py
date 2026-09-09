@@ -124,10 +124,11 @@ def pedal_pc(st, edge):
     return (st.key.tonic_pc + (7 if mode == "fifth" else 0)) % 12
 
 
-from . import echo, follow, phrase, shadow, silence, sustain  # noqa: E402
+from . import arp, echo, follow, phrase, shadow, silence, sustain  # noqa: E402
 
 EVENT_ALGOS = {"follow": follow.run, "echo": echo.run, "shadow": shadow.run}
-TICK_ALGOS = {"silence": silence.tick, "sustain": sustain.tick, "phrase": phrase.tick}
+TICK_ALGOS = {"silence": silence.tick, "sustain": sustain.tick, "phrase": phrase.tick,
+              "arp": arp.tick}
 TICK_SKIP = {"sustain": sustain.on_skip, "silence": silence.on_skip,
-             "phrase": phrase.on_skip}   # told when a window was refused
+             "phrase": phrase.on_skip, "arp": arp.on_skip}   # told when a window was refused
 RELEASE_ALGOS = {"silence": silence.on_human_note}   # timed lanes that react to the human coming back

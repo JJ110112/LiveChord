@@ -38,10 +38,11 @@
     sustain: 330,     // pink
     pad: 300,
     texture: 240,
+    arp: 165,         // teal: it sits above everything and should read that way
   };
   const LANE_LABEL = {
     human: "你", shadow: "影子", echo: "回音", echo2: "回音2", follow: "跟隨",
-    phrase: "樂句", sustain: "延續", pad: "襯底", texture: "織體",
+    phrase: "樂句", sustain: "延續", pad: "襯底", texture: "織體", arp: "琶音",
   };
 
   function hueFor(lane) {
