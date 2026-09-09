@@ -206,7 +206,7 @@ class Scene:
 KNOWN_GLOBALS = frozenset({
     "prob_scale", "chaos", "restraint", "restraint_curve", "max_hop",
     "max_gen_notes_per_s", "max_chain_events", "max_dur_s", "sustain_dur_s",
-    "avoid_semitone", "tension", "density", "time", "time_steps",
+    "avoid_semitone", "tension", "density", "density_complement", "time", "time_steps",
     "master_gain", "master_cc", "master_ch", "ws_grace_s", "freeze_max_s",
 })
 

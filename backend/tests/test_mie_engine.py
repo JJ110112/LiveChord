@@ -1943,6 +1943,33 @@ def _texture_after(eng, clk, play_fn) -> str:
     return eng.st.texture
 
 
+def test_density_complement_is_off_by_default_and_thins_when_asked():
+    """The engine backing off while the player is busy - measured, not assumed.
+
+    It is 0 unless a scene sets it, so nothing changes for anyone who does not
+    ask. What it CANNOT do is decouple the engine from the player: `density`
+    controls how many notes a lane plays per firing, and the loudest lanes
+    (shadow, follow, echo's first return) play exactly one note per trigger
+    whatever it says. Measured on a real take, complement 1.0 moved the
+    human/engine correlation from 0.83 to 0.84 and the output by 9 %. The lever
+    that does move it is `restraint_curve`, which already existed.
+    """
+    from backend.mie.state import MusicalState
+    st = MusicalState(bpm=92, now=0.0)
+    st.density_knob = 0.6
+    assert st.effective_density() == 0.6, "the complement did something while off"
+
+    st.density_complement = 0.7
+    st.density = 0.0                       # nobody playing
+    assert st.effective_density() == 0.6
+    st.density = 8.0                       # flat out
+    assert st.effective_density() < 0.2, "it did not thin under a busy player"
+    assert st.effective_density() >= 0.0
+
+    st.density_knob = None                 # a scene with no DENSITY at all
+    assert st.effective_density() is None
+
+
 # ------------------------------------------------------ 回放送音 (2026-09-09)
 def _take_notes(t0=0.0):
     return [{"t": t0 + 0.0, "ch": 10, "note": 60, "vel": 80, "dur": 0.4},

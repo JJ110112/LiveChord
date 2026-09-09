@@ -538,6 +538,7 @@ class Engine:
             # after a deletion as well as after a write
             self.st.density_knob = (None if self.scene.globals.get("density") is None
                                     else float(self.scene.globals["density"]))
+            self.st.density_complement = float(self.scene.globals.get("density_complement") or 0.0)
             self.st.time_knob = self._time_knob()
             self.safety.set_globals(self.scene.globals)
         finally:
@@ -740,6 +741,8 @@ class Engine:
         self.scene.globals[key] = value
         if key == "density":
             self.st.density_knob = None if value is None else float(value)
+        elif key == "density_complement":
+            self.st.density_complement = float(value or 0.0)
         elif key in ("time", "time_steps"):
             self.st.time_knob = self._time_knob()
         self.safety.set_globals(self.scene.globals)
@@ -791,6 +794,7 @@ class Engine:
         """
         d = self.scene.globals.get("density")
         self.st.density_knob = None if d is None else float(d)
+        self.st.density_complement = float(self.scene.globals.get("density_complement") or 0.0)
         self.st.time_knob = self._time_knob()
 
     def load_scene(self, scene: Scene) -> None:

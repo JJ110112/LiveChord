@@ -67,7 +67,7 @@ def how_many(edge, st, key: str, default: int, lo: int = 1) -> int:
     behaves as before; 0 thins to the floor and 1 is about 1.6x.
     """
     base = int(edge.params.get(key, default))
-    d = st.density_knob
+    d = st.effective_density()
     if d is None:
         return max(lo, base)
     return max(lo, int(round(base * (0.4 + 1.2 * float(d)))))
@@ -83,7 +83,7 @@ def tail_floor(edge, st, default: int = 12) -> int:
     too or it only ever thins.
     """
     base = int(edge.params.get("min_vel", default))
-    d = st.density_knob
+    d = st.effective_density()
     if d is None:
         return base
     return max(1, int(round(base * (1.8 - 1.2 * float(d)))))

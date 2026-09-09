@@ -80,6 +80,16 @@ class MusicalState:
         self._human_ch_t: dict[int, float] = {}
         self.register = "mid"
         self.density_knob: float | None = None   # scene DENSITY control, see algos.how_many
+        # EXPERIMENT, default 0 = exactly the behaviour without it.
+        # `restraint` gates how OFTEN a lane speaks, and measurement showed it
+        # cannot stop the engine getting denser as the player does: it scales
+        # the probability per triggering event while the number of events rises
+        # with the player's own notes, so halving one and doubling the other
+        # leaves the output flat (measured correlation 0.83 -> 0.72 at curve 5).
+        # This scales how MUCH a lane plays, downward, by how hard the player is
+        # playing right now - the "back off while they are busy" an accompanist
+        # does. Off until measured on real takes and chosen deliberately.
+        self.density_complement: float = 0.0
         self.time_knob: float | None = None      # scene TIME control, see algos.time_scale
         self.chord_solid: Optional[ChordInfo] = None   # last chord with a real third
         self.texture = "quiet"        # how they are playing (see texture.py)
@@ -148,6 +158,19 @@ class MusicalState:
         if abs(pos - round(pos)) > 0.08:
             return 0.0
         return 1.0 if round(pos) % self.beats_per_bar == 0 else 0.5
+
+    def effective_density(self) -> "float | None":
+        """The DENSITY knob after the complement, if one is set.
+
+        `self.density` is the EMA of the player's own note rate; 8 notes inside
+        the 1.5 s window is taken as "flat out", the same normalisation the
+        restraint curve uses.
+        """
+        d = self.density_knob
+        if d is None or self.density_complement <= 0:
+            return d
+        busy = max(0.0, min(1.0, self.density / 8.0))
+        return max(0.0, d * (1.0 - self.density_complement * busy))
 
     @property
     def human_chs(self) -> set[int]:
