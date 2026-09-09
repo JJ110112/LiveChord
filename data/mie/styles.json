@@ -61,7 +61,7 @@
         "sustain": {
           "constraint": "function",
           "voice_lead": "octave",
-          "hold_beats": 6
+          "hold_beats": 12
         },
         "silence": {
           "constraint": "function"
