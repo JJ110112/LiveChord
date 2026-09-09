@@ -776,6 +776,26 @@
     send({ type: "style", id: e.target.value });
   });
 
+  // ------------------------------------------------------------ 面板記憶
+  // What the PANEL looked like, per browser. The scene and the style are the
+  // engine's business and are remembered on its side, so a restart comes up on
+  // the right graph whether or not this browser has ever been opened.
+  //
+  // Deliberately NOT remembered: anything that makes a sound. 送出 MIDI comes
+  // back off every time - a panel that starts playing into the room because of
+  // what someone did yesterday is not a convenience.
+  const PREF = "livechord_mie_panel";
+  function prefs() {
+    try { return JSON.parse(localStorage.getItem(PREF) || "{}") || {}; }
+    catch (e) { return {}; }
+  }
+  function setPref(k, v) {
+    try {
+      const p = prefs(); p[k] = v;
+      localStorage.setItem(PREF, JSON.stringify(p));
+    } catch (e) { /* private window, or storage off: the panel still works */ }
+  }
+
   // ------------------------------------------------------------ 鋼琴捲軸
   // Created lazily: until the player asks for it there is no canvas, no
   // animation frame, and `pushEvent` does nothing extra on the panel's hot
@@ -794,7 +814,9 @@
       if (t) t.textContent = "捲軸的程式沒有載入（mie-roll.js）——硬重新整理一次；如果還是這樣，看 console 的錯誤";
     }
     if (show && !roll && window.MieRoll) {
-      roll = window.MieRoll.create(rollBox, { send });
+      roll = window.MieRoll.create(rollBox, {
+        send, setPref, pref: (k) => prefs()[k],
+      });
       window.__mieRoll = roll;   // a handle for the console: the roll is the
                                  // one part of this panel worth poking at from
                                  // devtools while a take is being reviewed
@@ -804,8 +826,9 @@
     // something the player then cannot see is the same as not opening it
     if (show) rollBox.scrollIntoView({ behavior: "smooth", block: "end" });
   }
-  $("#mieRollBtn").addEventListener("click", () => toggleRoll());
-  $("#mieRollClose").addEventListener("click", () => toggleRoll(false));
+  $("#mieRollBtn").addEventListener("click", () => { toggleRoll(); setPref("roll", !rollBox.hidden); });
+  $("#mieRollClose").addEventListener("click", () => { toggleRoll(false); setPref("roll", false); });
+  if (prefs().roll) setTimeout(() => toggleRoll(true), 400);   // after the first snapshot
 
   document.addEventListener("keydown", (e) => {
     // Space toggles freeze: both hands are usually on the keys, so the one

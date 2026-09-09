@@ -2235,6 +2235,45 @@ def test_replay_speed_stretches_the_take():
     assert len(out.notes("note_on")) == 3
 
 
+# ------------------------------------------------- 記住上次的設定 (2026-09-09)
+def test_the_engine_remembers_which_scene_and_style_were_in_use(tmp_path):
+    """Being made to pick again every restart is how a take lands on the wrong graph.
+
+    The 10:50 session was recorded on an engine nobody had played into: restart,
+    straight to the panel, and the log is 372 seconds of nothing on a scene that
+    was never chosen. Only the NAMES are remembered - a scene file stays the one
+    place settings live.
+    """
+    from backend.mie import graph as G
+
+    p = str(tmp_path / "last_session.json")
+    assert G.load_ui_state(p) == {}, "a missing file is not an error, it is the first run"
+
+    G.save_ui_state({"scene": "test01"}, p)
+    G.save_ui_state({"style": "worship"}, p)
+    assert G.load_ui_state(p) == {"scene": "test01", "style": "worship"},         "the second write forgot the first"
+
+    # switching scene clears the style: it was laid over the scene it belonged to
+    G.save_ui_state({"scene": "01", "style": ""}, p)
+    assert G.load_ui_state(p) == {"scene": "01", "style": ""}
+
+    # None means "leave that one alone"
+    G.save_ui_state({"scene": None, "style": "jazz"}, p)
+    assert G.load_ui_state(p)["scene"] == "01"
+
+    # and an unwritable path must never raise: losing this cannot take a take down
+    G.save_ui_state({"scene": "x"}, str(tmp_path / "no" / "such" / "dir" / "s.json"))
+
+
+def test_a_corrupt_memory_file_is_ignored_rather_than_fatal(tmp_path):
+    from backend.mie import graph as G
+    p = tmp_path / "last_session.json"
+    p.write_text("{not json at all", encoding="utf-8")
+    assert G.load_ui_state(str(p)) == {}
+    p.write_text('["a list, not an object"]', encoding="utf-8")
+    assert G.load_ui_state(str(p)) == {}
+
+
 # ------------------------------------------------- 存這段 / log rotate (2026-09-09)
 def test_saving_a_segment_closes_one_file_and_opens_the_next(tmp_path):
     """Keeping a take must not mean stopping the engine.

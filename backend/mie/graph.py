@@ -211,6 +211,37 @@ KNOWN_GLOBALS = frozenset({
 })
 
 
+# What the player had going last time. Small on purpose: the engine has to come
+# up the way they left it, not carry a second copy of the scene. A scene file is
+# still the only place settings live; this only says WHICH one, and which style
+# was laid over it.
+UI_STATE_PATH = os.path.join(DATA_DIR, "last_session.json")
+
+
+def load_ui_state(path: Optional[str] = None) -> dict:
+    try:
+        with open(path or UI_STATE_PATH, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}          # first run, or someone deleted it: not an error
+
+
+def save_ui_state(patch: dict, path: Optional[str] = None) -> None:
+    """Merge `patch` into what is remembered. Never raises: this is a convenience,
+    and losing it must not take a take down."""
+    path = path or UI_STATE_PATH
+    try:
+        cur = load_ui_state(path)
+        cur.update({k: v for k, v in patch.items() if v is not None})
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(cur, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)          # atomic: a half-written file would be worse
+    except OSError:
+        pass
+
+
 def load_styles(path: Optional[str] = None) -> list:
     """The named intervention styles (plan §11 Phase 2, 介入風格預設).
 

@@ -2308,6 +2308,33 @@ scene：`echo -12`、`phrase -12`、`echo2 -12`、`shadow -1`（不高過你，�
 
 **已知還沒解的**：follow 在 14:07 那趟最高仍有 +19/+24。那是「你手上什麼都沒按著」的時候——`player_top()` 退回最近 6 秒的最高音，天花板就跟著高。要不要縮短那個回溯窗口，等實際彈過再決定。
 
+**㊵ 記住上次用的 scene 與風格，不用每次重選**
+
+「進入首頁時能載入使用者使用的設定檔、風格」。這不只是方便——**被迫每次重選就是 10:50 那趟的成因**：重啟引擎、直接去面板，結果錄下 372 秒沒有任何演奏、而且是在一個沒人選過的 scene 上。
+
+**引擎端**（`data/mie/last_session.json`，已加進 .gitignore，那是本機狀態不是設定）：
+
+- 只記**名字**：`{"scene": "test01", "style": "worship"}`。scene 檔仍然是設定唯一的所在地，這裡不放第二份。
+- 面板切 scene、套風格、另存新檔時寫入；啟動時讀。原子寫入（`.tmp` + `os.replace`），寫不進去也絕不拋例外——這是方便功能，不能拖垮一趟演奏。
+- `--scene` 明講時**優先**，`--forget` 完全忽略記憶。
+- **風格屬於它被套上去的那個 scene**：在命令列指定不同的 scene，就不會把昨天的風格硬套在一個沒為它選過的圖上；面板上切換 scene 也會一併清掉風格。
+
+五種情境實測：
+
+```
+1. 第一次（沒記憶）              scene=01       style=None     tension=0.0
+2. 重啟（照記憶）                scene=test01   style=worship  tension=0.2
+3. --scene 01（換場景）          scene=01       style=None     tension=0.0
+4. --scene test01（同一個）      scene=test01   style=worship  tension=0.2
+5. --forget                    scene=01       style=None     tension=0.0
+```
+
+**面板端**（localStorage，每個瀏覽器各自）：捲軸開著沒、縮放多少。**刻意不記任何會發出聲音的東西**——「送出 MIDI」每次都回到關閉：一個因為昨天的操作而自己開始對著房間播放的面板，不叫方便。實測重新整理後：捲軸自己打開 ✓、縮放回到 33 ✓、送出 MIDI 回到關閉 ✓、風格由引擎那邊帶回來 ✓。
+
+兩個測試：記憶檔要能累積合併、`None` 表示「這項別動」、切 scene 要清風格、寫不進去不得拋例外；以及壞掉的檔案（不是 JSON、或是個 list）要當成沒有而不是當機。MIE 測試 195 個。
+
+`mie.js?v=46`、`mie-roll.js?v=12`。
+
 #### Phase 2 工項（原本規劃 + 上述新增）
 
 - Answer、Mirror、Density、Velocity(CC)、Register；輪盤邊群組；Scene 切換淡出；UC4 MIDI Learn；矩陣 UI + 互動流動畫；player `playhead` 同步。

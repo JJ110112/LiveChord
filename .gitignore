@@ -218,3 +218,7 @@ reports/
 tools/fluidsynth/
 # FluidSynth renders of uploaded MIDI files (served by /api/midi/audio)
 data/midi_audio/
+
+# MIE: which scene and style the engine was last on. Per-machine state, not a
+# setting - the scene files are still the one place settings live.
+data/mie/last_session.json

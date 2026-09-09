@@ -19,7 +19,8 @@ import time
 from random import Random
 
 from .engine import Engine
-from .graph import DATA_DIR, load_instruments, load_scene, list_scenes, save_scene
+from .graph import (DATA_DIR, load_instruments, load_scene, list_scenes, save_scene,
+                    load_ui_state, save_ui_state)
 from .io_rtmidi import MidiIO, wall_clock
 
 
@@ -30,7 +31,10 @@ def load_json(path: str) -> dict:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--scene", default="01", help="scene id or path (data/mie/scenes)")
+    ap.add_argument("--scene", default=None,
+                    help="scene id or path (data/mie/scenes); default: the one you were last on")
+    ap.add_argument("--forget", action="store_true",
+                    help="ignore the remembered scene and style, and start from the scene file")
     ap.add_argument("--mode", default=None, help="OFF|BYPASS|SAFE|AMBIENT|INTERACTIVE|GENERATIVE|CHAOS (default: scene)")
     ap.add_argument("--ports", default=os.path.join(DATA_DIR, "ports.json"))
     ap.add_argument("--instruments", default=os.path.join(DATA_DIR, "instruments.json"))
@@ -67,7 +71,20 @@ def main(argv=None) -> int:
     ports_cfg = load_json(a.ports)
     instruments = load_instruments(a.instruments)
     control_map = {k: v for k, v in load_json(a.control_map).items() if not k.startswith("_")}
-    scene = load_scene(a.scene)
+    # Come up the way it was left. Being made to pick the scene again every time
+    # is how the 10:50 session got recorded on an engine nobody had played into:
+    # restart, go straight to the panel, and the take is on the wrong graph.
+    remembered = {} if a.forget else load_ui_state()
+    scene_id = a.scene or remembered.get("scene") or "01"
+    try:
+        scene = load_scene(scene_id)
+    except Exception:
+        if a.scene or scene_id == "01":
+            raise
+        logging.getLogger("mie").warning(
+            "mie: remembered scene %r is gone, falling back to 01", scene_id)
+        scene_id = "01"
+        scene = load_scene(scene_id)
     clock = wall_clock
 
     evlog = None
@@ -113,12 +130,16 @@ def main(argv=None) -> int:
                 elif parts[0] == "inst" and len(parts) == 3:
                     engine.submit(engine.set_instrument, int(parts[1]), parts[2], msg.get("value"))
             elif t == "scene":
+                sid = str(msg.get("id", "01"))
                 try:
-                    sc = load_scene(str(msg.get("id", "01")))       # file I/O off the engine thread
+                    sc = load_scene(sid)                            # file I/O off the engine thread
                 except Exception:
                     logging.getLogger("mie.ui").exception("mie: scene load failed")
                     return
                 engine.submit(engine.load_scene, sc)
+                # a style belongs to the scene it was laid over, so switching
+                # scenes forgets it rather than re-applying it to a new graph
+                save_ui_state({"scene": sid, "style": ""})
             elif t == "freeze":
                 engine.submit(engine.freeze, bool(msg.get("on", True)),
                               str(msg.get("lane") or "") or None)
@@ -131,6 +152,7 @@ def main(argv=None) -> int:
             elif t == "style":
                 sid = str(msg.get("id") or "")
                 engine.submit(engine.apply_style, sid) if sid else engine.submit(engine.clear_style)
+                save_ui_state({"style": sid})
             elif t == "preset_save":
                 engine.submit(engine.preset_save, str(msg.get("slot", "A")))
             elif t == "save_scene":
@@ -149,6 +171,7 @@ def main(argv=None) -> int:
                     # lost.
                     engine.submit(engine.mark_saved, os.path.basename(p),
                                   as_id, p if as_id else None)
+                    save_ui_state({"scene": as_id or engine.scene.id})
                 except Exception as exc:
                     logging.getLogger("mie.ui").exception("mie: scene save failed")
                     engine.note_ui("error", where="save_scene", err=str(exc))
@@ -199,6 +222,14 @@ def main(argv=None) -> int:
 
     sched_th = engine.sched.start()
     eng_th = engine.start()
+    # A style belongs to the scene it was laid over. Asking for a different one
+    # on the command line means starting from that scene's own settings, not
+    # yesterday's style stretched over a graph it was never chosen for.
+    style_id = remembered.get("style") if scene_id == remembered.get("scene") else ""
+    if style_id:
+        engine.submit(engine.apply_style, str(style_id))
+        print(f"[style] {style_id}")
+    save_ui_state({"scene": scene_id, "style": style_id or ""})
     print("[keys] p=PANIC  r=resume  b=BYPASS  s=stats  m <MODE>  q=quit   (Ctrl+C also PANICs)")
 
     def console() -> None:

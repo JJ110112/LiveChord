@@ -522,6 +522,7 @@
     });
     el.zoom.addEventListener("input", () => {
       st.secondsPerScreen = Number(el.zoom.value); draw();
+      if (opts.setPref) opts.setPref("zoom", st.secondsPerScreen);
     });
     el.loop.addEventListener("click", () => {
       st.loop = null; el.loop.classList.remove("is-on"); draw();
@@ -575,7 +576,10 @@
         st.span = spanOf(st.notes);
         st.view = st.span.t0;
         st.playhead = st.span.t0;
-        st.secondsPerScreen = Math.min(120, Math.max(8, (st.span.t1 - st.span.t0) / 4));
+        // the zoom the player last chose, if they chose one; otherwise a quarter
+        // of the take, which is a readable default for a first look
+        const saved = opts.pref && opts.pref("zoom");
+        st.secondsPerScreen = saved || Math.min(120, Math.max(8, (st.span.t1 - st.span.t0) / 4));
         el.zoom.min = 1; el.zoom.max = 600; el.zoom.value = st.secondsPerScreen;
         st.hidden.clear();
         setPlaying(false);
@@ -700,6 +704,10 @@
       _state: st,
     };
     st.liveRows = [];
+    // the zoom the player last chose, applied before anything is loaded so the
+    // panel opens looking the way they left it rather than at a default
+    const savedZoom = opts.pref && opts.pref("zoom");
+    if (savedZoom) { st.secondsPerScreen = savedZoom; el.zoom.value = savedZoom; }
     api.setLive(false);
     api.refreshLogs();
     draw();
