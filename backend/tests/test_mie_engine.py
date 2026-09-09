@@ -2235,6 +2235,82 @@ def test_replay_speed_stretches_the_take():
     assert len(out.notes("note_on")) == 3
 
 
+# --------------------------------------------- 手動調過的就是你的 (2026-09-09)
+def test_a_knob_you_moved_by_hand_stays_where_you_left_it():
+    """「就像效果器那樣 保持著最後使用的樣子 除非使用者自己去調整」.
+
+    On the 14:39 take the player set master_gain to 0.35 and then chose a
+    style. Switching style returns to the pre-style base first, so styles do
+    not stack - and that put the whole globals dict back, their volume with it.
+    A setting they have moved by hand is theirs: no style may write it, and
+    neither may the return to the base.
+    """
+    eng, clk, out = make([_sustain_edge()])
+    eng.styles = [
+        {"id": "a", "globals": {"tension": 0.9, "density": 0.9}, "algos": {"sustain": {"vel": 100}}},
+        {"id": "b", "globals": {"tension": 0.1, "density": 0.1}, "algos": {"sustain": {"vel": 20}}},
+    ]
+    edge = eng.graph.edges[0]
+
+    eng.apply_style("a")
+    assert eng.scene.globals["tension"] == 0.9 and edge.params["vel"] == 100
+
+    eng.set_global("master_gain", 0.35)        # by hand, while a style is on
+    eng.set_global("tension", 0.7)
+    eng.set_edge(edge.id, "vel", 55)
+    assert eng._touched == {"global.master_gain", "global.tension", f"edge.{edge.id}.vel"}
+
+    eng.apply_style("b")
+    assert eng.scene.globals["density"] == 0.1, "the style could not move an untouched knob"
+    assert eng.scene.globals["tension"] == 0.7, "a style overwrote a hand-set value"
+    assert eng.scene.globals["master_gain"] == 0.35, "the return to base wiped their volume"
+    assert edge.params["vel"] == 55, "a style overwrote a hand-set edge value"
+
+    eng.clear_style()
+    assert eng.scene.globals["tension"] == 0.7 and eng.scene.globals["master_gain"] == 0.35
+    assert edge.params["vel"] == 55
+
+
+def test_a_hand_held_setting_can_be_handed_back():
+    """Otherwise the overrides only accumulate and a style stops meaning anything."""
+    eng, clk, out = make([_sustain_edge()])
+    eng.styles = [{"id": "a", "globals": {"tension": 0.9}, "algos": {}}]
+    eng.set_global("tension", 0.7)
+    eng.apply_style("a")
+    assert eng.scene.globals["tension"] == 0.7
+
+    assert eng.release_touched("global.tension") == 1
+    assert eng.release_touched("global.tension") == 0, "releasing twice reported a second one"
+    eng.apply_style("a")
+    assert eng.scene.globals["tension"] == 0.9, "handing it back did not let the style move it"
+
+    eng.set_global("density", 0.3)
+    eng.set_global("chaos", 0.4)
+    assert eng.release_touched() == 2
+    assert eng._touched == set()
+    assert "touched" in eng.snapshot(), "the panel cannot show what it is not told"
+
+
+def test_going_back_to_the_file_gives_every_knob_back():
+    """`退回檔案` is the one gesture that means "forget what I have been doing"."""
+    eng, clk, out = make([_sustain_edge()])
+    eng.scene.path = None                       # no file: revert refuses, changes nothing
+    eng.set_global("tension", 0.7)
+    assert not eng.revert()
+    assert eng._touched == {"global.tension"}
+
+
+def test_a_preset_still_recalls_everything_it_stored():
+    """A style is an overlay; a preset is a stored state, and must not be filtered."""
+    eng, clk, out = make([_sustain_edge()])
+    edge = eng.graph.edges[0]
+    eng.set_edge(edge.id, "vel", 99)            # by hand, so it is now theirs
+    eng.preset_save("A")
+    eng.set_edge(edge.id, "vel", 11)
+    eng.preset_select("A")
+    assert edge.params["vel"] == 99, "a preset was blocked by the player's own overrides"
+
+
 # ------------------------------------------------- 記住上次的設定 (2026-09-09)
 def test_the_engine_remembers_which_scene_and_style_were_in_use(tmp_path):
     """Being made to pick again every restart is how a take lands on the wrong graph.

@@ -143,6 +143,8 @@ def main(argv=None) -> int:
             elif t == "freeze":
                 engine.submit(engine.freeze, bool(msg.get("on", True)),
                               str(msg.get("lane") or "") or None)
+            elif t == "release":
+                engine.submit(engine.release_touched, str(msg.get("path") or "") or None)
             elif t == "undo":
                 engine.submit(engine.undo)
             elif t == "revert":

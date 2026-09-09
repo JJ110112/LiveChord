@@ -84,6 +84,13 @@ class Engine:
         self.replaying = False
         self._advice_t = 0.0
         self._style_before: Optional[dict] = None
+        # Settings the player has moved BY HAND. A style may not overwrite one,
+        # and neither may the return to the pre-style base: a knob stays where
+        # you left it until you turn it, which is how every pedal on the floor
+        # behaves. On the 14:39 take they set master_gain to 0.35 and then
+        # chose a style; restoring the base put the whole globals dict back and
+        # their volume with it.
+        self._touched: set = set()
         self.preset_dirty = False
         self._live_backup: Optional[dict] = None
         self._undo: list = []
@@ -326,6 +333,13 @@ class Engine:
         except Exception as e:
             self._log_error("revert", e)
             return False
+        # going back to the file gives every knob back: it is the one gesture
+        # that means "forget what I have been doing"
+        if edge_id is None:
+            self._touched.clear()
+        else:
+            self._touched = {p for p in self._touched
+                             if not p.startswith(f"edge.{edge_id}.")}
         data = {"globals": dict(disk.globals),
                 "edges": {e.id: e.to_dict() for e in disk.edges}}
         if edge_id:
@@ -378,9 +392,14 @@ class Engine:
         finally:
             self._bulk = False
 
-    def _apply_settings(self, data: dict) -> int:
+    def _apply_settings(self, data: dict, skip: Optional[set] = None) -> int:
+        """`skip` holds paths the player owns; a style's comings and goings
+        must not move them. A preset passes nothing and recalls everything,
+        which is what a stored preset means."""
+        skip = skip or set()
         for k, v in (data.get("globals") or {}).items():
-            self.set_global(k, v)
+            if f"global.{k}" not in skip:
+                self.set_global(k, v)
         n = 0
         for eid, d in (data.get("edges") or {}).items():
             e = self.graph.find_edge(eid)
@@ -389,7 +408,8 @@ class Engine:
             for k, v in d.items():
                 if k in ("id", "src", "dst", "algo"):
                     continue            # structure, not setting
-                self.set_edge(eid, k, v)
+                if f"edge.{eid}.{k}" not in skip:
+                    self.set_edge(eid, k, v)
             n += 1
         return n
 
@@ -503,8 +523,12 @@ class Engine:
             # new style over them - the same ground every time.
             self._restore_style_base()
         self._bulk = True
+        kept = 0
         try:
             for k, v in (style.get("globals") or {}).items():
+                if f"global.{k}" in self._touched:
+                    kept += 1
+                    continue
                 self.set_global(k, v)
             n = 0
             for e in list(self.graph.edges):
@@ -514,13 +538,31 @@ class Engine:
                 for k, v in d.items():
                     if k in ("id", "src", "dst", "algo"):
                         continue
+                    if f"edge.{e.id}.{k}" in self._touched:
+                        kept += 1
+                        continue
                     self.set_edge(e.id, k, v)
                 n += 1
         finally:
             self._bulk = False
         self.style = style_id
-        self._ui("style", action="apply", id=style_id, edges=n)
+        self._ui("style", action="apply", id=style_id, edges=n, kept=kept)
         return True
+
+    def release_touched(self, path: Optional[str] = None) -> int:
+        """Hand a hand-held setting back, so styles may move it again.
+
+        Without this the overrides only ever accumulate and a style slowly
+        stops meaning anything, with nothing on screen to say why.
+        """
+        n = len(self._touched)
+        if path:
+            self._touched.discard(path)
+            n = 1 if n != len(self._touched) else 0
+        else:
+            self._touched.clear()
+        self._ui("touched", action="release", path=path or "*", n=n)
+        return n
 
     def _restore_style_base(self) -> None:
         """Put the settings back to what they were before any style was applied."""
@@ -531,9 +573,10 @@ class Engine:
             # and `_apply_settings` can only write keys it has - so those would
             # be left behind and "取消風格" would quietly not undo itself.
             before = (self._style_before or {}).get("globals") or {}
-            for k in [k for k in self.scene.globals if k not in before]:
+            for k in [k for k in self.scene.globals
+                      if k not in before and f"global.{k}" not in self._touched]:
                 del self.scene.globals[k]
-            self._apply_settings(self._style_before or {})
+            self._apply_settings(self._style_before or {}, skip=self._touched)
             # the derived knobs read straight off the dict, so re-sync them
             # after a deletion as well as after a write
             self.st.density_knob = (None if self.scene.globals.get("density") is None
@@ -737,6 +780,8 @@ class Engine:
         self._ui("cc_in", ch=ev.ch, cc=ev.cc, val=ev.val)
 
     def set_global(self, key: str, value) -> None:
+        if not self._bulk:
+            self._touched.add(f"global.{key}")
         self._remember(f"global.{key}", self.scene.globals.get(key))
         self.scene.globals[key] = value
         if key == "density":
@@ -752,6 +797,8 @@ class Engine:
         e = self.graph.find_edge(edge_id)
         if e is None:
             return False
+        if not self._bulk:
+            self._touched.add(f"edge.{edge_id}.{key}")
         # `hasattr` is the wrong test: `lane` is a read-only property computed
         # from params, so writing it raised AttributeError. Only the declared
         # edge fields are real attributes; everything else belongs in params.
@@ -799,6 +846,8 @@ class Engine:
 
     def load_scene(self, scene: Scene) -> None:
         now = self.clock()
+        self._touched.clear()
+        self._style_before, self.style = None, None
         self._release_everything(now, fade_s=0.5)
         self.scene = scene
         self.graph = InteractionGraph(scene, self.instruments)
@@ -1524,6 +1573,7 @@ class Engine:
             "preset": {"slot": self.preset_slot, "dirty": self.preset_dirty,
                        "stored": sorted(k for k, v in self.scene.presets.items() if v)},
             "advice": self.advice,
+            "touched": sorted(self._touched),
             "replaying": self.replaying,
             "style": {"id": self.style,
                       "list": [{"id": x["id"], "name": x.get("name") or x["id"],

@@ -84,6 +84,7 @@
     window.__mieSnap = s;   // a console handle: the last thing the engine said
     renderStyles(s.style);
     renderAdvice(s.advice || []);
+    renderTouched(s.touched || []);
     if (roll) roll.engineState(s);
     if (s.last_control) $("#mieUc4").textContent = `${s.last_control.key} = ${s.last_control.val}`;
     pct($("#mDensity"), st.density / 8); $("#vDensity").textContent = st.density.toFixed(1) + "/s";
@@ -623,11 +624,14 @@
       case "resnap": cls = "resnap"; txt = `  resnap ch${e.ch} ${nn(e.frm)} → ${nn(e.to)}`; break;
       case "off": cls = "off"; txt = `  off ch${e.ch} ${nn(e.note)} (${e.why}${e.held_ms !== undefined ? `, ${e.held_ms} ms` : ""})`; break;
       case "human_off": cls = "off"; txt = `  human off ch${e.ch} ${nn(e.note)} (${e.held_ms} ms)`; break;
-      case "style": cls = "mode"; txt = e.action === "clear" ? "風格 → 取消" : `風格 → ${e.id}（${e.edges} 條邊）`; break;
+      case "style": cls = "mode"; txt = e.action === "clear" ? "風格 → 取消"
+          : `風格 → ${e.id}（${e.edges} 條邊${e.kept ? `，保留你調過的 ${e.kept} 項` : ""}）`; break;
       case "replay": cls = "mode"; txt = e.action === "start"
         ? `回放送出 ${e.notes} 個音${e.human ? "（含你彈的）" : ""}${e.skipped ? `（跳過 ${e.skipped} 個：關掉的樂器）` : ""} ×${e.speed}`
         : (e.action === "refused" ? `回放被拒絕：${e.why === "panicked" ? "引擎在 PANIC 狀態，先按 RESUME" : "目前是 BYPASS"}`
                                   : `回放停止（收掉 ${e.released} 個音）`); break;
+      case "touched": cls = "mode"; txt = e.path === "*"
+        ? `交還 ${e.n} 個手動設定給風格` : `交還 ${e.path} 給風格`; break;
       case "log_saved": cls = "mode"; txt = `錄音存成 ${e.path}（到此 ${e.human} 個人類音 / ${e.gen} 個生成音）`; break;
       case "panic": cls = "panic"; txt = `PANIC (${e.reason}) ${e.notes} notes released`; break;
       case "loop": cls = "loop"; txt = `LOOP ch${e.ch} ${nn(e.note)} came back on MIE In`; break;
@@ -869,13 +873,49 @@
   $("#mieHaltResume").addEventListener("click", () => send({ type: "resume" }));
   $("#mieModeSel").addEventListener("change", (e) => send({ type: "mode", value: e.target.value }));
   $("#mieSceneSel").addEventListener("change", (e) => send({ type: "scene", id: e.target.value }));
-  [["gMaster", "master_gain"], ["gTension", "tension"], ["gDensity", "density"],
-   ["gTime", "time"], ["gProb", "prob_scale"], ["gChaos", "chaos"],
-   ["gRestraint", "restraint"]].forEach(([id, key]) => {
+  // The globals, and which of them the player now owns. A knob you have moved
+  // by hand stays where you left it, the way a pedal does - so the panel has to
+  // SHOW which ones those are, or the rule is invisible and a style silently
+  // doing nothing to a slider is as confusing as it silently overwriting one.
+  const GLOBAL_SLIDERS = [["gMaster", "master_gain"], ["gTension", "tension"],
+    ["gDensity", "density"], ["gTime", "time"], ["gProb", "prob_scale"],
+    ["gChaos", "chaos"], ["gRestraint", "restraint"]];
+  GLOBAL_SLIDERS.forEach(([id, key]) => {
     const el = document.getElementById(id);
     el.addEventListener("input", () => { document.getElementById(id + "V").textContent = Number(el.value).toFixed(2); });
     el.addEventListener("change", () => send({ type: "set", path: `global.${key}`, value: Number(el.value) }));
+    // click the label to hand it back, so a style may move it again
+    const row = el.parentElement;
+    const lbl = row.querySelector(".mie-mlbl");
+    if (lbl) {
+      lbl.addEventListener("click", () => {
+        if (row.classList.contains("is-mine")) send({ type: "release", path: `global.${key}` });
+      });
+    }
   });
+
+  function renderTouched(list) {
+    const mine = new Set(list || []);
+    GLOBAL_SLIDERS.forEach(([id, key]) => {
+      const row = document.getElementById(id).parentElement;
+      const on = mine.has(`global.${key}`);
+      row.classList.toggle("is-mine", on);
+      row.title = on
+        ? "你自己調過這一格，所以風格不會再動它。點左邊的名稱交還給風格"
+        : "";
+    });
+    const n = mine.size;
+    const btn = $("#mieRelease");
+    btn.hidden = !n;
+    btn.textContent = `我調過 ${n}`;
+    const NL = String.fromCharCode(10);
+    btn.title = n
+      ? "這 " + n + " 個設定是你手動調的，切換風格不會蓋掉它們：" + NL
+        + [...mine].map((x) => "  " + x).join(NL) + NL
+        + "按這裡全部交還給風格"
+      : "";
+  }
+  $("#mieRelease").addEventListener("click", () => send({ type: "release" }));
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       const now = Date.now();

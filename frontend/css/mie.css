@@ -221,3 +221,13 @@
 .mie-edge.hot, .mie-edge.is-mute, .mie-edge.is-waiting, .mie-edge.off {
   border-left-color: hsl(var(--lane-h, 220) 55% 45%);
 }
+
+/* A knob the player has moved by hand: a style will not touch it again until
+   it is handed back. The rule has to be visible - a slider a style silently
+   skips is as confusing as one it silently overwrites. */
+.mie-slider.is-mine .mie-mlbl { color: var(--accent); font-weight: 700; cursor: pointer; }
+.mie-slider.is-mine .mie-mlbl::after { content: " ●"; font-size: 8px; vertical-align: super; }
+.mie-slider.is-mine input[type=range] { accent-color: var(--accent); }
+.mie-mine-btn { margin-left: 6px; padding: 2px 8px; border-radius: 999px; font-size: 10px;
+  border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
+.mie-mine-btn:hover { background: var(--accent); color: #fff; }
