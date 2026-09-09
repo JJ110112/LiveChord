@@ -81,7 +81,9 @@
       ? `脈動推估 ${st.pulse_bpm} BPM，信心 ${Math.round(st.pulse_conf * 100)}%（自由速度的演奏本來就沒有明確脈動）`
       : "尚未從演奏推估出脈動";
     $("#mieBeat").textContent = `${st.beat}/${st.beats_per_bar}`;
+    window.__mieSnap = s;   // a console handle: the last thing the engine said
     renderStyles(s.style);
+    renderAdvice(s.advice || []);
     if (s.last_control) $("#mieUc4").textContent = `${s.last_control.key} = ${s.last_control.val}`;
     pct($("#mDensity"), st.density / 8); $("#vDensity").textContent = st.density.toFixed(1) + "/s";
     pct($("#mEnergy"), st.energy); $("#vEnergy").textContent = Math.round(st.energy * 100) + "%";
@@ -588,7 +590,9 @@
       case "drop": cls = "drop"; txt = `DROP ${e.reason} ch${e.ch} ${nn(e.note)} ${e.lane || ""} ${e.edge || ""}`; break;
       case "edge": cls = "edge"; txt = `  edge ${e.edge} p=${e.p}`; break;
       case "resnap": cls = "resnap"; txt = `  resnap ch${e.ch} ${nn(e.frm)} → ${nn(e.to)}`; break;
-      case "off": cls = "off"; txt = `  off ch${e.ch} ${nn(e.note)} (${e.why})`; break;
+      case "off": cls = "off"; txt = `  off ch${e.ch} ${nn(e.note)} (${e.why}${e.held_ms !== undefined ? `, ${e.held_ms} ms` : ""})`; break;
+      case "human_off": cls = "off"; txt = `  human off ch${e.ch} ${nn(e.note)} (${e.held_ms} ms)`; break;
+      case "style": cls = "mode"; txt = e.action === "clear" ? "風格 → 取消" : `風格 → ${e.id}（${e.edges} 條邊）`; break;
       case "panic": cls = "panic"; txt = `PANIC (${e.reason}) ${e.notes} notes released`; break;
       case "loop": cls = "loop"; txt = `LOOP ch${e.ch} ${nn(e.note)} came back on MIE In`; break;
       case "pedal": cls = "edge"; txt = `  pedal ch${e.ch} ${e.val >= 64 ? "down" : "up"}`; break;
@@ -635,6 +639,55 @@
       revertArmed = 0; b.classList.remove("is-arming"); b.textContent = "退回檔案";
     }, 4000);
   });
+  // ------------------------------------------------------------ 落差提示
+  // It only ever SAYS. Nothing here changes a setting until the player presses
+  // the button, and what it presses is an ordinary `set` - so it shows up on
+  // the sliders and Ctrl+Z puts it back like anything else.
+  let adviceSig = "";
+  function renderAdvice(list) {
+    const box = $("#mieAdvice");
+    const pop = $("#mieAdvicePop");
+    box.hidden = !list.length;
+    if (!list.length) { pop.hidden = true; adviceSig = ""; return; }
+    $(".mie-adv-n").textContent = list.length;
+    box.classList.toggle("has-warn", list.some((a) => a.level === "warn"));
+    const sig = list.map((a) => a.id + a.text).join("|");
+    if (sig === adviceSig) return;               // do not rebuild under the cursor
+    adviceSig = sig;
+    pop.innerHTML = "";
+    list.forEach((a) => {
+      const row = document.createElement("div");
+      row.className = "mie-adv-row" + (a.level === "warn" ? " is-warn" : "");
+      const btns = (a.fix_label ? `<button class="mie-btn mie-adv-fix">${a.fix_label}</button>` : "")
+        + (a.alt && a.alt.style ? `<button class="mie-btn mie-adv-alt">切換風格</button>` : "");
+      row.innerHTML = `<div class="mie-adv-txt">${a.text}</div>`
+        + `<div class="mie-adv-why">${a.why || ""}</div>`
+        + `<div class="mie-adv-act">${btns}</div>`;
+      const fix = row.querySelector(".mie-adv-fix");
+      if (fix) fix.addEventListener("click", () => {
+        (a.fix || []).forEach(([path, value]) => send({ type: "set", path, value }));
+        row.classList.add("is-done");
+        fix.textContent = "已套用（Ctrl+Z 可退回）";
+        fix.disabled = true;
+      });
+      const alt = row.querySelector(".mie-adv-alt");
+      if (alt) alt.addEventListener("click", () => {
+        send({ type: "style", id: a.alt.style });
+        alt.textContent = "已切換"; alt.disabled = true;
+      });
+      pop.appendChild(row);
+    });
+  }
+  $("#mieAdviceBtn").addEventListener("click", () => {
+    const pop = $("#mieAdvicePop");
+    pop.hidden = !pop.hidden;
+  });
+  document.addEventListener("click", (e) => {
+    const pop = $("#mieAdvicePop");
+    if (pop.hidden) return;
+    if (!$("#mieAdvice").contains(e.target instanceof Node ? e.target : null)) pop.hidden = true;
+  });
+
   // ---------------------------------------------------------- 介入風格預設
   // A style is a bundle of settings that already exist - nothing here can do
   // anything the player could not already do by hand, which is why it is safe

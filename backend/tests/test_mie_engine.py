@@ -1943,6 +1943,86 @@ def _texture_after(eng, clk, play_fn) -> str:
     return eng.st.texture
 
 
+# ----------------------------------------------------- 落差提示 (2026-09-09)
+def test_the_advisor_never_reports_a_lane_for_doing_its_job():
+    """Shadow, Echo, Phrase and Follow all take their pitch from the player.
+
+    The proposal asked for an overlap warning at 80 % across all lanes. Measured
+    over six real takes, EVERY take exceeds that - because overlapping the
+    player is what those lanes are for. A light that is always on is not a
+    signal. Only the algorithms that choose their own register count.
+    """
+    from backend.mie.advisor import advise
+    from backend.mie.graph import Edge
+
+    edges = [Edge(src=0, dst=11, algo="shadow", id="sh", params={"lane": "shadow"}),
+             Edge(src=0, dst=12, algo="phrase", id="ph", params={"lane": "phrase"}),
+             Edge(src=0, dst=4, algo="sustain", id="su",
+                  params={"lane": "sustain", "low": 55, "high": 88, "above_held": False})]
+    m = {"chords": 0, "rich": 0.0, "human": 100, "gen": 100, "per_human": 1.0,
+         "hands": (55, 79),
+         "lanes": {"shadow": {"n": 40, "overlap": 1.0},
+                   "phrase": {"n": 40, "overlap": 1.0},
+                   "sustain": {"n": 8, "overlap": 1.0}}}
+    ids = [a["id"] for a in advise(m, {"tension": 0.0, "density": 0.5}, edges)]
+    assert "overlap_shadow" not in ids and "overlap_phrase" not in ids
+    assert "overlap_sustain" in ids, "the lane that picks its own register went unreported"
+
+
+def test_the_advisor_only_speaks_when_a_reading_holds():
+    """One reading over a threshold is noise; the same reading twice is a signal."""
+    from backend.mie.advisor import Advisor
+    a = Advisor()
+    one = [{"id": "x"}]
+    assert a.confirm(one) == [], "spoke on the first reading"
+    assert [x["id"] for x in a.confirm(one)] == ["x"], "would not speak on the second"
+    assert a.confirm([]) == []
+    assert a.confirm(one) == [], "a gap must make it start over"
+
+
+def test_the_advisor_names_the_gap_between_the_playing_and_the_settings():
+    from backend.mie.advisor import advise, is_rich
+
+    assert is_rich("m7") and is_rich("maj9") and is_rich("dim") and is_rich("6")
+    assert not is_rich("") and not is_rich("m") and not is_rich("5") and not is_rich("sus4")
+
+    rich = {"chords": 40, "rich": 0.3, "human": 100, "gen": 100, "per_human": 1.0,
+            "hands": None, "lanes": {}}
+    got = advise(rich, {"tension": 0.0}, [])
+    assert [a["id"] for a in got] == ["tension_gap"]
+    assert got[0]["fix"] == [("global.tension", 0.5)], "advice must carry the exact change"
+    # ...and stays quiet once the setting already allows that harmony
+    assert not advise(rich, {"tension": 0.5}, [])
+
+    dense = {"chords": 0, "rich": 0.0, "human": 100, "gen": 260, "per_human": 2.6,
+             "hands": None, "lanes": {}}
+    got = advise(dense, {"density": 0.5}, [])
+    assert [a["id"] for a in got] == ["too_dense"]
+    assert got[0]["fix"] == [("global.density", 0.3)]
+
+    # too little of everything to say anything about
+    quiet = {"chords": 3, "rich": 1.0, "human": 4, "gen": 40, "per_human": 10.0,
+             "hands": None, "lanes": {}}
+    assert advise(quiet, {"tension": 0.0}, []) == [], "spoke from a handful of notes"
+
+
+def test_the_advisor_never_changes_anything_by_itself():
+    """The whole contract: it looks, it does not touch."""
+    eng, clk, out = make([_sustain_edge()])
+    eng.instruments[4] = Instrument(4, "Fantom Strings", "strings", "fantom", True, 4, 1.0, (36, 96), True)
+    before = json.dumps(eng.scene.globals, sort_keys=True, default=str)
+    before_edges = [json.dumps(e.to_dict(), sort_keys=True, default=str) for e in eng.graph.edges]
+    hold_chord(eng, clk, 9, [48, 52, 55, 58, 62])      # a rich chord, held
+    run_for(eng, clk, 30.0)
+    assert json.dumps(eng.scene.globals, sort_keys=True, default=str) == before,         "the advisor changed a global on its own"
+    assert [json.dumps(e.to_dict(), sort_keys=True, default=str) for e in eng.graph.edges] == before_edges,         "the advisor changed an edge on its own"
+    # and whatever it has to say is offered as a change the panel can apply
+    for a in eng.advice:
+        assert a["fix"], f"advice with nothing to press: {a}"
+        for path, _v in a["fix"]:
+            assert path.startswith("global.") or path.startswith("edge."), path
+
+
 # ------------------------------------------------- 介入風格預設 (2026-09-09)
 def test_every_style_only_sets_things_the_engine_actually_reads():
     """A setting that is silently ignored is this project's most expensive bug.

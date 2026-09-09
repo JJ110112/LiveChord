@@ -169,3 +169,26 @@
 .mr-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
 .mr-foot { display: flex; justify-content: space-between; gap: 12px; font-size: 10.5px; color: var(--text-dim); }
 .mr-note { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ------------------------------------------------------------ 落差提示
+   A quiet light, not a dialog. The panel is an instrument during a take and an
+   advisory that demands attention is worse than one that never speaks. */
+.mie-advice { position: relative; }
+.mie-adv-trigger { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--bg-card);
+  color: var(--text-dim); font-size: 11px; font-weight: 700; cursor: pointer; }
+.mie-adv-trigger:hover { border-color: var(--accent); color: var(--text); }
+.mie-adv-dot { width: 7px; height: 7px; border-radius: 50%; background: #5c6bc0; }
+.mie-advice.has-warn .mie-adv-dot { background: #ffa726; }
+.mie-advice.has-warn .mie-adv-trigger { border-color: #ffa726; color: #ffa726; }
+.mie-adv-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; width: min(420px, 78vw);
+  display: flex; flex-direction: column; gap: 6px; padding: 8px;
+  background: var(--lc-popup-bg, var(--bg-card)); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 8px 28px rgba(0,0,0,.45); }
+.mie-adv-row { padding: 8px; border-radius: 8px; background: var(--bg-hover); border-left: 3px solid #5c6bc0; }
+.mie-adv-row.is-warn { border-left-color: #ffa726; }
+.mie-adv-row.is-done { opacity: .6; }
+.mie-adv-txt { font-size: 12px; color: var(--text); line-height: 1.5; }
+.mie-adv-why { font-size: 10.5px; color: var(--text-dim); margin-top: 3px; line-height: 1.45; }
+.mie-adv-act { display: flex; gap: 6px; margin-top: 7px; }
+.mie-adv-act .mie-btn { padding: 3px 10px; font-size: 11px; }

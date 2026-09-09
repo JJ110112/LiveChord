@@ -32,6 +32,7 @@ from .io_rtmidi import panic_messages
 from .probability import p_eff, roll
 from .safety import Safety, SelfEchoFilter
 from .scheduler import Due, NotePair, Scheduler
+from .advisor import Advisor, advise
 from .texture import TEXTURES
 from .state import MusicalState
 
@@ -76,6 +77,11 @@ class Engine:
         from .graph import load_styles
         self.styles = load_styles()
         self.style: Optional[str] = None
+        # It only ever LOOKS. Nothing here changes a setting; the panel offers
+        # the change and the player presses it.
+        self.advisor = Advisor()
+        self.advice: list = []
+        self._advice_t = 0.0
         self._style_before: Optional[dict] = None
         self.preset_dirty = False
         self._live_backup: Optional[dict] = None
@@ -842,6 +848,9 @@ class Engine:
                 return
             self.stats["human_notes"] += 1
             ev.ctx = self.st.snapshot(now)
+            self.advisor.note_human(now, ev.note)
+            if self.st.chord is not None:
+                self.advisor.note_chord(now, self.st.chord.quality)
             self._ui("human", ch=ev.ch, note=ev.note, vel=ev.vel, chord=ev.ctx.chord)
             if self.bypass:
                 return
@@ -1174,6 +1183,7 @@ class Engine:
             # ones whose real release is the human's (Shadow), where the plan is
             # only a safety cap. The matching `off` event carries the truth.
             extra = {"follow": True} if p.follow_off else {}
+            self.advisor.note_gen(now, p.lane, p.note)
             self._ui("gen", ch=p.ch, note=p.note, vel=p.sent_vel or p.vel, lane=p.lane,
                      hop=p.hop, edge=p.edge_id, gain=round(self.master_gain, 2),
                      dur_ms=round(max(0.0, p.t_off - now) * 1000), **extra)
@@ -1230,9 +1240,23 @@ class Engine:
             ls["fired"] = False
 
     # ---------------------------------------------------------------- tick
+    ADVICE_EVERY_S = 4.0
+
     def tick(self, now: float) -> None:
         self._last_tick = now
         self.st.tick(now)
+        # Every few seconds, not every tick: this walks three bounded deques and
+        # nothing on the MIDI path waits for it, but there is no reason to do it
+        # two hundred times a second either.
+        if now - self._advice_t >= self.ADVICE_EVERY_S:
+            self._advice_t = now
+            try:
+                self.advice = self.advisor.confirm(
+                    advise(self.advisor.measure(now), self.scene.globals,
+                           list(self.graph.edges)))
+            except Exception as e:
+                self._log_error("advisor", e)
+                self.advice = []
         if not self.bypass:
             self.st.refresh_texture(now)
             timed = [] if self._frozen else self.graph.timed_edges(self.allowed_algos,
@@ -1383,6 +1407,7 @@ class Engine:
             "frozen": self._frozen,
             "preset": {"slot": self.preset_slot, "dirty": self.preset_dirty,
                        "stored": sorted(k for k, v in self.scene.presets.items() if v)},
+            "advice": self.advice,
             "style": {"id": self.style,
                       "list": [{"id": x["id"], "name": x.get("name") or x["id"],
                                 "hint": x.get("hint", "")} for x in self.styles]},
