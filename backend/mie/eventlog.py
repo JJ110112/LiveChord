@@ -101,9 +101,19 @@ class EventLog:
                 time.sleep(self.snapshot_every_s)
                 try:
                     s = engine.snapshot()
-                    self.log({"type": "snapshot", "t": s["t"], "mode": s["mode"],
-                              "state": s["state"], "stats": s["stats"], "drops": s["drops"],
-                              "jitter": s["jitter"]})
+                    # `advice` belongs here for one reason: on the 16:43 take
+                    # the density reached 4.19 generated notes per played note
+                    # and the player switched five lanes off, and afterwards
+                    # there was no way to tell from the log whether the advisory
+                    # had said so. The one feature whose whole job is noticing
+                    # that left no trace of having noticed. Only when it has
+                    # something to say - it is empty almost all the time.
+                    row = {"type": "snapshot", "t": s["t"], "mode": s["mode"],
+                           "state": s["state"], "stats": s["stats"], "drops": s["drops"],
+                           "jitter": s["jitter"]}
+                    if s.get("advice"):
+                        row["advice"] = [a["id"] for a in s["advice"]]
+                    self.log(row)
                 except Exception:
                     pass
         th = threading.Thread(target=loop, name="mie-eventlog-snap", daemon=True)

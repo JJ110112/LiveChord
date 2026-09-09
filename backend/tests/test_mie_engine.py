@@ -16,6 +16,7 @@ from random import Random
 
 import collections
 import json
+import threading
 import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
@@ -3707,3 +3708,43 @@ def test_all_on_reports_only_what_actually_moved():
     ])
     assert eng.set_all_enabled(True) == 1, "the one already on should not count"
     assert eng.set_all_enabled(True) == 0
+
+
+def test_the_log_records_that_the_advisory_spoke():
+    """On the 16:43 take the density reached 4.19 generated notes per played
+    note and the player switched five lanes off. Afterwards there was no way to
+    tell from the log whether the advisory had said so - the one feature whose
+    job is noticing that left no trace of having noticed."""
+    import json
+    import tempfile
+    import time as _time
+    from backend.mie.eventlog import EventLog
+
+    class FakeEngine:
+        def __init__(self):
+            self.n = 0
+
+        def snapshot(self):
+            self.n += 1
+            return {"t": float(self.n), "mode": "INTERACTIVE", "state": {}, "stats": {},
+                    "drops": {}, "jitter": {},
+                    # quiet on the first reading, speaking on the rest
+                    "advice": [] if self.n == 1 else [{"id": "too_dense", "text": "..."}]}
+
+    with tempfile.TemporaryDirectory() as d:
+        path = f"{d}/s.jsonl"
+        log = EventLog(path)
+        log.snapshot_every_s = 0.02
+        eng, stop = FakeEngine(), threading.Event()
+        log.snapshots_from(eng, stop)
+        _time.sleep(0.15)
+        stop.set()
+        log.close()
+        rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
+
+    snaps = [r for r in rows if r.get("type") == "snapshot"]
+    assert snaps, "no snapshots were written at all"
+    assert not any("advice" in r for r in snaps if r["t"] == 1.0),         "an empty advisory should add nothing - it is empty almost all the time"
+    spoke = [r for r in snaps if r.get("advice")]
+    assert spoke, "the advisory spoke and the log did not say so"
+    assert spoke[0]["advice"] == ["too_dense"], spoke[0]["advice"]
