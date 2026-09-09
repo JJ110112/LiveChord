@@ -369,14 +369,19 @@
       if (!st.sound || !opts.send) return;
       const from = st.playhead;
       const until = st.loop ? Math.min(st.loop[1], from + SOUND_WINDOW_S) : from + SOUND_WINDOW_S;
+      // What you can SEE is what you hear, including your own part: leaving the
+      // 「你」 chip on plays your keyboard back too, which is the only way to
+      // hear whether an answer sat well against what it was answering. Turn the
+      // chip off and it goes quiet like any other lane.
+      const withHuman = !st.hidden.has("human");
       const notes = [];
       for (const n of st.notes) {
-        if (n.human || st.hidden.has(n.lane)) continue;   // what you can SEE is what you hear
+        if (st.hidden.has(n.lane)) continue;
         if (n.t + n.dur < from || n.t > until) continue;
         notes.push({ t: Math.max(0, n.t - from), ch: n.ch, note: n.note,
                      vel: n.vel, dur: n.dur });
       }
-      opts.send({ type: "play_take", notes, speed: st.speed });
+      opts.send({ type: "play_take", notes, speed: st.speed, human: withHuman });
       st.soundSentAt = from;
     }
 
@@ -439,6 +444,7 @@
       // under the finger that just pressed it loses every rapid second click
       paintLanes();
       draw();
+      if (st.playing && st.sound) { stopSound(); startSound(); }
     });
 
     // ------------------------------------------------------------ pointer

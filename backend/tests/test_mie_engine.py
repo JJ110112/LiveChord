@@ -1976,16 +1976,48 @@ def test_a_replay_never_makes_the_engine_answer_it():
     assert eng.edge_fires.get("e", 0) == 0
 
 
-def test_a_replay_never_plays_onto_the_players_own_keyboard():
-    """The engine must not fight the hands that are on the keys."""
+def test_a_replay_plays_onto_the_players_own_keyboard_only_when_asked():
+    """The engine must not fight the hands on the keys - unless it is a review.
+
+    The rule exists so a generated note can never collide with what the player
+    is playing. Listening back is the one case where the player's own part has
+    to be heard: without it there is no way to judge whether an answer sat well
+    against what it was answering. So it is off unless asked for, and it is the
+    replay lane alone that may ask.
+    """
     eng, clk, out = make([])
     play(eng, clk, 9, 48, 80, hold=0.1)          # ch9 is now a human channel
     assert 9 in eng.st.human_chs
-    n = eng.play_take([{"t": 0.0, "ch": 9, "note": 60, "vel": 80, "dur": 0.3},
-                       {"t": 0.1, "ch": 10, "note": 62, "vel": 80, "dur": 0.3}])
-    assert n == 1, "a note was scheduled onto the player's own channel"
+    take = [{"t": 0.0, "ch": 9, "note": 60, "vel": 80, "dur": 0.3},
+            {"t": 0.1, "ch": 10, "note": 62, "vel": 80, "dur": 0.3}]
+
+    assert eng.play_take(take) == 1, "the player's channel was played to unasked"
     run_for(eng, clk, 1.0)
     assert [x[1] for x in out.notes("note_on")] == [10]
+
+    out.clear()
+    eng.stop_take()
+    assert eng.play_take(take, human=True) == 2
+    run_for(eng, clk, 1.0)
+    assert sorted(x[1] for x in out.notes("note_on")) == [9, 10],         "asked for the human part and did not get it"
+    # and it still cleans up off that channel
+    eng.stop_take()
+    run_for(eng, clk, 0.5)
+    assert not [k for k in eng.st.active_gen], f"replay left notes on: {eng.st.active_gen}"
+
+
+def test_an_ordinary_generated_note_still_never_reaches_a_human_channel():
+    """Only the replay lane got the exemption; nothing else may use it."""
+    eng, clk, out = make([{"id": "e", "src": 0, "dst": 9, "algo": "shadow",
+                           "prob": 1.0, "delay_ms": 10, "lane": "shadow"}])
+    eng.instruments[9] = Instrument(9, "Fantom", "keys", "fantom", True, 8, 1.0, (21, 108), True)
+    play(eng, clk, 9, 60, 90, hold=0.2)
+    run_for(eng, clk, 1.5)
+    assert not out.notes("note_on", ch=9), "a shadow reached the player's own keyboard"
+    # dropped by the safety layer at schedule time (`human_ch`) or by the
+    # late-bind guard at send time (`human_ch_late`) - both must still hold
+    assert (eng.drop_reasons.get("human_ch", 0)
+            + eng.drop_reasons.get("human_ch_late", 0)) >= 1, eng.drop_reasons
 
 
 def test_stopping_and_panicking_both_silence_a_replay():

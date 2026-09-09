@@ -605,7 +605,7 @@
       case "human_off": cls = "off"; txt = `  human off ch${e.ch} ${nn(e.note)} (${e.held_ms} ms)`; break;
       case "style": cls = "mode"; txt = e.action === "clear" ? "風格 → 取消" : `風格 → ${e.id}（${e.edges} 條邊）`; break;
       case "replay": cls = "mode"; txt = e.action === "start"
-        ? `回放送出 ${e.notes} 個音${e.skipped ? `（跳過 ${e.skipped} 個：你的琴或關掉的樂器）` : ""} ×${e.speed}`
+        ? `回放送出 ${e.notes} 個音${e.human ? "（含你彈的）" : ""}${e.skipped ? `（跳過 ${e.skipped} 個：關掉的樂器）` : ""} ×${e.speed}`
         : (e.action === "refused" ? `回放被拒絕：${e.why === "panicked" ? "引擎在 PANIC 狀態，先按 RESUME" : "目前是 BYPASS"}`
                                   : `回放停止（收掉 ${e.released} 個音）`); break;
       case "log_saved": cls = "mode"; txt = `錄音存成 ${e.path}（到此 ${e.human} 個人類音 / ${e.gen} 個生成音）`; break;

@@ -155,7 +155,9 @@ def main(argv=None) -> int:
             elif t == "play_take":
                 notes = msg.get("notes") or []
                 if isinstance(notes, list):
-                    engine.submit(engine.play_take, notes, float(msg.get("speed", 1.0) or 1.0))
+                    engine.submit(engine.play_take, notes,
+                                  float(msg.get("speed", 1.0) or 1.0),
+                                  bool(msg.get("human")))
             elif t == "play_stop":
                 engine.submit(engine.stop_take)
             elif t == "log_save":

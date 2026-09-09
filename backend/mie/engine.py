@@ -411,12 +411,17 @@ class Engine:
     REPLAY_LANE = "replay"
     REPLAY_MAX_NOTES = 4000
 
-    def play_take(self, notes: list, speed: float = 1.0) -> int:
+    def play_take(self, notes: list, speed: float = 1.0, human: bool = False) -> int:
         """Schedule recorded notes for playback. `notes` are dicts from the panel.
 
         Each is {t, ch, note, vel, dur} with `t` already relative to the start
         of playback and BEFORE the speed change - the caller sends the window it
         wants heard, and this stretches it.
+
+        `human` allows the player's OWN part back onto their own keyboard's
+        channel. Off unless asked for, because that channel is otherwise
+        forbidden to the engine; asked for, it is the only way to hear whether
+        an answer sat well against what it was answering.
         """
         self.stop_take()
         if self.bypass or self.panicked:
@@ -424,7 +429,7 @@ class Engine:
             return 0
         speed = max(0.05, min(4.0, float(speed or 1.0)))
         now = self.clock()
-        human = self.st.human_chs
+        human_chs = self.st.human_chs
         n = skipped = 0
         for d in notes[:self.REPLAY_MAX_NOTES]:
             try:
@@ -434,11 +439,13 @@ class Engine:
                 vel = max(1, min(127, int(d.get("vel", 64))))
             except (KeyError, TypeError, ValueError):
                 continue
-            if ch in human:
+            if ch in human_chs and not human:
                 skipped += 1
                 continue
             inst = self.instruments.get(ch)
-            if inst is None or not inst.enabled:
+            # a human channel has no Instrument entry of its own; it is the
+            # player's keyboard, and it is being asked for explicitly
+            if (inst is None or not inst.enabled) and ch not in human_chs:
                 skipped += 1
                 continue
             t_on = now + t0
@@ -450,7 +457,8 @@ class Engine:
             self.sched.schedule_pair(pair)
             n += 1
         self.replaying = n > 0
-        self._ui("replay", action="start", notes=n, skipped=skipped, speed=round(speed, 3))
+        self._ui("replay", action="start", notes=n, skipped=skipped,
+                 speed=round(speed, 3), human=bool(human))
         return n
 
     def stop_take(self) -> int:
@@ -458,7 +466,7 @@ class Engine:
         now = self.clock()
         n = 0
         for ch in sorted({c for (c, _n) in list(self.st.active_gen)} |
-                         set(self.instruments)):
+                         set(self.instruments) | self.st.human_chs):
             n += self.sched.release_lane(ch, self.REPLAY_LANE, now)
         for (c, note), g in list(self.st.active_gen.items()):
             if g.lane == self.REPLAY_LANE:
@@ -1176,7 +1184,14 @@ class Engine:
         if self.bypass or self.stop.is_set():
             return False
         try:
-            if pair.ch in self.st.human_chs:
+            # A replay of the player's OWN part is the one thing allowed onto a
+            # human channel. The rule exists so the engine cannot fight the
+            # hands that are on the keys; during a review there are no hands on
+            # the keys, and without hearing what you played there is no way to
+            # judge whether the engine's answer was apt or intrusive - which is
+            # the whole reason to listen back. Nothing else reaches this branch:
+            # `play_take` is the only place that sets this lane.
+            if pair.ch in self.st.human_chs and pair.lane != self.REPLAY_LANE:
                 self._drop_async("human_ch_late", pair)
                 return False
             target = self._phrase_target(pair)
