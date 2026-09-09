@@ -7,11 +7,17 @@
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
   <link rel="stylesheet" href="/css/base.css?v=24">
-  <link rel="stylesheet" href="/css/mie.css?v=30">
+  <link rel="stylesheet" href="/css/mie.css?v=31">
 </head>
 <body class="mie-body">
   <!-- 頂列：MODE / SCENE / KEY / CHORD / BPM / clock / PANIC -->
+  <!-- TWO EXPLICIT ROWS, not one row that wraps. Wrapping made the 風格 pill
+       jump between the rows whenever anything in front of it changed width -
+       a longer style name, the 我調過 N badge appearing - and a control that
+       moves while you are reaching for it is worse than one in the wrong
+       place. Row 1 is what the engine is hearing; row 2 is what you press. -->
   <header class="mie-top">
+   <div class="mie-top-row">
     <div class="mie-brand">MIE <span class="mie-conn" id="mieConn" title="ws://127.0.0.1:8810/ws">●</span></div>
     <div class="mie-pill mie-mode" id="mieMode" title="運作模式（點擊切換）">
       <span class="mie-lbl">MODE</span>
@@ -36,6 +42,8 @@
       <button class="mie-adv-trigger" id="mieAdviceBtn" title="引擎注意到的落差。它只會說，不會自己動手"><span class="mie-adv-dot"></span><span class="mie-adv-n">0</span></button>
       <div class="mie-adv-pop" id="mieAdvicePop" hidden></div>
     </div>
+   </div>
+   <div class="mie-top-row mie-top-actions">
     <div class="mie-pill mie-style" title="介入風格：一次把張力、厚度、時間與每個演算法的取音範圍換成一組。取消就全部回到你原本的設定">
       <span class="mie-lbl">風格</span>
       <select id="mieStyleSel" class="mie-sel"><option value="">—</option></select>
@@ -55,6 +63,7 @@
     <button id="mieLogSave" class="mie-btn" title="把剛剛這一段收成一個獨立的錄音檔，然後立刻開始錄下一段。不用停引擎、不用回 console 按 q（Ctrl+S）">存這段</button>
     <button id="mieRollBtn" class="mie-btn" title="鋼琴捲軸：把一整趟的音畫出來，或載入舊的 log 回顧（R）">捲軸</button>
     <button id="miePanic" class="mie-btn mie-btn-panic" title="兩個 Out port 各自 CH1–16 送 CC120/123/64=0，再補 note_off；引擎進 BYPASS（快捷鍵 Esc Esc）">PANIC</button>
+   </div>
   </header>
 
   <div id="mieHalt" class="mie-halt" hidden><b>引擎已停止</b><span id="mieHaltWhy"></span><button id="mieHaltResume" class="mie-btn">RESUME</button></div>

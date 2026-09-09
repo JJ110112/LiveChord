@@ -14,7 +14,16 @@
    bottom of the screen - open, drawing, and invisible unless you scrolled. The
    columns each scroll inside themselves, which is what makes this safe. */
 .mie-body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", system-ui, sans-serif; font-size: 13px; height: 100vh; display: flex; flex-direction: column; }
-.mie-top { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg-card); backdrop-filter: var(--glass-blur); position: sticky; top: 0; z-index: 10; flex-wrap: wrap; }
+.mie-top { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg-card); backdrop-filter: var(--glass-blur); position: sticky; top: 0; z-index: 10; }
+/* each row still wraps inside itself on a narrow screen; what does NOT move is
+   which row a control is on */
+.mie-top-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* The style select is the thing whose width changes: "—" and "爵士 / 和聲擴展"
+   are not the same size, and every millimetre of the difference used to push
+   everything after it. Fixed width, ellipsis if a name outgrows it. */
+#mieStyleSel { width: 116px; }
+/* and the badge takes its space whether or not it has anything to say */
+.mie-mine-btn[hidden] { display: inline-block !important; visibility: hidden; }
 .mie-brand { font-weight: 800; letter-spacing: .08em; font-size: 15px; margin-right: 6px; }
 .mie-conn { color: #f44336; font-size: 11px; vertical-align: middle; margin-left: 4px; }
 .mie-conn.on { color: #4caf50; }
@@ -271,7 +280,9 @@
 .mie-slider.is-mine .mie-mlbl { color: var(--accent); font-weight: 700; cursor: pointer; }
 .mie-slider.is-mine .mie-mlbl::after { content: " ●"; font-size: 8px; vertical-align: super; }
 .mie-slider.is-mine input[type=range] { accent-color: var(--accent); }
-.mie-mine-btn { margin-left: 6px; padding: 2px 8px; border-radius: 999px; font-size: 10px;
+/* min-width so "我調過 5" and "我調過 12" are the same size - the badge is
+   there to keep the row still, and a badge that resizes defeats that */
+.mie-mine-btn { margin-left: 6px; min-width: 62px; padding: 2px 8px; border-radius: 999px; font-size: 10px;
   border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
 .mie-mine-btn:hover { background: var(--accent); color: #fff; }
 
