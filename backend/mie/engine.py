@@ -874,6 +874,13 @@ class Engine:
         # edge fields are real attributes; everything else belongs in params.
         self._remember(f"edge.{edge_id}.{key}",
                        getattr(e, key) if key in _EDGE_FIELDS else e.params.get(key))
+        if key == "dst" and int(value) != e.dst:
+            # Moving a lane to another instrument leaves whatever it is playing
+            # ringing on the old one, with nothing left that knows how to stop
+            # it: the note is keyed to (channel, note) and the lane no longer
+            # goes there. A held pad would sit on the old synth until the next
+            # PANIC. Take it with us.
+            self._release_lane_on(e.dst, e.lane, self.clock())
         if key in _EDGE_FIELDS and key not in ("id",):
             cur = getattr(e, key)
             if isinstance(cur, set):
@@ -1522,6 +1529,12 @@ class Engine:
             # the note actually sounded, so a consumer never has two cases
             self._ui("off", ch=ch, note=note, why=why,
                      held_ms=round(max(0.0, now - g.t_on) * 1000))
+
+    def _release_lane_on(self, ch: int, lane: str, now: float) -> None:
+        """Everything this lane is sounding on this channel, off now."""
+        for (c, n), g in list(self.st.active_gen.items()):
+            if c == ch and getattr(g, "lane", None) == lane:
+                self._force_off(c, n, now, "moved")
 
     def _release_channel(self, ch: int, now: float) -> None:
         for (c, n) in list(self.st.active_gen):

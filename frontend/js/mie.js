@@ -657,7 +657,7 @@
             <span class="fires" title="這一趟這條線被觸發的次數"></span>
             <button class="mie-more" title="參數">▾</button>
           </div>
-          <div class="route"></div>
+          <div class="route"><span class="src"></span> → <select class="dst mie-sel" title="這條線送到哪一台。換過去的時候，它正在舊那台上響的音會先收掉"></select><span class="rest"></span></div>
           <div class="mie-edge-quick">
             <div class="mie-quick-right">
               <label class="mie-vel" title="這條線自己的音量：生成音的力度倍率（全域音量之外，各聲部各自的）">
@@ -681,6 +681,8 @@
         }
         el._vel = makeVel(e, el.querySelector(".mie-vel"));
         el.querySelector('input[type=checkbox]').addEventListener("change", (ev) => send({ type: "set", path: `edge.${e.id}.enabled`, value: ev.target.checked }));
+        el.querySelector(".dst").addEventListener("change", (ev) =>
+          send({ type: "set", path: `edge.${e.id}.dst`, value: Number(ev.target.value) }));
         const body = el.querySelector(".mie-edge-body");
         el.querySelector(".mie-more").addEventListener("click", () => {
           body.hidden = !body.hidden;
@@ -716,7 +718,13 @@
       const src = e.src === 0 ? "HUMAN" : `CH${e.src}`;
       el.querySelector(".name").textContent = e.id;
       el._vel.sync(e, s);
-      el.querySelector(".route").textContent = `${src} → CH${e.dst} · p ${e.prob} · ${e.constraint}`
+      el.querySelector(".src").textContent = src;
+      // Which instrument a lane speaks through was only ever in the scene file.
+      // "PANIC 是因為 wavestate 的音色多變不適合當延音" - the Wavestate is a
+      // wave-sequencing box, which is the wrong thing to hold a long note on,
+      // and the only way to move the lane was to edit JSON and restart.
+      syncDst(el.querySelector(".dst"), e, s.instruments || []);
+      el.querySelector(".rest").textContent = ` · p ${e.prob} · ${e.constraint}`
         + (e.delay_beats ? ` · ${e.delay_beats} beat` : "") + (e.delay_ms ? ` · ${e.delay_ms} ms` : "");
       const lane = e.lane || e.algo;
       el.querySelector(".algo").textContent = LANE_LABEL[lane] || lane;
@@ -770,6 +778,33 @@
     });
     edgeEls.forEach((el, id) => { if (!seen.has(id)) { el.remove(); edgeEls.delete(id); } });
   }
+  // Long lanes want an instrument that can hold a note. `sustain_ok` in
+  // instruments.json already says which ones can, and the mark is the whole
+  // point of the list: choosing by name alone is how a pad ended up on a
+  // wave-sequencing synth.
+  const LONG_ALGOS = new Set(["sustain", "silence"]);
+  function syncDst(sel, e, insts) {
+    const want = insts.map((i) => `${i.ch}|${i.name}|${i.enabled}|${i.sustain_ok}`).join(",");
+    if (sel._want !== want) {                    // rebuild only when the rig changes
+      sel._want = want;
+      sel.innerHTML = "";
+      insts.forEach((i) => {
+        const o = document.createElement("option");
+        o.value = i.ch;
+        o.textContent = `CH${i.ch} ${i.name}`
+          + (i.sustain_ok ? " ·長音" : "") + (i.enabled ? "" : "（關）");
+        o.title = `${i.role}　${i.max_voices} 聲部　`
+          + (i.sustain_ok ? "適合長音" : "沒有標記為適合長音");
+        sel.appendChild(o);
+      });
+    }
+    if (document.activeElement !== sel) sel.value = String(e.dst);
+    // Not an error - the player may want exactly this - but a long lane on an
+    // instrument that cannot hold a note is worth seeing before it is heard.
+    sel.classList.toggle("is-odd", LONG_ALGOS.has(e.algo)
+      && !(insts.find((i) => i.ch === e.dst) || {}).sustain_ok);
+  }
+
   function renderStats(s) {
     const st = s.stats, j = s.jitter || {};
     const rows = [["human", st.human_notes], ["gen sent", st.gen_sent], ["scheduled", st.gen_sched], ["dropped", st.dropped], ["muted", st.muted],

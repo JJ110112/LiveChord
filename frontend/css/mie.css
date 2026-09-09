@@ -129,8 +129,16 @@
    them at opposite ends made a wide row that still collided. */
 .mie-edge-head { display: grid; grid-template-columns: 18px auto minmax(0, 1fr) auto 20px; align-items: center; gap: 6px; }
 .mie-edge .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mie-edge .route { font-size: 10.5px; color: var(--text-dim); margin: 2px 0 0 24px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mie-edge .route { display: flex; align-items: center; gap: 3px; font-size: 10.5px; color: var(--text-dim);
+  margin: 2px 0 0 24px; white-space: nowrap; overflow: hidden; }
+.mie-edge .route .rest { overflow: hidden; text-overflow: ellipsis; }
+/* the destination is a control, so it has to look like one - but a quiet one:
+   it sits in a line of grey text and must not shout over the name above it */
+.mie-edge .dst { max-width: 168px; padding: 0 2px; font-size: 10.5px; color: var(--text);
+  background: transparent; border: 1px solid transparent; border-radius: 4px; }
+.mie-edge .dst:hover, .mie-edge .dst:focus { border-color: var(--border); background: var(--bg-hover); }
+/* a lane that holds long notes, pointed at an instrument not marked for them */
+.mie-edge .dst.is-odd { color: #ffb74d; }
 .mie-edge-quick { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 8px; align-items: center; margin-top: 6px; }
 .mie-edge-quick.no-pad { grid-template-columns: 1fr; }
 .mie-quick-right { display: flex; flex-direction: column; gap: 4px; min-width: 0; }

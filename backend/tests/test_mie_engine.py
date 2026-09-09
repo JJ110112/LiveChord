@@ -3781,3 +3781,32 @@ def test_the_pad_does_not_come_straight_back_after_a_panic():
     # ...and it is not switched off for good: it waits out its own `after_s`
     run_for(eng, clk, 3.0)
     assert out.notes(ch=3), "the pad never came back at all"
+
+
+def test_moving_a_lane_to_another_instrument_takes_its_notes_with_it():
+    """Which instrument a lane speaks through was only ever in the scene file:
+    "PANIC 是因為 wavestate 的音色多變不適合當延音". Now it can be changed while
+    playing - which means a lane can be holding a note on the old synth at the
+    moment it moves, and that note is keyed to (channel, note) with nothing
+    left pointing at it. It would sit there until the next PANIC."""
+    eng, clk, out = make([{"id": "p", "src": 0, "dst": 3, "algo": "silence", "prob": 1.0,
+                           "constraint": "chord", "lane": "pad", "after_s": 3.0,
+                           "hold_s": 40, "voices": 2, "vel": 40, "low": 48, "high": 84}])
+    play(eng, clk, 0, 60, vel=90)
+    run_for(eng, clk, 4.0)
+    on3 = out.notes(ch=3)
+    assert on3, "the pad never entered, so this proves nothing"
+    assert not out.notes("note_off", ch=3), "it let go before we moved it"
+
+    out.clear()
+    eng.set_edge("p", "dst", 12)
+    run_for(eng, clk, 0.2)
+    offs = {n for _, _, n, _ in out.notes("note_off", ch=3)}
+    assert offs == {n for _, _, n, _ in on3},         f"left ringing on the old instrument: {set(n for _, _, n, _ in on3) - offs}"
+    assert not [k for k in eng.st.active_gen if k[0] == 3], eng.st.active_gen
+
+    # and it speaks on the new one from here
+    out.clear()
+    play(eng, clk, 0, 62, vel=90)
+    run_for(eng, clk, 5.0)
+    assert out.notes(ch=12), "the lane went quiet instead of moving"
