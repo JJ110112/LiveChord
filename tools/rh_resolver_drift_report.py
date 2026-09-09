@@ -5,11 +5,12 @@ builder produced.  This one looks at what the resolver actually SERVED, so a
 regression shows up before someone hears it in the player:
 
   1. Resolver selections   every record under <data-dir>/melodies_rh_v2/ is one
-                           resolve() call: vocal_stem_crepe selected (with /
-                           without a pYIN baseline), or a full_mix_pyin fallback
-                           with its reason (gate refused, low-coverage retreat,
-                           candidate missing).  Counted overall and for the
-                           --since-days window.
+                           resolve() call: a promoted candidate
+                           (vocal_stem_crepe with / without a pYIN baseline,
+                           solo_piano_polyphonic, instrument_lead), or a
+                           full_mix_pyin fallback with its reason (gate
+                           refused, low-coverage retreat, candidate missing).
+                           Counted overall and for the --since-days window.
   2. Gate boundary         vocal_stem_energy_ratio of every served record; the
                            ones within --band of the threshold are listed on
                            both sides (precision risk above, recall risk below).
@@ -55,10 +56,19 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from ai.melody_candidate import (  # noqa: E402
+    INSTRUMENT_LEAD,
     MELODY_SELECTED_DIR_NAME,
+    SOLO_PIANO_POLYPHONIC,
     VOCAL_STEM_CREPE,
     candidate_path,
 )
+
+# Every candidate the resolver may promote over the pYIN baseline. Anything
+# else in melody_source.id is the full-mix fallback. Keeping this list in one
+# place matters: when solo_piano_polyphonic / instrument_lead promotion shipped
+# (LiveChord-a1lh), this report still counted those selections as
+# "fallback:unknown" - real wins reported as failures.
+SELECTED_CANDIDATES = (VOCAL_STEM_CREPE, SOLO_PIANO_POLYPHONIC, INSTRUMENT_LEAD)
 from ai.melody_resolver import RETREAT_LOW_COVERAGE_FLAG  # noqa: E402
 from ai.melody_residual_report import (  # noqa: E402
     DEFAULT_WINDOW_S,
@@ -145,9 +155,11 @@ def read_log_ratios(data_dir: Path) -> Dict[str, float]:
 # analysis
 # --------------------------------------------------------------------------
 def _outcome(r: Dict[str, Any]) -> str:
-    if r["source_id"] == VOCAL_STEM_CREPE:
+    if r["source_id"] in SELECTED_CANDIDATES:
         if r["gate_reason"] == "manual_override":
             return "selected_override"
+        if r["source_id"] != VOCAL_STEM_CREPE:
+            return f"selected_{r['source_id']}"
         if "resolver_selected_without_baseline" in r["flags"]:
             return "selected_no_baseline"
         return "selected"
@@ -196,7 +208,7 @@ def analyze_selections(rows: List[Dict[str, Any]], *, since_days: int, threshold
         "ratio_median": _quantile(ratios, 0.5),
         "ratio_p90": _quantile(ratios, 0.9),
         "low_coverage_retreats": sum(1 for r in rows if RETREAT_LOW_COVERAGE_FLAG in r["flags"]),
-        "empty_selected": [_brief(r) for r in rows if r["source_id"] == VOCAL_STEM_CREPE and r["note_count"] == 0],
+        "empty_selected": [_brief(r) for r in rows if r["source_id"] in SELECTED_CANDIDATES and r["note_count"] == 0],
         "just_above": [_brief(r) for r in sorted(just_above, key=lambda r: r["ratio"])],
         "just_below": [_brief(r) for r in sorted(just_below, key=lambda r: -r["ratio"])],
     }
@@ -219,7 +231,7 @@ def analyze_overrides(data_dir: Path, rows: List[Dict[str, Any]]) -> Dict[str, A
             problems.append("candidate_missing")
         elif cand_notes == 0:
             problems.append("candidate_empty")
-        if rec is not None and rec["source_id"] != VOCAL_STEM_CREPE:
+        if rec is not None and rec["source_id"] not in SELECTED_CANDIDATES:
             problems.append(f"served_{rec['source_id'] or 'other'}")
         entries.append({
             "song_hash": h,
@@ -284,7 +296,7 @@ def window_coverage(data_dir: Path, r: Dict[str, Any], *, window_s: float) -> Di
 
 
 def analyze_coverage(data_dir: Path, rows: List[Dict[str, Any]], *, window_s: float, worst_n: int) -> Dict[str, Any]:
-    vocal = [r for r in rows if r["source_id"] == VOCAL_STEM_CREPE]
+    vocal = [r for r in rows if r["source_id"] in SELECTED_CANDIDATES]
     per_song = [window_coverage(data_dir, r, window_s=window_s) for r in vocal]
     with_baseline = [c for c in per_song if c["mode"] == "vs_baseline"]
     cand_only = [c for c in per_song if c["mode"] == "candidate_only"]
@@ -412,7 +424,7 @@ def render_markdown(rep: Dict[str, Any]) -> str:
 
     L.append(f"\n## 4. Worst-window coverage ({cov['window_s']:.0f} s windows)\n")
     L.append("| metric | value |\n|---|---|")
-    L.append(f"| vocal selections | {cov['vocal_selections']} (vs baseline {cov['with_baseline']}, candidate-only {cov['candidate_only']}) |")
+    L.append(f"| promoted selections | {cov['vocal_selections']} (vs baseline {cov['with_baseline']}, candidate-only {cov['candidate_only']}) |")
     L.append(f"| with >=1 missing window (vs baseline) | {cov['with_missing_windows']} |")
     L.append(f"| worst window ratio <= 0.05 | {cov['worst_ratio_le_005']} |")
     for key, title in (("worst_vs_baseline", "Worst vs pYIN baseline (missing = candidate < 30 % of baseline activity)"),
