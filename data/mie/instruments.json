@@ -113,7 +113,8 @@
       36,
       96
     ],
-    "sustain_ok": true
+    "sustain_ok": false,
+    "_note_sustain": "sustain_ok false on purpose (2026-09-09): the wave-sequencing patches move too much to hold a long note - 「音色多變不適合當延音」. The flag is not just a label: safety.py allows sustain_dur_s (30 s) to an instrument marked for it and max_dur_s (8 s) to one that is not, so this caps anything this synth is asked to hold at 8 s."
   },
   "11": {
     "name": "Iridium",
