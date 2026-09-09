@@ -461,18 +461,22 @@
    */
   function makeBreath(e, wrap) {
     const sl = wrap.querySelector("input");
+    const top = wrap.querySelector(".mie-breath-top");
     const out = wrap.querySelector(".mie-breath-v");
     const cc = wrap.querySelector(".mie-breath-cc");
     let cur = e;
     const read = (x) => (x && typeof x.swell === "object" && x.swell) || {};
     const show = (v) => { sl.value = v; out.textContent = Number(v).toFixed(2); };
-    sl.addEventListener("input", () => out.textContent = Number(sl.value).toFixed(2));
-    sl.addEventListener("change", () => {
+    const push = () => {
       const d = read(cur);
-      const v = { depth: Number(sl.value), beats: d.beats || 8, shape: d.shape || "breathe" };
+      const v = { depth: Number(sl.value), beats: d.beats || 8, shape: d.shape || "breathe",
+                  top: Number(top.value) };
       cur.swell = v;
       send({ type: "set", path: `edge.${cur.id}.swell`, value: v });
-    });
+    };
+    sl.addEventListener("input", () => out.textContent = Number(sl.value).toFixed(2));
+    sl.addEventListener("change", push);
+    top.addEventListener("change", push);
     return {
       sync(next, insts, sharing) {
         cur = next;
@@ -480,13 +484,18 @@
         wrap.hidden = !inst.swell_cc;
         if (wrap.hidden) return;
         const d = read(next);
-        const on = d.depth > 0;
+        const on = d.depth > 0 || (d.top !== undefined && d.top < 1);
         // MIDI has no per-note expression. CC11 belongs to the CHANNEL, so a
         // breath set here rides every OTHER lane on the same instrument as
         // well - which is a surprise worth having before it is heard, not
         // after.
         const others = (sharing.get(next.dst) || 1) - 1;
-        cc.textContent = `CC${inst.swell_cc}` + (on && others ? ` ·連帶 ${others}` : "");
+        const t = d.top === undefined ? 1 : d.top;
+        if (document.activeElement !== top) top.value = t;
+        // the two numbers the ear actually asks about: how loud at the peak,
+        // and how far it falls
+        cc.textContent = `CC${inst.swell_cc} 頂${Math.round(127 * t)}`
+          + (on && others ? ` ·連帶 ${others}` : "");
         wrap.classList.toggle("is-off", !on);
         wrap.classList.toggle("is-shared", !!on && others > 0);
         wrap.title = others
@@ -680,9 +689,14 @@
       + '<input class="mie-dd" type="range" min="0" max="1" step="0.05" title="幅度：0 = 不動；1 = 從全開一路呼吸到全關">'
       + '<span class="mie-dv"></span>'
       + '<input class="mie-db" type="number" min="2" max="128" step="2" title="一個呼吸幾拍">'
-      + '<select class="mie-ds" title="形狀"></select></span>';
+      + '<select class="mie-ds" title="形狀"></select>'
+      + '<input class="mie-dt" type="number" min="0.05" max="1" step="0.05" '
+      + 'title="上限：呼吸最大聲的時候到哪裡。這是「太大聲」該調的地方——'
+      + 'pad 音色多半不吃力度，強度拉再低也沒用，它聽的是這個 CC">'
+      + '</span>';
     const dd = wrap.querySelector(".mie-dd"), dv = wrap.querySelector(".mie-dv");
     const db = wrap.querySelector(".mie-db"), ds = wrap.querySelector(".mie-ds");
+    const dt = wrap.querySelector(".mie-dt");
     DRIFT_SHAPES.forEach(([v, label]) => {
       const o = document.createElement("option"); o.value = v; o.textContent = label; ds.appendChild(o);
     });
@@ -693,7 +707,8 @@
       dv.textContent = Number(d.depth || 0).toFixed(2);
       db.value = d.beats || 8;
       ds.value = d.shape || "breathe";
-      const on = d.depth > 0;
+      dt.value = d.top === undefined ? 1 : d.top;
+      const on = d.depth > 0 || (d.top !== undefined && d.top < 1);
       wrap.classList.toggle("is-off", !on);
       // Depth without a controller sends nothing at all, and a control that
       // silently does nothing is worse than one that is not there.
@@ -706,7 +721,8 @@
           + `到左邊樂器清單把 CH${cur.dst} 的 CC 選起來`;
     };
     const push = () => {
-      const v = { depth: Number(dd.value), beats: Number(db.value), shape: ds.value };
+      const v = { depth: Number(dd.value), beats: Number(db.value), shape: ds.value,
+                  top: Number(dt.value) };
       cur.swell = v;
       send({ type: "set", path: `edge.${cur.id}.swell`, value: v });
       paint();
@@ -715,6 +731,7 @@
     dd.addEventListener("change", push);
     db.addEventListener("change", push);
     ds.addEventListener("change", push);
+    dt.addEventListener("change", push);
     wrap.sync = (fresh, insts) => {
       cur = fresh;
       inst = (insts || []).find((i) => i.ch === fresh.dst) || null;
@@ -824,6 +841,8 @@
                 <span class="mie-fl">呼吸</span>
                 <input class="mie-fs" type="range" min="0" max="1" step="0.05">
                 <span class="mie-fn mie-breath-v">0.00</span>
+                <input class="mie-breath-top" type="range" min="0.05" max="1" step="0.05"
+                       title="上限：呼吸最大聲的時候到哪裡">
                 <span class="mie-vel-hit mie-breath-cc"></span>
               </label>
               <span class="mie-pad-lbl"></span>

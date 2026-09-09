@@ -177,7 +177,10 @@
 .mie-vel .mie-vel-v { text-align: right; font-variant-numeric: tabular-nums; }
 /* the breath, next to the strength it sits under */
 .mie-breath.is-off .mie-fl, .mie-breath.is-off .mie-breath-cc { opacity: .5; }
-.mie-breath .mie-breath-cc { opacity: .7; }
+.mie-breath { grid-template-columns: 32px minmax(0, 1fr) 32px 46px 68px; }
+/* the ceiling: short, next to the depth, because "too loud" is judged live */
+.mie-breath-top { width: 100%; accent-color: #ffb74d; border: none; padding: 0; }
+.mie-breath .mie-breath-cc { opacity: .7; font-size: 9.5px; }
 /* a breath on a shared instrument sweeps the other lanes on it too */
 .mie-breath.is-shared .mie-breath-cc { color: #ff9800; opacity: 1; }
 /* the first layer of an edge: two settings, one drag */
@@ -353,6 +356,7 @@
 .mie-drift-row .mie-dv { width: 30px; text-align: right; font-variant-numeric: tabular-nums; font-size: 10.5px; }
 .mie-drift-row .mie-db { width: 44px; }
 .mie-drift-row .mie-ds { width: 62px; }
+.mie-drift-row .mie-dt { width: 46px; }
 .mie-field-drift.is-off .mie-drift-row { opacity: .45; }
 
 /* A save that did NOT happen. Loud on purpose: the whole point is that the

@@ -87,23 +87,32 @@ def drift_at(now: float, depth: float, period_s: float, shape: str, phase: float
     return max(0.15, min(2.0, 1.0 + depth * v))
 
 
-def swell_at(now: float, depth: float, period_s: float, shape: str, phase: float = 0.0) -> int:
+def swell_at(now: float, depth: float, period_s: float, shape: str, phase: float = 0.0,
+             top: float = 1.0) -> int:
     """The breath, as a MIDI controller value 0-127.
 
     A pad that is loud the instant it arrives and stays exactly there until it
     stops is the "呆板" in 「單純的長音持續按著」: velocity decides how a note
     STARTS and nothing after that moves. This is what moves after that.
 
-    It rests at the TOP and only ever dips below it. That is not a stylistic
-    choice - it is the safety property that makes it usable. CC11 and CC1 are
-    channel-wide and sticky: a value left at 40 quietens the next note anybody
-    sends on that channel, including the player's own passthrough. A wave
-    centred on 127 can only ever be given back by writing 127, and everything
-    that stops this - the lane going quiet, PANIC, the engine exiting - writes
-    exactly that.
+    `top` is the LOUDEST it ever gets while the lane is sounding, and it is the
+    answer to a pad whose peak is too strong. Velocity is not: a pad patch is
+    normally built to sound the same however hard the key is struck, so dragging
+    強度 from 0.9 down to 0.05 - thirty times, on the 19:15 take - changes the
+    number in the note and not much in the room. The controller is what that
+    patch actually listens to.
+
+    While the lane is quiet the channel is always handed back at 127, whatever
+    `top` says. That is not a stylistic choice - it is the safety property that
+    makes any of this usable. CC11 and CC1 are channel-wide and sticky: a value
+    left at 40 quietens the next note anybody sends on that channel, including
+    the player's own passthrough. Only a resting value of 127 can be given back
+    with one message, and everything that stops this - the lane going quiet,
+    PANIC, the engine exiting - writes exactly that.
     """
+    hi = 127.0 * max(0.0, min(1.0, top))
     if depth <= 0 or period_s <= 0:
-        return 127
+        return int(round(hi))
     x = ((now / period_s) + phase) % 1.0
     if shape == "ramp":                       # saw: swell, then drop back
         v = x
@@ -113,8 +122,8 @@ def swell_at(now: float, depth: float, period_s: float, shape: str, phase: float
         v = math.sin(math.pi * (x ** 0.7))
     else:                                     # sine
         v = 0.5 + 0.5 * math.sin(2.0 * math.pi * x)
-    lo = 127.0 * (1.0 - max(0.0, min(1.0, depth)))
-    return int(round(lo + (127.0 - lo) * max(0.0, min(1.0, v))))
+    lo = hi * (1.0 - max(0.0, min(1.0, depth)))
+    return int(round(lo + (hi - lo) * max(0.0, min(1.0, v))))
 
 
 def port_for(ch: int) -> str:
@@ -1488,14 +1497,17 @@ class Engine:
         if not isinstance(d, dict):
             return None
         depth = float(d.get("depth", 0) or 0)
-        if depth <= 0:
+        top = float(d.get("top", 1) if d.get("top") is not None else 1)
+        # A ceiling on its own is a reason to speak: "quieter, but not moving"
+        # is a perfectly ordinary thing to ask a pad for.
+        if depth <= 0 and top >= 1.0:
             return None
         beats = float(d.get("beats", 8) or 8)
         period = max(0.5, beats * self.st.beat_s * (self.st.time_knob or 1.0))
         phase = d.get("phase")
         if phase is None:
             phase = (sum(ord(c) for c in edge.id) % 100) / 100.0
-        return (cc, depth, period, str(d.get("shape", "breathe")), float(phase))
+        return (cc, depth, period, str(d.get("shape", "breathe")), float(phase), top)
 
     def _swell(self, now: float) -> None:
         """Move the breath controller on every channel a breathing lane is using.
@@ -1524,10 +1536,15 @@ class Engine:
                 sw = self._swell_of(e)
                 if sw is None:
                     continue
-                if e.dst not in want or sw[1] > want[e.dst][1]:
+                # How far below 127 this lane ever takes the channel. A
+                # ceiling counts as much as a dip, or a lane asking only to be
+                # quieter would lose to one asking for a shallow wiggle and
+                # never be heard at all.
+                reach = lambda x: 1.0 - x[5] * (1.0 - x[1])
+                if e.dst not in want or reach(sw) > reach(want[e.dst]):
                     want[e.dst] = sw
-        for ch, (cc, depth, period, shape, phase) in want.items():
-            self._write_swell(ch, cc, swell_at(now, depth, period, shape, phase))
+        for ch, (cc, depth, period, shape, phase, top) in want.items():
+            self._write_swell(ch, cc, swell_at(now, depth, period, shape, phase, top))
         for ch in [c for c in self._swell_sent if c not in want]:
             self._rest_swell(ch)
 

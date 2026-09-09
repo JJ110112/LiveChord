@@ -193,14 +193,14 @@
     {
       "id": "silence_pad",
       "src": 0,
-      "dst": 13,
+      "dst": 3,
       "algo": "silence",
       "prob": 0.9,
       "delay_beats": 0.0,
       "delay_ms": 0.0,
       "transpose": 0,
       "octave": 0,
-      "vel_scale": 1.0,
+      "vel_scale": 0.25,
       "vel_offset": 0,
       "dur_scale": 1.0,
       "mutations": [],
@@ -224,7 +224,8 @@
       "swell": {
         "depth": 0.5,
         "beats": 12,
-        "shape": "breathe"
+        "shape": "breathe",
+        "top": 0.55
       }
     },
     {

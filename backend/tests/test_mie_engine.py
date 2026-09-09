@@ -3884,9 +3884,12 @@ def _breathing(edge_extra=None, **inst_kw):
     return eng, clk, out
 
 
-def _ccs(out, ch=3):
+def _ccs(out, ch=3, cc=None):
+    """The breath's own controller, not the PANIC packet: CC120/123/64 go out on
+    the same channel and would otherwise be read as the breath's last word."""
     return [(t, m.control, m.value) for t, _, m in out.sent
-            if m.type == "control_change" and m.channel + 1 == ch]
+            if m.type == "control_change" and m.channel + 1 == ch
+            and (cc is None or m.control == cc)]
 
 
 def test_swell_moves_the_controller_while_the_pad_sounds():
@@ -3920,7 +3923,7 @@ def test_the_breath_is_given_back_when_the_lane_stops():
     out.clear()
     eng.set_edge("p", "enabled", False)
     run_for(eng, clk, 1.0)
-    assert _ccs(out)[-1][2] == 127, f"left the channel at {_ccs(out)[-1][2]}"
+    assert _ccs(out, cc=11)[-1][2] == 127, f"left the channel at {_ccs(out, cc=11)[-1][2]}"
 
 
 def test_panic_gives_the_breath_back_first():
@@ -3994,3 +3997,44 @@ def test_advice_you_have_answered_stops_being_offered():
     eng.mute_advice("tension_gap", False)
     run_for(eng, clk, 12.0)
     assert any(a["id"] == "tension_gap" for a in eng.advice), "could not be turned back on"
+
+
+def test_the_breath_has_a_ceiling_because_a_pad_ignores_velocity():
+    """「最大時強度太強 我強度改0.15沒有作用」. A pad patch is normally built to
+    sound the same however hard the key is struck, so 強度 changes the number in
+    the note and not much in the room - on the 19:15 take it was dragged through
+    thirty values and the lane entered twice. The controller is what that patch
+    listens to, so the controller is where the ceiling belongs."""
+    from backend.mie.engine import swell_at
+    for shape in ("sine", "triangle", "ramp", "breathe"):
+        vals = [swell_at(t * 0.25, 0.5, 4.0, shape, 0.0, 0.5) for t in range(64)]
+        assert max(vals) <= 64, (shape, "went over the ceiling", max(vals))
+        assert max(vals) >= 60, (shape, "never reaches its own ceiling", max(vals))
+        assert min(vals) < 40, (shape, "does not dip below the ceiling", min(vals))
+    # a ceiling with no movement is a perfectly ordinary ask: quieter, held
+    assert swell_at(3.0, 0.0, 4.0, "sine", 0.0, 0.5) == 64
+    assert swell_at(3.0, 0.0, 4.0, "sine", 0.0, 1.0) == 127
+
+
+def test_a_ceiling_alone_still_speaks_and_is_still_handed_back():
+    """Lowering the top without any movement has to reach the wire - and the
+    channel must still come back at 127, or a quiet pad would leave the synth
+    quiet for everything after it."""
+    eng, clk, out = _breathing({"swell": {"depth": 0, "top": 0.4}}, swell_cc=11)
+    play(eng, clk, 0, 60, vel=90)
+    run_for(eng, clk, 5.0)
+    cc = _ccs(out)
+    assert cc, "a ceiling on its own sent nothing"
+    assert {v for _, _, v in cc} == {51}, f"a still ceiling should be one value: {cc}"
+    out.clear()
+    eng.panic("ui")
+    assert _ccs(out, cc=11)[-1][2] == 127, _ccs(out, cc=11)
+
+
+def test_the_deeper_reach_wins_a_shared_channel_including_a_ceiling():
+    """Two lanes on one synth write one channel-wide controller. A lane asking
+    only to be quieter must not lose to one asking for a shallow wiggle."""
+    from backend.mie.engine import swell_at
+    quiet = swell_at(0.0, 0.0, 4.0, "sine", 0.0, 0.3)     # a low ceiling, still
+    wiggle = min(swell_at(t * 0.1, 0.1, 4.0, "sine") for t in range(40))
+    assert quiet < wiggle, "the ceiling reaches further down and must win"
