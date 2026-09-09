@@ -109,7 +109,8 @@
       "interval": 7,
       "lane": "follow",
       "group_id": "iridium_reply",
-      "voice_lead": "octave"
+      "voice_lead": "octave",
+      "below_player": 5
     },
     {
       "id": "phrase_modx",

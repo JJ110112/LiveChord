@@ -166,6 +166,14 @@
   const BOOL = (label, key, hint) => ({ label, key, hint, kind: "bool" });
   const COMMON = [
     NUM("機率", "prob", 0, 1, 0.05, "這個手勢被回應的機率"),
+    // Every lane can be asked to stay under the hands, not just the pad: the
+    // follow lane sits a fifth ABOVE the note it answers, so it goes over the
+    // player's top exactly when they play near it (measured: 81 % of its notes
+    // on the 11:15 take). It is not dropped when it would - it keeps its pitch
+    // class and is voiced an octave down, so a fifth above becomes a fourth
+    // below.
+    NUM("讓開(半音)", "below_player", 0, 24, 1,
+        "0 = 不管你彈到哪裡。大於 0 = 永遠比你當下彈的最高音再低這麼多半音，你往上跑它就往下讓"),
     NUM("力度×", "vel_scale", 0, 2, 0.05, "生成音的力度倍率"),
     NUM("移調", "transpose", -24, 24, 1, "半音"),
     NUM("八度", "octave", -3, 3, 1, null),
@@ -208,8 +216,6 @@
               NUM("力度", "vel", 1, 127, 1, null),
               NUM("持續(拍)", "hold_beats", 1, 32, 1, null),
               NUM("釋放(拍)", "release_beats", 0, 8, 0.5, null),
-              NUM("讓開(半音)", "below_player", 0, 24, 1,
-                  "0 = 不管你彈到哪裡。大於 0 = 永遠比你當下彈的最高音再低這麼多半音，你往上跑它就往下讓。設了這個之後「疊在手上面」不生效"),
               BOOL("疊在手上面", "above_held", "把這層墊音放在你正按著的音之上（預設開；設了「讓開」就不看這個）"),
               NUM("低", "low", 21, 108, 1, null), NUM("高", "high", 21, 108, 1, null)],
   };
@@ -529,11 +535,19 @@
         choices.forEach((k) => body.appendChild(edgeChoice(e, k)));
         box.appendChild(el); edgeEls.set(e.id, el);
       }
+      // The same hue the piano roll paints this lane with, so an orange bar in
+      // the picture leads straight to the row that made it. The roll owns the
+      // palette; asking it keeps one definition rather than two that drift.
+      if (window.MieRoll && window.MieRoll.hueFor) {
+        el.style.setProperty("--lane-h", window.MieRoll.hueFor(e.lane || e.algo));
+      }
       const src = e.src === 0 ? "HUMAN" : `CH${e.src}`;
       el.querySelector(".name").textContent = e.id;
       el.querySelector(".route").textContent = `${src} → CH${e.dst} · p ${e.prob} · ${e.constraint}`
         + (e.delay_beats ? ` · ${e.delay_beats} beat` : "") + (e.delay_ms ? ` · ${e.delay_ms} ms` : "");
-      el.querySelector(".algo").textContent = e.algo;
+      const lane = e.lane || e.algo;
+      el.querySelector(".algo").textContent = LANE_LABEL[lane] || lane;
+      el.querySelector(".algo").title = `${e.algo}　lane: ${lane}`;
       const cb = el.querySelector('input[type=checkbox]'); if (document.activeElement !== cb) cb.checked = e.enabled;
       el.querySelectorAll(".mie-edge-body input, .mie-edge-body select").forEach((inp) => {
         if (document.activeElement === inp || inp.type === "checkbox") return;
@@ -595,10 +609,14 @@
     }
     const box = $("#mieStream");
     const el = document.createElement("div");
-    let cls = "", txt = "";
+    let cls = "", txt = "", lane = null;
     switch (e.type) {
       case "human": cls = "human"; txt = `HUMAN ch${e.ch} ${nn(e.note)} v${e.vel}` + (e.chord ? ` [${e.chord}]` : ""); break;
-      case "gen": cls = `gen${Math.min(3, e.hop || 1)}`; txt = `GEN hop${e.hop} ch${e.ch} ${nn(e.note)} v${e.vel} ${e.lane} ← ${e.edge}`; break;
+      case "gen":
+        cls = `gen${Math.min(3, e.hop || 1)}`;
+        lane = e.lane;
+        txt = `GEN hop${e.hop} ch${e.ch} ${nn(e.note)} v${e.vel} ${LANE_LABEL[e.lane] || e.lane} ← ${e.edge}`;
+        break;
       case "sched": cls = "sched"; txt = `  sched ch${e.ch} ${nn(e.note)} in ${e.in_ms} ms · ${e.dur_ms} ms · ${e.edge}`; break;
       case "drop": cls = "drop"; txt = `DROP ${e.reason} ch${e.ch} ${nn(e.note)} ${e.lane || ""} ${e.edge || ""}`; break;
       case "edge": cls = "edge"; txt = `  edge ${e.edge} p=${e.p}`; break;
@@ -622,6 +640,10 @@
       default: cls = "edge"; txt = JSON.stringify(e);
     }
     el.className = `mie-ev mie-ev-${cls}`;
+    if (lane && window.MieRoll && window.MieRoll.hueFor) {
+      el.style.setProperty("--lane-h", window.MieRoll.hueFor(lane));
+      el.classList.add("has-lane");
+    }
     el.innerHTML = `<span class="t">${Number(e.t).toFixed(2)}</span>${txt}`;
     box.appendChild(el);
     while (box.children.length > streamMax) box.removeChild(box.firstChild);
@@ -723,6 +745,11 @@
   // anything the player could not already do by hand, which is why it is safe
   // to reach for mid-set. Choosing one stashes the current settings; 取消
   // puts those back, not the previous style's.
+  const LANE_LABEL = {
+    human: "你", shadow: "影子", echo: "回音", echo2: "回音2", follow: "跟隨",
+    phrase: "樂句", sustain: "延續", pad: "襯底", texture: "織體",
+  };
+
   let styleSig = "";
   function renderStyles(info) {
     const sel = $("#mieStyleSel");

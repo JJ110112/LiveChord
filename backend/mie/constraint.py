@@ -334,7 +334,7 @@ def player_top(st: MusicalState, window_s: float = PLAYER_TOP_WINDOW_S) -> Optio
 
 
 def edge_range(edge, st: Optional[MusicalState] = None) -> Optional[tuple]:
-    """The register an edge asked for, narrowed to stay under the player.
+    """The register an edge may play in: what it asked for, kept under the player.
 
     `below_player: N` means "keep at least N semitones below whatever I am
     playing". A fixed ceiling cannot do this: the player asked for
@@ -349,16 +349,26 @@ def edge_range(edge, st: Optional[MusicalState] = None) -> Optional[tuple]:
     room underneath, the lane stays at its floor rather than diving.
     """
     lo, hi = edge.params.get("low"), edge.params.get("high")
-    if lo is None or hi is None:
-        return None
-    lo, hi = int(lo), int(hi)
     gap = edge.params.get("below_player")
-    if st is not None and gap:
-        top = player_top(st)
-        if top is not None:
-            # never narrower than a seventh, or there is nothing to voice with
-            hi = max(lo + 10, min(hi, int(top) - int(gap)))
-    return (lo, hi)
+    named = lo is not None and hi is not None
+    if not named and not gap:
+        return None
+    if st is None or not gap:
+        return (int(lo), int(hi)) if named else None
+
+    top = player_top(st)
+    if top is None:
+        return (int(lo), int(hi)) if named else None
+    ceiling = int(top) - int(gap)
+    if named:
+        # never narrower than a seventh, or there is nothing to voice with
+        return (int(lo), max(int(lo) + 10, min(int(hi), ceiling)))
+    # A lane with no register of its own - Follow, Shadow, Echo - still has to
+    # stay under the player when asked. It gets a ceiling and two octaves of
+    # room below it, and `late_bind` intersects that with the instrument's own
+    # range. The note is not dropped: it keeps its pitch class and is voiced an
+    # octave down, which for a fifth above is exactly a fourth below.
+    return (max(0, ceiling - 24), ceiling)
 
 
 def constrain(p: Proposal, st: MusicalState, edge: Edge, inst: Optional[Instrument], *,

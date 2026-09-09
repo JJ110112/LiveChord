@@ -637,6 +637,35 @@ def test_below_player_keeps_the_pad_under_the_hands_and_follows_them_up():
     assert edge_range(plain, st) == (55, 88)
 
 
+def test_below_player_also_holds_a_lane_that_has_no_register_of_its_own():
+    """Follow sits a fifth ABOVE the note it answers, so it goes over the top.
+
+    Measured on the 11:15 take, 81 % of its notes were above the player's own
+    highest - it is not a pad with a `low`/`high` to narrow, so `edge_range`
+    returned nothing at all for it and there was no ceiling to apply. The note
+    is not dropped when it would go over: the late binding keeps its pitch
+    class and voices it an octave down, so a fifth above becomes a fourth
+    below.
+    """
+    from backend.mie.constraint import edge_range
+    from backend.mie.graph import Edge
+
+    eng, clk, out = make([])
+    hold_chord(eng, clk, 9, [60, 64, 72])            # top is C5
+
+    bare = Edge(src=0, dst=11, algo="follow", id="f",
+                params={"interval": 7, "lane": "follow"})
+    assert edge_range(bare, eng.st) is None, "a lane with no register got one unasked"
+
+    asked = Edge(src=0, dst=11, algo="follow", id="f",
+                 params={"interval": 7, "below_player": 5, "lane": "follow"})
+    rng_ = edge_range(asked, eng.st)
+    assert rng_ is not None
+    lo, hi = rng_
+    assert hi == 72 - 5
+    assert lo <= hi - 12, "no room left to voice anything in"
+
+
 def test_below_player_releases_the_notes_the_player_has_climbed_over():
     """Waiting for a hold to expire leaves the pad on top of them meanwhile."""
     edge = _sustain_edge(below_player=7, low=55, high=88, hold_beats=32,

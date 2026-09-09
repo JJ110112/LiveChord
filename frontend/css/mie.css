@@ -82,7 +82,11 @@
 .mie-inst.human .dot { background: #2196f3; }
 
 .mie-edge-list { display: flex; flex-direction: column; gap: 4px; }
-.mie-edge { padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; transition: background .2s, border-color .2s; }
+/* The lane's colour, the same one the piano roll paints it with, so a bar in
+   the picture leads to the row that made it. A stripe rather than a fill: the
+   row still has to read as a control, not as a legend. */
+.mie-edge { padding: 6px 8px; border: 1px solid var(--border); border-left: 3px solid hsl(var(--lane-h, 220) 55% 45%); border-radius: 8px; transition: background .2s, border-color .2s; }
+.mie-ev.has-lane { border-left: 2px solid hsl(var(--lane-h, 220) 60% 50%); padding-left: 4px; }
 .mie-edge-head { display: grid; grid-template-columns: 22px 1fr 132px 76px 40px 24px; align-items: center; gap: 8px; }
 /* the first layer of an edge: two settings, one drag */
 .mie-pad { position: relative; height: 46px; border: 1px solid var(--border); border-radius: 6px; background: linear-gradient(0deg, rgba(255,255,255,.05), transparent); cursor: crosshair; touch-action: none; overflow: hidden; }
@@ -116,6 +120,12 @@
    purpose, so it reads quieter than `hot` and calmer than `is-mute`. */
 .mie-edge.is-waiting { border-color: #5c6bc0; }
 .mie-edge.is-waiting .fires { color: #7986cb; }
+/* State colours take the other three sides and leave the lane stripe alone:
+   `hot` fires exactly when you are looking at the row to find out which colour
+   in the picture it is, and it was painting over the answer. */
+.mie-edge.hot, .mie-edge.is-mute, .mie-edge.is-waiting {
+  border-left-color: hsl(var(--lane-h, 220) 55% 45%);
+}
 .mie-edge.hot { border-color: #ffc107; background: rgba(255,193,7,.12); }
 .mie-edge.off { opacity: .5; }
 /* enabled but unable to make a sound: it must not look like a quiet lane */
@@ -126,7 +136,7 @@
 .mie-edge .prob input { width: 46px; background: transparent; color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; font-size: 12px; }
 .mie-edge .fires { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-dim); }
 .mie-edge .fires.has-drops { color: #ff9800; }
-.mie-edge .algo { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; background: rgba(255,255,255,.08); }
+.mie-edge .algo { font-size: 10px; letter-spacing: .08em; padding: 1px 7px; border-radius: 999px; background: hsl(var(--lane-h, 220) 45% 38%); color: #fff; white-space: nowrap; }
 
 .mie-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 4px 12px; font-size: 12px; }
 .mie-stats .k { color: var(--text-dim); }
@@ -205,3 +215,9 @@
 .mie-adv-why { font-size: 10.5px; color: var(--text-dim); margin-top: 3px; line-height: 1.45; }
 .mie-adv-act { display: flex; gap: 6px; margin-top: 7px; }
 .mie-adv-act .mie-btn { padding: 3px 10px; font-size: 11px; }
+
+/* last word on the stripe: every state rule above sets `border-color`, which
+   includes the left edge */
+.mie-edge.hot, .mie-edge.is-mute, .mie-edge.is-waiting, .mie-edge.off {
+  border-left-color: hsl(var(--lane-h, 220) 55% 45%);
+}
