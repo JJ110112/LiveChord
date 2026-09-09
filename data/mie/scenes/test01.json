@@ -367,7 +367,7 @@
       "src": 0,
       "dst": 14,
       "algo": "arp",
-      "prob": 1.0,
+      "prob": 0.5,
       "delay_beats": 0.0,
       "delay_ms": 0.0,
       "transpose": 0,
