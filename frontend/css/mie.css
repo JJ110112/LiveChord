@@ -1,4 +1,14 @@
 /* MIE panel (plan §9). Uses base.css theme tokens; desktop single page. */
+/* `hidden` must actually hide.
+   The browser's own `[hidden] { display: none }` lives in the UA stylesheet,
+   and ANY author rule that sets `display` beats it - so every panel below that
+   is laid out with `display: flex` ignored its own hidden attribute and was on
+   screen permanently: the red PANIC banner (reported 2026-09-09 as "hard reload
+   之後這段紅底的文字一直存在不會消失" - it was never gone in the first place),
+   the piano roll, and the advice popup. `hidden` is set from JS in a dozen
+   places; one rule here is the fix, and it keeps the next one from happening. */
+[hidden] { display: none !important; }
+
 .mie-body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", system-ui, sans-serif; font-size: 13px; min-height: 100vh; display: flex; flex-direction: column; }
 .mie-top { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg-card); backdrop-filter: var(--glass-blur); position: sticky; top: 0; z-index: 10; flex-wrap: wrap; }
 .mie-brand { font-weight: 800; letter-spacing: .08em; font-size: 15px; margin-right: 6px; }
