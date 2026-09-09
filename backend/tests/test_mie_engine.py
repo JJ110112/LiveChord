@@ -1943,6 +1943,81 @@ def _texture_after(eng, clk, play_fn) -> str:
     return eng.st.texture
 
 
+# ------------------------------------------------------ 回放送音 (2026-09-09)
+def _take_notes(t0=0.0):
+    return [{"t": t0 + 0.0, "ch": 10, "note": 60, "vel": 80, "dur": 0.4},
+            {"t": t0 + 0.5, "ch": 10, "note": 64, "vel": 70, "dur": 0.4},
+            {"t": t0 + 1.0, "ch": 11, "note": 67, "vel": 90, "dur": 0.4}]
+
+
+def test_playing_a_take_back_sends_it_through_the_scheduler():
+    """The roll draws a take; this hears one. Timing is the engine's, not the browser's."""
+    eng, clk, out = make([])
+    n = eng.play_take(_take_notes())
+    assert n == 3
+    run_for(eng, clk, 2.0)
+    ons = out.notes("note_on")
+    assert [x[2] for x in ons] == [60, 64, 67], ons
+    assert [x[1] for x in ons] == [10, 10, 11]
+    # and it stops on its own, leaving nothing ringing
+    run_for(eng, clk, 2.0)
+    assert not [k for k in eng.st.active_gen], f"replay left notes sounding: {eng.st.active_gen}"
+
+
+def test_a_replay_never_makes_the_engine_answer_it():
+    """Otherwise reviewing a take generates a new one on top of it."""
+    edge = {"id": "e", "src": 10, "dst": 11, "algo": "echo", "prob": 1.0,
+            "repeats": 3, "delay_beats": 0.5, "lane": "echo",
+            "accepts": ["HUMAN", "GENERATIVE"]}
+    eng, clk, out = make([edge])
+    eng.play_take([{"t": 0.0, "ch": 10, "note": 60, "vel": 90, "dur": 0.3}])
+    run_for(eng, clk, 4.0)
+    assert not out.notes("note_on", ch=11),         "the replay was answered by the graph - that is a feedback loop with a nice name"
+    assert eng.edge_fires.get("e", 0) == 0
+
+
+def test_a_replay_never_plays_onto_the_players_own_keyboard():
+    """The engine must not fight the hands that are on the keys."""
+    eng, clk, out = make([])
+    play(eng, clk, 9, 48, 80, hold=0.1)          # ch9 is now a human channel
+    assert 9 in eng.st.human_chs
+    n = eng.play_take([{"t": 0.0, "ch": 9, "note": 60, "vel": 80, "dur": 0.3},
+                       {"t": 0.1, "ch": 10, "note": 62, "vel": 80, "dur": 0.3}])
+    assert n == 1, "a note was scheduled onto the player's own channel"
+    run_for(eng, clk, 1.0)
+    assert [x[1] for x in out.notes("note_on")] == [10]
+
+
+def test_stopping_and_panicking_both_silence_a_replay():
+    eng, clk, out = make([])
+    eng.play_take([{"t": 0.0, "ch": 10, "note": 60, "vel": 80, "dur": 8.0},
+                   {"t": 0.05, "ch": 10, "note": 64, "vel": 80, "dur": 8.0}])
+    run_for(eng, clk, 0.5)
+    assert len(out.notes("note_on", ch=10)) == 2 and eng.replaying
+    eng.stop_take()
+    run_for(eng, clk, 0.5)
+    assert not [k for k in eng.st.active_gen if k[0] == 10], "stop left the replay ringing"
+    assert not eng.replaying
+
+    eng.play_take([{"t": 0.0, "ch": 10, "note": 72, "vel": 80, "dur": 8.0}])
+    run_for(eng, clk, 0.3)
+    eng.panic("test")
+    run_for(eng, clk, 0.3)
+    assert not eng.replaying, "PANIC left the replay flag set"
+    assert not [k for k in eng.st.active_gen]
+    # and a panicked engine refuses to start one
+    assert eng.play_take(_take_notes()) == 0
+
+
+def test_replay_speed_stretches_the_take():
+    eng, clk, out = make([])
+    eng.play_take(_take_notes(), speed=0.5)      # half speed: twice as long
+    run_for(eng, clk, 1.5)
+    assert len(out.notes("note_on")) == 2, "half speed played the take at full speed"
+    run_for(eng, clk, 1.0)
+    assert len(out.notes("note_on")) == 3
+
+
 # ------------------------------------------------- 存這段 / log rotate (2026-09-09)
 def test_saving_a_segment_closes_one_file_and_opens_the_next(tmp_path):
     """Keeping a take must not mean stopping the engine.

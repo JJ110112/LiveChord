@@ -158,6 +158,7 @@
       file: root.querySelector(".mr-file"),
       logs: root.querySelector(".mr-logs"),
       live: root.querySelector(".mr-live"),
+      sound: root.querySelector(".mr-sound"),
       time: root.querySelector(".mr-time"),
       note: root.querySelector(".mr-note"),
       title: root.querySelector(".mr-title"),
@@ -179,6 +180,7 @@
       hover: null,
       raf: 0,
       lastFrame: 0,
+      sound: false,                      // off until asked: this makes noise
     };
 
     // ------------------------------------------------------------ drawing
@@ -308,8 +310,16 @@
      *  checking that a loop region actually wraps.
      */
     function advance(dt) {
+      const before = st.playhead;
       st.playhead += dt * st.speed;
-      if (st.loop && st.playhead > st.loop[1]) st.playhead = st.loop[0];
+      if (st.loop && st.playhead > st.loop[1]) {
+        st.playhead = st.loop[0];
+        if (st.playing) { stopSound(); startSound(); }   // the loop wrapped
+      } else if (st.sound && st.playing && st.soundSentAt !== null &&
+                 st.soundSentAt !== undefined &&
+                 before - st.soundSentAt > SOUND_WINDOW_S * 0.6) {
+        startSound();                                     // top the window up
+      }
       if (st.playhead >= st.span.t1) { st.playhead = st.span.t1; setPlaying(false); }
       follow();
       syncSeek();
@@ -335,12 +345,54 @@
     }
 
     function setPlaying(on) {
+      const was = st.playing;
       st.playing = on;
       st.lastFrame = 0;
       el.play.textContent = on ? "❚❚" : "▶";
       el.play.classList.toggle("is-on", on);
+      if (on !== was) { if (on) startSound(); else stopSound(); }
       if (on) requestAnimationFrame(tick);
     }
+
+    // ---------------------------------------------------------- 回放送音
+    // The notes go to the ENGINE, once, and its scheduler plays them: sending
+    // them one at a time as the playhead crosses each would put a browser
+    // animation frame and a WebSocket in the middle of the timing, and this
+    // project measures its jitter in single milliseconds.
+    //
+    // Bounded: only what is about to be heard. A whole four-minute take is a
+    // few thousand notes, and re-sending the lot on every scrub would be rude
+    // to the engine thread for no gain.
+    const SOUND_WINDOW_S = 45;
+
+    function startSound() {
+      if (!st.sound || !opts.send) return;
+      const from = st.playhead;
+      const until = st.loop ? Math.min(st.loop[1], from + SOUND_WINDOW_S) : from + SOUND_WINDOW_S;
+      const notes = [];
+      for (const n of st.notes) {
+        if (n.human || st.hidden.has(n.lane)) continue;   // what you can SEE is what you hear
+        if (n.t + n.dur < from || n.t > until) continue;
+        notes.push({ t: Math.max(0, n.t - from), ch: n.ch, note: n.note,
+                     vel: n.vel, dur: n.dur });
+      }
+      opts.send({ type: "play_take", notes, speed: st.speed });
+      st.soundSentAt = from;
+    }
+
+    function stopSound() {
+      if (!opts.send) return;
+      opts.send({ type: "play_stop" });
+      st.soundSentAt = null;
+    }
+
+    el.sound.addEventListener("click", () => {
+      st.sound = !st.sound;
+      el.sound.classList.toggle("is-on", st.sound);
+      el.sound.textContent = st.sound ? "🔊 送出 MIDI" : "🔇 靜音回放";
+      if (!st.sound) stopSound();
+      else if (st.playing) startSound();
+    });
 
     function syncSeek() {
       const { t0, t1 } = st.span;
@@ -429,7 +481,10 @@
       if (x < KEY_W) return;
       const t = st.view + ((x - KEY_W) / (r.width - KEY_W)) * st.secondsPerScreen;
       if (ev.shiftKey) { dragFrom = t; st.loop = [t, t]; }
-      else { st.playhead = t; st.loop = null; el.loop.classList.remove("is-on"); }
+      else {
+        st.playhead = t; st.loop = null; el.loop.classList.remove("is-on");
+        if (st.playing) { stopSound(); startSound(); }
+      }
       el.canvas.setPointerCapture(ev.pointerId);
       syncSeek(); draw();
     });
@@ -453,8 +508,12 @@
     el.play.addEventListener("click", () => setPlaying(!st.playing));
     el.seek.addEventListener("input", () => {
       st.playhead = Number(el.seek.value); follow(); syncSeek(); draw();
+      if (st.playing) { stopSound(); startSound(); }   // the sound has to jump too
     });
-    el.speed.addEventListener("change", () => { st.speed = Number(el.speed.value); });
+    el.speed.addEventListener("change", () => {
+      st.speed = Number(el.speed.value);
+      if (st.playing) { stopSound(); startSound(); }
+    });
     el.zoom.addEventListener("input", () => {
       st.secondsPerScreen = Number(el.zoom.value); draw();
     });
@@ -549,6 +608,7 @@
         }
       },
       setLive(on) {
+        if (on) { setPlaying(false); }      // stopPlaying stops the sound too
         st.live = on;
         el.live.classList.toggle("is-on", on);
         el.live.textContent = on ? "● 即時" : "○ 即時";
@@ -582,6 +642,28 @@
         api.refreshLogs();
         el.logs.value = name;
         el.logs.dispatchEvent(new Event("change"));
+      },
+      /** The engine cannot make a sound right now: say so on the button.
+       *
+       * Without this the roll went on scrolling with the speaker lit after a
+       * PANIC, and every press was silently refused - the picture moving while
+       * nothing comes out is exactly the state this panel exists to prevent.
+       */
+      engineState(s) {
+        const dead = !!(s && (s.panicked || s.bypass));
+        if (dead === st.engineDead) return;
+        st.engineDead = dead;
+        el.sound.disabled = dead;
+        if (dead) {
+          if (st.sound) { st.sound = false; el.sound.classList.remove("is-on"); }
+          el.sound.textContent = s.panicked ? "🔇 PANIC 中" : "🔇 BYPASS 中";
+          el.sound.title = s.panicked
+            ? "引擎在 PANIC 狀態，回放不會發聲。按 RESUME 之後才能開"
+            : "目前是 BYPASS，引擎不發聲，回放也不會";
+        } else {
+          el.sound.textContent = "🔇 靜音回放";
+          el.sound.title = "播放時把這一段真的送回樂器。預設關著——按下去會發出聲音";
+        }
       },
       refreshLogs() {
         fetch("/api/logs").then((r) => r.json()).then((list) => {

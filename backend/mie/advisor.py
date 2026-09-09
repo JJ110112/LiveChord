@@ -24,8 +24,11 @@ read off the player's own takes rather than invented:
   * RICHNESS separates cleanly at 15 %: four takes sit at 8-10 % and two at
     36-42 %. Tension was 0 in all six, so on those two the engine was refusing
     the harmony the player was actually playing.
-  * DENSITY: 2.33 is the take the player said felt too full ("整體變密了"),
-    so that is where the threshold sits.
+  * DENSITY: the whole-take average of the one that felt too full ("整體變密了")
+    was 2.33, but the advisor reads a 45 s window, and windows reach 2.0 in
+    takes nobody minded. Swept across the recordings, 2.5 separates them
+    exactly: 21 firings in that take, none at all in the four the player was
+    happy with.
   * OVERLAP: the proposal asked for 80 % across all lanes, which every take
     exceeds - Shadow, Echo, Phrase and Follow all take their pitch from the
     player, so overlapping is their entire job and reporting them for it would
@@ -62,8 +65,18 @@ MIN_LANE_NOTES = 5          # below this an overlap figure is noise
 
 RICH_AT = 0.20              # extensions / altered / dim / aug share
 TENSION_FOR_RICH = 0.35     # the level at which 9ths and 13ths are allowed at all
-DENSE_AT = 2.0              # generated notes per human note
-SPARSE_AT = 0.35
+# 2.5, measured rather than guessed. 2.0 fired in every one of the four takes
+# of 2026-09-09 11:xx, which the player did NOT find too full - a 45 s window
+# touches 2.0 often while the take averages 1.0-1.8, and advice that appears in
+# every take is not advice. Swept over the recordings, 2.5 fires 21 times in
+# the 22:42 take ("整體變密了" - window median 2.70) and NOT ONCE in any of the
+# four that drew no complaint (window medians 1.10-1.64).
+DENSE_AT = 2.5              # generated notes per human note
+# Also measured: 0.35 spoke once in a take the player was happy with (whole
+# take 0.92, one window dipping below). The quiet end is the less useful of the
+# two anyway - the engine being restrained is rarely news - so it is set where
+# it only catches a lane that has actually been switched off by accident.
+SPARSE_AT = 0.25
 OVERLAP_AT = 0.80
 
 _RICH_MARKS = ("7", "9", "11", "13", "6")

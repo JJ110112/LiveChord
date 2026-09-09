@@ -152,6 +152,12 @@ def main(argv=None) -> int:
                 except Exception as exc:
                     logging.getLogger("mie.ui").exception("mie: scene save failed")
                     engine.note_ui("error", where="save_scene", err=str(exc))
+            elif t == "play_take":
+                notes = msg.get("notes") or []
+                if isinstance(notes, list):
+                    engine.submit(engine.play_take, notes, float(msg.get("speed", 1.0) or 1.0))
+            elif t == "play_stop":
+                engine.submit(engine.stop_take)
             elif t == "log_save":
                 # Keep this segment as its own file without leaving the panel.
                 # The only way to finish a recording used to be stopping the

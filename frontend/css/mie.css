@@ -160,6 +160,9 @@
 .mr-bar .mie-btn { padding: 4px 10px; font-size: 12px; }
 .mr-play { min-width: 42px; }
 .mr-play.is-on, .mr-loop.is-on, .mr-live.is-on { border-color: var(--accent); color: var(--accent); }
+/* sending MIDI to the instruments is not a quiet state; it should look like
+   something is switched on */
+.mr-sound.is-on { border-color: #ffa726; color: #ffa726; font-weight: 700; }
 .mr-time { font-variant-numeric: tabular-nums; font-size: 11px; color: var(--text-dim); min-width: 84px; }
 .mr-seek { flex: 1 1 220px; min-width: 140px; accent-color: var(--accent); }
 .mr-zoomwrap { display: inline-flex; align-items: center; gap: 6px; }

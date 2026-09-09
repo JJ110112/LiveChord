@@ -84,6 +84,7 @@
     window.__mieSnap = s;   // a console handle: the last thing the engine said
     renderStyles(s.style);
     renderAdvice(s.advice || []);
+    if (roll) roll.engineState(s);
     if (s.last_control) $("#mieUc4").textContent = `${s.last_control.key} = ${s.last_control.val}`;
     pct($("#mDensity"), st.density / 8); $("#vDensity").textContent = st.density.toFixed(1) + "/s";
     pct($("#mEnergy"), st.energy); $("#vEnergy").textContent = Math.round(st.energy * 100) + "%";
@@ -603,6 +604,10 @@
       case "off": cls = "off"; txt = `  off ch${e.ch} ${nn(e.note)} (${e.why}${e.held_ms !== undefined ? `, ${e.held_ms} ms` : ""})`; break;
       case "human_off": cls = "off"; txt = `  human off ch${e.ch} ${nn(e.note)} (${e.held_ms} ms)`; break;
       case "style": cls = "mode"; txt = e.action === "clear" ? "風格 → 取消" : `風格 → ${e.id}（${e.edges} 條邊）`; break;
+      case "replay": cls = "mode"; txt = e.action === "start"
+        ? `回放送出 ${e.notes} 個音${e.skipped ? `（跳過 ${e.skipped} 個：你的琴或關掉的樂器）` : ""} ×${e.speed}`
+        : (e.action === "refused" ? `回放被拒絕：${e.why === "panicked" ? "引擎在 PANIC 狀態，先按 RESUME" : "目前是 BYPASS"}`
+                                  : `回放停止（收掉 ${e.released} 個音）`); break;
       case "log_saved": cls = "mode"; txt = `錄音存成 ${e.path}（到此 ${e.human} 個人類音 / ${e.gen} 個生成音）`; break;
       case "panic": cls = "panic"; txt = `PANIC (${e.reason}) ${e.notes} notes released`; break;
       case "loop": cls = "loop"; txt = `LOOP ch${e.ch} ${nn(e.note)} came back on MIE In`; break;
@@ -760,7 +765,7 @@
       if (t) t.textContent = "捲軸的程式沒有載入（mie-roll.js）——硬重新整理一次；如果還是這樣，看 console 的錯誤";
     }
     if (show && !roll && window.MieRoll) {
-      roll = window.MieRoll.create(rollBox);
+      roll = window.MieRoll.create(rollBox, { send });
       window.__mieRoll = roll;   // a handle for the console: the roll is the
                                  // one part of this panel worth poking at from
                                  // devtools while a take is being reviewed

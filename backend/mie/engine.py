@@ -81,6 +81,7 @@ class Engine:
         # the change and the player presses it.
         self.advisor = Advisor()
         self.advice: list = []
+        self.replaying = False
         self._advice_t = 0.0
         self._style_before: Optional[dict] = None
         self.preset_dirty = False
@@ -390,6 +391,81 @@ class Engine:
                     continue            # structure, not setting
                 self.set_edge(eid, k, v)
             n += 1
+        return n
+
+    # ----------------------------------------------------------- 回放送音
+    # The piano roll draws a take; this plays one back through the instruments.
+    # It is a REVIEW tool, so it deliberately does the least it can:
+    #
+    #   * the notes are scheduled through the ordinary Scheduler, so the timing
+    #     is the engine's own (p95 under 2 ms) rather than whatever a browser
+    #     animation frame and a WebSocket could manage;
+    #   * they are NEVER fed back into the edge graph. A replay must not make
+    #     the engine answer the replay - that is a feedback loop with a nice
+    #     name;
+    #   * they never go to a channel the human is playing on. That rule exists
+    #     so the engine cannot fight the player's own hands, and a replay is
+    #     not a reason to break it;
+    #   * PANIC and BYPASS stop it like anything else, because it goes out
+    #     through the same scheduler and the same `_emit`.
+    REPLAY_LANE = "replay"
+    REPLAY_MAX_NOTES = 4000
+
+    def play_take(self, notes: list, speed: float = 1.0) -> int:
+        """Schedule recorded notes for playback. `notes` are dicts from the panel.
+
+        Each is {t, ch, note, vel, dur} with `t` already relative to the start
+        of playback and BEFORE the speed change - the caller sends the window it
+        wants heard, and this stretches it.
+        """
+        self.stop_take()
+        if self.bypass or self.panicked:
+            self._ui("replay", action="refused", why="bypass" if self.bypass else "panicked")
+            return 0
+        speed = max(0.05, min(4.0, float(speed or 1.0)))
+        now = self.clock()
+        human = self.st.human_chs
+        n = skipped = 0
+        for d in notes[:self.REPLAY_MAX_NOTES]:
+            try:
+                ch = int(d["ch"]); note = int(d["note"])
+                t0 = float(d.get("t", 0.0)) / speed
+                dur = max(0.03, float(d.get("dur", 0.25)) / speed)
+                vel = max(1, min(127, int(d.get("vel", 64))))
+            except (KeyError, TypeError, ValueError):
+                continue
+            if ch in human:
+                skipped += 1
+                continue
+            inst = self.instruments.get(ch)
+            if inst is None or not inst.enabled:
+                skipped += 1
+                continue
+            t_on = now + t0
+            pair = NotePair(ch=ch, note=note, vel=vel, t_on=t_on, t_off=t_on + dur,
+                            lane=self.REPLAY_LANE, origin="GENERATIVE", root_id=0,
+                            hop=1, edge_id="replay", constraint="free",
+                            max_dur=dur, collision="none",
+                            ttl_wall=t_on + dur + 2.0)
+            self.sched.schedule_pair(pair)
+            n += 1
+        self.replaying = n > 0
+        self._ui("replay", action="start", notes=n, skipped=skipped, speed=round(speed, 3))
+        return n
+
+    def stop_take(self) -> int:
+        """Silence a playback in progress. Safe to call when nothing is playing."""
+        now = self.clock()
+        n = 0
+        for ch in sorted({c for (c, _n) in list(self.st.active_gen)} |
+                         set(self.instruments)):
+            n += self.sched.release_lane(ch, self.REPLAY_LANE, now)
+        for (c, note), g in list(self.st.active_gen.items()):
+            if g.lane == self.REPLAY_LANE:
+                self._force_off(c, note, now, "replay_stop")
+        if self.replaying:
+            self._ui("replay", action="stop", released=n)
+        self.replaying = False
         return n
 
     # ------------------------------------------------------- 介入風格預設
@@ -1187,7 +1263,7 @@ class Engine:
             self._ui("gen", ch=p.ch, note=p.note, vel=p.sent_vel or p.vel, lane=p.lane,
                      hop=p.hop, edge=p.edge_id, gain=round(self.master_gain, 2),
                      dur_ms=round(max(0.0, p.t_off - now) * 1000), **extra)
-            if self.graph.edges_from(p.ch) and not self.bypass:
+            if p.lane != self.REPLAY_LANE and self.graph.edges_from(p.ch) and not self.bypass:
                 fb = MieEvent(event_id=next_id(), kind="note_on", t_wall=now, ch=p.ch, note=p.note, vel=p.vel,
                               origin="GENERATIVE", root_id=p.root_id, parent_id=p.parent_id, source_ch=p.ch,
                               hop=p.hop, ttl_wall=p.ttl_wall, lane=p.lane)
@@ -1235,6 +1311,7 @@ class Engine:
         for (c, n) in list(self.st.active_gen):
             self._force_off(c, n, now + fade_s, "release_all")
         self.st.active_gen.clear()
+        self.replaying = False
         self._frozen, self._frozen_lane = False, None
         for ls in self.lane_state.values():
             ls["fired"] = False
@@ -1332,6 +1409,7 @@ class Engine:
                     # exactly the thing to know about
                     self._log_error(f"panic_send[{port}]", e)
         self.st.active_gen.clear()
+        self.replaying = False      # cancel_all took its notes; say so too
         for ls in self.lane_state.values():
             ls["fired"] = False
         self._ui("panic", reason=reason, notes=len(active))
@@ -1408,6 +1486,7 @@ class Engine:
             "preset": {"slot": self.preset_slot, "dirty": self.preset_dirty,
                        "stored": sorted(k for k, v in self.scene.presets.items() if v)},
             "advice": self.advice,
+            "replaying": self.replaying,
             "style": {"id": self.style,
                       "list": [{"id": x["id"], "name": x.get("name") or x["id"],
                                 "hint": x.get("hint", "")} for x in self.styles]},
