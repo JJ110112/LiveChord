@@ -96,7 +96,7 @@
       "algos": {
         "sustain": {
           "constraint": "chord",
-          "hold_beats": 8,
+          "hold_beats": 12,
           "vel": 46
         },
         "silence": {
