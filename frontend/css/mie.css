@@ -79,6 +79,8 @@
 .mie-col { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; overflow: auto; min-height: 0; }
 .mie-title-gap { margin-top: 16px; }
 .lc-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+.mie-edges-title { display: flex; align-items: center; gap: 6px; }
+.mie-btn-sm { padding: 2px 9px; font-size: 11px; font-weight: 400; }
 .lc-subtitle { font-size: 11px; color: var(--text-dim); font-weight: 400; margin-left: 6px; }
 
 .mie-meter, .mie-slider { display: grid; grid-template-columns: 58px minmax(0, 1fr) 44px; align-items: center; gap: 8px; margin: 6px 0; }
@@ -110,8 +112,12 @@
 /* Three, asked for by name: auto-fill went to four on a wide window and the
    cards became stubby. Three is the shape the card was drawn for. */
 .mie-edge-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; align-content: start; }
-@media (max-width: 1500px) { .mie-edge-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 1050px) { .mie-edge-list { grid-template-columns: 1fr; } }
+/* 1250, not 1500: on a 1400 px window - which is what a 16" at 150 % scaling
+   actually reports - the old breakpoint dropped to two columns and the cards
+   were 550 px wide with nothing in the extra space. At 1250 the three are
+   still 310 px each, which is the width the card was drawn at. */
+@media (max-width: 1250px) { .mie-edge-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 880px) { .mie-edge-list { grid-template-columns: 1fr; } }
 .mie-edge.is-open { grid-column: 1 / -1; }
 /* The lane's colour, the same one the piano roll paints it with, so a bar in
    the picture leads to the row that made it. A stripe rather than a fill: the
@@ -178,6 +184,10 @@
 .mie-field-when.is-any .mie-fl::after { content: "：不限"; color: var(--text-dim); opacity: .7; }
 /* waiting is not broken and not idle - it is a lane holding its tongue on
    purpose, so it reads quieter than `hot` and calmer than `is-mute`. */
+/* enabled, but nothing is feeding the channel it listens to. Not broken, not
+   quiet - unable, and for a reason you can fix in one click. */
+.mie-edge.is-starved { border-color: #78909c; }
+.mie-edge.is-starved .fires { color: #b0bec5; }
 .mie-edge.is-waiting { border-color: #5c6bc0; }
 .mie-edge.is-waiting .fires { color: #7986cb; }
 /* State colours take the other three sides and leave the lane stripe alone:

@@ -634,6 +634,13 @@
   function renderEdges(s) {
     const box = $("#mieEdges");
     const seen = new Set();
+    // Which channels currently have anything feeding them. A hop-2 edge answers
+    // another LANE's notes, so with its source switched off it cannot fire at
+    // all - and it looks exactly like a lane that is simply quiet. On the 16:23
+    // take iridium_to_wavestate was soloed for 91 seconds and 166 played notes
+    // and produced nothing, because both edges that feed CH11 were off. That is
+    // the kind of silence the panel has to explain rather than just display.
+    const fed = new Set(s.edges.filter((e) => e.enabled).map((e) => e.dst));
     s.edges.forEach((e) => {
       seen.add(e.id);
       let el = edgeEls.get(e.id);
@@ -749,6 +756,14 @@
         fires.textContent = `觸發 ${e.fires || 0} ⏸`;
         fires.title = `這條線只在「${want.map((k) => TEX[k] || k).join("、")}」時說話，你現在是「${TEX[s.state.texture] || s.state.texture}」`;
       }
+      // stated after the texture branch so a real 靜音 or a drop still wins
+      const starved = e.src !== 0 && e.enabled && !fed.has(e.src);
+      el.classList.toggle("is-starved", starved);
+      if (starved && !e.mute && !e.drops) {
+        fires.textContent = "沒有來源";
+        fires.title = `這條線回應的是 CH${e.src} 上生成的音，但現在沒有任何開著的邊送到 CH${e.src}。`
+                    + `要聽它，先把送到 CH${e.src} 的那條線打開`;
+      }
       el.classList.toggle("is-mute", !!e.mute);
       el.classList.toggle("hot", e.ago !== null && e.ago !== undefined && e.ago < 2);
       el.classList.toggle("off", !e.enabled);
@@ -804,6 +819,9 @@
       case "log_saved": cls = "mode"; txt = `錄音存成 ${e.path}（到此 ${e.human} 個人類音 / ${e.gen} 個生成音）`; break;
       case "panic": cls = "panic"; txt = `PANIC (${e.reason}) ${e.notes} notes released`; break;
       case "loop": cls = "loop"; txt = `LOOP ch${e.ch} ${nn(e.note)} came back on MIE In`; break;
+      case "all_edges": cls = "mode"; txt = e.on
+        ? `全開：${e.n} 條邊打開了（共 ${e.total} 條）`
+        : `全部略過：${e.n} 條邊讓開了，聲音已收掉。把想聽的那一條勾回來`; break;
       case "error": cls = "drop"; txt = `出錯：${e.where} — ${e.err}`; break;
       case "mode": cls = "mode"; txt = `mode → ${e.mode}`; break;
       case "scene": cls = "mode"; txt = `scene → ${e.id} ${e.name}`; break;
@@ -818,7 +836,8 @@
   // a slider drag, and UC4 already has its own readout in the top bar. A single
   // line that flickers through fifty values is not a thing anyone reads.
   const NOTABLE = new Set(["drop", "panic", "loop", "save_conflict", "log_saved",
-                           "style", "scene", "mode", "replay", "touched", "error"]);
+                           "style", "scene", "mode", "replay", "touched", "error",
+                           "all_edges"]);
   // A PANIC or a refused save has to survive being looked away from; a style
   // change is news for a moment and then clutter. The loud ones stay until the
   // next thing happens, the rest fade.
@@ -841,6 +860,11 @@
   // ever needs binding from a render path, remove the old listener first.
   $("#miePanic").addEventListener("click", () => send({ type: "panic" }));
   $("#mieResume").addEventListener("click", () => send({ type: "resume" }));
+  // Hearing ONE line means silencing the other ten. A checkbox at a time is
+  // eleven clicks out and eleven back, which is enough friction that lanes go
+  // untested. 全部略過 then tick the one you want.
+  $("#mieAllOn").addEventListener("click", () => send({ type: "all_edges", on: true }));
+  $("#mieAllOff").addEventListener("click", () => send({ type: "all_edges", on: false }));
   $("#mieFreeze").addEventListener("click", () =>
     send({ type: "freeze", on: !$("#mieFreeze").classList.contains("is-frozen") }));
   $("#mieUndo").addEventListener("click", () => send({ type: "undo" }));

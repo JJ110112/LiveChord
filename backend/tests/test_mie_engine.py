@@ -3650,3 +3650,60 @@ def test_a_scene_the_engine_has_never_saved_is_not_a_conflict():
 
     assert save_would_clobber(None, 1.0) is None
     assert save_would_clobber("no/such/file.json", 1.0) is None
+
+
+def test_all_pass_silences_the_lanes_it_switches_off():
+    """「全部略過」 is for testing one line, so it has to be silent AT ONCE. An
+    edge that is merely unticked keeps whatever it has already scheduled and
+    whatever is already sounding - a pad rings on for its remaining fifteen
+    seconds and the silence you asked for arrives after you stopped listening
+    for it."""
+    eng, clk, out = make([
+        {"id": "a", "src": 0, "dst": 10, "algo": "echo", "prob": 1.0,
+         "constraint": "free", "lane": "echo", "repeats": 3, "delay_beats": 1},
+        {"id": "b", "src": 0, "dst": 11, "algo": "shadow", "prob": 1.0,
+         "constraint": "free", "lane": "shadow", "delay_ms": 10},
+    ])
+    play(eng, clk, 0, 60, vel=90)
+    run_for(eng, clk, 2.0)
+    assert out.notes(), "nothing was sounding to begin with"
+    out.clear()
+
+    assert eng.set_all_enabled(False) == 2
+    run_for(eng, clk, 0.2)
+    assert not out.notes(), "a lane spoke after 全部略過"
+    assert not eng.st.active_gen, f"still sounding: {eng.st.active_gen}"
+    play(eng, clk, 0, 64, vel=90)
+    run_for(eng, clk, 3.0)
+    assert not out.notes(), "an edge that is off answered"
+
+    assert eng.set_all_enabled(True) == 2
+    play(eng, clk, 0, 67, vel=90)
+    run_for(eng, clk, 2.0)
+    assert out.notes(), "全開 did not bring them back"
+
+
+def test_all_pass_is_not_eleven_things_you_hand_tuned():
+    """It is a preset, not eleven parameter changes. Recording each one would
+    bury the player's last real move at the bottom of the undo stack and claim
+    they had hand-tuned every edge - which then holds all of it back from every
+    style. It is undone by pressing the other button."""
+    eng, clk, out = make([
+        {"id": "a", "src": 0, "dst": 10, "algo": "echo", "prob": 1.0, "constraint": "free", "lane": "echo"},
+        {"id": "b", "src": 0, "dst": 11, "algo": "shadow", "prob": 1.0, "constraint": "free", "lane": "shadow"},
+    ])
+    eng.set_edge("a", "vel_scale", 0.4)          # the player's last real move
+    eng.set_all_enabled(False)
+    eng.set_all_enabled(True)
+    assert eng._touched == {"edge.a.vel_scale"}, eng._touched
+    assert eng.undo() and eng.graph.find_edge("a").vel_scale != 0.4,         "undo stepped through the bulk instead of the move before it"
+
+
+def test_all_on_reports_only_what_actually_moved():
+    eng, clk, out = make([
+        {"id": "a", "src": 0, "dst": 10, "algo": "echo", "prob": 1.0, "constraint": "free", "lane": "echo"},
+        {"id": "b", "src": 0, "dst": 11, "algo": "shadow", "prob": 1.0, "constraint": "free",
+         "lane": "shadow", "enabled": False},
+    ])
+    assert eng.set_all_enabled(True) == 1, "the one already on should not count"
+    assert eng.set_all_enabled(True) == 0

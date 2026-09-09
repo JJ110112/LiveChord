@@ -863,6 +863,41 @@ class Engine:
             self.preset_dirty = True
         return True
 
+    def set_all_enabled(self, on: bool) -> int:
+        """Every edge on, or every edge out of the way. Returns how many moved.
+
+        The point is testing: hearing ONE line means silencing the other ten,
+        and doing that a checkbox at a time - eleven clicks out, eleven back -
+        is enough friction that nobody does it and lanes go untested.
+
+        `_bulk`, for the same reason a preset is: eleven `enabled` writes would
+        bury the player's last real move at the bottom of the undo stack and
+        claim they had hand-tuned eleven settings, which would then be held
+        back from every style. It is undone by pressing the other button, not
+        by stepping.
+
+        Turning them off also stops what those lanes have already scheduled and
+        what is already sounding. Without that, "all pass" leaves a pad ringing
+        for its remaining fifteen seconds and the silence you asked for arrives
+        after you have stopped listening for it.
+        """
+        now = self.clock()
+        guard, self._bulk = self._bulk, True
+        try:
+            n = 0
+            for e in self.graph.edges:
+                if bool(e.enabled) != on:
+                    e.enabled = on
+                    n += 1
+            if not on:
+                self._release_everything(now)
+        finally:
+            self._bulk = guard
+        self._ui("all_edges", on=on, n=n, total=len(self.graph.edges))
+        if self.preset_slot != "LIVE":
+            self.preset_dirty = True
+        return n
+
     def set_instrument(self, ch: int, key: str, value) -> bool:
         inst = self.instruments.get(int(ch))
         if inst is None or not hasattr(inst, key):

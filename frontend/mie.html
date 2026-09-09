@@ -7,7 +7,7 @@
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
   <link rel="stylesheet" href="/css/base.css?v=24">
-  <link rel="stylesheet" href="/css/mie.css?v=32">
+  <link rel="stylesheet" href="/css/mie.css?v=34">
 </head>
 <body class="mie-body">
   <!-- 頂列：MODE / SCENE / KEY / CHORD / BPM / clock / PANIC -->
@@ -92,7 +92,11 @@
 
     <!-- 中：互動邊（Phase 1：清單；矩陣 / 動畫留 Phase 2） -->
     <section class="mie-col mie-edges">
-      <div class="lc-title">互動邊 <span class="lc-subtitle">最近 2 s 觸發的邊會亮起；勾選 = 啟用；數字 = 觸發次數</span></div>
+      <div class="lc-title mie-edges-title">互動邊 <span class="lc-subtitle">最近 2 s 觸發的邊會亮起；勾選 = 啟用；數字 = 觸發次數</span>
+        <span class="mie-spacer"></span>
+        <button id="mieAllOn" class="mie-btn mie-btn-sm" title="每一條邊都打開">全開</button>
+        <button id="mieAllOff" class="mie-btn mie-btn-sm" title="每一條邊都讓開，並收掉它們已經排好和正在響的音。要單獨聽一條線：按這個，再把那一條勾回來">全部略過</button>
+      </div>
       <div id="mieEdges" class="mie-edge-list"></div>
       <div class="lc-title mie-title-gap">統計</div>
       <div id="mieStats" class="mie-stats"></div>
@@ -138,6 +142,6 @@
   </section>
 
   <script src="/js/mie-roll.js?v=12"></script>
-  <script src="/js/mie.js?v=58"></script>
+  <script src="/js/mie.js?v=60"></script>
 </body>
 </html>
