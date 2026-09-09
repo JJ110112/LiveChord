@@ -51,7 +51,7 @@
       36,
       96
     ],
-    "sustain_ok": false,
+    "sustain_ok": true,
     "swell_cc": 11
   },
   "5": {
@@ -170,7 +170,7 @@
       96
     ],
     "_note": "Wurlitzer / brass / wind（使用者偏好）",
-    "sustain_ok": true,
+    "sustain_ok": false,
     "swell_cc": 0,
     "_note_swell": "CC11 on purpose (2026-09-09): the player asked for silence_pad to breathe here. CC11 is CHANNEL-wide, so it sweeps echo_wavestate and sustain_event61 on this channel too - there is no per-note expression in MIDI."
   },

@@ -4038,3 +4038,54 @@ def test_the_deeper_reach_wins_a_shared_channel_including_a_ceiling():
     quiet = swell_at(0.0, 0.0, 4.0, "sine", 0.0, 0.3)     # a low ceiling, still
     wiggle = min(swell_at(t * 0.1, 0.1, 4.0, "sine") for t in range(40))
     assert quiet < wiggle, "the ceiling reaches further down and must win"
+
+
+def test_unticking_a_lane_stops_it_at_once():
+    """On the 20:23 take the player switched silence_pad off at 398.8 s, it
+    entered again 0.2 s later from a proposal already on the scheduler, and they
+    hit PANIC at 416.4 with those two notes still ringing. 全部略過 has always
+    released what it switched off; one checkbox has to mean the same thing, or
+    the difference between them is a trap."""
+    eng, clk, out = make([{"id": "p", "src": 0, "dst": 3, "algo": "silence", "prob": 1.0,
+                           "constraint": "chord", "lane": "pad", "after_s": 3.0,
+                           "hold_s": 40, "voices": 2, "vel": 40, "low": 48, "high": 84}])
+    play(eng, clk, 0, 60, vel=90)
+    run_for(eng, clk, 4.0)
+    on = out.notes(ch=3)
+    assert on, "the pad never entered, so this proves nothing"
+
+    out.clear()
+    eng.set_edge("p", "enabled", False)
+    run_for(eng, clk, 0.2)
+    offs = {n for _, _, n, _ in out.notes("note_off", ch=3)}
+    assert offs == {n for _, _, n, _ in on},         f"left ringing after the box was unticked: {set(n for _, _, n, _ in on) - offs}"
+    assert not [k for k in eng.st.active_gen if k[0] == 3], eng.st.active_gen
+
+    out.clear()
+    run_for(eng, clk, 8.0)
+    assert not out.notes(ch=3), f"it spoke again after being switched off: {out.notes(ch=3)}"
+
+
+def test_switching_a_lane_off_does_not_silence_its_neighbour():
+    """Two lanes can share an instrument. Cancelling one must take its own
+    notes and no others - a channel-wide release here would cut the lane the
+    player did NOT touch."""
+    eng, clk, out = make([
+        {"id": "a", "src": 0, "dst": 3, "algo": "silence", "prob": 1.0, "constraint": "chord",
+         "lane": "pad", "after_s": 3.0, "hold_s": 40, "voices": 2, "vel": 40, "low": 48, "high": 84},
+        # a second silence lane on the same synth - a pad and a texture sharing
+        # one instrument is the ordinary case, and both are ringing at once
+        {"id": "b", "src": 0, "dst": 3, "algo": "silence", "prob": 1.0, "constraint": "chord",
+         "lane": "texture", "after_s": 3.0, "hold_s": 40, "voices": 2, "vel": 44,
+         "low": 60, "high": 84},
+    ])
+    play(eng, clk, 0, 60, vel=90)
+    run_for(eng, clk, 4.0)
+    other = {k for k, g in eng.st.active_gen.items() if g.lane == "texture"}
+    assert other, "the neighbour never sounded, so this proves nothing"
+    assert [g for g in eng.st.active_gen.values() if g.lane == "pad"], "the pad never sounded"
+
+    eng.set_edge("a", "enabled", False)
+    run_for(eng, clk, 0.2)
+    assert not [g for g in eng.st.active_gen.values() if g.lane == "pad"], "the pad kept ringing"
+    assert {k for k, g in eng.st.active_gen.items() if g.lane == "texture"} == other,         "took the neighbour's notes with it"

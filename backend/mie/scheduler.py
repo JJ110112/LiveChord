@@ -138,9 +138,13 @@ class Scheduler:
     def schedule_raw(self, t: float, payload) -> None:
         self._push(t, "raw", None, payload)
 
-    def release(self, ch: int, note: int, at_t: float, *, lane: Optional[str] = None,
+    def release(self, ch: int, note: Optional[int], at_t: float, *, lane: Optional[str] = None,
                 src_note: Optional[int] = None, mark_sent: bool = False) -> int:
         """Stop matching notes at `at_t`; ones that have not started are dropped.
+
+        `note=None` means every note on the channel that also matches the other
+        filters - which is how switching a lane off cancels what it has already
+        put on the timeline, rather than only what is audible this instant.
 
         `mark_sent` is for a caller that sends the note_off itself: the pair is
         recorded as already released so the scheduler does not send a second
@@ -150,7 +154,7 @@ class Scheduler:
         n = 0
         with self.cv:
             for p in list(self._pairs(ch)):
-                if p.note != note:
+                if note is not None and p.note != note:
                     continue
                 if lane is not None and p.lane != lane:
                     continue

@@ -936,6 +936,19 @@ class Engine:
         # edge fields are real attributes; everything else belongs in params.
         self._remember(f"edge.{edge_id}.{key}",
                        getattr(e, key) if key in _EDGE_FIELDS else e.params.get(key))
+        if key == "enabled" and e.enabled and not value:
+            # Unticking a lane has to stop it NOW. It did not: on the 20:23 take
+            # the player switched silence_pad off at 398.8 s, it entered again
+            # 0.2 s later from a proposal already on the scheduler, and they hit
+            # PANIC at 416.4 with those two notes still ringing. 全部略過 has
+            # always released what it switched off; one checkbox has to mean the
+            # same thing, or the difference is a trap.
+            now = self.clock()
+            self.sched.release(e.dst, None, now, lane=e.lane)
+            self._release_lane_on(e.dst, e.lane, now)
+            ls = self.lane_state.get(edge_id)
+            if ls:
+                ls["fired"] = False
         if key == "dst" and int(value) != e.dst:
             # Moving a lane to another instrument leaves whatever it is playing
             # ringing on the old one, with nothing left that knows how to stop

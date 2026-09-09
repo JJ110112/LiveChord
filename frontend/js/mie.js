@@ -820,10 +820,14 @@
         // said the same thing twice at opposite ends of the row and still
         // collided at three-across, and the pad was a letterbox because it was
         // taking whatever width was left over.
+        // The edge id used to sit next to the lane badge and say the same
+        // thing twice - 「sustain13 / sustain_event61」. One name, and it is the
+        // lane's: that is the name the piano roll paints, the name the legend
+        // chips carry, and the name the events use. The id stays in the row's
+        // tooltip for when something has to be looked up in a log.
         el.innerHTML = `<div class="mie-edge-head">
             <input type="checkbox" title="啟用">
             <span class="algo"></span>
-            <div class="name"></div>
             <span class="fires" title="這一趟這條線被觸發的次數"></span>
             <button class="mie-more" title="參數">▾</button>
           </div>
@@ -898,7 +902,6 @@
         el.style.setProperty("--lane-h", window.MieRoll.hueFor(e.lane || e.algo));
       }
       const src = e.src === 0 ? "HUMAN" : `CH${e.src}`;
-      el.querySelector(".name").textContent = e.id;
       el._vel.sync(e, s);
       el._breath.sync(e, s.instruments || [], sharing);
       el.querySelector(".src").textContent = src;
@@ -911,7 +914,7 @@
         + (e.delay_beats ? ` · ${e.delay_beats} beat` : "") + (e.delay_ms ? ` · ${e.delay_ms} ms` : "");
       const lane = e.lane || e.algo;
       el.querySelector(".algo").textContent = LANE_LABEL[lane] || lane;
-      el.querySelector(".algo").title = `${e.algo}　lane: ${lane}`;
+      el.querySelector(".algo").title = `${e.id}　${e.algo}　lane: ${lane}`;
       const cb = el.querySelector('input[type=checkbox]'); if (document.activeElement !== cb) cb.checked = e.enabled;
       el.querySelectorAll(".mie-edge-body input, .mie-edge-body select").forEach((inp) => {
         if (document.activeElement === inp || inp.type === "checkbox") return;
