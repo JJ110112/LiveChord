@@ -21,7 +21,6 @@
   // waiting for a second, deliberate press. Up here because both the snapshot
   // render and the button wiring read it.
   let saveConflict = false;
-  const streamMax = 60;
   const edgeEls = new Map();
   const instEls = new Map();
 
@@ -669,22 +668,15 @@
       setTimeout(() => { b.textContent = "存這段"; }, 4000);
       if (roll) roll.showSaved(e.path);
     }
-    const box = $("#mieStream");
-    const el = document.createElement("div");
-    let cls = "", txt = "", lane = null;
+    // The per-note flow - human, gen, sched, edge, off, resnap, skip, pedal -
+    // is not here any more. It scrolled a hundred lines a minute and could only
+    // be read after the fact, while the roll draws exactly the same events as a
+    // picture you can take in mid-phrase. What is left is the handful the
+    // player must not miss, said once, on a line that stays put.
+    if (!NOTABLE.has(e.type)) return;
+    let cls = "", txt = "";
     switch (e.type) {
-      case "human": cls = "human"; txt = `HUMAN ch${e.ch} ${nn(e.note)} v${e.vel}` + (e.chord ? ` [${e.chord}]` : ""); break;
-      case "gen":
-        cls = `gen${Math.min(3, e.hop || 1)}`;
-        lane = e.lane;
-        txt = `GEN hop${e.hop} ch${e.ch} ${nn(e.note)} v${e.vel} ${LANE_LABEL[e.lane] || e.lane} ← ${e.edge}`;
-        break;
-      case "sched": cls = "sched"; txt = `  sched ch${e.ch} ${nn(e.note)} in ${e.in_ms} ms · ${e.dur_ms} ms · ${e.edge}`; break;
       case "drop": cls = "drop"; txt = `DROP ${e.reason} ch${e.ch} ${nn(e.note)} ${e.lane || ""} ${e.edge || ""}`; break;
-      case "edge": cls = "edge"; txt = `  edge ${e.edge} p=${e.p}`; break;
-      case "resnap": cls = "resnap"; txt = `  resnap ch${e.ch} ${nn(e.frm)} → ${nn(e.to)}`; break;
-      case "off": cls = "off"; txt = `  off ch${e.ch} ${nn(e.note)} (${e.why}${e.held_ms !== undefined ? `, ${e.held_ms} ms` : ""})`; break;
-      case "human_off": cls = "off"; txt = `  human off ch${e.ch} ${nn(e.note)} (${e.held_ms} ms)`; break;
       case "style": cls = "mode"; txt = e.action === "clear" ? "風格 → 取消"
           : `風格 → ${e.id}（${e.edges} 條邊${e.kept ? `，保留你調過的 ${e.kept} 項` : ""}）`; break;
       case "replay": cls = "mode"; txt = e.action === "start"
@@ -702,22 +694,33 @@
       case "log_saved": cls = "mode"; txt = `錄音存成 ${e.path}（到此 ${e.human} 個人類音 / ${e.gen} 個生成音）`; break;
       case "panic": cls = "panic"; txt = `PANIC (${e.reason}) ${e.notes} notes released`; break;
       case "loop": cls = "loop"; txt = `LOOP ch${e.ch} ${nn(e.note)} came back on MIE In`; break;
-      case "pedal": cls = "edge"; txt = `  pedal ch${e.ch} ${e.val >= 64 ? "down" : "up"}`; break;
-      case "control": cls = "ctl"; txt = `UC4 ${e.key} = ${e.val}` + (e.action ? ` → ${e.action}` : ""); break;
-      case "set": cls = "set"; txt = `set ${e.path} = ${JSON.stringify(e.value)}`; break;
+      case "error": cls = "drop"; txt = `出錯：${e.where} — ${e.err}`; break;
       case "mode": cls = "mode"; txt = `mode → ${e.mode}`; break;
       case "scene": cls = "mode"; txt = `scene → ${e.id} ${e.name}`; break;
-      case "skip": cls = "edge"; txt = `  skip ${e.edge} p=${e.p}`; break;
-      default: cls = "edge"; txt = JSON.stringify(e);
+      default: cls = "mode"; txt = JSON.stringify(e);
     }
-    el.className = `mie-ev mie-ev-${cls}`;
-    if (lane && window.MieRoll && window.MieRoll.hueFor) {
-      el.style.setProperty("--lane-h", window.MieRoll.hueFor(lane));
-      el.classList.add("has-lane");
-    }
-    el.innerHTML = `<span class="t">${Number(e.t).toFixed(2)}</span>${txt}`;
-    box.appendChild(el);
-    while (box.children.length > streamMax) box.removeChild(box.firstChild);
+    showNotice(cls, txt, e.t);
+  }
+
+  // Which events earn a line. Everything else is a note, and notes are the
+  // roll's job.
+  // `set` and `control` are deliberately NOT here: a set fires on every step of
+  // a slider drag, and UC4 already has its own readout in the top bar. A single
+  // line that flickers through fifty values is not a thing anyone reads.
+  const NOTABLE = new Set(["drop", "panic", "loop", "save_conflict", "log_saved",
+                           "style", "scene", "mode", "replay", "touched", "error"]);
+  // A PANIC or a refused save has to survive being looked away from; a style
+  // change is news for a moment and then clutter. The loud ones stay until the
+  // next thing happens, the rest fade.
+  const STICKY = new Set(["panic", "loop", "drop"]);
+  let noticeTimer = 0;
+  function showNotice(cls, txt, t) {
+    const box = $("#mieNotice");
+    box.className = `mie-notice mie-ev-${cls}`;
+    box.innerHTML = `<span class="t">${Number(t).toFixed(2)}</span>${txt}`;
+    box.hidden = false;
+    clearTimeout(noticeTimer);
+    if (!STICKY.has(cls)) noticeTimer = setTimeout(() => { box.hidden = true; }, 12000);
   }
 
   // ---------------------------------------------------------------- controls
@@ -875,6 +878,7 @@
   let roll = null;
   const rollBox = $("#mieRoll");
   function toggleRoll(on) {
+    const wasOpen = !rollBox.hidden;
     const show = on === undefined ? rollBox.hidden : on;
     rollBox.hidden = !show;
     $("#mieRollBtn").classList.toggle("is-on", show);
@@ -892,14 +896,24 @@
                                  // one part of this panel worth poking at from
                                  // devtools while a take is being reviewed
     }
-    if (roll) { if (show) roll.redraw(); else roll.setLive(false); }
+    // Opening it starts it drawing. It IS the event stream now, and a roll that
+    // opens empty and stays empty until you find the 即時 button reads as broken.
+    // Only ever on the way IN: pressing 即時 off and leaving the panel open has
+    // to stick, or the button does nothing.
+    if (roll) {
+      if (show) { if (!wasOpen) roll.setLive(true); roll.redraw(); }
+      else roll.setLive(false);
+    }
     // it lives below the three columns, which fill the screen - opening
     // something the player then cannot see is the same as not opening it
     if (show) rollBox.scrollIntoView({ behavior: "smooth", block: "end" });
   }
   $("#mieRollBtn").addEventListener("click", () => { toggleRoll(); setPref("roll", !rollBox.hidden); });
   $("#mieRollClose").addEventListener("click", () => { toggleRoll(false); setPref("roll", false); });
-  if (prefs().roll) setTimeout(() => toggleRoll(true), 400);   // after the first snapshot
+  // Open unless this browser was left with it closed. It replaced the event
+  // stream column, so the panel would otherwise come up with nowhere at all to
+  // watch what the engine is doing.
+  if (prefs().roll !== false) setTimeout(() => toggleRoll(true), 400);   // after the first snapshot
 
   document.addEventListener("keydown", (e) => {
     // Space toggles freeze: both hands are usually on the keys, so the one

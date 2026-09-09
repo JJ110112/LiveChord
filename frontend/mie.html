@@ -7,7 +7,7 @@
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
   <link rel="stylesheet" href="/css/base.css?v=24">
-  <link rel="stylesheet" href="/css/mie.css?v=25">
+  <link rel="stylesheet" href="/css/mie.css?v=27">
 </head>
 <body class="mie-body">
   <!-- 頂列：MODE / SCENE / KEY / CHORD / BPM / clock / PANIC -->
@@ -88,15 +88,14 @@
       <div class="lc-title mie-title-gap">統計</div>
       <div id="mieStats" class="mie-stats"></div>
     </section>
-
-    <!-- 右：事件流 -->
-    <section class="mie-col mie-stream">
-      <div class="lc-title">事件流 <span class="lc-subtitle">HUMAN / GEN hop1 / GEN hop2 / 丟棄原因</span></div>
-      <div id="mieStream" class="mie-stream-list"></div>
-    </section>
   </main>
 
-  <!-- 鋼琴捲軸：預設收著。面板在演出當下是樂器，這裡的任何東西都不該讓你賠掉一趟 -->
+  <!-- 引擎說的話。每個音的流水帳在捲軸上看得更清楚，這裡只留你不能錯過的那幾種：
+       丟棄、PANIC、迴路、風格、存檔、以及存不下去的原因。 -->
+  <div id="mieNotice" class="mie-notice" hidden></div>
+
+  <!-- 鋼琴捲軸：預設打開、預設即時。它就是這個面板的事件流——一整趟的音畫在
+       同一張圖上，比一行一行捲過去好讀。收起來的話下次還是收著。 -->
   <section id="mieRoll" class="mie-roll" hidden>
     <div class="mr-bar">
       <button class="mr-play mie-btn" title="播放／暫停（空白鍵在捲軸上時）">▶</button>
@@ -130,6 +129,6 @@
   </section>
 
   <script src="/js/mie-roll.js?v=12"></script>
-  <script src="/js/mie.js?v=51"></script>
+  <script src="/js/mie.js?v=52"></script>
 </body>
 </html>

@@ -9,7 +9,11 @@
    places; one rule here is the fix, and it keeps the next one from happening. */
 [hidden] { display: none !important; }
 
-.mie-body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", system-ui, sans-serif; font-size: 13px; min-height: 100vh; display: flex; flex-direction: column; }
+/* `height`, not `min-height`: the roll below the columns is open by default now,
+   and with min-height the columns took the whole viewport and pushed it off the
+   bottom of the screen - open, drawing, and invisible unless you scrolled. The
+   columns each scroll inside themselves, which is what makes this safe. */
+.mie-body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", system-ui, sans-serif; font-size: 13px; height: 100vh; display: flex; flex-direction: column; }
 .mie-top { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg-card); backdrop-filter: var(--glass-blur); position: sticky; top: 0; z-index: 10; flex-wrap: wrap; }
 .mie-brand { font-weight: 800; letter-spacing: .08em; font-size: 15px; margin-right: 6px; }
 .mie-conn { color: #f44336; font-size: 11px; vertical-align: middle; margin-left: 4px; }
@@ -56,7 +60,10 @@
 .mie-halt b { letter-spacing: .06em; white-space: nowrap; }
 .mie-halt span { flex: 1; opacity: .92; font-size: 12.5px; }
 .mie-halt .mie-btn { background: #fff; color: #b71c1c; border-color: #fff; }
-.mie-main { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(360px, 1.4fr) minmax(300px, 1fr); gap: 12px; padding: 12px; flex: 1; min-height: 0; }
+/* Two columns since the event-stream column left: the roll below shows the same
+   events as a picture, so the width it used to take goes to the edges - which
+   is where the hands actually are during a take. */
+.mie-main { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(420px, 2.2fr); gap: 12px; padding: 12px; flex: 1 1 auto; min-height: 200px; }
 .mie-col { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; overflow: auto; min-height: 0; }
 .mie-title-gap { margin-top: 16px; }
 .lc-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
@@ -142,21 +149,20 @@
 .mie-stats .k { color: var(--text-dim); }
 .mie-stats .drop { color: #ff9800; }
 
-.mie-stream-list { font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; display: flex; flex-direction: column-reverse; gap: 1px; }
-.mie-ev { padding: 2px 6px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mie-ev .t { color: var(--text-dim); margin-right: 6px; }
-.mie-ev-human { color: #64b5f6; }
-.mie-ev-gen1 { color: #81c784; }
-.mie-ev-gen2 { color: #ffb74d; }
-.mie-ev-gen3 { color: #ff8a65; }
-.mie-ev-drop { color: #ef9a9a; }
+/* One line, between the columns and the roll. The scrolling event column is
+   gone; what is left is the handful of things that must not be missed, said
+   once, where the eye is already going. */
+.mie-notice { margin: 0 12px 8px; padding: 5px 10px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--bg-card);
+  font-family: ui-monospace, Consolas, monospace; font-size: 11.5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mie-notice .t { color: var(--text-dim); margin-right: 6px; }
+.mie-ev-drop { color: #ef9a9a; border-color: #ef9a9a; }
 .mie-ev-panic { background: #b71c1c; color: #fff; font-weight: 700; }
-.mie-ev-ctl, .mie-ev-set, .mie-ev-mode { color: #ce93d8; }
-.mie-ev-cc_in, .mie-ev-pedal { color: #90a4ae; }   /* incoming controllers: identify a fader by moving it */
-.mie-ev-edge, .mie-ev-sched, .mie-ev-resnap, .mie-ev-off { color: var(--text-dim); }
+.mie-ev-mode { color: #ce93d8; }
 .mie-ev-loop { background: #ff9800; color: #000; font-weight: 700; }
 
-@media (max-width: 1100px) { .mie-main { grid-template-columns: 1fr 1fr; } .mie-stream { grid-column: 1 / -1; } }
+@media (max-width: 1100px) { .mie-main { grid-template-columns: 1fr 1.4fr; } }
 @media (max-width: 720px) { .mie-main { grid-template-columns: 1fr; } }
 
 /* ---------------------------------------------------------- 鋼琴捲軸 (mie-roll)
@@ -165,7 +171,9 @@
    asked for. */
 .mie-roll { display: flex; flex-direction: column; gap: 6px; margin: 0 12px 10px; padding: 8px;
   background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
-  height: min(46vh, 520px); min-height: 240px; }
+  /* It is open by default now and it is where the take is read, so it gets
+     real height rather than the sliver a rarely-opened drawer could live in. */
+  flex: 0 0 auto; height: min(52vh, 620px); min-height: 260px; }
 .mr-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .mr-bar .mie-btn { padding: 4px 10px; font-size: 12px; }
 .mr-play { min-width: 42px; }
