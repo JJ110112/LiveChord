@@ -352,19 +352,66 @@
   function makeVel(e, wrap) {
     const sl = wrap.querySelector("input");
     const out = wrap.querySelector(".mie-vel-v");
-    const show = (v) => { sl.value = v; out.textContent = Number(v).toFixed(2); };
+    const hit = wrap.querySelector(".mie-vel-hit");
+    let ed = e, snap = null;
+    const show = (v) => {
+      sl.value = v; out.textContent = Number(v).toFixed(2);
+      const vel = effVel(ed, Number(v), snap);
+      // Below 1 the engine mutes the note outright; below about 4 the
+      // instrument is technically playing and you cannot hear it. Both look
+      // exactly like a lane that is not firing, which is how sustain_strings
+      // spent a whole take at velocity 1 without anyone knowing.
+      hit.textContent = vel === null ? "" : (vel < 1 ? "→ 靜音" : `→ v${vel}`);
+      hit.classList.toggle("is-gone", vel !== null && vel < 4);
+      hit.title = vel === null
+        ? "這條線回應的是另一條線送出的音，不是你彈的，所以這裡算不出實際力度"
+        : "乘完全域音量之後，真正送到樂器的力度。低於 1 引擎會直接靜音"
+          + (ed.vel_drift && ed.vel_drift.depth ? "。自走音量還會讓它上下擺動" : "")
+          + (ed.algo === "echo" || ed.algo === "phrase" ? "。這是第一趟，後面每趟更輕" : "");
+    };
     show(e.vel_scale === undefined ? 1 : e.vel_scale);
     sl.addEventListener("input", () => {
-      out.textContent = Number(sl.value).toFixed(2);
       send({ type: "set", path: `edge.${e.id}.vel_scale`, value: Number(sl.value) });
+      show(Number(sl.value));
     });
     return {
-      sync(ed) {
+      sync(next, s) {
+        ed = next; snap = s;
         // never while the finger is on it, or the value fights the drag
         if (document.activeElement === sl) return;
-        show(ed.vel_scale === undefined ? 1 : ed.vel_scale);
+        show(next.vel_scale === undefined ? 1 : next.vel_scale);
       },
     };
+  }
+
+  /** What actually reaches the instrument, as a MIDI velocity.
+   *
+   *  The number on the slider is a MULTIPLIER, and at 全域音量 0.27 a
+   *  multiplier of 0.05 is the difference between a lane you can hear and one
+   *  that is muted note by note - which is not something anyone should have to
+   *  work out in their head mid-take.
+   *
+   *  Where the velocity starts depends on the algorithm: a pad or a sustained
+   *  line carries its own `vel`, everything else answers a note you played and
+   *  starts from how hard you played it. `vel_mean` is the engine's own rolling
+   *  average of exactly that, so this is the real first note - not a model of
+   *  one. Later passes of an echo are quieter still; this is the loudest.
+   */
+  function effVel(e, scale, s) {
+    let base = e.vel;
+    if (base === undefined) {
+      // A hop-2 edge answers another LANE's notes, not yours, and those are
+      // already quiet - iridium_to_wavestate reads CH11, which sends at 4-8.
+      // Using your own velocity here would print a number three times too big,
+      // and a confident wrong number is worse than no number.
+      if (e.src !== 0) return null;
+      const m = s && s.state && s.state.vel_mean;
+      if (!m) return null;                  // nothing played yet: no honest answer
+      base = m;
+    }
+    const gain = (s && s.scene && s.scene.global && s.scene.global.master_gain);
+    const v = base * scale * (gain === undefined ? 1 : gain);
+    return Math.min(127, Math.round(v));
   }
 
   function edgeBool(e, spec) {
@@ -610,6 +657,7 @@
                 <span class="mie-fl">強度</span>
                 <input class="mie-fs" type="range" min="0" max="2" step="0.05">
                 <span class="mie-fn mie-vel-v">1.00</span>
+                <span class="mie-vel-hit"></span>
               </label>
               <span class="mie-pad-lbl"></span>
             </div>
@@ -660,7 +708,7 @@
       }
       const src = e.src === 0 ? "HUMAN" : `CH${e.src}`;
       el.querySelector(".name").textContent = e.id;
-      el._vel.sync(e);
+      el._vel.sync(e, s);
       el.querySelector(".route").textContent = `${src} → CH${e.dst} · p ${e.prob} · ${e.constraint}`
         + (e.delay_beats ? ` · ${e.delay_beats} beat` : "") + (e.delay_ms ? ` · ${e.delay_ms} ms` : "");
       const lane = e.lane || e.algo;

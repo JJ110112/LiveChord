@@ -72,13 +72,16 @@
 /* Two columns since the event-stream column left: the roll below shows the same
    events as a picture, so the width it used to take goes to the edges - which
    is where the hands actually are during a take. */
-.mie-main { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(420px, 2.2fr); gap: 12px; padding: 12px; flex: 1 1 auto; min-height: 200px; }
+/* The left column is a set of readouts and a fixed list; it does not get better
+   with more width, and every pixel it gives up goes to the edges. Fixed rather
+   than fractional so the edge cards keep the same size when the window does. */
+.mie-main { display: grid; grid-template-columns: 236px minmax(420px, 1fr); gap: 12px; padding: 12px; flex: 1 1 auto; min-height: 200px; }
 .mie-col { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; overflow: auto; min-height: 0; }
 .mie-title-gap { margin-top: 16px; }
 .lc-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
 .lc-subtitle { font-size: 11px; color: var(--text-dim); font-weight: 400; margin-left: 6px; }
 
-.mie-meter, .mie-slider { display: grid; grid-template-columns: 74px 1fr 56px; align-items: center; gap: 8px; margin: 6px 0; }
+.mie-meter, .mie-slider { display: grid; grid-template-columns: 58px minmax(0, 1fr) 44px; align-items: center; gap: 8px; margin: 6px 0; }
 .mie-mlbl { font-size: 10px; letter-spacing: .1em; color: var(--text-dim); font-weight: 700; }
 .mie-mval { font-variant-numeric: tabular-nums; text-align: right; font-size: 12px; }
 .mie-bar { height: 10px; background: rgba(255,255,255,.08); border-radius: 5px; overflow: hidden; }
@@ -88,7 +91,8 @@
 .mie-fill-silence { background: #607d8b; }
 .mie-slider input[type=range] { width: 100%; accent-color: var(--accent); }
 
-.mie-inst-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+/* one per line: at 236 px two columns cut every instrument name in half */
+.mie-inst-list { display: grid; grid-template-columns: 1fr; gap: 3px; }
 .mie-inst { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 4px; border-radius: 6px; }
 .mie-inst.human { background: rgba(33,150,243,.18); }
 .mie-inst.active { box-shadow: inset 0 0 0 1px #4caf5088; }
@@ -103,7 +107,11 @@
    which lanes are firing. An OPEN edge takes the full width back: its parameter
    grid needs the room, and a half-width one wrapped every field onto its own
    line. */
-.mie-edge-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 6px; align-content: start; }
+/* Three, asked for by name: auto-fill went to four on a wide window and the
+   cards became stubby. Three is the shape the card was drawn for. */
+.mie-edge-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; align-content: start; }
+@media (max-width: 1500px) { .mie-edge-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1050px) { .mie-edge-list { grid-template-columns: 1fr; } }
 .mie-edge.is-open { grid-column: 1 / -1; }
 /* The lane's colour, the same one the piano roll paints it with, so a bar in
    the picture leads to the row that made it. A stripe rather than a fill: the
@@ -123,8 +131,12 @@
 /* the pad's readout, out of the pad: inside it the dot sat on top of the text */
 .mie-quick-right .mie-pad-lbl { position: static; font-size: 10px; color: var(--text-dim);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mie-vel { display: grid; grid-template-columns: 32px minmax(0, 1fr) 34px; gap: 6px; align-items: center;
+.mie-vel { display: grid; grid-template-columns: 32px minmax(0, 1fr) 32px 44px; gap: 5px; align-items: center;
   font-size: 10.5px; color: var(--text-dim); }
+/* what the multiplier actually comes to. Loud when it comes to nothing: a lane
+   at velocity 1 is indistinguishable from a lane that is not firing. */
+.mie-vel-hit { font-variant-numeric: tabular-nums; opacity: .75; white-space: nowrap; }
+.mie-vel-hit.is-gone { color: #ff9800; opacity: 1; font-weight: 700; }
 .mie-vel .mie-fs { width: 100%; accent-color: var(--accent); border: none; padding: 0; }
 .mie-vel .mie-vel-v { text-align: right; font-variant-numeric: tabular-nums; }
 /* the first layer of an edge: two settings, one drag */
@@ -201,7 +213,7 @@
 .mie-ev-mode { color: #ce93d8; }
 .mie-ev-loop { background: #ff9800; color: #000; font-weight: 700; }
 
-@media (max-width: 1100px) { .mie-main { grid-template-columns: 1fr 1.4fr; } }
+@media (max-width: 1100px) { .mie-main { grid-template-columns: 210px 1fr; } }
 @media (max-width: 720px) { .mie-main { grid-template-columns: 1fr; } }
 
 /* ---------------------------------------------------------- 鋼琴捲軸 (mie-roll)
