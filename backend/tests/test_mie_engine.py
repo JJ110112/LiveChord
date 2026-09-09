@@ -637,6 +637,36 @@ def test_below_player_keeps_the_pad_under_the_hands_and_follows_them_up():
     assert edge_range(plain, st) == (55, 88)
 
 
+def test_a_register_is_a_preference_not_a_veto():
+    """A narrowed window must not swallow the note.
+
+    `below_player` can squeeze the window against the instrument's own floor
+    when the player is right at the bottom, and a few semitones may hold no
+    legal pitch class at all - the 13:36 and 13:39 takes lost 3 and 5 notes to
+    `drop reason=constraint`, every one of them the follow lane. Playing
+    slightly outside the asked-for register is a smaller wrong than the lane
+    silently losing the note.
+    """
+    from backend.mie.constraint import late_bind
+    from backend.mie.harmony import ChordInfo
+    from backend.mie.state import MusicalState
+
+    st = MusicalState(bpm=92, now=0.0)
+    st.set_key(0, "major", "manual")
+    st.set_chord(ChordInfo("C", 0, "", frozenset({0, 4, 7}), 0.0))
+    inst = Instrument(11, "Iridium", "synth", "hw", True, 8, 1.0, (36, 96), False)
+
+    # a window with no chord tone in it at all: 37, 38 are C#/D over a C triad
+    n = late_bind(60, "chord", st, inst, "none", note_range=(37, 38))
+    assert n is not None, "the note was dropped instead of being placed"
+    assert 36 <= n <= 96, n
+    assert n % 12 in (0, 4, 7), "it left the harmony to stay in the register"
+
+    # a window that DOES hold one is still respected
+    n2 = late_bind(60, "chord", st, inst, "none", note_range=(48, 60))
+    assert n2 is not None and 48 <= n2 <= 60
+
+
 def test_below_player_also_holds_a_lane_that_has_no_register_of_its_own():
     """Follow sits a fifth ABOVE the note it answers, so it goes over the top.
 
@@ -2251,6 +2281,15 @@ def test_the_advisor_never_reports_a_lane_for_doing_its_job():
     ids = [a["id"] for a in advise(m, {"tension": 0.0, "density": 0.5}, edges)]
     assert "overlap_shadow" not in ids and "overlap_phrase" not in ids
     assert "overlap_sustain" in ids, "the lane that picks its own register went unreported"
+
+    # ...and once it has been TOLD to stay under the player, it is doing as it
+    # was told: a pad keeping under their top is inside their hands by this
+    # measure, which is the whole point. My own `below_player` fix made this
+    # advisory fire on both takes of 2026-09-09 13:xx, telling the player to
+    # make a lane yield that was already yielding.
+    edges[2].params["below_player"] = 7
+    ids2 = [a["id"] for a in advise(m, {"tension": 0.0, "density": 0.5}, edges)]
+    assert "overlap_sustain" not in ids2, "told a yielding lane to yield"
 
 
 def test_the_advisor_only_speaks_when_a_reading_holds():

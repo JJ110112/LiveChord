@@ -156,7 +156,7 @@ def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instr
               prev: Optional[int] = None, others: tuple = (),
               tension: float = 0.0, note_range: Optional[tuple] = None,
               gen_now: Iterable[int] = (), keep_pc: bool = False,
-              taken: Iterable[int] = ()) -> Optional[int]:
+              taken: Iterable[int] = (), _widen: bool = True) -> Optional[int]:
     """Final pitch for a generated note given the state *now*.
 
     Snap to the allowed pitch classes - by voice leading from `prev` when the
@@ -164,14 +164,18 @@ def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instr
     human is holding (plan §6): to the next chord tone, else the next scale
     tone, else drop.
     """
-    lo, hi = inst.note_range if inst else (0, 127)
+    wide = inst.note_range if inst else (0, 127)
+    lo, hi = wide
+    narrowed = False
     if note_range:
         # An edge that sets low/high means that register. Voice leading used to
         # re-pick inside the instrument range and quietly ignore it, which is
         # how the string lane ended up at 76-91 under an edge capped at 88.
         lo, hi = max(lo, int(note_range[0])), min(hi, int(note_range[1]))
         if lo > hi:
-            lo, hi = inst.note_range if inst else (0, 127)
+            lo, hi = wide
+        else:
+            narrowed = (lo, hi) != wide
     pcs = allowed_pcs(st, constraint, tension)
     held = list(st.held)
     held_pcs = {h % 12 for h in held} if collision != "none" else set()
@@ -185,6 +189,17 @@ def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instr
     else:
         n = snap(note, pcs, "nearest", avoid_pcs=held_pcs, lo=lo, hi=hi)
     if n is None:
+        # A REGISTER IS A PREFERENCE, NOT A VETO. `below_player` can squeeze the
+        # window down against the instrument's own floor when the player is
+        # right at the bottom, and then a few semitones may hold no legal pitch
+        # class at all - measured on the 13:36 and 13:39 takes, 3 and 5 notes
+        # dropped with reason `constraint`, every one of them the follow lane.
+        # Playing slightly outside the asked-for register is a smaller wrong
+        # than the lane silently losing the note.
+        if narrowed and _widen:
+            return late_bind(note, constraint, st, inst, collision, voice_lead=voice_lead,
+                             prev=prev, others=others, tension=tension, note_range=None,
+                             gen_now=gen_now, keep_pc=keep_pc, taken=taken, _widen=False)
         return None
     if not collides(n, held, collision):
         return _unharsh(n, pcs, gen_now, held, collision, lo, hi, keep_pc, taken)

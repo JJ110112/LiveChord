@@ -223,11 +223,17 @@ def advise(m: dict, globals_: dict, edges: list) -> list[dict]:
             e = by_lane.get(lane)
             if e is None or e.algo not in INDEPENDENT_ALGOS:
                 continue
-            fix = []
-            if e.params.get("above_held") is not True and "low" in e.params:
-                fix.append((f"edge.{e.id}.above_held", True))
-            else:
-                fix.append((f"edge.{e.id}.octave", int(e.octave) + 1))
+            if e.params.get("below_player"):
+                # It has been TOLD where to sit, and it is sitting there. A pad
+                # keeping itself under the player's top is inside their hands by
+                # this measure - between the 10th and 90th percentile - which is
+                # exactly what was asked for. Reporting it is second-guessing an
+                # instruction the player gave on purpose; the advisory that came
+                # out of my own fix said "讓它讓開" about a lane already yielding.
+                continue
+            # The fix is the setting that exists for this: tell it to stay
+            # under you. Nudging the octave up only moves the problem.
+            fix = [(f"edge.{e.id}.below_player", 7)]
             out.append({
                 "id": f"overlap_{lane}",
                 "level": "info",
@@ -235,7 +241,7 @@ def advise(m: dict, globals_: dict, edges: list) -> list[dict]:
                         f'（{_nn(lo)}–{_nn(hi)}）',
                 "why": "這條線自己挑音域，擠在你手上會糊掉；Shadow / 回音不算，那是它們的工作",
                 "fix": fix,
-                "fix_label": "讓它讓開",
+                "fix_label": "叫它讓開（低 7 半音）",
             })
             break                       # one at a time; the worst one
     return out
