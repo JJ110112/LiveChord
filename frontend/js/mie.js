@@ -784,8 +784,10 @@
     if (roll) roll.pushEvent(e);          // the roll draws from the same stream
     if (e.type === "save_conflict") onSaveConflict(e);
     if (e.type === "log_saved") {
-      // the event stream scrolls past in a second while playing, so say it on
-      // the button that was pressed
+      // Say it on the button that was pressed. The button lives in the roll
+      // now, so when the roll is closed - Ctrl+S, mid-take, without looking -
+      // nobody sees this; the notice line under the columns says it instead,
+      // which is why `log_saved` is in NOTABLE.
       const b = $("#mieLogSave");
       b.disabled = false;
       b.textContent = `已存 ${e.human} 音`;
@@ -1096,6 +1098,10 @@
       e.preventDefault(); toggleRoll(); return;
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+      // The button lives in the roll now. It is still in the DOM when the roll
+      // is closed, so clicking it works either way - 存這段 is the one thing
+      // you press without looking, mid-take, and it must not depend on a panel
+      // being open.
       e.preventDefault(); $("#mieLogSave").click(); return;
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
