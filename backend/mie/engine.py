@@ -160,6 +160,12 @@ class Engine:
         # It only ever LOOKS. Nothing here changes a setting; the panel offers
         # the change and the player presses it.
         self.advisor = Advisor()
+        # An INBOX, not a light. 「我在彈的時候會看著琴 不會看螢幕 除非它一直存在
+        # 或是像收件匣一樣 我閱讀過再消失」. The reading that produces advice comes
+        # and goes with the playing - `tension_gap` was on screen for fourteen
+        # seconds of the 21:05 take - so a panel that only shows what is true
+        # this instant can only be read by someone already watching it, which is
+        # nobody who is playing. Entries stay until they are answered.
         self.advice: list = []
         # Advice the player has answered by deciding. `tension_gap` fired on
         # four takes running after 「時間 張力 留給使用者自己決定」 - and a light
@@ -270,6 +276,47 @@ class Engine:
             self.set_mode(self.scene.mode if self.scene.mode not in ("OFF", "BYPASS") else "SAFE")
         self.panicked = False
         self._rearm_silence(self.clock())
+
+    def _merge_advice(self, fresh: list, now: float) -> list:
+        """Fold this reading into the inbox: update, keep, never silently drop.
+
+        An entry that is still true is refreshed in place, so the numbers in it
+        are current rather than whatever they happened to be when it first
+        spoke. One that has stopped being true is KEPT and marked `live: False`
+        - what it reported still happened, and the player was looking at their
+        hands at the time.
+
+        `first_t` is when it first appeared, so the panel can say how long ago
+        rather than pretending it is news.
+        """
+        by_id = {a["id"]: a for a in self.advice}
+        out = []
+        for a in fresh:
+            old = by_id.pop(a["id"], None)
+            a["first_t"] = old.get("first_t", now) if old else now
+            a["live"] = True
+            out.append(a)
+        for a in by_id.values():            # true earlier, not right now
+            a["live"] = False
+            out.append(a)
+        out.sort(key=lambda a: a.get("first_t", 0.0))
+        return out
+
+    def dismiss_advice(self, advice_id: str) -> None:
+        """Read it. It goes away, and comes back if it happens again.
+
+        Deliberately not the same as `mute_advice`: one is "I have seen this",
+        the other is "stop telling me". Making the only way to clear the panel
+        a permanent decision would mean every glance costs a setting.
+        """
+        n = len(self.advice)
+        self.advice = [a for a in self.advice if a["id"] != advice_id]
+        # Both halves matter: `confirm` needs two readings in a row, so without
+        # forgetting the last one a dismissed advice would re-appear on the very
+        # next evaluation four seconds later.
+        self.advisor._last_ids.discard(advice_id)
+        if len(self.advice) != n:
+            self._ui("advice_read", id=advice_id, left=len(self.advice))
 
     def mute_advice(self, advice_id: str, on: bool = True) -> None:
         """Stop being told a thing you have already decided.
@@ -1745,10 +1792,11 @@ class Engine:
         if now - self._advice_t >= self.ADVICE_EVERY_S:
             self._advice_t = now
             try:
-                self.advice = [a for a in self.advisor.confirm(
+                fresh = [a for a in self.advisor.confirm(
                     advise(self.advisor.measure(now), self.scene.globals,
                            list(self.graph.edges)))
                     if a["id"] not in self.muted_advice]
+                self.advice = self._merge_advice(fresh, now)
             except Exception as e:
                 self._log_error("advisor", e)
                 self.advice = []

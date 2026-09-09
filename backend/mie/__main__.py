@@ -161,6 +161,10 @@ def main(argv=None) -> int:
             elif t == "freeze":
                 engine.submit(engine.freeze, bool(msg.get("on", True)),
                               str(msg.get("lane") or "") or None)
+            elif t == "read_advice":
+                aid = str(msg.get("id") or "")
+                if aid:
+                    engine.submit(engine.dismiss_advice, aid)
             elif t == "mute_advice":
                 aid = str(msg.get("id") or "")
                 if aid:

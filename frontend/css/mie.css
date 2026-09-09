@@ -332,6 +332,11 @@
 .mie-adv-row.is-done { opacity: .6; }
 .mie-adv-txt { font-size: 12px; color: var(--text); line-height: 1.5; }
 .mie-adv-why { font-size: 10.5px; color: var(--text-dim); margin-top: 3px; line-height: 1.45; }
+.mie-adv-when { font-size: 10px; color: var(--text-dim); font-weight: 400; }
+/* it was true, and is not any more. Still worth reading - it happened while
+   the player was looking at the keys - but it is history, not a live fault. */
+.mie-adv-row.is-past { opacity: .62; }
+.mie-adv-row.is-past .mie-adv-fix { display: none; }
 .mie-adv-mute { opacity: .7; }
 .mie-adv-mute:hover { opacity: 1; }
 .mie-adv-act { display: flex; gap: 6px; margin-top: 7px; }

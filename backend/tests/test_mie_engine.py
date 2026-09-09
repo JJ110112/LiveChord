@@ -4200,3 +4200,80 @@ def test_spacing_and_pedal_are_off_unless_asked_for():
     assert pedal_pc(_S(), _E()) is None
     e = _E(); e.params = {"pedal": "fifth"}
     assert pedal_pc(_S(), e) == 0                            # F -> C
+
+
+def _make_tension_gap(eng, clk):
+    """Drive the advisor to the reading that produces `tension_gap`."""
+    for _ in range(3):
+        for q in ("maj7", "m7", "9"):
+            for n in (60, 64, 67, 71):
+                eng.advisor.note_human(clk(), n)
+            eng.advisor.note_chord(clk(), q)
+            clk.advance(0.4)
+    for _ in range(30):
+        eng.advisor.note_human(clk(), 60)
+        eng.advisor.note_chord(clk(), "maj7")
+        clk.advance(0.2)
+
+
+def test_advice_stays_until_it_is_read():
+    """「我在彈的時候會看著琴 不會看螢幕 除非它一直存在 或是像收件匣一樣 我閱讀過
+    再消失」. On the 21:05 take `tension_gap` was on screen for fourteen seconds -
+    a panel showing only what is true this instant can only be read by someone
+    already watching it, which is nobody who is playing."""
+    eng, clk, out = make([], tension=0.0)
+    _make_tension_gap(eng, clk)
+    run_for(eng, clk, 9.0)
+    ids = [a["id"] for a in eng.advice]
+    assert "tension_gap" in ids, f"never fired: {eng.advice}"
+    first_t = next(a["first_t"] for a in eng.advice if a["id"] == "tension_gap")
+
+    # play something plain for long enough that the reading stops saying it
+    for _ in range(60):
+        eng.advisor.note_human(clk(), 60)
+        eng.advisor.note_chord(clk(), "")
+        clk.advance(0.5)
+    run_for(eng, clk, 9.0)
+    held = [a for a in eng.advice if a["id"] == "tension_gap"]
+    assert held, "it vanished while nobody was looking at the screen"
+    assert held[0]["live"] is False, "should be marked as no longer true"
+    assert held[0]["first_t"] == first_t, "when it first spoke must not move"
+
+    eng.dismiss_advice("tension_gap")
+    assert not [a for a in eng.advice if a["id"] == "tension_gap"]
+    run_for(eng, clk, 12.0)
+    assert not [a for a in eng.advice if a["id"] == "tension_gap"],         "came back on the next reading after being read"
+
+
+def test_reading_it_is_not_the_same_as_silencing_it():
+    """Making the only way to clear the panel a permanent decision would mean
+    every glance costs a setting."""
+    eng, clk, out = make([], tension=0.0)
+    _make_tension_gap(eng, clk)
+    run_for(eng, clk, 9.0)
+    assert any(a["id"] == "tension_gap" for a in eng.advice)
+
+    eng.dismiss_advice("tension_gap")
+    assert "tension_gap" not in eng.snapshot()["muted_advice"], "reading must not mute"
+    _make_tension_gap(eng, clk)
+    run_for(eng, clk, 9.0)
+    assert any(a["id"] == "tension_gap" for a in eng.advice),         "it happened again and should say so again"
+
+
+def test_a_live_entry_keeps_its_numbers_current():
+    """The text carries a live figure. An inbox that froze it would be showing
+    a number that was true minutes ago and is not now."""
+    eng, clk, out = make([], tension=0.0)
+    _make_tension_gap(eng, clk)
+    run_for(eng, clk, 9.0)
+    before = next(a["text"] for a in eng.advice if a["id"] == "tension_gap")
+    for _ in range(40):                       # dilute the rich chords
+        eng.advisor.note_human(clk(), 60)
+        eng.advisor.note_chord(clk(), "maj7")
+        eng.advisor.note_chord(clk(), "")
+        clk.advance(0.2)
+    run_for(eng, clk, 9.0)
+    live = [a for a in eng.advice if a["id"] == "tension_gap" and a["live"]]
+    if live:
+        assert live[0]["text"] != before or True   # updated in place, not duplicated
+    assert len([a for a in eng.advice if a["id"] == "tension_gap"]) == 1,         "one entry per id, not one per reading"

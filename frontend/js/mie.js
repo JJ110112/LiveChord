@@ -1189,6 +1189,17 @@
   // the button, and what it presses is an ordinary `set` - so it shows up on
   // the sliders and Ctrl+Z puts it back like anything else.
   let adviceSig = "";
+  /** When it first spoke. A reading that only shows what is true THIS INSTANT
+   *  can only be read by someone already watching the screen, and nobody
+   *  playing is: `tension_gap` was up for fourteen seconds of the 21:05 take.
+   *  So the panel says how long ago instead of pretending it is news. */
+  function adviceWhen(a) {
+    if (!lastSnap || a.first_t === undefined) return "";
+    const s = Math.max(0, lastSnap.t - a.first_t);
+    const ago = s < 45 ? "剛剛" : s < 5400 ? `${Math.round(s / 60)} 分鐘前` : "很久以前";
+    return a.live === false ? `　${ago}（現在已經沒有了）` : `　${ago}`;
+  }
+
   function renderAdvice(list) {
     const box = $("#mieAdvice");
     const pop = $("#mieAdvicePop");
@@ -1196,25 +1207,34 @@
     if (!list.length) { pop.hidden = true; adviceSig = ""; return; }
     $(".mie-adv-n").textContent = list.length;
     box.classList.toggle("has-warn", list.some((a) => a.level === "warn"));
-    const sig = list.map((a) => a.id + a.text).join("|");
+    // `live` is in the signature: an entry that has stopped being true has to
+    // repaint once, to say so.
+    const sig = list.map((a) => a.id + a.text + a.live).join("|");
     if (sig === adviceSig) return;               // do not rebuild under the cursor
     adviceSig = sig;
     pop.innerHTML = "";
     list.forEach((a) => {
       const row = document.createElement("div");
-      row.className = "mie-adv-row" + (a.level === "warn" ? " is-warn" : "");
+      row.className = "mie-adv-row" + (a.level === "warn" ? " is-warn" : "")
+        + (a.live === false ? " is-past" : "");
       const btns = (a.fix_label ? `<button class="mie-btn mie-adv-fix">${a.fix_label}</button>` : "")
         + (a.alt && a.alt.style ? `<button class="mie-btn mie-adv-alt">切換風格</button>` : "")
+        + `<button class="mie-btn mie-adv-read" title="看過了。它會消失，`
+        + `但如果又發生一次還是會再出現">看過了</button>`
         + `<button class="mie-btn mie-adv-mute" title="這件事你已經決定了，不用再提醒。`
         + `記在引擎那邊，重開也不會回來">不用再提</button>`;
-      row.innerHTML = `<div class="mie-adv-txt">${a.text}</div>`
+      row.innerHTML = `<div class="mie-adv-txt">${a.text}`
+        + `<span class="mie-adv-when">${adviceWhen(a)}</span></div>`
         + `<div class="mie-adv-why">${a.why || ""}</div>`
         + `<div class="mie-adv-act">${btns}</div>`;
+      row.querySelector(".mie-adv-read").addEventListener("click", () =>
+        send({ type: "read_advice", id: a.id }));
       row.querySelector(".mie-adv-mute").addEventListener("click", () =>
         send({ type: "mute_advice", id: a.id, on: true }));
       const fix = row.querySelector(".mie-adv-fix");
       if (fix) fix.addEventListener("click", () => {
         (a.fix || []).forEach(([path, value]) => send({ type: "set", path, value }));
+        send({ type: "read_advice", id: a.id });   // acting on it is reading it
         row.classList.add("is-done");
         fix.textContent = "已套用（Ctrl+Z 可退回）";
         fix.disabled = true;
