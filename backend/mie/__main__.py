@@ -21,13 +21,24 @@ from random import Random
 from .engine import Engine
 from .graph import (DATA_DIR, load_instruments, load_scene, list_scenes, save_scene,
                     load_ui_state, save_ui_state, save_would_clobber,
-                    scene_stamp)
+                    save_instruments, INSTRUMENT_UI_FIELDS, scene_stamp)
 from .io_rtmidi import MidiIO, wall_clock
 
 
 def load_json(path: str) -> dict:
     with open(path, encoding="utf-8") as f:
         return json.load(f)
+
+
+def _persist_instruments(engine) -> None:
+    """Write the rig's editable fields back. Runs on the engine thread, after
+    the change has been applied, and never lets a failed write take the engine
+    with it - a read-only file is a reason to say so, not to stop playing."""
+    try:
+        save_instruments(engine.instruments)
+    except Exception as exc:
+        logging.getLogger("mie.ui").exception("mie: instruments save failed")
+        engine.note_ui("error", where="save_instruments", err=str(exc))
 
 
 def main(argv=None) -> int:
@@ -130,6 +141,12 @@ def main(argv=None) -> int:
                     engine.submit(engine.set_edge, parts[1], parts[2], msg.get("value"))
                 elif parts[0] == "inst" and len(parts) == 3:
                     engine.submit(engine.set_instrument, int(parts[1]), parts[2], msg.get("value"))
+                    if parts[2] in INSTRUMENT_UI_FIELDS:
+                        # The instrument list is the rig, not a take: there is no
+                        # 儲存 for it and nobody should have to remember one.
+                        # Whether a synth can hold a long note is a fact about
+                        # the patch loaded on it, and it must outlive a restart.
+                        engine.submit(_persist_instruments, engine)
             elif t == "scene":
                 sid = str(msg.get("id", "01"))
                 try:

@@ -66,6 +66,40 @@ def load_instruments(path: Optional[str] = None) -> dict[int, Instrument]:
     return {int(k): Instrument.from_json(int(k), v) for k, v in raw.items() if not k.startswith("_")}
 
 
+# What the panel is allowed to change about an instrument, and therefore what
+# gets written back. Everything else in instruments.json - the name, the note
+# range, the voice count, the `_note_` lines explaining a decision - is the
+# rig's description and is not the panel's to rewrite.
+INSTRUMENT_UI_FIELDS = ("enabled", "sustain_ok")
+
+
+def save_instruments(instruments: dict, path: Optional[str] = None) -> str:
+    """Write the panel-editable instrument fields back, MERGING.
+
+    Merging, not replacing. Dumping `to_dict()` over this file would drop every
+    key the dataclass does not model - which on 2026-09-09 is two `_note_`
+    lines recording WHY the Wavestate and the REAPER VST are no longer marked
+    for long notes. The scene file already taught this lesson: a save from the
+    engine silently removed the note explaining an earlier decision, and the
+    reason for a setting is worth more than the setting.
+    """
+    path = path or os.path.join(DATA_DIR, "instruments.json")
+    with open(path, encoding="utf-8") as f:
+        raw = json.load(f)
+    for ch, inst in instruments.items():
+        d = raw.get(str(ch))
+        if d is None:
+            continue                       # not ours to invent
+        for k in INSTRUMENT_UI_FIELDS:
+            d[k] = getattr(inst, k)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(raw, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    os.replace(tmp, path)
+    return path
+
+
 _EDGE_FIELDS = {"src", "dst", "algo", "prob", "delay_beats", "delay_ms", "transpose", "octave",
                 "vel_scale", "vel_offset", "dur_scale", "mutations", "constraint", "max_hop",
                 "accepts", "cooldown_ms", "enabled", "id"}

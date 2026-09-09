@@ -153,14 +153,33 @@
       let el = instEls.get(inst.ch);
       if (!el) {
         el = document.createElement("label"); el.className = "mie-inst";
-        el.innerHTML = `<input type="checkbox"><span class="dot"></span><span class="ch">CH${inst.ch}</span><span class="nm"></span>`;
+        el.innerHTML = `<input type="checkbox"><span class="dot"></span><span class="ch">CH${inst.ch}</span><span class="nm"></span>`
+          + `<button class="mie-hold" type="button" title="標成適合長音">長</button>`;
         el.querySelector("input").addEventListener("change", (e) => send({ type: "set", path: `inst.${inst.ch}.enabled`, value: e.target.checked }));
+        // Whether a synth can hold a long note is a fact about the PATCH loaded
+        // on it, and the player changes patches. It was a line in a JSON file
+        // that needed a restart to take effect; now it is where the instrument
+        // is. It is written straight back to instruments.json - the rig is not
+        // a take and there is no 儲存 for it.
+        el.querySelector(".mie-hold").addEventListener("click", (e) => {
+          e.preventDefault();
+          send({ type: "set", path: `inst.${inst.ch}.sustain_ok`, value: !el._hold });
+        });
         box.appendChild(el); instEls.set(inst.ch, el);
       }
       el.querySelector(".nm").textContent = inst.name;
       const cb = el.querySelector("input"); if (document.activeElement !== cb) cb.checked = inst.enabled;
       el.classList.toggle("active", activeCh.has(inst.ch));
       el.classList.toggle("human", humanCh.has(inst.ch));
+      el._hold = !!inst.sustain_ok;
+      const hb = el.querySelector(".mie-hold");
+      hb.classList.toggle("is-on", el._hold);
+      // The two numbers are the ones this flag actually chooses between, and
+      // they come from the scene rather than from anything hard-coded here.
+      const g = (s.scene.global) || {};
+      hb.title = el._hold
+        ? `已標長音：這台可以抱到 ${g.sustain_dur_s || 30} 秒`
+        : `沒標長音：這台上的音最長 ${g.max_dur_s || 8} 秒。點一下改成長音`;
       el.title = `${inst.role} · max ${inst.max_voices} voices · ${inst.note_range[0]}–${inst.note_range[1]}`;
     });
   }
@@ -641,6 +660,7 @@
     // and produced nothing, because both edges that feed CH11 were off. That is
     // the kind of silence the panel has to explain rather than just display.
     const fed = new Set(s.edges.filter((e) => e.enabled).map((e) => e.dst));
+    const load = chLoad(s.edges);
     s.edges.forEach((e) => {
       seen.add(e.id);
       let el = edgeEls.get(e.id);
@@ -723,7 +743,7 @@
       // "PANIC 是因為 wavestate 的音色多變不適合當延音" - the Wavestate is a
       // wave-sequencing box, which is the wrong thing to hold a long note on,
       // and the only way to move the lane was to edit JSON and restart.
-      syncDst(el.querySelector(".dst"), e, s.instruments || []);
+      syncDst(el.querySelector(".dst"), e, s.instruments || [], load);
       el.querySelector(".rest").textContent = ` · p ${e.prob} · ${e.constraint}`
         + (e.delay_beats ? ` · ${e.delay_beats} beat` : "") + (e.delay_ms ? ` · ${e.delay_ms} ms` : "");
       const lane = e.lane || e.algo;
@@ -783,26 +803,60 @@
   // point of the list: choosing by name alone is how a pad ended up on a
   // wave-sequencing synth.
   const LONG_ALGOS = new Set(["sustain", "silence"]);
-  function syncDst(sel, e, insts) {
-    const want = insts.map((i) => `${i.ch}|${i.name}|${i.enabled}|${i.sustain_ok}`).join(",");
-    if (sel._want !== want) {                    // rebuild only when the rig changes
+  /** How crowded each instrument is: lanes pointing at it, and notes it has
+   *  actually had to throw away. The drop count is the honest signal - counting
+   *  lanes guesses, whereas a `voices` drop is the instrument saying it ran
+   *  out. On the 17:32 take CH13 carried an echo with three repeats AND a
+   *  two-voice sustain on four voices, wanted six notes at once, and lost
+   *  three. Nothing on the panel said so until the notes were already gone. */
+  function chLoad(edges) {
+    const per = new Map();
+    edges.forEach((e) => {
+      if (!e.enabled) return;
+      const d = per.get(e.dst) || { lanes: 0, drops: 0 };
+      d.lanes += 1;
+      d.drops += e.drops || 0;
+      per.set(e.dst, d);
+    });
+    return per;
+  }
+  function syncDst(sel, e, insts, load) {
+    const want = insts.map((i) => {
+      const d = load.get(i.ch) || {};
+      return `${i.ch}|${i.name}|${i.enabled}|${i.sustain_ok}|${d.lanes || 0}|${d.drops || 0}`;
+    }).join(",");
+    if (sel._want !== want) {                    // rebuild only when something moved
       sel._want = want;
       sel.innerHTML = "";
       insts.forEach((i) => {
+        const d = load.get(i.ch) || { lanes: 0, drops: 0 };
         const o = document.createElement("option");
         o.value = i.ch;
         o.textContent = `CH${i.ch} ${i.name}`
-          + (i.sustain_ok ? " ·長音" : "") + (i.enabled ? "" : "（關）");
+          + (i.sustain_ok ? " ·長音" : "")
+          // short on purpose: this string also has to survive being truncated
+          // inside a 200 px select, and what must survive is ·長音 and the ⚠
+          + `（${d.lanes}條/${i.max_voices}聲${d.drops ? ` ⚠${d.drops}` : ""}）`
+          + (i.enabled ? "" : "（關）");
         o.title = `${i.role}　${i.max_voices} 聲部　`
-          + (i.sustain_ok ? "適合長音" : "沒有標記為適合長音");
+          + (i.sustain_ok ? "適合長音" : "沒有標記為適合長音")
+          + (d.drops ? `　這台已經因為聲部不夠丟掉 ${d.drops} 個音` : "");
         sel.appendChild(o);
       });
     }
     if (document.activeElement !== sel) sel.value = String(e.dst);
-    // Not an error - the player may want exactly this - but a long lane on an
-    // instrument that cannot hold a note is worth seeing before it is heard.
-    sel.classList.toggle("is-odd", LONG_ALGOS.has(e.algo)
-      && !(insts.find((i) => i.ch === e.dst) || {}).sustain_ok);
+    const here = load.get(e.dst) || { drops: 0 };
+    const inst = insts.find((i) => i.ch === e.dst) || {};
+    // Two different warnings, one colour. Neither is an error - the player may
+    // want exactly this - but both are worth seeing before they are heard.
+    const odd = LONG_ALGOS.has(e.algo) && !inst.sustain_ok;
+    sel.classList.toggle("is-odd", odd || here.drops > 0);
+    sel.title = here.drops > 0
+      ? `CH${e.dst} 已經因為聲部不夠丟掉 ${here.drops} 個音（這台只有 ${inst.max_voices} 個聲部，`
+        + `${(load.get(e.dst) || {}).lanes} 條線指著它）`
+      : (odd ? `這是長音聲部，但 CH${e.dst} 沒有標長音——音會被砍在 8 秒。`
+             + `要嘛換一台，要嘛在左邊樂器清單把它的「長」打開`
+             : "這條線送到哪一台。換過去的時候，它正在舊那台上響的音會先收掉");
   }
 
   function renderStats(s) {

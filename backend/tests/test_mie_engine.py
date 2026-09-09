@@ -3810,3 +3810,62 @@ def test_moving_a_lane_to_another_instrument_takes_its_notes_with_it():
     play(eng, clk, 0, 62, vel=90)
     run_for(eng, clk, 5.0)
     assert out.notes(ch=12), "the lane went quiet instead of moving"
+
+
+def test_saving_instruments_keeps_the_notes_explaining_them():
+    """The scene file already taught this: a save from the engine silently
+    removed the note recording WHY a setting was what it was. instruments.json
+    now carries two of those - why the Wavestate and the REAPER VST are no
+    longer marked for long notes - and the panel writes this file every time a
+    長 button is pressed. Dumping the dataclass over it would drop them."""
+    import json
+    import tempfile
+    from backend.mie.graph import Instrument, load_instruments, save_instruments
+
+    src = {
+        "_comment": "the rig",
+        "3": {"name": "Fantom Pad", "role": "pad", "group": "hw", "enabled": True,
+              "max_voices": 4, "note_range": [40, 88], "sustain_ok": True},
+        "10": {"name": "Wavestate", "role": "sequence", "group": "hw", "enabled": True,
+               "max_voices": 18, "note_range": [36, 96], "sustain_ok": False,
+               "_note_sustain": "wave sequences move too much to hold a long note"},
+    }
+    with tempfile.TemporaryDirectory() as d:
+        path = f"{d}/instruments.json"
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(src, f)
+
+        insts = load_instruments(path)
+        insts[10].sustain_ok = True                 # the player pressed 長
+        insts[3].enabled = False
+        save_instruments(insts, path)
+
+        with open(path, encoding="utf-8") as f:
+            back = json.load(f)
+
+    assert back["10"]["sustain_ok"] is True, "the change did not land"
+    assert back["3"]["enabled"] is False
+    assert back["10"]["_note_sustain"], "the reason for the setting was thrown away"
+    assert back["_comment"] == "the rig", "a top-level key the model does not know was lost"
+    # and nothing else moved
+    assert back["10"]["max_voices"] == 18 and back["10"]["note_range"] == [36, 96]
+    assert back["3"]["name"] == "Fantom Pad"
+
+
+def test_saving_instruments_does_not_invent_channels():
+    """A rig described by a file the panel has never seen must come back the
+    way it went in: the engine's dict is not the authority on what exists."""
+    import json
+    import tempfile
+    from backend.mie.graph import load_instruments, save_instruments
+
+    with tempfile.TemporaryDirectory() as d:
+        path = f"{d}/instruments.json"
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"3": {"name": "Pad", "enabled": True}}, f)
+        insts = load_instruments(path)
+        insts[9] = insts[3].__class__(ch=9, name="ghost")
+        save_instruments(insts, path)
+        with open(path, encoding="utf-8") as f:
+            back = json.load(f)
+    assert list(back) == ["3"], back

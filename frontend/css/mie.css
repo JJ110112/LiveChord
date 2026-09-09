@@ -95,6 +95,13 @@
 
 /* one per line: at 236 px two columns cut every instrument name in half */
 .mie-inst-list { display: grid; grid-template-columns: 1fr; gap: 3px; }
+/* 長音: a fact about the patch currently loaded, so it belongs next to the
+   instrument and not in a file that needs a restart */
+.mie-hold { margin-left: auto; padding: 0 5px; font-size: 10px; line-height: 1.5;
+  border: 1px solid var(--border); border-radius: 4px; background: transparent;
+  color: var(--text-dim); cursor: pointer; }
+.mie-hold:hover { color: var(--text); border-color: var(--accent); }
+.mie-hold.is-on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
 .mie-inst { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 4px; border-radius: 6px; }
 .mie-inst.human { background: rgba(33,150,243,.18); }
 .mie-inst.active { box-shadow: inset 0 0 0 1px #4caf5088; }
@@ -134,7 +141,7 @@
 .mie-edge .route .rest { overflow: hidden; text-overflow: ellipsis; }
 /* the destination is a control, so it has to look like one - but a quiet one:
    it sits in a line of grey text and must not shout over the name above it */
-.mie-edge .dst { max-width: 168px; padding: 0 2px; font-size: 10.5px; color: var(--text);
+.mie-edge .dst { max-width: 208px; padding: 0 2px; font-size: 10.5px; color: var(--text);
   background: transparent; border: 1px solid transparent; border-radius: 4px; }
 .mie-edge .dst:hover, .mie-edge .dst:focus { border-color: var(--border); background: var(--bg-hover); }
 /* a lane that holds long notes, pointed at an instrument not marked for them */
