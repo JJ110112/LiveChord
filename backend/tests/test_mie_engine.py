@@ -3748,3 +3748,36 @@ def test_the_log_records_that_the_advisory_spoke():
     spoke = [r for r in snaps if r.get("advice")]
     assert spoke, "the advisory spoke and the log did not say so"
     assert spoke[0]["advice"] == ["too_dense"], spoke[0]["advice"]
+
+
+def test_the_pad_does_not_come_straight_back_after_a_panic():
+    """Measured on the 17:03 take: the pad entered at 132.3 s (C3+E3), the
+    player hit PANIC at 147.1 s with four notes sounding, resumed at 149.0, and
+    the same C3+E3 came back at 149.2 - two tenths of a second later. They
+    switched the lane off, then hit PANIC again thirteen seconds after that.
+
+    Every other lane needs a note played before it can speak. A silence lane
+    enters BECAUSE nobody is playing, and PANIC-then-RESUME is a stretch of
+    exactly that, so its condition is already met at the moment of RESUME."""
+    eng, clk, out = make([{"id": "p", "src": 0, "dst": 3, "algo": "silence", "prob": 1.0,
+                           "constraint": "chord", "lane": "pad", "after_s": 3.0,
+                           "hold_s": 20, "voices": 2, "vel": 40, "low": 48, "high": 84}])
+    play(eng, clk, 0, 60, vel=90)
+    run_for(eng, clk, 4.0)                       # quiet long enough: the pad enters
+    assert out.notes(ch=3), "the pad never entered, so this proves nothing"
+
+    out.clear()
+    eng.panic("ui")
+    run_for(eng, clk, 0.5)
+    eng.resume()
+    # Judged on the lane's own decision, not on when the note reaches the wire:
+    # entering costs about 0.8 s of scheduling, and a window drawn around the
+    # audible note passes whether the fix is there or not. Without it the lane
+    # re-enters within a tick of RESUME.
+    run_for(eng, clk, 2.5)
+    assert not eng.lane_state["p"].get("fired"),         "the pad re-entered inside its own after_s of the RESUME"
+    assert not out.notes(ch=3), f"the pad came back at {out.notes(ch=3)}"
+
+    # ...and it is not switched off for good: it waits out its own `after_s`
+    run_for(eng, clk, 3.0)
+    assert out.notes(ch=3), "the pad never came back at all"

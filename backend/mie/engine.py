@@ -23,7 +23,7 @@ from random import Random
 from typing import Callable, Optional
 
 from . import algos, mutation
-from .algos import quantize_time
+from .algos import quantize_time, t_secs
 from .constraint import (collision_for, constrain, diatonic_map, edge_range, late_bind,
                          voice_lead_for)
 from .harmony import states_a_third
@@ -221,6 +221,35 @@ class Engine:
         if self.mode in ("OFF", "BYPASS"):
             self.set_mode(self.scene.mode if self.scene.mode not in ("OFF", "BYPASS") else "SAFE")
         self.panicked = False
+        self._rearm_silence(self.clock())
+
+    def _rearm_silence(self, now: float) -> None:
+        """After a PANIC, the pad has to earn its way back in.
+
+        Every other lane needs the player to play a note before it can speak.
+        The silence lanes need the opposite - they enter BECAUSE nobody is
+        playing - and pressing PANIC and then RESUME is a stretch of exactly
+        that. So the condition is already satisfied at the moment of RESUME and
+        the lane fires on the next tick, playing the very thing that was just
+        silenced.
+
+        Measured on the 17:03 take: the pad entered at 132.3 s (C3+E3), the
+        player hit PANIC at 147.1 s with four notes sounding, resumed at 149.0,
+        and the SAME C3+E3 came back at 149.2 - two tenths of a second later.
+        They switched the lane off, and hit PANIC again thirteen seconds after
+        that. A stop button that undoes itself is not a stop button.
+
+        So the quiet clock starts again from the resume: the lane waits its own
+        `after_s` before it may enter, which is the wait the player would have
+        given it anyway had they simply stopped playing.
+        """
+        for e in self.graph.edges:
+            if e.algo != "silence":
+                continue
+            ls = self.lane_state.setdefault(e.id, {})
+            ls["fired"] = False
+            ls["retry_t"] = max(float(ls.get("retry_t", 0.0)),
+                                now + t_secs(e, self.st, "after_s", 4.0))
 
     def _phrase_target(self, pair):
         """The chord a captured phrase should be re-read over, or None.
