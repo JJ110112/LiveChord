@@ -266,6 +266,7 @@
               NUM("力度", "vel", 1, 127, 1, null),
               NUM("持續(拍)", "hold_beats", 1, 32, 1, null),
               NUM("釋放(拍)", "release_beats", 0, 8, 0.5, null),
+              NUM("流動(拍)", "motion_beats", 1, 32, 1, "內聲部多久走一步。走太快就變顫音，不是掛留"),
               BOOL("疊在手上面", "above_held", "把這層墊音放在你正按著的音之上（預設開；設了「讓開」就不看這個）"),
               NUM("低", "low", 21, 108, 1, null), NUM("高", "high", 21, 108, 1, null)],
   };
@@ -281,10 +282,14 @@
     // One voice held under the harmony, read from the KEY - a floor that
     // follows the chord is a bass line, not a pedal.
     pedal: ["off", "tonic", "fifth"],
+    // The pad moving inside itself: sus2 -> 3 -> sus4 -> 3, one inner voice
+    // at a time, so the suspension is heard letting go.
+    voice_motion: ["off", "sus"],
   };
   const CHOICE_LABEL = {
     spacing: { close: "密集", open: "開放 1-5-9", wide: "很寬" },
     pedal: { off: "不用", tonic: "主音", fifth: "五度" },
+    voice_motion: { off: "不動", sus: "掛留 sus2↔3↔sus4" },
   };
 
   // ------------------------------------------------------------- XY pad
@@ -809,6 +814,10 @@
                         + "開放 = 根音、五度、九度，三度被推到上面變成十度，中頻讓出來給人聲或旋律"],
     pedal: ["持續低音", "一個聲部釘在調的主音或五度，上面的和弦怎麼換它都不動。"
                       + "它不會被輪替掉——會被輪掉的就不是持續低音了"],
+    voice_motion: ["內聲部流動",
+                   "長音抱著的時候，讓中間一個聲部自己在 sus2 → 3 → sus4 → 3 之間走，"
+                   + "襯底內部就會自己產生解開的線條。動的永遠是中間那個聲部——"
+                   + "最低的是和聲的地基，最高的是耳朵在跟的線。需要至少三個聲部"],
   };
   /** 跟著哪一條: the lane this one may only speak over.
    *
@@ -967,6 +976,7 @@
         if (e.algo === "silence") choices.push("silence_mode");
         // Only the two lanes that lay a chord down have a voicing to shape.
         if (e.algo === "silence" || e.algo === "sustain") choices.push("spacing", "pedal");
+        if (e.algo === "sustain") choices.push("voice_motion");
         choices.forEach((k) => body.appendChild(edgeChoice(e, k)));
         box.appendChild(el); edgeEls.set(e.id, el);
       }

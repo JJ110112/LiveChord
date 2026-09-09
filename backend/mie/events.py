@@ -99,6 +99,11 @@ class Proposal:
     capture_root: Optional[int] = None   # chord root when a phrase was captured
     capture_quality: str = ""            # and its quality, for diatonic transposition
     pass_id: Optional[tuple] = None      # which repeat of that phrase this note belongs to
+    # A note may ask for a wider palette than its lane's. A suspension is a
+    # NON-chord tone by definition, so a sus4 proposed by a lane set to
+    # `chord` would be snapped straight back to the third and the whole
+    # gesture would do nothing and say nothing. None = the edge's own.
+    constraint: Optional[str] = None
 
     def clone(self, **kw) -> "Proposal":
         return replace(self, **kw)

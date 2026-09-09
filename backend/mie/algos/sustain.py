@@ -111,6 +111,90 @@ def _pedal_note(st: MusicalState, edge: Edge, lane_notes: list[int]) -> int | No
     return None if n in lane_notes else n
 
 
+# ------------------------------------------------------- 內聲部流動 (Phase 4)
+# 「不要讓 Pad 只是死死按著 C 和弦。讓 MIE 在 Sustained Pad 響起時，在中高音域
+# 自動加入 Csus2 -> C -> Csus4 -> C 的微弱內聲部動態，讓襯底內部自己產生解開的
+# 線條。」
+#
+# The cycle is written from the chord ROOT in semitones. Both forms resolve
+# back to the third every other step, because the suspension is only worth
+# anything if you hear it let go: sus2, third, sus4, third.
+SUS_CYCLE = {
+    "major": (2, 4, 5, 4),
+    "minor": (2, 3, 5, 3),
+}
+
+
+def _third_kind(st: MusicalState) -> str:
+    """Major or minor, read from what is actually sounding."""
+    if st.chord is None:
+        return "major"
+    tones = {(t - st.chord.root_pc) % 12 for t in st.chord.tones}
+    return "minor" if 3 in tones and 4 not in tones else "major"
+
+
+def _motion(st: MusicalState, edge: Edge, now: float, lane_state: dict,
+            lane_notes: list[int]) -> list[Proposal]:
+    """Move ONE inner voice one step along the suspension cycle.
+
+    Inner: never the lowest note the lane is holding and never the highest.
+    The bottom is the floor the harmony sits on - moving it is a chord change,
+    not a suspension - and the top is the line the ear follows, where a
+    wandering voice reads as a melody that keeps changing its mind.
+
+    The moving note asks for `scale` rather than the lane's own constraint. A
+    suspension is a NON-chord tone by definition: proposed under `chord` it
+    would be snapped back to the third, and the whole gesture would do nothing
+    and say nothing.
+    """
+    if str(edge.params.get("voice_motion", "") or "") != "sus":
+        return []
+    if len(lane_notes) < 3:
+        return []                     # nothing is INSIDE anything yet
+    every = t_beats(edge, st, "motion_beats", 8.0)
+    nxt = lane_state.get("motion_t")
+    if nxt is None:
+        lane_state["motion_t"] = now + every
+        return []
+    if now < nxt:
+        return []
+    lane_state["motion_t"] = now + every
+
+    root = st.chord.root_pc if st.chord else st.key.tonic_pc
+    cycle = SUS_CYCLE[_third_kind(st)]
+    inner = sorted(lane_notes)[1:-1]
+    # Prefer a voice that is already somewhere on the cycle - it has a next
+    # step. Otherwise take the lowest inner voice and start it at the third.
+    on_cycle = [(n, cycle.index((n - root) % 12)) for n in inner
+                if (n - root) % 12 in cycle]
+    if on_cycle:
+        old, i = on_cycle[0]
+        want = cycle[(i + 1) % len(cycle)]
+    else:
+        old, want = inner[0], cycle[1]
+    # The NEAREST note of the wanted pitch class, not the one an octave up.
+    # Voice leading is the whole point of a suspension: it has to be heard as
+    # the same voice moving a step, not as a note vanishing here and another
+    # appearing a tenth away - and the naive "add the interval" arithmetic put
+    # it straight on top of a voice the lane was already holding.
+    lo = int(edge.params.get("low", 55))
+    hi = int(edge.params.get("high", 88))
+    pc = (root + want) % 12
+    cands = [n for n in range(lo, hi + 1)
+             if n % 12 == pc and n != old and n not in lane_notes]
+    if not cands:
+        return []
+    new = min(cands, key=lambda n: (abs(n - old), n))
+    if abs(new - old) > 7:
+        return []                     # too far to read as one voice moving
+    hold = t_beats(edge, st, "hold_beats", 8.0)
+    return [
+        Proposal(ch=edge.dst, note=old, vel=0, dur=0.0, lane=edge.lane, kind="off"),
+        Proposal(ch=edge.dst, note=new, vel=scaled_vel(edge, int(edge.params.get("vel", 46))),
+                 dur=hold, lane=edge.lane, constraint="scale"),
+    ]
+
+
 def _pedal_hold(st: MusicalState, edge: Edge, lane_notes: list[int]) -> int | None:
     """Which of the lane's notes is the pedal, and must not be retired."""
     pc = pedal_pc(st, edge)
@@ -131,6 +215,11 @@ def on_skip(st: MusicalState, edge: Edge, now: float, lane_state: dict) -> None:
     """
     if lane_state.get("next_t") is not None:
         lane_state["next_t"] = now + t_beats(edge, st, "retry_beats", 1.0)
+    # A refused suspension must not cost a whole cycle of waiting: the note it
+    # was letting go of has already been released by the time the dice are
+    # rolled, so the lane is a voice short until this comes back.
+    if lane_state.get("motion_t") is not None:
+        lane_state["motion_t"] = now + t_beats(edge, st, "retry_beats", 1.0)
 
 
 def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict,
@@ -163,6 +252,14 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
                 ceiling_offs = [Proposal(ch=edge.dst, note=n, vel=0, dur=0.0, lane=edge.lane,
                                          kind="off", t_offset=rel * 0.5) for n in over]
                 lane_notes = [n for n in lane_notes if n not in over]
+
+    # The suspension runs on its OWN clock, not the one that decides when to
+    # add a voice: it is a thing the chord already down does to itself, and it
+    # has to keep happening through the long stretches where the lane is full
+    # and adding nothing.
+    moved = _motion(st, edge, now, lane_state, lane_notes)
+    if moved:
+        return ceiling_offs + moved
 
     bar_s = st.beat_s * st.beats_per_bar
     if lane_state.get("next_t") is None:

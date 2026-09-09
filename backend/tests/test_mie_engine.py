@@ -4361,3 +4361,91 @@ def test_a_late_tick_does_not_fire_every_slot_it_missed():
     clk.advance(5.0)                    # the engine was away for five seconds
     eng.step()
     assert len(out.notes(ch=10)) <= 1, f"caught up in a burst: {out.notes(ch=10)}"
+
+
+# --------------------------------------------------- 內聲部流動 (Phase 4)
+def _sus_edge(**over):
+    e = {"id": "s", "src": 0, "dst": 3, "algo": "sustain", "prob": 1.0,
+         "constraint": "chord", "lane": "pad", "after_s": 0.5,
+         "every_bars_min": 0.25, "every_bars_max": 0.25, "voices": 4,
+         "hold_beats": 60, "vel": 44, "low": 48, "high": 84,
+         "voice_motion": "sus", "motion_beats": 2.0, "above_held": False}
+    e.update(over)
+    return [e]
+
+
+def test_the_pad_suspends_and_resolves_by_itself():
+    """「不要讓 Pad 只是死死按著 C 和弦…讓襯底內部自己產生解開的線條」."""
+    eng, clk, out = make(_sus_edge())
+    hold_chord(eng, clk, 0, [60, 64, 67], vel=80)
+    run_for(eng, clk, 30.0)
+    played = [n for _, _, n, _ in out.notes(ch=3)]
+    assert len(played) >= 6, f"the lane barely spoke: {played}"
+    # C major: the suspensions are the 2nd and the 4th, neither of them a
+    # chord tone, and the lane's own constraint is `chord`
+    degrees = {(n - 60) % 12 for n in played}
+    assert degrees & {2, 5}, f"never suspended - only chord tones: {sorted(degrees)}"
+
+
+def test_a_suspension_is_not_snapped_back_to_the_third():
+    """A suspension is a NON-chord tone by definition. Proposed under the
+    lane's own `chord` constraint it would be snapped straight back and the
+    gesture would do nothing and say nothing, so the moving note asks for
+    `scale` on its own."""
+    from backend.mie.events import Proposal
+    p = Proposal(ch=1, note=62, vel=40, dur=1.0, lane="pad", constraint="scale")
+    assert p.constraint == "scale"
+    assert Proposal(ch=1, note=62, vel=40, dur=1.0, lane="pad").constraint is None,         "a proposal with no opinion must leave the edge's constraint alone"
+
+
+def test_the_motion_never_moves_the_bottom_or_the_top():
+    """The bottom is the floor the harmony sits on - moving it is a chord
+    change, not a suspension - and the top is the line the ear follows."""
+    from backend.mie.algos.sustain import _motion
+
+    eng, clk, out = make(_sus_edge())
+    hold_chord(eng, clk, 0, [60, 64, 67], vel=80)
+    run_for(eng, clk, 20.0)
+    e = eng.graph.find_edge("s")
+    held = sorted(n for (ch, n) in eng.st.active_gen if ch == 3)
+    assert len(held) >= 3, f"nothing to be inside of: {held}"
+    ls = dict(eng.lane_state["s"])
+    ls["motion_t"] = 0.0
+    props = _motion(eng.st, e, clk(), ls, held)
+    if props:
+        moved = next(p.note for p in props if p.kind == "off")
+        assert moved != held[0], f"moved the floor: {held}"
+        assert moved != held[-1], f"moved the top: {held}"
+
+
+def test_no_motion_without_an_inside():
+    """Two voices have no inner voice, and one is a note."""
+    from backend.mie.algos.sustain import _motion
+
+    eng, clk, out = make(_sus_edge(voices=2))
+    hold_chord(eng, clk, 0, [60, 64, 67], vel=80)
+    run_for(eng, clk, 20.0)
+    e = eng.graph.find_edge("s")
+    ls = dict(eng.lane_state["s"]); ls["motion_t"] = 0.0
+    held = sorted(n for (ch, n) in eng.st.active_gen if ch == 3)
+    assert _motion(eng.st, e, clk(), ls, held) == [], f"moved with only {held}"
+
+
+def test_the_suspension_is_off_unless_asked_for():
+    eng, clk, out = make(_sus_edge(voice_motion="off"))
+    hold_chord(eng, clk, 0, [60, 64, 67], vel=80)
+    run_for(eng, clk, 30.0)
+    played = [n for _, _, n, _ in out.notes(ch=3)]
+    assert played, "the lane said nothing at all"
+    assert not ({(n - 60) % 12 for n in played} & {2, 5}),         f"suspended without being asked: {sorted(set((n - 60) % 12 for n in played))}"
+
+
+def test_a_minor_chord_suspends_to_its_own_third():
+    from backend.mie.algos.sustain import SUS_CYCLE, _third_kind
+
+    eng, clk, out = make(_sus_edge())
+    hold_chord(eng, clk, 0, [60, 63, 67], vel=80)      # C minor
+    run_for(eng, clk, 2.0)
+    assert _third_kind(eng.st) == "minor", eng.st.chord
+    assert SUS_CYCLE["minor"] == (2, 3, 5, 3)
+    assert SUS_CYCLE["major"] == (2, 4, 5, 4)

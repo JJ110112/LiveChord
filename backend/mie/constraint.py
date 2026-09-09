@@ -425,7 +425,11 @@ def constrain(p: Proposal, st: MusicalState, edge: Edge, inst: Optional[Instrume
     time with the collision policy of the edge."""
     if p.kind != "on":
         return p
-    note = late_bind(p.note, edge.constraint, st, inst, "none",
+    # A proposal may ask for a wider palette than its lane's. A suspension is a
+    # NON-chord tone by definition, so a sus4 from a lane set to `chord` was
+    # snapped back to the third here, before it ever reached the wire - the
+    # gesture ran, produced off-52/on-53 every cycle, and 53 never sounded.
+    note = late_bind(p.note, p.constraint or edge.constraint, st, inst, "none",
                      voice_lead=voice_lead_for(edge), prev=prev, others=others, tension=tension,
                      note_range=edge_range(edge, st))
     if note is None:
