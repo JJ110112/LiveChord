@@ -17,20 +17,41 @@ from ..graph import Edge
 from ..harmony import recognize
 from ..scales import scale_pcs
 from ..state import MusicalState
-from . import how_many, scaled_vel, t_beats, t_secs
+from . import OPEN_ORDER, how_many, pedal_pc, scaled_vel, spacing_gap, t_beats, t_secs
 
 
-def _voicing(st: MusicalState, n_voices: int, low: int, high: int) -> list[int]:
+def _voicing(st: MusicalState, n_voices: int, low: int, high: int,
+             gap: int = 1, pedal: int | None = None) -> list[int]:
+    """The chord, laid out. `gap` is the least distance between neighbours.
+
+    A block of close chord tones stacked from the bottom is the 「呆板」 the
+    player described: it fills the middle register, which is where the voice
+    and the melody live. `gap` 5 pushes the third up into a tenth and leaves
+    that space empty; `pedal` locks the bottom voice to one pitch class so the
+    harmony can move over it without the floor moving.
+    """
     pcs = sorted(st.chord.tones) if st.chord else sorted(scale_pcs(st.key.tonic_pc, st.scale_id))[:: 2][:3]
     if not pcs:
         return []
     root = st.chord.root_pc if st.chord else st.key.tonic_pc
-    ordered = sorted(pcs, key=lambda pc: (pc - root) % 12)
+    # Root, then the fifth, then the ninth, and the third after them - see
+    # OPEN_ORDER - but ONLY when the lane was asked to open up. The order
+    # decides which voices survive `n_voices`, so applying it to a close
+    # voicing would quietly change what a two-voice pad plays from root+third
+    # to root+fifth. `close` is the default and has to mean "exactly what it
+    # did before".
+    ordered = (sorted(pcs, key=lambda pc: OPEN_ORDER.index((pc - root) % 12)) if gap > 1
+               else sorted(pcs, key=lambda pc: (pc - root) % 12))
     notes = []
+    if pedal is not None:
+        base = low + ((pedal - low) % 12)
+        if base <= high:
+            notes.append(base)
+            n_voices -= 1
     base = low + ((root - low) % 12)
-    for i, pc in enumerate(ordered[:n_voices]):
+    for pc in ordered[:max(0, n_voices)]:
         n = base + ((pc - base) % 12)
-        while notes and n <= notes[-1]:
+        while notes and n < notes[-1] + gap:
             n += 12
         if n > high:
             break
@@ -112,9 +133,10 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     if st.held and edge.params.get("above_held", True):
         # prefer sitting above what the human is holding, but never at the cost
         # of losing voices: a one-note "chord" is not a pad (2026-09-07 play test)
-        notes = _voicing(st, n_voices, max(low, min(high - 12, max(st.held) + 1)), high)
+        notes = _voicing(st, n_voices, max(low, min(high - 12, max(st.held) + 1)), high,
+                         spacing_gap(edge), pedal_pc(st, edge))
     if len(notes) < n_voices:
-        notes = _voicing(st, n_voices, low, high)
+        notes = _voicing(st, n_voices, low, high, spacing_gap(edge), pedal_pc(st, edge))
     return [Proposal(ch=edge.dst, note=n + 12 * edge.octave + edge.transpose, vel=vel, dur=hold,
                      lane=edge.lane, t_offset=i * spread) for i, n in enumerate(notes)]
 

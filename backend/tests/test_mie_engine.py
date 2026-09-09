@@ -4089,3 +4089,114 @@ def test_switching_a_lane_off_does_not_silence_its_neighbour():
     run_for(eng, clk, 0.2)
     assert not [g for g in eng.st.active_gen.values() if g.lane == "pad"], "the pad kept ringing"
     assert {k for k, g in eng.st.active_gen.items() if g.lane == "texture"} == other,         "took the neighbour's notes with it"
+
+
+# ------------------------------------------------- 開放聲部 / 持續低音 (Phase 2)
+def test_open_voicing_leaves_the_middle_empty():
+    """「絕對不彈簡單的 Root Position 三和弦 / 常用 1-5-9 或 1-5-8-3 的寬廣配器，
+    留出大量的中頻空間給主旋律或人聲」. A close stack of chord tones sits exactly
+    where the voice does."""
+    from backend.mie.algos.silence import _voicing
+
+    class _K:
+        tonic_pc = 0
+    class _C:
+        tones = (0, 4, 7)
+        root_pc = 0
+    class _S:
+        chord, key, scale_id = _C(), _K(), "major"
+
+    st = _S()
+    close = _voicing(st, 3, 48, 84, 1)
+    assert close == [48, 52, 55], close                    # C E G - unchanged
+    open_ = _voicing(st, 3, 48, 84, 5)
+    assert open_[0] == 48, open_
+    gaps = [b - a for a, b in zip(open_, open_[1:])]
+    assert all(g >= 5 for g in gaps), (open_, gaps)
+    # root, fifth, then the third an octave up as a tenth - not a stack of thirds
+    assert [n % 12 for n in open_] == [0, 7, 4], open_
+    assert open_[-1] - open_[0] > 12, "an open voicing that fits in one octave is not one"
+
+
+def test_the_pedal_holds_while_the_chord_moves():
+    """A floor that follows the harmony is a bass line. This one is read from
+    the key: 「即使上層和弦在變換，低音仍維持不變」."""
+    from backend.mie.algos.silence import _voicing
+
+    class _K:
+        tonic_pc = 0
+    class _S:
+        key, scale_id = _K(), "major"
+        chord = None
+
+    st = _S()
+    seen = []
+    for tones, root in (((0, 4, 7), 0), ((5, 9, 0), 5), ((7, 11, 2), 7)):
+        st.chord = type("C", (), {"tones": tones, "root_pc": root})()
+        v = _voicing(st, 3, 48, 84, 5, pedal=0)
+        seen.append(v)
+        assert v[0] == 48, (tones, v)                       # C, every time
+    assert len({tuple(v[1:]) for v in seen}) == 3, f"only the floor should hold: {seen}"
+
+
+def test_a_sustain_lane_asked_to_open_up_offers_no_close_neighbours():
+    """This lane adds one note at a time and the caller picks at RANDOM from
+    everything on offer, so it had no spacing at all - only an average. What
+    changed is the pool it picks from.
+
+    Tested on the pool itself rather than through a take: the lane cannot always
+    honour the gap - when the only colours left are close ones it takes them
+    rather than going silent, which is the right trade for a pad - so a run of
+    notes is the wrong place to look for the rule.
+    """
+    from backend.mie.algos.sustain import _candidates
+
+    eng, clk, out = make([{"id": "s", "src": 0, "dst": 3, "algo": "sustain", "prob": 1.0,
+                           "constraint": "scale", "lane": "pad", "after_s": 0.5,
+                           "voices": 4, "hold_beats": 60, "vel": 44,
+                           "low": 48, "high": 84, "above_held": False}])
+    e = eng.graph.find_edge("s")
+    hold_chord(eng, clk, 0, [60, 64, 67], vel=80)
+    run_for(eng, clk, 0.5)
+
+    close = _candidates(eng.st, e, [60], 0.0)
+    assert any(abs(n - 60) < 5 for n in close), f"nothing close was on offer anyway: {close}"
+
+    e.params["spacing"] = "open"
+    wide = _candidates(eng.st, e, [60], 0.0)
+    assert wide, "opening it up left nothing at all"
+    assert not [n for n in wide if abs(n - 60) < 5], f"still offering neighbours: {wide}"
+    assert set(wide) <= set(close), "opening up must NARROW the pool, never invent notes"
+
+
+def test_a_sustain_pedal_is_never_the_voice_that_gets_retired():
+    """The rotation drops the oldest voice, and the pedal is always the oldest."""
+    eng, clk, out = make([{"id": "s", "src": 0, "dst": 3, "algo": "sustain", "prob": 1.0,
+                           "constraint": "chord", "lane": "pad", "after_s": 0.5,
+                           "every_bars_min": 0.25, "every_bars_max": 0.25, "voices": 2,
+                           "hold_beats": 60, "vel": 44, "low": 48, "high": 84,
+                           "pedal": "tonic"}])
+    hold_chord(eng, clk, 0, [60, 64, 67], vel=80)
+    run_for(eng, clk, 3.0)
+    first = sorted(n for (ch, n) in eng.st.active_gen if ch == 3)
+    assert first and first[0] % 12 == 0, f"the pedal did not go down first: {first}"
+    run_for(eng, clk, 12.0)                                  # several rotations
+    still = sorted(n for (ch, n) in eng.st.active_gen if ch == 3)
+    assert first[0] in still, f"the pedal was retired: {first[0]} not in {still}"
+
+
+def test_spacing_and_pedal_are_off_unless_asked_for():
+    """Every scene in existence was tuned without these."""
+    from backend.mie.algos import pedal_pc, spacing_gap
+
+    class _E:
+        params: dict = {}
+    class _K:
+        tonic_pc = 5
+    class _S:
+        key = _K()
+
+    assert spacing_gap(_E()) == 1
+    assert pedal_pc(_S(), _E()) is None
+    e = _E(); e.params = {"pedal": "fifth"}
+    assert pedal_pc(_S(), e) == 0                            # F -> C

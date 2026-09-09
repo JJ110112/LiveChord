@@ -266,6 +266,16 @@
     voice_lead: ["off", "octave", "free"],
     silence_mode: ["sound", "attack"],
     collision: ["octave", "unison", "none"],
+    // How much air between neighbouring voices. `close` is what every scene was
+    // tuned with and stays the default.
+    spacing: ["close", "open", "wide"],
+    // One voice held under the harmony, read from the KEY - a floor that
+    // follows the chord is a bass line, not a pedal.
+    pedal: ["off", "tonic", "fifth"],
+  };
+  const CHOICE_LABEL = {
+    spacing: { close: "密集", open: "開放 1-5-9", wide: "很寬" },
+    pedal: { off: "不用", tonic: "主音", fifth: "五度" },
   };
 
   // ------------------------------------------------------------- XY pad
@@ -783,13 +793,25 @@
     return wrap;
   }
 
+  const CHOICE_FIELD = {
+    spacing: ["聲部間距", "聲部之間至少隔多遠。密集 = 疊在一起（原本的樣子）；"
+                        + "開放 = 根音、五度、九度，三度被推到上面變成十度，中頻讓出來給人聲或旋律"],
+    pedal: ["持續低音", "一個聲部釘在調的主音或五度，上面的和弦怎麼換它都不動。"
+                      + "它不會被輪替掉——會被輪掉的就不是持續低音了"],
+  };
   function edgeChoice(e, key) {
     const wrap = document.createElement("label");
     wrap.className = "mie-field";
-    wrap.title = key;
-    wrap.innerHTML = `<span>${key}</span><select></select>`;
+    const f = CHOICE_FIELD[key];
+    wrap.title = f ? f[1] : key;
+    wrap.innerHTML = `<span>${f ? f[0] : key}</span><select></select>`;
     const sel = wrap.querySelector("select");
-    CHOICES[key].forEach((v) => { const o = document.createElement("option"); o.value = v; o.textContent = v; sel.appendChild(o); });
+    CHOICES[key].forEach((v) => {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = (CHOICE_LABEL[key] && CHOICE_LABEL[key][v]) || v;
+      sel.appendChild(o);
+    });
     sel.dataset.key = key;
     sel.value = String(e[key] === undefined || e[key] === true ? CHOICES[key][0] : e[key]);
     sel.addEventListener("change", () => send({ type: "set", path: `edge.${e.id}.${key}`, value: sel.value }));
@@ -892,6 +914,8 @@
         body.appendChild(el._swell);
         const choices = ["constraint", "align", "voice_lead", "collision"];
         if (e.algo === "silence") choices.push("silence_mode");
+        // Only the two lanes that lay a chord down have a voicing to shape.
+        if (e.algo === "silence" || e.algo === "sustain") choices.push("spacing", "pedal");
         choices.forEach((k) => body.appendChild(edgeChoice(e, k)));
         box.appendChild(el); edgeEls.set(e.id, el);
       }

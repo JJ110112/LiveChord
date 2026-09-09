@@ -90,6 +90,40 @@ def tail_floor(edge, st, default: int = 12) -> int:
 
 
 # submodules import the two helpers above, so they must come after them
+# ------------------------------------------------------- 開放聲部 / 持續低音
+# Phase 2 of the worship-pad work. The player's brief, verbatim: 「絕對不彈簡單
+# 的 Root Position 三和弦」, 「常用 1-5-9 或 1-5-8-3 的寬廣配器，留出大量的中頻
+# 空間給主旋律或人聲」, and a pedal tone held under changing harmony.
+#
+# The order is the voicing. Root first, then the FIFTH - that is what opens the
+# middle out - then the ninth, and the third only after them, so the third
+# lands an octave up as a tenth instead of filling in the space the voice or
+# the melody is supposed to occupy. Everything after that is the leftovers, in
+# the order an accompanist would reach for them.
+OPEN_ORDER = (0, 7, 2, 4, 9, 10, 11, 5, 3, 6, 8, 1)
+
+# How much air between neighbouring voices. `close` is what the engine did
+# before and stays the default: nothing that is already tuned changes shape
+# because this arrived.
+SPACING_GAP = {"close": 1, "open": 5, "wide": 7}
+
+
+def spacing_gap(edge) -> int:
+    return SPACING_GAP.get(str(edge.params.get("spacing", "close")), 1)
+
+
+def pedal_pc(st, edge):
+    """The pitch class this lane holds under everything, or None.
+
+    Read from the KEY, not from the chord: a pedal that follows the chord is
+    not a pedal, it is a bass line. 「即使上層和弦在變換，低音仍維持不變」.
+    """
+    mode = str(edge.params.get("pedal", "") or "")
+    if mode not in ("tonic", "fifth"):
+        return None
+    return (st.key.tonic_pc + (7 if mode == "fifth" else 0)) % 12
+
+
 from . import echo, follow, phrase, shadow, silence, sustain  # noqa: E402
 
 EVENT_ALGOS = {"follow": follow.run, "echo": echo.run, "shadow": shadow.run}

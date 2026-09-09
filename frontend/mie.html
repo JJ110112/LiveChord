@@ -7,7 +7,7 @@
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="icon" href="/favicon.svg?v=4" type="image/svg+xml">
   <link rel="stylesheet" href="/css/base.css?v=24">
-  <link rel="stylesheet" href="/css/mie.css?v=43">
+  <link rel="stylesheet" href="/css/mie.css?v=44">
 </head>
 <body class="mie-body">
   <!-- 頂列：MODE / SCENE / KEY / CHORD / BPM / clock / PANIC -->
@@ -39,7 +39,7 @@
     <div class="mie-spacer"></div>
     <button id="mieResume" class="mie-btn" title="離開 BYPASS，回到 scene 的模式">RESUME</button>
     <div class="mie-advice" id="mieAdvice" hidden>
-      <button class="mie-adv-trigger" id="mieAdviceBtn" title="引擎注意到的落差。它只會說，不會自己動手"><span class="mie-adv-dot"></span><span class="mie-adv-n">0</span></button>
+      <button class="mie-adv-trigger" id="mieAdviceBtn" title="引擎注意到的落差。它只會說，不會自己動手；每一則都可以按「不用再提」永久關掉"><span class="mie-adv-dot"></span><span class="mie-adv-n">0</span><span class="mie-adv-lbl">落差</span></button>
       <div class="mie-adv-pop" id="mieAdvicePop" hidden></div>
     </div>
    </div>
@@ -142,6 +142,6 @@
   </section>
 
   <script src="/js/mie-roll.js?v=12"></script>
-  <script src="/js/mie.js?v=69"></script>
+  <script src="/js/mie.js?v=70"></script>
 </body>
 </html>

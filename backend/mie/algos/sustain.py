@@ -21,7 +21,7 @@ from ..events import Proposal
 from ..graph import Edge
 from ..scales import scale_pcs
 from ..state import MusicalState
-from . import scaled_vel, t_beats, t_secs, time_scale
+from . import OPEN_ORDER, pedal_pc, scaled_vel, spacing_gap, t_beats, t_secs, time_scale
 
 
 def _candidates(st: MusicalState, edge: Edge, lane_notes: list[int], tension: float = 0.0) -> list[int]:
@@ -76,7 +76,48 @@ def _candidates(st: MusicalState, edge: Edge, lane_notes: list[int], tension: fl
         if (n % 12) in lane_pcs:
             continue                      # the lane already covers this colour
         (doubled if (n % 12) in human_pcs else fresh).append(n)
-    return fresh or doubled
+    out = fresh or doubled
+    # This lane builds its chord one note at a time and the caller picks at
+    # RANDOM from what comes back, so with the whole register on offer the
+    # result has no spacing at all - 「絕對不彈簡單的 Root Position 三和弦」 is
+    # about the shape, and until now there was no shape. Narrowing the list to
+    # the notes that sit at least `gap` from every voice already down is what
+    # gives one; the choice among them stays random, so the lane still evolves.
+    gap = spacing_gap(edge)
+    if gap > 1 and lane_notes and out:
+        room = [n for n in out if all(abs(n - m) >= gap for m in lane_notes)]
+        if room:
+            out = room
+    return out
+
+
+def _pedal_note(st: MusicalState, edge: Edge, lane_notes: list[int]) -> int | None:
+    """The note this lane holds under everything, if it is not holding it yet.
+
+    Lowest first, and read from the KEY rather than the chord: a floor that
+    follows the harmony is a bass line, not a pedal. 「即使上層和弦在變換，
+    低音仍維持不變」.
+    """
+    pc = pedal_pc(st, edge)
+    if pc is None:
+        return None
+    from ..constraint import edge_range
+    rng = edge_range(edge, st)
+    low, high = rng if rng else (int(edge.params.get("low", 55)),
+                                 int(edge.params.get("high", 88)))
+    n = low + ((pc - low) % 12)
+    if n > high:
+        return None
+    return None if n in lane_notes else n
+
+
+def _pedal_hold(st: MusicalState, edge: Edge, lane_notes: list[int]) -> int | None:
+    """Which of the lane's notes is the pedal, and must not be retired."""
+    pc = pedal_pc(st, edge)
+    if pc is None or not lane_notes:
+        return None
+    same = [n for n in lane_notes if n % 12 == pc]
+    return min(same) if same else None
 
 
 def on_skip(st: MusicalState, edge: Edge, now: float, lane_state: dict) -> None:
@@ -135,10 +176,14 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
     hi = max(lo, float(edge.params.get("every_bars_max", 2.0)) * scale)
     lane_state["next_t"] = now + rng.uniform(lo, hi) * bar_s
 
-    cands = _candidates(st, edge, lane_notes, tension)
-    if not cands:
-        return ceiling_offs
-    note = rng.choice(cands)
+    # The floor goes down first and is not part of the rotation below: a pedal
+    # that gets retired as "the oldest voice" is not a pedal.
+    note = _pedal_note(st, edge, lane_notes)
+    if note is None:
+        cands = _candidates(st, edge, lane_notes, tension)
+        if not cands:
+            return ceiling_offs
+        note = rng.choice(cands)
     vel = scaled_vel(edge, int(edge.params.get("vel", 46)) + rng.randint(-4, 4))
     hold = t_beats(edge, st, "hold_beats", 8.0)
     t_off = 0.0     # the engine quantises every lane through `align` (plan §11 Ph2)
@@ -150,8 +195,10 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
         # The HIGHEST goes first when the lane is asked to stay under the
         # player: "如果完整和弦會造成高音超出限制，優先刪除或降低最高聲部".
         # Otherwise the oldest, which is what a pad rotating its colours wants.
+        keep = _pedal_hold(st, edge, lane_notes)
         live = [(n, g.t_on) for (ch, n), g in list(st.active_gen.items())
-                if ch == edge.dst and g.lane == edge.lane and n in lane_notes]
+                if ch == edge.dst and g.lane == edge.lane and n in lane_notes
+                and n != keep]
         if live:
             oldest = (max(live, key=lambda x: x[0])[0] if edge.params.get("below_player")
                       else min(live, key=lambda x: x[1])[0])

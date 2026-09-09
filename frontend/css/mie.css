@@ -317,6 +317,10 @@
   color: var(--text-dim); font-size: 11px; font-weight: 700; cursor: pointer; }
 .mie-adv-trigger:hover { border-color: var(--accent); color: var(--text); }
 .mie-adv-dot { width: 7px; height: 7px; border-radius: 50%; background: #5c6bc0; }
+/* A dot and a number, in a bar of twelve other pills, is not findable - the
+   player asked where the advisory WAS while it was sitting two inches from
+   their cursor. It says what it is now. */
+.mie-adv-lbl { font-size: 11px; letter-spacing: .06em; }
 .mie-advice.has-warn .mie-adv-dot { background: #ffa726; }
 .mie-advice.has-warn .mie-adv-trigger { border-color: #ffa726; color: #ffa726; }
 .mie-adv-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; width: min(420px, 78vw);
