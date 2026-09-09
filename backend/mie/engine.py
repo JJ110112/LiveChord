@@ -87,6 +87,36 @@ def drift_at(now: float, depth: float, period_s: float, shape: str, phase: float
     return max(0.15, min(2.0, 1.0 + depth * v))
 
 
+def swell_at(now: float, depth: float, period_s: float, shape: str, phase: float = 0.0) -> int:
+    """The breath, as a MIDI controller value 0-127.
+
+    A pad that is loud the instant it arrives and stays exactly there until it
+    stops is the "呆板" in 「單純的長音持續按著」: velocity decides how a note
+    STARTS and nothing after that moves. This is what moves after that.
+
+    It rests at the TOP and only ever dips below it. That is not a stylistic
+    choice - it is the safety property that makes it usable. CC11 and CC1 are
+    channel-wide and sticky: a value left at 40 quietens the next note anybody
+    sends on that channel, including the player's own passthrough. A wave
+    centred on 127 can only ever be given back by writing 127, and everything
+    that stops this - the lane going quiet, PANIC, the engine exiting - writes
+    exactly that.
+    """
+    if depth <= 0 or period_s <= 0:
+        return 127
+    x = ((now / period_s) + phase) % 1.0
+    if shape == "ramp":                       # saw: swell, then drop back
+        v = x
+    elif shape == "triangle":
+        v = 1.0 - 2.0 * abs(x - 0.5)
+    elif shape == "breathe":                  # longer in, shorter out, like a breath
+        v = math.sin(math.pi * (x ** 0.7))
+    else:                                     # sine
+        v = 0.5 + 0.5 * math.sin(2.0 * math.pi * x)
+    lo = 127.0 * (1.0 - max(0.0, min(1.0, depth)))
+    return int(round(lo + (127.0 - lo) * max(0.0, min(1.0, v))))
+
+
 def port_for(ch: int) -> str:
     return "reaper" if ch == 1 else "hst"
 
@@ -145,6 +175,10 @@ class Engine:
         if self.mode not in MODES:
             self.mode = "SAFE"
         self.lane_state: dict[str, dict] = {}
+        # What we have written to each channel's breath controller, so we only
+        # send on a change, and so we know which channels have to be given back.
+        self._swell_sent: dict[int, tuple[int, int]] = {}    # ch -> (cc, value)
+        self._swell_t = 0.0
         self.stats = {"human_notes": 0, "gen_sched": 0, "gen_sent": 0, "dropped": 0, "muted": 0, "loops": 0,
                       "panics": 0, "controls": 0, "dups": 0}
         self.edge_fires: dict[str, int] = {}
@@ -1412,6 +1446,103 @@ class Engine:
         self.drop_reasons[reason] = self.drop_reasons.get(reason, 0) + 1
         self._ui("drop", reason=reason, edge=pair.edge_id, ch=pair.ch, note=pair.note, lane=pair.lane)
 
+    # 25 Hz. A controller sweep is heard as smooth from about 20 updates a
+    # second and MIDI is a 31250 baud wire shared with the notes; a tick-rate
+    # stream would be 200 messages a second per channel for no audible gain.
+    SWELL_EVERY_S = 0.04
+
+    def _swell_of(self, edge) -> Optional[tuple]:
+        """An edge's breath, as (cc, depth, seconds, shape, phase), or None.
+
+        Two owners, deliberately. The INSTRUMENT says which controller it
+        listens to, because that is a fact about the patch loaded on it and
+        nothing else can know it - a Fantom pad on CC11, a filter opened by
+        CC74, a synth that ignores both. The EDGE says how deep and how slow,
+        because that is the music. Either one silent means no breath, and
+        nothing is ever sent to an instrument that has not said what to send.
+        """
+        inst = self.instruments.get(edge.dst)
+        cc = int(getattr(inst, "swell_cc", 0) or 0) if inst else 0
+        if not cc:
+            return None
+        d = edge.params.get("swell")
+        if not isinstance(d, dict):
+            return None
+        depth = float(d.get("depth", 0) or 0)
+        if depth <= 0:
+            return None
+        beats = float(d.get("beats", 8) or 8)
+        period = max(0.5, beats * self.st.beat_s * (self.st.time_knob or 1.0))
+        phase = d.get("phase")
+        if phase is None:
+            phase = (sum(ord(c) for c in edge.id) % 100) / 100.0
+        return (cc, depth, period, str(d.get("shape", "breathe")), float(phase))
+
+    def _swell(self, now: float) -> None:
+        """Move the breath controller on every channel a breathing lane is using.
+
+        Engine thread, at 25 Hz, and it touches nothing but the wire: no state
+        the algorithms read, no proposals, no scheduling. A channel is only
+        written while a lane that asked for a breath is actually SOUNDING on it,
+        and is handed straight back the moment it is not - see `swell_at` for
+        why giving it back matters more than the effect itself.
+
+        One breath per channel. Two lanes on the same synth would otherwise
+        write conflicting values to one channel-wide controller at 25 Hz, and
+        the loser would not merely be ignored - the two would interleave and
+        neither shape would be heard. The deeper one wins, and the panel says
+        which channels are shared.
+        """
+        if now - self._swell_t < self.SWELL_EVERY_S:
+            return
+        self._swell_t = now
+        want: dict[int, tuple] = {}
+        if not self.bypass:
+            live = {(ch, g.lane) for (ch, _), g in self.st.active_gen.items()}
+            for e in self.graph.edges:
+                if not e.enabled or (e.dst, e.lane) not in live:
+                    continue
+                sw = self._swell_of(e)
+                if sw is None:
+                    continue
+                if e.dst not in want or sw[1] > want[e.dst][1]:
+                    want[e.dst] = sw
+        for ch, (cc, depth, period, shape, phase) in want.items():
+            self._write_swell(ch, cc, swell_at(now, depth, period, shape, phase))
+        for ch in [c for c in self._swell_sent if c not in want]:
+            self._rest_swell(ch)
+
+    def _write_swell(self, ch: int, cc: int, val: int) -> None:
+        prev = self._swell_sent.get(ch)
+        if prev is not None and prev[0] == cc and prev[1] == val:
+            return                            # only on a change: the wire is shared
+        if prev is not None and prev[0] != cc:
+            self._rest_swell(ch)              # the controller itself changed under us
+        self._swell_sent[ch] = (cc, val)
+        self._send_cc(ch, cc, val)
+
+    def _rest_swell(self, ch: int) -> None:
+        """Give a channel its controller back, at the top."""
+        sent = self._swell_sent.pop(ch, None)
+        if sent is None:
+            return
+        if sent[1] != 127:
+            self._send_cc(ch, sent[0], 127)
+
+    def _rest_all_swells(self) -> None:
+        for ch in list(self._swell_sent):
+            self._rest_swell(ch)
+
+    def _send_cc(self, ch: int, cc: int, val: int) -> None:
+        try:
+            self.send(port_for(ch),
+                      self.mido.Message("control_change", channel=ch - 1, control=cc, value=val))
+        except Exception as e:
+            # a dead port is worth knowing about, but a breath must never be the
+            # thing that stops the engine playing
+            self._swell_sent.pop(ch, None)
+            self._log_error("swell_send", e)
+
     def _drift_of(self, edge) -> Optional[tuple]:
         """An edge's self-moving level, as (depth, seconds, shape, phase).
 
@@ -1571,6 +1702,7 @@ class Engine:
             except Exception as e:
                 self._log_error("advisor", e)
                 self.advice = []
+        self._swell(now)
         if not self.bypass:
             self.st.refresh_texture(now)
             timed = [] if self._frozen else self.graph.timed_edges(self.allowed_algos,
@@ -1626,6 +1758,11 @@ class Engine:
     # --------------------------------------------------------------- PANIC
     def panic(self, reason: str = "manual") -> None:
         now = self.clock()
+        # Before anything else. A PANIC that left CC11 at 40 would silence the
+        # channel for whatever came next - including the player's own hands -
+        # and the one button that must always give everything back would be the
+        # button that took something away.
+        self._rest_all_swells()
         self.stats["panics"] += 1
         self.panicked = True
         self.mode = "BYPASS"

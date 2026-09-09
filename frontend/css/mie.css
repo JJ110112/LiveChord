@@ -102,6 +102,15 @@
   color: var(--text-dim); cursor: pointer; }
 .mie-hold:hover { color: var(--text); border-color: var(--accent); }
 .mie-hold.is-on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+/* which controller this patch listens to. Compact: it lives in a 236 px column
+   next to a name that must stay readable. */
+.mie-swcc { width: 62px; padding: 0 2px; font-size: 10px; color: var(--text-dim);
+  background: transparent; border: 1px solid var(--border); border-radius: 4px; }
+.mie-swcc.is-on { color: var(--accent); border-color: var(--accent); }
+/* depth set on a lane whose instrument has not said which CC it listens to:
+   the control is there, and it sends nothing */
+.mie-field-swell.is-deaf .mie-fl { color: #ff9800; }
+.mie-field-swell.is-deaf .mie-fl::after { content: "（沒設 CC）"; font-size: 9px; }
 .mie-inst { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 4px; border-radius: 6px; }
 .mie-inst.human { background: rgba(33,150,243,.18); }
 .mie-inst.active { box-shadow: inset 0 0 0 1px #4caf5088; }

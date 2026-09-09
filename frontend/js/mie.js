@@ -154,7 +154,14 @@
       if (!el) {
         el = document.createElement("label"); el.className = "mie-inst";
         el.innerHTML = `<input type="checkbox"><span class="dot"></span><span class="ch">CH${inst.ch}</span><span class="nm"></span>`
-          + `<button class="mie-hold" type="button" title="標成適合長音">長</button>`;
+          + `<button class="mie-hold" type="button" title="標成適合長音">長</button>`
+          + `<select class="mie-swcc" title="這台的表情/呼吸吃哪一個 CC"></select>`;
+        const sw = el.querySelector(".mie-swcc");
+        SWELL_CCS.forEach(([v, label]) => {
+          const o = document.createElement("option"); o.value = v; o.textContent = label; sw.appendChild(o);
+        });
+        sw.addEventListener("change", (ev) =>
+          send({ type: "set", path: `inst.${inst.ch}.swell_cc`, value: Number(ev.target.value) }));
         el.querySelector("input").addEventListener("change", (e) => send({ type: "set", path: `inst.${inst.ch}.enabled`, value: e.target.checked }));
         // Whether a synth can hold a long note is a fact about the PATCH loaded
         // on it, and the player changes patches. It was a line in a JSON file
@@ -180,6 +187,12 @@
       hb.title = el._hold
         ? `已標長音：這台可以抱到 ${g.sustain_dur_s || 30} 秒`
         : `沒標長音：這台上的音最長 ${g.max_dur_s || 8} 秒。點一下改成長音`;
+      const sw = el.querySelector(".mie-swcc");
+      if (document.activeElement !== sw) sw.value = String(inst.swell_cc || 0);
+      sw.classList.toggle("is-on", !!inst.swell_cc);
+      sw.title = inst.swell_cc
+        ? `呼吸走 CC${inst.swell_cc}。休息值永遠是 127，不會把這台留在小聲的地方`
+        : "沒有設 CC：這台不會收到任何呼吸訊息。選一個之後，聲部的「呼吸」才會出去";
       el.title = `${inst.role} · max ${inst.max_voices} voices · ${inst.note_range[0]}–${inst.note_range[1]}`;
     });
   }
@@ -593,7 +606,71 @@
   // Every edge already has its own volume - 力度× - and this gives that volume
   // a life of its own. Written as one nested object so there is a single name
   // for the setting, the same way the playing-style condition is written.
+  // The three a synth patch is normally wired to, and nothing else: this is a
+  // sticky channel-wide controller and a wrong guess quietens a machine that
+  // will not give it back on its own.
+  const SWELL_CCS = [[0, "—"], [1, "CC1 調變"], [11, "CC11 表情"], [74, "CC74 濾波"]];
   const DRIFT_SHAPES = [["sine", "起伏"], ["triangle", "來回"], ["ramp", "推上去"], ["breathe", "呼吸"]];
+
+  /** 呼吸: a controller sweep across the life of a held note.
+   *
+   *  Velocity decides how a note STARTS and nothing after that moves, which is
+   *  the whole of 「單純的長音持續按著會顯得呆板」. This moves after that. It
+   *  needs both halves: the instrument has to say which controller its patch
+   *  listens to (左邊樂器清單), and the lane has to say how deep and how slow.
+   */
+  function edgeSwell(e) {
+    let cur = e, inst = null;
+    const wrap = document.createElement("label");
+    wrap.className = "mie-field mie-field-drift mie-field-swell";
+    wrap.innerHTML = '<span class="mie-fl">呼吸</span>'
+      + '<span class="mie-drift-row">'
+      + '<input class="mie-dd" type="range" min="0" max="1" step="0.05" title="幅度：0 = 不動；1 = 從全開一路呼吸到全關">'
+      + '<span class="mie-dv"></span>'
+      + '<input class="mie-db" type="number" min="2" max="128" step="2" title="一個呼吸幾拍">'
+      + '<select class="mie-ds" title="形狀"></select></span>';
+    const dd = wrap.querySelector(".mie-dd"), dv = wrap.querySelector(".mie-dv");
+    const db = wrap.querySelector(".mie-db"), ds = wrap.querySelector(".mie-ds");
+    DRIFT_SHAPES.forEach(([v, label]) => {
+      const o = document.createElement("option"); o.value = v; o.textContent = label; ds.appendChild(o);
+    });
+    const read = (x) => (x && typeof x.swell === "object" && x.swell) || {};
+    const paint = () => {
+      const d = read(cur);
+      dd.value = d.depth || 0;
+      dv.textContent = Number(d.depth || 0).toFixed(2);
+      db.value = d.beats || 8;
+      ds.value = d.shape || "breathe";
+      const on = d.depth > 0;
+      wrap.classList.toggle("is-off", !on);
+      // Depth without a controller sends nothing at all, and a control that
+      // silently does nothing is worse than one that is not there.
+      const cc = inst && inst.swell_cc;
+      wrap.classList.toggle("is-deaf", !!on && !cc);
+      wrap.title = cc
+        ? `送 CC${cc} 給 CH${cur.dst}，在音響著的時候上下擺。休息值一定是 127——`
+          + `這條線一停、按 PANIC、引擎關掉，都會把它還回去`
+        : `CH${cur.dst} 還沒說它聽哪一個 CC，所以這裡設什麼都不會送出去。`
+          + `到左邊樂器清單把 CH${cur.dst} 的 CC 選起來`;
+    };
+    const push = () => {
+      const v = { depth: Number(dd.value), beats: Number(db.value), shape: ds.value };
+      cur.swell = v;
+      send({ type: "set", path: `edge.${cur.id}.swell`, value: v });
+      paint();
+    };
+    dd.addEventListener("input", () => { dv.textContent = Number(dd.value).toFixed(2); });
+    dd.addEventListener("change", push);
+    db.addEventListener("change", push);
+    ds.addEventListener("change", push);
+    wrap.sync = (fresh, insts) => {
+      cur = fresh;
+      inst = (insts || []).find((i) => i.ch === fresh.dst) || null;
+      if (!wrap.contains(document.activeElement)) paint();
+    };
+    paint();
+    return wrap;
+  }
 
   function edgeDrift(e) {
     let cur = e;
@@ -724,6 +801,8 @@
         body.appendChild(el._when);
         el._drift = edgeDrift(e);
         body.appendChild(el._drift);
+        el._swell = edgeSwell(e);
+        body.appendChild(el._swell);
         const choices = ["constraint", "align", "voice_lead", "collision"];
         if (e.algo === "silence") choices.push("silence_mode");
         choices.forEach((k) => body.appendChild(edgeChoice(e, k)));
@@ -774,6 +853,7 @@
         : "");
       if (el._when && !el._when.contains(document.activeElement)) el._when.sync(e);
       if (el._drift) el._drift.sync(e);
+      if (el._swell) el._swell.sync(e, s.instruments);
       // A lane whose condition does not match right now is not broken and not
       // idle - it is WAITING, and it should say which playing it is waiting
       // for. Silence you can explain is not the same as silence you cannot.

@@ -44,6 +44,12 @@ class Instrument:
     vel_scale: float = 1.0
     note_range: tuple[int, int] = (24, 108)
     sustain_ok: bool = False
+    # Which controller this patch listens to for expression. 0 = none, and
+    # nothing is ever sent. Only the rig knows this: CC11 on one synth opens
+    # the expression, CC74 on another opens the filter, and a third ignores
+    # both - guessing means writing a sticky channel-wide value to a machine
+    # that will not give it back.
+    swell_cc: int = 0
 
     @classmethod
     def from_json(cls, ch: int, d: dict) -> "Instrument":
@@ -51,12 +57,14 @@ class Instrument:
         return cls(ch=ch, name=d.get("name", f"CH{ch}"), role=d.get("role", "synth"),
                    group=d.get("group", "hw"), enabled=bool(d.get("enabled", True)),
                    max_voices=int(d.get("max_voices", 4)), vel_scale=float(d.get("vel_scale", 1.0)),
-                   note_range=(int(nr[0]), int(nr[1])), sustain_ok=bool(d.get("sustain_ok", False)))
+                   note_range=(int(nr[0]), int(nr[1])), sustain_ok=bool(d.get("sustain_ok", False)),
+                   swell_cc=int(d.get("swell_cc", 0) or 0))
 
     def to_dict(self) -> dict:
         return {"ch": self.ch, "name": self.name, "role": self.role, "group": self.group,
                 "enabled": self.enabled, "max_voices": self.max_voices, "vel_scale": self.vel_scale,
-                "note_range": list(self.note_range), "sustain_ok": self.sustain_ok}
+                "note_range": list(self.note_range), "sustain_ok": self.sustain_ok,
+                "swell_cc": self.swell_cc}
 
 
 def load_instruments(path: Optional[str] = None) -> dict[int, Instrument]:
@@ -70,7 +78,7 @@ def load_instruments(path: Optional[str] = None) -> dict[int, Instrument]:
 # gets written back. Everything else in instruments.json - the name, the note
 # range, the voice count, the `_note_` lines explaining a decision - is the
 # rig's description and is not the panel's to rewrite.
-INSTRUMENT_UI_FIELDS = ("enabled", "sustain_ok")
+INSTRUMENT_UI_FIELDS = ("enabled", "sustain_ok", "swell_cc")
 
 
 def save_instruments(instruments: dict, path: Optional[str] = None) -> str:

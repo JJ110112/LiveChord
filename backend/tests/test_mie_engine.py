@@ -3869,3 +3869,96 @@ def test_saving_instruments_does_not_invent_channels():
         with open(path, encoding="utf-8") as f:
             back = json.load(f)
     assert list(back) == ["3"], back
+
+
+# ------------------------------------------------------------------ 呼吸 (Phase 1)
+def _breathing(edge_extra=None, **inst_kw):
+    """A pad on CH3 with a breath, and an instrument that listens for one."""
+    eng, clk, out = make([dict({"id": "p", "src": 0, "dst": 3, "algo": "silence", "prob": 1.0,
+                                "constraint": "chord", "lane": "pad", "after_s": 3.0,
+                                "hold_s": 40, "voices": 2, "vel": 40, "low": 48, "high": 84,
+                                "swell": {"depth": 0.6, "beats": 4, "shape": "sine"}},
+                               **(edge_extra or {}))])
+    for k, v in inst_kw.items():
+        setattr(eng.instruments[3], k, v)
+    return eng, clk, out
+
+
+def _ccs(out, ch=3):
+    return [(t, m.control, m.value) for t, _, m in out.sent
+            if m.type == "control_change" and m.channel + 1 == ch]
+
+
+def test_swell_moves_the_controller_while_the_pad_sounds():
+    """Velocity decides how a note STARTS and nothing after that moves - which
+    is the whole of 「單純的長音持續按著會顯得呆板」."""
+    eng, clk, out = _breathing(swell_cc=11)
+    play(eng, clk, 0, 60, vel=90)
+    run_for(eng, clk, 4.0)
+    assert out.notes(ch=3), "the pad never entered, so this proves nothing"
+    out.clear()
+    run_for(eng, clk, 4.0)
+
+    cc = _ccs(out)
+    assert cc, "the note is held and the controller never moved"
+    assert {c for _, c, _ in cc} == {11}, "wrote a controller nobody asked for"
+    vals = [v for _, _, v in cc]
+    assert max(vals) - min(vals) > 30, f"barely moved: {min(vals)}..{max(vals)}"
+    assert max(vals) <= 127 and min(vals) >= 0, vals
+    # 25 Hz, not tick rate: the wire is shared with the notes
+    assert len(cc) < 4.0 * 30, f"{len(cc)} messages in 4 s is a stream, not a sweep"
+
+
+def test_the_breath_is_given_back_when_the_lane_stops():
+    """CC11 and CC1 are channel-wide and sticky. A value left at 40 quietens
+    the next note anybody sends on that channel, including the player's own
+    passthrough - so resting at the top is the safety property, not a style."""
+    eng, clk, out = _breathing(swell_cc=11)
+    play(eng, clk, 0, 60, vel=90)
+    run_for(eng, clk, 6.0)
+    assert _ccs(out), "never breathed, so giving it back proves nothing"
+    out.clear()
+    eng.set_edge("p", "enabled", False)
+    run_for(eng, clk, 1.0)
+    assert _ccs(out)[-1][2] == 127, f"left the channel at {_ccs(out)[-1][2]}"
+
+
+def test_panic_gives_the_breath_back_first():
+    """The one button that must always give everything back cannot be the
+    button that leaves a channel quiet."""
+    eng, clk, out = _breathing(swell_cc=11)
+    play(eng, clk, 0, 60, vel=90)
+    run_for(eng, clk, 6.0)
+    out.clear()
+    eng.panic("ui")
+    assert 127 in [v for _, _, v in _ccs(out)], f"PANIC left it at {_ccs(out)}"
+
+
+def test_no_breath_to_an_instrument_that_never_said_which_controller():
+    """Guessing means writing a sticky channel-wide value to a machine that
+    will not give it back."""
+    eng, clk, out = _breathing()                      # swell_cc defaults to 0
+    play(eng, clk, 0, 60, vel=90)
+    run_for(eng, clk, 8.0)
+    assert not _ccs(out), _ccs(out)
+
+
+def test_no_breath_at_depth_zero():
+    eng, clk, out = _breathing({"swell": {"depth": 0, "beats": 4}}, swell_cc=11)
+    play(eng, clk, 0, 60, vel=90)
+    run_for(eng, clk, 8.0)
+    assert not _ccs(out), _ccs(out)
+
+
+def test_the_breath_rests_at_the_top_and_only_dips():
+    """It can only ever be given back by writing 127, so it may only live
+    below it."""
+    from backend.mie.engine import swell_at
+    for shape in ("sine", "triangle", "ramp", "breathe"):
+        vals = [swell_at(t * 0.25, 0.5, 4.0, shape) for t in range(64)]
+        assert max(vals) <= 127, (shape, max(vals))
+        assert max(vals) >= 120, (shape, "never reaches the top", max(vals))
+        assert min(vals) < 100, (shape, "never actually dips", min(vals))
+    assert swell_at(3.0, 0.0, 4.0, "sine") == 127, "depth 0 must be exactly the top"
+    assert swell_at(3.0, 0.5, 0.0, "sine") == 127, "a zero period must rest, not divide"
+    assert swell_at(1.0, 1.0, 4.0, "triangle", 0.0) >= 0
