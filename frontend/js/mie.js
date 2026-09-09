@@ -270,9 +270,14 @@
     const el = document.createElement("div");
     el.className = "mie-pad";
     el.title = `橫向 ${spec.x.label}　直向 ${spec.y.label}（拖曳）`;
-    el.innerHTML = `<div class="mie-pad-dot"></div><span class="mie-pad-lbl"></span>`;
+    el.innerHTML = `<div class="mie-pad-dot"></div>`;
     const dot = el.querySelector(".mie-pad-dot");
-    const lbl = el.querySelector(".mie-pad-lbl");
+    // The readout used to sit INSIDE the pad, bottom-left, where the dot sat on
+    // top of it as soon as either value was low - "延遲 60 · 持續 0.5" with a
+    // blue circle through the middle of it. It now lives beside the pad, and
+    // the row that owns both hands it over.
+    let lbl = { textContent: "" };
+    el.setLabel = (node) => { lbl = node; el.render(); };
 
     el.render = () => {
       const x = padValue(e, spec.x), y = padValue(e, spec.y);
@@ -332,6 +337,34 @@
     el.addEventListener("pointercancel", end);
     el.render();
     return el;
+  }
+
+  /** 強度: the edge's own volume, on the row rather than one click down.
+   *
+   *  It is `vel_scale`, the same setting the 力度× slider in the body writes -
+   *  the answer to "每個子效果能有自己的獨立音量嗎". Having it out here is the
+   *  point: balancing lanes against each other is done by ear, while playing,
+   *  and it was the one knob that always needed the panel opened first.
+   *
+   *  Both sliders stay honest because both are re-read from the engine's own
+   *  snapshot; neither writes to the other.
+   */
+  function makeVel(e, wrap) {
+    const sl = wrap.querySelector("input");
+    const out = wrap.querySelector(".mie-vel-v");
+    const show = (v) => { sl.value = v; out.textContent = Number(v).toFixed(2); };
+    show(e.vel_scale === undefined ? 1 : e.vel_scale);
+    sl.addEventListener("input", () => {
+      out.textContent = Number(sl.value).toFixed(2);
+      send({ type: "set", path: `edge.${e.id}.vel_scale`, value: Number(sl.value) });
+    });
+    return {
+      sync(ed) {
+        // never while the finger is on it, or the value fights the drag
+        if (document.activeElement === sl) return;
+        show(ed.vel_scale === undefined ? 1 : ed.vel_scale);
+      },
+    };
   }
 
   function edgeBool(e, spec) {
@@ -559,17 +592,39 @@
       let el = edgeEls.get(e.id);
       if (!el) {
         el = document.createElement("div"); el.className = "mie-edge";
+        // Three lines rather than one long strip: the name and the lane badge
+        // said the same thing twice at opposite ends of the row and still
+        // collided at three-across, and the pad was a letterbox because it was
+        // taking whatever width was left over.
         el.innerHTML = `<div class="mie-edge-head">
             <input type="checkbox" title="啟用">
-            <div><div class="name"></div><div class="route"></div></div>
-            <span class="algo"></span><span class="fires"></span>
+            <span class="algo"></span>
+            <div class="name"></div>
+            <span class="fires" title="這一趟這條線被觸發的次數"></span>
             <button class="mie-more" title="參數">▾</button>
-          </div><div class="mie-edge-body" hidden></div>`;
+          </div>
+          <div class="route"></div>
+          <div class="mie-edge-quick">
+            <div class="mie-quick-right">
+              <label class="mie-vel" title="這條線自己的音量：生成音的力度倍率（全域音量之外，各聲部各自的）">
+                <span class="mie-fl">強度</span>
+                <input class="mie-fs" type="range" min="0" max="2" step="0.05">
+                <span class="mie-fn mie-vel-v">1.00</span>
+              </label>
+              <span class="mie-pad-lbl"></span>
+            </div>
+          </div>
+          <div class="mie-edge-body" hidden></div>`;
+        const quick = el.querySelector(".mie-edge-quick");
         const pad = makePad(e);
         if (pad) {
-          el.querySelector(".mie-edge-head").insertBefore(pad, el.querySelector(".algo"));
+          quick.insertBefore(pad, quick.firstChild);
+          pad.setLabel(el.querySelector(".mie-pad-lbl"));
           el._pad = pad;
+        } else {
+          quick.classList.add("no-pad");
         }
+        el._vel = makeVel(e, el.querySelector(".mie-vel"));
         el.querySelector('input[type=checkbox]').addEventListener("change", (ev) => send({ type: "set", path: `edge.${e.id}.enabled`, value: ev.target.checked }));
         const body = el.querySelector(".mie-edge-body");
         el.querySelector(".mie-more").addEventListener("click", () => {
@@ -605,6 +660,7 @@
       }
       const src = e.src === 0 ? "HUMAN" : `CH${e.src}`;
       el.querySelector(".name").textContent = e.id;
+      el._vel.sync(e);
       el.querySelector(".route").textContent = `${src} → CH${e.dst} · p ${e.prob} · ${e.constraint}`
         + (e.delay_beats ? ` · ${e.delay_beats} beat` : "") + (e.delay_ms ? ` · ${e.delay_ms} ms` : "");
       const lane = e.lane || e.algo;
@@ -625,7 +681,10 @@
       // A lane whose notes are being thrown away looks identical to a quiet
       // one. Say it on the row, where the control that caused it is.
       const fires = el.querySelector(".fires");
-      fires.textContent = e.mute ? "靜音" : (e.drops ? `${e.fires || 0} ⚠${e.drops}` : (e.fires || 0));
+      // A bare "0" on a row is a number with no noun. It is how many times this
+      // line has fired since the engine came up, and it has to say so.
+      fires.textContent = e.mute ? "靜音"
+        : (e.drops ? `觸發 ${e.fires || 0} ⚠${e.drops}` : `觸發 ${e.fires || 0}`);
       fires.classList.toggle("has-drops", !!e.drops || !!e.mute);
       fires.title = e.mute || (e.drops
         ? `${e.drops} 個音被丟掉了——多半是音域或八度把它推到樂器範圍外`
@@ -639,7 +698,7 @@
       const waiting = want.length > 0 && s.state.texture && !want.includes(s.state.texture);
       el.classList.toggle("is-waiting", !!waiting);
       if (waiting && !e.mute) {
-        fires.textContent = `${e.fires || 0} ⏸`;
+        fires.textContent = `觸發 ${e.fires || 0} ⏸`;
         fires.title = `這條線只在「${want.map((k) => TEX[k] || k).join("、")}」時說話，你現在是「${TEX[s.state.texture] || s.state.texture}」`;
       }
       el.classList.toggle("is-mute", !!e.mute);
