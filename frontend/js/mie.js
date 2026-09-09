@@ -677,6 +677,12 @@
     const show = on === undefined ? rollBox.hidden : on;
     rollBox.hidden = !show;
     $("#mieRollBtn").classList.toggle("is-on", show);
+    // If the module failed to load or parse, the panel would open showing a
+    // toolbar over a dead canvas and nothing would ever explain it.
+    if (show && !roll && !window.MieRoll) {
+      const t = rollBox.querySelector(".mr-title");
+      if (t) t.textContent = "捲軸的程式沒有載入（mie-roll.js）——硬重新整理一次；如果還是這樣，看 console 的錯誤";
+    }
     if (show && !roll && window.MieRoll) {
       roll = window.MieRoll.create(rollBox);
       window.__mieRoll = roll;   // a handle for the console: the roll is the

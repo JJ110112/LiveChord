@@ -126,6 +126,24 @@
     return { lo: Math.max(0, lo - 2), hi: Math.min(127, hi + 2), t0: Math.max(0, t0 - 0.5), t1: t1 + 0.5 };
   }
 
+  /** JSONL -> rows. Blank lines and a half-written last line are normal in a
+   *  log still being appended to; anything else that will not parse is counted,
+   *  so the panel can say what it could not use instead of drawing nothing.
+   *  Splits on CR as well as LF - the engine writes CRLF on Windows, which a
+   *  file picked off disk keeps and the fetch path happened to hide.
+   */
+  function parseLog(text) {
+    const rows = [];
+    let bad = 0;
+    for (const line of String(text).split(/\r?\n/)) {
+      const t = line.trim().replace(/^﻿/, "");
+      if (!t) continue;
+      try { rows.push(JSON.parse(t)); } catch (e) { bad++; }
+    }
+    rows._bad = bad;
+    return rows;
+  }
+
   // ------------------------------------------------------------ the view
   function create(root, opts) {
     opts = opts || {};
@@ -445,16 +463,18 @@
     });
     el.file.addEventListener("change", () => {
       const f = el.file.files && el.file.files[0];
-      if (!f) return;
+      if (!f) { el.title.textContent = "沒有選到檔案"; return; }
+      el.title.textContent = `讀取 ${f.name}（${Math.round(f.size / 1024)} KB）…`;
       const rd = new FileReader();
+      // A blank canvas with no explanation is the worst possible answer: a read
+      // error, an empty file, a file that is not a session log and a bug in
+      // here all looked exactly the same (2026-09-09).
+      rd.onerror = () => {
+        el.title.textContent = `讀不到 ${f.name}：${(rd.error && rd.error.name) || "unknown"}`;
+      };
       rd.onload = () => {
-        const rows = [];
-        for (const line of String(rd.result).split("\n")) {
-          const s = line.trim();
-          if (!s) continue;
-          try { rows.push(JSON.parse(s)); } catch (e) { /* a half-written last line */ }
-        }
-        api.loadEvents(rows, f.name);
+        try { api.loadEvents(parseLog(String(rd.result)), f.name); }
+        catch (e) { el.title.textContent = `${f.name} 解析失敗：${e.message}`; }
       };
       rd.readAsText(f);
       el.file.value = "";
@@ -462,6 +482,11 @@
     // The engine's own recordings, listed by the engine. Reviewing the take
     // you just played should be one click, not a file dialog opened with both
     // hands still on the keyboard.
+    // Populated when the roll opens, NOT only on focus: filling the list from
+    // the focus event is too late - the browser has already drawn the dropdown
+    // by then, so the first click showed nothing but the placeholder and the
+    // recordings looked as if they were not there (2026-09-09). Focus still
+    // refreshes it, for a take recorded since the panel was opened.
     el.logs.addEventListener("focus", () => api.refreshLogs());
     el.logs.addEventListener("change", () => {
       const name = el.logs.value;
@@ -469,15 +494,7 @@
       el.title.textContent = "載入中…";
       fetch("/api/log/" + encodeURIComponent(name))
         .then((r) => (r.ok ? r.text() : Promise.reject(new Error(r.status))))
-        .then((txt) => {
-          const rows = [];
-          for (const line of txt.split(String.fromCharCode(10))) {
-            const t = line.trim();
-            if (!t) continue;
-            try { rows.push(JSON.parse(t)); } catch (e) { /* a half-written last line */ }
-          }
-          api.loadEvents(rows, name);
-        })
+        .then((txt) => api.loadEvents(parseLog(txt), name))
         .catch((e) => { el.title.textContent = `載入失敗：${e.message}`; });
     });
 
@@ -501,7 +518,20 @@
         syncSeek();
         draw();
         const gen = st.notes.filter((n) => !n.human).length;
+        if (!st.notes.length) {
+          // Say WHY there is nothing. An empty canvas that explains itself is a
+          // different thing from one that just sits there.
+          const bad = (rows && rows._bad) || 0;
+          const n = (rows && rows.length) || 0;
+          el.title.textContent = !n
+            ? `${name || "這個檔案"} 是空的，或不是一份 session log（讀到 0 行）`
+            : `${name || "這個檔案"} 讀到 ${n} 行，裡面沒有任何音` +
+              (bad ? `，另有 ${bad} 行看不懂` : "") +
+              " —— 選到的可能不是 data/logs/mie/ 下的 session 檔";
+          return built;
+        }
         let msg = `${name || "log"}：${st.notes.length - gen} 個你彈的、${gen} 個引擎的`;
+        if (rows && rows._bad) msg += `　（${rows._bad} 行看不懂，略過）`;
         if (built.noLength) {
           // an old log, recorded before `gen` carried a length
           msg += `　⚠ ${built.noLength} 個音沒有長度（2026-09-09 之前的 log），畫成短棒`;
@@ -571,6 +601,7 @@
     };
     st.liveRows = [];
     api.setLive(false);
+    api.refreshLogs();
     draw();
     return api;
   }
