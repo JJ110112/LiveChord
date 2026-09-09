@@ -1193,6 +1193,23 @@
    *  can only be read by someone already watching the screen, and nobody
    *  playing is: `tension_gap` was up for fourteen seconds of the 21:05 take.
    *  So the panel says how long ago instead of pretending it is news. */
+  /** The advisory could offer 「切換風格」 without saying WHICH, and a style is
+   *  not a setting - it replaces every algorithm's parameters at once and is
+   *  remembered across restarts. The player pressed it, the panel came back up
+   *  in 留白 the next session, and the only trace was a line in the event
+   *  stream that had scrolled away. Now the button names the style it will
+   *  bring, and says what that costs. */
+  function styleName(id) {
+    const list = (lastSnap && lastSnap.style && lastSnap.style.list) || [];
+    const s = list.find((x) => x.id === id);
+    return (s && s.name) || id;
+  }
+  function altTip(a) {
+    return `整組換成「${styleName(a.alt.style)}」：張力、厚度、時間和每個演算法的設定`
+         + `一次全部換掉，而且會被記住，下次開機還是它。`
+         + `你手動調過的值會保留；風格選單選「—」可以全部退回`;
+  }
+
   function adviceWhen(a) {
     if (!lastSnap || a.first_t === undefined) return "";
     const s = Math.max(0, lastSnap.t - a.first_t);
@@ -1218,7 +1235,8 @@
       row.className = "mie-adv-row" + (a.level === "warn" ? " is-warn" : "")
         + (a.live === false ? " is-past" : "");
       const btns = (a.fix_label ? `<button class="mie-btn mie-adv-fix">${a.fix_label}</button>` : "")
-        + (a.alt && a.alt.style ? `<button class="mie-btn mie-adv-alt">切換風格</button>` : "")
+        + (a.alt && a.alt.style ? `<button class="mie-btn mie-adv-alt" title="${altTip(a)}">`
+            + `換成「${styleName(a.alt.style)}」</button>` : "")
         + `<button class="mie-btn mie-adv-read" title="看過了。它會消失，`
         + `但如果又發生一次還是會再出現">看過了</button>`
         + `<button class="mie-btn mie-adv-mute" title="這件事你已經決定了，不用再提醒。`
@@ -1242,7 +1260,8 @@
       const alt = row.querySelector(".mie-adv-alt");
       if (alt) alt.addEventListener("click", () => {
         send({ type: "style", id: a.alt.style });
-        alt.textContent = "已切換"; alt.disabled = true;
+        alt.textContent = `已換成「${styleName(a.alt.style)}」`;
+        alt.disabled = true;
       });
       pop.appendChild(row);
     });
