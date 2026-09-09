@@ -13,7 +13,7 @@
     "max_dur_s": 8.0,
     "sustain_dur_s": 30.0,
     "avoid_semitone": "ensemble",
-    "tension": 0.2,
+    "tension": 0.6,
     "density": 0.35,
     "master_gain": 0.27,
     "master_cc": 7,
@@ -60,7 +60,7 @@
     {
       "id": "echo_wavestate",
       "src": 0,
-      "dst": 10,
+      "dst": 13,
       "algo": "echo",
       "prob": 0.75,
       "delay_beats": 5.0,
@@ -78,7 +78,7 @@
         "HUMAN"
       ],
       "cooldown_ms": 0.0,
-      "enabled": false,
+      "enabled": true,
       "repeats": 3,
       "decay": 0.72,
       "min_vel": 11,
@@ -118,7 +118,7 @@
     {
       "id": "phrase_modx",
       "src": 0,
-      "dst": 12,
+      "dst": 11,
       "algo": "phrase",
       "prob": 0.8,
       "delay_beats": 5.75,
@@ -152,7 +152,7 @@
     {
       "id": "sustain_strings",
       "src": 0,
-      "dst": 4,
+      "dst": 12,
       "algo": "sustain",
       "prob": 1.0,
       "delay_beats": 0.0,
@@ -170,7 +170,7 @@
         "HUMAN"
       ],
       "cooldown_ms": 0.0,
-      "enabled": false,
+      "enabled": true,
       "after_s": 1.5,
       "every_bars_min": 0.25,
       "every_bars_max": 2.0,
@@ -188,7 +188,7 @@
     {
       "id": "silence_pad",
       "src": 0,
-      "dst": 3,
+      "dst": 12,
       "algo": "silence",
       "prob": 0.9,
       "delay_beats": 0.0,
@@ -206,7 +206,7 @@
         "HUMAN"
       ],
       "cooldown_ms": 0.0,
-      "enabled": false,
+      "enabled": true,
       "after_s": 3,
       "lane": "pad",
       "hold_s": 16,
@@ -241,7 +241,7 @@
       "enabled": false,
       "after_s": 0.5,
       "lane": "texture",
-      "hold_s": 16,
+      "hold_s": 8,
       "release_beats": 2.0,
       "voices": 2,
       "vel": 34,

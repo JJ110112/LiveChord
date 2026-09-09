@@ -11,7 +11,8 @@
       36,
       96
     ],
-    "sustain_ok": true
+    "sustain_ok": false,
+    "_note_sustain": "sustain_ok false (2026-09-09): on the 17:03 take this lane held one note for 24.0 s and two past 8 s, and it was one of the two channels sounding at both PANICs. The flag gates the ceiling in safety.py - sustain_dur_s (30 s) when marked, max_dur_s (8 s) when not."
   },
   "2": {
     "name": "Fantom Piano",
