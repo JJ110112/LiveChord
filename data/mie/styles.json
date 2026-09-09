@@ -18,9 +18,9 @@
       "algos": {
         "sustain": {
           "constraint": "function",
-          "hold_beats": 12,
+          "hold_beats": 6,
           "vel": 38,
-          "release_beats": 3.0,
+          "release_beats": 2.0,
           "voice_lead": "octave"
         },
         "silence": {

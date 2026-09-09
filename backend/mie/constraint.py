@@ -176,6 +176,23 @@ def late_bind(note: int, constraint: str, st: MusicalState, inst: Optional[Instr
             lo, hi = wide
         else:
             narrowed = (lo, hi) != wide
+    # Fold into the register by OCTAVES before snapping. `snap` searches twelve
+    # semitones and no further, so a note three octaves outside can never reach
+    # the window: it returned None, and the widening retry below then let the
+    # note through untouched. That is how an echo arrived 36 semitones above the
+    # hands on the 14:07 take with a ceiling in force - the cap looked applied
+    # and did nothing. The pitch class is what an echo has to keep; the register
+    # is exactly what it can give up.
+    #
+    # Only when a note_range NARROWED the window, never for the instrument's own
+    # range: an octave dragged to -3 puts a lane below its synth on purpose, and
+    # that has to stay a visible drop rather than being quietly folded back into
+    # audibility - the 19:27 take is exactly that incident.
+    if narrowed:
+        while note > hi and note - 12 >= lo:
+            note -= 12
+        while note < lo and note + 12 <= hi:
+            note += 12
     pcs = allowed_pcs(st, constraint, tension)
     held = list(st.held)
     held_pcs = {h % 12 for h in held} if collision != "none" else set()
@@ -355,6 +372,13 @@ def edge_range(edge, st: Optional[MusicalState] = None) -> Optional[tuple]:
     playing". A fixed ceiling cannot do this: the player asked for
     "MIE 的最高音應該低於我的主要演奏最高音，並且保留安全間隔" and their own top
     note moves around by two octaves inside one take.
+
+    N may be NEGATIVE, meaning that much ABOVE: `-12` is "never more than an
+    octave over my hands". That is the right shape for the lanes that repeat
+    what was played - an echo half an octave up is still an echo, one three
+    octaves above where the hands now are sounds like another room. Measured on
+    the 14:07 take, an echo arrived 39 semitones over the hand on the keys.
+    0 (or absent) is off.
 
     The edge's own `low` is a HARD FLOOR: only the ceiling moves. Letting the
     floor slide down with it put the pad's median at E3 and then C3 - measured

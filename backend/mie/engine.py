@@ -1183,6 +1183,25 @@ class Engine:
         self._ui("drop", reason=reason, edge=getattr(edge, "id", "?"), ch=p.ch, note=p.note, lane=p.lane)
 
     # ----------------------------------------------------------- scheduler
+    def _live_range(self, pair: NotePair):
+        """The edge's register AS IT IS NOW, not as it was when this was queued.
+
+        `note_range` is captured on the NotePair at schedule time, and for a
+        lane that waits - an echo a beat later, a phrase several seconds later
+        - the player has moved by the time it sounds. That is exactly the case
+        `below_player` exists for, and reading the stale value made it look
+        inert: measured over the 14:07 take, an echo arrived 39 semitones above
+        the hand that was on the keys, and capping the lane changed the figure
+        by one percentage point because the cap was the one from before.
+
+        Only recomputed for edges that ask to track the player; everything else
+        keeps the value it was given, and pays nothing.
+        """
+        e = self.graph.find_edge(pair.edge_id) if pair.edge_id else None
+        if e is not None and e.params.get("below_player"):
+            return edge_range(e, self.st)
+        return pair.note_range
+
     def _before_on(self, pair: NotePair, now: float) -> bool:
         """Scheduler thread: late-binding re-snap right before the note_on."""
         if self.bypass or self.stop.is_set():
@@ -1204,7 +1223,7 @@ class Engine:
                                          target[0], target[1])
             n2 = late_bind(pair.note, pair.constraint, self.st, self.instruments.get(pair.ch),
                            pair.collision, voice_lead=pair.voice_lead, tension=pair.tension,
-                           note_range=pair.note_range,
+                           note_range=self._live_range(pair),
                            prev=self._lane_prev(pair.ch, pair.lane),
                            others=self._other_voices(pair.ch, pair.lane, now),
                            gen_now=self._gen_sounding(pair.ch, now),

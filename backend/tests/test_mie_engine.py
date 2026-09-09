@@ -637,6 +637,42 @@ def test_below_player_keeps_the_pad_under_the_hands_and_follows_them_up():
     assert edge_range(plain, st) == (55, 88)
 
 
+def test_the_register_is_read_when_the_note_SOUNDS_not_when_it_was_queued():
+    """A lane that waits has moved on by the time it plays.
+
+    `note_range` is captured on the NotePair at schedule time. For an echo a
+    beat later, or a phrase several seconds later, the player has moved - which
+    is precisely the case `below_player` exists for. Reading the stale value
+    made the setting look inert: capping the echo lane changed "more than an
+    octave above the hands" by one percentage point, because the cap being
+    applied was the one from before.
+    """
+    eng, clk, out = make([
+        {"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 1.0, "repeats": 1,
+         "delay_beats": 2.0, "lane": "echo", "below_player": 1, "constraint": "free"},
+    ])
+    play(eng, clk, 9, 84, 90, hold=0.2)          # a high note, echoed in 2 beats
+    run_for(eng, clk, 0.3)
+    moved = clk()
+    hold_chord(eng, clk, 9, [48])                # ...and the hand drops two octaves
+    run_for(eng, clk, 4.0)
+    after = [(t, n) for t, _c, n, _v in out.notes("note_on", ch=10) if t > moved + 0.1]
+    assert after, "no echo landed after the hand had moved"
+    assert max(n for _t, n in after) <= 48,         f"the echo used the ceiling from when it was queued: {after} against a hand on 48"
+
+
+def test_below_player_takes_a_negative_gap_to_mean_above():
+    """An echo half an octave up is still an echo; three octaves up is another room."""
+    from backend.mie.constraint import edge_range
+    from backend.mie.graph import Edge
+    eng, clk, out = make([])
+    hold_chord(eng, clk, 9, [60])
+    e = Edge(src=0, dst=10, algo="echo", id="e", params={"below_player": -12, "lane": "echo"})
+    lo, hi = edge_range(e, eng.st)
+    assert hi == 60 + 12, f"a negative gap did not read as clearance ABOVE: {hi}"
+    assert lo < hi
+
+
 def test_a_register_is_a_preference_not_a_veto():
     """A narrowed window must not swallow the note.
 
