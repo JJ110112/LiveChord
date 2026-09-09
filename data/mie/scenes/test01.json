@@ -60,7 +60,7 @@
     {
       "id": "echo_wavestate",
       "src": 0,
-      "dst": 13,
+      "dst": 10,
       "algo": "echo",
       "prob": 0.75,
       "delay_beats": 5.0,
@@ -293,7 +293,7 @@
     {
       "id": "sustain_event61",
       "src": 0,
-      "dst": 13,
+      "dst": 4,
       "algo": "sustain",
       "prob": 0.7,
       "delay_beats": 0.0,
