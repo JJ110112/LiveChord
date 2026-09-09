@@ -17,6 +17,10 @@
 
   let ws = null, connected = false, lastSnap = null, reconnectTimer = null;
   let escArm = 0;
+  // A save the engine refused because the scene file had changed underneath,
+  // waiting for a second, deliberate press. Up here because both the snapshot
+  // render and the button wiring read it.
+  let saveConflict = false;
   const streamMax = 60;
   const edgeEls = new Map();
   const instEls = new Map();
@@ -106,7 +110,12 @@
     renderPreset(s.preset);
     const ed = s.edits || {};
     $("#mieSave").classList.toggle("is-unsaved", !!ed.unsaved);
-    $("#mieSave").title = ed.unsaved ? `有 ${ed.undo} 項調整還沒寫進 scene 檔` : "把目前所有調整寫回 scene 檔";
+    // ...unless the button is currently carrying a refused save. That warning
+    // is the more important thing to say, and this line runs every snapshot -
+    // it wiped the conflict tooltip within 200 ms of it being set.
+    if (!saveConflict) {
+      $("#mieSave").title = ed.unsaved ? `有 ${ed.undo} 項調整還沒寫進 scene 檔` : "把目前所有調整寫回 scene 檔";
+    }
     $("#mieUndo").disabled = !ed.undo;
     $("#mieFreeze").classList.toggle("is-frozen", !!s.frozen);
     $("#mieFreeze").textContent = s.frozen ? "解凍" : "凍結";
@@ -482,6 +491,54 @@
     return wrap;
   }
 
+  // ------------------------------------------------- 自走音量 (vel_drift)
+  // Every edge already has its own volume - 力度× - and this gives that volume
+  // a life of its own. Written as one nested object so there is a single name
+  // for the setting, the same way the playing-style condition is written.
+  const DRIFT_SHAPES = [["sine", "起伏"], ["triangle", "來回"], ["ramp", "推上去"], ["breathe", "呼吸"]];
+
+  function edgeDrift(e) {
+    let cur = e;
+    const wrap = document.createElement("label");
+    wrap.className = "mie-field mie-field-drift";
+    wrap.title = "讓這條線的音量自己慢慢動。幅度 0 = 不動。幅度是「你設的力度× 的上下比例」，"
+      + "所以你調的那個值仍然是中心，不會被蓋掉";
+    wrap.innerHTML = '<span class="mie-fl">自走音量</span>'
+      + '<span class="mie-drift-row">'
+      + '<input class="mie-dd" type="range" min="0" max="0.8" step="0.05" title="幅度">'
+      + '<span class="mie-dv"></span>'
+      + '<input class="mie-db" type="number" min="2" max="128" step="2" title="一個循環幾拍">'
+      + '<select class="mie-ds" title="形狀"></select></span>';
+    const dd = wrap.querySelector(".mie-dd"), dv = wrap.querySelector(".mie-dv");
+    const db = wrap.querySelector(".mie-db"), ds = wrap.querySelector(".mie-ds");
+    DRIFT_SHAPES.forEach(([v, label]) => {
+      const o = document.createElement("option"); o.value = v; o.textContent = label; ds.appendChild(o);
+    });
+    const read = (x) => (x && typeof x.vel_drift === "object" && x.vel_drift) || {};
+    const paint = () => {
+      const d = read(cur);
+      dd.value = d.depth || 0;
+      dv.textContent = Number(d.depth || 0).toFixed(2);
+      db.value = d.beats || 16;
+      ds.value = d.shape || "sine";
+      wrap.classList.toggle("is-off", !(d.depth > 0));
+    };
+    const push = () => {
+      const v = { depth: Number(dd.value), beats: Number(db.value), shape: ds.value };
+      cur.vel_drift = v;
+      dv.textContent = v.depth.toFixed(2);
+      wrap.classList.toggle("is-off", !(v.depth > 0));
+      send({ type: "set", path: `edge.${cur.id}.vel_drift`, value: v });
+    };
+    dd.addEventListener("input", () => { dv.textContent = Number(dd.value).toFixed(2); });
+    dd.addEventListener("change", push);
+    db.addEventListener("change", push);
+    ds.addEventListener("change", push);
+    wrap.sync = (fresh) => { cur = fresh; if (!wrap.contains(document.activeElement)) paint(); };
+    paint();
+    return wrap;
+  }
+
   function edgeChoice(e, key) {
     const wrap = document.createElement("label");
     wrap.className = "mie-field";
@@ -531,6 +588,8 @@
         });
         el._when = edgeTextureField(e);
         body.appendChild(el._when);
+        el._drift = edgeDrift(e);
+        body.appendChild(el._drift);
         const choices = ["constraint", "align", "voice_lead", "collision"];
         if (e.algo === "silence") choices.push("silence_mode");
         choices.forEach((k) => body.appendChild(edgeChoice(e, k)));
@@ -570,6 +629,7 @@
         ? `${e.drops} 個音被丟掉了——多半是音域或八度把它推到樂器範圍外`
         : "");
       if (el._when && !el._when.contains(document.activeElement)) el._when.sync(e);
+      if (el._drift) el._drift.sync(e);
       // A lane whose condition does not match right now is not broken and not
       // idle - it is WAITING, and it should say which playing it is waiting
       // for. Silence you can explain is not the same as silence you cannot.
@@ -598,6 +658,7 @@
   // ---------------------------------------------------------------- events
   function pushEvent(e) {
     if (roll) roll.pushEvent(e);          // the roll draws from the same stream
+    if (e.type === "save_conflict") onSaveConflict(e);
     if (e.type === "log_saved") {
       // the event stream scrolls past in a second while playing, so say it on
       // the button that was pressed
@@ -632,6 +693,12 @@
                                   : `回放停止（收掉 ${e.released} 個音）`); break;
       case "touched": cls = "mode"; txt = e.path === "*"
         ? `交還 ${e.n} 個手動設定給風格` : `交還 ${e.path} 給風格`; break;
+      case "save_conflict":
+        cls = "drop";
+        txt = `沒有存：${e.path} 在 ${e.when} 被別的地方改過了。`
+            + `重新選一次這個 scene 可以拿到新的內容；`
+            + `要用畫面上這一份蓋過去，就再按一次「儲存 ⚠」`;
+        break;
       case "log_saved": cls = "mode"; txt = `錄音存成 ${e.path}（到此 ${e.human} 個人類音 / ${e.gen} 個生成音）`; break;
       case "panic": cls = "panic"; txt = `PANIC (${e.reason}) ${e.notes} notes released`; break;
       case "loop": cls = "loop"; txt = `LOOP ch${e.ch} ${nn(e.note)} came back on MIE In`; break;
@@ -861,6 +928,16 @@
     b.addEventListener("click", () => send({ type: "preset", slot: b.dataset.slot })));
   document.querySelectorAll(".mie-pstore").forEach((b) =>
     b.addEventListener("click", () => send({ type: "preset_save", slot: b.dataset.store })));
+  // A conflict is not a dead end: the player may still decide their in-memory
+  // version is the one they want. It has to be a SECOND, deliberate press -
+  // the whole point is that the first one did not silently discard anything.
+  function onSaveConflict(e) {
+    saveConflict = true;
+    const b = $("#mieSave");
+    b.classList.add("is-conflict");
+    b.textContent = "儲存 ⚠";
+    b.title = `${e.path} 在 ${e.when} 被別的地方改過了。再按一次會用你目前的設定覆蓋掉它`;
+  }
   $("#mieSave").addEventListener("click", () => {
     // Name the scene an empty answer overwrites. "覆寫目前的" is only obvious
     // to whoever wrote it; the player saved into a second file for two sessions
@@ -868,7 +945,17 @@
     const cur = (lastSnap && lastSnap.scene && lastSnap.scene.id) || "";
     const as = prompt(`另存為新 scene 的編號（留空 = 覆寫 ${cur}）`, "");
     if (as === null) return;
-    send({ type: "save_scene", as: as.trim() || undefined });
+    const id = as.trim() || undefined;
+    // The second press is the deliberate one. Save-as never conflicts (it
+    // writes a new name), so the flag only arms the overwrite path.
+    send({ type: "save_scene", as: id, force: !id && saveConflict });
+    if (!id && saveConflict) {
+      saveConflict = false;
+      const b = $("#mieSave");
+      b.classList.remove("is-conflict");
+      b.textContent = "儲存";
+      b.title = "";
+    }
   });
   $("#mieHaltResume").addEventListener("click", () => send({ type: "resume" }));
   $("#mieModeSel").addEventListener("change", (e) => send({ type: "mode", value: e.target.value }));

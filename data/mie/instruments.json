@@ -1,18 +1,176 @@
 {
   "_comment": "MIE instrument roles (plan §2.3). Keys are MIDI channels 1-16. `role` is what algorithms target; `group: fantom` shares one voice budget; `note_range` is the final clamp. Phase 0 (2026-09-07) confirmed the hardware: Fantom 8 INT zones on CH2-8, EXT zones CH9-15 -> Nord Grand 2 / Wavestate mk II / Iridium / MODX M6 / Ketron Event 61 / PSR-SX900 / microArranger. CH16 carries Fantom scene bank/program changes and is never a target.",
-  "1":  {"name": "REAPER VST",       "role": "texture",   "group": "vst",    "enabled": true,  "max_voices": 6, "vel_scale": 0.9, "note_range": [36, 96], "sustain_ok": true},
-  "2":  {"name": "Fantom Piano",     "role": "piano",     "group": "fantom", "enabled": true,  "max_voices": 8, "note_range": [28, 103]},
-  "3":  {"name": "Fantom Pad",       "role": "pad",       "group": "fantom", "enabled": true,  "max_voices": 4, "note_range": [40, 88], "sustain_ok": true},
-  "4":  {"name": "Fantom Strings",   "role": "strings",   "group": "fantom", "enabled": true,  "max_voices": 4, "note_range": [36, 96], "sustain_ok": true},
-  "5":  {"name": "Fantom Synth",     "role": "synth",     "group": "fantom", "enabled": true,  "max_voices": 4, "note_range": [36, 96]},
-  "6":  {"name": "Fantom Bass",      "role": "bass",      "group": "fantom", "enabled": true,  "max_voices": 1, "note_range": [28, 55]},
-  "7":  {"name": "Fantom Lead",      "role": "lead",      "group": "fantom", "enabled": true,  "max_voices": 1, "note_range": [55, 103]},
-  "8":  {"name": "Fantom FX",        "role": "fx",        "group": "fantom", "enabled": true,  "max_voices": 2, "note_range": [36, 96]},
-  "9":  {"name": "Nord Grand 2",     "role": "piano",     "group": "hw",     "enabled": true,  "max_voices": 6, "note_range": [28, 103]},
-  "10": {"name": "Wavestate mk II",  "role": "sequence",  "group": "hw",     "enabled": true,  "max_voices": 18, "note_range": [36, 96], "sustain_ok": true},
-  "11": {"name": "Iridium",          "role": "exp_synth", "group": "hw",     "enabled": true,  "max_voices": 8, "note_range": [36, 96]},
-  "12": {"name": "MODX M6",          "role": "synth",     "group": "hw",     "enabled": true,  "max_voices": 12, "note_range": [36, 96]},
-  "13": {"name": "Ketron Event 61",  "role": "keyboard",  "group": "hw",     "enabled": true,  "max_voices": 4, "note_range": [36, 96]},
-  "14": {"name": "PSR-SX900",        "role": "arranger",  "group": "hw",     "enabled": false, "max_voices": 4, "note_range": [36, 96]},
-  "15": {"name": "microArranger",    "role": "arranger",  "group": "hw",     "enabled": false, "max_voices": 4, "note_range": [36, 96]}
+  "1": {
+    "name": "REAPER VST",
+    "role": "texture",
+    "group": "vst",
+    "enabled": true,
+    "max_voices": 6,
+    "vel_scale": 0.9,
+    "note_range": [
+      36,
+      96
+    ],
+    "sustain_ok": true
+  },
+  "2": {
+    "name": "Fantom Piano",
+    "role": "piano",
+    "group": "fantom",
+    "enabled": true,
+    "max_voices": 8,
+    "note_range": [
+      28,
+      103
+    ]
+  },
+  "3": {
+    "name": "Fantom Pad",
+    "role": "pad",
+    "group": "fantom",
+    "enabled": true,
+    "max_voices": 4,
+    "note_range": [
+      40,
+      88
+    ],
+    "sustain_ok": true
+  },
+  "4": {
+    "name": "Fantom Strings",
+    "role": "strings",
+    "group": "fantom",
+    "enabled": true,
+    "max_voices": 4,
+    "note_range": [
+      36,
+      96
+    ],
+    "sustain_ok": true
+  },
+  "5": {
+    "name": "Fantom Synth",
+    "role": "synth",
+    "group": "fantom",
+    "enabled": true,
+    "max_voices": 4,
+    "note_range": [
+      36,
+      96
+    ]
+  },
+  "6": {
+    "name": "Fantom Bass",
+    "role": "bass",
+    "group": "fantom",
+    "enabled": true,
+    "max_voices": 1,
+    "note_range": [
+      28,
+      55
+    ]
+  },
+  "7": {
+    "name": "Fantom Lead",
+    "role": "lead",
+    "group": "fantom",
+    "enabled": true,
+    "max_voices": 1,
+    "note_range": [
+      55,
+      103
+    ]
+  },
+  "8": {
+    "name": "Fantom FX",
+    "role": "fx",
+    "group": "fantom",
+    "enabled": true,
+    "max_voices": 2,
+    "note_range": [
+      36,
+      96
+    ]
+  },
+  "9": {
+    "name": "Nord Grand 2",
+    "role": "piano",
+    "group": "hw",
+    "enabled": true,
+    "max_voices": 6,
+    "note_range": [
+      28,
+      103
+    ]
+  },
+  "10": {
+    "name": "Wavestate mk II",
+    "role": "sequence",
+    "group": "hw",
+    "enabled": true,
+    "max_voices": 18,
+    "note_range": [
+      36,
+      96
+    ],
+    "sustain_ok": true
+  },
+  "11": {
+    "name": "Iridium",
+    "role": "exp_synth",
+    "group": "hw",
+    "enabled": true,
+    "max_voices": 8,
+    "note_range": [
+      36,
+      96
+    ]
+  },
+  "12": {
+    "name": "MODX M6",
+    "role": "synth",
+    "group": "hw",
+    "enabled": true,
+    "max_voices": 12,
+    "note_range": [
+      36,
+      96
+    ]
+  },
+  "13": {
+    "name": "Ketron Event 61",
+    "role": "keyboard",
+    "group": "hw",
+    "enabled": true,
+    "max_voices": 4,
+    "note_range": [
+      36,
+      96
+    ],
+    "_note": "Wurlitzer / brass / wind（使用者偏好）"
+  },
+  "14": {
+    "name": "PSR-SX900",
+    "role": "arranger",
+    "group": "hw",
+    "enabled": true,
+    "max_voices": 4,
+    "note_range": [
+      36,
+      96
+    ],
+    "_note": "吉他聲（使用者偏好）；只送到 Voice1 / Upper1，不觸發自動伴奏（2026-09-09 使用者確認接線）"
+  },
+  "15": {
+    "name": "microArranger",
+    "role": "arranger",
+    "group": "hw",
+    "enabled": true,
+    "max_voices": 4,
+    "note_range": [
+      36,
+      96
+    ],
+    "_note": "EP / 口琴（使用者偏好）；只送到 Voice1 / Upper1，不觸發自動伴奏（2026-09-09 使用者確認接線）"
+  }
 }

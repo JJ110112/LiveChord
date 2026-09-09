@@ -275,6 +275,41 @@ def load_scene(path_or_id: str) -> Scene:
         return Scene.from_json(json.load(f), path)
 
 
+def scene_stamp(path: Optional[str]) -> Optional[float]:
+    """When the scene file on disk was last written, if it exists.
+
+    The engine holds the scene in memory for a whole session. If the file is
+    edited underneath - by a text editor, or by whoever is helping - a later
+    Save writes the in-memory copy straight over it, and the edit is gone with
+    nothing said. That happened on 2026-09-09 at 15:22: three edges added to
+    the file were wiped by a Save from an engine started at 15:11.
+    """
+    try:
+        return os.path.getmtime(path) if path else None
+    except OSError:
+        return None
+
+
+# A filesystem mtime is coarse (FAT rounds to 2 s, and a save plus a reload
+# inside the same second is ordinary), so the comparison needs slack. Half a
+# second is far below any human edit-and-save round trip and well above the
+# noise, and the cost of being wrong is asymmetric: a missed conflict loses
+# work silently, a false one costs a second press.
+STAMP_SLACK_S = 0.5
+
+
+def save_would_clobber(path: Optional[str], known: Optional[float]) -> Optional[float]:
+    """The file's mtime if it is NEWER than the copy the engine loaded, else None.
+
+    Returns the timestamp rather than a bool so the caller can tell the player
+    WHEN it changed - "被別的地方改過了" without a time is a puzzle, not a warning.
+    """
+    disk = scene_stamp(path)
+    if disk and known and disk > known + STAMP_SLACK_S:
+        return disk
+    return None
+
+
 def save_scene(scene: "Scene", as_id: Optional[str] = None) -> str:
     """Write a scene back to disk, atomically. Returns the path written.
 

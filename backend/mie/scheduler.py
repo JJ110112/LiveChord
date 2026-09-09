@@ -48,6 +48,7 @@ class NotePair:
     capture_root: Optional[int] = None
     capture_quality: str = ""
     pass_id: Optional[tuple] = None
+    drift: Optional[tuple] = None   # (depth, period_s, shape, phase) - see engine.drift_at
 
 
 @dataclass(order=True)

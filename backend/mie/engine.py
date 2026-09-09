@@ -14,6 +14,7 @@ For tests everything is driven synchronously: `post()` + `step(now)`.
 from __future__ import annotations
 
 import logging
+import math
 import queue
 import threading
 from collections import deque
@@ -50,6 +51,42 @@ class _Command:
     kw: dict = field(default_factory=dict)
 
 
+# ------------------------------------------------------------------ 自走音量
+# Each edge already HAS its own volume - `vel_scale`, the 力度× slider. What it
+# did not have is a life of its own: it sat wherever it was put until a hand
+# moved it. Bad Mood's knobs drift on their own, and a pad whose level never
+# moves is the difference between a held chord and a section breathing.
+#
+# One slow oscillator per edge, off unless a scene asks:
+#
+#     "vel_drift": {"depth": 0.35, "beats": 24, "shape": "sine"}
+#
+# `depth` is how far either side of the level you set - 0.35 means the lane
+# ranges from 0.65x to 1.35x of its own 力度×, so the setting stays the centre
+# of what happens rather than being overruled. `beats` is one full cycle, read
+# through the TIME knob like every other wait in the scene. It never silences a
+# lane and never doubles it: the multiplier is clamped, because a drift that
+# can reach zero is indistinguishable from a fault.
+DRIFT_SHAPES = ("sine", "triangle", "ramp", "breathe")
+
+
+def drift_at(now: float, depth: float, period_s: float, shape: str, phase: float = 0.0) -> float:
+    """A multiplier around 1.0. Deterministic in `now`, so two notes sent in the
+    same instant get the same level however many lanes are running."""
+    if depth <= 0 or period_s <= 0:
+        return 1.0
+    x = ((now / period_s) + phase) % 1.0
+    if shape == "ramp":                       # saw: swell, then drop back
+        v = 2.0 * x - 1.0
+    elif shape == "triangle":
+        v = 4.0 * abs(x - 0.5) - 1.0
+    elif shape == "breathe":                  # longer in, shorter out, like a breath
+        v = math.sin(math.pi * (x ** 0.7)) * 2.0 - 1.0
+    else:                                     # sine
+        v = math.sin(2.0 * math.pi * x)
+    return max(0.15, min(2.0, 1.0 + depth * v))
+
+
 def port_for(ch: int) -> str:
     return "reaper" if ch == 1 else "hst"
 
@@ -74,6 +111,10 @@ class Engine:
         self._sync_knobs()
         self._phrase_shift: dict[tuple, object] = {}
         self.preset_slot = "LIVE"
+        from .graph import scene_stamp as _stamp
+        # When the file was last written. A Save compares against this, so an
+        # edit made underneath is not silently overwritten.
+        self.scene_stamp = _stamp(scene.path)
         from .graph import load_styles
         self.styles = load_styles()
         self.style: Optional[str] = None
@@ -846,6 +887,8 @@ class Engine:
 
     def load_scene(self, scene: Scene) -> None:
         now = self.clock()
+        from .graph import scene_stamp
+        self.scene_stamp = scene_stamp(scene.path)
         self._touched.clear()
         self._style_before, self.style = None, None
         self._release_everything(now, fade_s=0.5)
@@ -1129,7 +1172,7 @@ class Engine:
                             collision=collision_for(edge), voice_lead=voice_lead_for(edge),
                             tension=self._tension(edge), note_range=edge_range(edge, self.st),
                             capture_root=cp.capture_root, capture_quality=cp.capture_quality,
-                            pass_id=cp.pass_id)
+                            pass_id=cp.pass_id, drift=self._drift_of(edge))
             self.sched.schedule_pair(pair)
             self.safety.count_chain(ev.root_id, now)
             self.stats["gen_sched"] += 1
@@ -1298,6 +1341,28 @@ class Engine:
         self.drop_reasons[reason] = self.drop_reasons.get(reason, 0) + 1
         self._ui("drop", reason=reason, edge=pair.edge_id, ch=pair.ch, note=pair.note, lane=pair.lane)
 
+    def _drift_of(self, edge) -> Optional[tuple]:
+        """An edge's self-moving level, as (depth, seconds, shape, phase).
+
+        Resolved when the note is scheduled - the shape and speed are settings -
+        while the PHASE of the wave is read at send time, which is the whole
+        point of it moving. Each edge gets its own offset from its id, so two
+        lanes drifting at the same speed do not swell in lockstep.
+        """
+        d = edge.params.get("vel_drift")
+        if not isinstance(d, dict):
+            return None
+        depth = float(d.get("depth", 0) or 0)
+        if depth <= 0:
+            return None
+        beats = float(d.get("beats", 16) or 16)
+        period = max(0.5, beats * self.st.beat_s * (self.st.time_knob or 1.0))
+        shape = str(d.get("shape", "sine"))
+        phase = d.get("phase")
+        if phase is None:
+            phase = (sum(ord(c) for c in edge.id) % 100) / 100.0
+        return (depth, period, shape, float(phase))
+
     def _emit(self, due: Due, now: float) -> None:
         """Scheduler thread: the only place generated MIDI leaves the process."""
         p = due.pair
@@ -1313,11 +1378,19 @@ class Engine:
             # leaves seconds of already-queued notes at the old level. A note
             # already ringing keeps its velocity - that is inherent to volume
             # by velocity, and the honest limit of this approach.
-            vel = int(round(p.vel * self.master_gain))
+            gain = self.master_gain
+            if p.drift:
+                gain *= drift_at(now, p.drift[0], p.drift[1], p.drift[2], p.drift[3])
+            vel = int(round(p.vel * gain))
             if vel < 1:
                 p.muted = True      # the fader is down: silence, not a fault
                 self.stats["muted"] += 1
                 return
+            # The drift can push a loud note over the top of what MIDI can say.
+            # Clamping here rather than in `drift_at` keeps the oscillator a
+            # pure function of time; mido raises on 128 and the note would be
+            # lost, which is the one thing a volume must never do.
+            vel = min(127, vel)
             p.sent_vel = vel
             msg = self.mido.Message("note_on", channel=p.ch - 1, note=p.note, velocity=vel)
         else:

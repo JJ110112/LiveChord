@@ -2235,6 +2235,55 @@ def test_replay_speed_stretches_the_take():
     assert len(out.notes("note_on")) == 3
 
 
+# ------------------------------------------------------ 自走音量 (2026-09-09)
+def test_a_lanes_own_volume_can_move_on_its_own():
+    """「效果在運行時自己的獨立音量會有自己的情緒嗎?」 - it can now.
+
+    Each edge already HAD its own volume (`vel_scale`, the 力度× slider); what
+    it lacked was a life of its own. The setting stays the CENTRE of what
+    happens - depth is a proportion either side of it - so turning the drift on
+    never overrules the level you chose.
+    """
+    from backend.mie.engine import drift_at
+
+    for shape in ("sine", "triangle", "ramp", "breathe"):
+        vals = [drift_at(t, 0.35, 8.0, shape) for t in [x * 0.5 for x in range(16)]]
+        assert min(vals) < 0.9 and max(vals) > 1.1, f"{shape} did not move"
+        assert min(vals) >= 0.15 and max(vals) <= 2.0, f"{shape} left the clamp"
+        # never silent: a drift that reaches zero is indistinguishable from a fault
+        assert min(vals) > 0.5, f"{shape} got close to silencing the lane"
+
+    assert drift_at(5.0, 0.0, 8.0, "sine") == 1.0, "depth 0 must be exactly off"
+    assert drift_at(5.0, 0.3, 0.0, "sine") == 1.0, "a zero period must be off, not a divide"
+    # deterministic in time, so lanes sent in the same instant agree
+    assert drift_at(3.25, 0.4, 9.0, "sine") == drift_at(3.25, 0.4, 9.0, "sine")
+    # and two edges at the same speed do not swell in lockstep
+    assert drift_at(3.0, 0.4, 9.0, "sine", 0.0) != drift_at(3.0, 0.4, 9.0, "sine", 0.5)
+
+
+def test_the_drift_actually_moves_what_goes_out_and_is_off_by_default():
+    eng, clk, out = make([
+        {"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 1.0, "repeats": 6,
+         "delay_beats": 0.5, "decay": 1.0, "min_vel": 1, "lane": "echo",
+         "vel_drift": {"depth": 0.6, "beats": 4, "shape": "sine"}},
+    ])
+    play(eng, clk, 9, 60, 100, hold=0.2)
+    run_for(eng, clk, 6.0)
+    vels = [v for _t, _c, _n, v in out.notes("note_on", ch=10)]
+    assert len(vels) >= 4, vels
+    assert max(vels) - min(vels) >= 8, f"the level never moved: {vels}"
+
+    out.clear()
+    eng2, clk2, out2 = make([
+        {"id": "e", "src": 0, "dst": 10, "algo": "echo", "prob": 1.0, "repeats": 6,
+         "delay_beats": 0.5, "decay": 1.0, "min_vel": 1, "lane": "echo"},
+    ])
+    play(eng2, clk2, 9, 60, 100, hold=0.2)
+    run_for(eng2, clk2, 6.0)
+    flat = [v for _t, _c, _n, v in out2.notes("note_on", ch=10)]
+    assert len(set(flat)) == 1, f"an edge with no drift did not hold still: {flat}"
+
+
 # --------------------------------------------- 手動調過的就是你的 (2026-09-09)
 def test_a_knob_you_moved_by_hand_stays_where_you_left_it():
     """「就像效果器那樣 保持著最後使用的樣子 除非使用者自己去調整」.
@@ -3562,3 +3611,42 @@ def test_the_global_knobs_are_in_what_gets_saved():
         back = Scene.from_json(json.load(open(snap.path, encoding="utf-8")), snap.path)
     assert back.globals["master_gain"] == 0.63
     assert back.globals["time"] == 2.05
+
+
+def test_a_save_will_not_silently_overwrite_a_file_edited_underneath():
+    """This is not hypothetical. On 2026-09-09 the engine had been up since
+    15:11 holding test01 in memory; three edges were added to the file at
+    15:20; a Save at 15:22 wrote the in-memory copy over them and said nothing.
+    The engine keeps the scene for a whole session, so any edit made to the
+    file while it runs is one Save away from gone."""
+    import os
+    import tempfile
+    from backend.mie.graph import Scene, save_scene, scene_stamp, save_would_clobber
+
+    eng, clk, out = make([])
+    with tempfile.TemporaryDirectory() as d:
+        snap = eng.scene_snapshot()
+        snap.path = os.path.join(d, "s.json")
+        save_scene(snap)
+        loaded = scene_stamp(snap.path)
+
+        # nothing has touched it: an ordinary Save must go straight through
+        assert save_would_clobber(snap.path, loaded) is None
+
+        # someone edits the file while the engine is up
+        os.utime(snap.path, (loaded + 60, loaded + 60))
+        when = save_would_clobber(snap.path, loaded)
+        assert when and when > loaded, "the engine would have overwritten the edit"
+
+        # and after the engine has taken the new file in, the guard lets go -
+        # otherwise the button is stuck and the player can never save again
+        assert save_would_clobber(snap.path, scene_stamp(snap.path)) is None
+
+
+def test_a_scene_the_engine_has_never_saved_is_not_a_conflict():
+    """No stamp means nothing to compare, and a guard that fires on missing
+    information would block the first save of every new scene."""
+    from backend.mie.graph import save_would_clobber
+
+    assert save_would_clobber(None, 1.0) is None
+    assert save_would_clobber("no/such/file.json", 1.0) is None

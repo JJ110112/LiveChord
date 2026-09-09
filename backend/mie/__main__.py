@@ -20,7 +20,8 @@ from random import Random
 
 from .engine import Engine
 from .graph import (DATA_DIR, load_instruments, load_scene, list_scenes, save_scene,
-                    load_ui_state, save_ui_state)
+                    load_ui_state, save_ui_state, save_would_clobber,
+                    scene_stamp)
 from .io_rtmidi import MidiIO, wall_clock
 
 
@@ -161,8 +162,21 @@ def main(argv=None) -> int:
                 # file I/O off the engine thread, and a snapshot of the graph so
                 # a parameter cannot change under us mid-write
                 try:
-                    sc = engine.scene_snapshot()
                     as_id = str(msg.get("as") or "") or None
+                    # Has the file moved under us? The engine holds the scene
+                    # for a whole session, so a Save writes an in-memory copy
+                    # over whatever is on disk - and on 2026-09-09 that wiped
+                    # three edges someone had added to the file while the
+                    # engine was up. Say so and let the player decide, rather
+                    # than discovering it later from a diff.
+                    if not as_id and not msg.get("force"):
+                        disk = save_would_clobber(engine.scene.path,
+                                                  getattr(engine, "scene_stamp", None))
+                        if disk:
+                            engine.note_ui("save_conflict", path=os.path.basename(engine.scene.path or ""),
+                                           when=time.strftime("%H:%M:%S", time.localtime(disk)))
+                            return
+                    sc = engine.scene_snapshot()
                     p = save_scene(sc, as_id)
                     # Save-as ADOPTS the new file, the way every editor does.
                     # Without this the engine still thought it was in the scene
@@ -174,6 +188,7 @@ def main(argv=None) -> int:
                     engine.submit(engine.mark_saved, os.path.basename(p),
                                   as_id, p if as_id else None)
                     save_ui_state({"scene": as_id or engine.scene.id})
+                    engine.scene_stamp = scene_stamp(p)
                 except Exception as exc:
                     logging.getLogger("mie.ui").exception("mie: scene save failed")
                     engine.note_ui("error", where="save_scene", err=str(exc))

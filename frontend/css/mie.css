@@ -231,3 +231,21 @@
 .mie-mine-btn { margin-left: 6px; padding: 2px 8px; border-radius: 999px; font-size: 10px;
   border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
 .mie-mine-btn:hover { background: var(--accent); color: #fff; }
+
+/* 自走音量: the edge's own level, given a life of its own. Dimmed when the
+   depth is 0, so a row that is not moving reads as not moving. */
+.mie-field-drift { display: grid; grid-template-columns: 74px 1fr; gap: 6px; align-items: center; }
+.mie-drift-row { display: flex; align-items: center; gap: 5px; }
+.mie-drift-row .mie-dd { flex: 1; min-width: 50px; accent-color: var(--accent); }
+.mie-drift-row .mie-dv { width: 30px; text-align: right; font-variant-numeric: tabular-nums; font-size: 10.5px; }
+.mie-drift-row .mie-db { width: 44px; }
+.mie-drift-row .mie-ds { width: 62px; }
+.mie-field-drift.is-off .mie-drift-row { opacity: .45; }
+
+/* A save that did NOT happen. Loud on purpose: the whole point is that the
+   player finds out now, not from a diff tomorrow. */
+#mieSave.is-conflict {
+  border-color: var(--mie-drop, #e0654a);
+  color: var(--mie-drop, #e0654a);
+  font-weight: 600;
+}
