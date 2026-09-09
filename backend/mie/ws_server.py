@@ -40,7 +40,7 @@ WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 # The session recordings, for the panel's piano roll. Only ever read, and only
 # ever files this engine itself writes: `_log_path` refuses anything that is not
 # a bare `session-*.jsonl`, so a request cannot address a file outside here.
-LOG_DIR = os.path.join(REPO_ROOT, "data", "logs", "mie")
+from .eventlog import LOG_DIR              # noqa: E402  (one definition, see there)
 _LOG_RE = re.compile(r"^session-[0-9]{8}-[0-9]{6}\.jsonl$")
 
 
@@ -52,10 +52,27 @@ def _list_logs(limit: int = 40) -> list:
     names.sort(reverse=True)                    # newest first: that is the one you want
     out = []
     for n in names[:limit]:
+        p = os.path.join(LOG_DIR, n)
         try:
-            out.append({"name": n, "bytes": os.path.getsize(os.path.join(LOG_DIR, n))})
+            size = os.path.getsize(p)
+        except OSError:
+            continue
+        # How many notes are in it, so an empty one reads as empty. The player
+        # restarted the engine, went straight to the file dialog and picked the
+        # newest file - which was the session they had just started and never
+        # played into. It drew nothing, correctly, and looked broken
+        # (2026-09-09). A count in the list makes that choice obvious instead.
+        human = gen = 0
+        try:
+            with open(p, "rb") as f:
+                for line in f:
+                    if b'"human"' in line:
+                        human += 1
+                    elif b'"gen"' in line:
+                        gen += 1
         except OSError:
             pass
+        out.append({"name": n, "bytes": size, "human": human, "gen": gen})
     return out
 
 

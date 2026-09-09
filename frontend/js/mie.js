@@ -580,6 +580,16 @@
   // ---------------------------------------------------------------- events
   function pushEvent(e) {
     if (roll) roll.pushEvent(e);          // the roll draws from the same stream
+    if (e.type === "log_saved") {
+      // the event stream scrolls past in a second while playing, so say it on
+      // the button that was pressed
+      const b = $("#mieLogSave");
+      b.disabled = false;
+      b.textContent = `已存 ${e.human} 音`;
+      b.title = `存成 ${e.path}（到此 ${e.human} 個人類音 / ${e.gen} 個生成音）。新的一段已經在錄了`;
+      setTimeout(() => { b.textContent = "存這段"; }, 4000);
+      if (roll) roll.showSaved(e.path);
+    }
     const box = $("#mieStream");
     const el = document.createElement("div");
     let cls = "", txt = "";
@@ -593,6 +603,7 @@
       case "off": cls = "off"; txt = `  off ch${e.ch} ${nn(e.note)} (${e.why}${e.held_ms !== undefined ? `, ${e.held_ms} ms` : ""})`; break;
       case "human_off": cls = "off"; txt = `  human off ch${e.ch} ${nn(e.note)} (${e.held_ms} ms)`; break;
       case "style": cls = "mode"; txt = e.action === "clear" ? "風格 → 取消" : `風格 → ${e.id}（${e.edges} 條邊）`; break;
+      case "log_saved": cls = "mode"; txt = `錄音存成 ${e.path}（到此 ${e.human} 個人類音 / ${e.gen} 個生成音）`; break;
       case "panic": cls = "panic"; txt = `PANIC (${e.reason}) ${e.notes} notes released`; break;
       case "loop": cls = "loop"; txt = `LOOP ch${e.ch} ${nn(e.note)} came back on MIE In`; break;
       case "pedal": cls = "edge"; txt = `  pedal ch${e.ch} ${e.val >= 64 ? "down" : "up"}`; break;
@@ -639,6 +650,18 @@
       revertArmed = 0; b.classList.remove("is-arming"); b.textContent = "退回檔案";
     }, 4000);
   });
+  // ------------------------------------------------------------ 存這段
+  // The engine writes the log continuously - it always did - but the only way
+  // to CLOSE a recording was to stop the engine and press q at the console,
+  // which is a thing you least want to do in the middle of playing. This ends
+  // the segment into its own file and immediately starts the next one.
+  $("#mieLogSave").addEventListener("click", () => {
+    const b = $("#mieLogSave");
+    b.disabled = true; b.textContent = "存…";
+    send({ type: "log_save" });
+    setTimeout(() => { b.disabled = false; b.textContent = "存這段"; }, 1500);
+  });
+
   // ------------------------------------------------------------ 落差提示
   // It only ever SAYS. Nothing here changes a setting until the player presses
   // the button, and what it presses is an ordinary `set` - so it shows up on
@@ -764,6 +787,9 @@
     }
     if (e.key.toLowerCase() === "r" && !onField && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault(); toggleRoll(); return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+      e.preventDefault(); $("#mieLogSave").click(); return;
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
       e.preventDefault(); send({ type: "undo" });

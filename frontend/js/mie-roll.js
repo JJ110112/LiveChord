@@ -577,6 +577,12 @@
           st.liveTimer = 0;
         }
       },
+      /** The engine just closed a segment: list it, and put it on screen. */
+      showSaved(name) {
+        api.refreshLogs();
+        el.logs.value = name;
+        el.logs.dispatchEvent(new Event("change"));
+      },
       refreshLogs() {
         fetch("/api/logs").then((r) => r.json()).then((list) => {
           const cur = el.logs.value;
@@ -586,9 +592,15 @@
             o.value = f.name;
             // the timestamp is the useful half of the filename
             const m = /^session-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/.exec(f.name);
-            o.textContent = m
-              ? `${m[2]}/${m[3]} ${m[4]}:${m[5]}  ${Math.round(f.bytes / 1024)} KB`
-              : f.name;
+            const when = m ? `${m[2]}/${m[3]} ${m[4]}:${m[5]}:${m[6]}` : f.name;
+            // the note count, not the byte count: a session that ran for six
+            // minutes without anyone playing is a big file full of snapshots,
+            // and looks from its size like the take you were after
+            o.textContent = f.human === undefined
+              ? `${when}  ${Math.round(f.bytes / 1024)} KB`
+              : (f.human ? `${when}  ${f.human} 音 / 引擎 ${f.gen}`
+                         : `${when}  （沒有彈奏）`);
+            if (f.human === 0) o.style.opacity = "0.55";
             el.logs.appendChild(o);
           });
           el.logs.value = cur;

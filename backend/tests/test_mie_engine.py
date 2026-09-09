@@ -1943,6 +1943,64 @@ def _texture_after(eng, clk, play_fn) -> str:
     return eng.st.texture
 
 
+# ------------------------------------------------- 存這段 / log rotate (2026-09-09)
+def test_saving_a_segment_closes_one_file_and_opens_the_next(tmp_path):
+    """Keeping a take must not mean stopping the engine.
+
+    The log was always written continuously, but the only way to CLOSE a
+    recording was to quit at the console - in the middle of playing, which is
+    when you least want to. `rotate` ends the segment into its own file and
+    starts the next one, and the boundary has to be exact: everything logged
+    before the press belongs to the closed file and nothing after it does.
+    """
+    from backend.mie import eventlog as EL
+
+    log = EL.EventLog(str(tmp_path / "session-20260909-000001.jsonl"))
+    try:
+        log.header(scene="t", mode="INTERACTIVE")
+        for n in range(60, 65):
+            log.log({"type": "human", "t": n - 60, "note": n})
+        first = log.rotate(summary={"stats": {"human_notes": 5}, "reason": "saved"},
+                           header={"scene": "t", "mode": "INTERACTIVE"})
+        for n in range(70, 73):
+            log.log({"type": "human", "t": n - 70, "note": n})
+    finally:
+        log.close(summary={"stats": {"human_notes": 3}})
+
+    def notes_in(path):
+        rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
+        return ([r["note"] for r in rows if r["type"] == "human"],
+                [r["type"] for r in rows])
+
+    a_notes, a_types = notes_in(first)
+    b_notes, b_types = notes_in(log.path)
+    assert a_notes == [60, 61, 62, 63, 64], f"the closed segment lost notes: {a_notes}"
+    assert b_notes == [70, 71, 72], f"the new segment picked up the old one's notes: {b_notes}"
+    assert a_types[0] == "session" and a_types[-1] == "summary", a_types
+    assert b_types[0] == "session" and b_types[-1] == "summary", b_types
+    assert first != log.path, "rotate reused the same file"
+
+
+def test_two_saves_in_the_same_second_do_not_land_in_one_file(tmp_path):
+    """Otherwise "save this bit" hands back two takes in one file."""
+    from backend.mie import eventlog as EL
+    monkey = tmp_path
+    old_dir = EL.LOG_DIR
+    EL.LOG_DIR = str(monkey)
+    try:
+        log = EL.EventLog(str(monkey / "session-20260909-000001.jsonl"))
+        try:
+            log.log({"type": "human", "t": 0, "note": 60})
+            a = log.rotate(header={"scene": "t"})
+            log.log({"type": "human", "t": 1, "note": 61})
+            b = log.rotate(header={"scene": "t"})
+        finally:
+            log.close()
+        assert a != b and b != log.path, f"segments collided: {a} {b} {log.path}"
+    finally:
+        EL.LOG_DIR = old_dir
+
+
 # ----------------------------------------------------- 落差提示 (2026-09-09)
 def test_the_advisor_never_reports_a_lane_for_doing_its_job():
     """Shadow, Echo, Phrase and Follow all take their pitch from the player.

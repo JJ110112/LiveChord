@@ -152,6 +152,34 @@ def main(argv=None) -> int:
                 except Exception as exc:
                     logging.getLogger("mie.ui").exception("mie: scene save failed")
                     engine.note_ui("error", where="save_scene", err=str(exc))
+            elif t == "log_save":
+                # Keep this segment as its own file without leaving the panel.
+                # The only way to finish a recording used to be stopping the
+                # engine and pressing q at the console - in the middle of
+                # playing, which is exactly when you least want to.
+                if evlog is None:
+                    engine.note_ui("error", where="log_save", err="event log is off")
+                    return
+                try:
+                    s0 = engine.snapshot()
+                    closed = evlog.rotate(
+                        summary={"stats": s0["stats"], "drops": s0["drops"],
+                                 "jitter": s0["jitter"], "reason": "saved",
+                                 # these run from when the ENGINE started, not
+                                 # from this segment: the file's own events are
+                                 # the truth about what is in it
+                                 "cumulative": True,
+                                 "edge_fires": {e.id: engine.edge_fires.get(e.id, 0)
+                                                for e in engine.graph.edges}},
+                        header={"scene": engine.scene.id, "mode": engine.mode,
+                                "ports": io.names,
+                                "edges": [e.to_dict() for e in engine.graph.edges]})
+                    engine.note_ui("log_saved", path=os.path.basename(closed),
+                                   human=s0["stats"]["human_notes"],
+                                   gen=s0["stats"]["gen_sent"])
+                except Exception as exc:
+                    logging.getLogger("mie.ui").exception("mie: log save failed")
+                    engine.note_ui("error", where="log_save", err=str(exc))
             elif t == "playhead":
                 engine.submit(_apply_playhead, engine, msg)
             elif t == "action":

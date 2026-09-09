@@ -22,11 +22,24 @@ from typing import Optional
 
 from .graph import REPO_ROOT
 
-LOG_DIR = os.path.join(REPO_ROOT, "data", "logs", "mie")
+# One definition of where the recordings live. The panel's log list reads this
+# same name rather than rebuilding the path, so the list can never point
+# somewhere the writer is not.
+LOG_DIR = os.environ.get("MIE_LOG_DIR") or os.path.join(REPO_ROOT, "data", "logs", "mie")
 
 
 def default_path() -> str:
-    return os.path.join(LOG_DIR, datetime.now().strftime("session-%Y%m%d-%H%M%S.jsonl"))
+    base = os.path.join(LOG_DIR, datetime.now().strftime("session-%Y%m%d-%H%M%S.jsonl"))
+    # Two segments saved inside the same second would otherwise append to one
+    # file, and "save this bit" would silently hand back two takes in one.
+    if not os.path.exists(base):
+        return base
+    stem = base[:-len(".jsonl")]
+    for i in range(2, 60):
+        p = f"{stem}-{i}.jsonl"
+        if not os.path.exists(p):
+            return p
+    return base
 
 
 class EventLog:
@@ -58,6 +71,23 @@ class EventLog:
             item = self._q.get()
             if item is None:
                 break
+            if "__rotate__" in item:
+                # Swapping the file HERE, on the writer thread, means everything
+                # queued before this marker has already gone to the old file -
+                # the segment boundary is exact rather than approximately where
+                # the button was pressed.
+                try:
+                    self._fh.close()
+                except Exception:
+                    pass
+                try:
+                    self._fh = open(item["__rotate__"], "a", encoding="utf-8", buffering=1)
+                    for line in item.get("__head__") or []:
+                        self._fh.write(json.dumps(line, ensure_ascii=False, default=str) + chr(10))
+                except Exception:
+                    pass
+                item["__done__"].set()
+                continue
             try:
                 self._fh.write(json.dumps(item, ensure_ascii=False, default=str) + "\n")
                 self._written += 1
@@ -90,6 +120,31 @@ class EventLog:
             self._fh.close()
         except Exception:
             pass
+
+    def rotate(self, summary: Optional[dict] = None, header: Optional[dict] = None) -> str:
+        """Close this segment into its own file and start a new one. Returns the closed path.
+
+        So a take can be kept without leaving the panel and pressing q at the
+        console - which meant the only way to finish a recording was to stop
+        the engine, in the middle of playing.
+        """
+        old_path = self.path
+        new_path = default_path()
+        if summary is not None:
+            self.log({"type": "summary", **summary})
+        head = []
+        if header:
+            head.append({"type": "session", "t": header.get("t", 0.0),
+                         "started": datetime.now().isoformat(timespec="seconds"),
+                         **{k: v for k, v in header.items() if k != "t"}})
+        done = threading.Event()
+        try:
+            self._q.put({"__rotate__": new_path, "__done__": done, "__head__": head})
+        except Exception:
+            return old_path
+        done.wait(timeout=2.0)
+        self.path = new_path
+        return old_path
 
     @property
     def stats(self) -> dict:
