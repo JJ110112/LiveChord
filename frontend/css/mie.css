@@ -75,7 +75,7 @@
 /* The left column is a set of readouts and a fixed list; it does not get better
    with more width, and every pixel it gives up goes to the edges. Fixed rather
    than fractional so the edge cards keep the same size when the window does. */
-.mie-main { display: grid; grid-template-columns: 236px minmax(420px, 1fr); gap: 12px; padding: 12px; flex: 1 1 auto; min-height: 200px; }
+.mie-main { display: grid; grid-template-columns: 282px minmax(420px, 1fr); gap: 12px; padding: 12px; flex: 1 1 auto; min-height: 200px; }
 .mie-col { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; overflow: auto; min-height: 0; }
 .mie-title-gap { margin-top: 16px; }
 .lc-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
@@ -111,7 +111,13 @@
    the control is there, and it sends nothing */
 .mie-field-swell.is-deaf .mie-fl { color: #ff9800; }
 .mie-field-swell.is-deaf .mie-fl::after { content: "（沒設 CC）"; font-size: 9px; }
-.mie-inst { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 4px; border-radius: 6px; }
+/* One line each, always. The name is what gets squeezed and the name is how
+   you find the row, so it ellipsises rather than wrapping to two lines and
+   pushing the controls off the edge - which is what produced a horizontal
+   scrollbar in a column that is meant to be read at a glance. */
+.mie-inst { display: flex; align-items: center; gap: 5px; font-size: 12px; padding: 2px 4px; border-radius: 6px; }
+.mie-inst .nm { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mie-inst .ch, .mie-inst .dot, .mie-inst input, .mie-hold, .mie-swcc { flex: 0 0 auto; }
 .mie-inst.human { background: rgba(33,150,243,.18); }
 .mie-inst.active { box-shadow: inset 0 0 0 1px #4caf5088; }
 .mie-inst .ch { color: var(--text-dim); font-size: 10px; width: 26px; }
@@ -169,6 +175,9 @@
 .mie-vel-hit.is-gone { color: #ff9800; opacity: 1; font-weight: 700; }
 .mie-vel .mie-fs { width: 100%; accent-color: var(--accent); border: none; padding: 0; }
 .mie-vel .mie-vel-v { text-align: right; font-variant-numeric: tabular-nums; }
+/* the breath, next to the strength it sits under */
+.mie-breath.is-off .mie-fl, .mie-breath.is-off .mie-breath-cc { opacity: .5; }
+.mie-breath .mie-breath-cc { opacity: .7; }
 /* the first layer of an edge: two settings, one drag */
 /* Square, near enough: it is two settings at right angles and a letterbox
    reads as one long slider. Fixed size rather than "whatever is left over". */
@@ -311,6 +320,8 @@
 .mie-adv-row.is-done { opacity: .6; }
 .mie-adv-txt { font-size: 12px; color: var(--text); line-height: 1.5; }
 .mie-adv-why { font-size: 10.5px; color: var(--text-dim); margin-top: 3px; line-height: 1.45; }
+.mie-adv-mute { opacity: .7; }
+.mie-adv-mute:hover { opacity: 1; }
 .mie-adv-act { display: flex; gap: 6px; margin-top: 7px; }
 .mie-adv-act .mie-btn { padding: 3px 10px; font-size: 11px; }
 

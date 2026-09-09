@@ -161,6 +161,17 @@ def main(argv=None) -> int:
             elif t == "freeze":
                 engine.submit(engine.freeze, bool(msg.get("on", True)),
                               str(msg.get("lane") or "") or None)
+            elif t == "mute_advice":
+                aid = str(msg.get("id") or "")
+                if aid:
+                    on = bool(msg.get("on", True))
+                    engine.submit(engine.mute_advice, aid, on)
+                    # Remembered like the scene and the style, and for the same
+                    # reason: a decision the player has made is not something
+                    # they should have to make again after every restart.
+                    muted = set(load_ui_state().get("muted_advice") or [])
+                    muted.add(aid) if on else muted.discard(aid)
+                    save_ui_state({"muted_advice": sorted(muted)})
             elif t == "all_edges":
                 engine.submit(engine.set_all_enabled, bool(msg.get("on")))
             elif t == "release":
@@ -256,6 +267,10 @@ def main(argv=None) -> int:
         ui.start()
         print(f"[ui] http://127.0.0.1:{a.port}/mie   ws://127.0.0.1:{a.port}/ws")
 
+    # Advice the player has already answered by deciding. Restored before the
+    # engine runs, so a decision made yesterday is not re-argued at boot.
+    for aid in (remembered.get("muted_advice") or []):
+        engine.muted_advice.add(str(aid))
     sched_th = engine.sched.start()
     eng_th = engine.start()
     # A style belongs to the scene it was laid over. Asking for a different one

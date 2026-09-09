@@ -152,6 +152,11 @@ class Engine:
         # the change and the player presses it.
         self.advisor = Advisor()
         self.advice: list = []
+        # Advice the player has answered by deciding. `tension_gap` fired on
+        # four takes running after 「時間 張力 留給使用者自己決定」 - and a light
+        # that stays on after you have made the decision it is asking for is
+        # not advice, it is a fault indicator for a fault that does not exist.
+        self.muted_advice: set = set()
         self.replaying = False
         self._advice_t = 0.0
         self._style_before: Optional[dict] = None
@@ -256,6 +261,20 @@ class Engine:
             self.set_mode(self.scene.mode if self.scene.mode not in ("OFF", "BYPASS") else "SAFE")
         self.panicked = False
         self._rearm_silence(self.clock())
+
+    def mute_advice(self, advice_id: str, on: bool = True) -> None:
+        """Stop being told a thing you have already decided.
+
+        By ID, not by text - the text carries live numbers and would come back
+        as a new message every reading. `overlap_<lane>` is per lane, which is
+        right: silencing the pad's overlap says nothing about the texture's.
+        """
+        if on:
+            self.muted_advice.add(advice_id)
+            self.advice = [a for a in self.advice if a["id"] != advice_id]
+        else:
+            self.muted_advice.discard(advice_id)
+        self._ui("advice_muted", id=advice_id, on=on, n=len(self.muted_advice))
 
     def _rearm_silence(self, now: float) -> None:
         """After a PANIC, the pad has to earn its way back in.
@@ -1696,9 +1715,10 @@ class Engine:
         if now - self._advice_t >= self.ADVICE_EVERY_S:
             self._advice_t = now
             try:
-                self.advice = self.advisor.confirm(
+                self.advice = [a for a in self.advisor.confirm(
                     advise(self.advisor.measure(now), self.scene.globals,
                            list(self.graph.edges)))
+                    if a["id"] not in self.muted_advice]
             except Exception as e:
                 self._log_error("advisor", e)
                 self.advice = []
@@ -1860,6 +1880,7 @@ class Engine:
             "preset": {"slot": self.preset_slot, "dirty": self.preset_dirty,
                        "stored": sorted(k for k, v in self.scene.presets.items() if v)},
             "advice": self.advice,
+            "muted_advice": sorted(self.muted_advice),
             "touched": sorted(self._touched),
             "replaying": self.replaying,
             "style": {"id": self.style,

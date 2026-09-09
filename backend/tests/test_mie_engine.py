@@ -3962,3 +3962,35 @@ def test_the_breath_rests_at_the_top_and_only_dips():
     assert swell_at(3.0, 0.0, 4.0, "sine") == 127, "depth 0 must be exactly the top"
     assert swell_at(3.0, 0.5, 0.0, "sine") == 127, "a zero period must rest, not divide"
     assert swell_at(1.0, 1.0, 4.0, "triangle", 0.0) >= 0
+
+
+def test_advice_you_have_answered_stops_being_offered():
+    """`tension_gap` fired on four takes running after 「時間 張力 留給使用者
+    自己決定」. A light that stays on after you have made the decision it is
+    asking for is not advice, it is a fault indicator for a fault that does not
+    exist."""
+    eng, clk, out = make([], tension=0.0)
+    # a take with rich chords and low tension: exactly the reading it fires on
+    for _ in range(2):
+        for chord in ([60, 64, 67, 71], [62, 65, 69, 72], [59, 62, 65, 69]):
+            for n in chord:
+                eng.advisor.note_human(clk(), n)
+            eng.advisor.note_chord(clk(), "maj7")
+            eng.advisor.note_chord(clk(), "m7")
+            clk.advance(0.4)
+    for _ in range(30):
+        eng.advisor.note_human(clk(), 60)
+        eng.advisor.note_chord(clk(), "9")
+        clk.advance(0.2)
+    run_for(eng, clk, 9.0)
+    assert any(a["id"] == "tension_gap" for a in eng.advice),         f"the advisory never fired, so silencing it proves nothing: {eng.advice}"
+
+    eng.mute_advice("tension_gap")
+    assert not [a for a in eng.advice if a["id"] == "tension_gap"],         "still on screen the moment it was silenced"
+    run_for(eng, clk, 12.0)
+    assert not [a for a in eng.advice if a["id"] == "tension_gap"],         "came back on the next reading"
+    assert "tension_gap" in eng.snapshot()["muted_advice"]
+
+    eng.mute_advice("tension_gap", False)
+    run_for(eng, clk, 12.0)
+    assert any(a["id"] == "tension_gap" for a in eng.advice), "could not be turned back on"

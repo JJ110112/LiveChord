@@ -446,6 +446,47 @@
     return Math.min(127, Math.round(v));
   }
 
+  /** 呼吸 depth, on the face of the card - but only for a lane whose instrument
+   *  has said which controller it listens to.
+   *
+   *  It needs both halves, and after the first evening with it the player had
+   *  set the instrument half and stopped: the depth was one row among twenty in
+   *  the expanded parameter grid, and the log shows not one `edge.*.swell` in
+   *  half an hour. A control the feature cannot work without does not belong
+   *  three levels down. It stays hidden on lanes where it would do nothing,
+   *  rather than offering a slider that sends nowhere.
+   *
+   *  The full control - beats and shape - stays in the body. This is the one
+   *  knob you reach for while listening.
+   */
+  function makeBreath(e, wrap) {
+    const sl = wrap.querySelector("input");
+    const out = wrap.querySelector(".mie-breath-v");
+    const cc = wrap.querySelector(".mie-breath-cc");
+    let cur = e;
+    const read = (x) => (x && typeof x.swell === "object" && x.swell) || {};
+    const show = (v) => { sl.value = v; out.textContent = Number(v).toFixed(2); };
+    sl.addEventListener("input", () => out.textContent = Number(sl.value).toFixed(2));
+    sl.addEventListener("change", () => {
+      const d = read(cur);
+      const v = { depth: Number(sl.value), beats: d.beats || 8, shape: d.shape || "breathe" };
+      cur.swell = v;
+      send({ type: "set", path: `edge.${cur.id}.swell`, value: v });
+    });
+    return {
+      sync(next, insts) {
+        cur = next;
+        const inst = insts.find((i) => i.ch === next.dst) || {};
+        wrap.hidden = !inst.swell_cc;
+        if (wrap.hidden) return;
+        const d = read(next);
+        cc.textContent = `CC${inst.swell_cc}`;
+        wrap.classList.toggle("is-off", !(d.depth > 0));
+        if (document.activeElement !== sl) show(d.depth || 0);
+      },
+    };
+  }
+
   function edgeBool(e, spec) {
     let cur = e;
     const wrap = document.createElement("label");
@@ -763,6 +804,13 @@
                 <span class="mie-fn mie-vel-v">1.00</span>
                 <span class="mie-vel-hit"></span>
               </label>
+              <label class="mie-vel mie-breath" hidden
+                     title="呼吸：這條線響著的時候，把樂器的表情 CC 上下擺。深度 0 = 不動">
+                <span class="mie-fl">呼吸</span>
+                <input class="mie-fs" type="range" min="0" max="1" step="0.05">
+                <span class="mie-fn mie-breath-v">0.00</span>
+                <span class="mie-vel-hit mie-breath-cc"></span>
+              </label>
               <span class="mie-pad-lbl"></span>
             </div>
           </div>
@@ -777,6 +825,7 @@
           quick.classList.add("no-pad");
         }
         el._vel = makeVel(e, el.querySelector(".mie-vel"));
+        el._breath = makeBreath(e, el.querySelector(".mie-breath"));
         el.querySelector('input[type=checkbox]').addEventListener("change", (ev) => send({ type: "set", path: `edge.${e.id}.enabled`, value: ev.target.checked }));
         el.querySelector(".dst").addEventListener("change", (ev) =>
           send({ type: "set", path: `edge.${e.id}.dst`, value: Number(ev.target.value) }));
@@ -817,6 +866,7 @@
       const src = e.src === 0 ? "HUMAN" : `CH${e.src}`;
       el.querySelector(".name").textContent = e.id;
       el._vel.sync(e, s);
+      el._breath.sync(e, s.instruments || []);
       el.querySelector(".src").textContent = src;
       // Which instrument a lane speaks through was only ever in the scene file.
       // "PANIC 是因為 wavestate 的音色多變不適合當延音" - the Wavestate is a
@@ -990,6 +1040,9 @@
       case "log_saved": cls = "mode"; txt = `錄音存成 ${e.path}（到此 ${e.human} 個人類音 / ${e.gen} 個生成音）`; break;
       case "panic": cls = "panic"; txt = `PANIC (${e.reason}) ${e.notes} notes released`; break;
       case "loop": cls = "loop"; txt = `LOOP ch${e.ch} ${nn(e.note)} came back on MIE In`; break;
+      case "advice_muted": cls = "mode"; txt = e.on
+        ? `不再提醒「${e.id}」（目前靜音 ${e.n} 項；用 --forget 開機可以全部復原）`
+        : `恢復提醒「${e.id}」`; break;
       case "all_edges": cls = "mode"; txt = e.on
         ? `全開：${e.n} 條邊打開了（共 ${e.total} 條）`
         : `全部略過：${e.n} 條邊讓開了，聲音已收掉。把想聽的那一條勾回來`; break;
@@ -1008,7 +1061,7 @@
   // line that flickers through fifty values is not a thing anyone reads.
   const NOTABLE = new Set(["drop", "panic", "loop", "save_conflict", "log_saved",
                            "style", "scene", "mode", "replay", "touched", "error",
-                           "all_edges"]);
+                           "all_edges", "advice_muted"]);
   // A PANIC or a refused save has to survive being looked away from; a style
   // change is news for a moment and then clutter. The loud ones stay until the
   // next thing happens, the rest fade.
@@ -1090,10 +1143,14 @@
       const row = document.createElement("div");
       row.className = "mie-adv-row" + (a.level === "warn" ? " is-warn" : "");
       const btns = (a.fix_label ? `<button class="mie-btn mie-adv-fix">${a.fix_label}</button>` : "")
-        + (a.alt && a.alt.style ? `<button class="mie-btn mie-adv-alt">切換風格</button>` : "");
+        + (a.alt && a.alt.style ? `<button class="mie-btn mie-adv-alt">切換風格</button>` : "")
+        + `<button class="mie-btn mie-adv-mute" title="這件事你已經決定了，不用再提醒。`
+        + `記在引擎那邊，重開也不會回來">不用再提</button>`;
       row.innerHTML = `<div class="mie-adv-txt">${a.text}</div>`
         + `<div class="mie-adv-why">${a.why || ""}</div>`
         + `<div class="mie-adv-act">${btns}</div>`;
+      row.querySelector(".mie-adv-mute").addEventListener("click", () =>
+        send({ type: "mute_advice", id: a.id, on: true }));
       const fix = row.querySelector(".mie-adv-fix");
       if (fix) fix.addEventListener("click", () => {
         (a.fix || []).forEach(([path, value]) => send({ type: "set", path, value }));
