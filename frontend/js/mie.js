@@ -574,6 +574,9 @@
         const body = el.querySelector(".mie-edge-body");
         el.querySelector(".mie-more").addEventListener("click", () => {
           body.hidden = !body.hidden;
+          // an open edge takes the whole width of the list back - its parameter
+          // grid needs the room, and at half width every field wrapped
+          el.classList.toggle("is-open", !body.hidden);
           el.querySelector(".mie-more").textContent = body.hidden ? "▾" : "▴";
         });
         // the algorithm's own version of a knob wins, so vel_scale is not shown twice
@@ -875,7 +878,7 @@
   // animation frame, and `pushEvent` does nothing extra on the panel's hot
   // path. The three columns above are where the work happens during a take
   // and this must not disturb them.
-  let roll = null;
+  let roll = null, rollSaveTimer = 0;
   const rollBox = $("#mieRoll");
   function toggleRoll(on) {
     const wasOpen = !rollBox.hidden;
@@ -900,6 +903,13 @@
     // opens empty and stays empty until you find the 即時 button reads as broken.
     // Only ever on the way IN: pressing 即時 off and leaving the panel open has
     // to stick, or the button does nothing.
+    if (show) {
+      // the height the player dragged it to last time. Applied before the
+      // canvas is measured, or the roll draws itself at the default size and
+      // then jumps.
+      const h = prefs().rollH;
+      if (h) rollBox.style.height = `${h}px`;
+    }
     if (roll) {
       if (show) { if (!wasOpen) roll.setLive(true); roll.redraw(); }
       else roll.setLive(false);
@@ -908,6 +918,30 @@
     // something the player then cannot see is the same as not opening it
     if (show) rollBox.scrollIntoView({ behavior: "smooth", block: "end" });
   }
+  // The roll is resized by dragging its bottom edge (CSS `resize: vertical`).
+  // Remember where it was left, and tell the canvas - it sizes itself to its
+  // box once, on redraw, so without this the picture keeps the old height and
+  // the new space stays blank.
+  let rollH = 0;
+  function rememberRollHeight() {
+    if (rollBox.hidden) return;
+    // offsetHeight, not the observer's contentRect: `box-sizing: border-box` is
+    // global here, so the height written back on the next visit is a BORDER
+    // box. Saving the content box instead loses the padding and the border
+    // every time, and the roll would come back 18 px shorter each session.
+    const h = rollBox.offsetHeight;
+    if (!h || h === rollH) return;
+    rollH = h;
+    if (roll) roll.redraw();          // the canvas measures its box as it draws
+    clearTimeout(rollSaveTimer);
+    rollSaveTimer = setTimeout(() => setPref("rollH", h), 400);
+  }
+  // Two ways in, because neither covers the other. The observer keeps the
+  // picture filling the box WHILE the corner is being dragged; pointerup is
+  // what actually ends the drag, and it still arrives when the observer does
+  // not - a background tab suspends ResizeObserver along with rAF.
+  if (window.ResizeObserver) new ResizeObserver(rememberRollHeight).observe(rollBox);
+  rollBox.addEventListener("pointerup", rememberRollHeight);
   $("#mieRollBtn").addEventListener("click", () => { toggleRoll(); setPref("roll", !rollBox.hidden); });
   $("#mieRollClose").addEventListener("click", () => { toggleRoll(false); setPref("roll", false); });
   // Open unless this browser was left with it closed. It replaced the event

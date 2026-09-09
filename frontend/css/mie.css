@@ -88,13 +88,24 @@
 .mie-inst.active .dot { background: #4caf50; }
 .mie-inst.human .dot { background: #2196f3; }
 
-.mie-edge-list { display: flex; flex-direction: column; gap: 4px; }
+/* Two across. One per row left the middle column as a stack of thin horizontal
+   strips - a lot of empty width per edge and only three or four visible at
+   once, which is the wrong trade when the whole point of the column is seeing
+   which lanes are firing. An OPEN edge takes the full width back: its parameter
+   grid needs the room, and a half-width one wrapped every field onto its own
+   line. */
+.mie-edge-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; align-content: start; }
+.mie-edge.is-open { grid-column: 1 / -1; }
+@media (max-width: 1400px) { .mie-edge-list { grid-template-columns: 1fr; } }
 /* The lane's colour, the same one the piano roll paints it with, so a bar in
    the picture leads to the row that made it. A stripe rather than a fill: the
    row still has to read as a control, not as a legend. */
 .mie-edge { padding: 6px 8px; border: 1px solid var(--border); border-left: 3px solid hsl(var(--lane-h, 220) 55% 45%); border-radius: 8px; transition: background .2s, border-color .2s; }
 .mie-ev.has-lane { border-left: 2px solid hsl(var(--lane-h, 220) 60% 50%); padding-left: 4px; }
-.mie-edge-head { display: grid; grid-template-columns: 22px 1fr 132px 76px 40px 24px; align-items: center; gap: 8px; }
+/* Narrower fixed columns than the full-width version had: at half the width the
+   name is what gets squeezed, and the name is how you find the row. */
+.mie-edge-head { display: grid; grid-template-columns: 20px minmax(84px, 1fr) 116px 70px 34px 20px; align-items: center; gap: 6px; }
+.mie-edge.is-open .mie-edge-head { grid-template-columns: 22px 1fr 132px 76px 40px 24px; gap: 8px; }
 /* the first layer of an edge: two settings, one drag */
 .mie-pad { position: relative; height: 46px; border: 1px solid var(--border); border-radius: 6px; background: linear-gradient(0deg, rgba(255,255,255,.05), transparent); cursor: crosshair; touch-action: none; overflow: hidden; }
 .mie-pad.is-live { border-color: var(--accent); }
@@ -171,9 +182,14 @@
    asked for. */
 .mie-roll { display: flex; flex-direction: column; gap: 6px; margin: 0 12px 10px; padding: 8px;
   background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
-  /* It is open by default now and it is where the take is read, so it gets
-     real height rather than the sliver a rarely-opened drawer could live in. */
-  flex: 0 0 auto; height: min(52vh, 620px); min-height: 260px; }
+  /* Open by default, but not at the expense of the controls above it: 52vh took
+     more than half the screen and the edge list was down to three rows. Drag
+     the bottom edge to whatever suits the take - the height is remembered. */
+  /* the floor is not arbitrary: the canvas refuses to be shorter than 160 px,
+     and the bar, the lane legend and the footer take about 90 more. Below this
+     the picture would be drawn outside its own box. */
+  flex: 0 0 auto; height: min(34vh, 380px); min-height: 250px; max-height: 82vh;
+  resize: vertical; overflow: hidden; }
 .mr-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .mr-bar .mie-btn { padding: 4px 10px; font-size: 12px; }
 .mr-play { min-width: 42px; }
