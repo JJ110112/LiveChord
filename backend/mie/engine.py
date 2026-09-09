@@ -1078,7 +1078,7 @@ class Engine:
                             edge_id=edge.id, constraint=edge.constraint, follow_off=cp.follow_off,
                             src_note=cp.src_note, max_dur=dur, ttl_wall=min(ev.ttl_wall, t_on + 4.0 * self.st.beat_s),
                             collision=collision_for(edge), voice_lead=voice_lead_for(edge),
-                            tension=self._tension(edge), note_range=edge_range(edge),
+                            tension=self._tension(edge), note_range=edge_range(edge, self.st),
                             capture_root=cp.capture_root, capture_quality=cp.capture_quality,
                             pass_id=cp.pass_id)
             self.sched.schedule_pair(pair)

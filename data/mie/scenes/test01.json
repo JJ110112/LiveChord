@@ -170,14 +170,15 @@
       "every_bars_min": 1.0,
       "every_bars_max": 2.0,
       "voices": 3,
-      "hold_beats": 6,
+      "hold_beats": 4,
       "vel": 46,
       "low": 55,
-      "high": 88,
-      "release_beats": 2.0,
+      "high": 79,
+      "release_beats": 1.5,
       "align": "beat",
       "voice_lead": "octave",
-      "lane": "sustain"
+      "lane": "sustain",
+      "below_player": 7
     },
     {
       "id": "silence_pad",

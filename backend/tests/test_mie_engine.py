@@ -595,6 +595,69 @@ def test_sustain_follows_the_pedal_not_the_fingers():
     assert not [k for k in eng.st.active_gen if k[0] == 4]
 
 
+def test_below_player_keeps_the_pad_under_the_hands_and_follows_them_up():
+    """背景 pad，不是另一個在高音區演奏的樂手。
+
+    A fixed ceiling cannot do this: the player's own top note moves by two
+    octaves inside one take, so `high: 88` means "above me" whenever they are
+    playing in the middle. `below_player: N` keeps N semitones of clearance
+    under whatever they are actually playing, and comes back down when they
+    move up.
+    """
+    from backend.mie.constraint import edge_range, player_top
+    from backend.mie.graph import Edge
+
+    e = Edge(src=0, dst=4, algo="sustain", id="su",
+             params={"low": 55, "high": 88, "below_player": 7, "lane": "sustain"})
+    eng, clk, out = make([])
+    st = eng.st
+
+    hold_chord(eng, clk, 9, [60, 64, 72])        # top is C5
+    assert player_top(st) == 72
+    lo, hi = edge_range(e, st)
+    assert hi <= 72 - 7, f"the pad was allowed up to {hi} under a top of 72"
+    assert lo == 55, "the edge's own floor moved - a pad has a register of its own"
+
+    release_chord(eng, clk, 9, [60, 64, 72])
+    hold_chord(eng, clk, 9, [79, 84])            # they move UP
+    assert player_top(st) == 84
+    lo2, hi2 = edge_range(e, st)
+    assert hi2 > hi, "the ceiling did not follow the player upward"
+    assert hi2 <= 88
+
+    # and it never collapses to nothing, however low they play
+    release_chord(eng, clk, 9, [79, 84])
+    hold_chord(eng, clk, 9, [28, 31])            # right down in the bass
+    lo3, hi3 = edge_range(e, st)
+    assert hi3 >= lo3 + 10, f"the register collapsed to {lo3}-{hi3}"
+    assert lo3 == 55, "the pad dived under the player's left hand"
+
+    # with no such setting, nothing changes at all
+    plain = Edge(src=0, dst=4, algo="sustain", id="su", params={"low": 55, "high": 88})
+    assert edge_range(plain, st) == (55, 88)
+
+
+def test_below_player_releases_the_notes_the_player_has_climbed_over():
+    """Waiting for a hold to expire leaves the pad on top of them meanwhile."""
+    edge = _sustain_edge(below_player=7, low=55, high=88, hold_beats=32,
+                         every_bars_min=0.5, every_bars_max=0.5, voices=3)
+    eng, clk, out = make([edge], seed=4)
+    eng.instruments[4] = Instrument(4, "Fantom Strings", "strings", "fantom", True, 6, 1.0, (36, 96), True)
+    hold_chord(eng, clk, 9, [76, 79, 83])        # playing high: the pad may sit high too
+    run_for(eng, clk, 8.0)
+    high_notes = [n for (ch, n) in eng.st.active_gen if ch == 4]
+    assert high_notes, "the pad never spoke"
+    top_before = max(n for (ch, n) in eng.st.active_gen if ch == 4)
+    release_chord(eng, clk, 9, [76, 79, 83])
+    hold_chord(eng, clk, 9, [48, 52, 55])        # now they play LOW
+    run_for(eng, clk, 12.0)
+    from backend.mie.constraint import edge_range
+    ceiling = edge_range(eng.graph.edges[0], eng.st)[1]
+    left = [n for (ch, n) in eng.st.active_gen if ch == 4]
+    assert all(n <= ceiling + 2 for n in left),         f"notes left above the ceiling {ceiling}: {sorted(left)}"
+    assert max(left, default=0) < top_before,         "the pad did not come down at all after the player did"
+
+
 def test_sustain_above_held_forgets_what_the_pedal_is_still_holding():
     """A note flicked high and let go must not pin the pad up there.
 

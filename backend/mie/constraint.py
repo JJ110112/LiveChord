@@ -311,10 +311,54 @@ def diatonic_map(note: int, src_root: int, src_quality: str,
     return anchor + d + dst[idx] + alt
 
 
-def edge_range(edge) -> Optional[tuple]:
-    """The register an edge asked for, if it named one."""
+# How far back to look for "the top of what you are playing". Long enough that
+# the ceiling does not lurch every time a hand lifts, short enough that moving
+# up the keyboard moves the pad down within a phrase.
+PLAYER_TOP_WINDOW_S = 6.0
+
+
+def player_top(st: MusicalState, window_s: float = PLAYER_TOP_WINDOW_S) -> Optional[int]:
+    """The highest note the player is on right now, or was very recently.
+
+    Fingers first: what is actually down is the truth about where their hands
+    are. Only when nothing is held does it fall back to the last few seconds,
+    so a pad does not leap upward the instant a chord is released. Deliberately
+    NOT `sounding`, which includes everything the pedal is holding - that is a
+    ratchet, and it is what put the strings on the ceiling on the 22:16 take.
+    """
+    if st.held:
+        return max(st.held)
+    cutoff = st._last_t - float(window_s)
+    recent = [r.note for r in st.recent_notes if r.t >= cutoff]
+    return max(recent) if recent else None
+
+
+def edge_range(edge, st: Optional[MusicalState] = None) -> Optional[tuple]:
+    """The register an edge asked for, narrowed to stay under the player.
+
+    `below_player: N` means "keep at least N semitones below whatever I am
+    playing". A fixed ceiling cannot do this: the player asked for
+    "MIE 的最高音應該低於我的主要演奏最高音，並且保留安全間隔" and their own top
+    note moves around by two octaves inside one take.
+
+    The edge's own `low` is a HARD FLOOR: only the ceiling moves. Letting the
+    floor slide down with it put the pad's median at E3 and then C3 - measured
+    on two real takes - which is not a pad getting out of the way, it is a bass
+    drone arriving under the player's left hand instead of over their right.
+    A pad has a register of its own; when the player is so low that there is no
+    room underneath, the lane stays at its floor rather than diving.
+    """
     lo, hi = edge.params.get("low"), edge.params.get("high")
-    return (int(lo), int(hi)) if lo is not None and hi is not None else None
+    if lo is None or hi is None:
+        return None
+    lo, hi = int(lo), int(hi)
+    gap = edge.params.get("below_player")
+    if st is not None and gap:
+        top = player_top(st)
+        if top is not None:
+            # never narrower than a seventh, or there is nothing to voice with
+            hi = max(lo + 10, min(hi, int(top) - int(gap)))
+    return (lo, hi)
 
 
 def constrain(p: Proposal, st: MusicalState, edge: Edge, inst: Optional[Instrument], *,
@@ -329,7 +373,7 @@ def constrain(p: Proposal, st: MusicalState, edge: Edge, inst: Optional[Instrume
         return p
     note = late_bind(p.note, edge.constraint, st, inst, "none",
                      voice_lead=voice_lead_for(edge), prev=prev, others=others, tension=tension,
-                     note_range=edge_range(edge))
+                     note_range=edge_range(edge, st))
     if note is None:
         return None
     vel = int(round(p.vel * (inst.vel_scale if inst else 1.0)))

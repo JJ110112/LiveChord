@@ -33,12 +33,21 @@ def _candidates(st: MusicalState, edge: Edge, lane_notes: list[int], tension: fl
     Asking the constraint here rather than hardcoding chord tones is what makes
     the setting mean anything: late binding can only narrow what we propose.
     """
-    from ..constraint import allowed_pcs      # imported late: constraint pulls in state
+    from ..constraint import allowed_pcs, edge_range   # late: constraint pulls in state
     pcs = set(allowed_pcs(st, edge.constraint, tension))
     if not pcs:
         return []
-    low, high = int(edge.params.get("low", 55)), int(edge.params.get("high", 88))
-    if edge.params.get("above_held", True):
+    # ONE definition of this lane's register, shared with the late binding, or
+    # the voice leading would re-pick above a ceiling this function respected.
+    rng = edge_range(edge, st)
+    low, high = rng if rng else (int(edge.params.get("low", 55)),
+                                 int(edge.params.get("high", 88)))
+    # `below_player` and `above_held` say opposite things - stay under me, sit
+    # over me - so the specific one wins and the other is not consulted. A pad
+    # asked to do both would do neither predictably.
+    if edge.params.get("below_player"):
+        pass
+    elif edge.params.get("above_held", True):
         # ABOVE WHAT THE FINGERS ARE PLAYING NOW, not above everything the
         # pedal is still holding. `sounding` is fingers plus pedal, so with the
         # pedal down its maximum is a ratchet over the whole pedalled passage:
@@ -97,13 +106,30 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
                              t_offset=rel) for n in lane_notes]
         return []
 
+    # The player moved UP: come down out of their way rather than waiting for
+    # these notes to expire on their own. "當我的演奏音域往上移動時，MIE 自動向下
+    # 重新配置" - a pad that only re-aims when it next speaks is still sitting on
+    # top of them for the length of a hold. The 2-semitone margin is so a top
+    # note wobbling either side of the line does not switch the lane on and off.
+    ceiling_offs: list = []
+    if edge.params.get("below_player") and lane_notes:
+        from ..constraint import edge_range
+        rng_ = edge_range(edge, st)
+        if rng_:
+            over = [n for n in lane_notes if n > rng_[1] + 2]
+            if over:
+                rel = t_beats(edge, st, "release_beats", 2.0)
+                ceiling_offs = [Proposal(ch=edge.dst, note=n, vel=0, dur=0.0, lane=edge.lane,
+                                         kind="off", t_offset=rel * 0.5) for n in over]
+                lane_notes = [n for n in lane_notes if n not in over]
+
     bar_s = st.beat_s * st.beats_per_bar
     if lane_state.get("next_t") is None:
         # first tick of this held gesture: wait `after_s` before speaking at all
         lane_state["next_t"] = now + t_secs(edge, st, "after_s", 1.5)
-        return []
+        return ceiling_offs
     if now < lane_state["next_t"]:
-        return []
+        return ceiling_offs
     scale = time_scale(st)
     lo = float(edge.params.get("every_bars_min", 1.0)) * scale
     hi = max(lo, float(edge.params.get("every_bars_max", 2.0)) * scale)
@@ -111,18 +137,26 @@ def tick(st: MusicalState, edge: Edge, rng: Random, now: float, lane_state: dict
 
     cands = _candidates(st, edge, lane_notes, tension)
     if not cands:
-        return []
+        return ceiling_offs
     note = rng.choice(cands)
     vel = scaled_vel(edge, int(edge.params.get("vel", 46)) + rng.randint(-4, 4))
     hold = t_beats(edge, st, "hold_beats", 8.0)
     t_off = 0.0     # the engine quantises every lane through `align` (plan §11 Ph2)
 
-    out = []
+    out = list(ceiling_offs)
     max_voices = int(edge.params.get("voices", 3))
     if len(lane_notes) >= max_voices:
         lane_state["left"] = "voice_budget"
-        oldest = min(((n, g.t_on) for (ch, n), g in list(st.active_gen.items())
-                      if ch == edge.dst and g.lane == edge.lane), key=lambda x: x[1])[0]
+        # The HIGHEST goes first when the lane is asked to stay under the
+        # player: "如果完整和弦會造成高音超出限制，優先刪除或降低最高聲部".
+        # Otherwise the oldest, which is what a pad rotating its colours wants.
+        live = [(n, g.t_on) for (ch, n), g in list(st.active_gen.items())
+                if ch == edge.dst and g.lane == edge.lane and n in lane_notes]
+        if live:
+            oldest = (max(live, key=lambda x: x[0])[0] if edge.params.get("below_player")
+                      else min(live, key=lambda x: x[1])[0])
+        else:
+            oldest = lane_notes[0]
         out.append(Proposal(ch=edge.dst, note=oldest, vel=0, dur=0.0, lane=edge.lane, kind="off",
                             t_offset=t_off))
     out.append(Proposal(ch=edge.dst, note=note + edge.transpose + 12 * edge.octave, vel=vel,
