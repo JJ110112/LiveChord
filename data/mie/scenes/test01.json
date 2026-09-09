@@ -187,7 +187,8 @@
       "swell": {
         "depth": 0.4,
         "beats": 8,
-        "shape": "breathe"
+        "shape": "breathe",
+        "top": 0.55
       }
     },
     {
