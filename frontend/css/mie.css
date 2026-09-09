@@ -178,6 +178,8 @@
 /* the breath, next to the strength it sits under */
 .mie-breath.is-off .mie-fl, .mie-breath.is-off .mie-breath-cc { opacity: .5; }
 .mie-breath .mie-breath-cc { opacity: .7; }
+/* a breath on a shared instrument sweeps the other lanes on it too */
+.mie-breath.is-shared .mie-breath-cc { color: #ff9800; opacity: 1; }
 /* the first layer of an edge: two settings, one drag */
 /* Square, near enough: it is two settings at right angles and a letterbox
    reads as one long slider. Fixed size rather than "whatever is left over". */

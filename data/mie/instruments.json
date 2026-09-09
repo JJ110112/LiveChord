@@ -12,7 +12,8 @@
       96
     ],
     "sustain_ok": false,
-    "_note_sustain": "sustain_ok false (2026-09-09): on the 17:03 take this lane held one note for 24.0 s and two past 8 s, and it was one of the two channels sounding at both PANICs. The flag gates the ceiling in safety.py - sustain_dur_s (30 s) when marked, max_dur_s (8 s) when not."
+    "_note_sustain": "sustain_ok false (2026-09-09): on the 17:03 take this lane held one note for 24.0 s and two past 8 s, and it was one of the two channels sounding at both PANICs. The flag gates the ceiling in safety.py - sustain_dur_s (30 s) when marked, max_dur_s (8 s) when not.",
+    "swell_cc": 0
   },
   "2": {
     "name": "Fantom Piano",
@@ -23,7 +24,9 @@
     "note_range": [
       28,
       103
-    ]
+    ],
+    "sustain_ok": false,
+    "swell_cc": 0
   },
   "3": {
     "name": "Fantom Pad",
@@ -35,7 +38,8 @@
       40,
       88
     ],
-    "sustain_ok": true
+    "sustain_ok": true,
+    "swell_cc": 0
   },
   "4": {
     "name": "Fantom Strings",
@@ -47,7 +51,8 @@
       36,
       96
     ],
-    "sustain_ok": true
+    "sustain_ok": false,
+    "swell_cc": 0
   },
   "5": {
     "name": "Fantom Synth",
@@ -58,7 +63,9 @@
     "note_range": [
       36,
       96
-    ]
+    ],
+    "sustain_ok": false,
+    "swell_cc": 0
   },
   "6": {
     "name": "Fantom Bass",
@@ -69,7 +76,9 @@
     "note_range": [
       28,
       55
-    ]
+    ],
+    "sustain_ok": false,
+    "swell_cc": 0
   },
   "7": {
     "name": "Fantom Lead",
@@ -80,7 +89,9 @@
     "note_range": [
       55,
       103
-    ]
+    ],
+    "sustain_ok": false,
+    "swell_cc": 0
   },
   "8": {
     "name": "Fantom FX",
@@ -91,7 +102,9 @@
     "note_range": [
       36,
       96
-    ]
+    ],
+    "sustain_ok": false,
+    "swell_cc": 0
   },
   "9": {
     "name": "Nord Grand 2",
@@ -102,7 +115,9 @@
     "note_range": [
       28,
       103
-    ]
+    ],
+    "sustain_ok": false,
+    "swell_cc": 0
   },
   "10": {
     "name": "Wavestate mk II",
@@ -115,7 +130,8 @@
       96
     ],
     "sustain_ok": false,
-    "_note_sustain": "sustain_ok false on purpose (2026-09-09): the wave-sequencing patches move too much to hold a long note - 「音色多變不適合當延音」. The flag is not just a label: safety.py allows sustain_dur_s (30 s) to an instrument marked for it and max_dur_s (8 s) to one that is not, so this caps anything this synth is asked to hold at 8 s."
+    "_note_sustain": "sustain_ok false on purpose (2026-09-09): the wave-sequencing patches move too much to hold a long note - 「音色多變不適合當延音」. The flag is not just a label: safety.py allows sustain_dur_s (30 s) to an instrument marked for it and max_dur_s (8 s) to one that is not, so this caps anything this synth is asked to hold at 8 s.",
+    "swell_cc": 0
   },
   "11": {
     "name": "Iridium",
@@ -126,7 +142,9 @@
     "note_range": [
       36,
       96
-    ]
+    ],
+    "sustain_ok": false,
+    "swell_cc": 0
   },
   "12": {
     "name": "MODX M6",
@@ -137,7 +155,9 @@
     "note_range": [
       36,
       96
-    ]
+    ],
+    "sustain_ok": true,
+    "swell_cc": 11
   },
   "13": {
     "name": "Ketron Event 61",
@@ -149,7 +169,10 @@
       36,
       96
     ],
-    "_note": "Wurlitzer / brass / wind（使用者偏好）"
+    "_note": "Wurlitzer / brass / wind（使用者偏好）",
+    "sustain_ok": true,
+    "swell_cc": 11,
+    "_note_swell": "CC11 on purpose (2026-09-09): the player asked for silence_pad to breathe here. CC11 is CHANNEL-wide, so it sweeps echo_wavestate and sustain_event61 on this channel too - there is no per-note expression in MIDI."
   },
   "14": {
     "name": "PSR-SX900",
@@ -161,7 +184,9 @@
       36,
       96
     ],
-    "_note": "吉他聲（使用者偏好）；只送到 Voice1 / Upper1，不觸發自動伴奏（2026-09-09 使用者確認接線）"
+    "_note": "吉他聲（使用者偏好）；只送到 Voice1 / Upper1，不觸發自動伴奏（2026-09-09 使用者確認接線）",
+    "sustain_ok": false,
+    "swell_cc": 0
   },
   "15": {
     "name": "microArranger",
@@ -173,6 +198,8 @@
       36,
       96
     ],
-    "_note": "EP / 口琴（使用者偏好）；只送到 Voice1 / Upper1，不觸發自動伴奏（2026-09-09 使用者確認接線）"
+    "_note": "EP / 口琴（使用者偏好）；只送到 Voice1 / Upper1，不觸發自動伴奏（2026-09-09 使用者確認接線）",
+    "sustain_ok": false,
+    "swell_cc": 0
   }
 }

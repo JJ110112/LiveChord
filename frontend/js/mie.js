@@ -474,14 +474,25 @@
       send({ type: "set", path: `edge.${cur.id}.swell`, value: v });
     });
     return {
-      sync(next, insts) {
+      sync(next, insts, sharing) {
         cur = next;
         const inst = insts.find((i) => i.ch === next.dst) || {};
         wrap.hidden = !inst.swell_cc;
         if (wrap.hidden) return;
         const d = read(next);
-        cc.textContent = `CC${inst.swell_cc}`;
-        wrap.classList.toggle("is-off", !(d.depth > 0));
+        const on = d.depth > 0;
+        // MIDI has no per-note expression. CC11 belongs to the CHANNEL, so a
+        // breath set here rides every OTHER lane on the same instrument as
+        // well - which is a surprise worth having before it is heard, not
+        // after.
+        const others = (sharing.get(next.dst) || 1) - 1;
+        cc.textContent = `CC${inst.swell_cc}` + (on && others ? ` ·連帶 ${others}` : "");
+        wrap.classList.toggle("is-off", !on);
+        wrap.classList.toggle("is-shared", !!on && others > 0);
+        wrap.title = others
+          ? `CC${inst.swell_cc} 是整個聲道共用的，所以這個呼吸也會帶著 CH${next.dst} 上`
+            + `另外 ${others} 條線一起起伏。要它單獨呼吸，就把它搬到一台沒有別人的琴`
+          : `這條線響著的時候，把 CH${next.dst} 的 CC${inst.swell_cc} 上下擺。深度 0 = 不動`;
         if (document.activeElement !== sl) show(d.depth || 0);
       },
     };
@@ -779,6 +790,10 @@
     // the kind of silence the panel has to explain rather than just display.
     const fed = new Set(s.edges.filter((e) => e.enabled).map((e) => e.dst));
     const load = chLoad(s.edges);
+    // how many enabled lanes each instrument is carrying, for the breath's
+    // "this rides the others too" note
+    const sharing = new Map();
+    s.edges.forEach((e) => { if (e.enabled) sharing.set(e.dst, (sharing.get(e.dst) || 0) + 1); });
     s.edges.forEach((e) => {
       seen.add(e.id);
       let el = edgeEls.get(e.id);
@@ -866,7 +881,7 @@
       const src = e.src === 0 ? "HUMAN" : `CH${e.src}`;
       el.querySelector(".name").textContent = e.id;
       el._vel.sync(e, s);
-      el._breath.sync(e, s.instruments || []);
+      el._breath.sync(e, s.instruments || [], sharing);
       el.querySelector(".src").textContent = src;
       // Which instrument a lane speaks through was only ever in the scene file.
       // "PANIC 是因為 wavestate 的音色多變不適合當延音" - the Wavestate is a

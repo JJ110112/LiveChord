@@ -13,7 +13,7 @@
     "max_dur_s": 8.0,
     "sustain_dur_s": 30.0,
     "avoid_semitone": "ensemble",
-    "tension": 0.6,
+    "tension": 0.2,
     "density": 0.35,
     "master_gain": 0.27,
     "master_cc": 7,
@@ -183,12 +183,17 @@
       "align": "beat",
       "voice_lead": "octave",
       "lane": "sustain",
-      "below_player": 7
+      "below_player": 7,
+      "swell": {
+        "depth": 0.4,
+        "beats": 8,
+        "shape": "breathe"
+      }
     },
     {
       "id": "silence_pad",
       "src": 0,
-      "dst": 12,
+      "dst": 13,
       "algo": "silence",
       "prob": 0.9,
       "delay_beats": 0.0,
@@ -215,7 +220,12 @@
       "vel": 34,
       "low": 48,
       "high": 84,
-      "below_player": 7
+      "below_player": 7,
+      "swell": {
+        "depth": 0.5,
+        "beats": 12,
+        "shape": "breathe"
+      }
     },
     {
       "id": "silence_texture",
@@ -241,7 +251,7 @@
       "enabled": false,
       "after_s": 0.5,
       "lane": "texture",
-      "hold_s": 8,
+      "hold_s": 16,
       "release_beats": 2.0,
       "voices": 2,
       "vel": 34,
