@@ -1517,6 +1517,10 @@
     // Keep alterations inside parentheses together: "E7(#9,b13)" is one chord.
     const src = String(text || "").replace(/♭/g, "b").replace(/♯/g, "#")
       .replace(/\(([^)]*)\)/g, (m, inner) => "(" + inner.replace(/[,\s]+/g, "") + ")")
+      // Jazz shorthand minor: "Bb-7" → "Bbm7", "C-" → "Cm". Only when the dash
+      // is followed by a quality tail (digit / maj / M9) or ends the token —
+      // otherwise it's a separator ("I-V-vi-IV", "C-G-Am-F").
+      .replace(/([A-G][b#]?|[ivIV]+)-(?=\d|maj|M\d|$|[\s/])/g, "$1m")
       .replace(/[–—→>|,]/g, " ").trim();
     const tokens = src.split(/[\s-]+/).filter(Boolean);
     if (tokens.length < 2) return { chords: [], error: "至少需要 2 個和弦" };
