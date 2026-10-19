@@ -93,6 +93,7 @@ from process_api import router as process_router
 from oauth_api import router as oauth_router
 from progression_api import router as progression_router
 from learn_api import router as learn_router
+from tuning_api import router as tuning_router
 # demo_api is optional — V:\ NUC personal-mode deploy may lack the module
 # (demo songs feature is for the public landing on livechord.org). Without
 # this guard, an out-of-sync NUC clone fails to boot.
@@ -205,6 +206,7 @@ app.include_router(analytics_router)
 app.include_router(process_router)
 app.include_router(progression_router)
 app.include_router(learn_router)
+app.include_router(tuning_router)
 from midi_api import router as midi_router  # noqa: E402
 app.include_router(midi_router)
 if demo_router is not None:

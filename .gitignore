@@ -218,3 +218,5 @@ reports/
 tools/fluidsynth/
 # FluidSynth renders of uploaded MIDI files (served by /api/midi/audio)
 data/midi_audio/
+data/tuning_scan.json
+data/tuning_pretune/

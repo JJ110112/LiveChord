@@ -427,6 +427,28 @@
         <button id="btnAccRecompute" title="Clear accompaniment cache for one song; next playback regenerates fresh" data-i18n-attr="title=admin.acc.recompute_tip" data-i18n="admin.acc.recompute_btn">Recompute</button>
         <span id="accRecomputeStatus" style="font-size:11px;color:var(--text-dim);"></span>
       </div>
+      <div id="tuningPanel" style="margin-bottom:8px; padding:6px; border:1px dashed var(--border); border-radius:4px;">
+        <div class="actions" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+          <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;">🎚️ 音準</span>
+          <input type="text" id="tuningPath" placeholder="path / hash / player URL" class="num-input" style="flex:1; max-width:260px; text-align:left;">
+          <button id="btnTuningAnalyze" title="量測整首歌偏離 A=440 多少 cents（不修改檔案）">分析</button>
+          <button id="btnTuningFix" title="修正音高與速度：原檔改名 .bak，修正檔取代原檔，並重新偵測和弦">修正</button>
+          <button id="btnTuningRevert" title="用 .bak 還原原檔與修正前的和弦/快取">還原</button>
+          <label style="font-size:12px; color:var(--text-dim); display:flex; align-items:center; gap:4px;" title="有人工校對資料的歌預設跳過；勾選後仍會修正並重新偵測（users/ 下的人工資料不會被刪）">
+            <input type="checkbox" id="tuningForce" style="margin:0;"> 含人工資料
+          </label>
+          <span id="tuningStatus" style="font-size:11px;color:var(--text-dim);"></span>
+        </div>
+        <div class="actions" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:6px;">
+          <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;">批次</span>
+          <input type="text" id="tuningPrefix" placeholder="路徑前綴，如 @1/Relax/（空白 = 全曲庫，很久）" class="num-input" style="flex:1; max-width:260px; text-align:left;">
+          <button id="btnTuningScan">掃描</button>
+          <button id="btnTuningReport">報告</button>
+          <button id="btnTuningBatchFix" title="修正報告中所有可修正、尚未修正的歌">全部修正</button>
+          <span id="tuningBatchStatus" style="font-size:11px;color:var(--text-dim);"></span>
+        </div>
+        <div id="tuningOutput" style="display:none;margin-top:6px;max-height:260px;overflow:auto;font-size:11px;line-height:1.5;color:var(--text-dim);font-family:Consolas,monospace;white-space:pre-wrap;word-break:break-word;"></div>
+      </div>
       <div class="actions" style="margin-bottom:8px; display:flex; gap:6px; align-items:center; padding:6px; border:1px dashed var(--border); border-radius:4px;">
         <span style="font-size:12px; color:var(--text-dim); white-space:nowrap;">🎹 RH melody</span>
         <input type="text" id="melodyDebugPath" placeholder="path / hash / player URL" class="num-input" style="flex:1; max-width:260px; text-align:left;">
@@ -1552,6 +1574,126 @@ window._lcIsBeta = (function() {
     } catch (e) {
       status.textContent = _t("admin.toast.batch_midi_failed", {err: e.message || e});
     }
+  });
+
+  // ---- 音準修正（/api/admin/tuning/*）----
+  async function _tuningPost(url, body) {
+    const res = await fetch(url, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || `${res.status} ${res.statusText}`);
+    return data;
+  }
+  function _tuningIdent() {
+    const ident = _parseSongIdentifier($("#tuningPath").value);
+    if (!ident) $("#tuningStatus").textContent = "無法解析路徑";
+    return ident;
+  }
+  const _tuningReason = {
+    stable_offset: "穩定偏移，可修正", in_tune: "音準正常", drifting: "音高漂移（不自動修正）",
+    ambiguous_quarter_tone: "接近四分之一音，無法判斷方向", unsupported_format: "非 FLAC/WAV，不重新編碼",
+    too_short: "太短", human_data: "有人工資料，已跳過", already_corrected: "已修正過",
+  };
+  const _fmtCents = c => (c > 0 ? "+" : "") + c + "¢";
+  let _tuningPollTimer = null;
+  function _tuningPoll(jobId, statusEl) {
+    clearInterval(_tuningPollTimer);
+    _tuningPollTimer = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/admin/tuning/status?id=${jobId}`).then(x => x.json());
+        if (r.status === "queued" || r.status === "running") {
+          statusEl.textContent = r.kind === "scan"
+            ? `掃描中 ${r.progress}/${r.total}` : `處理中：${r.step || r.status}`;
+          return;
+        }
+        clearInterval(_tuningPollTimer);
+        const res = r.result || {};
+        if (r.status === "error") {
+          statusEl.textContent = "失敗：" + r.error;
+        } else if (r.kind === "scan") {
+          statusEl.textContent = `掃描完成：${res.total} 首，可修正 ${res.fixable} 首`;
+          $("#btnTuningReport").click();
+        } else if (r.status === "skipped") {
+          statusEl.textContent = "跳過：" + (_tuningReason[res.reason] || res.reason)
+            + (res.human ? `（${res.human.join(", ")}）` : "");
+        } else {
+          const c = res.correction || {};
+          statusEl.textContent = `✅ 已修正 ${_fmtCents(c.cents)} → 殘差 ${_fmtCents(c.residual_cents)}，`
+            + `和弦重新偵測 ${res.chords?.chord_count ?? "?"} 個 (key ${res.chords?.key ?? "?"})`;
+        }
+      } catch (e) { /* transient — keep polling */ }
+    }, 3000);
+  }
+  $("#btnTuningAnalyze").addEventListener("click", async () => {
+    const ident = _tuningIdent(); if (!ident) return;
+    const st = $("#tuningStatus"); st.textContent = "分析中…";
+    try {
+      const a = await _tuningPost("/api/admin/tuning/analyze", ident);
+      st.textContent = `${_fmtCents(a.offset_cents)}（分段差異 ${a.spread_cents}¢）— `
+        + (_tuningReason[a.reason] || a.reason)
+        + (a.corrected ? "，已修正過" : "")
+        + (a.human_data.length ? `，人工資料：${a.human_data.join(", ")}` : "");
+    } catch (e) { st.textContent = "失敗：" + e.message; }
+  });
+  $("#btnTuningFix").addEventListener("click", async () => {
+    const ident = _tuningIdent(); if (!ident) return;
+    if (!confirm("將修改 NAS 上的原始音檔（原檔保留為 .bak）並重新偵測和弦，確定？")) return;
+    const st = $("#tuningStatus");
+    try {
+      const r = await _tuningPost("/api/admin/tuning/fix", { ...ident, force: $("#tuningForce").checked });
+      st.textContent = "已排入佇列…";
+      _tuningPoll(r.id, st);
+    } catch (e) { st.textContent = "失敗：" + e.message; }
+  });
+  $("#btnTuningRevert").addEventListener("click", async () => {
+    const ident = _tuningIdent(); if (!ident) return;
+    if (!confirm("用 .bak 還原原始音檔與修正前的和弦？")) return;
+    const st = $("#tuningStatus");
+    try {
+      const r = await _tuningPost("/api/admin/tuning/revert", ident);
+      st.textContent = `已還原（恢復 ${r.restored_files} 個檔案）`;
+    } catch (e) { st.textContent = "失敗：" + e.message; }
+  });
+  $("#btnTuningScan").addEventListener("click", async () => {
+    const st = $("#tuningBatchStatus");
+    try {
+      const r = await _tuningPost("/api/admin/tuning/scan", { prefix: $("#tuningPrefix").value.trim() });
+      st.textContent = "掃描已排入…";
+      _tuningPoll(r.id, st);
+    } catch (e) { st.textContent = "失敗：" + e.message; }
+  });
+  $("#btnTuningReport").addEventListener("click", async () => {
+    const out = $("#tuningOutput"), st = $("#tuningBatchStatus");
+    const res = await fetch("/api/admin/tuning/scan/report");
+    const rep = await res.json().catch(() => ({}));
+    if (!res.ok) { st.textContent = rep.detail || "沒有報告"; return; }
+    const pending = rep.rows.filter(r => r.fixable && !r.corrected).length;
+    const lines = rep.rows.filter(r => Math.abs(r.offset_cents || 0) >= 10 || r.corrected).map(r =>
+      `${r.corrected ? "✔" : r.fixable ? "●" : "·"} ${_fmtCents(r.offset_cents)} ±${r.spread_cents}  `
+      + `${_tuningReason[r.reason] || r.reason}  ${r.path}`);
+    out.textContent = `前綴「${rep.prefix || "(全部)"}」${rep.partial ? "（掃描中）" : ""}：`
+      + `已掃 ${rep.scanned}/${rep.total}，待修正 ${pending} 首\n● 可修正  ✔ 已修正  · 不處理\n\n`
+      + (lines.join("\n") || "（沒有偏移 ≥10¢ 的歌）");
+    out.style.display = "block";
+  });
+  $("#btnTuningBatchFix").addEventListener("click", async () => {
+    const st = $("#tuningBatchStatus");
+    if (!confirm("修正報告中所有可修正的歌（修改 NAS 原檔，保留 .bak）？")) return;
+    try {
+      const r = await _tuningPost("/api/admin/tuning/fix/batch", { force: $("#tuningForce").checked });
+      st.textContent = `已排入 ${r.queued} 首…`;
+      clearInterval(_tuningPollTimer);
+      _tuningPollTimer = setInterval(async () => {
+        const s = await fetch("/api/admin/tuning/status").then(x => x.json()).catch(() => null);
+        if (!s) return;
+        const fixes = s.jobs.filter(j => j.kind === "fix");
+        const cnt = k => fixes.filter(j => j.status === k).length;
+        st.textContent = `剩 ${s.pending}｜完成 ${cnt("done")}｜跳過 ${cnt("skipped")}｜失敗 ${cnt("error")}`;
+        if (!s.pending) clearInterval(_tuningPollTimer);
+      }, 4000);
+    } catch (e) { st.textContent = "失敗：" + e.message; }
   });
 
   $("#btnAccRecompute").addEventListener("click", async () => {
