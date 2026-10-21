@@ -39,6 +39,7 @@ from chord_noise_filter import maybe_filter_for_serve as maybe_noise_filter_for_
 from bar_phase_corrector import maybe_correct_for_serve as maybe_phase_correct_for_serve
 from meter_regularizer import maybe_regularize_for_serve
 from chord_quality_smoother import maybe_smooth_for_serve
+from section_consensus import load_human_sections, maybe_consensus_for_serve
 from key_relative import maybe_fix_relative_key_for_serve
 from bpm_sanity import maybe_apply_structural_bpm_correction_for_serve
 from global_chord_arbiter import maybe_analyze_global_structure_for_serve
@@ -424,7 +425,7 @@ def _merge_official_timing_fields_for_serve(data: dict, official_file: Path,
 
 
 
-def apply_serve_pipeline(data: dict, official_file: Path, path: str = "") -> dict:
+def apply_serve_pipeline(data: dict, official_file: Path, path: str = "", username: Optional[str] = None) -> dict:
     """Run the same serve-time corrections GET /api/chords applies, so other
     consumers (progression summary) analyse exactly what the player shows."""
     if path and _suppress_stale_legacy_timeline_for_serve(data, path):
@@ -437,6 +438,8 @@ def apply_serve_pipeline(data: dict, official_file: Path, path: str = "") -> dic
     maybe_regularize_for_serve(data)
     maybe_noise_filter_for_serve(data)
     maybe_smooth_for_serve(data)
+    if path and username:
+        maybe_consensus_for_serve(data, load_human_sections(DATA_DIR, username, song_hash(path)))
     maybe_extend_tail_for_serve(data)
     maybe_split_for_serve(data)
     return data
@@ -480,6 +483,8 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
     maybe_regularize_for_serve(data)    # 6/8 & 3/4: clean bars, fix phase, even beats, snap chord edges
     maybe_noise_filter_for_serve(data)  # absorb 1-beat noise tails
     maybe_smooth_for_serve(data)        # Fm → Fm6 → Fm extension flicker → Fm
+    if username:                        # same harmony renamed across human-labelled verses → majority name
+        maybe_consensus_for_serve(data, load_human_sections(DATA_DIR, username, song_hash(path)))
     maybe_extend_tail_for_serve(data)   # fill missing outro cards from beat tail
     maybe_split_for_serve(data)         # split long chords at corrected downbeats
     return data

@@ -499,7 +499,7 @@ def progression_summary(
     raw_chords = list(data.get("chords") or [])   # section detector runs on raw chords, like /api/ai/sections
     try:  # analyse the served view (meter regularizer, quality smoothing, split)
         from chord_api import apply_serve_pipeline
-        apply_serve_pipeline(data, f, path or data.get("path") or "")
+        apply_serve_pipeline(data, f, path or data.get("path") or "", username=str(username))
     except Exception:
         pass
     chords = data.get("chords") or []
