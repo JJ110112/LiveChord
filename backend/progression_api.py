@@ -540,6 +540,10 @@ def progression_summary(
                 result["patterns"] = human
                 result["explained"] = round(min(1.0, sum(p["coverage"] for p in human)), 3)
                 result["patterns_source"] = "human"
+                result["style"] = describe_style(chords, result["key"], data.get("bpm"), result["genre"], human,
+                                                 time_signature=data.get("time_signature") or "",
+                                                 subdivisions=data.get("display_subdivisions_per_bar"),
+                                                 pulses=data.get("practice_pulses_per_bar"))
         else:
             from ai.section_refine import refine_sections
             from ai_api import load_melody_notes
