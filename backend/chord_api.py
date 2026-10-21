@@ -38,6 +38,7 @@ from chord_tail_extender import maybe_extend_tail_for_serve
 from chord_noise_filter import maybe_filter_for_serve as maybe_noise_filter_for_serve
 from bar_phase_corrector import maybe_correct_for_serve as maybe_phase_correct_for_serve
 from meter_regularizer import maybe_regularize_for_serve
+from beat_density_regularizer import maybe_regularize_density_for_serve
 from chord_quality_smoother import maybe_smooth_for_serve
 from section_consensus import load_human_sections, maybe_consensus_for_serve
 from key_relative import maybe_fix_relative_key_for_serve
@@ -436,6 +437,7 @@ def apply_serve_pipeline(data: dict, official_file: Path, path: str = "", userna
     _maybe_meter_fallback_from_sidecars(data, official_file)
     maybe_analyze_global_structure_for_serve(data)
     maybe_regularize_for_serve(data)
+    maybe_regularize_density_for_serve(data)
     maybe_noise_filter_for_serve(data)
     maybe_smooth_for_serve(data)
     if path and username:
@@ -481,6 +483,7 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
     _maybe_meter_fallback_from_sidecars(data, official_file)  # stamp 6/8 from sidecars when active source can't detect
     maybe_analyze_global_structure_for_serve(data) # section-level diagnostic hints
     maybe_regularize_for_serve(data)    # 6/8 & 3/4: clean bars, fix phase, even beats, snap chord edges
+    maybe_regularize_density_for_serve(data)  # 4/4: tracker flips eighth/quarter pulse → one quarter-note grid
     maybe_noise_filter_for_serve(data)  # absorb 1-beat noise tails
     maybe_smooth_for_serve(data)        # Fm → Fm6 → Fm extension flicker → Fm
     if username:                        # same harmony renamed across human-labelled verses → majority name
@@ -508,6 +511,7 @@ async def get_chords_by_hash(hash: str = Query(..., min_length=8, max_length=16)
     _maybe_meter_fallback_from_sidecars(data, chords_file)
     maybe_analyze_global_structure_for_serve(data)
     maybe_regularize_for_serve(data)
+    maybe_regularize_density_for_serve(data)
     maybe_noise_filter_for_serve(data)
     maybe_smooth_for_serve(data)
     maybe_extend_tail_for_serve(data)
