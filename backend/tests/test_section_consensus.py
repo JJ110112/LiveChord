@@ -57,3 +57,15 @@ def test_compatibility_is_subset_based():
     assert _compatible("Edim7", "C7")        # rootless C7b9
     assert not _compatible("Cm", "Eb")
     assert not _compatible("Bbm7", "Eb")
+
+
+def test_section_of_different_length_is_left_out():
+    # A mis-placed boundary (one verse half as long, the next 1.5x) must not
+    # be scaled onto the others' bars — that compares the wrong chords.
+    base = ["Fm", "Eb", "Gm7b5", "C7"]
+    chords, secs = _song([base, base, ["Fm", "Eb", "Bbm6", "Edim7"], base])
+    secs[2]["end"] = secs[2]["start"] + 2 * BAR
+    secs[3]["start"] = secs[2]["end"]
+    out, meta = apply_consensus(chords, secs, BAR)
+    assert not meta["applied"]
+    assert meta["groups"]["verse"]["skipped"]

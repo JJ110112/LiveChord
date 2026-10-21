@@ -7,7 +7,8 @@ Dbmaj7 → Fm). Each section is sampled on a half-bar grid scaled to its own
 length, and per slot the majority chord across sections is found.
 
 Rule — deliberately conservative (see feedback_chord_noise_filter_aggressiveness):
-  * Only runs on human sections (never on algorithmic ones), groups of >= 3.
+  * Only runs on human sections (never on algorithmic ones), groups of >= 3
+    sections whose lengths are within ±20 % of the group median.
   * A slot's majority needs >= 2 votes and a strict plurality. A slot with
     a strict (> half) majority the chord is incompatible with blocks the
     rename; a slot with only a plurality abstains.
@@ -28,6 +29,7 @@ from chord_table import get_chord_notes, root_to_semitone, parse_chord
 _MAX_EXAMPLES = 12
 _MIN_GROUP = 3
 _MAX_SHIFT = 2
+_MAX_LEN_DEV = 0.2   # sibling sections must be within ±20 % of the median length
 
 
 def _pcs(name: str) -> Optional[frozenset]:
@@ -78,10 +80,16 @@ def apply_consensus(chords: List[Dict], sections: List[Dict], bar_sec: float):
     meta_groups = {}
     half = max(0.25, bar_sec / 2)
     for typ, secs in groups.items():
-        if len(secs) < _MIN_GROUP:
-            continue
         durs = sorted(float(s["end"]) - float(s["start"]) for s in secs)
-        n = max(1, round(durs[len(durs) // 2] / half))
+        med = durs[len(durs) // 2] if durs else 0
+        # A section much shorter/longer than its siblings is not the same
+        # phrase (or its boundary is off) — scaling it onto the grid would
+        # compare the wrong bars.
+        secs = [s for s in secs if med and abs(float(s["end"]) - float(s["start"]) - med) <= _MAX_LEN_DEV * med]
+        if len(secs) < _MIN_GROUP:
+            meta_groups[typ] = {"sections": len(secs), "skipped": "fewer than %d same-length sections" % _MIN_GROUP}
+            continue
+        n = max(1, round(med / half))
         # Human boundaries are approximate: sample each section with a little
         # slack and shift it (up to _MAX_SHIFT slots) to best match the others.
         seqs = []
