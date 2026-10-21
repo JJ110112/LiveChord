@@ -531,7 +531,16 @@ def progression_summary(
         sec = detect_sections(raw_chords, data.get("key") or "C", song_hash=h, data_dir=effective,
                               fallback_data_dir=str(DATA_DIR), hint_bpm=data.get("bpm"))
         sections = sec.get("sections", [])
-        if (sec.get("analysis") or {}).get("mode") != "human-loop":
+        if (sec.get("analysis") or {}).get("mode") == "human-loop":
+            # The human's phrase split defines the loops (repeated section types).
+            from ai.progression_pattern import patterns_from_sections
+            human = patterns_from_sections(chords, sections, key=result["key"], downbeats=data.get("downbeats") or None,
+                                           bpm=data.get("bpm"), bars=data.get("bars") or None)
+            if human:
+                result["patterns"] = human
+                result["explained"] = round(min(1.0, sum(p["coverage"] for p in human)), 3)
+                result["patterns_source"] = "human"
+        else:
             from ai.section_refine import refine_sections
             from ai_api import load_melody_notes
             sections, result["section_refine"] = refine_sections(sections, result, data.get("bars") or data.get("downbeats"), chords,
