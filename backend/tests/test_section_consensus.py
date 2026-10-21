@@ -69,3 +69,32 @@ def test_section_of_different_length_is_left_out():
     out, meta = apply_consensus(chords, secs, BAR)
     assert not meta["applied"]
     assert meta["groups"]["verse"]["skipped"]
+
+
+def test_human_section_boundaries_follow_the_rebuilt_bar_grid():
+    from section_consensus import snap_sections_to_bars
+    bars = [0.86 + 4.0 * i for i in range(12)]
+    secs = [{"type": "verse", "start": 0.0, "end": 32.4}, {"type": "verse", "start": 32.4, "end": 41.2},
+            {"type": "outro", "start": 41.2, "end": 46.0}]
+    out, meta = snap_sections_to_bars(secs, bars)
+    assert out[0]["end"] == out[1]["start"] == 32.86      # 0.46 s off → bar line
+    assert out[1]["end"] == out[2]["start"] == 40.86
+    assert out[0]["start"] == 0.0 and out[-1]["end"] == 46.0   # outer edges stay
+    assert secs[0]["end"] == 32.4                                 # caller's data untouched
+
+
+def test_section_boundary_far_from_a_bar_is_kept():
+    from section_consensus import snap_sections_to_bars
+    bars = [4.0 * i for i in range(10)]
+    secs = [{"type": "a", "start": 0, "end": 18.0}, {"type": "b", "start": 18.0, "end": 36.0}]
+    out, meta = snap_sections_to_bars(secs, bars)
+    assert out[1]["start"] == 18.0 and not meta["applied"]   # exactly mid-bar: half a bar off, not "within"
+
+
+def test_boundary_on_a_chord_change_is_anchored_by_harmony():
+    from section_consensus import snap_sections_to_bars
+    # Bridge drawn on the Bbm at 66.84; the grid has a bar line at 68.62.
+    bars = [60.88, 64.84, 68.62, 72.2]
+    secs = [{"type": "verse", "start": 50.0, "end": 66.84}, {"type": "bridge", "start": 66.84, "end": 80.0}]
+    out, meta = snap_sections_to_bars(secs, bars, [{"time": 64.84}, {"time": 66.84}, {"time": 68.62}])
+    assert out[1]["start"] == 66.84 and meta["chord_anchored"] == 1

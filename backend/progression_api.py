@@ -532,6 +532,8 @@ def progression_summary(
                               fallback_data_dir=str(DATA_DIR), hint_bpm=data.get("bpm"))
         sections = sec.get("sections", [])
         if (sec.get("analysis") or {}).get("mode") == "human-loop":
+            from section_consensus import snap_sections_to_bars
+            sections, result["section_bar_snap"] = snap_sections_to_bars(sections, data.get("bars") or data.get("downbeats"), chords)
             # The human's phrase split defines the loops (repeated section types).
             from ai.progression_pattern import patterns_from_sections
             human = patterns_from_sections(chords, sections, key=result["key"], downbeats=data.get("downbeats") or None,

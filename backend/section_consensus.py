@@ -181,6 +181,46 @@ def apply_consensus(chords: List[Dict], sections: List[Dict], bar_sec: float):
     return out, meta
 
 
+def snap_sections_to_bars(sections: List[Dict], bars: Optional[List[float]],
+                          chords: Optional[List[Dict]] = None):
+    """Serve-time only: move each inner human section boundary onto the
+    nearest bar line when within half a bar (the beat-density regularizer
+    rebuilds bars[], so boundaries drawn on the old grid sit off the new one).
+    The first start and last end stay; a section is never shrunk below one
+    bar. A boundary that sits on a chord change (within 0.15 s) is anchored
+    by the harmony and stays — there the bar grid is the suspect (Countdown's
+    bridge starts on a Bbm the rebuilt grid puts on beat 3). The saved
+    annotation file is not touched. Returns (sections, meta)."""
+    import bisect
+    grid = sorted(float(b) for b in (bars or []))
+    out = [dict(s) for s in sections or []]
+    if len(grid) < 2 or len(out) < 2:
+        return out, {"applied": False, "moved": 0}
+    onsets = sorted(float(c.get("time", 0)) for c in chords or [])
+    moved, anchored, examples = 0, 0, []
+    for i in range(1, len(out)):
+        t = float(out[i].get("start", 0))
+        jo = bisect.bisect_left(onsets, t)
+        if any(0 <= x < len(onsets) and abs(onsets[x] - t) <= 0.15 for x in (jo - 1, jo)):
+            anchored += 1
+            continue
+        if abs(float(out[i - 1].get("end", t)) - t) > 0.05:   # not a shared boundary
+            continue
+        j = bisect.bisect_left(grid, t)
+        cands = [k for k in (j - 1, j) if 0 <= k < len(grid)]
+        k = min(cands, key=lambda x: abs(grid[x] - t))
+        bar = (grid[min(k + 1, len(grid) - 1)] - grid[max(k - 1, 0)]) / max(1, min(k + 1, len(grid) - 1) - max(k - 1, 0))
+        near = grid[k]
+        if abs(near - t) < 0.01 or abs(near - t) >= 0.5 * bar - 1e-6:
+            continue
+        if near - float(out[i - 1]["start"]) < bar * 0.9 or float(out[i]["end"]) - near < bar * 0.9:
+            continue
+        out[i]["start"] = out[i - 1]["end"] = round(near, 3)
+        moved += 1
+        examples.append({"from": round(t, 2), "to": round(near, 2)})
+    return out, {"applied": bool(moved), "moved": moved, "chord_anchored": anchored, "examples": examples[:10]}
+
+
 def load_human_sections(data_dir: Path, username: Optional[str], song_hash: str) -> List[Dict]:
     if not username or not song_hash:
         return []
@@ -194,6 +234,8 @@ def load_human_sections(data_dir: Path, username: Optional[str], song_hash: str)
 def maybe_consensus_for_serve(chord_data: Dict, sections: List[Dict]) -> Dict:
     if not sections:
         return chord_data
+    sections, _ = snap_sections_to_bars(sections, chord_data.get("bars") or chord_data.get("downbeats"),
+                                        chord_data.get("chords"))
     try:
         new_chords, meta = apply_consensus(chord_data.get("chords") or [], sections, _bar_seconds(chord_data))
         if meta.get("applied"):
