@@ -46,6 +46,7 @@ _SWITCH_PENALTY = 4        # hits a new phase must win by to switch
 _ACTIVE_MIN_SHARE = 0.20   # active mode only rewrites songs this far off
 _ACTIVE_MAX_SWITCHES = 2   # …and whose bar phase is stable (more switches = grid we can't trust)
 _SNAP_TOL = 0.45           # chord boundary snap tolerance, in beats
+_STRONG_SNAP_TOL = 0.55    # …up to this when the target is a bar / mid-bar beat
 _MIN_CHORD_BEATS = 0.5     # never shrink a chord below half a beat
 _MIN_RUN = 8   # consecutive gaps at the other level
 _DROP_RATIO = 0.7
@@ -205,29 +206,71 @@ def _local_phase_bars(beats: List[float], old_down: List[float], onsets: List[fl
     return bars, path
 
 
-def snap_chords_to_beats(chords: List[Dict], beats: List[float], beat_sec: float):
-    """Move each inner chord boundary onto the nearest beat when it is within
-    _SNAP_TOL beats (BTC boundaries sit 0.3–0.5 s off the pulse), keeping both
-    neighbours at least _MIN_CHORD_BEATS long. The first onset and last end
-    are never moved. Returns (chords, moved)."""
+def snap_chords_to_beats(chords: List[Dict], beats: List[float], beat_sec: float,
+                         only_times: Optional[List[float]] = None, bars: Optional[List[float]] = None):
+    """Move each chord boundary onto the nearest beat when it is within
+    _SNAP_TOL of the LOCAL beat period (BTC boundaries sit 0.3–0.5 s off the
+    pulse), keeping both neighbours at least _MIN_CHORD_BEATS long. The first
+    onset may move back onto the beat before it (a late first chord); the last
+    end never moves. `only_times`: when serving a user's edited version, only
+    boundaries still equal to an official (BTC) boundary are snapped — the
+    user's own edits are never moved. A boundary sitting near the middle of
+    two beats (up to _STRONG_SNAP_TOL) goes to whichever is a strong beat —
+    a bar line or the middle of a 4-beat bar. Returns (chords, moved)."""
     import bisect
     out = [dict(c) for c in chords]
     moved = 0
+    keep = sorted(only_times) if only_times is not None else None
+
+    def untouched(t):
+        if keep is None:
+            return True
+        j = bisect.bisect_left(keep, t)
+        return any(0 <= k < len(keep) and abs(keep[k] - t) < 0.02 for k in (j - 1, j))
+
+    def local(j):
+        lo, hi = max(1, j - 2), min(len(beats) - 1, j + 2)
+        gaps = [beats[k] - beats[k - 1] for k in range(lo, hi + 1)]
+        return statistics.median(gaps) if gaps else beat_sec
+
+    strong_idx = set()
+    for b in bars or []:
+        j = bisect.bisect_left(beats, b - 0.02)
+        if j < len(beats) and abs(beats[j] - b) < 0.05:
+            strong_idx.update((j, j + 2))   # bar line + mid-bar of 4/4
+
+    if out and beats and untouched(float(out[0]["time"])):
+        t = float(out[0]["time"])
+        j = bisect.bisect_right(beats, t) - 1
+        if j >= 0 and 1e-3 < t - beats[j] <= 0.6 * local(j):
+            out[0]["time"] = round(beats[j], 3)
+            moved += 1
     for i in range(1, len(out)):
         t = float(out[i]["time"])
+        if not untouched(t):
+            continue
         j = bisect.bisect_left(beats, t)
-        near = min((beats[k] for k in (j - 1, j) if 0 <= k < len(beats)), key=lambda b: abs(b - t), default=None)
-        if near is None or abs(near - t) < 1e-3 or abs(near - t) > _SNAP_TOL * beat_sec:
+        cands = [k for k in (j - 1, j) if 0 <= k < len(beats)]
+        if not cands:
+            continue
+        k = min(cands, key=lambda x: abs(beats[x] - t))
+        near, p = beats[k], local(k)
+        if abs(near - t) > _SNAP_TOL * p:
+            strong = [x for x in (j - 1, j) if 0 <= x < len(beats) and x in strong_idx
+                      and abs(beats[x] - t) <= _STRONG_SNAP_TOL * local(x)]
+            if len(strong) != 1:
+                continue
+            near, p = beats[strong[0]], local(strong[0])
+        if abs(near - t) < 1e-3:
             continue
         prev_start = float(out[i - 1]["time"])
         end = float(out[i].get("end", t))
-        if near - prev_start < _MIN_CHORD_BEATS * beat_sec or end - near < _MIN_CHORD_BEATS * beat_sec:
+        if near - prev_start < _MIN_CHORD_BEATS * p or end - near < _MIN_CHORD_BEATS * p:
             continue
         out[i]["time"] = round(near, 3)
         out[i - 1]["end"] = round(near, 3)
         moved += 1
     return out, moved
-
 
 _MODES = ("off", "shadow", "active")
 _MODE_CACHE = None
@@ -261,6 +304,7 @@ def maybe_regularize_density_for_serve(chord_data: Dict) -> Dict:
     pulse level >= min_share) with a stable bar phase — the rest stay shadow."""
     mode, min_share = _mode()
     if mode == "off":
+        chord_data.pop("_official_chord_times", None)
         return chord_data
     try:
         probe = copy.deepcopy(chord_data)
@@ -272,7 +316,8 @@ def maybe_regularize_density_for_serve(chord_data: Dict) -> Dict:
                 chord_data[k] = probe[k]
             # The grid is now trusted → pull BTC's off-pulse boundaries onto it.
             chord_data["chords"], meta["chords_snapped"] = snap_chords_to_beats(
-                chord_data.get("chords") or [], chord_data["beats"], meta["beat_sec"])
+                chord_data.get("chords") or [], chord_data["beats"], meta["beat_sec"],
+                only_times=chord_data.get("_official_chord_times"), bars=chord_data["downbeats"])
             meta["mode"] = "active"
         elif meta.get("applied"):
             meta = {**meta, "applied": False, "would_apply": True, "mode": mode,
@@ -280,4 +325,5 @@ def maybe_regularize_density_for_serve(chord_data: Dict) -> Dict:
         chord_data["beat_density_meta"] = meta
     except Exception as exc:  # never break serving
         chord_data["beat_density_meta"] = {"applied": False, "reason": f"error: {exc}"}
+    chord_data.pop("_official_chord_times", None)
     return chord_data

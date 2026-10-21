@@ -74,3 +74,34 @@ def test_chord_boundary_snaps_to_beat_but_keeps_short_chords():
     assert out[1]["time"] == 6.0 and out[0]["end"] == 6.0
     assert out[3]["time"] == 8.3          # C7 would shrink to 0 → untouched
     assert out[0]["time"] == 0.0 and out[-1]["end"] == 12.0
+
+
+def test_late_first_chord_and_mid_beat_boundary_snap():
+    from beat_density_regularizer import snap_chords_to_beats
+    # Countdown to Heaven intro: beats every 1.0 s from 0.86; BTC puts Dbmaj7
+    # at 1.42 and Eb at 2.42 — a 1-beat Db. Both snap back a beat → 2 + 2.
+    beats = [0.86 + i for i in range(10)]
+    chords = [{"chord": "Dbmaj7", "time": 1.42, "end": 2.42}, {"chord": "Eb", "time": 2.42, "end": 4.86},
+              {"chord": "Fm", "time": 4.86, "end": 8.86}]
+    out, _ = snap_chords_to_beats(chords, beats, 0.92)
+    assert [(c["time"], c["end"]) for c in out[:2]] == [(0.86, 2.86), (2.86, 4.86)]
+
+
+def test_user_edited_boundaries_are_never_snapped():
+    from beat_density_regularizer import snap_chords_to_beats
+    beats = [float(i) for i in range(10)]
+    chords = [{"chord": "F", "time": 0.0, "end": 2.3}, {"chord": "G", "time": 2.3, "end": 5.4}, {"chord": "C", "time": 5.4, "end": 9.0}]
+    # 2.3 is the user's own boundary (not in the official BTC timeline); 5.4 is BTC's.
+    out, _ = snap_chords_to_beats(chords, beats, 1.0, only_times=[0.0, 3.1, 5.4])
+    assert out[1]["time"] == 2.3 and out[2]["time"] == 5.0
+
+
+def test_mid_point_boundary_goes_to_the_half_bar():
+    from beat_density_regularizer import snap_chords_to_beats
+    # Db(user) 8.84 | Eb at 10.4 — 0.52 after beat 9.88, 0.48 before 10.88.
+    # 10.88 is the middle of the bar 8.84–12.86, so Db gets 2 beats.
+    beats = [8.84, 9.88, 10.88, 11.84, 12.86, 13.86]
+    chords = [{"chord": "Db", "time": 8.84, "end": 10.4}, {"chord": "Eb", "time": 10.4, "end": 12.86},
+              {"chord": "Fm", "time": 12.86, "end": 13.86}]
+    out, _ = snap_chords_to_beats(chords, beats, 1.0, bars=[8.84, 12.86])
+    assert out[1]["time"] == 10.88

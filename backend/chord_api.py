@@ -473,6 +473,11 @@ async def get_chords(path: str = Query(...), version: str = Query(None),
     _apply_requested_beat_source(data, official_file, beat_source)
     if chords_file != official_file:
         _merge_official_timing_fields_for_serve(data, official_file, beat_source)
+        try:   # snapping may only touch boundaries the user did not edit
+            data["_official_chord_times"] = [float(c.get("time", 0)) for c in
+                                             json.loads(official_file.read_text(encoding="utf-8")).get("chords") or []]
+        except Exception:
+            data["_official_chord_times"] = []
     data["exists"] = True
     data["current_version"] = "official" if is_fallback or not version else version
     if _suppress_stale_legacy_timeline_for_serve(data, path):
