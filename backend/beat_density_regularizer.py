@@ -25,6 +25,7 @@ What it does (non-destructive, on the served payload only):
      4-bar chunk (Viterbi, switch penalty) by chord onsets + original
      downbeats, so a mid-song tracker dropout does not shift every later bar.
   4. tempo_curve = 60 / next gap per beat; bpm = median.
+  5. (active only) snap chord boundaries within 0.45 beat onto the new beats.
 
 Rollout is staged by mode (off / shadow / active, default shadow), see
 _mode(). Stamps ``beat_density_meta``.
@@ -44,6 +45,8 @@ _CHUNK_BEATS = 16          # 4 bars of 4/4 per phase decision
 _SWITCH_PENALTY = 4        # hits a new phase must win by to switch
 _ACTIVE_MIN_SHARE = 0.20   # active mode only rewrites songs this far off
 _ACTIVE_MAX_SWITCHES = 2   # …and whose bar phase is stable (more switches = grid we can't trust)
+_SNAP_TOL = 0.45           # chord boundary snap tolerance, in beats
+_MIN_CHORD_BEATS = 0.5     # never shrink a chord below half a beat
 _MIN_RUN = 8   # consecutive gaps at the other level
 _DROP_RATIO = 0.7
 _INSERT_RATIO = 1.5
@@ -202,6 +205,30 @@ def _local_phase_bars(beats: List[float], old_down: List[float], onsets: List[fl
     return bars, path
 
 
+def snap_chords_to_beats(chords: List[Dict], beats: List[float], beat_sec: float):
+    """Move each inner chord boundary onto the nearest beat when it is within
+    _SNAP_TOL beats (BTC boundaries sit 0.3–0.5 s off the pulse), keeping both
+    neighbours at least _MIN_CHORD_BEATS long. The first onset and last end
+    are never moved. Returns (chords, moved)."""
+    import bisect
+    out = [dict(c) for c in chords]
+    moved = 0
+    for i in range(1, len(out)):
+        t = float(out[i]["time"])
+        j = bisect.bisect_left(beats, t)
+        near = min((beats[k] for k in (j - 1, j) if 0 <= k < len(beats)), key=lambda b: abs(b - t), default=None)
+        if near is None or abs(near - t) < 1e-3 or abs(near - t) > _SNAP_TOL * beat_sec:
+            continue
+        prev_start = float(out[i - 1]["time"])
+        end = float(out[i].get("end", t))
+        if near - prev_start < _MIN_CHORD_BEATS * beat_sec or end - near < _MIN_CHORD_BEATS * beat_sec:
+            continue
+        out[i]["time"] = round(near, 3)
+        out[i - 1]["end"] = round(near, 3)
+        moved += 1
+    return out, moved
+
+
 _MODES = ("off", "shadow", "active")
 _MODE_CACHE = None
 
@@ -243,6 +270,9 @@ def maybe_regularize_density_for_serve(chord_data: Dict) -> Dict:
         if mode == "active" and severe:
             for k in ("beats", "downbeats", "bars", "tempo_curve", "bpm"):
                 chord_data[k] = probe[k]
+            # The grid is now trusted → pull BTC's off-pulse boundaries onto it.
+            chord_data["chords"], meta["chords_snapped"] = snap_chords_to_beats(
+                chord_data.get("chords") or [], chord_data["beats"], meta["beat_sec"])
             meta["mode"] = "active"
         elif meta.get("applied"):
             meta = {**meta, "applied": False, "would_apply": True, "mode": mode,

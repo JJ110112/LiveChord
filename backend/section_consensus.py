@@ -71,6 +71,35 @@ def _dominant(chords: List[Dict], s0: float, s1: float) -> Optional[int]:
     return best
 
 
+def _cost(x: Optional[str], y: Optional[str]) -> float:
+    if x is None or y is None:
+        return 1.0
+    if x == y:
+        return 0.0
+    return 0.5 if _compatible(x, y) or _compatible(y, x) else 1.0
+
+
+def _dtw_map(ref: List[Optional[str]], other: List[Optional[str]]) -> Dict[int, int]:
+    """Subsequence DTW: ref slot k → index into `other` (free start/end in
+    `other`, which carries _MAX_SHIFT slack slots on both sides). Each ref slot
+    takes the first other-slot on the path; a band keeps it local."""
+    INF = float("inf")
+    n, m = len(ref), len(other)
+    D = [[INF] * (m + 1) for _ in range(n + 1)]
+    for j in range(m + 1):
+        D[0][j] = 0.0
+    for k in range(1, n + 1):
+        for j in range(max(1, k - 1), min(m, k + 2 * _MAX_SHIFT + 1) + 1):
+            D[k][j] = _cost(ref[k - 1], other[j - 1]) + min(D[k - 1][j - 1], D[k - 1][j] + 0.2, D[k][j - 1] + 0.2)
+    j = min(range(1, m + 1), key=lambda x: D[n][x])
+    k, out = n, {}
+    while k > 0 and j > 0:
+        out[k - 1] = j - 1
+        steps = [(D[k - 1][j - 1], k - 1, j - 1), (D[k - 1][j] + 0.2, k - 1, j), (D[k][j - 1] + 0.2, k, j - 1)]
+        _, k, j = min(steps)
+    return out
+
+
 def apply_consensus(chords: List[Dict], sections: List[Dict], bar_sec: float):
     groups: Dict[str, List[Dict]] = {}
     for s in sections or []:
@@ -90,24 +119,28 @@ def apply_consensus(chords: List[Dict], sections: List[Dict], bar_sec: float):
             meta_groups[typ] = {"sections": len(secs), "skipped": "fewer than %d same-length sections" % _MIN_GROUP}
             continue
         n = max(1, round(med / half))
-        # Human boundaries are approximate: sample each section with a little
-        # slack and shift it (up to _MAX_SHIFT slots) to best match the others.
+        # Human boundaries are approximate and tempo drifts inside a section
+        # (verse 3 at 66 BPM vs verse 1 at 60), so each section is aligned to
+        # a reference section by DTW over slack-extended slots, not by a
+        # single whole-section shift.
         seqs = []
         for s in secs:
-            a, d = float(s["start"]), float(s["end"]) - float(s["start"])
+            a0, d = float(s["start"]), float(s["end"]) - float(s["start"])
             step = d / n
-            seqs.append([_dominant(chords, a + k * step, a + (k + 1) * step)
+            seqs.append([_dominant(chords, a0 + k * step, a0 + (k + 1) * step)
                          for k in range(-_MAX_SHIFT, n + _MAX_SHIFT)])
-        names = lambda seq: [chords[i]["chord"] if i is not None else None for i in seq]
-        shifts = [0] * len(secs)
-        for _ in range(2):
-            for j in range(len(secs)):
-                def score(sh):
-                    mine = names(seqs[j][_MAX_SHIFT + sh:_MAX_SHIFT + sh + n])
-                    return sum(sum(1 for x, y in zip(mine, names(seqs[o][_MAX_SHIFT + shifts[o]:_MAX_SHIFT + shifts[o] + n])) if x and x == y)
-                               for o in range(len(secs)) if o != j) - 0.1 * abs(sh)
-                shifts[j] = max(range(-_MAX_SHIFT, _MAX_SHIFT + 1), key=score)
-        grid = [[seqs[j][_MAX_SHIFT + shifts[j] + k] for j in range(len(secs))] for k in range(n)]
+        nm = lambda i: chords[i]["chord"] if i is not None else None
+        core = [[nm(i) for i in sq[_MAX_SHIFT:_MAX_SHIFT + n]] for sq in seqs]
+        ref = max(range(len(secs)), key=lambda j: sum(x == y for o in range(len(secs)) if o != j
+                                                     for x, y in zip(core[j], core[o])))
+        grid = [[None] * len(secs) for _ in range(n)]
+        for j in range(len(secs)):
+            if j == ref:
+                for k in range(n):
+                    grid[k][j] = seqs[j][_MAX_SHIFT + k]
+                continue
+            for k, i in _dtw_map(core[ref], [nm(i) for i in seqs[j]]).items():
+                grid[k][j] = seqs[j][i]
         votes: Dict[int, set] = {}   # chord idx → replacement names voted by its slots
         for row in grid:
             names = [chords[i]["chord"] if i is not None else None for i in row]

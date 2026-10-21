@@ -61,3 +61,16 @@ def test_mid_song_dropout_does_not_shift_later_bars():
     assert regularize(d)["applied"]
     later = [b for b in d["downbeats"] if b > 45]
     assert later and all(any(abs(b - t) < 0.05 for t in onsets) for b in later)
+
+
+def test_chord_boundary_snaps_to_beat_but_keeps_short_chords():
+    from beat_density_regularizer import snap_chords_to_beats
+    beats = [float(i) for i in range(20)]
+    # Gm7b5 starts 0.4 beat late (BTC lag) → onto beat 6; the next boundary
+    # is 0.3 off but would leave a < half-beat chord, so it stays.
+    chords = [{"chord": "Fm", "time": 0.0, "end": 6.4}, {"chord": "Gm7b5", "time": 6.4, "end": 8.0},
+              {"chord": "C7", "time": 8.0, "end": 8.3}, {"chord": "Db", "time": 8.3, "end": 12.0}]
+    out, moved = snap_chords_to_beats(chords, beats, 1.0)
+    assert out[1]["time"] == 6.0 and out[0]["end"] == 6.0
+    assert out[3]["time"] == 8.3          # C7 would shrink to 0 → untouched
+    assert out[0]["time"] == 0.0 and out[-1]["end"] == 12.0
