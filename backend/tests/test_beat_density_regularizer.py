@@ -50,3 +50,14 @@ def test_tempo_drift_is_kept():
 def test_compound_meter_is_left_to_meter_regularizer():
     d = {"time_signature": "6/8", "beats": [i * 0.5 for i in range(100)], "chords": []}
     assert not regularize(d)["applied"]
+
+
+def test_mid_song_dropout_does_not_shift_later_bars():
+    # Chords change every 4 s. The tracker loses one beat at 40 s; a single
+    # global bar phase would put every later bar line 1 beat off the chords.
+    beats = [i * 0.5 for i in range(40)] + [20 + i for i in range(20)] + [41 + i for i in range(60)]
+    onsets = [i * 4.0 for i in range(10)] + [41 + i * 4.0 for i in range(15)]
+    d = {"beats": beats, "downbeats": [], "bpm": 60, "chords": [{"time": t} for t in onsets]}
+    assert regularize(d)["applied"]
+    later = [b for b in d["downbeats"] if b > 45]
+    assert later and all(any(abs(b - t) < 0.05 for t in onsets) for b in later)

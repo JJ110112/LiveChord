@@ -21,13 +21,18 @@ What it does (non-destructive, on the served payload only):
      subdivision and is dropped, a gap of >= 1.5 periods gets beats inserted
      evenly. The phase of the leading run is chosen by the original
      downbeats + chord onsets.
-  3. Rebuild downbeats[] / bars[] as every 4th beat, the phase that hits the
-     most chord onsets and original downbeats.
+  3. Rebuild downbeats[] / bars[] as every 4th beat; the phase is picked per
+     4-bar chunk (Viterbi, switch penalty) by chord onsets + original
+     downbeats, so a mid-song tracker dropout does not shift every later bar.
   4. tempo_curve = 60 / next gap per beat; bpm = median.
 
-Stamps ``beat_density_meta``.
+Rollout is staged by mode (off / shadow / active, default shadow), see
+_mode(). Stamps ``beat_density_meta``.
 """
+import copy
+import json
 import math
+import os
 import statistics
 from typing import Dict, List, Optional
 
@@ -35,6 +40,10 @@ _SIMPLE = {"", "4/4", "2/4", "C"}
 _MIN_BEATS = 32
 _MIN_MINORITY_SHARE = 0.10
 _MIN_MINORITY_GAPS = 8
+_CHUNK_BEATS = 16          # 4 bars of 4/4 per phase decision
+_SWITCH_PENALTY = 4        # hits a new phase must win by to switch
+_ACTIVE_MIN_SHARE = 0.20   # active mode only rewrites songs this far off
+_ACTIVE_MAX_SWITCHES = 2   # …and whose bar phase is stable (more switches = grid we can't trust)
 _MIN_RUN = 8   # consecutive gaps at the other level
 _DROP_RATIO = 0.7
 _INSERT_RATIO = 1.5
@@ -135,14 +144,10 @@ def regularize(chord_data: Dict) -> Dict:
     tol = 0.2 * level
     new_beats = max(cands, key=lambda bs: 2 * _hits(bs, old_down, tol) + _hits(bs, onsets, tol))
 
-    # 3. bars every 4 beats, best phase
-    def score(k: int) -> int:
-        bars = new_beats[k::4]
-        return 2 * _hits(bars, old_down, tol) + _hits(bars, onsets, tol)
-    phase = max(range(4), key=score)
-    bars = new_beats[phase::4]
-    if phase:   # keep an anacrusis bar line before the first full bar
-        bars = [new_beats[0]] + bars if new_beats[0] < bars[0] - 0.5 * level else bars
+    # 3. bars every 4 beats; the phase is chosen PER 4-BAR CHUNK (Viterbi
+    # with a switch penalty) so one dropped/extra beat mid-song does not push
+    # every later bar line off — a switch leaves one short/long bar there.
+    bars, phase_path = _local_phase_bars(new_beats, old_down, onsets, tol, level)
 
     # 4. tempo
     new_gaps = [b - a for a, b in zip(new_beats, new_beats[1:])]
@@ -155,18 +160,94 @@ def regularize(chord_data: Dict) -> Dict:
     chord_data["bpm"] = round(60.0 / statistics.median(new_gaps), 1)
     meta.update({
         "applied": True,
+        "minority_share": round(minority_t / total, 3),
         "beat_sec": round(level, 3),
         "beats_before": len(beats), "beats_after": len(new_beats),
         "downbeats_before": len(old_down), "downbeats_after": len(bars),
         "bpm_before": old_bpm, "bpm_after": chord_data["bpm"],
-        "bar_phase": phase,
+        "bar_phase": phase_path[0] if phase_path else 0,
+        "phase_switches": sum(1 for a, b in zip(phase_path, phase_path[1:]) if a != b),
     })
     return meta
 
 
+def _local_phase_bars(beats: List[float], old_down: List[float], onsets: List[float],
+                      tol: float, level: float):
+    n = len(beats)
+    chunks = [(s, min(n, s + _CHUNK_BEATS)) for s in range(0, n, _CHUNK_BEATS)]
+
+    def score(c, k):
+        s, e = chunks[c]
+        lines = [beats[i] for i in range(s, e) if i % 4 == k]
+        lo, hi = beats[s] - tol, beats[e - 1] + tol
+        return (2 * _hits(lines, [t for t in old_down if lo <= t <= hi], tol)
+                + _hits(lines, [t for t in onsets if lo <= t <= hi], tol))
+
+    best = [[score(0, k), [k]] for k in range(4)]
+    for c in range(1, len(chunks)):
+        nxt = []
+        for k in range(4):
+            prev = max(range(4), key=lambda j: best[j][0] - (_SWITCH_PENALTY if j != k else 0))
+            v = best[prev][0] - (_SWITCH_PENALTY if prev != k else 0) + score(c, k)
+            nxt.append([v, best[prev][1] + [k]])
+        best = nxt
+    path = max(best, key=lambda x: x[0])[1]
+    bars = []
+    for (s, e), k in zip(chunks, path):
+        for i in range(s, e):
+            if i % 4 == k and (not bars or beats[i] - bars[-1] > 1.5 * level):
+                bars.append(beats[i])
+    if bars and beats[0] < bars[0] - 0.5 * level:   # anacrusis bar line
+        bars.insert(0, beats[0])
+    return bars, path
+
+
+_MODES = ("off", "shadow", "active")
+_MODE_CACHE = None
+
+
+def _mode():
+    """off / shadow / active (default shadow) + the severity a song needs for
+    active: LIVECHORD_BEAT_DENSITY_MODE or data/settings.json
+    beat_density_mode / beat_density_min_share. Restart to pick up changes."""
+    global _MODE_CACHE
+    if _MODE_CACHE is None:
+        cfg = {}
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "settings.json"),
+                      encoding="utf-8") as f:
+                cfg = json.load(f)
+        except Exception:
+            pass
+        mode = (os.environ.get("LIVECHORD_BEAT_DENSITY_MODE") or str(cfg.get("beat_density_mode", ""))).strip().lower()
+        try:
+            share = float(cfg.get("beat_density_min_share", _ACTIVE_MIN_SHARE))
+        except (TypeError, ValueError):
+            share = _ACTIVE_MIN_SHARE
+        _MODE_CACHE = (mode if mode in _MODES else "shadow", share)
+    return _MODE_CACHE
+
+
 def maybe_regularize_density_for_serve(chord_data: Dict) -> Dict:
+    """shadow: compute on a copy and only stamp beat_density_meta (would_*);
+    active: rewrite the grid, but only for severe songs (time at the wrong
+    pulse level >= min_share) with a stable bar phase — the rest stay shadow."""
+    mode, min_share = _mode()
+    if mode == "off":
+        return chord_data
     try:
-        chord_data["beat_density_meta"] = regularize(chord_data)
+        probe = copy.deepcopy(chord_data)
+        meta = regularize(probe)
+        severe = (meta.get("applied") and meta.get("minority_share", 0) >= min_share
+                  and meta.get("phase_switches", 0) <= _ACTIVE_MAX_SWITCHES)
+        if mode == "active" and severe:
+            for k in ("beats", "downbeats", "bars", "tempo_curve", "bpm"):
+                chord_data[k] = probe[k]
+            meta["mode"] = "active"
+        elif meta.get("applied"):
+            meta = {**meta, "applied": False, "would_apply": True, "mode": mode,
+                    "reason": "shadow" if mode == "shadow" else "below severity / unstable phase"}
+        chord_data["beat_density_meta"] = meta
     except Exception as exc:  # never break serving
         chord_data["beat_density_meta"] = {"applied": False, "reason": f"error: {exc}"}
     return chord_data
