@@ -7,7 +7,8 @@ style-stratified jam_tracks.json sample.
     analyzed Christmas piece in the library: classical / masses / oratorio,
     crossover, jazz, instrumental, pop.
   * ``器樂(全)`` and per-instrument ``器樂(鋼琴)`` / ``器樂(吉他)`` /
-    ``器樂(豎琴)`` / ``器樂(小提琴)`` / ``器樂(弦樂)`` / ``器樂(管樂)`` /
+    ``器樂(豎琴)`` / ``器樂(小提琴)`` / ``器樂(弦樂)`` / ``器樂(長笛)`` /
+    ``器樂(薩克斯風)`` / ``器樂(管樂)`` /
     ``器樂(手風琴)`` / ``器樂(管弦樂)``.
 
 Classification is metadata-only (folder / album / title keywords): the
@@ -61,9 +62,21 @@ CHRISTMAS_RE = re.compile(
 VOCAL_RE = re.compile(
     r"vocal|feat\.|\bft\.|choir|chorus|合唱|cantata|kantate|\baria\b|soprano"
     r"|tenor\b|baritone|mezzo|opera|lieder|\blied\b|\bsings?\b|\bsung\b"
-    r"|歌[手唱]|ボーカル|with lyrics|a cappella|cappella",
+    r"|歌[手唱]|ボーカル|with lyrics|a cappella|cappella|gilberto",
     re.I,
 )
+
+# Flute: "Magic Flute" / Zauberflöte is an opera; Blockflöte is a recorder.
+FLUTE_RX = (r"(?<!magic )\bflutes?\b|flutist|flautist|\bfl[ûu]te\b|\bflauto\b(?! dolce)"
+            r"|(?<!block)(?<!zauber)fl[öo]te\b|長笛|フルート|플루트")
+# Saxophone: titles rarely say "sax" on the sax players' own albums, so their
+# folder names count too. Andrea Motis is left out (mostly vocal albums).
+SAX_RX = (r"\bsax(?!e\b|on)\w*|薩克斯|萨克斯|サックス|サクソフォン|색소폰"
+          r"|stan getz|kenny g\b|dave koz|ben webster|candy dulfer|eric marienthal"
+          r"|euge groove|david sanborn|cannonball adderley|charlie parker|boney james"
+          r"|gerald albright|kirk whalum|grover washington|sonny rollins|john coltrane")
+# A flute sonata transcribed for organ is not a flute track.
+ORGAN_TRANSCRIPTION_RX = r"organ version|for organ\b|arr\.? for organ|the flute and the dr"
 
 INSTRUMENT_STYLES = [
     ("器樂(鋼琴)", r"piano|pianist|鋼琴|钢琴|ピアノ|피아노"),
@@ -74,19 +87,26 @@ INSTRUMENT_STYLES = [
     # Violin also stays in 弦樂; "violin" never matches violoncello
     ("器樂(小提琴)", r"violin|violon\b|violine\b|\bfiddle\b|小提琴|バイオリン|ヴァイオリン|바이올린"),
     ("器樂(弦樂)", r"violin|viola\b|cello|string quartet|strings\b|小提琴|大提琴|バイオリン|erhu|二胡"),
-    ("器樂(管樂)", r"sax(ophone)?\b|flute|clarinet|oboe|bassoon|trumpet|\bhorn\b|recorder\b|harmonica|長笛|薩克斯|口琴"),
+    ("器樂(長笛)", FLUTE_RX, ORGAN_TRANSCRIPTION_RX),
+    ("器樂(薩克斯風)", SAX_RX),
+    ("器樂(管樂)", FLUTE_RX + "|" + SAX_RX +
+     r"|clarinet|oboe|bassoon|trumpet|\bhorn\b|recorder\b|harmonica|口琴", ORGAN_TRANSCRIPTION_RX),
     # Bandoneón (tango) counted with the accordion family
     ("器樂(手風琴)", r"accordion|accord[eé]on|akkordeon|acorde[oó]n|bandone[oó]n|\bbayan\b|手風琴|手风琴|アコーディオン|아코디언"),
     ("器樂(管弦樂)", r"orchestra|orchestral|symphon(?!y x)|philharmoni|concerto|管弦|交響"),
 ]
-INSTRUMENT_STYLES = [(name, re.compile(rx, re.I)) for name, rx in INSTRUMENT_STYLES]
+# (name, include, exclude-or-None)
+INSTRUMENT_STYLES = [
+    (e[0], re.compile(e[1], re.I), re.compile(e[2], re.I) if len(e) > 2 else None)
+    for e in INSTRUMENT_STYLES
+]
 
 # Instrumental with no specific instrument named → only in 器樂(全).
 GENERIC_INSTRUMENTAL_RE = re.compile(
     r"instrumental|\binst\.|\(inst\)|off vocal|純音樂|纯音乐|演奏|伴奏", re.I,
 )
 
-STYLE_ORDER = [CHRISTMAS, INSTRUMENTAL_ALL] + [n for n, _ in INSTRUMENT_STYLES]
+STYLE_ORDER = [CHRISTMAS, INSTRUMENTAL_ALL] + [n for n, _, _ in INSTRUMENT_STYLES]
 
 
 def classify(track: dict) -> list:
@@ -98,7 +118,10 @@ def classify(track: dict) -> list:
     if top == CHRISTMAS or CHRISTMAS_RE.search(text):
         styles.append(CHRISTMAS)
     if not VOCAL_RE.search(text):
-        instruments = [name for name, rx in INSTRUMENT_STYLES if rx.search(text)]
+        instruments = [
+            name for name, rx, ex in INSTRUMENT_STYLES
+            if rx.search(text) and not (ex and ex.search(text))
+        ]
         if instruments or GENERIC_INSTRUMENTAL_RE.search(text):
             styles.append(INSTRUMENTAL_ALL)
             styles.extend(instruments)

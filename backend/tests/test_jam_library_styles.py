@@ -95,6 +95,31 @@ class TestClassify(unittest.TestCase):
         ):
             self.assertIn("器樂(手風琴)", builder.classify(_t(path)), path)
 
+    def test_flute_skips_organ_transcriptions_and_the_opera(self):
+        flute = builder.classify(_t("@1/Relax/Cocomi/Cocomi - Neos/Take Five (Arr. for Flute & Piano).flac"))
+        self.assertIn("器樂(長笛)", flute)
+        self.assertIn("器樂(管樂)", flute)
+        # ~30 Bach flute sonatas in the library are organ transcriptions.
+        organ = builder.classify(_t("@1/Classics/Bach Organ Music Academy/Flute Sonata in B Minor, BWV 1030 I. Andante (Organ Version).flac"))
+        self.assertNotIn("器樂(長笛)", organ)
+        self.assertNotIn("器樂(管樂)", organ)
+        opera = builder.classify(_t("@1/Classics/Mozart/Die Zauberflöte, K. 620 Overture (Orchestra).flac"))
+        self.assertNotIn("器樂(長笛)", opera)
+
+    def test_sax_players_count_without_sax_in_the_title(self):
+        # Kenny G / Dave Koz titles almost never say "sax"; the folder does.
+        tags = builder.classify(_t("@1/Jazz/Kenny G/Kenny G - Breathless/Forever in Love.flac"))
+        self.assertIn("器樂(薩克斯風)", tags)
+        self.assertIn("器樂(管樂)", tags)
+        self.assertIn("器樂(薩克斯風)", builder.classify(_t("@1/Jazz/MusicMe/Funk Jazz on Fire/Sax in Motion.flac")))
+        self.assertIn("器樂(薩克斯風)", builder.classify(_t("@1/Jazz/Dave Koz/Saxophonic/Saxophonic.flac")))
+        self.assertNotIn("器樂(薩克斯風)", builder.classify(_t("@1/Classics/Saxon State Orchestra/Symphony No. 9.flac")))
+
+    def test_getz_gilberto_vocal_album_is_not_instrumental(self):
+        tags = builder.classify(_t("@1/Jazz/Stan Getz/Getz Gilberto/The Girl from Ipanema.flac"))
+        self.assertNotIn("器樂(薩克斯風)", tags)
+        self.assertNotIn(builder.INSTRUMENTAL_ALL, tags)
+
     def test_sung_tracks_never_enter_instrumental(self):
         # An opera aria with an orchestra is still a vocal track.
         tags = builder.classify(_t("@1/Classics/Callas/Orchestra Del Teatro Alla Scala/Aria Casta Diva.flac"))
