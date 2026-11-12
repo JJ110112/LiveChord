@@ -417,15 +417,12 @@ def _tracks_for_source(source: str, path: str, group_id: str, style: str) -> tup
 
     if source == "jam":
         try:
-            from jam_tracks_api import _load_jam_tracks
-            data = _load_jam_tracks()
+            from jam_tracks_api import jam_style_tracks
+            raw_tracks = jam_style_tracks(style)
         except HTTPException:
             raise
         except Exception as exc:
             raise HTTPException(status_code=503, detail=f"Jam tracks unavailable: {exc}")
-        raw_tracks = data.get("tracks", [])
-        if style:
-            raw_tracks = [t for t in raw_tracks if t.get("style") == style]
         return style or "Jam", [_queue_track(t) for t in raw_tracks if t.get("path")]
 
     raise HTTPException(status_code=400, detail="不支援的播放清單來源")
