@@ -67,6 +67,9 @@ VOCAL_RE = re.compile(
 INSTRUMENT_STYLES = [
     ("器樂(鋼琴)", r"piano|pianist|鋼琴|钢琴|ピアノ|피아노"),
     ("器樂(吉他)", r"guitar|吉他|ギター|ukulele|烏克麗麗"),
+    # \bharp\b — "sharp" (C-sharp keys), "harpsichord", Harper must not match;
+    # Chopin Op. 25 No. 1 "Aeolian Harp" / "Harp Study" is a piano étude
+    ("器樂(豎琴)", r"(?<!aeolian )\bharps?\b(?! study)|harpist|harpe\b|豎琴|竪琴|竖琴|ハープ|하프"),
     ("器樂(弦樂)", r"violin|viola\b|cello|string quartet|strings\b|小提琴|大提琴|バイオリン|erhu|二胡"),
     ("器樂(管樂)", r"sax(ophone)?\b|flute|clarinet|oboe|bassoon|trumpet|\bhorn\b|recorder\b|harmonica|長笛|薩克斯|口琴"),
     ("器樂(管弦樂)", r"orchestra|orchestral|symphon(?!y x)|philharmoni|concerto|管弦|交響"),

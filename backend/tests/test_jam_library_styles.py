@@ -61,6 +61,24 @@ class TestClassify(unittest.TestCase):
         guitar = builder.classify(_t("@1/Relax/Manuel Granada/Relaxing Spanish Guitar/Dust in the Wind.flac"))
         self.assertIn("器樂(吉他)", guitar)
 
+    def test_harp_bucket_skips_sharp_and_harpsichord(self):
+        harp = builder.classify(_t("@1/Classics/Magdalena Hoffmann/Nightscapes/Britten Suite for Harp, Op. 83.flac"))
+        self.assertIn("器樂(豎琴)", harp)
+        french = builder.classify(_t("@1/Classics/Anaëlle Tourret/Divertissements pour harpe II.flac"))
+        self.assertIn("器樂(豎琴)", french)
+        # The same étude played on a harp still counts (matched via the folder).
+        arranged = builder.classify(_t('@1/Classics/Soothing Classical Harp/Etude Op. 25, No. 1 "Aeolian Harp".flac'))
+        self.assertIn("器樂(豎琴)", arranged)
+        # "sharp" is in hundreds of key names; harpsichord is its own instrument.
+        for path in (
+            "@1/Classics/Bach/Prelude in C sharp minor (Piano).flac",
+            "@1/Classics/Bach Harpsichord/Goldberg Variations Aria (Harpsichord).flac",
+            # Chopin's piano étude nicknames — the library has several piano recordings
+            "@1/Classics/Yunchan Lim/Chopin Études/Op. 25 No. 1 in A-Flat Major Aeolian Harp.flac",
+            "@1/Classics/Maurizio Pollini/Chopin 12 Études, Op. 25 No. 1 in A-Flat Major Harp Study.flac",
+        ):
+            self.assertNotIn("器樂(豎琴)", builder.classify(_t(path)), path)
+
     def test_sung_tracks_never_enter_instrumental(self):
         # An opera aria with an orchestra is still a vocal track.
         tags = builder.classify(_t("@1/Classics/Callas/Orchestra Del Teatro Alla Scala/Aria Casta Diva.flac"))
