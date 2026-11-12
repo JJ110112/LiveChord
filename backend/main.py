@@ -209,6 +209,8 @@ app.include_router(learn_router)
 app.include_router(tuning_router)
 from midi_api import router as midi_router  # noqa: E402
 app.include_router(midi_router)
+from omr_api import router as omr_router  # noqa: E402
+app.include_router(omr_router)
 if demo_router is not None:
     app.include_router(demo_router)
 
