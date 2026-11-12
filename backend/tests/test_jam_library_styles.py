@@ -79,6 +79,22 @@ class TestClassify(unittest.TestCase):
         ):
             self.assertNotIn("器樂(豎琴)", builder.classify(_t(path)), path)
 
+    def test_violin_has_its_own_bucket_and_stays_in_strings(self):
+        tags = builder.classify(_t("@1/Classics/Hilary Hahn/Paganini 24 Caprices for Solo Violin, Op. 1.flac"))
+        self.assertIn("器樂(小提琴)", tags)
+        self.assertIn("器樂(弦樂)", tags)
+        # A cello piece must not land in the violin list.
+        cello = builder.classify(_t("@1/Classics/Bach/Suite for Solo Violoncello No. 1 (cello).flac"))
+        self.assertNotIn("器樂(小提琴)", cello)
+
+    def test_accordion_bucket_includes_bandoneon(self):
+        for path in (
+            "@1/Relax/Accordeon/The Greatest Accordeon Hits/Olé Guapa.flac",
+            "@1/Relax/Ksenija Sidorova/Accordion Recital/Libertango.flac",
+            "@1/Classics/Ophélie Gaillard/CelloTango/Desde el alma (Arr. for Cello and Bandoneón).flac",
+        ):
+            self.assertIn("器樂(手風琴)", builder.classify(_t(path)), path)
+
     def test_sung_tracks_never_enter_instrumental(self):
         # An opera aria with an orchestra is still a vocal track.
         tags = builder.classify(_t("@1/Classics/Callas/Orchestra Del Teatro Alla Scala/Aria Casta Diva.flac"))

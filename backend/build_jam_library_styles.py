@@ -7,7 +7,8 @@ style-stratified jam_tracks.json sample.
     analyzed Christmas piece in the library: classical / masses / oratorio,
     crossover, jazz, instrumental, pop.
   * ``器樂(全)`` and per-instrument ``器樂(鋼琴)`` / ``器樂(吉他)`` /
-    ``器樂(弦樂)`` / ``器樂(管樂)`` / ``器樂(管弦樂)``.
+    ``器樂(豎琴)`` / ``器樂(小提琴)`` / ``器樂(弦樂)`` / ``器樂(管樂)`` /
+    ``器樂(手風琴)`` / ``器樂(管弦樂)``.
 
 Classification is metadata-only (folder / album / title keywords): the
 library has no reliable vocal/instrumental flag (the Demucs vocal ratio
@@ -70,8 +71,12 @@ INSTRUMENT_STYLES = [
     # \bharp\b — "sharp" (C-sharp keys), "harpsichord", Harper must not match;
     # Chopin Op. 25 No. 1 "Aeolian Harp" / "Harp Study" is a piano étude
     ("器樂(豎琴)", r"(?<!aeolian )\bharps?\b(?! study)|harpist|harpe\b|豎琴|竪琴|竖琴|ハープ|하프"),
+    # Violin also stays in 弦樂; "violin" never matches violoncello
+    ("器樂(小提琴)", r"violin|violon\b|violine\b|\bfiddle\b|小提琴|バイオリン|ヴァイオリン|바이올린"),
     ("器樂(弦樂)", r"violin|viola\b|cello|string quartet|strings\b|小提琴|大提琴|バイオリン|erhu|二胡"),
     ("器樂(管樂)", r"sax(ophone)?\b|flute|clarinet|oboe|bassoon|trumpet|\bhorn\b|recorder\b|harmonica|長笛|薩克斯|口琴"),
+    # Bandoneón (tango) counted with the accordion family
+    ("器樂(手風琴)", r"accordion|accord[eé]on|akkordeon|acorde[oó]n|bandone[oó]n|\bbayan\b|手風琴|手风琴|アコーディオン|아코디언"),
     ("器樂(管弦樂)", r"orchestra|orchestral|symphon(?!y x)|philharmoni|concerto|管弦|交響"),
 ]
 INSTRUMENT_STYLES = [(name, re.compile(rx, re.I)) for name, rx in INSTRUMENT_STYLES]
