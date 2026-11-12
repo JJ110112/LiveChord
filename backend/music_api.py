@@ -744,6 +744,15 @@ def track_cover(path: str = Query(...)):
 # library scan — 非同步背景掃描 + 增量模式
 # ---------------------------------------------------------------------------
 
+def _request_jam_refresh(reason: str):
+    """Jam 器樂 / Christmas lists are built from library_cache — refresh them."""
+    try:
+        from jam_library_refresh import request_rebuild
+        request_rebuild(reason)
+    except Exception:
+        pass
+
+
 def _save_cache(tracks: list):
     """將掃描結果存檔（掃描過程中定期呼叫 + 結束時呼叫）"""
     cache = {
@@ -979,6 +988,8 @@ def _scan_worker(mode: str = "incremental"):
                 invalidate_library_cache()
             except Exception:
                 pass
+            if changed:
+                _request_jam_refresh("library scan")
 
         _scan_state["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
         _scan_state["deleted_tracks"] = len(deleted)

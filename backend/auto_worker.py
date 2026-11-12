@@ -928,6 +928,7 @@ def _classify_detect_error(e: Exception, full_path: str) -> str:
 
 
 def _auto_chord_detect_loop(settings: dict, batch: list, unanalyzed: list, lock):
+    detected_before = _worker_state["detect_count"]
     for i, track_path in enumerate(batch):
         if _stop_event.is_set():
             break
@@ -1041,6 +1042,13 @@ def _auto_chord_detect_loop(settings: dict, batch: list, unanalyzed: list, lock)
     cache_ensure_synced(force=True)
     invalidate_chord_hash_set()  # 讓 admin 群組覆蓋率立即反映新檔
     add_log("INFO", f"本輪偵測完成，佇列剩餘 {remaining} 首")
+    if _worker_state["detect_count"] > detected_before:
+        # New chord files → refresh Jam 器樂 / Christmas lists (coalesced).
+        try:
+            from jam_library_refresh import request_rebuild
+            request_rebuild("auto chord detect")
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------

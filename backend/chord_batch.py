@@ -138,6 +138,12 @@ def _batch_detect_worker(tracks: list, skip_existing: bool):
     if _batch_state["succeeded"] > 0:
         cache_ensure_synced(force=True)
         _invalidate_chord_hash_set()
+        # Newly analyzed songs become eligible for the Jam 器樂 / Christmas lists.
+        try:
+            from jam_library_refresh import request_rebuild
+            request_rebuild("chord batch")
+        except Exception:
+            pass
 
     if _batch_state["succeeded"] > 0 and CACHE_FILE.is_file():
         try:
