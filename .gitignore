@@ -71,6 +71,7 @@ data/melodies_v2/
 data/shadow_v2.log
 data/models/
 data/accompaniments/
+data/omr/
 data/auth.db
 data/oauth_session_key
 data/jam_tracks.json

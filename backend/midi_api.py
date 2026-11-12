@@ -197,14 +197,23 @@ def upload_midi(file: UploadFile = File(...), username: str = Depends(get_user_o
     if len(data) < 14 or data[:4] not in (b"MThd", b"RIFF"):
         raise HTTPException(status_code=400, detail="不是有效的 MIDI 檔案 (缺少 MThd 標頭)")
 
+    title = os.path.splitext(os.path.basename(name))[0].strip() or "MIDI"
+    job_id = enqueue_midi_bytes(data, ext, title, username)
+    return {"job_id": job_id, "status": "queued"}
+
+
+def enqueue_midi_bytes(data: bytes, ext: str, title: str, username: str) -> str:
+    """Queue a validated MIDI payload for ingest; returns the MIDI job_id.
+
+    Shared by the upload endpoint and the OMR pipeline (sheet music →
+    score.mid → same ingest path → /player?hash=).
+    """
     job_id = generate_job_id()
     TMP_DIR.mkdir(parents=True, exist_ok=True)
     tmp_path = TMP_DIR / f"{job_id}{ext}"
     tmp_path.write_bytes(data)
-
-    title = os.path.splitext(os.path.basename(name))[0].strip() or "MIDI"
     job = _MidiJob(
-        job_id=job_id, username=username, title=title,
+        job_id=job_id, username=username, title=title or "MIDI",
         midi_path=str(tmp_path), file_hash=compute_file_hash(str(tmp_path)),
     )
     with _lock:
@@ -212,7 +221,7 @@ def upload_midi(file: UploadFile = File(...), username: str = Depends(get_user_o
         _evict_old()
     _queue.put(job_id)
     _ensure_worker()
-    return {"job_id": job_id, "status": "queued"}
+    return job_id
 
 
 @router.get("/status/{job_id}")

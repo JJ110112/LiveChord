@@ -47,34 +47,52 @@ def _links(job_id: str, musicxml_files: list[str]) -> dict:
 
 
 @router.post("/convert")
-def convert(file: UploadFile = File(...),
+def convert(files: list[UploadFile] = File(...),
             engine: str = Form("auto"),
+            to_midi: bool = Form(False),
             username: str = Depends(get_current_user)):
+    """One PDF, or one-or-more PNG/JPG pages (sorted by the page number in
+    their filenames). ``to_midi=true`` also queues the result on the MIDI
+    ingest path; the status record then carries ``midi_job_id``."""
     try:
         engine_name = omr.resolve_engine(engine)
     except omr.OmrError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
-    name = file.filename or ""
-    ext = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
-    if ext not in _MAGIC:
-        raise HTTPException(status_code=400, detail="僅支援 PDF / PNG / JPG")
-    data = file.file.read(MAX_UPLOAD_BYTES + 1)
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=400, detail="檔案超過 50MB 上限")
-    if not data.startswith(_MAGIC[ext]):
-        raise HTTPException(status_code=400, detail=f"檔案內容不是有效的 {ext[1:].upper()}")
+    if not files:
+        raise HTTPException(status_code=400, detail="沒有收到檔案")
+    if len(files) > omr.MAX_PAGES:
+        raise HTTPException(status_code=400, detail=f"最多 {omr.MAX_PAGES} 張圖片")
+    items, total = [], 0
+    for f in files:
+        name = f.filename or ""
+        ext = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
+        if ext not in _MAGIC:
+            raise HTTPException(status_code=400, detail=f"僅支援 PDF / PNG / JPG：{name}")
+        data = f.file.read(MAX_UPLOAD_BYTES + 1 - total)
+        total += len(data)
+        if total > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=400, detail="檔案總和超過 50MB 上限")
+        if not data.startswith(_MAGIC[ext]):
+            raise HTTPException(status_code=400, detail=f"檔案內容不是有效的 {ext[1:].upper()}：{name}")
+        items.append((name, ext, data))
+    if len(items) > 1 and any(ext == ".pdf" for _, ext, _ in items):
+        raise HTTPException(status_code=400, detail="PDF 請單獨上傳；多頁請選擇多張圖片")
+    items.sort(key=lambda it: omr.page_sort_key(it[0]))
 
     job_id = omr.new_job_id()
     d = omr.job_dir(job_id)
     d.mkdir(parents=True, exist_ok=True)
-    src = d / f"input{ext}"
-    src.write_bytes(data)
+    srcs = []
+    for i, (_, ext, data) in enumerate(items, 1):
+        src = d / f"input_{i:03d}{ext}"
+        src.write_bytes(data)
+        srcs.append(src)
 
-    if ext == ".pdf":  # page-count limit is cheap to check now, expensive to hit later
+    if items[0][1] == ".pdf":  # page-count limit is cheap to check now, expensive to hit later
         import fitz
         try:
-            with fitz.open(str(src)) as doc:
+            with fitz.open(str(srcs[0])) as doc:
                 n = doc.page_count
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=400, detail=f"PDF 無法開啟: {e}")
@@ -82,11 +100,13 @@ def convert(file: UploadFile = File(...),
             raise HTTPException(status_code=400,
                                 detail=f"PDF 頁數 {n}，需介於 1–{omr.MAX_PAGES} 頁")
 
-    omr.enqueue(job_id, src, engine_name, filename=name, requested_by=username)
-    logger.info("omr convert enqueued by %s: job=%s engine=%s file=%s",
-                username, job_id, engine_name, name)
+    names = [name for name, _, _ in items]
+    omr.enqueue(job_id, srcs, engine_name, filenames=names,
+                requested_by=username, to_midi=to_midi)
+    logger.info("omr convert enqueued by %s: job=%s engine=%s files=%s to_midi=%s",
+                username, job_id, engine_name, names, to_midi)
     return {"ok": True, "job_id": job_id, "engine": engine_name, "status": omr.QUEUED,
-            "queue_position": omr.queue_position(job_id),
+            "files": names, "queue_position": omr.queue_position(job_id),
             "status_url": f"/api/omr/status/{job_id}"}
 
 
@@ -113,7 +133,8 @@ def download(job_id: str, kind: str, page: int = 1):
     if result is None:
         raise HTTPException(status_code=404, detail="result not ready")
     d = omr.job_dir(job_id)
-    stem = (result.get("job", {}).get("filename") or "score").rsplit(".", 1)[0] or "score"
+    meta = result.get("job", {})
+    stem = meta.get("title") or (meta.get("filename") or "score").rsplit(".", 1)[0] or "score"
     if kind == "json":
         return FileResponse(d / "score.json", media_type="application/json",
                             filename=f"{stem}.json")

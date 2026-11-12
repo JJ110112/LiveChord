@@ -51,7 +51,7 @@
   <script src="/js/auth.js?v=7"></script>
   <!-- Phase C: i18n. Loads translation dict (en default, zh-TW available),
        patches [data-i18n] / [data-i18n-attr] nodes on DOMContentLoaded. -->
-  <script src="/js/i18n.js?v=63"></script>
+  <script src="/js/i18n.js?v=64"></script>
   <script src="/js/analytics.js?v=3"></script>
 </head>
 <body>
@@ -638,6 +638,13 @@
                 style="font-size:0.75rem; padding:4px 10px; margin-left:12px"
                 data-i18n="home.section.midi_btn">🎹 Load MIDI</button>
         <input type="file" id="midiFileInput" accept=".mid,.midi,audio/midi,audio/x-midi" style="display:none">
+        <button id="btnScoreUpload" class="btn-small" type="button"
+                style="font-size:0.75rem; padding:4px 10px; margin-left:6px; display:none"
+                data-i18n="home.section.score_btn"
+                data-i18n-attr="title=home.section.score_btn_title"
+                title="Sheet music to MIDI">📄 Upload score</button>
+        <input type="file" id="scoreFileInput" multiple
+               accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" style="display:none">
         <span id="breadcrumb" class="breadcrumb" style="font-size:0.65em; opacity:0.7; font-weight:normal; margin-left:12px; margin-bottom:0;"></span>
       </h2>
       <input type="text" id="dirFilter" autocomplete="off"
@@ -894,7 +901,7 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
     <script src="/js/progression-library.js?v=44"></script>
   <script src="/js/scale-lab.js?v=3"></script>
   <script src="/js/trends-explorer.js?v=1"></script>
-<script src="/js/app.js?v=131"></script>
+<script src="/js/app.js?v=132"></script>
 <script src="/js/jam-tracks.js?v=3"></script>
 </body>
 </html>

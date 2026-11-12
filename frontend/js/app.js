@@ -521,35 +521,125 @@
         const res = await fetch("/api/midi/upload", { method: "POST", body: fd });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || `${res.status} ${res.statusText}`);
+        _pollMidiJob(data.job_id, btn, reset);
+      } catch (e) {
+        showToast(_t("home.midi.failed", { err: e.message }), 5000);
+        reset();
+      }
+    });
+  }
+
+  // Poll a MIDI ingest job until done → open the player. Shared by the
+  // 載入 MIDI button and the 上傳樂譜 (OMR) flow, which hands its score.mid
+  // to the same ingest queue.
+  function _pollMidiJob(jobId, btn, reset) {
+    const timer = setInterval(async () => {
+      let s;
+      try {
+        const sr = await fetch(`/api/midi/status/${encodeURIComponent(jobId)}`);
+        s = await sr.json();
+        if (!sr.ok) throw new Error(s.detail || `${sr.status} ${sr.statusText}`);
+      } catch (e) {
+        clearInterval(timer);
+        showToast(_t("home.midi.failed", { err: e.message }), 5000);
+        reset();
+        return;
+      }
+      if (s.stage && s.status === "processing") {
+        const k = `home.midi.stage.${s.stage}`;
+        const txt = _t(k);
+        btn.textContent = txt === k ? _t("home.midi.analyzing") : txt;
+      }
+      if (s.status === "done" && s.result_hash) {
+        clearInterval(timer);
+        window.location.href = `/player?hash=${encodeURIComponent(s.result_hash)}`;
+      } else if (s.status === "error") {
+        clearInterval(timer);
+        showToast(_t("home.midi.failed", { err: s.error || "?" }), 6000);
+        reset();
+      }
+    }, 1500);
+  }
+
+  // Sheet-music upload — 音樂庫 header 「上傳樂譜」. One PDF or several
+  // PNG/JPG pages (server orders them by the page number in the filename)
+  // → POST /api/omr/convert (to_midi) → poll OMR status → the server hands
+  // score.mid to the MIDI ingest queue → _pollMidiJob → /player?hash=.
+  // Button only appears when the instance has an OMR engine (NUC personal).
+  async function _initScoreUpload() {
+    const btn = $("#btnScoreUpload");
+    const input = $("#scoreFileInput");
+    if (!btn || !input) return;
+    try {
+      const r = await fetch("/api/omr/engines");
+      if (!r.ok) return;
+      const eng = (await r.json()).engines || {};
+      if (!Object.values(eng).some(Boolean)) return;
+    } catch (_) { return; }
+    btn.style.display = "";
+    const reset = () => { btn.disabled = false; btn.textContent = _t("home.section.score_btn"); };
+
+    btn.addEventListener("click", () => input.click());
+    input.addEventListener("change", async () => {
+      const files = Array.from(input.files || []);
+      input.value = "";
+      if (!files.length) return;
+      const isPdf = f => /\.pdf$/i.test(f.name || "");
+      const isImg = f => /\.(png|jpe?g)$/i.test(f.name || "");
+      const ok = (files.length === 1 && (isPdf(files[0]) || isImg(files[0])))
+        || (files.length > 1 && files.every(isImg));
+      if (!ok) {
+        showToast(_t("home.score.bad_files"), 4000);
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = _t("home.score.uploading");
+      try {
+        const fd = new FormData();
+        files.forEach(f => fd.append("files", f, f.name));
+        fd.append("to_midi", "true");
+        const res = await fetch("/api/omr/convert", { method: "POST", body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `${res.status} ${res.statusText}`);
         const jobId = data.job_id;
         const timer = setInterval(async () => {
           let s;
           try {
-            const sr = await fetch(`/api/midi/status/${encodeURIComponent(jobId)}`);
+            const sr = await fetch(`/api/omr/status/${encodeURIComponent(jobId)}`);
             s = await sr.json();
             if (!sr.ok) throw new Error(s.detail || `${sr.status} ${sr.statusText}`);
           } catch (e) {
             clearInterval(timer);
-            showToast(_t("home.midi.failed", { err: e.message }), 5000);
+            showToast(_t("home.score.failed", { err: e.message }), 6000);
             reset();
             return;
           }
-          if (s.stage && s.status === "processing") {
-            const k = `home.midi.stage.${s.stage}`;
-            const txt = _t(k);
-            btn.textContent = txt === k ? _t("home.midi.analyzing") : txt;
-          }
-          if (s.status === "done" && s.result_hash) {
+          if (s.status === "queued") {
+            btn.textContent = _t("home.score.queued");
+          } else if (s.status === "running:recognizing") {
+            btn.textContent = _t("home.score.recognizing", { page: s.page || 1, pages: s.pages || 1 });
+          } else if (s.status === "running:rendering" || s.status === "running:parsing") {
+            btn.textContent = _t(`home.score.stage.${s.status.split(":")[1]}`);
+          } else if (s.status === "done") {
             clearInterval(timer);
-            window.location.href = `/player?hash=${encodeURIComponent(s.result_hash)}`;
+            if (s.warnings && s.warnings.length) {
+              showToast(_t("home.score.pages_skipped", { n: s.warnings.length }), 6000);
+            }
+            if (!s.midi_job_id) {
+              showToast(_t("home.score.failed", { err: s.midi_error || "no MIDI job" }), 6000);
+              reset();
+              return;
+            }
+            btn.textContent = _t("home.midi.analyzing");
+            _pollMidiJob(s.midi_job_id, btn, reset);
           } else if (s.status === "error") {
             clearInterval(timer);
-            showToast(_t("home.midi.failed", { err: s.error || "?" }), 6000);
+            showToast(_t("home.score.failed", { err: s.error || "?" }), 8000);
             reset();
           }
-        }, 1500);
+        }, 3000);
       } catch (e) {
-        showToast(_t("home.midi.failed", { err: e.message }), 5000);
+        showToast(_t("home.score.failed", { err: e.message }), 6000);
         reset();
       }
     });
@@ -1546,6 +1636,7 @@
     // Parallel loading avoids blocking the UI
     try {
       _initMidiUpload();
+      _initScoreUpload();
       showLoading(true);
       const tasks = [];
       // Demo songs render in both beta/public modes (logged-in OR logged-out).

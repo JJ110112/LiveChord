@@ -236,7 +236,7 @@ class TestOmrProcessor(_TmpDir):
             with fitz.open() as doc:
                 doc.new_page(); doc.new_page(); doc.new_page()
                 doc.save(str(src))
-            job = omr_processor.OmrJob(job_id="a" * 32, input_path=str(src), engine="homr")
+            job = omr_processor.OmrJob(job_id="a" * 32, input_paths=[str(src)], engine="homr")
             omr_processor.process_job(job)
             res = omr_processor.load_result(job.job_id)
             self.assertEqual(res["job"]["pages"], 3)
@@ -261,12 +261,66 @@ class TestOmrProcessor(_TmpDir):
             from PIL import Image
             png = self.tmp / "in.png"
             Image.new("RGB", (10, 10), "white").save(png)
-            job = omr_processor.OmrJob(job_id="b" * 32, input_path=str(png), engine="oemer")
+            job = omr_processor.OmrJob(job_id="b" * 32, input_paths=[str(png)], engine="oemer")
             with self.assertRaises(omr_processor.OmrError):
                 omr_processor.process_job(job)
             self.assertIsNone(omr_processor.load_result(job.job_id))
         finally:
             omr_processor.OMR_DIR, omr_processor.run_engine = orig_dir, orig_run
+
+
+class TestTitlesAndPages(unittest.TestCase):
+    def test_page_sort_is_numeric(self):
+        names = ["p10.jpg", "p2.jpg", "cover.jpg", "p1.jpg"]
+        self.assertEqual(sorted(names, key=omr_processor.page_sort_key),
+                         ["p1.jpg", "p2.jpg", "p10.jpg", "cover.jpg"])
+
+    def test_title_prefers_a_meaningful_filename(self):
+        dt = omr_processor.derive_title
+        self.assertEqual(dt(["sleepy-shores-johnn-pearson.pdf"], "Sleepy Shores"),
+                         "sleepy-shores-johnn-pearson")
+        self.assertEqual(dt(["Moon_p1.jpg", "Moon_p2.jpg"], "x"), "Moon")
+        self.assertEqual(dt(["月光 第1頁.png", "月光 第2頁.png"], "x"), "月光")
+
+    def test_title_falls_back_to_ocr_when_names_are_page_numbers(self):
+        # 1.jpg / 2.jpg say nothing; homr OCRs the title from page 1.
+        self.assertEqual(omr_processor.derive_title(["1.jpg", "2.jpg"], "Sleepy Shores"), "Sleepy Shores")
+        self.assertEqual(omr_processor.derive_title(["1.jpg"], ""), "Score")
+
+
+class TestMidiHandoff(_TmpDir):
+    def test_done_job_queues_score_midi_with_title(self):
+        orig = (omr_processor.OMR_DIR, omr_processor.run_engine)
+        omr_processor.OMR_DIR = self.tmp / "omr"
+        fixture = self.write("fixture.musicxml", PIANO_XML)
+
+        def fake_run(engine, image, out_dir, timeout=0):
+            out_dir.mkdir(parents=True, exist_ok=True)
+            dst = out_dir / f"{image.stem}.musicxml"
+            shutil.copy(fixture, dst)
+            return dst
+
+        import midi_api
+        calls = []
+        orig_enq = midi_api.enqueue_midi_bytes
+        midi_api.enqueue_midi_bytes = lambda data, ext, title, user: calls.append((data[:4], ext, title, user)) or "m" * 12
+        omr_processor.run_engine = fake_run
+        try:
+            from PIL import Image
+            imgs = []
+            for n in ("1.png", "2.png"):
+                Image.new("RGB", (10, 10), "white").save(self.tmp / n)
+                imgs.append(str(self.tmp / n))
+            job = omr_processor.OmrJob(job_id="c" * 32, input_paths=imgs, engine="homr",
+                                       filenames=["1.png", "2.png"], requested_by="u", to_midi=True)
+            omr_processor.process_job(job)
+            self.assertEqual(calls, [(b"MThd", ".mid", "Fixture", "u")])  # OCR title: names are page numbers
+            res = omr_processor.load_result(job.job_id)
+            self.assertEqual(res["job"]["midi_job_id"], "m" * 12)
+            self.assertEqual(res["job"]["pages"], 2)
+        finally:
+            omr_processor.OMR_DIR, omr_processor.run_engine = orig
+            midi_api.enqueue_midi_bytes = orig_enq
 
 
 class TestOmrApi(_TmpDir):
@@ -288,14 +342,18 @@ class TestOmrApi(_TmpDir):
         omr_processor.OMR_DIR = self.tmp / "omr"
         omr_processor.resolve_engine = lambda e=None: "homr"
         self.enqueued = []
-        omr_processor.enqueue = lambda *a, **k: self.enqueued.append(a)
+        omr_processor.enqueue = lambda *a, **k: self.enqueued.append((a, k))
 
     def tearDown(self):
         omr_processor.OMR_DIR, omr_processor.resolve_engine, omr_processor.enqueue = self._orig
         super().tearDown()
 
-    def _post(self, name, data):
-        return self.client.post("/api/omr/convert", files={"file": (name, data)})
+    def _post(self, name, data, **form):
+        return self._post_many([(name, data)], **form)
+
+    def _post_many(self, items, **form):
+        return self.client.post("/api/omr/convert", data=form,
+                                files=[("files", (n, d)) for n, d in items])
 
     def test_no_engine_is_503_before_upload_is_kept(self):
         def none(e=None):
@@ -317,6 +375,27 @@ class TestOmrApi(_TmpDir):
         self.assertEqual(body["status"], "queued")
         self.assertEqual(len(self.enqueued), 1)
         self.assertEqual(body["status_url"], f"/api/omr/status/{body['job_id']}")
+
+    def test_images_are_ordered_by_page_number_not_upload_order(self):
+        # The browser picker returns files in arbitrary order; 10.jpg must not land before 2.jpg.
+        jpg = b"\xff\xd8\xff\xe0"
+        r = self._post_many([("10.jpg", jpg), ("2.jpg", jpg), ("1.jpg", jpg)], to_midi="true")
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["files"], ["1.jpg", "2.jpg", "10.jpg"])
+        (a, k), = self.enqueued
+        self.assertEqual([Path(p).name for p in a[1]], ["input_001.jpg", "input_002.jpg", "input_003.jpg"])
+        self.assertEqual(k["filenames"], ["1.jpg", "2.jpg", "10.jpg"])
+        self.assertTrue(k["to_midi"])
+
+    def test_pdf_cannot_be_mixed_with_images(self):
+        r = self._post_many([("a.pdf", b"%PDF-1.4"), ("1.jpg", b"\xff\xd8")])
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(self.enqueued, [])
+
+    def test_to_midi_defaults_off_for_plain_api_callers(self):
+        self.assertEqual(self._post("song.png", b"\x89PNG\r\n").status_code, 200)
+        (_, k), = self.enqueued
+        self.assertFalse(k["to_midi"])
 
     def test_bad_job_id_cannot_traverse(self):
         self.assertEqual(self.client.get("/api/omr/download/..%2F..%2Fx/json").status_code, 404)

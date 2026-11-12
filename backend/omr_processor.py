@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -105,9 +106,53 @@ def resolve_engine(requested: Optional[str] = None) -> str:
 # Step 1 — render inputs to PNG pages
 # ---------------------------------------------------------------------------
 
-def render_pages(src: Path, pages_dir: Path, dpi: int = RENDER_DPI,
+_PAGE_NUM_RE = re.compile(r"(\d+)(?!.*\d)")
+
+
+def page_sort_key(filename: str):
+    """Order images by the page number in their name ("2.jpg" < "10.jpg").
+
+    Sheet-music photos are usually named by page; the browser file picker
+    returns them in arbitrary order. Names without a number sort after
+    numbered ones, alphabetically.
+    """
+    stem = Path(filename).stem
+    m = _PAGE_NUM_RE.search(stem)
+    return (0, int(m.group(1)), stem.lower()) if m else (1, 0, stem.lower())
+
+
+_TRAILING_PAGE_RE = re.compile(r"[\s_\-.()（）]*(?:p|pg|page|頁|第)?\s*\d*\s*(?:頁)?$", re.IGNORECASE)
+
+
+def derive_title(filenames: list[str], ocr_title: str = "") -> str:
+    """Song title: the filename stem (common prefix for several images) with
+    any trailing page number removed; when that leaves only digits or nothing
+    (``1.jpg, 2.jpg``), the title homr OCR'd from page 1; else ``Score``."""
+    stems = [Path(f).stem for f in filenames if f]
+    base = stems[0] if len(stems) == 1 else os.path.commonprefix(stems)
+    base = _TRAILING_PAGE_RE.sub("", base).strip(" _-.")
+    if base and not base.isdigit():
+        return base
+    return (ocr_title or "").strip() or "Score"
+
+
+def render_pages(src, pages_dir: Path, dpi: int = RENDER_DPI,
                  max_pages: int = MAX_PAGES) -> list[Path]:
+    """Render one PDF, or one-or-more images (already in page order), to PNGs."""
+    srcs = [Path(s) for s in src] if isinstance(src, (list, tuple)) else [Path(src)]
     pages_dir.mkdir(parents=True, exist_ok=True)
+    if len(srcs) > 1:
+        if any(s.suffix.lower() not in IMAGE_EXTS for s in srcs):
+            raise OmrError("multiple files must all be PNG/JPG images (or upload one PDF)")
+        if len(srcs) > max_pages:
+            raise OmrError(f"{len(srcs)} images (limit {max_pages})")
+    out: list[Path] = []
+    for s in srcs:
+        out += _render_one(s, pages_dir, dpi, max_pages, start=len(out) + 1)
+    return out
+
+
+def _render_one(src: Path, pages_dir: Path, dpi: int, max_pages: int, start: int) -> list[Path]:
     ext = src.suffix.lower()
     out: list[Path] = []
     if ext in PDF_EXTS:
@@ -119,14 +164,14 @@ def render_pages(src: Path, pages_dir: Path, dpi: int = RENDER_DPI,
                 raise OmrError(f"PDF has {doc.page_count} pages (limit {max_pages})")
             for i, page in enumerate(doc):
                 pix = page.get_pixmap(dpi=dpi, colorspace=fitz.csRGB, alpha=False)
-                p = pages_dir / f"page_{i + 1:03d}.png"
+                p = pages_dir / f"page_{start + i:03d}.png"
                 pix.save(str(p))
                 out.append(p)
     elif ext in IMAGE_EXTS:
         from PIL import Image, ImageOps
         with Image.open(src) as im:
             im = ImageOps.exif_transpose(im).convert("RGB")
-            p = pages_dir / "page_001.png"
+            p = pages_dir / f"page_{start:03d}.png"
             im.save(p, "PNG")
             out.append(p)
     else:
@@ -185,10 +230,14 @@ def run_engine(engine: str, image: Path, out_dir: Path,
 @dataclass
 class OmrJob:
     job_id: str
-    input_path: str
+    input_paths: list           # one PDF, or images already in page order
     engine: str
-    filename: str = ""
+    filenames: list = field(default_factory=list)   # original upload names, same order
     requested_by: str = ""
+    to_midi: bool = False       # hand score.mid to the MIDI ingest queue when done
+    title: str = ""
+    midi_job_id: Optional[str] = None
+    midi_error: Optional[str] = None
     status: str = QUEUED
     page: int = 0
     pages: int = 0
@@ -213,10 +262,10 @@ def new_job_id() -> str:
     return uuid.uuid4().hex
 
 
-def enqueue(job_id: str, input_path: Path, engine: str,
-            filename: str = "", requested_by: str = "") -> OmrJob:
-    job = OmrJob(job_id=job_id, input_path=str(input_path), engine=engine,
-                 filename=filename, requested_by=requested_by)
+def enqueue(job_id: str, input_paths: list, engine: str, filenames: list | None = None,
+            requested_by: str = "", to_midi: bool = False) -> OmrJob:
+    job = OmrJob(job_id=job_id, input_paths=[str(p) for p in input_paths], engine=engine,
+                 filenames=list(filenames or []), requested_by=requested_by, to_midi=to_midi)
     with _lock:
         _jobs[job_id] = job
         _evict()
@@ -243,7 +292,7 @@ def get_status(job_id: str) -> Optional[dict]:
             meta = json.loads(res.read_text(encoding="utf-8")).get("job", {})
             return {**meta, "job_id": job_id, "status": DONE}
         return None
-    snap.pop("input_path", None)
+    snap.pop("input_paths", None)
     return snap
 
 
@@ -279,7 +328,7 @@ def process_job(job: OmrJob):
 
     d = job_dir(job.job_id)
     _set(job, status=RUNNING_RENDER, started_at=time.time())
-    pages = render_pages(Path(job.input_path), d / "pages")
+    pages = render_pages([Path(p) for p in job.input_paths], d / "pages")
     _set(job, status=RUNNING_OMR, pages=len(pages))
 
     xmls: list[Path] = []
@@ -299,14 +348,31 @@ def process_job(job: OmrJob):
     score = parse_musicxml(xmls)
     to_midi(score, d / "score.mid")
     score = public_view(score)
+    _set(job, title=derive_title(job.filenames, score.get("title", "")))
     _write_json_atomic(d / "score.json", score)
+    if job.to_midi:
+        _handoff_midi(job, d / "score.mid")
     _write_json_atomic(d / "result.json", {
-        "job": {"job_id": job.job_id, "engine": job.engine, "filename": job.filename,
-                "pages": len(pages), "pages_recognized": len(xmls),
+        "job": {"job_id": job.job_id, "engine": job.engine, "filenames": job.filenames,
+                "title": job.title, "pages": len(pages), "pages_recognized": len(xmls),
+                "midi_job_id": job.midi_job_id, "midi_error": job.midi_error,
                 "warnings": list(job.warnings), "completed_at": time.time()},
         "musicxml_files": [p.name for p in xmls],
         "score": score,
     })
+
+
+def _handoff_midi(job: OmrJob, midi_path: Path):
+    """Queue score.mid on the regular MIDI ingest path (chords, beats,
+    FluidSynth render → /player?hash=). A failure here doesn't fail the OMR
+    job — MusicXML/MIDI downloads are still valid — but it is recorded."""
+    try:
+        from midi_api import enqueue_midi_bytes
+        mid = enqueue_midi_bytes(midi_path.read_bytes(), ".mid", job.title, job.requested_by)
+        _set(job, midi_job_id=mid)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("omr %s: MIDI hand-off failed", job.job_id)
+        _set(job, midi_error=f"{type(e).__name__}: {e}")
 
 
 def _worker_loop():
