@@ -11,6 +11,10 @@
   if (!section || !styleSelect || !listEl) return;
 
   const LS_KEY = "livechord_jam_style";
+  // Month (YYYY-MM) the saved style was picked. In December the list opens on
+  // Christmas unless the user picked something else during this December.
+  const LS_MONTH_KEY = "livechord_jam_style_month";
+  const SEASONAL_STYLE = "Christmas";
   const LIST_LIMIT = 100;
   let currentSeed = "";
   let currentMode = "shuffle";
@@ -132,8 +136,15 @@
         .map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)} (${s.count})</option>`)
         .join("");
 
+      const now = new Date();
+      const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
       const saved = localStorage.getItem(LS_KEY);
-      const initial = saved && styles.some((s) => s.name === saved) ? saved : styles[0].name;
+      const savedThisMonth = localStorage.getItem(LS_MONTH_KEY) === thisMonth;
+      const has = (name) => name && styles.some((s) => s.name === name);
+      let initial = has(saved) ? saved : styles[0].name;
+      if (now.getMonth() === 11 && has(SEASONAL_STYLE) && !savedThisMonth) {
+        initial = SEASONAL_STYLE;
+      }
       styleSelect.value = initial;
       if (playSeq) playSeq.addEventListener("click", (e) => {
         e.preventDefault();
@@ -146,6 +157,7 @@
 
       styleSelect.addEventListener("change", () => {
         localStorage.setItem(LS_KEY, styleSelect.value);
+        localStorage.setItem(LS_MONTH_KEY, `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`);
         loadStyleTracks(styleSelect.value, { fresh: true });
       });
 
