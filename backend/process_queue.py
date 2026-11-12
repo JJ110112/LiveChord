@@ -773,6 +773,9 @@ def _delete_result_artifacts(result_hash: str) -> None:
         chord_file_for(result_hash),
         COVERS_DIR / f"{result_hash}.jpg",
         MELODIES_DIR / f"{result_hash}.json",
+        # FluidSynth render of a MIDI / sheet-music song (midi_api.MIDI_AUDIO_DIR)
+        DATA_DIR / "midi_audio" / f"{result_hash}.flac",
+        DATA_DIR / "midi_audio" / f"{result_hash}.wav",
     ]:
         _unlink_artifact(path)
 
