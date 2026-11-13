@@ -1911,6 +1911,7 @@
   // gives a clear "no results, want to upload?" affordance.
   searchInput.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
+    if (e.isComposing || e.keyCode === 229) return; // IME candidate confirm (注音/新酷音), not a submit
     if (!_isBetaNonAdmin) return;
     e.preventDefault();
     searchResults.classList.remove("show");

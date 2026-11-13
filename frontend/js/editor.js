@@ -912,7 +912,7 @@ function _t(k, v) { return (window.LiveChordI18n && window.LiveChordI18n.t) ? wi
   $("#btnRecordMode").addEventListener("click", toggleRecordMode);
 
   $("#liveChordText").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !(e.isComposing || e.keyCode === 229)) { // skip IME candidate confirm
       e.preventDefault();
       const name = e.target.value.trim();
       if (!name) return;
