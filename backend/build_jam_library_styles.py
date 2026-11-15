@@ -6,6 +6,8 @@ style-stratified jam_tracks.json sample.
     covers the top-level ``Christmas/`` folder, sampled to ~250) with every
     analyzed Christmas piece in the library: classical / masses / oratorio,
     crossover, jazz, instrumental, pop.
+  * ``EDM`` — the top-level ``Electronic Dance Music/`` folder plus EDM
+    filed elsewhere (genre tag, dubstep / drum & bass / electronica titles).
   * ``器樂(全)`` and per-instrument ``器樂(鋼琴)`` / ``器樂(吉他)`` /
     ``器樂(豎琴)`` / ``器樂(小提琴)`` / ``器樂(弦樂)`` / ``器樂(長笛)`` /
     ``器樂(薩克斯風)`` / ``器樂(管樂)`` /
@@ -41,6 +43,8 @@ OUTPUT_NAME = "jam_library_styles.json"
 
 CHRISTMAS = "Christmas"
 INSTRUMENTAL_ALL = "器樂(全)"
+EDM = "EDM"
+EDM_FOLDER = "Electronic Dance Music"
 
 CHRISTMAS_RE = re.compile(
     r"christmas|x-?mas\b|(?<!\()\bno[eë]l\b|navidad|navideñ|weihnacht"
@@ -57,6 +61,29 @@ CHRISTMAS_RE = re.compile(
     r"|twelve days of|il est né|christmas oratorio|weihnachtsoratorium|bwv 248",
     re.I,
 )
+
+# EDM outside the EDM folder: the file's genre tag, or EDM words in the title /
+# album (Jam drum-loop albums, dubstep remixes). Bare "electro" / "techno" /
+# "dance" / "trap" are left out: Electro Funk Jazz, Techno Rock guitar backing,
+# Latin trap and plain "Dance" tags are not EDM.
+EDM_GENRE_RE = re.compile(
+    r"edm|electronic dance|electronica?|drum (?:and|&) bass|dubstep|trance"
+    r"|house|future bass|melodic bass|electro swing",
+    re.I,
+)
+EDM_TEXT_RE = re.compile(
+    r"edm|dubstep|electronica|drum ?(?:&|and|n'?) ?bass", re.I,
+)
+# A drum-loop album that lists D&B next to R&B / Soul is mostly not EDM.
+EDM_TEXT_EXCLUDE_RE = re.compile(r"r&b|soul", re.I)
+
+
+def is_edm(track: dict, top: str) -> bool:
+    if top == EDM_FOLDER or EDM_GENRE_RE.search(str(track.get("genre") or "")):
+        return True
+    text = " ".join(str(track.get(k) or "") for k in ("title", "album"))
+    return bool(EDM_TEXT_RE.search(text)) and not EDM_TEXT_EXCLUDE_RE.search(text)
+
 
 # Any of these means a sung lead → not an instrumental track.
 VOCAL_RE = re.compile(
@@ -106,7 +133,7 @@ GENERIC_INSTRUMENTAL_RE = re.compile(
     r"instrumental|\binst\.|\(inst\)|off vocal|純音樂|纯音乐|演奏|伴奏", re.I,
 )
 
-STYLE_ORDER = [CHRISTMAS, INSTRUMENTAL_ALL] + [n for n, _, _ in INSTRUMENT_STYLES]
+STYLE_ORDER = [CHRISTMAS, EDM, INSTRUMENTAL_ALL] + [n for n, _, _ in INSTRUMENT_STYLES]
 
 
 def classify(track: dict) -> list:
@@ -117,6 +144,8 @@ def classify(track: dict) -> list:
     styles = []
     if top == CHRISTMAS or CHRISTMAS_RE.search(text):
         styles.append(CHRISTMAS)
+    if is_edm(track, top):
+        styles.append(EDM)
     if not VOCAL_RE.search(text):
         instruments = [
             name for name, rx, ex in INSTRUMENT_STYLES

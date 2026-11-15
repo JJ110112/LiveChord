@@ -135,6 +135,30 @@ class TestClassify(unittest.TestCase):
         self.assertIn(builder.CHRISTMAS, tags)
         self.assertIn("器樂(鋼琴)", tags)
 
+    def test_edm_folder_genre_tag_and_titles(self):
+        # The EDM folder holds vocal tracks too — EDM is a genre, not 器樂.
+        self.assertIn(builder.EDM, builder.classify(
+            _t("@1/Electronic Dance Music/Miss Monique/Miss Monique - Siona (feat. AVIRA).flac")))
+        # Dimension's drum & bass album is filed under Jazz/; only the tag says D&B.
+        dnb = dict(_t("@1/Jazz/Dimension/Children.flac", album="In The Mix 01"), genre="Drum And Bass")
+        self.assertIn(builder.EDM, builder.classify(dnb))
+        self.assertIn(builder.EDM, builder.classify(
+            _t("@1/POP/J-POP/Kumi Koda/Love Me Back - Sunset In Ibiza Dubstep Remix.flac",
+               title="Love Me Back - Sunset In Ibiza Dubstep Remix")))
+
+    def test_edm_lookalikes_stay_out(self):
+        # Electro funk jazz, techno-rock guitar backing, and a drum-loop album
+        # that is mostly R&B / soul all matched a naive keyword list.
+        for track in (
+            _t("@1/Jazz/Alexa Digital Radio - Electro Funk Jazz Mix/Groove.flac", album="Electro Funk Jazz Mix"),
+            _t("@1/Jam/Ron Gelinas - Guitar Jam Backing Tracks (Techno Rock Collection)/Track 1.flac",
+               album="Guitar Jam Backing Tracks (Techno Rock Collection)"),
+            _t("@1/Jam/Drum Loops, Vol. 2 R&B, Trap, Drum & Bass, Mid Tempo, Soul, Pop/Sexy Soul.flac",
+               title="Sexy Soul", album="Jam Tracks - Drum Loops, Vol. 2 R&B, Trap, Drum & Bass, Mid Tempo, Soul, Pop"),
+            dict(_t("@1/Relax/Dance/Waltz.flac"), genre="Dance"),
+        ):
+            self.assertNotIn(builder.EDM, builder.classify(track), track["path"])
+
 
 class TestBuild(unittest.TestCase):
     def test_only_analyzed_songs_are_included(self):
