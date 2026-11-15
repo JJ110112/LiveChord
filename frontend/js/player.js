@@ -242,7 +242,8 @@
   // Pure logic lives in improv-hints.js. Here: build the per-song model once
   // (bass line through the displayed chords, approach-note windows, phrase-
   // end harmony windows) and look up what to ring at the current time.
-  let showImprovHints = localStorage.getItem("livechord_improv_hints") === "true";
+  // Default ON (user's pick); an explicit "false" from the Tools toggle wins.
+  let showImprovHints = localStorage.getItem("livechord_improv_hints") !== "false";
   let _melodyTrusted = true;   // melody_trust verdict of the loaded melody
   let _improvCache = { key: "", model: null };
 
