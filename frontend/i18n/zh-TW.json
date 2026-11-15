@@ -1469,8 +1469,8 @@
   "toast.playlist.failed": "重新隨機失敗：{err}",
   "player.tools.improv_on": "即興提示：開",
   "player.tools.improv_off": "即興提示：關",
-  "player.tools.improv_title": "鍵盤紫圈：旋律長音下可加的和聲音（實線）、低音移動前的經過音（虛線）；和弦卡標出建議低音",
-  "toast.improv.on": "即興提示已開：紫圈 = 可加彈的音（虛線 = 左手經過音）；和弦卡上反白的數字 = 建議低音",
+  "player.tools.improv_title": "鍵盤綠圈：旋律長音下可加的和聲音（實線）、低音移動前的經過音（虛線）；和弦卡標出建議低音",
+  "toast.improv.on": "即興提示已開：綠圈 = 可加彈的音（虛線 = 左手經過音）；和弦卡上反白的數字 = 建議低音",
   "player.tools.jianpu_fixed": "簡譜：固定 C",
   "player.tools.jianpu_movable": "簡譜：首調",
   "player.tools.jianpu_mode_title": "和弦卡簡譜數字：固定以 C 為 1，或依歌曲調性（首調，小調以關係大調的 1 起算）"

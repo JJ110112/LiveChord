@@ -1106,9 +1106,9 @@ const ChordRender = {
     const rings = opts && opts.hintRings;
     if (rings && rings.length) {
       const light = _crIsLightBg();
-      // Soft purple: apart from blue LH / orange RH bars, green pedal and the
-      // fingering circles. No numbers — those read as finger numbers.
-      const HINT = (opts.colors && opts.colors.improvHint) || (light ? "rgba(123, 31, 162, 0.95)" : "rgba(213, 140, 255, 0.95)");
+      // Green is the improv-hint colour (user's pick). No numbers — those
+      // read as finger numbers.
+      const HINT = (opts.colors && opts.colors.improvHint) || (light ? "rgba(27, 122, 40, 0.95)" : "rgba(178, 255, 89, 0.95)");
       const HALO = light ? "rgba(255,255,255,0.9)" : "rgba(0,0,0,0.75)";
       ctx.save();
       ctx.setLineDash([]);

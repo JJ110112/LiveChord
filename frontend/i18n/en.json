@@ -1469,8 +1469,8 @@
   "toast.playlist.failed": "Reshuffle failed: {err}",
   "player.tools.improv_on": "Improv hints: On",
   "player.tools.improv_off": "Improv hints: Off",
-  "player.tools.improv_title": "Purple rings on the keyboard: harmony notes under long melody notes (solid) and the passing note before a bass move (dashed). Chord cards mark the suggested bass.",
-  "toast.improv.on": "Improv hints on: purple rings = notes you can add (dashed = left-hand passing note); the highlighted number on each chord card is the suggested bass",
+  "player.tools.improv_title": "Green rings on the keyboard: harmony notes under long melody notes (solid) and the passing note before a bass move (dashed). Chord cards mark the suggested bass.",
+  "toast.improv.on": "Improv hints on: green rings = notes you can add (dashed = left-hand passing note); the highlighted number on each chord card is the suggested bass",
   "player.tools.jianpu_fixed": "Jianpu: fixed C",
   "player.tools.jianpu_movable": "Jianpu: song key",
   "player.tools.jianpu_mode_title": "Chord-card jianpu numbers: fixed C, or counted from the song's key (1 = tonic; minor keys use the relative major)"
