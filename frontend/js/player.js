@@ -304,9 +304,9 @@
     if (!m) return null;
     const rings = [];
     const h = m.harmony.find((w) => t >= w.from && t <= w.to);
-    if (h) for (const n of h.notes) rings.push({ midi: n.midi, hand: "right", label: n.label });
+    if (h) for (const n of h.notes) rings.push({ midi: n.midi, hand: "right" });
     const a = m.approach.find((w) => t >= w.from && t < w.to);
-    if (a) rings.push({ midi: a.midi, hand: "left", label: "→" });
+    if (a) rings.push({ midi: a.midi, hand: "left" });
     return rings;
   }
 
@@ -1972,7 +1972,7 @@
 
       const jp = document.createElement("div");
       jp.className = "rv-jianpu";
-      jp.innerHTML = _improvJianpuHtml(i, cache.notes, _currentKey());
+      jp.innerHTML = _improvJianpuHtml(i, cache.notes, _jianpuMovable ? _jianpuKeyAt(c.time) : _currentKey());
       item.appendChild(jp);
 
       const _diagKey = `diagram_${activeTab}`;
@@ -2698,10 +2698,58 @@
   _syncPageFsButton();
 
   // 相對簡譜：notes 陣列相對於當前 key 的簡譜
+  let _jianpuMovable = localStorage.getItem("livechord_jianpu_movable") === "true";
+  function _jianpuTonic(key) {
+    const m = /^([A-G][b#]?)(m(?!aj))?/.exec(key || "C");
+    if (!m) return 0;
+    const root = noteToSemitone(m[1]);
+    return m[2] ? (root + 3) % 12 : root;
+  }
+
+  // Key a chord card at time t is numbered from in 首調 mode — the same key
+  // the key badge shows there: the section's key when the song modulates
+  // (a section key held over 2+ consecutive sections, more than one root),
+  // else the arbiter's modulation candidates, else the song key. Mirrors
+  // _updateKeyDisplay.
+  function _jianpuKeyAt(t) {
+    const base = _currentKey();
+    const secs = sectionData && Array.isArray(sectionData.sections) ? sectionData.sections : [];
+    const root = (k) => (k || "").replace(/m.*$/, "");
+    const keyed = secs.filter((s) => s.key);
+    const stableRoots = new Set(keyed.filter((s, i) =>
+      (i > 0 && root(keyed[i - 1].key) === root(s.key))
+      || (i + 1 < keyed.length && root(keyed[i + 1].key) === root(s.key))).map((s) => root(s.key)));
+    const shift = transpose - capo;
+    const shifted = (k) => (shift === 0 ? k : transposeChord(k, shift));
+    if (keyed.length) {
+      if (stableRoots.size < 2) return base;
+      const sec = [...secs].reverse().find((s) => t >= s.start);
+      return sec && sec.key ? shifted(sec.key) : base;
+    }
+    // No section keys: the global arbiter's modulation candidates.
+    const arb = chordData && chordData.global_arbiter_meta;
+    const cands = (arb && Array.isArray(arb.modulation_candidates) ? arb.modulation_candidates : [])
+      .filter((c) => c && c.to);
+    if (!cands.length) return base;
+    const roots = new Set([cands[0].from, ...cands.map((c) => c.to)].filter(Boolean).map(root));
+    if (roots.size < 2) return base;
+    let cur = null;
+    for (const c of cands) if (t >= (Number(c.time) || 0)) cur = c;
+    const k = cur ? cur.to : cands[0].from;
+    return k ? shifted(k) : base;
+  }
+
   function _notesToJianpu(notes, key) {
     if (!notes || notes.length === 0) return "";
     const JP = ["1","#1","2","#2","3","4","#4","5","#5","6","#6","7"];
     const JPF = ["1","b2","2","b3","3","4","b5","5","b6","6","b7","7"];
+    // Fixed-C by default; Tools → 簡譜：首調 numbers from the song's key
+    // (minor keys use the relative major's 1, so A minor reads 6 1 3).
+    if (_jianpuMovable) {
+      const tonic = _jianpuTonic(key);
+      const JPM = ["1","#1","2","b3","3","4","#4","5","b6","6","b7","7"];
+      return notes.map(n => JPM[((noteToSemitone(n) - tonic) % 12 + 12) % 12]).join(" ");
+    }
     const keySemi = 0; // always C-relative solfege
     return notes.map(n => {
       const semi = noteToSemitone(n);
@@ -6567,6 +6615,25 @@
     _coverImg.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); _openProgPanel(); } });
   }
   audio.addEventListener("timeupdate", () => _updateProgPanel(audio.currentTime || 0));
+
+  function _syncJianpuModeBtn() {
+    const lab = document.getElementById("btnToggleJianpuModeLabel");
+    if (lab) lab.textContent = _t(_jianpuMovable ? "player.tools.jianpu_movable" : "player.tools.jianpu_fixed");
+    const btn = document.getElementById("btnToggleJianpuMode");
+    if (btn) btn.setAttribute("aria-pressed", _jianpuMovable ? "true" : "false");
+  }
+  const btnToggleJianpuMode = $("#btnToggleJianpuMode");
+  if (btnToggleJianpuMode) {
+    btnToggleJianpuMode.addEventListener("click", () => {
+      _jianpuMovable = !_jianpuMovable;
+      try { localStorage.setItem("livechord_jianpu_movable", _jianpuMovable ? "true" : "false"); } catch (_) {}
+      _syncJianpuModeBtn();
+      buildChordDOM();
+      updateActiveChord(audio.currentTime || -1, true);
+    });
+  }
+  _syncJianpuModeBtn();
+  document.addEventListener("livechord:langchange", _syncJianpuModeBtn);
 
   const btnToggleJianpu = $("#btnToggleJianpu");
   if (btnToggleJianpu) {

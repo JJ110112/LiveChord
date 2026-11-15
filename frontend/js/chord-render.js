@@ -1106,7 +1106,9 @@ const ChordRender = {
     const rings = opts && opts.hintRings;
     if (rings && rings.length) {
       const light = _crIsLightBg();
-      const HINT = (opts.colors && opts.colors.improvHint) || (light ? "rgba(27, 122, 40, 0.95)" : "rgba(178, 255, 89, 0.95)");
+      // Soft purple: apart from blue LH / orange RH bars, green pedal and the
+      // fingering circles. No numbers — those read as finger numbers.
+      const HINT = (opts.colors && opts.colors.improvHint) || (light ? "rgba(123, 31, 162, 0.95)" : "rgba(213, 140, 255, 0.95)");
       const HALO = light ? "rgba(255,255,255,0.9)" : "rgba(0,0,0,0.75)";
       ctx.save();
       ctx.setLineDash([]);
@@ -1125,12 +1127,10 @@ const ChordRender = {
         ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.stroke();
         ctx.lineWidth = 2.5;
         ctx.strokeStyle = HINT;
+        // left-hand passing note: dashed ring
+        ctx.setLineDash(r.hand === "left" ? [3, 3] : []);
         ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.stroke();
-        if (r.label && rad >= 7) {
-          ctx.font = `700 ${Math.round(rad * 1.1)}px system-ui, sans-serif`;
-          ctx.fillStyle = light ? "#1b5e20" : (isBlack ? "#e6ffcc" : "#1b5e20");
-          ctx.fillText(r.label, cx, cy + 0.5);
-        }
+        ctx.setLineDash([]);
       }
       ctx.restore();
     }

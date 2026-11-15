@@ -97,6 +97,9 @@ class TestApproach(unittest.TestCase):
         # Going down C3 → A2: B2 is the scale step above A.
         self.assertEqual(run("H.approachNote(48, 45, H.scalePcs('C'))"), 47)
 
+    def test_approach_note_stays_in_the_left_hand(self):
+        self.assertLess(run("H.approachNote(53, 57, H.scalePcs('C'))"), run("H.SPLIT"))
+
     def test_minor_key_uses_the_minor_scale(self):
         # A minor, A2 → D3 from below: C#3 is not in the key; C3 is.
         self.assertEqual(run("H.approachNote(45, 50, H.scalePcs('Am'))"), 48)
@@ -105,9 +108,22 @@ class TestApproach(unittest.TestCase):
 @unittest.skipUnless(NODE, "node not installed")
 class TestPhraseEndHarmony(unittest.TestCase):
     def test_third_and_sixth_under_the_melody(self):
-        # Melody E4 over C: the choir notes are C4 (third below) and G3 (sixth).
+        # Melody A4 over F: the choir notes are F4 (third below) and C4 (sixth).
+        out = run("H.harmonyBelow(69, [5, 9, 0])")
+        self.assertEqual(out, [{"midi": 65, "label": "3"}, {"midi": 60, "label": "6"}])
+
+    def test_right_hand_never_crosses_into_the_left_hand(self):
+        # Melody E4 over C used to suggest G3 too — the left hand's bass
+        # register (up to A3). Only C4 is above the split now.
         out = run("H.harmonyBelow(64, [0, 4, 7])")
-        self.assertEqual(out, [{"midi": 60, "label": "3"}, {"midi": 55, "label": "6"}])
+        self.assertEqual([h["midi"] for h in out], [60])
+        self.assertTrue(all(h["midi"] >= run("H.SPLIT") for h in out))
+
+    def test_harmony_stays_within_one_hand_span(self):
+        # Melody C6 over F: A5 (third) and F5 (fifth) fit; C5 an octave down
+        # is a stretch for one hand and is never offered.
+        out = run("H.harmonyBelow(84, [5, 9, 0], 3)")
+        self.assertTrue(all(84 - h["midi"] <= 9 for h in out), out)
 
     def test_never_a_second_below(self):
         # Melody D5 over G7: C5 (the 7th) is a second away and would rub.
@@ -127,6 +143,15 @@ class TestPhraseEndHarmony(unittest.TestCase):
         ]
         got = run(f"H.phraseEndNotes({json.dumps(notes)}, {beat}).map(n => n.midi)")
         self.assertEqual(got, [62, 64])
+
+    def test_anticipated_phrase_end_of_a_beat_and_a_quarter_qualifies(self):
+        # Syncopated phrase end (At Seventeen): pushed in half a beat early,
+        # 1.25 beats long, the next phrase follows without a breath.
+        beat = 0.5
+        notes = [{"start": 0.0, "end": 0.625, "midi": 64},
+                 {"start": 0.625, "end": 0.8, "midi": 62}]
+        got = run(f"H.phraseEndNotes({json.dumps(notes)}, {beat}).map(n => n.midi)")
+        self.assertEqual(got, [64])
 
 
 if __name__ == "__main__":

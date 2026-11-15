@@ -21,6 +21,11 @@
   const BASS_LO = 36;     // C2
   const BASS_HI = 57;     // A3
   const BASS_HOME = 43;   // G2 — where the first bass note lands
+  // Hand split: right-hand harmony stays at or above SPLIT, the left hand
+  // (bass + approach notes) below it, so the two never fight over the same
+  // keys around middle C.
+  const SPLIT = BASS_HI + 1;   // A#3
+  const MAX_BELOW = 9;         // right-hand harmony within a sixth of the melody
 
   const MAJOR = [0, 2, 4, 5, 7, 9, 11];
   const MINOR = [0, 2, 3, 5, 7, 8, 10];
@@ -132,6 +137,11 @@
     const d = next - cur;
     const dir = Math.sign(d);
     if (Math.abs(d) <= 1) return null;
+    const m = _approach(cur, next, d, dir, scale);
+    return m < SPLIT ? m : null;
+  }
+
+  function _approach(cur, next, d, dir, scale) {
     if (Math.abs(d) === 2) return cur + dir;
     if (scale) {
       for (let k = 1; k <= 2; k++) {
@@ -143,7 +153,8 @@
   }
 
   /**
-   * Melody notes long enough to hang a harmony on: at least 1.5 beats, or
+   * Melody notes long enough to hang a harmony on: at least 1.25 beats (a
+ * phrase end anticipated by half a beat in syncopated songs), or
    * at least 1 beat with a breath (≥ half a beat) before the next note.
    * @param notes [{start, end, midi}] (sorted or not)
    */
@@ -159,7 +170,7 @@
       const dur = n.end - n.start;
       const next = sorted[i + 1];
       const gap = next ? next.start - n.end : Infinity;
-      if (dur >= Math.max(1.5 * beat, 0.6) || (dur >= Math.max(beat, 0.4) && gap >= 0.5 * beat)) {
+      if (dur >= Math.max(1.25 * beat, 0.6) || (dur >= Math.max(beat, 0.4) && gap >= 0.5 * beat)) {
         out.push(n);
       }
     }
@@ -171,13 +182,16 @@
   /**
    * Up to `max` chord tones under the melody note, nearest first, skipping
    * anything a second away (it would rub) and the melody's own pitch class.
+   * Stays within a sixth of the melody (one-hand span) and at or above
+   * `floor` (default SPLIT) so it never crosses into the left hand.
    * @returns [{midi, label}] label = interval below the melody ("3", "6", …)
    */
-  function harmonyBelow(melMidi, chordPcs, max) {
+  function harmonyBelow(melMidi, chordPcs, max, floor) {
     const out = [];
     const limit = max || 2;
+    const lo = Math.max(melMidi - MAX_BELOW, floor == null ? SPLIT : floor);
     const melPc = ((melMidi % 12) + 12) % 12;
-    for (let m = melMidi - 3; m >= melMidi - 12 && out.length < limit; m--) {
+    for (let m = melMidi - 3; m >= lo && out.length < limit; m--) {
       const pc = ((m % 12) + 12) % 12;
       if (pc === melPc || !chordPcs.includes(pc)) continue;
       out.push({ midi: m, label: _INTERVAL_LABEL[melMidi - m] || "" });
@@ -194,7 +208,7 @@
   }
 
   const api = {
-    pcOf, chordRootPc, slashBassPc, scalePcs,
+    SPLIT, pcOf, chordRootPc, slashBassPc, scalePcs,
     bassLine, approachNote, phraseEndNotes, harmonyBelow, chordIndexAt,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

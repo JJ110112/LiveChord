@@ -4552,24 +4552,24 @@ body.no-score #scoreLayer { display: none !important; }
 /* ---- 即興提示 (Tools → improv hints) on chord cards.
    .rv-jp-bass marks the suggested bass tone's jianpu number so the left-hand
    line reads card to card; .rv-bass-hint is the "/B" slash when that bass is
-   an inversion. Green matches the keyboard hint rings. */
+   an inversion. Purple matches the keyboard hint rings. */
 .rv-item .rv-jianpu .rv-jp-bass {
   font-weight: 800;
-  color: #0b1a00;
-  background: rgba(178, 255, 89, 0.9);
+  color: #1a0026;
+  background: rgba(213, 140, 255, 0.9);
   border-radius: 4px;
   padding: 0 3px;
 }
 .rv-item .rv-chord-name .rv-bass-hint {
-  color: rgb(178, 255, 89);
+  color: rgb(213, 140, 255);
   font-weight: 700;
   margin-left: 1px;
 }
 [data-theme="light"] .rv-item .rv-chord-name .rv-bass-hint,
 [data-theme="sakura"] .rv-item .rv-chord-name .rv-bass-hint,
 [data-theme="sunny"] .rv-item .rv-chord-name .rv-bass-hint,
-[data-theme="sky"] .rv-item .rv-chord-name .rv-bass-hint { color: rgb(27, 122, 40); }
+[data-theme="sky"] .rv-item .rv-chord-name .rv-bass-hint { color: rgb(123, 31, 162); }
 [data-theme="light"] .rv-item .rv-jianpu .rv-jp-bass,
 [data-theme="sakura"] .rv-item .rv-jianpu .rv-jp-bass,
 [data-theme="sunny"] .rv-item .rv-jianpu .rv-jp-bass,
-[data-theme="sky"] .rv-item .rv-jianpu .rv-jp-bass { color: #fff; background: rgb(46, 125, 50); }
+[data-theme="sky"] .rv-item .rv-jianpu .rv-jp-bass { color: #fff; background: rgb(123, 31, 162); }

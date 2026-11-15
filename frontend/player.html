@@ -16,13 +16,13 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=24">
-  <link rel="stylesheet" href="/css/player.css?v=162">
+  <link rel="stylesheet" href="/css/player.css?v=163">
   <link rel="stylesheet" href="/css/tutorial.css?v=1">
   <!-- Phase A: shared auth + fetch wrapper (see frontend/js/auth.js). Must
        load before any /api/ call so anon X-Anon-Id is injected from the
        first request. Replaces the inline blind-redirect block. -->
   <script src="/js/auth.js?v=7"></script>
-  <script src="/js/i18n.js?v=66"></script>
+  <script src="/js/i18n.js?v=67"></script>
   <script src="/js/analytics.js?v=3"></script>
 </head>
 <body>
@@ -839,6 +839,11 @@
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 17V5l10-2v12"/><circle cx="6" cy="17" r="3"/><circle cx="16" cy="15" r="3"/></svg>
         <span id="btnToggleJianpuLabel" data-i18n="player.tools.jianpu_on">Jianpu: On</span>
       </button>
+      <button id="btnToggleJianpuMode" class="tb-popup-btn" type="button"
+              data-i18n-attr="title=player.tools.jianpu_mode_title" title="Jianpu numbers: fixed C or from the song's key" aria-pressed="false">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10"/><path d="M4 17h16"/><path d="M17 4l3 3-3 3"/></svg>
+        <span id="btnToggleJianpuModeLabel" data-i18n="player.tools.jianpu_fixed">Jianpu: fixed C</span>
+      </button>
       <button id="btnToggleImprovHints" class="tb-popup-btn" type="button"
               data-i18n-attr="title=player.tools.improv_title" title="Improv hints" aria-pressed="false">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>
@@ -950,7 +955,7 @@
 
 <script src="/js/utils.js?v=14"></script>
 <script src="/js/api.js?v=67"></script>
-<script src="/js/chord-render.js?v=72"></script>
+<script src="/js/chord-render.js?v=73"></script>
 <!-- VexFlow self-hosted (Bravura build). See /js/vendor/README.md for rationale. -->
 <script defer src="/js/vendor/vexflow.min.js?v=1"></script>
 <script defer src="/js/score-render.js?v=14"></script>
@@ -967,8 +972,8 @@
 <!-- Phase A: fetch wrapper installed by /js/auth.js at <head>; the inline
      duplicate block was removed. -->
 <script src="/js/scale-lab.js?v=3"></script>
-<script src="/js/improv-hints.js?v=2"></script>
-<script src="/js/player.js?v=384"></script>
+<script src="/js/improv-hints.js?v=3"></script>
+<script src="/js/player.js?v=387"></script>
 <script>
   // Toolbar gear theme picker — mirrors the homepage gear handler so the
   // user's theme choice is honored on either entry point. Active state on
