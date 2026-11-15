@@ -158,7 +158,9 @@ def classify(track: dict) -> list:
 
 
 def analyzed_hashes(chords_dir: Path) -> set:
-    """Hashes with a sharded chord JSON (<chords>/<hash[:2]>/<hash>.json)."""
+    """Hashes with a sharded chord JSON (<chords>/<hash[:2]>/<hash>.json),
+    minus files the chord index records as holding zero chords: those open
+    on an empty ribbon and trigger a 30 s+ re-detection on every visit."""
     out = set()
     if not chords_dir.is_dir():
         return out
@@ -170,7 +172,16 @@ def analyzed_hashes(chords_dir: Path) -> set:
                 for f in files:
                     if f.name.endswith(".json"):
                         out.add(f.name[:-5])
-    return out
+    return out - empty_chord_hashes(chords_dir.parent / "chord_index.json")
+
+
+def empty_chord_hashes(index_file: Path) -> set:
+    """Hashes chord_cache's index lists with chord_count == 0 (missing index → none)."""
+    try:
+        index = json.loads(index_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    return {h for h, e in index.items() if isinstance(e, dict) and e.get("chord_count") == 0}
 
 
 def build(library_tracks: list, analyzed: set) -> dict:

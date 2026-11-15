@@ -170,6 +170,21 @@ class TestBuild(unittest.TestCase):
         self.assertEqual(paths, [ready["path"]])
         self.assertEqual(out["counts"]["器樂(鋼琴)"], 1)
 
+    def test_zero_chord_files_do_not_count_as_analyzed(self):
+        # 30 EDM tracks had a chord JSON with chords=[]: the player opened on
+        # an empty ribbon and auto-ran a 30 s+ detection on every queue skip.
+        with tempfile.TemporaryDirectory() as tmp:
+            chords = Path(tmp) / "chords"
+            for h in ("aa11", "aa22"):
+                (chords / h[:2]).mkdir(parents=True, exist_ok=True)
+                (chords / h[:2] / f"{h}.json").write_text("{}", encoding="utf-8")
+            (Path(tmp) / "chord_index.json").write_text(json.dumps({
+                "aa11": {"chord_count": 70}, "aa22": {"chord_count": 0},
+            }), encoding="utf-8")
+            self.assertEqual(builder.analyzed_hashes(chords), {"aa11"})
+            (Path(tmp) / "chord_index.json").unlink()  # no index → keep every file
+            self.assertEqual(builder.analyzed_hashes(chords), {"aa11", "aa22"})
+
 
 class TestMerge(unittest.TestCase):
     def setUp(self):
