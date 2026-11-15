@@ -48,6 +48,7 @@ const API = {
     if (opts.group_id) qs.set("group_id", opts.group_id);
     if (opts.style) qs.set("style", opts.style);
     if (opts.seed) qs.set("seed", opts.seed);
+    if (opts.start) qs.set("start", opts.start);
     if (opts.limit) qs.set("limit", String(opts.limit));
     return API.get(`/api/playlist?${qs.toString()}`);
   },

@@ -2055,6 +2055,11 @@
   async function loadFavorites() {
     const section = $("#secFavorites");
     const container = $("#favList");
+    // ▶ / 🔀 in the section header are static markup: bind them once.
+    if (section && !section.dataset.queueBound) {
+      section.dataset.queueBound = "1";
+      _bindQueueButtons(section.querySelector(".dash-title"));
+    }
     try {
       const data = await API.getFavorites();
       if (!data.favorites || data.favorites.length === 0) {

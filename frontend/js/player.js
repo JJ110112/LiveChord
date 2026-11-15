@@ -10,14 +10,17 @@
   const autoplay = params.get("autoplay") === "1";
   const restoreFs = params.get("fs") === "1";
   if (!trackPath && !hashMode) { window.location.href = "/"; return; }
-  const queueSource = params.get("queue") || "";
-  const queueMode = params.get("queue_mode") === "shuffle" ? "shuffle" : "sequential";
-  const queueSeed = params.get("queue_seed") || "";
-  const queuePath = params.get("queue_path") || "";
-  const queueGroup = params.get("queue_group") || "";
-  const queueStyle = params.get("queue_style") || "";
-  const queueLabel = params.get("queue_label") || "";
-  const queueActive = !hashMode && !!trackPath && ["folder", "group", "jam"].includes(queueSource);
+  // `let`, not const: the playlist panel's Random button replaces the queue
+  // in place (new seed, current song pinned first via queue_start).
+  let queueSource = params.get("queue") || "";
+  let queueMode = params.get("queue_mode") === "shuffle" ? "shuffle" : "sequential";
+  let queueSeed = params.get("queue_seed") || "";
+  let queuePath = params.get("queue_path") || "";
+  let queueGroup = params.get("queue_group") || "";
+  let queueStyle = params.get("queue_style") || "";
+  let queueLabel = params.get("queue_label") || "";
+  let queueStart = params.get("queue_start") || "";
+  let queueActive = !hashMode && !!trackPath && ["folder", "group", "jam", "favorites"].includes(queueSource);
   let preferPageFullscreen = restoreFs;
   const BEAT_SOURCE_PREF_KEY = "livechord_player_beat_source";
   function _pageBeatSourcePrefKey() {
@@ -2483,6 +2486,7 @@
     if (queueGroup) qs.set("queue_group", queueGroup);
     if (queueStyle) qs.set("queue_style", queueStyle);
     if (queueLabel) qs.set("queue_label", queueLabel);
+    if (queueStart && queueMode === "shuffle") qs.set("queue_start", queueStart);
   }
   function _navUrl(path) {
     const qs = new URLSearchParams({ path, autoplay: "1" });
@@ -2687,6 +2691,7 @@
       siblingTracks = data.entries.filter((e) => !e.is_dir && /\.(flac|mp3|wav|ogg)$/i.test(e.name));
       currentIndex = siblingTracks.findIndex((t) => t.path === path);
     } catch {}
+    _renderPlaylist();
   }
 
   async function loadQueue(path) {
@@ -2698,6 +2703,7 @@
         path: queuePath,
         group_id: queueGroup,
         style: queueStyle,
+        start: queueMode === "shuffle" ? queueStart : "",
         limit: 20000,
       });
       queueTracks = (data.tracks || []).filter((e) => e && e.path);
@@ -2706,6 +2712,139 @@
       console.warn("queue load failed:", err);
       queueTracks = [];
       queueIndex = -1;
+    }
+    _renderPlaylist();
+  }
+
+  // ---- Playlist panel (Type C, no backdrop) ----
+  // Shows the active queue — or the current folder when there is no queue —
+  // with the current song highlighted, so users can read what comes next.
+  // Closed by default; the open state persists so it survives the page load
+  // that every Next / Prev does.
+  const PLAYLIST_OPEN_KEY = "livechord_playlist_open";
+  const _playlistPanel = document.getElementById("playlistPanel");
+  const _playlistList = document.getElementById("playlistList");
+  const _btnPlaylist = document.getElementById("btnPlaylist");
+
+  function _playlistView() {
+    if (queueActive && queueTracks.length) {
+      // Favorites: translate here — the server label is the English "Favorites".
+      const label = queueSource === "favorites" ? _t("home.section.favorites") : (queueLabel || queueSource);
+      return { tracks: queueTracks, idx: queueIndex, label };
+    }
+    const dir = (trackPath || "").split("/").slice(0, -1).pop() || "";
+    return { tracks: siblingTracks, idx: currentIndex, label: dir };
+  }
+
+  function _plTitle(t) {
+    return t.title || (t.name || t.path.split("/").pop()).replace(/\.(flac|mp3|wav|ogg|m4a)$/i, "");
+  }
+
+  function _plEsc(v) {
+    return String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function _isPlaylistOpen() {
+    return !!_playlistPanel && _playlistPanel.style.display !== "none";
+  }
+
+  function _renderPlaylist() {
+    if (!_isPlaylistOpen() || !_playlistList) return;
+    const { tracks, idx, label } = _playlistView();
+    document.getElementById("playlistLabel").textContent = label || _t("player.playlist.title");
+    document.getElementById("playlistCount").textContent =
+      tracks.length ? `${Math.max(idx, 0) + 1} / ${tracks.length}` : "";
+    if (!tracks.length) {
+      _playlistList.innerHTML = `<li class="pl-empty">${_plEsc(_t("player.playlist.empty"))}</li>`;
+      return;
+    }
+    // Long queues (Jam styles reach 14k songs): render a window around the
+    // current song instead of every row.
+    const from = Math.max(0, idx - 10);
+    const to = Math.min(tracks.length, Math.max(idx, 0) + 300);
+    let html = "";
+    for (let i = from; i < to; i++) {
+      const t = tracks[i];
+      const cls = i === idx ? "pl-item is-current" : (i < idx ? "pl-item is-played" : "pl-item");
+      html += `<li class="${cls}" data-path="${_plEsc(t.path)}" title="${_plEsc(t.path)}">`
+        + `<span class="pl-num">${i + 1}</span>`
+        + `<span class="pl-text"><span class="pl-title">${_plEsc(_plTitle(t))}</span>`
+        + (t.artist ? `<span class="pl-artist">${_plEsc(t.artist)}</span>` : "")
+        + `</span></li>`;
+    }
+    _playlistList.innerHTML = html;
+    const cur = _playlistList.querySelector(".is-current");
+    if (cur) _playlistList.scrollTop = Math.max(0, cur.offsetTop - 8);
+  }
+
+  function _setPlaylistOpen(open) {
+    if (!_playlistPanel) return;
+    _playlistPanel.style.display = open ? "" : "none";
+    if (_btnPlaylist) _btnPlaylist.classList.toggle("active", open);
+    try { localStorage.setItem(PLAYLIST_OPEN_KEY, open ? "1" : "0"); } catch {}
+    if (open) _renderPlaylist();
+  }
+
+  async function _playlistRandom(btn) {
+    if (!trackPath) return;
+    // No queue yet (opened from a folder / search) → shuffle the current folder.
+    const source = queueActive ? queueSource : "folder";
+    const path = queueActive ? queuePath : trackPath.split("/").slice(0, -1).join("/");
+    const seed = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}_${source}_shuffle`;
+    if (btn) btn.disabled = true;
+    try {
+      const data = await API.playlist({
+        source, mode: "shuffle", seed, start: trackPath, path,
+        group_id: queueActive ? queueGroup : "",
+        style: queueActive ? queueStyle : "",
+        limit: 20000,
+      });
+      const tracks = (data.tracks || []).filter((e) => e && e.path);
+      if (!tracks.length) throw new Error(_t("toast.queue.empty"));
+      // Folder shuffle: the server labels it with the full path; show the folder name.
+      if (!queueActive) queueLabel = path.split("/").pop() || data.label || "";
+      queueSource = source;
+      queuePath = path;
+      queueMode = "shuffle";
+      queueSeed = data.seed || seed;
+      queueStart = trackPath;
+      queueActive = true;
+      queueTracks = tracks;
+      queueIndex = queueTracks.findIndex((t) => t.path === trackPath);
+      // Keep the URL in step so a reload rebuilds the same order.
+      try {
+        const qs = new URLSearchParams(location.search);
+        ["queue", "queue_mode", "queue_seed", "queue_path", "queue_group", "queue_style", "queue_label", "queue_start"]
+          .forEach((k) => qs.delete(k));
+        _appendQueueParams(qs);
+        history.replaceState(history.state, "", `${location.pathname}?${qs.toString()}`);
+      } catch {}
+      _renderPlaylist();
+      showToast(_t("toast.playlist.reshuffled"), 2000);
+    } catch (err) {
+      showToast(_t("toast.playlist.failed", { err: (err && err.message) || String(err) }), 3500);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  if (_playlistPanel) {
+    if (hashMode) {
+      if (_btnPlaylist) _btnPlaylist.style.display = "none";
+    } else {
+      if (_btnPlaylist) _btnPlaylist.addEventListener("click", () => _setPlaylistOpen(!_isPlaylistOpen()));
+      document.getElementById("playlistClose").addEventListener("click", () => _setPlaylistOpen(false));
+      const btnRandom = document.getElementById("btnPlaylistRandom");
+      btnRandom.addEventListener("click", () => _playlistRandom(btnRandom));
+      _playlistList.addEventListener("click", (e) => {
+        const li = e.target.closest(".pl-item");
+        if (!li || li.classList.contains("is-current")) return;
+        window.location.href = _navUrl(li.dataset.path);
+      });
+      let open = false;
+      try { open = localStorage.getItem(PLAYLIST_OPEN_KEY) === "1"; } catch {}
+      if (open) _setPlaylistOpen(true);
     }
   }
 

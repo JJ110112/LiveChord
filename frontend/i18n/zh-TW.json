@@ -1460,5 +1460,11 @@
   "home.score.failed": "樂譜辨識失敗：{err}",
   "player.chord_src.midi_upload": "MIDI 檔案（精確）",
   "toast.midi.no_audio": "此 MIDI 沒有合成音訊（伺服器缺 FluidSynth），僅顯示和弦與指法",
-  "player.key_scale_title": "點擊查看此調性的音階（鋼琴 / 吉他）"
+  "player.key_scale_title": "點擊查看此調性的音階（鋼琴 / 吉他）",
+  "player.playlist.title": "播放清單",
+  "player.playlist.random": "隨機",
+  "player.playlist.random_title": "重新隨機排列接下來的曲目",
+  "player.playlist.empty": "此清單沒有其他曲目",
+  "toast.playlist.reshuffled": "已重新隨機排列接下來的曲目",
+  "toast.playlist.failed": "重新隨機失敗：{err}"
 }

@@ -428,6 +428,31 @@ def _tracks_for_source(source: str, path: str, group_id: str, style: str) -> tup
     raise HTTPException(status_code=400, detail="不支援的播放清單來源")
 
 
+def _favorite_queue_tracks(username: str) -> list[dict]:
+    """The user's favorites in their saved order (newest first), titled from
+    the library cache. ``__hash/`` favorites (processed uploads) are left
+    out: the queue navigates by ``?path=``, which cannot open them."""
+    from data_cache import get_library_tracks
+    from user_api import _get_user_file, _read_json
+    favs = _read_json(_get_user_file(username, "favorites.json"), {"favorites": []})
+    paths = [str(f.get("path") or "").replace("\\", "/") for f in favs.get("favorites", [])]
+    paths = [p for p in paths if p and not p.startswith("__hash/")]
+    wanted = set(paths)
+    lib = {}
+    for t in get_library_tracks():
+        tp = (t.get("path") or "").replace("\\", "/")
+        if tp in wanted:
+            lib[tp] = t
+    return [_queue_track(lib.get(p) or {"path": p}) for p in paths]
+
+
+def _move_to_front(tracks: list[dict], path: str) -> list[dict]:
+    i = next((k for k, t in enumerate(tracks) if t.get("path") == path), -1)
+    if i <= 0:
+        return tracks
+    return [tracks[i]] + tracks[:i] + tracks[i + 1:]
+
+
 @router.get("/playlist")
 def playlist(
     source: str = Query(default="folder"),
@@ -436,20 +461,37 @@ def playlist(
     style: str = Query(default=""),
     mode: str = Query(default="sequential"),
     seed: str = Query(default=""),
+    start: str = Query(default="", description="Shuffle only: put this track first"),
     limit: int = Query(default=10000, ge=1, le=20000),
+    request: Request = None,
+    authorization: str = Header(None),
     _=Depends(_check_browse_access),
 ):
-    """Build a playable queue for folders, library groups, or jam styles."""
-    if source not in {"folder", "group", "jam"}:
+    """Build a playable queue for folders, library groups, jam styles, or the
+    caller's favorites.
+
+    ``start`` (shuffle only) moves that track to the front, so the player's
+    Random button can reshuffle what comes next while the current song stays
+    at index 0 — every later page load passes the same seed + start and
+    rebuilds the identical order."""
+    if source not in {"folder", "group", "jam", "favorites"}:
         raise HTTPException(status_code=400, detail="不支援的播放清單來源")
     if mode not in {"sequential", "shuffle"}:
         raise HTTPException(status_code=400, detail="不支援的播放模式")
-    label, tracks = _tracks_for_source(source, path, group_id, style)
-    tracks = _sort_queue_tracks(tracks)
+    if source == "favorites":
+        from auth_api import get_current_user
+        username = get_current_user(request, authorization)
+        label = "Favorites"
+        tracks = _favorite_queue_tracks(username)  # keep the user's own order
+    else:
+        label, tracks = _tracks_for_source(source, path, group_id, style)
+        tracks = _sort_queue_tracks(tracks)
     total = len(tracks)
     queue_seed = seed or f"{source}:{path}:{group_id}:{style}:{mode}"
     if mode == "shuffle":
         tracks = _shuffle_queue_tracks(tracks, queue_seed)
+        if start:
+            tracks = _move_to_front(tracks, start)
     tracks = tracks[:limit]
     return {
         "source": source,
@@ -459,6 +501,7 @@ def playlist(
         "label": label,
         "mode": mode,
         "seed": queue_seed,
+        "start": start if mode == "shuffle" else "",
         "total": total,
         "tracks": tracks,
     }

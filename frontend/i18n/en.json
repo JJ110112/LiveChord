@@ -1460,5 +1460,11 @@
   "home.score.failed": "Score recognition failed: {err}",
   "player.chord_src.midi_upload": "MIDI file (exact)",
   "toast.midi.no_audio": "No synthesized audio for this MIDI (server has no FluidSynth) — chords and fingering only",
-  "player.key_scale_title": "Click to view this key's scale (piano / guitar)"
+  "player.key_scale_title": "Click to view this key's scale (piano / guitar)",
+  "player.playlist.title": "Playlist",
+  "player.playlist.random": "Random",
+  "player.playlist.random_title": "Reshuffle the songs after this one",
+  "player.playlist.empty": "No other songs in this list",
+  "toast.playlist.reshuffled": "Upcoming songs reshuffled",
+  "toast.playlist.failed": "Reshuffle failed: {err}"
 }
