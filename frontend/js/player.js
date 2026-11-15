@@ -7510,11 +7510,20 @@
   });
 
   // ---- manual detect: shared by Tools popup button + hero empty-state button (Task 6) ----
+  let _detectRunning = false;
   async function runChordDetection() {
     if (!trackPath) { showToast(_t("toast.detect.hash_only"), 3000); return; }
-    detectOverlay.style.display = "";
-    detectMsg.textContent = _t("detect.progress.ai_analyzing");
-    detectDetail.textContent = _t("detect.progress.ai_analyzing_detail");
+    // No modal: detection is a ~30 s+ background job and the full-screen
+    // overlay covered Next/Prev, so a jam queue skip looked dead. Show the
+    // progress inline in the empty-chord state instead; playback and
+    // navigation stay usable while the job runs.
+    if (_detectRunning) return;
+    _detectRunning = true;
+    const _emptyMsg = document.querySelector(".chord-empty-msg");
+    if (_emptyMsg) _emptyMsg.textContent = _t("detect.progress.ai_analyzing");
+    const _heroBtn = document.getElementById("btnDetectHero");
+    if (_heroBtn) _heroBtn.disabled = true;
+    showToast(_t("detect.progress.ai_analyzing"), 3000);
 
     try {
       // BTC-only detection — MIDI auto-import was retired after fuzzy
@@ -7530,8 +7539,10 @@
       updateActiveChord(audio.currentTime || -1);
     } catch (err) {
       showToast(_t("toast.detect.failed", { err: err.message }), 4000);
+      const heroBtn = document.getElementById("btnDetectHero");
+      if (heroBtn) heroBtn.disabled = false;
     } finally {
-      detectOverlay.style.display = "none";
+      _detectRunning = false;
     }
   }
 

@@ -1602,102 +1602,37 @@ def admin_beats_degenerate_status(_: str = Depends(get_admin_user)):
 # ---------------------------------------------------------------------------
 
 @router.post("/chords/detect")
-async def detect_chords_api(path: str = Query(...)):
-    """自動偵測音訊中的和弦，偵測完成後自動儲存"""
+def detect_chords_api(path: str = Query(...)):
+    """自動偵測音訊中的和弦（背景佇列，鬆耦合）。
+
+    Pre-flight only, then enqueue and return in milliseconds; the player polls
+    GET /chords/detect/status. BTC + melody fallback + beat tracking all run in
+    subprocesses (chord_detect_queue) — the old in-request version held the
+    uvicorn GIL ~20-30 s and froze every other request on the NUC.
+
+    Player Tools -> Detect is an explicit user re-analysis request. Older
+    chordify/MIDI charts were early reference baselines and may be stale or
+    mismatched, so they are not preserved: the worker runs BTC and overwrites.
+    """
     full = resolve_path(path)
     if not os.path.isfile(full):
         raise HTTPException(status_code=404, detail="檔案不存在")
-
-    # Player Tools -> Detect is an explicit user re-analysis request. Older
-    # chordify/MIDI charts were early reference baselines and may be stale or
-    # mismatched, so do not preserve them here; run BTC and overwrite.
-    chords_file = chord_file_for(song_hash(path))
-
     try:
-        from chord_detect import detect_chords_and_key_isolated
+        import chord_detect_queue
     except ImportError as e:
         raise HTTPException(status_code=500, detail=f"缺少依賴: {e}")
+    h = song_hash(path)
+    status = chord_detect_queue.enqueue(h, path, full)
+    return {"queued": True, "status": status, "hash": h, "path": path}
 
-    def _sync_detect(audio_path):
-        """同步偵測（在子程序中執行，不阻塞 event loop）"""
-        chords, key = detect_chords_and_key_isolated(audio_path)
 
-        # [Fallback] 如果 BTC 無法辨識（例如 8-bit chiptune 等非常規軌道），降級使用 Melody-to-Chord Viterbi 解析
-        if not chords:
-            print(f"[Fallback] BTC 失敗，啟動 Viterbi Melody-to-Chord 管道...")
-            from ai.melody_extractor import MelodyExtractor
-            from ai.hmm import get_viterbi_decoder
-            from ai.markov import get_predictor
-
-            extractor = MelodyExtractor()
-            melody_events = extractor.extract_melody(audio_path)
-            if melody_events:
-                midi_sequence = [evt["midi"] for evt in melody_events]
-                decoder = get_viterbi_decoder(str(CHORDS_DIR))
-                path_degrees, _ = decoder.decode(midi_sequence, top_k=20)
-
-                predictor = get_predictor(str(CHORDS_DIR))
-                current_chord = None
-                for i, evt in enumerate(melody_events):
-                    chord_name = predictor.degree_to_chord(path_degrees[i], key)
-                    if chord_name != current_chord:
-                        chords.append({
-                            "time": evt["start"],
-                            "end": evt["end"],
-                            "chord": chord_name
-                        })
-                        current_chord = chord_name
-                    else:
-                        chords[-1]["end"] = evt["end"]
-
-        return chords, key
-
-    try:
-        chords, key = await asyncio.to_thread(_sync_detect, full)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"偵測失敗: {e}")
-
-    # 自動儲存
-    beat_info = {}
-    try:
-        from beat_snap import analyze_and_snap_dynamic
-        beat_info = await asyncio.to_thread(analyze_and_snap_dynamic, full, chords)
-    except Exception:
-        beat_info = {}
-
-    sheet = {
-        "path": path,
-        "key": key,
-        "capo": 0,
-        "source": "btc",
-        "chords": chords,
-    }
-    if beat_info.get("bpm"):
-        sheet["bpm"] = round(float(beat_info["bpm"]), 1)
-    if beat_info.get("beats_source"):
-        sheet["beats"] = beat_info.get("beats", [])
-        sheet["downbeats"] = beat_info.get("downbeats", [])
-        sheet["tempo_curve"] = beat_info.get("tempo_curve", [])
-        sheet["beats_source"] = beat_info["beats_source"]
-        sheet["beat_version"] = beat_info.get("beat_version", 0)
-    CHORDS_DIR.mkdir(parents=True, exist_ok=True)
-    chords_file = chord_file_for(song_hash(path))
-    chords_file.write_text(
-        json.dumps(sheet, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    cache_update_entry(path)
-
-    return {
-        "ok": True,
-        "path": path,
-        "key": key,
-        "chord_count": len(chords),
-        "chords": chords,
-        "source": "btc",
-        "beats_source": sheet.get("beats_source"),
-        "bpm": sheet.get("bpm"),
-    }
+@router.get("/chords/detect/status")
+def detect_chords_status(path: str = Query(...)):
+    """Status of a background detection job: queued / running / done / error
+    (+ result on done). ``none`` when no job is known (e.g. after a restart)."""
+    import chord_detect_queue
+    rec = chord_detect_queue.get_status(song_hash(path))
+    return rec or {"status": "none", "path": path}
 
 
 # MIDI matching, MIDI search, MIDI import, and MIDI upload were all
