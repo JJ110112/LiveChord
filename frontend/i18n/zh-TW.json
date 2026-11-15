@@ -1466,5 +1466,9 @@
   "player.playlist.random_title": "重新隨機排列接下來的曲目",
   "player.playlist.empty": "此清單沒有其他曲目",
   "toast.playlist.reshuffled": "已重新隨機排列接下來的曲目",
-  "toast.playlist.failed": "重新隨機失敗：{err}"
+  "toast.playlist.failed": "重新隨機失敗：{err}",
+  "player.tools.improv_on": "即興提示：開",
+  "player.tools.improv_off": "即興提示：關",
+  "player.tools.improv_title": "鍵盤綠圈：旋律長音下可加的和聲音、低音移動前的經過音；和弦卡標出建議低音",
+  "toast.improv.on": "即興提示已開：綠圈 = 可加彈的音；和弦卡上反白的數字 = 建議低音"
 }

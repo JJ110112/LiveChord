@@ -238,6 +238,92 @@
   // actually plays if following the arrangement).
   const _RH_MODES = ["acc", "mel", "both"];
   let rhContentMode = localStorage.getItem("livechord_rh_mode") || "acc";
+  // ---- 即興提示 (improv hints, Tools toggle, default off) ----
+  // Pure logic lives in improv-hints.js. Here: build the per-song model once
+  // (bass line through the displayed chords, approach-note windows, phrase-
+  // end harmony windows) and look up what to ring at the current time.
+  let showImprovHints = localStorage.getItem("livechord_improv_hints") === "true";
+  let _melodyTrusted = true;   // melody_trust verdict of the loaded melody
+  let _improvCache = { key: "", model: null };
+
+  function _improvTonesOf(name) {
+    const cache = chordCache[name];
+    if (!cache || !Array.isArray(cache.notes)) return [];
+    return cache.notes.map((n) => noteToSemitone(n));
+  }
+
+  function _improvModel() {
+    if (!window.ImprovHints || !chordData || !Array.isArray(chordData.chords)) return null;
+    const shift = transpose - capo;
+    const key = [chordData.chords.length, shift, melodyData ? melodyData.length : 0,
+      Object.keys(chordCache).length, _melodyTrusted ? 1 : 0].join("|");
+    if (_improvCache.model && _improvCache.key === key
+        && _improvCache.chordsRef === chordData.chords && _improvCache.melodyRef === melodyData) {
+      return _improvCache.model;
+    }
+    const H = window.ImprovHints;
+    const chords = _displayChords();
+    const beat = chordData.bpm ? 60 / chordData.bpm : 0.5;
+    const scale = H.scalePcs(_currentKey(), chordData.mode);
+    const bass = H.bassLine(chords, _improvTonesOf);
+
+    const approach = [];
+    for (let i = 0; i + 1 < chords.length; i++) {
+      const b = bass[i], nb = bass[i + 1];
+      if (!b || !nb) continue;
+      const dur = chords[i + 1].time - chords[i].time;
+      if (dur < 1.5 * beat) continue;            // too short to fit a passing note
+      const midi = H.approachNote(b.midi, nb.midi, scale);
+      if (midi == null) continue;
+      approach.push({ from: chords[i + 1].time - beat, to: chords[i + 1].time, midi });
+    }
+
+    // Only when the melody is plausibly the lead line — a bass-leak pYIN
+    // guess would put the "choir" notes in the wrong place.
+    const harmony = [];
+    if (_melodyTrusted && melodyData && melodyData.length) {
+      const notes = melodyData.map((n) => ({ start: n.start, end: n.end, midi: (n.midi || 0) + shift }));
+      for (const n of H.phraseEndNotes(notes, beat)) {
+        const ci = H.chordIndexAt(chords, n.start + 0.02);
+        if (ci < 0) continue;
+        const pcs = _improvTonesOf(chords[ci].chord);
+        if (!pcs.length) continue;
+        const below = H.harmonyBelow(n.midi, pcs, 2);
+        if (below.length) harmony.push({ from: n.start - 0.5 * beat, to: n.end, notes: below });
+      }
+    }
+    const model = { bass, approach, harmony };
+    _improvCache = { key, model, chordsRef: chordData.chords, melodyRef: melodyData };
+    return model;
+  }
+
+  /** Rings to draw on the 88 keys at time t: [{midi, hand, label}]. */
+  function _improvRingsAt(t) {
+    if (!showImprovHints) return null;
+    const m = _improvModel();
+    if (!m) return null;
+    const rings = [];
+    const h = m.harmony.find((w) => t >= w.from && t <= w.to);
+    if (h) for (const n of h.notes) rings.push({ midi: n.midi, hand: "right", label: n.label });
+    const a = m.approach.find((w) => t >= w.from && t < w.to);
+    if (a) rings.push({ midi: a.midi, hand: "left", label: "→" });
+    return rings;
+  }
+
+  /** Card jianpu with the suggested bass tone's number marked (.rv-jp-bass). */
+  function _improvJianpuHtml(i, notes, key) {
+    const plain = ChordRender.jianpuToHtml(_notesToJianpu(notes, key));
+    if (!showImprovHints || !Array.isArray(notes) || !notes.length) return plain;
+    const m = _improvModel();
+    const b = m && m.bass[i];
+    if (!b) return plain;
+    const tokens = _notesToJianpu(notes, key).split(" ");
+    return tokens.map((tok, k) => {
+      const html = ChordRender.jianpuToHtml(tok);
+      return noteToSemitone(notes[k]) === b.pc ? `<span class="rv-jp-bass">${html}</span>` : html;
+    }).join(" ");
+  }
+
   if (!_RH_MODES.includes(rhContentMode)) rhContentMode = "acc";
 
   // Resolve right-hand events according to rhContentMode. Single source of truth
@@ -1864,6 +1950,15 @@
       const nameEl = document.createElement("div");
       nameEl.className = "rv-chord-name";
       nameEl.textContent = _displayChordName(c.chord);
+      if (showImprovHints && !String(c.chord).includes("/")) {
+        const _ib = (_improvModel() || { bass: [] }).bass[i];
+        if (_ib && _ib.slash) {
+          const sl = document.createElement("span");
+          sl.className = "rv-bass-hint";
+          sl.textContent = "/" + semitoneToDisplay(_ib.pc);
+          nameEl.appendChild(sl);
+        }
+      }
       item.appendChild(nameEl);
 
       const strand = c && c.explain && typeof c.explain.strand === "string" ? c.explain.strand : "";
@@ -1877,7 +1972,7 @@
 
       const jp = document.createElement("div");
       jp.className = "rv-jianpu";
-      jp.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
+      jp.innerHTML = _improvJianpuHtml(i, cache.notes, _currentKey());
       item.appendChild(jp);
 
       const _diagKey = `diagram_${activeTab}`;
@@ -2898,6 +2993,7 @@
   let _melodyQualityNoted = "";
   function _noteMelodyQuality(data) {
     const q = data && data.melody_quality;
+    _melodyTrusted = !q || q.trusted !== false;
     if (!q || q.trusted) return;
     const reason = String(q.reason || "");
     if (!["bass_leak", "low_coverage", "too_few_notes"].includes(reason)) return;
@@ -3325,6 +3421,7 @@
       pedalActive: pedalActive,
       pedalDepth: pedalDepth,
       colors: _palette(),
+      hintRings: _improvRingsAt(currentTime),
     });
   }
 
@@ -6480,6 +6577,28 @@
     });
   }
   _applyJianpuVisibility();
+
+  function _syncImprovHintsBtn() {
+    const lab = document.getElementById("btnToggleImprovHintsLabel");
+    if (lab) lab.textContent = _t(showImprovHints ? "player.tools.improv_on" : "player.tools.improv_off");
+    const btn = document.getElementById("btnToggleImprovHints");
+    if (btn) btn.setAttribute("aria-pressed", showImprovHints ? "true" : "false");
+  }
+  const btnToggleImprovHints = $("#btnToggleImprovHints");
+  if (btnToggleImprovHints) {
+    btnToggleImprovHints.addEventListener("click", () => {
+      showImprovHints = !showImprovHints;
+      try { localStorage.setItem("livechord_improv_hints", showImprovHints ? "true" : "false"); } catch (_) {}
+      _syncImprovHintsBtn();
+      buildChordDOM();
+      updateActiveChord(audio.currentTime || -1, true);
+      try { update88Piano(audio.currentTime || 0); } catch (_) {}
+      if (showImprovHints) showToast(_t("toast.improv.on"), 4000);
+    });
+  }
+  _syncImprovHintsBtn();
+  document.addEventListener("livechord:langchange", _syncImprovHintsBtn);
+  document.addEventListener("livechord:i18nready", _syncImprovHintsBtn);
   document.addEventListener("livechord:langchange", _applyJianpuVisibility);
   document.addEventListener("livechord:i18nready",  _applyJianpuVisibility);
 

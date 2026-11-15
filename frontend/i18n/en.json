@@ -1466,5 +1466,9 @@
   "player.playlist.random_title": "Reshuffle the songs after this one",
   "player.playlist.empty": "No other songs in this list",
   "toast.playlist.reshuffled": "Upcoming songs reshuffled",
-  "toast.playlist.failed": "Reshuffle failed: {err}"
+  "toast.playlist.failed": "Reshuffle failed: {err}",
+  "player.tools.improv_on": "Improv hints: On",
+  "player.tools.improv_off": "Improv hints: Off",
+  "player.tools.improv_title": "Rings on the keyboard: harmony notes under long melody notes, and the passing note before a bass move. Chord cards mark the suggested bass.",
+  "toast.improv.on": "Improv hints on: green rings = notes you can add; the highlighted number on each chord card is the suggested bass"
 }

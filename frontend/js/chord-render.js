@@ -1099,6 +1099,42 @@ const ChordRender = {
       }
     }
 
+    // ---- 即興提示 rings (player improv hints) ----
+    // Hollow ring + small label = "you can add this note". Distinct from
+    // played keys (solid fill) and fingering (filled circle at the key's
+    // bottom): it sits higher on the key and is never filled.
+    const rings = opts && opts.hintRings;
+    if (rings && rings.length) {
+      const light = _crIsLightBg();
+      const HINT = (opts.colors && opts.colors.improvHint) || (light ? "rgba(27, 122, 40, 0.95)" : "rgba(178, 255, 89, 0.95)");
+      const HALO = light ? "rgba(255,255,255,0.9)" : "rgba(0,0,0,0.75)";
+      ctx.save();
+      ctx.setLineDash([]);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (const r of rings) {
+        const isBlack = !!blackXs[r.midi];
+        const ki = isBlack ? blackXs[r.midi] : whiteXs[r.midi];
+        if (!ki) continue;
+        const rad = isBlack ? Math.max(5, Math.min(ki.w * 0.42, 8)) : Math.max(6, Math.min(ki.w * 0.42, 11));
+        const cx = ki.x + ki.w / 2;
+        const cy = isBlack ? ki.h * 0.5 : ki.h - rad * 2 - 30;
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = HALO;
+        ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.stroke();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = HINT;
+        ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.stroke();
+        if (r.label && rad >= 7) {
+          ctx.font = `700 ${Math.round(rad * 1.1)}px system-ui, sans-serif`;
+          ctx.fillStyle = light ? "#1b5e20" : (isBlack ? "#e6ffcc" : "#1b5e20");
+          ctx.fillText(r.label, cx, cy + 0.5);
+        }
+      }
+      ctx.restore();
+    }
+
     // ---- Phase 11 P3: Fingering numbers on piano keys ----
     // Shows current + upcoming (1s lookahead) fingerings
     // Upcoming: dimmer + dashed border (prepare your hand!)
