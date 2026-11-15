@@ -290,7 +290,7 @@
         const pcs = _improvTonesOf(chords[ci].chord);
         if (!pcs.length) continue;
         const below = H.harmonyBelow(n.midi, pcs, 2);
-        if (below.length) harmony.push({ from: n.start - 0.5 * beat, to: n.end, notes: below });
+        if (below.length) harmony.push({ from: n.start - 0.5 * beat, to: n.end, start: n.start, notes: below });
       }
     }
     const model = { bass, approach, harmony };
@@ -3945,6 +3945,42 @@
         ctx.strokeStyle = _palette().activeChordEdge;
         ctx.lineWidth = 1;
         ctx.strokeRect(minX - 4, minY - 4, maxX - minX + 8, maxY - minY + 8);
+      }
+    }
+
+    // 即興提示 glow columns: a faint green column on each harmony key, as
+    // long as the melody note it sits under, so the phrase-end harmony can be
+    // read coming down before it reaches the keyboard rings. Drawn under the
+    // note bars. Left-hand passing notes stay ring-only (one beat, too short).
+    if (showImprovHints) {
+      const _im = _improvModel();
+      if (_im && _im.harmony.length) {
+        const light = _LIGHT_BG_THEMES.has(_currentTheme);
+        const rgb = light ? "27, 122, 40" : "178, 255, 89";
+        for (const hw of _im.harmony) {
+          if (hw.to < currentTime || hw.start > currentTime + lookAhead) continue;
+          const yB = Math.min(h, h - (hw.start - currentTime) * pxPerSec);
+          const yT = Math.max(0, h - (hw.to - currentTime) * pxPerSec);
+          if (yB - yT < 2) continue;
+          for (const hn of hw.notes) {
+            const ki = cache.whiteXs[hn.midi] || cache.blackXs[hn.midi];
+            if (!ki) continue;
+            const grad = ctx.createLinearGradient(ki.x, 0, ki.x + ki.w, 0);
+            grad.addColorStop(0, `rgba(${rgb}, 0)`);
+            grad.addColorStop(0.5, `rgba(${rgb}, ${light ? 0.22 : 0.18})`);
+            grad.addColorStop(1, `rgba(${rgb}, 0)`);
+            ctx.fillStyle = grad;
+            ctx.fillRect(ki.x - 2, yT, ki.w + 4, yB - yT);
+            ctx.strokeStyle = `rgba(${rgb}, ${light ? 0.75 : 0.6})`;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(ki.x + 0.5, yT); ctx.lineTo(ki.x + 0.5, yB);
+            ctx.moveTo(ki.x + ki.w - 0.5, yT); ctx.lineTo(ki.x + ki.w - 0.5, yB);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+        }
       }
     }
 
