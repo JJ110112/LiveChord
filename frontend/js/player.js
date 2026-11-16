@@ -408,6 +408,7 @@
   let _currentBpmMult = 1.0;   // Updated by _buildUnifiedRibbon; read by _virtualBeats
   let accLoading = false;
   let transpose = 0;
+  let _syncRole = "off";  // cross-device sync: off | leader | follower (set near the audio-mode block)
   let capo = 0;
   let favTracks = [];
   let activeLoadingTasks = 0;
@@ -4530,6 +4531,7 @@
       };
       // Init UI state
       updateHandToggleUI();
+      window._lcHandToggleUI = updateHandToggleUI;  // sync speaker mirrors the tablet's pick
 
       handToggleBtns.forEach(btn => {
         btn.addEventListener("click", () => {
@@ -4563,6 +4565,7 @@
         b.classList.toggle("active", b.getAttribute("data-practice") === code);
       });
     }
+    window._lcPracticeModeUI = _syncPracticeModeUI;
     function _setPracticeMode(code) {
       const parts = code.split("-");
       const hand = parts[0];  // L | R | LR
@@ -6130,6 +6133,7 @@
 
   audio.addEventListener("ended", () => {
     if (loopMode === "single") return; // audio.loop handles it
+    if (_syncRole === "follower") return; // the leader picks the next song
 
     if (loopMode === "favorites" && favTracks.length > 0) {
       _navNext();
@@ -6157,6 +6161,7 @@
 
   // 平板 FLAC 串流可能不觸發 ended，用 timeupdate 偵測播放結束
   audio.addEventListener("timeupdate", () => {
+    if (_syncRole === "follower") return;
     const shouldAdvance = (loopMode === "favorites" && favTracks.length > 0) || _hasQueueNext();
     if (loopMode !== "single" && shouldAdvance && audio.duration > 0) {
       if (audio.currentTime >= audio.duration - 0.5 && !audio.paused) {
@@ -6208,7 +6213,9 @@
   if (savedSpeed !== null) {
     const s = parseFloat(savedSpeed);
     const i = SPEEDS.indexOf(s);
-    if (i >= 0) { speedIdx = i; audio.playbackRate = s; }
+    // defaultPlaybackRate too: assigning audio.src later resets playbackRate
+    // to it, which left the button at 0.75× while the song played at 1×.
+    if (i >= 0) { speedIdx = i; audio.defaultPlaybackRate = s; audio.playbackRate = s; }
   }
   _syncSpeedUI();
 
@@ -6216,6 +6223,7 @@
     const i = SPEEDS.indexOf(s);
     if (i < 0) return;
     speedIdx = i;
+    audio.defaultPlaybackRate = s;
     audio.playbackRate = s;
     _syncSpeedUI();
     localStorage.setItem("livechord_speed", s);
@@ -9090,6 +9098,7 @@
   // on <audio>.
   setInterval(() => {
       if (audio.paused) return;
+      if (_syncRole === "leader") return;  // the speaker device plays the accompaniment
       const s = getActiveSynth();
       if (!s.ctx) {
           try { s.init(); } catch {}
@@ -9178,6 +9187,284 @@
           applyAudioMode();
       });
   }
+
+  // ===== Cross-device sync (Tools → 同步) =====
+  // 主控 (leader): the full player, muted; posts its state to /api/sync/state
+  // on every change and once a second while playing. 喇叭 (follower): the
+  // PC on the speakers; follows the leader's song, playhead, speed and sound
+  // settings from /api/sync/stream. Transpose / Jazzify / jianpu etc. only
+  // change what is drawn, so they stay per-device.
+  const _SYNC_ROLES = ["off", "leader", "follower"];
+  if (params.get("follow") === "1") {
+    try { localStorage.setItem("livechord_sync_role", "follower"); } catch {}
+  }
+  _syncRole = (() => { try { return localStorage.getItem("livechord_sync_role"); } catch { return null; } })() || "off";
+  if (!_SYNC_ROLES.includes(_syncRole)) _syncRole = "off";
+  let _syncLatencyMs = parseInt(localStorage.getItem("livechord_sync_latency_ms"), 10) || 0;
+
+  function _syncSettings() {
+    return {
+      volume: volumeSlider ? parseFloat(volumeSlider.value) : 1,
+      audio_mode: audioMode,
+      mix: crossfaderVol ? parseFloat(crossfaderVol.value) : 0.5,
+      style: teachStyle,
+      level: teachLevel,
+      tab: activeTab,
+      sound: _resolveActiveSoundId(),
+      hand: activeHand,
+      rh: rhContentMode,
+      speed: SPEEDS[speedIdx] || 1,   // the button; the speaker's audio follows `rate`
+      loop: loopMode,
+    };
+  }
+  function _syncSnapshot() {
+    return {
+      song: { path: trackPath || null, hash: hashMode || null },
+      t: audio.currentTime || 0,
+      paused: audio.paused,
+      rate: audio.playbackRate || 1,   // what actually plays (the saved speed can lag behind it)
+      latency_ms: _syncLatencyMs,
+      settings: _syncSettings(),
+    };
+  }
+
+  // ---- leader ----
+  let _syncLastKey = "";
+  let _syncLastPost = 0;
+  function _syncPost(force) {
+    if (_syncRole !== "leader" || _usingLocalFile || (!trackPath && !hashMode)) return;
+    const snap = _syncSnapshot();
+    const { t, ...rest } = snap;
+    const key = JSON.stringify(rest);
+    const now = performance.now();
+    if (!force && key === _syncLastKey && (snap.paused || now - _syncLastPost < 1000)) return;
+    _syncLastKey = key;
+    _syncLastPost = now;
+    fetch("/api/sync/state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(snap),
+      keepalive: true,
+    }).catch(() => {});
+  }
+  setInterval(() => _syncPost(false), 250);
+  ["play", "pause", "seeked", "ratechange"].forEach(ev => audio.addEventListener(ev, () => _syncPost(true)));
+  window.addEventListener("pagehide", () => {
+    if (_syncRole !== "leader") return;
+    const snap = { ..._syncSnapshot(), paused: true };
+    try { navigator.sendBeacon("/api/sync/state", new Blob([JSON.stringify(snap)], { type: "application/json" })); } catch {}
+  });
+  // The volume slider unmutes the <audio>; the leader stays silent.
+  if (volumeSlider) volumeSlider.addEventListener("input", () => { if (_syncRole === "leader") audio.muted = true; });
+
+  // ---- follower ----
+  let _fState = null;        // last leader state
+  let _fAnchorLocal = 0;     // performance.now() when it arrived
+  let _fAnchorAge = 0;       // seconds between the leader's post and the server's push
+  let _fStale = false;       // leader silent for a while → stop
+  let _fSeekUntil = 0;
+  let _fNavigating = false;
+  let _fAppliedKey = "";
+  let _fSource = null;
+  let _fOverlay = null;
+
+  function _followTarget() {
+    const s = _fState;
+    const elapsed = _fAnchorAge + (performance.now() - _fAnchorLocal) / 1000;
+    return s.t + elapsed * (s.rate || 1) + (s.latency_ms || 0) / 1000;
+  }
+  function _followSameSong(song) {
+    if (!song) return true;
+    if (song.path) return song.path === trackPath;
+    return !!song.hash && song.hash === hashMode;
+  }
+  function _followApplySettings(st) {
+    const key = JSON.stringify(st || {});
+    if (!st || key === _fAppliedKey) return;
+    _fAppliedKey = key;
+    if (st.tab && st.tab !== activeTab) _switchTab(st.tab);
+    if (st.sound && st.sound !== _resolveActiveSoundId()) {
+      try { localStorage.setItem("livechord_sound_" + activeTab, st.sound); } catch {}
+      if (typeof window._syncSoundPickerValue === "function") window._syncSoundPickerValue();
+    }
+    if (st.hand && st.hand !== activeHand) {
+      activeHand = st.hand;
+      try { localStorage.setItem("livechord_active_hand", activeHand); } catch {}
+    }
+    if (st.rh && st.rh !== rhContentMode) {
+      rhContentMode = st.rh;
+      try { localStorage.setItem("livechord_rh_mode", rhContentMode); } catch {}
+      _syncRhContentBtn();
+    }
+    if (typeof window._lcHandToggleUI === "function") window._lcHandToggleUI();
+    if (typeof window._lcPracticeModeUI === "function") window._lcPracticeModeUI();
+    if ((st.style && st.style !== teachStyle) || (st.level && st.level !== teachLevel)) {
+      teachStyle = st.style || teachStyle;
+      teachLevel = st.level || teachLevel;
+      try {
+        localStorage.setItem("livechord_teach_style", teachStyle);
+        localStorage.setItem("livechord_teach_level", teachLevel);
+      } catch {}
+      const sel = $("#teachStyle");
+      if (sel) sel.value = teachStyle;
+      accData = null;
+      _loadAccompaniment();
+    }
+    if (volumeSlider && Number.isFinite(st.volume)) {
+      volumeSlider.value = st.volume;
+      try { localStorage.setItem("livechord_volume", String(st.volume)); } catch {}
+    }
+    if (crossfaderVol && Number.isFinite(st.mix)) crossfaderVol.value = st.mix;
+    if ([0, 1, 2].includes(st.audio_mode)) {
+      audioMode = st.audio_mode;
+      try { localStorage.setItem("livechord_audio_mode", String(audioMode)); } catch {}
+    }
+    // Mirror the speed button and loop mode so the PC shows what the tablet
+    // picked. The speaker never advances on its own (see the ended handler),
+    // so loop only sets audio.loop + the icon here.
+    if (st.speed && SPEEDS.includes(st.speed) && st.speed !== SPEEDS[speedIdx]) {
+      speedIdx = SPEEDS.indexOf(st.speed);
+      _syncSpeedUI();
+      try { localStorage.setItem("livechord_speed", String(st.speed)); } catch {}
+    }
+    if (st.loop && LOOP_MODES.includes(st.loop) && st.loop !== loopMode) {
+      loopMode = st.loop;
+      try { localStorage.setItem("livechord_loop_mode", loopMode); } catch {}
+      _updateLoopUI();
+    }
+    audio.muted = false;
+    applyAudioMode();
+  }
+  function _followShowStart(show) {
+    if (show && !_fOverlay) {
+      _fOverlay = document.createElement("div");
+      _fOverlay.className = "sync-start-overlay";
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = _t("player.sync.tap_to_start");
+      _fOverlay.appendChild(b);
+      _fOverlay.addEventListener("click", () => {
+        _followShowStart(false);
+        if (_fState && !_fState.paused) {
+          audio.currentTime = _followTarget();
+          audio.play().catch(() => _followShowStart(true));
+        }
+      });
+      document.body.appendChild(_fOverlay);
+    } else if (!show && _fOverlay) {
+      _fOverlay.remove();
+      _fOverlay = null;
+    }
+  }
+  function _followTick() {
+    if (_syncRole !== "follower" || !_fState || _fNavigating) return;
+    const s = _fState;
+    if (!_followSameSong(s.song)) {
+      _fNavigating = true;
+      const qs = new URLSearchParams(s.song.path ? { path: s.song.path } : { hash: s.song.hash });
+      qs.set("follow", "1");
+      window.location.href = `/player?${qs.toString()}`;
+      return;
+    }
+    _followApplySettings(s.settings);
+    if (audio.readyState < 1 || audio.seeking) return;
+    const rate = s.rate || 1;
+    if (s.paused || _fStale) {
+      if (!audio.paused) audio.pause();
+      audio.playbackRate = rate;
+      if (Math.abs(audio.currentTime - s.t) > 0.05) audio.currentTime = s.t;
+      return;
+    }
+    const now = performance.now();
+    if (audio.paused) {
+      if (_fOverlay) return;
+      audio.currentTime = _followTarget();
+      _fSeekUntil = now + 1000;
+      audio.play().catch(err => { if (err && err.name === "NotAllowedError") _followShowStart(true); });
+      return;
+    }
+    if (now < _fSeekUntil) return;
+    const err = _followTarget() - audio.currentTime;
+    if (Math.abs(err) > 0.3) {
+      audio.currentTime = _followTarget();
+      audio.playbackRate = rate;
+      _fSeekUntil = now + 1000;
+      return;
+    }
+    // Small drift: nudge the speed (pitch is preserved) instead of seeking,
+    // which would be heard as a skip.
+    const nudge = Math.abs(err) < 0.02 ? 0 : Math.max(-0.04, Math.min(0.04, err * 0.5));
+    audio.playbackRate = rate * (1 + nudge);
+  }
+  function _followStart() {
+    if (_fSource) return;
+    _fSource = new EventSource("/api/sync/stream");
+    _fSource.onmessage = (e) => {
+      let m;
+      try { m = JSON.parse(e.data); } catch { return; }
+      if (m.type === "state" && m.state) {
+        _fState = m.state;
+        _fAnchorLocal = performance.now();
+        _fAnchorAge = Math.max(0, (m.server_now || 0) - (m.state.server_ts || 0));
+        _fStale = false;
+        _followTick();
+      } else if (m.type === "tick" && _fState) {
+        _fStale = (m.server_now - _fState.server_ts) > 10;
+      }
+    };
+  }
+  function _followStop() {
+    if (_fSource) { _fSource.close(); _fSource = null; }
+    _fState = null;
+    _fAppliedKey = "";
+    _followShowStart(false);
+  }
+  setInterval(_followTick, 200);
+
+  // ---- role picker ----
+  function _syncRoleUI() {
+    const lab = document.getElementById("btnSyncRoleLabel");
+    if (lab) lab.textContent = _t("player.tools.sync_" + _syncRole);
+    const btn = document.getElementById("btnSyncRole");
+    if (btn) btn.setAttribute("aria-pressed", _syncRole === "off" ? "false" : "true");
+    const row = document.getElementById("syncLatencyRow");
+    if (row) row.style.display = _syncRole === "leader" ? "" : "none";
+    const val = document.getElementById("syncLatencyVal");
+    if (val) val.textContent = `${_syncLatencyMs} ms`;
+    const sl = document.getElementById("syncLatency");
+    if (sl) sl.value = _syncLatencyMs;
+  }
+  function _setSyncRole(role) {
+    _syncRole = role;
+    try { localStorage.setItem("livechord_sync_role", role); } catch {}
+    if (role === "follower") _followStart(); else _followStop();
+    if (role === "leader") audio.muted = true;
+    else { audio.muted = false; applyAudioMode(); }
+    _syncRoleUI();
+    _syncPost(true);
+  }
+  const btnSyncRole = $("#btnSyncRole");
+  if (btnSyncRole) {
+    btnSyncRole.addEventListener("click", () => {
+      const next = _SYNC_ROLES[(_SYNC_ROLES.indexOf(_syncRole) + 1) % _SYNC_ROLES.length];
+      _setSyncRole(next);
+      showToast(_t("toast.sync." + next), 4000);
+    });
+  }
+  const syncLatency = $("#syncLatency");
+  if (syncLatency) {
+    syncLatency.addEventListener("input", () => {
+      _syncLatencyMs = parseInt(syncLatency.value, 10) || 0;
+      try { localStorage.setItem("livechord_sync_latency_ms", String(_syncLatencyMs)); } catch {}
+      _syncRoleUI();
+      _syncPost(true);
+    });
+  }
+  if (_syncRole === "follower") _followStart();
+  if (_syncRole === "leader") audio.muted = true;
+  _syncRoleUI();
+  document.addEventListener("livechord:langchange", _syncRoleUI);
+  document.addEventListener("livechord:i18nready", _syncRoleUI);
 
   // MIDI Download
   const btnDownloadMidi = document.getElementById("btnDownloadMidi");

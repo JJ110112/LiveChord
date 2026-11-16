@@ -1473,5 +1473,14 @@
   "toast.improv.on": "即興提示已開：綠圈 = 可加彈的音（虛線 = 左手經過音）；和弦卡上反白的數字 = 建議低音",
   "player.tools.jianpu_fixed": "簡譜：固定 C",
   "player.tools.jianpu_movable": "簡譜：首調",
-  "player.tools.jianpu_mode_title": "和弦卡簡譜數字：固定以 C 為 1，或依歌曲調性（首調，小調以關係大調的 1 起算）"
+  "player.tools.jianpu_mode_title": "和弦卡簡譜數字：固定以 C 為 1，或依歌曲調性（首調，小調以關係大調的 1 起算）",
+  "player.tools.sync_off": "同步：關閉",
+  "player.tools.sync_leader": "同步：主控（靜音）",
+  "player.tools.sync_follower": "同步：喇叭",
+  "player.tools.sync_title": "在另一台裝置出聲：這台設「主控」，PC 設「喇叭」",
+  "player.tools.sync_latency": "聲音延遲補償",
+  "player.sync.tap_to_start": "點一下開始跟隨播放",
+  "toast.sync.leader": "主控：此裝置靜音，設為「喇叭」的裝置會跟著出聲",
+  "toast.sync.follower": "喇叭：此裝置會跟著主控播放",
+  "toast.sync.off": "已關閉同步"
 }

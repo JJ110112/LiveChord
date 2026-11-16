@@ -1473,5 +1473,14 @@
   "toast.improv.on": "Improv hints on: green rings = notes you can add (dashed = left-hand passing note); the highlighted number on each chord card is the suggested bass",
   "player.tools.jianpu_fixed": "Jianpu: fixed C",
   "player.tools.jianpu_movable": "Jianpu: song key",
-  "player.tools.jianpu_mode_title": "Chord-card jianpu numbers: fixed C, or counted from the song's key (1 = tonic; minor keys use the relative major)"
+  "player.tools.jianpu_mode_title": "Chord-card jianpu numbers: fixed C, or counted from the song's key (1 = tonic; minor keys use the relative major)",
+  "player.tools.sync_off": "Sync: Off",
+  "player.tools.sync_leader": "Sync: Controller (muted)",
+  "player.tools.sync_follower": "Sync: Speaker",
+  "player.tools.sync_title": "Play on another device: set this one as Controller and the PC as Speaker",
+  "player.tools.sync_latency": "Speaker delay",
+  "player.sync.tap_to_start": "Tap to start playing along",
+  "toast.sync.leader": "Controller: this device is muted; a device set to Speaker plays the sound",
+  "toast.sync.follower": "Speaker: this device follows the Controller",
+  "toast.sync.off": "Sync off"
 }
