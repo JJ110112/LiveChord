@@ -2864,6 +2864,9 @@ body.no-score #scoreLayer { display: none !important; }
   .tb-popup {
     bottom: 140px !important;
     max-height: calc(100vh - 44px - 140px - 8px);
+    /* dvh = the height Android Chrome actually shows (vh counts the URL bar,
+       which pushed the popup's top and its × off screen). */
+    max-height: calc(100dvh - 44px - 140px - 8px);
     overflow-y: auto;
   }
 }
@@ -2958,6 +2961,7 @@ body.no-score #scoreLayer { display: none !important; }
     max-width: min(90vw, 520px) !important;
     bottom: 60px !important;           /* matches taller touch toolbar */
     max-height: calc(100vh - 44px - 60px - 8px);  /* topbar 44 + toolbar 60 + 8 gap */
+    max-height: calc(100dvh - 44px - 60px - 8px);
     overflow-y: auto;
   }
   }
@@ -4604,4 +4608,32 @@ body.no-score #scoreLayer { display: none !important; }
   background: var(--lc-popup-bg, #222);
   color: var(--text);
   cursor: pointer;
+}
+
+/* Touch: tall popups (Tools) scroll inside themselves, and the × used to
+   scroll away with the content, leaving no way to close. Keep the title
+   strip and the × pinned to the top of the scrolling popup. */
+@media (pointer: coarse) {
+  .tb-popup:has(> .tb-popup-title) { padding-top: 0; }
+  .tb-popup > .tb-popup-title {
+    position: sticky;
+    top: 0;
+    left: auto;
+    right: auto;
+    flex: 0 0 100%;
+    grid-column: 1 / -1;
+    margin: 0;
+    padding: 8px 36px 6px;
+    background: var(--lc-popup-bg);
+    z-index: 2;
+  }
+  .tb-popup:has(> .tb-popup-title) > .tb-popup-close {
+    position: sticky;
+    top: 1px;
+    flex: 0 0 auto;
+    grid-column: 1 / -1;
+    justify-self: end;
+    margin: 1px -6px -29px auto;
+    z-index: 3;
+  }
 }
