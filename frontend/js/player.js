@@ -6211,7 +6211,9 @@
   if (savedSpeed !== null) {
     const s = parseFloat(savedSpeed);
     const i = SPEEDS.indexOf(s);
-    if (i >= 0) { speedIdx = i; audio.playbackRate = s; }
+    // defaultPlaybackRate too: assigning audio.src later resets playbackRate
+    // to it, which left the button at 0.75× while the song played at 1×.
+    if (i >= 0) { speedIdx = i; audio.defaultPlaybackRate = s; audio.playbackRate = s; }
   }
   _syncSpeedUI();
 
@@ -6219,6 +6221,7 @@
     const i = SPEEDS.indexOf(s);
     if (i < 0) return;
     speedIdx = i;
+    audio.defaultPlaybackRate = s;
     audio.playbackRate = s;
     _syncSpeedUI();
     localStorage.setItem("livechord_speed", s);
