@@ -211,6 +211,8 @@ from midi_api import router as midi_router  # noqa: E402
 app.include_router(midi_router)
 from omr_api import router as omr_router  # noqa: E402
 app.include_router(omr_router)
+from sync_api import router as sync_router  # noqa: E402
+app.include_router(sync_router)
 if demo_router is not None:
     app.include_router(demo_router)
 

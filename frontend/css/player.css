@@ -4573,3 +4573,35 @@ body.no-score #scoreLayer { display: none !important; }
 [data-theme="sakura"] .rv-item .rv-jianpu .rv-jp-bass,
 [data-theme="sunny"] .rv-item .rv-jianpu .rv-jp-bass,
 [data-theme="sky"] .rv-item .rv-jianpu .rv-jp-bass { color: #fff; background: rgb(46, 125, 50); }
+
+/* ---- Cross-device sync (Tools → 同步). Leader row: speaker-delay slider. */
+.sync-latency-row {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.sync-latency-row input { flex: 1; min-width: 0; }
+.sync-latency-val { min-width: 4.5em; text-align: right; font-variant-numeric: tabular-nums; }
+/* Follower: browsers need one tap before they play sound. */
+.sync-start-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+.sync-start-overlay button {
+  font-size: 20px;
+  padding: 18px 28px;
+  border-radius: 12px;
+  border: 2px solid var(--accent);
+  background: var(--lc-popup-bg, #222);
+  color: var(--text);
+  cursor: pointer;
+}
