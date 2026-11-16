@@ -2332,6 +2332,29 @@
   _initInstrumentPicker();
   _initCardRemovalEditToggles();
 
+  // Sync speaker (player Tools → 同步：喇叭): a PC left on the homepage still
+  // follows — when the controller starts playing, open that song in the
+  // player, which then takes over the following.
+  (function _followFromHome() {
+    let role = null;
+    try { role = localStorage.getItem("livechord_sync_role"); } catch {}
+    if (role !== "follower" || typeof EventSource === "undefined") return;
+    const es = new EventSource("/api/sync/stream");
+    es.onmessage = (e) => {
+      let m;
+      try { m = JSON.parse(e.data); } catch { return; }
+      const s = m && m.state;
+      if (m.type !== "state" || !s || s.paused || !s.song) return;
+      if ((m.server_now || 0) - (s.server_ts || 0) > 10) return;   // leader gone quiet
+      const song = s.song.path ? { path: s.song.path } : (s.song.hash ? { hash: s.song.hash } : null);
+      if (!song) return;
+      es.close();
+      const qs = new URLSearchParams(song);
+      qs.set("follow", "1");
+      window.location.href = `/player?${qs.toString()}`;
+    };
+  })();
+
   // 啟動 Dashboard (Lazy + Parallel)
   initDashboard();
 })();
