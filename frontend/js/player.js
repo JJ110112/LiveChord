@@ -4531,6 +4531,7 @@
       };
       // Init UI state
       updateHandToggleUI();
+      window._lcHandToggleUI = updateHandToggleUI;  // sync speaker mirrors the tablet's pick
 
       handToggleBtns.forEach(btn => {
         btn.addEventListener("click", () => {
@@ -4564,6 +4565,7 @@
         b.classList.toggle("active", b.getAttribute("data-practice") === code);
       });
     }
+    window._lcPracticeModeUI = _syncPracticeModeUI;
     function _setPracticeMode(code) {
       const parts = code.split("-");
       const hand = parts[0];  // L | R | LR
@@ -9211,6 +9213,8 @@
       sound: _resolveActiveSoundId(),
       hand: activeHand,
       rh: rhContentMode,
+      speed: SPEEDS[speedIdx] || 1,   // the button; the speaker's audio follows `rate`
+      loop: loopMode,
     };
   }
   function _syncSnapshot() {
@@ -9292,6 +9296,8 @@
       try { localStorage.setItem("livechord_rh_mode", rhContentMode); } catch {}
       _syncRhContentBtn();
     }
+    if (typeof window._lcHandToggleUI === "function") window._lcHandToggleUI();
+    if (typeof window._lcPracticeModeUI === "function") window._lcPracticeModeUI();
     if ((st.style && st.style !== teachStyle) || (st.level && st.level !== teachLevel)) {
       teachStyle = st.style || teachStyle;
       teachLevel = st.level || teachLevel;
@@ -9312,6 +9318,19 @@
     if ([0, 1, 2].includes(st.audio_mode)) {
       audioMode = st.audio_mode;
       try { localStorage.setItem("livechord_audio_mode", String(audioMode)); } catch {}
+    }
+    // Mirror the speed button and loop mode so the PC shows what the tablet
+    // picked. The speaker never advances on its own (see the ended handler),
+    // so loop only sets audio.loop + the icon here.
+    if (st.speed && SPEEDS.includes(st.speed) && st.speed !== SPEEDS[speedIdx]) {
+      speedIdx = SPEEDS.indexOf(st.speed);
+      _syncSpeedUI();
+      try { localStorage.setItem("livechord_speed", String(st.speed)); } catch {}
+    }
+    if (st.loop && LOOP_MODES.includes(st.loop) && st.loop !== loopMode) {
+      loopMode = st.loop;
+      try { localStorage.setItem("livechord_loop_mode", loopMode); } catch {}
+      _updateLoopUI();
     }
     audio.muted = false;
     applyAudioMode();
