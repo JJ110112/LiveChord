@@ -71,6 +71,7 @@ data/melodies_v2/
 data/shadow_v2.log
 data/models/
 data/accompaniments/
+data/omr/
 data/auth.db
 data/oauth_session_key
 data/jam_tracks.json
@@ -218,3 +219,5 @@ reports/
 tools/fluidsynth/
 # FluidSynth renders of uploaded MIDI files (served by /api/midi/audio)
 data/midi_audio/
+data/tuning_scan.json
+data/tuning_pretune/

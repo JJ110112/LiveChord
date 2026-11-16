@@ -1271,6 +1271,18 @@ def detect_sections_api(
             result["analysis"]["loop_refine"] = rmeta
         except Exception as exc:
             result["analysis"]["loop_refine"] = {"applied": False, "reason": f"error: {exc}"}
+    else:
+        # Human sections stay as saved, but serve them on the current bar grid
+        # (the beat-density regularizer may have rebuilt bars[] since).
+        try:
+            from chord_api import apply_serve_pipeline
+            from section_consensus import snap_sections_to_bars
+            served = _json.loads(chords_file.read_text(encoding="utf-8"))
+            apply_serve_pipeline(served, chords_file, path or served.get("path") or "")
+            result["sections"], result["analysis"]["bar_snap"] = snap_sections_to_bars(
+                result.get("sections", []), served.get("bars") or served.get("downbeats"), served.get("chords"))
+        except Exception as exc:
+            result["analysis"]["bar_snap"] = {"applied": False, "reason": f"error: {exc}"}
     result["path"] = path
     result["hash"] = h
     result["author"] = target_user

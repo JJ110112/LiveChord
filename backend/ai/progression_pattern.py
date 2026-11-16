@@ -362,6 +362,38 @@ def analyze_progression(chords: List[Dict], key: str = "C", downbeats: Optional[
     }
 
 
+def patterns_from_sections(chords: List[Dict], sections: List[Dict], key: str = "C",
+                           downbeats: Optional[List[float]] = None, bpm: Optional[float] = None,
+                           bars: Optional[List[float]] = None) -> List[Dict]:
+    """Loops taken from human section labels: every section type that occurs
+    at least twice is one loop (its first section's chords), each section of
+    that type one occurrence. The human said these repeat — trust it."""
+    key_semi = _key_semi(key)
+    grid = bars if bars and len(bars) >= 4 else downbeats
+    bar_sec = _bar_seconds(grid, bpm, _condense(chords, key_semi))
+    toks = _grid_tokens(chords, key_semi, grid, bar_sec)
+    if len(toks) < 2:
+        return []
+    total = toks[-1]["end"] - toks[0]["start"]
+    groups: Dict[str, List[tuple]] = {}
+    for sec in sections or []:
+        s0, s1 = float(sec.get("start", 0)), float(sec.get("end", 0))
+        idx = [i for i, t in enumerate(toks) if (min(t["end"], s1) - max(t["start"], s0)) > (t["end"] - t["start"]) / 2]
+        if idx:
+            groups.setdefault(sec.get("type") or sec.get("label") or "", []).append((idx[0], idx[-1] + 1, 0))
+    patterns = []
+    for typ, occ in groups.items():
+        if len(occ) < 2:
+            continue
+        a, b, _ = occ[0]
+        desc = _describe(toks, occ, tuple(t["fam"] for t in toks[a:b]), bar_sec, total, key_semi)
+        desc["source"] = "human"
+        desc["section_type"] = typ
+        patterns.append(desc)
+    patterns.sort(key=lambda x: -x["coverage"])
+    return patterns
+
+
 # ---------------------------------------------------------------------------
 # Song-level description: genre / tempo / harmonic vocabulary + per-section
 # pattern usage. Called by the API after analyze_progression().

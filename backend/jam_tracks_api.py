@@ -20,7 +20,12 @@ router = APIRouter(prefix="/api", tags=["jam-tracks"])
 DATA_DIR = Path(__file__).parent.parent / "data"
 JAM_TRACKS_FILE = DATA_DIR / "jam_tracks.json"
 
+# Library-wide styles (Christmas supplement + 器樂 buckets) built offline by
+# build_jam_library_styles.py; merged in here. Missing file → base styles only.
+LIBRARY_STYLES_FILE = DATA_DIR / "jam_library_styles.json"
+
 _cache: dict = {"mtime": 0, "data": None}
+_lib_styles_cache: dict = {"mtime": 0, "data": {}}
 
 
 def _load_jam_tracks() -> dict:
@@ -37,19 +42,59 @@ def _load_jam_tracks() -> dict:
     return _cache["data"]
 
 
+def _load_library_styles() -> dict:
+    """{style: [track, ...]} from jam_library_styles.json (mtime-cached)."""
+    try:
+        mtime = os.path.getmtime(LIBRARY_STYLES_FILE)
+    except OSError:
+        return {}
+    if _lib_styles_cache["mtime"] != mtime:
+        try:
+            data = json.loads(LIBRARY_STYLES_FILE.read_text(encoding="utf-8"))
+            styles = data.get("styles") if isinstance(data, dict) else None
+            _lib_styles_cache["data"] = styles if isinstance(styles, dict) else {}
+        except (OSError, ValueError):
+            _lib_styles_cache["data"] = {}
+        _lib_styles_cache["mtime"] = mtime
+    return _lib_styles_cache["data"]
+
+
+def jam_style_tracks(style: Optional[str]) -> list:
+    """Tracks for one Jam style: the curated jam_tracks.json sample first,
+    then library-wide additions for the same style name (deduped by path).
+    No style → the curated sample only."""
+    tracks = _load_jam_tracks().get("tracks", [])
+    if not style:
+        return tracks
+    base = [t for t in tracks if t.get("style") == style]
+    extra = _load_library_styles().get(style) or []
+    if not extra:
+        return base
+    seen = {t.get("path") for t in base}
+    return base + [t for t in extra if t.get("path") not in seen]
+
+
 @router.get("/jam_tracks/styles")
 def jam_tracks_styles():
-    """Return the list of available jam track styles with counts."""
+    """Return the list of available jam track styles with counts.
+
+    Curated styles are sorted by size; library-only styles (器樂 …) follow
+    in builder order so the instrument options stay grouped."""
     data = _load_jam_tracks()
     by_style = data.get("by_style", {})
+    lib_styles = _load_library_styles()
+    curated = [{"name": name, "count": len(jam_style_tracks(name))} for name in by_style]
+    curated.sort(key=lambda s: -s["count"])
+    library_only = [
+        {"name": name, "count": len(rows)}
+        for name, rows in lib_styles.items()
+        if name not in by_style and rows
+    ]
     return {
         "total": data.get("total", 0),
         "target": data.get("target", 0),
         "generated_at": data.get("generated_at", ""),
-        "styles": [
-            {"name": name, "count": n}
-            for name, n in sorted(by_style.items(), key=lambda x: -x[1])
-        ],
+        "styles": curated + library_only,
     }
 
 
@@ -60,10 +105,7 @@ def jam_tracks_list(
     offset: int = Query(default=0, ge=0),
 ):
     """Paginated jam track list, optionally filtered by style."""
-    data = _load_jam_tracks()
-    tracks = data.get("tracks", [])
-    if style:
-        tracks = [t for t in tracks if t.get("style") == style]
+    tracks = jam_style_tracks(style)
     total = len(tracks)
     page = tracks[offset:offset + limit]
     return {

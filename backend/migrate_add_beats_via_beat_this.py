@@ -268,6 +268,10 @@ def _process_one(json_path: Path, force: bool, dry_run: bool, device: str) -> st
             f"range={rng:.1f}{halve_tag}")
 
 
+_PERSIST_FAIL = {"FAIL_NO_BEATS", "SKIP_AUDIO_MISSING", "SKIP_NO_PATH",
+                 "SKIP_NO_CHORDS", "INFER_FAIL", "READ_FAIL"}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true",
@@ -284,6 +288,8 @@ def main():
                     help="Skip files whose name sorts before this.")
     ap.add_argument("--device", type=str, default="cuda",
                     help="cuda / cpu (default cuda).")
+    ap.add_argument("--retry-failed", action="store_true",
+                    help="Re-try files recorded in the failure list (default: skip).")
     ap.add_argument("--chords-dir", type=str, default="",
                     help="Override chord JSON directory (default: ../data/chords). "
                          "Use this for staging workflow on local SSD.")
@@ -330,6 +336,19 @@ def main():
         files = [f for f in files if f.name >= args.start_from]
         print(f"After --start-from={args.start_from}: {len(files)} files")
 
+    # Files that failed for reasons a re-run won't fix are remembered in a
+    # sidecar so later runs don't burn time on them again.
+    failed_path = chords_dir / "beat_this_failed.json"
+    try:
+        failed = json.loads(failed_path.read_text(encoding="utf-8"))
+    except Exception:
+        failed = {}
+    if failed and not args.retry_failed:
+        before = len(files)
+        files = [f for f in files if f.name not in failed]
+        print(f"Skipping {before - len(files)} previously failed files "
+              f"(listed in {failed_path.name}; --retry-failed to re-try)")
+
     if args.limit > 0:
         files = files[:args.limit]
         print(f"--limit applied: processing {len(files)} files")
@@ -341,6 +360,18 @@ def main():
         st = _process_one(f, args.force, args.dry_run, args.device)
         key = st.split(" ", 1)[0]
         counts[key] = counts.get(key, 0) + 1
+        if not args.dry_run:
+            changed = False
+            if key in _PERSIST_FAIL:
+                changed = failed.get(f.name) != st
+                failed[f.name] = st
+            elif key == "OK":
+                changed = failed.pop(f.name, None) is not None
+            if changed:  # write per change so Ctrl+C keeps the record
+                tmp = failed_path.with_suffix(".json.tmp")
+                tmp.write_text(json.dumps(failed, ensure_ascii=False, indent=2,
+                                          sort_keys=True), encoding="utf-8")
+                os.replace(tmp, failed_path)
         elapsed = time.time() - t0
         rate = i / elapsed if elapsed > 0 else 0
         eta = (n - i) / rate / 60 if rate > 0 else 0

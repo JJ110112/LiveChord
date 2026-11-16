@@ -10,14 +10,17 @@
   const autoplay = params.get("autoplay") === "1";
   const restoreFs = params.get("fs") === "1";
   if (!trackPath && !hashMode) { window.location.href = "/"; return; }
-  const queueSource = params.get("queue") || "";
-  const queueMode = params.get("queue_mode") === "shuffle" ? "shuffle" : "sequential";
-  const queueSeed = params.get("queue_seed") || "";
-  const queuePath = params.get("queue_path") || "";
-  const queueGroup = params.get("queue_group") || "";
-  const queueStyle = params.get("queue_style") || "";
-  const queueLabel = params.get("queue_label") || "";
-  const queueActive = !hashMode && !!trackPath && ["folder", "group", "jam"].includes(queueSource);
+  // `let`, not const: the playlist panel's Random button replaces the queue
+  // in place (new seed, current song pinned first via queue_start).
+  let queueSource = params.get("queue") || "";
+  let queueMode = params.get("queue_mode") === "shuffle" ? "shuffle" : "sequential";
+  let queueSeed = params.get("queue_seed") || "";
+  let queuePath = params.get("queue_path") || "";
+  let queueGroup = params.get("queue_group") || "";
+  let queueStyle = params.get("queue_style") || "";
+  let queueLabel = params.get("queue_label") || "";
+  let queueStart = params.get("queue_start") || "";
+  let queueActive = !hashMode && !!trackPath && ["folder", "group", "jam", "favorites"].includes(queueSource);
   let preferPageFullscreen = restoreFs;
   const BEAT_SOURCE_PREF_KEY = "livechord_player_beat_source";
   function _pageBeatSourcePrefKey() {
@@ -235,6 +238,93 @@
   // actually plays if following the arrangement).
   const _RH_MODES = ["acc", "mel", "both"];
   let rhContentMode = localStorage.getItem("livechord_rh_mode") || "acc";
+  // ---- 即興提示 (improv hints, Tools toggle, default off) ----
+  // Pure logic lives in improv-hints.js. Here: build the per-song model once
+  // (bass line through the displayed chords, approach-note windows, phrase-
+  // end harmony windows) and look up what to ring at the current time.
+  // Default ON (user's pick); an explicit "false" from the Tools toggle wins.
+  let showImprovHints = localStorage.getItem("livechord_improv_hints") !== "false";
+  let _melodyTrusted = true;   // melody_trust verdict of the loaded melody
+  let _improvCache = { key: "", model: null };
+
+  function _improvTonesOf(name) {
+    const cache = chordCache[name];
+    if (!cache || !Array.isArray(cache.notes)) return [];
+    return cache.notes.map((n) => noteToSemitone(n));
+  }
+
+  function _improvModel() {
+    if (!window.ImprovHints || !chordData || !Array.isArray(chordData.chords)) return null;
+    const shift = transpose - capo;
+    const key = [chordData.chords.length, shift, melodyData ? melodyData.length : 0,
+      Object.keys(chordCache).length, _melodyTrusted ? 1 : 0].join("|");
+    if (_improvCache.model && _improvCache.key === key
+        && _improvCache.chordsRef === chordData.chords && _improvCache.melodyRef === melodyData) {
+      return _improvCache.model;
+    }
+    const H = window.ImprovHints;
+    const chords = _displayChords();
+    const beat = chordData.bpm ? 60 / chordData.bpm : 0.5;
+    const scale = H.scalePcs(_currentKey(), chordData.mode);
+    const bass = H.bassLine(chords, _improvTonesOf);
+
+    const approach = [];
+    for (let i = 0; i + 1 < chords.length; i++) {
+      const b = bass[i], nb = bass[i + 1];
+      if (!b || !nb) continue;
+      const dur = chords[i + 1].time - chords[i].time;
+      if (dur < 1.5 * beat) continue;            // too short to fit a passing note
+      const midi = H.approachNote(b.midi, nb.midi, scale);
+      if (midi == null) continue;
+      approach.push({ from: chords[i + 1].time - beat, to: chords[i + 1].time, midi });
+    }
+
+    // Only when the melody is plausibly the lead line — a bass-leak pYIN
+    // guess would put the "choir" notes in the wrong place.
+    const harmony = [];
+    if (_melodyTrusted && melodyData && melodyData.length) {
+      const notes = melodyData.map((n) => ({ start: n.start, end: n.end, midi: (n.midi || 0) + shift }));
+      for (const n of H.phraseEndNotes(notes, beat)) {
+        const ci = H.chordIndexAt(chords, n.start + 0.02);
+        if (ci < 0) continue;
+        const pcs = _improvTonesOf(chords[ci].chord);
+        if (!pcs.length) continue;
+        const below = H.harmonyBelow(n.midi, pcs, 2);
+        if (below.length) harmony.push({ from: n.start - 0.5 * beat, to: n.end, start: n.start, notes: below });
+      }
+    }
+    const model = { bass, approach, harmony };
+    _improvCache = { key, model, chordsRef: chordData.chords, melodyRef: melodyData };
+    return model;
+  }
+
+  /** Rings to draw on the 88 keys at time t: [{midi, hand, label}]. */
+  function _improvRingsAt(t) {
+    if (!showImprovHints) return null;
+    const m = _improvModel();
+    if (!m) return null;
+    const rings = [];
+    const h = m.harmony.find((w) => t >= w.from && t <= w.to);
+    if (h) for (const n of h.notes) rings.push({ midi: n.midi, hand: "right" });
+    const a = m.approach.find((w) => t >= w.from && t < w.to);
+    if (a) rings.push({ midi: a.midi, hand: "left" });
+    return rings;
+  }
+
+  /** Card jianpu with the suggested bass tone's number marked (.rv-jp-bass). */
+  function _improvJianpuHtml(i, notes, key) {
+    const plain = ChordRender.jianpuToHtml(_notesToJianpu(notes, key));
+    if (!showImprovHints || !Array.isArray(notes) || !notes.length) return plain;
+    const m = _improvModel();
+    const b = m && m.bass[i];
+    if (!b) return plain;
+    const tokens = _notesToJianpu(notes, key).split(" ");
+    return tokens.map((tok, k) => {
+      const html = ChordRender.jianpuToHtml(tok);
+      return noteToSemitone(notes[k]) === b.pc ? `<span class="rv-jp-bass">${html}</span>` : html;
+    }).join(" ");
+  }
+
   if (!_RH_MODES.includes(rhContentMode)) rhContentMode = "acc";
 
   // Resolve right-hand events according to rhContentMode. Single source of truth
@@ -1861,6 +1951,15 @@
       const nameEl = document.createElement("div");
       nameEl.className = "rv-chord-name";
       nameEl.textContent = _displayChordName(c.chord);
+      if (showImprovHints && !String(c.chord).includes("/")) {
+        const _ib = (_improvModel() || { bass: [] }).bass[i];
+        if (_ib && _ib.slash) {
+          const sl = document.createElement("span");
+          sl.className = "rv-bass-hint";
+          sl.textContent = "/" + semitoneToDisplay(_ib.pc);
+          nameEl.appendChild(sl);
+        }
+      }
       item.appendChild(nameEl);
 
       const strand = c && c.explain && typeof c.explain.strand === "string" ? c.explain.strand : "";
@@ -1874,7 +1973,7 @@
 
       const jp = document.createElement("div");
       jp.className = "rv-jianpu";
-      jp.innerHTML = ChordRender.jianpuToHtml(_notesToJianpu(cache.notes, _currentKey()));
+      jp.innerHTML = _improvJianpuHtml(i, cache.notes, _jianpuMovable ? _jianpuKeyAt(c.time) : _currentKey());
       item.appendChild(jp);
 
       const _diagKey = `diagram_${activeTab}`;
@@ -2483,6 +2582,7 @@
     if (queueGroup) qs.set("queue_group", queueGroup);
     if (queueStyle) qs.set("queue_style", queueStyle);
     if (queueLabel) qs.set("queue_label", queueLabel);
+    if (queueStart && queueMode === "shuffle") qs.set("queue_start", queueStart);
   }
   function _navUrl(path) {
     const qs = new URLSearchParams({ path, autoplay: "1" });
@@ -2599,10 +2699,58 @@
   _syncPageFsButton();
 
   // 相對簡譜：notes 陣列相對於當前 key 的簡譜
+  let _jianpuMovable = localStorage.getItem("livechord_jianpu_movable") === "true";
+  function _jianpuTonic(key) {
+    const m = /^([A-G][b#]?)(m(?!aj))?/.exec(key || "C");
+    if (!m) return 0;
+    const root = noteToSemitone(m[1]);
+    return m[2] ? (root + 3) % 12 : root;
+  }
+
+  // Key a chord card at time t is numbered from in 首調 mode — the same key
+  // the key badge shows there: the section's key when the song modulates
+  // (a section key held over 2+ consecutive sections, more than one root),
+  // else the arbiter's modulation candidates, else the song key. Mirrors
+  // _updateKeyDisplay.
+  function _jianpuKeyAt(t) {
+    const base = _currentKey();
+    const secs = sectionData && Array.isArray(sectionData.sections) ? sectionData.sections : [];
+    const root = (k) => (k || "").replace(/m.*$/, "");
+    const keyed = secs.filter((s) => s.key);
+    const stableRoots = new Set(keyed.filter((s, i) =>
+      (i > 0 && root(keyed[i - 1].key) === root(s.key))
+      || (i + 1 < keyed.length && root(keyed[i + 1].key) === root(s.key))).map((s) => root(s.key)));
+    const shift = transpose - capo;
+    const shifted = (k) => (shift === 0 ? k : transposeChord(k, shift));
+    if (keyed.length) {
+      if (stableRoots.size < 2) return base;
+      const sec = [...secs].reverse().find((s) => t >= s.start);
+      return sec && sec.key ? shifted(sec.key) : base;
+    }
+    // No section keys: the global arbiter's modulation candidates.
+    const arb = chordData && chordData.global_arbiter_meta;
+    const cands = (arb && Array.isArray(arb.modulation_candidates) ? arb.modulation_candidates : [])
+      .filter((c) => c && c.to);
+    if (!cands.length) return base;
+    const roots = new Set([cands[0].from, ...cands.map((c) => c.to)].filter(Boolean).map(root));
+    if (roots.size < 2) return base;
+    let cur = null;
+    for (const c of cands) if (t >= (Number(c.time) || 0)) cur = c;
+    const k = cur ? cur.to : cands[0].from;
+    return k ? shifted(k) : base;
+  }
+
   function _notesToJianpu(notes, key) {
     if (!notes || notes.length === 0) return "";
     const JP = ["1","#1","2","#2","3","4","#4","5","#5","6","#6","7"];
     const JPF = ["1","b2","2","b3","3","4","b5","5","b6","6","b7","7"];
+    // Fixed-C by default; Tools → 簡譜：首調 numbers from the song's key
+    // (minor keys use the relative major's 1, so A minor reads 6 1 3).
+    if (_jianpuMovable) {
+      const tonic = _jianpuTonic(key);
+      const JPM = ["1","#1","2","b3","3","4","#4","5","b6","6","b7","7"];
+      return notes.map(n => JPM[((noteToSemitone(n) - tonic) % 12 + 12) % 12]).join(" ");
+    }
     const keySemi = 0; // always C-relative solfege
     return notes.map(n => {
       const semi = noteToSemitone(n);
@@ -2687,6 +2835,7 @@
       siblingTracks = data.entries.filter((e) => !e.is_dir && /\.(flac|mp3|wav|ogg)$/i.test(e.name));
       currentIndex = siblingTracks.findIndex((t) => t.path === path);
     } catch {}
+    _renderPlaylist();
   }
 
   async function loadQueue(path) {
@@ -2698,6 +2847,7 @@
         path: queuePath,
         group_id: queueGroup,
         style: queueStyle,
+        start: queueMode === "shuffle" ? queueStart : "",
         limit: 20000,
       });
       queueTracks = (data.tracks || []).filter((e) => e && e.path);
@@ -2706,6 +2856,139 @@
       console.warn("queue load failed:", err);
       queueTracks = [];
       queueIndex = -1;
+    }
+    _renderPlaylist();
+  }
+
+  // ---- Playlist panel (Type C, no backdrop) ----
+  // Shows the active queue — or the current folder when there is no queue —
+  // with the current song highlighted, so users can read what comes next.
+  // Closed by default; the open state persists so it survives the page load
+  // that every Next / Prev does.
+  const PLAYLIST_OPEN_KEY = "livechord_playlist_open";
+  const _playlistPanel = document.getElementById("playlistPanel");
+  const _playlistList = document.getElementById("playlistList");
+  const _btnPlaylist = document.getElementById("btnPlaylist");
+
+  function _playlistView() {
+    if (queueActive && queueTracks.length) {
+      // Favorites: translate here — the server label is the English "Favorites".
+      const label = queueSource === "favorites" ? _t("home.section.favorites") : (queueLabel || queueSource);
+      return { tracks: queueTracks, idx: queueIndex, label };
+    }
+    const dir = (trackPath || "").split("/").slice(0, -1).pop() || "";
+    return { tracks: siblingTracks, idx: currentIndex, label: dir };
+  }
+
+  function _plTitle(t) {
+    return t.title || (t.name || t.path.split("/").pop()).replace(/\.(flac|mp3|wav|ogg|m4a)$/i, "");
+  }
+
+  function _plEsc(v) {
+    return String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function _isPlaylistOpen() {
+    return !!_playlistPanel && _playlistPanel.style.display !== "none";
+  }
+
+  function _renderPlaylist() {
+    if (!_isPlaylistOpen() || !_playlistList) return;
+    const { tracks, idx, label } = _playlistView();
+    document.getElementById("playlistLabel").textContent = label || _t("player.playlist.title");
+    document.getElementById("playlistCount").textContent =
+      tracks.length ? `${Math.max(idx, 0) + 1} / ${tracks.length}` : "";
+    if (!tracks.length) {
+      _playlistList.innerHTML = `<li class="pl-empty">${_plEsc(_t("player.playlist.empty"))}</li>`;
+      return;
+    }
+    // Long queues (Jam styles reach 14k songs): render a window around the
+    // current song instead of every row.
+    const from = Math.max(0, idx - 10);
+    const to = Math.min(tracks.length, Math.max(idx, 0) + 300);
+    let html = "";
+    for (let i = from; i < to; i++) {
+      const t = tracks[i];
+      const cls = i === idx ? "pl-item is-current" : (i < idx ? "pl-item is-played" : "pl-item");
+      html += `<li class="${cls}" data-path="${_plEsc(t.path)}" title="${_plEsc(t.path)}">`
+        + `<span class="pl-num">${i + 1}</span>`
+        + `<span class="pl-text"><span class="pl-title">${_plEsc(_plTitle(t))}</span>`
+        + (t.artist ? `<span class="pl-artist">${_plEsc(t.artist)}</span>` : "")
+        + `</span></li>`;
+    }
+    _playlistList.innerHTML = html;
+    const cur = _playlistList.querySelector(".is-current");
+    if (cur) _playlistList.scrollTop = Math.max(0, cur.offsetTop - 8);
+  }
+
+  function _setPlaylistOpen(open) {
+    if (!_playlistPanel) return;
+    _playlistPanel.style.display = open ? "" : "none";
+    if (_btnPlaylist) _btnPlaylist.classList.toggle("active", open);
+    try { localStorage.setItem(PLAYLIST_OPEN_KEY, open ? "1" : "0"); } catch {}
+    if (open) _renderPlaylist();
+  }
+
+  async function _playlistRandom(btn) {
+    if (!trackPath) return;
+    // No queue yet (opened from a folder / search) → shuffle the current folder.
+    const source = queueActive ? queueSource : "folder";
+    const path = queueActive ? queuePath : trackPath.split("/").slice(0, -1).join("/");
+    const seed = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}_${source}_shuffle`;
+    if (btn) btn.disabled = true;
+    try {
+      const data = await API.playlist({
+        source, mode: "shuffle", seed, start: trackPath, path,
+        group_id: queueActive ? queueGroup : "",
+        style: queueActive ? queueStyle : "",
+        limit: 20000,
+      });
+      const tracks = (data.tracks || []).filter((e) => e && e.path);
+      if (!tracks.length) throw new Error(_t("toast.queue.empty"));
+      // Folder shuffle: the server labels it with the full path; show the folder name.
+      if (!queueActive) queueLabel = path.split("/").pop() || data.label || "";
+      queueSource = source;
+      queuePath = path;
+      queueMode = "shuffle";
+      queueSeed = data.seed || seed;
+      queueStart = trackPath;
+      queueActive = true;
+      queueTracks = tracks;
+      queueIndex = queueTracks.findIndex((t) => t.path === trackPath);
+      // Keep the URL in step so a reload rebuilds the same order.
+      try {
+        const qs = new URLSearchParams(location.search);
+        ["queue", "queue_mode", "queue_seed", "queue_path", "queue_group", "queue_style", "queue_label", "queue_start"]
+          .forEach((k) => qs.delete(k));
+        _appendQueueParams(qs);
+        history.replaceState(history.state, "", `${location.pathname}?${qs.toString()}`);
+      } catch {}
+      _renderPlaylist();
+      showToast(_t("toast.playlist.reshuffled"), 2000);
+    } catch (err) {
+      showToast(_t("toast.playlist.failed", { err: (err && err.message) || String(err) }), 3500);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  if (_playlistPanel) {
+    if (hashMode) {
+      if (_btnPlaylist) _btnPlaylist.style.display = "none";
+    } else {
+      if (_btnPlaylist) _btnPlaylist.addEventListener("click", () => _setPlaylistOpen(!_isPlaylistOpen()));
+      document.getElementById("playlistClose").addEventListener("click", () => _setPlaylistOpen(false));
+      const btnRandom = document.getElementById("btnPlaylistRandom");
+      btnRandom.addEventListener("click", () => _playlistRandom(btnRandom));
+      _playlistList.addEventListener("click", (e) => {
+        const li = e.target.closest(".pl-item");
+        if (!li || li.classList.contains("is-current")) return;
+        window.location.href = _navUrl(li.dataset.path);
+      });
+      let open = false;
+      try { open = localStorage.getItem(PLAYLIST_OPEN_KEY) === "1"; } catch {}
+      if (open) _setPlaylistOpen(true);
     }
   }
 
@@ -2759,6 +3042,7 @@
   let _melodyQualityNoted = "";
   function _noteMelodyQuality(data) {
     const q = data && data.melody_quality;
+    _melodyTrusted = !q || q.trusted !== false;
     if (!q || q.trusted) return;
     const reason = String(q.reason || "");
     if (!["bass_leak", "low_coverage", "too_few_notes"].includes(reason)) return;
@@ -3186,6 +3470,7 @@
       pedalActive: pedalActive,
       pedalDepth: pedalDepth,
       colors: _palette(),
+      hintRings: _improvRingsAt(currentTime),
     });
   }
 
@@ -3660,6 +3945,42 @@
         ctx.strokeStyle = _palette().activeChordEdge;
         ctx.lineWidth = 1;
         ctx.strokeRect(minX - 4, minY - 4, maxX - minX + 8, maxY - minY + 8);
+      }
+    }
+
+    // 即興提示 glow columns: a faint green column on each harmony key, as
+    // long as the melody note it sits under, so the phrase-end harmony can be
+    // read coming down before it reaches the keyboard rings. Drawn under the
+    // note bars. Left-hand passing notes stay ring-only (one beat, too short).
+    if (showImprovHints) {
+      const _im = _improvModel();
+      if (_im && _im.harmony.length) {
+        const light = _LIGHT_BG_THEMES.has(_currentTheme);
+        const rgb = light ? "27, 122, 40" : "178, 255, 89";
+        for (const hw of _im.harmony) {
+          if (hw.to < currentTime || hw.start > currentTime + lookAhead) continue;
+          const yB = Math.min(h, h - (hw.start - currentTime) * pxPerSec);
+          const yT = Math.max(0, h - (hw.to - currentTime) * pxPerSec);
+          if (yB - yT < 2) continue;
+          for (const hn of hw.notes) {
+            const ki = cache.whiteXs[hn.midi] || cache.blackXs[hn.midi];
+            if (!ki) continue;
+            const grad = ctx.createLinearGradient(ki.x, 0, ki.x + ki.w, 0);
+            grad.addColorStop(0, `rgba(${rgb}, 0)`);
+            grad.addColorStop(0.5, `rgba(${rgb}, ${light ? 0.22 : 0.18})`);
+            grad.addColorStop(1, `rgba(${rgb}, 0)`);
+            ctx.fillStyle = grad;
+            ctx.fillRect(ki.x - 2, yT, ki.w + 4, yB - yT);
+            ctx.strokeStyle = `rgba(${rgb}, ${light ? 0.75 : 0.6})`;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(ki.x + 0.5, yT); ctx.lineTo(ki.x + 0.5, yB);
+            ctx.moveTo(ki.x + ki.w - 0.5, yT); ctx.lineTo(ki.x + ki.w - 0.5, yB);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+        }
       }
     }
 
@@ -6332,6 +6653,25 @@
   }
   audio.addEventListener("timeupdate", () => _updateProgPanel(audio.currentTime || 0));
 
+  function _syncJianpuModeBtn() {
+    const lab = document.getElementById("btnToggleJianpuModeLabel");
+    if (lab) lab.textContent = _t(_jianpuMovable ? "player.tools.jianpu_movable" : "player.tools.jianpu_fixed");
+    const btn = document.getElementById("btnToggleJianpuMode");
+    if (btn) btn.setAttribute("aria-pressed", _jianpuMovable ? "true" : "false");
+  }
+  const btnToggleJianpuMode = $("#btnToggleJianpuMode");
+  if (btnToggleJianpuMode) {
+    btnToggleJianpuMode.addEventListener("click", () => {
+      _jianpuMovable = !_jianpuMovable;
+      try { localStorage.setItem("livechord_jianpu_movable", _jianpuMovable ? "true" : "false"); } catch (_) {}
+      _syncJianpuModeBtn();
+      buildChordDOM();
+      updateActiveChord(audio.currentTime || -1, true);
+    });
+  }
+  _syncJianpuModeBtn();
+  document.addEventListener("livechord:langchange", _syncJianpuModeBtn);
+
   const btnToggleJianpu = $("#btnToggleJianpu");
   if (btnToggleJianpu) {
     btnToggleJianpu.addEventListener("click", () => {
@@ -6341,6 +6681,28 @@
     });
   }
   _applyJianpuVisibility();
+
+  function _syncImprovHintsBtn() {
+    const lab = document.getElementById("btnToggleImprovHintsLabel");
+    if (lab) lab.textContent = _t(showImprovHints ? "player.tools.improv_on" : "player.tools.improv_off");
+    const btn = document.getElementById("btnToggleImprovHints");
+    if (btn) btn.setAttribute("aria-pressed", showImprovHints ? "true" : "false");
+  }
+  const btnToggleImprovHints = $("#btnToggleImprovHints");
+  if (btnToggleImprovHints) {
+    btnToggleImprovHints.addEventListener("click", () => {
+      showImprovHints = !showImprovHints;
+      try { localStorage.setItem("livechord_improv_hints", showImprovHints ? "true" : "false"); } catch (_) {}
+      _syncImprovHintsBtn();
+      buildChordDOM();
+      updateActiveChord(audio.currentTime || -1, true);
+      try { update88Piano(audio.currentTime || 0); } catch (_) {}
+      if (showImprovHints) showToast(_t("toast.improv.on"), 4000);
+    });
+  }
+  _syncImprovHintsBtn();
+  document.addEventListener("livechord:langchange", _syncImprovHintsBtn);
+  document.addEventListener("livechord:i18nready", _syncImprovHintsBtn);
   document.addEventListener("livechord:langchange", _applyJianpuVisibility);
   document.addEventListener("livechord:i18nready",  _applyJianpuVisibility);
 
@@ -7510,11 +7872,20 @@
   });
 
   // ---- manual detect: shared by Tools popup button + hero empty-state button (Task 6) ----
+  let _detectRunning = false;
   async function runChordDetection() {
     if (!trackPath) { showToast(_t("toast.detect.hash_only"), 3000); return; }
-    detectOverlay.style.display = "";
-    detectMsg.textContent = _t("detect.progress.ai_analyzing");
-    detectDetail.textContent = _t("detect.progress.ai_analyzing_detail");
+    // No modal: detection is a ~30 s+ background job and the full-screen
+    // overlay covered Next/Prev, so a jam queue skip looked dead. Show the
+    // progress inline in the empty-chord state instead; playback and
+    // navigation stay usable while the job runs.
+    if (_detectRunning) return;
+    _detectRunning = true;
+    const _emptyMsg = document.querySelector(".chord-empty-msg");
+    if (_emptyMsg) _emptyMsg.textContent = _t("detect.progress.ai_analyzing");
+    const _heroBtn = document.getElementById("btnDetectHero");
+    if (_heroBtn) _heroBtn.disabled = true;
+    showToast(_t("detect.progress.ai_analyzing"), 3000);
 
     try {
       // BTC-only detection — MIDI auto-import was retired after fuzzy
@@ -7530,8 +7901,10 @@
       updateActiveChord(audio.currentTime || -1);
     } catch (err) {
       showToast(_t("toast.detect.failed", { err: err.message }), 4000);
+      const heroBtn = document.getElementById("btnDetectHero");
+      if (heroBtn) heroBtn.disabled = false;
     } finally {
-      detectOverlay.style.display = "none";
+      _detectRunning = false;
     }
   }
 

@@ -499,7 +499,7 @@ def progression_summary(
     raw_chords = list(data.get("chords") or [])   # section detector runs on raw chords, like /api/ai/sections
     try:  # analyse the served view (meter regularizer, quality smoothing, split)
         from chord_api import apply_serve_pipeline
-        apply_serve_pipeline(data, f, path or data.get("path") or "")
+        apply_serve_pipeline(data, f, path or data.get("path") or "", username=str(username))
     except Exception:
         pass
     chords = data.get("chords") or []
@@ -531,7 +531,22 @@ def progression_summary(
         sec = detect_sections(raw_chords, data.get("key") or "C", song_hash=h, data_dir=effective,
                               fallback_data_dir=str(DATA_DIR), hint_bpm=data.get("bpm"))
         sections = sec.get("sections", [])
-        if (sec.get("analysis") or {}).get("mode") != "human-loop":
+        if (sec.get("analysis") or {}).get("mode") == "human-loop":
+            from section_consensus import snap_sections_to_bars
+            sections, result["section_bar_snap"] = snap_sections_to_bars(sections, data.get("bars") or data.get("downbeats"), chords)
+            # The human's phrase split defines the loops (repeated section types).
+            from ai.progression_pattern import patterns_from_sections
+            human = patterns_from_sections(chords, sections, key=result["key"], downbeats=data.get("downbeats") or None,
+                                           bpm=data.get("bpm"), bars=data.get("bars") or None)
+            if human:
+                result["patterns"] = human
+                result["explained"] = round(min(1.0, sum(p["coverage"] for p in human)), 3)
+                result["patterns_source"] = "human"
+                result["style"] = describe_style(chords, result["key"], data.get("bpm"), result["genre"], human,
+                                                 time_signature=data.get("time_signature") or "",
+                                                 subdivisions=data.get("display_subdivisions_per_bar"),
+                                                 pulses=data.get("practice_pulses_per_bar"))
+        else:
             from ai.section_refine import refine_sections
             from ai_api import load_melody_notes
             sections, result["section_refine"] = refine_sections(sections, result, data.get("bars") or data.get("downbeats"), chords,

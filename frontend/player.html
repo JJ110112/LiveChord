@@ -16,13 +16,13 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/css/base.css?v=24">
-  <link rel="stylesheet" href="/css/player.css?v=160">
+  <link rel="stylesheet" href="/css/player.css?v=164">
   <link rel="stylesheet" href="/css/tutorial.css?v=1">
   <!-- Phase A: shared auth + fetch wrapper (see frontend/js/auth.js). Must
        load before any /api/ call so anon X-Anon-Id is injected from the
        first request. Replaces the inline blind-redirect block. -->
   <script src="/js/auth.js?v=7"></script>
-  <script src="/js/i18n.js?v=63"></script>
+  <script src="/js/i18n.js?v=68"></script>
   <script src="/js/analytics.js?v=3"></script>
 </head>
 <body>
@@ -267,6 +267,20 @@
     </div><!-- /instrumentPanel -->
   </div><!-- /chordDisplayScaleTarget -->
 
+  <!-- Playlist — Type C panel (.lc-panel, no backdrop), opened by #btnPlaylist -->
+  <div id="playlistPanel" class="playlist-panel lc-panel" style="display:none" role="dialog"
+       data-i18n-attr="aria-label=player.playlist.title" aria-label="Playlist">
+    <button id="playlistClose" class="lc-close" type="button" aria-label="Close">&times;</button>
+    <div class="lc-title"><span id="playlistLabel" data-i18n="player.playlist.title">Playlist</span>
+      <span id="playlistCount" class="pl-count"></span></div>
+    <div class="pl-actions">
+      <button id="btnPlaylistRandom" class="tb-popup-btn" type="button"
+              data-i18n-attr="title=player.playlist.random_title" title="Reshuffle the songs after this one">
+        &#128256; <span data-i18n="player.playlist.random">Random</span></button>
+    </div>
+    <ol id="playlistList" class="pl-list"></ol>
+  </div>
+
   <!-- RLHF rate popup — Type C panel (.lc-panel), anchored to top-bar star button -->
   <div id="ratePopup" class="rate-popup lc-panel" style="display:none">
     <button id="btnRlhfGood" class="rate-good" title="Sounds great" data-i18n="player.rate.good" data-i18n-attr="title=player.rate.good_title">&#x1F44D; 合理</button>
@@ -453,6 +467,11 @@
               data-i18n-attr="title=player.toolbar.next,aria-label=player.toolbar.next"
               title="Next" aria-label="Next">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+      </button>
+      <button id="btnPlaylist" class="tb-trigger"
+              data-i18n-attr="title=player.playlist.title,aria-label=player.playlist.title"
+              title="Playlist" aria-label="Playlist" aria-controls="playlistPanel">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15V6"/><path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/><path d="M12 12H3"/><path d="M16 6H3"/><path d="M12 18H3"/></svg>
       </button>
     </div>
   </div><!-- /tb-row-tx -->
@@ -820,6 +839,16 @@
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 17V5l10-2v12"/><circle cx="6" cy="17" r="3"/><circle cx="16" cy="15" r="3"/></svg>
         <span id="btnToggleJianpuLabel" data-i18n="player.tools.jianpu_on">Jianpu: On</span>
       </button>
+      <button id="btnToggleJianpuMode" class="tb-popup-btn" type="button"
+              data-i18n-attr="title=player.tools.jianpu_mode_title" title="Jianpu numbers: fixed C or from the song's key" aria-pressed="false">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10"/><path d="M4 17h16"/><path d="M17 4l3 3-3 3"/></svg>
+        <span id="btnToggleJianpuModeLabel" data-i18n="player.tools.jianpu_fixed">Jianpu: fixed C</span>
+      </button>
+      <button id="btnToggleImprovHints" class="tb-popup-btn" type="button"
+              data-i18n-attr="title=player.tools.improv_title" title="Improv hints" aria-pressed="false">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>
+        <span id="btnToggleImprovHintsLabel" data-i18n="player.tools.improv_off">Improv hints: Off</span>
+      </button>
       <button id="btnProgSummary" class="tb-popup-btn" title="和弦進行分析：找出這首歌的主要循環" aria-label="Progression summary">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>
         <span>進行分析</span>
@@ -925,8 +954,8 @@
 </div>
 
 <script src="/js/utils.js?v=14"></script>
-<script src="/js/api.js?v=64"></script>
-<script src="/js/chord-render.js?v=71"></script>
+<script src="/js/api.js?v=67"></script>
+<script src="/js/chord-render.js?v=74"></script>
 <!-- VexFlow self-hosted (Bravura build). See /js/vendor/README.md for rationale. -->
 <script defer src="/js/vendor/vexflow.min.js?v=1"></script>
 <script defer src="/js/score-render.js?v=14"></script>
@@ -943,7 +972,8 @@
 <!-- Phase A: fetch wrapper installed by /js/auth.js at <head>; the inline
      duplicate block was removed. -->
 <script src="/js/scale-lab.js?v=3"></script>
-<script src="/js/player.js?v=379"></script>
+<script src="/js/improv-hints.js?v=3"></script>
+<script src="/js/player.js?v=389"></script>
 <script>
   // Toolbar gear theme picker — mirrors the homepage gear handler so the
   // user's theme choice is honored on either entry point. Active state on

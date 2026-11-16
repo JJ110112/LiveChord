@@ -48,6 +48,7 @@ const API = {
     if (opts.group_id) qs.set("group_id", opts.group_id);
     if (opts.style) qs.set("style", opts.style);
     if (opts.seed) qs.set("seed", opts.seed);
+    if (opts.start) qs.set("start", opts.start);
     if (opts.limit) qs.set("limit", String(opts.limit));
     return API.get(`/api/playlist?${qs.toString()}`);
   },
@@ -63,7 +64,20 @@ const API = {
   getChordVersions: (path) => API.get(`/api/chords/versions?path=${encodeURIComponent(path)}`),
   rateChordVersion: (path, version, score) => API.post("/api/chords/rate", { path, version, score }),
   saveChords: (data) => API.post("/api/chords", data),
-  detectChords: (path) => API.post(`/api/chords/detect?path=${encodeURIComponent(path)}`),
+  // Detection is a background job (~30 s+): POST only enqueues, then poll the
+  // status every 3 s. Resolves with the same result shape the old blocking
+  // call returned ({chord_count, key, ...}); rejects on job error.
+  detectChords: async (path) => {
+    const q = `path=${encodeURIComponent(path)}`;
+    await API.post(`/api/chords/detect?${q}`);
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const s = await API.get(`/api/chords/detect/status?${q}`);
+      if (s.status === "done") return s.result || { chord_count: 0 };
+      if (s.status === "error") throw new Error(s.error || "detect failed");
+      if (s.status === "none") throw new Error("detect job lost (server restarted?)");
+    }
+  },
   chordTracks: (page = 1, limit = 100, query = "", status = "all") => API.get(`/api/chords/tracks?page=${page}&limit=${limit}&query=${encodeURIComponent(query)}&status=${status}`),
   batchDetect: (groupId = "") => API.post(`/api/chords/batch-detect${groupId ? `?group_id=${encodeURIComponent(groupId)}` : ""}`),
   batchDetectStatus: () => API.get("/api/chords/batch-detect/status"),

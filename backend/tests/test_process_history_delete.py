@@ -76,6 +76,10 @@ class TestProcessHistoryDelete(unittest.TestCase):
             chord_path.parent / f"{result_hash}.json.bak.beat_this",
             process_queue.COVERS_DIR / f"{result_hash}.jpg",
             process_queue.MELODIES_DIR / f"{result_hash}.json",
+            # MIDI-derived songs keep their rendered audio here; leaving it
+            # behind orphans tens of MB per deleted song on the NUC.
+            self.root / "midi_audio" / f"{result_hash}.flac",
+            self.root / "midi_audio" / f"{result_hash}.wav",
             process_queue.ACCOMP_DIR / f"{result_hash}_Arpeggio_L1_default_piano_v7.json",
             self.root / "users" / username / "chords" / f"{result_hash}.json",
             self.root / "users" / username / "human_sections" / f"{result_hash}.json",

@@ -4475,3 +4475,101 @@ body.no-score #scoreLayer { display: none !important; }
 }
 .pp-btn:hover { background: color-mix(in srgb, var(--accent) 32%, transparent); }
 .pp-btn-ghost { border-color: var(--border); background: transparent; }
+
+/* ---- Playlist panel (#btnPlaylist → #playlistPanel).
+   Type C floating panel (composes .lc-panel, z 9600) — no backdrop, so the
+   toolbar (Next / Prev / play) stays usable while it is open. Sits above
+   the bottom toolbar on the right. */
+#btnPlaylist.active { color: var(--accent); }
+.playlist-panel {
+  right: 12px;
+  bottom: 120px;
+  width: min(360px, 94vw);
+  max-width: none;
+  max-height: min(60vh, 520px);
+  display: flex;
+  flex-direction: column;
+  padding: 12px 12px 8px;
+}
+.playlist-panel .lc-title {
+  padding-right: 32px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.playlist-panel #playlistLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.playlist-panel .pl-count { color: var(--text-dim); font-size: 12px; font-weight: 400; flex-shrink: 0; }
+.playlist-panel .pl-actions { display: flex; gap: 8px; margin: 6px 0 8px; }
+.playlist-panel .pl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  position: relative;
+}
+.playlist-panel .pl-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.playlist-panel .pl-item:hover { background: var(--bg-hover); }
+.playlist-panel .pl-item.is-played { opacity: 0.5; }
+.playlist-panel .pl-item.is-current {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  font-weight: 600;
+  cursor: default;
+}
+.playlist-panel .pl-num { color: var(--text-dim); font-size: 11px; min-width: 2.2em; text-align: right; flex-shrink: 0; }
+.playlist-panel .pl-text { display: flex; flex-direction: column; min-width: 0; }
+.playlist-panel .pl-title,
+.playlist-panel .pl-artist { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.playlist-panel .pl-artist { color: var(--text-dim); font-size: 11px; font-weight: 400; }
+.playlist-panel .pl-empty { color: var(--text-dim); padding: 8px; font-size: 13px; }
+@media (max-width: 640px) and (orientation: portrait) {
+  .playlist-panel {
+    left: 3vw;
+    right: 3vw;
+    width: auto;
+    bottom: 190px;
+    max-height: 50vh;
+  }
+}
+@media (pointer: coarse) {
+  .playlist-panel .pl-item { padding: 10px 8px; }
+}
+
+/* ---- 即興提示 (Tools → improv hints) on chord cards.
+   .rv-jp-bass marks the suggested bass tone's jianpu number so the left-hand
+   line reads card to card; .rv-bass-hint is the "/B" slash when that bass is
+   an inversion. Green matches the keyboard hint rings. */
+.rv-item .rv-jianpu .rv-jp-bass {
+  font-weight: 800;
+  color: #0b1a00;
+  background: rgba(178, 255, 89, 0.9);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+.rv-item .rv-chord-name .rv-bass-hint {
+  color: rgb(178, 255, 89);
+  font-weight: 700;
+  margin-left: 1px;
+}
+[data-theme="light"] .rv-item .rv-chord-name .rv-bass-hint,
+[data-theme="sakura"] .rv-item .rv-chord-name .rv-bass-hint,
+[data-theme="sunny"] .rv-item .rv-chord-name .rv-bass-hint,
+[data-theme="sky"] .rv-item .rv-chord-name .rv-bass-hint { color: rgb(27, 122, 40); }
+[data-theme="light"] .rv-item .rv-jianpu .rv-jp-bass,
+[data-theme="sakura"] .rv-item .rv-jianpu .rv-jp-bass,
+[data-theme="sunny"] .rv-item .rv-jianpu .rv-jp-bass,
+[data-theme="sky"] .rv-item .rv-jianpu .rv-jp-bass { color: #fff; background: rgb(46, 125, 50); }
