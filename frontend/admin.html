@@ -437,6 +437,11 @@
           <label style="font-size:12px; color:var(--text-dim); display:flex; align-items:center; gap:4px;" title="有人工校對資料的歌預設跳過；勾選後仍會修正並重新偵測（users/ 下的人工資料不會被刪）">
             <input type="checkbox" id="tuningForce" style="margin:0;"> 含人工資料
           </label>
+          <select id="tuningDirection" class="num-input" style="width:auto;" title="接近四分之一音（偏 45–50¢）的歌無法自動判斷該往哪個音靠；選方向後「修正 / 全部修正」也會處理這些歌。兩個方向都會變準，調性相差半音">
+            <option value="">四分音：跳過</option>
+            <option value="down">四分音：往下修</option>
+            <option value="up">四分音：往上修</option>
+          </select>
           <span id="tuningStatus" style="font-size:11px;color:var(--text-dim);"></span>
         </div>
         <div class="actions" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:6px;">
@@ -1642,7 +1647,8 @@ window._lcIsBeta = (function() {
     if (!confirm("將修改 NAS 上的原始音檔（原檔保留為 .bak）並重新偵測和弦，確定？")) return;
     const st = $("#tuningStatus");
     try {
-      const r = await _tuningPost("/api/admin/tuning/fix", { ...ident, force: $("#tuningForce").checked });
+      const r = await _tuningPost("/api/admin/tuning/fix", { ...ident, force: $("#tuningForce").checked,
+        direction: $("#tuningDirection").value || null });
       st.textContent = "已排入佇列…";
       _tuningPoll(r.id, st);
     } catch (e) { st.textContent = "失敗：" + e.message; }
@@ -1669,20 +1675,27 @@ window._lcIsBeta = (function() {
     const res = await fetch("/api/admin/tuning/scan/report");
     const rep = await res.json().catch(() => ({}));
     if (!res.ok) { st.textContent = rep.detail || "沒有報告"; return; }
+    const quarter = r => r.reason === "ambiguous_quarter_tone" && !r.corrected;
     const pending = rep.rows.filter(r => r.fixable && !r.corrected).length;
+    const nQuarter = rep.rows.filter(quarter).length;
     const lines = rep.rows.filter(r => Math.abs(r.offset_cents || 0) >= 10 || r.corrected).map(r =>
-      `${r.corrected ? "✔" : r.fixable ? "●" : "·"} ${_fmtCents(r.offset_cents)} ±${r.spread_cents}  `
+      `${r.corrected ? "✔" : r.fixable ? "●" : quarter(r) ? "◐" : "·"}${_fmtCents(r.offset_cents)} ±${r.spread_cents}  `
       + `${_tuningReason[r.reason] || r.reason}  ${r.path}`);
     out.textContent = `前綴「${rep.prefix || "(全部)"}」${rep.partial ? "（掃描中）" : ""}：`
-      + `已掃 ${rep.scanned}/${rep.total}，待修正 ${pending} 首\n● 可修正  ✔ 已修正  · 不處理\n\n`
+      + `已掃 ${rep.scanned}/${rep.total}，待修正 ${pending} 首`
+      + (nQuarter ? `，四分音 ${nQuarter} 首（選方向後可修正）` : "")
+      + `\n● 可修正  ◐ 四分音  ✔ 已修正  · 不處理\n\n`
       + (lines.join("\n") || "（沒有偏移 ≥10¢ 的歌）");
     out.style.display = "block";
   });
   $("#btnTuningBatchFix").addEventListener("click", async () => {
     const st = $("#tuningBatchStatus");
-    if (!confirm("修正報告中所有可修正的歌（修改 NAS 原檔，保留 .bak）？")) return;
+    const dir = $("#tuningDirection").value;
+    if (!confirm("修正報告中所有可修正的歌" + (dir ? `，含四分音歌（${dir === "down" ? "往下" : "往上"}修）` : "")
+      + "（修改 NAS 原檔，保留 .bak）？")) return;
     try {
-      const r = await _tuningPost("/api/admin/tuning/fix/batch", { force: $("#tuningForce").checked });
+      const r = await _tuningPost("/api/admin/tuning/fix/batch", { force: $("#tuningForce").checked,
+        direction: $("#tuningDirection").value || null });
       st.textContent = `已排入 ${r.queued} 首…`;
       clearInterval(_tuningPollTimer);
       _tuningPollTimer = setInterval(async () => {

@@ -4,7 +4,7 @@ All long work is enqueued (CLAUDE.md >5s rule); handlers only validate.
 """
 
 import os
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -21,6 +21,8 @@ class SongReq(BaseModel):
     path: Optional[str] = None
     hash: Optional[str] = None
     force: bool = False
+    # quarter-tone songs only: which grid note to land on (else skipped)
+    direction: Optional[Literal["down", "up"]] = None
 
 
 class ScanReq(BaseModel):
@@ -30,6 +32,7 @@ class ScanReq(BaseModel):
 class BatchFixReq(BaseModel):
     paths: Optional[list[str]] = None   # None -> every fixable row in the scan report
     force: bool = False
+    direction: Optional[Literal["down", "up"]] = None  # also takes quarter-tone rows
 
 
 def _path_of(req: SongReq) -> str:
@@ -70,7 +73,8 @@ def tuning_fix(req: SongReq, _: str = Depends(get_admin_user)):
     full = _check_audio(path)
     if os.path.exists(full + ".bak"):
         raise HTTPException(status_code=409, detail="already corrected (.bak exists); revert first")
-    return {"path": path, **tq.enqueue("fix", path, force=req.force)}
+    return {"path": path, **tq.enqueue("fix", path, force=req.force,
+                                         direction=req.direction or "")}
 
 
 @router.post("/revert")
@@ -88,7 +92,14 @@ def tuning_revert(req: SongReq, _: str = Depends(get_admin_user)):
 @router.post("/scan")
 def tuning_scan(req: ScanReq, _: str = Depends(get_admin_user)):
     """Batch scan every library track whose path starts with ``prefix``."""
-    return tq.enqueue("scan", req.prefix)
+    return tq.enqueue("scan", normalize_prefix(req.prefix))
+
+
+def normalize_prefix(prefix: str) -> str:
+    """Library paths are ``@N/a/b`` with forward slashes. A prefix pasted from
+    Explorer carries backslashes, and a CJK IME types the full-width ``＠`` —
+    either one made the startswith match zero tracks."""
+    return prefix.strip().replace("＠", "@").replace("\\", "/")
 
 
 @router.get("/scan/report")
@@ -110,8 +121,11 @@ def tuning_fix_batch(req: BatchFixReq, _: str = Depends(get_admin_user)):
             raise HTTPException(status_code=404, detail="no scan report; run a scan first")
         if rep.get("partial"):
             raise HTTPException(status_code=409, detail="scan still running")
-        paths = [r["path"] for r in rep["rows"] if r.get("fixable") and not r.get("corrected")]
-    jobs = [{"path": p, **tq.enqueue("fix", p, force=req.force)} for p in paths]
+        paths = [r["path"] for r in rep["rows"] if not r.get("corrected") and (
+            r.get("fixable")
+            or (req.direction and r.get("reason") == "ambiguous_quarter_tone"))]
+    jobs = [{"path": p, **tq.enqueue("fix", p, force=req.force, direction=req.direction or "")}
+            for p in paths]
     return {"queued": len(jobs), "jobs": jobs}
 
 

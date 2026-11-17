@@ -88,6 +88,22 @@ def analyze_tuning(audio_path: str) -> dict:
     return out
 
 
+def forced_correction_cents(offset_cents: float, direction: str) -> float:
+    """Correction for a quarter-tone song whose direction the admin chose.
+
+    The measured offset only says where the song sits between two grid
+    notes. "down" lowers it to the grid note below, "up" raises it to the
+    one above; the result is in tune either way, a semitone apart in key.
+    Return value uses correct_file's sign (> 0 = lower the pitch).
+    """
+    down = offset_cents % 100.0  # +49.7 -> 49.7, -48 -> 52
+    if direction == "down":
+        return round(down, 1)
+    if direction == "up":
+        return round(down - 100.0, 1)
+    raise ValueError(f"direction must be 'down' or 'up', got {direction!r}")
+
+
 def _copy_flac_tags(src: str, dst: str) -> None:
     from mutagen.flac import FLAC
     s, d = FLAC(src), FLAC(dst)

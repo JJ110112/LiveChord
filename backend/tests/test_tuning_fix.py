@@ -114,3 +114,34 @@ def test_stash_unstash_roundtrip_and_human_data(tmp_path, monkeypatch):
     (tmp_path / "users" / "hitea" / "chords").mkdir(parents=True)
     (tmp_path / "users" / "hitea" / "chords" / f"{h}.json").write_text("{}")
     assert tq.human_data_reasons(h) == ["user_chords:hitea"]
+
+
+def test_scan_prefix_accepts_ime_and_explorer_input():
+    # Admins paste folders from Explorer (backslashes) and type @ with a CJK
+    # IME (full-width ＠); library paths are "@N/a/b", so either used to make
+    # the scan match 0 tracks while the folder had songs.
+    from tuning_api import normalize_prefix
+    assert normalize_prefix(" ＠1/Relax\Album ") == "@1/Relax/Album"
+    assert normalize_prefix("@1/Relax/") == "@1/Relax/"
+
+
+def test_forced_direction_lands_on_the_chosen_grid_note():
+    # A quarter-tone song is equally close to two notes. "down" must always
+    # lower the pitch and "up" raise it (correct_file: > 0 = lower), each by
+    # the distance to that note — never the other way round, or the admin's
+    # chosen key would end up a semitone off from what they asked for.
+    assert td.forced_correction_cents(49.7, "down") == 49.7
+    assert td.forced_correction_cents(49.7, "up") == -50.3
+    assert td.forced_correction_cents(-48.0, "down") == 52.0   # flat 48 -> next note down
+    assert td.forced_correction_cents(-48.0, "up") == -48.0
+    with pytest.raises(ValueError):
+        td.forced_correction_cents(49.7, "sideways")
+
+
+def test_quarter_tone_song_is_refused_until_a_direction_is_given(tmp_path):
+    p = str(tmp_path / "hooked.flac")
+    _tone(p, 48)   # Hooked on Classics measures +47.8 / +49.7
+    a = td.analyze_tuning(p)
+    assert not a["fixable"] and a["reason"] == "ambiguous_quarter_tone"
+    td.correct_file(p, td.forced_correction_cents(a["offset_cents"], "down"))
+    assert abs(td.analyze_tuning(p)["offset_cents"]) < 5

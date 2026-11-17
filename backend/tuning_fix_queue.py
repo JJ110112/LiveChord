@@ -64,6 +64,7 @@ class _Record:
     kind: str                      # "fix" | "scan"
     path: str = ""                 # library path (fix) or prefix (scan)
     force: bool = False
+    direction: str = ""            # "down" | "up": admin's pick for quarter-tone songs
     status: str = QUEUED
     step: str = ""
     progress: int = 0
@@ -237,7 +238,14 @@ def _run_fix(rec: _Record):
         return
     rec.step = "analyzing"
     a = _get_pool().submit(_sub_analyze, full).result()
-    if not a["fixable"]:
+    from ai.tuning_detect import WRITABLE_EXTS, forced_correction_cents
+    cents = a["offset_cents"]
+    forced = (not a["fixable"] and a["reason"] == "ambiguous_quarter_tone"
+              and rec.direction in ("down", "up")
+              and os.path.splitext(full)[1].lower() in WRITABLE_EXTS)
+    if forced:
+        cents = forced_correction_cents(a["offset_cents"], rec.direction)
+    elif not a["fixable"]:
         rec.status, rec.result = SKIPPED, {"reason": a["reason"], "analysis": a}
         return
     human = human_data_reasons(h)
@@ -245,10 +253,11 @@ def _run_fix(rec: _Record):
         rec.status, rec.result = SKIPPED, {"reason": "human_data", "human": human, "analysis": a}
         return
     rec.step = "correcting"
-    c = _get_pool().submit(_sub_correct, full, a["offset_cents"]).result()
+    c = _get_pool().submit(_sub_correct, full, cents).result()
     rec.step = "stashing"
     stashed = _stash_derived(h)
-    meta = {"applied": True, "cents": a["offset_cents"], "spread": a["spread_cents"],
+    meta = {"applied": True, "cents": cents, "spread": a["spread_cents"],
+            "measured_cents": a["offset_cents"], "forced_direction": rec.direction if forced else None,
             "residual_cents": c.get("residual_cents"), "method": "resample_pitch_and_speed",
             "factor": round(c["factor"], 6), "backup": os.path.basename(c["backup"]),
             "duration_before": c["duration_before"], "duration_after": c["duration_after"],
@@ -257,7 +266,7 @@ def _run_fix(rec: _Record):
     det = _redetect(rec.path, full, meta)
     rec.result = {"analysis": a, "correction": meta, "stashed_files": stashed, "chords": det}
     logger.info("tuning-fix %s: %+.1f cents, residual %s, %d caches stashed",
-                rec.path, a["offset_cents"], c.get("residual_cents"), stashed)
+                rec.path, cents, c.get("residual_cents"), stashed)
 
 
 def _run_scan(rec: _Record):
@@ -330,12 +339,13 @@ def _evict():
         _jobs.pop(r.id, None)
 
 
-def enqueue(kind: str, path: str, force: bool = False) -> dict:
+def enqueue(kind: str, path: str, force: bool = False, direction: str = "") -> dict:
     with _lock:
         for r in _jobs.values():
             if r.kind == kind and r.path == path and r.status in (QUEUED, RUNNING):
                 return {"id": r.id, "status": "duplicate"}
-        rec = _Record(id=uuid.uuid4().hex[:10], kind=kind, path=path, force=force)
+        rec = _Record(id=uuid.uuid4().hex[:10], kind=kind, path=path, force=force,
+                      direction=direction or "")
         _jobs[rec.id] = rec
         _evict()
     _queue.put(rec.id)
