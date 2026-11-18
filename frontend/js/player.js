@@ -9271,7 +9271,18 @@
   function _followTarget() {
     const s = _fState;
     const elapsed = _fAnchorAge + (performance.now() - _fAnchorLocal) / 1000;
-    return s.t + elapsed * (s.rate || 1) + (s.latency_ms || 0) / 1000;
+    const t = s.t + elapsed * (s.rate || 1) + (s.latency_ms || 0) / 1000;
+    // Near the end the extrapolated playhead runs past the track before the
+    // leader's wrap/next-song post arrives. Seeking a FLAC to its very end
+    // kills Chrome's demuxer ("PTS is not defined") → media error → the
+    // 無法串流音訊 prompt. Wrap on single loop, otherwise stop short of the end.
+    const dur = audio.duration;
+    if (!Number.isFinite(dur) || dur <= 1 || t < dur - 0.25) return t;
+    return loopMode === "single" ? (t >= dur ? t % dur : 0) : dur - 0.25;
+  }
+  function _followClampEnd(t) {
+    const dur = audio.duration;
+    return Number.isFinite(dur) && dur > 1 ? Math.min(t, dur - 0.25) : t;
   }
   function _followSameSong(song) {
     if (!song) return true;
@@ -9372,7 +9383,8 @@
     if (s.paused || _fStale) {
       if (!audio.paused) audio.pause();
       audio.playbackRate = rate;
-      if (Math.abs(audio.currentTime - s.t) > 0.05) audio.currentTime = s.t;
+      const pt = _followClampEnd(s.t);
+      if (Math.abs(audio.currentTime - pt) > 0.05) audio.currentTime = pt;
       return;
     }
     const now = performance.now();
