@@ -2337,7 +2337,11 @@
   // player, which then takes over the following.
   (function _followFromHome() {
     let role = null;
-    try { role = localStorage.getItem("livechord_sync_role"); } catch {}
+    try {
+      // ?follow=1 (the PC speaker launcher, speaker.bat) makes this browser a speaker
+      if (new URLSearchParams(location.search).get("follow") === "1") localStorage.setItem("livechord_sync_role", "follower");
+      role = localStorage.getItem("livechord_sync_role");
+    } catch {}
     if (role !== "follower" || typeof EventSource === "undefined") return;
     const es = new EventSource("/api/sync/stream");
     es.onmessage = (e) => {
