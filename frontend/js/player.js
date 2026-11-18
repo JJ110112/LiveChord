@@ -9267,11 +9267,33 @@
   let _fAppliedKey = "";
   let _fSource = null;
   let _fOverlay = null;
+  // Wi-Fi delay only ever makes a leader post arrive late, so each post's
+  // implied "leader position at local time 0" is too low by its delay. The
+  // highest of the last few is the least-delayed and the one to follow; the
+  // latest alone scatters by 30-80 ms on the tablet and made the speaker
+  // change speed ~85 times a minute (heard as wobble).
+  let _fOffsets = [];
+  let _fNudging = false;
+  const _F_WINDOW = 10;
+
+  function _followNote(prev, s) {
+    const rate = s.rate || 1;
+    const o = s.t + (_fAnchorAge - _fAnchorLocal / 1000) * rate;
+    const reset = !prev || prev.paused !== s.paused || (prev.rate || 1) !== rate
+      || JSON.stringify(prev.song) !== JSON.stringify(s.song)
+      || (_fOffsets.length && Math.abs(o - Math.max(..._fOffsets)) > 0.25);   // a seek
+    if (reset) _fOffsets = [];
+    _fOffsets.push(o);
+    if (_fOffsets.length > _F_WINDOW) _fOffsets.shift();
+  }
 
   function _followTarget() {
     const s = _fState;
-    const elapsed = _fAnchorAge + (performance.now() - _fAnchorLocal) / 1000;
-    const t = s.t + elapsed * (s.rate || 1) + (s.latency_ms || 0) / 1000;
+    const rate = s.rate || 1;
+    const t = (_fOffsets.length
+      ? Math.max(..._fOffsets) + (performance.now() / 1000) * rate
+      : s.t + (_fAnchorAge + (performance.now() - _fAnchorLocal) / 1000) * rate)
+      + (s.latency_ms || 0) / 1000;
     // Near the end the extrapolated playhead runs past the track before the
     // leader's wrap/next-song post arrives. Seeking a FLAC to its very end
     // kills Chrome's demuxer ("PTS is not defined") → media error → the
@@ -9400,13 +9422,18 @@
     if (Math.abs(err) > 0.3) {
       audio.currentTime = _followTarget();
       audio.playbackRate = rate;
+      _fNudging = false;
       _fSeekUntil = now + 1000;
       return;
     }
     // Small drift: nudge the speed (pitch is preserved) instead of seeking,
-    // which would be heard as a skip.
-    const nudge = Math.abs(err) < 0.02 ? 0 : Math.max(-0.04, Math.min(0.04, err * 0.5));
-    audio.playbackRate = rate * (1 + nudge);
+    // which would be heard as a skip. Hysteresis: start past 40 ms, run at a
+    // fixed ±2 % until under 10 ms, then back to exactly 1.0×, so the rate
+    // changes rarely instead of every tick.
+    if (!_fNudging && Math.abs(err) > 0.04) _fNudging = true;
+    else if (_fNudging && Math.abs(err) < 0.01) _fNudging = false;
+    const want = rate * (_fNudging ? (err > 0 ? 1.02 : 0.98) : 1);
+    if (audio.playbackRate !== want) audio.playbackRate = want;
   }
   function _followStart() {
     if (_fSource) return;
@@ -9415,9 +9442,11 @@
       let m;
       try { m = JSON.parse(e.data); } catch { return; }
       if (m.type === "state" && m.state) {
+        const prev = _fState;
         _fState = m.state;
         _fAnchorLocal = performance.now();
         _fAnchorAge = Math.max(0, (m.server_now || 0) - (m.state.server_ts || 0));
+        _followNote(prev, m.state);
         _fStale = false;
         _followTick();
       } else if (m.type === "tick" && _fState) {
@@ -9428,6 +9457,8 @@
   function _followStop() {
     if (_fSource) { _fSource.close(); _fSource = null; }
     _fState = null;
+    _fOffsets = [];
+    _fNudging = false;
     _fAppliedKey = "";
     _followShowStart(false);
   }
