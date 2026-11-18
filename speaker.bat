@@ -33,7 +33,8 @@ if %N% geq 60 (
   echo LiveChord server not reachable at %URL% - opening anyway.
   goto run
 )
-timeout /t 3 /nobreak >nul
+REM ping, not timeout: timeout exits at once when there is no console
+ping -n 4 127.0.0.1 >nul
 goto wait
 
 :run
