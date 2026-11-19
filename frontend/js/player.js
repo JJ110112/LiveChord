@@ -734,7 +734,9 @@
       if (!this.ctx) {
         this.ctx = new (window.AudioContext || window.webkitAudioContext)();
         this.masterGain = this.ctx.createGain();
-        this.masterGain.gain.value = 0.5 * (this.spec.gainScalar || 1.0);
+        let _mixG = 1;
+        try { _mixG = _speechMusicGain(); } catch (_) {}   // 唸和弦 balance
+        this.masterGain.gain.value = 0.5 * (this.spec.gainScalar || 1.0) * _mixG;
         this.masterGain.connect(this.ctx.destination);
         if (this.spec.type === "sample") this._loadSamples();
       }
@@ -6187,7 +6189,7 @@
 
   volumeSlider.addEventListener("input", () => {
     const v = parseFloat(volumeSlider.value);
-    audio.volume = v;
+    audio.volume = v * _speechMusicGain();
     audio.muted = false;
     localStorage.setItem("livechord_volume", volumeSlider.value);
     if (btnMute) btnMute.classList.toggle("is-muted", v === 0);
@@ -6730,8 +6732,6 @@
     _speechLastIdx = -1;
     _speechLastName = null;
     if (_speaker) _speaker.cancel();
-    _duckToken++;
-    _duckMusic(false);
   }
   // Wall-clock seconds a chord sounds, counting split cards of the same
   // chord that follow it as one (C C C C on bar splits is one long C).
@@ -6783,31 +6783,28 @@
     // callout that is still talking when the next chord starts misleads.
     if (_speechDurAt(chords, i, pr) < 0.5) return;
     if (!plan) plan = _speechPlan(chords, i, pr);
-    const token = ++_duckToken;
-    _speaker.speak(plan.text, plan.lang, plan.rate, {
-      onstart: () => { if (token === _duckToken) _duckMusic(true); },
-      onend: () => { if (token === _duckToken) _duckMusic(false); },
-    });
-    // Some engines never fire onend; never leave the music ducked.
-    setTimeout(() => { if (token === _duckToken) _duckMusic(false); }, 3000);
+    _speaker.speak(plan.text, plan.lang, plan.rate, { volume: _speechVoiceGain() });
   }
-  // Speech volume cannot go above 1.0, so the music drops to 25 % while a
-  // chord is spoken. The song (<audio>) volume is lowered directly and put
-  // back through applyAudioMode() so Music / MIDI / Mix levels are restored
-  // exactly; the AI accompaniment ducks on each synth's master gain. iOS
-  // ignores <audio>.volume, so there only the accompaniment ducks.
-  const _DUCK = 0.25;
-  let _duckToken = 0;
-  let _ducked = false;
-  function _duckMusic(on) {
-    if (on === _ducked) return;
-    _ducked = on;
-    if (on) audio.volume = audio.volume * _DUCK;
-    else applyAudioMode();
+  // 音樂 ↔ 語音 balance (crossfader, like Music ↔ MIDI): centre = both at
+  // full level; toward 語音 the music sits at a FIXED lower level (no
+  // pumping on every callout); toward 音樂 the voice gets softer. Speech
+  // volume cannot go above 1.0, so lowering the music is the only way to
+  // make the voice stand out. Only applies while 唸和弦 is on. iOS ignores
+  // <audio>.volume, so there only the AI accompaniment follows the slider.
+  let _speechMix = parseFloat(localStorage.getItem("livechord_chord_speech_mix"));
+  if (!(_speechMix >= 0 && _speechMix <= 1)) _speechMix = 0.6;
+  function _speechMusicGain() {
+    return _speechMode === "off" ? 1 : Math.min(1, 2 * (1 - _speechMix));
+  }
+  function _speechVoiceGain() {
+    return Math.min(1, 2 * _speechMix);
+  }
+  function _applySpeechMix() {
+    applyAudioMode();   // song level goes through _setSourceVolume
+    const g = _speechMusicGain();
     for (const s of Object.values(_synthCache)) {
       if (!s.ctx || !s.masterGain) continue;
-      const base = 0.5 * (s.spec.gainScalar || 1.0);
-      s.masterGain.gain.setTargetAtTime(on ? base * _DUCK : base, s.ctx.currentTime, on ? 0.03 : 0.12);
+      s.masterGain.gain.setTargetAtTime(0.5 * (s.spec.gainScalar || 1.0) * g, s.ctx.currentTime, 0.05);
     }
   }
   function _syncChordSpeechUI() {
@@ -6817,6 +6814,10 @@
     if (btn) btn.setAttribute("aria-pressed", _speechMode === "off" ? "false" : "true");
     const row = document.getElementById("chordSpeechLeadRow");
     if (row) row.style.display = _speechMode === "off" ? "none" : "";
+    const mrow = document.getElementById("chordSpeechMixRow");
+    if (mrow) mrow.style.display = _speechMode === "off" ? "none" : "";
+    const msl = document.getElementById("chordSpeechMix");
+    if (msl) msl.value = _speechMix;
     const rrow = document.getElementById("chordSpeechRateRow");
     if (rrow) rrow.style.display = _speechMode === "off" ? "none" : "";
     const rval = document.getElementById("chordSpeechRateVal");
@@ -6850,6 +6851,7 @@
       try { localStorage.setItem("livechord_chord_speech", _speechMode); } catch (_) {}
       _chordSpeechReset();
       _syncChordSpeechUI();
+      _applySpeechMix();
     });
   }
   const btnChordSpeechVoice = $("#btnChordSpeechVoice");
@@ -6870,6 +6872,15 @@
       const on = key === "auto" ? _speechAuto : _speechShorten;
       try { localStorage.setItem("livechord_chord_speech_" + key, on ? "true" : "false"); } catch (_) {}
       _syncChordSpeechUI();
+    });
+  }
+  const chordSpeechMix = $("#chordSpeechMix");
+  if (chordSpeechMix) {
+    chordSpeechMix.addEventListener("input", () => {
+      _speechMix = parseFloat(chordSpeechMix.value);
+      if (!(_speechMix >= 0 && _speechMix <= 1)) _speechMix = 0.6;
+      try { localStorage.setItem("livechord_chord_speech_mix", String(_speechMix)); } catch (_) {}
+      _applySpeechMix();
     });
   }
   const chordSpeechRate = $("#chordSpeechRate");
@@ -9337,7 +9348,7 @@
   } catch {}
 
   function _setSourceVolume(vol01) {
-      audio.volume = Math.max(0, Math.min(1, vol01));
+      audio.volume = Math.max(0, Math.min(1, vol01 * _speechMusicGain()));
   }
 
   function applyAudioMode() {

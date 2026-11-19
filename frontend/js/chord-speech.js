@@ -217,9 +217,8 @@
           synth.speak(u);
         } catch (_) {}
       },
-      // hooks.onstart / hooks.onend let the player duck the music while the
-      // voice talks (speech volume tops out at 1.0, so the music must drop).
-      // onend also fires when the utterance is cut off or fails.
+      // hooks.volume = voice level 0–1 (player's 音樂 ↔ 語音 balance);
+      // hooks.onstart / onend are optional (onend also fires on cut-off).
       speak(text, lang, rate, hooks) {
         if (!synth || !text) return;
         const h = hooks || {};
@@ -231,7 +230,7 @@
           if (v) u.voice = v;
           u.lang = v ? v.lang : (lang === "en" ? "en-US" : "zh-TW");
           u.rate = rate || 1.0;
-          u.volume = 1;
+          u.volume = h.volume != null ? Math.max(0, Math.min(1, h.volume)) : 1;
           if (h.onstart) u.onstart = h.onstart;
           if (h.onend) { u.onend = h.onend; u.onerror = h.onend; }
           synth.speak(u);

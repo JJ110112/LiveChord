@@ -22,7 +22,7 @@
        load before any /api/ call so anon X-Anon-Id is injected from the
        first request. Replaces the inline blind-redirect block. -->
   <script src="/js/auth.js?v=7"></script>
-  <script src="/js/i18n.js?v=73"></script>
+  <script src="/js/i18n.js?v=74"></script>
   <script src="/js/analytics.js?v=3"></script>
 </head>
 <body>
@@ -874,6 +874,12 @@
         <input id="chordSpeechLead" type="range" min="0" max="1500" step="50" value="400">
         <span id="chordSpeechLeadVal" class="sync-latency-val">400 ms</span>
       </label>
+      <label id="chordSpeechMixRow" class="sync-latency-row" style="display:none">
+        <span data-i18n="player.tools.speech_mix_music">Music</span>
+        <input id="chordSpeechMix" type="range" min="0" max="1" step="0.05" value="0.6"
+               data-i18n-attr="title=player.tools.speech_mix_title" title="Music / voice balance">
+        <span data-i18n="player.tools.speech_mix_voice">Voice</span>
+      </label>
       <label id="chordSpeechRateRow" class="sync-latency-row" style="display:none">
         <span data-i18n="player.tools.speech_rate">Speech rate</span>
         <input id="chordSpeechRate" type="range" min="0.7" max="1.6" step="0.05" value="1">
@@ -1013,8 +1019,8 @@
      duplicate block was removed. -->
 <script src="/js/scale-lab.js?v=3"></script>
 <script src="/js/improv-hints.js?v=3"></script>
-<script src="/js/chord-speech.js?v=4"></script>
-<script src="/js/player.js?v=402"></script>
+<script src="/js/chord-speech.js?v=5"></script>
+<script src="/js/player.js?v=403"></script>
 <script>
   // Toolbar gear theme picker — mirrors the homepage gear handler so the
   // user's theme choice is honored on either entry point. Active state on
