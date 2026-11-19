@@ -22,7 +22,7 @@
        load before any /api/ call so anon X-Anon-Id is injected from the
        first request. Replaces the inline blind-redirect block. -->
   <script src="/js/auth.js?v=7"></script>
-  <script src="/js/i18n.js?v=69"></script>
+  <script src="/js/i18n.js?v=70"></script>
   <script src="/js/analytics.js?v=3"></script>
 </head>
 <body>
@@ -849,6 +849,16 @@
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>
         <span id="btnToggleImprovHintsLabel" data-i18n="player.tools.improv_off">Improv hints: Off</span>
       </button>
+      <button id="btnChordSpeech" class="tb-popup-btn" type="button"
+              data-i18n-attr="title=player.tools.speech_title" title="Speak each chord just before it starts" aria-pressed="false">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg>
+        <span id="btnChordSpeechLabel" data-i18n="player.tools.speech_off">Speak chords: Off</span>
+      </button>
+      <label id="chordSpeechLeadRow" class="sync-latency-row" style="display:none">
+        <span data-i18n="player.tools.speech_lead">Say it early</span>
+        <input id="chordSpeechLead" type="range" min="0" max="1500" step="50" value="400">
+        <span id="chordSpeechLeadVal" class="sync-latency-val">400 ms</span>
+      </label>
       <button id="btnSyncRole" class="tb-popup-btn" type="button"
               data-i18n-attr="title=player.tools.sync_title" title="Sync with another device" aria-pressed="false">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="13" height="10" rx="1"/><rect x="17" y="8" width="5" height="12" rx="1"/><path d="M6 18h5"/></svg>
@@ -983,7 +993,8 @@
      duplicate block was removed. -->
 <script src="/js/scale-lab.js?v=3"></script>
 <script src="/js/improv-hints.js?v=3"></script>
-<script src="/js/player.js?v=395"></script>
+<script src="/js/chord-speech.js?v=1"></script>
+<script src="/js/player.js?v=397"></script>
 <script>
   // Toolbar gear theme picker — mirrors the homepage gear handler so the
   // user's theme choice is honored on either entry point. Active state on

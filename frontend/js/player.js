@@ -6023,6 +6023,7 @@
       _updateProgress(t);
       _updateDynamicBpmLabel(t);
       updateActiveChord(t);
+      _chordSpeechTick(t);
       _updateBeatDots(t);
       _updateKeyDisplay(t);
       if (activeTab === "piano") {
@@ -6044,6 +6045,7 @@
 
   audio.addEventListener("pause", () => {
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    _chordSpeechReset();
     const t = audio.currentTime;
     _updateProgress(t);
     _updateDynamicBpmLabel(t);
@@ -6058,6 +6060,7 @@
     _updateProgress(t);
     _updateDynamicBpmLabel(t);
     _updateKeyDisplay(t); // key badge + scale panel follow a paused scrub too
+    _chordSpeechReset();  // after a jump, say the chord we landed on
     // forceScroll=true so rewind-to-start (and any scrub) re-centers the
     // ribbon even when paused. The default _isAnyPlaying gate suppresses
     // scrolling on a paused player which is correct for pause-without-seek
@@ -6075,6 +6078,9 @@
   // dragging the progress bar at a slow pace, which fires timeupdate but
   // not seeked between snaps).
   audio.addEventListener("timeupdate", () => {
+    // Chord callouts keep going when the tab is hidden (RAF stops there,
+    // timeupdate still fires ~4×/s); same index guard, so never doubled.
+    if (!audio.paused) _chordSpeechTick(audio.currentTime || 0);
     if (audio.paused && typeof _updateScore === "function") {
       _updateScore(audio.currentTime || 0);
     }
@@ -6689,6 +6695,88 @@
     });
   }
   _applyJianpuVisibility();
+
+  // Tools → 唸和弦: off → name ("降B 小七") → degree ("六級小", same 1 as 首調
+  // jianpu). Says each chord `lead` ms before it starts so the word lands on
+  // the change; repeated cards of the same chord (bar splits) are not
+  // re-announced, and a chord too short to say is skipped.
+  const _SPEECH_MODES = ["off", "name", "degree"];
+  const _speaker = window.ChordSpeech ? window.ChordSpeech.createSpeaker() : null;
+  let _speechMode = localStorage.getItem("livechord_chord_speech") || "off";
+  if (!_SPEECH_MODES.includes(_speechMode) || !(_speaker && _speaker.supported)) _speechMode = "off";
+  let _speechLeadMs = parseInt(localStorage.getItem("livechord_chord_speech_lead_ms"), 10);
+  if (!(_speechLeadMs >= 0)) _speechLeadMs = 400;
+  let _speechLastIdx = -1;
+  let _speechLastName = null;
+  function _chordSpeechReset() {
+    _speechLastIdx = -1;
+    _speechLastName = null;
+    if (_speaker) _speaker.cancel();
+  }
+  function _chordSpeechTick(t) {
+    if (_speechMode === "off") return;
+    const chords = _displayChords();
+    const rate = audio.playbackRate || 1;
+    const ahead = t + (_speechLeadMs / 1000) * rate;  // lead is wall-clock ms
+    let i = -1;
+    for (let k = chords.length - 1; k >= 0; k--) {
+      if (ahead >= chords[k].time) { i = k; break; }
+    }
+    if (i < 0 || i === _speechLastIdx) return;
+    _speechLastIdx = i;
+    const c = chords[i];
+    const name = _displayChordName(c.chord);
+    if (name === _speechLastName) return;
+    _speechLastName = name;
+    // Skip chords shorter than ~0.5 s of real time (passing chords): a
+    // callout that is still talking when the next chord starts misleads.
+    const end = c.end != null ? c.end : (chords[i + 1] ? chords[i + 1].time : c.time + 2);
+    if ((end - c.time) / rate < 0.5) return;
+    const lang = (window.LiveChordI18n && window.LiveChordI18n.getLang() || "").startsWith("zh") ? "zh" : "en";
+    const text = window.ChordSpeech.spokenText(name, {
+      lang, mode: _speechMode, key: _jianpuKeyAt(c.time),
+    });
+    _speaker.speak(text, lang);
+  }
+  function _syncChordSpeechUI() {
+    const lab = document.getElementById("btnChordSpeechLabel");
+    if (lab) lab.textContent = _t("player.tools.speech_" + _speechMode);
+    const btn = document.getElementById("btnChordSpeech");
+    if (btn) btn.setAttribute("aria-pressed", _speechMode === "off" ? "false" : "true");
+    const row = document.getElementById("chordSpeechLeadRow");
+    if (row) row.style.display = _speechMode === "off" ? "none" : "";
+    const val = document.getElementById("chordSpeechLeadVal");
+    if (val) val.textContent = `${_speechLeadMs} ms`;
+    const sl = document.getElementById("chordSpeechLead");
+    if (sl) sl.value = _speechLeadMs;
+  }
+  const btnChordSpeech = $("#btnChordSpeech");
+  if (btnChordSpeech) {
+    btnChordSpeech.addEventListener("click", () => {
+      if (!(_speaker && _speaker.supported)) { showToast(_t("toast.speech.unsupported"), 4000); return; }
+      _speaker.unlock();
+      _speechMode = _SPEECH_MODES[(_SPEECH_MODES.indexOf(_speechMode) + 1) % _SPEECH_MODES.length];
+      try { localStorage.setItem("livechord_chord_speech", _speechMode); } catch (_) {}
+      _chordSpeechReset();
+      _syncChordSpeechUI();
+    });
+  }
+  const chordSpeechLead = $("#chordSpeechLead");
+  if (chordSpeechLead) {
+    chordSpeechLead.addEventListener("input", () => {
+      _speechLeadMs = parseInt(chordSpeechLead.value, 10) || 0;
+      try { localStorage.setItem("livechord_chord_speech_lead_ms", String(_speechLeadMs)); } catch (_) {}
+      _syncChordSpeechUI();
+    });
+  }
+  // A stored "on" from an earlier visit still needs one tap before iOS lets
+  // the page speak; any tap (usually Play) unlocks it.
+  document.addEventListener("pointerdown", () => {
+    if (_speechMode !== "off" && _speaker) _speaker.unlock();
+  }, { capture: true });
+  _syncChordSpeechUI();
+  document.addEventListener("livechord:langchange", _syncChordSpeechUI);
+  document.addEventListener("livechord:i18nready", _syncChordSpeechUI);
 
   function _syncImprovHintsBtn() {
     const lab = document.getElementById("btnToggleImprovHintsLabel");
