@@ -1,4 +1,4 @@
-// progression-library.js v5
+// progression-library.js v6
 // A curated library of classic chord progressions grouped by style.
 // Mirrors the Ambient Mode pattern (collapsible homepage section, Tone.js
 // loop playback, localStorage favorites) but plays *named* progressions the
@@ -508,6 +508,9 @@
     bpmVal: document.getElementById("proglibBpmVal"),
     beats: document.getElementById("proglibBeats"),
     vol: document.getElementById("proglibVol"),
+    speech: document.getElementById("proglibSpeech"),
+    speechVoice: document.getElementById("proglibSpeechVoice"),
+    speechMix: document.getElementById("proglibSpeechMix"),
     accMode: document.getElementById("proglibAccMode"),
     accStyle: document.getElementById("proglibAccStyle"),
     accLevel: document.getElementById("proglibAccLevel"),
@@ -617,6 +620,7 @@
     ensureAmbientControls();
     populateControls();
     bindEvents();
+    bindSpeechEvents();
     rebuild();
     renderFavorites();
     syncCollapseUi();
@@ -1717,8 +1721,120 @@
     }
   }
 
+  // ---- 唸和弦 (spoken chord callouts) --------------------------------------
+  // Same module and the same localStorage settings as the player's Tools →
+  // 唸和弦, so mode / 念法 / 語速 / 依曲速自動 / 快和弦縮寫 / 音樂↔語音 set on
+  // either page apply to both. The loop knows every chord change ahead of
+  // time, so each callout is scheduled exactly `lead` before its chord.
+  const SPEECH_MODES = ["off", "name", "degree"];
+  const SPEECH_VOICES = ["zh-short", "zh-full", "en"];
+  const speaker = window.ChordSpeech ? window.ChordSpeech.createSpeaker() : null;
+  let speechTimers = [];
+  function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch {} }
+  function speechMode() {
+    const m = lsGet("livechord_chord_speech");
+    return speaker && speaker.supported && SPEECH_MODES.includes(m) ? m : "off";
+  }
+  function speechVoice() {
+    const v = lsGet("livechord_chord_speech_voice");
+    if (SPEECH_VOICES.includes(v)) return v;
+    const lang = (window.LiveChordI18n && window.LiveChordI18n.getLang()) || "zh";
+    return lang.startsWith("zh") ? "zh-short" : "en";
+  }
+  function speechMix() {
+    const m = parseFloat(lsGet("livechord_chord_speech_mix"));
+    return m >= 0 && m <= 1 ? m : 0.6;
+  }
+  // Music level under the 音樂 ↔ 語音 balance (1 when 唸和弦 is off).
+  function speechMusicGain() {
+    return speechMode() === "off" ? 1 : Math.min(1, 2 * (1 - speechMix()));
+  }
+  function applyOutputLevel() {
+    if (!outputGain) return;
+    const now = window.Tone ? window.Tone.now() : 0;
+    outputGain.gain.rampTo(state.volume * speechMusicGain(), 0.08, now);
+  }
+  // Library names use ♭ / ♯ / m(maj7); the speech module reads b / # / mMaj7.
+  function speechChordName(ch) {
+    return String(ch.displayName || ch.name || "").replace(/♭/g, "b").replace(/♯/g, "#").replace("m(maj7)", "mMaj7");
+  }
+  function clearSpeech() {
+    speechTimers.forEach(clearTimeout);
+    speechTimers = [];
+    if (speaker) speaker.cancel();
+  }
+  // Say chord `idx` at its start, `inMs` from now. durSec / prevDurSec are
+  // wall-clock lengths; repeats of the same chord count as one long chord
+  // and are not re-announced.
+  function scheduleSpeech(idx, inMs, chordSec) {
+    const mode = speechMode();
+    const n = state.chords.length;
+    if (mode === "off" || !n) return;
+    const name = speechChordName(state.chords[idx]);
+    const prev = speechChordName(state.chords[(idx - 1 + n) % n]);
+    if (n > 1 && name === prev) return;
+    let run = 1;
+    while (run < n && speechChordName(state.chords[(idx + run) % n]) === name) run++;
+    const durSec = chordSec * run;
+    if (durSec < 0.5) return;
+    const voice = speechVoice();
+    const lang = voice === "en" ? "en" : "zh";
+    const rate = parseFloat(lsGet("livechord_chord_speech_rate"));
+    const lead = parseInt(lsGet("livechord_chord_speech_lead_ms"), 10);
+    const plan = window.ChordSpeech.planCallout({
+      chord: name, lang, style: voice === "zh-full" ? "full" : "short",
+      mode, key: state.keyName, durSec, prevDurSec: chordSec,
+      baseRate: rate >= 0.7 && rate <= 1.6 ? rate : 1.0,
+      baseLeadSec: (lead >= 0 ? lead : 400) / 1000,
+      auto: lsGet("livechord_chord_speech_auto") !== "false",
+      shorten: lsGet("livechord_chord_speech_shorten") !== "false",
+    });
+    if (!plan.text) return;
+    const vol = Math.min(1, 2 * speechMix());
+    const t = setTimeout(() => {
+      speechTimers = speechTimers.filter((x) => x !== t);
+      speaker.speak(plan.text, lang, plan.rate, { volume: vol });
+    }, Math.max(0, inMs - plan.leadSec * 1000));
+    speechTimers.push(t);
+  }
+  function syncSpeechUi() {
+    const mode = speechMode();
+    if (refs.speech) refs.speech.value = mode;
+    if (refs.speechVoice) refs.speechVoice.value = speechVoice();
+    if (refs.speechMix) refs.speechMix.value = String(speechMix());
+    ROOT.querySelectorAll(".proglib-field-speech").forEach((el) => { el.style.display = mode === "off" ? "none" : ""; });
+  }
+  function bindSpeechEvents() {
+    if (!refs.speech) return;
+    if (!(speaker && speaker.supported)) { refs.speech.disabled = true; refs.speech.title = "這個瀏覽器不支援語音朗讀"; }
+    refs.speech.addEventListener("change", () => {
+      if (speaker) speaker.unlock();   // iOS: speech must start inside a tap
+      lsSet("livechord_chord_speech", refs.speech.value);
+      clearSpeech();
+      syncSpeechUi();
+      applyOutputLevel();
+      restartLoopIfActive(false);
+    });
+    refs.speechVoice.addEventListener("change", () => {
+      lsSet("livechord_chord_speech_voice", refs.speechVoice.value);
+    });
+    refs.speechMix.addEventListener("input", () => {
+      lsSet("livechord_chord_speech_mix", refs.speechMix.value);
+      applyOutputLevel();
+    });
+    syncSpeechUi();
+  }
+
   // ---- playback ----
   function isLooping() { return !!loopTimer || aiActive; }
+
+  // One chord per tick in basic mode. Restored: 5f1d320d removed it while
+  // keeping the call in startLoop, so basic playback threw on every start.
+  function loopIntervalMs() {
+    const safeBpm = clamp(state.bpm || 100, 40, 180);
+    return Math.max(450, Math.round((60 / safeBpm) * 1000 * state.beats));
+  }
 
   async function toggleLoop() {
     if (isLooping()) { stopLoop(true); return; }
@@ -1735,14 +1851,17 @@
       if (ok) { syncPlayUi(); if (announce) showToastSafe(`AI 伴奏循環中 · ${state.accStyle}`); return; }
       // fall through to basic playback when the generator refused the progression
     }
-    if (playNow) await playChord(state.activeIndex);
     const periodMs = loopIntervalMs();
+    if (speaker) speaker.unlock();
+    if (playNow) { scheduleSpeech(state.activeIndex, 0, periodMs / 1000); await playChord(state.activeIndex); }
+    scheduleSpeech((state.activeIndex + 1) % state.chords.length, periodMs, periodMs / 1000);
     loopTimer = setInterval(async () => {
       if (loopBusy || !state.chords.length) return;
       loopBusy = true;
       try {
         state.activeIndex = (state.activeIndex + 1) % state.chords.length;
         renderRibbon();
+        scheduleSpeech((state.activeIndex + 1) % state.chords.length, periodMs, periodMs / 1000);
         await playChord(state.activeIndex);
       } finally {
         loopBusy = false;
@@ -1755,6 +1874,7 @@
   function stopLoop(announce) {
     if (loopTimer) { clearInterval(loopTimer); loopTimer = null; }
     loopBusy = false;
+    clearSpeech();
     if (aiActive || aiTicker) {
       aiActive = false;
       aiToken++;
@@ -1845,6 +1965,8 @@
       while (S.chIdx < S.chords.length && S.passStart + S.chords[S.chIdx].time < horizon) {
         const i = S.chIdx;
         const at = S.passStart + S.chords[i].time;
+        const nextT = i + 1 < S.chords.length ? S.chords[i + 1].time : S.loop;
+        scheduleSpeech(i % Math.max(1, state.chords.length), (at - now) * 1000, Math.max(0, nextT - S.chords[i].time));
         aiTimers.push(setTimeout(() => {
           if (token !== aiToken) return;
           state.activeIndex = i % Math.max(1, state.chords.length);
@@ -1894,7 +2016,7 @@
     try {
       await T.start();
       if (!outputGain) {
-        outputGain = new T.Gain(state.volume).toDestination();
+        outputGain = new T.Gain(state.volume * speechMusicGain()).toDestination();
         reverb = new T.Reverb({ decay: 3.2, wet: 0.22 }).connect(outputGain);
       }
       if (synth) { try { synth.releaseAll && synth.releaseAll(); synth.dispose(); } catch {} synth = null; }
@@ -2138,10 +2260,7 @@
     const safePct = clamp(Math.round(Number(pct) || 0), 0, 100);
     state.volume = safePct / 100;
     refs.volVal.textContent = String(safePct);
-    if (outputGain) {
-      const now = window.Tone ? window.Tone.now() : 0;
-      outputGain.gain.rampTo(state.volume, 0.08, now);
-    }
+    applyOutputLevel();
     if (persist) { try { localStorage.setItem(VOLUME_KEY, String(safePct)); } catch {} }
   }
 

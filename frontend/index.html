@@ -184,6 +184,26 @@
           <span>音量 <b id="proglibVolVal">70</b>%</span>
           <input id="proglibVol" type="range" min="0" max="100" step="1" value="70">
         </label>
+        <label class="proglib-field" title="每個和弦開始前唸出它；設定與 player 工具 → 唸和弦共用">
+          <span>唸和弦</span>
+          <select id="proglibSpeech">
+            <option value="off">關</option>
+            <option value="name">和弦名</option>
+            <option value="degree">級數</option>
+          </select>
+        </label>
+        <label class="proglib-field proglib-field-speech">
+          <span>念法</span>
+          <select id="proglibSpeechVoice">
+            <option value="zh-short">中文精簡（G 半減七）</option>
+            <option value="zh-full">中文對照（G 小七降五）</option>
+            <option value="en">English</option>
+          </select>
+        </label>
+        <label class="proglib-field proglib-field-speech" title="中間＝兩者原音量；往語音拉，音樂固定降低">
+          <span>音樂 ↔ 語音</span>
+          <input id="proglibSpeechMix" type="range" min="0" max="1" step="0.05" value="0.6">
+        </label>
         <label class="proglib-field">
           <span>演奏方式</span>
           <select id="proglibAccMode">
@@ -906,7 +926,8 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 </script>
 
 <script src="https://unpkg.com/tone@14.8.49/build/Tone.js" defer></script>
-    <script src="/js/progression-library.js?v=44"></script>
+    <script src="/js/chord-speech.js?v=6"></script>
+    <script src="/js/progression-library.js?v=46"></script>
   <script src="/js/scale-lab.js?v=3"></script>
   <script src="/js/trends-explorer.js?v=1"></script>
 <script src="/js/app.js?v=137"></script>
