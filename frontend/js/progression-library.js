@@ -525,6 +525,8 @@
     volVal: document.getElementById("proglibVolVal"),
     collapseBtn: document.getElementById("proglibCollapseBtn"),
     playBtn: document.getElementById("proglibPlayBtn"),
+    playBtn2: document.getElementById("proglibPlayBtn2"),
+    playBtn2Label: document.getElementById("proglibPlayBtn2Label"),
     randomBtn: document.getElementById("proglibRandomBtn"),
     favBtn: document.getElementById("proglibFavBtn"),
     body: document.getElementById("proglibBody"),
@@ -1005,6 +1007,7 @@
       });
     }
     if (refs.playBtn) refs.playBtn.addEventListener("click", toggleLoop);
+    if (refs.playBtn2) refs.playBtn2.addEventListener("click", toggleLoop);
     window.addEventListener("beforeunload", () => stopLoop(false));
   }
 
@@ -2231,11 +2234,14 @@
   }
 
   function syncPlayUi() {
-    if (!refs.playBtn) return;
     const active = isLooping();
-    refs.playBtn.classList.toggle("is-active", active);
-    refs.playBtn.setAttribute("title", active ? "停止" : "循環播放");
-    refs.playBtn.setAttribute("aria-label", active ? "Stop" : "Loop playback");
+    for (const b of [refs.playBtn, refs.playBtn2]) {
+      if (!b) continue;
+      b.classList.toggle("is-active", active);
+      b.setAttribute("title", active ? "停止" : "循環播放");
+      b.setAttribute("aria-label", active ? "Stop" : "Loop playback");
+    }
+    if (refs.playBtn2Label) refs.playBtn2Label.textContent = active ? "停止" : "循環播放";
   }
 
   // ---- persistence ----

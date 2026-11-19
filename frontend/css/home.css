@@ -752,8 +752,19 @@
   border-color: var(--accent-dim) !important;
 }
 .pl-icon { width: 18px; height: 18px; }
-#proglibPlayBtn.is-active .pl-ico-play { display: none; }
-#proglibPlayBtn.is-active .pl-ico-pause { display: inline-block !important; }
+#proglibPlayBtn.is-active .pl-ico-play,
+#proglibPlayBtn2.is-active .pl-ico-play { display: none; }
+#proglibPlayBtn.is-active .pl-ico-pause,
+#proglibPlayBtn2.is-active .pl-ico-pause { display: inline-block !important; }
+.proglib-ribbon-bar {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.proglib-ribbon-bar #proglibPlayBtn2 { width: 44px !important; height: 44px !important; flex: 0 0 auto; }
+.proglib-ribbon-bar-label { font-size: 13px; color: var(--text-dim); }
+.proglib-ribbon-bar + .proglib-ribbon { margin-top: 10px; }
 
 .proglib-controls {
   margin-top: 14px;

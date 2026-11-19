@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=24">
-  <link rel="stylesheet" href="/css/home.css?v=79">
+  <link rel="stylesheet" href="/css/home.css?v=80">
 
   <link rel="stylesheet" href="/css/help.css?v=10">
   <link rel="stylesheet" href="/css/tutorial.css?v=1">
@@ -257,6 +257,15 @@
           <span>音色</span>
           <select id="proglibSound"></select>
         </label>
+      </div>
+      <!-- Second play/stop next to the chord cards: on phones the controls
+           above are long, so the head button is a scroll away from the cards. -->
+      <div class="proglib-ribbon-bar">
+        <button id="proglibPlayBtn2" class="proglib-btn proglib-play-btn" type="button" title="循環播放" aria-label="Loop playback">
+          <svg class="pl-icon pl-ico-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+          <svg class="pl-icon pl-ico-pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:none"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+        </button>
+        <span id="proglibPlayBtn2Label" class="proglib-ribbon-bar-label">循環播放</span>
       </div>
       <div id="proglibRibbon" class="proglib-ribbon" aria-label="Progression chord cards"></div>
       <div id="proglibDesc" class="proglib-desc"></div>
@@ -949,7 +958,7 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 
 <script src="https://unpkg.com/tone@14.8.49/build/Tone.js" defer></script>
     <script src="/js/chord-speech.js?v=6"></script>
-    <script src="/js/progression-library.js?v=47"></script>
+    <script src="/js/progression-library.js?v=48"></script>
   <script src="/js/scale-lab.js?v=3"></script>
   <script src="/js/trends-explorer.js?v=1"></script>
 <script src="/js/app.js?v=137"></script>
