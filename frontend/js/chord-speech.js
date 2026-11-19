@@ -166,8 +166,12 @@
           synth.speak(u);
         } catch (_) {}
       },
-      speak(text, lang, rate) {
+      // hooks.onstart / hooks.onend let the player duck the music while the
+      // voice talks (speech volume tops out at 1.0, so the music must drop).
+      // onend also fires when the utterance is cut off or fails.
+      speak(text, lang, rate, hooks) {
         if (!synth || !text) return;
+        const h = hooks || {};
         try {
           synth.cancel();        // only the newest callout matters
           if (synth.paused) synth.resume();
@@ -176,8 +180,11 @@
           if (v) u.voice = v;
           u.lang = v ? v.lang : (lang === "en" ? "en-US" : "zh-TW");
           u.rate = rate || 1.2;
+          u.volume = 1;
+          if (h.onstart) u.onstart = h.onstart;
+          if (h.onend) { u.onend = h.onend; u.onerror = h.onend; }
           synth.speak(u);
-        } catch (_) {}
+        } catch (_) { if (h.onend) h.onend(); }
       },
       cancel() { try { if (synth) synth.cancel(); } catch (_) {} },
     };

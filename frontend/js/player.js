@@ -6712,6 +6712,8 @@
     _speechLastIdx = -1;
     _speechLastName = null;
     if (_speaker) _speaker.cancel();
+    _duckToken++;
+    _duckMusic(false);
   }
   function _chordSpeechTick(t) {
     if (_speechMode === "off") return;
@@ -6736,7 +6738,32 @@
     const text = window.ChordSpeech.spokenText(name, {
       lang, mode: _speechMode, key: _jianpuKeyAt(c.time),
     });
-    _speaker.speak(text, lang);
+    const token = ++_duckToken;
+    _speaker.speak(text, lang, 1.2, {
+      onstart: () => { if (token === _duckToken) _duckMusic(true); },
+      onend: () => { if (token === _duckToken) _duckMusic(false); },
+    });
+    // Some engines never fire onend; never leave the music ducked.
+    setTimeout(() => { if (token === _duckToken) _duckMusic(false); }, 3000);
+  }
+  // Speech volume cannot go above 1.0, so the music drops to 25 % while a
+  // chord is spoken. The song (<audio>) volume is lowered directly and put
+  // back through applyAudioMode() so Music / MIDI / Mix levels are restored
+  // exactly; the AI accompaniment ducks on each synth's master gain. iOS
+  // ignores <audio>.volume, so there only the accompaniment ducks.
+  const _DUCK = 0.25;
+  let _duckToken = 0;
+  let _ducked = false;
+  function _duckMusic(on) {
+    if (on === _ducked) return;
+    _ducked = on;
+    if (on) audio.volume = audio.volume * _DUCK;
+    else applyAudioMode();
+    for (const s of Object.values(_synthCache)) {
+      if (!s.ctx || !s.masterGain) continue;
+      const base = 0.5 * (s.spec.gainScalar || 1.0);
+      s.masterGain.gain.setTargetAtTime(on ? base * _DUCK : base, s.ctx.currentTime, on ? 0.03 : 0.12);
+    }
   }
   function _syncChordSpeechUI() {
     const lab = document.getElementById("btnChordSpeechLabel");
