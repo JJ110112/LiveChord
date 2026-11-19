@@ -1123,6 +1123,20 @@
     min-height: 0;
   }
   .proglib-controls { grid-template-columns: 1fr 1fr; }
+  /* Phones: 8 cards per row left ~34px per card, so "C#m" ran into the
+     next card. 4 per row (an 8-chord row wraps to two lines). */
+  .proglib-ribbon-row { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .proglib-chord { padding: 10px 4px; min-height: 88px; }
+  .proglib-chord-name { padding: 2px 5px; }
+  .proglib-chord-name[data-len="4"],
+  .proglib-chord-name[data-len="5"] { font-size: 16px; }
+  .proglib-chord-name[data-len="6"],
+  .proglib-chord-name[data-len="7"],
+  .proglib-chord-name[data-len="8"],
+  .proglib-chord-name[data-len="9"],
+  .proglib-chord-name[data-len="10"],
+  .proglib-chord-name[data-len="11"],
+  .proglib-chord-name[data-len="12"] { font-size: 13px; padding: 2px 3px; }
 }
 
 /* ===== Chord Trends explorer (homepage) ===== */

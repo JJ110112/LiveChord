@@ -511,6 +511,12 @@
     speech: document.getElementById("proglibSpeech"),
     speechVoice: document.getElementById("proglibSpeechVoice"),
     speechMix: document.getElementById("proglibSpeechMix"),
+    speechAuto: document.getElementById("proglibSpeechAuto"),
+    speechShorten: document.getElementById("proglibSpeechShorten"),
+    speechRate: document.getElementById("proglibSpeechRate"),
+    speechRateVal: document.getElementById("proglibSpeechRateVal"),
+    speechLead: document.getElementById("proglibSpeechLead"),
+    speechLeadVal: document.getElementById("proglibSpeechLeadVal"),
     accMode: document.getElementById("proglibAccMode"),
     accStyle: document.getElementById("proglibAccStyle"),
     accLevel: document.getElementById("proglibAccLevel"),
@@ -1742,6 +1748,16 @@
     const lang = (window.LiveChordI18n && window.LiveChordI18n.getLang()) || "zh";
     return lang.startsWith("zh") ? "zh-short" : "en";
   }
+  function speechRate() {
+    const r = parseFloat(lsGet("livechord_chord_speech_rate"));
+    return r >= 0.7 && r <= 1.6 ? r : 1.0;
+  }
+  function speechLeadMs() {
+    const l = parseInt(lsGet("livechord_chord_speech_lead_ms"), 10);
+    return l >= 0 ? l : 400;
+  }
+  function speechAuto() { return lsGet("livechord_chord_speech_auto") !== "false"; }
+  function speechShorten() { return lsGet("livechord_chord_speech_shorten") !== "false"; }
   function speechMix() {
     const m = parseFloat(lsGet("livechord_chord_speech_mix"));
     return m >= 0 && m <= 1 ? m : 0.6;
@@ -1780,15 +1796,11 @@
     if (durSec < 0.5) return;
     const voice = speechVoice();
     const lang = voice === "en" ? "en" : "zh";
-    const rate = parseFloat(lsGet("livechord_chord_speech_rate"));
-    const lead = parseInt(lsGet("livechord_chord_speech_lead_ms"), 10);
     const plan = window.ChordSpeech.planCallout({
       chord: name, lang, style: voice === "zh-full" ? "full" : "short",
       mode, key: state.keyName, durSec, prevDurSec: chordSec,
-      baseRate: rate >= 0.7 && rate <= 1.6 ? rate : 1.0,
-      baseLeadSec: (lead >= 0 ? lead : 400) / 1000,
-      auto: lsGet("livechord_chord_speech_auto") !== "false",
-      shorten: lsGet("livechord_chord_speech_shorten") !== "false",
+      baseRate: speechRate(), baseLeadSec: speechLeadMs() / 1000,
+      auto: speechAuto(), shorten: speechShorten(),
     });
     if (!plan.text) return;
     const vol = Math.min(1, 2 * speechMix());
@@ -1803,6 +1815,15 @@
     if (refs.speech) refs.speech.value = mode;
     if (refs.speechVoice) refs.speechVoice.value = speechVoice();
     if (refs.speechMix) refs.speechMix.value = String(speechMix());
+    const auto = speechAuto();
+    if (refs.speechAuto) refs.speechAuto.value = String(auto);
+    if (refs.speechShorten) refs.speechShorten.value = String(speechShorten());
+    if (refs.speechRate) refs.speechRate.value = String(speechRate());
+    // With 依曲速自動 the rate slider is the slowest it may go and the lead
+    // is picked per chord, same as the player's Tools panel.
+    if (refs.speechRateVal) refs.speechRateVal.textContent = `${auto ? "≥ " : ""}${speechRate().toFixed(2)}×`;
+    if (refs.speechLead) { refs.speechLead.value = String(speechLeadMs()); refs.speechLead.disabled = auto; }
+    if (refs.speechLeadVal) refs.speechLeadVal.textContent = auto ? "自動" : `${speechLeadMs()} ms`;
     ROOT.querySelectorAll(".proglib-field-speech").forEach((el) => { el.style.display = mode === "off" ? "none" : ""; });
   }
   function bindSpeechEvents() {
@@ -1823,6 +1844,15 @@
       lsSet("livechord_chord_speech_mix", refs.speechMix.value);
       applyOutputLevel();
     });
+    for (const [el, key, ev] of [
+      [refs.speechAuto, "livechord_chord_speech_auto", "change"],
+      [refs.speechShorten, "livechord_chord_speech_shorten", "change"],
+      [refs.speechRate, "livechord_chord_speech_rate", "input"],
+      [refs.speechLead, "livechord_chord_speech_lead_ms", "input"],
+    ]) {
+      if (!el) continue;
+      el.addEventListener(ev, () => { lsSet(key, el.value); syncSpeechUi(); });
+    }
     syncSpeechUi();
   }
 

@@ -40,7 +40,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script>(function(){try{var t=localStorage.getItem('livechord_theme');if(/^(light|forest|sakura|sunny|sky)$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <link rel="stylesheet" href="/css/base.css?v=24">
-  <link rel="stylesheet" href="/css/home.css?v=78">
+  <link rel="stylesheet" href="/css/home.css?v=79">
 
   <link rel="stylesheet" href="/css/help.css?v=10">
   <link rel="stylesheet" href="/css/tutorial.css?v=1">
@@ -203,6 +203,28 @@
         <label class="proglib-field proglib-field-speech" title="中間＝兩者原音量；往語音拉，音樂固定降低">
           <span>音樂 ↔ 語音</span>
           <input id="proglibSpeechMix" type="range" min="0" max="1" step="0.05" value="0.6">
+        </label>
+        <label class="proglib-field proglib-field-speech" title="依每個和弦的長度自動調整語速與提前唸；語速為最慢下限">
+          <span>依曲速自動</span>
+          <select id="proglibSpeechAuto">
+            <option value="true">開</option>
+            <option value="false">關</option>
+          </select>
+        </label>
+        <label class="proglib-field proglib-field-speech" title="和弦太短唸不完時：縮寫 → 只唸根音 → 跳過">
+          <span>快和弦縮寫</span>
+          <select id="proglibSpeechShorten">
+            <option value="true">開</option>
+            <option value="false">關</option>
+          </select>
+        </label>
+        <label class="proglib-field proglib-field-speech">
+          <span>語速 <b id="proglibSpeechRateVal">1.00×</b></span>
+          <input id="proglibSpeechRate" type="range" min="0.7" max="1.6" step="0.05" value="1">
+        </label>
+        <label class="proglib-field proglib-field-speech">
+          <span>提前唸 <b id="proglibSpeechLeadVal">400 ms</b></span>
+          <input id="proglibSpeechLead" type="range" min="0" max="1500" step="50" value="400">
         </label>
         <label class="proglib-field">
           <span>演奏方式</span>
@@ -927,7 +949,7 @@ if (matchMedia("(display-mode: standalone)").matches && _btnInstall) {
 
 <script src="https://unpkg.com/tone@14.8.49/build/Tone.js" defer></script>
     <script src="/js/chord-speech.js?v=6"></script>
-    <script src="/js/progression-library.js?v=46"></script>
+    <script src="/js/progression-library.js?v=47"></script>
   <script src="/js/scale-lab.js?v=3"></script>
   <script src="/js/trends-explorer.js?v=1"></script>
 <script src="/js/app.js?v=137"></script>
