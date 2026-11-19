@@ -1485,7 +1485,7 @@
   "player.tools.speech_auto_val": "auto",
   "player.tools.speech_shorten_on": "Abbreviate fast: On",
   "player.tools.speech_shorten_off": "Abbreviate fast: Off",
-  "player.tools.speech_shorten_title": "On quick chords: half diminished → half dim, diminished → dim; 中文對照 falls back to 精簡",
+  "player.tools.speech_shorten_title": "When a chord is too quick for the full words: abbreviation (half dim) → root only → skip, so no callout is cut off; auto speed-up stops at 1.35×",
   "player.tools.speech_voice_zh_short": "Voice: 中文精簡",
   "player.tools.speech_voice_zh_full": "Voice: 中文對照",
   "player.tools.speech_voice_en": "Voice: English",

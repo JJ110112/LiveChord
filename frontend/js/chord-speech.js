@@ -122,7 +122,7 @@
 
   /**
    * @param {string} chord display chord name, e.g. "Bbm7/F"
-   * @param {{lang?: "zh"|"en", style?: "short"|"full"|"abbr", mode?: "name"|"degree", key?: string}} opts
+   * @param {{lang?: "zh"|"en", style?: "short"|"full"|"abbr"|"root", mode?: "name"|"degree", key?: string}} opts
    * @returns {string} words to speak; "" for no-chord / unparseable
    */
   function spokenText(chord, opts) {
@@ -130,7 +130,8 @@
     const lang = o.lang === "en" ? "en" : "zh";
     const m = /^([A-G][b#]?)(.*?)(?:\/([A-G][b#]?))?$/.exec((chord || "").trim());
     if (!m) return "";
-    const q = qualityWords(m[2], lang, o.style);
+    const root = o.style === "root";   // 只唸根音: last step before skipping
+    const q = root ? "" : qualityWords(m[2], lang, o.style);
     let head;
     if (o.mode === "degree") {
       const tonic = tonicOf(o.key);
@@ -139,7 +140,7 @@
     } else {
       head = [noteWords(m[1], lang), q].filter(Boolean).join(" ");
     }
-    if (!m[3]) return head;
+    if (!m[3] || root) return head;
     const bass = o.mode === "degree"
       ? degreeWords(pitchClass(m[3]), tonicOf(o.key), lang)
       : noteWords(m[3], lang);
@@ -161,6 +162,10 @@
     return 0.1 + cjk * 0.22 + latin * 0.25;
   }
 
+  // Above ~1.35× a voice over music starts to smear consonants (flat /
+  // sharp / minor), so auto speed-up stops there.
+  const MAX_AUTO_RATE = 1.35;
+
   /**
    * What to say for one chord, how fast, and how early.
    * @param {object} o
@@ -169,21 +174,28 @@
    *   prevDurSec  wall-clock length of the chord before (caps the lead)
    *   baseRate    user's rate (with auto on: the slowest it may go)
    *   baseLeadSec user's 提前唸 (used when auto is off)
-   *   auto        依曲速自動: fit rate + lead to the chord length
-   *   shorten     快和弦縮寫: abbreviate when the full words do not fit
-   * @returns {{text: string, rate: number, leadSec: number}}
+   *   auto        依曲速自動: speed up (to MAX_AUTO_RATE) + lead by length
+   *   shorten     快和弦縮寫: step down full → abbreviation → root only →
+   *               say nothing, so every callout finishes before the next
+   *               chord instead of being cut off mid-word
+   * @returns {{text: string, rate: number, leadSec: number}} text "" = skip
    */
   function planCallout(o) {
     const opts = { lang: o.lang, mode: o.mode, key: o.key };
-    const fit = 0.75 * Math.max(0.3, o.durSec || 0);   // leave room before the next callout
-    let text = spokenText(o.chord, { ...opts, style: o.style });
-    if (o.shorten && estimateSeconds(text, o.lang) / o.baseRate > fit) {
-      text = spokenText(o.chord, { ...opts, style: "abbr" });
+    const fit = 0.8 * Math.max(0.3, o.durSec || 0);   // finish within 80 % of the chord
+    const cap = o.auto ? Math.max(o.baseRate, MAX_AUTO_RATE) : o.baseRate;
+    const steps = o.shorten ? [o.style, "abbr", "root"] : [o.style];
+    let text = "";
+    for (const st of steps) {
+      const t = spokenText(o.chord, { ...opts, style: st });
+      if (estimateSeconds(t, o.lang) / cap <= fit) { text = t; break; }
     }
+    // Shortening off: always say the full words (may be cut by the next one).
+    if (!text && !o.shorten) text = spokenText(o.chord, { ...opts, style: o.style });
     let rate = o.baseRate;
     let leadSec = o.baseLeadSec;
-    if (o.auto) {
-      rate = Math.min(1.6, Math.max(o.baseRate, estimateSeconds(text, o.lang) / fit));
+    if (o.auto && text) {
+      rate = Math.min(cap, Math.max(o.baseRate, estimateSeconds(text, o.lang) / fit));
       // Start earlier for longer callouts so the root word lands near the
       // change, but never more than half of the chord still sounding.
       leadSec = Math.min(1.0, Math.max(0.2, 0.15 + 0.35 * estimateSeconds(text, o.lang) / rate));

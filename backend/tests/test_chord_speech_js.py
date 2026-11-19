@@ -126,15 +126,32 @@ class TestPlanByTempo(unittest.TestCase):
         self.assertEqual(plan("Gm7b5", 0.9, shorten=False)["text"], "G half diminished")
 
     def test_zh_full_falls_back_to_short_wording_on_quick_chords(self):
-        p = plan("Gm7b5", 0.9, lang="zh", style="full")
+        p = plan("Gm7b5", 1.05, lang="zh", style="full")
         self.assertEqual(p["text"], "G 半減七")
         self.assertEqual(plan("Gm7b5", 4.0, lang="zh", style="full")["text"], "G 小七降五")
 
-    def test_auto_speeds_up_only_when_needed_and_never_past_cap(self):
-        fast = plan("Bbm7", 0.9)
-        self.assertGreater(fast["rate"], 1.1)
-        self.assertLessEqual(fast["rate"], 1.6)
-        self.assertAlmostEqual(plan("C", 0.9)["rate"], 1.1)   # short word fits as is
+    def test_auto_speeds_up_only_when_needed_and_never_past_135(self):
+        # Above ~1.35x a voice over music smears flat / sharp / minor.
+        self.assertAlmostEqual(plan("C", 0.9)["rate"], 1.1)          # short word fits as is
+        self.assertGreater(plan("C/E", 0.9)["rate"], 1.1)            # slightly long: a bit faster
+        self.assertLessEqual(plan("Bbm7", 0.6, shorten=False)["rate"], 1.35 + 1e-9)
+
+    def test_steps_down_to_root_only_instead_of_being_cut_off(self):
+        # Fast ii-V: hearing the root motion clearly beats a smeared
+        # "D minor seven" that the next callout cuts in half.
+        self.assertEqual(plan("Bbm7", 0.9)["text"], "B flat")
+        self.assertEqual(plan("Dm7", 0.8)["text"], "D")
+        self.assertEqual(plan("Dm7", 0.8, lang="zh", mode="degree", key="C")["text"], "二級")
+
+    def test_skips_when_even_the_root_does_not_fit(self):
+        self.assertEqual(plan("Bbm7", 0.3)["text"], "")
+
+    def test_long_chord_in_fast_song_is_spoken_in_full_at_user_rate(self):
+        # Tempo alone never speeds the voice up: a 2-bar chord in a fast song
+        # gets the full words at the user's own rate (easier to hear).
+        p = plan("Bbm7", 3.0)
+        self.assertEqual(p["text"], "B flat minor seven")
+        self.assertAlmostEqual(p["rate"], 1.1)
 
     def test_auto_lead_never_reaches_back_past_half_the_previous_chord(self):
         p = plan("Bbm7", 0.9, prevDurSec=0.6)
