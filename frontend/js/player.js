@@ -6706,6 +6706,8 @@
   if (!_SPEECH_MODES.includes(_speechMode) || !(_speaker && _speaker.supported)) _speechMode = "off";
   let _speechLeadMs = parseInt(localStorage.getItem("livechord_chord_speech_lead_ms"), 10);
   if (!(_speechLeadMs >= 0)) _speechLeadMs = 400;
+  let _speechRate = parseFloat(localStorage.getItem("livechord_chord_speech_rate"));
+  if (!(_speechRate >= 0.7 && _speechRate <= 1.6)) _speechRate = 1.0;
   // Voice style: 中文精簡 (G 半減七) · 中文對照 (G 小七降五, one word per
   // symbol) · English. Defaults to the UI language.
   const _SPEECH_VOICES = ["zh-short", "zh-full", "en"];
@@ -6752,7 +6754,7 @@
       mode: _speechMode, key: _jianpuKeyAt(c.time),
     });
     const token = ++_duckToken;
-    _speaker.speak(text, lang, 1.0, {
+    _speaker.speak(text, lang, _speechRate, {
       onstart: () => { if (token === _duckToken) _duckMusic(true); },
       onend: () => { if (token === _duckToken) _duckMusic(false); },
     });
@@ -6785,6 +6787,12 @@
     if (btn) btn.setAttribute("aria-pressed", _speechMode === "off" ? "false" : "true");
     const row = document.getElementById("chordSpeechLeadRow");
     if (row) row.style.display = _speechMode === "off" ? "none" : "";
+    const rrow = document.getElementById("chordSpeechRateRow");
+    if (rrow) rrow.style.display = _speechMode === "off" ? "none" : "";
+    const rval = document.getElementById("chordSpeechRateVal");
+    if (rval) rval.textContent = `${_speechRate.toFixed(2)}×`;
+    const rsl = document.getElementById("chordSpeechRate");
+    if (rsl) rsl.value = _speechRate;
     const vbtn = document.getElementById("btnChordSpeechVoice");
     if (vbtn) vbtn.style.display = _speechMode === "off" ? "none" : "";
     const vlab = document.getElementById("btnChordSpeechVoiceLabel");
@@ -6812,6 +6820,14 @@
       _speechVoiceStored = _SPEECH_VOICES[(_SPEECH_VOICES.indexOf(cur) + 1) % _SPEECH_VOICES.length];
       try { localStorage.setItem("livechord_chord_speech_voice", _speechVoiceStored); } catch (_) {}
       _chordSpeechReset();
+      _syncChordSpeechUI();
+    });
+  }
+  const chordSpeechRate = $("#chordSpeechRate");
+  if (chordSpeechRate) {
+    chordSpeechRate.addEventListener("input", () => {
+      _speechRate = parseFloat(chordSpeechRate.value) || 1.0;
+      try { localStorage.setItem("livechord_chord_speech_rate", String(_speechRate)); } catch (_) {}
       _syncChordSpeechUI();
     });
   }

@@ -22,7 +22,7 @@
        load before any /api/ call so anon X-Anon-Id is injected from the
        first request. Replaces the inline blind-redirect block. -->
   <script src="/js/auth.js?v=7"></script>
-  <script src="/js/i18n.js?v=71"></script>
+  <script src="/js/i18n.js?v=72"></script>
   <script src="/js/analytics.js?v=3"></script>
 </head>
 <body>
@@ -864,6 +864,11 @@
         <input id="chordSpeechLead" type="range" min="0" max="1500" step="50" value="400">
         <span id="chordSpeechLeadVal" class="sync-latency-val">400 ms</span>
       </label>
+      <label id="chordSpeechRateRow" class="sync-latency-row" style="display:none">
+        <span data-i18n="player.tools.speech_rate">Speech rate</span>
+        <input id="chordSpeechRate" type="range" min="0.7" max="1.6" step="0.05" value="1">
+        <span id="chordSpeechRateVal" class="sync-latency-val">1.00×</span>
+      </label>
       <button id="btnSyncRole" class="tb-popup-btn" type="button"
               data-i18n-attr="title=player.tools.sync_title" title="Sync with another device" aria-pressed="false">
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="13" height="10" rx="1"/><rect x="17" y="8" width="5" height="12" rx="1"/><path d="M6 18h5"/></svg>
@@ -999,7 +1004,7 @@
 <script src="/js/scale-lab.js?v=3"></script>
 <script src="/js/improv-hints.js?v=3"></script>
 <script src="/js/chord-speech.js?v=3"></script>
-<script src="/js/player.js?v=400"></script>
+<script src="/js/player.js?v=401"></script>
 <script>
   // Toolbar gear theme picker — mirrors the homepage gear handler so the
   // user's theme choice is honored on either entry point. Active state on
