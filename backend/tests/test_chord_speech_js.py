@@ -93,5 +93,58 @@ class TestDegrees(unittest.TestCase):
         self.assertEqual(say("G7", lang="en", mode="degree", key="C"), "five seven")
 
 
+def plan(chord, dur, **kw):
+    o = {"chord": chord, "lang": "en", "style": "short", "mode": "name", "key": "C",
+         "durSec": dur, "prevDurSec": 2.0, "baseRate": 1.1, "baseLeadSec": 0.4,
+         "auto": True, "shorten": True}
+    o.update(kw)
+    script = (
+        f"const S = require({json.dumps(str(JS))});"
+        f"process.stdout.write(JSON.stringify(S.planCallout({json.dumps(o)})));"
+    )
+    out = subprocess.run([NODE, "-e", script], capture_output=True, text=True,
+                         encoding="utf-8", errors="replace", timeout=30)
+    if out.returncode:
+        raise AssertionError(out.stderr)
+    return json.loads(out.stdout)
+
+
+@unittest.skipUnless(NODE, "node not installed")
+class TestPlanByTempo(unittest.TestCase):
+    """A callout still talking when the next chord starts tells the player
+    the wrong chord, so quick chords must get shorter words / faster speech,
+    while slow songs keep the user's own settings."""
+
+    def test_slow_chord_keeps_full_words_and_user_rate(self):
+        p = plan("Gm7b5", 4.0)
+        self.assertEqual(p["text"], "G half diminished")
+        self.assertAlmostEqual(p["rate"], 1.1)
+
+    def test_quick_chord_is_abbreviated_when_option_on(self):
+        self.assertEqual(plan("Gm7b5", 0.9)["text"], "G half dim")
+        self.assertEqual(plan("Bdim", 0.9)["text"], "B dim")
+        self.assertEqual(plan("Gm7b5", 0.9, shorten=False)["text"], "G half diminished")
+
+    def test_zh_full_falls_back_to_short_wording_on_quick_chords(self):
+        p = plan("Gm7b5", 0.9, lang="zh", style="full")
+        self.assertEqual(p["text"], "G 半減七")
+        self.assertEqual(plan("Gm7b5", 4.0, lang="zh", style="full")["text"], "G 小七降五")
+
+    def test_auto_speeds_up_only_when_needed_and_never_past_cap(self):
+        fast = plan("Bbm7", 0.9)
+        self.assertGreater(fast["rate"], 1.1)
+        self.assertLessEqual(fast["rate"], 1.6)
+        self.assertAlmostEqual(plan("C", 0.9)["rate"], 1.1)   # short word fits as is
+
+    def test_auto_lead_never_reaches_back_past_half_the_previous_chord(self):
+        p = plan("Bbm7", 0.9, prevDurSec=0.6)
+        self.assertLessEqual(p["leadSec"], 0.3 + 1e-9)
+
+    def test_auto_off_uses_the_sliders_exactly(self):
+        p = plan("Bbm7", 0.9, auto=False)
+        self.assertAlmostEqual(p["rate"], 1.1)
+        self.assertAlmostEqual(p["leadSec"], 0.4)
+
+
 if __name__ == "__main__":
     unittest.main()

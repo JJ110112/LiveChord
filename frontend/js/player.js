@@ -6708,6 +6708,11 @@
   if (!(_speechLeadMs >= 0)) _speechLeadMs = 400;
   let _speechRate = parseFloat(localStorage.getItem("livechord_chord_speech_rate"));
   if (!(_speechRate >= 0.7 && _speechRate <= 1.6)) _speechRate = 1.0;
+  // 依曲速自動: per chord, speed up (never below the rate slider) and pick
+  // the lead from how long the chord lasts. 快和弦縮寫: half diminished ->
+  // half dim, 小七降五 -> 半減七 when the full words do not fit. Both default on.
+  let _speechAuto = localStorage.getItem("livechord_chord_speech_auto") !== "false";
+  let _speechShorten = localStorage.getItem("livechord_chord_speech_shorten") !== "false";
   // Voice style: 中文精簡 (G 半減七) · 中文對照 (G 小七降五, one word per
   // symbol) · English. Defaults to the UI language.
   const _SPEECH_VOICES = ["zh-short", "zh-full", "en"];
@@ -6728,33 +6733,58 @@
     _duckToken++;
     _duckMusic(false);
   }
+  // Wall-clock seconds a chord sounds, counting split cards of the same
+  // chord that follow it as one (C C C C on bar splits is one long C).
+  function _speechDurAt(chords, i, pr) {
+    const name = chords[i].chord;
+    let j = i;
+    while (j + 1 < chords.length && chords[j + 1].chord === name) j++;
+    const end = chords[j].end != null ? chords[j].end : (chords[j + 1] ? chords[j + 1].time : chords[j].time + 2);
+    return (end - chords[i].time) / pr;
+  }
+  function _speechPlan(chords, i, pr) {
+    const voice = _speechVoiceNow();
+    const lang = voice === "en" ? "en" : "zh";
+    return {
+      lang,
+      ...window.ChordSpeech.planCallout({
+        chord: _displayChordName(chords[i].chord), lang,
+        style: voice === "zh-full" ? "full" : "short",
+        mode: _speechMode, key: _jianpuKeyAt(chords[i].time),
+        durSec: _speechDurAt(chords, i, pr),
+        prevDurSec: i > 0 ? (chords[i].time - chords[i - 1].time) / pr : 0,
+        baseRate: _speechRate, baseLeadSec: _speechLeadMs / 1000,
+        auto: _speechAuto, shorten: _speechShorten,
+      }),
+    };
+  }
   function _chordSpeechTick(t) {
     if (_speechMode === "off") return;
     const chords = _displayChords();
-    const rate = audio.playbackRate || 1;
-    const ahead = t + (_speechLeadMs / 1000) * rate;  // lead is wall-clock ms
-    let i = -1;
+    const pr = audio.playbackRate || 1;
+    let cur = -1;
     for (let k = chords.length - 1; k >= 0; k--) {
-      if (ahead >= chords[k].time) { i = k; break; }
+      if (t >= chords[k].time) { cur = k; break; }
+    }
+    // Announce the next chord once we are within its lead (lead is
+    // wall-clock, so scale by playback speed); after a seek, the current one.
+    let i = cur;
+    let plan = null;
+    if (cur + 1 < chords.length) {
+      const p = _speechPlan(chords, cur + 1, pr);
+      if (t + p.leadSec * pr >= chords[cur + 1].time) { i = cur + 1; plan = p; }
     }
     if (i < 0 || i === _speechLastIdx) return;
     _speechLastIdx = i;
-    const c = chords[i];
-    const name = _displayChordName(c.chord);
+    const name = _displayChordName(chords[i].chord);
     if (name === _speechLastName) return;
     _speechLastName = name;
     // Skip chords shorter than ~0.5 s of real time (passing chords): a
     // callout that is still talking when the next chord starts misleads.
-    const end = c.end != null ? c.end : (chords[i + 1] ? chords[i + 1].time : c.time + 2);
-    if ((end - c.time) / rate < 0.5) return;
-    const voice = _speechVoiceNow();
-    const lang = voice === "en" ? "en" : "zh";
-    const text = window.ChordSpeech.spokenText(name, {
-      lang, style: voice === "zh-full" ? "full" : "short",
-      mode: _speechMode, key: _jianpuKeyAt(c.time),
-    });
+    if (_speechDurAt(chords, i, pr) < 0.5) return;
+    if (!plan) plan = _speechPlan(chords, i, pr);
     const token = ++_duckToken;
-    _speaker.speak(text, lang, _speechRate, {
+    _speaker.speak(plan.text, plan.lang, plan.rate, {
       onstart: () => { if (token === _duckToken) _duckMusic(true); },
       onend: () => { if (token === _duckToken) _duckMusic(false); },
     });
@@ -6798,9 +6828,18 @@
     const vlab = document.getElementById("btnChordSpeechVoiceLabel");
     if (vlab) vlab.textContent = _t("player.tools.speech_voice_" + _speechVoiceNow().replace("-", "_"));
     const val = document.getElementById("chordSpeechLeadVal");
-    if (val) val.textContent = `${_speechLeadMs} ms`;
+    if (val) val.textContent = _speechAuto ? _t("player.tools.speech_auto_val") : `${_speechLeadMs} ms`;
     const sl = document.getElementById("chordSpeechLead");
-    if (sl) sl.value = _speechLeadMs;
+    if (sl) { sl.value = _speechLeadMs; sl.disabled = _speechAuto; }
+    if (rval && _speechAuto) rval.textContent = `≥ ${_speechRate.toFixed(2)}×`;
+    for (const [id, on, k] of [["btnChordSpeechAuto", _speechAuto, "auto"], ["btnChordSpeechShorten", _speechShorten, "shorten"]]) {
+      const b = document.getElementById(id);
+      if (!b) continue;
+      b.style.display = _speechMode === "off" ? "none" : "";
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+      const l = b.querySelector("span");
+      if (l) l.textContent = _t(`player.tools.speech_${k}_${on ? "on" : "off"}`);
+    }
   }
   const btnChordSpeech = $("#btnChordSpeech");
   if (btnChordSpeech) {
@@ -6820,6 +6859,16 @@
       _speechVoiceStored = _SPEECH_VOICES[(_SPEECH_VOICES.indexOf(cur) + 1) % _SPEECH_VOICES.length];
       try { localStorage.setItem("livechord_chord_speech_voice", _speechVoiceStored); } catch (_) {}
       _chordSpeechReset();
+      _syncChordSpeechUI();
+    });
+  }
+  for (const [id, key] of [["btnChordSpeechAuto", "auto"], ["btnChordSpeechShorten", "shorten"]]) {
+    const b = $("#" + id);
+    if (!b) continue;
+    b.addEventListener("click", () => {
+      if (key === "auto") _speechAuto = !_speechAuto; else _speechShorten = !_speechShorten;
+      const on = key === "auto" ? _speechAuto : _speechShorten;
+      try { localStorage.setItem("livechord_chord_speech_" + key, on ? "true" : "false"); } catch (_) {}
       _syncChordSpeechUI();
     });
   }

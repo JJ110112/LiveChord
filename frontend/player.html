@@ -22,7 +22,7 @@
        load before any /api/ call so anon X-Anon-Id is injected from the
        first request. Replaces the inline blind-redirect block. -->
   <script src="/js/auth.js?v=7"></script>
-  <script src="/js/i18n.js?v=72"></script>
+  <script src="/js/i18n.js?v=73"></script>
   <script src="/js/analytics.js?v=3"></script>
 </head>
 <body>
@@ -859,6 +859,16 @@
         <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         <span id="btnChordSpeechVoiceLabel" data-i18n="player.tools.speech_voice_zh_short">Voice: 中文精簡</span>
       </button>
+      <button id="btnChordSpeechAuto" class="tb-popup-btn" type="button" style="display:none"
+              data-i18n-attr="title=player.tools.speech_auto_title" title="Fit speech rate and lead to each chord's length" aria-pressed="true">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 14l4-4"/><path d="M3.3 19a10 10 0 1 1 17.4 0"/></svg>
+        <span data-i18n="player.tools.speech_auto_on">By tempo: On</span>
+      </button>
+      <button id="btnChordSpeechShorten" class="tb-popup-btn" type="button" style="display:none"
+              data-i18n-attr="title=player.tools.speech_shorten_title" title="Short form on quick chords" aria-pressed="true">
+        <svg class="tb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h10"/><path d="M4 6h16"/><path d="M4 18h6"/></svg>
+        <span data-i18n="player.tools.speech_shorten_on">Abbreviate fast: On</span>
+      </button>
       <label id="chordSpeechLeadRow" class="sync-latency-row" style="display:none">
         <span data-i18n="player.tools.speech_lead">Say it early</span>
         <input id="chordSpeechLead" type="range" min="0" max="1500" step="50" value="400">
@@ -1003,8 +1013,8 @@
      duplicate block was removed. -->
 <script src="/js/scale-lab.js?v=3"></script>
 <script src="/js/improv-hints.js?v=3"></script>
-<script src="/js/chord-speech.js?v=3"></script>
-<script src="/js/player.js?v=401"></script>
+<script src="/js/chord-speech.js?v=4"></script>
+<script src="/js/player.js?v=402"></script>
 <script>
   // Toolbar gear theme picker — mirrors the homepage gear handler so the
   // user's theme choice is honored on either entry point. Active state on
