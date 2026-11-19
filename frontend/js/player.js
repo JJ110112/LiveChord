@@ -6706,6 +6706,17 @@
   if (!_SPEECH_MODES.includes(_speechMode) || !(_speaker && _speaker.supported)) _speechMode = "off";
   let _speechLeadMs = parseInt(localStorage.getItem("livechord_chord_speech_lead_ms"), 10);
   if (!(_speechLeadMs >= 0)) _speechLeadMs = 400;
+  // Voice style: 中文精簡 (G 半減七) · 中文對照 (G 小七降五, one word per
+  // symbol) · English. Defaults to the UI language.
+  const _SPEECH_VOICES = ["zh-short", "zh-full", "en"];
+  // Unset → follow the UI language, read when needed (the dictionary may
+  // not be loaded yet while this block runs).
+  let _speechVoiceStored = localStorage.getItem("livechord_chord_speech_voice");
+  if (!_SPEECH_VOICES.includes(_speechVoiceStored)) _speechVoiceStored = null;
+  function _speechVoiceNow() {
+    if (_speechVoiceStored) return _speechVoiceStored;
+    return (window.LiveChordI18n && window.LiveChordI18n.getLang() || "zh").startsWith("zh") ? "zh-short" : "en";
+  }
   let _speechLastIdx = -1;
   let _speechLastName = null;
   function _chordSpeechReset() {
@@ -6734,12 +6745,14 @@
     // callout that is still talking when the next chord starts misleads.
     const end = c.end != null ? c.end : (chords[i + 1] ? chords[i + 1].time : c.time + 2);
     if ((end - c.time) / rate < 0.5) return;
-    const lang = (window.LiveChordI18n && window.LiveChordI18n.getLang() || "").startsWith("zh") ? "zh" : "en";
+    const voice = _speechVoiceNow();
+    const lang = voice === "en" ? "en" : "zh";
     const text = window.ChordSpeech.spokenText(name, {
-      lang, mode: _speechMode, key: _jianpuKeyAt(c.time),
+      lang, style: voice === "zh-full" ? "full" : "short",
+      mode: _speechMode, key: _jianpuKeyAt(c.time),
     });
     const token = ++_duckToken;
-    _speaker.speak(text, lang, 1.2, {
+    _speaker.speak(text, lang, 1.0, {
       onstart: () => { if (token === _duckToken) _duckMusic(true); },
       onend: () => { if (token === _duckToken) _duckMusic(false); },
     });
@@ -6772,6 +6785,10 @@
     if (btn) btn.setAttribute("aria-pressed", _speechMode === "off" ? "false" : "true");
     const row = document.getElementById("chordSpeechLeadRow");
     if (row) row.style.display = _speechMode === "off" ? "none" : "";
+    const vbtn = document.getElementById("btnChordSpeechVoice");
+    if (vbtn) vbtn.style.display = _speechMode === "off" ? "none" : "";
+    const vlab = document.getElementById("btnChordSpeechVoiceLabel");
+    if (vlab) vlab.textContent = _t("player.tools.speech_voice_" + _speechVoiceNow().replace("-", "_"));
     const val = document.getElementById("chordSpeechLeadVal");
     if (val) val.textContent = `${_speechLeadMs} ms`;
     const sl = document.getElementById("chordSpeechLead");
@@ -6784,6 +6801,16 @@
       _speaker.unlock();
       _speechMode = _SPEECH_MODES[(_SPEECH_MODES.indexOf(_speechMode) + 1) % _SPEECH_MODES.length];
       try { localStorage.setItem("livechord_chord_speech", _speechMode); } catch (_) {}
+      _chordSpeechReset();
+      _syncChordSpeechUI();
+    });
+  }
+  const btnChordSpeechVoice = $("#btnChordSpeechVoice");
+  if (btnChordSpeechVoice) {
+    btnChordSpeechVoice.addEventListener("click", () => {
+      const cur = _speechVoiceNow();
+      _speechVoiceStored = _SPEECH_VOICES[(_SPEECH_VOICES.indexOf(cur) + 1) % _SPEECH_VOICES.length];
+      try { localStorage.setItem("livechord_chord_speech_voice", _speechVoiceStored); } catch (_) {}
       _chordSpeechReset();
       _syncChordSpeechUI();
     });

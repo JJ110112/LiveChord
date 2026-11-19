@@ -36,15 +36,18 @@
   }
 
   // Chord qualities, longest spelling first so "maj7" wins over "m".
+  // zh = 中文精簡 (short, for fast changes), zhFull = 中文對照 (one word per
+  // symbol, matches the chart), en = English. Triads say 小三 / 減三 / 增三
+  // because a bare 小 is too short to catch over the music.
   const QUALITIES = [
-    ["m7b5", { zh: "半減七", en: "half diminished" }],
+    ["m7b5", { zh: "半減七", zhFull: "小七降五", en: "half diminished", enFull: "minor seven flat five" }],
     ["maj13", { zh: "大十三", en: "major thirteen" }],
     ["maj9", { zh: "大九", en: "major nine" }],
     ["maj7", { zh: "大七", en: "major seven" }],
     ["mMaj7", { zh: "小大七", en: "minor major seven" }],
     ["dim7", { zh: "減七", en: "diminished seven" }],
-    ["hdim7", { zh: "半減七", en: "half diminished" }],
-    ["7sus4", { zh: "七掛四", en: "seven sus four" }],
+    ["hdim7", { zh: "半減七", zhFull: "小七降五", en: "half diminished", enFull: "minor seven flat five" }],
+    ["7sus4", { zh: "七掛四", zhFull: "屬七掛四", en: "seven sus four" }],
     ["sus4", { zh: "掛四", en: "sus four" }],
     ["sus2", { zh: "掛二", en: "sus two" }],
     ["add9", { zh: "加九", en: "add nine" }],
@@ -54,18 +57,18 @@
     ["m7", { zh: "小七", en: "minor seven" }],
     ["m6", { zh: "小六", en: "minor six" }],
     ["M7", { zh: "大七", en: "major seven" }],
-    ["dim", { zh: "減", en: "diminished" }],
-    ["aug", { zh: "增", en: "augmented" }],
-    ["13", { zh: "十三", en: "thirteen" }],
-    ["11", { zh: "十一", en: "eleven" }],
-    ["9", { zh: "九", en: "nine" }],
-    ["7", { zh: "七", en: "seven" }],
+    ["dim", { zh: "減三", en: "diminished" }],
+    ["aug", { zh: "增三", en: "augmented" }],
+    ["13", { zh: "十三", zhFull: "屬十三", en: "thirteen", enFull: "dominant thirteen" }],
+    ["11", { zh: "十一", zhFull: "屬十一", en: "eleven", enFull: "dominant eleven" }],
+    ["9", { zh: "九", zhFull: "屬九", en: "nine", enFull: "dominant nine" }],
+    ["7", { zh: "七", zhFull: "屬七", en: "seven", enFull: "dominant seven" }],
     ["6", { zh: "六", en: "six" }],
-    ["5", { zh: "五", en: "five" }],
-    ["m", { zh: "小", en: "minor" }],
-    ["°", { zh: "減", en: "diminished" }],
-    ["ø", { zh: "半減七", en: "half diminished" }],
-    ["+", { zh: "增", en: "augmented" }],
+    ["5", { zh: "五度", en: "five" }],
+    ["m", { zh: "小三", en: "minor" }],
+    ["°", { zh: "減三", en: "diminished" }],
+    ["ø", { zh: "半減七", zhFull: "小七降五", en: "half diminished", enFull: "minor seven flat five" }],
+    ["+", { zh: "增三", en: "augmented" }],
   ];
 
   const ZH_NUM = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十",
@@ -88,11 +91,11 @@
     return out.join(lang === "zh" ? "" : " ");
   }
 
-  function qualityWords(suffix, lang) {
+  function qualityWords(suffix, lang, full) {
     let s = suffix || "";
     let words = "";
     for (const [k, v] of QUALITIES) {
-      if (s.startsWith(k)) { words = v[lang]; s = s.slice(k.length); break; }
+      if (s.startsWith(k)) { words = (full && v[lang + "Full"]) || v[lang]; s = s.slice(k.length); break; }
     }
     const t = tensionWords(s.replace(/[()]/g, ""), lang);
     return [words, t].filter(Boolean).join(lang === "zh" ? "" : " ");
@@ -101,7 +104,7 @@
   function noteWords(note, lang) {
     const m = /^([A-G])([#b]?)/.exec(note || "");
     if (!m) return "";
-    if (lang === "zh") return (m[2] === "#" ? "升" : m[2] === "b" ? "降" : "") + m[1];
+    if (lang === "zh") return (m[2] === "#" ? "升 " : m[2] === "b" ? "降 " : "") + m[1];
     return m[1] + (m[2] === "#" ? " sharp" : m[2] === "b" ? " flat" : "");
   }
 
@@ -117,7 +120,7 @@
 
   /**
    * @param {string} chord display chord name, e.g. "Bbm7/F"
-   * @param {{lang?: "zh"|"en", mode?: "name"|"degree", key?: string}} opts
+   * @param {{lang?: "zh"|"en", style?: "short"|"full", mode?: "name"|"degree", key?: string}} opts
    * @returns {string} words to speak; "" for no-chord / unparseable
    */
   function spokenText(chord, opts) {
@@ -125,7 +128,7 @@
     const lang = o.lang === "en" ? "en" : "zh";
     const m = /^([A-G][b#]?)(.*?)(?:\/([A-G][b#]?))?$/.exec((chord || "").trim());
     if (!m) return "";
-    const q = qualityWords(m[2], lang);
+    const q = qualityWords(m[2], lang, o.style === "full");
     let head;
     if (o.mode === "degree") {
       const tonic = tonicOf(o.key);
@@ -179,7 +182,7 @@
           const v = pickVoice(lang);
           if (v) u.voice = v;
           u.lang = v ? v.lang : (lang === "en" ? "en-US" : "zh-TW");
-          u.rate = rate || 1.2;
+          u.rate = rate || 1.0;
           u.volume = 1;
           if (h.onstart) u.onstart = h.onstart;
           if (h.onend) { u.onend = h.onend; u.onerror = h.onend; }
